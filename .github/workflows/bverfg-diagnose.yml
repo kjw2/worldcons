@@ -1,0 +1,31 @@
+name: BVerfG crawler diagnose
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_ENABLED: "true"
+      CRAWLEE_PLAYWRIGHT_ENABLED: "true"
+      CRAWLEE_WORKER: "true"
+      BVERFG_CRAWL_DELAY_MS: "3000"
+      BVERFG_TIMEOUT_MS: "60000"
+      BVERFG_MAX_CONCURRENCY: "1"
+      BVERFG_RETRY_COUNT: "2"
+      BVERFG_USE_IPV4_FIRST: "true"
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm crawler:diagnose -- --source=de-bverfg --debug

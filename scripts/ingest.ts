@@ -1,0 +1,44 @@
+import "dotenv/config";
+import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
+import { runIngest } from "@/lib/ingest/run";
+import type { CrawlStrategyOption } from "@/lib/crawler/types";
+
+async function main() {
+  const sourceKey = process.argv.find((arg) => arg.startsWith("--source="))?.split("=")[1];
+  applyIpv4FirstForSource(sourceKey);
+  const limitArg = process.argv.find((arg) => arg.startsWith("--limit="))?.split("=")[1];
+  const strategyArg = process.argv.find((arg) => arg.startsWith("--strategy="))?.split("=")[1] as CrawlStrategyOption | undefined;
+  const limit = limitArg ? Number(limitArg) : undefined;
+  const debug = process.argv.includes("--debug");
+  const usePlaywright = process.argv.includes("--use-playwright") ? true : process.argv.includes("--no-playwright") ? false : undefined;
+
+  const result = await runIngest({ sourceKey, limit, debug, usePlaywright, strategy: strategyArg ?? "auto" });
+  if (debug) {
+    for (const sourceResult of result.results ?? []) {
+      console.log(`\n[${sourceResult.sourceKey}]`);
+      for (const attempt of sourceResult.diagnostics?.attempts ?? []) {
+        console.log(
+          [
+            `strategy=${attempt.strategy}`,
+            attempt.url ? `url=${attempt.url}` : null,
+            attempt.status !== undefined ? `status=${attempt.status}` : null,
+            attempt.finalUrl ? `final=${attempt.finalUrl}` : null,
+            attempt.selectorMatchCount !== undefined ? `selectorMatches=${attempt.selectorMatchCount}` : null,
+            attempt.discoveredCount !== undefined ? `discovered=${attempt.discoveredCount}` : null,
+            attempt.fallback ? "fallback=true" : null,
+            attempt.errorCode ? `errorCode=${attempt.errorCode}` : null,
+            attempt.errorMessage ? `error=${attempt.errorMessage}` : null,
+          ]
+            .filter(Boolean)
+            .join(" | "),
+        );
+      }
+    }
+  }
+  console.log(JSON.stringify(result, null, 2));
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

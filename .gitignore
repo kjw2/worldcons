@@ -1,0 +1,12 @@
+.next
+node_modules
+.env
+.env.local
+.vercel
+.cache
+.crawlee-storage
+cache
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
