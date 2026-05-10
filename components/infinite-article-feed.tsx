@@ -5,11 +5,26 @@ import { Loader2 } from "lucide-react";
 import { ArticleGrid } from "@/components/article-grid";
 import type { ArticleListItem, ArticleListResult, PageInfo } from "@/lib/db/types";
 
+const FEED_PENDING_KEY = "worldcons:list-scroll:pending-feed";
+const FEED_TTL_MS = 30 * 60 * 1000;
+
 interface InfiniteArticleFeedProps {
   initialResult: ArticleListResult;
   endpoint?: string;
   queryString?: string;
   pageSize?: number;
+}
+
+interface FeedSnapshot {
+  feedKey: string;
+  returnPath: string;
+  articles: ArticleListItem[];
+  pageInfo: PageInfo;
+  isExhausted: boolean;
+  clickedSlug: string;
+  scrollY: number;
+  targetTop: number;
+  savedAt: number;
 }
 
 function mergeArticles(current: ArticleListItem[], incoming: ArticleListItem[]) {
@@ -33,6 +48,74 @@ function pageInfoFor(pageInfo: PageInfo, pageSize: number): PageInfo {
   };
 }
 
+function currentReturnPath() {
+  if (typeof window === "undefined") return "";
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function storageKeyFor(feedKey: string) {
+  return `worldcons:list-scroll:feed:${feedKey}`;
+}
+
+function findArticleElement(slug: string) {
+  if (typeof document === "undefined") return null;
+  return [...document.querySelectorAll<HTMLElement>("[data-article-slug]")].find((element) => element.dataset.articleSlug === slug) ?? null;
+}
+
+function slimArticleForSnapshot(article: ArticleListItem): ArticleListItem {
+  return {
+    ...article,
+    summaryJson: null,
+  };
+}
+
+function readFeedSnapshot(feedKey: string) {
+  if (typeof window === "undefined") return null;
+
+  const storageKey = storageKeyFor(feedKey);
+  if (window.sessionStorage.getItem(FEED_PENDING_KEY) !== storageKey) {
+    return null;
+  }
+
+  const raw = window.sessionStorage.getItem(storageKey);
+  if (!raw) return null;
+
+  try {
+    const snapshot = JSON.parse(raw) as Partial<FeedSnapshot>;
+    if (
+      snapshot.feedKey !== feedKey ||
+      snapshot.returnPath !== currentReturnPath() ||
+      !Array.isArray(snapshot.articles) ||
+      !snapshot.pageInfo ||
+      typeof snapshot.pageInfo.page !== "number" ||
+      typeof snapshot.pageInfo.pageSize !== "number" ||
+      typeof snapshot.pageInfo.total !== "number" ||
+      typeof snapshot.clickedSlug !== "string" ||
+      typeof snapshot.scrollY !== "number" ||
+      typeof snapshot.targetTop !== "number" ||
+      typeof snapshot.savedAt !== "number" ||
+      Date.now() - snapshot.savedAt > FEED_TTL_MS
+    ) {
+      return null;
+    }
+
+    return snapshot as FeedSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+function restoreFeedScroll(snapshot: FeedSnapshot) {
+  const target = findArticleElement(snapshot.clickedSlug);
+  if (target) {
+    const targetY = target.getBoundingClientRect().top + window.scrollY - snapshot.targetTop;
+    window.scrollTo({ top: Math.max(0, targetY), behavior: "auto" });
+    return;
+  }
+
+  window.scrollTo({ top: Math.max(0, snapshot.scrollY), behavior: "auto" });
+}
+
 export function InfiniteArticleFeed({
   initialResult,
   endpoint = "/api/articles",
@@ -47,15 +130,43 @@ export function InfiniteArticleFeed({
   const [isExhausted, setIsExhausted] = useState(initialResult.items.length >= initialResult.pageInfo.total);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+  const pendingRestoreRef = useRef<FeedSnapshot | null>(null);
 
   useEffect(() => {
-    setArticles(initialResult.items);
-    setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
+    const snapshot = readFeedSnapshot(feedKey);
+    if (snapshot) {
+      const snapshotPageInfo = {
+        ...snapshot.pageInfo,
+        pageSize,
+        total: Math.max(snapshot.pageInfo.total, initialResult.pageInfo.total),
+      };
+      setArticles(snapshot.articles);
+      setPageInfo(snapshotPageInfo);
+      setIsExhausted(snapshot.isExhausted || snapshot.articles.length >= snapshotPageInfo.total);
+      pendingRestoreRef.current = snapshot;
+    } else {
+      setArticles(initialResult.items);
+      setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
+      setIsExhausted(initialResult.items.length >= initialResult.pageInfo.total);
+      pendingRestoreRef.current = null;
+    }
     setErrorMessage(null);
-    setIsExhausted(initialResult.items.length >= initialResult.pageInfo.total);
     loadingRef.current = false;
     setIsLoading(false);
   }, [feedKey, initialResult, pageSize]);
+
+  useEffect(() => {
+    const snapshot = pendingRestoreRef.current;
+    if (!snapshot) return;
+
+    pendingRestoreRef.current = null;
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(FEED_PENDING_KEY);
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => restoreFeedScroll(snapshot));
+    });
+  }, [articles, feedKey]);
 
   const hasMore = !isExhausted && articles.length < pageInfo.total;
   const loadedCount = Math.min(articles.length, pageInfo.total);
@@ -98,6 +209,45 @@ export function InfiniteArticleFeed({
     }
   }, [articles.length, hasMore, nextUrl, pageSize]);
 
+  const saveReturnState = useCallback(
+    (clickedSlug: string) => {
+      if (typeof window === "undefined") return;
+
+      const target = findArticleElement(clickedSlug);
+      const snapshot: FeedSnapshot = {
+        feedKey,
+        returnPath: currentReturnPath(),
+        articles: articles.map(slimArticleForSnapshot),
+        pageInfo,
+        isExhausted,
+        clickedSlug,
+        scrollY: window.scrollY,
+        targetTop: target?.getBoundingClientRect().top ?? 120,
+        savedAt: Date.now(),
+      };
+      const storageKey = storageKeyFor(feedKey);
+
+      try {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(snapshot));
+        window.sessionStorage.setItem(FEED_PENDING_KEY, storageKey);
+      } catch {
+        try {
+          window.sessionStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              ...snapshot,
+              articles: [],
+            }),
+          );
+          window.sessionStorage.setItem(FEED_PENDING_KEY, storageKey);
+        } catch {
+          // Ignore private-mode or quota failures; browser default restoration remains available.
+        }
+      }
+    },
+    [articles, feedKey, isExhausted, pageInfo],
+  );
+
   useEffect(() => {
     const node = sentinelRef.current;
     if (!node || !hasMore) return;
@@ -121,7 +271,7 @@ export function InfiniteArticleFeed({
         <p className="text-sm text-ink/62">총 {pageInfo.total}건</p>
         <p className="text-sm text-ink/50">{loadedCount}건 표시</p>
       </div>
-      <ArticleGrid articles={articles} />
+      <ArticleGrid articles={articles} onArticleNavigate={saveReturnState} restoreScroll={false} />
       <div ref={sentinelRef} className="flex min-h-16 items-center justify-center pt-2">
         {isLoading ? (
           <span className="inline-flex items-center gap-2 text-sm font-medium text-ink/58">

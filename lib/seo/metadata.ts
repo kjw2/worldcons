@@ -3,8 +3,21 @@ import type { ArticleDetail, TagSummary } from "@/lib/db/types";
 
 const DEFAULT_BASE_URL = "http://localhost:3000";
 
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
 export function getAppBaseUrl() {
-  return process.env.APP_BASE_URL || DEFAULT_BASE_URL;
+  if (process.env.APP_BASE_URL) {
+    return normalizeBaseUrl(process.env.APP_BASE_URL);
+  }
+
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  if (vercelUrl) {
+    return normalizeBaseUrl(vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`);
+  }
+
+  return DEFAULT_BASE_URL;
 }
 
 export function articleMetadata(article: ArticleDetail): Metadata {

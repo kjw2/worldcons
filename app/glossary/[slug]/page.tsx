@@ -5,6 +5,9 @@ import { getGlossaryTerm } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const term = await getGlossaryTerm(slug);

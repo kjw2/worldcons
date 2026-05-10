@@ -4,7 +4,8 @@ import { SearchBox } from "@/components/search-box";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function HomePage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const paramsObject = await resolveSearchParams(searchParams);

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSourceByKey, listArticles } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(_request: Request, { params }: { params: Promise<{ sourceKey: string }> }) {
   const { sourceKey } = await params;
   const source = await getSourceByKey(sourceKey);

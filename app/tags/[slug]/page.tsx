@@ -6,7 +6,8 @@ import { getTagBySlug, listTags } from "@/lib/db/queries";
 import { tagMetadata } from "@/lib/seo/metadata";
 import { formatDisplayDate } from "@/lib/utils/dates";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;

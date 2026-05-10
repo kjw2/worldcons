@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, CalendarDays, ExternalLink } from "lucide-react";
+import type { MouseEvent } from "react";
 import type { ArticleListItem } from "@/lib/db/types";
 import { JurisdictionBadge } from "@/components/jurisdiction-badge";
 import { SourceBadge } from "@/components/source-badge";
@@ -28,11 +31,27 @@ const statusLabels: Record<string, string> = {
   failed_summary: "요약 실패",
 };
 
-export function ArticleCard({ article }: { article: ArticleListItem }) {
+function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
+  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
+export function ArticleCard({
+  article,
+  onArticleNavigate,
+}: {
+  article: ArticleListItem;
+  onArticleNavigate?: (slug: string) => void;
+}) {
   const theme = themeForJurisdiction(article.jurisdiction);
+  const handleArticleLinkClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (shouldSaveNavigation(event)) {
+      onArticleNavigate?.(article.slug);
+    }
+  };
 
   return (
     <article
+      data-article-slug={article.slug}
       style={jurisdictionThemeStyle(theme)}
       className="flex h-full flex-col rounded-md border border-[color:var(--country-border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft"
     >
@@ -44,7 +63,7 @@ export function ArticleCard({ article }: { article: ArticleListItem }) {
         </span>
       </div>
       <h2 className="text-lg font-semibold leading-snug tracking-normal text-ink">
-        <Link href={`/articles/${article.slug}`} className="focus-ring rounded-sm hover:text-court">
+        <Link href={`/articles/${article.slug}`} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-court">
           {article.koreanTitle || article.originalTitle || "제목 미상"}
         </Link>
       </h2>
@@ -62,7 +81,7 @@ export function ArticleCard({ article }: { article: ArticleListItem }) {
         <span>{statusLabels[article.status] ?? article.status}</span>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color:var(--country-border)] pt-4">
-        <Link href={`/articles/${article.slug}`} className="focus-ring inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white transition hover:bg-ink/90">
+        <Link href={`/articles/${article.slug}`} onClick={handleArticleLinkClick} className="focus-ring inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white transition hover:bg-ink/90">
           자세히 보기
           <ArrowRight className="size-4" aria-hidden="true" />
         </Link>

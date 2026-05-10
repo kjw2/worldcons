@@ -5,6 +5,7 @@ import { runOfficialSpider } from "@/lib/crawlee/shared";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, OfficialSpiderConfig } from "@/lib/crawlee/types";
 import type { DiscoveredItem } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
+import { parseDate } from "@/lib/utils/dates";
 
 export const CONSEIL_BASE_URL = "https://www.conseil-constitutionnel.fr";
 export const QPC360_BASE_URL = "https://qpc360.conseil-constitutionnel.fr";
@@ -18,11 +19,7 @@ const LIST_URLS = [
 
 const LIST_SELECTORS = [
   "a[href*='/decision/']",
-  "a[href*='decision-']",
-  "a[href*='qpc']",
-  "a[href*='jurisprudence']",
-  "main a[href]",
-  "article a[href]",
+  "a[href*='/decision-']",
 ];
 
 const BODY_SELECTORS = [
@@ -35,36 +32,38 @@ const BODY_SELECTORS = [
   "body",
 ];
 
-const QPC360_SEEDS = [
+export const QPC360_SEEDS = [
   {
-    url: `${QPC360_BASE_URL}/2026-04-17/decision-2026-1197-qpc-17-avril-2026`,
-    title: "Décision n° 2026-1197 QPC du 17 avril 2026",
-    publishedAt: "17 avril 2026",
+    url: `${CONSEIL_BASE_URL}/decision/2026/20261198QPC.htm`,
+    title: "Décision n° 2026-1198 QPC du 7 mai 2026",
+    publishedAt: "7 mai 2026",
   },
   {
-    url: `${QPC360_BASE_URL}/2026-03-20/decision-2025-1187-qpc-20-mars-2026`,
-    title: "Décision n° 2025-1187 QPC du 20 mars 2026",
-    publishedAt: "20 mars 2026",
+    url: `${CONSEIL_BASE_URL}/decision/2026/20261199QPC.htm`,
+    title: "Décision n° 2026-1199 QPC du 7 mai 2026",
+    publishedAt: "7 mai 2026",
   },
   {
-    url: `${QPC360_BASE_URL}/2026-03-19/decision-2025-1186-qpc-19-mars-2026`,
-    title: "Décision n° 2025-1186 QPC du 19 mars 2026",
-    publishedAt: "19 mars 2026",
+    url: `${CONSEIL_BASE_URL}/decision/2026/2026320L.htm`,
+    title: "Décision n° 2026-320 L du 30 avril 2026",
+    publishedAt: "30 avril 2026",
   },
   {
-    url: `${QPC360_BASE_URL}/2026-03-06/decision-2025-1183-qpc-6-mars-2026`,
-    title: "Décision n° 2025-1183 QPC du 6 mars 2026",
-    publishedAt: "6 mars 2026",
+    url: `${CONSEIL_BASE_URL}/decision/2026/2026168ORGA.htm`,
+    title: "Décision n° 2026-168 ORGA du 30 avril 2026",
+    publishedAt: "30 avril 2026",
   },
   {
-    url: `${QPC360_BASE_URL}/2026-02-20/decision-2025-1182-qpc-20-fevrier-2026`,
-    title: "Décision n° 2025-1182 QPC du 20 février 2026",
-    publishedAt: "20 février 2026",
+    url: `${CONSEIL_BASE_URL}/decision/2026/20261195QPC.htm`,
+    title: "Décision n° 2026-1195 QPC du 30 avril 2026",
+    publishedAt: "30 avril 2026",
   },
 ];
 
 function parseFrenchDatePriority(value?: string) {
   if (!value) return 0;
+  const parsed = parseDate(value);
+  if (parsed) return parsed.getTime();
   const normalized = value
     .toLowerCase()
     .replace("janvier", "january")
@@ -95,9 +94,17 @@ function isQpcUrl(url: string, title = "") {
   return /qpc/i.test(`${url} ${title}`);
 }
 
+function isConseilDecisionPath(pathname: string) {
+  return /^\/decision\/20\d{2}\/[^/]+\.(?:html?|htm)$/i.test(pathname);
+}
+
+function isQpc360DecisionPath(pathname: string) {
+  return /^\/20\d{2}-\d{2}-\d{2}\/decision-/i.test(pathname);
+}
+
 function contentTypeForUrl(url: string) {
-  const path = new URL(url).pathname.toLowerCase();
-  if (path.includes("decision") || path.includes("jurisprudence") || isQpcUrl(url)) return "decision" as const;
+  const path = new URL(url).pathname;
+  if (isConseilDecisionPath(path) || isQpc360DecisionPath(path)) return "decision" as const;
   return "other" as const;
 }
 
@@ -109,7 +116,7 @@ function decisionNumberFromText(text: string) {
   return text.match(/\b(?:Décision\s+)?n[°o]\s*[0-9]{4}-[0-9]+\s*(?:QPC|DC|AN|SEN)?\b/i)?.[0];
 }
 
-function isCandidateUrl(url: string, title = "") {
+function isCandidateUrl(url: string) {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -119,7 +126,7 @@ function isCandidateUrl(url: string, title = "") {
   if (!isOfficialHost(parsed.toString())) return false;
   if (["/les-decisions", "/decision", "/decisions", "/recherche/jurisprudence/liste"].includes(parsed.pathname)) return false;
   if (/\.(jpg|jpeg|png|gif|webp|css|js|ico)$/i.test(parsed.pathname)) return false;
-  return contentTypeForUrl(parsed.toString()) === "decision" || isQpcUrl(parsed.toString(), title);
+  return contentTypeForUrl(parsed.toString()) === "decision";
 }
 
 function itemFromUrl(url: string, strategy: CrawlStrategy, metadata: Record<string, unknown> = {}): DiscoveredItem {
@@ -170,6 +177,7 @@ const config: OfficialSpiderConfig = {
   bodySelectors: BODY_SELECTORS,
   sitemapKeywords: SITEMAP_KEYWORDS["fr-conseil-constitutionnel"],
   seedItems: QPC360_SEEDS,
+  disableSeedArticleFallback: true,
   itemFromUrl,
   isCandidateUrl,
   sortItems,

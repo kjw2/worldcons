@@ -2,6 +2,9 @@ import type { MetadataRoute } from "next";
 import { listArticles, listGlossaryTerms, listTags } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getAppBaseUrl();
   const [articles, tags, glossary] = await Promise.all([

@@ -1,6 +1,9 @@
 name: Crawlee worker ingest
 
 on:
+  schedule:
+    # GitHub cron uses UTC. This is KST 06:00, 09:00, 12:00, 15:00, 18:00, and 21:00.
+    - cron: "0 0,3,6,9,12,21 * * *"
   workflow_dispatch:
     inputs:
       source:
@@ -15,6 +18,10 @@ on:
         description: auto, cheerio, playwright, sitemap, or seed
         required: false
         default: "auto"
+
+concurrency:
+  group: crawlee-worker-ingest
+  cancel-in-progress: false
 
 jobs:
   crawl:
@@ -34,6 +41,9 @@ jobs:
       PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
+      CRAWLEE_MAX_CONCURRENCY: "1"
+      CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
+      CRAWLEE_SAME_DOMAIN_DELAY_SECS: "2"
       BVERFG_CRAWL_DELAY_MS: "3000"
       BVERFG_TIMEOUT_MS: "60000"
       BVERFG_MAX_CONCURRENCY: "1"
@@ -52,9 +62,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Run Crawlee worker
+        env:
+          SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
+          LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
+          STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
         run: |
-          SOURCE_ARG=""
-          if [ -n "${{ inputs.source }}" ]; then
-            SOURCE_ARG="--source=${{ inputs.source }}"
+          SOURCE_ARG=()
+          if [ -n "$SOURCE_INPUT" ]; then
+            SOURCE_ARG=("--source=$SOURCE_INPUT")
           fi
-          pnpm crawl:worker -- $SOURCE_ARG --limit=${{ inputs.limit }} --strategy=${{ inputs.strategy }} --use-playwright --debug
+          pnpm crawl:worker -- "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --use-playwright --debug

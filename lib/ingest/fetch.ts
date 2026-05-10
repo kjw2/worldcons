@@ -7,6 +7,7 @@ import { crawlUrl } from "@/lib/crawler/http-client";
 import { crawlWithPlaywright, isPlaywrightEnabled } from "@/lib/crawler/playwright-client";
 import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/crawler/robots";
 import { extractHtmlText, extractPdfText } from "@/lib/ingest/extract-text";
+import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 
 function shouldUsePlaywright(options?: SourceDiscoveryOptions) {
   if (options?.usePlaywright === false) return false;
@@ -216,8 +217,8 @@ export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscove
         ...item.metadata,
         collection: {
           ...collectionForFetch(item, response.strategy),
-          publishable: text.trim().length >= 1000,
-          sourceTextAvailable: text.trim().length >= 1000,
+          publishable: text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH,
+          sourceTextAvailable: text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH,
         },
         robots,
         diagnostics: [...(item.metadata?.diagnostics ?? []), ...(options?.diagnostics?.attempts ?? [])].slice(-20),
@@ -231,7 +232,7 @@ export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscove
   const text = extractReadableText(html, response.finalUrl, item.metadata?.bodySelectors) || extractHtmlText(html, response.finalUrl);
   const metadata = extractHtmlMetadata(html);
   const collection = collectionForFetch(item, response.strategy);
-  const sourceTextAvailable = text.trim().length >= 1000;
+  const sourceTextAvailable = text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH;
   return {
     ...item,
     url: response.finalUrl || item.url,

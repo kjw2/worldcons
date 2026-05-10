@@ -4,7 +4,8 @@ import { ArticleGrid } from "@/components/article-grid";
 import { getSourceByKey, listArticles } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata({ params }: { params: Promise<{ sourceKey: string }> }): Promise<Metadata> {
   const { sourceKey } = await params;

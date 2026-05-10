@@ -3,7 +3,8 @@ import { TagHubList } from "@/components/tag-hub-list";
 import { listTags } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "태그 허브",

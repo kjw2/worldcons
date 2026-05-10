@@ -9,4 +9,5 @@ cache
 coverage
 playwright-report
 test-results
+logs
 *.tsbuildinfo

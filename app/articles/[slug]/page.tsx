@@ -9,7 +9,9 @@ import { getArticleBySlug, getRelatedArticles } from "@/lib/db/queries";
 import { articleJsonLd } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
+import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const revalidate = 300;
 
@@ -20,9 +22,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return articleMetadata(article);
 }
 
-export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ArticlePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<SearchParams>;
+}) {
   const { slug } = await params;
-  const article = await getArticleBySlug(slug);
+  const paramsObject = await resolveSearchParams(searchParams);
+  const includeUnpublished = await isAuthorizedPageRequest(getSearchParam(paramsObject, "secret"));
+  const article = await getArticleBySlug(slug, { includeUnpublished });
   if (!article) notFound();
 
   const related = await getRelatedArticles(article);

@@ -6,24 +6,18 @@ import { runOfficialSpider } from "@/lib/crawlee/shared";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, OfficialSpiderConfig } from "@/lib/crawlee/types";
 import type { DiscoveredItem } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
+import { parseDate } from "@/lib/utils/dates";
 
 export const BVERFG_BASE_URL = "https://www.bundesverfassungsgericht.de";
 
 const LIST_URLS = [
   `${BVERFG_BASE_URL}/DE/Entscheidungen/entscheidungen_node.html`,
-  `${BVERFG_BASE_URL}/SiteGlobals/Forms/Suche/Entscheidungssuche/Entscheidungssuche_Formular.html?nn=68086&callerId=148438`,
-  `${BVERFG_BASE_URL}/SiteGlobals/Forms/Suche/Entscheidungensuche_Formular.html`,
   `${BVERFG_BASE_URL}/DE/Entscheidungen/Entscheidungen_node.html`,
   BVERFG_BASE_URL,
 ];
 
 const LIST_SELECTORS = [
   "a[href*='/SharedDocs/Entscheidungen/']",
-  "a[href*='Entscheidungen/DE/']",
-  "a[href*='entscheidung']",
-  "a[href*='Decision']",
-  "main a[href]",
-  "article a[href]",
 ];
 
 const BODY_SELECTORS = [
@@ -38,51 +32,60 @@ const BODY_SELECTORS = [
 
 export const BVERFG_SEED_DECISIONS = [
   {
-    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2025/09/rk20250923_2bvr062525.html`,
-    title: "Beschluss vom 23. September 2025 - 2 BvR 625/25",
-    publishedAt: "23.09.2025",
+    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2026/04/qk20260417_2bvq002626.html`,
+    title: "Beschluss vom 17. April 2026 - 2 BvQ 26/26",
+    publishedAt: "17.04.2026",
   },
   {
-    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2025/08/rk20250812_2bvr053025.html`,
-    title: "Beschluss vom 12. August 2025 - 2 BvR 530/25",
-    publishedAt: "12.08.2025",
+    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2026/04/rk20260416_2bvr005225.html`,
+    title: "Beschluss vom 16. April 2026 - 2 BvR 52/25",
+    publishedAt: "16.04.2026",
   },
   {
-    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2025/07/ls20250723_2bvl001914.html`,
-    title: "Beschluss vom 23. Juli 2025 - 2 BvL 19/14",
-    publishedAt: "23.07.2025",
+    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2026/04/cs20260413_2bvc001124.html`,
+    title: "Beschluss vom 13. April 2026 - 2 BvC 11/24",
+    publishedAt: "13.04.2026",
   },
   {
-    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2025/07/rk20250721_1bvr039824.html`,
-    title: "Beschluss vom 21. Juli 2025 - 1 BvR 398/24",
-    publishedAt: "21.07.2025",
+    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2026/04/qk20260413_1bvq004125.html`,
+    title: "Beschluss vom 13. April 2026 - 1 BvQ 41/25",
+    publishedAt: "13.04.2026",
   },
   {
-    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2025/06/rs20250624_1bvr018023.html`,
-    title: "Beschluss vom 24. Juni 2025 - 1 BvR 180/23",
-    publishedAt: "24.06.2025",
+    url: `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/2026/04/rs20260410_1bvr228423.html`,
+    title: "Beschluss vom 10. April 2026 - 1 BvR 2284/23, 1 BvR 2285/23",
+    publishedAt: "10.04.2026",
   },
 ];
 
 function parseDatePriority(value?: string) {
   if (!value) return 0;
-  const germanDate = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (germanDate) {
-    const [, day, month, year] = germanDate;
-    return Date.UTC(Number(year), Number(month) - 1, Number(day));
-  }
+  const parsed = parseDate(value);
+  if (parsed) return parsed.getTime();
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function contentTypeForUrl(url: string) {
   const path = new URL(url).pathname;
-  if (/\/SharedDocs\/Entscheidungen\/(?:DE|EN)\//i.test(path) || /entscheidung|decision/i.test(path)) return "decision" as const;
+  if (isDecisionDocumentPath(path)) return "decision" as const;
   return "other" as const;
 }
 
 function dateFromText(text: string) {
-  return text.match(/\b\d{1,2}\.\d{1,2}\.\d{4}\b/)?.[0] ?? text.match(/\b20\d{2}\b/)?.[0];
+  const dotted = text.match(/\b\d{1,2}\.\d{1,2}\.\d{4}\b/)?.[0];
+  if (dotted) return dotted;
+  const filenameDate = text.match(/\b[a-z]{2}(20\d{2})(\d{2})(\d{2})_[a-z0-9]+/i);
+  if (filenameDate) {
+    const [, year, month, day] = filenameDate;
+    return `${day}.${month}.${year}`;
+  }
+  const pathDate = text.match(/\/(20\d{2})\/(\d{2})\//);
+  if (pathDate) {
+    const [, year, month] = pathDate;
+    return `01.${month}.${year}`;
+  }
+  return text.match(/\b20\d{2}\b/)?.[0];
 }
 
 function caseNumberFromText(text: string) {
@@ -98,6 +101,10 @@ function isOfficialHost(url: string) {
   return hostname === "www.bundesverfassungsgericht.de" || hostname === "www.bverfg.de";
 }
 
+function isDecisionDocumentPath(pathname: string) {
+  return /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}\d{8}_[a-z0-9]+\.html$/i.test(pathname);
+}
+
 function isCandidateUrl(url: string) {
   let parsed: URL;
   try {
@@ -106,7 +113,8 @@ function isCandidateUrl(url: string) {
     return false;
   }
   if (!isOfficialHost(parsed.toString())) return false;
-  if (!parsed.pathname.endsWith(".html") && !parsed.pathname.endsWith(".pdf")) return false;
+  if (parsed.search) return false;
+  if (!parsed.pathname.endsWith(".html")) return false;
   return contentTypeForUrl(parsed.toString()) === "decision";
 }
 
@@ -158,7 +166,7 @@ const config: OfficialSpiderConfig = {
   bodySelectors: BODY_SELECTORS,
   sitemapKeywords: SITEMAP_KEYWORDS["de-bverfg"],
   seedItems: BVERFG_SEED_DECISIONS,
-  preferSitemap: true,
+  preferSitemap: false,
   disableSeedArticleFallback: true,
   itemFromUrl,
   isCandidateUrl,

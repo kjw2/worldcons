@@ -4,6 +4,9 @@ import type { ArticleContentType } from "@/lib/db/types";
 import { ARTICLE_CONTENT_TYPES } from "@/lib/db/types";
 import { normalizeRange } from "@/lib/utils/dates";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");

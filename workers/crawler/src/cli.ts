@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
 import { runIngest } from "@/lib/ingest/run";
+import { boundedInteger } from "@/lib/utils/numbers";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
 
 process.env.CRAWLEE_WORKER = "true";
@@ -17,7 +18,7 @@ async function main() {
   const sourceKey = argValue("source");
   const normalizedSourceKey = sourceKey === "fr-qpc360" ? "fr-conseil-constitutionnel" : sourceKey;
   applyIpv4FirstForSource(normalizedSourceKey);
-  const limit = Number(argValue("limit") ?? process.env.INGEST_LIMIT_PER_SOURCE ?? 20);
+  const limit = boundedInteger(argValue("limit") ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const strategy = (argValue("strategy") as CrawlStrategyOption | undefined) ?? "auto";
   const usePlaywright = boolArg("use-playwright") ? true : boolArg("no-playwright") ? false : undefined;
   const result = await runIngest({ sourceKey: normalizedSourceKey, limit, strategy, usePlaywright, debug: boolArg("debug") });

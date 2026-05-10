@@ -5,6 +5,7 @@ import { listArticles, listSources, listTags } from "@/lib/db/queries";
 import { hybridSearch, semanticSearch } from "@/lib/search/vector";
 import { articleFiltersFromSearchParams, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function SearchPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {

@@ -5,7 +5,7 @@ import { getRobotsSitemaps } from "@/lib/crawler/robots";
 import type { CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
 
 export const SITEMAP_KEYWORDS = {
-  "de-bverfg": ["entscheidung", "entscheidungen", "presse", "pressemitteilung", "press", "decision"],
+  "de-bverfg": ["shareddocs/entscheidungen/de/", "shareddocs/entscheidungen/en/"],
   "fr-conseil-constitutionnel": ["decision", "decisions", "qpc", "communique", "communiques", "actualite"],
   "us-scotus": ["opinions", "orders", "press"],
 } satisfies Record<string, string[]>;

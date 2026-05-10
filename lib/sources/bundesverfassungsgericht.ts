@@ -64,26 +64,35 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
     });
     for (const entry of result.items) remember(entry.raw);
     if (result.items.length === 0) {
-      const candidateResult = await upsertSourceUrlCandidates(
-        BVERFG_SEED_DECISIONS.map((seed) => ({
-          sourceKey: "de-bverfg",
-          url: seed.url,
-          candidateType: "decision",
-          discoveredBy: "seed",
-          status: "pending",
-          lastErrorCode: "BVERFG_LIVE_DISCOVERY_EMPTY",
-          lastErrorMessage: "Sitemap-first BVerfG discovery did not return a verified official detail page in this environment.",
-        })),
-      );
+      const candidateResult = options?.dryRun
+        ? { inserted: 0, skipped: BVERFG_SEED_DECISIONS.length }
+        : await upsertSourceUrlCandidates(
+            BVERFG_SEED_DECISIONS.map((seed) => ({
+              sourceKey: "de-bverfg",
+              url: seed.url,
+              candidateType: "decision",
+              discoveredBy: "seed",
+              status: "pending",
+              lastErrorCode: "BVERFG_LIVE_DISCOVERY_EMPTY",
+              lastErrorMessage: "Sitemap-first BVerfG discovery did not return a verified official detail page in this environment.",
+            })),
+          );
       addDiagnosticAttempt(options?.diagnostics, {
         strategy: "seed",
         discoveredCount: BVERFG_SEED_DECISIONS.length,
         fallback: true,
-        result: candidateResult.error ? "failed" : "success",
-        errorCode: candidateResult.error ? "SOURCE_URL_CANDIDATE_UPSERT_FAILED" : "SOURCE_URL_CANDIDATES_ONLY",
+        result: "error" in candidateResult && candidateResult.error ? "failed" : "success",
+        errorCode:
+          "error" in candidateResult && candidateResult.error
+            ? "SOURCE_URL_CANDIDATE_UPSERT_FAILED"
+            : options?.dryRun
+              ? "SOURCE_URL_CANDIDATES_DRY_RUN"
+              : "SOURCE_URL_CANDIDATES_ONLY",
         errorMessage:
-          candidateResult.error ??
-          "BVerfG seed URLs were saved as retry candidates only; no seed article rows will be created.",
+          ("error" in candidateResult ? candidateResult.error : undefined) ??
+          (options?.dryRun
+            ? "BVerfG seed URLs would be saved as retry candidates; dry-run skipped DB writes."
+            : "BVerfG seed URLs were saved as retry candidates only; no seed article rows will be created."),
       });
     }
     return result.items.map((entry) => entry.raw ?? entry.item);

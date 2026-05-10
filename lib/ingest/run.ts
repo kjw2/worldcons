@@ -1,8 +1,9 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
-import type { SummaryJson } from "@/lib/db/types";
-import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
+import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
+import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import type { CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
 import { createContentHash } from "@/lib/utils/hash";
+import { boundedInteger } from "@/lib/utils/numbers";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { sourceAdapters } from "@/lib/sources";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
@@ -40,6 +41,26 @@ interface RunIngestOptions {
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
 }
+
+interface SummaryCandidateRow {
+  id: string;
+  slug?: string | null;
+  source_key: string;
+  jurisdiction: string;
+  institution_name: string;
+  content_type: ArticleContentType;
+  original_url: string;
+  canonical_url: string;
+  original_language: string;
+  original_title?: string | null;
+  original_published_at?: string | null;
+  cleaned_text?: string | null;
+  status?: string | null;
+  source_metadata?: unknown;
+}
+
+const SUMMARY_CANDIDATE_SELECT =
+  "id, slug, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, status, source_metadata";
 
 function inlineCrawlerBlockReason() {
   if (process.env.VERCEL !== "1") return null;
@@ -96,7 +117,7 @@ async function findSourceId(sourceKey: string) {
   return data?.id ?? null;
 }
 
-async function articleExists(canonicalUrl: string) {
+export async function articleExists(canonicalUrl: string) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return false;
 
@@ -104,7 +125,7 @@ async function articleExists(canonicalUrl: string) {
   return Boolean(data);
 }
 
-async function articleExistsByNormalizedContent(article: NormalizedArticle) {
+export async function articleExistsByNormalizedContent(article: NormalizedArticle) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return false;
 
@@ -115,20 +136,41 @@ async function articleExistsByNormalizedContent(article: NormalizedArticle) {
   }
 
   if (article.originalTitle && article.originalPublishedAt) {
-    const { data } = await supabase
-      .from("articles")
-      .select("id")
-      .eq("source_key", article.sourceKey)
-      .eq("original_title", article.originalTitle)
-      .eq("original_published_at", article.originalPublishedAt)
-      .maybeSingle();
-    return Boolean(data);
+    const caseNumber = typeof article.metadata?.caseNumber === "string" ? article.metadata.caseNumber : null;
+    if (caseNumber) {
+      const { data } = await supabase
+        .from("articles")
+        .select("id")
+        .eq("source_key", article.sourceKey)
+        .eq("original_title", article.originalTitle)
+        .eq("original_published_at", article.originalPublishedAt)
+        .filter("source_metadata->>caseNumber", "eq", caseNumber)
+        .maybeSingle();
+      return Boolean(data);
+    }
+
+    if (!isGenericCourtTitle(article)) {
+      const { data } = await supabase
+        .from("articles")
+        .select("id")
+        .eq("source_key", article.sourceKey)
+        .eq("original_title", article.originalTitle)
+        .eq("original_published_at", article.originalPublishedAt)
+        .maybeSingle();
+      return Boolean(data);
+    }
   }
 
   return false;
 }
 
-async function insertNormalizedArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
+function isGenericCourtTitle(article: NormalizedArticle) {
+  if (article.sourceKey !== "de-bverfg") return false;
+  const title = article.originalTitle?.trim() ?? "";
+  return /^(?:Beschluss|Urteil)\s+vom\s+\d{1,2}\.\s+[A-Za-zÄÖÜäöüß]+\s+\d{4}$/i.test(title);
+}
+
+export async function insertNormalizedArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return null;
 
@@ -217,13 +259,17 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     result.discoveredCount = discovered.length;
 
     for (const item of discovered) {
+      const itemDiagnostics = createDiagnosticsCollector(adapter.sourceKey);
+      let itemDiagnosticsMerged = false;
       try {
         if (await articleExists(item.canonicalUrl)) {
           result.skippedCount += 1;
           continue;
         }
 
-        const raw = await adapter.fetchItem(item, discoveryOptions);
+        const raw = await adapter.fetchItem(item, { ...discoveryOptions, diagnostics: itemDiagnostics });
+        itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
+        itemDiagnosticsMerged = true;
         const normalized = await adapter.normalize(raw);
         if (await articleExistsByNormalizedContent(normalized)) {
           result.skippedCount += 1;
@@ -241,6 +287,9 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         }
         result.fetchedCount += 1;
       } catch (error) {
+        if (!itemDiagnosticsMerged) {
+          itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
+        }
         result.failedCount += 1;
         result.errors.push(error instanceof Error ? error.message : String(error));
       }
@@ -257,7 +306,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
 }
 
 export async function runIngest(options: RunIngestOptions = {}) {
-  const limit = options.limit ?? Number(process.env.INGEST_LIMIT_PER_SOURCE ?? 20);
+  const limit = boundedInteger(options.limit ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const blocked = inlineCrawlerBlockReason();
   if (blocked) {
     return {
@@ -370,8 +419,66 @@ async function upsertSummaryTags(articleId: string, summary: SummaryJson, origin
       { onConflict: "article_id,tag_id" },
     );
   }
+}
 
-  await supabase.rpc("refresh_tag_counts");
+async function summarizeCandidateRow(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  row: SummaryCandidateRow,
+) {
+  if (!canSummarizeArticle(row)) {
+    return {
+      status: "skipped" as const,
+      reason: "Article is not eligible for summarization. It must have verified publishable source text.",
+    };
+  }
+
+  await supabase
+    .from("articles")
+    .update({
+      status: "summarizing",
+      error_metadata: null,
+    })
+    .eq("id", row.id);
+
+  try {
+    const summary = await summarizeArticle({
+      sourceKey: row.source_key,
+      jurisdiction: row.jurisdiction,
+      institutionName: row.institution_name,
+      contentType: row.content_type,
+      originalUrl: row.original_url,
+      canonicalUrl: row.canonical_url,
+      originalLanguage: row.original_language,
+      originalTitle: row.original_title ?? undefined,
+      originalPublishedAt: row.original_published_at ?? undefined,
+      cleanedText: row.cleaned_text ?? undefined,
+    });
+    const embedding = await createEmbedding(summary).catch(() => null);
+    const updatePayload: Record<string, unknown> = {
+      status: "summarized",
+      summarized_at: new Date().toISOString(),
+      summary_json: summary,
+      korean_title: summary.koreanTitle,
+      error_metadata: null,
+    };
+    if (embedding) {
+      updatePayload.embedding = embedding;
+    }
+
+    await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    await upsertSummaryTags(String(row.id), summary, row.original_published_at);
+    return { status: "summarized" as const };
+  } catch (summaryError) {
+    const message = summaryError instanceof Error ? summaryError.message : String(summaryError);
+    await supabase
+      .from("articles")
+      .update({
+        status: "failed_summary",
+        error_metadata: { message },
+      })
+      .eq("id", row.id);
+    return { status: "failed" as const, errorMessage: message };
+  }
 }
 
 export async function runSummarizePending(options: { limit?: number } = {}) {
@@ -385,12 +492,10 @@ export async function runSummarizePending(options: { limit?: number } = {}) {
     };
   }
 
-  const limit = options.limit ?? 10;
+  const limit = boundedInteger(options.limit, 10, { min: 1, max: 100 });
   const { data, error } = await supabase
     .from("articles")
-    .select(
-      "id, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, status, source_metadata",
-    )
+    .select(SUMMARY_CANDIDATE_SELECT)
     .in("status", ["cleaned", "failed_summary"])
     .is("summarized_at", null)
     .limit(Math.max(limit * 3, limit));
@@ -403,54 +508,83 @@ export async function runSummarizePending(options: { limit?: number } = {}) {
 
   for (const row of data ?? []) {
     if (summarizedCount >= limit) break;
-    if (!canSummarizeArticle(row)) {
+    const result = await summarizeCandidateRow(supabase, row as SummaryCandidateRow);
+    if (result.status === "skipped") {
       skippedCount += 1;
-      continue;
-    }
-    await supabase.from("articles").update({ status: "summarizing" }).eq("id", row.id);
-    try {
-      const summary = await summarizeArticle({
-        sourceKey: row.source_key,
-        jurisdiction: row.jurisdiction,
-        institutionName: row.institution_name,
-        contentType: row.content_type,
-        originalUrl: row.original_url,
-        canonicalUrl: row.canonical_url,
-        originalLanguage: row.original_language,
-        originalTitle: row.original_title,
-        originalPublishedAt: row.original_published_at,
-        cleanedText: row.cleaned_text,
-      });
-      const embedding = await createEmbedding(summary).catch(() => null);
-      const updatePayload: Record<string, unknown> = {
-        status: "summarized",
-        summarized_at: new Date().toISOString(),
-        summary_json: summary,
-        korean_title: summary.koreanTitle,
-        error_metadata: null,
-      };
-      if (embedding) {
-        updatePayload.embedding = embedding;
-      }
-
-      await supabase.from("articles").update(updatePayload).eq("id", row.id);
-      await upsertSummaryTags(String(row.id), summary, row.original_published_at);
+    } else if (result.status === "summarized") {
       summarizedCount += 1;
-    } catch (summaryError) {
+    } else {
       failedCount += 1;
-      await supabase
-        .from("articles")
-        .update({
-          status: "failed_summary",
-          error_metadata: {
-            message: summaryError instanceof Error ? summaryError.message : String(summaryError),
-          },
-        })
-        .eq("id", row.id);
     }
   }
 
-  return { mode: "database", summarizedCount, failedCount, skippedCount };
+  const tagRefresh = summarizedCount > 0 ? await runRefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
+
+  return { mode: "database", summarizedCount, failedCount, skippedCount, tagRefresh };
+}
+
+export async function runSummarizeArticle(options: { articleId?: string; slug?: string }) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return {
+      mode: "no-database",
+      status: "skipped",
+      summarizedCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      message: "Supabase 환경변수가 없어 DB 요약 작업을 건너뜁니다.",
+    };
+  }
+
+  if (!options.articleId && !options.slug) {
+    return {
+      mode: "database",
+      status: "skipped",
+      summarizedCount: 0,
+      failedCount: 0,
+      skippedCount: 1,
+      reason: "articleId or slug is required.",
+    };
+  }
+
+  let query = supabase.from("articles").select(SUMMARY_CANDIDATE_SELECT);
+  query = options.articleId ? query.eq("id", options.articleId) : query.eq("slug", options.slug);
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) {
+    return {
+      mode: "database",
+      status: "not_found",
+      summarizedCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      reason: "Article not found.",
+    };
+  }
+
+  const row = data as SummaryCandidateRow;
+  const result = await summarizeCandidateRow(supabase, row);
+  const tagRefresh =
+    result.status === "summarized"
+      ? await runRefreshTagCounts().catch((refreshError) => ({
+          refreshed: false,
+          errorMessage: refreshError instanceof Error ? refreshError.message : String(refreshError),
+        }))
+      : undefined;
+
+  return {
+    mode: "database",
+    articleId: row.id,
+    slug: row.slug,
+    status: result.status,
+    summarizedCount: result.status === "summarized" ? 1 : 0,
+    failedCount: result.status === "failed" ? 1 : 0,
+    skippedCount: result.status === "skipped" ? 1 : 0,
+    errorMessage: result.status === "failed" ? result.errorMessage : undefined,
+    reason: result.status === "skipped" ? result.reason : undefined,
+    tagRefresh,
+  };
 }
 
 export async function runRefreshTagCounts(options: { deleteOrphans?: boolean } = {}) {
@@ -459,11 +593,65 @@ export async function runRefreshTagCounts(options: { deleteOrphans?: boolean } =
     return { mode: "no-database", refreshed: false, message: "Supabase 환경변수가 없어 mock tag count를 사용합니다." };
   }
 
-  const { error } = await supabase.rpc("refresh_tag_counts");
-  if (error) throw new Error(error.message);
+  const tagCounts = new Map<string, { articleCount: number; latestArticleAt: string | null }>();
+  let rangeStart = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("article_tags")
+      .select("tag_id, articles(original_published_at, status, source_metadata)")
+      .range(rangeStart, rangeStart + pageSize - 1);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as Array<{
+      tag_id: string;
+      articles?: { original_published_at?: string | null; status?: string | null; source_metadata?: unknown } | Array<{ original_published_at?: string | null; status?: string | null; source_metadata?: unknown }> | null;
+    }>;
+
+    for (const row of rows) {
+      const article = Array.isArray(row.articles) ? row.articles[0] : row.articles;
+      const metadata = typeof article?.source_metadata === "object" && article.source_metadata !== null ? (article.source_metadata as { collection?: { publishable?: boolean } }) : {};
+      if (article?.status !== "summarized" || metadata.collection?.publishable !== true) continue;
+
+      const current = tagCounts.get(row.tag_id) ?? { articleCount: 0, latestArticleAt: null };
+      current.articleCount += 1;
+      if (article.original_published_at && (!current.latestArticleAt || article.original_published_at > current.latestArticleAt)) {
+        current.latestArticleAt = article.original_published_at;
+      }
+      tagCounts.set(row.tag_id, current);
+    }
+
+    if (rows.length < pageSize) break;
+    rangeStart += pageSize;
+  }
+
+  const tagIds: string[] = [];
+  rangeStart = 0;
+  while (true) {
+    const { data, error } = await supabase.from("tags").select("id").range(rangeStart, rangeStart + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<{ id: string }>;
+    tagIds.push(...rows.map((row) => row.id));
+    if (rows.length < pageSize) break;
+    rangeStart += pageSize;
+  }
+
+  for (const tagId of tagIds) {
+    const counts = tagCounts.get(tagId) ?? { articleCount: 0, latestArticleAt: null };
+    const { error } = await supabase
+      .from("tags")
+      .update({
+        article_count: counts.articleCount,
+        latest_article_at: counts.latestArticleAt,
+      })
+      .eq("id", tagId);
+    if (error) throw new Error(error.message);
+  }
+
   if (options.deleteOrphans) {
     const { error: deleteError } = await supabase.from("tags").delete().eq("article_count", 0);
     if (deleteError) throw new Error(deleteError.message);
   }
-  return { mode: "database", refreshed: true, deletedOrphans: Boolean(options.deleteOrphans) };
+  return { mode: "database", refreshed: true, strategy: "client-aggregate", updatedTags: tagIds.length, deletedOrphans: Boolean(options.deleteOrphans) };
 }

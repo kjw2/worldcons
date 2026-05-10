@@ -4,6 +4,7 @@ import { extractLinks } from "@/lib/crawler/extract-links";
 import { extractHtmlMetadata } from "@/lib/crawler/extract-metadata";
 import { extractReadableText } from "@/lib/crawler/extract-readable-text";
 import { discoverSitemapUrls } from "@/lib/crawler/sitemap";
+import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import type {
   CollectionConfidence,
   CrawlAttemptLog,
@@ -99,8 +100,8 @@ function boundedLimit(options: CrawleeSpiderOptions) {
 }
 
 function defaultConfidence(strategy: CrawlStrategy, textLength: number, sourceUrlVerified: boolean): CollectionConfidence {
-  if (strategy === "seed") return sourceUrlVerified && textLength >= 1000 ? "medium" : "low";
-  if (strategy === "sitemap") return sourceUrlVerified && textLength >= 1000 ? "medium" : "low";
+  if (strategy === "seed") return sourceUrlVerified && textLength >= MIN_PUBLISHABLE_TEXT_LENGTH ? "medium" : "low";
+  if (strategy === "sitemap") return sourceUrlVerified && textLength >= MIN_PUBLISHABLE_TEXT_LENGTH ? "medium" : "low";
   if (!sourceUrlVerified) return "low";
   if (textLength < 500) return "low";
   return "high";
@@ -126,7 +127,7 @@ function rawFromHtml(params: {
   const text = extractReadableText(html, finalUrl, config.bodySelectors);
   const sourceUrlVerified = status > 0 && status < 400;
   const confidence = (config.confidenceFor ?? defaultConfidence)(strategy, text.length, sourceUrlVerified);
-  const sourceTextAvailable = text.trim().length >= 1000;
+  const sourceTextAvailable = text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH;
   const publishable = sourceUrlVerified && sourceTextAvailable && strategy !== "seed";
 
   return {
@@ -518,7 +519,7 @@ async function runSitemapFallback(state: SpiderRunState) {
   if (shouldUsePlaywrightCrawler(state.options)) {
     const needsFallback = requests.filter((request) => {
       const existing = state.itemsByKey.get(canonicalizeUrl(request.url));
-      return !existing?.raw?.text || existing.raw.text.trim().length < 1000;
+      return !existing?.raw?.text || existing.raw.text.trim().length < MIN_PUBLISHABLE_TEXT_LENGTH;
     });
     if (needsFallback.length > 0) {
       await runPlaywrightPass(state, needsFallback.slice(0, Math.max(remainingCount(state), 1)), "sitemap-detail");

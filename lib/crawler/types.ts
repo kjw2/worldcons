@@ -110,6 +110,7 @@ export interface CrawlerDiagnosticsCollector {
 
 export interface SourceDiscoveryOptions {
   debug?: boolean;
+  dryRun?: boolean;
   limit?: number;
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;

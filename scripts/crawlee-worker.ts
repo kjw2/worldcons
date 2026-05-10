@@ -3,6 +3,7 @@ import { runIngest } from "@/lib/ingest/run";
 import { getSourceAdapter } from "@/lib/sources";
 import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
+import { boundedInteger } from "@/lib/utils/numbers";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
 
 process.env.CRAWLEE_WORKER = "true";
@@ -19,7 +20,7 @@ async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyO
   const adapter = getSourceAdapter(sourceKey);
   if (!adapter) throw new Error(`Unknown source: ${sourceKey}`);
   const diagnostics = createDiagnosticsCollector(sourceKey);
-  const items = (await adapter.discover({ strategy, usePlaywright, diagnostics, debug: true, limit })).slice(0, limit);
+  const items = (await adapter.discover({ strategy, usePlaywright, diagnostics, debug: true, dryRun: true, limit })).slice(0, limit);
   return {
     mode: "dry-run",
     sourceKey,
@@ -40,7 +41,7 @@ async function main() {
   const sourceKey = argValue("source");
   const normalizedSourceKey = sourceKey === "fr-qpc360" ? "fr-conseil-constitutionnel" : sourceKey;
   applyIpv4FirstForSource(normalizedSourceKey);
-  const limit = Number(argValue("limit") ?? process.env.INGEST_LIMIT_PER_SOURCE ?? 20);
+  const limit = boundedInteger(argValue("limit") ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const strategy = (argValue("strategy") as CrawlStrategyOption | undefined) ?? "auto";
   const usePlaywright = boolArg("use-playwright") ? true : boolArg("no-playwright") ? false : undefined;
 

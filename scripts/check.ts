@@ -4,11 +4,15 @@ import { normalizeTagForStorage } from "@/lib/ai/tags";
 import { getGeminiModels } from "@/lib/ai/gemini-router";
 import { hasGeminiKey } from "@/lib/ai/client";
 import { mockSummary } from "@/lib/ai/summarize";
+import { runFranceSpider } from "@/lib/crawlee";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
+import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { isAuthorizedRequest } from "@/lib/utils/auth";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
+import { boundedInteger } from "@/lib/utils/numbers";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import type { NormalizedArticle } from "@/lib/sources/types";
@@ -17,6 +21,15 @@ function assert(condition: unknown, message: string) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      setTimeout(() => resolve(fallback), ms);
+    }),
+  ]);
 }
 
 const canonical = canonicalizeUrl("HTTPS://Example.COM/path/?utm_source=x&a=1#frag");
@@ -42,6 +55,43 @@ assert(toIsoDate("17 avril 2026") === "2026-04-17T00:00:00.000Z", "French date p
 assert(toIsoDate("28.08.2025") === "2025-08-28T00:00:00.000Z", "German dotted date parsing failed");
 assert(isConstitutionallyRelevant(article), "constitutional relevance keyword filter failed");
 assert(articleFiltersFromSearchParams({ language: "fr" }).language === "fr", "language filter parsing failed");
+assert(boundedInteger("-10", 5, { min: 1, max: 20 }) === 1, "bounded integer min clamp failed");
+assert(boundedInteger("500", 5, { min: 1, max: 20 }) === 20, "bounded integer max clamp failed");
+
+const originalNodeEnv = process.env.NODE_ENV;
+const originalCronSecret = process.env.CRON_SECRET;
+const mutableEnv = process.env as Record<string, string | undefined>;
+mutableEnv.NODE_ENV = "production";
+delete mutableEnv.CRON_SECRET;
+assert(
+  !isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer undefined" } })),
+  "missing production CRON_SECRET must not authorize Bearer undefined",
+);
+mutableEnv.CRON_SECRET = "secret";
+assert(
+  isAuthorizedRequest(new Request("https://example.test/api/admin/ingest?secret=secret")),
+  "query secret authorization failed",
+);
+assert(
+  isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer secret" } })),
+  "bearer secret authorization failed",
+);
+if (originalCronSecret === undefined) delete mutableEnv.CRON_SECRET;
+else mutableEnv.CRON_SECRET = originalCronSecret;
+if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+else mutableEnv.NODE_ENV = originalNodeEnv;
+
+const originalAppBaseUrl = process.env.APP_BASE_URL;
+const originalVercelUrl = process.env.VERCEL_URL;
+delete process.env.APP_BASE_URL;
+process.env.VERCEL_URL = "worldcons.example.vercel.app/";
+assert(getAppBaseUrl() === "https://worldcons.example.vercel.app", "Vercel base URL fallback failed");
+process.env.APP_BASE_URL = "https://library.example.org/";
+assert(getAppBaseUrl() === "https://library.example.org", "APP_BASE_URL normalization failed");
+if (originalAppBaseUrl === undefined) delete process.env.APP_BASE_URL;
+else process.env.APP_BASE_URL = originalAppBaseUrl;
+if (originalVercelUrl === undefined) delete process.env.VERCEL_URL;
+else process.env.VERCEL_URL = originalVercelUrl;
 
 const scotusRobots = `User-agent:discobot
 Disallow:/
@@ -111,6 +161,14 @@ assert(
   }),
   "verified full-text records should be eligible for summarization",
 );
+assert(
+  canSummarizeArticle({
+    status: "failed_summary",
+    cleaned_text: publishableText,
+    source_metadata: publishableArticle.metadata,
+  }),
+  "failed_summary records with verified full text must be eligible for retry",
+);
 
 delete process.env.GEMINI_PINNED_MODEL;
 delete process.env.GEMINI_ALLOW_MODEL_OVERRIDE;
@@ -150,4 +208,21 @@ SummarySchema.parse({
   },
 });
 
-console.log("All checks passed.");
+async function main() {
+  const franceSeedOnly = await withTimeout(runFranceSpider({ limit: 1, strategy: "seed", usePlaywright: false }), 10_000, {
+    sourceKey: "fr-conseil-constitutionnel",
+    items: [],
+    diagnostics: { sourceKey: "fr-conseil-constitutionnel", attempts: [] },
+    strategySequence: [],
+    usedSeedFallback: false,
+  });
+  assert(franceSeedOnly.items.length === 0, "France seed fallback must save candidates only, not article rows");
+
+  console.log("All checks passed.");
+  process.exit(0);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

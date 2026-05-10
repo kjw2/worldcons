@@ -1,6 +1,7 @@
 import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
 import type { SourceDiscoveryOptions } from "@/lib/crawler/types";
-import { CONSEIL_BASE_URL, runFranceSpider } from "@/lib/crawlee";
+import { CONSEIL_BASE_URL, QPC360_SEEDS, runFranceSpider } from "@/lib/crawlee";
+import { upsertSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import type { DiscoveredItem, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
@@ -62,6 +63,38 @@ export const conseilConstitutionnelAdapter: SourceAdapter = {
       diagnostics: options?.diagnostics,
     });
     for (const entry of result.items) remember(entry.raw);
+    if (result.items.length === 0) {
+      const candidateResult = options?.dryRun
+        ? { inserted: 0, skipped: QPC360_SEEDS.length }
+        : await upsertSourceUrlCandidates(
+            QPC360_SEEDS.map((seed) => ({
+              sourceKey: "fr-conseil-constitutionnel",
+              url: seed.url,
+              candidateType: "decision",
+              discoveredBy: "seed",
+              status: "pending",
+              lastErrorCode: "FRANCE_LIVE_DISCOVERY_EMPTY",
+              lastErrorMessage: "Conseil constitutionnel/QPC360 discovery did not return a verified official detail page in this environment.",
+            })),
+          );
+      addDiagnosticAttempt(options?.diagnostics, {
+        strategy: "seed",
+        discoveredCount: QPC360_SEEDS.length,
+        fallback: true,
+        result: "error" in candidateResult && candidateResult.error ? "failed" : "success",
+        errorCode:
+          "error" in candidateResult && candidateResult.error
+            ? "SOURCE_URL_CANDIDATE_UPSERT_FAILED"
+            : options?.dryRun
+              ? "SOURCE_URL_CANDIDATES_DRY_RUN"
+              : "SOURCE_URL_CANDIDATES_ONLY",
+        errorMessage:
+          ("error" in candidateResult ? candidateResult.error : undefined) ??
+          (options?.dryRun
+            ? "QPC360 seed URLs would be saved as retry candidates; dry-run skipped DB writes."
+            : "QPC360 seed URLs were saved as retry candidates only; no seed article rows will be created."),
+      });
+    }
     return result.items.map((entry) => entry.raw ?? entry.item);
   },
 

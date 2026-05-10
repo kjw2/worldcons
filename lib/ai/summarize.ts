@@ -9,9 +9,9 @@ export function mockSummary(article: NormalizedArticle): SummaryJson {
     koreanTitle: "요약 대기 중인 헌법재판 관련 게시물",
     originalTitle: article.originalTitle ?? "Original title",
     summary: {
-      coreSummary: ["LLM API 키가 없어 임시 요약이 생성되었습니다."],
+      coreSummary: ["LLM API 키가 없어 개발용 대체 요약이 생성되었습니다."],
       referencedProvisions: [],
-      background: "개발 환경용 임시 데이터입니다.",
+      background: "개발 환경용 대체 데이터입니다.",
       caseStructure: "원문 분석이 아직 수행되지 않았습니다.",
       implications: "실제 배포 환경에서는 LLM 요약으로 대체됩니다.",
       practicalNotes: "OPENAI_API_KEY를 설정한 뒤 다시 요약을 실행하세요.",

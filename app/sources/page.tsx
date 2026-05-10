@@ -4,7 +4,8 @@ import { ExternalLink } from "lucide-react";
 import { listSources } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "수집 대상 기관",

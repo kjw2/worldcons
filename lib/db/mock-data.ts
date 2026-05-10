@@ -66,7 +66,7 @@ const usSummary: SummaryJson = {
     background: "주 법무장관의 소환장 집행이 단체의 결사 활동을 위축시키는지가 문제 되었다.",
     caseStructure: "다수의견은 현재적 손해, 인과관계, 구제가능성의 순서로 당사자적격을 분석했다.",
     implications: "헌법상 권리 침해 위험이 수사·조사 단계의 정보 제출 요구에서도 소송 가능성을 열 수 있음을 보여준다.",
-    practicalNotes: "MVP에서는 헌법 관련 키워드 필터로 우선 선별하고, 추후 LLM 분류기로 정교화할 수 있다.",
+    practicalNotes: "MVP에서는 헌법 관련 키워드 필터로 우선 선별하고, 운영 환경에서는 LLM 분류기로 정교화한다.",
   },
   entities: [
     { name: "Supreme Court of the United States", type: "court", normalizedName: "Supreme Court of the United States" },

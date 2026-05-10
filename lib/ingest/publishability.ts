@@ -2,7 +2,7 @@ import type { ArticleStatus } from "@/lib/db/types";
 import type { CollectionMetadata, CrawlAttemptLog } from "@/lib/crawler/types";
 import type { NormalizedArticle } from "@/lib/sources/types";
 
-export const MIN_PUBLISHABLE_TEXT_LENGTH = 1000;
+export const MIN_PUBLISHABLE_TEXT_LENGTH = 500;
 
 type CollectionLike = Partial<CollectionMetadata> & Record<string, unknown>;
 
@@ -118,8 +118,9 @@ export function canSummarizeArticle(row: {
 }) {
   const metadata = asMetadata(row.source_metadata);
   const collection = metadata.collection;
+  const retryableStatus = row.status === "cleaned" || row.status === "failed_summary";
   return (
-    row.status === "cleaned" &&
+    retryableStatus &&
     typeof row.cleaned_text === "string" &&
     row.cleaned_text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH &&
     collection?.publishable === true &&

@@ -253,24 +253,34 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   };
 }
 
-export async function getArticleBySlug(slug: string): Promise<ArticleDetail | null> {
+export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return mockArticles.find((article) => article.slug === slug) ?? null;
+    const article = mockArticles.find((item) => item.slug === slug) ?? null;
+    return options.includeUnpublished || article?.status === "summarized" ? article : null;
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("articles")
     .select("*, article_tags(confidence, tags(*))")
-    .eq("slug", slug)
-    .maybeSingle();
+    .eq("slug", slug);
+
+  if (!options.includeUnpublished) {
+    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data ? articleRowToItem(data as SupabaseArticleRow) : null;
+  if (!data || (!options.includeUnpublished && !isPublishableListItem(data as SupabaseArticleRow))) {
+    return null;
+  }
+
+  return articleRowToItem(data as SupabaseArticleRow);
 }
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {

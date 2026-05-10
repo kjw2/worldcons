@@ -4,6 +4,7 @@ import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { crawlUrl } from "@/lib/crawler/http-client";
 import { diagnoseBverfgNetwork } from "@/lib/crawler/network-diagnostics";
 import { getSourceAdapter } from "@/lib/sources";
+import { boundedInteger } from "@/lib/utils/numbers";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
 
 process.env.CRAWLEE_WORKER = "true";
@@ -15,7 +16,7 @@ function argValue(name: string) {
 async function main() {
   const sourceKey = argValue("source");
   const url = argValue("url");
-  const limit = Number(argValue("limit") ?? 5);
+  const limit = boundedInteger(argValue("limit"), 5, { min: 1, max: 100 });
   const strategy = (argValue("strategy") as CrawlStrategyOption | undefined) ?? "auto";
   const debug = process.argv.includes("--debug");
 
