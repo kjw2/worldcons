@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { BackToTopButton } from "@/components/back-to-top-button";
+import { FixedChromeToggle } from "@/components/fixed-chrome-toggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,9 +24,9 @@ const navItems = [
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" className="chrome-fixed">
       <body className="min-h-screen antialiased">
-        <header className="border-b border-rule/80 bg-white/88">
+        <header id="site-header" className="border-b border-rule/80 bg-white">
           <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Link href="/" className="focus-ring flex items-center gap-3 rounded-md">
@@ -56,9 +58,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </div>
         </header>
         {children}
-        <footer className="border-t border-rule/80 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-8 text-sm text-ink/62 sm:px-6 lg:px-8">
-            AI 요약은 참고용입니다. 정확한 법적 판단이나 인용은 각 기관의 공식 원문을 확인하세요.
+        <FixedChromeToggle />
+        <BackToTopButton />
+        <footer id="site-footer" className="h-[85px] border-t border-rule/80 bg-white">
+          <div className="mx-auto flex h-full max-w-7xl flex-col items-center justify-center gap-3 px-4 text-center text-sm leading-5 text-ink/62 sm:px-6 lg:px-8">
+            <p>2026 헌법재판소도서관</p>
+            <p>AI 요약은 참고용입니다. 정확한 법적 판단이나 인용은 각 기관의 공식 원문을 확인하세요.</p>
           </div>
         </footer>
       </body>
