@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "*": [".cache/**", ".crawlee-storage/**", "cache/**", "coverage/**", "playwright-report/**", "test-results/**"],
   },
+  outputFileTracingIncludes: {
+    "/*": ["./node_modules/next/dist/server/lib/incremental-cache/tags-manifest.external.js"],
+  },
   experimental: {
     cpus: 1,
     memoryBasedWorkersCount: true,
