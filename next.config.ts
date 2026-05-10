@@ -7,7 +7,11 @@ const nextConfig: NextConfig = {
     "*": [".cache/**", ".crawlee-storage/**", "cache/**", "coverage/**", "playwright-report/**", "test-results/**"],
   },
   outputFileTracingIncludes: {
-    "/*": ["./node_modules/next/dist/server/lib/incremental-cache/tags-manifest.external.js"],
+    "/*": [
+      "./node_modules/next/dist/server/lib/incremental-cache/memory-cache.external.js",
+      "./node_modules/next/dist/server/lib/incremental-cache/shared-cache-controls.external.js",
+      "./node_modules/next/dist/server/lib/incremental-cache/tags-manifest.external.js",
+    ],
   },
   experimental: {
     cpus: 1,
