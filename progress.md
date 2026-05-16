@@ -1,6 +1,6 @@
 # Progress
 
-프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX, DB 기반 이용 통계 화면까지 완료했다.
+프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX, DB 기반 이용 통계 화면, 접속 정보 수집, 기본 rate limit까지 완료했다.
 
 ## 2026-05-16 Full Audit Remediation
 
@@ -19,7 +19,8 @@
 | H1-07 | P1 | Admin review workflow | 검토 화면이 근거만 보여주고 어떤 검토가 필요한지, 검토 후 요약/공개/비공개 결정 절차를 실행하지 못함 | 상태별 검토 유형, 확인 항목, 권장 다음 절차를 표시하고 `/api/admin/review`로 `요약 승인 후 실행`, `재요약 실행`, `검토 완료 후 공개`, `비공개 종결`, `수집원 재시도` 결정 버튼 추가 | Done | 100% |
 | H1-08 | P1 | Summary state recovery | 과거 Gemini route 오류 중 `summarizing`으로 바뀐 뒤 완료/실패로 정리되지 않은 3건이 관리자 상태 분포에 계속 `요약중`으로 남음 | 30분 이상 오래된 `summarizing` 자료를 중단된 요약 작업으로 판정해 `failed_summary` 재시도 대상으로 자동 복구하고, 관리자 주의 목록에 stale summarizing을 노출하도록 보강. 현재 DB 3건 복구 완료 | Done | 100% |
 | H1-09 | P1 | Admin review resummary UX | 이미 공개된 자료에도 `검토 완료 후 공개` 버튼이 남아 공개 처리와 요약 품질 재검토 동선이 섞임 | 공개 자료에서는 공개 버튼을 숨기고 현재 모델 표시, 모델 preset/직접 입력, `선택 모델로 재요약` 버튼을 추가. 선택 모델은 OpenAI/Gemini 요약 경로와 Gemini route explicit model 옵션까지 연결 | Done | 100% |
-| H1-10 | P1 | Admin analytics | 외부 분석 도구 없이 관리자 화면에서 서비스 운영·이용 통계를 직접 확인할 수 없음 | `site_events` 이벤트 테이블, 서버/클라이언트 이벤트 기록, `/admin/analytics` 탭을 추가. 인기 자료, 검색어 순위, 무결과 검색, 태그 클릭/조회, 국가/기관별 조회, 유입/디바이스, 수집 성공률, 요약 모델별 성공·실패, 관리자 작업, 추천 점검 항목 표시 | Done | 100% |
+| H1-10 | P1 | Admin analytics | 외부 분석 도구 없이 관리자 화면에서 서비스 운영·이용 통계를 직접 확인할 수 없음 | `site_events` 이벤트 테이블, 서버/클라이언트 이벤트 기록, `/admin/analytics` 탭을 추가. 접속 로그, IP/IP hash/User-Agent/지역 헤더, KST 기준 일별·월별 집계, 인기 자료, 검색어 순위, 무결과 검색, 태그 클릭/조회, 국가/기관별 조회, 유입/디바이스, 수집 성공률, 요약 모델별 성공·실패, 관리자 작업, 추천 점검 항목 표시 | Done | 100% |
+| H1-11 | P1 | Access control | 접속 컴퓨터별 rate limit을 나중에 적용해야 하므로 접속 로그와 실행 차단 정책의 연결 지점이 필요함 | IP 추출/hash 로직을 공용화하고 공개 조회 API, 이용 통계 이벤트 수집, 관리자 로그인에 IP/fallback 식별자 기준 메모리 rate limit을 적용. 제한값은 환경변수로 조정 가능하며 429 응답에 retry/limit header 제공 | Done | 100% |
 | H2-01 | P2 | Crawler cleanup | FR/DE Crawlee list seed에 404 또는 문서상 회피 대상인 검색 URL이 남아 불필요한 요청과 진단 오염이 발생 | France `/decision` 404 및 QPC360 search list URL 제거, BVerfG 대소문자 오류 list URL 제거 | Done | 100% |
 | H2-02 | P2 | Audit hygiene | 활성 소스/README/supabase 기준 미완성 키워드와 prompt reference 문서의 과거 개선 문구를 구분해야 함 | 활성 구현 경로만 기준으로 unfinished keyword scan을 재실행해 0건 확인, 과거 prompt 문서는 실행 backlog가 아닌 archive reference로 분류 | Done | 100% |
 
@@ -56,6 +57,9 @@
 | Public admin review browser smoke | Pass, Playwright page load has Application error 0 and console/page errors 0 |
 | Admin review resummary API guard | Pass, authorized `resummarize-with-model` without model returns skipped with 모델 선택 안내 and does not call LLM |
 | Admin analytics route | Pass, `/admin/analytics` added as a separate admin tab with DB-backed usage and operations statistics |
+| Admin analytics browser smoke | Pass, `/admin/analytics` renders 이용 통계/접속 로그 with Application error false and console/page error 0 |
+| Access info migration | Pass, `site_events`에 IP/IP hash/User-Agent/Accept-Language/지역/bot 컬럼과 index 적용, smoke insert로 저장 확인 |
+| Runtime rate limit smoke | Pass, test server with low limits returned public API `200,200,429`, analytics event `204,429`, admin login `401,429` |
 
 ## 2026-05-10 Full Audit Remediation
 

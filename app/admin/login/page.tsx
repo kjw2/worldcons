@@ -22,7 +22,9 @@ export default async function AdminLoginPage({ searchParams }: { searchParams?: 
     redirect(nextPath);
   }
 
-  const hasError = getSearchParam(params, "error") === "1";
+  const error = getSearchParam(params, "error");
+  const hasError = error === "1";
+  const isRateLimited = error === "rate_limit";
   const loggedOut = getSearchParam(params, "loggedOut") === "1";
 
   return (
@@ -55,7 +57,11 @@ export default async function AdminLoginPage({ searchParams }: { searchParams?: 
             <h2 className="mt-1 text-2xl font-semibold tracking-normal text-ink">ID/PW 입력</h2>
           </div>
 
-          {hasError ? (
+          {isRateLimited ? (
+            <div className="mb-4 rounded-md border border-court/25 bg-court/5 p-3 text-sm text-court">
+              로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.
+            </div>
+          ) : hasError ? (
             <div className="mb-4 rounded-md border border-court/25 bg-court/5 p-3 text-sm text-court">
               아이디 또는 비밀번호가 맞지 않습니다.
             </div>

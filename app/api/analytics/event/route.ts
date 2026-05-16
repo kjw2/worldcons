@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isPublicClientEventType, recordSiteEvent } from "@/lib/analytics/events";
+import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,6 +14,11 @@ function numberField(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const rateLimit = consumeRateLimit(request, "analyticsEvent");
+  if (rateLimit?.limited) {
+    return rateLimitExceededResponse(rateLimit);
+  }
+
   const body = await request.json().catch(() => ({} as Record<string, unknown>));
   const eventType = textField(body.eventType);
 

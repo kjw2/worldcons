@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { FilterBar } from "@/components/filter-bar";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { SearchBox } from "@/components/search-box";
-import { recordSearchEvent } from "@/lib/analytics/events";
+import { recordSearchEvent, recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
 import { hybridSearch, semanticSearch } from "@/lib/search/vector";
 import { articleFiltersFromSearchParams, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
@@ -28,11 +28,29 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
     listTags({ sort: "count" }),
   ]);
   const q = getSearchParam(paramsObject, "q");
+  const headerStore = await headers();
+  await recordSiteEvent(
+    {
+      eventType: "page_view",
+      path: "/search",
+      resultCount: articles.pageInfo.total,
+      metadata: {
+        q,
+        mode,
+        source: filters.source,
+        jurisdiction: filters.jurisdiction,
+        tag: filters.tag,
+        language: filters.language,
+        type: filters.type,
+      },
+    },
+    headerStore,
+  );
   await recordSearchEvent({
     query: q,
     mode,
     resultCount: articles.pageInfo.total,
-    headers: await headers(),
+    headers: headerStore,
     metadata: {
       source: filters.source,
       jurisdiction: filters.jurisdiction,

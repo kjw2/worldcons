@@ -446,6 +446,14 @@ pnpm start
 | `CRAWLEE_STORAGE_DIR` | `.crawlee-storage` | Crawlee 로컬 저장소 |
 | `ENABLE_VERCEL_CRAWLING` | `false` | Vercel 함수 안에서 무거운 수집 허용 여부 |
 | `SITE_ANALYTICS_ENABLED` | `true` | `false`이면 자체 이용 통계 이벤트 저장 비활성화 |
+| `ANALYTICS_HASH_SECRET` | 비어 있음 | 접속 IP hash 생성용 secret. 비워 두면 관리자/cron/Supabase secret 중 하나를 사용 |
+| `RATE_LIMIT_ENABLED` | `true` | 공개 API, 이용 통계 수집, 관리자 로그인 rate limit 활성화 |
+| `RATE_LIMIT_PUBLIC_API_MAX` | `120` | IP 또는 fallback 접속 식별자별 공개 조회 API window당 최대 요청 수 |
+| `RATE_LIMIT_PUBLIC_API_WINDOW_MS` | `60000` | 공개 조회 API rate limit window |
+| `RATE_LIMIT_ANALYTICS_EVENT_MAX` | `240` | 이용 통계 이벤트 수집 endpoint window당 최대 요청 수 |
+| `RATE_LIMIT_ANALYTICS_EVENT_WINDOW_MS` | `60000` | 이용 통계 이벤트 수집 rate limit window |
+| `RATE_LIMIT_ADMIN_LOGIN_MAX` | `10` | 관리자 로그인 endpoint window당 최대 시도 수 |
+| `RATE_LIMIT_ADMIN_LOGIN_WINDOW_MS` | `600000` | 관리자 로그인 rate limit window |
 
 ### BVerfG 관련 값
 
@@ -687,11 +695,13 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | 태그 갱신 | 공개 자료 기준으로 태그 개수를 다시 계산합니다 |
 | 검토 목록 | 실패, 차단, timeout, 검토 필요 자료를 확인하고 검토 유형·권장 다음 절차에 따라 요약/공개/비공개 결정을 실행합니다 |
 | 요약 실패 1건 재시도 | 검토 목록의 `요약 실패` 뱃지를 눌러 해당 자료만 다시 요약합니다 |
-| 이용 통계 | 인기 자료, 검색어 순위, 검색 결과 0건, 태그 클릭, 국가/기관별 조회, 수집 성공률, 요약 모델별 성공·실패를 확인합니다 |
+| 이용 통계 | 접속 로그, 일별·월별 집계, 인기 자료, 검색어 순위, 검색 결과 0건, 태그 클릭, 국가/기관별 조회, 수집 성공률, 요약 모델별 성공·실패를 확인합니다 |
 
 `요약 실패` 뱃지 재시도가 성공하면 해당 자료는 즉시 검토 목록에서 사라집니다. 실패하면 같은 줄에 실패 메시지가 표시됩니다.
 
-자체 이용 통계는 `site_events` 테이블에 저장합니다. IP 주소나 쿠키 기반 사용자 식별값은 저장하지 않고, referrer host, 대략적인 브라우저/디바이스, 검색어, 자료/태그/기관 식별자처럼 운영에 필요한 집계 필드만 남깁니다.
+자체 이용 통계는 `site_events` 테이블에 저장합니다. 접속 컴퓨터별 rate limit 적용을 위해 IP, IP hash, User-Agent, Accept-Language, Vercel/Cloudflare 지역 헤더를 함께 저장합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다. 관리자 화면은 최근 접속 로그와 KST 기준 일별·월별 집계를 함께 보여줍니다.
+
+공개 조회 API, 이용 통계 이벤트 수집 endpoint, 관리자 로그인에는 IP 또는 fallback 접속 식별자 기준의 메모리 rate limit이 적용됩니다. Vercel 같은 서버리스 환경에서는 인스턴스별로 동작하므로 강한 전역 차단이 필요해지면 현재 저장되는 `site_events.client_ip_hash` 기준으로 DB/Redis 기반 차단 정책을 추가하면 됩니다.
 
 관리 API는 다음과 같습니다.
 

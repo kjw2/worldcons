@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
 
 export type SiteEventType =
   | "page_view"
@@ -11,10 +12,6 @@ export type SiteEventType =
   | "external_link_click"
   | "admin_action"
   | "admin_review_action";
-
-type HeaderLike = {
-  get(name: string): string | null;
-};
 
 export interface SiteEventInput {
   eventType: SiteEventType;
@@ -84,6 +81,10 @@ function isBot(headers?: HeaderLike) {
   return BOT_MARKERS.some((marker) => userAgent.includes(marker));
 }
 
+function headerText(headers: HeaderLike | undefined, name: string, max = 500) {
+  return limitText(headers?.get(name), max);
+}
+
 function userAgentFamily(headers?: HeaderLike) {
   const userAgent = headers?.get("user-agent") ?? "";
   if (/edg\//i.test(userAgent)) return "Edge";
@@ -110,16 +111,30 @@ function sanitizedMetadata(metadata?: Record<string, unknown>) {
   );
 }
 
+function legacyPayload(payload: Record<string, unknown>) {
+  const legacy = { ...payload };
+  delete legacy.client_ip;
+  delete legacy.client_ip_hash;
+  delete legacy.user_agent;
+  delete legacy.accept_language;
+  delete legacy.client_country;
+  delete legacy.client_region;
+  delete legacy.client_city;
+  delete legacy.is_bot;
+  return legacy;
+}
+
 export function isPublicClientEventType(value: string): value is SiteEventType {
   return PUBLIC_CLIENT_EVENT_TYPES.has(value as SiteEventType);
 }
 
 export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLike) {
-  if (process.env.SITE_ANALYTICS_ENABLED === "false" || isPrefetch(headers) || isBot(headers)) return;
+  if (process.env.SITE_ANALYTICS_ENABLED === "false" || isPrefetch(headers)) return;
 
   const supabase = getSupabaseAdmin();
   if (!supabase) return;
 
+  const ip = getClientIp(headers);
   const payload = {
     event_type: input.eventType,
     path: limitText(input.path, 500),
@@ -137,10 +152,23 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
     referrer_host: referrerHost(headers),
     user_agent_family: userAgentFamily(headers),
     device_type: deviceType(headers),
+    client_ip: ip,
+    client_ip_hash: hashRequestValue(ip),
+    user_agent: headerText(headers, "user-agent", 1000),
+    accept_language: headerText(headers, "accept-language", 300),
+    client_country: headerText(headers, "x-vercel-ip-country", 20) ?? headerText(headers, "cf-ipcountry", 20),
+    client_region: headerText(headers, "x-vercel-ip-country-region", 120),
+    client_city: headerText(headers, "x-vercel-ip-city", 120),
+    is_bot: isBot(headers),
     metadata: sanitizedMetadata(input.metadata),
   };
 
   const { error } = await supabase.from("site_events").insert(payload);
+  if (error) {
+    const retry = await supabase.from("site_events").insert(legacyPayload(payload));
+    if (!retry.error) return;
+  }
+
   if (error && process.env.NODE_ENV !== "production") {
     console.warn(`site analytics skipped: ${error.message}`);
   }

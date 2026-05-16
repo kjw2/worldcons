@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { BookOpen } from "lucide-react";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { listGlossaryTerms } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
@@ -15,6 +17,14 @@ export const metadata: Metadata = {
 
 export default async function GlossaryPage() {
   const terms = await listGlossaryTerms();
+  await recordSiteEvent(
+    {
+      eventType: "page_view",
+      path: "/glossary",
+      resultCount: terms.length,
+    },
+    await headers(),
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

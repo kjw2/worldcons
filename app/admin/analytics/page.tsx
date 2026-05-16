@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Activity, BarChart3, Bot, Database, Hash, LogOut, Search, TrendingUp } from "lucide-react";
+import { Activity, BarChart3, Bot, CalendarDays, Database, Hash, LogOut, Search, TrendingUp } from "lucide-react";
 import { AdminTabs } from "@/components/admin-tabs";
 import { getAnalyticsDashboardData, type AnalyticsDashboardData, type DimensionStat } from "@/lib/db/analytics";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
@@ -230,6 +230,120 @@ function TagTable({ data }: { data: AnalyticsDashboardData["tagInteractions"] })
   );
 }
 
+function TimelineTable({
+  title,
+  data,
+}: {
+  title: string;
+  data: AnalyticsDashboardData["dailyTimeline"];
+}) {
+  return (
+    <section className="rounded-md border border-rule bg-white shadow-sm">
+      <div className="border-b border-rule p-5">
+        <p className="text-sm font-semibold text-court">기간별 집계</p>
+        <h2 className="mt-1 text-xl font-semibold tracking-normal text-ink">{title}</h2>
+      </div>
+      {data.length === 0 ? (
+        <div className="p-5">
+          <EmptyState text="아직 기간별 이벤트가 없습니다." />
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-rule text-sm">
+            <thead className="bg-parchment">
+              <tr className="text-left text-xs font-semibold uppercase text-ink/60">
+                <th className="px-4 py-3">기간</th>
+                <th className="px-4 py-3">전체</th>
+                <th className="px-4 py-3">페이지</th>
+                <th className="px-4 py-3">자료</th>
+                <th className="px-4 py-3">검색</th>
+                <th className="px-4 py-3">0건</th>
+                <th className="px-4 py-3">태그</th>
+                <th className="px-4 py-3">관리자</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-rule">
+              {data.map((item) => (
+                <tr key={item.key}>
+                  <td className="px-4 py-3 font-semibold text-ink">{item.label}</td>
+                  <td className="px-4 py-3">{formatNumber(item.total)}</td>
+                  <td className="px-4 py-3">{formatNumber(item.pageViews)}</td>
+                  <td className="px-4 py-3">{formatNumber(item.articleViews)}</td>
+                  <td className="px-4 py-3">{formatNumber(item.searches)}</td>
+                  <td className={item.zeroResultSearches > 0 ? "px-4 py-3 font-semibold text-court" : "px-4 py-3"}>{formatNumber(item.zeroResultSearches)}</td>
+                  <td className="px-4 py-3">{formatNumber(item.tagEvents)}</td>
+                  <td className="px-4 py-3">{formatNumber(item.adminActions)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AccessLogTable({ data }: { data: AnalyticsDashboardData["accessLogs"] }) {
+  return (
+    <section className="rounded-md border border-rule bg-white shadow-sm">
+      <div className="border-b border-rule p-5">
+        <p className="text-sm font-semibold text-court">접속 로그</p>
+        <h2 className="mt-1 text-xl font-semibold tracking-normal text-ink">최근 이벤트</h2>
+      </div>
+      {data.length === 0 ? (
+        <div className="p-5">
+          <EmptyState text="최근 접속 로그가 없습니다." />
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-rule text-sm">
+            <thead className="bg-parchment">
+              <tr className="text-left text-xs font-semibold uppercase text-ink/60">
+                <th className="px-4 py-3">시각</th>
+                <th className="px-4 py-3">유형</th>
+                <th className="px-4 py-3">IP</th>
+                <th className="px-4 py-3">내용</th>
+                <th className="px-4 py-3">경로</th>
+                <th className="px-4 py-3">지역/유입</th>
+                <th className="px-4 py-3">환경</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-rule">
+              {data.map((item) => (
+                <tr key={`${item.occurredAt}:${item.eventType}:${item.path}:${item.label}`}>
+                  <td className="whitespace-nowrap px-4 py-3">{formatDateTime(item.occurredAt)}</td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-md border border-rule bg-parchment px-2 py-1 text-xs font-semibold text-ink/64">{item.eventType}</span>
+                    {item.isBot ? <div className="mt-1 text-xs font-semibold text-court">bot</div> : null}
+                  </td>
+                  <td className="max-w-44 break-all px-4 py-3">
+                    <div className="font-semibold text-ink">{item.clientIp ?? "-"}</div>
+                    {item.clientIpHash ? <div className="mt-1 text-xs text-ink/40">{item.clientIpHash.slice(0, 12)}</div> : null}
+                  </td>
+                  <td className="max-w-md px-4 py-3">
+                    <div className="font-semibold text-ink">{item.label}</div>
+                    {typeof item.resultCount === "number" ? <div className="mt-1 text-xs text-ink/45">결과 {formatNumber(item.resultCount)}건</div> : null}
+                  </td>
+                  <td className="max-w-xs break-all px-4 py-3 text-ink/64">{item.path ?? "-"}</td>
+                  <td className="px-4 py-3">
+                    <div>{item.location ?? "-"}</div>
+                    <div className="mt-1 text-xs text-ink/45">{item.referrerHost ?? "-"}</div>
+                  </td>
+                  <td className="max-w-sm px-4 py-3">
+                    <div>{item.deviceType ?? "-"}</div>
+                    <div className="mt-1 text-xs text-ink/45">{item.userAgentFamily ?? "-"}</div>
+                    {item.userAgent ? <div className="mt-1 line-clamp-2 text-xs text-ink/40">{item.userAgent}</div> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function CollectionHealthTable({ data }: { data: AnalyticsDashboardData["collectionHealth"] }) {
   return (
     <section className="rounded-md border border-rule bg-white shadow-sm">
@@ -395,14 +509,19 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="자료 조회" value={formatNumber(dashboard.totals.articleViews)} detail={`${dashboard.days}일 동안 공개 자료 상세 조회`} icon={Database} />
+        <MetricCard title="전체 이벤트" value={formatNumber(dashboard.totals.totalEvents)} detail={`${dashboard.days}일 동안 저장된 접속·이용 로그`} icon={CalendarDays} />
+        <MetricCard title="페이지 조회" value={formatNumber(dashboard.totals.pageViews + dashboard.totals.articleViews + dashboard.totals.tagViews + dashboard.totals.sourceViews)} detail={`${formatNumber(dashboard.totals.articleViews)}회는 공개 자료 상세 조회`} icon={Database} />
         <MetricCard title="검색" value={formatNumber(dashboard.totals.searches)} detail={`${formatNumber(dashboard.totals.zeroResultSearches)}회는 결과 0건`} icon={Search} />
-        <MetricCard title="태그 클릭" value={formatNumber(dashboard.totals.tagClicks)} detail={`${formatNumber(dashboard.totals.tagViews)}회 태그 페이지 조회`} icon={Hash} />
-        <MetricCard title="관리자 작업" value={formatNumber(dashboard.totals.adminActions)} detail="수집, 요약, 검토 결정 실행" icon={Activity} />
+        <MetricCard title="태그 클릭" value={formatNumber(dashboard.totals.tagClicks)} detail={`${formatNumber(dashboard.totals.adminActions)}회 관리자 작업`} icon={Hash} />
       </div>
 
       <div className="mt-6 grid gap-6">
         <RecommendationPanel items={dashboard.recommendations} />
+        <div className="grid gap-6 xl:grid-cols-2">
+          <TimelineTable title="일별 집계" data={dashboard.dailyTimeline} />
+          <TimelineTable title="월별 집계" data={dashboard.monthlyTimeline} />
+        </div>
+        <AccessLogTable data={dashboard.accessLogs} />
         <PopularArticlesTable data={dashboard.popularArticles} />
         <div className="grid gap-6 xl:grid-cols-2">
           <SearchTable title="검색어 순위" data={dashboard.searchQueries} />
@@ -416,10 +535,12 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           <DimensionList title="국가별 조회" data={dashboard.jurisdictionViews} />
           <DimensionList title="기관별 조회" data={dashboard.sourceViews} />
+          <DimensionList title="접속 IP" data={dashboard.clientIps} />
+          <DimensionList title="접속 국가" data={dashboard.clientCountries} />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           <DimensionList title="유입 호스트" data={dashboard.referrers} />
           <DimensionList title="디바이스" data={dashboard.devices} />
-        </div>
-        <div className="grid gap-6 xl:grid-cols-2">
           <DimensionList title="브라우저" data={dashboard.userAgents} />
           <section className="rounded-md border border-rule bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">

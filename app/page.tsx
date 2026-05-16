@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { FilterBar } from "@/components/filter-bar";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { SearchBox } from "@/components/search-box";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -22,6 +24,22 @@ export default async function HomePage({ searchParams }: { searchParams?: Promis
     listSources(),
     listTags({ sort: "count" }),
   ]);
+  await recordSiteEvent(
+    {
+      eventType: "page_view",
+      path: "/",
+      resultCount: articles.pageInfo.total,
+      metadata: {
+        source: filters.source,
+        jurisdiction: filters.jurisdiction,
+        tag: filters.tag,
+        language: filters.language,
+        type: filters.type,
+        range: filters.range,
+      },
+    },
+    await headers(),
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

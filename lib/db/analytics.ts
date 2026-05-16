@@ -19,6 +19,14 @@ interface SiteEventRow {
   referrer_host?: string | null;
   user_agent_family?: string | null;
   device_type?: string | null;
+  client_ip?: string | null;
+  client_ip_hash?: string | null;
+  user_agent?: string | null;
+  accept_language?: string | null;
+  client_country?: string | null;
+  client_region?: string | null;
+  client_city?: string | null;
+  is_bot?: boolean | null;
   metadata?: Record<string, unknown> | null;
 }
 
@@ -103,12 +111,43 @@ export interface AdminActionStat {
   count: number;
 }
 
+export interface AccessLogEntry {
+  occurredAt: string;
+  eventType: string;
+  path?: string | null;
+  label: string;
+  referrerHost?: string | null;
+  userAgentFamily?: string | null;
+  deviceType?: string | null;
+  clientIp?: string | null;
+  clientIpHash?: string | null;
+  userAgent?: string | null;
+  acceptLanguage?: string | null;
+  location?: string | null;
+  isBot?: boolean | null;
+  resultCount?: number | null;
+}
+
+export interface TimelineBucket {
+  key: string;
+  label: string;
+  total: number;
+  pageViews: number;
+  articleViews: number;
+  searches: number;
+  zeroResultSearches: number;
+  tagEvents: number;
+  adminActions: number;
+}
+
 export interface AnalyticsDashboardData {
   generatedAt: string;
   hasDatabase: boolean;
   schemaReady: boolean;
   days: number;
   totals: {
+    totalEvents: number;
+    pageViews: number;
     articleViews: number;
     searches: number;
     zeroResultSearches: number;
@@ -123,12 +162,17 @@ export interface AnalyticsDashboardData {
   tagInteractions: TagInteractionStat[];
   jurisdictionViews: DimensionStat[];
   sourceViews: DimensionStat[];
+  clientIps: DimensionStat[];
+  clientCountries: DimensionStat[];
   referrers: DimensionStat[];
   devices: DimensionStat[];
   userAgents: DimensionStat[];
   collectionHealth: CollectionHealthStat[];
   modelHealth: ModelHealthStat[];
   adminActions: AdminActionStat[];
+  dailyTimeline: TimelineBucket[];
+  monthlyTimeline: TimelineBucket[];
+  accessLogs: AccessLogEntry[];
   recommendations: string[];
 }
 
@@ -160,21 +204,66 @@ function percent(numerator: number, denominator: number) {
   return denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
 }
 
+function kstParts(input: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(input));
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return { year, month, day };
+}
+
+function dayKey(input: string) {
+  const parts = kstParts(input);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function monthKey(input: string) {
+  const parts = kstParts(input);
+  return `${parts.year}-${parts.month}`;
+}
+
+function labelForEvent(event: SiteEventRow) {
+  if (event.event_type === "article_view") return event.article_title || event.article_slug || event.path || "자료 조회";
+  if (event.event_type === "search") return event.search_query ? `검색: ${event.search_query}` : "검색";
+  if (event.event_type === "tag_click") return event.tag_name ? `태그 클릭: ${event.tag_name}` : "태그 클릭";
+  if (event.event_type === "tag_view") return event.tag_name ? `태그 조회: ${event.tag_name}` : "태그 조회";
+  if (event.event_type === "source_view") return event.institution_name || event.source_key || "기관 조회";
+  if (event.event_type === "admin_action" || event.event_type === "admin_review_action") {
+    return typeof event.metadata?.action === "string" ? `관리자: ${event.metadata.action}` : "관리자 작업";
+  }
+  return event.path || event.event_type;
+}
+
 async function loadSiteEvents(days: number) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return { rows: [] as SiteEventRow[], schemaReady: false };
 
+  const baseSelect =
+    "occurred_at, event_type, path, article_slug, article_title, tag_slug, tag_name, source_key, jurisdiction, institution_name, search_query, search_mode, result_count, referrer_host, user_agent_family, device_type, metadata";
+  const accessInfoSelect = `${baseSelect}, client_ip, client_ip_hash, user_agent, accept_language, client_country, client_region, client_city, is_bot`;
+
   const { data, error } = await supabase
     .from("site_events")
-    .select(
-      "occurred_at, event_type, path, article_slug, article_title, tag_slug, tag_name, source_key, jurisdiction, institution_name, search_query, search_mode, result_count, referrer_host, user_agent_family, device_type, metadata",
-    )
+    .select(accessInfoSelect)
     .gte("occurred_at", sinceIso(days))
     .order("occurred_at", { ascending: false })
     .limit(10_000);
 
   if (error) {
-    return { rows: [] as SiteEventRow[], schemaReady: false };
+    const fallback = await supabase
+      .from("site_events")
+      .select(baseSelect)
+      .gte("occurred_at", sinceIso(days))
+      .order("occurred_at", { ascending: false })
+      .limit(10_000);
+
+    if (fallback.error) return { rows: [] as SiteEventRow[], schemaReady: false };
+    return { rows: (fallback.data ?? []) as SiteEventRow[], schemaReady: true };
   }
 
   return { rows: (data ?? []) as SiteEventRow[], schemaReady: true };
@@ -285,6 +374,8 @@ function buildTagInteractions(events: SiteEventRow[]) {
 function buildEventDimensions(events: SiteEventRow[]) {
   const jurisdictions = new Map<string, number>();
   const sources = new Map<string, number>();
+  const clientIps = new Map<string, number>();
+  const clientCountries = new Map<string, number>();
   const referrers = new Map<string, number>();
   const devices = new Map<string, number>();
   const userAgents = new Map<string, number>();
@@ -292,6 +383,8 @@ function buildEventDimensions(events: SiteEventRow[]) {
   for (const event of events) {
     if (event.jurisdiction) increment(jurisdictions, event.jurisdiction);
     if (event.source_key) increment(sources, event.source_key);
+    if (event.client_ip) increment(clientIps, event.client_ip);
+    if (event.client_country) increment(clientCountries, event.client_country);
     if (event.referrer_host) increment(referrers, event.referrer_host);
     if (event.device_type) increment(devices, event.device_type);
     if (event.user_agent_family) increment(userAgents, event.user_agent_family);
@@ -300,6 +393,8 @@ function buildEventDimensions(events: SiteEventRow[]) {
   return {
     jurisdictionViews: topDimensions(jurisdictions),
     sourceViews: topDimensions(sources),
+    clientIps: topDimensions(clientIps),
+    clientCountries: topDimensions(clientCountries),
     referrers: topDimensions(referrers),
     devices: topDimensions(devices),
     userAgents: topDimensions(userAgents),
@@ -408,6 +503,62 @@ function buildAdminActions(events: SiteEventRow[]) {
     .slice(0, 10);
 }
 
+function updateTimelineBucket(bucket: TimelineBucket, event: SiteEventRow) {
+  bucket.total += 1;
+  if (event.event_type === "page_view") bucket.pageViews += 1;
+  if (event.event_type === "article_view") bucket.articleViews += 1;
+  if (event.event_type === "search") {
+    bucket.searches += 1;
+    if (numberValue(event.result_count) === 0) bucket.zeroResultSearches += 1;
+  }
+  if (event.event_type === "tag_click" || event.event_type === "tag_view") bucket.tagEvents += 1;
+  if (event.event_type === "admin_action" || event.event_type === "admin_review_action") bucket.adminActions += 1;
+}
+
+function emptyTimelineBucket(key: string): TimelineBucket {
+  return {
+    key,
+    label: key,
+    total: 0,
+    pageViews: 0,
+    articleViews: 0,
+    searches: 0,
+    zeroResultSearches: 0,
+    tagEvents: 0,
+    adminActions: 0,
+  };
+}
+
+function buildTimeline(events: SiteEventRow[], keyFor: (input: string) => string) {
+  const groups = new Map<string, TimelineBucket>();
+  for (const event of events) {
+    const key = keyFor(event.occurred_at);
+    const bucket = groups.get(key) ?? emptyTimelineBucket(key);
+    updateTimelineBucket(bucket, event);
+    groups.set(key, bucket);
+  }
+  return [...groups.values()].sort((a, b) => b.key.localeCompare(a.key)).slice(0, 60);
+}
+
+function buildAccessLogs(events: SiteEventRow[]) {
+  return events.slice(0, 80).map((event) => ({
+    occurredAt: event.occurred_at,
+    eventType: event.event_type,
+    path: event.path,
+    label: labelForEvent(event),
+    referrerHost: event.referrer_host,
+    userAgentFamily: event.user_agent_family,
+    deviceType: event.device_type,
+    clientIp: event.client_ip,
+    clientIpHash: event.client_ip_hash,
+    userAgent: event.user_agent,
+    acceptLanguage: event.accept_language,
+    location: [event.client_country, event.client_region, event.client_city].filter(Boolean).join(" / ") || null,
+    isBot: event.is_bot,
+    resultCount: event.result_count,
+  }));
+}
+
 function buildRecommendations(data: {
   schemaReady: boolean;
   searchQueries: SearchQueryStat[];
@@ -467,7 +618,11 @@ export async function getAnalyticsDashboardData(options: { days?: number } = {})
   const modelHealth = buildModelHealth(articleRows);
   const dimensions = buildEventDimensions(events);
   const adminActions = buildAdminActions(events);
+  const dailyTimeline = buildTimeline(events, dayKey);
+  const monthlyTimeline = buildTimeline(events, monthKey);
   const totals = {
+    totalEvents: events.length,
+    pageViews: events.filter((event) => event.event_type === "page_view").length,
     articleViews: events.filter((event) => event.event_type === "article_view").length,
     searches: events.filter((event) => event.event_type === "search").length,
     zeroResultSearches: events.filter((event) => event.event_type === "search" && numberValue(event.result_count) === 0).length,
@@ -489,12 +644,17 @@ export async function getAnalyticsDashboardData(options: { days?: number } = {})
     tagInteractions,
     jurisdictionViews: dimensions.jurisdictionViews,
     sourceViews: dimensions.sourceViews,
+    clientIps: dimensions.clientIps,
+    clientCountries: dimensions.clientCountries,
     referrers: dimensions.referrers,
     devices: dimensions.devices,
     userAgents: dimensions.userAgents,
     collectionHealth,
     modelHealth,
     adminActions,
+    dailyTimeline,
+    monthlyTimeline,
+    accessLogs: buildAccessLogs(events),
     recommendations: buildRecommendations({ schemaReady, searchQueries, collectionHealth, modelHealth, popularArticles, tagInteractions }),
   };
 }

@@ -5,6 +5,7 @@ import {
   createAdminSession,
   validateAdminCredentials,
 } from "@/lib/utils/auth";
+import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +23,19 @@ function redirectUrl(request: Request, path: string) {
 
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
+  const rateLimit = consumeRateLimit(request, "adminLogin");
+  if (rateLimit?.limited) {
+    if (contentType.includes("application/json")) {
+      return rateLimitExceededResponse(rateLimit, "Too many login attempts");
+    }
+
+    const response = NextResponse.redirect(redirectUrl(request, "/admin/login?error=rate_limit"), { status: 303 });
+    for (const [key, value] of new Headers(rateLimit.headers)) {
+      response.headers.set(key, value);
+    }
+    return response;
+  }
+
   let username = "";
   let password = "";
   let nextPath = "/admin";

@@ -4,12 +4,18 @@ import { listArticles } from "@/lib/db/queries";
 import type { ArticleContentType } from "@/lib/db/types";
 import { ARTICLE_CONTENT_TYPES } from "@/lib/db/types";
 import { semanticSearch, hybridSearch } from "@/lib/search/vector";
+import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 import { normalizeRange } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(request: Request) {
+  const rateLimit = consumeRateLimit(request, "publicApi");
+  if (rateLimit?.limited) {
+    return rateLimitExceededResponse(rateLimit);
+  }
+
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
   const modeParam = searchParams.get("mode");
