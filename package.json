@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.js eslint.config.mjs --ext .ts,.tsx,.js,.mjs",
     "ingest": "tsx scripts/ingest.ts",
     "collect:range": "tsx scripts/collect-range.ts",
     "crawl:worker": "tsx scripts/crawlee-worker.ts",

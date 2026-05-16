@@ -12,7 +12,6 @@ export const BVERFG_BASE_URL = "https://www.bundesverfassungsgericht.de";
 
 const LIST_URLS = [
   `${BVERFG_BASE_URL}/DE/Entscheidungen/entscheidungen_node.html`,
-  `${BVERFG_BASE_URL}/DE/Entscheidungen/Entscheidungen_node.html`,
   BVERFG_BASE_URL,
 ];
 

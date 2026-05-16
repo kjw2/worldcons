@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Eye } from "lucide-react";
 import { AdminSummaryRetryBadge } from "@/components/admin-summary-retry-badge";
 import type { AdminAttentionArticle } from "@/lib/db/admin-queries";
 import { formatDisplayDate } from "@/lib/utils/dates";
@@ -32,11 +31,15 @@ function statusClass(status: string) {
   return "border-rule bg-white text-ink/64";
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, href }: { status: string; href: string }) {
   return (
-    <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(status)}`}>
+    <a
+      href={href}
+      title="검토 상세를 엽니다."
+      className={`focus-ring inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold transition hover:brightness-95 ${statusClass(status)}`}
+    >
       {statusLabels[status] ?? status}
-    </span>
+    </a>
   );
 }
 
@@ -86,47 +89,57 @@ export function AdminAttentionTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
-              {visibleData.map((article) => (
-                <tr key={`${article.sourceKey}-${article.slug}`}>
-                  <td className="max-w-lg px-4 py-3">
-                    {secret ? (
-                      <Link href={withSecret(`/articles/${article.slug}`, secret)} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
+              {visibleData.map((article) => {
+                const reviewHref = withSecret(`/articles/${article.slug}`, secret);
+
+                return (
+                  <tr key={`${article.sourceKey}-${article.slug}`}>
+                    <td className="max-w-lg px-4 py-3">
+                      <a href={reviewHref} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
                         {article.title}
-                      </Link>
-                    ) : (
-                      <span className="font-semibold text-ink">{article.title}</span>
-                    )}
-                    {article.errorMessage ? <div className="mt-1 line-clamp-2 text-xs text-court">{article.errorMessage}</div> : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{article.institutionName}</div>
-                    <div className="mt-1 text-xs text-ink/54">{article.sourceKey}</div>
-                  </td>
-                  <td className="px-4 py-3">{formatDisplayDate(article.originalPublishedAt)}</td>
-                  <td className="px-4 py-3">
-                    {article.status === "failed_summary" ? (
-                      <AdminSummaryRetryBadge
-                        articleId={article.id}
-                        slug={article.slug}
-                        secret={secret}
-                        onSummarized={removeResolvedArticle}
-                      />
-                    ) : (
-                      <StatusBadge status={article.status} />
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {article.originalUrl ? (
-                      <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-rule px-2.5 py-1.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
-                        원문
-                        <ExternalLink className="size-3.5" aria-hidden="true" />
                       </a>
-                    ) : (
-                      <span className="text-ink/45">없음</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      {article.errorMessage ? <div className="mt-1 line-clamp-2 text-xs text-court">{article.errorMessage}</div> : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{article.institutionName}</div>
+                      <div className="mt-1 text-xs text-ink/54">{article.sourceKey}</div>
+                    </td>
+                    <td className="px-4 py-3">{formatDisplayDate(article.originalPublishedAt)}</td>
+                    <td className="px-4 py-3">
+                      {article.status === "failed_summary" ? (
+                        <div className="grid gap-2">
+                          <AdminSummaryRetryBadge
+                            articleId={article.id}
+                            slug={article.slug}
+                            secret={secret}
+                            onSummarized={removeResolvedArticle}
+                          />
+                          <a href={reviewHref} className="focus-ring inline-flex min-h-7 items-center justify-center gap-1.5 rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                            <Eye className="size-3.5" aria-hidden="true" />
+                            검토
+                          </a>
+                        </div>
+                      ) : (
+                        <StatusBadge status={article.status} href={reviewHref} />
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <a href={reviewHref} className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-rule px-2.5 py-1.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                          <Eye className="size-3.5" aria-hidden="true" />
+                          검토
+                        </a>
+                        {article.originalUrl ? (
+                          <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-rule px-2.5 py-1.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                            원문
+                            <ExternalLink className="size-3.5" aria-hidden="true" />
+                          </a>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

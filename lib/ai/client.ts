@@ -8,6 +8,11 @@ export type LlmMessage = {
 
 export type LlmProvider = "openai" | "gemini" | "mock";
 
+export interface LlmCompletionOptions {
+  provider?: Exclude<LlmProvider, "mock">;
+  model?: string;
+}
+
 export interface LlmCompletionResult {
   content: string;
   provider: LlmProvider;
@@ -36,11 +41,11 @@ export function getOpenAIClient() {
   return cachedOpenAI;
 }
 
-export async function completeJsonWithMetadata(messages: LlmMessage[]): Promise<LlmCompletionResult | null> {
-  const provider = process.env.LLM_PROVIDER ?? "openai";
+export async function completeJsonWithMetadata(messages: LlmMessage[], options: LlmCompletionOptions = {}): Promise<LlmCompletionResult | null> {
+  const provider = options.provider ?? process.env.LLM_PROVIDER ?? "openai";
 
   if (provider === "gemini") {
-    return completeGeminiJson(messages);
+    return completeGeminiJson(messages, { model: options.model });
   }
 
   if (provider !== "openai") {
@@ -56,7 +61,7 @@ export async function completeJsonWithMetadata(messages: LlmMessage[]): Promise<
     return null;
   }
 
-  const model = process.env.OPENAI_SUMMARY_MODEL ?? "gpt-4.1-mini";
+  const model = options.model?.trim() || process.env.OPENAI_SUMMARY_MODEL || "gpt-4.1-mini";
   const completion = await client.chat.completions.create({
     model,
     messages,
@@ -71,7 +76,7 @@ export async function completeJsonWithMetadata(messages: LlmMessage[]): Promise<
   };
 }
 
-export async function completeJson(messages: LlmMessage[]) {
-  const result = await completeJsonWithMetadata(messages);
+export async function completeJson(messages: LlmMessage[], options: LlmCompletionOptions = {}) {
+  const result = await completeJsonWithMetadata(messages, options);
   return result?.content ?? null;
 }

@@ -29,6 +29,7 @@ const ATTENTION_STATUSES = new Set([
 ]);
 
 const FAILURE_STATUSES = new Set(["blocked", "timeout", "failed_fetch", "failed_summary"]);
+const DEFAULT_STALE_SUMMARIZING_MINUTES = 30;
 
 interface AdminArticleRow {
   id?: string;
@@ -137,7 +138,27 @@ function isPublicArticle(row: AdminArticleRow) {
 }
 
 function isPendingSummary(row: AdminArticleRow) {
-  return row.status === "cleaned" || row.status === "failed_summary";
+  return row.status === "cleaned" || row.status === "failed_summary" || isStaleSummarizing(row);
+}
+
+function isReviewClosed(row: AdminArticleRow) {
+  const review = row.source_metadata?.review;
+  return isRecord(review) && review.decision === "closed_private";
+}
+
+function staleSummarizingMinutes() {
+  const value = Number(process.env.STALE_SUMMARIZING_MINUTES ?? DEFAULT_STALE_SUMMARIZING_MINUTES);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_STALE_SUMMARIZING_MINUTES;
+}
+
+function isStaleSummarizing(row: AdminArticleRow) {
+  if (row.status !== "summarizing") return false;
+  const updatedAt = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+  return Number.isFinite(updatedAt) && updatedAt > 0 && Date.now() - updatedAt > staleSummarizingMinutes() * 60 * 1000;
+}
+
+function isAttentionRow(row: AdminArticleRow) {
+  return (ATTENTION_STATUSES.has(row.status) || isStaleSummarizing(row)) && !isReviewClosed(row);
 }
 
 function maxIsoDate(current?: string | null, next?: string | null) {
@@ -275,7 +296,7 @@ function buildSourceSummaries(sources: SourceRecord[], rows: AdminArticleRow[], 
     if (isPublicArticle(row)) summary.publicCount += 1;
     if (isPendingSummary(row)) summary.pendingSummaryCount += 1;
     if (FAILURE_STATUSES.has(row.status)) summary.failedCount += 1;
-    if (ATTENTION_STATUSES.has(row.status)) summary.attentionCount += 1;
+    if (isAttentionRow(row)) summary.attentionCount += 1;
     summary.latestPublishedAt = maxIsoDate(summary.latestPublishedAt, row.original_published_at);
     summary.latestFetchedAt = maxIsoDate(summary.latestFetchedAt, row.fetched_at);
     summaries.set(row.source_key, summary);
@@ -336,7 +357,7 @@ function buildCandidateSummaries(sources: SourceRecord[], rows: CandidateRow[]) 
 
 function buildAttentionArticles(rows: AdminArticleRow[]) {
   return rows
-    .filter((row) => ATTENTION_STATUSES.has(row.status))
+    .filter(isAttentionRow)
     .sort((a, b) => (b.updated_at ?? b.fetched_at ?? b.original_published_at ?? "").localeCompare(a.updated_at ?? a.fetched_at ?? a.original_published_at ?? ""))
     .slice(0, 8)
     .map((row) => ({
@@ -349,7 +370,7 @@ function buildAttentionArticles(rows: AdminArticleRow[]) {
       title: row.korean_title || row.original_title || "제목 미상",
       originalPublishedAt: row.original_published_at,
       status: row.status,
-      errorMessage: errorMessage(row),
+      errorMessage: isStaleSummarizing(row) ? "요약 작업이 중단된 오래된 summarizing 상태입니다. 재요약 또는 비공개 결정을 내려야 합니다." : errorMessage(row),
     }));
 }
 
@@ -374,7 +395,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const publicArticles = rows.filter(isPublicArticle).length;
   const pendingSummaries = rows.filter(isPendingSummary).length;
   const failedArticles = rows.filter((row) => FAILURE_STATUSES.has(row.status)).length;
-  const attentionArticles = rows.filter((row) => ATTENTION_STATUSES.has(row.status)).length;
+  const attentionArticles = rows.filter(isAttentionRow).length;
 
   return {
     generatedAt: new Date().toISOString(),

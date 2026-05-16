@@ -272,7 +272,7 @@ source_metadata.collection.publishable = true
 데이터가 안 보일 때는 보통 다음 중 하나입니다.
 
 - 수집은 됐지만 아직 요약이 안 됨
-- AI API quota가 부족해서 `failed_summary`로 남음
+- AI API quota, 모델 전환, 로컬 라우터 상태 때문에 `failed_summary`로 남음
 - `publishable=false`라서 비공개 처리됨
 - `source_metadata.collection` 정보가 부족함
 - `CRON_SECRET` 또는 DB 환경변수가 잘못됨
@@ -419,11 +419,17 @@ pnpm start
 | --- | --- | --- |
 | `ALLOW_MOCK_SUMMARY` | `false` | `true`이면 API key가 없어도 개발용 대체 요약을 저장할 수 있음 |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | embedding 모델 |
+| `STALE_SUMMARIZING_MINUTES` | `30` | 이 시간보다 오래된 `summarizing` 자료를 중단된 요약 작업으로 보고 재시도 대기로 복구 |
 | `GEMINI_PINNED_MODEL` | 비어 있음 | 특정 Gemini 모델만 쓰고 싶을 때 |
 | `GEMINI_ALLOW_MODEL_OVERRIDE` | `false` | `GEMINI_SUMMARY_MODELS` 같은 override 허용 여부 |
 | `GEMINI_REQUEST_TIMEOUT_MS` | `30000` | Gemini 요청 timeout |
 | `GEMINI_TEMPERATURE` | `0.2` | 요약 생성의 변동성 |
+| `GEMINI_AUTO_DISCOVER_MODELS` | `true` | Gemini models.list API로 사용 가능한 모델 목록을 캐시해 route 후보 자동 갱신 |
+| `GEMINI_MODEL_CATALOG_PATH` | `.cache/gemini-model-catalog.json` | Gemini 모델 catalog 캐시 파일 |
+| `GEMINI_MODEL_CATALOG_TTL_MS` | `43200000` | Gemini 모델 catalog 재조회 간격 |
+| `GEMINI_MODEL_DISCOVERY_TIMEOUT_MS` | `10000` | Gemini 모델 catalog 조회 timeout |
 | `GEMINI_ROUTER_STATE_PATH` | `.cache/gemini-router-state.json` | Gemini cooldown 상태 저장 파일 |
+| `GEMINI_ENFORCE_LOCAL_RPD_LIMITS` | `false` | `true`이면 로컬 추정 RPD 한도로 route를 사전 차단 |
 
 ### 수집 관련 값
 
@@ -637,13 +643,15 @@ pnpm refresh-tag-counts
 pnpm refresh-tag-counts -- --delete-orphans
 ```
 
-Gemini quota가 부족하면 다음 같은 오류가 날 수 있습니다.
+Gemini 라우터가 모든 경로를 제외하면 다음 같은 오류가 날 수 있습니다.
 
 ```text
-All Gemini routes are exhausted or cooling down.
+No Gemini routes are locally available for Summarize. This is router state, not proof that the Gemini free quota is exhausted.
 ```
 
-이 말은 “AI 사용량이 잠시 꽉 찼다”는 뜻입니다. 원문 수집이 실패한 것이 아닙니다. 시간이 지난 뒤 다시 `pnpm summarize-pending`을 실행하면 됩니다.
+이 말은 실제 무료 한도 소진만 뜻하지 않습니다. `.cache/gemini-router-state.json`의 cooldown 상태, Gemini 모델 전환, 또는 분당 제한 때문에 앱이 호출 전에 모든 route를 제외했다는 뜻일 수 있습니다.
+
+기본값은 Gemini 모델 catalog를 자동 조회해 `generateContent`를 지원하는 텍스트 모델만 route 후보에 반영합니다. 모델 전환 직후에는 `.cache/gemini-model-catalog.json`이 갱신되면서 새 안정 모델을 자동으로 우선 사용합니다. 로컬 추정 RPD 한도로 route를 막고 싶을 때만 `GEMINI_ENFORCE_LOCAL_RPD_LIMITS=true`를 사용합니다.
 
 ## 관리자 화면과 API
 
@@ -675,7 +683,7 @@ All Gemini routes are exhausted or cooling down.
 | 수집 후 요약 | 수집 뒤 요약 대기 자료를 함께 처리합니다 |
 | 요약 실행 | `cleaned`, `failed_summary` 자료를 다시 요약합니다 |
 | 태그 갱신 | 공개 자료 기준으로 태그 개수를 다시 계산합니다 |
-| 검토 목록 | 실패, 차단, timeout, 검토 필요 자료를 확인합니다 |
+| 검토 목록 | 실패, 차단, timeout, 검토 필요 자료를 확인하고 검토 유형·권장 다음 절차에 따라 요약/공개/비공개 결정을 실행합니다 |
 | 요약 실패 1건 재시도 | 검토 목록의 `요약 실패` 뱃지를 눌러 해당 자료만 다시 요약합니다 |
 
 `요약 실패` 뱃지 재시도가 성공하면 해당 자료는 즉시 검토 목록에서 사라집니다. 실패하면 같은 줄에 실패 메시지가 표시됩니다.
@@ -693,6 +701,7 @@ All Gemini routes are exhausted or cooling down.
 | `GET` | `/api/sources/[sourceKey]` | 기관 상세 |
 | `GET` | `/api/admin/ingestion-runs` | 관리자 수집 기록 |
 | `POST` | `/api/admin/ingest` | 관리자 수동 수집 |
+| `POST` | `/api/admin/review` | 관리자 검토 결정 |
 | `GET` | `/api/admin/cron/ingest` | cron 수집 endpoint |
 
 `POST /api/admin/ingest` body 예시:
@@ -884,7 +893,8 @@ pnpm audit --prod --audit-level moderate
 
 - AI API key가 없음
 - Gemini/OpenAI quota 초과
-- 모델 cooldown 중
+- Gemini 모델 전환 또는 모델 endpoint 미지원
+- Gemini 라우터 cooldown 또는 분당 제한 상태
 - 원문이 너무 길어 timeout
 - JSON repair도 실패
 

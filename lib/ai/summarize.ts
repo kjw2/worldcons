@@ -1,7 +1,7 @@
 import type { SummaryJson } from "@/lib/db/types";
 import type { NormalizedArticle } from "@/lib/sources/types";
 import { SummarySchema } from "@/lib/ai/schema";
-import { completeJsonWithMetadata, type LlmCompletionResult } from "@/lib/ai/client";
+import { completeJsonWithMetadata, type LlmCompletionOptions, type LlmCompletionResult } from "@/lib/ai/client";
 import { buildRepairPrompt, buildSummaryUserPrompt, SUMMARY_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 export function mockSummary(article: NormalizedArticle): SummaryJson {
@@ -44,11 +44,11 @@ function attachAiMetadata(summary: SummaryJson, completion: LlmCompletionResult)
   };
 }
 
-export async function summarizeArticle(article: NormalizedArticle): Promise<SummaryJson> {
+export async function summarizeArticle(article: NormalizedArticle, options: LlmCompletionOptions = {}): Promise<SummaryJson> {
   const completion = await completeJsonWithMetadata([
     { role: "system", content: SUMMARY_SYSTEM_PROMPT },
     { role: "user", content: buildSummaryUserPrompt(article) },
-  ]);
+  ], options);
 
   if (!completion) {
     if (process.env.ALLOW_MOCK_SUMMARY === "true") {
@@ -64,7 +64,7 @@ export async function summarizeArticle(article: NormalizedArticle): Promise<Summ
     const repaired = await completeJsonWithMetadata([
       { role: "system", content: SUMMARY_SYSTEM_PROMPT },
       { role: "user", content: buildRepairPrompt(completion.content) },
-    ]);
+    ], options);
 
     if (!repaired) {
       throw error;

@@ -12,8 +12,6 @@ export const QPC360_BASE_URL = "https://qpc360.conseil-constitutionnel.fr";
 
 const LIST_URLS = [
   `${CONSEIL_BASE_URL}/les-decisions`,
-  `${CONSEIL_BASE_URL}/decision`,
-  `${QPC360_BASE_URL}/recherche/jurisprudence/liste?items_per_page=20&sort_by=date&sort_order=DESC`,
   QPC360_BASE_URL,
 ];
 

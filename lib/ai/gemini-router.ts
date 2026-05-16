@@ -59,32 +59,59 @@ interface GeminiApiResponse {
   };
 }
 
+interface GeminiCatalogModel {
+  name?: string;
+  baseModelId?: string;
+  displayName?: string;
+  description?: string;
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+  supportedGenerationMethods?: string[];
+}
+
+interface GeminiModelCatalog {
+  version: number;
+  fetchedAt: number;
+  models: GeminiCatalogModel[];
+}
+
+interface GeminiListModelsResponse {
+  models?: GeminiCatalogModel[];
+  nextPageToken?: string;
+}
+
 interface GeminiAttemptError {
   route: string;
   status?: number;
   message: string;
   retryable: boolean;
+  tryNextRoute: boolean;
 }
 
 const STATE_VERSION = 1;
+const MODEL_CATALOG_VERSION = 1;
 const DEFAULT_RPM = 60;
 const LONG_CONTEXT_CHARS = 100_000;
 const COOLDOWN_SECONDS = 60;
 const UNAVAILABLE_COOLDOWN_SECONDS = 24 * 60 * 60;
-const RECOVERABLE_HTTP_STATUSES = new Set([400, 404, 408, 409, 500, 502, 503, 504]);
+const DEFAULT_MODEL_CATALOG_TTL_MS = 12 * 60 * 60 * 1000;
+const MODEL_CATALOG_RETRY_AFTER_MS = 5 * 60 * 1000;
+const RECOVERABLE_HTTP_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+const ROUTE_UNAVAILABLE_HTTP_STATUSES = new Set([404]);
 const CREDENTIAL_HTTP_STATUSES = new Set([401, 403]);
+const ROUTE_UNAVAILABLE_400_MARKERS = ["not found", "not supported", "unsupported", "not available"];
 const DAILY_QUOTA_MARKERS = ["perday", "per day", "requests per day", "generaterequestsperday", "embedcontentrequestsperday"];
 const MINUTE_QUOTA_MARKERS = ["perminute", "per minute", "requests per minute", "generaterequestsperminute", "embedcontentrequestsperminute"];
-const GEMINI_3_MODELS = ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3-pro-preview"];
+const GEMINI_3_MODELS = ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.1-pro-preview"];
 const GEMINI_25_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
 const GEMINI_2_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash"];
 const DEFAULT_TEXT_MODELS = [...GEMINI_3_MODELS, ...GEMINI_25_MODELS, ...GEMINI_2_MODELS];
 
 const MODEL_CONFIGS: Record<string, GeminiModelConfig> = {
-  "gemini-3.1-flash-lite-preview": { model: "gemini-3.1-flash-lite-preview", rpd: 200, priority: 10, stable: false, rpm: DEFAULT_RPM },
-  "gemini-3.1-flash-lite": { model: "gemini-3.1-flash-lite", rpd: 200, priority: 11, stable: true, rpm: DEFAULT_RPM },
+  "gemini-3.1-flash-lite": { model: "gemini-3.1-flash-lite", rpd: 200, priority: 10, stable: true, rpm: DEFAULT_RPM },
+  "gemini-3.1-flash-lite-preview": { model: "gemini-3.1-flash-lite-preview", rpd: 200, priority: 11, stable: false, rpm: DEFAULT_RPM },
   "gemini-3-flash-preview": { model: "gemini-3-flash-preview", rpd: 100, priority: 20, stable: false, rpm: DEFAULT_RPM },
-  "gemini-3-pro-preview": { model: "gemini-3-pro-preview", rpd: 50, priority: 30, stable: false, rpm: DEFAULT_RPM },
+  "gemini-3.1-pro-preview": { model: "gemini-3.1-pro-preview", rpd: 50, priority: 30, stable: false, rpm: DEFAULT_RPM },
   "gemini-2.5-flash-lite": { model: "gemini-2.5-flash-lite", rpd: 1000, priority: 40, stable: true, rpm: DEFAULT_RPM },
   "gemini-2.5-flash": { model: "gemini-2.5-flash", rpd: 250, priority: 50, stable: true, rpm: DEFAULT_RPM },
   "gemini-2.5-pro": { model: "gemini-2.5-pro", rpd: 100, priority: 60, stable: true, rpm: DEFAULT_RPM },
@@ -100,10 +127,13 @@ const TASK_CANDIDATES: Record<GeminiTaskType, string[]> = {
   Translate: DEFAULT_TEXT_MODELS,
   Summarize: DEFAULT_TEXT_MODELS,
   General: DEFAULT_TEXT_MODELS,
-  Reasoning: ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-  Vision: ["gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-  LongContext: ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+  Reasoning: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+  Vision: ["gemini-3-flash-preview", "gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+  LongContext: ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
 };
+
+let lastModelCatalogRefreshFailureAt = 0;
+let modelCatalogRefreshPromise: Promise<GeminiModelCatalog | null> | null = null;
 
 function parseCsvEnv(value?: string) {
   return (value ?? "")
@@ -118,6 +148,170 @@ function unique<T>(items: T[]) {
 
 function hasAny(text: string, needles: string[]) {
   return needles.some((needle) => text.includes(needle));
+}
+
+function autoDiscoverGeminiModels() {
+  return process.env.GEMINI_AUTO_DISCOVER_MODELS !== "false";
+}
+
+function modelCatalogTtlMs() {
+  const value = Number(process.env.GEMINI_MODEL_CATALOG_TTL_MS ?? DEFAULT_MODEL_CATALOG_TTL_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_MODEL_CATALOG_TTL_MS;
+}
+
+function modelCatalogPath() {
+  return path.resolve(process.cwd(), process.env.GEMINI_MODEL_CATALOG_PATH ?? ".cache/gemini-model-catalog.json");
+}
+
+function loadModelCatalog(): GeminiModelCatalog | null {
+  if (!autoDiscoverGeminiModels()) return null;
+
+  const filePath = modelCatalogPath();
+  if (!fs.existsSync(filePath)) return null;
+
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as GeminiModelCatalog;
+    if (data.version !== MODEL_CATALOG_VERSION || !Array.isArray(data.models) || !Number.isFinite(data.fetchedAt)) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function saveModelCatalog(catalog: GeminiModelCatalog) {
+  const filePath = modelCatalogPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(catalog, null, 2), "utf8");
+}
+
+function normalizeCatalogModelName(model: GeminiCatalogModel) {
+  return (model.baseModelId || model.name || "").replace(/^models\//, "").trim();
+}
+
+function supportsGenerationMethod(model: GeminiCatalogModel, method: string) {
+  return model.supportedGenerationMethods?.some((item) => item.toLowerCase() === method.toLowerCase()) ?? false;
+}
+
+function isTextGenerationModel(model: string) {
+  const lowered = model.toLowerCase();
+  return (
+    lowered.startsWith("gemini-") &&
+    !hasAny(lowered, [
+      "embedding",
+      "imagen",
+      "veo",
+      "lyria",
+      "robotics",
+      "tts",
+      "live",
+      "audio",
+      "image",
+      "banana",
+      "computer-use",
+      "deep-research",
+    ])
+  );
+}
+
+function modelGenerationValue(model: string) {
+  const match = model.match(/^gemini-(\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function modelStabilityRank(model: string) {
+  const lowered = model.toLowerCase();
+  if (lowered.endsWith("-latest")) return 1;
+  if (lowered.includes("preview")) return 2;
+  if (hasAny(lowered, ["experimental", "-exp"])) return 3;
+  return 0;
+}
+
+function modelVariantRank(model: string, taskType: GeminiTaskType) {
+  const lowered = model.toLowerCase();
+  const proRank = lowered.includes("pro") ? 0 : lowered.includes("flash") ? 1 : 2;
+  const flashRank = lowered.includes("flash") && !lowered.includes("flash-lite") ? 0 : lowered.includes("pro") ? 1 : 2;
+  const liteRank = lowered.includes("flash-lite") ? 0 : lowered.includes("flash") ? 1 : lowered.includes("pro") ? 2 : 3;
+
+  if (taskType === "Reasoning" || taskType === "LongContext") return proRank;
+  if (taskType === "Vision") return flashRank;
+  return liteRank;
+}
+
+function sortModelsForTask(models: string[], taskType: GeminiTaskType) {
+  return [...models].sort((a, b) => {
+    return (
+      modelVariantRank(a, taskType) - modelVariantRank(b, taskType) ||
+      modelStabilityRank(a) - modelStabilityRank(b) ||
+      modelGenerationValue(b) - modelGenerationValue(a) ||
+      a.localeCompare(b)
+    );
+  });
+}
+
+function discoveredTextModels(taskType: GeminiTaskType) {
+  const catalog = loadModelCatalog();
+  if (!catalog) return [];
+
+  const models = catalog.models
+    .filter((model) => supportsGenerationMethod(model, "generateContent"))
+    .map(normalizeCatalogModelName)
+    .filter(Boolean)
+    .filter(isTextGenerationModel);
+
+  return sortModelsForTask(unique(models), taskType);
+}
+
+async function fetchGeminiModelCatalog(apiKey: string): Promise<GeminiModelCatalog> {
+  const timeoutMs = Number(process.env.GEMINI_MODEL_DISCOVERY_TIMEOUT_MS ?? 10_000);
+  const models: GeminiCatalogModel[] = [];
+  let pageToken = "";
+
+  for (let page = 0; page < 10; page += 1) {
+    const url = new URL("https://generativelanguage.googleapis.com/v1beta/models");
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("pageSize", "1000");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const responseText = await response.text();
+    if (!response.ok) throw new Error(`Gemini model catalog failed: ${response.status} ${redact(responseText, 300)}`);
+
+    const data = responseText ? (JSON.parse(responseText) as GeminiListModelsResponse) : {};
+    models.push(...(data.models ?? []));
+    pageToken = data.nextPageToken ?? "";
+    if (!pageToken) break;
+  }
+
+  return { version: MODEL_CATALOG_VERSION, fetchedAt: Date.now(), models };
+}
+
+export async function refreshGeminiModelCatalog(force = false) {
+  if (!autoDiscoverGeminiModels()) return null;
+
+  const cached = loadModelCatalog();
+  const isFresh = cached ? Date.now() - cached.fetchedAt < modelCatalogTtlMs() : false;
+  if (!force && isFresh) return cached;
+  if (!force && Date.now() - lastModelCatalogRefreshFailureAt < MODEL_CATALOG_RETRY_AFTER_MS) return cached;
+
+  const apiKey = getGeminiApiKeys()[0];
+  if (!apiKey) return cached;
+
+  if (!modelCatalogRefreshPromise) {
+    modelCatalogRefreshPromise = fetchGeminiModelCatalog(apiKey)
+      .then((catalog) => {
+        saveModelCatalog(catalog);
+        return catalog;
+      })
+      .catch(() => {
+        lastModelCatalogRefreshFailureAt = Date.now();
+        return cached;
+      })
+      .finally(() => {
+        modelCatalogRefreshPromise = null;
+      });
+  }
+
+  return modelCatalogRefreshPromise;
 }
 
 function looksLikeVisionTask(text: string, lowered: string) {
@@ -141,14 +335,23 @@ export function analyzeGeminiTaskType(messages: LlmMessage[]): GeminiTaskType {
   return "General";
 }
 
-export function getGeminiModels(taskType: GeminiTaskType = "Summarize") {
+interface GeminiRouteOptions {
+  model?: string;
+}
+
+export function getGeminiModels(taskType: GeminiTaskType = "Summarize", options: GeminiRouteOptions = {}) {
+  const explicitModel = options.model?.trim();
+  if (explicitModel) return [explicitModel];
+
   const pinnedModel = process.env.GEMINI_PINNED_MODEL?.trim();
   if (pinnedModel) return [pinnedModel];
 
   const allowModelOverride = process.env.GEMINI_ALLOW_MODEL_OVERRIDE === "true";
   const explicitModels = parseCsvEnv(process.env.GEMINI_SUMMARY_MODELS);
   const primaryModel = process.env.GEMINI_SUMMARY_MODEL?.trim();
-  const taskModels = TASK_CANDIDATES[taskType] ?? TASK_CANDIDATES.General;
+  const fallbackModels = TASK_CANDIDATES[taskType] ?? TASK_CANDIDATES.General;
+  const discoveredModels = taskType === "Embedding" ? [] : discoveredTextModels(taskType);
+  const taskModels = discoveredModels.length > 0 ? unique([...discoveredModels, ...fallbackModels.filter((model) => discoveredModels.includes(model))]) : fallbackModels;
 
   if (allowModelOverride && explicitModels.length > 0) return unique(explicitModels);
   if (allowModelOverride && primaryModel) return unique([primaryModel, ...taskModels]);
@@ -213,10 +416,8 @@ function configForModel(model: string): GeminiModelConfig {
 }
 
 function generationRank(model: string) {
-  if (model.startsWith("gemini-3")) return 0;
-  if (model.startsWith("gemini-2.5")) return 1;
-  if (model.startsWith("gemini-2")) return 2;
-  return 9;
+  const generation = modelGenerationValue(model);
+  return generation > 0 ? -generation : 9;
 }
 
 function entryForRoute(state: GeminiRouterState, route: GeminiRoute) {
@@ -235,9 +436,14 @@ function trimRpm(entry: GeminiRouteStateEntry) {
   entry.rpmTimestamps = entry.rpmTimestamps.filter((item) => Number.isFinite(item) && item >= cutoff);
 }
 
+function enforceLocalRpdLimit() {
+  return process.env.GEMINI_ENFORCE_LOCAL_RPD_LIMITS === "true";
+}
+
 function remainingRpd(state: GeminiRouterState, route: GeminiRoute) {
   const entry = entryForRoute(state, route);
-  return Math.max(0, configForModel(route.model).rpd - entry.rpdUsed);
+  const remaining = configForModel(route.model).rpd - entry.rpdUsed;
+  return enforceLocalRpdLimit() ? Math.max(0, remaining) : Math.max(1, remaining);
 }
 
 function remainingRpm(state: GeminiRouterState, route: GeminiRoute) {
@@ -246,20 +452,27 @@ function remainingRpm(state: GeminiRouterState, route: GeminiRoute) {
   return Math.max(0, configForModel(route.model).rpm - entry.rpmTimestamps.length);
 }
 
-function isRouteAvailable(state: GeminiRouterState, route: GeminiRoute) {
+function routeUnavailableReason(state: GeminiRouterState, route: GeminiRoute) {
   const entry = entryForRoute(state, route);
   const config = configForModel(route.model);
   trimRpm(entry);
-  if (entry.dailyExhausted || entry.rpdUsed >= config.rpd) return false;
-  if (entry.cooldownUntil && Date.now() / 1000 < entry.cooldownUntil) return false;
-  return remainingRpm(state, route) > 0;
+  if (entry.dailyExhausted) return "daily quota marker from a Gemini 429 response";
+  if (enforceLocalRpdLimit() && entry.rpdUsed >= config.rpd) return `local RPD guard ${entry.rpdUsed}/${config.rpd}`;
+  if (entry.cooldownUntil && Date.now() / 1000 < entry.cooldownUntil) {
+    return `cooldown until ${new Date(entry.cooldownUntil * 1000).toISOString()}`;
+  }
+  if (remainingRpm(state, route) <= 0) return `local RPM window ${entry.rpmTimestamps.length}/${config.rpm}`;
+  return null;
 }
 
-export function getGeminiRoutes(taskType: GeminiTaskType = "Summarize") {
+function isRouteAvailable(state: GeminiRouterState, route: GeminiRoute) {
+  return routeUnavailableReason(state, route) === null;
+}
+
+function buildGeminiRoutes(taskType: GeminiTaskType, options: GeminiRouteOptions = {}) {
   const keys = getGeminiApiKeys();
-  const models = getGeminiModels(taskType);
-  const state = loadState();
-  const routes = models.flatMap((model) =>
+  const models = getGeminiModels(taskType, options);
+  return models.flatMap((model) =>
     keys.map((apiKey, index) => ({
       model,
       apiKey,
@@ -267,6 +480,30 @@ export function getGeminiRoutes(taskType: GeminiTaskType = "Summarize") {
       routeKey: `${model}::key-${index + 1}`,
     })),
   );
+}
+
+function unavailableRoutesMessage(taskType: GeminiTaskType, options: GeminiRouteOptions = {}) {
+  const keys = getGeminiApiKeys();
+  if (keys.length === 0) return "No Gemini API key is configured.";
+
+  const state = loadState();
+  const routes = buildGeminiRoutes(taskType, options);
+  const reasons = routes
+    .map((route) => {
+      const reason = routeUnavailableReason(state, route);
+      return reason ? `${routeLabel(route)}: ${reason}` : null;
+    })
+    .filter(Boolean)
+    .slice(0, 10);
+  const suffix = reasons.length > 0 ? ` Reasons: ${reasons.join("; ")}${routes.length > reasons.length ? "; ..." : ""}` : "";
+
+  return `No Gemini routes are locally available for ${taskType}. This is router state, not proof that the Gemini free quota is exhausted.${suffix}`;
+}
+
+export function getGeminiRoutes(taskType: GeminiTaskType = "Summarize", options: GeminiRouteOptions = {}) {
+  const models = getGeminiModels(taskType, options);
+  const state = loadState();
+  const routes = buildGeminiRoutes(taskType, options);
   const available = routes.filter((route) => isRouteAvailable(state, route));
   const strategy = getSelectionStrategy();
   const modelOrder = new Map(models.map((model, index) => [model, index]));
@@ -346,6 +583,15 @@ function retryableStatus(status: number) {
   return status === 429 || RECOVERABLE_HTTP_STATUSES.has(status);
 }
 
+function shouldTryNextRoute(status: number) {
+  return !CREDENTIAL_HTTP_STATUSES.has(status);
+}
+
+function isRouteUnavailableHttpError(status: number, responseText: string) {
+  if (ROUTE_UNAVAILABLE_HTTP_STATUSES.has(status)) return true;
+  return status === 400 && hasAny(responseText.toLowerCase(), ROUTE_UNAVAILABLE_400_MARKERS);
+}
+
 function redact(text: string, limit = 500) {
   return text
     .replace(/(api[_-]?key["']?\s*[:=]\s*["']?)[^"',}\s]+/gi, "$1***")
@@ -402,8 +648,10 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
     const message = error instanceof Error ? error.message : String(error);
     const retryableError = new Error(`Gemini route ${routeLabel(route)} transport/timeout failure: ${redact(message, 200)}`) as Error & {
       retryable?: boolean;
+      tryNextRoute?: boolean;
     };
     retryableError.retryable = true;
+    retryableError.tryNextRoute = true;
     throw retryableError;
   }
 
@@ -418,17 +666,21 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
   if (!response.ok) {
     if (response.status === 429) {
       record429(route, responseText);
+    } else if (isRouteUnavailableHttpError(response.status, responseText)) {
+      recordCooldown(route, UNAVAILABLE_COOLDOWN_SECONDS);
     } else if (RECOVERABLE_HTTP_STATUSES.has(response.status)) {
-      recordCooldown(route, response.status === 404 ? UNAVAILABLE_COOLDOWN_SECONDS : COOLDOWN_SECONDS);
+      recordCooldown(route, COOLDOWN_SECONDS);
     }
 
     const apiMessage = data?.error?.message ?? responseText;
     const error = new Error(`Gemini route ${routeLabel(route)} failed: ${response.status} ${redact(apiMessage)}`) as Error & {
       status?: number;
       retryable?: boolean;
+      tryNextRoute?: boolean;
     };
     error.status = response.status;
-    error.retryable = retryableStatus(response.status) && !CREDENTIAL_HTTP_STATUSES.has(response.status);
+    error.retryable = retryableStatus(response.status);
+    error.tryNextRoute = shouldTryNextRoute(response.status);
     throw error;
   }
 
@@ -438,8 +690,10 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
     const finishReason = data?.candidates?.[0]?.finishReason;
     const error = new Error(`Gemini route ${routeLabel(route)} returned empty text${finishReason ? ` (${finishReason})` : ""}.`) as Error & {
       retryable?: boolean;
+      tryNextRoute?: boolean;
     };
     error.retryable = true;
+    error.tryNextRoute = true;
     throw error;
   }
 
@@ -447,15 +701,16 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
   return text;
 }
 
-export async function completeGeminiJson(messages: LlmMessage[]): Promise<LlmCompletionResult | null> {
-  const taskType = process.env.GEMINI_TASK_TYPE?.trim() as GeminiTaskType | undefined;
-  const routes = getGeminiRoutes(taskType || analyzeGeminiTaskType(messages));
+export async function completeGeminiJson(messages: LlmMessage[], options: GeminiRouteOptions = {}): Promise<LlmCompletionResult | null> {
+  const taskType = (process.env.GEMINI_TASK_TYPE?.trim() as GeminiTaskType | undefined) || analyzeGeminiTaskType(messages);
+  await refreshGeminiModelCatalog();
+  const routes = getGeminiRoutes(taskType, options);
   if (routes.length === 0) {
     if (getGeminiApiKeys().length === 0 && process.env.NODE_ENV !== "production") {
       return null;
     }
 
-    throw new Error("All Gemini routes are exhausted or cooling down.");
+    throw new Error(unavailableRoutesMessage(taskType, options));
   }
 
   const attempts: GeminiAttemptError[] = [];
@@ -468,16 +723,18 @@ export async function completeGeminiJson(messages: LlmMessage[]): Promise<LlmCom
         model: route.model,
       };
     } catch (error) {
-      const typedError = error as Error & { status?: number; retryable?: boolean };
+      const typedError = error as Error & { status?: number; retryable?: boolean; tryNextRoute?: boolean };
       const retryable = Boolean(typedError.retryable);
+      const tryNextRoute = typedError.tryNextRoute ?? retryable;
       attempts.push({
         route: routeLabel(route),
         status: typedError.status,
         message: typedError.message,
         retryable,
+        tryNextRoute,
       });
 
-      if (!retryable) break;
+      if (!tryNextRoute) break;
     }
   }
 

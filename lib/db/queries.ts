@@ -172,6 +172,89 @@ function filterMockArticles(filters: ArticleListFilters) {
     .sort((a, b) => (b.originalPublishedAt || "").localeCompare(a.originalPublishedAt || ""));
 }
 
+function toFullTextQuery(q?: string) {
+  const terms =
+    q
+      ?.toLowerCase()
+      .split(/\s+/)
+      .map((term) => term.replace(/[^\p{L}\p{N}]+/gu, ""))
+      .filter(Boolean) ?? [];
+
+  return terms.map((term) => `${term}:*`).join(" & ");
+}
+
+function getRangeStartIso(rangeValue?: ArticleListFilters["range"]) {
+  const range = normalizeRange(rangeValue);
+  if (range === "today") {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  }
+  if (range === "week" || range === "month") {
+    const days = range === "week" ? 7 : 30;
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  return null;
+}
+
+async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds: string[] | null): Promise<ArticleListResult> {
+  const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
+  const supabase = getSupabaseAdmin();
+  const tsQuery = toFullTextQuery(filters.q);
+
+  if (!supabase || !tsQuery) {
+    const items = filterMockArticles(filters);
+    const start = (page - 1) * pageSize;
+    return {
+      items: items.slice(start, start + pageSize),
+      pageInfo: { page, pageSize, total: items.length },
+    };
+  }
+
+  let query = supabase
+    .from("articles")
+    .select("id")
+    .textSearch("search_vector", tsQuery, { config: "simple" })
+    .order("original_published_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: true })
+    .limit(Number.isFinite(Number(process.env.SEARCH_MAX_CANDIDATES)) ? Math.min(Number(process.env.SEARCH_MAX_CANDIDATES), 100) : 100);
+
+  if (!filters.includeUnpublished) {
+    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+  }
+  if (filters.ids) query = query.in("id", filters.ids);
+  if (filters.source) query = query.eq("source_key", filters.source);
+  if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
+  if (filters.type) query = query.eq("content_type", filters.type);
+  if (filters.language) query = query.eq("original_language", filters.language);
+  if (tagArticleIds) query = query.in("id", tagArticleIds);
+
+  const startIso = getRangeStartIso(filters.range);
+  if (startIso) query = query.gte("original_published_at", startIso);
+
+  const { data, error } = await query;
+  if (error) {
+    return { items: [], pageInfo: { page, pageSize, total: 0 } };
+  }
+
+  const ids = ((data ?? []) as Array<{ id?: string }>).map((row) => row.id).filter((id): id is string => Boolean(id));
+  if (ids.length === 0) {
+    return { items: [], pageInfo: { page, pageSize, total: 0 } };
+  }
+
+  const result = await listArticles({ ...filters, q: undefined, ids, page: 1, pageSize: ids.length });
+  const order = new Map(ids.map((id, index) => [id, index]));
+  const matched = [...result.items]
+    .sort((left, right) => (order.get(left.id ?? "") ?? 9999) - (order.get(right.id ?? "") ?? 9999))
+    .filter((article) => matchesText(article, filters.q));
+  const start = (page - 1) * pageSize;
+
+  return {
+    items: matched.slice(start, start + pageSize),
+    pageInfo: { page, pageSize, total: matched.length },
+  };
+}
+
 export async function listArticles(filters: ArticleListFilters = {}): Promise<ArticleListResult> {
   const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
   const supabase = getSupabaseAdmin();
@@ -201,6 +284,10 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     }
   }
 
+  if (filters.q) {
+    return listArticlesByFullText(filters, tagArticleIds);
+  }
+
   let query = supabase
     .from("articles")
     .select("*, article_tags(confidence, tags(*))", { count: "exact" })
@@ -217,34 +304,14 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   if (filters.language) query = query.eq("original_language", filters.language);
   if (tagArticleIds) query = query.in("id", tagArticleIds);
 
-  const range = normalizeRange(filters.range);
-  const startDate = range === "latest" ? null : new Date(Date.now() - (range === "today" ? 0 : range === "week" ? 7 : 30) * 24 * 60 * 60 * 1000);
-  if (range === "today") {
-    const now = new Date();
-    startDate?.setUTCHours(0, 0, 0, 0);
-    query = query.gte("original_published_at", new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString());
-  } else if (startDate) {
-    query = query.gte("original_published_at", startDate.toISOString());
-  }
+  const startIso = getRangeStartIso(filters.range);
+  if (startIso) query = query.gte("original_published_at", startIso);
 
-  const maxSearchCandidates = Number(process.env.SEARCH_MAX_CANDIDATES ?? 1000);
-  const from = filters.q ? 0 : (page - 1) * pageSize;
-  const to = filters.q ? Math.max(0, maxSearchCandidates - 1) : from + pageSize - 1;
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
   const { data, error, count } = await query.range(from, to);
   if (error) {
     throw new Error(error.message);
-  }
-
-  if (filters.q) {
-    const matched = ((data ?? []) as SupabaseArticleRow[])
-      .filter((row) => filters.includeUnpublished || isPublishableListItem(row))
-      .map(articleRowToItem)
-      .filter((article) => matchesText(article, filters.q));
-    const pageStart = (page - 1) * pageSize;
-    return {
-      items: matched.slice(pageStart, pageStart + pageSize),
-      pageInfo: { page, pageSize, total: matched.length },
-    };
   }
 
   return {

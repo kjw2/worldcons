@@ -3,6 +3,7 @@ import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/
 import { extractLinks } from "@/lib/crawler/extract-links";
 import { extractHtmlMetadata } from "@/lib/crawler/extract-metadata";
 import { extractReadableText } from "@/lib/crawler/extract-readable-text";
+import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
 import { discoverSitemapUrls } from "@/lib/crawler/sitemap";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import type {
@@ -45,6 +46,10 @@ function envBoolean(name: string, fallback: boolean) {
   const value = process.env[name];
   if (value === undefined || value === "") return fallback;
   return !["0", "false", "no", "off"].includes(value.toLowerCase());
+}
+
+function robotsEnabled() {
+  return process.env.CRAWLER_ROBOTS_ENABLED !== "false";
 }
 
 function crawlerSettings() {
@@ -260,6 +265,68 @@ function addAttempt(diagnostics: CrawlerDiagnosticsCollector, attempt: CrawlAtte
   addDiagnosticAttempt(diagnostics, attempt);
 }
 
+async function checkRequestRobots(
+  url: string,
+  diagnostics: CrawlerDiagnosticsCollector,
+  logAllowed: boolean,
+) {
+  if (!robotsEnabled()) {
+    return { allowed: true, delayMs: 0 };
+  }
+
+  try {
+    const robots = await checkRobotsAllowed(url);
+    if (logAllowed || !robots.allowed) {
+      addAttempt(diagnostics, {
+        url,
+        strategy: "robots",
+        status: robots.status,
+        robotsUrl: robots.robotsUrl,
+        robotsAllowed: robots.allowed,
+        robotsMatchedRule: robots.matchedRule,
+        robotsMatchedDirective: robots.matchedDirective,
+        robotsCrawlDelaySeconds: robots.crawlDelaySeconds,
+        robotsUserAgent: robots.userAgent,
+        errorCode: robots.allowed ? undefined : "ROBOTS_DISALLOW",
+        errorMessage: robots.allowed ? undefined : `Disallowed by robots.txt rule ${robots.matchedRule ?? "(empty)"}`,
+      });
+    }
+    return { allowed: robots.allowed, delayMs: robotsDelayMs(robots, 0) };
+  } catch (error) {
+    addAttempt(diagnostics, {
+      url,
+      strategy: "robots",
+      errorCode: errorName(error),
+      errorMessage: errorMessage(error),
+    });
+    return { allowed: false, delayMs: 0 };
+  }
+}
+
+async function prepareStartRequests(
+  requests: CrawleeStartRequest[],
+  settings: ReturnType<typeof crawlerSettings>,
+  diagnostics: CrawlerDiagnosticsCollector,
+) {
+  const allowedRequests: CrawleeStartRequest[] = [];
+  let maxDelayMs = settings.sameDomainDelaySecs * 1000;
+
+  for (const request of requests) {
+    const robots = await checkRequestRobots(request.url, diagnostics, true);
+    if (!robots.allowed) continue;
+    maxDelayMs = Math.max(maxDelayMs, robots.delayMs);
+    allowedRequests.push(request);
+  }
+
+  return {
+    requests: allowedRequests,
+    settings: {
+      ...settings,
+      sameDomainDelaySecs: Math.max(settings.sameDomainDelaySecs, maxDelayMs / 1000),
+    },
+  };
+}
+
 async function enqueueStartRequests(queue: RequestQueue, requests: CrawleeStartRequest[], settings: ReturnType<typeof crawlerSettings>) {
   for (const request of requests) {
     await queue.addRequest(buildRequest(request, settings));
@@ -270,7 +337,11 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
   if (requests.length === 0) return;
   configureStorage();
   state.strategySequence.push("cheerio");
-  const settings = crawlerSettings();
+  let settings = crawlerSettings();
+  const prepared = await prepareStartRequests(requests, settings, state.diagnostics);
+  requests = prepared.requests;
+  settings = prepared.settings;
+  if (requests.length === 0) return;
   const requestQueue = await RequestQueue.open(`${state.config.sourceKey}-${name}-cheerio-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   await enqueueStartRequests(requestQueue, requests, settings);
 
@@ -307,6 +378,8 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
         });
 
         for (const link of links) {
+          const robots = await checkRequestRobots(link.url, state.diagnostics, false);
+          if (!robots.allowed) continue;
           const item = state.config.itemFromUrl(link.url, userData.collectionStrategy, {
             listingUrl: request.url,
             title: link.title,
@@ -381,7 +454,11 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
   if (requests.length === 0) return;
   configureStorage();
   state.strategySequence.push("playwright");
-  const settings = crawlerSettings();
+  let settings = crawlerSettings();
+  const prepared = await prepareStartRequests(requests, settings, state.diagnostics);
+  requests = prepared.requests;
+  settings = prepared.settings;
+  if (requests.length === 0) return;
   const requestQueue = await RequestQueue.open(`${state.config.sourceKey}-${name}-playwright-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   await enqueueStartRequests(requestQueue, requests, settings);
 
@@ -424,6 +501,8 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
         });
 
         for (const link of links) {
+          const robots = await checkRequestRobots(link.url, state.diagnostics, false);
+          if (!robots.allowed) continue;
           const item = state.config.itemFromUrl(link.url, "playwright", {
             listingUrl: request.url,
             title: link.title,

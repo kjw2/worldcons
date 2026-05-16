@@ -1,6 +1,59 @@
 # Progress
 
-프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 모두 해소했다.
+프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX까지 완료했다.
+
+## 2026-05-16 Full Audit Remediation
+
+| ID | Priority | Area | 발견 사항 | 처리 내용 | Status | Progress |
+| --- | --- | --- | --- | --- | --- | --- |
+| H0-01 | P0 | Search runtime | `/api/search?q=헌법&mode=hybrid` 및 fulltext가 DB statement timeout으로 500을 반환할 수 있음 | 검색어가 있을 때 대용량 원문 행을 직접 가져오지 않고 `search_vector` GIN 인덱스로 article id를 먼저 좁힌 뒤 상세 행을 조회하도록 변경, 오류 시 빈 결과로 graceful fallback | Done | 100% |
+| H0-02 | P0 | Crawler robots | DE/FR Crawlee 경로가 자체 fetch 단계에서 `robots.txt` 확인과 `Crawl-delay` 반영을 직접 수행하지 않아 문서화된 수집 원칙과 어긋날 수 있음 | Crawlee start/detail 요청 전에 `checkRobotsAllowed`를 실행하고 disallow는 queue에서 제외, allowed 진단 기록 및 robots crawl-delay를 `sameDomainDelaySecs`에 반영 | Done | 100% |
+| H0-03 | P0 | Gemini routing | `All Gemini routes are exhausted or cooling down`이 실제 무료 한도 소진이 아닌 로컬 추정 RPD, 오래된 Gemini 3 Pro Preview endpoint, 404/모델 미지원 cooldown 때문에 발생할 수 있음 | 기본 route를 `gemini-3.1-flash-lite`/`gemini-3.1-pro-preview` 기준으로 정리, 로컬 RPD 사전 차단을 opt-in으로 변경, 404/모델 미지원과 quota 오류를 분리하고 오류 메시지에 로컬 route 제외 사유 표시 | Done | 100% |
+| H0-04 | P0 | Gemini model updates | 향후 Gemini 모델명 또는 모델 자체가 바뀌면 하드코딩된 후보 목록이 다시 stale해질 수 있음 | Gemini `models.list` catalog를 TTL 캐시로 자동 조회하고 `generateContent` 지원 텍스트 모델만 route 후보에 반영, 미래 세대 Flash-Lite/Pro 모델을 task별 우선순위로 자동 정렬 | Done | 100% |
+| H1-01 | P1 | Lint/Typecheck reliability | `eslint .` 루트 스캔과 stale `tsconfig.tsbuildinfo`가 Windows 검증 세션에서 장시간 멈춤을 유발할 수 있음 | lint 대상을 실제 소스/설정 파일로 명시하고 TypeScript incremental cache를 비활성화해 검증 명령을 결정적으로 종료 | Done | 100% |
+| H1-02 | P1 | Runtime data freshness | article detail page만 `revalidate=300`으로 남아 상세 데이터가 목록/API보다 늦게 갱신될 수 있음 | `/articles/[slug]`를 `force-dynamic` + `revalidate=0`으로 맞춰 요청 시점 DB 데이터를 표시 | Done | 100% |
+| H1-03 | P1 | Canonical dedup | QPC360 detail URL의 `searchParams` 문맥 쿼리가 canonical URL에 남아 같은 결정문이 다른 canonical로 저장될 수 있음 | canonical URL 정규화에서 `searchParams`를 제거하고 자체 검사에 회귀 테스트 추가 | Done | 100% |
+| H1-04 | P1 | SEO/security | JSON-LD script에 원문 제목/요약이 그대로 들어가면 `</script>`류 문자열이 script boundary를 깨뜨릴 수 있음 | JSON-LD 직렬화 값을 `<`, `>`, `&`, U+2028, U+2029 escape 처리하는 helper로 교체하고 검사 추가 | Done | 100% |
+| H1-05 | P1 | Admin UX | 관리자 대시보드 하단의 수집 실행 기록 표가 길어 첫 화면이 과도하게 늘어남 | 수집 실행 기록을 `/admin/ingestion-runs` 전용 화면으로 분리하고 대시보드/실행 기록 상단 탭을 추가, 대시보드 하단 기록 표 제거. 탭은 stale client chunk 예외를 피하도록 일반 anchor navigation으로 고정 | Done | 100% |
+| H1-06 | P1 | Admin review UX | 주의가 필요한 자료의 `검토 필요` 뱃지가 클릭되지 않고, 검토 시 확인할 원문/metadata/오류 근거가 한 화면에 부족함 | 주의 목록의 제목/상태 뱃지/검토 버튼을 관리자 상세로 연결하고, 관리자 모드 기사 상세에 수집 사유, 공개 가능 여부, 본문 확보 여부, robots 상태, 오류 metadata, 수집 metadata, 추출 본문 패널 추가 | Done | 100% |
+| H1-07 | P1 | Admin review workflow | 검토 화면이 근거만 보여주고 어떤 검토가 필요한지, 검토 후 요약/공개/비공개 결정 절차를 실행하지 못함 | 상태별 검토 유형, 확인 항목, 권장 다음 절차를 표시하고 `/api/admin/review`로 `요약 승인 후 실행`, `재요약 실행`, `검토 완료 후 공개`, `비공개 종결`, `수집원 재시도` 결정 버튼 추가 | Done | 100% |
+| H1-08 | P1 | Summary state recovery | 과거 Gemini route 오류 중 `summarizing`으로 바뀐 뒤 완료/실패로 정리되지 않은 3건이 관리자 상태 분포에 계속 `요약중`으로 남음 | 30분 이상 오래된 `summarizing` 자료를 중단된 요약 작업으로 판정해 `failed_summary` 재시도 대상으로 자동 복구하고, 관리자 주의 목록에 stale summarizing을 노출하도록 보강. 현재 DB 3건 복구 완료 | Done | 100% |
+| H1-09 | P1 | Admin review resummary UX | 이미 공개된 자료에도 `검토 완료 후 공개` 버튼이 남아 공개 처리와 요약 품질 재검토 동선이 섞임 | 공개 자료에서는 공개 버튼을 숨기고 현재 모델 표시, 모델 preset/직접 입력, `선택 모델로 재요약` 버튼을 추가. 선택 모델은 OpenAI/Gemini 요약 경로와 Gemini route explicit model 옵션까지 연결 | Done | 100% |
+| H2-01 | P2 | Crawler cleanup | FR/DE Crawlee list seed에 404 또는 문서상 회피 대상인 검색 URL이 남아 불필요한 요청과 진단 오염이 발생 | France `/decision` 404 및 QPC360 search list URL 제거, BVerfG 대소문자 오류 list URL 제거 | Done | 100% |
+| H2-02 | P2 | Audit hygiene | 활성 소스/README/supabase 기준 미완성 키워드와 prompt reference 문서의 과거 개선 문구를 구분해야 함 | 활성 구현 경로만 기준으로 unfinished keyword scan을 재실행해 0건 확인, 과거 prompt 문서는 실행 backlog가 아닌 archive reference로 분류 | Done | 100% |
+
+## 2026-05-16 Full Audit Verification
+
+| Check | Result |
+| --- | --- |
+| Active unfinished keyword scan over app/components/lib/scripts/workers/README/supabase/config | Pass, 0 matches |
+| `pnpm exec tsc --noEmit --pretty false` | Pass |
+| `pnpm lint` | Pass, explicit source/config target completes without root-scan timeout |
+| `pnpm check` | Pass |
+| `pnpm build` | Pass |
+| Admin UI split | Pass, `/admin` no longer renders ingestion history table and `/admin/ingestion-runs` owns the detailed run table |
+| Browser click `/admin` tab to `/admin/ingestion-runs` | Pass, title `수집 실행 기록`, active tab `실행 기록`, client page error 0 |
+| `pnpm audit --prod --audit-level moderate` | Pass, no known vulnerabilities |
+| Live robots check | Pass, Conseil/QPC360 and BVerfG allowed paths checked; BVerfG `Crawl-delay: 30` detected |
+| `pnpm crawl:worker -- --source=fr-conseil-constitutionnel --limit=1 --strategy=cheerio --dry-run --no-playwright` | Pass, robots diagnostics recorded, removed search/404 start URLs absent, 1 verified item |
+| `pnpm crawl:worker -- --source=de-bverfg --limit=1 --strategy=cheerio --dry-run --no-playwright` | Pass, robots diagnostics recorded, crawl-delay reflected, removed 404 start URL absent |
+| Runtime `/api/articles?pageSize=5` | Pass, HTTP 200, total 693, 5 items |
+| Runtime `/api/search?q=헌법&pageSize=5&mode=hybrid` | Pass, HTTP 200, total 50, 5 items |
+| Runtime `/api/search?q=헌법&pageSize=5&mode=fulltext` | Pass, HTTP 200 |
+| Runtime `/` | Pass, HTTP 200 |
+| Runtime `/articles/[firstSlug]` | Pass, HTTP 200, JSON-LD script present |
+| Runtime `/sitemap.xml` | Pass, HTTP 200 |
+| Runtime `/api/admin/ingestion-runs` without auth | Pass, HTTP 401 |
+| Gemini official model status check | Pass, Google docs show `gemini-3.1-flash-lite` stable, `gemini-3.1-pro-preview` current preview, and Gemini 3 Pro Preview shut down on 2026-03-09 |
+| Gemini router smoke | Pass, default models start with `gemini-3.1-flash-lite`, 9 local routes available, stale `gemini-3-pro-preview` absent |
+| Gemini dynamic catalog regression | Pass, synthetic future catalog routes `gemini-4-flash-lite` first for summary and `gemini-4-pro-preview` first for reasoning while excluding image/embedding models |
+| Local server refresh | Pass, rebuilt app restarted on `http://127.0.0.1:3001`, `/` and `/admin/login` return HTTP 200 |
+| Admin review link smoke | Pass, `/admin` renders review links and first attention article opens with 관리자 검토 모드, 검토 근거, 수집 metadata |
+| Admin review workflow smoke | Pass, first attention detail renders 검토 유형, 권장 다음 절차, 검토 결정, action button; unauthorized review API returns 401; authorized missing review target returns `not_found` |
+| Stale summarizing recovery | Pass, recovered 3 stale `summarizing` rows to `failed_summary`; current status counts `summarized=704`, `failed_summary=3`, `summarizing=0` |
+| Public admin review resummary smoke | Pass, public summarized article renders 관리자 검토 모드, 공개 자료 재요약, 현재 모델, 선택 모델로 재요약; `검토 완료 후 공개` button count 0 |
+| Public admin review browser smoke | Pass, Playwright page load has Application error 0 and console/page errors 0 |
+| Admin review resummary API guard | Pass, authorized `resummarize-with-model` without model returns skipped with 모델 선택 안내 and does not call LLM |
 
 ## 2026-05-10 Full Audit Remediation
 

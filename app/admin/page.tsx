@@ -8,13 +8,12 @@ import {
   Clock3,
   Database,
   FileWarning,
-  ListChecks,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { AdminActionPanel } from "@/components/admin-action-panel";
 import { AdminAttentionTable } from "@/components/admin-attention-table";
-import { IngestionStatusPanel } from "@/components/ingestion-status-panel";
+import { AdminTabs } from "@/components/admin-tabs";
 import { getAdminDashboardData, type AdminStatusCount } from "@/lib/db/admin-queries";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
@@ -50,10 +49,6 @@ function formatDateTime(input?: string | null) {
     timeStyle: "short",
     timeZone: "Asia/Seoul",
   }).format(date);
-}
-
-function withSecret(path: string, secret?: string | null) {
-  return secret ? `${path}?secret=${encodeURIComponent(secret)}` : path;
 }
 
 function statusClass(status: string) {
@@ -248,14 +243,10 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
           <p className="mb-2 text-sm font-semibold text-court">관리자</p>
           <h1 className="text-3xl font-semibold tracking-normal text-ink">운영 대시보드</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
-            수집 상태, 공개 가능 자료, 요약 대기열, 실패 항목을 한 화면에서 확인합니다.
+            수집 상태, 공개 가능 자료, 요약 대기열, 실패 항목을 확인합니다. 상세 실행 기록은 별도 화면에서 봅니다.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={withSecret("/admin/ingestion-runs", secret)} className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
-            <ListChecks className="size-4" aria-hidden="true" />
-            실행 기록
-          </Link>
           <Link href="/" className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
             공개 화면
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -268,6 +259,8 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
           </form>
         </div>
       </div>
+
+      <AdminTabs active="dashboard" secret={secret} />
 
       <div className="mb-6 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -317,15 +310,6 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
           <CandidateTable data={dashboard.candidateSummaries} />
         </div>
         <AdminAttentionTable data={dashboard.attentionArticles} secret={secret} />
-        <section className="rounded-md border border-rule bg-white shadow-sm">
-          <div className="border-b border-rule p-5">
-            <p className="text-sm font-semibold text-court">최근 실행</p>
-            <h2 className="mt-1 text-xl font-semibold tracking-normal text-ink">수집 실행 기록</h2>
-          </div>
-          <div className="p-5">
-            <IngestionStatusPanel runs={dashboard.latestRuns} />
-          </div>
-        </section>
       </div>
     </main>
   );

@@ -7,6 +7,7 @@ const TRACKING_PARAMS = new Set([
   "utm_id",
   "gclid",
   "fbclid",
+  "searchparams",
 ]);
 
 export function canonicalizeUrl(input: string, baseUrl?: string) {
