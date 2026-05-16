@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction, type AdminReviewAction } from "@/lib/ingest/review";
 import { isAuthorizedRequest } from "@/lib/utils/auth";
 
@@ -37,5 +38,20 @@ export async function POST(request: Request) {
   }
 
   const result = await runAdminReviewAction({ action, articleId, slug, note, provider, model });
+  await recordSiteEvent(
+    {
+      eventType: "admin_review_action",
+      path: "/api/admin/review",
+      articleId,
+      articleSlug: slug,
+      metadata: {
+        action,
+        provider,
+        model,
+        status: "status" in result ? result.status : undefined,
+      },
+    },
+    request.headers,
+  );
   return NextResponse.json({ review: result });
 }

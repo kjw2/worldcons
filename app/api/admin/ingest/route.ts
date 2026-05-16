@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { runIngest, runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/run";
 import { isAuthorizedRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
@@ -36,6 +37,24 @@ export async function POST(request: Request) {
       ? await runSummarizePending({ limit: summarizeLimit })
       : null;
   const tags = shouldRefreshTags && action !== "retry-summary" ? await runRefreshTagCounts() : null;
+  await recordSiteEvent(
+    {
+      eventType: "admin_action",
+      path: "/api/admin/ingest",
+      sourceKey,
+      articleId,
+      articleSlug: slug,
+      metadata: {
+        action,
+        limit,
+        summarizeLimit,
+        shouldSummarize,
+        shouldIngest,
+        shouldRefreshTags,
+      },
+    },
+    request.headers,
+  );
 
   return NextResponse.json({ ingest: result, summarize, tags });
 }

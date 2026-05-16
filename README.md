@@ -445,6 +445,7 @@ pnpm start
 | `CRAWLEE_PLAYWRIGHT_ENABLED` | `true` | Crawlee Playwright fallback 사용 여부 |
 | `CRAWLEE_STORAGE_DIR` | `.crawlee-storage` | Crawlee 로컬 저장소 |
 | `ENABLE_VERCEL_CRAWLING` | `false` | Vercel 함수 안에서 무거운 수집 허용 여부 |
+| `SITE_ANALYTICS_ENABLED` | `true` | `false`이면 자체 이용 통계 이벤트 저장 비활성화 |
 
 ### BVerfG 관련 값
 
@@ -661,6 +662,7 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 
 ```text
 /admin
+/admin/analytics
 /admin/ingestion-runs
 ```
 
@@ -685,8 +687,11 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | 태그 갱신 | 공개 자료 기준으로 태그 개수를 다시 계산합니다 |
 | 검토 목록 | 실패, 차단, timeout, 검토 필요 자료를 확인하고 검토 유형·권장 다음 절차에 따라 요약/공개/비공개 결정을 실행합니다 |
 | 요약 실패 1건 재시도 | 검토 목록의 `요약 실패` 뱃지를 눌러 해당 자료만 다시 요약합니다 |
+| 이용 통계 | 인기 자료, 검색어 순위, 검색 결과 0건, 태그 클릭, 국가/기관별 조회, 수집 성공률, 요약 모델별 성공·실패를 확인합니다 |
 
 `요약 실패` 뱃지 재시도가 성공하면 해당 자료는 즉시 검토 목록에서 사라집니다. 실패하면 같은 줄에 실패 메시지가 표시됩니다.
+
+자체 이용 통계는 `site_events` 테이블에 저장합니다. IP 주소나 쿠키 기반 사용자 식별값은 저장하지 않고, referrer host, 대략적인 브라우저/디바이스, 검색어, 자료/태그/기관 식별자처럼 운영에 필요한 집계 필드만 남깁니다.
 
 관리 API는 다음과 같습니다.
 

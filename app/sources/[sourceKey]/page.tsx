@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArticleGrid } from "@/components/article-grid";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { getSourceByKey, listArticles } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
@@ -23,6 +25,17 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
   const source = await getSourceByKey(sourceKey);
   if (!source) notFound();
   const articles = await listArticles({ source: source.sourceKey, pageSize: 30 });
+  await recordSiteEvent(
+    {
+      eventType: "source_view",
+      path: `/sources/${source.sourceKey}`,
+      sourceKey: source.sourceKey,
+      jurisdiction: source.jurisdiction,
+      institutionName: source.name,
+      resultCount: articles.pageInfo.total,
+    },
+    await headers(),
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

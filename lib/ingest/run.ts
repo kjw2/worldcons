@@ -537,7 +537,11 @@ async function summarizeCandidateRow(
       .from("articles")
       .update({
         status: "failed_summary",
-        error_metadata: { message },
+        error_metadata: {
+          message,
+          requestedProvider: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
+          requestedModel: options.model ?? null,
+        },
       })
       .eq("id", row.id);
     return { status: "failed" as const, errorMessage: message };

@@ -1,4 +1,4 @@
-import { LayoutDashboard, ListChecks } from "lucide-react";
+import { BarChart3, LayoutDashboard, ListChecks } from "lucide-react";
 
 function withSecret(path: string, secret?: string | null) {
   return secret ? `${path}?secret=${encodeURIComponent(secret)}` : path;
@@ -8,7 +8,7 @@ export function AdminTabs({
   active,
   secret,
 }: {
-  active: "dashboard" | "ingestion-runs";
+  active: "dashboard" | "analytics" | "ingestion-runs";
   secret?: string | null;
 }) {
   const tabs = [
@@ -17,6 +17,12 @@ export function AdminTabs({
       href: withSecret("/admin", secret),
       label: "대시보드",
       icon: LayoutDashboard,
+    },
+    {
+      key: "analytics" as const,
+      href: withSecret("/admin/analytics", secret),
+      label: "이용 통계",
+      icon: BarChart3,
     },
     {
       key: "ingestion-runs" as const,

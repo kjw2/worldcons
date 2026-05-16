@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArticleGrid } from "@/components/article-grid";
 import { TagPill } from "@/components/tag-pill";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { getTagBySlug, listTags } from "@/lib/db/queries";
 import { tagMetadata } from "@/lib/seo/metadata";
 import { formatDisplayDate } from "@/lib/utils/dates";
@@ -21,6 +23,16 @@ export default async function TagDetailPage({ params }: { params: Promise<{ slug
   const result = await getTagBySlug(slug);
   if (!result) notFound();
   const relatedTags = (await listTags({ sort: "latest" })).filter((tag) => tag.slug !== result.tag.slug).slice(0, 8);
+  await recordSiteEvent(
+    {
+      eventType: "tag_view",
+      path: `/tags/${result.tag.slug}`,
+      tagSlug: result.tag.slug,
+      tagName: result.tag.name,
+      resultCount: result.articles.length,
+    },
+    await headers(),
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

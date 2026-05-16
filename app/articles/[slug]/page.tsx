@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { AdminReviewActions, type SummaryModelOption } from "@/components/admin-review-actions";
@@ -8,6 +9,7 @@ import { SummarySection } from "@/components/summary-section";
 import { TagPill } from "@/components/tag-pill";
 import { hasGeminiKey, hasOpenAiKey } from "@/lib/ai/client";
 import { getGeminiModels } from "@/lib/ai/gemini-router";
+import { recordSiteEvent } from "@/lib/analytics/events";
 import { getArticleBySlug, getRelatedArticles } from "@/lib/db/queries";
 import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
@@ -303,6 +305,21 @@ export default async function ArticlePage({
   const collection = article.sourceMetadata?.collection as
     | { strategy?: string; confidence?: string; sourceUrlVerified?: boolean; diagnosticsId?: string }
     | undefined;
+  if (!includeUnpublished) {
+    await recordSiteEvent(
+      {
+        eventType: "article_view",
+        path: `/articles/${article.slug}`,
+        articleId: article.id,
+        articleSlug: article.slug,
+        articleTitle: article.koreanTitle || article.originalTitle,
+        sourceKey: article.sourceKey,
+        jurisdiction: article.jurisdiction,
+        institutionName: article.institutionName,
+      },
+      await headers(),
+    );
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">

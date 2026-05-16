@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordSearchEvent } from "@/lib/analytics/events";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleContentType } from "@/lib/db/types";
 import { ARTICLE_CONTENT_TYPES } from "@/lib/db/types";
@@ -25,6 +26,21 @@ export async function GET(request: Request) {
     pageSize: Number(searchParams.get("pageSize") ?? 20),
   };
   const result = mode === "semantic" ? await semanticSearch(filters) : mode === "hybrid" ? await hybridSearch(filters) : await listArticles(filters);
+  await recordSearchEvent({
+    query: filters.q,
+    mode,
+    resultCount: result.pageInfo.total,
+    path: "/api/search",
+    headers: request.headers,
+    metadata: {
+      source: filters.source,
+      jurisdiction: filters.jurisdiction,
+      tag: filters.tag,
+      language: filters.language,
+      type: filters.type,
+      page: filters.page,
+    },
+  });
 
   return NextResponse.json({ ...result, mode });
 }
