@@ -80,7 +80,7 @@ function inlineCrawlerBlockReason() {
   if (process.env.VERCEL !== "1") return null;
   if (process.env.CRAWLEE_WORKER === "true") return null;
   if (process.env.ENABLE_VERCEL_CRAWLING === "true") return null;
-  return "Inline crawling is disabled on Vercel. Run pnpm crawl:worker in GitHub Actions, Cloud Run, Apify Actor, or another worker runtime.";
+  return "Vercel 함수에서는 인라인 수집이 기본 차단되어 있습니다. GitHub Actions Crawlee worker를 실행하거나 ENABLE_VERCEL_CRAWLING=true를 설정하세요.";
 }
 
 async function createIngestionRun(sourceKey: string) {
@@ -661,65 +661,18 @@ export async function runRefreshTagCounts(options: { deleteOrphans?: boolean } =
     return { mode: "no-database", refreshed: false, message: "Supabase 환경변수가 없어 mock tag count를 사용합니다." };
   }
 
-  const tagCounts = new Map<string, { articleCount: number; latestArticleAt: string | null }>();
-  let rangeStart = 0;
-  const pageSize = 1000;
+  const { error } = await supabase.rpc("refresh_tag_counts");
+  if (error) throw new Error(`refresh_tag_counts RPC failed: ${error.message}`);
 
-  while (true) {
-    const { data, error } = await supabase
-      .from("article_tags")
-      .select("tag_id, articles(original_published_at, status, source_metadata)")
-      .range(rangeStart, rangeStart + pageSize - 1);
-    if (error) throw new Error(error.message);
-
-    const rows = (data ?? []) as Array<{
-      tag_id: string;
-      articles?: { original_published_at?: string | null; status?: string | null; source_metadata?: unknown } | Array<{ original_published_at?: string | null; status?: string | null; source_metadata?: unknown }> | null;
-    }>;
-
-    for (const row of rows) {
-      const article = Array.isArray(row.articles) ? row.articles[0] : row.articles;
-      const metadata = typeof article?.source_metadata === "object" && article.source_metadata !== null ? (article.source_metadata as { collection?: { publishable?: boolean } }) : {};
-      if (article?.status !== "summarized" || metadata.collection?.publishable !== true) continue;
-
-      const current = tagCounts.get(row.tag_id) ?? { articleCount: 0, latestArticleAt: null };
-      current.articleCount += 1;
-      if (article.original_published_at && (!current.latestArticleAt || article.original_published_at > current.latestArticleAt)) {
-        current.latestArticleAt = article.original_published_at;
-      }
-      tagCounts.set(row.tag_id, current);
-    }
-
-    if (rows.length < pageSize) break;
-    rangeStart += pageSize;
-  }
-
-  const tagIds: string[] = [];
-  rangeStart = 0;
-  while (true) {
-    const { data, error } = await supabase.from("tags").select("id").range(rangeStart, rangeStart + pageSize - 1);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as Array<{ id: string }>;
-    tagIds.push(...rows.map((row) => row.id));
-    if (rows.length < pageSize) break;
-    rangeStart += pageSize;
-  }
-
-  for (const tagId of tagIds) {
-    const counts = tagCounts.get(tagId) ?? { articleCount: 0, latestArticleAt: null };
-    const { error } = await supabase
-      .from("tags")
-      .update({
-        article_count: counts.articleCount,
-        latest_article_at: counts.latestArticleAt,
-      })
-      .eq("id", tagId);
-    if (error) throw new Error(error.message);
-  }
-
+  let deletedOrphans = false;
   if (options.deleteOrphans) {
     const { error: deleteError } = await supabase.from("tags").delete().eq("article_count", 0);
     if (deleteError) throw new Error(deleteError.message);
+    deletedOrphans = true;
   }
-  return { mode: "database", refreshed: true, strategy: "client-aggregate", updatedTags: tagIds.length, deletedOrphans: Boolean(options.deleteOrphans) };
+
+  const { count, error: countError } = await supabase.from("tags").select("id", { count: "exact", head: true });
+  if (countError) throw new Error(countError.message);
+
+  return { mode: "database", refreshed: true, strategy: "rpc", updatedTags: count ?? undefined, deletedOrphans };
 }

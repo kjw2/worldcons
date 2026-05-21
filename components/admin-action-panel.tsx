@@ -30,10 +30,15 @@ function compactResult(result: unknown) {
   const ingest = result.ingest;
   if (isRecord(ingest)) {
     const mode = typeof ingest.mode === "string" ? ingest.mode : "unknown";
-    const results = Array.isArray(ingest.results) ? ingest.results : [];
-    const fetched = results.reduce((sum, item) => (isRecord(item) && typeof item.fetchedCount === "number" ? sum + item.fetchedCount : sum), 0);
-    const failed = results.reduce((sum, item) => (isRecord(item) && typeof item.failedCount === "number" ? sum + item.failedCount : sum), 0);
-    parts.push(`수집 ${mode}: fetched ${fetched}, failed ${failed}`);
+    const message = typeof ingest.message === "string" ? ingest.message : null;
+    if (mode === "blocked" && message) {
+      parts.push(`수집 차단: ${message}`);
+    } else {
+      const results = Array.isArray(ingest.results) ? ingest.results : [];
+      const fetched = results.reduce((sum, item) => (isRecord(item) && typeof item.fetchedCount === "number" ? sum + item.fetchedCount : sum), 0);
+      const failed = results.reduce((sum, item) => (isRecord(item) && typeof item.failedCount === "number" ? sum + item.failedCount : sum), 0);
+      parts.push(`수집 ${mode}: fetched ${fetched}, failed ${failed}`);
+    }
   }
 
   const summarize = result.summarize;
@@ -46,9 +51,10 @@ function compactResult(result: unknown) {
 
   const tags = result.tags;
   if (isRecord(tags)) {
-    const refreshed = tags.refreshed === true ? "완료" : "대기";
+    const refreshed = tags.refreshed === true ? "완료" : "실패";
     const updated = typeof tags.updatedTags === "number" ? `, ${tags.updatedTags}개` : "";
-    parts.push(`태그: ${refreshed}${updated}`);
+    const message = typeof tags.errorMessage === "string" ? ` (${tags.errorMessage})` : "";
+    parts.push(`태그: ${refreshed}${updated}${message}`);
   }
 
   return parts.length > 0 ? parts.join(" / ") : "작업이 완료되었습니다.";
