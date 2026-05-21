@@ -14,7 +14,7 @@ export function articleJsonLd(article: ArticleDetail) {
     url: `${getAppBaseUrl()}/articles/${article.slug}`,
     publisher: {
       "@type": "Organization",
-      name: "헌법재판소도서관 헌법판례요약시스템",
+      name: "헌법판례요약시스템",
     },
     about: article.tags.map((tag) => tag.name),
   };
