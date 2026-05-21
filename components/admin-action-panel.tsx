@@ -76,6 +76,7 @@ export function AdminActionPanel({ sources, secret }: { sources: SourceRecord[];
     const limit = toNumber(formData.get("limit"), 5);
     const summarizeLimit = toNumber(formData.get("summarizeLimit"), 10);
     const refreshTags = formData.get("refreshTags") === "on";
+    const allowVercelCrawling = formData.get("allowVercelCrawling") === "on";
     const endpoint = secret ? `/api/admin/ingest?secret=${encodeURIComponent(secret)}` : "/api/admin/ingest";
 
     setPendingAction(action);
@@ -93,6 +94,7 @@ export function AdminActionPanel({ sources, secret }: { sources: SourceRecord[];
           summarizeLimit,
           summarize: action === "ingest-and-summarize",
           refreshTags: refreshTags || action === "refresh-tags" || action === "ingest-and-summarize",
+          allowVercelCrawling,
         }),
       });
       const payload: unknown = await response.json().catch(() => ({}));
@@ -146,6 +148,10 @@ export function AdminActionPanel({ sources, secret }: { sources: SourceRecord[];
         <label className="inline-flex min-h-10 items-center gap-2 rounded-md border border-rule px-3 text-sm font-medium text-ink/72 md:col-span-4">
           <input name="refreshTags" type="checkbox" defaultChecked className="size-4 rounded border-rule text-court" />
           작업 뒤 태그 집계 갱신
+        </label>
+        <label className="inline-flex min-h-10 items-center gap-2 rounded-md border border-rule px-3 text-sm font-medium text-ink/72 md:col-span-4">
+          <input name="allowVercelCrawling" type="checkbox" className="size-4 rounded border-rule text-court" />
+          Vercel 직접 수집 허용
         </label>
       </form>
 

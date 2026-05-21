@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     const slug = typeof body.slug === "string" ? body.slug : undefined;
     const limit = body.limit === undefined ? undefined : boundedInteger(body.limit, 20, { min: 1, max: 100 });
     const summarizeLimit = boundedInteger(body.summarizeLimit ?? limit ?? 20, 20, { min: 1, max: 100 });
+    const allowVercelCrawling = body.allowVercelCrawling === true;
     const shouldSummarize = action === "summarize" || action === "retry-summary" || action === "ingest-and-summarize" || body.summarize === true;
     const shouldIngest = action === "ingest" || action === "ingest-and-summarize";
     const shouldRefreshTags = action === "refresh-tags" || body.refreshTags === true || shouldSummarize;
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "articleId or slug is required" }, { status: 400 });
     }
 
-    const result = shouldIngest ? await runIngest({ sourceKey, limit }) : null;
+    const result = shouldIngest ? await runIngest({ sourceKey, limit, allowVercelCrawling }) : null;
     const summarize = action === "retry-summary"
       ? await runSummarizeArticle({ articleId, slug })
       : shouldSummarize
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
           shouldSummarize,
           shouldIngest,
           shouldRefreshTags,
+          allowVercelCrawling,
         },
       },
       request.headers,

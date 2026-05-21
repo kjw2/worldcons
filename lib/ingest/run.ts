@@ -41,6 +41,7 @@ interface RunIngestOptions {
   debug?: boolean;
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
+  allowVercelCrawling?: boolean;
 }
 
 interface SummarizeArticleOptions extends LlmCompletionOptions {
@@ -76,11 +77,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function inlineCrawlerBlockReason() {
+function inlineCrawlerBlockReason(options: RunIngestOptions = {}) {
   if (process.env.VERCEL !== "1") return null;
   if (process.env.CRAWLEE_WORKER === "true") return null;
   if (process.env.ENABLE_VERCEL_CRAWLING === "true") return null;
-  return "Vercel 함수에서는 인라인 수집이 기본 차단되어 있습니다. GitHub Actions Crawlee worker를 실행하거나 ENABLE_VERCEL_CRAWLING=true를 설정하세요.";
+  if (options.allowVercelCrawling === true) return null;
+  return "Vercel 함수에서는 인라인 수집이 기본 차단되어 있습니다. 관리자 화면에서 Vercel 직접 수집 허용을 켜거나 GitHub Actions Crawlee worker를 실행하세요.";
 }
 
 async function createIngestionRun(sourceKey: string) {
@@ -361,7 +363,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
 
 export async function runIngest(options: RunIngestOptions = {}) {
   const limit = boundedInteger(options.limit ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
-  const blocked = inlineCrawlerBlockReason();
+  const blocked = inlineCrawlerBlockReason(options);
   if (blocked) {
     return {
       mode: "blocked",
