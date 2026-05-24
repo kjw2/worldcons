@@ -72,3 +72,5 @@ jobs:
             SOURCE_ARG=("--source=$SOURCE_INPUT")
           fi
           pnpm crawl:worker -- "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --use-playwright --debug
+      - name: Summarize pending articles
+        run: pnpm summarize-pending -- --limit=20
