@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { FilterBar } from "@/components/filter-bar";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
-import { SearchBox } from "@/components/search-box";
 import { chipClassName } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageShell } from "@/components/ui/page-shell";
@@ -95,7 +94,6 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
       type: filters.type,
     },
   });
-  const searchHiddenFields = [...params.entries()].filter(([key]) => key !== "q" && key !== "page");
   const sourceMap = new Map(sources.map((source) => [source.sourceKey, source.name]));
   const tagMap = new Map(tags.map((tag) => [tag.slug, tag.name]));
   const activeFilterChips = [
@@ -117,7 +115,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
         description="정확한 문구부터 의미가 가까운 쟁점까지 공식 헌법재판 자료 안에서 탐색합니다."
       />
       <div className="mb-5">
-        <SearchBox defaultValue={q} action="/search" variant="hero" hiddenFields={searchHiddenFields} />
+        <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} params={params} basePath="/search" />
       </div>
 
       <SurfaceCard className="mb-5 space-y-4 p-4">
@@ -155,9 +153,6 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
         ) : null}
       </SurfaceCard>
 
-      <div className="mb-6">
-        <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} params={params} basePath="/search" />
-      </div>
       {articles.pageInfo.total === 0 ? (
         <EmptyState
           title="검색 결과가 없습니다"

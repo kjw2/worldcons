@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { SearchBox } from "@/components/search-box";
 import type { ArticleContentType, SourceRecord, TagSummary } from "@/lib/db/types";
 import type { TimeRange } from "@/lib/utils/dates";
 import { TimeRangeTabs } from "@/components/time-range-tabs";
@@ -62,33 +63,45 @@ export function FilterBar({
   if (params.get("q")) resetParams.set("q", params.get("q") ?? "");
   if (params.get("mode")) resetParams.set("mode", params.get("mode") ?? "");
   const resetHref = resetParams.toString() ? `${basePath}?${resetParams.toString()}` : basePath;
+  const searchHiddenFields = [...params.entries()].filter(([key]) => key !== "q" && key !== "page" && key !== "pageSize");
 
   return (
     <SurfaceCard className="space-y-4 p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <TimeRangeTabs activeRange={activeRange} basePath={basePath} params={params} />
-        <div className="flex flex-wrap items-center gap-2">
-          {jurisdictions.map((jurisdiction) => {
-            const isActive = activeJurisdiction === jurisdiction;
-            const theme = themeForJurisdiction(jurisdiction);
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <TimeRangeTabs activeRange={activeRange} basePath={basePath} params={params} />
+          <div className="flex flex-wrap items-center gap-2">
+            {jurisdictions.map((jurisdiction) => {
+              const isActive = activeJurisdiction === jurisdiction;
+              const theme = themeForJurisdiction(jurisdiction);
 
-            return (
-              <Link
-                key={jurisdiction}
-                href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
-                style={jurisdictionThemeStyle(theme)}
-                className={chipClassName(isActive ? "selected" : "country")}
-              >
-                {jurisdictionLabels[jurisdiction] ?? jurisdiction}
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={jurisdiction}
+                  href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
+                  style={jurisdictionThemeStyle(theme)}
+                  className={chipClassName(isActive ? "selected" : "country")}
+                >
+                  {jurisdictionLabels[jurisdiction] ?? jurisdiction}
+                </Link>
+              );
+            })}
+          </div>
+          {hasAnyFilters ? (
+            <Link href={resetHref} className={chipClassName("muted")}>
+              초기화
+            </Link>
+          ) : null}
         </div>
-        {hasAnyFilters ? (
-          <Link href={resetHref} className={chipClassName("muted")}>
-            초기화
-          </Link>
-        ) : null}
+        <div className="w-full lg:max-w-md">
+          <SearchBox
+            defaultValue={params.get("q") ?? ""}
+            action={basePath}
+            placeholder="검색어를 입력하세요"
+            variant="compact"
+            hiddenFields={searchHiddenFields}
+          />
+        </div>
       </div>
 
       <details className="group rounded-lg border border-line bg-surface-muted/45" open={hasAdvancedFilters}>

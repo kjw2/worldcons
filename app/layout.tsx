@@ -15,7 +15,6 @@ export const metadata: Metadata = {
 
 const navItems = [
   { href: "/", label: "최신" },
-  { href: "/search", label: "검색" },
   { href: "/tags", label: "태그" },
   { href: "/sources", label: "기관" },
   { href: "/glossary", label: "용어" },
