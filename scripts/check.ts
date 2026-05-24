@@ -333,10 +333,9 @@ async function main() {
   assert(franceSeedOnly.items.length === 0, "France seed fallback must save candidates only, not article rows");
 
   console.log("All checks passed.");
-  process.exit(0);
 }
 
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

@@ -1,6 +1,39 @@
 # Progress
 
-프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX, DB 기반 이용 통계 화면, 접속 정보 수집, 기본 rate limit까지 완료했다.
+프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX, DB 기반 이용 통계 화면, 접속 정보 수집, 기본 rate limit까지 완료했다. 2026-05-24 재전수 조사에서 자동 수집/요약 무인운영, 7일 범위 재수집, 기존 원문 리프레시, 미국/독일/프랑스 수집원별 주의사항, 태그 갱신 CLI 종료 오류까지 완료했다.
+
+## 2026-05-24 Full Audit Remediation
+
+| ID | Priority | Area | 발견 사항 | 처리 내용 | Status | Progress |
+| --- | --- | --- | --- | --- | --- | --- |
+| I0-01 | P0 | Automation | 관리자 페이지 수동 실행에 의존하면 수집 후 요약까지 공개 흐름이 끊길 수 있음 | GitHub Actions 일일 수집을 `INGEST_RANGE_DAYS=7`, `INGEST_REFRESH_EXISTING=true`로 고정하고 수집 직후 `summarize-pending`, `refresh-tag-counts`까지 이어지는 무인운영 흐름으로 연결 | Done | 100% |
+| I0-02 | P0 | Cron API | `/api/admin/cron/ingest` 기본값이 최신 변경 원문을 다시 확인하지 않으면 자동 cron과 GitHub Actions 동작이 갈라질 수 있음 | cron ingest 기본 range를 7일로 두고 기존 canonical URL도 hash 비교 후 갱신하도록 `refreshExisting` 기본 동작을 맞춤 | Done | 100% |
+| I0-03 | P0 | Existing article refresh | 이미 저장된 URL은 중복으로 간주되어 프랑스처럼 소제목/본문 구조가 바뀐 원문이 DB에 반영되지 않을 수 있음 | 기존 article의 `source_content_hash`를 현재 공식 원문 hash와 비교하고 변경 시 원문, cleaned text, metadata를 갱신한 뒤 요약/태그를 비워 재요약 큐로 되돌림 | Done | 100% |
+| I0-04 | P0 | France sync | 최신 30일 프랑스 결정 일부가 누락되거나 공식 원문 변경분이 오래된 요약으로 남을 수 있음 | 프랑스 30일 재수집/리프레시를 수행해 신규 3건과 변경 5건을 반영, 총 9건 모두 공식 원문 hash 일치 및 summarized/publishable 상태로 정리 | Done | 100% |
+| I0-05 | P0 | France reliability | Conseil/QPC360 접근이 느리거나 타임아웃이 나면 최신 수집이 불안정함 | 프랑스 Crawlee 기본 timeout, retry, same-domain delay, concurrency를 별도 env로 조정 가능하게 하고 7일 dry-run에서 16/16 요청 성공 확인 | Done | 100% |
+| I0-06 | P0 | United States scope | 미국 수집에서 명령, 보도자료, 기타 비헌법 의견이 공개 큐에 섞이면 서비스 범위가 흐려짐 | SCOTUS discovery를 공식 slip opinion 목록으로 제한하고, 의견 본문은 헌법 관련성 필터를 통과한 경우에만 저장/요약하도록 보강 | Done | 100% |
+| I0-07 | P0 | Germany source split | BVerfG는 목록 탐색과 원문 상세 사이트가 달라 공식 검색 URL/robots 정책을 잘못 쓰면 수집이 실패하거나 차단될 수 있음 | Open Legal Data API를 7일 목록/ECLI 인덱스로만 사용하고, 원문은 공식 `bundesverfassungsgericht.de` 상세 URL에서 다시 fetch하도록 분리 | Done | 100% |
+| I1-01 | P1 | Tag refresh CLI | `pnpm refresh-tag-counts`가 성공 JSON 출력 후 Windows Node `uv async` assertion으로 비정상 종료할 수 있음 | 성공 경로의 강제 `process.exit(0)` 제거, catch는 `process.exitCode=1`로 전환해 열린 Supabase handle 정리를 런타임에 맡김 | Done | 100% |
+| I1-02 | P1 | Check CLI | `pnpm check`도 async spider 검증 뒤 강제 종료를 사용해 동일 계열 종료 안정성 위험이 있음 | `scripts/check.ts` 성공 강제 종료를 제거하고 오류 경로만 exit code를 설정하도록 변경 | Done | 100% |
+| I1-03 | P1 | Audit hygiene | `TODO`, `미구현`, `추후`, `placeholder`, `mock` 등 검색 결과에 의도된 개발 fallback/입력 placeholder/과거 progress 기록이 섞여 실제 미완성 항목과 구분이 필요함 | 활성 실행 경로 기준으로 blocking unfinished keyword scan을 재실행했고 남은 항목은 README의 의도된 fallback 설명, UI placeholder, 관리자 추천 문구, 과거 완료 기록으로 분류 | Done | 100% |
+
+## 2026-05-24 Full Audit Verification
+
+| Check | Result |
+| --- | --- |
+| Active blocking unfinished keyword scan over app/components/lib/scripts/workers/README.md/supabase | Pass, 0 matches after excluding intentional placeholder/mock/fallback wording and historical progress records |
+| `pnpm refresh-tag-counts` | Pass, database RPC strategy, updatedTags 2666, exit code 0 |
+| `pnpm exec tsc --noEmit` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm check` | Pass |
+| `pnpm build` | Pass |
+| `pnpm crawl:worker -- --source=us-scotus --limit=20 --range-days=7 --dry-run --no-playwright` | Pass, official slip opinion listing found 3 latest opinions in range |
+| `pnpm crawl:worker -- --source=fr-conseil-constitutionnel --limit=20 --range-days=7 --dry-run --no-playwright` | Pass, 14 discovered before range, 3 in 7-day range, 16/16 crawler requests succeeded |
+| `pnpm crawl:worker -- --source=de-bverfg --limit=20 --range-days=7 --dry-run --no-playwright` | Pass, Open Legal Data listing returned 0 BVerfG decisions in range with explicit diagnostic |
+| France 30-day DB/source reconciliation | Pass, 9/9 current official normalized text hashes match DB and all 9 are summarized + publishable |
+| United States 30-day DB/source reconciliation | Pass, 7 rows in range, all summarized + publishable, 7-day refresh found 3 unchanged latest opinions |
+| Germany 30-day DB/source reconciliation | Pass, no current 30-day BVerfG decisions found by the configured listing source |
+| GitHub Actions automation | Pass, daily workflow now collects each country with a 7-day range, refreshes existing records, summarizes pending rows, and refreshes tag counts |
 
 ## 2026-05-16 Full Audit Remediation
 

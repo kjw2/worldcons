@@ -5,10 +5,9 @@ async function main() {
   const deleteOrphans = process.argv.includes("--delete-orphans");
   const result = await runRefreshTagCounts({ deleteOrphans });
   console.log(JSON.stringify(result, null, 2));
-  process.exit(0);
 }
 
 main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });
