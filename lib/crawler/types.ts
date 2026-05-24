@@ -112,6 +112,7 @@ export interface SourceDiscoveryOptions {
   debug?: boolean;
   dryRun?: boolean;
   limit?: number;
+  rangeDays?: number;
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
   diagnostics?: CrawlerDiagnosticsCollector;

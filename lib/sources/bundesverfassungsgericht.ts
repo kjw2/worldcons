@@ -58,12 +58,14 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
   async discover(options) {
     const result = await runBverfgSpider({
       limit: discoveryLimit(options),
+      rangeDays: options?.rangeDays,
+      dryRun: options?.dryRun,
       strategy: options?.strategy ?? "auto",
       usePlaywright: options?.usePlaywright,
       diagnostics: options?.diagnostics,
     });
     for (const entry of result.items) remember(entry.raw);
-    if (result.items.length === 0) {
+    if (result.items.length === 0 && !options?.rangeDays) {
       const candidateResult = options?.dryRun
         ? { inserted: 0, skipped: BVERFG_SEED_DECISIONS.length }
         : await upsertSourceUrlCandidates(

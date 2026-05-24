@@ -16,6 +16,8 @@ export interface CrawleeSeedItem {
 
 export interface CrawleeSpiderOptions {
   limit?: number;
+  rangeDays?: number;
+  dryRun?: boolean;
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
   diagnostics?: CrawlerDiagnosticsCollector;

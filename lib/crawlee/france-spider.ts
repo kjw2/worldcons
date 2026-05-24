@@ -182,5 +182,14 @@ const config: OfficialSpiderConfig = {
 };
 
 export function runFranceSpider(options: CrawleeSpiderOptions = {}) {
+  process.env.FRANCE_CRAWL_DELAY_MS ??= "3000";
+  process.env.FRANCE_TIMEOUT_MS ??= "90000";
+  process.env.FRANCE_MAX_CONCURRENCY ??= "1";
+  process.env.CRAWLER_DELAY_MS = process.env.FRANCE_CRAWL_DELAY_MS;
+  process.env.CRAWLER_TIMEOUT_MS = process.env.FRANCE_TIMEOUT_MS;
+  process.env.CRAWLEE_MAX_CONCURRENCY = process.env.FRANCE_MAX_CONCURRENCY;
+  process.env.CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY = process.env.FRANCE_MAX_CONCURRENCY;
+  process.env.CRAWLEE_REQUEST_TIMEOUT_SECS = String(Math.max(30, Math.ceil(Number(process.env.FRANCE_TIMEOUT_MS) / 1000)));
+  process.env.CRAWLEE_NAVIGATION_TIMEOUT_SECS = String(Math.max(30, Math.ceil(Number(process.env.FRANCE_TIMEOUT_MS) / 1000)));
   return runOfficialSpider(config, options);
 }

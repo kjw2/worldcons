@@ -4,6 +4,7 @@ import { getSourceAdapter } from "@/lib/sources";
 import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
 import { boundedInteger } from "@/lib/utils/numbers";
+import { parseDate } from "@/lib/utils/dates";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
 
 process.env.CRAWLEE_WORKER = "true";
@@ -16,14 +17,34 @@ function boolArg(name: string) {
   return process.argv.includes(`--${name}`);
 }
 
-async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyOption, usePlaywright: boolean | undefined) {
+function optionalPositiveInteger(value?: string) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+
+function rangeStartForDays(days: number) {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+}
+
+function isInRange(publishedAt: string | undefined, rangeDays?: number) {
+  if (!rangeDays) return true;
+  const parsed = parseDate(publishedAt);
+  return Boolean(parsed && parsed >= rangeStartForDays(rangeDays));
+}
+
+async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyOption, usePlaywright: boolean | undefined, rangeDays?: number) {
   const adapter = getSourceAdapter(sourceKey);
   if (!adapter) throw new Error(`Unknown source: ${sourceKey}`);
   const diagnostics = createDiagnosticsCollector(sourceKey);
-  const items = (await adapter.discover({ strategy, usePlaywright, diagnostics, debug: true, dryRun: true, limit })).slice(0, limit);
+  const discovered = await adapter.discover({ strategy, usePlaywright, diagnostics, debug: true, dryRun: true, limit, rangeDays });
+  const items = discovered.filter((item) => isInRange(item.publishedAt, rangeDays)).slice(0, limit);
   return {
     mode: "dry-run",
     sourceKey,
+    rangeDays,
+    discoveredCountBeforeRange: discovered.length,
     discoveredCount: items.length,
     items: items.map((item) => ({
       title: item.title,
@@ -44,14 +65,16 @@ async function main() {
   const limit = boundedInteger(argValue("limit") ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const strategy = (argValue("strategy") as CrawlStrategyOption | undefined) ?? "auto";
   const usePlaywright = boolArg("use-playwright") ? true : boolArg("no-playwright") ? false : undefined;
+  const rangeDays = optionalPositiveInteger(argValue("range-days") ?? process.env.INGEST_RANGE_DAYS);
+  const refreshExisting = boolArg("refresh-existing") ? true : boolArg("no-refresh-existing") ? false : undefined;
 
   if (boolArg("dry-run")) {
     if (!normalizedSourceKey) throw new Error("--dry-run requires --source=de-bverfg|fr-conseil-constitutionnel|fr-qpc360|us-scotus");
-    console.log(JSON.stringify(await dryRun(normalizedSourceKey, limit, strategy, usePlaywright), null, 2));
+    console.log(JSON.stringify(await dryRun(normalizedSourceKey, limit, strategy, usePlaywright, rangeDays), null, 2));
     return;
   }
 
-  const result = await runIngest({ sourceKey: normalizedSourceKey, limit, strategy, usePlaywright, debug: boolArg("debug") });
+  const result = await runIngest({ sourceKey: normalizedSourceKey, limit, strategy, usePlaywright, debug: boolArg("debug"), rangeDays, refreshExisting });
   console.log(JSON.stringify(result, null, 2));
 }
 

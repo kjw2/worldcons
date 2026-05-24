@@ -1,4 +1,5 @@
 import type { CrawlStrategy } from "@/lib/crawler/types";
+import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
 import { SITEMAP_KEYWORDS } from "@/lib/crawler/sitemap";
 import { titleFromUrl } from "@/lib/crawler/extract-metadata";
@@ -9,10 +10,10 @@ import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { parseDate } from "@/lib/utils/dates";
 
 export const BVERFG_BASE_URL = "https://www.bundesverfassungsgericht.de";
+const OPEN_LEGAL_DATA_BVERFG_API = "https://de.openlegaldata.io/api/cases/?court=3&format=json&o=-date";
 
 const LIST_URLS = [
   `${BVERFG_BASE_URL}/DE/Entscheidungen/entscheidungen_node.html`,
-  BVERFG_BASE_URL,
 ];
 
 const LIST_SELECTORS = [
@@ -56,6 +57,18 @@ export const BVERFG_SEED_DECISIONS = [
     publishedAt: "10.04.2026",
   },
 ];
+
+interface OpenLegalDataCase {
+  file_number?: string | null;
+  date?: string | null;
+  type?: string | null;
+  ecli?: string | null;
+}
+
+interface OpenLegalDataCaseList {
+  next?: string | null;
+  results?: OpenLegalDataCase[];
+}
 
 function parseDatePriority(value?: string) {
   if (!value) return 0;
@@ -104,6 +117,27 @@ function isDecisionDocumentPath(pathname: string) {
   return /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}\d{8}_[a-z0-9]+\.html$/i.test(pathname);
 }
 
+function rangeStartForDays(days?: number) {
+  if (!days) return undefined;
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+}
+
+function isInRange(value: string | null | undefined, rangeStart?: Date) {
+  if (!rangeStart) return true;
+  const parsed = parseDate(value);
+  return Boolean(parsed && parsed >= rangeStart);
+}
+
+function bverfgUrlFromEcli(ecli?: string | null) {
+  const match = ecli?.match(/^ECLI:DE:BVerfG:(20\d{2}):([a-z]{2})(\d{4})(\d{2})(\d{2})\.([a-z0-9]+)$/i);
+  if (!match) return undefined;
+
+  const [, year, prefix, ecliYear, month, day, casePart] = match;
+  if (year !== ecliYear) return undefined;
+  return `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix.toLowerCase()}${year}${month}${day}_${casePart.toLowerCase()}.html`;
+}
+
 function isCandidateUrl(url: string) {
   let parsed: URL;
   try {
@@ -112,18 +146,26 @@ function isCandidateUrl(url: string) {
     return false;
   }
   if (!isOfficialHost(parsed.toString())) return false;
-  if (parsed.search) return false;
   if (!parsed.pathname.endsWith(".html")) return false;
   return contentTypeForUrl(parsed.toString()) === "decision";
 }
 
+function canonicalDecisionUrl(url: string) {
+  const parsed = new URL(url);
+  if (isDecisionDocumentPath(parsed.pathname)) {
+    parsed.search = "";
+  }
+  return canonicalizeUrl(parsed.toString());
+}
+
 function itemFromUrl(url: string, strategy: CrawlStrategy, metadata: Record<string, unknown> = {}): DiscoveredItem {
+  const cleanUrl = canonicalDecisionUrl(url);
   const title = typeof metadata.title === "string" && metadata.title ? metadata.title : titleFromUrl(url);
   const text = [url, title, metadata.surroundingText].filter(Boolean).join(" ");
   return {
     sourceKey: "de-bverfg",
-    url,
-    canonicalUrl: canonicalizeUrl(url),
+    url: cleanUrl,
+    canonicalUrl: cleanUrl,
     title,
     publishedAt: dateFromText(text),
     contentType: "decision",
@@ -156,6 +198,68 @@ function sortItems(items: CrawleeSpiderItem[]) {
   );
 }
 
+async function discoverOpenLegalDataCandidates(options: CrawleeSpiderOptions = {}) {
+  const rangeStart = rangeStartForDays(options.rangeDays);
+  const limit = Math.max(1, options.limit ?? 20);
+  const items: DiscoveredItem[] = [];
+  let nextUrl: string | null | undefined = OPEN_LEGAL_DATA_BVERFG_API;
+  let pages = 0;
+
+  while (nextUrl && pages < 4 && items.length < limit) {
+    pages += 1;
+    const response = await fetch(nextUrl, {
+      headers: {
+        "User-Agent": process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
+        Accept: "application/json,text/plain;q=0.8,*/*;q=0.5",
+      },
+    });
+    if (!response.ok) throw new Error(`Open Legal Data fetch failed: ${response.status}`);
+    const payload = (await response.json()) as OpenLegalDataCaseList;
+    const records = payload.results ?? [];
+
+    for (const record of records) {
+      if (!isInRange(record.date, rangeStart)) continue;
+      const url = bverfgUrlFromEcli(record.ecli);
+      if (!url) continue;
+      items.push({
+        sourceKey: "de-bverfg",
+        url,
+        canonicalUrl: canonicalDecisionUrl(url),
+        title: [record.type, record.date, record.file_number].filter(Boolean).join(" - "),
+        publishedAt: record.date ?? undefined,
+        contentType: "decision",
+        metadata: {
+          discoveryIndex: "Open Legal Data",
+          discoveryIndexUrl: nextUrl,
+          ecli: record.ecli,
+          caseNumber: record.file_number,
+          collection: {
+            source: BVERFG_BASE_URL,
+            strategy: "api",
+            confidence: "medium",
+            sourceUrlVerified: true,
+            publishable: false,
+            sourceTextAvailable: false,
+            reason: "BVerfG decision URL was derived from an external ECLI index; official source text is fetched from BVerfG.",
+          },
+          detailDiscoveryStrategy: "external-ecli-index-to-official-detail",
+          originalLanguage: "de",
+        },
+      });
+      if (items.length >= limit) break;
+    }
+
+    const oldest = records
+      .map((record) => parseDate(record.date))
+      .filter((date): date is Date => Boolean(date))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    if (rangeStart && oldest && oldest < rangeStart) break;
+    nextUrl = payload.next;
+  }
+
+  return items;
+}
+
 const config: OfficialSpiderConfig = {
   sourceKey: "de-bverfg",
   baseUrl: BVERFG_BASE_URL,
@@ -184,5 +288,61 @@ export function runBverfgSpider(options: CrawleeSpiderOptions = {}) {
   process.env.CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY ??= process.env.BVERFG_MAX_CONCURRENCY;
   process.env.CRAWLER_RETRY_COUNT ??= process.env.BVERFG_RETRY_COUNT;
   applyIpv4FirstForSource("de-bverfg");
+
+  if (!options.detailOnly && (!options.strategy || options.strategy === "auto" || options.strategy === "api")) {
+    return discoverOpenLegalDataCandidates(options)
+      .then((candidates) => {
+        if (candidates.length === 0) {
+          addDiagnosticAttempt(options.diagnostics, {
+            url: OPEN_LEGAL_DATA_BVERFG_API,
+            strategy: "api",
+            discoveredCount: 0,
+            errorMessage: "No BVerfG decisions were found in the requested collection date range.",
+          });
+          if (options.rangeDays) {
+            return {
+              sourceKey: config.sourceKey,
+              items: [],
+              diagnostics: options.diagnostics ?? { sourceKey: config.sourceKey, attempts: [] },
+              strategySequence: ["api" as const],
+              usedSeedFallback: false,
+            };
+          }
+          return runOfficialSpider(config, options);
+        }
+        addDiagnosticAttempt(options.diagnostics, {
+          url: OPEN_LEGAL_DATA_BVERFG_API,
+          strategy: "api",
+          discoveredCount: candidates.length,
+          errorMessage: "BVerfG listing discovered through external ECLI index; official detail pages are fetched from bundesverfassungsgericht.de.",
+        });
+        if (options.dryRun) {
+          return {
+            sourceKey: config.sourceKey,
+            items: candidates.map((item) => ({ item })),
+            diagnostics: options.diagnostics ?? { sourceKey: config.sourceKey, attempts: [] },
+            strategySequence: ["api" as const],
+            usedSeedFallback: false,
+          };
+        }
+        return runOfficialSpider(config, {
+          ...options,
+          detailUrls: candidates.map((candidate) => candidate.url),
+          detailOnly: true,
+          strategy: "auto",
+          limit: candidates.length,
+        });
+      })
+      .catch((error) => {
+        addDiagnosticAttempt(options.diagnostics, {
+          url: OPEN_LEGAL_DATA_BVERFG_API,
+          strategy: "api",
+          errorCode: error instanceof Error ? error.name : "OPEN_LEGAL_DATA_ERROR",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        return runOfficialSpider(config, options);
+      });
+  }
+
   return runOfficialSpider(config, options);
 }

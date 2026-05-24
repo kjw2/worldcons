@@ -56,14 +56,6 @@ async function discoverScotusListings(options?: SourceDiscoveryOptions) {
       url: `${BASE_URL}/opinions/slipopinion/${term}`,
       discover: discoverOpinions,
     },
-    {
-      url: `${BASE_URL}/orders/ordersofthecourt/${term}`,
-      discover: discoverOrders,
-    },
-    {
-      url: `${BASE_URL}/publicinfo/press/pressreleases.aspx`,
-      discover: discoverPressReleases,
-    },
   ];
   const items: DiscoveredItem[] = [];
 
@@ -122,85 +114,6 @@ function discoverOpinions(html: string, listingUrl: string): DiscoveredItem[] {
           sourceTextAvailable: false,
           publishable: false,
           reason: "Official SCOTUS listing metadata collected; PDF source text must pass robots.txt before automatic summarization.",
-        },
-      },
-    });
-  });
-
-  return items;
-}
-
-function discoverOrders(html: string, listingUrl: string): DiscoveredItem[] {
-  const $ = load(html);
-  const items: DiscoveredItem[] = [];
-
-  $(".column2 div").each((_, row) => {
-    const spans = $(row).find("span");
-    const publishedAt = $(spans[0]).text().replace(/\s+/g, " ").trim();
-    const link = $(row).find("a[href$='.pdf']").first();
-    const href = link.attr("href");
-    if (!href || !publishedAt) return;
-
-    const url = new URL(href, BASE_URL).toString();
-    items.push({
-      sourceKey: "us-scotus",
-      url,
-      canonicalUrl: canonicalizeUrl(url),
-      title: link.text().replace(/\s+/g, " ").trim() || "Order of the Court",
-      publishedAt,
-      contentType: "order",
-      metadata: {
-        listingUrl,
-        officialListingCollected: true,
-        officialPdfUrlDiscovered: true,
-        collection: {
-          source: BASE_URL,
-          strategy: "official-listing",
-          confidence: "medium",
-          sourceUrlVerified: true,
-          sourceTextAvailable: false,
-          publishable: false,
-          reason: "Official SCOTUS listing metadata collected; PDF source text must pass robots.txt before automatic summarization.",
-        },
-      },
-    });
-  });
-
-  return items;
-}
-
-function discoverPressReleases(html: string, listingUrl: string): DiscoveredItem[] {
-  const $ = load(html);
-  const items: DiscoveredItem[] = [];
-
-  $("table.table tr").each((_, row) => {
-    const cells = $(row).find("td");
-    if (cells.length < 2) return;
-
-    const publishedAt = $(cells[0]).text().replace(/\s+/g, " ").trim();
-    const link = $(cells[1]).find("a[href]").first();
-    const href = link.attr("href");
-    if (!href || !publishedAt) return;
-
-    const url = new URL(href, listingUrl).toString();
-    items.push({
-      sourceKey: "us-scotus",
-      url,
-      canonicalUrl: canonicalizeUrl(url),
-      title: link.text().replace(/\s+/g, " ").trim(),
-      publishedAt,
-      contentType: "press_release",
-      metadata: {
-        listingUrl,
-        officialListingCollected: true,
-        collection: {
-          source: BASE_URL,
-          strategy: "official-listing",
-          confidence: "medium",
-          sourceUrlVerified: true,
-          sourceTextAvailable: false,
-          publishable: false,
-          reason: "Official SCOTUS metadata collected; source text has not been verified yet.",
         },
       },
     });

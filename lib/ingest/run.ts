@@ -5,6 +5,7 @@ import type { CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/cra
 import { createContentHash } from "@/lib/utils/hash";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { generateArticleSlug } from "@/lib/utils/slug";
+import { parseDate } from "@/lib/utils/dates";
 import { sourceAdapters } from "@/lib/sources";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
 import type { NormalizedArticle, SourceAdapter } from "@/lib/sources/types";
@@ -19,9 +20,13 @@ interface SourceRunResult {
   sourceKey: string;
   discoveredCount: number;
   fetchedCount: number;
+  refreshedCount: number;
+  unchangedCount: number;
   summarizedCount: number;
   failedCount: number;
   skippedCount: number;
+  skippedOutOfRangeCount: number;
+  skippedNonConstitutionalCount: number;
   errors: string[];
   diagnostics?: CrawlerDiagnosticsCollector;
   statusCounts: Record<string, number>;
@@ -42,6 +47,8 @@ interface RunIngestOptions {
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
   allowVercelCrawling?: boolean;
+  rangeDays?: number;
+  refreshExisting?: boolean;
 }
 
 interface SummarizeArticleOptions extends LlmCompletionOptions {
@@ -69,6 +76,14 @@ interface SummaryCandidateRow {
   updated_at?: string | null;
 }
 
+interface ExistingArticleRow {
+  id: string;
+  status?: string | null;
+  content_hash?: string | null;
+  cleaned_text?: string | null;
+  source_metadata?: unknown;
+}
+
 const SUMMARY_CANDIDATE_SELECT =
   "id, slug, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, summary_json, status, source_metadata, updated_at";
 const DEFAULT_STALE_SUMMARIZING_MINUTES = 30;
@@ -83,6 +98,34 @@ function inlineCrawlerBlockReason(options: RunIngestOptions = {}) {
   if (process.env.ENABLE_VERCEL_CRAWLING === "true") return null;
   if (options.allowVercelCrawling === true) return null;
   return "Vercel 함수에서는 인라인 수집이 기본 차단되어 있습니다. 관리자 화면에서 Vercel 직접 수집 허용을 켜거나 GitHub Actions Crawlee worker를 실행하세요.";
+}
+
+function optionalPositiveInteger(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+
+function rangeDaysForOptions(options: RunIngestOptions = {}) {
+  return optionalPositiveInteger(options.rangeDays ?? process.env.INGEST_RANGE_DAYS);
+}
+
+function rangeStartForDays(days: number) {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+}
+
+function isItemInDateRange(publishedAt: string | undefined, rangeStart: Date | undefined) {
+  if (!rangeStart) return true;
+  const parsed = parseDate(publishedAt);
+  return Boolean(parsed && parsed >= rangeStart);
+}
+
+function shouldRefreshExistingArticles(options: RunIngestOptions = {}) {
+  if (typeof options.refreshExisting === "boolean") return options.refreshExisting;
+  const env = process.env.INGEST_REFRESH_EXISTING;
+  if (env !== undefined && env !== "") return !["0", "false", "no", "off"].includes(env.toLowerCase());
+  return Boolean(rangeDaysForOptions(options));
 }
 
 async function createIngestionRun(sourceKey: string) {
@@ -120,6 +163,10 @@ async function closeIngestionRun(runId: string | null, result: SourceRunResult, 
         fallbackUsed: Boolean(result.diagnostics?.attempts.some((attempt) => attempt.fallback || attempt.strategy === "seed")),
         statusCounts: result.statusCounts,
         collectionCounts: result.collectionCounts,
+        refreshedCount: result.refreshedCount,
+        unchangedCount: result.unchangedCount,
+        skippedOutOfRangeCount: result.skippedOutOfRangeCount,
+        skippedNonConstitutionalCount: result.skippedNonConstitutionalCount,
       },
     })
     .eq("id", runId);
@@ -139,6 +186,20 @@ export async function articleExists(canonicalUrl: string) {
 
   const { data } = await supabase.from("articles").select("id").eq("canonical_url", canonicalUrl).maybeSingle();
   return Boolean(data);
+}
+
+async function findExistingArticle(canonicalUrl: string): Promise<ExistingArticleRow | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("articles")
+    .select("id, status, content_hash, cleaned_text, source_metadata")
+    .eq("canonical_url", canonicalUrl)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as ExistingArticleRow | null;
 }
 
 export async function articleExistsByNormalizedContent(article: NormalizedArticle) {
@@ -226,25 +287,61 @@ function isGenericCourtTitle(article: NormalizedArticle) {
   return /^(?:Beschluss|Urteil)\s+vom\s+\d{1,2}\.\s+[A-Za-zÄÖÜäöüß]+\s+\d{4}$/i.test(title);
 }
 
-export async function insertNormalizedArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-
-  const sourceId = await findSourceId(article.sourceKey);
+function storagePlanForArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
   const constitutionalRelevant = article.sourceKey !== "us-scotus" || isConstitutionallyRelevant(article);
+  if (article.sourceKey === "us-scotus" && (article.contentType !== "opinion" || !constitutionalRelevant)) {
+    return {
+      skipped: true as const,
+      reason: article.contentType !== "opinion"
+        ? "SCOTUS collection is limited to opinions."
+        : "SCOTUS opinion did not match the constitutional relevance keyword policy.",
+    };
+  }
+
   const collection = finalizeCollectionMetadata(article, diagnosticsId, constitutionalRelevant);
-  let status = deriveCollectionStatus({
+  const status = deriveCollectionStatus({
     ...article,
     metadata: {
       ...article.metadata,
       collection,
     },
   });
-  if (status === "cleaned" && article.sourceKey === "us-scotus" && !constitutionalRelevant) {
-    status = "needs_review";
-    collection.publishable = false;
-    collection.reason = collection.reason ?? "SCOTUS item was not automatically classified as constitutionally relevant.";
-  }
+
+  return {
+    skipped: false as const,
+    status,
+    collection,
+    constitutionalRelevant,
+  };
+}
+
+function sourceMetadataForArticle(
+  article: NormalizedArticle,
+  collection: ReturnType<typeof finalizeCollectionMetadata>,
+  constitutionalRelevant: boolean,
+  previous?: ExistingArticleRow,
+) {
+  const dedupKeys = dedupKeysForArticle(article);
+  const previousMetadata = isRecord(previous?.source_metadata) ? previous.source_metadata : {};
+
+  return {
+    ...previousMetadata,
+    ...article.metadata,
+    collection,
+    dedupKeys,
+    constitutionalKeywordRelevant: article.sourceKey === "us-scotus" ? constitutionalRelevant : undefined,
+    refreshedFromOfficialAt: previous ? new Date().toISOString() : undefined,
+    previousContentHash: previous?.content_hash ?? undefined,
+  };
+}
+
+export async function insertNormalizedArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const sourceId = await findSourceId(article.sourceKey);
+  const plan = storagePlanForArticle(article, diagnosticsId);
+  if (plan.skipped) return null;
   const slug = generateArticleSlug(article);
   const dedupKeys = dedupKeysForArticle(article);
 
@@ -262,23 +359,64 @@ export async function insertNormalizedArticle(article: NormalizedArticle, diagno
       original_title: article.originalTitle,
       original_published_at: article.originalPublishedAt,
       fetched_at: new Date().toISOString(),
-      status,
+      status: plan.status,
       slug,
       raw_text: article.rawText,
       cleaned_text: article.cleanedText,
       content_hash: createContentHash(article.cleanedText) ?? dedupKeys.textPrefixHash,
-      source_metadata: {
-        ...article.metadata,
-        collection,
-        dedupKeys,
-        constitutionalKeywordRelevant: article.sourceKey === "us-scotus" ? isConstitutionallyRelevant(article) : undefined,
-      },
+      source_metadata: sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant),
     })
     .select("id")
     .single();
 
   if (error) throw new Error(error.message);
-  return { id: String(data.id), status, collection };
+  return { id: String(data.id), status: plan.status, collection: plan.collection };
+}
+
+async function refreshExistingArticle(existing: ExistingArticleRow, article: NormalizedArticle, diagnosticsId?: string | null) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return { status: "skipped" as const, reason: "Supabase is not configured." };
+
+  const plan = storagePlanForArticle(article, diagnosticsId);
+  if (plan.skipped) {
+    return { status: "skipped_nonconstitutional" as const, reason: plan.reason };
+  }
+
+  const dedupKeys = dedupKeysForArticle(article);
+  const contentHash = createContentHash(article.cleanedText) ?? dedupKeys.textPrefixHash;
+  const existingHash = existing.content_hash ?? createContentHash(existing.cleaned_text);
+  if (contentHash && existingHash && contentHash === existingHash) {
+    return { status: "unchanged" as const };
+  }
+
+  const { error } = await supabase
+    .from("articles")
+    .update({
+      jurisdiction: article.jurisdiction,
+      institution_name: article.institutionName,
+      content_type: article.contentType,
+      original_url: article.originalUrl,
+      canonical_url: article.canonicalUrl,
+      original_language: article.originalLanguage,
+      original_title: article.originalTitle,
+      original_published_at: article.originalPublishedAt,
+      fetched_at: new Date().toISOString(),
+      summarized_at: null,
+      status: plan.status,
+      korean_title: null,
+      summary_json: null,
+      raw_text: article.rawText,
+      cleaned_text: article.cleanedText,
+      content_hash: contentHash,
+      error_metadata: null,
+      source_metadata: sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant, existing),
+    })
+    .eq("id", existing.id);
+
+  if (error) throw new Error(error.message);
+  await supabase.from("article_tags").delete().eq("article_id", existing.id);
+
+  return { status: "refreshed" as const, articleStatus: plan.status, collection: plan.collection };
 }
 
 async function runSingleSource(adapter: SourceAdapter, limit: number, options: RunIngestOptions = {}): Promise<SourceRunResult> {
@@ -286,9 +424,13 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     sourceKey: adapter.sourceKey,
     discoveredCount: 0,
     fetchedCount: 0,
+    refreshedCount: 0,
+    unchangedCount: 0,
     summarizedCount: 0,
     failedCount: 0,
     skippedCount: 0,
+    skippedOutOfRangeCount: 0,
+    skippedNonConstitutionalCount: 0,
     errors: [],
     diagnostics: createDiagnosticsCollector(adapter.sourceKey),
     statusCounts: {},
@@ -302,23 +444,37 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     },
   };
   const runId = await createIngestionRun(adapter.sourceKey);
+  const rangeDays = rangeDaysForOptions(options);
+  const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
+  const refreshExisting = shouldRefreshExistingArticles(options);
   const discoveryOptions = {
     debug: options.debug,
     limit,
+    rangeDays,
     strategy: options.strategy ?? "auto",
     usePlaywright: options.usePlaywright,
     diagnostics: result.diagnostics,
   };
 
   try {
-    const discovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions)).slice(0, limit);
-    result.discoveredCount = discovered.length;
+    const allDiscovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions));
+    result.discoveredCount = allDiscovered.length;
+    const inRangeDiscovered = allDiscovered.filter((item) => isItemInDateRange(item.publishedAt, rangeStart));
+    const discovered = inRangeDiscovered.slice(0, limit);
+    result.skippedOutOfRangeCount = allDiscovered.length - inRangeDiscovered.length;
 
     for (const item of discovered) {
       const itemDiagnostics = createDiagnosticsCollector(adapter.sourceKey);
       let itemDiagnosticsMerged = false;
       try {
-        if (await articleExists(item.canonicalUrl)) {
+        if (adapter.sourceKey === "us-scotus" && item.contentType !== "opinion") {
+          result.skippedNonConstitutionalCount += 1;
+          result.skippedCount += 1;
+          continue;
+        }
+
+        const existing = await findExistingArticle(item.canonicalUrl);
+        if (existing && !refreshExisting) {
           result.skippedCount += 1;
           continue;
         }
@@ -327,6 +483,34 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
         itemDiagnosticsMerged = true;
         const normalized = await adapter.normalize(raw);
+        if (adapter.sourceKey === "us-scotus" && !isConstitutionallyRelevant(normalized)) {
+          result.skippedNonConstitutionalCount += 1;
+          result.skippedCount += 1;
+          continue;
+        }
+
+        if (existing) {
+          const refreshed = await refreshExistingArticle(existing, normalized, runId);
+          if (refreshed.status === "unchanged") {
+            result.unchangedCount += 1;
+            result.skippedCount += 1;
+          } else if (refreshed.status === "refreshed") {
+            result.refreshedCount += 1;
+            result.statusCounts[refreshed.articleStatus] = (result.statusCounts[refreshed.articleStatus] ?? 0) + 1;
+            if (refreshed.collection.publishable) result.collectionCounts.publishableCount += 1;
+            if (!refreshed.collection.sourceTextAvailable) result.collectionCounts.metadataOnlyCount += 1;
+            if (refreshed.collection.robotsDisallowed) result.collectionCounts.robotsDisallowedCount += 1;
+            if (refreshed.articleStatus === "blocked") result.collectionCounts.blockedCount += 1;
+            if (refreshed.articleStatus === "timeout") result.collectionCounts.timeoutCount += 1;
+            if (refreshed.collection.strategy === "seed") result.collectionCounts.seedCount += 1;
+          } else {
+            result.skippedNonConstitutionalCount += 1;
+            result.skippedCount += 1;
+          }
+          result.fetchedCount += 1;
+          continue;
+        }
+
         if (await articleExistsByNormalizedContent(normalized)) {
           result.skippedCount += 1;
           continue;
@@ -363,6 +547,8 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
 
 export async function runIngest(options: RunIngestOptions = {}) {
   const limit = boundedInteger(options.limit ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
+  const rangeDays = rangeDaysForOptions(options);
+  const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
   const blocked = inlineCrawlerBlockReason(options);
   if (blocked) {
     return {
@@ -384,6 +570,7 @@ export async function runIngest(options: RunIngestOptions = {}) {
         return adapter.discover({
           debug: options.debug,
           limit,
+          rangeDays,
           strategy: options.strategy ?? "auto",
           usePlaywright: options.usePlaywright,
           diagnostics,
@@ -394,11 +581,15 @@ export async function runIngest(options: RunIngestOptions = {}) {
       mode: "no-database",
       results: discovered.map((result, index) => ({
         sourceKey: selectedAdapters[index]?.sourceKey ?? "unknown",
-        discoveredCount: result.status === "fulfilled" ? result.value.items.slice(0, limit).length : 0,
+        discoveredCount: result.status === "fulfilled" ? result.value.items.length : 0,
         fetchedCount: 0,
+        refreshedCount: 0,
+        unchangedCount: 0,
         summarizedCount: 0,
         failedCount: result.status === "rejected" ? 1 : 0,
         skippedCount: 0,
+        skippedOutOfRangeCount: result.status === "fulfilled" ? result.value.items.filter((item) => !isItemInDateRange(item.publishedAt, rangeStart)).length : 0,
+        skippedNonConstitutionalCount: 0,
         errors: result.status === "rejected" ? [String(result.reason)] : [],
         diagnostics: result.status === "fulfilled" ? result.value.diagnostics : undefined,
         statusCounts: {},
