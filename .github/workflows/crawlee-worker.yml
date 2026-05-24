@@ -74,3 +74,5 @@ jobs:
           pnpm crawl:worker -- "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --use-playwright --debug
       - name: Summarize pending articles
         run: pnpm summarize-pending -- --limit=20
+      - name: Refresh public tag counts
+        run: pnpm refresh-tag-counts
