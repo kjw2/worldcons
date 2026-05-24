@@ -3,6 +3,9 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArticleGrid } from "@/components/article-grid";
 import { TagPill } from "@/components/tag-pill";
+import { MetaRow } from "@/components/ui/meta-row";
+import { PageShell } from "@/components/ui/page-shell";
+import { SurfaceCard } from "@/components/ui/surface-card";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { getTagBySlug, listTags } from "@/lib/db/queries";
 import { tagMetadata } from "@/lib/seo/metadata";
@@ -35,20 +38,24 @@ export default async function TagDetailPage({ params }: { params: Promise<{ slug
   );
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6 rounded-md border border-rule bg-white p-5 shadow-sm">
+    <PageShell>
+      <SurfaceCard className="mb-6 p-6">
         <p className="mb-2 text-sm font-semibold text-court">{result.tag.type}</p>
-        <h1 className="text-3xl font-semibold tracking-normal text-ink">{result.tag.name}</h1>
-        <p className="mt-3 text-sm text-ink/62">
-          누적 기사 {result.tag.articleCount ?? result.articles.length}건 · 최근 업데이트 {formatDisplayDate(result.tag.latestArticleAt)}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <h1 className="text-3xl font-semibold tracking-normal text-ink sm:text-4xl">{result.tag.name}</h1>
+        <MetaRow
+          className="mt-3"
+          items={[
+            `누적 자료 ${(result.tag.articleCount ?? result.articles.length).toLocaleString("ko-KR")}건`,
+            `최근 업데이트 ${formatDisplayDate(result.tag.latestArticleAt)}`,
+          ]}
+        />
+        <div className="mt-5 flex flex-wrap gap-2">
           {relatedTags.map((tag) => (
             <TagPill key={tag.slug} tag={tag} />
           ))}
         </div>
-      </div>
+      </SurfaceCard>
       <ArticleGrid articles={result.articles} />
-    </main>
+    </PageShell>
   );
 }

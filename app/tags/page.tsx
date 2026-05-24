@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { TagHubList } from "@/components/tag-hub-list";
+import { PageShell } from "@/components/ui/page-shell";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { listTags } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -26,12 +28,14 @@ export default async function TagsPage() {
   );
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <p className="mb-2 text-sm font-semibold text-court">태그 허브</p>
-        <h1 className="text-3xl font-semibold tracking-normal text-ink">쟁점·권리·조문별 탐색</h1>
-      </div>
+    <PageShell>
+      <SectionHeading
+        className="mb-6"
+        eyebrow="태그 허브"
+        title="쟁점·권리·조문별 탐색"
+        description="반복해서 등장하는 헌법 쟁점과 절차, 권리, 조문을 태그 단위로 모아봅니다."
+      />
       <TagHubList tags={tags} />
-    </main>
+    </PageShell>
   );
 }

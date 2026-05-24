@@ -28,14 +28,14 @@ export function TimeRangeTabs({
   params?: URLSearchParams;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-rule bg-white p-1">
+    <div className="inline-flex overflow-x-auto rounded-lg border border-line bg-white p-1 shadow-sm">
       {ranges.map((range) => (
         <Link
           key={range.value}
           href={hrefForRange(range.value, basePath, params)}
           className={cn(
-            "focus-ring rounded px-3 py-1.5 text-sm font-medium text-ink/65 transition",
-            activeRange === range.value ? "bg-court text-white" : "hover:bg-parchment hover:text-ink",
+            "focus-ring whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted transition",
+            activeRange === range.value ? "bg-primary text-white" : "hover:bg-surface-muted hover:text-ink",
           )}
         >
           {range.label}

@@ -268,13 +268,13 @@ export function InfiniteArticleFeed({
   return (
     <section className="space-y-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-ink/62">총 {pageInfo.total}건</p>
-        <p className="text-sm text-ink/50">{loadedCount}건 표시</p>
+        <p className="text-sm font-semibold text-ink">총 {pageInfo.total.toLocaleString("ko-KR")}건</p>
+        <p className="text-sm text-ink-muted">{loadedCount.toLocaleString("ko-KR")}건 표시</p>
       </div>
       <ArticleGrid articles={articles} onArticleNavigate={saveReturnState} restoreScroll={false} />
       <div ref={sentinelRef} className="flex min-h-16 items-center justify-center pt-2">
         {isLoading ? (
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-ink/58">
+          <span className="inline-flex items-center gap-2 text-sm font-medium text-ink-muted">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             더 불러오는 중
           </span>
@@ -283,13 +283,13 @@ export function InfiniteArticleFeed({
           <button
             type="button"
             onClick={() => void loadNext()}
-            className="focus-ring rounded-md border border-rule bg-white px-3 py-2 text-sm font-semibold text-ink/72"
+            className="focus-ring rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-ink-muted"
           >
             다시 불러오기
           </button>
         ) : null}
         {!isLoading && !errorMessage && !hasMore && articles.length > 0 ? (
-          <span className="text-sm text-ink/45">마지막 항목입니다</span>
+          <span className="text-sm text-ink-subtle">마지막 항목입니다</span>
         ) : null}
       </div>
     </section>

@@ -1,7 +1,11 @@
-import { Filter } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { ArticleContentType, SourceRecord, TagSummary } from "@/lib/db/types";
 import type { TimeRange } from "@/lib/utils/dates";
 import { TimeRangeTabs } from "@/components/time-range-tabs";
+import { chipClassName } from "@/components/ui/chip";
+import { SurfaceCard } from "@/components/ui/surface-card";
+import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 
 const contentTypes: Array<{ value: ArticleContentType; label: string }> = [
   { value: "news", label: "뉴스" },
@@ -11,6 +15,24 @@ const contentTypes: Array<{ value: ArticleContentType; label: string }> = [
   { value: "order", label: "명령" },
   { value: "other", label: "기타" },
 ];
+
+const jurisdictionLabels: Record<string, string> = {
+  "United States": "미국",
+  Germany: "독일",
+  France: "프랑스",
+};
+
+const selectClassName = "focus-ring h-11 rounded-lg border border-line bg-white px-3 text-sm text-ink shadow-sm";
+
+function hrefForJurisdiction(basePath: string, params: URLSearchParams, jurisdiction: string, isActive: boolean) {
+  const next = new URLSearchParams(params);
+  if (isActive) next.delete("jurisdiction");
+  else next.set("jurisdiction", jurisdiction);
+  next.delete("source");
+  next.delete("page");
+  const query = next.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}
 
 export function FilterBar({
   activeRange,
@@ -25,64 +47,107 @@ export function FilterBar({
   params: URLSearchParams;
   basePath?: string;
 }) {
+  const activeJurisdiction = params.get("jurisdiction") ?? "";
+  const jurisdictions = [...new Set(sources.map((source) => source.jurisdiction))];
+  const hasAdvancedFilters = Boolean(params.get("source") || params.get("type") || params.get("tag") || params.get("language"));
+  const hasAnyFilters = Boolean(
+    activeRange !== "latest" ||
+      params.get("source") ||
+      params.get("jurisdiction") ||
+      params.get("type") ||
+      params.get("tag") ||
+      params.get("language"),
+  );
+  const resetParams = new URLSearchParams();
+  if (params.get("q")) resetParams.set("q", params.get("q") ?? "");
+  if (params.get("mode")) resetParams.set("mode", params.get("mode") ?? "");
+  const resetHref = resetParams.toString() ? `${basePath}?${resetParams.toString()}` : basePath;
+
   return (
-    <div className="space-y-4 rounded-md border border-rule bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <SurfaceCard className="space-y-4 p-4">
+      <div className="flex flex-wrap items-center gap-3">
         <TimeRangeTabs activeRange={activeRange} basePath={basePath} params={params} />
-        <span className="inline-flex items-center gap-2 text-sm font-medium text-ink/64">
-          <Filter className="size-4" aria-hidden="true" />
-          서버 기준 필터
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {jurisdictions.map((jurisdiction) => {
+            const isActive = activeJurisdiction === jurisdiction;
+            const theme = themeForJurisdiction(jurisdiction);
+
+            return (
+              <Link
+                key={jurisdiction}
+                href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
+                style={jurisdictionThemeStyle(theme)}
+                className={chipClassName(isActive ? "selected" : "country")}
+              >
+                {jurisdictionLabels[jurisdiction] ?? jurisdiction}
+              </Link>
+            );
+          })}
+        </div>
+        {hasAnyFilters ? (
+          <Link href={resetHref} className={chipClassName("muted")}>
+            초기화
+          </Link>
+        ) : null}
       </div>
-      <form action={basePath} className="grid gap-3 md:grid-cols-5">
-        <input type="hidden" name="range" value={activeRange === "latest" ? "" : activeRange} />
-        <select name="source" defaultValue={params.get("source") ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm">
-          <option value="">기관 전체</option>
-          {sources.map((source) => (
-            <option key={source.sourceKey} value={source.sourceKey}>
-              {source.name}
-            </option>
-          ))}
-        </select>
-        <select name="jurisdiction" defaultValue={params.get("jurisdiction") ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm">
-          <option value="">국가 전체</option>
-          {[...new Set(sources.map((source) => source.jurisdiction))].map((jurisdiction) => (
-            <option key={jurisdiction} value={jurisdiction}>
-              {jurisdiction}
-            </option>
-          ))}
-        </select>
-        <select name="type" defaultValue={params.get("type") ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm">
-          <option value="">유형 전체</option>
-          {contentTypes.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
-          ))}
-        </select>
-        <select name="tag" defaultValue={params.get("tag") ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm">
-          <option value="">태그 전체</option>
-          {tags.slice(0, 30).map((tag) => (
-            <option key={tag.slug} value={tag.slug}>
-              {tag.name}
-            </option>
-          ))}
-        </select>
-        <select name="language" defaultValue={params.get("language") ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm">
-          <option value="">언어 전체</option>
-          {[...new Set(sources.map((source) => source.language))].map((language) => (
-            <option key={language} value={language}>
-              {language}
-            </option>
-          ))}
-        </select>
-        {params.get("q") ? <input type="hidden" name="q" value={params.get("q") ?? ""} /> : null}
-        {params.get("mode") ? <input type="hidden" name="mode" value={params.get("mode") ?? ""} /> : null}
-        <button type="submit" className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-ink/90 md:col-span-5">
-          <Filter className="size-4" aria-hidden="true" />
-          필터 적용
-        </button>
-      </form>
-    </div>
+
+      <details className="group rounded-lg border border-line bg-surface-muted/45" open={hasAdvancedFilters}>
+        <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-ink marker:hidden">
+          <span className="inline-flex items-center gap-2">
+            <SlidersHorizontal className="size-4 text-ink-muted" aria-hidden="true" />
+            상세 필터
+          </span>
+          <ChevronDown className="size-4 text-ink-muted transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <form action={basePath} className="grid gap-3 border-t border-line p-4 md:grid-cols-2 lg:grid-cols-4">
+          {activeRange !== "latest" ? <input type="hidden" name="range" value={activeRange} /> : null}
+          <select name="source" defaultValue={params.get("source") ?? ""} className={selectClassName}>
+            <option value="">기관 전체</option>
+            {sources.map((source) => (
+              <option key={source.sourceKey} value={source.sourceKey}>
+                {source.name}
+              </option>
+            ))}
+          </select>
+          <select name="jurisdiction" defaultValue={activeJurisdiction} className={selectClassName}>
+            <option value="">국가 전체</option>
+            {jurisdictions.map((jurisdiction) => (
+              <option key={jurisdiction} value={jurisdiction}>
+                {jurisdictionLabels[jurisdiction] ?? jurisdiction}
+              </option>
+            ))}
+          </select>
+          <select name="type" defaultValue={params.get("type") ?? ""} className={selectClassName}>
+            <option value="">유형 전체</option>
+            {contentTypes.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+          <select name="tag" defaultValue={params.get("tag") ?? ""} className={selectClassName}>
+            <option value="">태그 전체</option>
+            {tags.slice(0, 30).map((tag) => (
+              <option key={tag.slug} value={tag.slug}>
+                {tag.name}
+              </option>
+            ))}
+          </select>
+          <select name="language" defaultValue={params.get("language") ?? ""} className={selectClassName}>
+            <option value="">언어 전체</option>
+            {[...new Set(sources.map((source) => source.language))].map((language) => (
+              <option key={language} value={language}>
+                {language}
+              </option>
+            ))}
+          </select>
+          {params.get("q") ? <input type="hidden" name="q" value={params.get("q") ?? ""} /> : null}
+          {params.get("mode") ? <input type="hidden" name="mode" value={params.get("mode") ?? ""} /> : null}
+          <button type="submit" className="focus-ring inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-line-strong hover:bg-surface-muted lg:col-span-3">
+            적용
+          </button>
+        </form>
+      </details>
+    </SurfaceCard>
   );
 }

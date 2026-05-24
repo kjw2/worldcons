@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink, FileText, Languages, Scale } from "lucide-react";
 import { AdminReviewActions, type SummaryModelOption } from "@/components/admin-review-actions";
 import { ReferencedProvisionList } from "@/components/referenced-provision-list";
 import { RelatedArticles } from "@/components/related-articles";
 import { SummarySection } from "@/components/summary-section";
 import { TagPill } from "@/components/tag-pill";
+import { DisclosureCard } from "@/components/ui/disclosure-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { MetaRow } from "@/components/ui/meta-row";
+import { PageShell } from "@/components/ui/page-shell";
+import { SurfaceCard } from "@/components/ui/surface-card";
 import { hasGeminiKey, hasOpenAiKey } from "@/lib/ai/client";
 import { getGeminiModels } from "@/lib/ai/gemini-router";
 import { recordSiteEvent } from "@/lib/analytics/events";
@@ -54,6 +60,31 @@ function prettyJson(value: unknown) {
 
 function textLength(value?: string | null) {
   return new Intl.NumberFormat("ko-KR").format((value ?? "").trim().length);
+}
+
+function publicCollectionNotice(article: ArticleDetail) {
+  if (article.status === "robots_disallowed") {
+    return {
+      title: "자동 본문 수집이 제한된 자료입니다",
+      description: "공식 기관의 robots 정책 때문에 원문 본문을 자동으로 보존하지 못했을 수 있습니다. 인용이나 법적 판단에는 공식 원문을 우선 확인하세요.",
+    };
+  }
+
+  if (article.status === "blocked" || article.status === "timeout" || article.status === "failed_fetch") {
+    return {
+      title: "원문 수집 상태를 확인 중입니다",
+      description: "공식 사이트 응답 제한이나 일시적인 네트워크 문제로 본문 수집이 완전하지 않을 수 있습니다. 가능한 경우 공식 원문 링크에서 전체 문맥을 확인하세요.",
+    };
+  }
+
+  if (article.status === "metadata_only") {
+    return {
+      title: "본문 확보 전 metadata 중심 자료입니다",
+      description: "현재는 제목, 기관, 게시일 등 기본 정보 중심으로 정리되어 있습니다. 본문과 요약은 수집이 완료된 뒤 보강됩니다.",
+    };
+  }
+
+  return null;
 }
 
 function rawTextLength(value?: string | null) {
@@ -302,9 +333,6 @@ export default async function ArticlePage({
   const summary = article.summaryJson;
   const summaryModelName = summary?.aiMetadata?.model ?? "모델 정보 없음";
   const theme = themeForJurisdiction(article.jurisdiction);
-  const collection = article.sourceMetadata?.collection as
-    | { strategy?: string; confidence?: string; sourceUrlVerified?: boolean; diagnosticsId?: string }
-    | undefined;
   if (!includeUnpublished) {
     await recordSiteEvent(
       {
@@ -321,99 +349,161 @@ export default async function ArticlePage({
     );
   }
 
+  const primaryIssue = summary?.summary.coreSummary[0] ?? article.oneLineSummary;
+  const collectionNotice = publicCollectionNotice(article);
+  const missingOriginalUrl = !article.originalUrl?.trim();
+
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageShell className="max-w-7xl">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
-      <div style={jurisdictionThemeStyle(theme)} className="mb-6 rounded-md border border-[color:var(--country-border)] bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-ink/58">
-          <span>{article.jurisdiction}</span>
-          <span>·</span>
-          <span>{article.institutionName}</span>
-          <span>·</span>
-          <span>{formatDisplayDate(article.originalPublishedAt)}</span>
-          <span>·</span>
-          <span>{article.originalLanguage}</span>
-          {article.readingMinutes ? (
-            <>
-              <span>·</span>
-              <span>{article.readingMinutes}분 읽기</span>
-            </>
+      <section style={jurisdictionThemeStyle(theme)} className="mb-7 border-b border-line pb-7">
+        <MetaRow
+          items={[
+            article.jurisdiction,
+            article.institutionName,
+            formatDisplayDate(article.originalPublishedAt),
+            article.originalLanguage,
+            article.readingMinutes ? `${article.readingMinutes}분 읽기` : null,
+          ]}
+        />
+        <h1 className="mt-4 max-w-4xl text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">
+          {article.koreanTitle || article.originalTitle}
+        </h1>
+        {primaryIssue ? <p className="mt-4 max-w-3xl text-lg leading-8 text-ink-muted">{primaryIssue}</p> : null}
+        {article.originalTitle ? <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-subtle">원문 제목: {article.originalTitle}</p> : null}
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          {article.originalUrl ? (
+            <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg bg-court px-4 text-sm font-semibold text-white transition hover:bg-court/90">
+              원문 보기
+              <ExternalLink className="size-4" aria-hidden="true" />
+            </a>
           ) : null}
-          <span>·</span>
-          <span>{article.status}</span>
-          {collection?.strategy ? (
-            <>
-              <span>·</span>
-              <span>
-                수집 {collection.strategy}/{collection.confidence ?? "unknown"}
-              </span>
-            </>
-          ) : null}
+          <Link href="/" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            목록으로
+          </Link>
         </div>
-        <h1 className="text-3xl font-semibold leading-tight tracking-normal text-ink">{article.koreanTitle || article.originalTitle}</h1>
-        {article.originalTitle ? <p className="mt-3 text-sm text-ink/58">원문 제목: {article.originalTitle}</p> : null}
-        <div className="mt-5 flex flex-wrap gap-2">
-          {article.tags.map((tag) => (
-            <TagPill key={tag.slug} tag={tag} jurisdiction={article.jurisdiction} />
-          ))}
-        </div>
-        <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex items-center gap-2 rounded-md bg-court px-4 py-2 text-sm font-semibold text-white transition hover:bg-court/90">
-          원문 보기
-          <ExternalLink className="size-4" aria-hidden="true" />
-        </a>
-      </div>
+      </section>
 
       {includeUnpublished ? <AdminReviewPanel article={article} secret={getSearchParam(paramsObject, "secret")} /> : null}
 
-      <article style={jurisdictionThemeStyle(theme)} className="rounded-md border border-[color:var(--country-border)] bg-white p-5 shadow-sm">
-        {summary ? (
-          <>
-            <SummarySection title="핵심 요약">
-              <ul className="list-disc space-y-2 pl-5">
-                {summary.summary.coreSummary.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </SummarySection>
-            <SummarySection title="참조 조문">
-              <ReferencedProvisionList provisions={summary.summary.referencedProvisions} />
-            </SummarySection>
-            <SummarySection title="배경">{summary.summary.background}</SummarySection>
-            <SummarySection title="사건 구조">{summary.summary.caseStructure}</SummarySection>
-            <SummarySection title="시사점">{summary.summary.implications}</SummarySection>
-            <SummarySection title="실무상 참고">{summary.summary.practicalNotes}</SummarySection>
-            {summary.riskFlags.length > 0 ? (
-              <SummarySection title="검수 신호">
-                <div className="flex flex-wrap gap-2">
-                  {summary.riskFlags.map((flag) => (
-                    <span key={flag} className="rounded-md bg-parchment px-2.5 py-1 text-xs font-semibold text-ink/70">
-                      {flag}
-                    </span>
+      <div style={jurisdictionThemeStyle(theme)} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        <article className="space-y-5">
+          {collectionNotice ? (
+            <DisclosureCard title={collectionNotice.title}>
+              <p className="text-sm leading-6 text-ink-muted">{collectionNotice.description}</p>
+            </DisclosureCard>
+          ) : null}
+          {missingOriginalUrl ? (
+            <DisclosureCard title="공식 원문 링크가 아직 없습니다">
+              <p className="text-sm leading-6 text-ink-muted">현재 보존된 원문 URL이 없어 기관 사이트에서 직접 자료를 확인해야 할 수 있습니다.</p>
+            </DisclosureCard>
+          ) : null}
+          {summary ? (
+            <>
+              <SummarySection title="핵심 요약" variant="primary">
+                <ul className="list-disc space-y-3 pl-5">
+                  {summary.summary.coreSummary.map((item, index) => (
+                    <li key={`${index}-${item}`}>{item}</li>
                   ))}
-                </div>
+                </ul>
               </SummarySection>
-            ) : null}
-            <SummarySection title="AI 요약 참고 고지">
-              <p className="rounded-md border border-court/20 bg-court/5 p-4 text-court">
-                이 요약은 AI 언어 모델({summaryModelName})을 사용해 생성된 참고용 정보입니다. 정확한 법적 판단이나 인용을 위해서는 반드시 원문과 공식 자료를 확인해야 합니다.
-              </p>
-            </SummarySection>
-          </>
-        ) : (
-          <p className="text-sm text-ink/62">요약이 아직 생성되지 않았습니다.</p>
-        )}
-        {article.cleanedText ? (
-          <SummarySection title="보존된 원문 스냅샷">
-            <details className="rounded-md border border-rule bg-parchment/40 p-4">
-              <summary className="cursor-pointer text-sm font-semibold text-ink">추출 원문 보기</summary>
-              <pre className="mt-4 max-h-96 whitespace-pre-wrap overflow-auto text-xs leading-6 text-ink/72">{article.cleanedText}</pre>
-            </details>
+              <SummarySection title="배경" variant="body">{summary.summary.background}</SummarySection>
+              <SummarySection title="사건 구조" variant="body">{summary.summary.caseStructure}</SummarySection>
+              <div className="grid gap-5 md:grid-cols-2">
+                <SummarySection title="시사점" variant="insight">{summary.summary.implications}</SummarySection>
+                <SummarySection title="실무상 참고" variant="insight">{summary.summary.practicalNotes}</SummarySection>
+              </div>
+              {summary.riskFlags.length > 0 ? (
+                <SummarySection title="검수 신호" variant="disclosure">
+                  <div className="flex flex-wrap gap-2">
+                    {summary.riskFlags.map((flag) => (
+                      <span key={flag} className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-ink-muted">
+                        {flag}
+                      </span>
+                    ))}
+                  </div>
+                </SummarySection>
+              ) : null}
+            </>
+          ) : (
+            <EmptyState
+              title="AI 요약이 아직 준비되지 않았습니다"
+              description="원문 본문 확보 또는 요약 생성이 완료되면 핵심 쟁점과 배경, 시사점이 이 영역에 정리됩니다."
+            />
+          )}
+          {article.cleanedText ? (
+            <DisclosureCard title="보존된 원문 스냅샷" meta={`(${textLength(article.cleanedText)}자)`}>
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-4 text-[13px] leading-7 text-ink-muted">{article.cleanedText}</pre>
+            </DisclosureCard>
+          ) : null}
+          <SummarySection title="관련 기사" variant="body">
+            <RelatedArticles articles={related} />
           </SummarySection>
-        ) : null}
-        <SummarySection title="관련 기사">
-          <RelatedArticles articles={related} />
-        </SummarySection>
-      </article>
-    </main>
+        </article>
+
+        <aside className="space-y-4 lg:sticky lg:top-28">
+          <SurfaceCard className="p-5">
+            <h2 className="text-base font-semibold text-ink">자료 정보</h2>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div className="flex items-start gap-3">
+                <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
+                <div>
+                  <dt className="font-semibold text-ink">기관</dt>
+                  <dd className="mt-1 text-ink-muted">{article.institutionName}</dd>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <FileText className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
+                <div>
+                  <dt className="font-semibold text-ink">게시일</dt>
+                  <dd className="mt-1 text-ink-muted">{formatDisplayDate(article.originalPublishedAt)}</dd>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Languages className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
+                <div>
+                  <dt className="font-semibold text-ink">언어</dt>
+                  <dd className="mt-1 text-ink-muted">{article.originalLanguage}</dd>
+                </div>
+              </div>
+            </dl>
+            {article.originalUrl ? (
+              <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex w-full min-h-11 items-center justify-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
+                공식 원문 확인
+                <ExternalLink className="size-4" aria-hidden="true" />
+              </a>
+            ) : null}
+          </SurfaceCard>
+
+          {summary ? (
+            <SurfaceCard className="p-5">
+              <h2 className="mb-4 text-base font-semibold text-ink">참조 조문</h2>
+              <ReferencedProvisionList provisions={summary.summary.referencedProvisions} />
+            </SurfaceCard>
+          ) : null}
+
+          {article.tags.length > 0 ? (
+            <SurfaceCard className="p-5">
+              <h2 className="mb-4 text-base font-semibold text-ink">태그</h2>
+              <div className="flex flex-wrap gap-2">
+                {article.tags.map((tag) => (
+                  <TagPill key={tag.slug} tag={tag} jurisdiction={article.jurisdiction} />
+                ))}
+              </div>
+            </SurfaceCard>
+          ) : null}
+
+          {summary ? (
+            <SurfaceCard variant="muted" className="p-5">
+              <h2 className="text-base font-semibold text-ink">AI 요약 참고</h2>
+              <p className="mt-2 text-sm leading-6 text-ink-muted">
+                이 요약은 AI 언어 모델({summaryModelName})을 사용해 생성한 참고용 정보입니다. 정확한 법적 판단이나 인용은 공식 원문을 확인하세요.
+              </p>
+            </SurfaceCard>
+          ) : null}
+        </aside>
+      </div>
+    </PageShell>
   );
 }

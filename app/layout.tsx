@@ -14,22 +14,20 @@ export const metadata: Metadata = {
 };
 
 const navItems = [
-  { href: "/", label: "최신 소식" },
+  { href: "/", label: "최신" },
   { href: "/search", label: "검색" },
   { href: "/tags", label: "태그" },
-  { href: "/sources", label: "소스" },
+  { href: "/sources", label: "기관" },
   { href: "/glossary", label: "용어" },
-  { href: "/admin", label: "관리" },
 ];
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko" className="chrome-fixed">
       <body className="min-h-screen antialiased">
-        <header id="site-header" className="border-b border-rule/80 bg-white">
-          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Link href="/" className="focus-ring flex items-center gap-3 rounded-md">
+        <header id="site-header" className="border-b border-line bg-white/95 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <Link href="/" className="focus-ring flex items-center gap-3 rounded-lg">
                 <Image
                   src="/logo_image.png"
                   alt="헌법판례요약시스템"
@@ -39,29 +37,33 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   priority
                 />
                 <span>
-                  <span className="block text-lg font-semibold tracking-normal">헌법판례요약시스템</span>
-                  <span className="block text-sm text-ink/62">세계 헌법재판 큐레이션</span>
+                  <span className="block text-lg font-semibold tracking-normal text-ink">헌법판례요약시스템</span>
+                  <span className="block text-sm text-ink-muted">세계 헌법재판 큐레이션</span>
                 </span>
               </Link>
-              <nav className="flex flex-wrap items-center gap-1 text-sm text-ink/72">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="focus-ring rounded-md px-3 py-2 transition hover:bg-parchment hover:text-ink"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-            </div>
+              <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-end">
+                <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-sm text-ink-muted sm:flex-none">
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="focus-ring whitespace-nowrap rounded-lg px-3 py-2 font-medium transition hover:bg-surface-muted hover:text-ink"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </nav>
+                <Link href="/admin" className="focus-ring hidden whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-semibold text-ink-subtle transition hover:bg-surface-muted hover:text-ink sm:inline-flex">
+                  관리
+                </Link>
+              </div>
           </div>
         </header>
         {children}
         <FixedChromeToggle />
         <BackToTopButton />
-        <footer id="site-footer" className="h-[85px] border-t border-rule/80 bg-white">
-          <div className="mx-auto flex h-full max-w-7xl flex-col items-center justify-center gap-3 px-4 text-center text-sm leading-5 text-ink/62 sm:px-6 lg:px-8">
+        <footer id="site-footer" className="h-[85px] border-t border-line bg-white">
+          <div className="mx-auto flex h-full max-w-7xl flex-col items-center justify-center gap-3 px-4 text-center text-sm leading-5 text-ink-muted sm:px-6 lg:px-8">
             <p>2026 CCLIB</p>
             <p>AI 요약은 참고용입니다. 정확한 법적 판단이나 인용은 각 기관의 공식 원문을 확인하세요.</p>
           </div>

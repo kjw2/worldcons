@@ -4,9 +4,9 @@
 
 :root {
   color-scheme: light;
-  background: #f7f4ec;
+  background: #faf8f3;
   color: #17202a;
-  --chrome-header-height: 82px;
+  --chrome-header-height: 118px;
 }
 
 * {
@@ -21,9 +21,11 @@ body {
   min-height: 100%;
   margin: 0;
   background:
-    linear-gradient(180deg, rgba(247, 244, 236, 0.98), rgba(255, 255, 255, 0.96) 360px),
-    #f7f4ec;
+    linear-gradient(180deg, rgba(250, 248, 243, 0.98), rgba(255, 255, 255, 0.96) 430px),
+    #faf8f3;
   color: #17202a;
+  font-size: 15px;
+  line-height: 1.6;
   transition: padding-top 160ms ease;
 }
 
@@ -47,7 +49,7 @@ select {
 }
 
 .focus-ring {
-  @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-court;
+  @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
 }
 
 #site-header {
@@ -83,6 +85,10 @@ html.chrome-fixed.chrome-header-hidden #site-header {
 }
 
 @media (min-width: 640px) {
+  :root {
+    --chrome-header-height: 82px;
+  }
+
   .back-to-top-button {
     right: 1.5rem;
     bottom: 1.5rem;
