@@ -1,11 +1,11 @@
 import type {
   ArticleDetail,
-  GlossaryTerm,
   IngestionRunRecord,
   SourceRecord,
   SummaryJson,
   TagSummary,
 } from "@/lib/db/types";
+import { glossaryTermsSeed } from "@/lib/glossary/terms";
 
 const germanySummary: SummaryJson = {
   koreanTitle: "독일 연방헌법재판소, 표현의 자유와 비례원칙 심사 기준 재확인",
@@ -229,21 +229,4 @@ export const mockIngestionRuns: IngestionRunRecord[] = [
   },
 ];
 
-export const mockGlossaryTerms: GlossaryTerm[] = [
-  {
-    slug: "proportionality",
-    term: "Proportionality",
-    koreanTerm: "비례원칙",
-    definition: "기본권 제한이 목적의 정당성, 수단의 적합성, 최소침해성, 법익균형을 충족해야 한다는 심사 구조다.",
-    jurisdiction: null,
-    relatedTags: ["비례원칙"],
-  },
-  {
-    slug: "qpc",
-    term: "Question prioritaire de constitutionnalité",
-    koreanTerm: "우선적 위헌심사절차",
-    definition: "프랑스에서 재판 계속 중 법률 조항의 헌법합치성을 사후적으로 다투는 절차다.",
-    jurisdiction: "France",
-    relatedTags: ["QPC"],
-  },
-];
+export const mockGlossaryTerms = glossaryTermsSeed;

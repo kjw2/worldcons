@@ -5,6 +5,7 @@ import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import { getGlossaryTerm } from "@/lib/db/queries";
+import { glossaryJurisdictionLabel, glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
 
@@ -31,9 +32,9 @@ export default async function GlossaryDetailPage({ params }: { params: Promise<{
   return (
     <PageShell className="max-w-4xl">
       <SurfaceCard className="p-6">
-        <p className="mb-2 text-sm font-semibold text-court">{term.jurisdiction ?? "Common"}</p>
+        <p className="mb-2 text-sm font-semibold text-court">{glossaryJurisdictionLabel(term)}</p>
         <h1 className="text-3xl font-semibold tracking-normal text-ink sm:text-4xl">{term.koreanTerm || term.term}</h1>
-        {term.koreanTerm ? <MetaRow className="mt-3" items={[term.term]} /> : null}
+        <MetaRow className="mt-3" items={[term.koreanTerm ? term.term : null, `출처 언어: ${glossarySourceLanguageLabel(term)}`]} />
         <p className="mt-6 text-base leading-8 text-ink-muted">{term.definition}</p>
         {term.relatedTags.length > 0 ? (
           <div className="mt-7 border-t border-line pt-5">

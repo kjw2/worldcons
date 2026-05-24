@@ -87,6 +87,14 @@ function tagRowToSummary(row: SupabaseTagRow, confidence?: number | null): TagSu
   };
 }
 
+function sortGlossaryTerms(terms: GlossaryTerm[]) {
+  return [...terms].sort((left, right) => {
+    const leftLabel = left.koreanTerm || left.term;
+    const rightLabel = right.koreanTerm || right.term;
+    return leftLabel.localeCompare(rightLabel, "ko");
+  });
+}
+
 function articleRowToItem(row: SupabaseArticleRow): ArticleDetail {
   const tags =
     row.article_tags
@@ -448,19 +456,19 @@ export async function listIngestionRuns(limit = 20): Promise<IngestionRunRecord[
 
 export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
   const supabase = getSupabaseAdmin();
-  if (!supabase) return mockGlossaryTerms;
+  if (!supabase) return sortGlossaryTerms(mockGlossaryTerms);
 
   const { data, error } = await supabase.from("glossary_terms").select("*").order("term");
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => ({
+  return sortGlossaryTerms((data ?? []).map((row) => ({
     slug: row.slug,
     term: row.term,
     koreanTerm: row.korean_term,
     definition: row.definition,
     jurisdiction: row.jurisdiction,
     relatedTags: row.related_tags ?? [],
-  }));
+  })));
 }
 
 export async function getGlossaryTerm(slug: string) {

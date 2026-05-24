@@ -3,11 +3,13 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { listGlossaryTerms } from "@/lib/db/queries";
+import { glossaryJurisdictionLabel, glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +50,7 @@ export default async function GlossaryPage() {
                 <BookOpen className="size-4 shrink-0 text-court" aria-hidden="true" />
                 <h2 className="text-lg font-semibold leading-snug text-ink">{term.koreanTerm || term.term}</h2>
               </div>
-              {term.koreanTerm ? <p className="mt-2 text-sm text-ink-subtle">{term.term}</p> : null}
+              <MetaRow className="mt-2" items={[term.koreanTerm ? term.term : null, glossaryJurisdictionLabel(term), `출처 언어: ${glossarySourceLanguageLabel(term)}`]} />
               <p className="mt-3 line-clamp-3 text-[15px] leading-7 text-ink-muted">{term.definition}</p>
             </Link>
           ))}
