@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { RelatedArticles } from "@/components/related-articles";
 import { TagPill } from "@/components/tag-pill";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
-import { getGlossaryTerm } from "@/lib/db/queries";
+import { getGlossaryTerm, listArticlesForGlossaryTerm } from "@/lib/db/queries";
 import { glossaryJurisdictionLabel, glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
@@ -28,6 +29,7 @@ export default async function GlossaryDetailPage({ params }: { params: Promise<{
   const { slug } = await params;
   const term = await getGlossaryTerm(slug);
   if (!term) notFound();
+  const relatedArticles = await listArticlesForGlossaryTerm(term, 8);
 
   return (
     <PageShell className="max-w-4xl">
@@ -48,6 +50,10 @@ export default async function GlossaryDetailPage({ params }: { params: Promise<{
           </div>
         ) : null}
       </SurfaceCard>
+      <section className="mt-6">
+        <h2 className="mb-3 text-lg font-semibold tracking-normal text-ink">관련 자료</h2>
+        <RelatedArticles articles={relatedArticles} />
+      </section>
     </PageShell>
   );
 }

@@ -22,6 +22,7 @@ import type {
 } from "@/lib/db/types";
 import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
+import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 
 interface SupabaseTagRow {
   id?: string;
@@ -474,4 +475,20 @@ export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
 export async function getGlossaryTerm(slug: string) {
   const terms = await listGlossaryTerms();
   return terms.find((term) => term.slug === slug) ?? null;
+}
+
+export async function listArticlesForGlossaryTerm(term: GlossaryTerm, limit = 8): Promise<ArticleListItem[]> {
+  const articles = new Map<string, ArticleListItem>();
+  for (const tag of expandRelatedTagNames(term.relatedTags)) {
+    if (articles.size >= limit) break;
+    const result = await listArticles({ tag, pageSize: limit });
+    for (const article of result.items) {
+      articles.set(article.slug, article);
+      if (articles.size >= limit) break;
+    }
+  }
+
+  return [...articles.values()]
+    .sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""))
+    .slice(0, limit);
 }

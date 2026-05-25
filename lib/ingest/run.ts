@@ -14,6 +14,7 @@ import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata
 import { summarizeArticle } from "@/lib/ai/summarize";
 import { createEmbedding } from "@/lib/ai/embeddings";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
+import { generateGlossaryCandidates } from "@/lib/glossary/candidates";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 
 interface SourceRunResult {
@@ -867,5 +868,10 @@ export async function runRefreshTagCounts(options: { deleteOrphans?: boolean } =
   const { count, error: countError } = await supabase.from("tags").select("id", { count: "exact", head: true });
   if (countError) throw new Error(countError.message);
 
-  return { mode: "database", refreshed: true, strategy: "rpc", updatedTags: count ?? undefined, deletedOrphans };
+  const glossaryCandidates = await generateGlossaryCandidates({ persist: true }).catch((error) => ({
+    mode: "error" as const,
+    errorMessage: error instanceof Error ? error.message : String(error),
+  }));
+
+  return { mode: "database", refreshed: true, strategy: "rpc", updatedTags: count ?? undefined, deletedOrphans, glossaryCandidates };
 }
