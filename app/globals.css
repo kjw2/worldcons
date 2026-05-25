@@ -84,6 +84,43 @@ html.chrome-fixed.chrome-header-hidden #site-header {
   z-index: 50;
 }
 
+.navigation-progress-bar {
+  animation: navigation-progress 1.15s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  transform-origin: left center;
+}
+
+.navigation-spinner {
+  animation: navigation-spinner 720ms linear infinite;
+}
+
+@keyframes navigation-progress {
+  0% {
+    transform: translateX(-90%) scaleX(0.34);
+  }
+
+  45% {
+    transform: translateX(35%) scaleX(0.82);
+  }
+
+  100% {
+    transform: translateX(210%) scaleX(0.44);
+  }
+}
+
+@keyframes navigation-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navigation-progress-bar,
+  .navigation-spinner {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}
+
 @media (min-width: 640px) {
   :root {
     --chrome-header-height: 82px;

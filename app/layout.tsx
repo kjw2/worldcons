@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { BackToTopButton } from "@/components/back-to-top-button";
 import { FixedChromeToggle } from "@/components/fixed-chrome-toggle";
+import { NavigationProgress } from "@/components/navigation-progress";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -58,6 +60,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </div>
           </div>
         </header>
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
         {children}
         <FixedChromeToggle />
         <BackToTopButton />
