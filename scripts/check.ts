@@ -13,7 +13,7 @@ import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
-import { isAuthorizedRequest } from "@/lib/utils/auth";
+import { isAuthorizedRequest, safeAdminNextPath, validateAdminCredentials } from "@/lib/utils/auth";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
 import { boundedInteger } from "@/lib/utils/numbers";
@@ -83,13 +83,21 @@ assert(boundedInteger("500", 5, { min: 1, max: 20 }) === 20, "bounded integer ma
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalCronSecret = process.env.CRON_SECRET;
+const originalAdminUsername = process.env.ADMIN_USERNAME;
+const originalAdminPassword = process.env.ADMIN_PASSWORD;
+const originalAdminSessionSecret = process.env.ADMIN_SESSION_SECRET;
 const mutableEnv = process.env as Record<string, string | undefined>;
 mutableEnv.NODE_ENV = "production";
 delete mutableEnv.CRON_SECRET;
+delete mutableEnv.ADMIN_USERNAME;
+delete mutableEnv.ADMIN_PASSWORD;
+delete mutableEnv.ADMIN_SESSION_SECRET;
 assert(
   !isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer undefined" } })),
   "missing production CRON_SECRET must not authorize Bearer undefined",
 );
+assert(!validateAdminCredentials("admin", "admin"), "development admin/admin fallback must stay disabled");
+assert(!validateAdminCredentials("admin", "1234"), "legacy admin/1234 credentials must stay disabled");
 mutableEnv.CRON_SECRET = "secret";
 assert(
   isAuthorizedRequest(new Request("https://example.test/api/admin/ingest?secret=secret")),
@@ -99,8 +107,20 @@ assert(
   isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer secret" } })),
   "bearer secret authorization failed",
 );
+mutableEnv.ADMIN_USERNAME = "ap570@naver.com";
+mutableEnv.ADMIN_PASSWORD = "P@ssw0rd570";
+assert(validateAdminCredentials("ap570@naver.com", "P@ssw0rd570"), "configured admin credentials failed");
+assert(!validateAdminCredentials("ap570@naver.com", "secret"), "CRON_SECRET must not be accepted as admin login password");
+assert(safeAdminNextPath("/articles/test") === "/admin", "admin login next path must stay within admin routes");
+assert(safeAdminNextPath("/admin/analytics?days=7") === "/admin/analytics?days=7", "admin login next path should allow admin routes");
 if (originalCronSecret === undefined) delete mutableEnv.CRON_SECRET;
 else mutableEnv.CRON_SECRET = originalCronSecret;
+if (originalAdminUsername === undefined) delete mutableEnv.ADMIN_USERNAME;
+else mutableEnv.ADMIN_USERNAME = originalAdminUsername;
+if (originalAdminPassword === undefined) delete mutableEnv.ADMIN_PASSWORD;
+else mutableEnv.ADMIN_PASSWORD = originalAdminPassword;
+if (originalAdminSessionSecret === undefined) delete mutableEnv.ADMIN_SESSION_SECRET;
+else mutableEnv.ADMIN_SESSION_SECRET = originalAdminSessionSecret;
 if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
 else mutableEnv.NODE_ENV = originalNodeEnv;
 

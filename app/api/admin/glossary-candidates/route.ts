@@ -8,8 +8,6 @@ export const revalidate = 0;
 
 function redirectBack(request: Request, status: string) {
   const url = new URL("/admin/glossary-candidates", request.url);
-  const secret = new URL(request.url).searchParams.get("secret");
-  if (secret) url.searchParams.set("secret", secret);
   url.searchParams.set("status", status);
   return NextResponse.redirect(url, { status: 303 });
 }

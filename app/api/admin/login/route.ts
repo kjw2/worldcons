@@ -3,19 +3,14 @@ import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_MAX_AGE_SECONDS,
   createAdminSession,
+  isSecureRequest,
+  safeAdminNextPath,
   validateAdminCredentials,
 } from "@/lib/utils/auth";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function safeNextPath(value?: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/admin";
-  }
-  return value;
-}
 
 function redirectUrl(request: Request, path: string) {
   return new URL(path, request.url);
@@ -44,12 +39,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
     username = typeof body.username === "string" ? body.username : "";
     password = typeof body.password === "string" ? body.password : "";
-    nextPath = safeNextPath(typeof body.next === "string" ? body.next : null);
+    nextPath = safeAdminNextPath(typeof body.next === "string" ? body.next : null);
   } else {
     const formData = await request.formData();
     username = String(formData.get("username") ?? "");
     password = String(formData.get("password") ?? "");
-    nextPath = safeNextPath(String(formData.get("next") ?? "/admin"));
+    nextPath = safeAdminNextPath(String(formData.get("next") ?? "/admin"));
   }
 
   if (!validateAdminCredentials(username, password)) {
@@ -67,10 +62,10 @@ export async function POST(request: Request) {
 
   response.cookies.set({
     name: ADMIN_SESSION_COOKIE,
-    value: createAdminSession(username.trim() || "admin"),
+    value: createAdminSession(),
     httpOnly: true,
     sameSite: "lax",
-    secure: new URL(request.url).protocol === "https:",
+    secure: isSecureRequest(request),
     path: "/",
     maxAge: ADMIN_SESSION_MAX_AGE_SECONDS,
   });

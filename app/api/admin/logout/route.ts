@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ADMIN_SESSION_COOKIE } from "@/lib/utils/auth";
+import { ADMIN_SESSION_COOKIE, isSecureRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -11,7 +11,7 @@ function logoutResponse(request: Request) {
     value: "",
     httpOnly: true,
     sameSite: "lax",
-    secure: new URL(request.url).protocol === "https:",
+    secure: isSecureRequest(request),
     path: "/",
     maxAge: 0,
   });

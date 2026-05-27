@@ -1,22 +1,15 @@
 import { redirect } from "next/navigation";
 import { KeyRound, LogIn, ShieldCheck } from "lucide-react";
-import { isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { isAuthorizedPageRequest, safeAdminNextPath } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function safeNextPath(value?: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/admin";
-  }
-  return value;
-}
-
 export default async function AdminLoginPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const params = await resolveSearchParams(searchParams);
-  const nextPath = safeNextPath(getSearchParam(params, "next"));
-  const alreadyAuthorized = await isAuthorizedPageRequest(getSearchParam(params, "secret"));
+  const nextPath = safeAdminNextPath(getSearchParam(params, "next"));
+  const alreadyAuthorized = await isAuthorizedPageRequest();
 
   if (alreadyAuthorized) {
     redirect(nextPath);
@@ -40,14 +33,9 @@ export default async function AdminLoginPage({ searchParams }: { searchParams?: 
             아이디와 비밀번호로 로그인한 뒤 사용할 수 있습니다.
           </p>
           <div className="mt-6 rounded-md border border-rule bg-white p-4 text-sm leading-6 text-ink/68">
-            <p className="font-semibold text-ink">기본 아이디</p>
-            <p className="mt-1">
-              환경변수 <code className="rounded bg-parchment px-1">ADMIN_USERNAME</code> 값이며, 없으면 <code className="rounded bg-parchment px-1">admin</code>입니다.
-            </p>
-            <p className="mt-4 font-semibold text-ink">비밀번호</p>
-            <p className="mt-1">
-              환경변수 <code className="rounded bg-parchment px-1">ADMIN_PASSWORD</code> 값을 사용합니다. 아직 없으면 기존 <code className="rounded bg-parchment px-1">CRON_SECRET</code> 값으로 로그인할 수 있습니다.
-            </p>
+            <p className="font-semibold text-ink">보안 안내</p>
+            <p className="mt-1">허가된 관리자 계정만 로그인할 수 있습니다. 계정 정보는 서버 환경변수로 관리됩니다.</p>
+            <p className="mt-4">반복 실패 시 접속 기준으로 일정 시간 로그인이 제한됩니다.</p>
           </div>
         </div>
 
@@ -83,7 +71,6 @@ export default async function AdminLoginPage({ searchParams }: { searchParams?: 
                   name="username"
                   type="text"
                   autoComplete="username"
-                  defaultValue="admin"
                   className="focus-ring h-11 w-full rounded-md border border-rule bg-white pl-10 pr-3 text-sm text-ink"
                   required
                 />

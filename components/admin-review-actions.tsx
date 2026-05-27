@@ -64,7 +64,6 @@ export function AdminReviewActions({
   isPublic,
   currentModel,
   modelOptions,
-  secret,
 }: {
   articleId?: string;
   slug: string;
@@ -74,7 +73,6 @@ export function AdminReviewActions({
   isPublic: boolean;
   currentModel?: string | null;
   modelOptions: SummaryModelOption[];
-  secret?: string | null;
 }) {
   const router = useRouter();
   const defaultModelOption = modelOptions.find((option) => option.model !== currentModel) ?? modelOptions[0] ?? null;
@@ -151,14 +149,14 @@ export function AdminReviewActions({
   async function runAction(action: ReviewAction, modelSelection?: Pick<SummaryModelOption, "provider" | "model"> | null) {
     if (pendingAction) return;
 
-    const endpoint = secret ? `/api/admin/review?secret=${encodeURIComponent(secret)}` : "/api/admin/review";
     setPendingAction(action);
     setMessage(null);
     setIsError(false);
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/admin/review", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, articleId, slug, note, provider: modelSelection?.provider, model: modelSelection?.model }),
       });

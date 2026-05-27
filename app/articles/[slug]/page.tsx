@@ -23,7 +23,6 @@ import { articleMetadata } from "@/lib/seo/metadata";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
-import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -214,7 +213,7 @@ function TextDetails({ title, text }: { title: string; text?: string | null }) {
   );
 }
 
-function AdminReviewPanel({ article, secret }: { article: ArticleDetail; secret?: string | null }) {
+function AdminReviewPanel({ article }: { article: ArticleDetail }) {
   const sourceMetadata = article.sourceMetadata;
   const collection = isRecord(sourceMetadata?.collection) ? sourceMetadata.collection : {};
   const errorMessage = asText(article.errorMetadata?.message);
@@ -298,7 +297,6 @@ function AdminReviewPanel({ article, secret }: { article: ArticleDetail; secret?
           isPublic={isPublic}
           currentModel={currentModel}
           modelOptions={summaryModelOptions(currentModel)}
-          secret={secret}
         />
         <TextDetails title="추출 본문" text={article.cleanedText} />
         {article.rawText && article.rawText !== article.cleanedText ? <TextDetails title="원시 본문" text={article.rawText} /> : null}
@@ -318,14 +316,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ArticlePage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams?: Promise<SearchParams>;
 }) {
   const { slug } = await params;
-  const paramsObject = await resolveSearchParams(searchParams);
-  const includeUnpublished = await isAuthorizedPageRequest(getSearchParam(paramsObject, "secret"));
+  const includeUnpublished = await isAuthorizedPageRequest();
   const article = await getArticleBySlug(slug, { includeUnpublished });
   if (!article) notFound();
 
@@ -385,7 +380,7 @@ export default async function ArticlePage({
         </div>
       </section>
 
-      {includeUnpublished ? <AdminReviewPanel article={article} secret={getSearchParam(paramsObject, "secret")} /> : null}
+      {includeUnpublished ? <AdminReviewPanel article={article} /> : null}
 
       <div style={jurisdictionThemeStyle(theme)} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <article className="space-y-5">

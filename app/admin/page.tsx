@@ -16,7 +16,6 @@ import { AdminAttentionTable } from "@/components/admin-attention-table";
 import { AdminTabs } from "@/components/admin-tabs";
 import { getAdminDashboardData, type AdminStatusCount } from "@/lib/db/admin-queries";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
-import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -217,13 +216,11 @@ function CandidateTable({ data }: { data: Awaited<ReturnType<typeof getAdminDash
   );
 }
 
-export default async function AdminPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
-  const params = await resolveSearchParams(searchParams);
-  const secret = getSearchParam(params, "secret");
-  const authorized = await isAuthorizedPageRequest(secret);
+export default async function AdminPage() {
+  const authorized = await isAuthorizedPageRequest();
 
   if (!authorized) {
-    redirect(`/admin/login?next=${encodeURIComponent(secret ? `/admin?secret=${secret}` : "/admin")}`);
+    redirect(`/admin/login?next=${encodeURIComponent("/admin")}`);
   }
 
   const dashboard = await getAdminDashboardData();
@@ -260,7 +257,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
         </div>
       </div>
 
-      <AdminTabs active="dashboard" secret={secret} />
+      <AdminTabs active="dashboard" />
 
       <div className="mb-6 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -277,7 +274,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-        <AdminActionPanel sources={sources} secret={secret} />
+        <AdminActionPanel sources={sources} />
         <section className="rounded-md border border-rule bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
@@ -309,7 +306,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: Promi
           <StatusCountGrid counts={dashboard.statusCounts} />
           <CandidateTable data={dashboard.candidateSummaries} />
         </div>
-        <AdminAttentionTable data={dashboard.attentionArticles} secret={secret} />
+        <AdminAttentionTable data={dashboard.attentionArticles} />
       </div>
     </main>
   );

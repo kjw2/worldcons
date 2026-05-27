@@ -43,16 +43,10 @@ function StatusBadge({ status, href }: { status: string; href: string }) {
   );
 }
 
-function withSecret(path: string, secret?: string | null) {
-  return secret ? `${path}?secret=${encodeURIComponent(secret)}` : path;
-}
-
 export function AdminAttentionTable({
   data,
-  secret,
 }: {
   data: AdminAttentionArticle[];
-  secret?: string | null;
 }) {
   const [resolvedSlugs, setResolvedSlugs] = useState<Set<string>>(() => new Set());
   const visibleData = useMemo(
@@ -90,7 +84,7 @@ export function AdminAttentionTable({
             </thead>
             <tbody className="divide-y divide-rule">
               {visibleData.map((article) => {
-                const reviewHref = withSecret(`/articles/${article.slug}`, secret);
+                const reviewHref = `/articles/${article.slug}`;
 
                 return (
                   <tr key={`${article.sourceKey}-${article.slug}`}>
@@ -111,7 +105,6 @@ export function AdminAttentionTable({
                           <AdminSummaryRetryBadge
                             articleId={article.id}
                             slug={article.slug}
-                            secret={secret}
                             onSummarized={removeResolvedArticle}
                           />
                           <a href={reviewHref} className="focus-ring inline-flex min-h-7 items-center justify-center gap-1.5 rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">

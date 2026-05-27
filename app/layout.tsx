@@ -54,9 +54,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                     </Link>
                   ))}
                 </nav>
-                <Link href="/admin" className="focus-ring hidden whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-semibold text-ink-subtle transition hover:bg-surface-muted hover:text-ink sm:inline-flex">
-                  관리
-                </Link>
               </div>
           </div>
         </header>

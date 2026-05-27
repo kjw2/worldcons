@@ -28,9 +28,8 @@ function formatDateTime(input?: string | null) {
   }).format(date);
 }
 
-function withParams(path: string, params: { secret?: string | null; days?: number }) {
+function withParams(path: string, params: { days?: number }) {
   const searchParams = new URLSearchParams();
-  if (params.secret) searchParams.set("secret", params.secret);
   if (params.days) searchParams.set("days", String(params.days));
   const query = searchParams.toString();
   return query ? `${path}?${query}` : path;
@@ -462,11 +461,10 @@ function RecommendationPanel({ items }: { items: string[] }) {
 
 export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const params = await resolveSearchParams(searchParams);
-  const secret = getSearchParam(params, "secret");
-  const authorized = await isAuthorizedPageRequest(secret);
+  const authorized = await isAuthorizedPageRequest();
 
   if (!authorized) {
-    redirect(`/admin/login?next=${encodeURIComponent(secret ? `/admin/analytics?secret=${secret}` : "/admin/analytics")}`);
+    redirect(`/admin/login?next=${encodeURIComponent("/admin/analytics")}`);
   }
 
   const days = rangeFromParam(getSearchParam(params, "days"));
@@ -490,7 +488,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
         </form>
       </div>
 
-      <AdminTabs active="analytics" secret={secret} />
+      <AdminTabs active="analytics" />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
         <span>데이터 기준: {dashboard.hasDatabase ? (dashboard.schemaReady ? "Supabase site_events" : "Supabase, migration 필요") : "Mock 데이터"}</span>
@@ -499,7 +497,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
           {[7, 30, 90, 180].map((range) => (
             <Link
               key={range}
-              href={withParams("/admin/analytics", { secret, days: range })}
+              href={withParams("/admin/analytics", { days: range })}
               className={`focus-ring rounded-md px-3 py-1.5 font-semibold ${dashboard.days === range ? "bg-ink text-white" : "bg-parchment text-ink/66 hover:bg-rule"}`}
             >
               {range}일

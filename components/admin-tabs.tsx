@@ -1,38 +1,32 @@
 import { BarChart3, BookOpenCheck, LayoutDashboard, ListChecks } from "lucide-react";
 
-function withSecret(path: string, secret?: string | null) {
-  return secret ? `${path}?secret=${encodeURIComponent(secret)}` : path;
-}
-
 export function AdminTabs({
   active,
-  secret,
 }: {
   active: "dashboard" | "analytics" | "ingestion-runs" | "glossary-candidates";
-  secret?: string | null;
 }) {
   const tabs = [
     {
       key: "dashboard" as const,
-      href: withSecret("/admin", secret),
+      href: "/admin",
       label: "대시보드",
       icon: LayoutDashboard,
     },
     {
       key: "analytics" as const,
-      href: withSecret("/admin/analytics", secret),
+      href: "/admin/analytics",
       label: "이용 통계",
       icon: BarChart3,
     },
     {
       key: "ingestion-runs" as const,
-      href: withSecret("/admin/ingestion-runs", secret),
+      href: "/admin/ingestion-runs",
       label: "실행 기록",
       icon: ListChecks,
     },
     {
       key: "glossary-candidates" as const,
-      href: withSecret("/admin/glossary-candidates", secret),
+      href: "/admin/glossary-candidates",
       label: "용어 후보",
       icon: BookOpenCheck,
     },

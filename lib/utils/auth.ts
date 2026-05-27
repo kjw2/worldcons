@@ -1,8 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 
 export const ADMIN_SESSION_COOKIE = "worldcons_admin_session";
 export const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+const DEFAULT_ADMIN_USERNAME = "ap570@naver.com";
 
 interface AdminSessionPayload {
   username: string;
@@ -15,31 +16,29 @@ function configuredSecret() {
 }
 
 function configuredAdminUsername() {
-  return process.env.ADMIN_USERNAME?.trim() || "admin";
+  return process.env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME;
 }
 
 function configuredAdminPassword() {
   const password = process.env.ADMIN_PASSWORD?.trim();
-  return password || configuredSecret();
+  return password || null;
 }
 
 function configuredSessionSecret() {
-  const secret = process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim() || configuredSecret();
+  const secret = process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim();
   if (secret) return secret;
   return process.env.NODE_ENV !== "production" ? "worldcons-local-admin-session-secret" : null;
-}
-
-function allowLocalDevelopmentCredentials() {
-  return !configuredAdminPassword() && process.env.NODE_ENV !== "production";
 }
 
 function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-  return timingSafeEqual(leftBuffer, rightBuffer);
+  const length = Math.max(leftBuffer.length, rightBuffer.length, 1);
+  const paddedLeft = Buffer.alloc(length);
+  const paddedRight = Buffer.alloc(length);
+  leftBuffer.copy(paddedLeft);
+  rightBuffer.copy(paddedRight);
+  return timingSafeEqual(paddedLeft, paddedRight) && leftBuffer.length === rightBuffer.length;
 }
 
 function signPayload(payload: string) {
@@ -65,16 +64,12 @@ function cookieValueFromRequest(request: Request, name: string) {
 export function validateAdminCredentials(username: string, password: string) {
   const expectedUsername = configuredAdminUsername();
   const expectedPassword = configuredAdminPassword();
+  const usernameMatches = safeEqual(username.trim(), expectedUsername);
+  const passwordMatches = expectedPassword
+    ? safeEqual(password, expectedPassword)
+    : safeEqual(password, "missing-admin-password") && false;
 
-  if (allowLocalDevelopmentCredentials()) {
-    return username.trim() === "admin" && password === "admin";
-  }
-
-  if (!expectedPassword) {
-    return false;
-  }
-
-  return username.trim() === expectedUsername && safeEqual(password, expectedPassword);
+  return usernameMatches && Boolean(expectedPassword) && passwordMatches;
 }
 
 export function createAdminSession(username = configuredAdminUsername()) {
@@ -85,7 +80,7 @@ export function createAdminSession(username = configuredAdminUsername()) {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = signPayload(encodedPayload);
   if (!signature) {
-    throw new Error("ADMIN_SESSION_SECRET, ADMIN_PASSWORD, or CRON_SECRET is required for admin login.");
+    throw new Error("ADMIN_SESSION_SECRET or ADMIN_PASSWORD is required for admin login.");
   }
 
   return `${encodedPayload}.${signature}`;
@@ -140,21 +135,24 @@ export function isAuthorizedSecret(secretValue?: string | null) {
   return Boolean(secret && secretValue === secret);
 }
 
-export async function isAuthorizedPageRequest(secretValue?: string | null) {
+export async function isAuthorizedPageRequest() {
   const cookieStore = await cookies();
-  if (verifyAdminSession(cookieStore.get(ADMIN_SESSION_COOKIE)?.value)) {
-    return true;
+  return verifyAdminSession(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
+}
+
+export function safeAdminNextPath(value?: string | null) {
+  if (!value || value.startsWith("//") || value.includes("\\")) {
+    return "/admin";
   }
 
-  if (isAuthorizedSecret(secretValue)) {
-    return true;
+  if (value === "/admin" || value.startsWith("/admin/") || value.startsWith("/admin?")) {
+    return value;
   }
 
-  const secret = configuredSecret();
-  if (!secret) {
-    return false;
-  }
+  return "/admin";
+}
 
-  const headerStore = await headers();
-  return headerStore.get("authorization") === `Bearer ${secret}`;
+export function isSecureRequest(request: Request) {
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  return forwardedProto === "https" || new URL(request.url).protocol === "https:";
 }

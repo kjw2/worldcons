@@ -9,21 +9,12 @@ import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/ut
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function withSecret(path: string, secret?: string | null) {
-  return secret ? `${path}?secret=${encodeURIComponent(secret)}` : path;
-}
-
-function actionPath(secret?: string | null) {
-  return withSecret("/api/admin/glossary-candidates", secret);
-}
-
 export default async function AdminGlossaryCandidatesPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const params = await resolveSearchParams(searchParams);
-  const secret = getSearchParam(params, "secret");
   const status = getSearchParam(params, "status");
-  const authorized = await isAuthorizedPageRequest(secret);
+  const authorized = await isAuthorizedPageRequest();
   if (!authorized) {
-    redirect(`/admin/login?next=${encodeURIComponent(secret ? `/admin/glossary-candidates?secret=${secret}` : "/admin/glossary-candidates")}`);
+    redirect(`/admin/login?next=${encodeURIComponent("/admin/glossary-candidates")}`);
   }
 
   const result = await listGlossaryCandidates({ limit: 80 });
@@ -40,7 +31,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <form action={actionPath(secret)} method="post">
+          <form action="/api/admin/glossary-candidates" method="post">
             <input type="hidden" name="action" value="refresh" />
             <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
               <RefreshCw className="size-4" aria-hidden="true" />
@@ -56,7 +47,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
         </div>
       </div>
 
-      <AdminTabs active="glossary-candidates" secret={secret} />
+      <AdminTabs active="glossary-candidates" />
 
       {status ? (
         <div className="mb-5 rounded-md border border-rule bg-white px-4 py-3 text-sm font-semibold text-ink/72 shadow-sm">
@@ -81,7 +72,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
                     </p>
                   </div>
                   {candidate.id ? (
-                    <form action={actionPath(secret)} method="post">
+                    <form action="/api/admin/glossary-candidates" method="post">
                       <input type="hidden" name="action" value="ignore" />
                       <input type="hidden" name="candidateId" value={candidate.id} />
                       <button type="submit" className="focus-ring rounded-md border border-rule bg-white px-3 py-2 text-sm font-semibold text-ink/62 hover:bg-parchment">
@@ -91,7 +82,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
                   ) : null}
                 </div>
 
-                <form action={actionPath(secret)} method="post" className="mt-4 grid gap-3 md:grid-cols-2">
+                <form action="/api/admin/glossary-candidates" method="post" className="mt-4 grid gap-3 md:grid-cols-2">
                   <input type="hidden" name="action" value="approve" />
                   {candidate.id ? <input type="hidden" name="candidateId" value={candidate.id} /> : null}
                   <label className="grid gap-1 text-sm font-semibold text-ink/70">

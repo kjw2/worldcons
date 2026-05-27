@@ -364,7 +364,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=
 CRON_SECRET=
-ADMIN_USERNAME=admin
+ADMIN_USERNAME=ap570@naver.com
 ADMIN_PASSWORD=
 ADMIN_SESSION_SECRET=
 APP_BASE_URL=http://localhost:3000
@@ -408,9 +408,9 @@ pnpm start
 | `GEMINI_API_KEY` | Gemini 열쇠 | Gemini 단일 key |
 | `GEMINI_API_KEYS` | Gemini 열쇠 여러 개 | comma-separated keys |
 | `CRON_SECRET` | 자동 실행용 비밀값 | cron/API bearer or query secret |
-| `ADMIN_USERNAME` | 관리자 아이디 | 기본값은 `admin` |
-| `ADMIN_PASSWORD` | 관리자 비밀번호 | 브라우저 로그인용 비밀번호 |
-| `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 비워 두면 `ADMIN_PASSWORD` 또는 `CRON_SECRET` 사용 |
+| `ADMIN_USERNAME` | 관리자 아이디 | 기본값은 `ap570@naver.com` |
+| `ADMIN_PASSWORD` | 관리자 비밀번호 | 브라우저 로그인용 비밀번호. 비어 있으면 로그인 불가 |
+| `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 비워 두면 `ADMIN_PASSWORD` 사용. 운영 환경에서는 별도 값 권장 |
 | `APP_BASE_URL` | 서비스 주소 | canonical, sitemap URL base |
 
 ### AI 관련 값
@@ -672,18 +672,19 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 /admin
 /admin/analytics
 /admin/ingestion-runs
+/admin/glossary-candidates
 ```
 
-브라우저로 `/admin`에 들어가면 `/admin/login`으로 이동합니다.
+공개 화면의 상단 메뉴에는 관리자 링크를 노출하지 않습니다. 브라우저 주소창에서 `/admin`에 들어가면 `/admin/login`으로 이동합니다.
 
 로그인 정보는 다음 환경변수를 사용합니다.
 
 | 항목 | 값 |
 | --- | --- |
-| 아이디 | `ADMIN_USERNAME`, 없으면 `admin` |
-| 비밀번호 | `ADMIN_PASSWORD`, 없으면 기존 `CRON_SECRET` |
+| 아이디 | `ADMIN_USERNAME`, 없으면 `ap570@naver.com` |
+| 비밀번호 | `ADMIN_PASSWORD` |
 
-자동화나 cron API는 기존처럼 `Authorization: Bearer YOUR_SECRET` 또는 `?secret=YOUR_SECRET` 방식도 계속 사용할 수 있습니다.
+브라우저 관리자 화면은 로그인 세션 쿠키로만 접근합니다. `CRON_SECRET`은 더 이상 브라우저 로그인 비밀번호로 쓰지 않습니다. 자동화나 cron API는 기존처럼 `Authorization: Bearer YOUR_SECRET` 또는 `?secret=YOUR_SECRET` 방식도 계속 사용할 수 있습니다.
 
 관리자 화면에서 할 수 있는 일은 다음과 같습니다.
 

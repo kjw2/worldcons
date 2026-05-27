@@ -60,7 +60,7 @@ function compactResult(result: unknown) {
   return parts.length > 0 ? parts.join(" / ") : "작업이 완료되었습니다.";
 }
 
-export function AdminActionPanel({ sources, secret }: { sources: SourceRecord[]; secret?: string | null }) {
+export function AdminActionPanel({ sources }: { sources: SourceRecord[] }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [pendingAction, setPendingAction] = useState<AdminAction | null>(null);
@@ -77,15 +77,14 @@ export function AdminActionPanel({ sources, secret }: { sources: SourceRecord[];
     const summarizeLimit = toNumber(formData.get("summarizeLimit"), 10);
     const refreshTags = formData.get("refreshTags") === "on";
     const allowVercelCrawling = formData.get("allowVercelCrawling") === "on";
-    const endpoint = secret ? `/api/admin/ingest?secret=${encodeURIComponent(secret)}` : "/api/admin/ingest";
-
     setPendingAction(action);
     setError(null);
     setResult(null);
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/admin/ingest", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           action,

@@ -28,12 +28,10 @@ function summarizeMessage(payload: unknown) {
 export function AdminSummaryRetryBadge({
   articleId,
   slug,
-  secret,
   onSummarized,
 }: {
   articleId?: string;
   slug: string;
-  secret?: string | null;
   onSummarized?: (slug: string) => void;
 }) {
   const router = useRouter();
@@ -44,14 +42,14 @@ export function AdminSummaryRetryBadge({
   async function retrySummary() {
     if (isPending) return;
 
-    const endpoint = secret ? `/api/admin/ingest?secret=${encodeURIComponent(secret)}` : "/api/admin/ingest";
     setIsPending(true);
     setMessage(null);
     setIsError(false);
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/admin/ingest", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           action: "retry-summary",
