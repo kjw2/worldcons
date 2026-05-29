@@ -23,6 +23,36 @@ function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
+function TagOverflowPopover({
+  tags,
+  hiddenTagCount,
+  jurisdiction,
+}: {
+  tags: ArticleListItem["tags"];
+  hiddenTagCount: number;
+  jurisdiction?: string | null;
+}) {
+  return (
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        aria-label={`전체 태그 ${tags.length}개 보기`}
+        aria-haspopup="true"
+        className="focus-ring inline-flex min-h-6 items-center rounded-md border border-line bg-white px-2 text-[11px] font-medium text-ink-muted transition hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+      >
+        +{hiddenTagCount}
+      </button>
+      <span className="absolute right-0 top-[calc(100%-1px)] z-30 hidden w-72 max-w-[calc(100vw-2rem)] pt-1 group-hover:block group-focus-within:block">
+        <span className="flex flex-wrap gap-1.5 rounded-md border border-line bg-white p-2 shadow-panel">
+          {tags.map((tag) => (
+            <TagPill key={tag.slug} tag={tag} jurisdiction={jurisdiction} className="max-w-full min-h-6 px-2 text-[11px]" />
+          ))}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 export function ArticleCard({
   article,
   onArticleNavigate,
@@ -45,7 +75,7 @@ export function ArticleCard({
     <article
       data-article-slug={article.slug}
       style={jurisdictionThemeStyle(theme)}
-      className={surfaceCardClassName("interactive", "flex h-full flex-col overflow-hidden border-line bg-white p-4")}
+      className={surfaceCardClassName("interactive", "relative flex h-full flex-col overflow-visible border-line bg-white p-4")}
     >
       <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
         <SourceBadge sourceKey={article.sourceKey} className="min-h-6 rounded-full bg-[color:var(--country-accent-softer)] px-2 text-[11px] font-semibold" />
@@ -68,9 +98,7 @@ export function ArticleCard({
             <TagPill key={tag.slug} tag={tag} jurisdiction={article.jurisdiction} className="min-h-6 px-2 text-[11px]" />
           ))}
           {hiddenTagCount > 0 ? (
-            <span className="inline-flex min-h-6 items-center rounded-md border border-line bg-white px-2 text-[11px] font-medium text-ink-muted">
-              +{hiddenTagCount}
-            </span>
+            <TagOverflowPopover tags={article.tags} hiddenTagCount={hiddenTagCount} jurisdiction={article.jurisdiction} />
           ) : null}
         </div>
       ) : null}
