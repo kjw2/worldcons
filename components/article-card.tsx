@@ -38,7 +38,7 @@ function TagOverflowPopover({
         type="button"
         aria-label={`전체 태그 ${tags.length}개 보기`}
         aria-haspopup="true"
-        className="focus-ring inline-flex min-h-6 items-center rounded-md border border-line bg-white px-2 text-[11px] font-medium text-ink-muted transition hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+        className="focus-ring inline-flex min-h-6 items-center rounded-md border border-line-strong bg-white px-2 text-[11px] font-medium text-ink-muted transition hover:border-line-strong hover:bg-surface-muted hover:text-ink"
       >
         +{hiddenTagCount}
       </button>
