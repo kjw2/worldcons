@@ -100,7 +100,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cleanText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
 function textArray(value: unknown) {

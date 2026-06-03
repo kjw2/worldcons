@@ -349,9 +349,9 @@ SummarySchema.parse({
 
 const normalizedOpenAiSummary = SummarySchema.parse(
   normalizeSummaryCandidate({
-    koreanTitle: "침묵권 고지 관련 QPC 결정",
+    koreanTitle: "침묵권 고지 관련\nQPC 결정",
     summary: {
-      coreSummary: "문제 된 조항은 침묵권 고지 규정이 없다는 이유만으로 위헌이라고 볼 수 없다고 판단했다.",
+      coreSummary: "문제 된 조항은 침묵권 고지 규정이 없다는 이유만으로\n위헌이라고 볼 수 없다고 판단했다.",
       referencedProvisions: [
         {
           jurisdiction: "",
@@ -383,7 +383,9 @@ const normalizedOpenAiSummary = SummarySchema.parse(
     riskFlags: ["원문은 실체적 배경을 제한적으로만 설명한다."],
   }),
 );
+assert(normalizedOpenAiSummary.koreanTitle === "침묵권 고지 관련 QPC 결정", "summary title whitespace must normalize to one line");
 assert(Array.isArray(normalizedOpenAiSummary.summary.coreSummary), "summary coreSummary string must be normalized to array");
+assert(!normalizedOpenAiSummary.summary.coreSummary[0].includes("\n"), "summary coreSummary items must normalize to one line");
 assert(normalizedOpenAiSummary.summary.referencedProvisions.length === 1, "description-only referenced provisions must be dropped");
 assert(normalizedOpenAiSummary.summary.referencedProvisions[0].article === "Article L.522-5", "valid referenced provisions must be retained");
 assert(normalizedOpenAiSummary.entities[0].type === "institution", "Korean entity type labels must normalize to enum values");

@@ -3,6 +3,7 @@ import { SUMMARY_ENTITY_TYPES, SUMMARY_RISK_FLAGS } from "@/lib/ai/schema";
 
 const SUMMARY_SCHEMA_RULES = `Schema rules:
 - summary.coreSummary must be an array of Korean strings, not one string.
+- Do not include newline characters in koreanTitle or summary.coreSummary items.
 - summary.referencedProvisions must be an array. Use [] when no provision is clearly supported.
 - Every summary.referencedProvisions item must include a non-empty lawName and/or article. Do not create description-only provision items.
 - entities must be an array of objects with name, normalizedName, and type.
