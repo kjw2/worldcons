@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
-import { runIngest, runRefreshTagCounts, runSummarizeArticle } from "@/lib/ingest/run";
+import { runRefreshTagCounts, runSummarizeArticle } from "@/lib/ingest/summary";
 
 export type AdminReviewAction =
   | "approve-and-summarize"
@@ -272,6 +272,6 @@ export async function runAdminReviewAction(input: ReviewActionInput) {
   return {
     mode: "database",
     action: input.action,
-    ingest: await runIngest({ sourceKey: row.source_key, limit: 5 }),
+    ingest: await import("@/lib/ingest/run").then(({ runIngest }) => runIngest({ sourceKey: row.source_key, limit: 5 })),
   };
 }

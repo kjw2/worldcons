@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { runRefreshTagCounts } from "@/lib/ingest/run";
+import { runRefreshTagCounts } from "@/lib/ingest/summary";
 
 async function main() {
   const deleteOrphans = process.argv.includes("--delete-orphans");

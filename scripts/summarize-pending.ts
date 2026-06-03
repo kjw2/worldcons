@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { runSummarizePending } from "@/lib/ingest/run";
+import { runSummarizePending } from "@/lib/ingest/summary";
 
 async function main() {
   const limitArg = process.argv.find((arg) => arg.startsWith("--limit="))?.split("=")[1];

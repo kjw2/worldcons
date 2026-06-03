@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
-import { runIngest, runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/run";
+import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
 import { isAuthorizedRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
@@ -37,7 +37,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "articleId or slug is required" }, { status: 400 });
     }
 
-    const result = shouldIngest ? await runIngest({ sourceKey, limit, allowVercelCrawling }) : null;
+    const result = shouldIngest
+      ? await import("@/lib/ingest/run").then(({ runIngest }) => runIngest({ sourceKey, limit, allowVercelCrawling }))
+      : null;
     const summarize = action === "retry-summary"
       ? await runSummarizeArticle({ articleId, slug })
       : shouldSummarize
