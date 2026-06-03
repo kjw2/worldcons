@@ -150,7 +150,7 @@ async function summarizeCandidateRow(
   await supabase
     .from("articles")
     .update({
-      status: "summarizing",
+      ...(forceAllowed ? {} : { status: "summarizing" }),
       error_metadata: null,
     })
     .eq("id", row.id);
@@ -188,7 +188,7 @@ async function summarizeCandidateRow(
     await supabase
       .from("articles")
       .update({
-        status: "failed_summary",
+        status: forceAllowed ? row.status : "failed_summary",
         error_metadata: {
           message,
           requestedProvider: options.provider ?? process.env.LLM_PROVIDER ?? "openai",

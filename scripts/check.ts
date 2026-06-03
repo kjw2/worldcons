@@ -2,7 +2,7 @@ import "dotenv/config";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SummarySchema } from "@/lib/ai/schema";
+import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
 import { completeGeminiJson, getGeminiModels, getGeminiRoutes } from "@/lib/ai/gemini-router";
 import { hasGeminiKey, supportsOpenAiTemperature } from "@/lib/ai/client";
@@ -346,6 +346,32 @@ SummarySchema.parse({
     generatedAt: "2026-05-08T00:00:00.000Z",
   },
 });
+
+const normalizedOpenAiSummary = SummarySchema.parse(
+  normalizeSummaryCandidate({
+    koreanTitle: "침묵권 고지 관련 QPC 결정",
+    summary: {
+      coreSummary: "문제 된 조항은 침묵권 고지 규정이 없다는 이유만으로 위헌이라고 볼 수 없다고 판단했다.",
+      background: "배경",
+      caseStructure: "구조",
+      implications: "시사점",
+      practicalNotes: "참고",
+    },
+    entities: [
+      { name: "Conseil constitutionnel", type: "기관" },
+      { name: "소비자법", type: "법령" },
+      { name: "Corsica Ferries", type: "회사" },
+    ],
+    tags: "QPC",
+    categories: ["decision"],
+    riskFlags: ["원문은 실체적 배경을 제한적으로만 설명한다."],
+  }),
+);
+assert(Array.isArray(normalizedOpenAiSummary.summary.coreSummary), "summary coreSummary string must be normalized to array");
+assert(normalizedOpenAiSummary.summary.referencedProvisions.length === 0, "missing referencedProvisions must normalize to []");
+assert(normalizedOpenAiSummary.entities[0].type === "institution", "Korean entity type labels must normalize to enum values");
+assert(normalizedOpenAiSummary.entities[0].normalizedName === "Conseil constitutionnel", "missing normalizedName must default to name");
+assert(normalizedOpenAiSummary.riskFlags.includes("source_text_incomplete"), "risk flag notes must normalize to known risk flags");
 
 async function assertGeminiRouterSurvivesUnwritableStorage() {
   const keysToRestore = [

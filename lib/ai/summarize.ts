@@ -1,6 +1,6 @@
 import type { SummaryJson } from "@/lib/db/types";
 import type { NormalizedArticle } from "@/lib/sources/types";
-import { SummarySchema } from "@/lib/ai/schema";
+import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { completeJsonWithMetadata, type LlmCompletionOptions, type LlmCompletionResult } from "@/lib/ai/client";
 import { buildRepairPrompt, buildSummaryUserPrompt, SUMMARY_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
@@ -30,7 +30,7 @@ export function mockSummary(article: NormalizedArticle): SummaryJson {
 
 function parseSummaryJson(raw: string) {
   const parsed = JSON.parse(raw) as unknown;
-  return SummarySchema.parse(parsed);
+  return SummarySchema.parse(normalizeSummaryCandidate(parsed));
 }
 
 function attachAiMetadata(summary: SummaryJson, completion: LlmCompletionResult): SummaryJson {
