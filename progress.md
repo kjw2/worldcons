@@ -12,7 +12,7 @@
 | I0-04 | P0 | France sync | 최신 30일 프랑스 결정 일부가 누락되거나 공식 원문 변경분이 오래된 요약으로 남을 수 있음 | 프랑스 30일 재수집/리프레시를 수행해 신규 3건과 변경 5건을 반영, 총 9건 모두 공식 원문 hash 일치 및 summarized/publishable 상태로 정리 | Done | 100% |
 | I0-05 | P0 | France reliability | Conseil/QPC360 접근이 느리거나 타임아웃이 나면 최신 수집이 불안정함 | 프랑스 Crawlee 기본 timeout, retry, same-domain delay, concurrency를 별도 env로 조정 가능하게 하고 7일 dry-run에서 16/16 요청 성공 확인 | Done | 100% |
 | I0-06 | P0 | United States scope | 미국 수집에서 명령, 보도자료, 기타 비헌법 의견이 공개 큐에 섞이면 서비스 범위가 흐려짐 | SCOTUS discovery를 공식 slip opinion 목록으로 제한하고, 의견 본문은 헌법 관련성 필터를 통과한 경우에만 저장/요약하도록 보강 | Done | 100% |
-| I0-07 | P0 | Germany source split | BVerfG는 목록 탐색과 원문 상세 사이트가 달라 공식 검색 URL/robots 정책을 잘못 쓰면 수집이 실패하거나 차단될 수 있음 | Open Legal Data API를 7일 목록/ECLI 인덱스로만 사용하고, 원문은 공식 `bundesverfassungsgericht.de` 상세 URL에서 다시 fetch하도록 분리 | Done | 100% |
+| I0-07 | P0 | Germany source split | BVerfG는 목록 탐색과 원문 상세 사이트가 달라 공식 검색 URL/robots 정책을 잘못 쓰면 수집이 실패하거나 차단될 수 있음 | 목록 후보 기준은 `dejure.org` 공개 인덱스로 두고, Open Legal Data API는 항상 가능한 보조 후보로만 취급하며, 원문은 공식 `bundesverfassungsgericht.de` 상세 URL에서 다시 fetch하도록 분리 | Done | 100% |
 | I1-01 | P1 | Tag refresh CLI | `pnpm refresh-tag-counts`가 성공 JSON 출력 후 Windows Node `uv async` assertion으로 비정상 종료할 수 있음 | 성공 경로의 강제 `process.exit(0)` 제거, catch는 `process.exitCode=1`로 전환해 열린 Supabase handle 정리를 런타임에 맡김 | Done | 100% |
 | I1-02 | P1 | Check CLI | `pnpm check`도 async spider 검증 뒤 강제 종료를 사용해 동일 계열 종료 안정성 위험이 있음 | `scripts/check.ts` 성공 강제 종료를 제거하고 오류 경로만 exit code를 설정하도록 변경 | Done | 100% |
 | I1-03 | P1 | Audit hygiene | `TODO`, `미구현`, `추후`, `placeholder`, `mock` 등 검색 결과에 의도된 개발 fallback/입력 placeholder/과거 progress 기록이 섞여 실제 미완성 항목과 구분이 필요함 | 활성 실행 경로 기준으로 blocking unfinished keyword scan을 재실행했고 남은 항목은 README의 의도된 fallback 설명, UI placeholder, 관리자 추천 문구, 과거 완료 기록으로 분류 | Done | 100% |
@@ -176,7 +176,7 @@ Summary note: source collection is complete. AI summarization stopped after Gemi
 
 | ID | Priority | Area | Requirement | 처리 내용 | Status | Progress |
 | --- | --- | --- | --- | --- | --- | --- |
-| G1-01 | P0 | BVerfG 2026 continued collection | 독일 2026년 결정을 계속 수집 | BVerfG 검색 페이지는 사용하지 않고, robots 허용 공개 인덱스에서 사건번호만 확인한 뒤 공식 `/SharedDocs/Entscheidungen/...` 상세 URL만 수집 | Done | 100% |
+| G1-01 | P0 | BVerfG 2026 continued collection | 독일 2026년 결정을 계속 수집 | BVerfG 검색 페이지는 사용하지 않고, `dejure.org`를 기준 목록 인덱스로 삼아 사건번호를 확인하며 Open Legal Data는 가능한 보조 후보로만 참고한 뒤 공식 `/SharedDocs/Entscheidungen/...` 상세 URL만 수집 | Done | 100% |
 | G1-02 | P0 | Rechtsprechung im Internet | 사용자가 제시한 `rechtsprechung-im-internet.de` 수집 가능성 확인 | `robots.txt`가 일반 User-agent에 `Disallow: /`를 선언하고 `DG_JUSTICE_CRAWLER` 전용 sitemap만 노출하므로 직접 수집원으로 사용하지 않음 | Done | 100% |
 | G1-03 | P0 | Bad URL guard | 추정 공식 URL이 404일 때 row 삽입 방지 | `sourceUrlVerified=false` 또는 `HTTP Status ...` 제목인 BVerfG 결과는 삽입 전 제외하도록 range collector 보강 | Done | 100% |
 | G1-04 | P0 | Data cleanup | 잘못 들어간 404 후보 제거 | `rk20260427_2bvr067126.html` needs_review row 삭제 | Done | 100% |

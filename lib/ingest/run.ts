@@ -288,8 +288,21 @@ function isGenericCourtTitle(article: NormalizedArticle) {
   return /^(?:Beschluss|Urteil)\s+vom\s+\d{1,2}\.\s+[A-Za-zÄÖÜäöüß]+\s+\d{4}$/i.test(title);
 }
 
+function isUnverifiedBverfgFetch(article: NormalizedArticle) {
+  if (article.sourceKey !== "de-bverfg") return false;
+  const collection = isRecord(article.metadata?.collection) ? article.metadata.collection : {};
+  return collection.sourceUrlVerified === false || /^HTTP Status \d+/i.test(article.originalTitle ?? "");
+}
+
 function storagePlanForArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
   const constitutionalRelevant = article.sourceKey !== "us-scotus" || isConstitutionallyRelevant(article);
+  if (isUnverifiedBverfgFetch(article)) {
+    return {
+      skipped: true as const,
+      reason: "BVerfG official detail URL was not verified, so the derived candidate is skipped.",
+    };
+  }
+
   if (article.sourceKey === "us-scotus" && (article.contentType !== "opinion" || !constitutionalRelevant)) {
     return {
       skipped: true as const,

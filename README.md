@@ -308,6 +308,9 @@ source_metadata.collection.publishable = true
 
 - `/SiteGlobals/` 검색 페이지는 robots.txt에서 금지됩니다.
 - 따라서 해당 검색 페이지를 직접 수집하지 않습니다.
+- 목록 후보 수집은 `dejure.org` 공개 인덱스를 기준으로 합니다.
+- Open Legal Data API는 항상 가능한 보조 후보로만 취급합니다.
+- Open Legal Data API가 최신 BVerfG 목록 기준을 대체하지 않습니다.
 - 허용된 공식 상세 결정문 URL만 가져옵니다.
 - BVerfG가 `Crawl-delay: 30`을 주면 30초 이상 기다립니다.
 
@@ -589,6 +592,8 @@ pnpm collect:range -- --sources=us-scotus --from=2025-01-01 --to=2025-12-31 --de
 ```
 
 독일 BVerfG는 더 천천히 해야 합니다.
+목록 후보는 `dejure.org`를 기준으로 수집합니다.
+Open Legal Data API는 사용할 수 있는 경우에도 항상 가능한 보조 후보일 뿐이며, 최신 BVerfG 목록 기준으로 보지 않습니다.
 
 ```bash
 pnpm collect:range -- --sources=de-bverfg --from=2025-01-01 --to=2025-12-31 --delay-ms=30000 --list-delay-ms=8000 --bverfg-use-dejure-index --bverfg-dejure-pages=60
@@ -620,8 +625,10 @@ pnpm collect:range -- --sources=us-scotus,de-bverfg,fr-conseil-constitutionnel -
 | `--delay-ms` | `12000` | 상세 요청 사이 지연 |
 | `--list-delay-ms` | `8000` | 목록/sitemap 요청 사이 지연 |
 | `--max-candidates` | `10` | 테스트용 후보 수 제한 |
-| `--bverfg-use-dejure-index` | flag | BVerfG 공식 상세 URL 후보를 얻기 위한 공개 인덱스 사용 |
+| `--bverfg-use-dejure-index` | flag | BVerfG 목록 기준인 `dejure.org` 공개 인덱스에서 사건번호 후보 수집. 현재 기본 동작 |
 | `--bverfg-dejure-pages` | `60` | dejure index 확인 page 수 |
+| `--bverfg-disable-dejure-index` | flag | 진단용으로만 dejure 목록 기준을 비활성화 |
+| `--bverfg-use-external-index` | flag | Open Legal Data API를 가능한 보조 후보 인덱스로 함께 사용 |
 | `--bverfg-detail-url` | URL | 특정 BVerfG 공식 상세 URL 직접 지정 |
 
 ## 요약과 태그 갱신

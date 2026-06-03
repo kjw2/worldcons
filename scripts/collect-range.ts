@@ -14,16 +14,16 @@ const FROM = argValue("from") ?? "2026-01-01";
 const TO = argValue("to") ?? "2026-05-09";
 const DELAY_MS = Number(argValue("delay-ms") ?? process.env.RANGE_COLLECT_DELAY_MS ?? 5000);
 const LIST_DELAY_MS = Number(argValue("list-delay-ms") ?? process.env.RANGE_COLLECT_LIST_DELAY_MS ?? 2500);
-const USE_BVERFG_EXTERNAL_INDEX = argFlag("bverfg-use-external-index");
-const USE_BVERFG_DEJURE_INDEX = argFlag("bverfg-use-dejure-index");
-const BVERFG_DEJURE_PAGES = Number(argValue("bverfg-dejure-pages") ?? process.env.BVERFG_DEJURE_PAGES ?? 2);
-const MAX_CANDIDATES_PER_SOURCE = Number(argValue("max-candidates") ?? process.env.RANGE_COLLECT_MAX_CANDIDATES ?? 0);
 const SOURCES = new Set(
   (argValue("sources") ?? "us-scotus,de-bverfg,fr-conseil-constitutionnel")
     .split(",")
     .map((source) => source.trim())
     .filter(Boolean),
 );
+const USE_BVERFG_EXTERNAL_INDEX = argFlag("bverfg-use-external-index");
+const USE_BVERFG_DEJURE_INDEX = SOURCES.has("de-bverfg") && !argFlag("bverfg-disable-dejure-index");
+const BVERFG_DEJURE_PAGES = Number(argValue("bverfg-dejure-pages") ?? process.env.BVERFG_DEJURE_PAGES ?? 2);
+const MAX_CANDIDATES_PER_SOURCE = Number(argValue("max-candidates") ?? process.env.RANGE_COLLECT_MAX_CANDIDATES ?? 0);
 
 const SCOTUS_BASE_URL = "https://www.supremecourt.gov";
 const BVERFG_BASE_URL = "https://www.bundesverfassungsgericht.de";
@@ -489,7 +489,7 @@ async function discoverBverfgDecisions() {
         return [] as Candidate[];
       })
     : [];
-  return uniqueCandidates([...bverfgSeedCandidates(), ...bverfgConfiguredDetailCandidates(), ...dejureIndexed, ...indexed]);
+  return uniqueCandidates([...bverfgConfiguredDetailCandidates(), ...dejureIndexed, ...indexed, ...bverfgSeedCandidates()]);
 }
 
 async function discoverConseilDecisions() {
