@@ -431,7 +431,9 @@ function buildCollectionHealth(rows: AnalyticsIngestionRunRow[]) {
 
 function providerForModel(model: string, fallback?: string | null) {
   if (fallback) return fallback;
-  return /^gpt-|^o\d|^chatgpt-/i.test(model) ? "openai" : model.includes("gemini") ? "gemini" : "unknown";
+  if (/^claude-/i.test(model)) return "anthropic";
+  if (/^gpt-|^o\d|^chatgpt-/i.test(model)) return "openai";
+  return model.includes("gemini") ? "gemini" : "unknown";
 }
 
 function parsedFailureModels(row: AnalyticsArticleRow) {

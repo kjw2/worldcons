@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
+import { getAdminLlmSettingsView } from "@/lib/ai/llm-settings";
+import type { AdminLlmSettingsView, ConfigurableLlmProvider } from "@/lib/ai/llm-settings-types";
 import { hasGeminiKey, hasOpenAiKey } from "@/lib/ai/client";
 import { getGeminiModels } from "@/lib/ai/gemini-router";
 import { recordSiteEvent } from "@/lib/analytics/events";
@@ -95,21 +97,46 @@ function uniqueText(values: Array<string | null | undefined>) {
 }
 
 function providerForModel(model: string): SummaryModelOption["provider"] {
+  if (/^claude-/i.test(model)) return "anthropic";
+  if (/^gemini-/i.test(model)) return "gemini";
   return /^gpt-|^o\d|^chatgpt-/i.test(model) ? "openai" : "gemini";
 }
 
-function summaryModelOptions(currentModel?: string | null): SummaryModelOption[] {
+function providerLabel(provider: ConfigurableLlmProvider) {
+  if (provider === "gemini") return "Gemini";
+  if (provider === "openai") return "OpenAI";
+  if (provider === "anthropic") return "Claude";
+  return "OpenAI Compatible";
+}
+
+function pushModelOption(options: SummaryModelOption[], provider: ConfigurableLlmProvider, model?: string | null) {
+  const normalized = model?.trim();
+  if (!normalized || options.some((option) => option.provider === provider && option.model === normalized)) return;
+  options.push({ provider, model: normalized, label: `${providerLabel(provider)} · ${normalized}` });
+}
+
+function summaryModelOptions(currentModel?: string | null, llmSettings?: AdminLlmSettingsView | null): SummaryModelOption[] {
   const options: SummaryModelOption[] = [];
+
+  if (llmSettings) {
+    pushModelOption(options, llmSettings.summary.provider, llmSettings.summary.model);
+    for (const provider of ["gemini", "openai", "anthropic", "openai-compatible"] as const) {
+      const providerSettings = llmSettings.providers[provider];
+      if (providerSettings.enabled && providerSettings.hasUsableKey) {
+        pushModelOption(options, provider, providerSettings.defaultModel);
+      }
+    }
+  }
 
   if (hasGeminiKey()) {
     for (const model of getGeminiModels("Summarize").slice(0, 12)) {
-      options.push({ provider: "gemini", model, label: `Gemini · ${model}` });
+      pushModelOption(options, "gemini", model);
     }
   }
 
   if (hasOpenAiKey()) {
     for (const model of uniqueText([process.env.OPENAI_SUMMARY_MODEL, "gpt-4.1-mini", "gpt-4.1"])) {
-      options.push({ provider: "openai", model, label: `OpenAI · ${model}` });
+      pushModelOption(options, "openai", model);
     }
   }
 
@@ -213,7 +240,7 @@ function TextDetails({ title, text }: { title: string; text?: string | null }) {
   );
 }
 
-function AdminReviewPanel({ article }: { article: ArticleDetail }) {
+function AdminReviewPanel({ article, llmSettings }: { article: ArticleDetail; llmSettings?: AdminLlmSettingsView | null }) {
   const sourceMetadata = article.sourceMetadata;
   const collection = isRecord(sourceMetadata?.collection) ? sourceMetadata.collection : {};
   const errorMessage = asText(article.errorMetadata?.message);
@@ -296,7 +323,7 @@ function AdminReviewPanel({ article }: { article: ArticleDetail }) {
           hasPublishableText={hasPublishableText}
           isPublic={isPublic}
           currentModel={currentModel}
-          modelOptions={summaryModelOptions(currentModel)}
+          modelOptions={summaryModelOptions(currentModel, llmSettings)}
         />
         <TextDetails title="추출 본문" text={article.cleanedText} />
         {article.rawText && article.rawText !== article.cleanedText ? <TextDetails title="원시 본문" text={article.rawText} /> : null}
@@ -324,6 +351,7 @@ export default async function ArticlePage({
   const article = await getArticleBySlug(slug, { includeUnpublished });
   if (!article) notFound();
 
+  const llmSettings = includeUnpublished ? await getAdminLlmSettingsView().catch(() => null) : null;
   const related = await getRelatedArticles(article);
   const summary = article.summaryJson;
   const summaryModelName = summary?.aiMetadata?.model ?? "모델 정보 없음";
@@ -380,7 +408,7 @@ export default async function ArticlePage({
         </div>
       </section>
 
-      {includeUnpublished ? <AdminReviewPanel article={article} /> : null}
+      {includeUnpublished ? <AdminReviewPanel article={article} llmSettings={llmSettings} /> : null}
 
       <div style={jurisdictionThemeStyle(theme)} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <article className="space-y-5">

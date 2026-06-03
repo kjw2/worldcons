@@ -319,7 +319,7 @@ async function fetchGeminiModelCatalog(apiKey: string): Promise<GeminiModelCatal
   return { version: MODEL_CATALOG_VERSION, fetchedAt: Date.now(), models };
 }
 
-export async function refreshGeminiModelCatalog(force = false) {
+export async function refreshGeminiModelCatalog(force = false, options: GeminiRouteOptions = {}) {
   if (!autoDiscoverGeminiModels()) return null;
 
   const cached = loadModelCatalog();
@@ -327,7 +327,7 @@ export async function refreshGeminiModelCatalog(force = false) {
   if (!force && isFresh) return cached;
   if (!force && Date.now() - lastModelCatalogRefreshFailureAt < MODEL_CATALOG_RETRY_AFTER_MS) return cached;
 
-  const apiKey = getGeminiApiKeys()[0];
+  const apiKey = getGeminiApiKeys(options)[0];
   if (!apiKey) return cached;
 
   if (!modelCatalogRefreshPromise) {
@@ -371,11 +371,15 @@ export function analyzeGeminiTaskType(messages: LlmMessage[]): GeminiTaskType {
 
 interface GeminiRouteOptions {
   model?: string;
+  models?: string[];
+  apiKeys?: string[];
+  selectionStrategy?: GeminiSelectionStrategy;
 }
 
 export function getGeminiModels(taskType: GeminiTaskType = "Summarize", options: GeminiRouteOptions = {}) {
   const explicitModel = options.model?.trim();
   if (explicitModel) return [explicitModel];
+  if (options.models?.length) return unique(options.models.map((model) => model.trim()).filter(Boolean));
 
   const pinnedModel = process.env.GEMINI_PINNED_MODEL?.trim();
   if (pinnedModel) return [pinnedModel];
@@ -392,13 +396,15 @@ export function getGeminiModels(taskType: GeminiTaskType = "Summarize", options:
   return unique(taskModels);
 }
 
-export function getGeminiApiKeys() {
-  const keys = [...parseCsvEnv(process.env.GEMINI_API_KEYS), process.env.GEMINI_API_KEY?.trim()].filter(Boolean) as string[];
+export function getGeminiApiKeys(options: GeminiRouteOptions = {}) {
+  const keys = options.apiKeys?.length
+    ? options.apiKeys
+    : ([...parseCsvEnv(process.env.GEMINI_API_KEYS), process.env.GEMINI_API_KEY?.trim()].filter(Boolean) as string[]);
   return unique(keys);
 }
 
-function getSelectionStrategy(): GeminiSelectionStrategy {
-  const value = process.env.GEMINI_SELECTION_STRATEGY;
+function getSelectionStrategy(options: GeminiRouteOptions = {}): GeminiSelectionStrategy {
+  const value = options.selectionStrategy ?? process.env.GEMINI_SELECTION_STRATEGY;
   if (value === "StableFirstStrategy" || value === "PriorityFirstStrategy" || value === "MaxRemainingQuotaStrategy") return value;
   return "GenerationFirstStrategy";
 }
@@ -503,7 +509,7 @@ function isRouteAvailable(state: GeminiRouterState, route: GeminiRoute) {
 }
 
 function buildGeminiRoutes(taskType: GeminiTaskType, options: GeminiRouteOptions = {}) {
-  const keys = getGeminiApiKeys();
+  const keys = getGeminiApiKeys(options);
   const models = getGeminiModels(taskType, options);
   return models.flatMap((model) =>
     keys.map((apiKey, index) => ({
@@ -516,7 +522,7 @@ function buildGeminiRoutes(taskType: GeminiTaskType, options: GeminiRouteOptions
 }
 
 function unavailableRoutesMessage(taskType: GeminiTaskType, options: GeminiRouteOptions = {}) {
-  const keys = getGeminiApiKeys();
+  const keys = getGeminiApiKeys(options);
   if (keys.length === 0) return "No Gemini API key is configured.";
 
   const state = loadState();
@@ -538,7 +544,7 @@ export function getGeminiRoutes(taskType: GeminiTaskType = "Summarize", options:
   const state = loadState();
   const routes = buildGeminiRoutes(taskType, options);
   const available = routes.filter((route) => isRouteAvailable(state, route));
-  const strategy = getSelectionStrategy();
+  const strategy = getSelectionStrategy(options);
   const modelOrder = new Map(models.map((model, index) => [model, index]));
 
   if (strategy === "PriorityFirstStrategy") {
@@ -736,10 +742,10 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
 
 export async function completeGeminiJson(messages: LlmMessage[], options: GeminiRouteOptions = {}): Promise<LlmCompletionResult | null> {
   const taskType = (process.env.GEMINI_TASK_TYPE?.trim() as GeminiTaskType | undefined) || analyzeGeminiTaskType(messages);
-  await refreshGeminiModelCatalog();
+  await refreshGeminiModelCatalog(false, options);
   const routes = getGeminiRoutes(taskType, options);
   if (routes.length === 0) {
-    if (getGeminiApiKeys().length === 0 && process.env.NODE_ENV !== "production") {
+    if (getGeminiApiKeys(options).length === 0 && process.env.NODE_ENV !== "production") {
       return null;
     }
 

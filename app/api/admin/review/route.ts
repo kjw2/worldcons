@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction, type AdminReviewAction } from "@/lib/ingest/review";
+import { LLM_PROVIDER_IDS } from "@/lib/ai/llm-settings-types";
 import { isAuthorizedRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   const articleId = typeof body.articleId === "string" ? body.articleId : undefined;
   const slug = typeof body.slug === "string" ? body.slug : undefined;
   const note = typeof body.note === "string" ? body.note : undefined;
-  const provider = body.provider === "openai" || body.provider === "gemini" ? body.provider : undefined;
+  const provider = typeof body.provider === "string" && (LLM_PROVIDER_IDS as readonly string[]).includes(body.provider) ? body.provider as typeof LLM_PROVIDER_IDS[number] : undefined;
   const model = typeof body.model === "string" ? body.model : undefined;
 
   if (!action) {

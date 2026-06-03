@@ -3,11 +3,12 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, EyeOff, Loader2, RefreshCcw, RotateCcw, Send } from "lucide-react";
+import type { ConfigurableLlmProvider } from "@/lib/ai/llm-settings-types";
 
 type ReviewAction = "approve-and-summarize" | "retry-summary" | "resummarize-with-model" | "publish-reviewed" | "close-private" | "retry-source-ingest";
 
 export interface SummaryModelOption {
-  provider: "gemini" | "openai";
+  provider: ConfigurableLlmProvider;
   model: string;
   label: string;
 }
@@ -238,6 +239,8 @@ export function AdminReviewActions({
                 >
                   <option value="gemini">Gemini</option>
                   <option value="openai">OpenAI</option>
+                  <option value="anthropic">Claude</option>
+                  <option value="openai-compatible">OpenAI Compatible</option>
                 </select>
               </label>
               <label>

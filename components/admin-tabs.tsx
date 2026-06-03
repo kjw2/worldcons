@@ -1,9 +1,9 @@
-import { BarChart3, BookOpenCheck, LayoutDashboard, ListChecks } from "lucide-react";
+import { BarChart3, BookOpenCheck, KeyRound, LayoutDashboard, ListChecks } from "lucide-react";
 
 export function AdminTabs({
   active,
 }: {
-  active: "dashboard" | "analytics" | "ingestion-runs" | "glossary-candidates";
+  active: "dashboard" | "analytics" | "ingestion-runs" | "glossary-candidates" | "llm";
 }) {
   const tabs = [
     {
@@ -29,6 +29,12 @@ export function AdminTabs({
       href: "/admin/glossary-candidates",
       label: "용어 후보",
       icon: BookOpenCheck,
+    },
+    {
+      key: "llm" as const,
+      href: "/admin/llm",
+      label: "LLM 관리",
+      icon: KeyRound,
     },
   ];
 

@@ -83,8 +83,10 @@ function isPublicSummarized(row: ReviewArticleRow) {
 }
 
 function normalizeProvider(provider?: LlmCompletionOptions["provider"], model?: string): LlmCompletionOptions["provider"] {
-  if (provider === "openai" || provider === "gemini") return provider;
-  return /^gpt-|^o\d|^chatgpt-/i.test(model ?? "") ? "openai" : "gemini";
+  if (provider === "openai" || provider === "gemini" || provider === "anthropic" || provider === "openai-compatible") return provider;
+  if (/^claude-/i.test(model ?? "")) return "anthropic";
+  if (/^gpt-|^o\d|^chatgpt-/i.test(model ?? "")) return "openai";
+  return "gemini";
 }
 
 async function findReviewArticle(articleId?: string, slug?: string) {
