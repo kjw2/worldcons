@@ -85,6 +85,28 @@ function anthropicMessages(messages: LlmMessage[]) {
   };
 }
 
+export function supportsOpenAiTemperature(model: string) {
+  const normalized = model.trim().toLowerCase();
+  if (/^gpt-5(?:[.-]|$)/.test(normalized)) return false;
+  if (/^o\d(?:[.-]|$)/.test(normalized)) return false;
+  return true;
+}
+
+function openAiCompletionPayload(messages: LlmMessage[], model: string, includeTemperature = supportsOpenAiTemperature(model)) {
+  return {
+    model,
+    messages: messagesForOpenAi(messages),
+    response_format: { type: "json_object" as const },
+    ...(includeTemperature ? { temperature: Number(process.env.OPENAI_TEMPERATURE ?? 0.2) } : {}),
+  };
+}
+
+function isUnsupportedTemperatureError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("temperature") && (message.includes("unsupported") || message.includes("does not support"));
+}
+
 interface AnthropicResponse {
   content?: Array<{ type?: string; text?: string }>;
   error?: {
@@ -148,12 +170,13 @@ async function completeOpenAiLikeJson(
     return null;
   }
 
-  const completion = await client.chat.completions.create({
-    model,
-    messages: messagesForOpenAi(messages),
-    response_format: { type: "json_object" },
-    temperature: 0.2,
-  });
+  let completion: Awaited<ReturnType<typeof client.chat.completions.create>>;
+  try {
+    completion = await client.chat.completions.create(openAiCompletionPayload(messages, model));
+  } catch (error) {
+    if (!isUnsupportedTemperatureError(error)) throw error;
+    completion = await client.chat.completions.create(openAiCompletionPayload(messages, model, false));
+  }
 
   return {
     content: completion.choices[0]?.message.content ?? "{}",

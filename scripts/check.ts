@@ -5,7 +5,7 @@ import path from "node:path";
 import { SummarySchema } from "@/lib/ai/schema";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
 import { completeGeminiJson, getGeminiModels, getGeminiRoutes } from "@/lib/ai/gemini-router";
-import { hasGeminiKey } from "@/lib/ai/client";
+import { hasGeminiKey, supportsOpenAiTemperature } from "@/lib/ai/client";
 import { mockSummary } from "@/lib/ai/summarize";
 import { runFranceSpider } from "@/lib/crawlee";
 import { jsonLdScriptValue } from "@/lib/seo/jsonld";
@@ -135,6 +135,11 @@ if (originalAppBaseUrl === undefined) delete process.env.APP_BASE_URL;
 else process.env.APP_BASE_URL = originalAppBaseUrl;
 if (originalVercelUrl === undefined) delete process.env.VERCEL_URL;
 else process.env.VERCEL_URL = originalVercelUrl;
+
+assert(!supportsOpenAiTemperature("gpt-5.5"), "GPT-5.x chat requests must omit non-default temperature");
+assert(!supportsOpenAiTemperature("gpt-5.4"), "GPT-5.x chat requests must omit non-default temperature");
+assert(!supportsOpenAiTemperature("o3-mini"), "OpenAI reasoning chat requests must omit non-default temperature");
+assert(supportsOpenAiTemperature("gpt-4.1-mini"), "GPT-4.1 chat requests should keep configured temperature");
 
 const scotusRobots = `User-agent:discobot
 Disallow:/
