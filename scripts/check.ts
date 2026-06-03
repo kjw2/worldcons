@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { SummarySchema } from "@/lib/ai/schema";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
-import { getGeminiModels, getGeminiRoutes } from "@/lib/ai/gemini-router";
+import { completeGeminiJson, getGeminiModels, getGeminiRoutes } from "@/lib/ai/gemini-router";
 import { hasGeminiKey } from "@/lib/ai/client";
 import { mockSummary } from "@/lib/ai/summarize";
 import { runFranceSpider } from "@/lib/crawlee";
@@ -342,7 +342,89 @@ SummarySchema.parse({
   },
 });
 
+async function assertGeminiRouterSurvivesUnwritableStorage() {
+  const keysToRestore = [
+    "GEMINI_API_KEY",
+    "GEMINI_API_KEYS",
+    "GEMINI_AUTO_DISCOVER_MODELS",
+    "GEMINI_MODEL_CATALOG_PATH",
+    "GEMINI_MODEL_CATALOG_TTL_MS",
+    "GEMINI_ROUTER_STATE_PATH",
+    "GEMINI_PINNED_MODEL",
+    "GEMINI_ALLOW_MODEL_OVERRIDE",
+    "GEMINI_SUMMARY_MODEL",
+    "GEMINI_SUMMARY_MODELS",
+  ];
+  const originalEnv = new Map(keysToRestore.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  const blockerPath = path.join(os.tmpdir(), `worldcons-gemini-unwritable-${process.pid}`);
+
+  try {
+    fs.writeFileSync(blockerPath, "not a directory", "utf8");
+    process.env.GEMINI_API_KEYS = "test-key";
+    delete process.env.GEMINI_API_KEY;
+    process.env.GEMINI_AUTO_DISCOVER_MODELS = "true";
+    process.env.GEMINI_MODEL_CATALOG_PATH = path.join(blockerPath, "catalog.json");
+    process.env.GEMINI_MODEL_CATALOG_TTL_MS = "86400000";
+    process.env.GEMINI_ROUTER_STATE_PATH = path.join(blockerPath, "state.json");
+    delete process.env.GEMINI_PINNED_MODEL;
+    delete process.env.GEMINI_ALLOW_MODEL_OVERRIDE;
+    delete process.env.GEMINI_SUMMARY_MODEL;
+    delete process.env.GEMINI_SUMMARY_MODELS;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes(":generateContent")) {
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "{\"ok\":true}" }],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+
+      if (url.includes("/v1beta/models")) {
+        return new Response(
+          JSON.stringify({
+            models: [
+              {
+                name: "models/gemini-4-flash-lite",
+                baseModelId: "gemini-4-flash-lite",
+                supportedGenerationMethods: ["generateContent"],
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    const result = await completeGeminiJson([{ role: "user", content: "요약 테스트" }]);
+    if (!result) throw new Error("Gemini router must return a result when local storage is unwritable");
+    assert(result.provider === "gemini", "Gemini router must return a result when local storage is unwritable");
+    assert(result.model === "gemini-4-flash-lite", "Gemini router must use in-memory model catalog fallback when catalog save fails");
+  } finally {
+    globalThis.fetch = originalFetch;
+    fs.rmSync(blockerPath, { force: true });
+    for (const key of keysToRestore) {
+      const value = originalEnv.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 async function main() {
+  await assertGeminiRouterSurvivesUnwritableStorage();
+
   const franceSeedOnly = await withTimeout(runFranceSpider({ limit: 1, strategy: "seed", usePlaywright: false }), 10_000, {
     sourceKey: "fr-conseil-constitutionnel",
     items: [],

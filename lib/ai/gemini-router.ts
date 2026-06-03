@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { SummaryResponseJsonSchema } from "@/lib/ai/schema";
 import type { LlmCompletionResult, LlmMessage } from "@/lib/ai/client";
@@ -134,6 +135,10 @@ const TASK_CANDIDATES: Record<GeminiTaskType, string[]> = {
 
 let lastModelCatalogRefreshFailureAt = 0;
 let modelCatalogRefreshPromise: Promise<GeminiModelCatalog | null> | null = null;
+let memoryModelCatalogPath: string | null = null;
+let memoryModelCatalog: GeminiModelCatalog | null = null;
+let memoryRouterStatePath: string | null = null;
+let memoryRouterState: GeminiRouterState | null = null;
 
 function parseCsvEnv(value?: string) {
   return (value ?? "")
@@ -159,29 +164,58 @@ function modelCatalogTtlMs() {
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_MODEL_CATALOG_TTL_MS;
 }
 
+function defaultCacheDir() {
+  const explicitCacheDir = process.env.GEMINI_CACHE_DIR?.trim();
+  if (explicitCacheDir) return path.resolve(process.cwd(), explicitCacheDir);
+  if (process.env.VERCEL === "1" || process.env.VERCEL_ENV) return path.join(os.tmpdir(), "worldcons");
+  return path.resolve(process.cwd(), ".cache");
+}
+
+function resolveStoragePath(explicitPath: string | undefined, defaultFileName: string) {
+  const trimmed = explicitPath?.trim();
+  if (trimmed) return path.isAbsolute(trimmed) ? trimmed : path.resolve(process.cwd(), trimmed);
+  return path.join(defaultCacheDir(), defaultFileName);
+}
+
+function readJsonFile<T>(filePath: string): T | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonFile(filePath: string, value: unknown) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function modelCatalogPath() {
-  return path.resolve(process.cwd(), process.env.GEMINI_MODEL_CATALOG_PATH ?? ".cache/gemini-model-catalog.json");
+  return resolveStoragePath(process.env.GEMINI_MODEL_CATALOG_PATH, "gemini-model-catalog.json");
 }
 
 function loadModelCatalog(): GeminiModelCatalog | null {
   if (!autoDiscoverGeminiModels()) return null;
 
   const filePath = modelCatalogPath();
-  if (!fs.existsSync(filePath)) return null;
-
-  try {
-    const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as GeminiModelCatalog;
+  const data = readJsonFile<GeminiModelCatalog>(filePath) ?? (memoryModelCatalogPath === filePath ? memoryModelCatalog : null);
+  if (data) {
     if (data.version !== MODEL_CATALOG_VERSION || !Array.isArray(data.models) || !Number.isFinite(data.fetchedAt)) return null;
     return data;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 function saveModelCatalog(catalog: GeminiModelCatalog) {
-  const filePath = modelCatalogPath();
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(catalog, null, 2), "utf8");
+  memoryModelCatalogPath = modelCatalogPath();
+  memoryModelCatalog = catalog;
+  writeJsonFile(memoryModelCatalogPath, catalog);
 }
 
 function normalizeCatalogModelName(model: GeminiCatalogModel) {
@@ -370,7 +404,7 @@ function getSelectionStrategy(): GeminiSelectionStrategy {
 }
 
 function statePath() {
-  return path.resolve(process.cwd(), process.env.GEMINI_ROUTER_STATE_PATH ?? ".cache/gemini-router-state.json");
+  return resolveStoragePath(process.env.GEMINI_ROUTER_STATE_PATH, "gemini-router-state.json");
 }
 
 function pacificDay() {
@@ -392,23 +426,22 @@ function emptyState(): GeminiRouterState {
 
 function loadState(): GeminiRouterState {
   const filePath = statePath();
-  if (!fs.existsSync(filePath)) return emptyState();
+  const data = readJsonFile<GeminiRouterState>(filePath) ?? (memoryRouterStatePath === filePath ? memoryRouterState : null);
 
-  try {
-    const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as GeminiRouterState;
+  if (data) {
     if (data.version !== STATE_VERSION || data.day !== pacificDay() || typeof data.routes !== "object") {
       return emptyState();
     }
     return data;
-  } catch {
-    return emptyState();
   }
+  return emptyState();
 }
 
 function saveState(state: GeminiRouterState) {
   const filePath = statePath();
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf8");
+  memoryRouterStatePath = filePath;
+  memoryRouterState = state;
+  writeJsonFile(filePath, state);
 }
 
 function configForModel(model: string): GeminiModelConfig {
