@@ -160,7 +160,7 @@ function normalizeReferencedProvisions(value: unknown) {
       const lawName = cleanText(item.lawName);
       const article = cleanText(item.article);
       const description = cleanText(item.description);
-      if (!jurisdiction && !lawName && !article && !description) return null;
+      if (!lawName && !article) return null;
       return {
         jurisdiction,
         lawName,

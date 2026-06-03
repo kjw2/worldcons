@@ -389,11 +389,11 @@ export default async function ArticlePage({
             article.readingMinutes ? `${article.readingMinutes}분 읽기` : null,
           ]}
         />
-        <h1 className="mt-4 max-w-4xl text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">
+        <h1 className="mt-4 break-keep text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">
           {article.koreanTitle || article.originalTitle}
         </h1>
-        {primaryIssue ? <p className="mt-4 max-w-3xl text-lg leading-8 text-ink-muted">{primaryIssue}</p> : null}
-        {article.originalTitle ? <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-subtle">원문 제목: {article.originalTitle}</p> : null}
+        {primaryIssue ? <p className="mt-4 break-keep text-lg leading-8 text-ink-muted">{primaryIssue}</p> : null}
+        {article.originalTitle ? <p className="mt-3 break-keep text-sm leading-6 text-ink-subtle">원문 제목: {article.originalTitle}</p> : null}
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {article.originalUrl ? (
             <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg bg-court px-4 text-sm font-semibold text-white transition hover:bg-court/90">

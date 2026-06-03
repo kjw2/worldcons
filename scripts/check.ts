@@ -352,6 +352,22 @@ const normalizedOpenAiSummary = SummarySchema.parse(
     koreanTitle: "침묵권 고지 관련 QPC 결정",
     summary: {
       coreSummary: "문제 된 조항은 침묵권 고지 규정이 없다는 이유만으로 위헌이라고 볼 수 없다고 판단했다.",
+      referencedProvisions: [
+        {
+          jurisdiction: "",
+          lawName: "",
+          article: "",
+          description: "무죄추정에서 자기부죄거부 원칙 및 진술거부권이 도출된다고 판시됨.",
+          confidence: "low",
+        },
+        {
+          jurisdiction: "France",
+          lawName: "Code de la consommation",
+          article: "Article L.522-5",
+          description: "행정제재 전 의견 제출 요청 절차가 심판대상이 됨.",
+          confidence: "medium",
+        },
+      ],
       background: "배경",
       caseStructure: "구조",
       implications: "시사점",
@@ -368,7 +384,8 @@ const normalizedOpenAiSummary = SummarySchema.parse(
   }),
 );
 assert(Array.isArray(normalizedOpenAiSummary.summary.coreSummary), "summary coreSummary string must be normalized to array");
-assert(normalizedOpenAiSummary.summary.referencedProvisions.length === 0, "missing referencedProvisions must normalize to []");
+assert(normalizedOpenAiSummary.summary.referencedProvisions.length === 1, "description-only referenced provisions must be dropped");
+assert(normalizedOpenAiSummary.summary.referencedProvisions[0].article === "Article L.522-5", "valid referenced provisions must be retained");
 assert(normalizedOpenAiSummary.entities[0].type === "institution", "Korean entity type labels must normalize to enum values");
 assert(normalizedOpenAiSummary.entities[0].normalizedName === "Conseil constitutionnel", "missing normalizedName must default to name");
 assert(normalizedOpenAiSummary.riskFlags.includes("source_text_incomplete"), "risk flag notes must normalize to known risk flags");
