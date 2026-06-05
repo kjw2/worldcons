@@ -65,7 +65,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <BackToTopButton />
         <footer id="site-footer" className="h-[85px] border-t border-line bg-white">
           <div className="mx-auto flex h-full max-w-7xl flex-col items-center justify-center gap-3 px-4 text-center text-sm leading-5 text-ink-muted sm:px-6 lg:px-8">
-            <p>2026 CCLIB</p>
+            <p>2026 World Cons</p>
             <p>AI 요약은 참고용입니다. 정확한 법적 판단이나 인용은 각 기관의 공식 원문을 확인하세요.</p>
           </div>
         </footer>
