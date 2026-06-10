@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const { runIngest } = await import("@/lib/ingest/run");
   const ingest = await runIngest({
     limit: boundedInteger(process.env.INGEST_LIMIT_PER_SOURCE, 5, { min: 1, max: 100 }),
-    rangeDays: boundedInteger(process.env.INGEST_RANGE_DAYS, 7, { min: 1, max: 365 }),
+    rangeDays: boundedInteger(process.env.INGEST_RANGE_DAYS, 14, { min: 1, max: 365 }),
     refreshExisting: true,
   });
   const summarize = await runSummarizePending({ limit: boundedInteger(process.env.CRON_SUMMARY_LIMIT, 20, { min: 1, max: 100 }) });

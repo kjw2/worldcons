@@ -443,6 +443,7 @@ pnpm start
 | `CRAWLER_RETRY_COUNT` | `2` | fetch 재시도 횟수 |
 | `CRAWLER_DELAY_MS` | `2000` | 같은 origin 요청 사이 최소 지연 |
 | `CRAWLER_ROBOTS_ENABLED` | `true` | robots.txt 확인 여부 |
+| `INGEST_RANGE_DAYS` | `14` | 정기 수집에서 미국과 프랑스가 기본으로 다시 확인하는 날짜 범위 |
 | `CRAWLEE_MAX_CONCURRENCY` | `2` | CheerioCrawler 동시성 |
 | `CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY` | `1` | Playwright 동시성 |
 | `CRAWLEE_PLAYWRIGHT_ENABLED` | `true` | Crawlee Playwright fallback 사용 여부 |
@@ -466,7 +467,7 @@ pnpm start
 | `BVERFG_TIMEOUT_MS` | `60000` | 독일 fetch timeout |
 | `BVERFG_MAX_CONCURRENCY` | `1` | 독일 수집 동시성 |
 | `BVERFG_RETRY_COUNT` | `2` | 독일 fetch retry |
-| `BVERFG_INGEST_RANGE_DAYS` | `60` | 정기 수집에서 독일 BVerfG만 더 넓게 확인하는 최소 날짜 범위. `INGEST_RANGE_DAYS=7`이어도 독일은 이 값 이상을 봅니다 |
+| `BVERFG_INGEST_RANGE_DAYS` | `60` | 정기 수집에서 독일 BVerfG만 더 넓게 확인하는 최소 날짜 범위. `INGEST_RANGE_DAYS=14`이어도 독일은 이 값 이상을 봅니다 |
 | `BVERFG_USE_IPV4_FIRST` | `true` | IPv6 timeout 환경에서 IPv4 우선 |
 
 운영에서 BVerfG가 `Crawl-delay: 30`을 주면 코드가 더 큰 값인 30초를 따릅니다.

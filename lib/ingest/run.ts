@@ -88,6 +88,7 @@ interface ExistingArticleRow {
 const SUMMARY_CANDIDATE_SELECT =
   "id, slug, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, summary_json, status, source_metadata, updated_at";
 const DEFAULT_STALE_SUMMARIZING_MINUTES = 30;
+const DEFAULT_STANDARD_INGEST_RANGE_DAYS = 14;
 const DEFAULT_BVERFG_INGEST_RANGE_DAYS = 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -109,10 +110,16 @@ function optionalPositiveInteger(value: unknown) {
 }
 
 export function effectiveRangeDaysForSource(sourceKey?: string, configuredRangeDays?: number) {
-  if (sourceKey !== "de-bverfg") return configuredRangeDays;
+  if (sourceKey === "de-bverfg") {
+    const bverfgRangeDays = optionalPositiveInteger(process.env.BVERFG_INGEST_RANGE_DAYS) ?? DEFAULT_BVERFG_INGEST_RANGE_DAYS;
+    return configuredRangeDays ? Math.max(configuredRangeDays, bverfgRangeDays) : bverfgRangeDays;
+  }
 
-  const bverfgRangeDays = optionalPositiveInteger(process.env.BVERFG_INGEST_RANGE_DAYS) ?? DEFAULT_BVERFG_INGEST_RANGE_DAYS;
-  return configuredRangeDays ? Math.max(configuredRangeDays, bverfgRangeDays) : bverfgRangeDays;
+  if (sourceKey === "us-scotus" || sourceKey === "fr-conseil-constitutionnel") {
+    return configuredRangeDays ? Math.max(configuredRangeDays, DEFAULT_STANDARD_INGEST_RANGE_DAYS) : DEFAULT_STANDARD_INGEST_RANGE_DAYS;
+  }
+
+  return configuredRangeDays;
 }
 
 function rangeDaysForOptions(options: RunIngestOptions = {}, sourceKey?: string) {

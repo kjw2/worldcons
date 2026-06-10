@@ -8,6 +8,7 @@ import { completeGeminiJson, getGeminiModels, getGeminiRoutes } from "@/lib/ai/g
 import { hasGeminiKey, supportsOpenAiTemperature } from "@/lib/ai/client";
 import { mockSummary } from "@/lib/ai/summarize";
 import { runFranceSpider } from "@/lib/crawlee";
+import { effectiveRangeDaysForSource } from "@/lib/ingest/run";
 import { jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
@@ -80,6 +81,17 @@ assert(isConstitutionallyRelevant(article), "constitutional relevance keyword fi
 assert(articleFiltersFromSearchParams({ language: "fr" }).language === "fr", "language filter parsing failed");
 assert(boundedInteger("-10", 5, { min: 1, max: 20 }) === 1, "bounded integer min clamp failed");
 assert(boundedInteger("500", 5, { min: 1, max: 20 }) === 20, "bounded integer max clamp failed");
+
+const originalBverfgIngestRangeDays = process.env.BVERFG_INGEST_RANGE_DAYS;
+delete process.env.BVERFG_INGEST_RANGE_DAYS;
+assert(effectiveRangeDaysForSource("us-scotus", 7) === 14, "SCOTUS ingest range must be at least 14 days");
+assert(effectiveRangeDaysForSource("fr-conseil-constitutionnel", 7) === 14, "France ingest range must be at least 14 days");
+assert(effectiveRangeDaysForSource("us-scotus", 21) === 21, "SCOTUS ingest range must allow wider explicit ranges");
+assert(effectiveRangeDaysForSource("de-bverfg", 14) === 60, "BVerfG ingest range must remain at least 60 days by default");
+process.env.BVERFG_INGEST_RANGE_DAYS = "45";
+assert(effectiveRangeDaysForSource("de-bverfg", 14) === 45, "BVerfG env override must set the minimum ingest range");
+if (originalBverfgIngestRangeDays === undefined) delete process.env.BVERFG_INGEST_RANGE_DAYS;
+else process.env.BVERFG_INGEST_RANGE_DAYS = originalBverfgIngestRangeDays;
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalCronSecret = process.env.CRON_SECRET;

@@ -21,7 +21,7 @@ on:
       range_days:
         description: Only ingest official materials published within this many days
         required: false
-        default: "7"
+        default: "14"
 
 concurrency:
   group: crawlee-worker-ingest
@@ -45,7 +45,7 @@ jobs:
       PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
-      INGEST_RANGE_DAYS: "7"
+      INGEST_RANGE_DAYS: "14"
       INGEST_REFRESH_EXISTING: "true"
       CRAWLEE_MAX_CONCURRENCY: "1"
       CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
@@ -77,7 +77,7 @@ jobs:
           SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
-          RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '7' }}
+          RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
         run: |
           SOURCE_ARG=()
           if [ -n "$SOURCE_INPUT" ]; then
