@@ -88,6 +88,7 @@ interface ExistingArticleRow {
 const SUMMARY_CANDIDATE_SELECT =
   "id, slug, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, summary_json, status, source_metadata, updated_at";
 const DEFAULT_STALE_SUMMARIZING_MINUTES = 30;
+const DEFAULT_BVERFG_INGEST_RANGE_DAYS = 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -107,8 +108,16 @@ function optionalPositiveInteger(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
 }
 
-function rangeDaysForOptions(options: RunIngestOptions = {}) {
-  return optionalPositiveInteger(options.rangeDays ?? process.env.INGEST_RANGE_DAYS);
+export function effectiveRangeDaysForSource(sourceKey?: string, configuredRangeDays?: number) {
+  if (sourceKey !== "de-bverfg") return configuredRangeDays;
+
+  const bverfgRangeDays = optionalPositiveInteger(process.env.BVERFG_INGEST_RANGE_DAYS) ?? DEFAULT_BVERFG_INGEST_RANGE_DAYS;
+  return configuredRangeDays ? Math.max(configuredRangeDays, bverfgRangeDays) : bverfgRangeDays;
+}
+
+function rangeDaysForOptions(options: RunIngestOptions = {}, sourceKey?: string) {
+  const configuredRangeDays = optionalPositiveInteger(options.rangeDays ?? process.env.INGEST_RANGE_DAYS);
+  return effectiveRangeDaysForSource(sourceKey, configuredRangeDays);
 }
 
 function rangeStartForDays(days: number) {
@@ -122,11 +131,11 @@ function isItemInDateRange(publishedAt: string | undefined, rangeStart: Date | u
   return Boolean(parsed && parsed >= rangeStart);
 }
 
-function shouldRefreshExistingArticles(options: RunIngestOptions = {}) {
+function shouldRefreshExistingArticles(options: RunIngestOptions = {}, sourceKey?: string) {
   if (typeof options.refreshExisting === "boolean") return options.refreshExisting;
   const env = process.env.INGEST_REFRESH_EXISTING;
   if (env !== undefined && env !== "") return !["0", "false", "no", "off"].includes(env.toLowerCase());
-  return Boolean(rangeDaysForOptions(options));
+  return Boolean(rangeDaysForOptions(options, sourceKey));
 }
 
 async function createIngestionRun(sourceKey: string) {
@@ -458,9 +467,9 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     },
   };
   const runId = await createIngestionRun(adapter.sourceKey);
-  const rangeDays = rangeDaysForOptions(options);
+  const rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
   const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
-  const refreshExisting = shouldRefreshExistingArticles(options);
+  const refreshExisting = shouldRefreshExistingArticles(options, adapter.sourceKey);
   const discoveryOptions = {
     debug: options.debug,
     limit,
@@ -561,8 +570,6 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
 
 export async function runIngest(options: RunIngestOptions = {}) {
   const limit = boundedInteger(options.limit ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
-  const rangeDays = rangeDaysForOptions(options);
-  const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
   const blocked = inlineCrawlerBlockReason(options);
   if (blocked) {
     return {
@@ -581,6 +588,7 @@ export async function runIngest(options: RunIngestOptions = {}) {
     const discovered = await Promise.allSettled(
       selectedAdapters.map((adapter) => {
         const diagnostics = createDiagnosticsCollector(adapter.sourceKey);
+        const rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
         return adapter.discover({
           debug: options.debug,
           limit,
@@ -602,7 +610,14 @@ export async function runIngest(options: RunIngestOptions = {}) {
         summarizedCount: 0,
         failedCount: result.status === "rejected" ? 1 : 0,
         skippedCount: 0,
-        skippedOutOfRangeCount: result.status === "fulfilled" ? result.value.items.filter((item) => !isItemInDateRange(item.publishedAt, rangeStart)).length : 0,
+        skippedOutOfRangeCount:
+          result.status === "fulfilled"
+            ? result.value.items.filter((item) => {
+                const rangeDays = rangeDaysForOptions(options, selectedAdapters[index]?.sourceKey);
+                const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
+                return !isItemInDateRange(item.publishedAt, rangeStart);
+              }).length
+            : 0,
         skippedNonConstitutionalCount: 0,
         errors: result.status === "rejected" ? [String(result.reason)] : [],
         diagnostics: result.status === "fulfilled" ? result.value.diagnostics : undefined,

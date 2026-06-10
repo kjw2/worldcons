@@ -466,9 +466,11 @@ pnpm start
 | `BVERFG_TIMEOUT_MS` | `60000` | 독일 fetch timeout |
 | `BVERFG_MAX_CONCURRENCY` | `1` | 독일 수집 동시성 |
 | `BVERFG_RETRY_COUNT` | `2` | 독일 fetch retry |
+| `BVERFG_INGEST_RANGE_DAYS` | `60` | 정기 수집에서 독일 BVerfG만 더 넓게 확인하는 최소 날짜 범위. `INGEST_RANGE_DAYS=7`이어도 독일은 이 값 이상을 봅니다 |
 | `BVERFG_USE_IPV4_FIRST` | `true` | IPv6 timeout 환경에서 IPv4 우선 |
 
 운영에서 BVerfG가 `Crawl-delay: 30`을 주면 코드가 더 큰 값인 30초를 따릅니다.
+독일 BVerfG는 새 결정이 띄엄띄엄 올라오거나 외부 목록 반영이 늦을 수 있어 정기 수집에서도 최근 60일을 다시 확인합니다.
 
 ## 데이터베이스 준비
 

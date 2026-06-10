@@ -203,6 +203,10 @@ function canonicalDecisionUrl(url: string) {
   return canonicalizeUrl(parsed.toString());
 }
 
+function bverfgPublishedAtForHtml(_metadata: unknown, item: DiscoveredItem, finalUrl: string) {
+  return dateFromText(finalUrl) ?? item.publishedAt;
+}
+
 function itemFromUrl(url: string, strategy: CrawlStrategy, metadata: Record<string, unknown> = {}): DiscoveredItem {
   const cleanUrl = canonicalDecisionUrl(url);
   const title = typeof metadata.title === "string" && metadata.title ? metadata.title : titleFromUrl(url);
@@ -464,6 +468,7 @@ const config: OfficialSpiderConfig = {
   itemFromUrl,
   isCandidateUrl,
   sortItems,
+  publishedAtForHtml: bverfgPublishedAtForHtml,
 };
 
 function emptyIndexResult(options: CrawleeSpiderOptions = {}) {

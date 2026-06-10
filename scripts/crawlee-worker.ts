@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { runIngest } from "@/lib/ingest/run";
+import { effectiveRangeDaysForSource, runIngest } from "@/lib/ingest/run";
 import { getSourceAdapter } from "@/lib/sources";
 import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
@@ -65,7 +65,8 @@ async function main() {
   const limit = boundedInteger(argValue("limit") ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const strategy = (argValue("strategy") as CrawlStrategyOption | undefined) ?? "auto";
   const usePlaywright = boolArg("use-playwright") ? true : boolArg("no-playwright") ? false : undefined;
-  const rangeDays = optionalPositiveInteger(argValue("range-days") ?? process.env.INGEST_RANGE_DAYS);
+  const configuredRangeDays = optionalPositiveInteger(argValue("range-days") ?? process.env.INGEST_RANGE_DAYS);
+  const rangeDays = effectiveRangeDaysForSource(normalizedSourceKey, configuredRangeDays);
   const refreshExisting = boolArg("refresh-existing") ? true : boolArg("no-refresh-existing") ? false : undefined;
 
   if (boolArg("dry-run")) {

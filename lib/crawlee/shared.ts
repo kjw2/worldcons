@@ -134,13 +134,14 @@ function rawFromHtml(params: {
   const confidence = (config.confidenceFor ?? defaultConfidence)(strategy, text.length, sourceUrlVerified);
   const sourceTextAvailable = text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH;
   const publishable = sourceUrlVerified && sourceTextAvailable && strategy !== "seed";
+  const publishedAt = config.publishedAtForHtml?.(metadata, item, finalUrl) ?? metadata.publishedAt ?? item.publishedAt;
 
   return {
     ...item,
     url: finalUrl,
     canonicalUrl: canonicalizeUrl(finalUrl),
     title: metadata.title ?? item.title,
-    publishedAt: metadata.publishedAt ?? item.publishedAt,
+    publishedAt,
     html,
     text,
     metadata: {

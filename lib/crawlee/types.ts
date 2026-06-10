@@ -4,6 +4,7 @@ import type {
   CrawlStrategyOption,
   CrawlerDiagnosticsCollector,
 } from "@/lib/crawler/types";
+import type { HtmlMetadata } from "@/lib/crawler/extract-metadata";
 import type { DiscoveredItem, RawArticle } from "@/lib/sources/types";
 
 export type CrawleeRequestLabel = "LIST" | "DETAIL";
@@ -62,4 +63,5 @@ export interface OfficialSpiderConfig {
   isCandidateUrl: (url: string, title?: string) => boolean;
   sortItems?: (items: CrawleeSpiderItem[]) => CrawleeSpiderItem[];
   confidenceFor?: (strategy: CrawlStrategy, textLength: number, sourceUrlVerified: boolean) => CollectionConfidence;
+  publishedAtForHtml?: (metadata: HtmlMetadata, item: DiscoveredItem, finalUrl: string) => string | undefined;
 }
