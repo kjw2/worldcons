@@ -50,6 +50,22 @@ function staleSummarizingCutoffIso() {
   return new Date(Date.now() - staleSummarizingMinutes() * 60 * 1000).toISOString();
 }
 
+function isRetryableSummaryBackoff(message?: string) {
+  const lowered = message?.toLowerCase() ?? "";
+  return (
+    lowered.includes("no gemini routes are locally available") ||
+    (lowered.includes("all gemini routes failed") &&
+      (lowered.includes('"retryable":true') ||
+        lowered.includes(" 429") ||
+        lowered.includes(" 500") ||
+        lowered.includes(" 502") ||
+        lowered.includes(" 503") ||
+        lowered.includes(" 504") ||
+        lowered.includes("high demand") ||
+        lowered.includes("timeout")))
+  );
+}
+
 export async function recoverStaleSummarizingArticles(options: { limit?: number; sourceKey?: string } = {}) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return { mode: "no-database", recoveredCount: 0 };
@@ -191,18 +207,20 @@ async function summarizeCandidateRow(
     return { status: "summarized" as const };
   } catch (summaryError) {
     const message = summaryError instanceof Error ? summaryError.message : String(summaryError);
+    const retryableBackoff = isRetryableSummaryBackoff(message);
     await supabase
       .from("articles")
       .update({
-        status: forceAllowed ? row.status : "failed_summary",
+        status: forceAllowed || retryableBackoff ? row.status ?? "cleaned" : "failed_summary",
         error_metadata: {
           message,
+          retryable: retryableBackoff,
           requestedProvider: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
           requestedModel: options.model ?? null,
         },
       })
       .eq("id", row.id);
-    return { status: "failed" as const, errorMessage: message };
+    return { status: "failed" as const, errorMessage: message, retryable: retryableBackoff };
   }
 }
 
@@ -237,6 +255,8 @@ export async function runSummarizePending(options: { limit?: number; sourceKey?:
   let summarizedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
+  let deferredCount = 0;
+  let stoppedReason: string | undefined;
 
   for (const row of data ?? []) {
     if (summarizedCount >= limit) break;
@@ -247,12 +267,17 @@ export async function runSummarizePending(options: { limit?: number; sourceKey?:
       summarizedCount += 1;
     } else {
       failedCount += 1;
+      if (result.retryable) {
+        deferredCount += 1;
+        stoppedReason = result.errorMessage;
+        break;
+      }
     }
   }
 
   const tagRefresh = summarizedCount > 0 ? await runRefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
 
-  return { mode: "database", summarizedCount, failedCount, skippedCount, recoveredStale, tagRefresh };
+  return { mode: "database", summarizedCount, failedCount, skippedCount, deferredCount, stoppedReason, recoveredStale, tagRefresh };
 }
 
 export async function runSummarizeArticle(options: SummarizeArticleOptions) {
