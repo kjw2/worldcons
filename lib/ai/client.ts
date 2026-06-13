@@ -192,7 +192,8 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
   if (provider === "gemini") {
     const gemini = runtime.providers.gemini;
     const model = selectedModel(provider, gemini, runtime.summary, options.model, "gemini-3.1-flash-lite");
-    return completeGeminiJson(messages, { model, apiKeys: gemini.apiKeys });
+    const useRouterModelFallbacks = !options.model && process.env.GEMINI_DISABLE_MODEL_FALLBACKS !== "true";
+    return completeGeminiJson(messages, { ...(useRouterModelFallbacks ? {} : { model }), apiKeys: gemini.apiKeys });
   }
 
   if (provider === "anthropic") {
