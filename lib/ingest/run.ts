@@ -6,7 +6,7 @@ import { createContentHash } from "@/lib/utils/hash";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { parseDate } from "@/lib/utils/dates";
-import { sourceAdapters } from "@/lib/sources";
+import { loadSourceAdapters } from "@/lib/sources/lazy";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
 import type { NormalizedArticle, SourceAdapter } from "@/lib/sources/types";
 import { dedupKeysForArticle, uniqueDiscoveredItems } from "@/lib/ingest/dedup";
@@ -623,9 +623,7 @@ export async function runIngest(options: RunIngestOptions = {}) {
   }
 
   const activeSourceKeys = await getActiveSourceKeys();
-  const selectedAdapters = sourceAdapters.filter(
-    (adapter) => (!options.sourceKey || adapter.sourceKey === options.sourceKey) && (!activeSourceKeys || activeSourceKeys.has(adapter.sourceKey)),
-  );
+  const selectedAdapters = await loadSourceAdapters({ sourceKey: options.sourceKey, activeSourceKeys });
 
   if (!getSupabaseAdmin()) {
     const discovered = await Promise.allSettled(

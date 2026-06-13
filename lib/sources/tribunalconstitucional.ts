@@ -1,6 +1,6 @@
 import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
 import type { SourceDiscoveryOptions } from "@/lib/crawler/types";
-import { runSpainTcSpider, SPAIN_TC_BASE_URL, SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
+import { runSpainTcSpider, SPAIN_TC_BASE_URL, SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import type { DiscoveredItem, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
@@ -93,4 +93,3 @@ export const tribunalConstitucionalAdapter: SourceAdapter = {
     return normalizeRawArticle(raw, this);
   },
 };
-
