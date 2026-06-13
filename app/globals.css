@@ -146,3 +146,43 @@ html.chrome-fixed.chrome-header-hidden #site-header {
     left: 2rem;
   }
 }
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  html.chrome-fixed body {
+    padding-top: 0;
+  }
+
+  body {
+    background: #fff !important;
+    color: #17202a;
+    font-size: 12pt;
+  }
+
+  #site-header,
+  #site-footer,
+  .back-to-top-button,
+  .chrome-toggle-button,
+  .print-hidden {
+    display: none !important;
+  }
+
+  .print-page {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .print-document {
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .print-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
