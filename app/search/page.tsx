@@ -11,6 +11,7 @@ import { recordSearchEvent, recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listGlossaryTerms, listSources, listTags } from "@/lib/db/queries";
 import { glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { hybridSearch, semanticSearch } from "@/lib/search/vector";
+import { displayContentTypeLabel } from "@/lib/ui/content-type-labels";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { articleFiltersFromSearchParams, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -22,15 +23,6 @@ const modeOptions = [
   { value: "fulltext", label: "정확히 찾기" },
   { value: "semantic", label: "의미로 찾기" },
 ] as const;
-
-const typeLabels: Record<string, string> = {
-  news: "뉴스",
-  press_release: "보도자료",
-  decision: "결정",
-  opinion: "의견",
-  order: "명령",
-  other: "기타",
-};
 
 const recommendedQueries = ["표현의 자유", "선거", "평등권", "QPC", "First Amendment", "비례원칙"];
 
@@ -116,7 +108,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
     q ? { key: "q", label: `검색어: ${q}` } : null,
     filters.jurisdiction ? { key: "jurisdiction", label: `국가: ${displayJurisdictionLabel(filters.jurisdiction)}` } : null,
     filters.source ? { key: "source", label: `기관: ${sourceMap.get(filters.source) ?? filters.source}` } : null,
-    filters.type ? { key: "type", label: `유형: ${typeLabels[filters.type] ?? filters.type}` } : null,
+    filters.type ? { key: "type", label: `유형: ${displayContentTypeLabel(filters.type)}` } : null,
     filters.tag ? { key: "tag", label: `태그: ${tagMap.get(filters.tag) ?? filters.tag}` } : null,
     filters.language ? { key: "language", label: `언어: ${filters.language}` } : null,
     mode !== "hybrid" ? { key: "mode", label: `검색 방식: ${modeOptions.find((option) => option.value === mode)?.label ?? mode}` } : null,

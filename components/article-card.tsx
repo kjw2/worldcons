@@ -8,16 +8,8 @@ import { SourceBadge } from "@/components/source-badge";
 import { TagPill } from "@/components/tag-pill";
 import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
+import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
-
-const typeLabels: Record<string, string> = {
-  news: "뉴스",
-  press_release: "보도자료",
-  decision: "결정",
-  opinion: "의견",
-  order: "명령",
-  other: "기타",
-};
 
 function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -80,7 +72,7 @@ export function ArticleCard({
       <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
         <SourceBadge sourceKey={article.sourceKey} className="min-h-6 rounded-full bg-[color:var(--country-accent-softer)] px-2 text-[11px] font-semibold" />
         <span className="inline-flex min-h-6 items-center rounded-full border border-[color:var(--country-border)] bg-white px-2 text-[11px] font-semibold text-[color:var(--country-text)]">
-          {typeLabels[article.contentType]}
+          {displayArticleTypeLabel(article)}
         </span>
       </div>
 

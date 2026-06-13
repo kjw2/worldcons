@@ -6,16 +6,17 @@ import type { TimeRange } from "@/lib/utils/dates";
 import { TimeRangeTabs } from "@/components/time-range-tabs";
 import { chipClassName } from "@/components/ui/chip";
 import { SurfaceCard } from "@/components/ui/surface-card";
+import { displayContentTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
 
 const contentTypes: Array<{ value: ArticleContentType; label: string }> = [
-  { value: "news", label: "뉴스" },
-  { value: "press_release", label: "보도자료" },
-  { value: "decision", label: "결정" },
-  { value: "opinion", label: "의견" },
-  { value: "order", label: "명령" },
-  { value: "other", label: "기타" },
+  { value: "news", label: displayContentTypeLabel("news") },
+  { value: "press_release", label: displayContentTypeLabel("press_release") },
+  { value: "decision", label: displayContentTypeLabel("decision") },
+  { value: "opinion", label: displayContentTypeLabel("opinion") },
+  { value: "order", label: displayContentTypeLabel("order") },
+  { value: "other", label: displayContentTypeLabel("other") },
 ];
 
 const selectClassName = "focus-ring h-11 rounded-lg border border-line bg-white px-3 text-sm text-ink shadow-sm";

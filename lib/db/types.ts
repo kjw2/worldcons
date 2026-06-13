@@ -106,6 +106,7 @@ export interface ArticleListItem {
   summarizedAt?: string | null;
   status: ArticleStatus;
   summaryJson?: SummaryJson | null;
+  sourceMetadata?: Record<string, unknown> | null;
   tags: TagSummary[];
   oneLineSummary: string;
   readingMinutes?: number;
@@ -115,7 +116,6 @@ export interface ArticleDetail extends ArticleListItem {
   rawText?: string | null;
   cleanedText?: string | null;
   contentHash?: string | null;
-  sourceMetadata?: Record<string, unknown> | null;
   errorMetadata?: Record<string, unknown> | null;
 }
 
