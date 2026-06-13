@@ -6,6 +6,7 @@ import type { CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
 
 export const SITEMAP_KEYWORDS = {
   "de-bverfg": ["shareddocs/entscheidungen/de/", "shareddocs/entscheidungen/en/"],
+  "es-tribunal-constitucional": ["resolucion/show", "resolucion/api/json", "hj/es/resolucion"],
   "fr-conseil-constitutionnel": ["decision", "decisions", "qpc", "communique", "communiques", "actualite"],
   "us-scotus": ["opinions", "orders", "press"],
 } satisfies Record<string, string[]>;

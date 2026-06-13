@@ -28,13 +28,14 @@ Your task:
 ${SUMMARY_SCHEMA_RULES}`;
 
 export function buildSummaryUserPrompt(article: NormalizedArticle) {
+  const dateLabel = article.sourceKey === "es-tribunal-constitucional" ? "Decision date (HJ FECHA_REGISTRO)" : "Published date";
   return `Source jurisdiction: ${article.jurisdiction}
 Institution: ${article.institutionName}
 Content type: ${article.contentType}
 Original language: ${article.originalLanguage}
 Original URL: ${article.originalUrl}
 Original title: ${article.originalTitle ?? ""}
-Published date: ${article.originalPublishedAt ?? ""}
+${dateLabel}: ${article.originalPublishedAt ?? ""}
 
 Cleaned source text:
 ${(article.cleanedText ?? "").slice(0, 40_000)}

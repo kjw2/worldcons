@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ExternalLink, Eye } from "lucide-react";
 import { AdminSummaryRetryBadge } from "@/components/admin-summary-retry-badge";
 import type { AdminAttentionArticle } from "@/lib/db/admin-queries";
-import { formatDisplayDate } from "@/lib/utils/dates";
+import { formattedArticleDate } from "@/lib/ui/article-date-label";
 
 const statusLabels: Record<string, string> = {
   discovered: "발견",
@@ -98,7 +98,7 @@ export function AdminAttentionTable({
                       <div>{article.institutionName}</div>
                       <div className="mt-1 text-xs text-ink/54">{article.sourceKey}</div>
                     </td>
-                    <td className="px-4 py-3">{formatDisplayDate(article.originalPublishedAt)}</td>
+                    <td className="px-4 py-3">{formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" })}</td>
                     <td className="px-4 py-3">
                       {article.status === "failed_summary" ? (
                         <div className="grid gap-2">

@@ -7,8 +7,16 @@ import { normalizeTagForStorage } from "@/lib/ai/tags";
 import { completeGeminiJson, getGeminiModels, getGeminiRoutes } from "@/lib/ai/gemini-router";
 import { hasGeminiKey, supportsOpenAiTemperature } from "@/lib/ai/client";
 import { mockSummary } from "@/lib/ai/summarize";
-import { runFranceSpider } from "@/lib/crawlee";
+import {
+  buildSpainTcFallbackRawArticle,
+  buildSpainTcRawArticleFromJson,
+  contentTypeForResolutionType,
+  normalizeSpainDecisionDate,
+  parseSpanishLongDate,
+  runFranceSpider,
+} from "@/lib/crawlee";
 import { effectiveRangeDaysForSource } from "@/lib/ingest/run";
+import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import { jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
@@ -20,6 +28,7 @@ import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
+import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
 import type { NormalizedArticle } from "@/lib/sources/types";
 
 function assert(condition: unknown, message: string) {
@@ -88,10 +97,111 @@ assert(effectiveRangeDaysForSource("us-scotus", 7) === 14, "SCOTUS ingest range 
 assert(effectiveRangeDaysForSource("fr-conseil-constitutionnel", 7) === 14, "France ingest range must be at least 14 days");
 assert(effectiveRangeDaysForSource("us-scotus", 21) === 21, "SCOTUS ingest range must allow wider explicit ranges");
 assert(effectiveRangeDaysForSource("de-bverfg", 14) === 60, "BVerfG ingest range must remain at least 60 days by default");
+assert(effectiveRangeDaysForSource("es-tribunal-constitucional", 14) === 180, "Spain HJ ingest range must be at least 180 days by default");
 process.env.BVERFG_INGEST_RANGE_DAYS = "45";
 assert(effectiveRangeDaysForSource("de-bverfg", 14) === 45, "BVerfG env override must set the minimum ingest range");
 if (originalBverfgIngestRangeDays === undefined) delete process.env.BVERFG_INGEST_RANGE_DAYS;
 else process.env.BVERFG_INGEST_RANGE_DAYS = originalBverfgIngestRangeDays;
+
+const originalSpainIngestRangeDays = process.env.SPAIN_INGEST_RANGE_DAYS;
+const originalSpainRangeCapDays = process.env.SPAIN_INGEST_RANGE_DAYS_CAP;
+process.env.SPAIN_INGEST_RANGE_DAYS = "210";
+delete process.env.SPAIN_INGEST_RANGE_DAYS_CAP;
+assert(effectiveRangeDaysForSource("es-tribunal-constitucional", 14) === 210, "Spain env range override must raise the minimum ingest range");
+process.env.SPAIN_INGEST_RANGE_DAYS_CAP = "200";
+assert(effectiveRangeDaysForSource("es-tribunal-constitucional", 14) === 200, "Spain ingest range cap must bound automatic widening");
+if (originalSpainIngestRangeDays === undefined) delete process.env.SPAIN_INGEST_RANGE_DAYS;
+else process.env.SPAIN_INGEST_RANGE_DAYS = originalSpainIngestRangeDays;
+if (originalSpainRangeCapDays === undefined) delete process.env.SPAIN_INGEST_RANGE_DAYS_CAP;
+else process.env.SPAIN_INGEST_RANGE_DAYS_CAP = originalSpainRangeCapDays;
+
+function spainPayload(overrides: Record<string, unknown> = {}) {
+  const longText = "Texto constitucional sobre tutela judicial efectiva, recurso de amparo y garantías procesales. ".repeat(45);
+  return {
+    ID: 32085,
+    TIPO_RESOLUCION: "SENTENCIA",
+    NUMERO_RESOLUCION: 34,
+    ANNO_RESOLUCION: 2026,
+    FECHA_REGISTRO: "2026-04-27T00:00:00",
+    FECHA_BOE: "2026-06-05T00:00:00",
+    FECHA_FIRMA: "de 27 de abril de 2026",
+    NUMERO_BOE: 137,
+    REFERENCIA_BOE: "BOE-A-2026-12183",
+    ULTIMA_ACTUALIZACION: "2026-06-06T00:00:00",
+    CONTENIDO_IRRELEVANTE_PARA_INTERNET: false,
+    SINTESIS_DESCRIPTIVA: "Recurso de amparo.",
+    SINTESIS_ANALITICA: "Tutela judicial efectiva.",
+    RESUMEN: "Resumen auxiliar.",
+    RESOLUCIONES_CABECERA: [{ COMPONENTES: "La Sala Segunda del Tribunal Constitucional.", TEXTO: "Encabezamiento del recurso." }],
+    RESOLUCIONES_ANTECEDENTES: [{ NUMERO: 1, TEXTO: `${longText}${longText}` }],
+    RESOLUCIONES_FUNDAMENTOS: [{ NUMERO: 1, TEXTO: `${longText}${longText}` }],
+    RESOLUCIONES_DICTAMEN: [{ TITULO: "FALLO", TEXTO: `${longText}` }],
+    RESOLUCIONES_PIE: [{ TEXTO: "Publíquese esta sentencia." }],
+    ...overrides,
+  };
+}
+
+const spainNormalRaw = buildSpainTcRawArticleFromJson(spainPayload());
+const spainNormalArticle = normalizeRawArticle(spainNormalRaw, tribunalConstitucionalAdapter);
+assert(normalizeSpainDecisionDate("2026-04-27T00:00:00") === "2026-04-27", "Spain HJ FECHA_REGISTRO must normalize as date-only");
+assert(parseSpanishLongDate("de 27 de abril de 2026") === "2026-04-27", "Spanish FECHA_FIRMA parsing failed");
+assert(spainNormalRaw.publishedAt === "2026-04-27T00:00:00.000Z", "Spain publishedAt must use FECHA_REGISTRO, not BOE");
+assert(spainNormalArticle.originalPublishedAt === "2026-04-27T00:00:00.000Z", "Spain original_published_at must use FECHA_REGISTRO, not BOE");
+assert(spainNormalRaw.metadata?.decisionDate === "2026-04-27", "Spain metadata must preserve decisionDate date-only");
+assert(spainNormalRaw.metadata?.boePublishedAt === "2026-06-05", "Spain BOE date must be supplementary metadata");
+assert(spainNormalRaw.metadata?.boeUsedForFiltering === false, "Spain BOE date must never be marked as a filter basis");
+assert(spainNormalRaw.metadata?.collection?.publishable === true, "Spain normal HJ JSON with substantive text should be publishable");
+assert(spainNormalRaw.metadata?.collection?.sourceTextAvailable === true, "Spain normal HJ JSON should pass strict source gate");
+assert(contentTypeForResolutionType("AUTO") === "order", "Spain AUTO must map to order");
+assert(contentTypeForResolutionType("DECLARACION") === "decision", "Spain DECLARACION must map to existing decision content type");
+
+const spainAutoRaw = buildSpainTcRawArticleFromJson(spainPayload({ TIPO_RESOLUCION: "AUTO" }));
+assert(spainAutoRaw.contentType === "order", "Spain AUTO JSON content type mapping failed");
+const spainDeclarationRaw = buildSpainTcRawArticleFromJson(spainPayload({ TIPO_RESOLUCION: "DECLARACION" }));
+assert(spainDeclarationRaw.contentType === "decision", "Spain DECLARACION JSON content type mapping failed");
+assert(spainDeclarationRaw.metadata?.contentTypeMapped === "DECLARACION -> decision", "Spain DECLARACION mapping metadata missing");
+
+const spainFallbackRaw = buildSpainTcFallbackRawArticle({
+  hjId: "99999",
+  title: "Sistema HJ - Resolución: SENTENCIA 1/2026",
+  text: "Fallback HTML text ".repeat(300),
+  decisionDate: "2026-04-27",
+  fetchMethod: "html_fallback",
+  jsonApiError: "JSON failed",
+});
+const spainFallbackArticle = normalizeRawArticle(spainFallbackRaw, tribunalConstitucionalAdapter);
+assert(spainFallbackRaw.metadata?.review?.reason === "fallback_parse", "Spain HTML fallback must require review");
+assert(deriveCollectionStatus(spainFallbackArticle) === "needs_review", "Spain fallback parse must stay in needs_review");
+assert(spainFallbackRaw.metadata?.collection?.publishable === false, "Spain fallback parse must not be publishable");
+
+const spainNoSubstantiveRaw = buildSpainTcRawArticleFromJson(
+  spainPayload({
+    RESOLUCIONES_ANTECEDENTES: [],
+    RESOLUCIONES_FUNDAMENTOS: [],
+    RESOLUCIONES_DICTAMEN: [],
+  }),
+);
+const spainNoSubstantiveArticle = normalizeRawArticle(spainNoSubstantiveRaw, tribunalConstitucionalAdapter);
+assert(spainNoSubstantiveRaw.metadata?.collection?.sourceTextAvailable === false, "Spain header/pie-only JSON must fail sourceTextAvailable");
+assert(deriveCollectionStatus(spainNoSubstantiveArticle) === "metadata_only", "Spain header/pie-only JSON must not be summarized");
+
+const spainIrrelevantRaw = buildSpainTcRawArticleFromJson(spainPayload({ CONTENIDO_IRRELEVANTE_PARA_INTERNET: true }));
+const spainIrrelevantArticle = normalizeRawArticle(spainIrrelevantRaw, tribunalConstitucionalAdapter);
+assert(spainIrrelevantRaw.metadata?.review?.reason === "contenido_irrelevante_para_internet", "Spain public suitability flag must require review");
+assert(deriveCollectionStatus(spainIrrelevantArticle) === "needs_review", "Spain public suitability flag must block publish and require review");
+assert(
+  !canSummarizeArticle({
+    status: deriveCollectionStatus(spainIrrelevantArticle),
+    cleaned_text: spainIrrelevantArticle.cleanedText,
+    source_metadata: spainIrrelevantArticle.metadata,
+  }),
+  "Spain public suitability flag must block summarization",
+);
+
+const spainDateMismatchRaw = buildSpainTcRawArticleFromJson(spainPayload({ FECHA_FIRMA: "de 25 de marzo de 2026" }));
+const spainDateMismatchArticle = normalizeRawArticle(spainDateMismatchRaw, tribunalConstitucionalAdapter);
+assert(spainDateMismatchRaw.metadata?.review?.reason === "date_validation_failed", "Spain date validation mismatch must require review");
+assert(deriveCollectionStatus(spainDateMismatchArticle) === "needs_review", "Spain date validation mismatch must be needs_review");
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalCronSecret = process.env.CRON_SECRET;

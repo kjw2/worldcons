@@ -287,6 +287,7 @@ source_metadata.collection.publishable = true
 | 미국 | `us-scotus` | Supreme Court of the United States | 영어 | opinions, orders, press releases |
 | 독일 | `de-bverfg` | Bundesverfassungsgericht | 독일어 | decisions |
 | 프랑스 | `fr-conseil-constitutionnel` | Conseil constitutionnel | 프랑스어 | decisions, QPC |
+| 스페인 | `es-tribunal-constitucional` | Tribunal Constitucional de España | 스페인어 | HJ resolutions |
 
 ## 절대 지켜야 하는 수집 원칙
 
@@ -325,6 +326,18 @@ source_metadata.collection.publishable = true
 - `robots.txt`를 실행 시 확인합니다.
 - `/opinions/`, `/orders/`처럼 허용된 경로만 처리합니다.
 - 금지된 asset 경로는 요청하지 않습니다.
+
+스페인 Tribunal Constitucional은 HJ 시스템을 기준으로 수집합니다.
+
+- canonical 원문 URL은 `https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/{hjId}`입니다.
+- 목록 수집은 HJ 검색의 일반 `Fechas Desde/Hasta`를 사용합니다.
+- 날짜 기준은 HJ JSON의 `FECHA_REGISTRO` 하나입니다.
+- `publishedAt`, `original_published_at`, 정렬, 기간 필터는 모두 `FECHA_REGISTRO` 결정일 기준입니다.
+- `FECHA_BOE`, `NUMERO_BOE`, `REFERENCIA_BOE`는 `source_metadata`의 보조 메타데이터로만 저장합니다.
+- BOE 날짜나 BOE 번호는 v1 수집 필터로 쓰지 않습니다.
+- 백필 시작 결정일은 `2025-01-01` date-only inclusive입니다.
+- HJ JSON이 실패해 HTML/OpenXML fallback을 쓰면 `needs_review`로 남기고 자동 요약 큐에 넣지 않습니다.
+- `CONTENIDO_IRRELEVANTE_PARA_INTERNET=true`이면 `publishable=false`와 review required로 저장합니다.
 
 ## 로컬에서 실행하기
 
@@ -473,6 +486,20 @@ pnpm start
 운영에서 BVerfG가 `Crawl-delay: 30`을 주면 코드가 더 큰 값인 30초를 따릅니다.
 독일 BVerfG는 새 결정이 띄엄띄엄 올라오거나 외부 목록 반영이 늦을 수 있어 정기 수집에서도 최근 60일을 다시 확인합니다.
 
+### 스페인 HJ 관련 값
+
+| 이름 | 기본값 | 설명 |
+| --- | --- | --- |
+| `SPAIN_INGEST_RANGE_DAYS` | `180` | 정기 수집에서 스페인 HJ가 다시 확인하는 최소 결정일 범위 |
+| `SPAIN_INGEST_RANGE_DAYS_CAP` | `730` | 마지막 성공 실행 기준 자동 확장 범위 상한 |
+| `SPAIN_DISCOVERY_MAX_PAGES` | `20` | 일일 증분 HJ 목록 page 상한 |
+| `SPAIN_BACKFILL_MAX_PAGES` | `200` | 초기/수동 백필 HJ 목록 page 상한 |
+| `SPAIN_DISCOVERY_STOP_AFTER_OLD_PAGES` | `5` | 오래된 결정만 연속으로 나온 뒤 중단할 page 수 |
+| `SPAIN_MIN_SOURCE_TEXT_LENGTH` | `2000` | 실체 섹션이 있는 HJ 원문을 요약 후보로 인정하는 최소 정리 본문 길이 |
+
+스페인은 21:00 UTC, 즉 06:00 KST 일일 worker에서 함께 수집됩니다.
+`INGEST_RANGE_DAYS=14`로 worker를 실행해도 스페인은 소스별 기본값 때문에 최소 180일을 다시 확인합니다.
+
 ## 데이터베이스 준비
 
 Supabase migration을 적용합니다.
@@ -488,6 +515,7 @@ supabase/migrations/20260508000000_initial_schema.sql
 supabase/migrations/20260508001000_search_and_glossary.sql
 supabase/migrations/20260509000000_publishable_collection_policy.sql
 supabase/migrations/20260509001000_source_url_candidates.sql
+supabase/migrations/20260613090000_add_spain_tribunal_constitucional_source.sql
 ```
 
 각 migration이 하는 일은 다음과 같습니다.
@@ -498,6 +526,7 @@ supabase/migrations/20260509001000_source_url_candidates.sql
 | `search_and_glossary` | 검색 RPC, glossary seed, pgvector 관련 구조 추가 |
 | `publishable_collection_policy` | 공개 가능성 정책을 위한 metadata/index 보강 |
 | `source_url_candidates` | seed 후보 URL 저장 테이블 추가 |
+| `add_spain_tribunal_constitucional_source` | 스페인 Tribunal Constitucional HJ 수집원 등록 |
 
 ## 자주 쓰는 명령어
 
@@ -550,6 +579,7 @@ pnpm ingest -- --source=fr-conseil-constitutionnel --limit=5 --debug
 
 ```bash
 pnpm crawl:worker -- --source=de-bverfg --limit=5 --strategy=auto --debug
+pnpm crawl:worker -- --source=es-tribunal-constitucional --limit=5 --strategy=api --dry-run --no-playwright
 pnpm crawl:worker -- --source=fr-conseil-constitutionnel --limit=5 --dry-run
 ```
 
@@ -557,21 +587,16 @@ pnpm crawl:worker -- --source=fr-conseil-constitutionnel --limit=5 --dry-run
 
 정기 수집은 GitHub Actions의 `.github/workflows/crawlee-worker.yml`에서 실행합니다.
 
-GitHub cron은 UTC 기준입니다. 한국시간 기준으로는 다음 시간에 매일 실행됩니다.
+GitHub cron은 UTC 기준입니다. 현재 정기 worker는 한국시간 기준 06:00에 매일 한 번 실행됩니다.
 
 | 한국시간 | UTC cron 실행 시각 |
 | --- | --- |
 | 06:00 | 전날 21:00 UTC |
-| 09:00 | 00:00 UTC |
-| 12:00 | 03:00 UTC |
-| 15:00 | 06:00 UTC |
-| 18:00 | 09:00 UTC |
-| 21:00 | 12:00 UTC |
 
 workflow cron 표현식은 다음과 같습니다.
 
 ```yaml
-0 0,3,6,9,12,21 * * *
+0 21 * * *
 ```
 
 동시에 두 수집이 겹치지 않도록 `concurrency`를 사용합니다. 공식 사이트에 부담을 줄이기 위해 worker 동시성은 1로 제한하고, 같은 도메인 요청 사이에 쉬는 시간을 둡니다.
@@ -580,6 +605,7 @@ workflow cron 표현식은 다음과 같습니다.
 
 ```bash
 pnpm crawler:diagnose -- --source=de-bverfg
+pnpm crawler:diagnose -- --source=es-tribunal-constitucional
 pnpm crawler:diagnose -- --source=fr-conseil-constitutionnel
 pnpm crawler:diagnose -- --source=us-scotus
 ```
@@ -608,10 +634,18 @@ pnpm collect:range -- --sources=de-bverfg --from=2025-01-01 --to=2025-12-31 --de
 pnpm collect:range -- --sources=fr-conseil-constitutionnel --from=2025-01-01 --to=2025-12-31 --delay-ms=12000 --list-delay-ms=8000
 ```
 
+스페인 Tribunal Constitucional은 HJ `FECHA_REGISTRO` 결정일 기준으로 수집합니다.
+초기 백필도 `2025-01-01`부터 decision date inclusive로 실행합니다.
+BOE 일자는 저장만 하고 기간 필터에는 쓰지 않습니다.
+
+```bash
+pnpm collect:range -- --sources=es-tribunal-constitucional --from=2025-01-01 --to=2025-12-31 --delay-ms=12000 --list-delay-ms=8000
+```
+
 여러 source를 한 번에 지정할 수도 있습니다.
 
 ```bash
-pnpm collect:range -- --sources=us-scotus,de-bverfg,fr-conseil-constitutionnel --from=2025-01-01 --to=2025-12-31 --delay-ms=12000 --list-delay-ms=8000
+pnpm collect:range -- --sources=us-scotus,de-bverfg,fr-conseil-constitutionnel,es-tribunal-constitucional --from=2025-01-01 --to=2025-12-31 --delay-ms=12000 --list-delay-ms=8000
 ```
 
 하지만 운영에서는 한 나라씩 순서대로 하는 것을 권장합니다.
@@ -622,7 +656,7 @@ pnpm collect:range -- --sources=us-scotus,de-bverfg,fr-conseil-constitutionnel -
 
 | 옵션 | 예 | 설명 |
 | --- | --- | --- |
-| `--sources` | `us-scotus,de-bverfg` | 수집할 source key |
+| `--sources` | `us-scotus,de-bverfg,es-tribunal-constitucional` | 수집할 source key |
 | `--from` | `2025-01-01` | 시작일 |
 | `--to` | `2025-12-31` | 종료일 |
 | `--delay-ms` | `12000` | 상세 요청 사이 지연 |
@@ -808,7 +842,7 @@ lib/crawler/
   robots.txt, HTTP fetch, retry, rate limit, sitemap, diagnostics
 
 lib/crawlee/
-  Crawlee 기반 독일/프랑스 spider
+  Crawlee/API 기반 독일/프랑스/스페인 spider
 
 lib/db/
   Supabase client, query 함수, mock data, 타입

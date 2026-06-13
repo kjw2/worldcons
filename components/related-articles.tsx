@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ArticleListItem } from "@/lib/db/types";
-import { formatDisplayDate } from "@/lib/utils/dates";
+import { formattedArticleDate } from "@/lib/ui/article-date-label";
 
 export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
   if (articles.length === 0) {
@@ -15,7 +15,7 @@ export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
             {article.koreanTitle || article.originalTitle}
           </Link>
           <p className="mt-2 text-xs text-ink-subtle">
-            {article.jurisdiction} · {formatDisplayDate(article.originalPublishedAt)}
+            {article.jurisdiction} · {formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" })}
           </p>
         </li>
       ))}

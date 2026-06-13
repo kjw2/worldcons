@@ -6,6 +6,7 @@ import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { parseDate } from "@/lib/utils/dates";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
+import { SPAIN_TC_BACKFILL_START_DECISION_DATE, SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
 
 process.env.CRAWLEE_WORKER = "true";
 
@@ -44,6 +45,15 @@ async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyO
     mode: "dry-run",
     sourceKey,
     rangeDays,
+    spainDateBasis: sourceKey === SPAIN_TC_SOURCE_KEY
+      ? {
+          dateBasis: "HJ FECHA_REGISTRO",
+          datePrecision: "date",
+          boeDateUsedForFiltering: false,
+          backfillStartDecisionDate: SPAIN_TC_BACKFILL_START_DECISION_DATE,
+          note: "publishedAt/original_published_at use HJ decision date; BOE dates are stored only as supplementary metadata.",
+        }
+      : undefined,
     discoveredCountBeforeRange: discovered.length,
     discoveredCount: items.length,
     items: items.map((item) => ({
@@ -52,6 +62,14 @@ async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyO
       publishedAt: item.publishedAt,
       strategy: item.metadata?.collection?.strategy,
       confidence: item.metadata?.collection?.confidence,
+      decisionDate: typeof item.metadata?.decisionDate === "string" ? item.metadata.decisionDate : undefined,
+      boePublishedAt: typeof item.metadata?.boePublishedAt === "string" ? item.metadata.boePublishedAt : undefined,
+      publishable: item.metadata?.collection?.publishable,
+      sourceTextAvailable: item.metadata?.collection?.sourceTextAvailable,
+      reviewReason:
+        item.metadata?.review && typeof item.metadata.review === "object" && "reason" in item.metadata.review
+          ? String(item.metadata.review.reason)
+          : undefined,
       textLength: "text" in item && typeof item.text === "string" ? item.text.length : undefined,
     })),
     diagnostics,
@@ -70,7 +88,7 @@ async function main() {
   const refreshExisting = boolArg("refresh-existing") ? true : boolArg("no-refresh-existing") ? false : undefined;
 
   if (boolArg("dry-run")) {
-    if (!normalizedSourceKey) throw new Error("--dry-run requires --source=de-bverfg|fr-conseil-constitutionnel|fr-qpc360|us-scotus");
+    if (!normalizedSourceKey) throw new Error("--dry-run requires --source=de-bverfg|es-tribunal-constitucional|fr-conseil-constitutionnel|fr-qpc360|us-scotus");
     console.log(JSON.stringify(await dryRun(normalizedSourceKey, limit, strategy, usePlaywright, rangeDays), null, 2));
     return;
   }

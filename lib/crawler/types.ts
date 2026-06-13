@@ -127,6 +127,8 @@ export interface CollectionMetadata {
   sourceUrlVerified: boolean;
   publishable?: boolean;
   sourceTextAvailable?: boolean;
+  strictSourceTextAvailable?: boolean;
+  sourceTextPolicy?: "strict";
   robotsDisallowed?: boolean;
   reason?: string;
   source?: string;

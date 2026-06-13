@@ -265,5 +265,13 @@ insert into sources (
   'https://www.conseil-constitutionnel.fr',
   'fr',
   true
+),
+(
+  'es-tribunal-constitucional',
+  'Tribunal Constitucional de España',
+  'Spain',
+  'https://hj.tribunalconstitucional.es',
+  'es',
+  true
 )
 on conflict (source_key) do nothing;

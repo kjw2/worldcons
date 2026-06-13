@@ -144,6 +144,14 @@ export const mockSources: SourceRecord[] = [
     language: "fr",
     isActive: true,
   },
+  {
+    sourceKey: "es-tribunal-constitucional",
+    name: "Tribunal Constitucional de España",
+    jurisdiction: "Spain",
+    baseUrl: "https://hj.tribunalconstitucional.es",
+    language: "es",
+    isActive: true,
+  },
 ];
 
 export const mockArticles: ArticleDetail[] = [

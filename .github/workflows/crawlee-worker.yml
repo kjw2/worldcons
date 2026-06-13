@@ -15,7 +15,7 @@ on:
         required: false
         default: "20"
       strategy:
-        description: auto, cheerio, playwright, sitemap, or seed
+        description: auto, api, cheerio, playwright, sitemap, or seed
         required: false
         default: "auto"
       range_days:
@@ -46,6 +46,12 @@ jobs:
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
       INGEST_RANGE_DAYS: "14"
+      SPAIN_INGEST_RANGE_DAYS: "180"
+      SPAIN_INGEST_RANGE_DAYS_CAP: "730"
+      SPAIN_DISCOVERY_MAX_PAGES: "20"
+      SPAIN_BACKFILL_MAX_PAGES: "200"
+      SPAIN_DISCOVERY_STOP_AFTER_OLD_PAGES: "5"
+      SPAIN_MIN_SOURCE_TEXT_LENGTH: "2000"
       INGEST_REFRESH_EXISTING: "true"
       CRAWLEE_MAX_CONCURRENCY: "1"
       CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"

@@ -43,11 +43,20 @@ const THEMES_BY_JURISDICTION: Record<string, JurisdictionTheme> = {
     border: "#d9c8e3",
     text: "#674d7b",
   },
+  Spain: {
+    label: "Spain",
+    accent: "#2f7f73",
+    accentSoft: "#edf7f4",
+    accentSofter: "#f6fcfa",
+    border: "#b9ddd5",
+    text: "#25685f",
+  },
 };
 
 const SOURCE_TO_JURISDICTION: Record<string, string> = {
   "us-scotus": "United States",
   "de-bverfg": "Germany",
+  "es-tribunal-constitucional": "Spain",
   "fr-conseil-constitutionnel": "France",
 };
 

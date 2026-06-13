@@ -16,6 +16,7 @@
     "crawler:bverfg": "tsx workers/crawler/src/cli.ts --source=de-bverfg",
     "crawler:conseil": "tsx workers/crawler/src/cli.ts --source=fr-conseil-constitutionnel",
     "crawler:qpc360": "tsx workers/crawler/src/cli.ts --source=fr-qpc360",
+    "crawler:spain": "tsx workers/crawler/src/cli.ts --source=es-tribunal-constitucional",
     "crawler:scotus": "tsx workers/crawler/src/cli.ts --source=us-scotus",
     "summarize-pending": "tsx scripts/summarize-pending.ts",
     "refresh-tag-counts": "tsx scripts/refresh-tag-counts.ts",

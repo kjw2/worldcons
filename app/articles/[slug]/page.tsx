@@ -22,6 +22,7 @@ import { getArticleBySlug, getRelatedArticles } from "@/lib/db/queries";
 import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
+import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
@@ -81,7 +82,7 @@ function publicCollectionNotice(article: ArticleDetail) {
   if (article.status === "metadata_only") {
     return {
       title: "본문 확보 전 metadata 중심 자료입니다",
-      description: "현재는 제목, 기관, 게시일 등 기본 정보 중심으로 정리되어 있습니다. 본문과 요약은 수집이 완료된 뒤 보강됩니다.",
+      description: "현재는 제목, 기관, 기준일 등 기본 정보 중심으로 정리되어 있습니다. 본문과 요약은 수집이 완료된 뒤 보강됩니다.",
     };
   }
 
@@ -375,6 +376,7 @@ export default async function ArticlePage({
   const primaryIssue = summary?.summary.coreSummary[0] ?? article.oneLineSummary;
   const collectionNotice = publicCollectionNotice(article);
   const missingOriginalUrl = !article.originalUrl?.trim();
+  const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
 
   return (
     <PageShell className="max-w-7xl">
@@ -384,7 +386,7 @@ export default async function ArticlePage({
           items={[
             article.jurisdiction,
             article.institutionName,
-            formatDisplayDate(article.originalPublishedAt),
+            formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" }),
             article.originalLanguage,
             article.readingMinutes ? `${article.readingMinutes}분 읽기` : null,
           ]}
@@ -479,10 +481,22 @@ export default async function ArticlePage({
               <div className="flex items-start gap-3">
                 <FileText className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>
-                  <dt className="font-semibold text-ink">게시일</dt>
+                  <dt className="font-semibold text-ink">{articleDateLabel(article.sourceKey)}</dt>
                   <dd className="mt-1 text-ink-muted">{formatDisplayDate(article.originalPublishedAt)}</dd>
                 </div>
               </div>
+              {boeMetadata?.boePublishedAt ? (
+                <div className="flex items-start gap-3">
+                  <FileText className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
+                  <div>
+                    <dt className="font-semibold text-ink">BOE 공고일</dt>
+                    <dd className="mt-1 text-ink-muted">
+                      {formatDisplayDate(boeMetadata.boePublishedAt)}
+                      {boeMetadata.referenceBoe ? ` · ${boeMetadata.referenceBoe}` : boeMetadata.boeNumber ? ` · BOE ${boeMetadata.boeNumber}` : ""}
+                    </dd>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex items-start gap-3">
                 <Languages className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>

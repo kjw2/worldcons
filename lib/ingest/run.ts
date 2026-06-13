@@ -90,6 +90,9 @@ const SUMMARY_CANDIDATE_SELECT =
 const DEFAULT_STALE_SUMMARIZING_MINUTES = 30;
 const DEFAULT_STANDARD_INGEST_RANGE_DAYS = 14;
 const DEFAULT_BVERFG_INGEST_RANGE_DAYS = 60;
+const DEFAULT_SPAIN_INGEST_RANGE_DAYS = 180;
+const DEFAULT_SPAIN_INGEST_RANGE_CAP_DAYS = 730;
+const SPAIN_TC_SOURCE_KEY = "es-tribunal-constitucional";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,6 +118,13 @@ export function effectiveRangeDaysForSource(sourceKey?: string, configuredRangeD
     return configuredRangeDays ? Math.max(configuredRangeDays, bverfgRangeDays) : bverfgRangeDays;
   }
 
+  if (sourceKey === SPAIN_TC_SOURCE_KEY) {
+    const spainRangeDays = optionalPositiveInteger(process.env.SPAIN_INGEST_RANGE_DAYS) ?? DEFAULT_SPAIN_INGEST_RANGE_DAYS;
+    const cap = optionalPositiveInteger(process.env.SPAIN_INGEST_RANGE_DAYS_CAP) ?? DEFAULT_SPAIN_INGEST_RANGE_CAP_DAYS;
+    const rangeDays = configuredRangeDays ? Math.max(configuredRangeDays, spainRangeDays) : spainRangeDays;
+    return Math.min(rangeDays, cap);
+  }
+
   if (sourceKey === "us-scotus" || sourceKey === "fr-conseil-constitutionnel") {
     return configuredRangeDays ? Math.max(configuredRangeDays, DEFAULT_STANDARD_INGEST_RANGE_DAYS) : DEFAULT_STANDARD_INGEST_RANGE_DAYS;
   }
@@ -130,6 +140,29 @@ function rangeDaysForOptions(options: RunIngestOptions = {}, sourceKey?: string)
 function rangeStartForDays(days: number) {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+}
+
+async function dynamicSpainRangeDays(baseRangeDays?: number) {
+  const supabase = getSupabaseAdmin();
+  const cap = optionalPositiveInteger(process.env.SPAIN_INGEST_RANGE_DAYS_CAP) ?? DEFAULT_SPAIN_INGEST_RANGE_CAP_DAYS;
+  const base = baseRangeDays ?? DEFAULT_SPAIN_INGEST_RANGE_DAYS;
+  if (!supabase) return Math.min(base, cap);
+
+  const { data } = await supabase
+    .from("ingestion_runs")
+    .select("finished_at, started_at")
+    .eq("source_key", SPAIN_TC_SOURCE_KEY)
+    .eq("status", "completed")
+    .order("finished_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const latest = data?.finished_at ?? data?.started_at;
+  if (!latest) return Math.min(base, cap);
+  const timestamp = new Date(latest).getTime();
+  if (!Number.isFinite(timestamp)) return Math.min(base, cap);
+  const daysSinceLastRun = Math.ceil((Date.now() - timestamp) / (24 * 60 * 60 * 1000));
+  return Math.min(Math.max(base, daysSinceLastRun + 30), cap);
 }
 
 function isItemInDateRange(publishedAt: string | undefined, rangeStart: Date | undefined) {
@@ -474,7 +507,10 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     },
   };
   const runId = await createIngestionRun(adapter.sourceKey);
-  const rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
+  let rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
+  if (adapter.sourceKey === SPAIN_TC_SOURCE_KEY) {
+    rangeDays = await dynamicSpainRangeDays(rangeDays);
+  }
   const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
   const refreshExisting = shouldRefreshExistingArticles(options, adapter.sourceKey);
   const discoveryOptions = {

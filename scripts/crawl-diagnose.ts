@@ -8,6 +8,7 @@ import { discoverSitemapUrls, SITEMAP_KEYWORDS } from "@/lib/crawler/sitemap";
 
 const SOURCE_DEFAULT_URLS: Record<string, string> = {
   "de-bverfg": "https://www.bundesverfassungsgericht.de/DE/Presse/Pressemitteilungen/pressemitteilungen_node.html",
+  "es-tribunal-constitucional": "https://hj.tribunalconstitucional.es/es/Busqueda/Index",
   "fr-conseil-constitutionnel": "https://www.conseil-constitutionnel.fr/les-decisions",
   "us-scotus": "https://www.supremecourt.gov/opinions/slipopinion/25",
 };
@@ -19,6 +20,13 @@ const SELECTORS_BY_SOURCE: Record<string, string[]> = {
     "a[href*='SharedDocs']",
     "main a[href]",
     "article a[href]",
+  ],
+  "es-tribunal-constitucional": [
+    "input[name='FECHA_DESDE']",
+    "input[name='FECHA_HASTA']",
+    "input[name='TIPO_RESOLUCION']",
+    "a[href*='/Resolucion/Show/']",
+    "main a[href]",
   ],
   "fr-conseil-constitutionnel": [
     "a[href*='/decision/']",
@@ -34,6 +42,7 @@ const SELECTORS_BY_SOURCE: Record<string, string[]> = {
 function inferSource(url: string) {
   const hostname = new URL(url).hostname;
   if (hostname.includes("bundesverfassungsgericht")) return "de-bverfg";
+  if (hostname.includes("tribunalconstitucional")) return "es-tribunal-constitucional";
   if (hostname.includes("conseil-constitutionnel")) return "fr-conseil-constitutionnel";
   if (hostname.includes("supremecourt")) return "us-scotus";
   return "unknown";
@@ -52,7 +61,7 @@ async function main() {
   const sourceKey = process.argv.find((arg) => arg.startsWith("--source="))?.split("=")[1];
   const urlArg = process.argv.find((arg) => arg.startsWith("--url="))?.slice("--url=".length);
   const url = urlArg ?? (sourceKey ? SOURCE_DEFAULT_URLS[sourceKey] : undefined);
-  if (!url) throw new Error("Use --source=de-bverfg|fr-conseil-constitutionnel|us-scotus or --url=https://...");
+  if (!url) throw new Error("Use --source=de-bverfg|es-tribunal-constitucional|fr-conseil-constitutionnel|us-scotus or --url=https://...");
 
   const source = sourceKey ?? inferSource(url);
   const selectors = SELECTORS_BY_SOURCE[source] ?? ["main a[href]", "article a[href]", "a[href]"];

@@ -4,6 +4,7 @@ import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
 import { articleExists, articleExistsByNormalizedContent, insertNormalizedArticle } from "@/lib/ingest/run";
 import { BVERFG_SEED_DECISIONS } from "@/lib/crawlee/bverfg-spider";
+import { SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
 import { getSourceAdapter } from "@/lib/sources";
 import type { DiscoveredItem, SourceAdapter } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
@@ -15,7 +16,7 @@ const TO = argValue("to") ?? "2026-05-09";
 const DELAY_MS = Number(argValue("delay-ms") ?? process.env.RANGE_COLLECT_DELAY_MS ?? 5000);
 const LIST_DELAY_MS = Number(argValue("list-delay-ms") ?? process.env.RANGE_COLLECT_LIST_DELAY_MS ?? 2500);
 const SOURCES = new Set(
-  (argValue("sources") ?? "us-scotus,de-bverfg,fr-conseil-constitutionnel")
+  (argValue("sources") ?? "us-scotus,de-bverfg,fr-conseil-constitutionnel,es-tribunal-constitucional")
     .split(",")
     .map((source) => source.trim())
     .filter(Boolean),
@@ -32,7 +33,7 @@ const OPEN_LEGAL_DATA_BVERFG_API = "https://de.openlegaldata.io/api/cases/?court
 const DEJURE_BVERFG_INDEX_URL = "https://dejure.org/dienste/rechtsprechung?gericht=BVerfg";
 
 interface Candidate extends DiscoveredItem {
-  country: "United States" | "Germany" | "France";
+  country: "United States" | "Germany" | "France" | "Spain";
 }
 
 interface SourceReport {
@@ -538,6 +539,49 @@ async function discoverConseilDecisions() {
   return uniqueCandidates(items);
 }
 
+function daysFromRangeStartToToday() {
+  const fromDate = parseRangeDate(FROM);
+  if (!fromDate) return undefined;
+  const today = new Date();
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1));
+  return Math.max(1, Math.ceil((todayUtc.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+async function discoverSpainTcDecisions() {
+  const adapter = getSourceAdapter(SPAIN_TC_SOURCE_KEY);
+  if (!adapter) throw new Error(`Unknown source: ${SPAIN_TC_SOURCE_KEY}`);
+  const diagnostics = createDiagnosticsCollector(SPAIN_TC_SOURCE_KEY);
+  const originalBackfillMode = process.env.SPAIN_BACKFILL_MODE;
+  process.env.SPAIN_BACKFILL_MODE = "true";
+  try {
+    const limit = MAX_CANDIDATES_PER_SOURCE > 0 ? MAX_CANDIDATES_PER_SOURCE : Number(process.env.SPAIN_RANGE_COLLECT_LIMIT ?? 500);
+    const discovered = await adapter.discover({
+      strategy: "api",
+      usePlaywright: false,
+      diagnostics,
+      dryRun: true,
+      limit,
+      rangeDays: daysFromRangeStartToToday(),
+    });
+    return uniqueCandidates(
+      discovered
+        .filter((item) => inRange(item.publishedAt))
+        .map((item) => ({
+          ...item,
+          country: "Spain" as const,
+          metadata: {
+            ...item.metadata,
+            collectionRangeBasis: "HJ FECHA_REGISTRO",
+            boeDateUsedForFiltering: false,
+          },
+        })),
+    );
+  } finally {
+    if (originalBackfillMode === undefined) delete process.env.SPAIN_BACKFILL_MODE;
+    else process.env.SPAIN_BACKFILL_MODE = originalBackfillMode;
+  }
+}
+
 async function robotsCheck(url: string) {
   const robots = await checkRobotsAllowed(url);
   return {
@@ -621,11 +665,13 @@ async function main() {
     "us-scotus": SOURCES.has("us-scotus") ? await discoverScotusOpinions() : [],
     "de-bverfg": SOURCES.has("de-bverfg") ? await discoverBverfgDecisions() : [],
     "fr-conseil-constitutionnel": SOURCES.has("fr-conseil-constitutionnel") ? await discoverConseilDecisions() : [],
+    "es-tribunal-constitucional": SOURCES.has("es-tribunal-constitucional") ? await discoverSpainTcDecisions() : [],
   };
   const reports = [
     sourceReport("us-scotus", "United States"),
     sourceReport("de-bverfg", "Germany"),
     sourceReport("fr-conseil-constitutionnel", "France"),
+    sourceReport("es-tribunal-constitucional", "Spain"),
   ].filter((report) => SOURCES.has(report.sourceKey));
 
   for (const report of reports) {

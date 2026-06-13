@@ -10,6 +10,7 @@ interface MetadataWithCollection {
   collection?: CollectionLike;
   diagnostics?: CrawlAttemptLog[];
   robots?: { allowed?: boolean; matchedRule?: string };
+  review?: { required?: boolean; reason?: string };
 }
 
 function asMetadata(value: unknown): MetadataWithCollection {
@@ -22,6 +23,15 @@ function attemptsFrom(metadata: MetadataWithCollection) {
 
 function textLengthFor(article: Pick<NormalizedArticle, "cleanedText" | "rawText">) {
   return (article.cleanedText || article.rawText || "").trim().length;
+}
+
+function hasStrictSourceTextPolicy(collection?: CollectionLike) {
+  return collection?.strictSourceTextAvailable === true || collection?.sourceTextPolicy === "strict";
+}
+
+function sourceTextAvailableFor(collection: CollectionLike | undefined, length: number) {
+  if (hasStrictSourceTextPolicy(collection)) return collection?.sourceTextAvailable === true;
+  return collection?.sourceTextAvailable === true || length >= MIN_PUBLISHABLE_TEXT_LENGTH;
 }
 
 function hasRobotsDisallow(metadata: MetadataWithCollection) {
@@ -54,6 +64,10 @@ function hasExtractionFailureSignal(metadata: MetadataWithCollection) {
   );
 }
 
+function hasRequiredReview(metadata: MetadataWithCollection) {
+  return metadata.review?.required === true;
+}
+
 function defaultReason(status: ArticleStatus, strategy?: string) {
   if (status === "robots_disallowed") return "robots.txt policy disallows automatic source text fetch. Official link is preserved for manual review.";
   if (status === "blocked") return "Official site returned access denied, 403, or bot-protection response.";
@@ -69,12 +83,13 @@ export function deriveCollectionStatus(article: NormalizedArticle): ArticleStatu
   const collection = metadata.collection;
   const length = textLengthFor(article);
   const strategy = collection?.strategy;
-  const sourceTextAvailable = collection?.sourceTextAvailable === true || length >= MIN_PUBLISHABLE_TEXT_LENGTH;
+  const sourceTextAvailable = sourceTextAvailableFor(collection, length);
 
   if (hasRobotsDisallow(metadata)) return "robots_disallowed";
   if (!sourceTextAvailable && hasBlockedSignal(metadata)) return "blocked";
   if (!sourceTextAvailable && hasTimeoutSignal(metadata)) return "timeout";
   if (!sourceTextAvailable && hasExtractionFailureSignal(metadata)) return "needs_review";
+  if (hasRequiredReview(metadata)) return "needs_review";
   if (strategy === "seed" || !sourceTextAvailable) return "metadata_only";
   if (collection?.publishable === false) return "needs_review";
   return "cleaned";
@@ -87,7 +102,7 @@ export function finalizeCollectionMetadata(article: NormalizedArticle, diagnosti
   const length = textLengthFor(article);
   const strategy = prior.strategy ?? "fetch";
   const robotsDisallowed = hasRobotsDisallow(metadata);
-  const sourceTextAvailable = prior.sourceTextAvailable === true || length >= MIN_PUBLISHABLE_TEXT_LENGTH;
+  const sourceTextAvailable = sourceTextAvailableFor(prior, length);
   const sourceUrlVerified = prior.sourceUrlVerified !== false && !robotsDisallowed;
   const publishable =
     status === "cleaned" &&
@@ -105,6 +120,8 @@ export function finalizeCollectionMetadata(article: NormalizedArticle, diagnosti
     sourceUrlVerified,
     publishable,
     sourceTextAvailable,
+    strictSourceTextAvailable: hasStrictSourceTextPolicy(prior) || undefined,
+    sourceTextPolicy: hasStrictSourceTextPolicy(prior) ? "strict" : undefined,
     robotsDisallowed: robotsDisallowed || undefined,
     reason: publishable ? prior.reason : prior.reason ?? defaultReason(status, strategy),
     source: prior.source,

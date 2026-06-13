@@ -12,6 +12,10 @@ export interface DiscoveredItem {
     collection?: CollectionMetadata;
     diagnostics?: CrawlAttemptLog[];
     bodySelectors?: string[];
+    review?: {
+      required?: boolean;
+      reason?: string;
+    };
   };
 }
 
@@ -29,6 +33,10 @@ export interface RawArticle {
     collection?: CollectionMetadata;
     diagnostics?: CrawlAttemptLog[];
     bodySelectors?: string[];
+    review?: {
+      required?: boolean;
+      reason?: string;
+    };
   };
 }
 

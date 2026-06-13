@@ -26,7 +26,7 @@ async function main() {
     return;
   }
 
-  if (!sourceKey) throw new Error("Use --source=de-bverfg|fr-conseil-constitutionnel|fr-qpc360|us-scotus or --url=https://...");
+  if (!sourceKey) throw new Error("Use --source=de-bverfg|es-tribunal-constitucional|fr-conseil-constitutionnel|fr-qpc360|us-scotus or --url=https://...");
   const normalizedSourceKey = sourceKey === "fr-qpc360" ? "fr-conseil-constitutionnel" : sourceKey;
   applyIpv4FirstForSource(normalizedSourceKey);
   if (normalizedSourceKey === "de-bverfg" && debug) {

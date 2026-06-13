@@ -7,7 +7,7 @@ import type { ArticleListItem } from "@/lib/db/types";
 import { SourceBadge } from "@/components/source-badge";
 import { TagPill } from "@/components/tag-pill";
 import { surfaceCardClassName } from "@/components/ui/surface-card";
-import { formatDisplayDate } from "@/lib/utils/dates";
+import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 
 const typeLabels: Record<string, string> = {
@@ -108,7 +108,7 @@ export function ArticleCard({
       <div className="flex items-center justify-between gap-3 border-t border-line pt-4 text-xs text-ink-subtle">
         <span className="inline-flex min-w-0 items-center gap-1.5">
           <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
-          <span>{formatDisplayDate(article.originalPublishedAt)}</span>
+          <span>{formattedArticleDate(article)}</span>
         </span>
         <div className="flex shrink-0 items-center gap-1">
           <Link

@@ -30,6 +30,7 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
   const source = await getSourceByKey(sourceKey);
   if (!source) notFound();
   const articles = await listArticles({ source: source.sourceKey, pageSize: 30 });
+  const dateBasis = source.sourceKey === "es-tribunal-constitucional" ? "날짜 기준 HJ FECHA_REGISTRO" : null;
   await recordSiteEvent(
     {
       eventType: "source_view",
@@ -51,6 +52,7 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
           className="mt-3"
           items={[
             `언어 ${source.language}`,
+            dateBasis,
             source.isActive ? "수집 중" : "일시 중지",
             `공개 자료 ${articles.pageInfo.total.toLocaleString("ko-KR")}건`,
           ]}
