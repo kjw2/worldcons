@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import { BackToTopButton } from "@/components/back-to-top-button";
@@ -28,24 +29,32 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <header id="site-header" className="border-b border-line bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <Link href="/" className="focus-ring flex items-center gap-3 rounded-lg">
-                <span>
-                  <span className="block text-lg font-semibold tracking-normal text-ink">헌법판례요약시스템</span>
-                  <span className="block text-sm text-ink-muted">세계 헌법재판 큐레이션</span>
-                </span>
-              </Link>
-              <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-end">
-                <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-sm text-ink-muted sm:flex-none">
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="focus-ring whitespace-nowrap rounded-lg px-3 py-2 font-medium transition hover:bg-surface-muted hover:text-ink"
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </nav>
-              </div>
+              <Image
+                src="/logo_image2.png"
+                alt="헌법판례요약시스템"
+                width={40}
+                height={40}
+                className="size-10 object-contain"
+                priority
+              />
+              <span>
+                <span className="block text-lg font-semibold tracking-normal text-ink">헌법판례요약시스템</span>
+                <span className="block text-sm text-ink-muted">세계 헌법재판 큐레이션</span>
+              </span>
+            </Link>
+            <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-end">
+              <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-sm text-ink-muted sm:flex-none">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="focus-ring whitespace-nowrap rounded-lg px-3 py-2 font-medium transition hover:bg-surface-muted hover:text-ink"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
           </div>
         </header>
         <Suspense fallback={null}>
