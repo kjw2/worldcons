@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import { BackToTopButton } from "@/components/back-to-top-button";
@@ -29,14 +28,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <header id="site-header" className="border-b border-line bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <Link href="/" className="focus-ring flex items-center gap-3 rounded-lg">
-              <Image
-                src="/logo_image2.png"
-                alt="헌법판례요약시스템"
-                width={40}
-                height={40}
-                className="size-10 object-contain"
-                priority
-              />
               <span>
                 <span className="block text-lg font-semibold tracking-normal text-ink">헌법판례요약시스템</span>
                 <span className="block text-sm text-ink-muted">세계 헌법재판 큐레이션</span>
