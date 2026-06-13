@@ -601,6 +601,23 @@ workflow cron 표현식은 다음과 같습니다.
 
 동시에 두 수집이 겹치지 않도록 `concurrency`를 사용합니다. 공식 사이트에 부담을 줄이기 위해 worker 동시성은 1로 제한하고, 같은 도메인 요청 사이에 쉬는 시간을 둡니다.
 
+정기 worker는 DB에서 활성화된 4개 source adapter를 순서대로 실행합니다.
+기본 실행 옵션은 `strategy=auto`, `--limit=20`, `--range-days=14`, `--refresh-existing`, `--use-playwright`, `--debug`입니다.
+수집이 끝나면 `pnpm summarize-pending -- --limit=20`으로 전체 요약 대기 자료 중 최대 20건을 요약하고, 마지막에 공개 태그 카운트를 갱신합니다.
+
+| 국가 | source key | 정기 수집 범위 | 최대 처리 건수 | 목록/수집 기준 | 비고 |
+| --- | --- | ---: | ---: | --- | --- |
+| 독일 | `de-bverfg` | 최근 60일 | 20건 | `dejure.org` BVerfG 목록 후보와 공식 BVerfG 상세 원문 | Open Legal Data는 가능한 보조 후보입니다. `BVERFG_DEJURE_PAGES=4`를 사용합니다. |
+| 미국 | `us-scotus` | 최근 14일 | 20건 | SCOTUS 공식 의견 목록 | opinion 자료와 헌법 관련성 필터를 적용합니다. |
+| 프랑스 | `fr-conseil-constitutionnel` | 최근 14일 | 20건 | Conseil constitutionnel/QPC360 계열 공식 자료 | `FRANCE_CRAWL_DELAY_MS=3000`, `FRANCE_TIMEOUT_MS=90000`, 동시성 1을 사용합니다. |
+| 스페인 | `es-tribunal-constitucional` | 최소 최근 180일 | 20건 | HJ 일반 `Fechas Desde/Hasta` 검색과 HJ JSON 상세 | 기준일은 HJ `FECHA_REGISTRO` 결정일입니다. BOE 날짜는 보조 메타데이터로만 저장합니다. |
+
+스페인은 마지막 `completed` 수집 실행이 오래됐으면 범위를 `마지막 성공 실행 후 경과일 + 30일`까지 자동으로 넓힙니다.
+이 자동 확장 범위는 `SPAIN_INGEST_RANGE_DAYS_CAP=730`을 넘지 않습니다.
+
+예를 들어 2026-06-14 06:00 KST 정기 실행은 GitHub Actions 기준 2026-06-13 21:00 UTC에 시작합니다.
+이때 코드의 UTC 날짜 경계 계산상 최근 14일은 2026-05-30 00:00 UTC 이후, 최근 60일은 2026-04-14 00:00 UTC 이후, 최근 180일은 2025-12-15 00:00 UTC 이후를 다시 확인합니다.
+
 ### 진단
 
 ```bash
