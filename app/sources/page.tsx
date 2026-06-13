@@ -10,6 +10,7 @@ import { recordSiteEvent } from "@/lib/analytics/events";
 import { listSources } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,8 +46,8 @@ export default async function SourcesPage() {
         <div className="grid gap-4 md:grid-cols-3">
           {sources.map((source) => (
             <SurfaceCard key={source.sourceKey} style={jurisdictionThemeStyle(themeForJurisdiction(source.jurisdiction))} className="flex h-full flex-col p-5">
-              <p className="text-sm font-semibold text-[color:var(--country-text)]">{source.jurisdiction}</p>
-              <h2 className="mt-2 text-xl font-semibold leading-snug text-ink">{source.name}</h2>
+              <p className="text-sm font-semibold text-[color:var(--country-text)]">{displayJurisdictionLabel(source.jurisdiction)}</p>
+              <h2 className="mt-2 text-xl font-semibold leading-snug text-ink">{displaySourceLabel(source)}</h2>
               <dl className="mt-4 space-y-2 text-sm text-ink-muted">
                 <div className="flex items-center justify-between gap-3">
                   <dt>기관 코드</dt>
@@ -54,7 +55,7 @@ export default async function SourcesPage() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt>언어</dt>
-                  <dd className="font-medium text-ink">{source.language}</dd>
+                  <dd className="font-medium text-ink">{displaySourceLanguageLabel(source.language)}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt>상태</dt>

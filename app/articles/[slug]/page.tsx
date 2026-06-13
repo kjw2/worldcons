@@ -24,6 +24,7 @@ import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
 import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
 
@@ -384,8 +385,8 @@ export default async function ArticlePage({
       <section style={jurisdictionThemeStyle(theme)} className="mb-7 border-b border-line pb-7">
         <MetaRow
           items={[
-            article.jurisdiction,
-            article.institutionName,
+            displayJurisdictionLabel(article.jurisdiction),
+            displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName }),
             formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" }),
             article.originalLanguage,
             article.readingMinutes ? `${article.readingMinutes}분 읽기` : null,
@@ -475,7 +476,7 @@ export default async function ArticlePage({
                 <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-ink">기관</dt>
-                  <dd className="mt-1 text-ink-muted">{article.institutionName}</dd>
+                  <dd className="mt-1 text-ink-muted">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</dd>
                 </div>
               </div>
               <div className="flex items-start gap-3">

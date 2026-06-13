@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils/classnames";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { displayJurisdictionLabel } from "@/lib/ui/source-labels";
 
 export function JurisdictionBadge({ jurisdiction, className }: { jurisdiction: string; className?: string }) {
   const theme = themeForJurisdiction(jurisdiction);
@@ -13,7 +14,7 @@ export function JurisdictionBadge({ jurisdiction, className }: { jurisdiction: s
         className,
       )}
     >
-      {jurisdiction}
+      {displayJurisdictionLabel(jurisdiction)}
     </span>
   );
 }

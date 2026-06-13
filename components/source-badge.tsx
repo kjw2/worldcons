@@ -1,11 +1,6 @@
 import { cn } from "@/lib/utils/classnames";
 import { jurisdictionThemeStyle, themeForSource } from "@/lib/ui/jurisdiction-theme";
-
-const SOURCE_LABELS: Record<string, string> = {
-  "de-bverfg": "독일 연방헌재",
-  "us-scotus": "미국 연방대법원",
-  "fr-conseil-constitutionnel": "프랑스 헌법위원회",
-};
+import { displaySourceLabel } from "@/lib/ui/source-labels";
 
 export function SourceBadge({ sourceKey, className }: { sourceKey: string; className?: string }) {
   const theme = themeForSource(sourceKey);
@@ -19,7 +14,7 @@ export function SourceBadge({ sourceKey, className }: { sourceKey: string; class
         className,
       )}
     >
-      {SOURCE_LABELS[sourceKey] ?? sourceKey}
+      {displaySourceLabel(sourceKey)}
     </span>
   );
 }

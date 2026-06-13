@@ -7,6 +7,7 @@ import { TimeRangeTabs } from "@/components/time-range-tabs";
 import { chipClassName } from "@/components/ui/chip";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
 
 const contentTypes: Array<{ value: ArticleContentType; label: string }> = [
   { value: "news", label: "뉴스" },
@@ -16,12 +17,6 @@ const contentTypes: Array<{ value: ArticleContentType; label: string }> = [
   { value: "order", label: "명령" },
   { value: "other", label: "기타" },
 ];
-
-const jurisdictionLabels: Record<string, string> = {
-  "United States": "미국",
-  Germany: "독일",
-  France: "프랑스",
-};
 
 const selectClassName = "focus-ring h-11 rounded-lg border border-line bg-white px-3 text-sm text-ink shadow-sm";
 
@@ -82,7 +77,7 @@ export function FilterBar({
                   style={jurisdictionThemeStyle(theme)}
                   className={chipClassName(isActive ? "selected" : "country")}
                 >
-                  {jurisdictionLabels[jurisdiction] ?? jurisdiction}
+                  {displayJurisdictionLabel(jurisdiction)}
                 </Link>
               );
             })}
@@ -118,7 +113,7 @@ export function FilterBar({
             <option value="">기관 전체</option>
             {sources.map((source) => (
               <option key={source.sourceKey} value={source.sourceKey}>
-                {source.name}
+                {displaySourceLabel(source)}
               </option>
             ))}
           </select>
@@ -126,7 +121,7 @@ export function FilterBar({
             <option value="">국가 전체</option>
             {jurisdictions.map((jurisdiction) => (
               <option key={jurisdiction} value={jurisdiction}>
-                {jurisdictionLabels[jurisdiction] ?? jurisdiction}
+                {displayJurisdictionLabel(jurisdiction)}
               </option>
             ))}
           </select>
@@ -150,7 +145,7 @@ export function FilterBar({
             <option value="">언어 전체</option>
             {[...new Set(sources.map((source) => source.language))].map((language) => (
               <option key={language} value={language}>
-                {language}
+                {displaySourceLanguageLabel(language)}
               </option>
             ))}
           </select>

@@ -11,6 +11,7 @@ import { recordSearchEvent, recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listGlossaryTerms, listSources, listTags } from "@/lib/db/queries";
 import { glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { hybridSearch, semanticSearch } from "@/lib/search/vector";
+import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { articleFiltersFromSearchParams, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
@@ -109,11 +110,11 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
       type: filters.type,
     },
   });
-  const sourceMap = new Map(sources.map((source) => [source.sourceKey, source.name]));
+  const sourceMap = new Map(sources.map((source) => [source.sourceKey, displaySourceLabel(source)]));
   const tagMap = new Map(tags.map((tag) => [tag.slug, tag.name]));
   const activeFilterChips = [
     q ? { key: "q", label: `검색어: ${q}` } : null,
-    filters.jurisdiction ? { key: "jurisdiction", label: `국가: ${filters.jurisdiction}` } : null,
+    filters.jurisdiction ? { key: "jurisdiction", label: `국가: ${displayJurisdictionLabel(filters.jurisdiction)}` } : null,
     filters.source ? { key: "source", label: `기관: ${sourceMap.get(filters.source) ?? filters.source}` } : null,
     filters.type ? { key: "type", label: `유형: ${typeLabels[filters.type] ?? filters.type}` } : null,
     filters.tag ? { key: "tag", label: `태그: ${tagMap.get(filters.tag) ?? filters.tag}` } : null,
