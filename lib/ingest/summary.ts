@@ -50,18 +50,24 @@ function staleSummarizingCutoffIso() {
   return new Date(Date.now() - staleSummarizingMinutes() * 60 * 1000).toISOString();
 }
 
-export async function recoverStaleSummarizingArticles(options: { limit?: number } = {}) {
+export async function recoverStaleSummarizingArticles(options: { limit?: number; sourceKey?: string } = {}) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return { mode: "no-database", recoveredCount: 0 };
 
   const limit = boundedInteger(options.limit, 100, { min: 1, max: 500 });
   const cutoff = staleSummarizingCutoffIso();
-  const { data, error } = await supabase
+  let query = supabase
     .from("articles")
     .select("id")
     .eq("status", "summarizing")
     .lt("updated_at", cutoff)
     .limit(limit);
+
+  if (options.sourceKey) {
+    query = query.eq("source_key", options.sourceKey);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw new Error(error.message);
   const ids = (data ?? []).map((row) => String(row.id)).filter(Boolean);
@@ -200,7 +206,7 @@ async function summarizeCandidateRow(
   }
 }
 
-export async function runSummarizePending(options: { limit?: number } = {}) {
+export async function runSummarizePending(options: { limit?: number; sourceKey?: string } = {}) {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return {
@@ -212,13 +218,19 @@ export async function runSummarizePending(options: { limit?: number } = {}) {
   }
 
   const limit = boundedInteger(options.limit, 10, { min: 1, max: 100 });
-  const recoveredStale = await recoverStaleSummarizingArticles({ limit: Math.max(limit, 20) });
-  const { data, error } = await supabase
+  const recoveredStale = await recoverStaleSummarizingArticles({ limit: Math.max(limit, 20), sourceKey: options.sourceKey });
+  let query = supabase
     .from("articles")
     .select(SUMMARY_CANDIDATE_SELECT)
     .in("status", ["cleaned", "failed_summary"])
     .is("summarized_at", null)
     .limit(Math.max(limit * 3, limit));
+
+  if (options.sourceKey) {
+    query = query.eq("source_key", options.sourceKey);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw new Error(error.message);
 
