@@ -19,6 +19,7 @@ const navItems = [
   { href: "/tags", label: "태그" },
   { href: "/sources", label: "기관" },
   { href: "/glossary", label: "용어" },
+  { href: "/guide", label: "안내" },
 ];
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
