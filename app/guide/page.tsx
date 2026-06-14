@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { ExternalLink } from "lucide-react";
-import { chipClassName } from "@/components/ui/chip";
 import { PageShell } from "@/components/ui/page-shell";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { SurfaceCard, surfaceCardClassName } from "@/components/ui/surface-card";
 import { recordSiteEvent } from "@/lib/analytics/events";
-import { listArticles, listIngestionRuns, listSources } from "@/lib/db/queries";
-import type { IngestionRunRecord, SourceRecord } from "@/lib/db/types";
+import { listArticles, listSources } from "@/lib/db/queries";
+import type { SourceRecord } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { articleDateLabel } from "@/lib/ui/article-date-label";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
@@ -23,7 +22,6 @@ export const metadata: Metadata = {
 };
 
 type SourceGuide = {
-  collectionRange: string;
   primaryMaterial: string;
   collectionMethod: string;
   dateBasis: string;
@@ -35,31 +33,13 @@ type CollectionRow = {
   source: SourceRecord;
   guide: SourceGuide;
   publicCount: number;
-  latestRun?: IngestionRunRecord;
 };
 
 const sourceOrder = ["de-bverfg", "us-scotus", "fr-conseil-constitutionnel", "es-tribunal-constitucional"];
 
 const numberFormatter = new Intl.NumberFormat("ko-KR");
-const dateTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-const runStatusLabels: Record<string, string> = {
-  completed: "완료",
-  running: "진행 중",
-  failed: "실패",
-  cancelled: "취소",
-};
 
 const defaultSourceGuide: SourceGuide = {
-  collectionRange: "정기 수집 설정에 따름",
   primaryMaterial: "공식 원문 자료",
   collectionMethod: "공식 사이트의 허용된 목록과 상세 원문을 기준으로 후보를 확인합니다.",
   dateBasis: "공식 원문의 기준일",
@@ -69,7 +49,6 @@ const defaultSourceGuide: SourceGuide = {
 
 const sourceGuides: Record<string, SourceGuide> = {
   "de-bverfg": {
-    collectionRange: "매일 06:00 KST, 최근 60일",
     primaryMaterial: "독일 연방헌법재판소 공식 결정문",
     collectionMethod: "목록 후보는 dejure.org 공개 인덱스를 기준으로 확인하고, 허용된 공식 BVerfG 상세 원문만 가져옵니다. Open Legal Data는 가능한 보조 후보로만 봅니다.",
     dateBasis: "공식 상세 결정문의 선고·공개일",
@@ -77,7 +56,6 @@ const sourceGuides: Record<string, SourceGuide> = {
     compliance: "BVerfG robots.txt와 Crawl-delay를 우선합니다. 금지된 검색 경로는 요청하지 않습니다.",
   },
   "us-scotus": {
-    collectionRange: "매일 06:00 KST, 최근 14일",
     primaryMaterial: "미국 연방대법원 opinions, orders, 관련 공개 자료",
     collectionMethod: "SCOTUS 공식 목록과 원문 PDF/HTML을 확인하고 헌법 관련성이 있는 자료를 선별합니다.",
     dateBasis: "SCOTUS 공식 게시·선고일",
@@ -85,7 +63,6 @@ const sourceGuides: Record<string, SourceGuide> = {
     compliance: "robots.txt를 확인하고 허용된 opinions/orders 경로만 처리합니다.",
   },
   "fr-conseil-constitutionnel": {
-    collectionRange: "매일 06:00 KST, 최근 14일",
     primaryMaterial: "프랑스 헌법위원회 decisions, QPC 자료",
     collectionMethod: "공식 sitemap과 허용된 결정문 상세 URL을 기준으로 수집합니다.",
     dateBasis: "Conseil constitutionnel 공식 결정일",
@@ -93,7 +70,6 @@ const sourceGuides: Record<string, SourceGuide> = {
     compliance: "robots.txt에서 금지된 /recherche/ 검색 경로는 수집하지 않습니다.",
   },
   "es-tribunal-constitucional": {
-    collectionRange: "매일 06:00 KST, 최소 최근 180일",
     primaryMaterial: "스페인 헌법재판소 HJ resolutions",
     collectionMethod: "HJ 일반 Fechas Desde/Hasta 검색과 HJ JSON 상세를 기준으로 수집합니다.",
     dateBasis: "HJ FECHA_REGISTRO 결정일. BOE 날짜는 보조 메타데이터로만 저장합니다.",
@@ -117,42 +93,18 @@ function orderSources(sources: SourceRecord[]) {
   });
 }
 
-function latestRunBySource(runs: IngestionRunRecord[]) {
-  const map = new Map<string, IngestionRunRecord>();
-  for (const run of runs) {
-    if (!map.has(run.sourceKey)) map.set(run.sourceKey, run);
-  }
-  return map;
-}
-
 function formatNumber(value: number) {
   return numberFormatter.format(value);
 }
 
-function formatRunDate(value?: string | null) {
-  if (!value) return "기록 없음";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "기록 없음" : dateTimeFormatter.format(date);
-}
-
-function formatRunStatus(run?: IngestionRunRecord) {
-  if (!run) return "기록 없음";
-  return runStatusLabels[run.status] ?? run.status;
-}
-
 async function getCollectionRows(): Promise<CollectionRow[]> {
   const sources = orderSources(await listSources());
-  const [runs, ...articleResults] = await Promise.all([
-    listIngestionRuns(100),
-    ...sources.map((source) => listArticles({ source: source.sourceKey, pageSize: 1 })),
-  ]);
-  const latestRuns = latestRunBySource(runs);
+  const articleResults = await Promise.all(sources.map((source) => listArticles({ source: source.sourceKey, pageSize: 1 })));
 
   return sources.map((source, index) => ({
     source,
     guide: sourceGuideFor(source.sourceKey),
     publicCount: articleResults[index]?.pageInfo.total ?? 0,
-    latestRun: latestRuns.get(source.sourceKey),
   }));
 }
 
@@ -178,19 +130,6 @@ export default async function GuidePage() {
         description="World Cons는 주요 헌법재판기관의 공식 자료를 모아 한국어 요약으로 빠르게 훑어보고, 필요할 때 공식 원문으로 확인할 수 있게 만든 큐레이션 서비스입니다."
       />
 
-      <div className="flex flex-wrap gap-2">
-        {[
-          { href: "/", label: "최신 보기" },
-          { href: "/tags", label: "태그 탐색" },
-          { href: "/sources", label: "기관 확인" },
-          { href: "/glossary", label: "용어 보기" },
-        ].map((item) => (
-          <Link key={item.href} href={item.href} className={chipClassName("default")}>
-            {item.label}
-          </Link>
-        ))}
-      </div>
-
       <section className="grid gap-4 md:grid-cols-3" aria-labelledby="guide-purpose">
         <SurfaceCard className="p-5">
           <p className="text-sm font-semibold text-court">목적</p>
@@ -212,7 +151,8 @@ export default async function GuidePage() {
           <p className="text-sm font-semibold text-court">범위</p>
           <h2 className="mt-2 text-xl font-semibold tracking-normal text-ink">4개 국가 우선 운영</h2>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
-            현재는 독일, 미국, 프랑스, 스페인 헌법재판 관련 공식 자료를 중심으로 수집합니다. 국가별 날짜 기준과 목록 수집 방식은 서로 다릅니다.
+            현재는 독일, 미국, 프랑스, 스페인 헌법재판 관련 공식 자료 중 2025년과 2026년 자료를 중심으로 수집합니다. 앞으로 수집 연도와 대상 범위는 단계적으로 확대할 예정입니다.
+            국가별 날짜 기준과 목록 수집 방식은 서로 다릅니다.
           </p>
         </SurfaceCard>
       </section>
@@ -243,8 +183,8 @@ export default async function GuidePage() {
       <section className="space-y-4">
         <SectionHeading
           eyebrow="수집현황"
-          title="공개 자료와 최근 수집 상태"
-          description="아래 건수는 일반 화면에 공개되는 summarized + publishable 자료 기준입니다. 최근 수집 시각은 한국시간 기준으로 표시합니다."
+          title="공개 자료 현황"
+          description="아래 건수는 일반 화면에 공개되는 summarized + publishable 자료 기준입니다. 현재는 2025년과 2026년 자료를 우선 수집했으며, 향후 과거 연도와 대상 범위를 단계적으로 확대할 예정입니다."
         />
         <div className="overflow-x-auto rounded-lg border border-line bg-white shadow-card">
           <table className="min-w-full divide-y divide-line text-left text-sm">
@@ -253,9 +193,6 @@ export default async function GuidePage() {
                 <th className="px-4 py-3">국가</th>
                 <th className="px-4 py-3">기관</th>
                 <th className="px-4 py-3">공개 자료</th>
-                <th className="px-4 py-3">정기 수집 범위</th>
-                <th className="px-4 py-3">최근 수집</th>
-                <th className="px-4 py-3">상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -269,13 +206,6 @@ export default async function GuidePage() {
                     <span className="mt-1 block text-xs text-ink-subtle">{row.source.sourceKey}</span>
                   </td>
                   <td className="px-4 py-3 font-semibold text-ink">{formatNumber(row.publicCount)}건</td>
-                  <td className="px-4 py-3 text-ink-muted">{row.guide.collectionRange}</td>
-                  <td className="px-4 py-3 text-ink-muted">{formatRunDate(row.latestRun?.startedAt)}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex min-h-7 items-center rounded-md border border-line bg-surface-muted px-2.5 text-xs font-semibold text-ink-muted">
-                      {formatRunStatus(row.latestRun)}
-                    </span>
-                  </td>
                 </tr>
               ))}
               <tr className="bg-surface-muted/45 font-semibold text-ink">
@@ -283,9 +213,6 @@ export default async function GuidePage() {
                   합계
                 </td>
                 <td className="px-4 py-3">{formatNumber(totalPublicCount)}건</td>
-                <td className="px-4 py-3 text-ink-muted" colSpan={3}>
-                  국가별 공식 사이트 정책과 수집 안정성에 따라 건수는 계속 변동됩니다.
-                </td>
               </tr>
             </tbody>
           </table>
