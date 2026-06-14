@@ -380,6 +380,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=
 CRON_SECRET=
+LLM_SETTINGS_SECRET=
 ADMIN_USERNAME=ap570@naver.com
 ADMIN_PASSWORD=
 ADMIN_SESSION_SECRET=
@@ -423,11 +424,14 @@ pnpm start
 | `OPENAI_API_KEY` | OpenAI 열쇠 | OpenAI summary/embedding key |
 | `GEMINI_API_KEY` | Gemini 열쇠 | Gemini 단일 key |
 | `GEMINI_API_KEYS` | Gemini 열쇠 여러 개 | comma-separated keys |
-| `CRON_SECRET` | 자동 실행용 비밀값 | cron/API bearer or query secret |
+| `CRON_SECRET` | 자동 실행용 비밀값 | cron/API `Authorization: Bearer` 또는 `x-cron-secret` 헤더 |
+| `LLM_SETTINGS_SECRET` | LLM 키 암호화 열쇠 | 관리자 화면에 저장한 LLM API key 암호화용 전용 secret |
 | `ADMIN_USERNAME` | 관리자 아이디 | 기본값은 `ap570@naver.com` |
 | `ADMIN_PASSWORD` | 관리자 비밀번호 | 브라우저 로그인용 비밀번호. 비어 있으면 로그인 불가 |
-| `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 비워 두면 `ADMIN_PASSWORD` 사용. 운영 환경에서는 별도 값 권장 |
+| `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 운영 환경에서는 필수. `ADMIN_PASSWORD`와 다른 32자 이상 값 |
 | `APP_BASE_URL` | 서비스 주소 | canonical, sitemap URL base |
+
+운영 환경에서는 `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`를 모두 32자 이상으로 설정하고 서로 다른 값을 사용해야 합니다. 서버 secret은 `NEXT_PUBLIC_` 환경변수로 노출하지 않습니다.
 
 ### AI 관련 값
 
@@ -745,7 +749,7 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | 아이디 | `ADMIN_USERNAME`, 없으면 `ap570@naver.com` |
 | 비밀번호 | `ADMIN_PASSWORD` |
 
-브라우저 관리자 화면은 로그인 세션 쿠키로만 접근합니다. `CRON_SECRET`은 더 이상 브라우저 로그인 비밀번호로 쓰지 않습니다. 자동화나 cron API는 기존처럼 `Authorization: Bearer YOUR_SECRET` 또는 `?secret=YOUR_SECRET` 방식도 계속 사용할 수 있습니다.
+브라우저 관리자 화면은 로그인 세션 쿠키와 CSRF 토큰으로 접근합니다. `CRON_SECRET`은 더 이상 브라우저 로그인 비밀번호로 쓰지 않습니다. 자동화나 cron API는 `Authorization: Bearer YOUR_SECRET` 또는 `x-cron-secret: YOUR_SECRET` 헤더를 사용해야 하며, URL의 `?secret=` 방식은 허용하지 않습니다.
 
 관리자 화면에서 할 수 있는 일은 다음과 같습니다.
 

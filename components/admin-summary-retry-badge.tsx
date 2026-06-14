@@ -28,10 +28,12 @@ function summarizeMessage(payload: unknown) {
 export function AdminSummaryRetryBadge({
   articleId,
   slug,
+  csrfToken,
   onSummarized,
 }: {
   articleId?: string;
   slug: string;
+  csrfToken: string;
   onSummarized?: (slug: string) => void;
 }) {
   const router = useRouter();
@@ -50,7 +52,7 @@ export function AdminSummaryRetryBadge({
       const response = await fetch("/api/admin/ingest", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify({
           action: "retry-summary",
           articleId,

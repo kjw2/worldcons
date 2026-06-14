@@ -11,6 +11,7 @@ import { listSources } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,7 +45,9 @@ export default async function SourcesPage() {
         <EmptyState title="등록된 수집 기관이 없습니다" description="공식 기관이 추가되면 이곳에서 국가와 언어별로 확인할 수 있습니다." />
       ) : (
         <div className="grid gap-4 md:grid-cols-3">
-          {sources.map((source) => (
+          {sources.map((source) => {
+            const sourceHref = safeExternalUrl(source.baseUrl);
+            return (
             <SurfaceCard key={source.sourceKey} style={jurisdictionThemeStyle(themeForJurisdiction(source.jurisdiction))} className="flex h-full flex-col p-5">
               <p className="text-sm font-semibold text-[color:var(--country-text)]">{displayJurisdictionLabel(source.jurisdiction)}</p>
               <h2 className="mt-2 text-xl font-semibold leading-snug text-ink">{displaySourceLabel(source)}</h2>
@@ -66,13 +69,16 @@ export default async function SourcesPage() {
                 <Link href={`/sources/${source.sourceKey}`} className="focus-ring inline-flex min-h-10 items-center rounded-lg bg-primary px-3.5 text-sm font-semibold text-white transition hover:bg-primary/90">
                   자세히 보기
                 </Link>
-                <a href={source.baseUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-line px-3.5 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
+                {sourceHref ? (
+                <a href={sourceHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-line px-3.5 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
                   공식 사이트
                   <ExternalLink className="size-4" aria-hidden="true" />
                 </a>
+                ) : null}
               </div>
             </SurfaceCard>
-          ))}
+          );
+          })}
         </div>
       )}
     </PageShell>

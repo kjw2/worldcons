@@ -10,6 +10,7 @@ import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -62,6 +63,7 @@ export function ArticleCard({
   const hiddenTagCount = Math.max(0, article.tags.length - visibleTags.length);
   const summaryText = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
+  const originalHref = safeExternalUrl(article.originalUrl);
 
   return (
     <article
@@ -112,9 +114,9 @@ export function ArticleCard({
           >
             <BookOpenText className="size-4" aria-hidden="true" />
           </Link>
-          {article.originalUrl ? (
+          {originalHref ? (
             <a
-              href={article.originalUrl}
+              href={originalHref}
               target="_blank"
               rel="noreferrer"
               aria-label={`공식 원문 보기: ${title}`}

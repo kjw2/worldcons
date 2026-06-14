@@ -1,7 +1,9 @@
 import type { ArticleDetail } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export function articleJsonLd(article: ArticleDetail) {
+  const originalUrl = safeExternalUrl(article.originalUrl);
   return {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -10,7 +12,7 @@ export function articleJsonLd(article: ArticleDetail) {
     datePublished: article.originalPublishedAt,
     dateModified: article.summarizedAt || article.fetchedAt || article.discoveredAt,
     inLanguage: "ko",
-    isBasedOn: article.originalUrl,
+    ...(originalUrl ? { isBasedOn: originalUrl } : {}),
     url: `${getAppBaseUrl()}/articles/${article.slug}`,
     publisher: {
       "@type": "Organization",

@@ -59,6 +59,7 @@ function modelKey(option: SummaryModelOption) {
 export function AdminReviewActions({
   articleId,
   slug,
+  csrfToken,
   status,
   hasSummary,
   hasPublishableText,
@@ -68,6 +69,7 @@ export function AdminReviewActions({
 }: {
   articleId?: string;
   slug: string;
+  csrfToken: string;
   status: string;
   hasSummary: boolean;
   hasPublishableText: boolean;
@@ -158,7 +160,7 @@ export function AdminReviewActions({
       const response = await fetch("/api/admin/review", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify({ action, articleId, slug, note, provider: modelSelection?.provider, model: modelSelection?.model }),
       });
       const payload: unknown = await response.json().catch(() => ({}));

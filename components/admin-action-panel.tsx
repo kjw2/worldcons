@@ -60,7 +60,7 @@ function compactResult(result: unknown) {
   return parts.length > 0 ? parts.join(" / ") : "작업이 완료되었습니다.";
 }
 
-export function AdminActionPanel({ sources }: { sources: SourceRecord[] }) {
+export function AdminActionPanel({ sources, csrfToken }: { sources: SourceRecord[]; csrfToken: string }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [pendingAction, setPendingAction] = useState<AdminAction | null>(null);
@@ -85,7 +85,7 @@ export function AdminActionPanel({ sources }: { sources: SourceRecord[] }) {
       const response = await fetch("/api/admin/ingest", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify({
           action,
           sourceKey: sourceKey || undefined,

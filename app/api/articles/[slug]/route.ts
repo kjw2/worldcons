@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getArticleBySlug } from "@/lib/db/queries";
+import { parseSlugParam, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   }
 
   const { slug } = await params;
-  const article = await getArticleBySlug(slug);
+  const parsed = parseSlugParam(slug);
+  if (!parsed.ok) return publicApiValidationErrorResponse(parsed.error);
+
+  const article = await getArticleBySlug(parsed.data);
 
   if (!article) {
     return NextResponse.json({ error: "Article not found" }, { status: 404 });

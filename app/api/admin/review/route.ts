@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction, type AdminReviewAction } from "@/lib/ingest/review";
 import { LLM_PROVIDER_IDS } from "@/lib/ai/llm-settings-types";
-import { isAuthorizedRequest } from "@/lib/utils/auth";
+import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,8 +17,9 @@ const REVIEW_ACTIONS = new Set<AdminReviewAction>([
 ]);
 
 export async function POST(request: Request) {
-  if (!isAuthorizedRequest(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authFailureStatus = adminMutationAuthFailureStatus(request);
+  if (authFailureStatus) {
+    return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
   }
 
   const body = await request.json().catch(() => ({} as Record<string, unknown>));

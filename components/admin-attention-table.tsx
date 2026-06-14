@@ -5,6 +5,7 @@ import { ExternalLink, Eye } from "lucide-react";
 import { AdminSummaryRetryBadge } from "@/components/admin-summary-retry-badge";
 import type { AdminAttentionArticle } from "@/lib/db/admin-queries";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 const statusLabels: Record<string, string> = {
   discovered: "발견",
@@ -45,8 +46,10 @@ function StatusBadge({ status, href }: { status: string; href: string }) {
 
 export function AdminAttentionTable({
   data,
+  csrfToken,
 }: {
   data: AdminAttentionArticle[];
+  csrfToken: string;
 }) {
   const [resolvedSlugs, setResolvedSlugs] = useState<Set<string>>(() => new Set());
   const visibleData = useMemo(
@@ -85,6 +88,7 @@ export function AdminAttentionTable({
             <tbody className="divide-y divide-rule">
               {visibleData.map((article) => {
                 const reviewHref = `/articles/${article.slug}`;
+                const originalHref = safeExternalUrl(article.originalUrl);
 
                 return (
                   <tr key={`${article.sourceKey}-${article.slug}`}>
@@ -105,6 +109,7 @@ export function AdminAttentionTable({
                           <AdminSummaryRetryBadge
                             articleId={article.id}
                             slug={article.slug}
+                            csrfToken={csrfToken}
                             onSummarized={removeResolvedArticle}
                           />
                           <a href={reviewHref} className="focus-ring inline-flex min-h-7 items-center justify-center gap-1.5 rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
@@ -122,8 +127,8 @@ export function AdminAttentionTable({
                           <Eye className="size-3.5" aria-hidden="true" />
                           검토
                         </a>
-                        {article.originalUrl ? (
-                          <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-rule px-2.5 py-1.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                        {originalHref ? (
+                          <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-rule px-2.5 py-1.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
                             원문
                             <ExternalLink className="size-3.5" aria-hidden="true" />
                           </a>

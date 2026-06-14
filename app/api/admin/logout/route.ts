@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ADMIN_SESSION_COOKIE, isSecureRequest } from "@/lib/utils/auth";
+import { ADMIN_SESSION_COOKIE, adminMutationAuthFailureStatus, isSecureRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,9 +19,16 @@ function logoutResponse(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const formData = await request.formData().catch(() => null);
+  const csrfToken = formData?.get("csrfToken");
+  const authFailureStatus = adminMutationAuthFailureStatus(request, typeof csrfToken === "string" ? csrfToken : undefined);
+  if (authFailureStatus) {
+    return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
+  }
+
   return logoutResponse(request);
 }
 
-export async function GET(request: Request) {
-  return logoutResponse(request);
+export async function GET() {
+  return NextResponse.json({ error: "Method Not Allowed" }, { status: 405, headers: { Allow: "POST" } });
 }

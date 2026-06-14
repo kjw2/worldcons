@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
-import { isAuthorizedRequest } from "@/lib/utils/auth";
+import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(request: Request) {
-  if (!isAuthorizedRequest(request)) {
+  if (!isAuthorizedSecretRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

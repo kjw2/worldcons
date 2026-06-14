@@ -2,10 +2,14 @@ import "dotenv/config";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import nextConfig from "../next.config";
 import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { normalizeTagForStorage } from "@/lib/ai/tags";
 import { completeGeminiJson, getGeminiModels, getGeminiRoutes } from "@/lib/ai/gemini-router";
 import { hasGeminiKey, supportsOpenAiTemperature } from "@/lib/ai/client";
+import { llmSettingsEncryptionSecretSource } from "@/lib/ai/llm-settings";
 import { mockSummary } from "@/lib/ai/summarize";
 import {
   buildSpainTcFallbackRawArticle,
@@ -22,10 +26,28 @@ import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
-import { isAuthorizedRequest, safeAdminNextPath, validateAdminCredentials } from "@/lib/utils/auth";
+import {
+  parseAnalyticsEventBody,
+  parseArticleListApiParams,
+  parseSearchApiParams,
+  parseSlugParam,
+  parseSourceKeyParam,
+  parseTagsApiParams,
+} from "@/lib/security/public-api-validation";
+import {
+  ADMIN_SESSION_COOKIE,
+  createAdminCsrfTokenForSession,
+  createAdminSession,
+  isAuthorizedAdminMutationRequest,
+  isAuthorizedRequest,
+  safeAdminNextPath,
+  validateAdminCredentials,
+  validateProductionSecurityConfig,
+} from "@/lib/utils/auth";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
 import { boundedInteger } from "@/lib/utils/numbers";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
@@ -67,6 +89,39 @@ assert(
   "QPC360 search context parameter must not create duplicate canonicals",
 );
 assert(!jsonLdScriptValue({ title: "</script><script>" }).includes("</script>"), "JSON-LD script value must escape script-breaking text");
+const xssFixtures = [
+  "<script>alert(1)</script>",
+  "<img src=x onerror=alert(1)>",
+  "</script><script>alert(1)</script>",
+  "javascript:alert(1)",
+  "\"><svg onload=alert(1)>",
+];
+for (const fixture of xssFixtures) {
+  const jsonLd = jsonLdScriptValue({ title: fixture, summary: fixture });
+  assert(!/[<>]/.test(jsonLd), "JSON-LD must escape active markup delimiters");
+  const inlineText = renderToStaticMarkup(createElement("div", null, fixture));
+  assert(!/<(?:script|img|svg)\b|<[^>]+\s(?:onerror|onload)=/i.test(inlineText), "React text rendering must escape XSS fixtures");
+  const sourceSnapshot = renderToStaticMarkup(createElement("pre", null, fixture));
+  assert(!/<(?:script|img|svg)\b|<[^>]+\s(?:onerror|onload)=/i.test(sourceSnapshot), "source snapshot rendering must escape XSS fixtures");
+}
+assert(safeExternalUrl("javascript:alert(1)") === null, "javascript: URLs must not be rendered as external links");
+assert(safeExternalUrl("data:text/html,<script>alert(1)</script>") === null, "data: URLs must not be rendered as external links");
+assert(safeExternalUrl("https://example.test/source?id=1") === "https://example.test/source?id=1", "http(s) external URLs should remain available");
+assert(parseArticleListApiParams(new URLSearchParams("q=due+process&page=2&pageSize=100&tag=due-process")).ok, "valid article API params should pass");
+assert(!parseArticleListApiParams(new URLSearchParams("pageSize=101")).ok, "oversized pageSize must fail validation");
+assert(!parseArticleListApiParams(new URLSearchParams("tag=slug.eq.safe,name.eq.unsafe")).ok, "PostgREST .or metacharacters in tag filters must fail validation");
+assert(!parseArticleListApiParams(new URLSearchParams(`q=${"a".repeat(201)}`)).ok, "oversized q must fail validation");
+assert(!parseSearchApiParams(new URLSearchParams("mode=unexpected")).ok, "invalid search mode must fail validation");
+assert(!parseTagsApiParams(new URLSearchParams("sort=unexpected")).ok, "invalid tag sort must fail validation");
+assert(parseSlugParam("france-fr-conseil-constitutionnel-2026-06-12").ok, "valid slugs should pass validation");
+assert(!parseSlugParam("javascript:alert(1)").ok, "unsafe slug characters must fail validation");
+assert(!parseSourceKeyParam("../secret").ok, "unsafe sourceKey characters must fail validation");
+assert(
+  parseAnalyticsEventBody({ eventType: "tag_click", path: "/tags/due-process", tagSlug: "due-process", metadata: { surface: "card", count: 1 } }).ok,
+  "valid analytics event body should pass validation",
+);
+assert(!parseAnalyticsEventBody({ eventType: "tag_click", path: "https://evil.test" }).ok, "absolute analytics event paths must fail validation");
+assert(!parseAnalyticsEventBody({ eventType: "tag_click", path: "/x", metadata: { nested: { bad: true } } }).ok, "nested analytics metadata must fail validation");
 
 const article: NormalizedArticle = {
   sourceKey: "us-scotus",
@@ -208,31 +263,95 @@ const originalCronSecret = process.env.CRON_SECRET;
 const originalAdminUsername = process.env.ADMIN_USERNAME;
 const originalAdminPassword = process.env.ADMIN_PASSWORD;
 const originalAdminSessionSecret = process.env.ADMIN_SESSION_SECRET;
+const originalLlmSettingsSecret = process.env.LLM_SETTINGS_SECRET;
 const mutableEnv = process.env as Record<string, string | undefined>;
 mutableEnv.NODE_ENV = "production";
 delete mutableEnv.CRON_SECRET;
 delete mutableEnv.ADMIN_USERNAME;
 delete mutableEnv.ADMIN_PASSWORD;
 delete mutableEnv.ADMIN_SESSION_SECRET;
+delete mutableEnv.LLM_SETTINGS_SECRET;
 assert(
   !isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer undefined" } })),
   "missing production CRON_SECRET must not authorize Bearer undefined",
 );
 assert(!validateAdminCredentials("admin", "admin"), "development admin/admin fallback must stay disabled");
 assert(!validateAdminCredentials("admin", "1234"), "legacy admin/1234 credentials must stay disabled");
-mutableEnv.CRON_SECRET = "secret";
+mutableEnv.CRON_SECRET = "c".repeat(32);
 assert(
-  isAuthorizedRequest(new Request("https://example.test/api/admin/ingest?secret=secret")),
-  "query secret authorization failed",
+  !isAuthorizedRequest(new Request(`https://example.test/api/admin/ingest?secret=${mutableEnv.CRON_SECRET}`)),
+  "URL query secret authorization must be disabled",
 );
 assert(
-  isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer secret" } })),
+  isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: `Bearer ${mutableEnv.CRON_SECRET}` } })),
   "bearer secret authorization failed",
+);
+assert(
+  isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { "x-cron-secret": mutableEnv.CRON_SECRET } })),
+  "x-cron-secret authorization failed",
+);
+assert(
+  isAuthorizedAdminMutationRequest(new Request("https://example.test/api/admin/ingest", { method: "POST", headers: { authorization: `Bearer ${mutableEnv.CRON_SECRET}` } })),
+  "server secret header should authorize admin mutations without CSRF",
 );
 mutableEnv.ADMIN_USERNAME = "ap570@naver.com";
 mutableEnv.ADMIN_PASSWORD = "P@ssw0rd570";
+mutableEnv.ADMIN_SESSION_SECRET = "s".repeat(32);
 assert(validateAdminCredentials("ap570@naver.com", "P@ssw0rd570"), "configured admin credentials failed");
 assert(!validateAdminCredentials("ap570@naver.com", "secret"), "CRON_SECRET must not be accepted as admin login password");
+const adminSession = createAdminSession("ap570@naver.com");
+const adminCsrfToken = createAdminCsrfTokenForSession(adminSession);
+assert(adminCsrfToken, "admin CSRF token creation failed");
+const validAdminCsrfToken = adminCsrfToken ?? "";
+const adminCookie = `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(adminSession)}`;
+assert(
+  isAuthorizedAdminMutationRequest(
+    new Request("https://example.test/api/admin/ingest", {
+      method: "POST",
+      headers: { cookie: adminCookie, origin: "https://example.test", "x-csrf-token": validAdminCsrfToken },
+    }),
+  ),
+  "same-origin admin session mutation with CSRF should pass",
+);
+assert(
+  !isAuthorizedAdminMutationRequest(
+    new Request("https://example.test/api/admin/ingest", {
+      method: "POST",
+      headers: { cookie: adminCookie, origin: "https://example.test" },
+    }),
+  ),
+  "admin session mutation without CSRF must be rejected",
+);
+assert(
+  !isAuthorizedAdminMutationRequest(
+    new Request("https://example.test/api/admin/ingest", {
+      method: "POST",
+      headers: { cookie: adminCookie, origin: "https://evil.example", "x-csrf-token": validAdminCsrfToken },
+    }),
+  ),
+  "cross-origin admin session mutation must be rejected",
+);
+assert(llmSettingsEncryptionSecretSource() === null, "production LLM settings encryption must not fall back to unrelated secrets");
+mutableEnv.LLM_SETTINGS_SECRET = "l".repeat(32);
+assert(llmSettingsEncryptionSecretSource() === "LLM_SETTINGS_SECRET", "LLM settings encryption must use the dedicated secret");
+const validProductionEnv = {
+  NODE_ENV: "production",
+  ADMIN_PASSWORD: "a".repeat(32),
+  ADMIN_SESSION_SECRET: "b".repeat(32),
+  CRON_SECRET: "c".repeat(32),
+  LLM_SETTINGS_SECRET: "d".repeat(32),
+  SUPABASE_SERVICE_ROLE_KEY: "e".repeat(32),
+};
+assert(validateProductionSecurityConfig(validProductionEnv).ok, "valid production security config should pass");
+assert(!validateProductionSecurityConfig({ ...validProductionEnv, CRON_SECRET: "short" }).ok, "short production secrets must fail");
+assert(
+  !validateProductionSecurityConfig({ ...validProductionEnv, LLM_SETTINGS_SECRET: validProductionEnv.CRON_SECRET }).ok,
+  "production secrets must not reuse values",
+);
+assert(
+  !validateProductionSecurityConfig({ ...validProductionEnv, NEXT_PUBLIC_CRON_SECRET: validProductionEnv.CRON_SECRET }).ok,
+  "NEXT_PUBLIC server secret exposure must fail",
+);
 assert(safeAdminNextPath("/articles/test") === "/admin", "admin login next path must stay within admin routes");
 assert(safeAdminNextPath("/admin/analytics?days=7") === "/admin/analytics?days=7", "admin login next path should allow admin routes");
 if (originalCronSecret === undefined) delete mutableEnv.CRON_SECRET;
@@ -243,6 +362,8 @@ if (originalAdminPassword === undefined) delete mutableEnv.ADMIN_PASSWORD;
 else mutableEnv.ADMIN_PASSWORD = originalAdminPassword;
 if (originalAdminSessionSecret === undefined) delete mutableEnv.ADMIN_SESSION_SECRET;
 else mutableEnv.ADMIN_SESSION_SECRET = originalAdminSessionSecret;
+if (originalLlmSettingsSecret === undefined) delete mutableEnv.LLM_SETTINGS_SECRET;
+else mutableEnv.LLM_SETTINGS_SECRET = originalLlmSettingsSecret;
 if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
 else mutableEnv.NODE_ENV = originalNodeEnv;
 
@@ -594,7 +715,132 @@ async function assertGeminiRouterSurvivesUnwritableStorage() {
   }
 }
 
+async function assertAdminRouteSecurityControls() {
+  const keysToRestore = ["NODE_ENV", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_SESSION_SECRET", "CRON_SECRET", "LLM_SETTINGS_SECRET"] as const;
+  const originalEnv = new Map(keysToRestore.map((key) => [key, process.env[key]]));
+  const mutableEnv = process.env as Record<string, string | undefined>;
+
+  try {
+    mutableEnv.NODE_ENV = "production";
+    mutableEnv.ADMIN_USERNAME = "ap570@naver.com";
+    mutableEnv.ADMIN_PASSWORD = "p".repeat(32);
+    mutableEnv.ADMIN_SESSION_SECRET = "s".repeat(32);
+    mutableEnv.CRON_SECRET = "c".repeat(32);
+    mutableEnv.LLM_SETTINGS_SECRET = "l".repeat(32);
+
+    const { GET: logoutGet } = await import("@/app/api/admin/logout/route");
+    const logoutGetResponse = await logoutGet();
+    assert(logoutGetResponse.status === 405, "GET /api/admin/logout must be rejected with 405");
+    assert(logoutGetResponse.headers.get("allow") === "POST", "GET /api/admin/logout must advertise POST as the allowed method");
+
+    const session = createAdminSession("ap570@naver.com");
+    const cookie = `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(session)}`;
+    const csrfToken = createAdminCsrfTokenForSession(session);
+    assert(csrfToken, "route security CSRF token creation failed");
+
+    const { GET: cronGet } = await import("@/app/api/admin/cron/ingest/route");
+    const cronCookieOnlyResponse = await cronGet(
+      new Request("https://example.test/api/admin/cron/ingest", {
+        method: "GET",
+        headers: { cookie },
+      }),
+    );
+    assert(cronCookieOnlyResponse.status === 401, "cron ingest GET must require a secret header, not only an admin cookie");
+
+    const { POST: ingestPost } = await import("@/app/api/admin/ingest/route");
+    const unauthenticatedIngestResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
+    assert(unauthenticatedIngestResponse.status === 401, "admin POST without authentication must return 401");
+
+    const missingCsrfResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test" },
+        body: "{}",
+      }),
+    );
+    assert(missingCsrfResponse.status === 403, "admin POST without CSRF must return 403");
+
+    const crossOriginResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://evil.example", "x-csrf-token": csrfToken ?? "" },
+        body: "{}",
+      }),
+    );
+    assert(crossOriginResponse.status === 403, "cross-origin admin POST must return 403");
+  } finally {
+    for (const key of keysToRestore) {
+      const value = originalEnv.get(key);
+      if (value === undefined) delete mutableEnv[key];
+      else mutableEnv[key] = value;
+    }
+  }
+}
+
+async function assertSecurityHeadersConfigured() {
+  const headers = nextConfig.headers;
+  if (typeof headers !== "function") {
+    throw new Error("Next.js security headers must be configured");
+  }
+  const routes = await headers();
+  const allHeaders = new Map(routes.flatMap((route) => route.headers).map((header) => [header.key.toLowerCase(), header.value]));
+  const cspReportOnly = allHeaders.get("content-security-policy-report-only") ?? "";
+
+  assert(cspReportOnly.includes("default-src 'self'"), "CSP report-only must define default-src");
+  assert(cspReportOnly.includes("frame-ancestors 'none'"), "CSP report-only must define frame-ancestors");
+  assert(allHeaders.get("strict-transport-security")?.includes("max-age="), "HSTS header must be configured");
+  assert(allHeaders.get("x-content-type-options") === "nosniff", "X-Content-Type-Options must be nosniff");
+  assert(allHeaders.get("referrer-policy") === "strict-origin-when-cross-origin", "Referrer-Policy must be configured");
+  assert(allHeaders.get("permissions-policy")?.includes("camera=()"), "Permissions-Policy must be configured");
+  assert(allHeaders.get("x-frame-options") === "DENY", "X-Frame-Options must be DENY");
+}
+
+async function assertPublicApiRouteValidationControls() {
+  const { GET: articlesGet } = await import("@/app/api/articles/route");
+  const articlesResponse = await articlesGet(new Request("https://example.test/api/articles?pageSize=101"));
+  assert(articlesResponse.status === 400, "invalid /api/articles query params must return 400");
+
+  const { GET: searchGet } = await import("@/app/api/search/route");
+  const searchResponse = await searchGet(new Request("https://example.test/api/search?mode=unexpected"));
+  assert(searchResponse.status === 400, "invalid /api/search query params must return 400");
+
+  const { GET: tagsGet } = await import("@/app/api/tags/route");
+  const tagsResponse = await tagsGet(new Request("https://example.test/api/tags?sort=unexpected"));
+  assert(tagsResponse.status === 400, "invalid /api/tags query params must return 400");
+
+  const { GET: articleSlugGet } = await import("@/app/api/articles/[slug]/route");
+  const articleSlugResponse = await articleSlugGet(new Request("https://example.test/api/articles/javascript:alert(1)"), {
+    params: Promise.resolve({ slug: "javascript:alert(1)" }),
+  });
+  assert(articleSlugResponse.status === 400, "invalid /api/articles/[slug] params must return 400");
+
+  const { GET: sourceGet } = await import("@/app/api/sources/[sourceKey]/route");
+  const sourceResponse = await sourceGet(new Request("https://example.test/api/sources/..%2Fsecret"), {
+    params: Promise.resolve({ sourceKey: "../secret" }),
+  });
+  assert(sourceResponse.status === 400, "invalid /api/sources/[sourceKey] params must return 400");
+
+  const { POST: analyticsPost } = await import("@/app/api/analytics/event/route");
+  const analyticsResponse = await analyticsPost(
+    new Request("https://example.test/api/analytics/event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ eventType: "tag_click", path: "https://evil.test" }),
+    }),
+  );
+  assert(analyticsResponse.status === 400, "invalid /api/analytics/event body must return 400");
+}
+
 async function main() {
+  await assertSecurityHeadersConfigured();
+  await assertPublicApiRouteValidationControls();
+  await assertAdminRouteSecurityControls();
   await assertGeminiRouterSurvivesUnwritableStorage();
 
   const franceSeedOnly = await withTimeout(runFranceSpider({ limit: 1, strategy: "seed", usePlaywright: false }), 10_000, {

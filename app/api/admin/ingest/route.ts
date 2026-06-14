@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
-import { isAuthorizedRequest } from "@/lib/utils/auth";
+import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,9 @@ function errorMessage(error: unknown) {
 }
 
 export async function POST(request: Request) {
-  if (!isAuthorizedRequest(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authFailureStatus = adminMutationAuthFailureStatus(request);
+  if (authFailureStatus) {
+    return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
   }
 
   try {

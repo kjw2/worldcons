@@ -11,6 +11,7 @@ import { getSourceByKey, listArticles } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,6 +33,7 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
   if (!source) notFound();
   const articles = await listArticles({ source: source.sourceKey, pageSize: 30 });
   const dateBasis = source.sourceKey === "es-tribunal-constitucional" ? "날짜 기준 HJ FECHA_REGISTRO" : null;
+  const sourceHref = safeExternalUrl(source.baseUrl);
   await recordSiteEvent(
     {
       eventType: "source_view",
@@ -58,10 +60,12 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
             `공개 자료 ${articles.pageInfo.total.toLocaleString("ko-KR")}건`,
           ]}
         />
-        <a href={source.baseUrl} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
+        {sourceHref ? (
+        <a href={sourceHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
           공식 사이트
           <ExternalLink className="size-4" aria-hidden="true" />
         </a>
+        ) : null}
       </SurfaceCard>
       <ArticleGrid articles={articles.items} />
     </PageShell>

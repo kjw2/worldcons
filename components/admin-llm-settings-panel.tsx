@@ -110,7 +110,13 @@ function statusText(provider: ProviderForm) {
   return `${activeKeys}개 키`;
 }
 
-export function AdminLlmSettingsPanel({ initialSettings }: { initialSettings: AdminLlmSettingsView }) {
+export function AdminLlmSettingsPanel({
+  initialSettings,
+  csrfToken,
+}: {
+  initialSettings: AdminLlmSettingsView;
+  csrfToken: string;
+}) {
   const [settings, setSettings] = useState(initialSettings);
   const [form, setForm] = useState<FormState>(() => viewToForm(initialSettings));
   const [pending, setPending] = useState(false);
@@ -176,7 +182,7 @@ export function AdminLlmSettingsPanel({ initialSettings }: { initialSettings: Ad
       const response = await fetch("/api/admin/llm-settings", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify(formToPayload(form)),
       });
       const payload = (await response.json().catch(() => ({}))) as { settings?: AdminLlmSettingsView; error?: string };
@@ -402,4 +408,3 @@ export function AdminLlmSettingsPanel({ initialSettings }: { initialSettings: Ad
     </div>
   );
 }
-

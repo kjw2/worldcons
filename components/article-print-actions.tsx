@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Printer } from "lucide-react";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export function ArticlePrintActions({
   articleHref,
@@ -10,6 +11,8 @@ export function ArticlePrintActions({
   articleHref: string;
   originalUrl?: string | null;
 }) {
+  const originalHref = safeExternalUrl(originalUrl);
+
   return (
     <div className="print-hidden mb-5 flex flex-wrap items-center gap-2">
       <button
@@ -24,8 +27,8 @@ export function ArticlePrintActions({
         <ArrowLeft className="size-4" aria-hidden="true" />
         상세로
       </Link>
-      {originalUrl ? (
-        <a href={originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
+      {originalHref ? (
+        <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
           원문
           <ExternalLink className="size-4" aria-hidden="true" />
         </a>

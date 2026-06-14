@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { approveGlossaryCandidate, generateGlossaryCandidates, ignoreGlossaryCandidate } from "@/lib/glossary/candidates";
-import { isAuthorizedRequest } from "@/lib/utils/auth";
+import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,11 +22,12 @@ function relatedTagsFromInput(input: string) {
 }
 
 export async function POST(request: Request) {
-  if (!isAuthorizedRequest(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const formData = await request.formData();
+  const authFailureStatus = adminMutationAuthFailureStatus(request, stringValue(formData, "csrfToken"));
+  if (authFailureStatus) {
+    return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
   }
 
-  const formData = await request.formData();
   const action = stringValue(formData, "action");
 
   if (action === "refresh") {

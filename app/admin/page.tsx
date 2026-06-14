@@ -15,7 +15,7 @@ import { AdminActionPanel } from "@/components/admin-action-panel";
 import { AdminAttentionTable } from "@/components/admin-attention-table";
 import { AdminTabs } from "@/components/admin-tabs";
 import { getAdminDashboardData, type AdminStatusCount } from "@/lib/db/admin-queries";
-import { isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -224,6 +224,7 @@ export default async function AdminPage() {
   }
 
   const dashboard = await getAdminDashboardData();
+  const csrfToken = (await createAdminCsrfToken()) ?? "";
   const sources = dashboard.sourceSummaries.map((source) => ({
     sourceKey: source.sourceKey,
     name: source.name,
@@ -249,6 +250,7 @@ export default async function AdminPage() {
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
           <form action="/api/admin/logout" method="post">
+            <input type="hidden" name="csrfToken" value={csrfToken} />
             <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
               <LogOut className="size-4" aria-hidden="true" />
               로그아웃
@@ -274,7 +276,7 @@ export default async function AdminPage() {
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-        <AdminActionPanel sources={sources} />
+        <AdminActionPanel sources={sources} csrfToken={csrfToken} />
         <section className="rounded-md border border-rule bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
@@ -306,7 +308,7 @@ export default async function AdminPage() {
           <StatusCountGrid counts={dashboard.statusCounts} />
           <CandidateTable data={dashboard.candidateSummaries} />
         </div>
-        <AdminAttentionTable data={dashboard.attentionArticles} />
+        <AdminAttentionTable data={dashboard.attentionArticles} csrfToken={csrfToken} />
       </div>
     </main>
   );

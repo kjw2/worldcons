@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSourceByKey, listArticles } from "@/lib/db/queries";
+import { parseSourceKeyParam, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ sour
   }
 
   const { sourceKey } = await params;
-  const source = await getSourceByKey(sourceKey);
+  const parsed = parseSourceKeyParam(sourceKey);
+  if (!parsed.ok) return publicApiValidationErrorResponse(parsed.error);
+
+  const source = await getSourceByKey(parsed.data);
 
   if (!source) {
     return NextResponse.json({ error: "Source not found" }, { status: 404 });

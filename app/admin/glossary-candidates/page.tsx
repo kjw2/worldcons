@@ -3,7 +3,7 @@ import { LogOut, RefreshCw } from "lucide-react";
 import { AdminTabs } from "@/components/admin-tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { listGlossaryCandidates, languageLabels, jurisdictionFromLanguages } from "@/lib/glossary/candidates";
-import { isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
   }
 
   const result = await listGlossaryCandidates({ limit: 80 });
+  const csrfToken = (await createAdminCsrfToken()) ?? "";
   const candidates = result.candidates;
 
   return (
@@ -33,12 +34,14 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
         <div className="flex flex-wrap items-center gap-2">
           <form action="/api/admin/glossary-candidates" method="post">
             <input type="hidden" name="action" value="refresh" />
+            <input type="hidden" name="csrfToken" value={csrfToken} />
             <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
               <RefreshCw className="size-4" aria-hidden="true" />
               후보 갱신
             </button>
           </form>
           <form action="/api/admin/logout" method="post">
+            <input type="hidden" name="csrfToken" value={csrfToken} />
             <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
               <LogOut className="size-4" aria-hidden="true" />
               로그아웃
@@ -74,6 +77,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
                   {candidate.id ? (
                     <form action="/api/admin/glossary-candidates" method="post">
                       <input type="hidden" name="action" value="ignore" />
+                      <input type="hidden" name="csrfToken" value={csrfToken} />
                       <input type="hidden" name="candidateId" value={candidate.id} />
                       <button type="submit" className="focus-ring rounded-md border border-rule bg-white px-3 py-2 text-sm font-semibold text-ink/62 hover:bg-parchment">
                         숨기기
@@ -84,6 +88,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
 
                 <form action="/api/admin/glossary-candidates" method="post" className="mt-4 grid gap-3 md:grid-cols-2">
                   <input type="hidden" name="action" value="approve" />
+                  <input type="hidden" name="csrfToken" value={csrfToken} />
                   {candidate.id ? <input type="hidden" name="candidateId" value={candidate.id} /> : null}
                   <label className="grid gap-1 text-sm font-semibold text-ink/70">
                     slug

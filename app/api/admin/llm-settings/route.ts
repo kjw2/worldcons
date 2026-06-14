@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { getAdminLlmSettingsView, saveAdminLlmSettings } from "@/lib/ai/llm-settings";
 import type { AdminLlmSettingsInput } from "@/lib/ai/llm-settings-types";
-import { isAuthorizedRequest } from "@/lib/utils/auth";
+import { adminMutationAuthFailureStatus, isAuthorizedRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,8 +20,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!isAuthorizedRequest(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authFailureStatus = adminMutationAuthFailureStatus(request);
+  if (authFailureStatus) {
+    return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
   }
 
   try {
@@ -46,4 +47,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

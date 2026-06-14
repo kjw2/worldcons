@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Activity, BarChart3, Bot, CalendarDays, Database, Hash, LogOut, Search, TrendingUp } from "lucide-react";
 import { AdminTabs } from "@/components/admin-tabs";
 import { getAnalyticsDashboardData, type AnalyticsDashboardData, type DimensionStat } from "@/lib/db/analytics";
-import { isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
@@ -468,6 +468,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   }
 
   const days = rangeFromParam(getSearchParam(params, "days"));
+  const csrfToken = (await createAdminCsrfToken()) ?? "";
   const dashboard = await getAnalyticsDashboardData({ days });
 
   return (
@@ -481,6 +482,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
           </p>
         </div>
         <form action="/api/admin/logout" method="post">
+          <input type="hidden" name="csrfToken" value={csrfToken} />
           <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
             <LogOut className="size-4" aria-hidden="true" />
             로그아웃

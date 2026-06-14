@@ -130,17 +130,14 @@ function hasEnvKeys(provider: ConfigurableLlmProvider) {
 }
 
 function encryptionSecret() {
-  const candidates = [
-    ["LLM_SETTINGS_SECRET", process.env.LLM_SETTINGS_SECRET],
-    ["ADMIN_SESSION_SECRET", process.env.ADMIN_SESSION_SECRET],
-    ["CRON_SECRET", process.env.CRON_SECRET],
-    ["SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY],
-    ["ADMIN_PASSWORD", process.env.ADMIN_PASSWORD],
-  ] as const;
-  const found = candidates.find(([, value]) => value?.trim());
-  if (found) return { source: found[0], value: found[1]!.trim() };
+  const secret = process.env.LLM_SETTINGS_SECRET?.trim();
+  if (secret) return { source: "LLM_SETTINGS_SECRET", value: secret };
   if (process.env.NODE_ENV !== "production") return { source: "development-fallback", value: "worldcons-local-llm-settings-secret" };
   return null;
+}
+
+export function llmSettingsEncryptionSecretSource() {
+  return encryptionSecret()?.source ?? null;
 }
 
 function encryptionKey() {
@@ -150,7 +147,7 @@ function encryptionKey() {
 
 function encryptSecret(value: string) {
   const key = encryptionKey();
-  if (!key) throw new Error("LLM_SETTINGS_SECRET or another server secret is required to store LLM API keys.");
+  if (!key) throw new Error("LLM_SETTINGS_SECRET is required to store LLM API keys.");
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
@@ -333,7 +330,7 @@ function normalizeStoredKeys(existing: StoredLlmKey[], inputs: LlmKeyInput[] | u
 export async function saveAdminLlmSettings(input: AdminLlmSettingsInput) {
   const supabase = getSupabaseAdmin();
   if (!supabase) throw new Error("Supabase 설정이 없어 LLM 설정을 저장할 수 없습니다.");
-  if (!encryptionSecret()) throw new Error("LLM_SETTINGS_SECRET or another server secret is required to store LLM API keys.");
+  if (!encryptionSecret()) throw new Error("LLM_SETTINGS_SECRET is required to store LLM API keys.");
 
   const read = await readStoredSettings();
   if (!read.storageAvailable) throw new Error(read.error ?? "LLM 설정 저장소를 사용할 수 없습니다.");

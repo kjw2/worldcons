@@ -10,6 +10,7 @@ import { provisionReviewLabel } from "@/lib/ui/provision-confidence";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -71,10 +72,11 @@ export default async function ArticlePrintPage({
   const summary = article.summaryJson;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
   const provisions = summary?.summary.referencedProvisions.filter((provision) => provisionLabel(provision)) ?? [];
+  const originalHref = safeExternalUrl(article.originalUrl);
 
   return (
     <main className="print-page mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <ArticlePrintActions articleHref={`/articles/${article.slug}`} originalUrl={article.originalUrl} />
+      <ArticlePrintActions articleHref={`/articles/${article.slug}`} originalUrl={originalHref} />
 
       <article className="print-document rounded-lg border border-line bg-white p-6 shadow-card sm:p-8">
         <header className="pb-6">
@@ -100,9 +102,9 @@ export default async function ArticlePrintPage({
               />
             ) : null}
           </dl>
-          {article.originalUrl ? (
+          {originalHref ? (
             <p className="mt-5 break-all text-sm leading-6 text-ink-muted">
-              공식 원문: <a href={article.originalUrl}>{article.originalUrl}</a>
+              공식 원문: <a href={originalHref}>{originalHref}</a>
             </p>
           ) : null}
         </PrintSection>

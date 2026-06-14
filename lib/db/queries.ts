@@ -203,6 +203,31 @@ function getRangeStartIso(rangeValue?: ArticleListFilters["range"]) {
   return null;
 }
 
+async function articleIdsForTagFilter(tag: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const [slugResult, nameResult] = await Promise.all([
+    supabase.from("tags").select("id").eq("slug", tag),
+    supabase.from("tags").select("id").eq("name", tag),
+  ]);
+  if (slugResult.error) throw new Error(slugResult.error.message);
+  if (nameResult.error) throw new Error(nameResult.error.message);
+
+  const tagIds = Array.from(
+    new Set(
+      [...(slugResult.data ?? []), ...(nameResult.data ?? [])]
+        .map((row) => (typeof row.id === "string" ? row.id : null))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  if (tagIds.length === 0) return [];
+
+  const { data, error } = await supabase.from("article_tags").select("article_id").in("tag_id", tagIds);
+  if (error) throw new Error(error.message);
+  return data?.map((row) => String(row.article_id)) ?? [];
+}
+
 async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds: string[] | null): Promise<ArticleListResult> {
   const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
   const supabase = getSupabaseAdmin();
@@ -280,11 +305,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
 
   let tagArticleIds: string[] | null = null;
   if (filters.tag) {
-    const { data } = await supabase
-      .from("article_tags")
-      .select("article_id, tags!inner(slug,name)")
-      .or(`slug.eq.${filters.tag},name.eq.${filters.tag}`, { foreignTable: "tags" });
-    tagArticleIds = data?.map((row) => String(row.article_id)) ?? [];
+    tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
     if (tagArticleIds.length === 0) {
       return { items: [], pageInfo: { page, pageSize, total: 0 } };
     }

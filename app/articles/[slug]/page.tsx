@@ -26,8 +26,9 @@ import { articleMetadata } from "@/lib/seo/metadata";
 import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
-import { isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -243,12 +244,22 @@ function TextDetails({ title, text }: { title: string; text?: string | null }) {
   );
 }
 
-function AdminReviewPanel({ article, llmSettings }: { article: ArticleDetail; llmSettings?: AdminLlmSettingsView | null }) {
+function AdminReviewPanel({
+  article,
+  csrfToken,
+  llmSettings,
+}: {
+  article: ArticleDetail;
+  csrfToken: string;
+  llmSettings?: AdminLlmSettingsView | null;
+}) {
   const sourceMetadata = article.sourceMetadata;
   const collection = isRecord(sourceMetadata?.collection) ? sourceMetadata.collection : {};
   const errorMessage = asText(article.errorMetadata?.message);
   const reason = asText(collection.reason) ?? errorMessage ?? reviewStatusLabels[article.status] ?? "관리자 확인이 필요합니다.";
   const canonicalUrl = article.canonicalUrl && article.canonicalUrl !== article.originalUrl ? article.canonicalUrl : null;
+  const originalHref = safeExternalUrl(article.originalUrl);
+  const canonicalHref = safeExternalUrl(canonicalUrl);
   const plan = reviewPlan(article, collection);
   const hasPublishableText = rawTextLength(article.cleanedText) >= MIN_REVIEW_TEXT_LENGTH;
   const currentModel = article.summaryJson?.aiMetadata?.model ?? null;
@@ -305,12 +316,14 @@ function AdminReviewPanel({ article, llmSettings }: { article: ArticleDetail; ll
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 rounded-md bg-court px-3 py-2 text-sm font-semibold text-white hover:bg-court/90">
+        {originalHref ? (
+        <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 rounded-md bg-court px-3 py-2 text-sm font-semibold text-white hover:bg-court/90">
           공식 원문
           <ExternalLink className="size-4" aria-hidden="true" />
         </a>
-        {canonicalUrl ? (
-          <a href={canonicalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-3 py-2 text-sm font-semibold text-ink/70 hover:bg-parchment">
+        ) : null}
+        {canonicalHref ? (
+          <a href={canonicalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-3 py-2 text-sm font-semibold text-ink/70 hover:bg-parchment">
             canonical URL
             <ExternalLink className="size-4" aria-hidden="true" />
           </a>
@@ -321,6 +334,7 @@ function AdminReviewPanel({ article, llmSettings }: { article: ArticleDetail; ll
         <AdminReviewActions
           articleId={article.id}
           slug={article.slug}
+          csrfToken={csrfToken}
           status={article.status}
           hasSummary={Boolean(article.summaryJson)}
           hasPublishableText={hasPublishableText}
@@ -355,6 +369,7 @@ export default async function ArticlePage({
   if (!article) notFound();
 
   const llmSettings = includeUnpublished ? await getAdminLlmSettingsView().catch(() => null) : null;
+  const csrfToken = includeUnpublished ? (await createAdminCsrfToken()) ?? "" : "";
   const related = await getRelatedArticles(article);
   const summary = article.summaryJson;
   const summaryModelName = summary?.aiMetadata?.model ?? "모델 정보 없음";
@@ -377,7 +392,8 @@ export default async function ArticlePage({
 
   const primaryIssue = summary?.summary.coreSummary[0] ?? article.oneLineSummary;
   const collectionNotice = publicCollectionNotice(article);
-  const missingOriginalUrl = !article.originalUrl?.trim();
+  const originalHref = safeExternalUrl(article.originalUrl);
+  const missingOriginalUrl = !originalHref;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
 
   return (
@@ -398,8 +414,8 @@ export default async function ArticlePage({
         {primaryIssue ? <p className="mt-4 break-keep text-lg leading-8 text-ink-muted">{primaryIssue}</p> : null}
         {article.originalTitle ? <p className="mt-3 break-keep text-sm leading-6 text-ink-subtle">원문 제목: {article.originalTitle}</p> : null}
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          {article.originalUrl ? (
-            <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg bg-court px-4 text-sm font-semibold text-white transition hover:bg-court/90">
+          {originalHref ? (
+            <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg bg-court px-4 text-sm font-semibold text-white transition hover:bg-court/90">
               원문 보기
               <ExternalLink className="size-4" aria-hidden="true" />
             </a>
@@ -412,7 +428,7 @@ export default async function ArticlePage({
         </div>
       </section>
 
-      {includeUnpublished ? <AdminReviewPanel article={article} llmSettings={llmSettings} /> : null}
+      {includeUnpublished ? <AdminReviewPanel article={article} csrfToken={csrfToken} llmSettings={llmSettings} /> : null}
 
       <div style={jurisdictionThemeStyle(theme)} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <article className="space-y-5">
@@ -507,8 +523,8 @@ export default async function ArticlePage({
                 </div>
               </div>
             </dl>
-            {article.originalUrl ? (
-              <a href={article.originalUrl} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex w-full min-h-11 items-center justify-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
+            {originalHref ? (
+              <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex w-full min-h-11 items-center justify-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
                 공식 원문 확인
                 <ExternalLink className="size-4" aria-hidden="true" />
               </a>

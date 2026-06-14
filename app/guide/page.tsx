@@ -11,6 +11,7 @@ import type { SourceRecord } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { articleDateLabel } from "@/lib/ui/article-date-label";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
+import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -231,7 +232,9 @@ export default async function GuidePage() {
           descriptionClassName={guideHeadingDescriptionClassName}
         />
         <div className="grid gap-4">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const sourceHref = safeExternalUrl(row.source.baseUrl);
+            return (
             <SurfaceCard key={row.source.sourceKey} className="p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -241,8 +244,9 @@ export default async function GuidePage() {
                     원문 언어: {displaySourceLanguageLabel(row.source.language)} · 날짜 라벨: {articleDateLabel(row.source.sourceKey)}
                   </p>
                 </div>
+                {sourceHref ? (
                 <a
-                  href={row.source.baseUrl}
+                  href={sourceHref}
                   target="_blank"
                   rel="noreferrer"
                   className="focus-ring inline-flex min-h-10 w-fit items-center gap-1.5 rounded-lg border border-line px-3.5 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink"
@@ -250,6 +254,7 @@ export default async function GuidePage() {
                   공식 사이트
                   <ExternalLink className="size-4" aria-hidden="true" />
                 </a>
+                ) : null}
               </div>
               <dl className="mt-5 grid gap-4 md:grid-cols-2">
                 <div>
@@ -274,7 +279,8 @@ export default async function GuidePage() {
                 </div>
               </dl>
             </SurfaceCard>
-          ))}
+          );
+          })}
         </div>
       </section>
 
