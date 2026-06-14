@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ExternalLink, FileText, Languages, Printer, Scale } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink, FileText, Languages, Scale } from "lucide-react";
 import { AdminReviewActions, type SummaryModelOption } from "@/components/admin-review-actions";
+import { ArticlePrintButton } from "@/components/article-print-button";
 import { ReferencedProvisionList } from "@/components/referenced-provision-list";
 import { RelatedArticles } from "@/components/related-articles";
 import { SummarySection } from "@/components/summary-section";
@@ -408,10 +409,7 @@ export default async function ArticlePage({
             <ArrowLeft className="size-4" aria-hidden="true" />
             목록으로
           </Link>
-          <Link href={`/articles/${article.slug}/print`} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
-            <Printer className="size-4" aria-hidden="true" />
-            인쇄용 HTML
-          </Link>
+          <ArticlePrintButton printHref={`/articles/${article.slug}/print`} />
         </div>
       </section>
 
