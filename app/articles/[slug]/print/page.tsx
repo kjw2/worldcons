@@ -6,6 +6,7 @@ import { getArticleBySlug } from "@/lib/db/queries";
 import type { ArticleDetail, ReferencedProvision } from "@/lib/db/types";
 import { articleDateLabel, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
+import { provisionReviewLabel } from "@/lib/ui/provision-confidence";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { formatDisplayDate } from "@/lib/utils/dates";
@@ -130,13 +131,16 @@ export default async function ArticlePrintPage({
             <PrintSection title="참조 조문">
               {provisions.length > 0 ? (
                 <ul className="space-y-3">
-                  {provisions.map((provision, index) => (
-                    <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="print-section rounded-lg border border-line bg-surface-muted/60 p-4">
-                      <strong className="text-ink">{provisionLabel(provision)}</strong>
-                      <span className="ml-2 text-xs font-semibold text-ink-subtle">신뢰도 {provision.confidence}</span>
-                      <p className="mt-2 text-sm leading-6 text-ink-muted">{provision.description}</p>
-                    </li>
-                  ))}
+                  {provisions.map((provision, index) => {
+                    const reviewLabel = provisionReviewLabel(provision.confidence);
+                    return (
+                      <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="print-section rounded-lg border border-line bg-surface-muted/60 p-4">
+                        <strong className="text-ink">{provisionLabel(provision)}</strong>
+                        {reviewLabel ? <span className="ml-2 text-xs font-semibold text-ink-subtle">{reviewLabel}</span> : null}
+                        <p className="mt-2 text-sm leading-6 text-ink-muted">{provision.description}</p>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p>확인된 참조 조문이 없습니다.</p>

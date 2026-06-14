@@ -1,7 +1,13 @@
 import type { ReferencedProvision } from "@/lib/db/types";
+import { provisionReviewLabel } from "@/lib/ui/provision-confidence";
 
 function provisionLabel(provision: ReferencedProvision) {
   return [provision.lawName, provision.article].map((item) => item.trim()).filter(Boolean).join(" ");
+}
+
+function ProvisionReviewBadge({ confidence }: { confidence: ReferencedProvision["confidence"] }) {
+  const label = provisionReviewLabel(confidence);
+  return label ? <span className="rounded-md bg-white px-2 py-0.5 text-xs font-medium text-ink-muted">{label}</span> : null;
 }
 
 export function ReferencedProvisionList({ provisions }: { provisions: ReferencedProvision[] }) {
@@ -17,7 +23,7 @@ export function ReferencedProvisionList({ provisions }: { provisions: Referenced
         <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="rounded-lg border border-line bg-surface-muted/60 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <strong className="text-ink">{provisionLabel(provision)}</strong>
-            <span className="rounded-md bg-white px-2 py-0.5 text-xs font-medium text-ink-muted">신뢰도 {provision.confidence}</span>
+            <ProvisionReviewBadge confidence={provision.confidence} />
           </div>
           <p className="mt-2 text-sm leading-6 text-ink-muted">{provision.description}</p>
         </li>
