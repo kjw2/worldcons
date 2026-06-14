@@ -38,6 +38,7 @@ type CollectionRow = {
 const sourceOrder = ["de-bverfg", "us-scotus", "fr-conseil-constitutionnel", "es-tribunal-constitucional"];
 
 const numberFormatter = new Intl.NumberFormat("ko-KR");
+const guideHeadingDescriptionClassName = "max-w-none text-pretty";
 
 const defaultSourceGuide: SourceGuide = {
   primaryMaterial: "공식 원문 자료",
@@ -128,6 +129,7 @@ export default async function GuidePage() {
         eyebrow="이용 가이드"
         title="World Cons 안내"
         description="World Cons는 주요 헌법재판기관의 공식 자료를 모아 한국어 요약으로 빠르게 훑어보고, 필요할 때 공식 원문으로 확인할 수 있게 만든 큐레이션 서비스입니다."
+        descriptionClassName={guideHeadingDescriptionClassName}
       />
 
       <section className="grid gap-4 md:grid-cols-3" aria-labelledby="guide-purpose">
@@ -162,6 +164,7 @@ export default async function GuidePage() {
           eyebrow="이용방법"
           title="자료를 찾고 확인하는 순서"
           description="목록에서 빠르게 훑고, 상세 화면에서 요약 구조를 확인한 뒤, 중요한 사안은 공식 원문으로 다시 확인하는 흐름을 권장합니다."
+          descriptionClassName={guideHeadingDescriptionClassName}
         />
         <ol className="grid gap-3 md:grid-cols-5">
           {[
@@ -185,6 +188,7 @@ export default async function GuidePage() {
           eyebrow="수집현황"
           title="공개 자료 현황"
           description="아래 건수는 일반 화면에 공개되는 summarized + publishable 자료 기준입니다. 현재는 2025년과 2026년 자료를 우선 수집했으며, 향후 과거 연도와 대상 범위를 단계적으로 확대할 예정입니다."
+          descriptionClassName={guideHeadingDescriptionClassName}
         />
         <div className="overflow-x-auto rounded-lg border border-line bg-white shadow-card">
           <table className="min-w-full divide-y divide-line text-left text-sm">
@@ -224,6 +228,7 @@ export default async function GuidePage() {
           eyebrow="수집·번역·요약방법"
           title="사이트별 처리 기준"
           description="각 기관은 목록 제공 방식, 날짜 기준, robots 정책이 다르므로 하나의 방식으로 강제로 맞추지 않습니다."
+          descriptionClassName={guideHeadingDescriptionClassName}
         />
         <div className="grid gap-4">
           {rows.map((row) => (
