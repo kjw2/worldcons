@@ -390,7 +390,6 @@ export default async function ArticlePage({
             displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName }),
             formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" }),
             article.originalLanguage,
-            article.readingMinutes ? `${article.readingMinutes}분 읽기` : null,
           ]}
         />
         <h1 className="mt-4 break-keep text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">

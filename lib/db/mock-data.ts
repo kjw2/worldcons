@@ -175,7 +175,6 @@ export const mockArticles: ArticleDetail[] = [
     tags: mockTags.filter((tag) => ["표현의-자유", "비례원칙"].includes(tag.slug)),
     oneLineSummary: germanySummary.summary.coreSummary[0],
     cleanedText: "Mock source text for German constitutional court decision.",
-    readingMinutes: 3,
   },
   {
     slug: "united-states-us-scotus-2026-04-29-first-choice-standing-d4e5f6",
@@ -197,7 +196,6 @@ export const mockArticles: ArticleDetail[] = [
     tags: mockTags.filter((tag) => ["first-amendment", "standing", "free-speech"].includes(tag.slug)),
     oneLineSummary: usSummary.summary.coreSummary[0],
     cleanedText: "Mock source text for a Supreme Court opinion involving First Amendment associational rights and Article III standing.",
-    readingMinutes: 5,
   },
   {
     slug: "france-fr-conseil-constitutionnel-2026-05-02-qpc-procedure-a7b8c9",
@@ -219,7 +217,6 @@ export const mockArticles: ArticleDetail[] = [
     tags: mockTags.filter((tag) => tag.slug === "qpc"),
     oneLineSummary: franceSummary.summary.coreSummary[0],
     cleanedText: "Mock source text for a Conseil constitutionnel QPC decision.",
-    readingMinutes: 4,
   },
 ];
 

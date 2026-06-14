@@ -13,10 +13,6 @@ import { formatDisplayDate } from "@/lib/utils/dates";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function textLength(value?: string | null) {
-  return new Intl.NumberFormat("ko-KR").format((value ?? "").trim().length);
-}
-
 function printTitle(article: ArticleDetail) {
   return article.koreanTitle || article.originalTitle || "제목 미상";
 }
@@ -96,7 +92,6 @@ export default async function ArticlePrintPage({
             <InfoItem label="유형" value={displayArticleTypeLabel(article)} />
             <InfoItem label={articleDateLabel(article.sourceKey)} value={formatDisplayDate(article.originalPublishedAt)} />
             <InfoItem label="언어" value={article.originalLanguage} />
-            <InfoItem label="읽기 시간" value={article.readingMinutes ? `${article.readingMinutes}분` : null} />
             {boeMetadata?.boePublishedAt ? (
               <InfoItem
                 label="BOE 공고일"
@@ -163,12 +158,6 @@ export default async function ArticlePrintPage({
                 </span>
               ))}
             </div>
-          </PrintSection>
-        ) : null}
-
-        {article.cleanedText ? (
-          <PrintSection title={`보존된 원문 스냅샷 (${textLength(article.cleanedText)}자)`}>
-            <pre className="whitespace-pre-wrap rounded-lg bg-surface-muted/60 p-4 text-[13px] leading-7 text-ink-muted">{article.cleanedText}</pre>
           </PrintSection>
         ) : null}
 

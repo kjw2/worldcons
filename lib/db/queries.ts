@@ -1,4 +1,3 @@
-import readingTime from "reading-time";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import {
   mockArticles,
@@ -105,7 +104,6 @@ function articleRowToItem(row: SupabaseArticleRow): ArticleDetail {
       })
       .filter(Boolean) ?? [];
   const summary = row.summary_json ?? null;
-  const textForReading = row.cleaned_text || row.raw_text || "";
 
   return {
     id: row.id,
@@ -132,7 +130,6 @@ function articleRowToItem(row: SupabaseArticleRow): ArticleDetail {
     contentHash: row.content_hash,
     sourceMetadata: row.source_metadata,
     errorMetadata: row.error_metadata,
-    readingMinutes: textForReading ? Math.max(1, Math.ceil(readingTime(textForReading).minutes)) : undefined,
   };
 }
 

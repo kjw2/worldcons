@@ -109,7 +109,6 @@ export interface ArticleListItem {
   sourceMetadata?: Record<string, unknown> | null;
   tags: TagSummary[];
   oneLineSummary: string;
-  readingMinutes?: number;
 }
 
 export interface ArticleDetail extends ArticleListItem {
