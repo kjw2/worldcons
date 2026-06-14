@@ -336,13 +336,14 @@ mutableEnv.LLM_SETTINGS_SECRET = "l".repeat(32);
 assert(llmSettingsEncryptionSecretSource() === "LLM_SETTINGS_SECRET", "LLM settings encryption must use the dedicated secret");
 const validProductionEnv = {
   NODE_ENV: "production",
-  ADMIN_PASSWORD: "a".repeat(32),
+  ADMIN_PASSWORD: "admin6",
   ADMIN_SESSION_SECRET: "b".repeat(32),
   CRON_SECRET: "c".repeat(32),
   LLM_SETTINGS_SECRET: "d".repeat(32),
   SUPABASE_SERVICE_ROLE_KEY: "e".repeat(32),
 };
 assert(validateProductionSecurityConfig(validProductionEnv).ok, "valid production security config should pass");
+assert(!validateProductionSecurityConfig({ ...validProductionEnv, ADMIN_PASSWORD: "short" }).ok, "short admin passwords must fail");
 assert(!validateProductionSecurityConfig({ ...validProductionEnv, CRON_SECRET: "short" }).ok, "short production secrets must fail");
 assert(
   !validateProductionSecurityConfig({ ...validProductionEnv, LLM_SETTINGS_SECRET: validProductionEnv.CRON_SECRET }).ok,

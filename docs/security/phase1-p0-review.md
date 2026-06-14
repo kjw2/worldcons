@@ -16,7 +16,7 @@ P0 차단 항목은 코드 수정과 회귀 테스트 기준으로 해소되었�
 | 관리자 state-changing POST CSRF | ingest, review, llm-settings, glossary-candidates, logout에 CSRF 검증 적용 |
 | logout GET | `GET /api/admin/logout`은 405와 `Allow: POST` 반환 |
 | LLM_SETTINGS_SECRET fallback | production에서는 전용 `LLM_SETTINGS_SECRET`만 허용. 다른 server secret fallback 제거 |
-| 운영 secret 강도/분리 | 32바이트 이상, 값 재사용 금지, `NEXT_PUBLIC_` 노출 금지 검사 추가 |
+| 운영 secret 강도/분리 | `ADMIN_PASSWORD` 6자 이상, 서버 secret 32바이트 이상, 값 재사용 금지, `NEXT_PUBLIC_` 노출 금지 검사 추가 |
 | production 배포 차단 | Vercel production build에서 `assertProductionSecurityConfig` 실행 |
 | 테스트 실효성 | 라우트 핸들러와 인증 helper를 직접 호출해 실패 케이스 검증 |
 

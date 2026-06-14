@@ -2,7 +2,8 @@
 
 ## 배포 전 필수
 
-- `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`가 모두 32바이트 이상인지 확인
+- `ADMIN_PASSWORD`가 6자 이상인지 확인
+- `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`가 모두 32바이트 이상인지 확인
 - 위 5개 secret 값이 서로 다른지 확인
 - server secret이 `NEXT_PUBLIC_` 환경변수로 노출되지 않는지 확인
 - Vercel production 환경변수에 `LLM_SETTINGS_SECRET`이 설정되어 있는지 확인

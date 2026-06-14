@@ -6,6 +6,9 @@ const REQUIRED_PRODUCTION_SECRET_NAMES = [
   "SUPABASE_SERVICE_ROLE_KEY",
 ] as const;
 
+const MIN_ADMIN_PASSWORD_CHARS = 6;
+const MIN_SERVER_SECRET_BYTES = 32;
+
 export function validateProductionSecurityConfig(env: Record<string, string | undefined> = process.env) {
   const errors: string[] = [];
   if (env.NODE_ENV !== "production") {
@@ -20,8 +23,12 @@ export function validateProductionSecurityConfig(env: Record<string, string | un
       continue;
     }
 
-    if (Buffer.byteLength(value, "utf8") < 32) {
-      errors.push(`${name} must be at least 32 bytes long in production.`);
+    if (name === "ADMIN_PASSWORD") {
+      if ([...value].length < MIN_ADMIN_PASSWORD_CHARS) {
+        errors.push(`${name} must be at least ${MIN_ADMIN_PASSWORD_CHARS} characters long in production.`);
+      }
+    } else if (Buffer.byteLength(value, "utf8") < MIN_SERVER_SECRET_BYTES) {
+      errors.push(`${name} must be at least ${MIN_SERVER_SECRET_BYTES} bytes long in production.`);
     }
 
     values.set(name, value);
