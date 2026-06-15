@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import type { ArticleDetail, TagSummary } from "@/lib/db/types";
+import type { ArticleListItem, TagSummary } from "@/lib/db/types";
 
 const DEFAULT_BASE_URL = "http://localhost:3000";
 
@@ -20,7 +20,7 @@ export function getAppBaseUrl() {
   return DEFAULT_BASE_URL;
 }
 
-export function articleMetadata(article: ArticleDetail): Metadata {
+export function articleMetadata(article: ArticleListItem): Metadata {
   const title = article.koreanTitle || article.originalTitle || "헌법재판 기사";
   const description = article.oneLineSummary;
   const url = `${getAppBaseUrl()}/articles/${article.slug}`;

@@ -66,6 +66,29 @@ interface SupabaseArticleRow {
 }
 
 const DEFAULT_PAGE_SIZE = 20;
+const TAG_LIST_SELECT = "id,slug,name,normalized_name,type,description,article_count,latest_article_at";
+const ARTICLE_LIST_SELECT = [
+  "id",
+  "slug",
+  "source_key",
+  "jurisdiction",
+  "institution_name",
+  "content_type",
+  "original_url",
+  "canonical_url",
+  "original_language",
+  "original_title",
+  "korean_title",
+  "original_published_at",
+  "discovered_at",
+  "fetched_at",
+  "summarized_at",
+  "status",
+  "summary_json",
+  "source_metadata",
+  `article_tags(confidence,tags(${TAG_LIST_SELECT}))`,
+].join(",");
+const ARTICLE_DETAIL_SELECT = `${ARTICLE_LIST_SELECT},raw_text,cleaned_text,content_hash,error_metadata`;
 
 export function normalizePagination(page?: number, pageSize?: number) {
   const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
@@ -95,7 +118,12 @@ function sortGlossaryTerms(terms: GlossaryTerm[]) {
   });
 }
 
-function articleRowToItem(row: SupabaseArticleRow): ArticleDetail {
+function articleRowToItem(
+  row: SupabaseArticleRow,
+  options: { includeSummaryJson?: boolean; includeDetailFields?: boolean } = {},
+): ArticleDetail {
+  const includeSummaryJson = options.includeSummaryJson ?? true;
+  const includeDetailFields = options.includeDetailFields ?? true;
   const tags =
     row.article_tags
       ?.flatMap((articleTag) => {
@@ -105,7 +133,7 @@ function articleRowToItem(row: SupabaseArticleRow): ArticleDetail {
       .filter(Boolean) ?? [];
   const summary = row.summary_json ?? null;
 
-  return {
+  const item: ArticleDetail = {
     id: row.id,
     slug: row.slug,
     sourceKey: row.source_key,
@@ -122,15 +150,20 @@ function articleRowToItem(row: SupabaseArticleRow): ArticleDetail {
     fetchedAt: row.fetched_at,
     summarizedAt: row.summarized_at,
     status: row.status as ArticleDetail["status"],
-    summaryJson: summary,
+    summaryJson: includeSummaryJson ? summary : null,
     tags,
     oneLineSummary: summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
-    rawText: row.raw_text,
-    cleanedText: row.cleaned_text,
-    contentHash: row.content_hash,
     sourceMetadata: row.source_metadata,
-    errorMetadata: row.error_metadata,
   };
+
+  if (includeDetailFields) {
+    item.rawText = row.raw_text;
+    item.cleanedText = row.cleaned_text;
+    item.contentHash = row.content_hash;
+    item.errorMetadata = row.error_metadata;
+  }
+
+  return item;
 }
 
 function matchesText(article: ArticleDetail, q?: string) {
@@ -238,7 +271,7 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
     const start = (page - 1) * pageSize;
     return {
       items: items.slice(start, start + pageSize),
-      pageInfo: { page, pageSize, total: items.length },
+      pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
 
@@ -276,13 +309,12 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
   const result = await listArticles({ ...filters, q: undefined, ids, page: 1, pageSize: ids.length });
   const order = new Map(ids.map((id, index) => [id, index]));
   const matched = [...result.items]
-    .sort((left, right) => (order.get(left.id ?? "") ?? 9999) - (order.get(right.id ?? "") ?? 9999))
-    .filter((article) => matchesText(article, filters.q));
+    .sort((left, right) => (order.get(left.id ?? "") ?? 9999) - (order.get(right.id ?? "") ?? 9999));
   const start = (page - 1) * pageSize;
 
   return {
     items: matched.slice(start, start + pageSize),
-    pageInfo: { page, pageSize, total: matched.length },
+    pageInfo: { page, pageSize, total: matched.length, hasMore: start + pageSize < matched.length, totalIsExact: true },
   };
 }
 
@@ -291,7 +323,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   const supabase = getSupabaseAdmin();
 
   if (filters.ids && filters.ids.length === 0) {
-    return { items: [], pageInfo: { page, pageSize, total: 0 } };
+    return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
   }
 
   if (!supabase) {
@@ -299,7 +331,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     const start = (page - 1) * pageSize;
     return {
       items: items.slice(start, start + pageSize),
-      pageInfo: { page, pageSize, total: items.length },
+      pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
 
@@ -307,7 +339,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   if (filters.tag) {
     tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
     if (tagArticleIds.length === 0) {
-      return { items: [], pageInfo: { page, pageSize, total: 0 } };
+      return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
     }
   }
 
@@ -315,9 +347,10 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     return listArticlesByFullText(filters, tagArticleIds);
   }
 
+  const countMode = filters.count ?? "exact";
   let query = supabase
     .from("articles")
-    .select("*, article_tags(confidence, tags(*))", { count: "exact" })
+    .select(ARTICLE_LIST_SELECT, countMode === "none" ? undefined : { count: countMode })
     .order("original_published_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: true });
 
@@ -335,19 +368,24 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   if (startIso) query = query.gte("original_published_at", startIso);
 
   const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
+  const to = from + pageSize;
   const { data, error, count } = await query.range(from, to);
   if (error) {
     throw new Error(error.message);
   }
+  const rows = (data ?? []) as unknown as SupabaseArticleRow[];
+  const hasMore = rows.length > pageSize;
+  const items = rows.slice(0, pageSize).map((row) => articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false }));
+  const minimumTotal = from + items.length + (hasMore ? 1 : 0);
+  const total = Math.max(count ?? 0, minimumTotal);
 
   return {
-    items: ((data ?? []) as SupabaseArticleRow[]).map(articleRowToItem),
-    pageInfo: { page, pageSize, total: count ?? 0 },
+    items,
+    pageInfo: { page, pageSize, total, hasMore, totalIsExact: countMode === "exact" },
   };
 }
 
-export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
+async function getArticleBySlugWithSelect(slug: string, select: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
@@ -357,7 +395,7 @@ export async function getArticleBySlug(slug: string, options: { includeUnpublish
 
   let query = supabase
     .from("articles")
-    .select("*, article_tags(confidence, tags(*))")
+    .select(select)
     .eq("slug", slug);
 
   if (!options.includeUnpublished) {
@@ -370,11 +408,22 @@ export async function getArticleBySlug(slug: string, options: { includeUnpublish
     throw new Error(error.message);
   }
 
-  if (!data || (!options.includeUnpublished && !isPublishableListItem(data as SupabaseArticleRow))) {
+  if (!data || (!options.includeUnpublished && !isPublishableListItem(data as unknown as SupabaseArticleRow))) {
     return null;
   }
 
-  return articleRowToItem(data as SupabaseArticleRow);
+  return articleRowToItem(data as unknown as SupabaseArticleRow, {
+    includeSummaryJson: select === ARTICLE_DETAIL_SELECT,
+    includeDetailFields: select === ARTICLE_DETAIL_SELECT,
+  });
+}
+
+export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
+  return getArticleBySlugWithSelect(slug, ARTICLE_DETAIL_SELECT, options);
+}
+
+export async function getArticlePreviewBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
+  return getArticleBySlugWithSelect(slug, ARTICLE_LIST_SELECT, options);
 }
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {

@@ -19,7 +19,7 @@ import type { AdminLlmSettingsView, ConfigurableLlmProvider } from "@/lib/ai/llm
 import { hasGeminiKey, hasOpenAiKey } from "@/lib/ai/client";
 import { getGeminiModels } from "@/lib/ai/gemini-router";
 import { recordSiteEvent } from "@/lib/analytics/events";
-import { getArticleBySlug, getRelatedArticles } from "@/lib/db/queries";
+import { getArticleBySlug, getArticlePreviewBySlug, getRelatedArticles } from "@/lib/db/queries";
 import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
@@ -353,7 +353,7 @@ function AdminReviewPanel({
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const article = await getArticleBySlug(slug);
+  const article = await getArticlePreviewBySlug(slug);
   if (!article) return {};
   return articleMetadata(article);
 }

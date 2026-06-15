@@ -130,12 +130,15 @@ export interface ArticleListFilters {
   includeUnpublished?: boolean;
   page?: number;
   pageSize?: number;
+  count?: "exact" | "planned" | "estimated" | "none";
 }
 
 export interface PageInfo {
   page: number;
   pageSize: number;
   total: number;
+  hasMore?: boolean;
+  totalIsExact?: boolean;
 }
 
 export interface ArticleListResult {

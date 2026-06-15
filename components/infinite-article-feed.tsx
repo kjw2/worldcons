@@ -48,6 +48,13 @@ function pageInfoFor(pageInfo: PageInfo, pageSize: number): PageInfo {
   };
 }
 
+function hasMorePages(pageInfo: PageInfo, itemCount: number) {
+  if (typeof pageInfo.hasMore === "boolean") {
+    return pageInfo.hasMore;
+  }
+  return itemCount < pageInfo.total;
+}
+
 function currentReturnPath() {
   if (typeof window === "undefined") return "";
   return `${window.location.pathname}${window.location.search}`;
@@ -90,6 +97,8 @@ function readFeedSnapshot(feedKey: string) {
       typeof snapshot.pageInfo.page !== "number" ||
       typeof snapshot.pageInfo.pageSize !== "number" ||
       typeof snapshot.pageInfo.total !== "number" ||
+      (snapshot.pageInfo.hasMore !== undefined && typeof snapshot.pageInfo.hasMore !== "boolean") ||
+      (snapshot.pageInfo.totalIsExact !== undefined && typeof snapshot.pageInfo.totalIsExact !== "boolean") ||
       typeof snapshot.clickedSlug !== "string" ||
       typeof snapshot.scrollY !== "number" ||
       typeof snapshot.targetTop !== "number" ||
@@ -127,7 +136,7 @@ export function InfiniteArticleFeed({
   const [pageInfo, setPageInfo] = useState(() => pageInfoFor(initialResult.pageInfo, pageSize));
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isExhausted, setIsExhausted] = useState(initialResult.items.length >= initialResult.pageInfo.total);
+  const [isExhausted, setIsExhausted] = useState(!hasMorePages(initialResult.pageInfo, initialResult.items.length));
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
   const pendingRestoreRef = useRef<FeedSnapshot | null>(null);
@@ -142,12 +151,12 @@ export function InfiniteArticleFeed({
       };
       setArticles(snapshot.articles);
       setPageInfo(snapshotPageInfo);
-      setIsExhausted(snapshot.isExhausted || snapshot.articles.length >= snapshotPageInfo.total);
+      setIsExhausted(snapshot.isExhausted || !hasMorePages(snapshotPageInfo, snapshot.articles.length));
       pendingRestoreRef.current = snapshot;
     } else {
       setArticles(initialResult.items);
       setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
-      setIsExhausted(initialResult.items.length >= initialResult.pageInfo.total);
+      setIsExhausted(!hasMorePages(initialResult.pageInfo, initialResult.items.length));
       pendingRestoreRef.current = null;
     }
     setErrorMessage(null);
@@ -168,8 +177,9 @@ export function InfiniteArticleFeed({
     });
   }, [articles, feedKey]);
 
-  const hasMore = !isExhausted && articles.length < pageInfo.total;
-  const loadedCount = Math.min(articles.length, pageInfo.total);
+  const hasMore = !isExhausted && hasMorePages(pageInfo, articles.length);
+  const loadedCount = pageInfo.totalIsExact === false ? articles.length : Math.min(articles.length, pageInfo.total);
+  const totalPrefix = pageInfo.totalIsExact === false ? "약 " : "";
 
   const nextUrl = useMemo(() => {
     const params = new URLSearchParams(queryString);
@@ -198,7 +208,7 @@ export function InfiniteArticleFeed({
       const nextItems = result.items ?? [];
       setArticles((current) => mergeArticles(current, nextItems));
       setPageInfo(pageInfoFor(result.pageInfo, pageSize));
-      if (nextItems.length < pageSize || articles.length + nextItems.length >= result.pageInfo.total) {
+      if (!hasMorePages(result.pageInfo, articles.length + nextItems.length)) {
         setIsExhausted(true);
       }
     } catch (error) {
@@ -268,7 +278,10 @@ export function InfiniteArticleFeed({
   return (
     <section className="space-y-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-ink">총 {pageInfo.total.toLocaleString("ko-KR")}건</p>
+        <p className="text-sm font-semibold text-ink">
+          총 {totalPrefix}
+          {pageInfo.total.toLocaleString("ko-KR")}건
+        </p>
         <p className="text-sm text-ink-muted">{loadedCount.toLocaleString("ko-KR")}건 표시</p>
       </div>
       <ArticleGrid articles={articles} onArticleNavigate={saveReturnState} restoreScroll={false} />

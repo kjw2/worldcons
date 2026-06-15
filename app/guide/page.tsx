@@ -125,7 +125,7 @@ function formatNumber(value: number) {
 
 async function getCollectionRows(): Promise<CollectionRow[]> {
   const sources = orderSources(await listSources());
-  const articleResults = await Promise.all(sources.map((source) => listArticles({ source: source.sourceKey, pageSize: 1 })));
+  const articleResults = await Promise.all(sources.map((source) => listArticles({ source: source.sourceKey, pageSize: 1, count: "exact" })));
 
   return sources.map((source, index) => ({
     source,

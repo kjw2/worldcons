@@ -523,6 +523,7 @@ supabase/migrations/20260508001000_search_and_glossary.sql
 supabase/migrations/20260509000000_publishable_collection_policy.sql
 supabase/migrations/20260509001000_source_url_candidates.sql
 supabase/migrations/20260613090000_add_spain_tribunal_constitucional_source.sql
+supabase/migrations/20260615093000_public_read_performance_indexes.sql
 ```
 
 각 migration이 하는 일은 다음과 같습니다.
@@ -534,6 +535,7 @@ supabase/migrations/20260613090000_add_spain_tribunal_constitucional_source.sql
 | `publishable_collection_policy` | 공개 가능성 정책을 위한 metadata/index 보강 |
 | `source_url_candidates` | seed 후보 URL 저장 테이블 추가 |
 | `add_spain_tribunal_constitucional_source` | 스페인 Tribunal Constitucional HJ 수집원 등록 |
+| `public_read_performance_indexes` | 공개 목록·상세 관련 조회가 커질 때 필요한 부분 인덱스 추가 |
 
 ## 자주 쓰는 명령어
 
