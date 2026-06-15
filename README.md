@@ -284,7 +284,7 @@ source_metadata.collection.publishable = true
 
 | 국가 | source key | 기관 | 기본 언어 | 주 자료 |
 | --- | --- | --- | --- | --- |
-| 미국 | `us-scotus` | Supreme Court of the United States | 영어 | opinions, orders, press releases |
+| 미국 | `us-scotus` | Supreme Court of the United States | 영어 | Opinions of the Court |
 | 독일 | `de-bverfg` | Bundesverfassungsgericht | 독일어 | decisions |
 | 프랑스 | `fr-conseil-constitutionnel` | Conseil constitutionnel | 프랑스어 | decisions, QPC |
 | 스페인 | `es-tribunal-constitucional` | Tribunal Constitucional de España | 스페인어 | HJ resolutions |
@@ -324,8 +324,11 @@ source_metadata.collection.publishable = true
 미국 SCOTUS도 중요합니다.
 
 - `robots.txt`를 실행 시 확인합니다.
-- `/opinions/`, `/orders/`처럼 허용된 경로만 처리합니다.
-- 금지된 asset 경로는 요청하지 않습니다.
+- 현재 정기 수집은 SCOTUS 공식 `Opinions of the Court` 목록을 기준으로 합니다.
+- `Opinions of the Court`는 대법원이 사건에 대한 판단과 이유를 밝히는 본안 판결·법정 의견이므로 일반적인 헌법판례 큐레이션의 핵심 자료로 봅니다.
+- `Opinions Relating to Orders`는 상고허가 거부나 절차명령 등에 붙은 개별 대법관의 동의·반대 의견입니다. 헌법 쟁점 흐름을 읽는 보조 자료가 될 수 있지만, 일반 본안 판결과 성격이 달라 현재 수집 대상에는 섞지 않습니다.
+- `In-Chambers Opinions`는 긴급정지, 임시명령, 집행정지 같은 신청을 개별 대법관이 처리하면서 작성하는 의견입니다. 임시구제 성격이 강해 현재 일반 헌법판례 수집 대상에는 넣지 않습니다.
+- 금지된 경로와 asset 경로는 요청하지 않습니다.
 
 스페인 Tribunal Constitucional은 HJ 시스템을 기준으로 수집합니다.
 
@@ -612,7 +615,7 @@ workflow cron 표현식은 다음과 같습니다.
 | 국가 | source key | 정기 수집 범위 | 최대 처리 건수 | 목록/수집 기준 | 비고 |
 | --- | --- | ---: | ---: | --- | --- |
 | 독일 | `de-bverfg` | 최근 60일 | 20건 | `dejure.org` BVerfG 목록 후보와 공식 BVerfG 상세 원문 | Open Legal Data는 가능한 보조 후보입니다. `BVERFG_DEJURE_PAGES=4`를 사용합니다. |
-| 미국 | `us-scotus` | 최근 14일 | 20건 | SCOTUS 공식 의견 목록 | opinion 자료와 헌법 관련성 필터를 적용합니다. |
+| 미국 | `us-scotus` | 최근 14일 | 20건 | SCOTUS 공식 Opinions of the Court 목록 | 본안 opinion 자료와 헌법 관련성 필터를 적용합니다. |
 | 프랑스 | `fr-conseil-constitutionnel` | 최근 14일 | 20건 | Conseil constitutionnel/QPC360 계열 공식 자료 | `FRANCE_CRAWL_DELAY_MS=3000`, `FRANCE_TIMEOUT_MS=90000`, 동시성 1을 사용합니다. |
 | 스페인 | `es-tribunal-constitucional` | 최소 최근 180일 | 20건 | HJ 일반 `Fechas Desde/Hasta` 검색과 HJ JSON 상세 | 기준일은 HJ `FECHA_REGISTRO` 결정일입니다. BOE 날짜는 보조 메타데이터로만 저장합니다. |
 

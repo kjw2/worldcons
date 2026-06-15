@@ -58,11 +58,11 @@ const sourceGuides: Record<string, SourceGuide> = {
     compliance: "BVerfG robots.txt와 Crawl-delay를 우선합니다. 금지된 검색 경로는 요청하지 않습니다.",
   },
   "us-scotus": {
-    primaryMaterial: "미국 연방대법원 opinions, orders, 관련 공개 자료",
-    collectionMethod: "SCOTUS 공식 목록과 원문 PDF/HTML을 확인하고 헌법 관련성이 있는 자료를 선별합니다.",
+    primaryMaterial: "미국 연방대법원 Opinions of the Court",
+    collectionMethod: "SCOTUS 공식 Opinions of the Court 목록과 원문 PDF/HTML을 확인하고 헌법 관련성이 있는 자료를 선별합니다.",
     dateBasis: "SCOTUS 공식 게시·선고일",
     translationSummary: "영어 원문을 기준으로 한국어 요약을 만들고, 수정헌법·절차 법리 등 참조 조문 후보를 함께 표시합니다.",
-    compliance: "robots.txt를 확인하고 허용된 opinions/orders 경로만 처리합니다.",
+    compliance: "robots.txt를 확인하고 허용된 공식 의견 경로만 처리합니다. Orders, In-Chambers 자료는 일반 판례 수집에 섞지 않습니다.",
   },
   "fr-conseil-constitutionnel": {
     primaryMaterial: "프랑스 헌법위원회 decisions, QPC 자료",
@@ -79,6 +79,30 @@ const sourceGuides: Record<string, SourceGuide> = {
     compliance: "공개 부적합 표시가 있는 자료는 공개와 자동 요약에서 제외하고 검토 대상으로 둡니다.",
   },
 };
+
+const scotusOpinionCategories = [
+  {
+    name: "Opinions of the Court",
+    label: "본안 판결 / 법정 의견",
+    status: "현재 수집",
+    description:
+      "대법원이 사건에 대한 판단과 이유를 공식 의견으로 밝히는 핵심 판례입니다. 미국 헌법 해석의 흐름을 파악할 때 가장 먼저 보아야 하는 자료입니다.",
+  },
+  {
+    name: "Opinions Relating to Orders",
+    label: "명령 관련 의견",
+    status: "현재 제외",
+    description:
+      "상고허가 거부나 절차명령 등에 붙은 개별 대법관의 동의·반대 의견입니다. 쟁점 흐름을 읽는 보조 자료가 될 수 있지만, 일반 본안 판결과 성격이 다릅니다.",
+  },
+  {
+    name: "In-Chambers Opinions",
+    label: "개별 대법관 긴급 의견",
+    status: "현재 제외",
+    description:
+      "긴급정지, 임시명령, 집행정지 같은 신청을 개별 대법관이 처리하면서 작성하는 의견입니다. 임시구제 성격이 강해 현재 일반 헌법판례 수집 대상에는 넣지 않습니다.",
+  },
+] as const;
 
 function sourceGuideFor(sourceKey: string) {
   return sourceGuides[sourceKey] ?? defaultSourceGuide;
@@ -282,6 +306,41 @@ export default async function GuidePage() {
           );
           })}
         </div>
+      </section>
+
+      <section className="space-y-4" aria-label="미국 SCOTUS 수집 범위">
+        <SectionHeading
+          eyebrow="미국 SCOTUS"
+          title="Opinions of the Court만 수집하는 이유"
+          description="SCOTUS 공개 자료에는 성격이 다른 의견들이 함께 존재합니다. World Cons는 현재 사용자가 일반적인 헌법판례로 기대하는 본안 판결 중심성을 유지하기 위해 Opinions of the Court만 정기 수집합니다."
+          descriptionClassName={guideHeadingDescriptionClassName}
+        />
+        <div className="grid gap-4 lg:grid-cols-3">
+          {scotusOpinionCategories.map((category) => (
+            <SurfaceCard key={category.name} className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-court">{category.name}</p>
+                  <h3 className="mt-2 text-xl font-semibold tracking-normal text-ink">
+                    {category.label}
+                  </h3>
+                </div>
+                <span className="shrink-0 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-muted">
+                  {category.status}
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-7 text-ink-muted">{category.description}</p>
+            </SurfaceCard>
+          ))}
+        </div>
+        <SurfaceCard className="p-5">
+          <h3 className="text-lg font-semibold tracking-normal text-ink">현재 운영 기준</h3>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">
+            Opinions Relating to Orders와 In-Chambers Opinions에도 헌법 쟁점이 언급될 수는 있습니다. 다만 구속력 있는 본안 판단과 보조적·임시적 의견이 한 목록에 섞이면
+            공개 카드와 유형 필터가 판례의 성격을 과장하거나 혼동시킬 수 있습니다. 따라서 이 자료들은 향후 별도 보조 자료 분류를 만들 때 검토하고, 현재 수집·요약·공개
+            흐름에는 Opinions of the Court만 포함합니다.
+          </p>
+        </SurfaceCard>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2" aria-labelledby="guide-notes">
