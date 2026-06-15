@@ -794,12 +794,13 @@ async function assertSecurityHeadersConfigured() {
   const cspReportOnly = allHeaders.get("content-security-policy-report-only") ?? "";
 
   assert(cspReportOnly.includes("default-src 'self'"), "CSP report-only must define default-src");
-  assert(cspReportOnly.includes("frame-ancestors 'none'"), "CSP report-only must define frame-ancestors");
+  assert(cspReportOnly.includes("frame-ancestors 'self'"), "CSP report-only must allow same-origin print framing only");
+  assert(cspReportOnly.includes("frame-src 'self'"), "CSP report-only must allow same-origin print frames");
   assert(allHeaders.get("strict-transport-security")?.includes("max-age="), "HSTS header must be configured");
   assert(allHeaders.get("x-content-type-options") === "nosniff", "X-Content-Type-Options must be nosniff");
   assert(allHeaders.get("referrer-policy") === "strict-origin-when-cross-origin", "Referrer-Policy must be configured");
   assert(allHeaders.get("permissions-policy")?.includes("camera=()"), "Permissions-Policy must be configured");
-  assert(allHeaders.get("x-frame-options") === "DENY", "X-Frame-Options must be DENY");
+  assert(allHeaders.get("x-frame-options") === "SAMEORIGIN", "X-Frame-Options must allow same-origin print frames");
 }
 
 async function assertPublicApiRouteValidationControls() {

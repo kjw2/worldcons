@@ -6,9 +6,14 @@ import { Printer } from "lucide-react";
 export function ArticlePrintButton({ printHref }: { printHref: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const loadTimeoutRef = useRef<number | null>(null);
 
   function cleanupFrame(delayMs = 0) {
     window.setTimeout(() => {
+      if (loadTimeoutRef.current !== null) {
+        window.clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
       frameRef.current?.remove();
       frameRef.current = null;
       setIsLoading(false);
@@ -34,7 +39,15 @@ export function ArticlePrintButton({ printHref }: { printHref: string }) {
     frame.style.pointerEvents = "none";
     frameRef.current = frame;
 
+    loadTimeoutRef.current = window.setTimeout(() => {
+      cleanupFrame();
+    }, 15000);
+
     frame.onload = () => {
+      if (loadTimeoutRef.current !== null) {
+        window.clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
       const printWindow = frame.contentWindow;
       if (!printWindow) {
         cleanupFrame();
@@ -56,6 +69,7 @@ export function ArticlePrintButton({ printHref }: { printHref: string }) {
       }, 100);
     };
 
+    frame.onerror = () => cleanupFrame();
     frame.src = printHref;
     document.body.appendChild(frame);
   }
