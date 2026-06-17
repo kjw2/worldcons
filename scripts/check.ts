@@ -50,6 +50,7 @@ import { boundedInteger } from "@/lib/utils/numbers";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
+import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
 import type { NormalizedArticle } from "@/lib/sources/types";
 
@@ -145,6 +146,14 @@ assert(isConstitutionallyRelevant(article), "constitutional relevance keyword fi
 assert(articleFiltersFromSearchParams({ language: "fr" }).language === "fr", "language filter parsing failed");
 assert(boundedInteger("-10", 5, { min: 1, max: 20 }) === 1, "bounded integer min clamp failed");
 assert(boundedInteger("500", 5, { min: 1, max: 20 }) === 20, "bounded integer max clamp failed");
+assert(
+  displayArticleTypeLabel({ sourceKey: "us-scotus", contentType: "opinion", sourceMetadata: null }) === "판결",
+  "SCOTUS Opinion of the Court records should display as 판결",
+);
+assert(
+  displayArticleTypeLabel({ sourceKey: "fr-conseil-constitutionnel", contentType: "opinion", sourceMetadata: null }) === "의견",
+  "generic opinion labels should remain 의견",
+);
 
 const originalBverfgIngestRangeDays = process.env.BVERFG_INGEST_RANGE_DAYS;
 delete process.env.BVERFG_INGEST_RANGE_DAYS;

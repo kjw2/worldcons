@@ -39,5 +39,9 @@ export function displayArticleTypeLabel(article: Pick<ArticleListItem, "contentT
     }
   }
 
+  if (article.sourceKey === "us-scotus" && article.contentType === "opinion") {
+    return "판결";
+  }
+
   return displayContentTypeLabel(article.contentType);
 }
