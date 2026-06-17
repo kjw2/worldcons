@@ -59,6 +59,7 @@ interface SupabaseArticleRow {
   raw_text?: string | null;
   cleaned_text?: string | null;
   summary_json?: SummaryJson | null;
+  one_line_summary?: string | null;
   content_hash?: string | null;
   source_metadata?: Record<string, unknown> | null;
   error_metadata?: Record<string, unknown> | null;
@@ -84,11 +85,11 @@ const ARTICLE_LIST_SELECT = [
   "fetched_at",
   "summarized_at",
   "status",
-  "summary_json",
+  "one_line_summary:summary_json->summary->coreSummary->>0",
   "source_metadata",
   `article_tags(confidence,tags(${TAG_LIST_SELECT}))`,
 ].join(",");
-const ARTICLE_DETAIL_SELECT = `${ARTICLE_LIST_SELECT},raw_text,cleaned_text,content_hash,error_metadata`;
+const ARTICLE_DETAIL_SELECT = `${ARTICLE_LIST_SELECT},summary_json,raw_text,cleaned_text,content_hash,error_metadata`;
 
 export function normalizePagination(page?: number, pageSize?: number) {
   const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
@@ -152,8 +153,8 @@ function articleRowToItem(
     status: row.status as ArticleDetail["status"],
     summaryJson: includeSummaryJson ? summary : null,
     tags,
-    oneLineSummary: summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
     sourceMetadata: row.source_metadata,
+    oneLineSummary: row.one_line_summary || summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
   };
 
   if (includeDetailFields) {
@@ -432,17 +433,19 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 
-export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name" } = {}) {
+export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name"; limit?: number } = {}) {
   const supabase = getSupabaseAdmin();
+  const limit = Number.isFinite(options.limit) && options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), 1_000) : null;
 
   if (!supabase) {
-    return [...mockTags]
+    const tags = [...mockTags]
       .filter((tag) => !options.type || tag.type === options.type)
       .sort((a, b) => {
         if (options.sort === "name") return a.name.localeCompare(b.name);
         if (options.sort === "latest") return (b.latestArticleAt || "").localeCompare(a.latestArticleAt || "");
         return (b.articleCount ?? 0) - (a.articleCount ?? 0);
       });
+    return limit ? tags.slice(0, limit) : tags;
   }
 
   let query = supabase.from("tags").select("*");
@@ -450,6 +453,7 @@ export async function listTags(options: { type?: string; sort?: "count" | "lates
   if (options.sort === "name") query = query.order("name");
   else if (options.sort === "latest") query = query.order("latest_article_at", { ascending: false, nullsFirst: false });
   else query = query.order("article_count", { ascending: false });
+  if (limit) query = query.limit(limit);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
