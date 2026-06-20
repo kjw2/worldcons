@@ -433,13 +433,16 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 
-export async function listJurisdictionArticleCounts(jurisdictions: string[] = []) {
+export async function listJurisdictionArticleCounts(
+  jurisdictions: string[] = [],
+  options: { range?: ArticleListFilters["range"] } = {},
+) {
   const normalizedJurisdictions = Array.from(new Set(jurisdictions.map((jurisdiction) => jurisdiction.trim()).filter(Boolean)));
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
     const counts: Record<string, number> = {};
-    for (const article of filterMockArticles({})) {
+    for (const article of filterMockArticles({ range: options.range })) {
       counts[article.jurisdiction] = (counts[article.jurisdiction] ?? 0) + 1;
     }
     return normalizedJurisdictions.length
@@ -453,13 +456,16 @@ export async function listJurisdictionArticleCounts(jurisdictions: string[] = []
 
   const entries = await Promise.all(
     targetJurisdictions.map(async (jurisdiction) => {
-      const { count, error } = await supabase
+      let query = supabase
         .from("articles")
         .select("id", { count: "exact", head: true })
         .eq("status", "summarized")
         .filter("source_metadata->collection->>publishable", "eq", "true")
         .eq("jurisdiction", jurisdiction);
+      const startIso = getRangeStartIso(options.range);
+      if (startIso) query = query.gte("original_published_at", startIso);
 
+      const { count, error } = await query;
       if (error) throw new Error(error.message);
       return [jurisdiction, count ?? 0] as const;
     }),

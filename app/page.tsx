@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const getHomeFilterData = unstable_cache(
-  async () => {
+  async (range: ArticleListFilters["range"]) => {
     const sources = await listSources();
     const jurisdictions = Array.from(new Set(sources.map((source) => source.jurisdiction)));
     const [tags, jurisdictionArticleCounts] = await Promise.all([
       listTags({ sort: "count", limit: 30 }),
-      listJurisdictionArticleCounts(jurisdictions),
+      listJurisdictionArticleCounts(jurisdictions, { range }),
     ]);
 
     return { sources, tags, jurisdictionArticleCounts };
@@ -43,7 +43,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Promis
 
   const [articles, { sources, tags, jurisdictionArticleCounts }] = await Promise.all([
     getHomeArticles(filters),
-    getHomeFilterData(),
+    getHomeFilterData(filters.range),
   ]);
   const pageViewEvent = {
     eventType: "page_view" as const,
