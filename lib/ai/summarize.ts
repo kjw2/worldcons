@@ -3,6 +3,7 @@ import type { NormalizedArticle } from "@/lib/sources/types";
 import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { completeJsonWithMetadata, type LlmCompletionOptions, type LlmCompletionResult } from "@/lib/ai/client";
 import { buildRepairPrompt, buildSummaryUserPrompt, SUMMARY_SYSTEM_PROMPT } from "@/lib/ai/prompts";
+import { canonicalizeTerminologyValue } from "@/lib/ai/terminology";
 
 export function mockSummary(article: NormalizedArticle): SummaryJson {
   return {
@@ -44,6 +45,10 @@ function attachAiMetadata(summary: SummaryJson, completion: LlmCompletionResult)
   };
 }
 
+function finalizeSummary(summary: SummaryJson, article: NormalizedArticle, completion: LlmCompletionResult) {
+  return canonicalizeTerminologyValue(attachAiMetadata(summary, completion), article.sourceKey);
+}
+
 export async function summarizeArticle(article: NormalizedArticle, options: LlmCompletionOptions = {}): Promise<SummaryJson> {
   const completion = await completeJsonWithMetadata([
     { role: "system", content: SUMMARY_SYSTEM_PROMPT },
@@ -59,7 +64,7 @@ export async function summarizeArticle(article: NormalizedArticle, options: LlmC
   }
 
   try {
-    return attachAiMetadata(parseSummaryJson(completion.content), completion);
+    return finalizeSummary(parseSummaryJson(completion.content), article, completion);
   } catch (error) {
     const repaired = await completeJsonWithMetadata([
       { role: "system", content: SUMMARY_SYSTEM_PROMPT },
@@ -70,6 +75,6 @@ export async function summarizeArticle(article: NormalizedArticle, options: LlmC
       throw error;
     }
 
-    return attachAiMetadata(parseSummaryJson(repaired.content), repaired);
+    return finalizeSummary(parseSummaryJson(repaired.content), article, repaired);
   }
 }

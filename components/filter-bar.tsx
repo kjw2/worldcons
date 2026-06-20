@@ -54,18 +54,6 @@ export function FilterBar({
   const activeJurisdiction = params.get("jurisdiction") ?? "";
   const jurisdictions = [...new Set(sources.map((source) => source.jurisdiction))];
   const hasAdvancedFilters = Boolean(params.get("source") || params.get("type") || params.get("tag") || params.get("language"));
-  const hasAnyFilters = Boolean(
-    activeRange !== "latest" ||
-      params.get("source") ||
-      params.get("jurisdiction") ||
-      params.get("type") ||
-      params.get("tag") ||
-      params.get("language"),
-  );
-  const resetParams = new URLSearchParams();
-  if (params.get("q")) resetParams.set("q", params.get("q") ?? "");
-  if (params.get("mode")) resetParams.set("mode", params.get("mode") ?? "");
-  const resetHref = resetParams.toString() ? `${basePath}?${resetParams.toString()}` : basePath;
   const searchHiddenFields = [...params.entries()].filter(([key]) => key !== "q" && key !== "page" && key !== "pageSize");
 
   return (
@@ -99,11 +87,6 @@ export function FilterBar({
               );
             })}
           </div>
-          {hasAnyFilters ? (
-            <Link href={resetHref} className={chipClassName("muted")}>
-              초기화
-            </Link>
-          ) : null}
         </div>
         <div className="w-full lg:max-w-md">
           <SearchBox

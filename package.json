@@ -20,6 +20,9 @@
     "crawler:scotus": "tsx workers/crawler/src/cli.ts --source=us-scotus",
     "summarize-pending": "tsx scripts/summarize-pending.ts",
     "refresh-tag-counts": "tsx scripts/refresh-tag-counts.ts",
+    "canonicalize:terms": "tsx scripts/canonicalize-source-terminology.ts",
+    "canonicalize:french-terms": "tsx scripts/canonicalize-source-terminology.ts --source=fr-conseil-constitutionnel",
+    "canonicalize:us-terms": "tsx scripts/canonicalize-source-terminology.ts --source=us-scotus",
     "glossary:sync": "tsx scripts/sync-glossary-terms.ts",
     "glossary:candidates": "tsx scripts/glossary-candidates.ts",
     "check": "tsx scripts/check.ts"

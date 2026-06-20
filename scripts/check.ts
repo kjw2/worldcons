@@ -50,6 +50,7 @@ import { boundedInteger } from "@/lib/utils/numbers";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
+import { canonicalizeTerminologyText, canonicalizeTerminologyValue } from "@/lib/ai/terminology";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
 import type { NormalizedArticle } from "@/lib/sources/types";
@@ -153,6 +154,37 @@ assert(
 assert(
   displayArticleTypeLabel({ sourceKey: "fr-conseil-constitutionnel", contentType: "opinion", sourceMetadata: null }) === "의견",
   "generic opinion labels should remain 의견",
+);
+assert(
+  canonicalizeTerminologyText("프랑스 헌법이사회와 프랑스 헌법재판소", "fr-conseil-constitutionnel") ===
+    "프랑스 헌법위원회와 프랑스 헌법위원회",
+  "French Conseil constitutionnel terminology must be canonicalized",
+);
+assert(
+  canonicalizeTerminologyText("프랑스 헌법재판소", "es-tribunal-constitucional") === "프랑스 헌법재판소",
+  "French Conseil terminology canonicalization must stay source-specific",
+);
+assert(
+  canonicalizeTerminologyValue(
+    { koreanTitle: "프랑스 헌법이사회 결정", summary: { coreSummary: ["프랑스 헌법재판소 판단"] } },
+    "fr-conseil-constitutionnel",
+  ).summary.coreSummary[0] === "프랑스 헌법위원회 판단",
+  "French Conseil terminology must be canonicalized inside nested summary JSON",
+);
+assert(
+  canonicalizeTerminologyText(
+    "Supreme Court of the United States, 미국 대법원, 미국 연방 대법원, 미 연방대법원, 미 대법원, 연방대법원",
+    "us-scotus",
+  ) === "미국 연방대법원, 미국 연방대법원, 미국 연방대법원, 미국 연방대법원, 미국 연방대법원, 미국 연방대법원",
+  "SCOTUS terminology must be canonicalized",
+);
+assert(
+  canonicalizeTerminologyText("미국 연방대법원", "us-scotus") === "미국 연방대법원",
+  "canonical SCOTUS terminology must not be double-rewritten",
+);
+assert(
+  canonicalizeTerminologyText("독일 연방대법원", "us-scotus") === "독일 연방대법원",
+  "SCOTUS terminology canonicalization must not rewrite German federal court references",
 );
 
 const originalBverfgIngestRangeDays = process.env.BVERFG_INGEST_RANGE_DAYS;
