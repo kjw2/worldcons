@@ -6,6 +6,7 @@ export const TERMINOLOGY_RULES = [
       /Conseil constitutionnel/g,
       /French Constitutional Council/g,
       /프랑스\s*헌법\s*이사회/g,
+      /헌법\s*이사회/g,
       /프랑스\s*헌법\s*재판소/g,
       /프랑스\s*헌법\s*위원회/g,
     ],

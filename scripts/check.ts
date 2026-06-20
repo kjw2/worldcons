@@ -161,6 +161,11 @@ assert(
   "French Conseil constitutionnel terminology must be canonicalized",
 );
 assert(
+  canonicalizeTerminologyText("헌법이사회는 해당 조항을 심사했다", "fr-conseil-constitutionnel") ===
+    "프랑스 헌법위원회는 해당 조항을 심사했다",
+  "French Conseil terminology must canonicalize standalone 헌법이사회 references",
+);
+assert(
   canonicalizeTerminologyText("프랑스 헌법재판소", "es-tribunal-constitucional") === "프랑스 헌법재판소",
   "French Conseil terminology canonicalization must stay source-specific",
 );
