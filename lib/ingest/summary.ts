@@ -1,11 +1,11 @@
 import { createEmbedding } from "@/lib/ai/embeddings";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 import { summarizeArticle } from "@/lib/ai/summarize";
-import { normalizeTagForStorage } from "@/lib/ai/tags";
 import { generateGlossaryCandidates } from "@/lib/glossary/candidates";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
 import { canSummarizeArticle, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
+import { syncSummaryTags } from "@/lib/ingest/summary-tags";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 interface SummaryCandidateRow {
@@ -103,52 +103,6 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number;
   return { mode: "database", recoveredCount: ids.length, cutoff };
 }
 
-async function upsertSummaryTags(articleId: string, summary: SummaryJson, originalPublishedAt?: string | null) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
-  const tagInputs = [
-    ...summary.entities.map((entity) => ({
-      name: entity.name,
-      normalizedName: entity.normalizedName,
-      type: entity.type,
-    })),
-    ...summary.tags.map((tag) => ({
-      name: tag,
-      normalizedName: tag,
-      type: "topic" as const,
-    })),
-  ];
-
-  for (const input of tagInputs) {
-    const normalized = normalizeTagForStorage(input.name, input.normalizedName, input.type);
-    const { data: tag, error } = await supabase
-      .from("tags")
-      .upsert(
-        {
-          slug: normalized.slug,
-          name: normalized.name,
-          normalized_name: normalized.normalizedName,
-          type: normalized.type,
-          latest_article_at: originalPublishedAt,
-        },
-        { onConflict: "slug" },
-      )
-      .select("id")
-      .single();
-
-    if (error) throw new Error(error.message);
-    await supabase.from("article_tags").upsert(
-      {
-        article_id: articleId,
-        tag_id: tag.id,
-        confidence: 0.8,
-      },
-      { onConflict: "article_id,tag_id" },
-    );
-  }
-}
-
 async function summarizeCandidateRow(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   row: SummaryCandidateRow,
@@ -203,7 +157,7 @@ async function summarizeCandidateRow(
     }
 
     await supabase.from("articles").update(updatePayload).eq("id", row.id);
-    await upsertSummaryTags(String(row.id), summary, row.original_published_at);
+    await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
     return { status: "summarized" as const };
   } catch (summaryError) {
     const message = summaryError instanceof Error ? summaryError.message : String(summaryError);

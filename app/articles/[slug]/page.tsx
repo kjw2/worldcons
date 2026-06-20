@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ExternalLink, FileText, Languages, Scale } from "lucide-react";
 import { AdminReviewActions, type SummaryModelOption } from "@/components/admin-review-actions";
+import { AdminSummaryEditor } from "@/components/admin-summary-editor";
 import { ArticlePrintButton } from "@/components/article-print-button";
 import { ReferencedProvisionList } from "@/components/referenced-provision-list";
 import { RelatedArticles } from "@/components/related-articles";
@@ -342,6 +343,7 @@ function AdminReviewPanel({
           currentModel={currentModel}
           modelOptions={summaryModelOptions(currentModel, llmSettings)}
         />
+        <AdminSummaryEditor articleId={article.id} csrfToken={csrfToken} summary={article.summaryJson} />
         <TextDetails title="추출 본문" text={article.cleanedText} />
         {article.rawText && article.rawText !== article.cleanedText ? <TextDetails title="원시 본문" text={article.rawText} /> : null}
         <JsonDetails title="수집 metadata" value={article.sourceMetadata} />

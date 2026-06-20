@@ -23,6 +23,7 @@ import { effectiveRangeDaysForSource } from "@/lib/ingest/run";
 import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import { jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
+import { parseManualSummaryEditInput } from "@/lib/ingest/manual-summary-edit";
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -176,6 +177,36 @@ assert(
   ).summary.coreSummary[0] === "프랑스 헌법위원회 판단",
   "French Conseil terminology must be canonicalized inside nested summary JSON",
 );
+const manualSummaryEdit = parseManualSummaryEditInput(
+  {
+    note: "기관명 수정",
+    cleaned_text: "원문 스냅샷 변조 시도",
+    summary: {
+      koreanTitle: "프랑스 헌법이사회 결정",
+      summary: {
+        coreSummary: ["헌법이사회 판단"],
+        referencedProvisions: [],
+        background: "배경",
+        caseStructure: "구조",
+        implications: "시사점",
+        practicalNotes: "참고",
+      },
+      entities: [],
+      tags: ["헌법이사회"],
+      categories: ["qpc"],
+      riskFlags: [],
+    },
+  },
+  "fr-conseil-constitutionnel",
+);
+assert(manualSummaryEdit.ok, "manual summary edit input should parse valid summary payloads");
+if (manualSummaryEdit.ok) {
+  assert(manualSummaryEdit.data.summary.koreanTitle === "프랑스 헌법위원회 결정", "manual summary edits must canonicalize source terminology");
+  assert(
+    !("cleaned_text" in manualSummaryEdit.data) && !("raw_text" in manualSummaryEdit.data),
+    "manual summary edits must not expose source snapshot fields",
+  );
+}
 assert(
   canonicalizeTerminologyText(
     "Supreme Court of the United States, 미국 대법원, 미국 연방 대법원, 미 연방대법원, 미 대법원, 연방대법원",
