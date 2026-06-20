@@ -3,7 +3,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
-import { listArticles, listSources, listTags } from "@/lib/db/queries";
+import { listArticles, listJurisdictionArticleCounts, listSources, listTags } from "@/lib/db/queries";
 import type { ArticleListFilters } from "@/lib/db/types";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -11,8 +11,17 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const getHomeFilterData = unstable_cache(
-  async () => Promise.all([listSources(), listTags({ sort: "count", limit: 30 })]),
-  ["home-filter-data-v1"],
+  async () => {
+    const sources = await listSources();
+    const jurisdictions = Array.from(new Set(sources.map((source) => source.jurisdiction)));
+    const [tags, jurisdictionArticleCounts] = await Promise.all([
+      listTags({ sort: "count", limit: 30 }),
+      listJurisdictionArticleCounts(jurisdictions),
+    ]);
+
+    return { sources, tags, jurisdictionArticleCounts };
+  },
+  ["home-filter-data-v2"],
   { revalidate: 300 },
 );
 
@@ -32,7 +41,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Promis
   params.delete("page");
   params.delete("pageSize");
 
-  const [articles, [sources, tags]] = await Promise.all([
+  const [articles, { sources, tags, jurisdictionArticleCounts }] = await Promise.all([
     getHomeArticles(filters),
     getHomeFilterData(),
   ]);
@@ -55,7 +64,13 @@ export default async function HomePage({ searchParams }: { searchParams?: Promis
     <PageShell>
       <PageViewTracker event={pageViewEvent} />
       <div className="mb-6">
-        <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} params={params} />
+        <FilterBar
+          activeRange={filters.range ?? "latest"}
+          sources={sources}
+          tags={tags}
+          params={params}
+          jurisdictionArticleCounts={jurisdictionArticleCounts}
+        />
       </div>
 
       <InfiniteArticleFeed initialResult={articles} queryString={params.toString()} pageSize={10} />

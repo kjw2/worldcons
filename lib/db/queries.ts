@@ -433,6 +433,41 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 
+export async function listJurisdictionArticleCounts(jurisdictions: string[] = []) {
+  const normalizedJurisdictions = Array.from(new Set(jurisdictions.map((jurisdiction) => jurisdiction.trim()).filter(Boolean)));
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    const counts: Record<string, number> = {};
+    for (const article of filterMockArticles({})) {
+      counts[article.jurisdiction] = (counts[article.jurisdiction] ?? 0) + 1;
+    }
+    return normalizedJurisdictions.length
+      ? Object.fromEntries(normalizedJurisdictions.map((jurisdiction) => [jurisdiction, counts[jurisdiction] ?? 0]))
+      : counts;
+  }
+
+  const targetJurisdictions = normalizedJurisdictions.length
+    ? normalizedJurisdictions
+    : Array.from(new Set((await listSources()).map((source) => source.jurisdiction)));
+
+  const entries = await Promise.all(
+    targetJurisdictions.map(async (jurisdiction) => {
+      const { count, error } = await supabase
+        .from("articles")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "summarized")
+        .filter("source_metadata->collection->>publishable", "eq", "true")
+        .eq("jurisdiction", jurisdiction);
+
+      if (error) throw new Error(error.message);
+      return [jurisdiction, count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries);
+}
+
 export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name"; limit?: number } = {}) {
   const supabase = getSupabaseAdmin();
   const limit = Number.isFinite(options.limit) && options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), 1_000) : null;

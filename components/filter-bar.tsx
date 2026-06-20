@@ -31,17 +31,24 @@ function hrefForJurisdiction(basePath: string, params: URLSearchParams, jurisdic
   return query ? `${basePath}?${query}` : basePath;
 }
 
+function jurisdictionOptionLabel(jurisdiction: string, counts?: Record<string, number>) {
+  const count = counts?.[jurisdiction];
+  return count === undefined ? displayJurisdictionLabel(jurisdiction) : `${displayJurisdictionLabel(jurisdiction)} (${count.toLocaleString("ko-KR")})`;
+}
+
 export function FilterBar({
   activeRange,
   sources,
   tags,
   params,
+  jurisdictionArticleCounts,
   basePath = "/",
 }: {
   activeRange: TimeRange;
   sources: SourceRecord[];
   tags: TagSummary[];
   params: URLSearchParams;
+  jurisdictionArticleCounts?: Record<string, number>;
   basePath?: string;
 }) {
   const activeJurisdiction = params.get("jurisdiction") ?? "";
@@ -70,6 +77,10 @@ export function FilterBar({
             {jurisdictions.map((jurisdiction) => {
               const isActive = activeJurisdiction === jurisdiction;
               const theme = themeForJurisdiction(jurisdiction);
+              const count = jurisdictionArticleCounts?.[jurisdiction];
+              const countBadgeClassName = isActive
+                ? "rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums"
+                : "rounded-full bg-white/75 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-current tabular-nums";
 
               return (
                 <Link
@@ -78,7 +89,12 @@ export function FilterBar({
                   style={jurisdictionThemeStyle(theme)}
                   className={chipClassName(isActive ? "selected" : "country")}
                 >
-                  {displayJurisdictionLabel(jurisdiction)}
+                  <span>{displayJurisdictionLabel(jurisdiction)}</span>
+                  {count === undefined ? null : (
+                    <span className={countBadgeClassName}>
+                      {count.toLocaleString("ko-KR")}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -122,7 +138,7 @@ export function FilterBar({
             <option value="">국가 전체</option>
             {jurisdictions.map((jurisdiction) => (
               <option key={jurisdiction} value={jurisdiction}>
-                {displayJurisdictionLabel(jurisdiction)}
+                {jurisdictionOptionLabel(jurisdiction, jurisdictionArticleCounts)}
               </option>
             ))}
           </select>
