@@ -182,7 +182,12 @@ html.chrome-fixed.chrome-header-hidden #site-header {
   }
 
   .print-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .print-section h2 {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 }
