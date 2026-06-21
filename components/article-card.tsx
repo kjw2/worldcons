@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpenText, CalendarDays, ExternalLink, Eye } from "lucide-react";
-import type { MouseEvent } from "react";
+import { BookOpenText, CalendarDays, Check, ExternalLink, Eye, Share2 } from "lucide-react";
+import { useState, type MouseEvent } from "react";
 import type { ArticleListItem } from "@/lib/db/types";
 import { SourceBadge } from "@/components/source-badge";
 import { TagPill } from "@/components/tag-pill";
@@ -18,6 +18,24 @@ function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
 
 function formatViewCount(count?: number) {
   return new Intl.NumberFormat("ko-KR").format(Math.max(0, Math.floor(count ?? 0)));
+}
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return copied;
 }
 
 function TagOverflowPopover({
@@ -57,6 +75,7 @@ export function ArticleCard({
   article: ArticleListItem;
   onArticleNavigate?: (slug: string) => void;
 }) {
+  const [shareState, setShareState] = useState<"idle" | "copied">("idle");
   const theme = themeForJurisdiction(article.jurisdiction);
   const handleArticleLinkClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (shouldSaveNavigation(event)) {
@@ -69,6 +88,35 @@ export function ArticleCard({
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const originalHref = safeExternalUrl(article.originalUrl);
   const viewCountLabel = formatViewCount(article.viewCount);
+  const articleHref = `/articles/${article.slug}`;
+
+  async function shareArticle() {
+    const url = new URL(articleHref, window.location.origin).toString();
+    const sharePayload = {
+      title,
+      text: summaryText,
+      url,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(sharePayload);
+        return;
+      }
+
+      if (await copyTextToClipboard(url)) {
+        setShareState("copied");
+        window.setTimeout(() => setShareState("idle"), 1600);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+
+      if (await copyTextToClipboard(url).catch(() => false)) {
+        setShareState("copied");
+        window.setTimeout(() => setShareState("idle"), 1600);
+      }
+    }
+  }
 
   return (
     <article
@@ -118,8 +166,17 @@ export function ArticleCard({
             <Eye className="size-3.5" aria-hidden="true" />
             <span className="tabular-nums">{viewCountLabel}</span>
           </span>
+          <button
+            type="button"
+            onClick={shareArticle}
+            aria-label={`공유: ${title}`}
+            title={shareState === "copied" ? "링크 복사됨" : "공유"}
+            className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-muted hover:text-primary"
+          >
+            {shareState === "copied" ? <Check className="size-4" aria-hidden="true" /> : <Share2 className="size-4" aria-hidden="true" />}
+          </button>
           <Link
-            href={`/articles/${article.slug}`}
+            href={articleHref}
             onClick={handleArticleLinkClick}
             aria-label={`자세히 읽기: ${title}`}
             title="자세히 읽기"
