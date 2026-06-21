@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpenText, CalendarDays, ExternalLink } from "lucide-react";
+import { BookOpenText, CalendarDays, ExternalLink, Eye } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { ArticleListItem } from "@/lib/db/types";
 import { SourceBadge } from "@/components/source-badge";
@@ -14,6 +14,10 @@ import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
+function formatViewCount(count?: number) {
+  return new Intl.NumberFormat("ko-KR").format(Math.max(0, Math.floor(count ?? 0)));
 }
 
 function TagOverflowPopover({
@@ -64,6 +68,7 @@ export function ArticleCard({
   const summaryText = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const originalHref = safeExternalUrl(article.originalUrl);
+  const viewCountLabel = formatViewCount(article.viewCount);
 
   return (
     <article
@@ -104,7 +109,15 @@ export function ArticleCard({
           <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
           <span>{formattedArticleDate(article)}</span>
         </span>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span
+            aria-label={`조회 ${viewCountLabel}회`}
+            title={`조회 ${viewCountLabel}회`}
+            className="inline-flex min-h-7 items-center gap-1 rounded-md border border-line bg-surface-muted px-2 text-[11px] font-semibold text-ink-muted"
+          >
+            <Eye className="size-3.5" aria-hidden="true" />
+            <span className="tabular-nums">{viewCountLabel}</span>
+          </span>
           <Link
             href={`/articles/${article.slug}`}
             onClick={handleArticleLinkClick}

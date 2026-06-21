@@ -109,6 +109,7 @@ export interface ArticleListItem {
   sourceMetadata?: Record<string, unknown> | null;
   tags: TagSummary[];
   oneLineSummary: string;
+  viewCount?: number;
 }
 
 export interface ArticleDetail extends ArticleListItem {

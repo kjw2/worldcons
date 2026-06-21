@@ -155,6 +155,7 @@ function articleRowToItem(
     tags,
     sourceMetadata: row.source_metadata,
     oneLineSummary: row.one_line_summary || summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
+    viewCount: 0,
   };
 
   if (includeDetailFields) {
@@ -165,6 +166,35 @@ function articleRowToItem(
   }
 
   return item;
+}
+
+async function articleViewCountsBySlug(slugs: string[]) {
+  const uniqueSlugs = Array.from(new Set(slugs.map((slug) => slug.trim()).filter(Boolean)));
+  const supabase = getSupabaseAdmin();
+  if (!supabase || uniqueSlugs.length === 0) return {};
+
+  const entries = await Promise.all(
+    uniqueSlugs.map(async (slug) => {
+      const { count, error } = await supabase
+        .from("site_events")
+        .select("id", { count: "exact", head: true })
+        .eq("event_type", "article_view")
+        .eq("article_slug", slug);
+
+      return [slug, error ? 0 : count ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries);
+}
+
+async function attachArticleViewCounts<T extends ArticleListItem>(items: T[]) {
+  if (items.length === 0) return items;
+  const counts = await articleViewCountsBySlug(items.map((item) => item.slug));
+  return items.map((item) => ({
+    ...item,
+    viewCount: counts[item.slug] ?? 0,
+  }));
 }
 
 function matchesText(article: ArticleDetail, q?: string) {
@@ -271,7 +301,7 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
     const items = filterMockArticles(filters);
     const start = (page - 1) * pageSize;
     return {
-      items: items.slice(start, start + pageSize),
+      items: await attachArticleViewCounts(items.slice(start, start + pageSize)),
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
@@ -331,7 +361,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     const items = filterMockArticles(filters);
     const start = (page - 1) * pageSize;
     return {
-      items: items.slice(start, start + pageSize),
+      items: await attachArticleViewCounts(items.slice(start, start + pageSize)),
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
@@ -376,7 +406,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   }
   const rows = (data ?? []) as unknown as SupabaseArticleRow[];
   const hasMore = rows.length > pageSize;
-  const items = rows.slice(0, pageSize).map((row) => articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false }));
+  const items = await attachArticleViewCounts(rows.slice(0, pageSize).map((row) => articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false })));
   const minimumTotal = from + items.length + (hasMore ? 1 : 0);
   const total = Math.max(count ?? 0, minimumTotal);
 
