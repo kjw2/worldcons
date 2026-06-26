@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { ArticleGrid } from "@/components/article-grid";
 import type { ArticleListItem, ArticleListResult, PageInfo } from "@/lib/db/types";
 
@@ -123,6 +122,56 @@ function restoreFeedScroll(snapshot: FeedSnapshot) {
   }
 
   window.scrollTo({ top: Math.max(0, snapshot.scrollY), behavior: "auto" });
+}
+
+function SkeletonBlock({ className = "" }: { className?: string }) {
+  return <div aria-hidden="true" className={`animate-pulse rounded-md bg-surface-muted ${className}`} />;
+}
+
+function ArticleCardSkeleton() {
+  return (
+    <div className="flex min-h-[17rem] flex-col rounded-lg border border-line bg-white p-4 shadow-sm">
+      <div className="mb-3 flex gap-2">
+        <SkeletonBlock className="h-6 w-20 rounded-full" />
+        <SkeletonBlock className="h-6 w-14 rounded-full" />
+      </div>
+      <div className="space-y-2">
+        <SkeletonBlock className="h-5 w-11/12" />
+        <SkeletonBlock className="h-5 w-8/12" />
+      </div>
+      <div className="mt-4 space-y-2">
+        <SkeletonBlock className="h-4 w-full" />
+        <SkeletonBlock className="h-4 w-10/12" />
+        <SkeletonBlock className="h-4 w-7/12" />
+      </div>
+      <div className="mt-4 flex gap-2">
+        <SkeletonBlock className="h-6 w-16 rounded-full" />
+        <SkeletonBlock className="h-6 w-20 rounded-full" />
+      </div>
+      <div className="grow" />
+      <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
+        <SkeletonBlock className="h-4 w-24" />
+        <div className="flex gap-2">
+          <SkeletonBlock className="h-8 w-14 rounded-md" />
+          <SkeletonBlock className="size-8 rounded-md" />
+          <SkeletonBlock className="size-8 rounded-md" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadMoreSkeletonGrid() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span className="sr-only">더 많은 자료를 불러오는 중입니다.</span>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <ArticleCardSkeleton key={index} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function InfiniteArticleFeed({
@@ -285,13 +334,8 @@ export function InfiniteArticleFeed({
         <p className="text-sm text-ink-muted">{loadedCount.toLocaleString("ko-KR")}건 표시</p>
       </div>
       <ArticleGrid articles={articles} onArticleNavigate={saveReturnState} restoreScroll={false} />
+      {isLoading ? <LoadMoreSkeletonGrid /> : null}
       <div ref={sentinelRef} className="flex min-h-16 items-center justify-center pt-2">
-        {isLoading ? (
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-ink-muted">
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            더 불러오는 중
-          </span>
-        ) : null}
         {!isLoading && errorMessage ? (
           <button
             type="button"
