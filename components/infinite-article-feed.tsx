@@ -161,12 +161,12 @@ function ArticleCardSkeleton() {
   );
 }
 
-function LoadMoreSkeletonGrid() {
+function LoadMoreSkeletonGrid({ count }: { count: number }) {
   return (
     <div aria-busy="true" aria-live="polite">
       <span className="sr-only">더 많은 자료를 불러오는 중입니다.</span>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
+        {Array.from({ length: count }).map((_, index) => (
           <ArticleCardSkeleton key={index} />
         ))}
       </div>
@@ -178,7 +178,7 @@ export function InfiniteArticleFeed({
   initialResult,
   endpoint = "/api/articles",
   queryString = "",
-  pageSize = 10,
+  pageSize = 9,
 }: InfiniteArticleFeedProps) {
   const feedKey = `${endpoint}?${queryString}`;
   const [articles, setArticles] = useState(initialResult.items);
@@ -334,7 +334,7 @@ export function InfiniteArticleFeed({
         <p className="text-sm text-ink-muted">{loadedCount.toLocaleString("ko-KR")}건 표시</p>
       </div>
       <ArticleGrid articles={articles} onArticleNavigate={saveReturnState} restoreScroll={false} />
-      {isLoading ? <LoadMoreSkeletonGrid /> : null}
+      {isLoading ? <LoadMoreSkeletonGrid count={pageSize} /> : null}
       <div ref={sentinelRef} className="flex min-h-16 items-center justify-center pt-2">
         {!isLoading && errorMessage ? (
           <button

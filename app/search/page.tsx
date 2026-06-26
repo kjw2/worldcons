@@ -53,7 +53,7 @@ function hrefWithoutParam(params: URLSearchParams, key: string) {
 
 export default async function SearchPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const paramsObject = await resolveSearchParams(searchParams);
-  const filters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 10 };
+  const filters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9 };
   const modeParam = getSearchParam(paramsObject, "mode");
   const mode = modeParam === "fulltext" || modeParam === "semantic" || modeParam === "hybrid" ? modeParam : "hybrid";
   const params = new URLSearchParams();
@@ -203,7 +203,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
           }
         />
       ) : (
-        <InfiniteArticleFeed initialResult={articles} endpoint="/api/search" queryString={params.toString()} pageSize={10} />
+        <InfiniteArticleFeed initialResult={articles} endpoint="/api/search" queryString={params.toString()} pageSize={9} />
       )}
     </PageShell>
   );
