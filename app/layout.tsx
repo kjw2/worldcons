@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { BackToTopButton } from "@/components/back-to-top-button";
 import { FixedChromeToggle } from "@/components/fixed-chrome-toggle";
 import { NavigationProgress } from "@/components/navigation-progress";
+import { getAppBaseUrl } from "@/lib/seo/metadata";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,6 +13,11 @@ export const metadata: Metadata = {
     template: "%s | 헌법판례요약시스템",
   },
   description: "세계 헌법재판기관의 최신 뉴스와 판례를 한국어 요약으로 탐색하는 큐레이션 플랫폼",
+  alternates: {
+    types: {
+      "application/rss+xml": `${getAppBaseUrl()}/rss.xml`,
+    },
+  },
 };
 
 const navItems = [

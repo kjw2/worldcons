@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { listArticles, listGlossaryTerms, listTags } from "@/lib/db/queries";
+import { listArticles, listGlossaryTerms, listSources, listTags } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +7,9 @@ export const revalidate = 0;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getAppBaseUrl();
-  const [articles, tags, glossary] = await Promise.all([
+  const [articles, sources, tags, glossary] = await Promise.all([
     listArticles({ pageSize: 1000 }),
+    listSources(),
     listTags({ sort: "count" }),
     listGlossaryTerms(),
   ]);
@@ -20,6 +21,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/sources`, changeFrequency: "weekly", priority: 0.5 },
     { url: `${baseUrl}/glossary`, changeFrequency: "weekly", priority: 0.5 },
     { url: `${baseUrl}/guide`, changeFrequency: "weekly", priority: 0.5 },
+    ...sources
+      .filter((source) => source.isActive)
+      .map((source) => ({
+        url: `${baseUrl}/sources/${source.sourceKey}`,
+        changeFrequency: "weekly" as const,
+        priority: 0.5,
+      })),
     ...articles.items.map((article) => ({
       url: `${baseUrl}/articles/${article.slug}`,
       lastModified: article.summarizedAt || article.fetchedAt || article.discoveredAt || undefined,
