@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { ArticleGrid } from "@/components/article-grid";
 import type { ArticleListItem, ArticleListResult, PageInfo } from "@/lib/db/types";
@@ -26,11 +26,6 @@ interface FeedSnapshot {
   scrollY: number;
   targetTop: number;
   savedAt: number;
-}
-
-interface AppendAnchor {
-  slug: string;
-  top: number;
 }
 
 function mergeArticles(current: ArticleListItem[], incoming: ArticleListItem[]) {
@@ -202,7 +197,6 @@ export function InfiniteArticleFeed({
   const loadingRef = useRef(false);
   const pendingRestoreRef = useRef<FeedSnapshot | null>(null);
   const lastLoadScrollYRef = useRef<number | null>(null);
-  const appendAnchorRef = useRef<AppendAnchor | null>(null);
 
   useEffect(() => {
     const snapshot = readFeedSnapshot(feedKey);
@@ -225,23 +219,8 @@ export function InfiniteArticleFeed({
     setErrorMessage(null);
     loadingRef.current = false;
     lastLoadScrollYRef.current = null;
-    appendAnchorRef.current = null;
     setIsLoading(false);
   }, [feedKey, initialResult, pageSize]);
-
-  useLayoutEffect(() => {
-    const anchor = appendAnchorRef.current;
-    if (!anchor) return;
-
-    appendAnchorRef.current = null;
-    const anchoredElement = findArticleElement(anchor.slug);
-    if (!anchoredElement) return;
-
-    const delta = anchoredElement.getBoundingClientRect().top - anchor.top;
-    if (Math.abs(delta) > 1) {
-      window.scrollBy({ top: delta, behavior: "auto" });
-    }
-  }, [articles.length]);
 
   useEffect(() => {
     const snapshot = pendingRestoreRef.current;
@@ -276,10 +255,6 @@ export function InfiniteArticleFeed({
       return;
     }
 
-    const lastArticle = articles.at(-1);
-    const lastArticleElement = lastArticle ? findArticleElement(lastArticle.slug) : null;
-    appendAnchorRef.current = lastArticle && lastArticleElement ? { slug: lastArticle.slug, top: lastArticleElement.getBoundingClientRect().top } : null;
-
     lastLoadScrollYRef.current = scrollY;
     loadingRef.current = true;
     setIsLoading(true);
@@ -295,16 +270,12 @@ export function InfiniteArticleFeed({
 
       const result = (await response.json()) as ArticleListResult;
       const nextItems = result.items ?? [];
-      if (nextItems.length === 0) {
-        appendAnchorRef.current = null;
-      }
       setArticles((current) => mergeArticles(current, nextItems));
       setPageInfo(pageInfoFor(result.pageInfo, pageSize));
       if (nextItems.length === 0 || !hasMorePages(result.pageInfo, articles.length + nextItems.length)) {
         setIsExhausted(true);
       }
     } catch (error) {
-      appendAnchorRef.current = null;
       setErrorMessage(error instanceof Error ? error.message : "불러오기 실패");
     } finally {
       loadingRef.current = false;
