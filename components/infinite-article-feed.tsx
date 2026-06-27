@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { ArticleGrid } from "@/components/article-grid";
 import type { ArticleListItem, ArticleListResult, PageInfo } from "@/lib/db/types";
 
 const FEED_PENDING_KEY = "worldcons:list-scroll:pending-feed";
 const FEED_TTL_MS = 30 * 60 * 1000;
+const AUTO_LOAD_SCROLL_DELTA_PX = 48;
 
 interface InfiniteArticleFeedProps {
   initialResult: ArticleListResult;
@@ -24,6 +26,11 @@ interface FeedSnapshot {
   scrollY: number;
   targetTop: number;
   savedAt: number;
+}
+
+interface AppendAnchor {
+  slug: string;
+  top: number;
 }
 
 function mergeArticles(current: ArticleListItem[], incoming: ArticleListItem[]) {
@@ -57,6 +64,11 @@ function hasMorePages(pageInfo: PageInfo, itemCount: number) {
 function currentReturnPath() {
   if (typeof window === "undefined") return "";
   return `${window.location.pathname}${window.location.search}`;
+}
+
+function currentScrollY() {
+  if (typeof window === "undefined") return 0;
+  return window.scrollY;
 }
 
 function storageKeyFor(feedKey: string) {
@@ -163,7 +175,7 @@ function ArticleCardSkeleton() {
 
 function LoadMoreSkeletonGrid({ count }: { count: number }) {
   return (
-    <div aria-busy="true" aria-live="polite">
+    <div aria-busy="true" aria-live="polite" className="[overflow-anchor:none]">
       <span className="sr-only">더 많은 자료를 불러오는 중입니다.</span>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: count }).map((_, index) => (
@@ -189,6 +201,8 @@ export function InfiniteArticleFeed({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
   const pendingRestoreRef = useRef<FeedSnapshot | null>(null);
+  const lastLoadScrollYRef = useRef<number | null>(null);
+  const appendAnchorRef = useRef<AppendAnchor | null>(null);
 
   useEffect(() => {
     const snapshot = readFeedSnapshot(feedKey);
@@ -210,8 +224,24 @@ export function InfiniteArticleFeed({
     }
     setErrorMessage(null);
     loadingRef.current = false;
+    lastLoadScrollYRef.current = null;
+    appendAnchorRef.current = null;
     setIsLoading(false);
   }, [feedKey, initialResult, pageSize]);
+
+  useLayoutEffect(() => {
+    const anchor = appendAnchorRef.current;
+    if (!anchor) return;
+
+    appendAnchorRef.current = null;
+    const anchoredElement = findArticleElement(anchor.slug);
+    if (!anchoredElement) return;
+
+    const delta = anchoredElement.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(delta) > 1) {
+      window.scrollBy({ top: delta, behavior: "auto" });
+    }
+  }, [articles.length]);
 
   useEffect(() => {
     const snapshot = pendingRestoreRef.current;
@@ -238,9 +268,19 @@ export function InfiniteArticleFeed({
     return suffix ? `${endpoint}?${suffix}` : endpoint;
   }, [endpoint, pageInfo.page, pageSize, queryString]);
 
-  const loadNext = useCallback(async () => {
+  const loadNext = useCallback(async (trigger: "auto" | "manual" = "manual") => {
     if (!hasMore || loadingRef.current) return;
 
+    const scrollY = currentScrollY();
+    if (trigger === "auto" && lastLoadScrollYRef.current !== null && scrollY <= lastLoadScrollYRef.current + AUTO_LOAD_SCROLL_DELTA_PX) {
+      return;
+    }
+
+    const lastArticle = articles.at(-1);
+    const lastArticleElement = lastArticle ? findArticleElement(lastArticle.slug) : null;
+    appendAnchorRef.current = lastArticle && lastArticleElement ? { slug: lastArticle.slug, top: lastArticleElement.getBoundingClientRect().top } : null;
+
+    lastLoadScrollYRef.current = scrollY;
     loadingRef.current = true;
     setIsLoading(true);
     setErrorMessage(null);
@@ -255,18 +295,22 @@ export function InfiniteArticleFeed({
 
       const result = (await response.json()) as ArticleListResult;
       const nextItems = result.items ?? [];
+      if (nextItems.length === 0) {
+        appendAnchorRef.current = null;
+      }
       setArticles((current) => mergeArticles(current, nextItems));
       setPageInfo(pageInfoFor(result.pageInfo, pageSize));
-      if (!hasMorePages(result.pageInfo, articles.length + nextItems.length)) {
+      if (nextItems.length === 0 || !hasMorePages(result.pageInfo, articles.length + nextItems.length)) {
         setIsExhausted(true);
       }
     } catch (error) {
+      appendAnchorRef.current = null;
       setErrorMessage(error instanceof Error ? error.message : "불러오기 실패");
     } finally {
       loadingRef.current = false;
       setIsLoading(false);
     }
-  }, [articles.length, hasMore, nextUrl, pageSize]);
+  }, [articles, hasMore, nextUrl, pageSize]);
 
   const saveReturnState = useCallback(
     (clickedSlug: string) => {
@@ -314,7 +358,7 @@ export function InfiniteArticleFeed({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
-          void loadNext();
+          void loadNext("auto");
         }
       },
       { rootMargin: "520px 0px 520px 0px", threshold: 0.01 },
@@ -335,14 +379,24 @@ export function InfiniteArticleFeed({
       </div>
       <ArticleGrid articles={articles} onArticleNavigate={saveReturnState} restoreScroll={false} />
       {isLoading ? <LoadMoreSkeletonGrid count={pageSize} /> : null}
-      <div ref={sentinelRef} className="flex min-h-16 items-center justify-center pt-2">
+      <div ref={sentinelRef} className="flex min-h-16 items-center justify-center pt-2 [overflow-anchor:none]">
         {!isLoading && errorMessage ? (
           <button
             type="button"
-            onClick={() => void loadNext()}
+            onClick={() => void loadNext("manual")}
             className="focus-ring rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-ink-muted"
           >
             다시 불러오기
+          </button>
+        ) : null}
+        {!isLoading && !errorMessage && hasMore ? (
+          <button
+            type="button"
+            onClick={() => void loadNext("manual")}
+            className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink"
+          >
+            더 보기
+            <ChevronDown className="size-4" aria-hidden="true" />
           </button>
         ) : null}
         {!isLoading && !errorMessage && !hasMore && articles.length > 0 ? (
