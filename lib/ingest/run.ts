@@ -1,14 +1,16 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
 import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
-import type { CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
+import type { CrawlAttemptLog, CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
+import { upsertSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { createContentHash } from "@/lib/utils/hash";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { parseDate } from "@/lib/utils/dates";
 import { loadSourceAdapters } from "@/lib/sources/lazy";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
-import type { NormalizedArticle, SourceAdapter } from "@/lib/sources/types";
+import type { DiscoveredItem, NormalizedArticle, SourceAdapter } from "@/lib/sources/types";
+import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { dedupKeysForArticle, uniqueDiscoveredItems } from "@/lib/ingest/dedup";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
@@ -28,6 +30,7 @@ interface SourceRunResult {
   skippedCount: number;
   skippedOutOfRangeCount: number;
   skippedNonConstitutionalCount: number;
+  uncollectedCandidates: UncollectedCandidate[];
   errors: string[];
   diagnostics?: CrawlerDiagnosticsCollector;
   statusCounts: Record<string, number>;
@@ -39,6 +42,24 @@ interface SourceRunResult {
     timeoutCount: number;
     seedCount: number;
   };
+}
+
+interface UncollectedCandidate {
+  sourceKey: string;
+  url: string;
+  canonicalUrl?: string;
+  title?: string | null;
+  publishedAt?: string | null;
+  candidateType: ArticleContentType;
+  discoveredBy: string;
+  reason: string;
+  errorCode: string;
+  httpStatus?: number;
+  caseNumber?: string;
+  detailDiscoveryStrategy?: string;
+  trackedAsRetryCandidate?: boolean;
+  trackingError?: string;
+  trackedAt?: string;
 }
 
 interface RunIngestOptions {
@@ -96,6 +117,19 @@ const SPAIN_TC_SOURCE_KEY = "es-tribunal-constitucional";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function safeCanonicalUrl(value?: string | null) {
+  if (!value) return undefined;
+  try {
+    return canonicalizeUrl(value);
+  } catch {
+    return value;
+  }
 }
 
 function inlineCrawlerBlockReason(options: RunIngestOptions = {}) {
@@ -211,6 +245,8 @@ async function closeIngestionRun(runId: string | null, result: SourceRunResult, 
         errors: result.errors.slice(0, 10),
         diagnostics: result.diagnostics,
         fallbackUsed: Boolean(result.diagnostics?.attempts.some((attempt) => attempt.fallback || attempt.strategy === "seed")),
+        uncollectedCandidateCount: result.uncollectedCandidates.length,
+        uncollectedCandidates: result.uncollectedCandidates.slice(0, 20),
         statusCounts: result.statusCounts,
         collectionCounts: result.collectionCounts,
         refreshedCount: result.refreshedCount,
@@ -341,6 +377,143 @@ function isUnverifiedBverfgFetch(article: NormalizedArticle) {
   if (article.sourceKey !== "de-bverfg") return false;
   const collection = isRecord(article.metadata?.collection) ? article.metadata.collection : {};
   return collection.sourceUrlVerified === false || /^HTTP Status \d+/i.test(article.originalTitle ?? "");
+}
+
+function diagnosticsForArticle(article: NormalizedArticle) {
+  const diagnostics = isRecord(article.metadata) ? article.metadata.diagnostics : null;
+  return Array.isArray(diagnostics) ? (diagnostics as CrawlAttemptLog[]) : [];
+}
+
+function latestProblemAttempt(attempts: CrawlAttemptLog[], urls: Array<string | undefined | null>) {
+  const targetUrls = new Set(urls.map((url) => safeCanonicalUrl(url)).filter(Boolean));
+  const reversed = [...attempts].reverse();
+  const matchingAttempt = reversed.find((attempt) => {
+    const attemptUrl = safeCanonicalUrl(attempt.finalUrl ?? attempt.url);
+    const status = attempt.status ?? attempt.statusCode ?? undefined;
+    return Boolean(attemptUrl && targetUrls.has(attemptUrl) && status && status >= 400);
+  });
+
+  return (
+    matchingAttempt ??
+    reversed.find((attempt) => {
+      const status = attempt.status ?? attempt.statusCode ?? undefined;
+      return Boolean(status && status >= 400);
+    })
+  );
+}
+
+function statusFromAttempt(attempt?: CrawlAttemptLog) {
+  const status = attempt?.status ?? attempt?.statusCode;
+  return typeof status === "number" && Number.isFinite(status) ? status : undefined;
+}
+
+function bverfgUncollectedReason(status?: number) {
+  if (status === 404) {
+    return "BVerfG official detail URL returned HTTP 404. The external index candidate is saved for later retry in case the official page appears or the URL pattern changes.";
+  }
+  if (status && status >= 400) {
+    return `BVerfG official detail URL returned HTTP ${status}. The candidate is saved for later retry.`;
+  }
+  return "BVerfG official detail URL could not be verified. The candidate is saved for later retry.";
+}
+
+function bverfgUncollectedErrorCode(status?: number, fallback?: string) {
+  if (status === 404) return "BVERFG_OFFICIAL_DETAIL_404";
+  if (status && status >= 400) return `BVERFG_OFFICIAL_DETAIL_${status}`;
+  return fallback ?? "BVERFG_OFFICIAL_DETAIL_UNVERIFIED";
+}
+
+function uncollectedCandidateForArticle(article: NormalizedArticle, diagnostics?: CrawlerDiagnosticsCollector): UncollectedCandidate | null {
+  if (!isUnverifiedBverfgFetch(article)) return null;
+
+  const metadata = isRecord(article.metadata) ? article.metadata : {};
+  const attempt = latestProblemAttempt([...diagnosticsForArticle(article), ...(diagnostics?.attempts ?? [])], [article.canonicalUrl, article.originalUrl]);
+  const httpStatus = statusFromAttempt(attempt);
+  const detailDiscoveryStrategy = stringValue(metadata.detailDiscoveryStrategy);
+  const discoveredBy = detailDiscoveryStrategy ?? stringValue(metadata.discoveryIndex) ?? "official-detail-verification";
+
+  return {
+    sourceKey: article.sourceKey,
+    url: article.originalUrl,
+    canonicalUrl: article.canonicalUrl,
+    title: article.originalTitle ?? null,
+    publishedAt: article.originalPublishedAt ?? null,
+    candidateType: article.contentType,
+    discoveredBy,
+    reason: bverfgUncollectedReason(httpStatus),
+    errorCode: bverfgUncollectedErrorCode(httpStatus, attempt?.errorCode),
+    httpStatus,
+    caseNumber: stringValue(metadata.caseNumber),
+    detailDiscoveryStrategy,
+  };
+}
+
+function uncollectedCandidateForFailedItem(item: DiscoveredItem, diagnostics: CrawlerDiagnosticsCollector, error: unknown): UncollectedCandidate | null {
+  if (item.sourceKey !== "de-bverfg") return null;
+
+  const attempt = latestProblemAttempt(diagnostics.attempts, [item.canonicalUrl, item.url]);
+  const httpStatus = statusFromAttempt(attempt);
+  if (!httpStatus || httpStatus < 400) return null;
+
+  const metadata = isRecord(item.metadata) ? item.metadata : {};
+  const detailDiscoveryStrategy = stringValue(metadata.detailDiscoveryStrategy);
+  const discoveredBy = detailDiscoveryStrategy ?? stringValue(metadata.discoveryIndex) ?? "official-detail-verification";
+  const errorCode = bverfgUncollectedErrorCode(httpStatus, attempt?.errorCode);
+
+  return {
+    sourceKey: item.sourceKey,
+    url: item.url,
+    canonicalUrl: item.canonicalUrl,
+    title: item.title ?? null,
+    publishedAt: item.publishedAt ?? null,
+    candidateType: item.contentType,
+    discoveredBy,
+    reason: `${bverfgUncollectedReason(httpStatus)} Fetch error: ${error instanceof Error ? error.message : String(error)}`,
+    errorCode,
+    httpStatus,
+    caseNumber: stringValue(metadata.caseNumber),
+    detailDiscoveryStrategy,
+  };
+}
+
+function uncollectedCandidateErrorMessage(candidate: UncollectedCandidate) {
+  return [
+    candidate.title,
+    candidate.publishedAt,
+    candidate.caseNumber ? `case ${candidate.caseNumber}` : null,
+    candidate.reason,
+  ]
+    .filter(Boolean)
+    .join(" | ")
+    .slice(0, 1000);
+}
+
+async function trackUncollectedCandidate(candidate: UncollectedCandidate) {
+  const trackedAt = new Date().toISOString();
+  const result = await upsertSourceUrlCandidates([
+    {
+      sourceKey: candidate.sourceKey,
+      url: candidate.canonicalUrl ?? candidate.url,
+      candidateType: candidate.candidateType,
+      discoveredBy: candidate.discoveredBy,
+      status: "retrying",
+      lastErrorCode: candidate.errorCode,
+      lastErrorMessage: uncollectedCandidateErrorMessage(candidate),
+    },
+  ]);
+  const trackingError =
+    "error" in result && result.error
+      ? result.error
+      : result.inserted === 0
+        ? "Source URL candidate store is not configured."
+        : undefined;
+
+  return {
+    ...candidate,
+    trackedAsRetryCandidate: !trackingError,
+    trackingError,
+    trackedAt,
+  };
 }
 
 function storagePlanForArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
@@ -494,6 +667,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     skippedCount: 0,
     skippedOutOfRangeCount: 0,
     skippedNonConstitutionalCount: 0,
+    uncollectedCandidates: [],
     errors: [],
     diagnostics: createDiagnosticsCollector(adapter.sourceKey),
     statusCounts: {},
@@ -549,6 +723,14 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
         itemDiagnosticsMerged = true;
         const normalized = await adapter.normalize(raw);
+        const uncollectedCandidate = uncollectedCandidateForArticle(normalized, result.diagnostics);
+        if (uncollectedCandidate) {
+          result.uncollectedCandidates.push(await trackUncollectedCandidate(uncollectedCandidate));
+          result.skippedCount += 1;
+          result.fetchedCount += 1;
+          continue;
+        }
+
         if (adapter.sourceKey === "us-scotus" && !isConstitutionallyRelevant(normalized)) {
           result.skippedNonConstitutionalCount += 1;
           result.skippedCount += 1;
@@ -596,8 +778,14 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         if (!itemDiagnosticsMerged) {
           itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
         }
-        result.failedCount += 1;
-        result.errors.push(error instanceof Error ? error.message : String(error));
+        const uncollectedCandidate = uncollectedCandidateForFailedItem(item, itemDiagnostics, error);
+        if (uncollectedCandidate) {
+          result.uncollectedCandidates.push(await trackUncollectedCandidate(uncollectedCandidate));
+          result.skippedCount += 1;
+        } else {
+          result.failedCount += 1;
+          result.errors.push(error instanceof Error ? error.message : String(error));
+        }
       }
     }
 
@@ -660,6 +848,7 @@ export async function runIngest(options: RunIngestOptions = {}) {
               }).length
             : 0,
         skippedNonConstitutionalCount: 0,
+        uncollectedCandidates: [],
         errors: result.status === "rejected" ? [String(result.reason)] : [],
         diagnostics: result.status === "fulfilled" ? result.value.diagnostics : undefined,
         statusCounts: {},

@@ -136,11 +136,13 @@ function rawFromHtml(params: {
   const publishable = sourceUrlVerified && sourceTextAvailable && strategy !== "seed";
   const publishedAt = config.publishedAtForHtml?.(metadata, item, finalUrl) ?? metadata.publishedAt ?? item.publishedAt;
 
+  const title = sourceUrlVerified ? metadata.title ?? item.title : item.title ?? metadata.title;
+
   return {
     ...item,
     url: finalUrl,
     canonicalUrl: canonicalizeUrl(finalUrl),
-    title: metadata.title ?? item.title,
+    title,
     publishedAt,
     html,
     text,
@@ -241,6 +243,18 @@ function detailRequests(config: OfficialSpiderConfig, urls: string[], strategy: 
       url,
       label: "DETAIL",
       item: config.itemFromUrl(url, strategy, { collectionStrategy: strategy }),
+      collectionStrategy: strategy,
+      fallback,
+    }));
+}
+
+function detailRequestsFromItems(config: OfficialSpiderConfig, items: DiscoveredItem[], strategy: CrawlStrategy, fallback = false): CrawleeStartRequest[] {
+  return items
+    .filter((item) => config.isCandidateUrl(item.url, item.title))
+    .map((item) => ({
+      url: item.url,
+      label: "DETAIL" as const,
+      item,
       collectionStrategy: strategy,
       fallback,
     }));
@@ -647,14 +661,17 @@ export async function runOfficialSpider(config: OfficialSpiderConfig, options: C
     limit: boundedLimit(options),
   };
   const strategy = options.strategy ?? "auto";
-  const directUrls = options.detailUrls?.filter((url) => config.isCandidateUrl(url)) ?? [];
+  const directItems = options.detailItems?.filter((item) => config.isCandidateUrl(item.url, item.title)) ?? [];
+  const directItemUrls = new Set(directItems.map((item) => canonicalizeUrl(item.url)));
+  const directUrls = (options.detailUrls?.filter((url) => config.isCandidateUrl(url)) ?? []).filter((url) => !directItemUrls.has(canonicalizeUrl(url)));
 
-  if (options.detailOnly || directUrls.length > 0) {
+  if (options.detailOnly || directUrls.length > 0 || directItems.length > 0) {
     if (strategyAllowed(strategy, "cheerio")) {
-      await runCheerioPass(state, detailRequests(config, directUrls, strategy === "sitemap" || strategy === "seed" ? strategy : "cheerio"), "direct-detail");
+      const detailStrategy = strategy === "sitemap" || strategy === "seed" ? strategy : "cheerio";
+      await runCheerioPass(state, [...detailRequestsFromItems(config, directItems, detailStrategy), ...detailRequests(config, directUrls, detailStrategy)], "direct-detail");
     }
     if (remainingCount(state) > 0 && strategyAllowed(strategy, "playwright") && shouldUsePlaywrightCrawler(options)) {
-      await runPlaywrightPass(state, detailRequests(config, directUrls, "playwright", true), "direct-detail");
+      await runPlaywrightPass(state, [...detailRequestsFromItems(config, directItems, "playwright", true), ...detailRequests(config, directUrls, "playwright", true)], "direct-detail");
     }
     return {
       sourceKey: config.sourceKey,

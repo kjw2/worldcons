@@ -23,6 +23,7 @@ export interface CrawleeSpiderOptions {
   usePlaywright?: boolean;
   diagnostics?: CrawlerDiagnosticsCollector;
   detailUrls?: string[];
+  detailItems?: DiscoveredItem[];
   detailOnly?: boolean;
 }
 

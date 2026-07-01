@@ -511,7 +511,7 @@ export function runBverfgSpider(options: CrawleeSpiderOptions = {}) {
         }
         return runOfficialSpider(config, {
           ...options,
-          detailUrls: candidates.map((candidate) => candidate.url),
+          detailItems: candidates,
           detailOnly: true,
           strategy: "auto",
           limit: candidates.length,

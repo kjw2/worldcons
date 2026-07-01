@@ -32,6 +32,23 @@ interface CollectionCounts {
   seedCount?: number;
 }
 
+interface UncollectedCandidate {
+  sourceKey?: string;
+  url?: string;
+  canonicalUrl?: string;
+  title?: string | null;
+  publishedAt?: string | null;
+  candidateType?: string;
+  discoveredBy?: string;
+  reason?: string;
+  errorCode?: string;
+  httpStatus?: number;
+  caseNumber?: string;
+  trackedAsRetryCandidate?: boolean;
+  trackingError?: string;
+  trackedAt?: string;
+}
+
 type RunTone = "success" | "warning" | "danger" | "running" | "neutral";
 
 const statusLabels: Record<string, string> = {
@@ -42,11 +59,20 @@ const statusLabels: Record<string, string> = {
 };
 
 function diagnosticsFor(run: IngestionRunRecord) {
-  const metadata = run.metadata as { diagnostics?: { attempts?: DiagnosticAttempt[] }; fallbackUsed?: boolean; collectionCounts?: CollectionCounts } | null | undefined;
+  const metadata = run.metadata as
+    | {
+        diagnostics?: { attempts?: DiagnosticAttempt[] };
+        fallbackUsed?: boolean;
+        collectionCounts?: CollectionCounts;
+        uncollectedCandidates?: UncollectedCandidate[];
+      }
+    | null
+    | undefined;
   return {
     attempts: metadata?.diagnostics?.attempts ?? [],
     fallbackUsed: Boolean(metadata?.fallbackUsed),
     collectionCounts: metadata?.collectionCounts ?? {},
+    uncollectedCandidates: metadata?.uncollectedCandidates ?? [],
   };
 }
 
@@ -151,10 +177,12 @@ function SummaryMetric({
 function aggregateRuns(runs: IngestionRunRecord[]) {
   return runs.reduce(
     (summary, run) => {
+      const diagnostics = diagnosticsFor(run);
       summary.discovered += run.discoveredCount;
       summary.fetched += run.fetchedCount;
       summary.summarized += run.summarizedCount;
       summary.failed += run.failedCount;
+      summary.uncollected += diagnostics.uncollectedCandidates.length;
       if (run.status === "running") summary.running += 1;
       if (runTone(run) === "success") summary.completed += 1;
       if (runTone(run) === "danger") summary.problem += 1;
@@ -165,6 +193,7 @@ function aggregateRuns(runs: IngestionRunRecord[]) {
       fetched: 0,
       summarized: 0,
       failed: 0,
+      uncollected: 0,
       completed: 0,
       problem: 0,
       running: 0,
@@ -173,7 +202,7 @@ function aggregateRuns(runs: IngestionRunRecord[]) {
 }
 
 function AttemptBadge({ attempt }: { attempt: DiagnosticAttempt }) {
-  const failed = attempt.result === "failed" || attempt.errorCode || attempt.errorMessage;
+  const failed = attempt.result === "failed" || attempt.errorCode || attempt.errorMessage || (attempt.status !== undefined && attempt.status >= 400);
   const success = attempt.result === "success" || (attempt.status && attempt.status >= 200 && attempt.status < 300);
   const tone: RunTone = failed ? "danger" : success ? "success" : "neutral";
 
@@ -211,19 +240,77 @@ function AttemptBadge({ attempt }: { attempt: DiagnosticAttempt }) {
   );
 }
 
-function RunDiagnostics({ run, attempts, fallbackUsed }: { run: IngestionRunRecord; attempts: DiagnosticAttempt[]; fallbackUsed: boolean }) {
-  if (attempts.length === 0 && !run.errorMessage && !fallbackUsed) {
+function UncollectedCandidateBadge({ candidates }: { candidates: UncollectedCandidate[] }) {
+  if (candidates.length === 0) return null;
+
+  return (
+    <span className={cn("inline-flex min-h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold", toneClassName("warning"))}>
+      <span className="text-ink/58">추적 후보</span>
+      <span>{formatNumber(candidates.length)}</span>
+    </span>
+  );
+}
+
+function UncollectedCandidates({ candidates }: { candidates: UncollectedCandidate[] }) {
+  if (candidates.length === 0) return null;
+
+  return (
+    <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-50 p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <AlertTriangle className="size-4 text-amber-800" aria-hidden="true" />
+        <span className="text-xs font-semibold text-amber-900">공식 상세 확인 실패 후보 {formatNumber(candidates.length)}건</span>
+        <span className="text-xs text-amber-900/70">재시도 큐에 보존해 다음 수집에서 다시 확인합니다.</span>
+      </div>
+      <div className="grid gap-2">
+        {candidates.slice(0, 5).map((candidate, index) => (
+          <div key={`${candidate.url}-${index}`} className="rounded-md border border-amber-300/45 bg-white p-3 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn("inline-flex min-h-6 items-center rounded-md border px-2 font-semibold", toneClassName("warning"))}>
+                {candidate.httpStatus ? `HTTP ${candidate.httpStatus}` : candidate.errorCode ?? "미확인"}
+              </span>
+              <span className="font-semibold text-ink">{candidate.title ?? "제목 없음"}</span>
+              {candidate.publishedAt ? <span className="text-ink/55">{formatDateTime(candidate.publishedAt)}</span> : null}
+              {candidate.caseNumber ? <span className="text-ink/55">{candidate.caseNumber}</span> : null}
+              <span className="text-ink/55">{candidate.discoveredBy ?? "discovery"}</span>
+              <span className={candidate.trackedAsRetryCandidate ? "text-mint" : "text-court"}>
+                {candidate.trackedAsRetryCandidate ? "재시도 큐 저장" : "재시도 큐 저장 실패"}
+              </span>
+            </div>
+            {candidate.url ? <div className="mt-2 break-all text-ink/50">{candidate.url}</div> : null}
+            {candidate.reason ? <div className="mt-2 text-amber-900/80">{candidate.reason}</div> : null}
+            {candidate.trackingError ? <div className="mt-2 text-court">{candidate.trackingError}</div> : null}
+          </div>
+        ))}
+        {candidates.length > 5 ? <div className="text-xs text-amber-900/70">나머지 {formatNumber(candidates.length - 5)}건도 실행 metadata에 보존되어 있습니다.</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function RunDiagnostics({
+  run,
+  attempts,
+  fallbackUsed,
+  uncollectedCandidates,
+}: {
+  run: IngestionRunRecord;
+  attempts: DiagnosticAttempt[];
+  fallbackUsed: boolean;
+  uncollectedCandidates: UncollectedCandidate[];
+}) {
+  if (attempts.length === 0 && !run.errorMessage && !fallbackUsed && uncollectedCandidates.length === 0) {
     return <span className="text-xs text-ink/45">없음</span>;
   }
 
   return (
     <details className="group">
       <summary className="focus-ring inline-flex min-h-8 cursor-pointer list-none items-center rounded-md border border-rule bg-white px-2.5 text-xs font-semibold text-ink/70 transition hover:border-line-strong hover:bg-parchment marker:hidden">
-        진단 {formatNumber(attempts.length)}건
+        진단 {formatNumber(attempts.length)}건{uncollectedCandidates.length > 0 ? ` · 추적 후보 ${formatNumber(uncollectedCandidates.length)}건` : ""}
       </summary>
       <div className="mt-3 min-w-[min(760px,calc(100vw-2rem))] rounded-md border border-rule bg-parchment/35 p-3">
         {run.errorMessage ? <div className="mb-3 rounded-md border border-court/20 bg-white p-3 text-xs leading-5 text-court">{run.errorMessage}</div> : null}
         {fallbackUsed ? <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-50 p-3 text-xs leading-5 text-amber-800">fallback 경로가 사용되었습니다.</div> : null}
+        <UncollectedCandidates candidates={uncollectedCandidates} />
         {attempts.length > 0 ? (
           <div className="grid gap-2">
             {attempts.slice(0, 8).map((attempt, index) => (
@@ -250,7 +337,13 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SummaryMetric label="최근 실행" value={displaySourceLabel(latestRun.sourceKey)} detail={`${formatDateTime(latestRun.startedAt)} 시작`} icon={Activity} tone={runTone(latestRun)} />
         <SummaryMetric label="완료/문제" value={`${formatNumber(summary.completed)} / ${formatNumber(summary.problem)}`} detail={`${formatNumber(runs.length)}개 실행 기준`} icon={summary.problem > 0 ? AlertTriangle : CheckCircle2} tone={summary.problem > 0 ? "danger" : "success"} />
-        <SummaryMetric label="수집 결과" value={formatNumber(summary.fetched)} detail={`발견 ${formatNumber(summary.discovered)}건, 실패 ${formatNumber(summary.failed)}건`} icon={Database} tone={summary.failed > 0 ? "warning" : "neutral"} />
+        <SummaryMetric
+          label="수집 결과"
+          value={formatNumber(summary.fetched)}
+          detail={`발견 ${formatNumber(summary.discovered)}건, 실패 ${formatNumber(summary.failed)}건, 추적 후보 ${formatNumber(summary.uncollected)}건`}
+          icon={Database}
+          tone={summary.failed > 0 || summary.uncollected > 0 ? "warning" : "neutral"}
+        />
         <SummaryMetric label="요약 완료" value={formatNumber(summary.summarized)} detail={summary.running > 0 ? `${formatNumber(summary.running)}개 실행 중` : "최근 실행 합산"} icon={summary.running > 0 ? Clock3 : CheckCircle2} tone={summary.running > 0 ? "running" : "success"} />
       </div>
 
@@ -301,6 +394,7 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                         <ResultPill label="수집" value={run.fetchedCount} tone="success" />
                         <ResultPill label="요약" value={run.summarizedCount} tone="success" />
                         <ResultPill label="실패" value={run.failedCount} tone={run.failedCount > 0 ? "danger" : "neutral"} />
+                        <UncollectedCandidateBadge candidates={diagnostics.uncollectedCandidates} />
                       </div>
                     </td>
                     <td className="px-4 py-4">
@@ -314,7 +408,7 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <RunDiagnostics run={run} attempts={diagnostics.attempts} fallbackUsed={diagnostics.fallbackUsed} />
+                      <RunDiagnostics run={run} attempts={diagnostics.attempts} fallbackUsed={diagnostics.fallbackUsed} uncollectedCandidates={diagnostics.uncollectedCandidates} />
                     </td>
                   </tr>
                 );
