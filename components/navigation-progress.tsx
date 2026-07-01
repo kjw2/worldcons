@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/classnames";
 
 const SHOW_DELAY_MS = 90;
 const MIN_VISIBLE_MS = 260;
+const MAX_VISIBLE_MS = 8000;
 
 function isModifiedClick(event: MouseEvent) {
   return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
@@ -45,6 +46,7 @@ export function NavigationProgress() {
   const visibleRef = useRef(false);
   const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxVisibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleSinceRef = useRef(0);
 
   const setProgressVisible = useCallback((nextVisible: boolean) => {
@@ -55,9 +57,16 @@ export function NavigationProgress() {
   const clearTimers = useCallback(() => {
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (maxVisibleTimerRef.current) clearTimeout(maxVisibleTimerRef.current);
     delayTimerRef.current = null;
     hideTimerRef.current = null;
+    maxVisibleTimerRef.current = null;
   }, []);
+
+  const forceFinish = useCallback(() => {
+    clearTimers();
+    if (visibleRef.current) setProgressVisible(false);
+  }, [clearTimers, setProgressVisible]);
 
   const start = useCallback(() => {
     if (delayTimerRef.current || visibleRef.current) return;
@@ -70,6 +79,11 @@ export function NavigationProgress() {
       visibleSinceRef.current = Date.now();
       delayTimerRef.current = null;
       setProgressVisible(true);
+      if (maxVisibleTimerRef.current) clearTimeout(maxVisibleTimerRef.current);
+      maxVisibleTimerRef.current = setTimeout(() => {
+        maxVisibleTimerRef.current = null;
+        setProgressVisible(false);
+      }, MAX_VISIBLE_MS);
     }, SHOW_DELAY_MS);
   }, [setProgressVisible]);
 
@@ -84,6 +98,10 @@ export function NavigationProgress() {
     const remaining = Math.max(0, MIN_VISIBLE_MS - elapsed);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
+      if (maxVisibleTimerRef.current) {
+        clearTimeout(maxVisibleTimerRef.current);
+        maxVisibleTimerRef.current = null;
+      }
       setProgressVisible(false);
       hideTimerRef.current = null;
     }, remaining);
@@ -101,17 +119,29 @@ export function NavigationProgress() {
       if (form && isInternalFormNavigation(form, event)) start();
     };
 
+    const handlePageShow = () => {
+      forceFinish();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") finish();
+    };
+
     window.addEventListener("popstate", start);
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("click", handleClick, true);
     document.addEventListener("submit", handleSubmit, true);
 
     return () => {
       window.removeEventListener("popstate", start);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("submit", handleSubmit, true);
       clearTimers();
     };
-  }, [clearTimers, start]);
+  }, [clearTimers, finish, forceFinish, start]);
 
   useEffect(() => {
     finish();
