@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const parsed = parseArticleListApiParams(searchParams);
   if (!parsed.ok) return publicApiValidationErrorResponse(parsed.error);
 
-  const result = await listArticles({ ...parsed.data, count: parsed.data.count ?? "estimated" });
+  const result = await listArticles({ ...parsed.data, count: parsed.data.count ?? "exact" });
 
   return NextResponse.json(result);
 }

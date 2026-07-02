@@ -114,7 +114,7 @@ function HomeSkeleton() {
 
 async function HomeContent({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const paramsObject = await resolveSearchParams(searchParams);
-  const filters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9, count: "estimated" as const };
+  const filters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9, count: "exact" as const };
   const params = new URLSearchParams();
   Object.entries(paramsObject).forEach(([key, value]) => {
     if (typeof value === "string" && value) params.set(key, value);
