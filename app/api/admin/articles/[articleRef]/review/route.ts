@@ -72,12 +72,12 @@ function summaryModelOptions(currentModel?: string | null, llmSettings?: AdminLl
   return options;
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ articleRef: string }> }) {
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { slug } = await params;
+  const { articleRef: slug } = await params;
   const parsed = parseSlugParam(slug);
   if (!parsed.ok) return publicApiValidationErrorResponse(parsed.error);
 

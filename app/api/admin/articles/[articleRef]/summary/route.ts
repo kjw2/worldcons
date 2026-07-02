@@ -6,13 +6,13 @@ import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function POST(request: Request, { params }: { params: Promise<{ articleId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ articleRef: string }> }) {
   const authFailureStatus = adminMutationAuthFailureStatus(request);
   if (authFailureStatus) {
     return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
   }
 
-  const { articleId } = await params;
+  const { articleRef: articleId } = await params;
   const body = await request.json().catch(() => ({}));
   const result = await updateArticleSummaryManually({ articleId, body });
 

@@ -267,6 +267,9 @@ export function InfiniteArticleFeed({
     const params = new URLSearchParams(queryString);
     params.set("page", String(pageInfo.page + 1));
     params.set("pageSize", String(pageSize));
+    if (!params.has("count")) {
+      params.set("count", "none");
+    }
     const suffix = params.toString();
     return suffix ? `${endpoint}?${suffix}` : endpoint;
   }, [endpoint, pageInfo.page, pageSize, queryString]);
@@ -294,9 +297,18 @@ export function InfiniteArticleFeed({
 
       const result = (await response.json()) as ArticleListResult;
       const nextItems = result.items ?? [];
+      const nextLoadedCount = articles.length + nextItems.length;
+      const resultPageInfo = pageInfoFor(result.pageInfo, pageSize);
       setArticles((current) => mergeArticles(current, nextItems));
-      setPageInfo(pageInfoFor(result.pageInfo, pageSize));
-      if (nextItems.length === 0 || !hasMorePages(result.pageInfo, articles.length + nextItems.length)) {
+      setPageInfo((current) => {
+        const preserveExactTotal = current.totalIsExact === true && resultPageInfo.totalIsExact !== true;
+        return {
+          ...resultPageInfo,
+          total: preserveExactTotal ? Math.max(current.total, nextLoadedCount) : Math.max(resultPageInfo.total, nextLoadedCount),
+          totalIsExact: preserveExactTotal ? true : resultPageInfo.totalIsExact,
+        };
+      });
+      if (nextItems.length === 0 || !hasMorePages(resultPageInfo, nextLoadedCount)) {
         setIsExhausted(true);
       }
     } catch (error) {
