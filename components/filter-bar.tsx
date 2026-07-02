@@ -48,6 +48,7 @@ export function FilterBar({
   basePath = "/",
   onRangeChange,
   onRangePrefetch,
+  showJurisdictionChips = true,
 }: {
   activeRange: TimeRange;
   sources: SourceRecord[];
@@ -57,6 +58,7 @@ export function FilterBar({
   basePath?: string;
   onRangeChange?: (range: TimeRange, href: string) => void;
   onRangePrefetch?: (range: TimeRange) => void;
+  showJurisdictionChips?: boolean;
 }) {
   const params = useMemo(() => new URLSearchParams(paramsString), [paramsString]);
   const activeJurisdiction = params.get("jurisdiction") ?? "";
@@ -75,32 +77,34 @@ export function FilterBar({
             onRangeChange={onRangeChange}
             onRangePrefetch={onRangePrefetch}
           />
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {jurisdictions.map((jurisdiction) => {
-              const isActive = activeJurisdiction === jurisdiction;
-              const theme = themeForJurisdiction(jurisdiction);
-              const count = jurisdictionArticleCounts?.[jurisdiction];
-              const countBadgeClassName = isActive
-                ? "rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums"
-                : "rounded-full bg-white/75 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-current tabular-nums";
+          {showJurisdictionChips ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {jurisdictions.map((jurisdiction) => {
+                const isActive = activeJurisdiction === jurisdiction;
+                const theme = themeForJurisdiction(jurisdiction);
+                const count = jurisdictionArticleCounts?.[jurisdiction];
+                const countBadgeClassName = isActive
+                  ? "rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums"
+                  : "rounded-full bg-white/75 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-current tabular-nums";
 
-              return (
-                <Link
-                  key={jurisdiction}
-                  href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
-                  style={jurisdictionThemeStyle(theme)}
-                  className={chipClassName(isActive ? "selected" : "country")}
-                >
-                  <span>{displayJurisdictionLabel(jurisdiction)}</span>
-                  {count === undefined ? null : (
-                    <span className={countBadgeClassName}>
-                      {count.toLocaleString("ko-KR")}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+                return (
+                  <Link
+                    key={jurisdiction}
+                    href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
+                    style={jurisdictionThemeStyle(theme)}
+                    className={chipClassName(isActive ? "selected" : "country")}
+                  >
+                    <span>{displayJurisdictionLabel(jurisdiction)}</span>
+                    {count === undefined ? null : (
+                      <span className={countBadgeClassName}>
+                        {count.toLocaleString("ko-KR")}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
         <div className="w-full lg:max-w-md">
           <SearchBox

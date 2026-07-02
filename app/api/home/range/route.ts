@@ -8,21 +8,24 @@ import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate
 export const revalidate = 60;
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {
-  return !filters.q && !filters.source && !filters.jurisdiction && !filters.type && !filters.tag && !filters.language;
+  return !filters.q && !filters.source && !filters.type && !filters.tag && !filters.language;
 }
 
-function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>) {
+function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>, filters: ArticleListFilters) {
   const total = Math.max(
     articles.items.length,
-    Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
+    filters.jurisdiction
+      ? jurisdictionArticleCounts[filters.jurisdiction] ?? 0
+      : Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
   );
+  const shownThrough = (articles.pageInfo.page - 1) * articles.pageInfo.pageSize + articles.items.length;
 
   return {
     ...articles,
     pageInfo: {
       ...articles.pageInfo,
-      total,
-      hasMore: articles.items.length < total,
+      total: Math.max(total, shownThrough),
+      hasMore: shownThrough < total,
       totalIsExact: true,
     },
   };
@@ -34,12 +37,12 @@ const getHomeRangePayload = unstable_cache(
     const jurisdictions = Array.from(new Set(sources.map((source) => source.jurisdiction)));
     const countFromJurisdictions = canUseJurisdictionTotal(filters);
     const [articles, jurisdictionArticleCounts] = await Promise.all([
-      listArticles({ ...filters, page: 1, count: countFromJurisdictions ? "none" : "exact" }),
+      listArticles({ ...filters, count: countFromJurisdictions ? "none" : "exact" }),
       listJurisdictionArticleCounts(jurisdictions, { range: filters.range }),
     ]);
 
     return {
-      articles: countFromJurisdictions ? withJurisdictionTotal(articles, jurisdictionArticleCounts) : articles,
+      articles: countFromJurisdictions ? withJurisdictionTotal(articles, jurisdictionArticleCounts, filters) : articles,
       jurisdictionArticleCounts,
     };
   },
@@ -59,7 +62,7 @@ export async function GET(request: Request) {
 
   const payload = await getHomeRangePayload({
     ...parsed.data,
-    page: 1,
+    page: parsed.data.page ?? 1,
     pageSize: parsed.data.pageSize ?? 9,
     count: "exact",
   });

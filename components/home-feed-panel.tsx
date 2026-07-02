@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FilterBar } from "@/components/filter-bar";
+import { HomeViewToggle } from "@/components/home-view-toggle";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleListResult, SourceRecord, TagSummary } from "@/lib/db/types";
@@ -247,6 +248,8 @@ export function HomeFeedPanel({
           onRangePrefetch={prefetchRange}
         />
       </div>
+
+      <HomeViewToggle activeView="card" paramsString={activeParamsString} className="mb-4" />
 
       {errorMessage ? (
         <SurfaceCard className="mb-4 flex flex-wrap items-center justify-between gap-3 border-red-200 bg-red-50 p-4 text-sm text-red-900">

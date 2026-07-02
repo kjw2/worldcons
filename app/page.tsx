@@ -31,21 +31,24 @@ const getHomeArticles = unstable_cache(
 );
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {
-  return !filters.q && !filters.source && !filters.jurisdiction && !filters.type && !filters.tag && !filters.language;
+  return !filters.q && !filters.source && !filters.type && !filters.tag && !filters.language;
 }
 
-function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>) {
+function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>, filters: ArticleListFilters) {
   const total = Math.max(
     articles.items.length,
-    Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
+    filters.jurisdiction
+      ? jurisdictionArticleCounts[filters.jurisdiction] ?? 0
+      : Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
   );
+  const shownThrough = (articles.pageInfo.page - 1) * articles.pageInfo.pageSize + articles.items.length;
 
   return {
     ...articles,
     pageInfo: {
       ...articles.pageInfo,
-      total,
-      hasMore: articles.items.length < total,
+      total: Math.max(total, shownThrough),
+      hasMore: shownThrough < total,
       totalIsExact: true,
     },
   };
@@ -143,12 +146,13 @@ async function HomeContent({ searchParams }: { searchParams?: Promise<SearchPara
   });
   params.delete("page");
   params.delete("pageSize");
+  params.delete("view");
 
   const [articleResult, { sources, tags, jurisdictionArticleCounts }] = await Promise.all([
     getHomeArticles(filters),
     getHomeFilterData(filters.range),
   ]);
-  const articles = countFromJurisdictions ? withJurisdictionTotal(articleResult, jurisdictionArticleCounts) : articleResult;
+  const articles = countFromJurisdictions ? withJurisdictionTotal(articleResult, jurisdictionArticleCounts, filters) : articleResult;
   const pageViewEvent = {
     eventType: "page_view" as const,
     path: "/",

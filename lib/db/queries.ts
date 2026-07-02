@@ -510,6 +510,65 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 
+export async function listTopViewedArticles(
+  limit = 5,
+  filters: Pick<ArticleListFilters, "range" | "source" | "jurisdiction" | "type" | "language" | "tag"> = {},
+) {
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 20) : 5;
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase || filters.tag) {
+    return (await listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+  }
+
+  const { data: viewRows, error: viewError } = await supabase
+    .from("article_view_counts")
+    .select("article_slug,view_count")
+    .order("view_count", { ascending: false })
+    .limit(Math.max(safeLimit * 4, safeLimit));
+
+  if (viewError || !viewRows?.length) {
+    return (await listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+  }
+
+  const rankedViews = (viewRows as Array<{ article_slug?: string | null; view_count?: number | string | null }>)
+    .filter((row) => row.article_slug)
+    .map((row) => ({
+      slug: String(row.article_slug),
+      viewCount: Number(row.view_count ?? 0),
+    }));
+  const slugs = rankedViews.map((row) => row.slug);
+  const viewCountBySlug = new Map(rankedViews.map((row) => [row.slug, row.viewCount]));
+
+  let query = supabase
+    .from("articles")
+    .select(ARTICLE_LIST_SELECT)
+    .in("slug", slugs)
+    .eq("status", "summarized")
+    .filter("source_metadata->collection->>publishable", "eq", "true");
+
+  if (filters.source) query = query.eq("source_key", filters.source);
+  if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
+  if (filters.type) query = query.eq("content_type", filters.type);
+  if (filters.language) query = query.eq("original_language", filters.language);
+  const startIso = getRangeStartIso(filters.range);
+  if (startIso) query = query.gte("original_published_at", startIso);
+
+  const { data, error } = await query;
+  if (error || !data?.length) {
+    return (await listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+  }
+
+  const order = new Map(slugs.map((slug, index) => [slug, index]));
+  return (data as unknown as SupabaseArticleRow[])
+    .map((row) => ({
+      ...articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false }),
+      viewCount: viewCountBySlug.get(row.slug) ?? 0,
+    }))
+    .sort((left, right) => (order.get(left.slug) ?? 9999) - (order.get(right.slug) ?? 9999))
+    .slice(0, safeLimit);
+}
+
 export async function listJurisdictionArticleCounts(
   jurisdictions: string[] = [],
   options: { range?: ArticleListFilters["range"] } = {},
