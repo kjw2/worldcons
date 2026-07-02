@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { ArticleGrid } from "@/components/article-grid";
+import { ARTICLE_VIEWED_STORAGE_PREFIX } from "@/components/analytics-event-client";
 import type { ArticleListItem, ArticleListResult, PageInfo } from "@/lib/db/types";
 
 const FEED_PENDING_KEY = "worldcons:list-scroll:pending-feed";
@@ -120,6 +121,28 @@ function readFeedSnapshot(feedKey: string) {
   }
 }
 
+function articleViewedAfterSnapshot(slug: string, savedAt: number) {
+  if (typeof window === "undefined") return false;
+
+  const raw = window.sessionStorage.getItem(`${ARTICLE_VIEWED_STORAGE_PREFIX}${slug}`);
+  const viewedAt = raw ? Number(raw) : 0;
+  return Number.isFinite(viewedAt) && viewedAt >= savedAt;
+}
+
+function articlesWithRestoredView(snapshot: FeedSnapshot) {
+  if (!articleViewedAfterSnapshot(snapshot.clickedSlug, snapshot.savedAt)) {
+    return snapshot.articles;
+  }
+
+  return snapshot.articles.map((article) => {
+    if (article.slug !== snapshot.clickedSlug) return article;
+    return {
+      ...article,
+      viewCount: Math.max(0, Math.floor(article.viewCount ?? 0)) + 1,
+    };
+  });
+}
+
 function restoreFeedScroll(snapshot: FeedSnapshot) {
   const target = findArticleElement(snapshot.clickedSlug);
   if (target) {
@@ -201,14 +224,15 @@ export function InfiniteArticleFeed({
   useEffect(() => {
     const snapshot = readFeedSnapshot(feedKey);
     if (snapshot) {
+      const restoredArticles = articlesWithRestoredView(snapshot);
       const snapshotPageInfo = {
         ...snapshot.pageInfo,
         pageSize,
         total: Math.max(snapshot.pageInfo.total, initialResult.pageInfo.total),
       };
-      setArticles(snapshot.articles);
+      setArticles(restoredArticles);
       setPageInfo(snapshotPageInfo);
-      setIsExhausted(snapshot.isExhausted || !hasMorePages(snapshotPageInfo, snapshot.articles.length));
+      setIsExhausted(snapshot.isExhausted || !hasMorePages(snapshotPageInfo, restoredArticles.length));
       pendingRestoreRef.current = snapshot;
     } else {
       setArticles(initialResult.items);
