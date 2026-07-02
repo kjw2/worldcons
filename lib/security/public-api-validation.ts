@@ -12,6 +12,7 @@ const RANGE_VALUES = ["latest", "today", "week", "month"] as const;
 const SEARCH_MODE_VALUES = ["fulltext", "semantic", "hybrid"] as const;
 const TAG_SORT_VALUES = ["count", "latest", "name"] as const;
 const TAG_TYPE_VALUES = ["court", "country", "law", "article", "right", "party", "institution", "topic", "doctrine", "procedure", "case_type"] as const;
+const COUNT_MODE_VALUES = ["exact", "planned", "estimated", "none"] as const;
 
 const controlCharacterPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -45,6 +46,7 @@ const articleListSchema = z.object({
   language: optionalPatternText(32, languagePattern, "language"),
   page: z.coerce.number().int().min(1).max(10_000).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
+  count: z.enum(COUNT_MODE_VALUES).optional(),
 });
 
 const searchSchema = articleListSchema.extend({

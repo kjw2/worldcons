@@ -45,7 +45,7 @@ function InfoItem({ label, value }: { label: string; value?: ReactNode }) {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const article = await getArticleBySlug(slug);
+  const article = await getArticleBySlug(slug, { includeSourceText: false });
   if (!article) return {};
 
   return {
@@ -66,7 +66,7 @@ export default async function ArticlePrintPage({
 }) {
   const { slug } = await params;
   const includeUnpublished = await isAuthorizedPageRequest();
-  const article = await getArticleBySlug(slug, { includeUnpublished });
+  const article = await getArticleBySlug(slug, { includeUnpublished, includeSourceText: false });
   if (!article) notFound();
 
   const summary = article.summaryJson;

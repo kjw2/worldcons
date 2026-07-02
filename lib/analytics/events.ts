@@ -30,7 +30,7 @@ export interface SiteEventInput {
   metadata?: Record<string, unknown>;
 }
 
-const PUBLIC_CLIENT_EVENT_TYPES = new Set<SiteEventType>(["tag_click", "article_click", "external_link_click"]);
+const PUBLIC_CLIENT_EVENT_TYPES = new Set<SiteEventType>(["page_view", "article_view", "tag_click", "article_click", "external_link_click"]);
 const BOT_MARKERS = [
   "bot",
   "crawler",

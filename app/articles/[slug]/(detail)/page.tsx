@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ExternalLink, FileText, Languages, Scale } from "lucide-react";
 import { AdminReviewActions, type SummaryModelOption } from "@/components/admin-review-actions";
 import { AdminSummaryEditor } from "@/components/admin-summary-editor";
 import { ArticlePrintButton } from "@/components/article-print-button";
+import { ArticleSourceSnapshot } from "@/components/article-source-snapshot";
+import { PageViewTracker } from "@/components/page-view-tracker";
 import { ReferencedProvisionList } from "@/components/referenced-provision-list";
 import { RelatedArticles } from "@/components/related-articles";
 import { SummarySection } from "@/components/summary-section";
@@ -19,7 +20,6 @@ import { getAdminLlmSettingsView } from "@/lib/ai/llm-settings";
 import type { AdminLlmSettingsView, ConfigurableLlmProvider } from "@/lib/ai/llm-settings-types";
 import { hasGeminiKey, hasOpenAiKey } from "@/lib/ai/client";
 import { getGeminiModels } from "@/lib/ai/gemini-router";
-import { recordSiteEvent } from "@/lib/analytics/events";
 import { getArticleBySlug, getArticlePreviewBySlug, getRelatedArticles } from "@/lib/db/queries";
 import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
@@ -367,7 +367,7 @@ export default async function ArticlePage({
 }) {
   const { slug } = await params;
   const includeUnpublished = await isAuthorizedPageRequest();
-  const article = await getArticleBySlug(slug, { includeUnpublished });
+  const article = await getArticleBySlug(slug, { includeUnpublished, includeSourceText: includeUnpublished });
   if (!article) notFound();
 
   const llmSettings = includeUnpublished ? await getAdminLlmSettingsView().catch(() => null) : null;
@@ -376,10 +376,9 @@ export default async function ArticlePage({
   const summary = article.summaryJson;
   const summaryModelName = summary?.aiMetadata?.model ?? "모델 정보 없음";
   const theme = themeForJurisdiction(article.jurisdiction);
-  if (!includeUnpublished) {
-    await recordSiteEvent(
-      {
-        eventType: "article_view",
+  const articleViewEvent = !includeUnpublished
+    ? {
+        eventType: "article_view" as const,
         path: `/articles/${article.slug}`,
         articleId: article.id,
         articleSlug: article.slug,
@@ -387,19 +386,19 @@ export default async function ArticlePage({
         sourceKey: article.sourceKey,
         jurisdiction: article.jurisdiction,
         institutionName: article.institutionName,
-      },
-      await headers(),
-    );
-  }
+      }
+    : null;
 
   const primaryIssue = summary?.summary.coreSummary[0] ?? article.oneLineSummary;
   const collectionNotice = publicCollectionNotice(article);
   const originalHref = safeExternalUrl(article.originalUrl);
   const missingOriginalUrl = !originalHref;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
+  const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
 
   return (
     <PageShell className="max-w-7xl">
+      {articleViewEvent ? <PageViewTracker event={articleViewEvent} /> : null}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
       <section style={jurisdictionThemeStyle(theme)} className="mb-7 border-b border-line pb-7">
         <MetaRow
@@ -477,11 +476,12 @@ export default async function ArticlePage({
               description="원문 본문 확보 또는 요약 생성이 완료되면 핵심 쟁점과 배경, 시사점이 이 영역에 정리됩니다."
             />
           )}
-          {article.cleanedText ? (
+          {includeUnpublished && article.cleanedText ? (
             <DisclosureCard title="보존된 원문 스냅샷" meta={`(${textLength(article.cleanedText)}자)`}>
               <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-4 text-[13px] leading-7 text-ink-muted">{article.cleanedText}</pre>
             </DisclosureCard>
           ) : null}
+          {!includeUnpublished && sourceTextAvailable ? <ArticleSourceSnapshot slug={article.slug} /> : null}
           <SummarySection title="관련 기사" variant="body">
             <RelatedArticles articles={related} />
           </SummarySection>

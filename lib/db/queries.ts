@@ -62,6 +62,7 @@ interface SupabaseArticleRow {
   one_line_summary?: string | null;
   content_hash?: string | null;
   source_metadata?: Record<string, unknown> | null;
+  resolution_type?: string | null;
   error_metadata?: Record<string, unknown> | null;
   article_tags?: SupabaseArticleTagRow[] | null;
 }
@@ -86,10 +87,17 @@ const ARTICLE_LIST_SELECT = [
   "summarized_at",
   "status",
   "one_line_summary:summary_json->summary->coreSummary->>0",
-  "source_metadata",
+  "resolution_type:source_metadata->>resolutionType",
   `article_tags(confidence,tags(${TAG_LIST_SELECT}))`,
 ].join(",");
-const ARTICLE_DETAIL_SELECT = `${ARTICLE_LIST_SELECT},summary_json,raw_text,cleaned_text,content_hash,error_metadata`;
+const ARTICLE_PAGE_SELECT = `${ARTICLE_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
+const ARTICLE_DETAIL_SELECT = `${ARTICLE_PAGE_SELECT},raw_text,cleaned_text`;
+
+function minimalSourceMetadata(row: SupabaseArticleRow) {
+  const metadata: Record<string, unknown> = {};
+  if (row.resolution_type) metadata.resolutionType = row.resolution_type;
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
 
 export function normalizePagination(page?: number, pageSize?: number) {
   const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
@@ -153,7 +161,7 @@ function articleRowToItem(
     status: row.status as ArticleDetail["status"],
     summaryJson: includeSummaryJson ? summary : null,
     tags,
-    sourceMetadata: row.source_metadata,
+    sourceMetadata: row.source_metadata ?? minimalSourceMetadata(row),
     oneLineSummary: row.one_line_summary || summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
     viewCount: 0,
   };
@@ -172,6 +180,19 @@ async function articleViewCountsBySlug(slugs: string[]) {
   const uniqueSlugs = Array.from(new Set(slugs.map((slug) => slug.trim()).filter(Boolean)));
   const supabase = getSupabaseAdmin();
   if (!supabase || uniqueSlugs.length === 0) return {};
+
+  const { data: aggregateRows, error: aggregateError } = await supabase
+    .from("article_view_counts")
+    .select("article_slug,view_count")
+    .in("article_slug", uniqueSlugs);
+
+  if (!aggregateError) {
+    return Object.fromEntries(
+      ((aggregateRows ?? []) as Array<{ article_slug?: string | null; view_count?: number | string | null }>)
+        .filter((row) => row.article_slug)
+        .map((row) => [String(row.article_slug), Number(row.view_count ?? 0)]),
+    );
+  }
 
   const entries = await Promise.all(
     uniqueSlugs.map(async (slug) => {
@@ -439,22 +460,48 @@ async function getArticleBySlugWithSelect(slug: string, select: string, options:
     throw new Error(error.message);
   }
 
-  if (!data || (!options.includeUnpublished && !isPublishableListItem(data as unknown as SupabaseArticleRow))) {
+  const row = data as unknown as SupabaseArticleRow;
+  if (!data || (!options.includeUnpublished && row.source_metadata !== undefined && !isPublishableListItem(row))) {
     return null;
   }
 
-  return articleRowToItem(data as unknown as SupabaseArticleRow, {
-    includeSummaryJson: select === ARTICLE_DETAIL_SELECT,
+  return articleRowToItem(row, {
+    includeSummaryJson: select === ARTICLE_DETAIL_SELECT || select === ARTICLE_PAGE_SELECT,
     includeDetailFields: select === ARTICLE_DETAIL_SELECT,
   });
 }
 
-export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
-  return getArticleBySlugWithSelect(slug, ARTICLE_DETAIL_SELECT, options);
+export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean; includeSourceText?: boolean } = {}): Promise<ArticleDetail | null> {
+  return getArticleBySlugWithSelect(slug, options.includeSourceText === false ? ARTICLE_PAGE_SELECT : ARTICLE_DETAIL_SELECT, options);
 }
 
 export async function getArticlePreviewBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
   return getArticleBySlugWithSelect(slug, ARTICLE_LIST_SELECT, options);
+}
+
+export async function getArticleSourceTextBySlug(slug: string, options: { includeUnpublished?: boolean } = {}) {
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    const article = mockArticles.find((item) => item.slug === slug) ?? null;
+    if (!article || (!options.includeUnpublished && article.status !== "summarized")) return null;
+    return { slug: article.slug, cleanedText: article.cleanedText ?? null };
+  }
+
+  let query = supabase.from("articles").select("slug,status,source_metadata,cleaned_text").eq("slug", slug);
+  if (!options.includeUnpublished) {
+    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || (!options.includeUnpublished && !isPublishableListItem(data as unknown as SupabaseArticleRow))) return null;
+
+  const row = data as { slug?: string | null; cleaned_text?: string | null };
+  return {
+    slug: row.slug ?? slug,
+    cleanedText: row.cleaned_text ?? null,
+  };
 }
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
