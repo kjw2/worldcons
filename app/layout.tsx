@@ -47,6 +47,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={false}
                     className="focus-ring whitespace-nowrap rounded-lg px-3 py-2 font-medium transition hover:bg-surface-muted hover:text-ink"
                   >
                     {item.label}

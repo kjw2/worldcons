@@ -2,7 +2,6 @@ import { unstable_cache } from "next/cache";
 import type { Metadata } from "next";
 import { ArticleListView } from "@/components/article-list-view";
 import { FilterBar } from "@/components/filter-bar";
-import { HomeViewToggle } from "@/components/home-view-toggle";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles } from "@/lib/db/queries";
@@ -135,7 +134,6 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
         />
       </div>
 
-      <HomeViewToggle activeView="list" paramsString={paramsString} className="mb-4" />
       <ArticleListView
         result={articles}
         paramsString={paramsString}
