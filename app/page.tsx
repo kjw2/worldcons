@@ -1,11 +1,10 @@
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
-import { FilterBar } from "@/components/filter-bar";
-import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
+import { HomeFeedPanel } from "@/components/home-feed-panel";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags } from "@/lib/db/queries";
-import type { ArticleListFilters } from "@/lib/db/types";
+import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const revalidate = 60;
@@ -27,9 +26,30 @@ const getHomeFilterData = unstable_cache(
 
 const getHomeArticles = unstable_cache(
   async (filters: ArticleListFilters) => listArticles(filters),
-  ["home-articles-v1"],
+  ["home-articles-v2"],
   { revalidate: 60 },
 );
+
+function canUseJurisdictionTotal(filters: ArticleListFilters) {
+  return !filters.q && !filters.source && !filters.jurisdiction && !filters.type && !filters.tag && !filters.language;
+}
+
+function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>) {
+  const total = Math.max(
+    articles.items.length,
+    Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
+  );
+
+  return {
+    ...articles,
+    pageInfo: {
+      ...articles.pageInfo,
+      total,
+      hasMore: articles.items.length < total,
+      totalIsExact: true,
+    },
+  };
+}
 
 function SkeletonBlock({ className = "" }: { className?: string }) {
   return <div aria-hidden="true" className={`animate-pulse rounded-md bg-surface-muted ${className}`} />;
@@ -114,7 +134,9 @@ function HomeSkeleton() {
 
 async function HomeContent({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const paramsObject = await resolveSearchParams(searchParams);
-  const filters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9, count: "exact" as const };
+  const baseFilters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9 };
+  const countFromJurisdictions = canUseJurisdictionTotal(baseFilters);
+  const filters = { ...baseFilters, count: countFromJurisdictions ? ("none" as const) : ("exact" as const) };
   const params = new URLSearchParams();
   Object.entries(paramsObject).forEach(([key, value]) => {
     if (typeof value === "string" && value) params.set(key, value);
@@ -122,10 +144,11 @@ async function HomeContent({ searchParams }: { searchParams?: Promise<SearchPara
   params.delete("page");
   params.delete("pageSize");
 
-  const [articles, { sources, tags, jurisdictionArticleCounts }] = await Promise.all([
+  const [articleResult, { sources, tags, jurisdictionArticleCounts }] = await Promise.all([
     getHomeArticles(filters),
     getHomeFilterData(filters.range),
   ]);
+  const articles = countFromJurisdictions ? withJurisdictionTotal(articleResult, jurisdictionArticleCounts) : articleResult;
   const pageViewEvent = {
     eventType: "page_view" as const,
     path: "/",
@@ -144,17 +167,15 @@ async function HomeContent({ searchParams }: { searchParams?: Promise<SearchPara
   return (
     <>
       <PageViewTracker event={pageViewEvent} />
-      <div className="mb-6">
-        <FilterBar
-          activeRange={filters.range ?? "latest"}
-          sources={sources}
-          tags={tags}
-          params={params}
-          jurisdictionArticleCounts={jurisdictionArticleCounts}
-        />
-      </div>
-
-      <InfiniteArticleFeed initialResult={articles} queryString={params.toString()} pageSize={9} />
+      <HomeFeedPanel
+        initialResult={articles}
+        initialRange={filters.range ?? "latest"}
+        initialParamsString={params.toString()}
+        sources={sources}
+        tags={tags}
+        jurisdictionArticleCounts={jurisdictionArticleCounts}
+        pageSize={9}
+      />
     </>
   );
 }

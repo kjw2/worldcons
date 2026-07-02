@@ -123,7 +123,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
         description="정확한 문구부터 의미가 가까운 쟁점까지 공식 헌법재판 자료 안에서 탐색합니다."
       />
       <div className="mb-5">
-        <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} params={params} basePath="/search" />
+        <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} paramsString={params.toString()} basePath="/search" />
       </div>
 
       <SurfaceCard className="mb-5 space-y-4 p-4">
