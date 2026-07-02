@@ -8,8 +8,7 @@ import { listArticles, listJurisdictionArticleCounts, listSources, listTags } fr
 import type { ArticleListFilters } from "@/lib/db/types";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 60;
 
 const getHomeFilterData = unstable_cache(
   async (range: ArticleListFilters["range"]) => {

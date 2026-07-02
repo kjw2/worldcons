@@ -506,7 +506,7 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
   const tag = article.tags[0]?.slug;
-  const result = await listArticles({ tag, pageSize: limit + 1 });
+  const result = await listArticles({ tag, pageSize: limit + 1, count: "none" });
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 
@@ -670,7 +670,7 @@ export async function listArticlesForGlossaryTerm(term: GlossaryTerm, limit = 8)
   const articles = new Map<string, ArticleListItem>();
   for (const tag of expandRelatedTagNames(term.relatedTags)) {
     if (articles.size >= limit) break;
-    const result = await listArticles({ tag, pageSize: limit });
+    const result = await listArticles({ tag, pageSize: limit, count: "none" });
     for (const article of result.items) {
       articles.set(article.slug, article);
       if (articles.size >= limit) break;

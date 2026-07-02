@@ -87,7 +87,7 @@ export function AdminAttentionTable({
             </thead>
             <tbody className="divide-y divide-rule">
               {visibleData.map((article) => {
-                const reviewHref = `/articles/${article.slug}`;
+                const reviewHref = `/admin/articles/${article.slug}`;
                 const originalHref = safeExternalUrl(article.originalUrl);
 
                 return (
