@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { BookOpenText, CalendarDays, Check, ExternalLink, Eye, Share2 } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 import type { ArticleListItem } from "@/lib/db/types";
@@ -18,6 +19,20 @@ function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
 
 function formatViewCount(count?: number) {
   return new Intl.NumberFormat("ko-KR").format(Math.max(0, Math.floor(count ?? 0)));
+}
+
+function returnPathForCurrentView(pathname: string, searchParams: { toString(): string }) {
+  if (pathname !== "/" && pathname !== "/list") return null;
+  const query = searchParams.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function articleHrefWithReturnTo(slug: string, returnTo: string | null) {
+  const href = `/articles/${slug}`;
+  if (!returnTo) return href;
+
+  const params = new URLSearchParams({ returnTo });
+  return `${href}?${params.toString()}`;
 }
 
 async function copyTextToClipboard(text: string) {
@@ -76,6 +91,8 @@ export function ArticleCard({
   onArticleNavigate?: (slug: string) => void;
 }) {
   const [shareState, setShareState] = useState<"idle" | "copied">("idle");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const theme = themeForJurisdiction(article.jurisdiction);
   const handleArticleLinkClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (shouldSaveNavigation(event)) {
@@ -88,10 +105,11 @@ export function ArticleCard({
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const originalHref = safeExternalUrl(article.originalUrl);
   const viewCountLabel = formatViewCount(article.viewCount);
-  const articleHref = `/articles/${article.slug}`;
+  const canonicalArticleHref = `/articles/${article.slug}`;
+  const articleHref = articleHrefWithReturnTo(article.slug, returnPathForCurrentView(pathname, searchParams));
 
   async function shareArticle() {
-    const url = new URL(articleHref, window.location.origin).toString();
+    const url = new URL(canonicalArticleHref, window.location.origin).toString();
     const sharePayload = {
       title,
       text: summaryText,

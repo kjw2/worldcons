@@ -45,6 +45,15 @@ function hrefForPage(paramsString: string, page: number) {
   return hrefWithParams(params);
 }
 
+function currentListReturnPath(paramsString: string) {
+  return paramsString ? `/list?${paramsString}` : "/list";
+}
+
+function hrefForArticle(slug: string, paramsString: string) {
+  const params = new URLSearchParams({ returnTo: currentListReturnPath(paramsString) });
+  return `/articles/${slug}?${params.toString()}`;
+}
+
 function totalForCountries(counts: Record<string, number>) {
   return Object.values(counts).reduce((sum, count) => sum + count, 0);
 }
@@ -63,7 +72,7 @@ function paginationItems(currentPage: number, totalPages: number) {
   return items;
 }
 
-function ListArticleRow({ article }: { article: ArticleListItem }) {
+function ListArticleRow({ article, paramsString }: { article: ArticleListItem; paramsString: string }) {
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const summary = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
 
@@ -85,7 +94,7 @@ function ListArticleRow({ article }: { article: ArticleListItem }) {
       </div>
 
       <h2 className="line-clamp-2 text-[15px] font-bold leading-6 tracking-normal text-ink sm:text-base">
-        <Link href={`/articles/${article.slug}`} className="focus-ring rounded-sm hover:text-primary">
+        <Link href={hrefForArticle(article.slug, paramsString)} className="focus-ring rounded-sm hover:text-primary">
           {title}
         </Link>
       </h2>
@@ -197,7 +206,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
   );
 }
 
-function TopViewedList({ articles }: { articles: ArticleListItem[] }) {
+function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]; paramsString: string }) {
   return (
     <SurfaceCard className="overflow-hidden p-4 lg:sticky lg:top-24">
       <h2 className="text-sm font-bold tracking-normal text-ink">조회수 상위 자료</h2>
@@ -211,7 +220,7 @@ function TopViewedList({ articles }: { articles: ArticleListItem[] }) {
                 {index + 1}
               </span>
               <div className="min-w-0">
-                <Link href={`/articles/${article.slug}`} className="focus-ring line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-ink hover:text-primary">
+                <Link href={hrefForArticle(article.slug, paramsString)} className="focus-ring line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-ink hover:text-primary">
                   {article.koreanTitle || article.originalTitle || "제목 미상"}
                 </Link>
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-ink-subtle">
@@ -258,13 +267,13 @@ export function ArticleListView({
         {result.items.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-ink-muted">조건에 맞는 자료가 없습니다.</div>
         ) : (
-          result.items.map((article) => <ListArticleRow key={article.slug} article={article} />)
+          result.items.map((article) => <ListArticleRow key={article.slug} article={article} paramsString={paramsString} />)
         )}
 
         <ListPagination result={result} paramsString={paramsString} />
       </SurfaceCard>
 
-      <TopViewedList articles={topViewedArticles} />
+      <TopViewedList articles={topViewedArticles} paramsString={paramsString} />
     </section>
   );
 }

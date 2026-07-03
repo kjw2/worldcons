@@ -27,6 +27,29 @@ import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 export const revalidate = 60;
 
+type ArticlePageSearchParams = Record<string, string | string[] | undefined>;
+
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function articleReturnHref(searchParams?: ArticlePageSearchParams) {
+  const rawReturnTo = firstSearchParam(searchParams?.returnTo);
+  if (!rawReturnTo) return "/";
+
+  const returnTo = rawReturnTo.trim();
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return "/";
+
+  try {
+    const url = new URL(returnTo, "https://worldcons.local");
+    if (url.origin !== "https://worldcons.local") return "/";
+    if (url.pathname !== "/" && url.pathname !== "/list") return "/";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "/";
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -65,10 +88,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ArticlePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<ArticlePageSearchParams>;
 }) {
   const { slug } = await params;
+  const paramsObject = await searchParams;
   const article = await getArticleBySlug(slug, { includeSourceText: false });
   if (!article) notFound();
 
@@ -93,6 +119,7 @@ export default async function ArticlePage({
   const missingOriginalUrl = !originalHref;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
+  const returnHref = articleReturnHref(paramsObject);
 
   return (
     <PageShell className="max-w-7xl">
@@ -119,7 +146,7 @@ export default async function ArticlePage({
               <ExternalLink className="size-4" aria-hidden="true" />
             </a>
           ) : null}
-          <Link href="/" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
+          <Link href={returnHref} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
             <ArrowLeft className="size-4" aria-hidden="true" />
             목록으로
           </Link>
