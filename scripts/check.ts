@@ -41,9 +41,11 @@ import {
   createAdminSession,
   isAuthorizedAdminMutationRequest,
   isAuthorizedRequest,
+  portalAuthFailureStatus,
   safeAdminNextPath,
   validateAdminCredentials,
   validateProductionSecurityConfig,
+  WORLDLAWS_PORTAL_TOKEN_HEADER,
 } from "@/lib/utils/auth";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
@@ -341,6 +343,7 @@ const originalAdminUsername = process.env.ADMIN_USERNAME;
 const originalAdminPassword = process.env.ADMIN_PASSWORD;
 const originalAdminSessionSecret = process.env.ADMIN_SESSION_SECRET;
 const originalLlmSettingsSecret = process.env.LLM_SETTINGS_SECRET;
+const originalPortalToken = process.env.WORLDCONS_PORTAL_TOKEN;
 const mutableEnv = process.env as Record<string, string | undefined>;
 mutableEnv.NODE_ENV = "production";
 delete mutableEnv.CRON_SECRET;
@@ -348,6 +351,7 @@ delete mutableEnv.ADMIN_USERNAME;
 delete mutableEnv.ADMIN_PASSWORD;
 delete mutableEnv.ADMIN_SESSION_SECRET;
 delete mutableEnv.LLM_SETTINGS_SECRET;
+delete mutableEnv.WORLDCONS_PORTAL_TOKEN;
 assert(
   !isAuthorizedRequest(new Request("https://example.test/api/admin/ingest", { headers: { authorization: "Bearer undefined" } })),
   "missing production CRON_SECRET must not authorize Bearer undefined",
@@ -411,6 +415,21 @@ assert(
 assert(llmSettingsEncryptionSecretSource() === null, "production LLM settings encryption must not fall back to unrelated secrets");
 mutableEnv.LLM_SETTINGS_SECRET = "l".repeat(32);
 assert(llmSettingsEncryptionSecretSource() === "LLM_SETTINGS_SECRET", "LLM settings encryption must use the dedicated secret");
+mutableEnv.WORLDCONS_PORTAL_TOKEN = "portal-secret-value";
+assert(
+  portalAuthFailureStatus(new Request("https://example.test/api/portal/latest")) === 401,
+  "portal latest API must reject missing tokens with 401",
+);
+assert(
+  portalAuthFailureStatus(new Request("https://example.test/api/portal/latest", { headers: { [WORLDLAWS_PORTAL_TOKEN_HEADER]: "wrong" } })) === 403,
+  "portal latest API must reject wrong tokens with 403",
+);
+assert(
+  portalAuthFailureStatus(
+    new Request("https://example.test/api/portal/latest", { headers: { [WORLDLAWS_PORTAL_TOKEN_HEADER]: mutableEnv.WORLDCONS_PORTAL_TOKEN } }),
+  ) === null,
+  "portal latest API must accept the shared worldlaws token header",
+);
 const validProductionEnv = {
   NODE_ENV: "production",
   ADMIN_PASSWORD: "admin6",
@@ -442,6 +461,8 @@ if (originalAdminSessionSecret === undefined) delete mutableEnv.ADMIN_SESSION_SE
 else mutableEnv.ADMIN_SESSION_SECRET = originalAdminSessionSecret;
 if (originalLlmSettingsSecret === undefined) delete mutableEnv.LLM_SETTINGS_SECRET;
 else mutableEnv.LLM_SETTINGS_SECRET = originalLlmSettingsSecret;
+if (originalPortalToken === undefined) delete mutableEnv.WORLDCONS_PORTAL_TOKEN;
+else mutableEnv.WORLDCONS_PORTAL_TOKEN = originalPortalToken;
 if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
 else mutableEnv.NODE_ENV = originalNodeEnv;
 
