@@ -17,7 +17,7 @@ export default async function AdminArticlePage({ params }: { params: Promise<{ s
   const { slug } = await params;
   const authorized = await isAuthorizedPageRequest();
   if (!authorized) {
-    redirect(`/admin/login?next=/admin`);
+    redirect(`/admin/login?next=${encodeURIComponent(`/admin/articles/${slug}`)}`);
   }
 
   const article = await getArticleBySlug(slug, { includeUnpublished: true, includeSourceText: false });
@@ -30,9 +30,12 @@ export default async function AdminArticlePage({ params }: { params: Promise<{ s
     <PageShell className="max-w-7xl">
       <section className="mb-7 border-b border-line pb-7">
         <div className="mb-4 flex flex-wrap gap-2">
-          <Link href="/admin" className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
+          <Link href="/admin/articles" className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
             <ArrowLeft className="size-4" aria-hidden="true" />
-            관리자
+            기사 목록
+          </Link>
+          <Link href="/admin" className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
+            대시보드
           </Link>
           <Link href={`/articles/${article.slug}`} className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
             공개 상세
