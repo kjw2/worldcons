@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 const DEFAULT_ANALYTICS_DAYS = 30;
 
 interface SiteEventRow {
+  id?: string | null;
   occurred_at: string;
   event_type: string;
   path?: string | null;
@@ -128,6 +129,41 @@ export interface AccessLogEntry {
   resultCount?: number | null;
 }
 
+export interface AdminAuditLogEntry {
+  id: string;
+  createdAt: string;
+  eventType: string;
+  action: string;
+  path?: string | null;
+  articleSlug?: string | null;
+  sourceKey?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  result?: string | null;
+  error?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface AdminAuditLogData {
+  generatedAt: string;
+  hasDatabase: boolean;
+  schemaReady: boolean;
+  filters: {
+    eventType?: string;
+    action?: string;
+    q?: string;
+    page: number;
+    pageSize: number;
+  };
+  entries: AdminAuditLogEntry[];
+  pageInfo: {
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
+
 export interface TimelineBucket {
   key: string;
   label: string;
@@ -200,6 +236,33 @@ function numberValue(value?: number | null) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function stringMetadataValue(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = metadata?.[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "boolean") return value ? "true" : "false";
+  }
+  return null;
+}
+
+function normalizeAuditPage(page?: number) {
+  return Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
+}
+
+function normalizeAuditPageSize(pageSize?: number) {
+  return Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.min(Math.floor(pageSize), 100) : 25;
+}
+
+function normalizeAuditFilter(value?: string | null, max = 120) {
+  const text = value?.trim();
+  return text ? text.slice(0, max) : undefined;
+}
+
+function isAdminAuditEventType(value?: string | null) {
+  return value === "admin_action" || value === "admin_review_action";
+}
+
 function percent(numerator: number, denominator: number) {
   return denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
 }
@@ -239,6 +302,51 @@ function labelForEvent(event: SiteEventRow) {
   return event.path || event.event_type;
 }
 
+export function adminAuditEntryFromSiteEvent(event: SiteEventRow): AdminAuditLogEntry {
+  const metadata = event.metadata ?? {};
+  const action = stringMetadataValue(metadata, ["action", "resolvedAction", "requestedAction"]) ?? event.event_type;
+  const result =
+    stringMetadataValue(metadata, ["result", "status", "reviewStatus", "mode"]) ??
+    (metadata.refreshed === true ? "refreshed" : metadata.refreshed === false ? "not_refreshed" : null);
+
+  return {
+    id: event.id ?? `${event.occurred_at}:${event.event_type}:${event.path ?? ""}:${action}`,
+    createdAt: event.occurred_at,
+    eventType: event.event_type,
+    action,
+    path: event.path,
+    articleSlug: event.article_slug ?? stringMetadataValue(metadata, ["articleSlug", "slug"]),
+    sourceKey: event.source_key ?? stringMetadataValue(metadata, ["sourceKey", "requestedSourceKey"]),
+    provider: stringMetadataValue(metadata, ["provider", "requestedProvider"]),
+    model: stringMetadataValue(metadata, ["model", "requestedModel"]),
+    result,
+    error: stringMetadataValue(metadata, ["error", "errorMessage", "message"]),
+    metadata,
+  };
+}
+
+function matchesAuditFilters(entry: AdminAuditLogEntry, filters: { action?: string; q?: string }) {
+  if (filters.action && entry.action !== filters.action) return false;
+  if (!filters.q) return true;
+
+  const needle = filters.q.toLowerCase();
+  const haystack = [
+    entry.eventType,
+    entry.action,
+    entry.path,
+    entry.articleSlug,
+    entry.sourceKey,
+    entry.provider,
+    entry.model,
+    entry.result,
+    entry.error,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
 async function loadSiteEvents(days: number) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return { rows: [] as SiteEventRow[], schemaReady: false };
@@ -267,6 +375,101 @@ async function loadSiteEvents(days: number) {
   }
 
   return { rows: (data ?? []) as SiteEventRow[], schemaReady: true };
+}
+
+export async function getAdminAuditLogData(options: {
+  eventType?: string;
+  action?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<AdminAuditLogData> {
+  const supabase = getSupabaseAdmin();
+  const page = normalizeAuditPage(options.page);
+  const pageSize = normalizeAuditPageSize(options.pageSize);
+  const eventType = normalizeAuditFilter(options.eventType);
+  const action = normalizeAuditFilter(options.action);
+  const q = normalizeAuditFilter(options.q, 200);
+
+  if (!supabase) {
+    return {
+      generatedAt: new Date().toISOString(),
+      hasDatabase: false,
+      schemaReady: true,
+      filters: { eventType, action, q, page, pageSize },
+      entries: [],
+      pageInfo: { page, pageSize, total: 0, hasMore: false },
+    };
+  }
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  const baseQuery = supabase
+    .from("site_events")
+    .select("id, occurred_at, event_type, path, article_slug, source_key, metadata", { count: "exact" })
+    .in("event_type", isAdminAuditEventType(eventType) ? [eventType] : ["admin_action", "admin_review_action"])
+    .order("occurred_at", { ascending: false });
+
+  if (action || q) {
+    const { data, error } = await baseQuery.limit(1000);
+    if (error) {
+      return {
+        generatedAt: new Date().toISOString(),
+        hasDatabase: true,
+        schemaReady: false,
+        filters: { eventType, action, q, page, pageSize },
+        entries: [],
+        pageInfo: { page, pageSize, total: 0, hasMore: false },
+      };
+    }
+
+    const filteredEntries = ((data ?? []) as SiteEventRow[])
+      .map(adminAuditEntryFromSiteEvent)
+      .filter((entry) => matchesAuditFilters(entry, { action, q }));
+    const entries = filteredEntries.slice(from, from + pageSize);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      hasDatabase: true,
+      schemaReady: true,
+      filters: { eventType, action, q, page, pageSize },
+      entries,
+      pageInfo: {
+        page,
+        pageSize,
+        total: filteredEntries.length,
+        hasMore: from + entries.length < filteredEntries.length,
+      },
+    };
+  }
+
+  const { data, error, count } = await baseQuery.range(from, to);
+  if (error) {
+    return {
+      generatedAt: new Date().toISOString(),
+      hasDatabase: true,
+      schemaReady: false,
+      filters: { eventType, action, q, page, pageSize },
+      entries: [],
+      pageInfo: { page, pageSize, total: 0, hasMore: false },
+    };
+  }
+
+  const entries = ((data ?? []) as SiteEventRow[]).map(adminAuditEntryFromSiteEvent);
+  const total = count ?? from + entries.length;
+  return {
+    generatedAt: new Date().toISOString(),
+    hasDatabase: true,
+    schemaReady: true,
+    filters: { eventType, action, q, page, pageSize },
+    entries,
+    pageInfo: {
+      page,
+      pageSize,
+      total,
+      hasMore: from + entries.length < total,
+    },
+  };
 }
 
 async function loadIngestionRunRows(days: number): Promise<AnalyticsIngestionRunRow[]> {

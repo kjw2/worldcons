@@ -226,7 +226,7 @@ async function createIngestionRun(sourceKey: string) {
   return String(data.id);
 }
 
-async function closeIngestionRun(runId: string | null, result: SourceRunResult, status = "completed") {
+async function closeIngestionRun(runId: string | null, result: SourceRunResult, status = "completed", runOptions?: Record<string, unknown>) {
   const supabase = getSupabaseAdmin();
   if (!supabase || !runId) return;
 
@@ -241,6 +241,7 @@ async function closeIngestionRun(runId: string | null, result: SourceRunResult, 
       failed_count: result.failedCount,
       error_message: result.errors[0] ?? null,
       metadata: {
+        runOptions,
         skippedCount: result.skippedCount,
         errors: result.errors.slice(0, 10),
         diagnostics: result.diagnostics,
@@ -695,6 +696,15 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     usePlaywright: options.usePlaywright,
     diagnostics: result.diagnostics,
   };
+  const runOptionsMetadata = {
+    sourceKey: adapter.sourceKey,
+    limit,
+    rangeDays: rangeDays ?? null,
+    strategy: discoveryOptions.strategy,
+    usePlaywright: discoveryOptions.usePlaywright ?? null,
+    allowVercelCrawling: options.allowVercelCrawling === true,
+    refreshExisting,
+  };
 
   try {
     const allDiscovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions));
@@ -789,12 +799,12 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       }
     }
 
-    await closeIngestionRun(runId, result);
+    await closeIngestionRun(runId, result, "completed", runOptionsMetadata);
     return result;
   } catch (error) {
     result.failedCount += 1;
     result.errors.push(error instanceof Error ? error.message : String(error));
-    await closeIngestionRun(runId, result, "failed");
+    await closeIngestionRun(runId, result, "failed", runOptionsMetadata);
     return result;
   }
 }

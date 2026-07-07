@@ -24,6 +24,8 @@ pnpm build
 
 - 관리자 수집 실행 버튼이 정상 동작하는지 확인
 - 관리자 상세 화면 재요약 버튼이 정상 동작하는지 확인
+- `/admin/audit`가 로그인 없이 열리지 않고, 로그인 후 관리자 작업 이벤트를 읽기 전용으로 보여주는지 확인
+- 감사 로그와 실행 결과 화면에 LLM/API key, cron secret, session secret 값이 노출되지 않는지 확인
 - `/api/admin/logout` GET이 405인지 확인
 - `/api/admin/cron/ingest`가 secret 헤더 없이 401인지 확인
 - 공개 검색 API에서 비정상 `pageSize`, `mode`, `tag` 입력이 400인지 확인

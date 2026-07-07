@@ -54,6 +54,7 @@ import { safeExternalUrl } from "@/lib/utils/safe-url";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { canonicalizeTerminologyText, canonicalizeTerminologyValue } from "@/lib/ai/terminology";
+import { adminAuditEntryFromSiteEvent } from "@/lib/db/analytics";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
 import type { NormalizedArticle } from "@/lib/sources/types";
@@ -127,6 +128,31 @@ assert(
 );
 assert(!parseAnalyticsEventBody({ eventType: "tag_click", path: "https://evil.test" }).ok, "absolute analytics event paths must fail validation");
 assert(!parseAnalyticsEventBody({ eventType: "tag_click", path: "/x", metadata: { nested: { bad: true } } }).ok, "nested analytics metadata must fail validation");
+const adminAuditEntry = adminAuditEntryFromSiteEvent({
+  id: "audit-test",
+  occurred_at: "2026-07-07T00:00:00.000Z",
+  event_type: "admin_action",
+  path: "/api/admin/ingest",
+  article_slug: null,
+  source_key: "de-bverfg",
+  metadata: {
+    action: "ingest-and-summarize",
+    requestedAction: "ingest-and-summarize",
+    requestedLimit: 5,
+    requestedSummarizeLimit: 10,
+    requestedAllowVercelCrawling: false,
+    provider: "gemini",
+    model: "gemini-3.1-flash-lite",
+    result: "completed",
+    apiKey: "sk-test-should-not-be-promoted",
+  },
+});
+assert(adminAuditEntry.action === "ingest-and-summarize", "admin audit helper must parse action metadata");
+assert(adminAuditEntry.sourceKey === "de-bverfg", "admin audit helper must preserve source key");
+assert(adminAuditEntry.provider === "gemini", "admin audit helper must parse provider");
+assert(adminAuditEntry.model === "gemini-3.1-flash-lite", "admin audit helper must parse model");
+assert(adminAuditEntry.result === "completed", "admin audit helper must parse result");
+assert(JSON.stringify({ action: adminAuditEntry.action, provider: adminAuditEntry.provider, model: adminAuditEntry.model, result: adminAuditEntry.result, error: adminAuditEntry.error }).includes("sk-test") === false, "admin audit display fields must not promote secret-like metadata");
 
 const article: NormalizedArticle = {
   sourceKey: "us-scotus",
@@ -856,6 +882,34 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(unauthenticatedIngestResponse.status === 401, "admin POST without authentication must return 401");
 
+    const { PATCH: candidatesPatch } = await import("@/app/api/admin/candidates/route");
+    const unauthenticatedCandidateMutationResponse = await candidatesPatch(
+      new Request("https://example.test/api/admin/candidates", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ candidateId: "00000000-0000-0000-0000-000000000000", action: "ignore" }),
+      }),
+    );
+    assert(unauthenticatedCandidateMutationResponse.status === 401, "admin candidate mutation without authentication must return 401");
+
+    const invalidCandidateActionResponse = await candidatesPatch(
+      new Request("https://example.test/api/admin/candidates", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ candidateId: "00000000-0000-0000-0000-000000000000", action: "delete" }),
+      }),
+    );
+    assert(invalidCandidateActionResponse.status === 400, "admin candidate mutation with invalid action must return 400");
+
+    const invalidCandidateStatusResponse = await candidatesPatch(
+      new Request("https://example.test/api/admin/candidates", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ candidateId: "00000000-0000-0000-0000-000000000000", status: "deleted" }),
+      }),
+    );
+    assert(invalidCandidateStatusResponse.status === 400, "admin candidate mutation with invalid status must return 400");
+
     const missingCsrfResponse = await ingestPost(
       new Request("https://example.test/api/admin/ingest", {
         method: "POST",
@@ -873,6 +927,37 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(crossOriginResponse.status === 403, "cross-origin admin POST must return 403");
+
+    const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
+    const unauthenticatedBulkResponse = await articlesBulkPost(
+      new Request("https://example.test/api/admin/articles/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "mark-needs-review", slugs: ["sample"] }),
+      }),
+    );
+    assert(unauthenticatedBulkResponse.status === 401, "admin article bulk POST without authentication must return 401");
+
+    const oversizedBulkResponse = await articlesBulkPost(
+      new Request("https://example.test/api/admin/articles/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({
+          action: "mark-needs-review",
+          slugs: Array.from({ length: 101 }, (_, index) => `article-${index}`),
+        }),
+      }),
+    );
+    assert(oversizedBulkResponse.status === 400, "admin article bulk POST must reject more than 100 explicit articles");
+
+    const invalidBulkActionResponse = await articlesBulkPost(
+      new Request("https://example.test/api/admin/articles/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ action: "publish-all-filter-results", slugs: ["sample"] }),
+      }),
+    );
+    assert(invalidBulkActionResponse.status === 400, "admin article bulk POST must reject unsupported actions");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);

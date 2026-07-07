@@ -32,6 +32,15 @@ interface CollectionCounts {
   seedCount?: number;
 }
 
+interface RunOptionsMetadata {
+  limit?: number;
+  rangeDays?: number | null;
+  strategy?: string;
+  usePlaywright?: boolean | null;
+  allowVercelCrawling?: boolean;
+  refreshExisting?: boolean;
+}
+
 interface UncollectedCandidate {
   sourceKey?: string;
   url?: string;
@@ -65,6 +74,7 @@ function diagnosticsFor(run: IngestionRunRecord) {
         fallbackUsed?: boolean;
         collectionCounts?: CollectionCounts;
         uncollectedCandidates?: UncollectedCandidate[];
+        runOptions?: RunOptionsMetadata;
       }
     | null
     | undefined;
@@ -73,6 +83,7 @@ function diagnosticsFor(run: IngestionRunRecord) {
     fallbackUsed: Boolean(metadata?.fallbackUsed),
     collectionCounts: metadata?.collectionCounts ?? {},
     uncollectedCandidates: metadata?.uncollectedCandidates ?? [],
+    runOptions: metadata?.runOptions ?? {},
   };
 }
 
@@ -251,6 +262,30 @@ function UncollectedCandidateBadge({ candidates }: { candidates: UncollectedCand
   );
 }
 
+function OptionBadge({ label, value }: { label: string; value?: string | number | boolean | null }) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <span className="inline-flex min-h-7 items-center gap-1.5 rounded-md border border-rule bg-parchment px-2.5 text-xs font-semibold text-ink/68">
+      <span className="text-ink/48">{label}</span>
+      <span>{typeof value === "boolean" ? (value ? "예" : "아니오") : value}</span>
+    </span>
+  );
+}
+
+function RunOptions({ options }: { options: RunOptionsMetadata }) {
+  if (Object.keys(options).length === 0) return <span className="text-xs text-ink/45">기록 없음</span>;
+  return (
+    <div className="flex max-w-sm flex-wrap gap-1.5">
+      <OptionBadge label="limit" value={options.limit} />
+      <OptionBadge label="range" value={options.rangeDays ? `${options.rangeDays}일` : null} />
+      <OptionBadge label="strategy" value={options.strategy} />
+      <OptionBadge label="playwright" value={options.usePlaywright} />
+      <OptionBadge label="Vercel" value={options.allowVercelCrawling} />
+      <OptionBadge label="refresh" value={options.refreshExisting} />
+    </div>
+  );
+}
+
 function UncollectedCandidates({ candidates }: { candidates: UncollectedCandidate[] }) {
   if (candidates.length === 0) return null;
 
@@ -361,12 +396,13 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
           ) : null}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] divide-y divide-rule text-sm">
+          <table className="min-w-[1280px] divide-y divide-rule text-sm">
             <thead className="bg-parchment">
               <tr className="text-left text-xs font-semibold text-ink/60">
                 <th className="px-4 py-3">실행</th>
                 <th className="px-4 py-3">상태</th>
                 <th className="px-4 py-3">기간</th>
+                <th className="px-4 py-3">실행 옵션</th>
                 <th className="px-4 py-3">수집 결과</th>
                 <th className="px-4 py-3">공개 분류</th>
                 <th className="px-4 py-3">진단</th>
@@ -388,6 +424,9 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                       <div className="mt-2 text-xs text-ink/50">{run.finishedAt ? `${formatDateTime(run.finishedAt)} 종료` : "종료 대기"}</div>
                     </td>
                     <td className="px-4 py-4 text-sm font-semibold text-ink/72">{durationLabel(run.startedAt, run.finishedAt)}</td>
+                    <td className="px-4 py-4">
+                      <RunOptions options={diagnostics.runOptions} />
+                    </td>
                     <td className="px-4 py-4">
                       <div className="flex max-w-sm flex-wrap gap-1.5">
                         <ResultPill label="발견" value={run.discoveredCount} />

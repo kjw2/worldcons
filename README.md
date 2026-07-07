@@ -741,8 +741,10 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 ```text
 /admin
 /admin/analytics
+/admin/audit
 /admin/ingestion-runs
 /admin/glossary-candidates
+/admin/llm
 ```
 
 공개 화면의 상단 메뉴에는 관리자 링크를 노출하지 않습니다. 브라우저 주소창에서 `/admin`에 들어가면 `/admin/login`으로 이동합니다.
@@ -767,10 +769,14 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | 검토 목록 | 실패, 차단, timeout, 검토 필요 자료를 확인하고 검토 유형·권장 다음 절차에 따라 요약/공개/비공개 결정을 실행합니다 |
 | 요약 실패 1건 재시도 | 검토 목록의 `요약 실패` 뱃지를 눌러 해당 자료만 다시 요약합니다 |
 | 이용 통계 | 접속 로그, 일별·월별 집계, 인기 자료, 검색어 순위, 검색 결과 0건, 태그 클릭, 국가/기관별 조회, 수집 성공률, 요약 모델별 성공·실패를 확인합니다 |
+| 감사 로그 | `site_events`의 관리자 작업 이벤트를 읽기 전용으로 조회하고 action, path, 대상 자료/source, LLM provider/model, 결과/오류를 확인합니다 |
+| LLM 관리 | 서버 secret을 화면에 노출하지 않고 요약 provider/model과 DB 저장 key 상태를 확인·저장합니다 |
 
 `요약 실패` 뱃지 재시도가 성공하면 해당 자료는 즉시 검토 목록에서 사라집니다. 실패하면 같은 줄에 실패 메시지가 표시됩니다.
 
-자체 이용 통계는 `site_events` 테이블에 저장합니다. 접속 컴퓨터별 rate limit 적용을 위해 IP, IP hash, User-Agent, Accept-Language, Vercel/Cloudflare 지역 헤더를 함께 저장합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다. 관리자 화면은 최근 접속 로그와 KST 기준 일별·월별 집계를 함께 보여줍니다.
+관리자 v2 P0 운영 화면은 대시보드(`/admin`), 이용 통계(`/admin/analytics`), 감사 로그(`/admin/audit`), 실행 기록(`/admin/ingestion-runs`), 용어 후보(`/admin/glossary-candidates`), LLM 관리(`/admin/llm`)로 나뉩니다. 수집·요약 실행 결과는 화면에서 요청 옵션과 source별 결과 요약을 먼저 보여주고, 원문 응답은 접어서 확인합니다.
+
+자체 이용 통계와 P0 감사 로그는 `site_events` 테이블에 저장합니다. 접속 컴퓨터별 rate limit 적용을 위해 IP, IP hash, User-Agent, Accept-Language, Vercel/Cloudflare 지역 헤더를 함께 저장합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다. 관리자 화면은 최근 접속 로그와 KST 기준 일별·월별 집계를 함께 보여줍니다.
 
 공개 조회 API, 이용 통계 이벤트 수집 endpoint, 관리자 로그인에는 IP 또는 fallback 접속 식별자 기준의 메모리 rate limit이 적용됩니다. Vercel 같은 서버리스 환경에서는 인스턴스별로 동작하므로 강한 전역 차단이 필요해지면 현재 저장되는 `site_events.client_ip_hash` 기준으로 DB/Redis 기반 차단 정책을 추가하면 됩니다.
 
