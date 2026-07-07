@@ -303,25 +303,36 @@ function labelForEvent(event: SiteEventRow) {
   return event.path || event.event_type;
 }
 
+function redactSensitiveText(value?: string | null) {
+  if (!value) return value;
+  return value
+    .replace(/sk-(?:proj-)?[A-Za-z0-9_-]{8,}/g, "[redacted]")
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[redacted]")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]{16,}/gi, "$1[redacted]")
+    .replace(/([?&](?:secret|token|key|api_key)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\s,;]+/gi, "$1[redacted]");
+}
+
 export function adminAuditEntryFromSiteEvent(event: SiteEventRow): AdminAuditLogEntry {
   const metadata = event.metadata ?? {};
-  const action = stringMetadataValue(metadata, ["action", "resolvedAction", "requestedAction"]) ?? event.event_type;
-  const result =
+  const action = redactSensitiveText(stringMetadataValue(metadata, ["action", "resolvedAction", "requestedAction"]) ?? event.event_type) ?? event.event_type;
+  const result = redactSensitiveText(
     stringMetadataValue(metadata, ["result", "status", "reviewStatus", "mode"]) ??
-    (metadata.refreshed === true ? "refreshed" : metadata.refreshed === false ? "not_refreshed" : null);
+      (metadata.refreshed === true ? "refreshed" : metadata.refreshed === false ? "not_refreshed" : null),
+  );
 
   return {
     id: event.id ?? `${event.occurred_at}:${event.event_type}:${event.path ?? ""}:${action}`,
     createdAt: event.occurred_at,
     eventType: event.event_type,
     action,
-    path: event.path,
-    articleSlug: event.article_slug ?? stringMetadataValue(metadata, ["articleSlug", "slug"]),
-    sourceKey: event.source_key ?? stringMetadataValue(metadata, ["sourceKey", "requestedSourceKey"]),
-    provider: stringMetadataValue(metadata, ["provider", "requestedProvider"]),
-    model: stringMetadataValue(metadata, ["model", "requestedModel"]),
+    path: redactSensitiveText(event.path),
+    articleSlug: redactSensitiveText(event.article_slug ?? stringMetadataValue(metadata, ["articleSlug", "slug"])),
+    sourceKey: redactSensitiveText(event.source_key ?? stringMetadataValue(metadata, ["sourceKey", "requestedSourceKey"])),
+    provider: redactSensitiveText(stringMetadataValue(metadata, ["provider", "requestedProvider"])),
+    model: redactSensitiveText(stringMetadataValue(metadata, ["model", "requestedModel"])),
     result,
-    error: stringMetadataValue(metadata, ["error", "errorMessage", "message"]),
+    error: redactSensitiveText(stringMetadataValue(metadata, ["error", "errorMessage", "message"])),
     metadata,
   };
 }

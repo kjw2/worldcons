@@ -132,9 +132,9 @@ const adminAuditEntry = adminAuditEntryFromSiteEvent({
   id: "audit-test",
   occurred_at: "2026-07-07T00:00:00.000Z",
   event_type: "admin_action",
-  path: "/api/admin/ingest",
   article_slug: null,
   source_key: "de-bverfg",
+  path: "/api/admin/ingest?secret=plain-secret-value",
   metadata: {
     action: "ingest-and-summarize",
     requestedAction: "ingest-and-summarize",
@@ -144,6 +144,7 @@ const adminAuditEntry = adminAuditEntryFromSiteEvent({
     provider: "gemini",
     model: "gemini-3.1-flash-lite",
     result: "completed",
+    errorMessage: "provider returned sk-proj-secretvalue1234567890 with Bearer abcdefghijklmnopqrstuvwxyz012345",
     apiKey: "sk-test-should-not-be-promoted",
   },
 });
@@ -152,7 +153,10 @@ assert(adminAuditEntry.sourceKey === "de-bverfg", "admin audit helper must prese
 assert(adminAuditEntry.provider === "gemini", "admin audit helper must parse provider");
 assert(adminAuditEntry.model === "gemini-3.1-flash-lite", "admin audit helper must parse model");
 assert(adminAuditEntry.result === "completed", "admin audit helper must parse result");
-assert(JSON.stringify({ action: adminAuditEntry.action, provider: adminAuditEntry.provider, model: adminAuditEntry.model, result: adminAuditEntry.result, error: adminAuditEntry.error }).includes("sk-test") === false, "admin audit display fields must not promote secret-like metadata");
+assert(JSON.stringify({ action: adminAuditEntry.action, path: adminAuditEntry.path, provider: adminAuditEntry.provider, model: adminAuditEntry.model, result: adminAuditEntry.result, error: adminAuditEntry.error }).includes("sk-test") === false, "admin audit display fields must not promote secret-like metadata");
+assert(adminAuditEntry.path === "/api/admin/ingest?secret=[redacted]", "admin audit path query secrets must be redacted");
+assert(!JSON.stringify({ error: adminAuditEntry.error }).includes("sk-proj-secretvalue"), "admin audit error must redact OpenAI-like keys");
+assert(!JSON.stringify({ error: adminAuditEntry.error }).includes("abcdefghijklmnopqrstuvwxyz012345"), "admin audit error must redact bearer tokens");
 
 const article: NormalizedArticle = {
   sourceKey: "us-scotus",
