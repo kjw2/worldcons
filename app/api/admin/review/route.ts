@@ -35,6 +35,9 @@ export async function POST(request: Request) {
   if (!action) {
     return NextResponse.json({ error: "Unsupported review action" }, { status: 400 });
   }
+  if (action === "close-private" && body.confirmation !== "close-private") {
+    return NextResponse.json({ error: "close-private requires explicit confirmation" }, { status: 400 });
+  }
   if (!articleId && !slug) {
     return NextResponse.json({ error: "articleId or slug is required" }, { status: 400 });
   }

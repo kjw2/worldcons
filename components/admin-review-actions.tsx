@@ -151,6 +151,7 @@ export function AdminReviewActions({
 
   async function runAction(action: ReviewAction, modelSelection?: Pick<SummaryModelOption, "provider" | "model"> | null) {
     if (pendingAction) return;
+    if (action === "close-private" && !window.confirm("이 자료를 비공개 종결하면 검토 큐에서 제외됩니다. 계속 진행할까요?")) return;
 
     setPendingAction(action);
     setMessage(null);
@@ -161,7 +162,15 @@ export function AdminReviewActions({
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
-        body: JSON.stringify({ action, articleId, slug, note, provider: modelSelection?.provider, model: modelSelection?.model }),
+        body: JSON.stringify({
+          action,
+          articleId,
+          slug,
+          note,
+          provider: modelSelection?.provider,
+          model: modelSelection?.model,
+          confirmation: action === "close-private" ? "close-private" : undefined,
+        }),
       });
       const payload: unknown = await response.json().catch(() => ({}));
       if (!response.ok) {

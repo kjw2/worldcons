@@ -962,6 +962,25 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(invalidBulkActionResponse.status === 400, "admin article bulk POST must reject unsupported actions");
+
+    const unconfirmedBulkClosePrivateResponse = await articlesBulkPost(
+      new Request("https://example.test/api/admin/articles/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ action: "close-private", slugs: ["sample"] }),
+      }),
+    );
+    assert(unconfirmedBulkClosePrivateResponse.status === 400, "admin article bulk POST must require explicit confirmation for close-private");
+
+    const { POST: reviewPost } = await import("@/app/api/admin/review/route");
+    const unconfirmedReviewClosePrivateResponse = await reviewPost(
+      new Request("https://example.test/api/admin/review", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ action: "close-private", slug: "sample" }),
+      }),
+    );
+    assert(unconfirmedReviewClosePrivateResponse.status === 400, "admin review POST must require explicit confirmation for close-private");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);

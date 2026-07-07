@@ -81,6 +81,9 @@ export async function POST(request: Request) {
   if (!action) {
     return NextResponse.json({ error: "Unsupported bulk action" }, { status: 400 });
   }
+  if (action === "close-private" && body.confirmation !== "close-private") {
+    return NextResponse.json({ error: "close-private requires explicit confirmation" }, { status: 400 });
+  }
 
   const refs = parseRefs(body);
   if (refs.length === 0) {

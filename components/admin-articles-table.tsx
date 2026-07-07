@@ -64,6 +64,7 @@ export function AdminArticlesTable({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [action, setAction] = useState<AdminArticleBulkAction>("mark-needs-review");
   const [note, setNote] = useState("");
+  const [closePrivateConfirmed, setClosePrivateConfirmed] = useState(false);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -105,6 +106,7 @@ export function AdminArticlesTable({
         body: JSON.stringify({
           action,
           note,
+          confirmation: action === "close-private" && closePrivateConfirmed ? "close-private" : undefined,
           items: selectedArticles.map((article) => ({ id: article.id, slug: article.slug })),
         }),
       });
@@ -115,6 +117,7 @@ export function AdminArticlesTable({
       }
       setMessage(resultMessage(payload));
       setSelectedKeys(new Set());
+      setClosePrivateConfirmed(false);
       router.refresh();
     } catch (error) {
       setIsError(true);
@@ -136,7 +139,10 @@ export function AdminArticlesTable({
             일괄 작업
             <select
               value={action}
-              onChange={(event) => setAction(event.target.value as AdminArticleBulkAction)}
+              onChange={(event) => {
+                setAction(event.target.value as AdminArticleBulkAction);
+                setClosePrivateConfirmed(false);
+              }}
               className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm font-semibold text-ink"
             >
               <option value="mark-needs-review">검토 필요로 표시</option>
@@ -153,7 +159,7 @@ export function AdminArticlesTable({
           </label>
           <button
             type="button"
-            disabled={pending || selectedArticles.length === 0 || selectedArticles.length > 100}
+            disabled={pending || selectedArticles.length === 0 || selectedArticles.length > 100 || (action === "close-private" && !closePrivateConfirmed)}
             onClick={runBulkAction}
             className="focus-ring inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white hover:bg-ink/90 disabled:cursor-not-allowed disabled:bg-ink/40"
           >
@@ -161,6 +167,17 @@ export function AdminArticlesTable({
             {pending ? "저장 중" : `${selectedArticles.length}건 적용`}
           </button>
         </div>
+        {action === "close-private" ? (
+          <label className="flex w-full items-start gap-2 rounded-md border border-court/20 bg-court/5 px-3 py-2 text-xs font-semibold leading-5 text-court">
+            <input
+              type="checkbox"
+              checked={closePrivateConfirmed}
+              onChange={(event) => setClosePrivateConfirmed(event.target.checked)}
+              className="mt-0.5 size-4 rounded border-court/40 text-court"
+            />
+            선택한 자료를 비공개 종결하면 검토 큐에서 제외됩니다. 명시적으로 확인한 경우에만 실행합니다.
+          </label>
+        ) : null}
       </div>
 
       {message ? (
