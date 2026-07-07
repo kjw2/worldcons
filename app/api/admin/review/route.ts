@@ -7,6 +7,10 @@ import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const MAX_ADMIN_NOTE_LENGTH = 1000;
+const MAX_ADMIN_MODEL_LENGTH = 120;
+const MAX_ADMIN_REF_LENGTH = 240;
+
 const REVIEW_ACTIONS = new Set<AdminReviewAction>([
   "approve-and-summarize",
   "retry-summary",
@@ -15,6 +19,14 @@ const REVIEW_ACTIONS = new Set<AdminReviewAction>([
   "close-private",
   "retry-source-ingest",
 ]);
+
+function optionalText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return { ok: true as const, value: undefined };
+  const text = value.trim();
+  if (!text) return { ok: true as const, value: undefined };
+  if (text.length > maxLength) return { ok: false as const };
+  return { ok: true as const, value: text };
+}
 
 export async function POST(request: Request) {
   const authFailureStatus = adminMutationAuthFailureStatus(request);
@@ -26,11 +38,25 @@ export async function POST(request: Request) {
   const action = typeof body.action === "string" && REVIEW_ACTIONS.has(body.action as AdminReviewAction)
     ? (body.action as AdminReviewAction)
     : null;
-  const articleId = typeof body.articleId === "string" ? body.articleId : undefined;
-  const slug = typeof body.slug === "string" ? body.slug : undefined;
-  const note = typeof body.note === "string" ? body.note : undefined;
+  const articleIdInput = optionalText(body.articleId, MAX_ADMIN_REF_LENGTH);
+  const slugInput = optionalText(body.slug, MAX_ADMIN_REF_LENGTH);
+  const noteInput = optionalText(body.note, MAX_ADMIN_NOTE_LENGTH);
+  const modelInput = optionalText(body.model, MAX_ADMIN_MODEL_LENGTH);
+  if (!articleIdInput.ok || !slugInput.ok) {
+    return NextResponse.json({ error: "articleId or slug is too long" }, { status: 400 });
+  }
+  if (!noteInput.ok) {
+    return NextResponse.json({ error: "note is too long" }, { status: 400 });
+  }
+  if (!modelInput.ok) {
+    return NextResponse.json({ error: "model is too long" }, { status: 400 });
+  }
+
+  const articleId = articleIdInput.value;
+  const slug = slugInput.value;
+  const note = noteInput.value;
   const provider = typeof body.provider === "string" && (LLM_PROVIDER_IDS as readonly string[]).includes(body.provider) ? body.provider as typeof LLM_PROVIDER_IDS[number] : undefined;
-  const model = typeof body.model === "string" ? body.model : undefined;
+  const model = modelInput.value;
 
   if (!action) {
     return NextResponse.json({ error: "Unsupported review action" }, { status: 400 });

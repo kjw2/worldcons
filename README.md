@@ -782,6 +782,8 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 
 자체 이용 통계와 P0 감사 로그는 `site_events` 테이블에 저장합니다. 접속 컴퓨터별 rate limit 적용을 위해 IP, IP hash, User-Agent, Accept-Language, Vercel/Cloudflare 지역 헤더를 함께 저장합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다. 관리자 화면은 최근 접속 로그와 KST 기준 일별·월별 집계를 함께 보여줍니다.
 
+관리자 v2 P1 안전장치는 운영 실수를 줄이는 방향으로 적용되어 있습니다. `비공개 종결`은 단건/일괄 모두 명시 확인이 필요하고, 관리자 API는 과도한 note/model/id 입력을 DB 작업 전에 거부합니다. 감사 로그는 작업 필터를 선택식으로 제공하며, 표시 필드의 API key, bearer token, secret query 값은 redaction 처리합니다. 수집 후보 URL 상태 변경은 source, 후보 유형, 후보 URL을 감사 metadata에 함께 남깁니다.
+
 공개 조회 API, 이용 통계 이벤트 수집 endpoint, 관리자 로그인에는 IP 또는 fallback 접속 식별자 기준의 메모리 rate limit이 적용됩니다. Vercel 같은 서버리스 환경에서는 인스턴스별로 동작하므로 강한 전역 차단이 필요해지면 현재 저장되는 `site_events.client_ip_hash` 기준으로 DB/Redis 기반 차단 정책을 추가하면 됩니다.
 
 관리 API는 다음과 같습니다.

@@ -11,6 +11,10 @@ import { adminMutationAuthFailureStatus, isAuthorizedRequest, safeAdminNextPath 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const MAX_CANDIDATE_ID_LENGTH = 120;
+const MAX_CANDIDATE_STATUS_LENGTH = 40;
+const MAX_ADMIN_RETURN_TO_LENGTH = 300;
+
 const ACTION_TO_STATUS = {
   ignore: "ignored",
   retrying: "retrying",
@@ -22,6 +26,10 @@ function isCandidateAction(value?: string | null): value is keyof typeof ACTION_
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function tooLong(value: string, maxLength: number) {
+  return value.length > maxLength;
 }
 
 function redirectBack(request: Request, returnTo: string | undefined, status: string) {
@@ -89,6 +97,9 @@ async function mutateCandidate(request: Request) {
   if (!hasAction && !hasStatus) {
     return NextResponse.json({ error: "action or status is required" }, { status: 400 });
   }
+  if (tooLong(input.candidateId, MAX_CANDIDATE_ID_LENGTH) || tooLong(input.action, MAX_CANDIDATE_STATUS_LENGTH) || tooLong(input.status, MAX_CANDIDATE_STATUS_LENGTH) || tooLong(input.returnTo, MAX_ADMIN_RETURN_TO_LENGTH)) {
+    return NextResponse.json({ error: "candidate request fields are too long" }, { status: 400 });
+  }
   if (hasAction && !isCandidateAction(input.action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
@@ -113,12 +124,24 @@ async function mutateCandidate(request: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.error === "Candidate not found." ? 404 : 500 });
   }
+  const item = result.item;
+  if (!item) {
+    return NextResponse.json({ error: "Candidate not found." }, { status: 404 });
+  }
 
   await recordSiteEvent(
     {
       eventType: "admin_action",
       path: "/api/admin/candidates",
-      metadata: { action: input.action || null, status: targetStatus },
+      sourceKey: item.sourceKey,
+      metadata: {
+        action: input.action || null,
+        status: targetStatus,
+        candidateId: item.id,
+        sourceKey: item.sourceKey,
+        candidateType: item.candidateType,
+        candidateUrl: item.url,
+      },
     },
     request.headers,
   ).catch(() => null);
@@ -126,7 +149,7 @@ async function mutateCandidate(request: Request) {
   if (input.isForm) {
     return redirectBack(request, input.returnTo, input.action === "ignore" || status === "ignored" ? "ignored" : "retrying");
   }
-  return NextResponse.json({ item: result.item });
+  return NextResponse.json({ item });
 }
 
 export async function PATCH(request: Request) {

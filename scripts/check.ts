@@ -914,6 +914,15 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(invalidCandidateStatusResponse.status === 400, "admin candidate mutation with invalid status must return 400");
 
+    const oversizedCandidateIdResponse = await candidatesPatch(
+      new Request("https://example.test/api/admin/candidates", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ candidateId: "x".repeat(121), action: "retrying" }),
+      }),
+    );
+    assert(oversizedCandidateIdResponse.status === 400, "admin candidate mutation must reject oversized candidate ids before DB access");
+
     const missingCsrfResponse = await ingestPost(
       new Request("https://example.test/api/admin/ingest", {
         method: "POST",
@@ -931,6 +940,15 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(crossOriginResponse.status === 403, "cross-origin admin POST must return 403");
+
+    const oversizedIngestRefResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ sourceKey: "x".repeat(241) }),
+      }),
+    );
+    assert(oversizedIngestRefResponse.status === 400, "admin ingest POST must reject oversized sourceKey before work starts");
 
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
@@ -963,6 +981,15 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(invalidBulkActionResponse.status === 400, "admin article bulk POST must reject unsupported actions");
 
+    const oversizedBulkNoteResponse = await articlesBulkPost(
+      new Request("https://example.test/api/admin/articles/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ action: "mark-needs-review", slugs: ["sample"], note: "n".repeat(1001) }),
+      }),
+    );
+    assert(oversizedBulkNoteResponse.status === 400, "admin article bulk POST must reject oversized notes");
+
     const unconfirmedBulkClosePrivateResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {
         method: "POST",
@@ -981,6 +1008,15 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(unconfirmedReviewClosePrivateResponse.status === 400, "admin review POST must require explicit confirmation for close-private");
+
+    const oversizedReviewModelResponse = await reviewPost(
+      new Request("https://example.test/api/admin/review", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ action: "resummarize-with-model", slug: "sample", model: "m".repeat(121) }),
+      }),
+    );
+    assert(oversizedReviewModelResponse.status === 400, "admin review POST must reject oversized model names");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);

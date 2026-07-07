@@ -12,6 +12,8 @@ export const revalidate = 0;
 
 const BULK_ACTIONS = new Set<AdminArticleBulkAction>(["mark-needs-review", "close-private"]);
 const MAX_BULK_ITEMS = 100;
+const MAX_ADMIN_NOTE_LENGTH = 1000;
+const MAX_ADMIN_REF_LENGTH = 240;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,10 +27,19 @@ function normalizeRef(ref: AdminArticleBulkRef): AdminArticleBulkRef | null {
   const id = ref.id?.trim();
   const slug = ref.slug?.trim();
   if (!id && !slug) return null;
+  if ((id && id.length > MAX_ADMIN_REF_LENGTH) || (slug && slug.length > MAX_ADMIN_REF_LENGTH)) return null;
   return {
-    id: id ? id.slice(0, 200) : undefined,
-    slug: slug ? slug.slice(0, 240) : undefined,
+    id: id || undefined,
+    slug: slug || undefined,
   };
+}
+
+function optionalNote(value: unknown) {
+  if (typeof value !== "string") return { ok: true as const, value: undefined };
+  const text = value.trim();
+  if (!text) return { ok: true as const, value: undefined };
+  if (text.length > MAX_ADMIN_NOTE_LENGTH) return { ok: false as const };
+  return { ok: true as const, value: text };
 }
 
 function parseRefs(body: Record<string, unknown>) {
@@ -93,8 +104,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Bulk actions are limited to 100 explicitly selected articles" }, { status: 400 });
   }
 
-  const note = typeof body.note === "string" ? body.note : undefined;
-  const result = await runAdminArticleBulkAction({ action, refs, note });
+  const note = optionalNote(body.note);
+  if (!note.ok) {
+    return NextResponse.json({ error: "note is too long" }, { status: 400 });
+  }
+  const result = await runAdminArticleBulkAction({ action, refs, note: note.value });
 
   await recordSiteEvent(
     {

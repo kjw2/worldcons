@@ -8,6 +8,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 60;
 
+const MAX_ADMIN_REF_LENGTH = 240;
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -53,6 +55,14 @@ function tagResultSummary(value: unknown) {
   };
 }
 
+function optionalText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return { ok: true as const, value: undefined };
+  const text = value.trim();
+  if (!text) return { ok: true as const, value: undefined };
+  if (text.length > maxLength) return { ok: false as const };
+  return { ok: true as const, value: text };
+}
+
 export async function POST(request: Request) {
   const authFailureStatus = adminMutationAuthFailureStatus(request);
   if (authFailureStatus) {
@@ -71,9 +81,15 @@ export async function POST(request: Request) {
     const action = ["ingest", "ingest-and-summarize", "summarize", "retry-summary", "refresh-tags"].includes(requestedAction)
       ? requestedAction
       : "ingest";
-    const sourceKey = typeof body.sourceKey === "string" ? body.sourceKey : undefined;
-    const articleId = typeof body.articleId === "string" ? body.articleId : undefined;
-    const slug = typeof body.slug === "string" ? body.slug : undefined;
+    const sourceKeyInput = optionalText(body.sourceKey, MAX_ADMIN_REF_LENGTH);
+    const articleIdInput = optionalText(body.articleId, MAX_ADMIN_REF_LENGTH);
+    const slugInput = optionalText(body.slug, MAX_ADMIN_REF_LENGTH);
+    if (!sourceKeyInput.ok || !articleIdInput.ok || !slugInput.ok) {
+      return NextResponse.json({ error: "sourceKey, articleId, or slug is too long" }, { status: 400 });
+    }
+    const sourceKey = sourceKeyInput.value;
+    const articleId = articleIdInput.value;
+    const slug = slugInput.value;
     const limit = body.limit === undefined ? undefined : boundedInteger(body.limit, 20, { min: 1, max: 100 });
     const summarizeLimit = boundedInteger(body.summarizeLimit ?? limit ?? 20, 20, { min: 1, max: 100 });
     const allowVercelCrawling = body.allowVercelCrawling === true;
