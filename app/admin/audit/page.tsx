@@ -126,6 +126,10 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
   });
   const csrfToken = (await createAdminCsrfToken()) ?? "";
   const { filters, pageInfo } = data;
+  const actionOptions =
+    filters.action && !data.actionOptions.includes(filters.action)
+      ? [filters.action, ...data.actionOptions]
+      : data.actionOptions;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -160,7 +164,14 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
           </label>
           <label className="grid gap-1 text-sm font-medium text-ink/72">
             작업
-            <input name="action" defaultValue={filterValue(filters.action)} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm text-ink" placeholder="예: ingest" />
+            <select name="action" defaultValue={filterValue(filters.action)} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm text-ink">
+              <option value="">전체</option>
+              {actionOptions.map((action) => (
+                <option key={action} value={action}>
+                  {action}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="grid gap-1 text-sm font-medium text-ink/72">
             검색

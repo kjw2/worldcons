@@ -156,6 +156,7 @@ export interface AdminAuditLogData {
     pageSize: number;
   };
   entries: AdminAuditLogEntry[];
+  actionOptions: string[];
   pageInfo: {
     page: number;
     pageSize: number;
@@ -347,6 +348,25 @@ function matchesAuditFilters(entry: AdminAuditLogEntry, filters: { action?: stri
   return haystack.includes(needle);
 }
 
+function auditActionOptionsFromEvents(rows: SiteEventRow[]) {
+  return Array.from(new Set(rows.map(adminAuditEntryFromSiteEvent).map((entry) => entry.action).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+async function loadAdminAuditActionOptions(eventType?: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return [] as string[];
+
+  const { data, error } = await supabase
+    .from("site_events")
+    .select("id, occurred_at, event_type, path, article_slug, source_key, metadata")
+    .in("event_type", isAdminAuditEventType(eventType) ? [eventType] : ["admin_action", "admin_review_action"])
+    .order("occurred_at", { ascending: false })
+    .limit(1000);
+
+  if (error) return [];
+  return auditActionOptionsFromEvents((data ?? []) as SiteEventRow[]);
+}
+
 async function loadSiteEvents(days: number) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return { rows: [] as SiteEventRow[], schemaReady: false };
@@ -398,10 +418,12 @@ export async function getAdminAuditLogData(options: {
       schemaReady: true,
       filters: { eventType, action, q, page, pageSize },
       entries: [],
+      actionOptions: [],
       pageInfo: { page, pageSize, total: 0, hasMore: false },
     };
   }
 
+  const actionOptions = await loadAdminAuditActionOptions(eventType);
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
   const baseQuery = supabase
@@ -419,6 +441,7 @@ export async function getAdminAuditLogData(options: {
         schemaReady: false,
         filters: { eventType, action, q, page, pageSize },
         entries: [],
+        actionOptions,
         pageInfo: { page, pageSize, total: 0, hasMore: false },
       };
     }
@@ -434,6 +457,7 @@ export async function getAdminAuditLogData(options: {
       schemaReady: true,
       filters: { eventType, action, q, page, pageSize },
       entries,
+      actionOptions,
       pageInfo: {
         page,
         pageSize,
@@ -451,6 +475,7 @@ export async function getAdminAuditLogData(options: {
       schemaReady: false,
       filters: { eventType, action, q, page, pageSize },
       entries: [],
+      actionOptions,
       pageInfo: { page, pageSize, total: 0, hasMore: false },
     };
   }
@@ -463,6 +488,7 @@ export async function getAdminAuditLogData(options: {
     schemaReady: true,
     filters: { eventType, action, q, page, pageSize },
     entries,
+    actionOptions,
     pageInfo: {
       page,
       pageSize,
