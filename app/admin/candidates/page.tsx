@@ -4,6 +4,7 @@ import { Ban, ExternalLink, LogOut, RefreshCw, RotateCcw, Search } from "lucide-
 import { AdminTabs } from "@/components/admin-tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ARTICLE_CONTENT_TYPES } from "@/lib/db/types";
+import { listSources } from "@/lib/db/queries";
 import { listSourceUrlCandidates, SOURCE_URL_CANDIDATE_STATUSES, type SourceUrlCandidateRecord } from "@/lib/db/source-url-candidates";
 import { displaySourceLabel } from "@/lib/ui/source-labels";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
@@ -128,7 +129,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
                   <div className="font-semibold text-ink">{displaySourceLabel(candidate.sourceKey)}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink/56">
                     <span>{candidate.sourceKey}</span>
-                    <span>{candidate.candidateType}</span>
+                    <span>유형 {candidate.candidateType}</span>
                   </div>
                   <a
                     href={candidate.url}
@@ -146,7 +147,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
                 </td>
                 <td className="px-4 py-4">
                   <div className="font-semibold text-ink/72">{candidate.discoveredBy}</div>
-                  <div className="mt-1 text-xs text-ink/50">candidate_type: {candidate.candidateType}</div>
+                  <div className="mt-1 text-xs text-ink/50">유형: {candidate.candidateType}</div>
                 </td>
                 <td className="px-4 py-4">
                   {candidate.lastErrorCode ? <div className="font-semibold text-court">{candidate.lastErrorCode}</div> : <span className="text-ink/45">없음</span>}
@@ -183,15 +184,19 @@ export default async function AdminCandidatesPage({ searchParams }: { searchPara
   const type = getSearchParam(params, "type") ?? "";
   const q = getSearchParam(params, "q") ?? "";
   const actionStatus = getSearchParam(params, "updated");
-  const result = await listSourceUrlCandidates({
-    sourceKey: source,
-    status,
-    candidateType: type,
-    q,
-    page: getSearchParam(params, "page"),
-    pageSize: getSearchParam(params, "pageSize"),
-  });
-  const csrfToken = (await createAdminCsrfToken()) ?? "";
+  const [result, sources, csrfTokenValue] = await Promise.all([
+    listSourceUrlCandidates({
+      sourceKey: source,
+      status,
+      candidateType: type,
+      q,
+      page: getSearchParam(params, "page"),
+      pageSize: getSearchParam(params, "pageSize"),
+    }),
+    listSources(),
+    createAdminCsrfToken(),
+  ]);
+  const csrfToken = csrfTokenValue ?? "";
   const { page, pageSize, total } = result.pageInfo;
   const startItem = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const endItem = Math.min(total, page * pageSize);
@@ -241,11 +246,18 @@ export default async function AdminCandidatesPage({ searchParams }: { searchPara
             </div>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-ink/70">
-            source
-            <input name="source" defaultValue={source} className="focus-ring h-10 rounded-md border border-rule px-3 font-normal text-ink" placeholder="de-bverfg" />
+            기관
+            <select name="source" defaultValue={source} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
+              <option value="">전체</option>
+              {sources.map((item) => (
+                <option key={item.sourceKey} value={item.sourceKey}>
+                  {displaySourceLabel(item)} · {item.sourceKey}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-ink/70">
-            status
+            상태
             <select name="status" defaultValue={status} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
               <option value="">전체</option>
               {SOURCE_URL_CANDIDATE_STATUSES.map((item) => (
@@ -256,7 +268,7 @@ export default async function AdminCandidatesPage({ searchParams }: { searchPara
             </select>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-ink/70">
-            type
+            후보 유형
             <select name="type" defaultValue={type} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
               <option value="">전체</option>
               {ARTICLE_CONTENT_TYPES.map((item) => (

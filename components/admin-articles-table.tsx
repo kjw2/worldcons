@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, Loader2, ShieldAlert } from "lucide-react";
 import type { AdminArticleBulkAction, AdminArticleListItem } from "@/lib/db/admin-queries";
+import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 
 const statusLabels: Record<string, string> = {
   discovered: "발견",
@@ -182,13 +183,13 @@ export function AdminArticlesTable({
                 />
               </th>
               <th className="px-4 py-3">제목</th>
-              <th className="px-4 py-3">source</th>
-              <th className="px-4 py-3">jurisdiction</th>
+              <th className="px-4 py-3">기관</th>
+              <th className="px-4 py-3">국가</th>
               <th className="px-4 py-3">status</th>
-              <th className="px-4 py-3">publishable</th>
-              <th className="px-4 py-3">summary</th>
-              <th className="px-4 py-3">originalPublishedAt</th>
-              <th className="px-4 py-3">summarizedAt</th>
+              <th className="px-4 py-3">공개 가능</th>
+              <th className="px-4 py-3">요약</th>
+              <th className="px-4 py-3">기준일</th>
+              <th className="px-4 py-3">요약일</th>
               <th className="px-4 py-3">상세</th>
             </tr>
           </thead>
@@ -223,17 +224,17 @@ export function AdminArticlesTable({
                       <div className="mt-1 text-xs text-ink/45">{article.slug}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-ink">{article.institutionName}</div>
+                      <div className="font-medium text-ink">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</div>
                       <div className="mt-1 text-xs text-ink/54">{article.sourceKey}</div>
                     </td>
-                    <td className="px-4 py-3">{article.jurisdiction}</td>
+                    <td className="px-4 py-3">{displayJurisdictionLabel(article.jurisdiction)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(article.status)}`}>
                         {statusLabels[article.status] ?? article.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-semibold">{article.publishable ? "yes" : "no"}</td>
-                    <td className="px-4 py-3 font-semibold">{article.hasSummary ? "yes" : "no"}</td>
+                    <td className="px-4 py-3 font-semibold">{article.publishable ? "가능" : "불가"}</td>
+                    <td className="px-4 py-3 font-semibold">{article.hasSummary ? "있음" : "없음"}</td>
                     <td className="px-4 py-3">{formatDateTime(article.originalPublishedAt)}</td>
                     <td className="px-4 py-3">{formatDateTime(article.summarizedAt)}</td>
                     <td className="px-4 py-3">

@@ -10,6 +10,7 @@ import {
   type AdminArticleSummaryFilter,
 } from "@/lib/db/admin-queries";
 import { listSources } from "@/lib/db/queries";
+import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getNumberSearchParam, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -158,45 +159,45 @@ export default async function AdminArticlesPage({ searchParams }: { searchParams
           </select>
         </label>
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-2">
-          sourceKey
+          기관
           <select name="sourceKey" defaultValue={filters.sourceKey ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
             <option value="">전체</option>
             {sources.map((source) => (
               <option key={source.sourceKey} value={source.sourceKey}>
-                {source.sourceKey}
+                {displaySourceLabel(source)} · {source.sourceKey}
               </option>
             ))}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-2">
-          jurisdiction
+          국가
           <select name="jurisdiction" defaultValue={filters.jurisdiction ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
             <option value="">전체</option>
             {jurisdictions.map((jurisdiction) => (
               <option key={jurisdiction} value={jurisdiction}>
-                {jurisdiction}
+                {displayJurisdictionLabel(jurisdiction)}
               </option>
             ))}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-1">
-          publishable
+          공개 가능
           <select name="publishable" defaultValue={filters.publishable ?? "all"} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
-            <option value="all">all</option>
-            <option value="yes">yes</option>
-            <option value="no">no</option>
+            <option value="all">전체</option>
+            <option value="yes">가능</option>
+            <option value="no">불가</option>
           </select>
         </label>
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-1">
-          summary
+          요약
           <select name="hasSummary" defaultValue={filters.hasSummary ?? "all"} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
-            <option value="all">all</option>
-            <option value="yes">yes</option>
-            <option value="no">no</option>
+            <option value="all">전체</option>
+            <option value="yes">있음</option>
+            <option value="no">없음</option>
           </select>
         </label>
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-1">
-          pageSize
+          페이지 크기
           <input name="pageSize" type="number" min={1} max={50} defaultValue={pageInfo.pageSize} className="focus-ring h-10 rounded-md border border-rule px-3 font-normal text-ink" />
         </label>
         <div className="flex items-end gap-2 lg:col-span-12">
