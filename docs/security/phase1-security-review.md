@@ -37,10 +37,16 @@ pnpm build
 
 `pnpm check`에는 P0 인증 회귀, P1 보안 헤더, 공개 API validation, XSS fixture 회귀 검사가 포함됩니다.
 
-## 남은 P2 후보
+## P2 적용 완료
 
-- CSP report 수집 endpoint 또는 외부 report collector 연결
+- CSP Report-Only 위반은 `/api/security/csp-report`로 수집합니다.
+- CSP report endpoint는 16KB 초과 payload를 413으로 거부하고 전용 rate limit profile(`RATE_LIMIT_CSP_REPORT_*`)을 사용합니다.
+- CSP report는 `site_events`에 `security_event`로 저장하며, directive, blocked URI, document URI, source file, sample 등 표시 가능한 범위의 메타데이터만 남깁니다.
+- 관리자 대시보드의 수집원/후보 표에서 기사 관리와 후보 URL 관리 화면으로 바로 이동할 수 있게 했습니다.
+- 관리자 API의 과도한 입력 길이 제한과 `비공개 종결` 명시 확인, 감사 로그 redaction은 `pnpm check` 회귀 테스트에 포함됩니다.
+
+## 남은 인프라 P2 후보
+
 - CSP Report-Only 관찰 후 enforcement 전환
 - public API별 더 촘촘한 rate limit profile 분리
 - 운영 WAF 규칙과 bot challenge 정책 정리
-- 보안 이벤트/관리자 작업 감사 로그 보강

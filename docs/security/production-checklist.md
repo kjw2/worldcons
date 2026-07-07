@@ -29,4 +29,5 @@ pnpm build
 - `/api/admin/logout` GET이 405인지 확인
 - `/api/admin/cron/ingest`가 secret 헤더 없이 401인지 확인
 - 공개 검색 API에서 비정상 `pageSize`, `mode`, `tag` 입력이 400인지 확인
+- `/api/security/csp-report`가 정상 CSP report payload에는 204, 과대 payload에는 413을 반환하는지 확인
 - CSP Report-Only 위반이 실제 사용자 화면 기능 장애를 가리키는지 모니터링

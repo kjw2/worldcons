@@ -15,6 +15,7 @@ import { AdminActionPanel } from "@/components/admin-action-panel";
 import { AdminAttentionTable } from "@/components/admin-attention-table";
 import { AdminTabs } from "@/components/admin-tabs";
 import { getAdminDashboardData, type AdminStatusCount } from "@/lib/db/admin-queries";
+import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -134,6 +135,7 @@ function SourceTable({ data }: { data: Awaited<ReturnType<typeof getAdminDashboa
               <th className="px-4 py-3">주의</th>
               <th className="px-4 py-3">최근 실행</th>
               <th className="px-4 py-3">최근 수집</th>
+              <th className="px-4 py-3">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-rule">
@@ -142,10 +144,12 @@ function SourceTable({ data }: { data: Awaited<ReturnType<typeof getAdminDashboa
               return (
                 <tr key={source.sourceKey}>
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-ink">{source.name}</div>
+                    <Link href={`/admin/articles?sourceKey=${encodeURIComponent(source.sourceKey)}`} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
+                      {displaySourceLabel({ sourceKey: source.sourceKey, name: source.name })}
+                    </Link>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink/56">
                       <span>{source.sourceKey}</span>
-                      <span>{source.jurisdiction}</span>
+                      <span>{displayJurisdictionLabel(source.jurisdiction)}</span>
                       <span>{source.language}</span>
                       <span>{source.isActive ? "active" : "inactive"}</span>
                     </div>
@@ -167,6 +171,16 @@ function SourceTable({ data }: { data: Awaited<ReturnType<typeof getAdminDashboa
                     <div className="mt-1 text-xs text-ink/50">{formatDateTime(source.latestRunStartedAt)}</div>
                   </td>
                   <td className="px-4 py-3">{formatDateTime(source.latestFetchedAt)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Link href={`/admin/articles?sourceKey=${encodeURIComponent(source.sourceKey)}`} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                        기사
+                      </Link>
+                      <Link href={`/admin/candidates?source=${encodeURIComponent(source.sourceKey)}`} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                        후보
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -195,18 +209,29 @@ function CandidateTable({ data }: { data: Awaited<ReturnType<typeof getAdminDash
               <th className="px-4 py-3">failed</th>
               <th className="px-4 py-3">ignored</th>
               <th className="px-4 py-3">최근 후보</th>
+              <th className="px-4 py-3">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-rule">
             {data.map((item) => (
               <tr key={item.sourceKey}>
-                <td className="px-4 py-3 font-semibold">{item.sourceKey}</td>
-                <td className="px-4 py-3">{formatNumber(item.pendingCount)}</td>
-                <td className="px-4 py-3">{formatNumber(item.retryingCount)}</td>
-                <td className="px-4 py-3">{formatNumber(item.fetchedCount)}</td>
-                <td className="px-4 py-3 text-court">{formatNumber(item.failedCount)}</td>
-                <td className="px-4 py-3">{formatNumber(item.ignoredCount)}</td>
+                <td className="px-4 py-3">
+                  <Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}`} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
+                    {displaySourceLabel(item.sourceKey)}
+                  </Link>
+                  <div className="mt-1 text-xs text-ink/54">{item.sourceKey}</div>
+                </td>
+                <td className="px-4 py-3"><Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}&status=pending`} className="focus-ring rounded-sm text-ink hover:text-court">{formatNumber(item.pendingCount)}</Link></td>
+                <td className="px-4 py-3"><Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}&status=retrying`} className="focus-ring rounded-sm text-ink hover:text-court">{formatNumber(item.retryingCount)}</Link></td>
+                <td className="px-4 py-3"><Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}&status=fetched`} className="focus-ring rounded-sm text-ink hover:text-court">{formatNumber(item.fetchedCount)}</Link></td>
+                <td className="px-4 py-3 text-court"><Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}&status=failed`} className="focus-ring rounded-sm text-court hover:underline">{formatNumber(item.failedCount)}</Link></td>
+                <td className="px-4 py-3"><Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}&status=ignored`} className="focus-ring rounded-sm text-ink hover:text-court">{formatNumber(item.ignoredCount)}</Link></td>
                 <td className="px-4 py-3">{formatDateTime(item.latestCreatedAt)}</td>
+                <td className="px-4 py-3">
+                  <Link href={`/admin/candidates?source=${encodeURIComponent(item.sourceKey)}`} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                    후보 보기
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -292,11 +317,11 @@ export default async function AdminPage() {
             </div>
             <div className="flex items-center justify-between rounded-md border border-rule bg-parchment/45 px-3 py-3 text-sm">
               <span className="font-medium text-ink/70">URL 후보</span>
-              <span className="font-semibold text-ink">{formatNumber(dashboard.totals.candidates)}</span>
+              <Link href="/admin/candidates" className="focus-ring rounded-sm font-semibold text-ink hover:text-court">{formatNumber(dashboard.totals.candidates)}</Link>
             </div>
             <div className="flex items-center justify-between rounded-md border border-rule bg-parchment/45 px-3 py-3 text-sm">
               <span className="font-medium text-ink/70">실패 자료</span>
-              <span className="font-semibold text-court">{formatNumber(dashboard.totals.failedArticles)}</span>
+              <Link href="/admin/articles" className="focus-ring rounded-sm font-semibold text-court hover:underline">{formatNumber(dashboard.totals.failedArticles)}</Link>
             </div>
           </div>
         </section>

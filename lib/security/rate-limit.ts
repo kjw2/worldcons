@@ -18,6 +18,11 @@ const RATE_LIMIT_PROFILES = {
     defaultMax: 240,
     defaultWindowMs: 60_000,
   },
+  cspReport: {
+    envPrefix: "RATE_LIMIT_CSP_REPORT",
+    defaultMax: 120,
+    defaultWindowMs: 60_000,
+  },
   adminLogin: {
     envPrefix: "RATE_LIMIT_ADMIN_LOGIN",
     defaultMax: 10,

@@ -10,6 +10,7 @@ export type SiteEventType =
   | "source_view"
   | "article_click"
   | "external_link_click"
+  | "security_event"
   | "admin_action"
   | "admin_review_action";
 
@@ -167,6 +168,10 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
   if (error) {
     const retry = await supabase.from("site_events").insert(legacyPayload(payload));
     if (!retry.error) return;
+  }
+
+  if (input.eventType === "security_event" && error?.message?.includes("site_events_event_type_check")) {
+    return;
   }
 
   if (error && process.env.NODE_ENV !== "production") {

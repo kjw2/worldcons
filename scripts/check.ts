@@ -1038,11 +1038,53 @@ async function assertSecurityHeadersConfigured() {
   assert(cspReportOnly.includes("default-src 'self'"), "CSP report-only must define default-src");
   assert(cspReportOnly.includes("frame-ancestors 'self'"), "CSP report-only must allow same-origin print framing only");
   assert(cspReportOnly.includes("frame-src 'self'"), "CSP report-only must allow same-origin print frames");
+  assert(cspReportOnly.includes("report-uri /api/security/csp-report"), "CSP report-only must report to the local CSP collector");
+  assert(cspReportOnly.includes("report-to csp"), "CSP report-only must declare the csp reporting group");
+  assert(allHeaders.get("reporting-endpoints") === 'csp="/api/security/csp-report"', "Reporting-Endpoints must expose the CSP collector");
   assert(allHeaders.get("strict-transport-security")?.includes("max-age="), "HSTS header must be configured");
   assert(allHeaders.get("x-content-type-options") === "nosniff", "X-Content-Type-Options must be nosniff");
   assert(allHeaders.get("referrer-policy") === "strict-origin-when-cross-origin", "Referrer-Policy must be configured");
   assert(allHeaders.get("permissions-policy")?.includes("camera=()"), "Permissions-Policy must be configured");
   assert(allHeaders.get("x-frame-options") === "SAMEORIGIN", "X-Frame-Options must allow same-origin print frames");
+}
+
+async function assertCspReportEndpointControls() {
+  const { POST: cspReportPost } = await import("@/app/api/security/csp-report/route");
+  const validResponse = await cspReportPost(
+    new Request("https://example.test/api/security/csp-report", {
+      method: "POST",
+      headers: { "content-type": "application/csp-report" },
+      body: JSON.stringify({
+        "csp-report": {
+          "document-uri": "https://worldcons.vercel.app/articles/sample?x=1",
+          "violated-directive": "script-src-elem",
+          "effective-directive": "script-src-elem",
+          "blocked-uri": "inline",
+          disposition: "report",
+          "status-code": 200,
+        },
+      }),
+    }),
+  );
+  assert(validResponse.status === 204, "valid CSP reports must be accepted with 204");
+
+  const oversizedResponse = await cspReportPost(
+    new Request("https://example.test/api/security/csp-report", {
+      method: "POST",
+      headers: { "content-type": "application/csp-report", "content-length": String(17 * 1024) },
+      body: JSON.stringify({ "csp-report": { "document-uri": "https://worldcons.vercel.app/" } }),
+    }),
+  );
+  assert(oversizedResponse.status === 413, "oversized CSP reports must be rejected before parsing");
+
+  const invalidResponse = await cspReportPost(
+    new Request("https://example.test/api/security/csp-report", {
+      method: "POST",
+      headers: { "content-type": "application/csp-report" },
+      body: "not-json",
+    }),
+  );
+  assert(invalidResponse.status === 400, "invalid CSP report bodies must return 400");
 }
 
 async function assertPublicApiRouteValidationControls() {
@@ -1083,6 +1125,7 @@ async function assertPublicApiRouteValidationControls() {
 
 async function main() {
   await assertSecurityHeadersConfigured();
+  await assertCspReportEndpointControls();
   await assertPublicApiRouteValidationControls();
   await assertAdminRouteSecurityControls();
   await assertGeminiRouterSurvivesUnwritableStorage();
