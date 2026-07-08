@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
-import { getArticleBySlug, getArticlePreviewBySlug, getRelatedArticles } from "@/lib/db/queries";
+import { getArticleDetailPageData, getArticlePreviewBySlug } from "@/lib/db/queries";
 import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
@@ -95,10 +95,10 @@ export default async function ArticlePage({
 }) {
   const { slug } = await params;
   const paramsObject = await searchParams;
-  const article = await getArticleBySlug(slug, { includeSourceText: false });
-  if (!article) notFound();
+  const detailData = await getArticleDetailPageData(slug);
+  if (!detailData) notFound();
 
-  const related = await getRelatedArticles(article);
+  const { article, related } = detailData;
   const summary = article.summaryJson;
   const summaryModelName = summary?.aiMetadata?.model ?? "모델 정보 없음";
   const theme = themeForJurisdiction(article.jurisdiction);

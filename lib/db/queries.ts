@@ -510,9 +510,41 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
 }
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
+  const supabase = getSupabaseAdmin();
+  const tagId = article.tags[0]?.id;
+  if (supabase && tagId) {
+    const { data: relatedTagRows, error: relatedTagError } = await supabase
+      .from("article_tags")
+      .select("article_id")
+      .eq("tag_id", tagId)
+      .neq("article_id", article.id ?? "")
+      .limit(Math.max(limit * 4, limit));
+
+    if (!relatedTagError) {
+      const ids = Array.from(
+        new Set(
+          (relatedTagRows ?? [])
+            .map((row) => (typeof row.article_id === "string" ? row.article_id : null))
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      if (ids.length > 0) {
+        const result = await listArticles({ ids, pageSize: ids.length, count: "none" });
+        return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
+      }
+    }
+  }
+
   const tag = article.tags[0]?.slug;
   const result = await listArticles({ tag, pageSize: limit + 1, count: "none" });
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
+}
+
+export async function getArticleDetailPageData(slug: string) {
+  const article = await getArticleBySlug(slug, { includeSourceText: false });
+  if (!article) return null;
+  const related = await getRelatedArticles(article);
+  return { article, related };
 }
 
 export async function listTopViewedArticles(
