@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
 import { getArticleBySlug } from "@/lib/db/queries";
 import { parseSlugParam, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
@@ -5,6 +6,12 @@ import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const getCachedArticle = unstable_cache(
+  async (slug: string) => getArticleBySlug(slug),
+  ["api-article-detail-v1"],
+  { revalidate: 60 },
+);
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const rateLimit = consumeRateLimit(request, "publicApi");
@@ -16,11 +23,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const parsed = parseSlugParam(slug);
   if (!parsed.ok) return publicApiValidationErrorResponse(parsed.error);
 
-  const article = await getArticleBySlug(parsed.data);
+  const article = await getCachedArticle(parsed.data);
 
   if (!article) {
     return NextResponse.json({ error: "Article not found" }, { status: 404 });
   }
 
-  return NextResponse.json(article);
+  return NextResponse.json(article, {
+    headers: {
+      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+    },
+  });
 }
