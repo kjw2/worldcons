@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, FileText, Languages, Scale } from "lucide-react";
-import { AdminArticleReviewPanelLoader } from "@/components/admin-article-review-panel";
 import { ArticlePrintButton } from "@/components/article-print-button";
 import { ArticleSourceSnapshot } from "@/components/article-source-snapshot";
 import { PageViewTracker } from "@/components/page-view-tracker";
@@ -153,8 +152,6 @@ export default async function ArticlePage({
           <ArticlePrintButton printHref={`/articles/${article.slug}/print`} />
         </div>
       </section>
-
-      <AdminArticleReviewPanelLoader slug={article.slug} />
 
       <div style={jurisdictionThemeStyle(theme)} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <article className="space-y-5">
