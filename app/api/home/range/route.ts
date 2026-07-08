@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
-import { listArticles, listJurisdictionArticleCounts, listSources } from "@/lib/db/queries";
+import { listArticles, listJurisdictionArticleCounts } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { parseArticleListApiParams, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
@@ -33,12 +33,10 @@ function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleC
 
 const getHomeRangePayload = unstable_cache(
   async (filters: ArticleListFilters) => {
-    const sources = await listSources();
-    const jurisdictions = Array.from(new Set(sources.map((source) => source.jurisdiction)));
     const countFromJurisdictions = canUseJurisdictionTotal(filters);
     const [articles, jurisdictionArticleCounts] = await Promise.all([
       listArticles({ ...filters, count: countFromJurisdictions ? "none" : "exact" }),
-      listJurisdictionArticleCounts(jurisdictions, { range: filters.range }),
+      listJurisdictionArticleCounts([], { range: filters.range }),
     ]);
 
     return {
