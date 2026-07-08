@@ -1077,6 +1077,15 @@ async function assertCspReportEndpointControls() {
   );
   assert(oversizedResponse.status === 413, "oversized CSP reports must be rejected before parsing");
 
+  const streamedOversizedResponse = await cspReportPost(
+    new Request("https://example.test/api/security/csp-report", {
+      method: "POST",
+      headers: { "content-type": "application/csp-report" },
+      body: JSON.stringify({ "csp-report": { sample: "x".repeat(17 * 1024) } }),
+    }),
+  );
+  assert(streamedOversizedResponse.status === 413, "oversized CSP reports without content-length must be rejected while reading");
+
   const invalidResponse = await cspReportPost(
     new Request("https://example.test/api/security/csp-report", {
       method: "POST",
