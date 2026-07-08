@@ -82,6 +82,7 @@ export function FilterBar({
                   <Link
                     key={jurisdiction}
                     href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
+                    prefetch={false}
                     style={jurisdictionThemeStyle(theme)}
                     className={chipClassName(isActive ? "selected" : "country")}
                   >

@@ -38,6 +38,7 @@ export function TimeRangeTabs({
           <Link
             key={range.value}
             href={href}
+            prefetch={false}
             className={cn(
               "focus-ring whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted transition",
               activeRange === range.value ? "bg-primary text-white" : "hover:bg-surface-muted hover:text-ink",

@@ -94,7 +94,7 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
       </div>
 
       <h2 className="line-clamp-2 text-[15px] font-bold leading-6 tracking-normal text-ink sm:text-base">
-        <Link href={hrefForArticle(article.slug, paramsString)} className="focus-ring rounded-sm hover:text-primary">
+        <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring rounded-sm hover:text-primary">
           {title}
         </Link>
       </h2>
@@ -103,7 +103,7 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
       {article.tags.length > 0 ? (
         <div className="mt-2 flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-xs text-ink-subtle">
           {article.tags.slice(0, 4).map((tag) => (
-            <Link key={tag.slug} href={`/tags/${tag.slug}`} className="focus-ring rounded-sm hover:text-primary">
+            <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring rounded-sm hover:text-primary">
               #{tag.name}
             </Link>
           ))}
@@ -133,6 +133,7 @@ function CountryMenu({
             <Link
               key={item.jurisdiction ?? "all"}
               href={hrefForJurisdiction(paramsString, item.jurisdiction)}
+              prefetch={false}
               className={cn(
                 "focus-ring flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-md px-3 text-sm font-semibold transition lg:w-full",
                 isActive ? "bg-primary text-white" : "text-ink-muted hover:bg-surface-muted hover:text-ink",
@@ -163,6 +164,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
     <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-line px-4 py-4" aria-label="페이지">
       <Link
         href={hrefForPage(paramsString, page - 1)}
+        prefetch={false}
         aria-disabled={!hasPrevious}
         className={cn(
           "focus-ring inline-flex min-h-9 items-center gap-1 rounded-md border border-line px-3 text-sm font-semibold",
@@ -181,6 +183,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
           <Link
             key={item}
             href={hrefForPage(paramsString, item)}
+            prefetch={false}
             aria-current={item === page ? "page" : undefined}
             className={cn(
               "focus-ring inline-flex size-9 items-center justify-center rounded-md border text-sm font-semibold tabular-nums",
@@ -193,6 +196,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
       )}
       <Link
         href={hrefForPage(paramsString, page + 1)}
+        prefetch={false}
         aria-disabled={!hasNext}
         className={cn(
           "focus-ring inline-flex min-h-9 items-center gap-1 rounded-md border border-line px-3 text-sm font-semibold",
@@ -220,7 +224,7 @@ function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]
                 {index + 1}
               </span>
               <div className="min-w-0">
-                <Link href={hrefForArticle(article.slug, paramsString)} className="focus-ring line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-ink hover:text-primary">
+                <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-ink hover:text-primary">
                   {article.koreanTitle || article.originalTitle || "제목 미상"}
                 </Link>
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-ink-subtle">

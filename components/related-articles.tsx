@@ -12,7 +12,7 @@ export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
     <ul className="grid gap-3 md:grid-cols-2">
       {articles.map((article) => (
         <li key={article.slug} className="rounded-lg border border-line bg-white p-4">
-          <Link href={`/articles/${article.slug}`} className="focus-ring line-clamp-2 rounded-sm font-semibold leading-6 text-ink hover:text-primary">
+          <Link href={`/articles/${article.slug}`} prefetch={false} className="focus-ring line-clamp-2 rounded-sm font-semibold leading-6 text-ink hover:text-primary">
             {article.koreanTitle || article.originalTitle}
           </Link>
           <p className="mt-2 text-xs text-ink-subtle">

@@ -150,7 +150,7 @@ export function ArticleCard({
       </div>
 
       <h2 className="line-clamp-2 text-base font-bold leading-6 tracking-normal text-ink">
-        <Link href={`/articles/${article.slug}`} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
+        <Link href={articleHref} prefetch={false} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
           {title}
         </Link>
       </h2>
@@ -195,6 +195,7 @@ export function ArticleCard({
           </button>
           <Link
             href={articleHref}
+            prefetch={false}
             onClick={handleArticleLinkClick}
             aria-label={`자세히 읽기: ${title}`}
             title="자세히 읽기"
