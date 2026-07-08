@@ -5,6 +5,7 @@ export { validateProductionSecurityConfig } from "@/lib/security/production-conf
 export const ADMIN_SESSION_COOKIE = "worldcons_admin_session";
 export const ADMIN_CSRF_HEADER = "x-csrf-token";
 export const WORLDLAWS_PORTAL_TOKEN_HEADER = "x-worldlaws-portal-token";
+export const PORTAL_TOKEN_COMPAT_HEADER = "x-portal-token";
 export const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const DEFAULT_ADMIN_USERNAME = "ap570@naver.com";
 const CSRF_TOKEN_BYTES = 32;
@@ -187,7 +188,9 @@ export function portalAuthFailureStatus(request: Request) {
   const expectedToken = configuredPortalToken();
   if (!expectedToken) return 503;
 
-  const token = request.headers.get(WORLDLAWS_PORTAL_TOKEN_HEADER)?.trim();
+  const token =
+    request.headers.get(WORLDLAWS_PORTAL_TOKEN_HEADER)?.trim() ||
+    request.headers.get(PORTAL_TOKEN_COMPAT_HEADER)?.trim();
   if (!token) return 401;
 
   return safeEqual(token, expectedToken) ? null : 403;
