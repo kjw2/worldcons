@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
-import { HomeFeedPanel } from "@/components/home-feed-panel";
+import { FilterBar } from "@/components/filter-bar";
+import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags } from "@/lib/db/queries";
@@ -171,15 +172,16 @@ async function HomeContent({ searchParams }: { searchParams?: Promise<SearchPara
   return (
     <>
       <PageViewTracker event={pageViewEvent} />
-      <HomeFeedPanel
-        initialResult={articles}
-        initialRange={filters.range ?? "latest"}
-        initialParamsString={params.toString()}
-        sources={sources}
-        tags={tags}
-        jurisdictionArticleCounts={jurisdictionArticleCounts}
-        pageSize={9}
-      />
+      <div className="mb-6">
+        <FilterBar
+          activeRange={filters.range ?? "latest"}
+          sources={sources}
+          tags={tags}
+          paramsString={params.toString()}
+          jurisdictionArticleCounts={jurisdictionArticleCounts}
+        />
+      </div>
+      <InfiniteArticleFeed initialResult={articles} queryString={params.toString()} pageSize={9} />
     </>
   );
 }

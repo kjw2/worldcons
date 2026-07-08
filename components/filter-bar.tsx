@@ -1,8 +1,5 @@
-"use client";
-
 import Link from "next/link";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
-import { useMemo } from "react";
 import { SearchBox } from "@/components/search-box";
 import type { ArticleContentType, SourceRecord, TagSummary } from "@/lib/db/types";
 import type { TimeRange } from "@/lib/utils/dates";
@@ -46,8 +43,6 @@ export function FilterBar({
   paramsString,
   jurisdictionArticleCounts,
   basePath = "/",
-  onRangeChange,
-  onRangePrefetch,
   showJurisdictionChips = true,
 }: {
   activeRange: TimeRange;
@@ -56,11 +51,9 @@ export function FilterBar({
   paramsString: string;
   jurisdictionArticleCounts?: Record<string, number>;
   basePath?: string;
-  onRangeChange?: (range: TimeRange, href: string) => void;
-  onRangePrefetch?: (range: TimeRange) => void;
   showJurisdictionChips?: boolean;
 }) {
-  const params = useMemo(() => new URLSearchParams(paramsString), [paramsString]);
+  const params = new URLSearchParams(paramsString);
   const activeJurisdiction = params.get("jurisdiction") ?? "";
   const jurisdictions = [...new Set(sources.map((source) => source.jurisdiction))];
   const hasAdvancedFilters = Boolean(params.get("source") || params.get("type") || params.get("tag") || params.get("language"));
@@ -74,8 +67,6 @@ export function FilterBar({
             activeRange={activeRange}
             basePath={basePath}
             paramsString={paramsString}
-            onRangeChange={onRangeChange}
-            onRangePrefetch={onRangePrefetch}
           />
           {showJurisdictionChips ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
