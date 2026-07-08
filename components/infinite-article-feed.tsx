@@ -20,7 +20,6 @@ interface InfiniteArticleFeedProps {
 interface FeedSnapshot {
   feedKey: string;
   returnPath: string;
-  articles: ArticleListItem[];
   pageInfo: PageInfo;
   isExhausted: boolean;
   clickedSlug: string;
@@ -76,13 +75,6 @@ function findArticleElement(slug: string) {
   return [...document.querySelectorAll<HTMLElement>("[data-article-slug]")].find((element) => element.dataset.articleSlug === slug) ?? null;
 }
 
-function slimArticleForSnapshot(article: ArticleListItem): ArticleListItem {
-  return {
-    ...article,
-    summaryJson: null,
-  };
-}
-
 function readFeedSnapshot(feedKey: string) {
   if (typeof window === "undefined") return null;
 
@@ -99,7 +91,6 @@ function readFeedSnapshot(feedKey: string) {
     if (
       snapshot.feedKey !== feedKey ||
       snapshot.returnPath !== currentReturnPath() ||
-      !Array.isArray(snapshot.articles) ||
       !snapshot.pageInfo ||
       typeof snapshot.pageInfo.page !== "number" ||
       typeof snapshot.pageInfo.pageSize !== "number" ||
@@ -129,12 +120,12 @@ function articleViewedAfterSnapshot(slug: string, savedAt: number) {
   return Number.isFinite(viewedAt) && viewedAt >= savedAt;
 }
 
-function articlesWithRestoredView(snapshot: FeedSnapshot) {
+function articlesWithRestoredView(articles: ArticleListItem[], snapshot: FeedSnapshot) {
   if (!articleViewedAfterSnapshot(snapshot.clickedSlug, snapshot.savedAt)) {
-    return snapshot.articles;
+    return articles;
   }
 
-  return snapshot.articles.map((article) => {
+  return articles.map((article) => {
     if (article.slug !== snapshot.clickedSlug) return article;
     return {
       ...article,
@@ -221,19 +212,94 @@ export function InfiniteArticleFeed({
   const pendingRestoreRef = useRef<FeedSnapshot | null>(null);
   const lastLoadScrollYRef = useRef<number | null>(null);
 
+  const pageUrl = useCallback(
+    (page: number) => {
+      const params = new URLSearchParams(queryString);
+      params.set("page", String(page));
+      params.set("pageSize", String(pageSize));
+      if (!params.has("count")) {
+        params.set("count", "none");
+      }
+      const suffix = params.toString();
+      return suffix ? `${endpoint}?${suffix}` : endpoint;
+    },
+    [endpoint, pageSize, queryString],
+  );
+
+  const fetchPage = useCallback(
+    async (page: number) => {
+      const response = await fetch(pageUrl(page), {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return (await response.json()) as ArticleListResult;
+    },
+    [pageUrl],
+  );
+
   useEffect(() => {
     const snapshot = readFeedSnapshot(feedKey);
     if (snapshot) {
-      const restoredArticles = articlesWithRestoredView(snapshot);
-      const snapshotPageInfo = {
-        ...snapshot.pageInfo,
-        pageSize,
-        total: Math.max(snapshot.pageInfo.total, initialResult.pageInfo.total),
+      const restoreSnapshotData = snapshot;
+      let cancelled = false;
+      const initialArticles = articlesWithRestoredView(initialResult.items, restoreSnapshotData);
+      setArticles(initialArticles);
+      setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
+      setIsExhausted(!hasMorePages(initialResult.pageInfo, initialArticles.length));
+      pendingRestoreRef.current = null;
+      setErrorMessage(null);
+      loadingRef.current = false;
+      lastLoadScrollYRef.current = null;
+      setIsLoading(false);
+
+      async function restoreLoadedPages() {
+        if (restoreSnapshotData.pageInfo.page <= initialResult.pageInfo.page) {
+          pendingRestoreRef.current = restoreSnapshotData;
+          setArticles((current) => articlesWithRestoredView(current, restoreSnapshotData));
+          return;
+        }
+
+        loadingRef.current = true;
+        setIsLoading(true);
+        try {
+          let merged = initialArticles;
+          let restoredPageInfo = pageInfoFor(initialResult.pageInfo, pageSize);
+          for (let page = initialResult.pageInfo.page + 1; page <= restoreSnapshotData.pageInfo.page; page += 1) {
+            const result = await fetchPage(page);
+            if (cancelled) return;
+            merged = mergeArticles(merged, result.items ?? []);
+            restoredPageInfo = pageInfoFor(result.pageInfo, pageSize);
+          }
+
+          if (cancelled) return;
+          const viewedArticles = articlesWithRestoredView(merged, restoreSnapshotData);
+          const snapshotPageInfo = {
+            ...restoreSnapshotData.pageInfo,
+            pageSize,
+            total: Math.max(restoreSnapshotData.pageInfo.total, restoredPageInfo.total, initialResult.pageInfo.total, viewedArticles.length),
+          };
+          setArticles(viewedArticles);
+          setPageInfo(snapshotPageInfo);
+          setIsExhausted(restoreSnapshotData.isExhausted || !hasMorePages(snapshotPageInfo, viewedArticles.length));
+          pendingRestoreRef.current = restoreSnapshotData;
+        } catch {
+          if (!cancelled) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => restoreFeedScroll(restoreSnapshotData));
+            });
+          }
+        } finally {
+          if (!cancelled) {
+            loadingRef.current = false;
+            setIsLoading(false);
+          }
+        }
+      }
+
+      void restoreLoadedPages();
+      return () => {
+        cancelled = true;
       };
-      setArticles(restoredArticles);
-      setPageInfo(snapshotPageInfo);
-      setIsExhausted(snapshot.isExhausted || !hasMorePages(snapshotPageInfo, restoredArticles.length));
-      pendingRestoreRef.current = snapshot;
     } else {
       setArticles(initialResult.items);
       setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
@@ -244,7 +310,7 @@ export function InfiniteArticleFeed({
     loadingRef.current = false;
     lastLoadScrollYRef.current = null;
     setIsLoading(false);
-  }, [feedKey, initialResult, pageSize]);
+  }, [feedKey, fetchPage, initialResult, pageSize]);
 
   useEffect(() => {
     const snapshot = pendingRestoreRef.current;
@@ -264,15 +330,8 @@ export function InfiniteArticleFeed({
   const totalPrefix = pageInfo.totalIsExact === false ? "약 " : "";
 
   const nextUrl = useMemo(() => {
-    const params = new URLSearchParams(queryString);
-    params.set("page", String(pageInfo.page + 1));
-    params.set("pageSize", String(pageSize));
-    if (!params.has("count")) {
-      params.set("count", "none");
-    }
-    const suffix = params.toString();
-    return suffix ? `${endpoint}?${suffix}` : endpoint;
-  }, [endpoint, pageInfo.page, pageSize, queryString]);
+    return pageUrl(pageInfo.page + 1);
+  }, [pageInfo.page, pageUrl]);
 
   const loadNext = useCallback(async (trigger: "auto" | "manual" = "manual") => {
     if (!hasMore || loadingRef.current) return;
@@ -327,7 +386,6 @@ export function InfiniteArticleFeed({
       const snapshot: FeedSnapshot = {
         feedKey,
         returnPath: currentReturnPath(),
-        articles: articles.map(slimArticleForSnapshot),
         pageInfo,
         isExhausted,
         clickedSlug,
@@ -341,21 +399,10 @@ export function InfiniteArticleFeed({
         window.sessionStorage.setItem(storageKey, JSON.stringify(snapshot));
         window.sessionStorage.setItem(FEED_PENDING_KEY, storageKey);
       } catch {
-        try {
-          window.sessionStorage.setItem(
-            storageKey,
-            JSON.stringify({
-              ...snapshot,
-              articles: [],
-            }),
-          );
-          window.sessionStorage.setItem(FEED_PENDING_KEY, storageKey);
-        } catch {
-          // Ignore private-mode or quota failures; browser default restoration remains available.
-        }
+        // Ignore private-mode or quota failures; browser default restoration remains available.
       }
     },
-    [articles, feedKey, isExhausted, pageInfo],
+    [feedKey, isExhausted, pageInfo],
   );
 
   useEffect(() => {
