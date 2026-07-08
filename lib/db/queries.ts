@@ -67,6 +67,11 @@ interface SupabaseArticleRow {
   article_tags?: SupabaseArticleTagRow[] | null;
 }
 
+interface SupabaseJurisdictionCountRow {
+  jurisdiction?: string | null;
+  article_count?: number | string | null;
+}
+
 const DEFAULT_PAGE_SIZE = 20;
 const TAG_LIST_SELECT = "id,slug,name,normalized_name,type,description,article_count,latest_article_at";
 const ARTICLE_LIST_SELECT = [
@@ -586,6 +591,19 @@ export async function listJurisdictionArticleCounts(
       : counts;
   }
 
+  const startIso = getRangeStartIso(options.range);
+  const { data: rpcRows, error: rpcError } = await supabase.rpc("public_jurisdiction_article_counts", { range_start: startIso });
+  if (!rpcError && Array.isArray(rpcRows)) {
+    const counts = Object.fromEntries(
+      (rpcRows as SupabaseJurisdictionCountRow[])
+        .filter((row) => typeof row.jurisdiction === "string" && row.jurisdiction.trim())
+        .map((row) => [String(row.jurisdiction), Number(row.article_count ?? 0)]),
+    );
+    return normalizedJurisdictions.length
+      ? Object.fromEntries(normalizedJurisdictions.map((jurisdiction) => [jurisdiction, counts[jurisdiction] ?? 0]))
+      : counts;
+  }
+
   const targetJurisdictions = normalizedJurisdictions.length
     ? normalizedJurisdictions
     : Array.from(new Set((await listSources()).map((source) => source.jurisdiction)));
@@ -598,7 +616,6 @@ export async function listJurisdictionArticleCounts(
         .eq("status", "summarized")
         .filter("source_metadata->collection->>publishable", "eq", "true")
         .eq("jurisdiction", jurisdiction);
-      const startIso = getRangeStartIso(options.range);
       if (startIso) query = query.gte("original_published_at", startIso);
 
       const { count, error } = await query;
