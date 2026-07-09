@@ -1480,6 +1480,16 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobsHelperSource.includes("redactAdminAuditMetadata"), "admin jobs helper must redact JSON payloads before storage");
     assert(adminJobsHelperSource.includes("unavailable: true"), "admin jobs helper must expose unavailable fallbacks for unapplied migrations");
     assert(adminJobsHelperSource.includes("admin-job-retry:"), "admin jobs helper must use retry-specific idempotency keys");
+    const markSucceededBlock = adminJobsHelperSource.slice(
+      adminJobsHelperSource.indexOf("export async function markAdminJobSucceeded"),
+      adminJobsHelperSource.indexOf("export async function markAdminJobFailed"),
+    );
+    const markFailedBlock = adminJobsHelperSource.slice(
+      adminJobsHelperSource.indexOf("export async function markAdminJobFailed"),
+      adminJobsHelperSource.indexOf("export async function requestAdminJobCancel"),
+    );
+    assert(!markSucceededBlock.includes("is no longer cancellable"), "markAdminJobSucceeded must not use cancel-only guard errors");
+    assert(!markFailedBlock.includes("is no longer cancellable"), "markAdminJobFailed must not use cancel-only guard errors");
 
     const adminJobRunnerSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/admin-job-runner.ts"), "utf8");
     for (const requiredCall of ["claimAdminJob", "markAdminJobSucceeded", "markAdminJobFailed", "markAdminJobCancelled", "appendAdminJobEvent"]) {

@@ -432,11 +432,10 @@ export async function markAdminJobSucceeded(input: MarkAdminJobSucceededInput): 
     .from("admin_jobs")
     .update(update)
     .eq("id", input.jobId)
-    .in("status", ["queued", "running", "cancel_requested"])
     .select("*")
     .maybeSingle();
   if (error) return failure(error);
-  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
   return { ok: true, data: rowToAdminJob(data) };
 }
 
@@ -458,11 +457,10 @@ export async function markAdminJobFailed(input: MarkAdminJobFailedInput): Promis
     .from("admin_jobs")
     .update(update)
     .eq("id", input.jobId)
-    .in("status", ["queued", "cancel_requested"])
     .select("*")
     .maybeSingle();
   if (error) return failure(error);
-  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
   return { ok: true, data: rowToAdminJob(data) };
 }
 
@@ -476,9 +474,15 @@ export async function requestAdminJobCancel(input: RequestAdminJobCancelInput): 
     cancel_reason: redactedText(input.reason, 500),
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase.from("admin_jobs").update(update).eq("id", input.jobId).select("*").maybeSingle();
+  const { data, error } = await supabase
+    .from("admin_jobs")
+    .update(update)
+    .eq("id", input.jobId)
+    .in("status", ["queued", "running", "cancel_requested"])
+    .select("*")
+    .maybeSingle();
   if (error) return failure(error);
-  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
   return { ok: true, data: rowToAdminJob(data) };
 }
 
@@ -515,9 +519,15 @@ export async function markAdminJobCancelled(input: MarkAdminJobCancelledInput): 
     worker_id: null,
     updated_at: now,
   };
-  const { data, error } = await supabase.from("admin_jobs").update(update).eq("id", input.jobId).select("*").maybeSingle();
+  const { data, error } = await supabase
+    .from("admin_jobs")
+    .update(update)
+    .eq("id", input.jobId)
+    .in("status", ["queued", "cancel_requested"])
+    .select("*")
+    .maybeSingle();
   if (error) return failure(error);
-  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
   return { ok: true, data: rowToAdminJob(data) };
 }
 
