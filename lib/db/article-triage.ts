@@ -56,6 +56,32 @@ export function classifySummaryError(message?: string | null, retryable = false)
   return ARTICLE_ERROR_CLASS.SUMMARY_MODEL_ERROR;
 }
 
+export function classifyLlmError(error: unknown): ArticleErrorClass {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+  if (
+    lowered.includes("api key") ||
+    lowered.includes("key is required") ||
+    lowered.includes("key is not configured") ||
+    lowered.includes("key missing") ||
+    lowered.includes("no gemini api key") ||
+    lowered.includes("no llm completion available")
+  ) {
+    return ARTICLE_ERROR_CLASS.LLM_KEY_MISSING;
+  }
+  if (
+    lowered.includes("quota") ||
+    lowered.includes("429") ||
+    lowered.includes("rate limit") ||
+    lowered.includes("rate_limit") ||
+    lowered.includes("too many requests") ||
+    lowered.includes("high demand")
+  ) {
+    return ARTICLE_ERROR_CLASS.SUMMARY_RETRYABLE_QUOTA;
+  }
+  return ARTICLE_ERROR_CLASS.SUMMARY_MODEL_ERROR;
+}
+
 export function fallbackErrorClassForArticleStatus(status?: string | null): ArticleErrorClass | null {
   if (status === "robots_disallowed") return ARTICLE_ERROR_CLASS.CRAWL_ROBOTS_DISALLOWED;
   if (status === "timeout") return ARTICLE_ERROR_CLASS.CRAWL_TIMEOUT_RESPONSE;

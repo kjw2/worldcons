@@ -8,6 +8,7 @@ import {
   type AdminLlmSettingsView,
   type ConfigurableLlmProvider,
   type LlmKeyView,
+  type LlmProviderSettingsView,
 } from "@/lib/ai/llm-settings-types";
 
 type KeyForm = LlmKeyView & {
@@ -30,6 +31,17 @@ type FormState = {
     model: string;
   };
   providers: Record<ConfigurableLlmProvider, ProviderForm>;
+};
+
+type LlmTestResponse = {
+  error?: string;
+  errorClass?: string;
+  test?: {
+    status?: "ok" | "failed";
+    provider?: string;
+    model?: string | null;
+    durationMs?: number;
+  };
 };
 
 const PROVIDER_LABELS: Record<ConfigurableLlmProvider, string> = {
@@ -110,6 +122,10 @@ function statusText(provider: ProviderForm) {
   return `${activeKeys}개 키`;
 }
 
+function savedDatabaseKeyCount(provider: LlmProviderSettingsView) {
+  return provider.keys.filter((key) => key.source === "database").length;
+}
+
 export function AdminLlmSettingsPanel({
   initialSettings,
   csrfToken,
@@ -122,9 +138,16 @@ export function AdminLlmSettingsPanel({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
+  const [testPending, setTestPending] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [testIsError, setTestIsError] = useState(false);
 
   const activeSummaryProvider = form.providers[form.summary.provider];
-  const canSave = settings.storageAvailable && settings.encryptionReady && !pending;
+  const activeSavedProvider = settings.providers[form.summary.provider];
+  const activeModel = form.summary.model || activeSummaryProvider.defaultModel || MODEL_PLACEHOLDERS[form.summary.provider];
+  const activeDbKeyCount = savedDatabaseKeyCount(activeSavedProvider);
+  const canSave = settings.storageAvailable && settings.encryptionReady && !pending && !testPending;
+  const canRunTest = !pending && !testPending && Boolean(activeModel.trim());
   const providerOptions = useMemo(() => LLM_PROVIDER_IDS.map((provider) => ({ provider, label: PROVIDER_LABELS[provider] })), []);
 
   function updateProvider(provider: ConfigurableLlmProvider, patch: Partial<ProviderForm>) {
@@ -201,6 +224,35 @@ export function AdminLlmSettingsPanel({
     }
   }
 
+  async function testLlmSettings() {
+    if (!canRunTest) return;
+    setTestPending(true);
+    setTestMessage(null);
+    setTestIsError(false);
+
+    try {
+      const response = await fetch("/api/admin/llm-settings/test", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+        body: JSON.stringify({
+          provider: form.summary.provider,
+          model: activeModel,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as LlmTestResponse;
+      if (!response.ok || payload.test?.status !== "ok") {
+        throw new Error([payload.error || `HTTP ${response.status}`, payload.errorClass].filter(Boolean).join(" · "));
+      }
+      setTestMessage(`${payload.test.provider ?? form.summary.provider} · ${payload.test.model ?? activeModel} · ${payload.test.durationMs ?? 0}ms`);
+    } catch (error) {
+      setTestIsError(true);
+      setTestMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTestPending(false);
+    }
+  }
+
   return (
     <div className="grid gap-6">
       <section className="rounded-md border border-rule bg-white p-5 shadow-sm">
@@ -215,7 +267,7 @@ export function AdminLlmSettingsPanel({
           </span>
         </div>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-[14rem_minmax(0,1fr)_auto]">
+        <div className="mt-4 grid gap-3 lg:grid-cols-[14rem_minmax(0,1fr)_auto_auto]">
           <label className="grid gap-1 text-sm font-medium text-ink/72">
             제공자
             <select
@@ -257,11 +309,49 @@ export function AdminLlmSettingsPanel({
             {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Save className="size-4" aria-hidden="true" />}
             {pending ? "저장 중" : "설정 저장"}
           </button>
+          <button
+            type="button"
+            onClick={testLlmSettings}
+            disabled={!canRunTest}
+            className="focus-ring mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-rule bg-white px-4 text-sm font-semibold text-ink/72 transition hover:bg-parchment disabled:cursor-not-allowed disabled:bg-rule/40 disabled:text-ink/40 lg:mt-auto"
+          >
+            {testPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Server className="size-4" aria-hidden="true" />}
+            {testPending ? "테스트 중" : "테스트 호출"}
+          </button>
         </div>
 
         <div className="mt-4 rounded-md border border-rule bg-parchment/45 px-3 py-3 text-sm text-ink/68">
-          현재 선택: {PROVIDER_LABELS[form.summary.provider]} · {form.summary.model || activeSummaryProvider.defaultModel || MODEL_PLACEHOLDERS[form.summary.provider]}
+          <div className="break-words">
+            현재 선택: {PROVIDER_LABELS[form.summary.provider]} · {activeModel}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+            <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-white px-2.5 font-semibold text-ink/62">
+              DB 키 {activeDbKeyCount}개
+            </span>
+            <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-white px-2.5 font-semibold text-ink/62">
+              환경 키 {activeSavedProvider.envKeyCount}개
+            </span>
+            <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 font-semibold ${activeSavedProvider.hasUsableKey ? "border-mint/25 bg-mint/10 text-mint" : "border-court/25 bg-court/5 text-court"}`}>
+              {activeSavedProvider.hasUsableKey ? "호출 가능 키 있음" : "호출 가능 키 없음"}
+            </span>
+          </div>
         </div>
+
+        {testMessage ? (
+          <div className={`mt-4 rounded-md border p-3 text-sm ${testIsError ? "border-court/25 bg-court/5 text-court" : "border-mint/25 bg-mint/5 text-mint"}`}>
+            <div className="flex items-center gap-2 font-semibold">
+              {testIsError ? <TriangleAlert className="size-4" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
+              {testIsError ? "테스트 실패" : "테스트 성공"}
+            </div>
+            <p className="mt-1 break-words">{testMessage}</p>
+          </div>
+        ) : null}
+
+        {!activeSavedProvider.hasUsableKey ? (
+          <div className="mt-3 rounded-md border border-amber-400/30 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900">
+            테스트 호출은 서버에 저장된 키 또는 환경변수 키 기준으로 실행됩니다. 새 키를 입력했다면 먼저 저장하세요.
+          </div>
+        ) : null}
 
         {!settings.storageAvailable || !settings.encryptionReady || message ? (
           <div className={`mt-4 rounded-md border p-3 text-sm ${isError || !settings.storageAvailable || !settings.encryptionReady ? "border-court/25 bg-court/5 text-court" : "border-mint/25 bg-mint/5 text-mint"}`}>
@@ -279,12 +369,25 @@ export function AdminLlmSettingsPanel({
       <div className="grid gap-4 xl:grid-cols-2">
         {LLM_PROVIDER_IDS.map((provider) => {
           const providerForm = form.providers[provider];
+          const providerView = settings.providers[provider];
+          const databaseKeyCount = savedDatabaseKeyCount(providerView);
           return (
             <section key={provider} className="rounded-md border border-rule bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-court">{PROVIDER_LABELS[provider]}</p>
                   <h2 className="mt-1 text-lg font-semibold tracking-normal text-ink">{statusText(providerForm)}</h2>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-parchment px-2.5 font-semibold text-ink/62">
+                      DB {databaseKeyCount}
+                    </span>
+                    <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-parchment px-2.5 font-semibold text-ink/62">
+                      ENV {providerView.envKeyCount}
+                    </span>
+                    <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 font-semibold ${providerView.hasUsableKey ? "border-mint/25 bg-mint/10 text-mint" : "border-court/25 bg-court/5 text-court"}`}>
+                      {providerView.hasUsableKey ? "usable" : "no key"}
+                    </span>
+                  </div>
                 </div>
                 <label className="inline-flex min-h-9 items-center gap-2 rounded-md border border-rule bg-parchment px-3 text-sm font-semibold text-ink/70">
                   <input

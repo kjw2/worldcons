@@ -1360,6 +1360,50 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(invalidLlmKeyPayloadResponse.status === 400, "admin LLM settings POST must reject oversized key payloads before storage access");
+
+    const { POST: llmSettingsTestPost } = await import("@/app/api/admin/llm-settings/test/route");
+    const unauthenticatedLlmTestResponse = await llmSettingsTestPost(
+      new Request("https://example.test/api/admin/llm-settings/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "gemini", model: "gemini-3.1-flash-lite" }),
+      }),
+    );
+    assert(unauthenticatedLlmTestResponse.status === 401, "admin LLM test POST without authentication must return 401");
+
+    const invalidLlmTestProviderResponse = await llmSettingsTestPost(
+      new Request("https://example.test/api/admin/llm-settings/test", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ provider: "bad-provider", model: "gpt-4.1-mini" }),
+      }),
+    );
+    assert(invalidLlmTestProviderResponse.status === 400, "admin LLM test POST must reject invalid providers before LLM calls");
+
+    const invalidLlmTestModelResponse = await llmSettingsTestPost(
+      new Request("https://example.test/api/admin/llm-settings/test", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ provider: "openai", model: "m".repeat(161) }),
+      }),
+    );
+    assert(invalidLlmTestModelResponse.status === 400, "admin LLM test POST must reject oversized model names before LLM calls");
+
+    const llmTestRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/llm-settings/test/route.ts"), "utf8");
+    assert(llmTestRouteSource.includes("recordAdminSiteEvent"), "admin LLM test route must record audit events");
+    assert(llmTestRouteSource.includes("llm_test"), "admin LLM test route must record action llm_test");
+    assert(llmTestRouteSource.includes("completeJsonWithMetadata"), "admin LLM test route must use the existing LLM client");
+    assert(llmTestRouteSource.includes("parseAdminLlmTestBody"), "admin LLM test route must validate payload before calling LLM");
+
+    const adminLlmPanelSource = fs.readFileSync(path.join(process.cwd(), "components/admin-llm-settings-panel.tsx"), "utf8");
+    assert(adminLlmPanelSource.includes("/api/admin/llm-settings/test"), "admin LLM panel must call the LLM test endpoint");
+    assert(adminLlmPanelSource.includes("테스트 호출"), "admin LLM panel must expose a test call button");
+
+    const adminApiValidationSource = fs.readFileSync(path.join(process.cwd(), "lib/security/admin-api-validation.ts"), "utf8");
+    assert(adminApiValidationSource.includes("parseAdminLlmTestBody"), "admin API validation must expose an LLM test payload parser");
+
+    const articleTriageHelperSource = fs.readFileSync(path.join(process.cwd(), "lib/db/article-triage.ts"), "utf8");
+    assert(articleTriageHelperSource.includes("classifyLlmError"), "article triage helper must classify LLM test errors");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);

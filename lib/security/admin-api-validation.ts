@@ -286,6 +286,15 @@ const adminLlmSettingsSchema = z
   })
   .strict();
 
+const adminLlmTestSchema = z
+  .object({
+    provider: z.enum(LLM_PROVIDER_IDS),
+    model: optionalText(ADMIN_LLM_MODEL_MAX_LENGTH),
+  })
+  .strict();
+
+export type AdminLlmTestBody = z.infer<typeof adminLlmTestSchema>;
+
 function searchParamsObject(searchParams: URLSearchParams) {
   return Object.fromEntries(searchParams.entries());
 }
@@ -312,4 +321,8 @@ export function parseAdminCandidateMutationBody(body: unknown): ValidationResult
 
 export function parseAdminLlmSettingsBody(body: unknown): ValidationResult<AdminLlmSettingsInput> {
   return validationResult(adminLlmSettingsSchema.safeParse(body));
+}
+
+export function parseAdminLlmTestBody(body: unknown): ValidationResult<AdminLlmTestBody> {
+  return validationResult(adminLlmTestSchema.safeParse(body));
 }
