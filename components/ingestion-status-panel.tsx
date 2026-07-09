@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, Database, XCircle } from "lucide-react";
 import type { IngestionRunRecord } from "@/lib/db/types";
 import { cn } from "@/lib/utils/classnames";
@@ -108,6 +109,19 @@ function formatDateTime(input?: string | null) {
   }).format(date);
 }
 
+function adminArticlesHref(sourceKey: string, status?: string) {
+  const statusQuery = status ? `&status=${encodeURIComponent(status)}` : "";
+  return `/admin/articles?sourceKey=${encodeURIComponent(sourceKey)}${statusQuery}`;
+}
+
+function adminCandidatesHref(sourceKey: string) {
+  return `/admin/candidates?source=${encodeURIComponent(sourceKey)}`;
+}
+
+function adminAuditHref(sourceKey: string) {
+  return `/admin/audit?q=${encodeURIComponent(sourceKey)}`;
+}
+
 function durationLabel(startedAt?: string | null, finishedAt?: string | null) {
   if (!startedAt) return "-";
   const start = new Date(startedAt).getTime();
@@ -155,6 +169,27 @@ function ResultPill({ label, value, tone = "neutral" }: { label: string; value?:
       <span className="text-ink/58">{label}</span>
       <span>{formatCompactNumber(value)}</span>
     </span>
+  );
+}
+
+function OperationLink({ href, children }: { href: string; children: string }) {
+  return (
+    <Link href={href} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+      {children}
+    </Link>
+  );
+}
+
+function RunOperationLinks({ sourceKey }: { sourceKey: string }) {
+  return (
+    <div className="flex max-w-xs flex-wrap gap-1.5">
+      <OperationLink href={adminArticlesHref(sourceKey)}>기사</OperationLink>
+      <OperationLink href={adminArticlesHref(sourceKey, "failed_summary")}>실패요약</OperationLink>
+      <OperationLink href={adminArticlesHref(sourceKey, "failed_fetch")}>실패수집</OperationLink>
+      <OperationLink href={adminArticlesHref(sourceKey, "metadata_only")}>메타</OperationLink>
+      <OperationLink href={adminCandidatesHref(sourceKey)}>후보</OperationLink>
+      <OperationLink href={adminAuditHref(sourceKey)}>감사</OperationLink>
+    </div>
   );
 }
 
@@ -405,6 +440,7 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                 <th className="px-4 py-3">실행 옵션</th>
                 <th className="px-4 py-3">수집 결과</th>
                 <th className="px-4 py-3">공개 분류</th>
+                <th className="px-4 py-3">운영</th>
                 <th className="px-4 py-3">진단</th>
               </tr>
             </thead>
@@ -445,6 +481,9 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                         <ResultPill label="timeout" value={counts.timeoutCount} tone={counts.timeoutCount ? "danger" : "neutral"} />
                         <ResultPill label="seed" value={counts.seedCount} />
                       </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <RunOperationLinks sourceKey={run.sourceKey} />
                     </td>
                     <td className="px-4 py-4">
                       <RunDiagnostics run={run} attempts={diagnostics.attempts} fallbackUsed={diagnostics.fallbackUsed} uncollectedCandidates={diagnostics.uncollectedCandidates} />

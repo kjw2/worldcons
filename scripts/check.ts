@@ -1081,6 +1081,21 @@ async function assertAdminRouteSecurityControls() {
       "admin source-scoped summarize request must pass sourceKey to runSummarizePending",
     );
 
+    const adminPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
+    const ingestionStatusPanelSource = fs.readFileSync(path.join(process.cwd(), "components/ingestion-status-panel.tsx"), "utf8");
+    for (const [label, source] of [
+      ["admin source table", adminPageSource],
+      ["ingestion status panel", ingestionStatusPanelSource],
+    ] as const) {
+      assert(source.includes("/admin/articles?sourceKey="), `${label} must link source rows to filtered article management`);
+      assert(source.includes("/admin/candidates?source="), `${label} must link source rows to filtered URL candidates`);
+      assert(source.includes("/admin/audit?q="), `${label} must link source rows to filtered audit logs`);
+      assert(source.includes('"failed_summary"'), `${label} must expose a clear failed-summary article link`);
+      assert(source.includes('"failed_fetch"'), `${label} must expose a clear failed-fetch article link`);
+      assert(source.includes('"metadata_only"'), `${label} must expose a clear metadata-only article link`);
+    }
+    assert(adminPageSource.includes('"cleaned"'), "admin source table must expose a clear pending-summary article link");
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {

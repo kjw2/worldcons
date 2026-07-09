@@ -51,6 +51,19 @@ function formatDateTime(input?: string | null) {
   }).format(date);
 }
 
+function adminArticlesHref(sourceKey: string, status?: string) {
+  const statusQuery = status ? `&status=${encodeURIComponent(status)}` : "";
+  return `/admin/articles?sourceKey=${encodeURIComponent(sourceKey)}${statusQuery}`;
+}
+
+function adminCandidatesHref(sourceKey: string) {
+  return `/admin/candidates?source=${encodeURIComponent(sourceKey)}`;
+}
+
+function adminAuditHref(sourceKey: string) {
+  return `/admin/audit?q=${encodeURIComponent(sourceKey)}`;
+}
+
 function statusClass(status: string) {
   if (status === "summarized" || status === "completed") return "border-mint/25 bg-mint/10 text-mint";
   if (status === "cleaned" || status === "summarizing" || status === "running") return "border-ink/15 bg-parchment text-ink/72";
@@ -66,6 +79,14 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(status)}`}>
       {statusLabels[status] ?? status}
     </span>
+  );
+}
+
+function OperationLink({ href, children }: { href: string; children: string }) {
+  return (
+    <Link href={href} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
+      {children}
+    </Link>
   );
 }
 
@@ -144,7 +165,7 @@ function SourceTable({ data }: { data: Awaited<ReturnType<typeof getAdminDashboa
               return (
                 <tr key={source.sourceKey}>
                   <td className="px-4 py-3">
-                    <Link href={`/admin/articles?sourceKey=${encodeURIComponent(source.sourceKey)}`} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
+                    <Link href={adminArticlesHref(source.sourceKey)} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
                       {displaySourceLabel({ sourceKey: source.sourceKey, name: source.name })}
                     </Link>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink/56">
@@ -173,12 +194,13 @@ function SourceTable({ data }: { data: Awaited<ReturnType<typeof getAdminDashboa
                   <td className="px-4 py-3">{formatDateTime(source.latestFetchedAt)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      <Link href={`/admin/articles?sourceKey=${encodeURIComponent(source.sourceKey)}`} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
-                        기사
-                      </Link>
-                      <Link href={`/admin/candidates?source=${encodeURIComponent(source.sourceKey)}`} className="focus-ring inline-flex min-h-8 items-center rounded-md border border-rule px-2.5 text-xs font-semibold text-ink/68 hover:bg-parchment">
-                        후보
-                      </Link>
+                      <OperationLink href={adminArticlesHref(source.sourceKey)}>기사</OperationLink>
+                      <OperationLink href={adminArticlesHref(source.sourceKey, "cleaned")}>대기</OperationLink>
+                      <OperationLink href={adminArticlesHref(source.sourceKey, "failed_summary")}>실패요약</OperationLink>
+                      <OperationLink href={adminArticlesHref(source.sourceKey, "failed_fetch")}>실패수집</OperationLink>
+                      <OperationLink href={adminArticlesHref(source.sourceKey, "metadata_only")}>메타</OperationLink>
+                      <OperationLink href={adminCandidatesHref(source.sourceKey)}>후보</OperationLink>
+                      <OperationLink href={adminAuditHref(source.sourceKey)}>감사</OperationLink>
                     </div>
                   </td>
                 </tr>
