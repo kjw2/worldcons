@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminArticleBulkAction } from "@/lib/db/admin-queries";
 import { parseAdminArticleBulkBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const { action, refs, note } = parsed.data;
   const result = await runAdminArticleBulkAction({ action, refs, note });
 
-  await recordSiteEvent(
+  await recordAdminSiteEvent(
     {
       eventType: "admin_review_action",
       path: "/api/admin/articles/bulk",

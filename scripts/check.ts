@@ -28,6 +28,13 @@ import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import {
+  redactAdminAuditEventInput,
+  redactAdminAuditMetadata,
+  redactAdminAuditText,
+  redactAdminAuditPath,
+  isAdminAuditEventType,
+} from "@/lib/security/audit-redaction";
+import {
   parseAnalyticsEventBody,
   parseArticleListApiParams,
   parseSearchApiParams,
@@ -157,6 +164,53 @@ assert(JSON.stringify({ action: adminAuditEntry.action, path: adminAuditEntry.pa
 assert(adminAuditEntry.path === "/api/admin/ingest?secret=[redacted]", "admin audit path query secrets must be redacted");
 assert(!JSON.stringify({ error: adminAuditEntry.error }).includes("sk-proj-secretvalue"), "admin audit error must redact OpenAI-like keys");
 assert(!JSON.stringify({ error: adminAuditEntry.error }).includes("abcdefghijklmnopqrstuvwxyz012345"), "admin audit error must redact bearer tokens");
+assert(isAdminAuditEventType("admin_action"), "admin audit event detector must recognize admin_action");
+assert(redactAdminAuditPath("/api/admin/ingest?secret=plain-secret-value&token=another-secret") === "/api/admin/ingest", "stored admin audit paths must drop query strings");
+assert(redactAdminAuditText(`failed with sk-proj-${"a".repeat(24)} and Bearer ${"b".repeat(32)}`).includes("sk-proj-") === false, "stored admin audit text must mask OpenAI-like keys");
+assert(redactAdminAuditText(`Gemini key AIza${"c".repeat(32)}`).includes("Gemini key"), "stored admin audit text must preserve non-secret context");
+assert(!redactAdminAuditText(`Gemini key AIza${"c".repeat(32)}`).includes(`AIza${"c".repeat(32)}`), "stored admin audit text must mask Gemini-like keys");
+const redactedAuditMetadata = redactAdminAuditMetadata({
+  action: "ingest-and-summarize",
+  sourceKey: "de-bverfg",
+  status: "completed",
+  count: 3,
+  apiKey: `sk-proj-${"d".repeat(24)}`,
+  password: "plain-password",
+  authorization: `Bearer ${"e".repeat(32)}`,
+  candidateUrl: "https://example.test/source/path?secret=plain&key=value",
+  nested: {
+    error: `request failed with sk-ant-api03-${"f".repeat(24)}`,
+    items: [
+      { token: "plain-token", url: "https://example.test/next?token=secret-token" },
+      `Authorization: Bearer ${"g".repeat(32)}`,
+    ],
+  },
+  longMessage: "x".repeat(520),
+});
+const redactedAuditJson = JSON.stringify(redactedAuditMetadata);
+assert(redactedAuditMetadata.action === "ingest-and-summarize", "admin audit redaction must preserve action");
+assert(redactedAuditMetadata.sourceKey === "de-bverfg", "admin audit redaction must preserve sourceKey");
+assert(redactedAuditMetadata.status === "completed", "admin audit redaction must preserve status");
+assert(redactedAuditMetadata.count === 3, "admin audit redaction must preserve counts");
+assert(redactedAuditMetadata.apiKey === "[redacted]", "admin audit redaction must redact apiKey values");
+assert(redactedAuditMetadata.password === "[redacted]", "admin audit redaction must redact password values");
+assert(redactedAuditMetadata.authorization === "[redacted]", "admin audit redaction must redact authorization values");
+assert(redactedAuditMetadata.candidateUrl === "https://example.test/source/path", "admin audit redaction must strip URL queries");
+assert(redactedAuditJson.includes("plain-password") === false, "admin audit redaction must remove nested secret text");
+assert(redactedAuditJson.includes("plain-token") === false, "admin audit redaction must remove nested token text");
+assert(redactedAuditJson.includes("secret-token") === false, "admin audit redaction must remove URL query tokens");
+assert(redactedAuditJson.includes("sk-ant-api03") === false, "admin audit redaction must mask Claude-like keys");
+assert(redactedAuditJson.includes("Bearer g") === false, "admin audit redaction must mask nested bearer tokens");
+assert(typeof redactedAuditMetadata.longMessage === "string" && redactedAuditMetadata.longMessage.endsWith("[truncated]"), "admin audit redaction must truncate long strings");
+const redactedAuditEvent = redactAdminAuditEventInput({
+  eventType: "admin_action" as const,
+  path: "/api/admin/ingest?secret=stored-secret",
+  sourceKey: "de-bverfg",
+  metadata: { action: "ingest", error: `Bearer ${"h".repeat(32)}` },
+});
+assert(redactedAuditEvent.path === "/api/admin/ingest", "stored admin audit event paths must be redacted before insert");
+assert(JSON.stringify(redactedAuditEvent).includes("stored-secret") === false, "stored admin audit events must not retain path query secrets");
+assert(JSON.stringify(redactedAuditEvent).includes("Bearer h") === false, "stored admin audit events must not retain bearer tokens");
 
 const article: NormalizedArticle = {
   sourceKey: "us-scotus",

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { listSourceUrlCandidates, updateSourceUrlCandidateStatus } from "@/lib/db/source-url-candidates";
 import { parseAdminCandidateMutationBody, parseAdminCandidateQuery } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus, isAuthorizedRequest, safeAdminNextPath } from "@/lib/utils/auth";
@@ -101,7 +101,7 @@ async function mutateCandidate(request: Request) {
     return NextResponse.json({ error: "Candidate not found." }, { status: 404 });
   }
 
-  await recordSiteEvent(
+  await recordAdminSiteEvent(
     {
       eventType: "admin_action",
       path: "/api/admin/candidates",

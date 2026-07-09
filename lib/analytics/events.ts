@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { redactAdminAuditEventInput } from "@/lib/security/audit-redaction";
 import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
 
 export type SiteEventType =
@@ -135,21 +136,22 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
   const supabase = getSupabaseAdmin();
   if (!supabase) return;
 
+  const safeInput = redactAdminAuditEventInput(input);
   const ip = getClientIp(headers);
   const payload = {
-    event_type: input.eventType,
-    path: limitText(input.path, 500),
-    article_id: limitText(input.articleId, 80),
-    article_slug: limitText(input.articleSlug, 300),
-    article_title: limitText(input.articleTitle, 500),
-    tag_slug: limitText(input.tagSlug, 200),
-    tag_name: limitText(input.tagName, 200),
-    source_key: limitText(input.sourceKey, 120),
-    jurisdiction: limitText(input.jurisdiction, 120),
-    institution_name: limitText(input.institutionName, 300),
-    search_query: normalizeSearchQuery(input.searchQuery),
-    search_mode: limitText(input.searchMode, 40),
-    result_count: typeof input.resultCount === "number" && Number.isFinite(input.resultCount) ? Math.max(0, Math.round(input.resultCount)) : null,
+    event_type: safeInput.eventType,
+    path: limitText(safeInput.path, 500),
+    article_id: limitText(safeInput.articleId, 80),
+    article_slug: limitText(safeInput.articleSlug, 300),
+    article_title: limitText(safeInput.articleTitle, 500),
+    tag_slug: limitText(safeInput.tagSlug, 200),
+    tag_name: limitText(safeInput.tagName, 200),
+    source_key: limitText(safeInput.sourceKey, 120),
+    jurisdiction: limitText(safeInput.jurisdiction, 120),
+    institution_name: limitText(safeInput.institutionName, 300),
+    search_query: normalizeSearchQuery(safeInput.searchQuery),
+    search_mode: limitText(safeInput.searchMode, 40),
+    result_count: typeof safeInput.resultCount === "number" && Number.isFinite(safeInput.resultCount) ? Math.max(0, Math.round(safeInput.resultCount)) : null,
     referrer_host: referrerHost(headers),
     user_agent_family: userAgentFamily(headers),
     device_type: deviceType(headers),
@@ -161,7 +163,7 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
     client_region: headerText(headers, "x-vercel-ip-country-region", 120),
     client_city: headerText(headers, "x-vercel-ip-city", 120),
     is_bot: isBot(headers),
-    metadata: sanitizedMetadata(input.metadata),
+    metadata: sanitizedMetadata(safeInput.metadata),
   };
 
   const { error } = await supabase.from("site_events").insert(payload);
@@ -177,6 +179,13 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
   if (error && process.env.NODE_ENV !== "production") {
     console.warn(`site analytics skipped: ${error.message}`);
   }
+}
+
+export async function recordAdminSiteEvent(
+  input: SiteEventInput & { eventType: Extract<SiteEventType, "admin_action" | "admin_review_action"> },
+  headers?: HeaderLike,
+) {
+  await recordSiteEvent(redactAdminAuditEventInput(input), headers);
 }
 
 export async function recordSearchEvent({

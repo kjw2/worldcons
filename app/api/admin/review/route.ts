@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction } from "@/lib/ingest/review";
 import { parseAdminReviewBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const { action, articleId, slug, note, provider, model } = parsed.data;
 
   const result = await runAdminReviewAction({ action, articleId, slug, note, provider, model });
-  await recordSiteEvent(
+  await recordAdminSiteEvent(
     {
       eventType: "admin_review_action",
       path: "/api/admin/review",

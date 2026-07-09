@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
 import { parseAdminIngestBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
         })
       : null;
 
-    await recordSiteEvent(
+    await recordAdminSiteEvent(
       {
         eventType: "admin_action",
         path: "/api/admin/ingest",
@@ -148,7 +148,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = errorMessage(error);
     console.error(`[admin ingest] ${message}`, error);
-    await recordSiteEvent(
+    await recordAdminSiteEvent(
       {
         eventType: "admin_action",
         path: "/api/admin/ingest",

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { getAdminLlmSettingsView, saveAdminLlmSettings } from "@/lib/ai/llm-settings";
 import { parseAdminLlmSettingsBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus, isAuthorizedRequest } from "@/lib/utils/auth";
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     const settings = await saveAdminLlmSettings(parsed.data);
-    await recordSiteEvent(
+    await recordAdminSiteEvent(
       {
         eventType: "admin_action",
         path: "/api/admin/llm-settings",

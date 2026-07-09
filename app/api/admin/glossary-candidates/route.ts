@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { approveGlossaryCandidate, generateGlossaryCandidates, ignoreGlossaryCandidate } from "@/lib/glossary/candidates";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
   if (action === "refresh") {
     const result = await generateGlossaryCandidates({ persist: true });
-    await recordSiteEvent(
+    await recordAdminSiteEvent(
       {
         eventType: "admin_action",
         path: "/api/admin/glossary-candidates",
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     const result = await approveGlossaryCandidate({ candidateId, slug, term, koreanTerm, definition, jurisdiction, relatedTags });
-    await recordSiteEvent(
+    await recordAdminSiteEvent(
       {
         eventType: "admin_action",
         path: "/api/admin/glossary-candidates",

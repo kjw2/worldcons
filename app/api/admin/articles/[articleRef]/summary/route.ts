@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { recordSiteEvent } from "@/lib/analytics/events";
+import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { updateArticleSummaryManually } from "@/lib/ingest/manual-summary-edit";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ art
   const body = await request.json().catch(() => ({}));
   const result = await updateArticleSummaryManually({ articleId, body });
 
-  await recordSiteEvent(
+  await recordAdminSiteEvent(
     {
       eventType: "admin_review_action",
       path: "/api/admin/articles/[articleId]/summary",
