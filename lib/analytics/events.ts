@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { recordAdminAuditLog } from "@/lib/db/admin-audit";
 import { redactAdminAuditEventInput } from "@/lib/security/audit-redaction";
 import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
 
@@ -185,7 +186,9 @@ export async function recordAdminSiteEvent(
   input: SiteEventInput & { eventType: Extract<SiteEventType, "admin_action" | "admin_review_action"> },
   headers?: HeaderLike,
 ) {
-  await recordSiteEvent(redactAdminAuditEventInput(input), headers);
+  const safeInput = redactAdminAuditEventInput(input);
+  await recordSiteEvent(safeInput, headers);
+  await recordAdminAuditLog(safeInput, headers);
 }
 
 export async function recordSearchEvent({

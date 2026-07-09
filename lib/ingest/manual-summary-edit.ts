@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createEmbedding } from "@/lib/ai/embeddings";
 import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { canonicalizeTerminologyValue } from "@/lib/ai/terminology";
+import { recordAdminArticleEditHistory } from "@/lib/db/admin-audit";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import type { SummaryJson } from "@/lib/db/types";
 import { runRefreshTagCounts } from "@/lib/ingest/summary";
@@ -223,6 +224,15 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
 
   const { error: updateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
   if (updateError) throw new Error(updateError.message);
+
+  await recordAdminArticleEditHistory({
+    articleId: row.id,
+    articleSlug: row.slug,
+    previousSummary: row.summary_json,
+    nextSummary: parsed.data.summary,
+    changedFields: fields,
+    note: parsed.data.note,
+  });
 
   const tagSync = hasSummaryChange
     ? await syncSummaryTags(row.id, parsed.data.summary, row.original_published_at, { replace: true })

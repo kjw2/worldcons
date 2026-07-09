@@ -1149,6 +1149,34 @@ async function assertAdminRouteSecurityControls() {
     assert(analyticsQueriesSource.includes("loadAnalyticsHealthData"), "analytics queries must keep a callable health helper with fallback");
     assert(analyticsQueriesSource.includes("loadIngestionRunRows(days)") && analyticsQueriesSource.includes("loadArticleSummaryRows()"), "analytics health fallback must keep legacy collection/model reads");
 
+    const adminAuditHistoryMigration = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/20260709130000_admin_audit_and_edit_history.sql"),
+      "utf8",
+    );
+    for (const requiredSql of [
+      "create table if not exists admin_audit_logs",
+      "create table if not exists admin_article_edit_history",
+      "admin_audit_logs_occurred_at_idx",
+      "admin_audit_logs_action_occurred_at_idx",
+      "admin_audit_logs_target_idx",
+      "admin_audit_logs_job_id_idx",
+      "admin_article_edit_history_article_id_edited_at_idx",
+      "admin_article_edit_history_article_slug_edited_at_idx",
+    ]) {
+      assert(adminAuditHistoryMigration.includes(requiredSql), `admin audit history migration must include ${requiredSql}`);
+    }
+
+    const analyticsEventsSource = fs.readFileSync(path.join(process.cwd(), "lib/analytics/events.ts"), "utf8");
+    assert(analyticsEventsSource.includes("recordAdminAuditLog"), "recordAdminSiteEvent must dual-write to admin_audit_logs");
+
+    const manualSummaryEditSource = fs.readFileSync(path.join(process.cwd(), "lib/ingest/manual-summary-edit.ts"), "utf8");
+    assert(manualSummaryEditSource.includes("recordAdminArticleEditHistory"), "manual summary edit success path must record edit history");
+
+    const adminAuditHelperSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-audit.ts"), "utf8");
+    assert(adminAuditHelperSource.includes("redacted_metadata") || adminAuditHelperSource.includes("redactedMetadata"), "admin audit helper must write redacted metadata");
+    assert(adminAuditHelperSource.includes("previous_summary_hash") && adminAuditHelperSource.includes("next_summary_hash"), "edit history helper must store summary hashes");
+    assert(!adminAuditHelperSource.includes("raw_text") && !adminAuditHelperSource.includes("cleaned_text"), "edit history helper must not include source snapshot fields in diffs");
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {
