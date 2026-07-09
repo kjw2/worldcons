@@ -1109,6 +1109,21 @@ async function assertAdminRouteSecurityControls() {
     assert(!/event\.client_ip\b/.test(analyticsDataSource), "admin analytics dimensions must not aggregate raw client IP values");
     assert(!/event\.user_agent\b/.test(analyticsDataSource), "admin analytics access logs must not expose raw user-agent values");
 
+    const adminOperationsPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/operations/page.tsx"), "utf8");
+    assert(adminOperationsPageSource.includes("isAuthorizedPageRequest"), "admin operations page must keep the admin auth gate");
+    assert(adminOperationsPageSource.includes('encodeURIComponent("/admin/operations")'), "admin operations page must redirect unauthenticated users back to /admin/operations");
+    assert(adminOperationsPageSource.includes('<AdminTabs active="operations" />'), "admin operations page must select the operations tab");
+    assert(adminOperationsPageSource.includes("/admin/ingestion-runs"), "admin operations page must link to ingestion runs");
+    assert(adminOperationsPageSource.includes("/admin/articles"), "admin operations page must link to article management");
+    assert(adminOperationsPageSource.includes("/admin/candidates"), "admin operations page must link to URL candidates");
+    assert(adminOperationsPageSource.includes("/admin/llm"), "admin operations page must link to LLM management");
+    assert(adminOperationsPageSource.includes("/admin/audit"), "admin operations page must link to audit logs");
+
+    const adminTabsSource = fs.readFileSync(path.join(process.cwd(), "components/admin-tabs.tsx"), "utf8");
+    assert(adminTabsSource.includes('"operations"'), "AdminTabs active union must include operations");
+    assert(adminTabsSource.includes('href: "/admin/operations"'), "AdminTabs must include an operations home link");
+    assert(adminTabsSource.includes('label: "운영 홈"'), "AdminTabs must label the operations link");
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {

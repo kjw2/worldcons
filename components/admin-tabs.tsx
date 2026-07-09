@@ -1,11 +1,19 @@
-import { BarChart3, BookOpenCheck, ClipboardList, KeyRound, LayoutDashboard, Link2, ListChecks, Newspaper } from "lucide-react";
+import { BarChart3, BookOpenCheck, ClipboardList, Home, KeyRound, LayoutDashboard, Link2, ListChecks, Newspaper } from "lucide-react";
+
+type AdminTabKey = "operations" | "dashboard" | "articles" | "ingestion-runs" | "candidates" | "llm" | "audit" | "analytics" | "glossary-candidates";
 
 export function AdminTabs({
   active,
 }: {
-  active: "dashboard" | "articles" | "analytics" | "audit" | "ingestion-runs" | "candidates" | "glossary-candidates" | "llm";
+  active: AdminTabKey;
 }) {
   const tabs = [
+    {
+      key: "operations" as const,
+      href: "/admin/operations",
+      label: "운영 홈",
+      icon: Home,
+    },
     {
       key: "dashboard" as const,
       href: "/admin",
@@ -17,18 +25,6 @@ export function AdminTabs({
       href: "/admin/articles",
       label: "기사 관리",
       icon: Newspaper,
-    },
-    {
-      key: "analytics" as const,
-      href: "/admin/analytics",
-      label: "이용 통계",
-      icon: BarChart3,
-    },
-    {
-      key: "audit" as const,
-      href: "/admin/audit",
-      label: "감사 로그",
-      icon: ClipboardList,
     },
     {
       key: "ingestion-runs" as const,
@@ -43,16 +39,28 @@ export function AdminTabs({
       icon: Link2,
     },
     {
-      key: "glossary-candidates" as const,
-      href: "/admin/glossary-candidates",
-      label: "용어 후보",
-      icon: BookOpenCheck,
-    },
-    {
       key: "llm" as const,
       href: "/admin/llm",
       label: "LLM 관리",
       icon: KeyRound,
+    },
+    {
+      key: "audit" as const,
+      href: "/admin/audit",
+      label: "감사 로그",
+      icon: ClipboardList,
+    },
+    {
+      key: "analytics" as const,
+      href: "/admin/analytics",
+      label: "이용 통계",
+      icon: BarChart3,
+    },
+    {
+      key: "glossary-candidates" as const,
+      href: "/admin/glossary-candidates",
+      label: "용어 후보",
+      icon: BookOpenCheck,
     },
   ];
 
