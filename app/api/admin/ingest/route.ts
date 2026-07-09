@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     const summarize = action === "retry-summary"
       ? await runSummarizeArticle({ articleId, slug })
       : shouldSummarize
-        ? await runSummarizePending({ limit: summarizeLimit })
+        ? await runSummarizePending({ limit: summarizeLimit, sourceKey })
         : null;
     const tags = shouldRefreshTags && action !== "retry-summary"
       ? await runRefreshTagCounts().catch((refreshError) => {

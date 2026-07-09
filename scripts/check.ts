@@ -950,6 +950,12 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(oversizedIngestRefResponse.status === 400, "admin ingest POST must reject oversized sourceKey before work starts");
 
+    const adminIngestRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/ingest/route.ts"), "utf8");
+    assert(
+      /runSummarizePending\(\{\s*limit:\s*summarizeLimit,\s*sourceKey\s*\}\)/s.test(adminIngestRouteSource),
+      "admin source-scoped summarize request must pass sourceKey to runSummarizePending",
+    );
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {
