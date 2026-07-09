@@ -110,7 +110,62 @@ function CandidateActions({ candidate, csrfToken, returnTo }: { candidate: Sourc
 function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: SourceUrlCandidateRecord[]; csrfToken: string; returnTo: string }) {
   return (
     <section className="rounded-md border border-rule bg-white shadow-sm">
-      <div className="overflow-x-auto">
+      <div className="grid gap-3 p-4 md:hidden">
+        {candidates.map((candidate) => (
+          <article key={candidate.id} className="rounded-md border border-rule bg-parchment/25 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="break-words font-semibold text-ink">{displaySourceLabel(candidate.sourceKey)}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink/56">
+                  <span className="break-all">{candidate.sourceKey}</span>
+                  <span>유형 {candidate.candidateType}</span>
+                </div>
+              </div>
+              <StatusBadge status={candidate.status} />
+            </div>
+            <a
+              href={candidate.url}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring mt-3 inline-flex max-w-full items-start gap-1 break-all text-xs leading-5 text-court hover:underline"
+            >
+              {candidate.url}
+              <ExternalLink className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            </a>
+            <dl className="mt-3 grid gap-2 text-xs leading-5 text-ink/60">
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">발견</dt>
+                <dd className="max-w-full break-words text-right font-semibold text-ink/72">{candidate.discoveredBy}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">시도</dt>
+                <dd className="text-right">{formatNumber(candidate.attemptCount)}회</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">첫 발견</dt>
+                <dd className="text-right">{formatDateTime(candidate.firstSeenAt)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">최근 갱신</dt>
+                <dd className="text-right">{formatDateTime(candidate.lastSeenAt)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">최근 시도</dt>
+                <dd className="text-right">{formatDateTime(candidate.lastAttemptAt)}</dd>
+              </div>
+            </dl>
+            <div className="mt-3 rounded-md border border-rule bg-white p-2 text-xs leading-5 text-ink/58">
+              {candidate.lastErrorCode ? <div className="font-semibold text-court">{candidate.lastErrorCode}</div> : <div className="text-ink/45">오류 없음</div>}
+              {candidate.lastErrorMessage ? <div className="mt-1 break-words text-ink/58">{candidate.lastErrorMessage}</div> : null}
+            </div>
+            <div className="mt-3">
+              <CandidateActions candidate={candidate} csrfToken={csrfToken} returnTo={returnTo} />
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
         <table className="min-w-[1280px] divide-y divide-rule text-sm">
           <thead className="bg-parchment">
             <tr className="text-left text-xs font-semibold text-ink/60">

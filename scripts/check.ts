@@ -1234,6 +1234,19 @@ async function assertAdminRouteSecurityControls() {
       "ArticleStatus must not gain new triage states",
     );
 
+    const responsiveAdminFiles = [
+      ["admin articles table", "components/admin-articles-table.tsx"],
+      ["admin candidates page", "app/admin/candidates/page.tsx"],
+      ["admin audit page", "app/admin/audit/page.tsx"],
+      ["ingestion status panel", "components/ingestion-status-panel.tsx"],
+    ] as const;
+    for (const [label, relativePath] of responsiveAdminFiles) {
+      const source = fs.readFileSync(path.join(process.cwd(), relativePath), "utf8");
+      assert(source.includes("md:hidden"), `${label} must include a mobile card branch`);
+      assert(source.includes("<table"), `${label} must keep the desktop table`);
+      assert(source.includes("hidden overflow-x-auto md:block") || source.includes("hidden md:block"), `${label} must hide the desktop table on narrow screens`);
+    }
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {

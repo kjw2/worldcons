@@ -430,7 +430,69 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
             </span>
           ) : null}
         </div>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 p-4 md:hidden">
+          {runs.map((run) => {
+            const diagnostics = diagnosticsFor(run);
+            const counts = diagnostics.collectionCounts;
+            const diagnosticsSummary = [
+              diagnostics.attempts.length > 0 ? `진단 ${formatNumber(diagnostics.attempts.length)}건` : "진단 없음",
+              diagnostics.uncollectedCandidates.length > 0 ? `추적 후보 ${formatNumber(diagnostics.uncollectedCandidates.length)}건` : null,
+              diagnostics.fallbackUsed ? "fallback" : null,
+              run.errorMessage ? "오류 있음" : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <article key={`${run.sourceKey}-${run.startedAt}`} className="rounded-md border border-rule bg-parchment/25 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="break-words font-semibold text-ink">{displaySourceLabel(run.sourceKey)}</div>
+                    <div className="mt-1 break-all text-xs text-ink/50">{run.sourceKey}</div>
+                    <div className="mt-2 text-xs text-ink/58">{formatDateTime(run.startedAt)} 시작</div>
+                  </div>
+                  <StatusBadge run={run} />
+                </div>
+                <dl className="mt-3 grid gap-2 text-xs leading-5 text-ink/60">
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">기간</dt>
+                    <dd className="text-right font-semibold text-ink/72">{durationLabel(run.startedAt, run.finishedAt)}</dd>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">종료</dt>
+                    <dd className="text-right">{run.finishedAt ? formatDateTime(run.finishedAt) : "종료 대기"}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <ResultPill label="발견" value={run.discoveredCount} />
+                  <ResultPill label="수집" value={run.fetchedCount} tone="success" />
+                  <ResultPill label="요약" value={run.summarizedCount} tone="success" />
+                  <ResultPill label="실패" value={run.failedCount} tone={run.failedCount > 0 ? "danger" : "neutral"} />
+                  <UncollectedCandidateBadge candidates={diagnostics.uncollectedCandidates} />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <ResultPill label="공개" value={counts.publishableCount} tone="success" />
+                  <ResultPill label="메타" value={counts.metadataOnlyCount} tone={counts.metadataOnlyCount ? "warning" : "neutral"} />
+                  <ResultPill label="robots" value={counts.robotsDisallowedCount} tone={counts.robotsDisallowedCount ? "warning" : "neutral"} />
+                  <ResultPill label="차단" value={counts.blockedCount} tone={counts.blockedCount ? "danger" : "neutral"} />
+                  <ResultPill label="timeout" value={counts.timeoutCount} tone={counts.timeoutCount ? "danger" : "neutral"} />
+                  <ResultPill label="seed" value={counts.seedCount} />
+                </div>
+                <div className="mt-3">
+                  <RunOptions options={diagnostics.runOptions} />
+                </div>
+                <div className="mt-3">
+                  <RunOperationLinks sourceKey={run.sourceKey} />
+                </div>
+                <div className="mt-3 rounded-md border border-rule bg-white p-2 text-xs leading-5 text-ink/58">
+                  <div className="font-semibold text-ink/64">{diagnosticsSummary}</div>
+                  {run.errorMessage ? <div className="mt-1 line-clamp-3 break-words text-court">{run.errorMessage}</div> : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-[1280px] divide-y divide-rule text-sm">
             <thead className="bg-parchment">
               <tr className="text-left text-xs font-semibold text-ink/60">

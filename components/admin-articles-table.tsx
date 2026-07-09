@@ -186,7 +186,80 @@ export function AdminArticlesTable({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto">
+      <div className="grid gap-3 p-4 md:hidden">
+        {articles.length === 0 ? (
+          <div className="rounded-md border border-dashed border-rule px-4 py-8 text-center text-sm text-ink/58">
+            조건에 맞는 기사가 없습니다.
+          </div>
+        ) : (
+          articles.map((article) => {
+            const key = rowKey(article);
+            return (
+              <article key={key} className="rounded-md border border-rule bg-parchment/25 p-3">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedKeys.has(key)}
+                    onChange={(event) => toggleArticle(key, event.target.checked)}
+                    aria-label={`${article.title} 선택`}
+                    className="mt-1 size-4 shrink-0 rounded border-rule text-court"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/admin/articles/${article.slug}`} className="focus-ring rounded-sm font-semibold leading-6 text-ink hover:text-court">
+                      <span className="break-words">{article.title}</span>
+                    </Link>
+                    {article.originalTitle && article.originalTitle !== article.title ? (
+                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-ink/52">{article.originalTitle}</div>
+                    ) : null}
+                    <div className="mt-1 break-all text-xs text-ink/45">{article.slug}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(article.status)}`}>
+                    {statusLabels[article.status] ?? article.status}
+                  </span>
+                  <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-white px-2.5 text-xs font-semibold text-ink/68">
+                    {article.publishable ? "공개 가능" : "공개 불가"}
+                  </span>
+                  <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-white px-2.5 text-xs font-semibold text-ink/68">
+                    {article.hasSummary ? "요약 있음" : "요약 없음"}
+                  </span>
+                </div>
+                <dl className="mt-3 grid gap-2 text-xs leading-5 text-ink/60">
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">기관</dt>
+                    <dd className="max-w-full break-words text-right font-semibold text-ink/72">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</dd>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">source</dt>
+                    <dd className="max-w-full break-all text-right">{article.sourceKey}</dd>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">국가</dt>
+                    <dd className="text-right">{displayJurisdictionLabel(article.jurisdiction)}</dd>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">기준일</dt>
+                    <dd className="text-right">{formatDateTime(article.originalPublishedAt)}</dd>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <dt className="font-semibold text-ink/45">요약일</dt>
+                    <dd className="text-right">{formatDateTime(article.summarizedAt)}</dd>
+                  </div>
+                </dl>
+                <div className="mt-4">
+                  <Link href={`/admin/articles/${article.slug}`} className="focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-md border border-rule bg-white px-3 text-xs font-semibold text-ink/68 hover:bg-parchment">
+                    <Eye className="size-3.5" aria-hidden="true" />
+                    상세
+                  </Link>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
         <table className="min-w-full divide-y divide-rule text-sm">
           <thead className="bg-parchment">
             <tr className="text-left text-xs font-semibold uppercase text-ink/60">

@@ -64,7 +64,45 @@ function AuditTable({ entries }: { entries: AdminAuditLogEntry[] }) {
 
   return (
     <section className="rounded-md border border-rule bg-white shadow-sm">
-      <div className="overflow-x-auto">
+      <div className="grid gap-3 p-4 md:hidden">
+        {entries.map((entry) => (
+          <article key={entry.id} className="rounded-md border border-rule bg-parchment/25 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-ink/50">{formatDateTime(entry.createdAt)}</div>
+                <div className="mt-1 break-words font-semibold text-ink">{entry.action}</div>
+                <div className="mt-1 break-all text-xs text-ink/45">{entry.eventType}</div>
+              </div>
+              <ResultBadge entry={entry} />
+            </div>
+            <dl className="mt-3 grid gap-2 text-xs leading-5 text-ink/60">
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">대상</dt>
+                <dd className="max-w-full break-all text-right font-semibold text-ink/72">{compactText(entry.articleSlug)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">source</dt>
+                <dd className="max-w-full break-all text-right">{compactText(entry.sourceKey)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">경로</dt>
+                <dd className="max-w-full break-all text-right">{compactText(entry.path)}</dd>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2">
+                <dt className="font-semibold text-ink/45">LLM</dt>
+                <dd className="max-w-full break-all text-right">
+                  {compactText(entry.provider)} / {compactText(entry.model)}
+                </dd>
+              </div>
+            </dl>
+            {entry.error ? (
+              <div className="mt-3 break-words rounded-md border border-court/15 bg-court/5 p-2 text-xs leading-5 text-court">{entry.error}</div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
         <table className="min-w-[1120px] divide-y divide-rule text-sm">
           <thead className="bg-parchment">
             <tr className="text-left text-xs font-semibold text-ink/60">
