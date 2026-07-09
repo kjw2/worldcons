@@ -32,8 +32,28 @@ function actionLabel(action: AdminAction) {
   return "수집 실행";
 }
 
+function queuedJob(result: unknown) {
+  if (!isRecord(result) || result.mode !== "queued" || !isRecord(result.job)) return null;
+  return result.job;
+}
+
+function jobField(job: Record<string, unknown>, key: string) {
+  const value = job[key];
+  return typeof value === "string" && value.trim() ? value : "-";
+}
+
+function shortJobId(value: string) {
+  return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
+}
+
 function compactResult(result: unknown) {
   if (!isRecord(result)) return "작업이 완료되었습니다.";
+  const job = queuedJob(result);
+  if (job) {
+    const jobType = jobField(job, "jobType");
+    const status = jobField(job, "status");
+    return `작업 대기열 등록: ${jobType} (${status})`;
+  }
 
   const parts: string[] = [];
   const ingest = result.ingest;
@@ -106,6 +126,49 @@ function RequestSummary({ options }: { options: ActionRequestOptions }) {
           Vercel 직접 수집 {options.allowVercelCrawling ? "허용" : "차단"}
         </span>
       </div>
+    </div>
+  );
+}
+
+function QueuedResult({ result }: { result: unknown }) {
+  const job = queuedJob(result);
+  if (!job) return null;
+  const created = isRecord(result) && result.created === true;
+
+  return (
+    <div className="mt-3 rounded-md border border-rule bg-white p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-ink/55">작업 큐</span>
+        <span className="rounded-md border border-mint/25 bg-mint/10 px-2 py-1 text-xs font-semibold text-mint">
+          {created ? "새 작업" : "기존 작업"}
+        </span>
+      </div>
+      <dl className="grid gap-2 text-xs leading-5 text-ink/62 sm:grid-cols-2">
+        <div className="min-w-0 rounded-md border border-rule bg-parchment/35 px-3 py-2">
+          <dt className="font-semibold text-ink/45">job id</dt>
+          <dd className="mt-1 break-all font-semibold text-ink/75">{shortJobId(jobField(job, "id"))}</dd>
+        </div>
+        <div className="min-w-0 rounded-md border border-rule bg-parchment/35 px-3 py-2">
+          <dt className="font-semibold text-ink/45">상태</dt>
+          <dd className="mt-1 break-words font-semibold text-ink/75">{jobField(job, "status")}</dd>
+        </div>
+        <div className="min-w-0 rounded-md border border-rule bg-parchment/35 px-3 py-2">
+          <dt className="font-semibold text-ink/45">작업 유형</dt>
+          <dd className="mt-1 break-words font-semibold text-ink/75">{jobField(job, "jobType")}</dd>
+        </div>
+        <div className="min-w-0 rounded-md border border-rule bg-parchment/35 px-3 py-2">
+          <dt className="font-semibold text-ink/45">source</dt>
+          <dd className="mt-1 break-all font-semibold text-ink/75">{jobField(job, "sourceKey")}</dd>
+        </div>
+        <div className="min-w-0 rounded-md border border-rule bg-parchment/35 px-3 py-2">
+          <dt className="font-semibold text-ink/45">article</dt>
+          <dd className="mt-1 break-all font-semibold text-ink/75">{jobField(job, "articleSlug") !== "-" ? jobField(job, "articleSlug") : jobField(job, "articleId")}</dd>
+        </div>
+        <div className="min-w-0 rounded-md border border-rule bg-parchment/35 px-3 py-2">
+          <dt className="font-semibold text-ink/45">요청 시각</dt>
+          <dd className="mt-1 break-words font-semibold text-ink/75">{jobField(job, "requestedAt")}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -246,7 +309,7 @@ export function AdminActionPanel({ sources, csrfToken }: { sources: SourceRecord
           <h2 className="mt-1 text-xl font-semibold tracking-normal text-ink">수집·요약 제어</h2>
         </div>
         <span className="inline-flex min-h-8 items-center rounded-md border border-mint/25 bg-mint/10 px-3 text-xs font-semibold text-mint">
-          서버 실행
+          작업 큐
         </span>
       </div>
 
@@ -298,7 +361,7 @@ export function AdminActionPanel({ sources, csrfToken }: { sources: SourceRecord
               className="focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:bg-ink/40"
             >
               {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Icon className="size-4" aria-hidden="true" />}
-              {pending ? "실행 중" : actionLabel(item.action)}
+              {pending ? "등록 중" : actionLabel(item.action)}
             </button>
           );
         })}
@@ -318,10 +381,11 @@ export function AdminActionPanel({ sources, csrfToken }: { sources: SourceRecord
         <div className="mt-4 rounded-md border border-mint/25 bg-mint/5 p-3 text-sm text-ink/76">
           <div className="flex items-center gap-2 font-semibold text-mint">
             <CheckCircle2 className="size-4" aria-hidden="true" />
-            실행 완료
+            {queuedJob(result) ? "작업 대기열 등록" : "실행 완료"}
           </div>
           <p className="mt-1">{compactResult(result)}</p>
           {lastRequest ? <div className="mt-3"><RequestSummary options={lastRequest} /></div> : null}
+          <QueuedResult result={result} />
           <StructuredResult result={result} />
           <details className="mt-2">
             <summary className="cursor-pointer text-xs font-semibold text-ink/62">응답 원문</summary>

@@ -1080,8 +1080,19 @@ async function assertAdminRouteSecurityControls() {
       /runSummarizePending\(\{\s*limit:\s*summarizeLimit,\s*sourceKey\s*\}\)/s.test(adminIngestRouteSource),
       "admin source-scoped summarize request must pass sourceKey to runSummarizePending",
     );
+    assert(adminIngestRouteSource.includes("createAdminJob"), "admin ingest route must enqueue admin jobs");
+    assert(adminIngestRouteSource.includes("buildAdminJobIdempotencyKey"), "admin ingest route must build stable job idempotency keys");
+    assert(adminIngestRouteSource.includes('mode: "queued"'), "admin ingest route must return queued mode for queued jobs");
+    assert(adminIngestRouteSource.includes("{ status: 202 }"), "admin ingest route must return 202 for queued jobs");
+    assert(adminIngestRouteSource.includes("canRunInlineFallback"), "admin ingest route must keep inline execution as an explicit fallback only");
+    assert(adminIngestRouteSource.includes('process.env.NODE_ENV !== "production"'), "admin ingest route must not default production to inline fallback");
 
     const adminPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
+    const adminActionPanelSource = fs.readFileSync(path.join(process.cwd(), "components/admin-action-panel.tsx"), "utf8");
+    assert(adminActionPanelSource.includes("작업 대기열 등록"), "admin action panel must display queued ingest responses");
+    assert(adminActionPanelSource.includes("작업 큐"), "admin action panel must label admin actions as queued work");
+    assert(adminActionPanelSource.includes("QueuedResult"), "admin action panel must render queued job details");
+
     const ingestionStatusPanelSource = fs.readFileSync(path.join(process.cwd(), "components/ingestion-status-panel.tsx"), "utf8");
     for (const [label, source] of [
       ["admin source table", adminPageSource],
