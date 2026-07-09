@@ -1404,6 +1404,43 @@ async function assertAdminRouteSecurityControls() {
 
     const articleTriageHelperSource = fs.readFileSync(path.join(process.cwd(), "lib/db/article-triage.ts"), "utf8");
     assert(articleTriageHelperSource.includes("classifyLlmError"), "article triage helper must classify LLM test errors");
+
+    const adminJobsMigration = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/20260709150000_admin_jobs.sql"),
+      "utf8",
+    );
+    for (const requiredSql of [
+      "create table if not exists admin_jobs",
+      "create table if not exists admin_job_events",
+      "idempotency_key text not null unique",
+      "claim_admin_job",
+      "append_admin_job_event",
+      "for update skip locked",
+      "admin_jobs_status_priority_requested_at_idx",
+      "admin_jobs_source_key_status_idx",
+      "admin_jobs_idempotency_key_idx",
+      "admin_jobs_lease_until_idx",
+      "admin_job_events_job_id_occurred_at_idx",
+    ]) {
+      assert(adminJobsMigration.toLowerCase().includes(requiredSql), `admin jobs migration must include ${requiredSql}`);
+    }
+
+    const adminJobsHelperSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-jobs.ts"), "utf8");
+    for (const requiredExport of [
+      "export const ADMIN_JOB_TYPES",
+      "export const ADMIN_JOB_STATUSES",
+      "export function buildAdminJobIdempotencyKey",
+      "export async function createAdminJob",
+      "export async function claimAdminJob",
+      "export async function appendAdminJobEvent",
+      "export async function markAdminJobSucceeded",
+      "export async function markAdminJobFailed",
+      "export async function requestAdminJobCancel",
+    ]) {
+      assert(adminJobsHelperSource.includes(requiredExport), `admin jobs helper must include ${requiredExport}`);
+    }
+    assert(adminJobsHelperSource.includes("redactAdminAuditMetadata"), "admin jobs helper must redact JSON payloads before storage");
+    assert(adminJobsHelperSource.includes("unavailable: true"), "admin jobs helper must expose unavailable fallbacks for unapplied migrations");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);
