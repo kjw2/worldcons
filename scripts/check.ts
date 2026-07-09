@@ -886,6 +886,15 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(unauthenticatedIngestResponse.status === 401, "admin POST without authentication must return 401");
 
+    const invalidIngestActionResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ action: "delete-everything" }),
+      }),
+    );
+    assert(invalidIngestActionResponse.status === 400, "admin ingest POST must reject invalid actions before work starts");
+
     const { PATCH: candidatesPatch } = await import("@/app/api/admin/candidates/route");
     const unauthenticatedCandidateMutationResponse = await candidatesPatch(
       new Request("https://example.test/api/admin/candidates", {
@@ -950,6 +959,24 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(oversizedIngestRefResponse.status === 400, "admin ingest POST must reject oversized sourceKey before work starts");
 
+    const oversizedIngestArticleIdResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ action: "retry-summary", articleId: "x".repeat(241) }),
+      }),
+    );
+    assert(oversizedIngestArticleIdResponse.status === 400, "admin ingest POST must reject oversized articleId before work starts");
+
+    const oversizedIngestSlugResponse = await ingestPost(
+      new Request("https://example.test/api/admin/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ action: "retry-summary", slug: "x".repeat(241) }),
+      }),
+    );
+    assert(oversizedIngestSlugResponse.status === 400, "admin ingest POST must reject oversized slug before work starts");
+
     const adminIngestRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/ingest/route.ts"), "utf8");
     assert(
       /runSummarizePending\(\{\s*limit:\s*summarizeLimit,\s*sourceKey\s*\}\)/s.test(adminIngestRouteSource),
@@ -1006,6 +1033,15 @@ async function assertAdminRouteSecurityControls() {
     assert(unconfirmedBulkClosePrivateResponse.status === 400, "admin article bulk POST must require explicit confirmation for close-private");
 
     const { POST: reviewPost } = await import("@/app/api/admin/review/route");
+    const invalidReviewActionResponse = await reviewPost(
+      new Request("https://example.test/api/admin/review", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, origin: "https://example.test", "x-csrf-token": csrfToken ?? "" },
+        body: JSON.stringify({ action: "delete", slug: "sample" }),
+      }),
+    );
+    assert(invalidReviewActionResponse.status === 400, "admin review POST must reject invalid actions");
+
     const unconfirmedReviewClosePrivateResponse = await reviewPost(
       new Request("https://example.test/api/admin/review", {
         method: "POST",
@@ -1023,6 +1059,43 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(oversizedReviewModelResponse.status === 400, "admin review POST must reject oversized model names");
+
+    const { POST: llmSettingsPost } = await import("@/app/api/admin/llm-settings/route");
+    const invalidLlmProviderResponse = await llmSettingsPost(
+      new Request("https://example.test/api/admin/llm-settings", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ summary: { provider: "bad-provider", model: "gpt-4.1-mini" } }),
+      }),
+    );
+    assert(invalidLlmProviderResponse.status === 400, "admin LLM settings POST must reject invalid providers before storage access");
+
+    const invalidLlmModelResponse = await llmSettingsPost(
+      new Request("https://example.test/api/admin/llm-settings", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ summary: { provider: "gemini", model: "m".repeat(161) } }),
+      }),
+    );
+    assert(invalidLlmModelResponse.status === 400, "admin LLM settings POST must reject oversized model names before storage access");
+
+    const invalidLlmBaseUrlResponse = await llmSettingsPost(
+      new Request("https://example.test/api/admin/llm-settings", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ providers: { "openai-compatible": { baseUrl: "ftp://example.test/v1" } } }),
+      }),
+    );
+    assert(invalidLlmBaseUrlResponse.status === 400, "admin LLM settings POST must reject invalid baseUrl values before storage access");
+
+    const invalidLlmKeyPayloadResponse = await llmSettingsPost(
+      new Request("https://example.test/api/admin/llm-settings", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ providers: { openai: { keys: [{ label: "primary", value: "k".repeat(20_001) }] } } }),
+      }),
+    );
+    assert(invalidLlmKeyPayloadResponse.status === 400, "admin LLM settings POST must reject oversized key payloads before storage access");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);

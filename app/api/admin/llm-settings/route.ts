@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { getAdminLlmSettingsView, saveAdminLlmSettings } from "@/lib/ai/llm-settings";
-import type { AdminLlmSettingsInput } from "@/lib/ai/llm-settings-types";
+import { parseAdminLlmSettingsBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus, isAuthorizedRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +26,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json().catch(() => ({}))) as AdminLlmSettingsInput;
-    const settings = await saveAdminLlmSettings(body);
+    const body = await request.json().catch(() => ({}));
+    const parsed = parseAdminLlmSettingsBody(body);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: "Invalid admin LLM settings request", detail: parsed.error }, { status: 400 });
+    }
+
+    const settings = await saveAdminLlmSettings(parsed.data);
     await recordSiteEvent(
       {
         eventType: "admin_action",

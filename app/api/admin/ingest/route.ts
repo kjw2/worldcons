@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
+import { parseAdminIngestBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
-import { boundedInteger } from "@/lib/utils/numbers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 60;
-
-const MAX_ADMIN_REF_LENGTH = 240;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -55,14 +53,6 @@ function tagResultSummary(value: unknown) {
   };
 }
 
-function optionalText(value: unknown, maxLength: number) {
-  if (typeof value !== "string") return { ok: true as const, value: undefined };
-  const text = value.trim();
-  if (!text) return { ok: true as const, value: undefined };
-  if (text.length > maxLength) return { ok: false as const };
-  return { ok: true as const, value: text };
-}
-
 export async function POST(request: Request) {
   const authFailureStatus = adminMutationAuthFailureStatus(request);
   if (authFailureStatus) {
@@ -77,25 +67,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({} as Record<string, unknown>));
-    const requestedAction = typeof body.action === "string" ? body.action : "ingest";
-    const action = ["ingest", "ingest-and-summarize", "summarize", "retry-summary", "refresh-tags"].includes(requestedAction)
-      ? requestedAction
-      : "ingest";
-    const sourceKeyInput = optionalText(body.sourceKey, MAX_ADMIN_REF_LENGTH);
-    const articleIdInput = optionalText(body.articleId, MAX_ADMIN_REF_LENGTH);
-    const slugInput = optionalText(body.slug, MAX_ADMIN_REF_LENGTH);
-    if (!sourceKeyInput.ok || !articleIdInput.ok || !slugInput.ok) {
-      return NextResponse.json({ error: "sourceKey, articleId, or slug is too long" }, { status: 400 });
+    const parsed = parseAdminIngestBody(body);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: "Invalid admin ingest request", detail: parsed.error }, { status: 400 });
     }
-    const sourceKey = sourceKeyInput.value;
-    const articleId = articleIdInput.value;
-    const slug = slugInput.value;
-    const limit = body.limit === undefined ? undefined : boundedInteger(body.limit, 20, { min: 1, max: 100 });
-    const summarizeLimit = boundedInteger(body.summarizeLimit ?? limit ?? 20, 20, { min: 1, max: 100 });
-    const allowVercelCrawling = body.allowVercelCrawling === true;
-    const shouldSummarize = action === "summarize" || action === "retry-summary" || action === "ingest-and-summarize" || body.summarize === true;
+    const { action, sourceKey, articleId, slug, limit, allowVercelCrawling } = parsed.data;
+    const requestedAction = action;
+    const summarizeLimit = parsed.data.summarizeLimit ?? limit ?? 20;
+    const shouldSummarize = action === "summarize" || action === "retry-summary" || action === "ingest-and-summarize" || parsed.data.summarize;
     const shouldIngest = action === "ingest" || action === "ingest-and-summarize";
-    const shouldRefreshTags = action === "refresh-tags" || body.refreshTags === true || shouldSummarize;
+    const shouldRefreshTags = action === "refresh-tags" || parsed.data.refreshTags || shouldSummarize;
     const requestedOptions = {
       requestedAction,
       action,
@@ -104,8 +85,8 @@ export async function POST(request: Request) {
       slug: slug ?? null,
       limit: limit ?? null,
       summarizeLimit,
-      summarize: body.summarize === true,
-      refreshTags: body.refreshTags === true,
+      summarize: parsed.data.summarize,
+      refreshTags: parsed.data.refreshTags,
       allowVercelCrawling,
     };
 
@@ -117,8 +98,8 @@ export async function POST(request: Request) {
       requestedArticleSlug: slug ?? null,
       requestedLimit: limit ?? null,
       requestedSummarizeLimit: summarizeLimit,
-      requestedSummarize: body.summarize === true,
-      requestedRefreshTags: body.refreshTags === true,
+      requestedSummarize: parsed.data.summarize,
+      requestedRefreshTags: parsed.data.refreshTags,
       requestedAllowVercelCrawling: allowVercelCrawling,
       shouldSummarize,
       shouldIngest,
