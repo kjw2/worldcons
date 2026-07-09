@@ -1,0 +1,38 @@
+name: Admin job queue worker
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-job-worker
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DEFAULT_BASE_URL: https://worldcons.vercel.app
+      WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Validate cron secret
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret is required" >&2
+            exit 1
+          fi
+
+      - name: Drain admin job queue
+        run: |
+          BASE_URL="${WORLDCONS_BASE_URL:-$DEFAULT_BASE_URL}"
+          BASE_URL="${BASE_URL%/}"
+          curl --fail-with-body --show-error --silent \
+            --request GET \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/admin/cron/jobs"

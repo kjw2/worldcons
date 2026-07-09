@@ -974,6 +974,21 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(cronCookieOnlyResponse.status === 401, "cron ingest GET must require a secret header, not only an admin cookie");
 
+    const { GET: adminJobsCronGet } = await import("@/app/api/admin/cron/jobs/route");
+    const adminJobsCronCookieOnlyResponse = await adminJobsCronGet(
+      new Request("https://example.test/api/admin/cron/jobs", {
+        method: "GET",
+        headers: { cookie },
+      }),
+    );
+    assert(adminJobsCronCookieOnlyResponse.status === 401, "admin jobs cron GET must require a secret header, not only an admin cookie");
+    const adminJobsCronQuerySecretResponse = await adminJobsCronGet(
+      new Request(`https://example.test/api/admin/cron/jobs?secret=${"c".repeat(32)}`, {
+        method: "GET",
+      }),
+    );
+    assert(adminJobsCronQuerySecretResponse.status === 401, "admin jobs cron GET must reject query string secrets");
+
     const { POST: ingestPost } = await import("@/app/api/admin/ingest/route");
     const unauthenticatedIngestResponse = await ingestPost(
       new Request("https://example.test/api/admin/ingest", {
@@ -1471,6 +1486,23 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobRunRouteSource.includes("adminMutationAuthFailureStatus"), "admin job run route must use admin mutation auth");
     assert(adminJobRunRouteSource.includes("runAdminJobWorker"), "admin job run route must call the bounded job worker");
     assert(adminJobRunRouteSource.includes("parseAdminJobRunBody"), "admin job run route must validate worker payloads");
+
+    const adminJobCronRoutePath = path.join(process.cwd(), "app/api/admin/cron/jobs/route.ts");
+    assert(fs.existsSync(adminJobCronRoutePath), "admin job cron route must exist");
+    const adminJobCronRouteSource = fs.readFileSync(adminJobCronRoutePath, "utf8");
+    assert(adminJobCronRouteSource.includes("isAuthorizedSecretRequest"), "admin job cron route must use secret-only auth");
+    assert(adminJobCronRouteSource.includes("runAdminJobWorker"), "admin job cron route must drain the admin job worker");
+    assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_MAX_JOBS"), "admin job cron route must support bounded max jobs env");
+    assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_LEASE_SECONDS"), "admin job cron route must support bounded lease seconds env");
+    assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_TYPES"), "admin job cron route must support optional job type env");
+
+    const adminJobWorkflowPath = path.join(process.cwd(), ".github/workflows/admin-job-worker.yml");
+    assert(fs.existsSync(adminJobWorkflowPath), "admin job worker workflow must exist");
+    const adminJobWorkflowSource = fs.readFileSync(adminJobWorkflowPath, "utf8");
+    assert(adminJobWorkflowSource.includes("/api/admin/cron/jobs"), "admin job workflow must call the cron jobs endpoint");
+    assert(adminJobWorkflowSource.includes("Authorization: Bearer"), "admin job workflow must pass CRON_SECRET through an Authorization header");
+    assert(adminJobWorkflowSource.includes("*/15 * * * *"), "admin job workflow must run on a 15 minute schedule");
+    assert(!adminJobWorkflowSource.includes("?secret="), "admin job workflow must not use query string secrets");
 
     const { GET: adminJobsRunGet, POST: adminJobsRunPost } = await import("@/app/api/admin/jobs/run/route");
     const adminJobsRunGetResponse = adminJobsRunGet();

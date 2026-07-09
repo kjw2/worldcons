@@ -627,6 +627,15 @@ workflow cron 표현식은 다음과 같습니다.
 예를 들어 2026-06-14 06:00 KST 정기 실행은 GitHub Actions 기준 2026-06-13 21:00 UTC에 시작합니다.
 이때 코드의 UTC 날짜 경계 계산상 최근 14일은 2026-05-30 00:00 UTC 이후, 최근 60일은 2026-04-14 00:00 UTC 이후, 최근 180일은 2025-12-15 00:00 UTC 이후를 다시 확인합니다.
 
+관리자 화면에서 만든 수집·요약·태그 갱신 작업은 별도 큐에 들어가며, GitHub Actions의 `.github/workflows/admin-job-worker.yml`이 15분마다 production `/api/admin/cron/jobs`를 호출해 처리합니다. 이 workflow는 `${{ secrets.CRON_SECRET }}` 값을 `Authorization: Bearer` 헤더로만 보내며, URL `?secret=` 방식은 금지합니다. repository variable `WORLDCONS_BASE_URL`이 있으면 기본 production URL `https://worldcons.vercel.app` 대신 사용합니다.
+
+두 자동화의 역할은 분리되어 있습니다.
+
+| workflow | 역할 |
+| --- | --- |
+| `.github/workflows/crawlee-worker.yml` | 공식 사이트 수집, 요약, 태그 갱신을 한국시간 06:00에 실행하는 일일 배치 |
+| `.github/workflows/admin-job-worker.yml` | 관리자 화면에서 대기열에 등록된 작업을 15분마다 짧게 drain |
+
 ### 진단
 
 ```bash
@@ -807,6 +816,7 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | `POST` | `/api/admin/ingest` | 관리자 수동 수집 |
 | `POST` | `/api/admin/review` | 관리자 검토 결정 |
 | `GET` | `/api/admin/cron/ingest` | cron 수집 endpoint |
+| `GET` | `/api/admin/cron/jobs` | 관리자 작업 큐 drain endpoint |
 
 `POST /api/admin/ingest` body 예시:
 
