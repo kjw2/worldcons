@@ -1,6 +1,6 @@
-import { BarChart3, BookOpenCheck, ClipboardList, Home, KeyRound, LayoutDashboard, Link2, ListChecks, Newspaper } from "lucide-react";
+import { BarChart3, BookOpenCheck, ClipboardList, Clock3, Home, KeyRound, LayoutDashboard, Link2, ListChecks, Newspaper } from "lucide-react";
 
-type AdminTabKey = "operations" | "dashboard" | "articles" | "ingestion-runs" | "candidates" | "llm" | "audit" | "analytics" | "glossary-candidates";
+type AdminTabKey = "operations" | "dashboard" | "articles" | "ingestion-runs" | "jobs" | "candidates" | "llm" | "audit" | "analytics" | "glossary-candidates";
 
 export function AdminTabs({
   active,
@@ -31,6 +31,12 @@ export function AdminTabs({
       href: "/admin/ingestion-runs",
       label: "실행 기록",
       icon: ListChecks,
+    },
+    {
+      key: "jobs" as const,
+      href: "/admin/jobs",
+      label: "작업 큐",
+      icon: Clock3,
     },
     {
       key: "candidates" as const,

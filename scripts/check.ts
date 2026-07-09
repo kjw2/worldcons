@@ -1469,6 +1469,9 @@ async function assertAdminRouteSecurityControls() {
       "export async function markAdminJobSucceeded",
       "export async function markAdminJobFailed",
       "export async function requestAdminJobCancel",
+      "export async function listAdminJobs",
+      "export async function listAdminJobEvents",
+      "export async function getAdminJobSummary",
     ]) {
       assert(adminJobsHelperSource.includes(requiredExport), `admin jobs helper must include ${requiredExport}`);
     }
@@ -1503,6 +1506,24 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobWorkflowSource.includes("Authorization: Bearer"), "admin job workflow must pass CRON_SECRET through an Authorization header");
     assert(adminJobWorkflowSource.includes("*/15 * * * *"), "admin job workflow must run on a 15 minute schedule");
     assert(!adminJobWorkflowSource.includes("?secret="), "admin job workflow must not use query string secrets");
+
+    const adminTabsJobsSource = fs.readFileSync(path.join(process.cwd(), "components/admin-tabs.tsx"), "utf8");
+    assert(adminTabsJobsSource.includes('"jobs"'), "AdminTabs must include jobs in the active tab union");
+    assert(adminTabsJobsSource.includes("/admin/jobs"), "AdminTabs must link to the admin jobs page");
+    assert(adminTabsJobsSource.includes("작업 큐"), "AdminTabs must label the jobs tab");
+
+    const adminJobsPagePath = path.join(process.cwd(), "app/admin/jobs/page.tsx");
+    assert(fs.existsSync(adminJobsPagePath), "admin jobs page must exist");
+    const adminJobsPageSource = fs.readFileSync(adminJobsPagePath, "utf8");
+    assert(adminJobsPageSource.includes("listAdminJobs"), "admin jobs page must list queued jobs");
+    assert(adminJobsPageSource.includes("listAdminJobEvents"), "admin jobs page must support selected-job event lookup");
+    assert(adminJobsPageSource.includes("/api/admin/jobs/run"), "admin jobs page must wire the manual worker endpoint");
+    assert(adminJobsPageSource.includes('AdminTabs active="jobs"'), "admin jobs page must mark the jobs tab active");
+
+    const adminJobDrainSource = fs.readFileSync(path.join(process.cwd(), "components/admin-job-drain-button.tsx"), "utf8");
+    assert(adminJobDrainSource.includes("/api/admin/jobs/run"), "admin job drain component must target the worker endpoint");
+    assert(adminJobDrainSource.includes('"x-csrf-token"'), "admin job drain component must POST with the CSRF header");
+    assert(adminJobDrainSource.includes('method: "POST"'), "admin job drain component must use POST");
 
     const { GET: adminJobsRunGet, POST: adminJobsRunPost } = await import("@/app/api/admin/jobs/run/route");
     const adminJobsRunGetResponse = adminJobsRunGet();

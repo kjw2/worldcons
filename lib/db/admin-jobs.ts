@@ -111,7 +111,62 @@ export interface RequestAdminJobCancelInput {
   reason?: string | null;
 }
 
+export interface ListAdminJobsInput {
+  status?: AdminJobStatus | string | null;
+  jobType?: AdminJobType | string | null;
+  sourceKey?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListAdminJobsData {
+  jobs: AdminJobRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ListAdminJobEventsInput {
+  jobId: string;
+  limit?: number;
+}
+
+export type AdminJobSummary = Record<AdminJobStatus, number> & {
+  total: number;
+};
+
 type Row = Record<string, unknown>;
+
+const ADMIN_JOB_SELECT = [
+  "id",
+  "job_type",
+  "status",
+  "priority",
+  "source_key",
+  "article_id",
+  "article_slug",
+  "idempotency_key",
+  "requested_by",
+  "requested_at",
+  "started_at",
+  "finished_at",
+  "lease_until",
+  "worker_id",
+  "progress_current",
+  "progress_total",
+  "result_summary",
+  "error_class",
+  "error_message",
+  "cancel_requested_at",
+  "cancelled_at",
+  "cancel_reason",
+  "parent_job_id",
+  "options",
+  "created_at",
+  "updated_at",
+].join(",");
+
+const ADMIN_JOB_EVENT_SELECT = ["id", "job_id", "occurred_at", "event_type", "message", "error_class", "metadata"].join(",");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -131,6 +186,18 @@ function numberValue(value: unknown, fallback = 0) {
 
 function nullableNumberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function boundedListLimit(value: unknown, fallback = 50) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(100, Math.max(1, Math.trunc(parsed)));
+}
+
+function boundedOffset(value: unknown) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.trunc(parsed));
 }
 
 function recordValue(value: unknown) {
@@ -223,14 +290,14 @@ function rowToAdminJob(row: Row): AdminJobRecord {
     workerId: nullableTextValue(row.worker_id),
     progressCurrent: numberValue(row.progress_current),
     progressTotal: nullableNumberValue(row.progress_total),
-    resultSummary: recordValue(row.result_summary),
-    errorClass: nullableTextValue(row.error_class),
-    errorMessage: nullableTextValue(row.error_message),
+    resultSummary: redactedRecord(recordValue(row.result_summary)),
+    errorClass: redactedText(nullableTextValue(row.error_class), 160),
+    errorMessage: redactedText(nullableTextValue(row.error_message), 500),
     cancelRequestedAt: nullableTextValue(row.cancel_requested_at),
     cancelledAt: nullableTextValue(row.cancelled_at),
     cancelReason: nullableTextValue(row.cancel_reason),
     parentJobId: nullableTextValue(row.parent_job_id),
-    options: recordValue(row.options),
+    options: redactedRecord(recordValue(row.options)),
     createdAt: textValue(row.created_at),
     updatedAt: textValue(row.updated_at),
   };
@@ -242,9 +309,9 @@ function rowToAdminJobEvent(row: Row): AdminJobEventRecord {
     jobId: textValue(row.job_id),
     occurredAt: textValue(row.occurred_at),
     eventType: textValue(row.event_type),
-    message: nullableTextValue(row.message),
-    errorClass: nullableTextValue(row.error_class),
-    metadata: recordValue(row.metadata),
+    message: redactedText(nullableTextValue(row.message), 500),
+    errorClass: redactedText(nullableTextValue(row.error_class), 160),
+    metadata: redactedRecord(recordValue(row.metadata)),
   };
 }
 
@@ -380,4 +447,67 @@ export async function requestAdminJobCancel(input: RequestAdminJobCancelInput): 
   if (error) return failure(error);
   if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
   return { ok: true, data: rowToAdminJob(data) };
+}
+
+export async function listAdminJobs(input: ListAdminJobsInput = {}): Promise<AdminJobResult<ListAdminJobsData>> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+
+  const limit = boundedListLimit(input.limit);
+  const offset = boundedOffset(input.offset);
+  let query = supabase.from("admin_jobs").select(ADMIN_JOB_SELECT, { count: "exact" });
+  const status = redactedText(input.status, 80);
+  const jobType = redactedText(input.jobType, 120);
+  const sourceKey = redactedText(input.sourceKey, 120);
+
+  if (status) query = query.eq("status", status);
+  if (jobType) query = query.eq("job_type", jobType);
+  if (sourceKey) query = query.eq("source_key", sourceKey);
+
+  const { data, error, count } = await query.order("requested_at", { ascending: false }).range(offset, offset + limit - 1);
+  if (error) return failure(error);
+
+  return {
+    ok: true,
+    data: {
+      jobs: Array.isArray(data) ? (data as unknown[]).filter(isRecord).map(rowToAdminJob) : [],
+      total: count ?? 0,
+      limit,
+      offset,
+    },
+  };
+}
+
+export async function listAdminJobEvents(input: ListAdminJobEventsInput): Promise<AdminJobResult<AdminJobEventRecord[]>> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+
+  const jobId = input.jobId.trim();
+  if (!jobId) return failure("Admin job id is required.");
+
+  const { data, error } = await supabase
+    .from("admin_job_events")
+    .select(ADMIN_JOB_EVENT_SELECT)
+    .eq("job_id", jobId)
+    .order("occurred_at", { ascending: false })
+    .limit(boundedListLimit(input.limit, 10));
+  if (error) return failure(error);
+
+  return { ok: true, data: Array.isArray(data) ? (data as unknown[]).filter(isRecord).map(rowToAdminJobEvent) : [] };
+}
+
+export async function getAdminJobSummary(): Promise<AdminJobResult<AdminJobSummary>> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+
+  const entries: Array<[AdminJobStatus, number]> = [];
+  for (const status of ADMIN_JOB_STATUSES) {
+    const { count, error } = await supabase.from("admin_jobs").select("id", { count: "exact", head: true }).eq("status", status);
+    if (error) return failure(error);
+    entries.push([status, count ?? 0]);
+  }
+
+  const summary = Object.fromEntries(entries) as AdminJobSummary;
+  summary.total = entries.reduce((sum, [, count]) => sum + count, 0);
+  return { ok: true, data: summary };
 }

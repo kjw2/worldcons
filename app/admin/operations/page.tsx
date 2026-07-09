@@ -310,6 +310,7 @@ function QuickLinks() {
   const links: Array<{ href: string; label: string; detail: string; icon: LucideIcon }> = [
     { href: "/admin", label: "수집·요약 실행", detail: "기존 action panel로 이동", icon: Database },
     { href: "/admin/articles", label: "기사 관리", detail: "상태별 검토와 공개 처리", icon: Newspaper },
+    { href: "/admin/jobs", label: "작업 큐", detail: "대기·실패 작업과 이벤트 확인", icon: ListChecks },
     { href: "/admin/candidates", label: "URL 후보", detail: "재시도 큐와 실패 후보", icon: Link2 },
     { href: "/admin/llm", label: "LLM 관리", detail: "요약 모델과 provider 설정", icon: KeyRound },
     { href: "/admin/audit", label: "감사 로그", detail: "관리자 작업 기록 확인", icon: ShieldCheck },
@@ -321,7 +322,7 @@ function QuickLinks() {
         <p className="text-sm font-semibold text-court">빠른 작업</p>
         <h2 className="mt-1 text-xl font-semibold tracking-normal text-ink">다음 화면으로 이동</h2>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         {links.map((item) => {
           const Icon = item.icon;
           return (
