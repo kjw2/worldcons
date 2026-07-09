@@ -1177,6 +1177,63 @@ async function assertAdminRouteSecurityControls() {
     assert(adminAuditHelperSource.includes("previous_summary_hash") && adminAuditHelperSource.includes("next_summary_hash"), "edit history helper must store summary hashes");
     assert(!adminAuditHelperSource.includes("raw_text") && !adminAuditHelperSource.includes("cleaned_text"), "edit history helper must not include source snapshot fields in diffs");
 
+    const adminArticleTriageMigration = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/20260709140000_admin_article_triage_columns.sql"),
+      "utf8",
+    );
+    for (const requiredSql of [
+      "alter table articles add column if not exists error_class text",
+      "alter table articles add column if not exists error_context jsonb",
+      "alter table articles add column if not exists review_state text",
+      "articles_error_class_updated_at_idx",
+      "articles_review_state_updated_at_idx",
+      "articles_source_key_review_state_updated_at_idx",
+      "create or replace view admin_source_health_v",
+      "create or replace view admin_attention_articles_v",
+    ]) {
+      assert(adminArticleTriageMigration.includes(requiredSql), `admin article triage migration must include ${requiredSql}`);
+    }
+
+    const articleTriageSource = fs.readFileSync(path.join(process.cwd(), "lib/db/article-triage.ts"), "utf8");
+    assert(articleTriageSource.includes("ARTICLE_ERROR_CLASSES"), "article triage helper must expose error_class taxonomy");
+    for (const errorClass of [
+      "crawl.robots_disallowed",
+      "crawl.timeout_response",
+      "crawl.blocked_403",
+      "extract.empty_text",
+      "summary.model_error",
+      "summary.retryable_quota",
+      "llm.key_missing",
+      "auth.csrf_failed",
+      "db.query_failed",
+      "job.stale_running",
+    ]) {
+      assert(articleTriageSource.includes(errorClass), `article triage taxonomy must include ${errorClass}`);
+    }
+
+    const articleTypesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/types.ts"), "utf8");
+    const articleStatusBlock = articleTypesSource.match(/export type ArticleStatus =([\s\S]*?);/);
+    assert(Boolean(articleStatusBlock), "ArticleStatus type must exist");
+    const articleStatusValues = [...(articleStatusBlock?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    assert(
+      JSON.stringify(articleStatusValues) ===
+        JSON.stringify([
+          "discovered",
+          "metadata_only",
+          "robots_disallowed",
+          "blocked",
+          "timeout",
+          "fetched",
+          "cleaned",
+          "summarizing",
+          "summarized",
+          "failed_fetch",
+          "failed_summary",
+          "needs_review",
+        ]),
+      "ArticleStatus must not gain new triage states",
+    );
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {

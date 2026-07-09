@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { fallbackErrorClassForArticleStatus, fallbackReviewStateForArticleStatus } from "@/lib/db/article-triage";
 import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
 import { listIngestionRuns, listSources } from "@/lib/db/queries";
 import type { ArticleStatus, IngestionRunRecord, SourceRecord } from "@/lib/db/types";
@@ -46,6 +47,8 @@ interface AdminArticleRow {
   status: string;
   source_metadata?: Record<string, unknown> | null;
   error_metadata?: Record<string, unknown> | null;
+  error_class?: string | null;
+  review_state?: string | null;
   updated_at?: string | null;
 }
 
@@ -106,6 +109,8 @@ export interface AdminAttentionArticle {
   originalPublishedAt?: string | null;
   status: string;
   errorMessage?: string | null;
+  errorClass?: string | null;
+  reviewState?: string | null;
 }
 
 export interface AdminDashboardData {
@@ -174,6 +179,8 @@ interface AdminDashboardSnapshotAttentionArticle {
   originalPublishedAt?: string | null;
   status?: string | null;
   errorMessage?: string | null;
+  errorClass?: string | null;
+  reviewState?: string | null;
 }
 
 interface AdminDashboardSnapshot {
@@ -635,6 +642,8 @@ function buildAttentionArticles(rows: AdminArticleRow[]) {
       originalPublishedAt: row.original_published_at,
       status: row.status,
       errorMessage: isStaleSummarizing(row) ? "요약 작업이 중단된 오래된 summarizing 상태입니다. 재요약 또는 비공개 결정을 내려야 합니다." : errorMessage(row),
+      errorClass: row.error_class ?? fallbackErrorClassForArticleStatus(row.status),
+      reviewState: row.review_state ?? fallbackReviewStateForArticleStatus(row.status),
     }));
 }
 
@@ -708,6 +717,8 @@ function snapshotAttentionArticles(rows: AdminDashboardSnapshotAttentionArticle[
       originalPublishedAt: optionalText(row.originalPublishedAt),
       status: row.status ?? "needs_review",
       errorMessage: optionalText(row.errorMessage),
+      errorClass: optionalText(row.errorClass),
+      reviewState: optionalText(row.reviewState),
     }));
 }
 

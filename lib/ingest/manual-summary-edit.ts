@@ -3,6 +3,7 @@ import { createEmbedding } from "@/lib/ai/embeddings";
 import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { canonicalizeTerminologyValue } from "@/lib/ai/terminology";
 import { recordAdminArticleEditHistory } from "@/lib/db/admin-audit";
+import { ARTICLE_REVIEW_STATE, updateArticleTriageFields } from "@/lib/db/article-triage";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import type { SummaryJson } from "@/lib/db/types";
 import { runRefreshTagCounts } from "@/lib/ingest/summary";
@@ -224,6 +225,13 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
 
   const { error: updateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
   if (updateError) throw new Error(updateError.message);
+
+  await updateArticleTriageFields({
+    articleId: row.id,
+    errorClass: null,
+    errorContext: null,
+    reviewState: ARTICLE_REVIEW_STATE.MANUAL_SUMMARY_EDIT,
+  });
 
   await recordAdminArticleEditHistory({
     articleId: row.id,

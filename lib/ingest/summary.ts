@@ -3,6 +3,7 @@ import type { LlmCompletionOptions } from "@/lib/ai/client";
 import { summarizeArticle } from "@/lib/ai/summarize";
 import { generateGlossaryCandidates } from "@/lib/glossary/candidates";
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { ARTICLE_ERROR_CLASS, ARTICLE_REVIEW_STATE, classifySummaryError, updateArticleTriageFields } from "@/lib/db/article-triage";
 import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
 import { canSummarizeArticle, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
@@ -100,6 +101,12 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number;
     .in("id", ids);
 
   if (updateError) throw new Error(updateError.message);
+  await updateArticleTriageFields({
+    articleIds: ids,
+    errorClass: ARTICLE_ERROR_CLASS.JOB_STALE_RUNNING,
+    errorContext: { message: `Stale summarizing state recovered after ${staleSummarizingMinutes()} minutes.` },
+    reviewState: ARTICLE_REVIEW_STATE.NEEDS_TRIAGE,
+  });
   return { mode: "database", recoveredCount: ids.length, cutoff };
 }
 
@@ -157,6 +164,12 @@ async function summarizeCandidateRow(
     }
 
     await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    await updateArticleTriageFields({
+      articleId: row.id,
+      errorClass: null,
+      errorContext: null,
+      reviewState: ARTICLE_REVIEW_STATE.SUMMARIZED,
+    });
     await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
     return { status: "summarized" as const };
   } catch (summaryError) {
@@ -174,6 +187,17 @@ async function summarizeCandidateRow(
         },
       })
       .eq("id", row.id);
+    await updateArticleTriageFields({
+      articleId: row.id,
+      errorClass: classifySummaryError(message, retryableBackoff),
+      errorContext: {
+        message,
+        retryable: retryableBackoff,
+        requestedProvider: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
+        requestedModel: options.model ?? null,
+      },
+      reviewState: retryableBackoff ? ARTICLE_REVIEW_STATE.RETRY_LATER : ARTICLE_REVIEW_STATE.NEEDS_TRIAGE,
+    });
     return { status: "failed" as const, errorMessage: message, retryable: retryableBackoff };
   }
 }

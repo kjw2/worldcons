@@ -96,6 +96,12 @@ export function AdminAttentionTable({
                       <a href={reviewHref} className="focus-ring rounded-sm font-semibold text-ink hover:text-court">
                         {article.title}
                       </a>
+                      {article.errorClass || article.reviewState ? (
+                        <div className="mt-1 flex flex-wrap gap-1.5 text-xs text-ink/45">
+                          {article.errorClass ? <span>error: {article.errorClass}</span> : null}
+                          {article.reviewState ? <span>review: {article.reviewState}</span> : null}
+                        </div>
+                      ) : null}
                       {article.errorMessage ? <div className="mt-1 line-clamp-2 text-xs text-court">{article.errorMessage}</div> : null}
                     </td>
                     <td className="px-4 py-3">

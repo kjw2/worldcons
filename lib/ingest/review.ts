@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { ARTICLE_REVIEW_STATE, updateArticleTriageFields } from "@/lib/db/article-triage";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { runRefreshTagCounts, runSummarizeArticle } from "@/lib/ingest/summary";
@@ -124,6 +125,12 @@ async function updateArticleForSummary(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
+  await updateArticleTriageFields({
+    articleId: row.id,
+    errorClass: null,
+    errorContext: null,
+    reviewState: ARTICLE_REVIEW_STATE.APPROVED_FOR_SUMMARY,
+  });
 }
 
 async function publishReviewedArticle(row: ReviewArticleRow, note?: string) {
@@ -152,6 +159,12 @@ async function publishReviewedArticle(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
+  await updateArticleTriageFields({
+    articleId: row.id,
+    errorClass: null,
+    errorContext: null,
+    reviewState: ARTICLE_REVIEW_STATE.PUBLISHED,
+  });
   await runRefreshTagCounts().catch(() => null);
   return { status: "published" as const };
 }
@@ -175,6 +188,12 @@ async function closePrivate(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
+  await updateArticleTriageFields({
+    articleId: row.id,
+    errorClass: null,
+    errorContext: null,
+    reviewState: ARTICLE_REVIEW_STATE.CLOSED_PRIVATE,
+  });
   return { status: "closed_private" as const };
 }
 
@@ -185,6 +204,12 @@ async function recordManualResummary(row: ReviewArticleRow, provider: LlmComplet
   const sourceMetadata = reviewMetadata(row, "manual_resummarized", note, {}, { provider, model });
   const { error } = await supabase.from("articles").update({ source_metadata: sourceMetadata }).eq("id", row.id);
   if (error) throw new Error(error.message);
+  await updateArticleTriageFields({
+    articleId: row.id,
+    errorClass: null,
+    errorContext: null,
+    reviewState: ARTICLE_REVIEW_STATE.MANUAL_RESUMMARIZED,
+  });
 }
 
 export async function runAdminReviewAction(input: ReviewActionInput) {
