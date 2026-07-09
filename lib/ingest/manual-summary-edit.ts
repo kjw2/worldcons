@@ -14,6 +14,31 @@ const MAX_SUMMARY_TEXT_LENGTH = 8_000;
 const MAX_TAGS = 80;
 const MAX_ENTITIES = 80;
 const MAX_PROVISIONS = 50;
+const FORBIDDEN_SNAPSHOT_FIELD_MESSAGE = "원문 스냅샷 필드는 직접 수정할 수 없습니다.";
+const FORBIDDEN_MANUAL_SUMMARY_EDIT_FIELDS = new Set([
+  "raw_text",
+  "rawText",
+  "cleaned_text",
+  "cleanedText",
+  "original_url",
+  "originalUrl",
+  "canonical_url",
+  "canonicalUrl",
+  "content_hash",
+  "contentHash",
+  "source_text",
+  "sourceText",
+  "source_url",
+  "sourceUrl",
+  "source_snapshot",
+  "sourceSnapshot",
+  "raw_snapshot",
+  "rawSnapshot",
+  "extracted_text",
+  "extractedText",
+  "dedup_hash",
+  "dedupHash",
+]);
 
 const ManualSummaryEditBodySchema = z.object({
   note: z.string().max(MAX_NOTE_LENGTH).optional(),
@@ -88,7 +113,17 @@ function validateManualSummary(summary: SummaryJson) {
   return null;
 }
 
+function forbiddenManualSummaryEditFields(body: unknown) {
+  if (!isRecord(body)) return [];
+  return Object.keys(body).filter((key) => FORBIDDEN_MANUAL_SUMMARY_EDIT_FIELDS.has(key));
+}
+
 export function parseManualSummaryEditInput(body: unknown, sourceKey?: string | null) {
+  const forbiddenFields = forbiddenManualSummaryEditFields(body);
+  if (forbiddenFields.length > 0) {
+    return { ok: false as const, error: `${FORBIDDEN_SNAPSHOT_FIELD_MESSAGE} (${forbiddenFields.join(", ")})` };
+  }
+
   const parsedBody = ManualSummaryEditBodySchema.safeParse(body);
   if (!parsedBody.success) {
     return { ok: false as const, error: "요약 수정 요청 형식이 올바르지 않습니다." };

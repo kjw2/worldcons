@@ -244,7 +244,7 @@ export function AdminSummaryEditor({
       </summary>
       <div className="mt-4 grid gap-4">
         <p className="rounded-md border border-amber-400/25 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900">
-          원문 스냅샷은 수정하지 않습니다. 저장하면 공개 요약, 카드 제목, 태그, 검색용 요약 데이터만 갱신됩니다.
+          raw_text와 cleaned_text는 자동 추출 원문 스냅샷이라 직접 수정할 수 없습니다. 저장하면 공개 요약, 카드 제목, 태그, 검색용 요약 데이터만 갱신됩니다.
         </p>
 
         <label className="grid gap-1 text-sm font-semibold text-ink/72">

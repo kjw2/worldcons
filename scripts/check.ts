@@ -266,7 +266,6 @@ assert(
 const manualSummaryEdit = parseManualSummaryEditInput(
   {
     note: "기관명 수정",
-    cleaned_text: "원문 스냅샷 변조 시도",
     summary: {
       koreanTitle: "프랑스 헌법이사회 결정",
       summary: {
@@ -288,10 +287,55 @@ const manualSummaryEdit = parseManualSummaryEditInput(
 assert(manualSummaryEdit.ok, "manual summary edit input should parse valid summary payloads");
 if (manualSummaryEdit.ok) {
   assert(manualSummaryEdit.data.summary.koreanTitle === "프랑스 헌법위원회 결정", "manual summary edits must canonicalize source terminology");
+  const manualSummaryEditDataJson = JSON.stringify(manualSummaryEdit.data);
   assert(
-    !("cleaned_text" in manualSummaryEdit.data) && !("raw_text" in manualSummaryEdit.data),
+    !["cleaned_text", "cleanedText", "raw_text", "rawText", "original_url", "originalUrl", "canonical_url", "canonicalUrl", "content_hash", "contentHash"].some((field) =>
+      manualSummaryEditDataJson.includes(field),
+    ),
     "manual summary edits must not expose source snapshot fields",
   );
+}
+function manualSummaryEditFixture(title: string) {
+  return {
+    koreanTitle: title,
+    summary: {
+      coreSummary: ["핵심 요약"],
+      referencedProvisions: [],
+      background: "배경",
+      caseStructure: "구조",
+      implications: "시사점",
+      practicalNotes: "참고",
+    },
+    entities: [],
+    tags: ["헌법"],
+    categories: ["decision"],
+    riskFlags: [],
+  };
+}
+const manualSummaryEditForbiddenSnakeFields = ["cleaned_text", "raw_text", "original_url", "canonical_url", "content_hash", "source_text"] as const;
+for (const field of manualSummaryEditForbiddenSnakeFields) {
+  const blocked = parseManualSummaryEditInput(
+    {
+      [field]: "원문 스냅샷 변조 시도",
+      summary: manualSummaryEditFixture("프랑스 헌법이사회 결정"),
+    },
+    "fr-conseil-constitutionnel",
+  );
+  assert(!blocked.ok, `manual summary edit input must reject forbidden ${field}`);
+  if (!blocked.ok) {
+    assert(blocked.error.includes("원문 스냅샷 필드는 직접 수정할 수 없습니다"), `manual summary edit forbidden ${field} error must explain the boundary`);
+  }
+}
+const manualSummaryEditForbiddenCamelFields = ["cleanedText", "rawText", "originalUrl", "canonicalUrl", "contentHash", "sourceText"] as const;
+for (const field of manualSummaryEditForbiddenCamelFields) {
+  const blocked = parseManualSummaryEditInput(
+    {
+      [field]: "source snapshot tamper",
+      summary: manualSummaryEditFixture("미국 연방대법원 결정"),
+    },
+    "us-scotus",
+  );
+  assert(!blocked.ok, `manual summary edit input must reject forbidden ${field}`);
 }
 assert(
   canonicalizeTerminologyText(
