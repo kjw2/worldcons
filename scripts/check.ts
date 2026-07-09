@@ -1548,6 +1548,60 @@ async function assertAdminRouteSecurityControls() {
     assert(adminApiValidationSource.includes('const JOB_ACTIONS = ["cancel", "retry"]'), "admin job action parser must restrict actions to cancel/retry");
     assert(adminApiValidationSource.includes("ADMIN_JOB_REASON_MAX_LENGTH"), "admin job action parser must limit reason length");
 
+    const readmeSource = fs.readFileSync(path.join(process.cwd(), "README.md"), "utf8");
+    for (const requiredReadmeText of [
+      "/admin/jobs",
+      "작업 큐",
+      "HTTP `202`",
+      "`mode: \"queued\"`",
+      "`POST` | `/api/admin/jobs/run`",
+      "`POST` | `/api/admin/jobs/[jobId]`",
+      "`GET` | `/api/admin/cron/jobs`",
+      "legacy/direct cron 수집 endpoint",
+      "pnpm admin:readiness",
+    ]) {
+      assert(readmeSource.includes(requiredReadmeText), `README must document ${requiredReadmeText}`);
+    }
+
+    const productionChecklistSource = fs.readFileSync(path.join(process.cwd(), "docs/security/production-checklist.md"), "utf8");
+    for (const requiredChecklistText of [
+      "20260709120000_admin_dashboard_summary_views.sql",
+      "20260709130000_admin_audit_and_edit_history.sql",
+      "20260709140000_admin_article_triage_columns.sql",
+      "20260709150000_admin_jobs.sql",
+      "admin-job-worker.yml",
+      "pnpm admin:readiness",
+      "/admin/jobs",
+      "/api/admin/cron/jobs",
+      "/api/admin/jobs/run",
+      "HTTP 202 queued",
+    ]) {
+      assert(productionChecklistSource.includes(requiredChecklistText), `production checklist must document ${requiredChecklistText}`);
+    }
+
+    const readinessScriptPath = path.join(process.cwd(), "scripts/admin-ops-readiness.ts");
+    assert(fs.existsSync(readinessScriptPath), "admin ops readiness script must exist");
+    const readinessScriptSource = fs.readFileSync(readinessScriptPath, "utf8");
+    for (const requiredReadinessText of [
+      "getSupabaseAdmin",
+      "admin_jobs",
+      "admin_job_events",
+      "claim_admin_job",
+      "__readiness_never_claim__",
+      "admin_audit_logs",
+      "admin_article_edit_history",
+      "admin_article_status_summary_v",
+      "admin_source_health_v",
+      "rpc_admin_dashboard_snapshot",
+      "rpc_admin_analytics_health_snapshot",
+      "error_class,error_context,review_state",
+    ]) {
+      assert(readinessScriptSource.includes(requiredReadinessText), `readiness script must check ${requiredReadinessText}`);
+    }
+
+    const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { scripts?: Record<string, string> };
+    assert(packageJson.scripts?.["admin:readiness"] === "tsx scripts/admin-ops-readiness.ts", "package.json must expose pnpm admin:readiness");
+
     const { GET: adminJobsRunGet, POST: adminJobsRunPost } = await import("@/app/api/admin/jobs/run/route");
     const adminJobsRunGetResponse = adminJobsRunGet();
     assert(adminJobsRunGetResponse.status === 405, "GET /api/admin/jobs/run must be rejected with 405");

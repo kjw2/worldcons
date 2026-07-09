@@ -25,6 +25,7 @@
     "canonicalize:us-terms": "tsx scripts/canonicalize-source-terminology.ts --source=us-scotus",
     "glossary:sync": "tsx scripts/sync-glossary-terms.ts",
     "glossary:candidates": "tsx scripts/glossary-candidates.ts",
+    "admin:readiness": "tsx scripts/admin-ops-readiness.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {

@@ -749,11 +749,13 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 
 ```text
 /admin
+/admin/operations
 /admin/analytics
 /admin/articles
 /admin/audit
 /admin/candidates
 /admin/ingestion-runs
+/admin/jobs
 /admin/glossary-candidates
 /admin/llm
 ```
@@ -777,6 +779,7 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | 수집 후 요약 | 수집 뒤 요약 대기 자료를 함께 처리합니다 |
 | 요약 실행 | `cleaned`, `failed_summary` 자료를 다시 요약합니다 |
 | 태그 갱신 | 공개 자료 기준으로 태그 개수를 다시 계산합니다 |
+| 작업 큐 | queued/running/failed 작업, 실패 원인, 최근 이벤트를 확인하고 수동 drain, 취소, 재시도를 실행합니다 |
 | 검토 목록 | 실패, 차단, timeout, 검토 필요 자료를 확인하고 검토 유형·권장 다음 절차에 따라 요약/공개/비공개 결정을 실행합니다 |
 | 요약 실패 1건 재시도 | 검토 목록의 `요약 실패` 뱃지를 눌러 해당 자료만 다시 요약합니다 |
 | 기사 운영 목록 | 전체 기사 상태, 공개 가능 여부, 요약 여부, 국가/기관 필터를 기준으로 운영 자료를 찾고 명시 선택 자료를 일괄 검토 처리합니다 |
@@ -787,13 +790,15 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 
 `요약 실패` 뱃지 재시도가 성공하면 해당 자료는 즉시 검토 목록에서 사라집니다. 실패하면 같은 줄에 실패 메시지가 표시됩니다.
 
-관리자 v2 P0 운영 화면은 대시보드(`/admin`), 기사 운영(`/admin/articles`), 이용 통계(`/admin/analytics`), 감사 로그(`/admin/audit`), 실행 기록(`/admin/ingestion-runs`), 수집 후보 URL(`/admin/candidates`), 용어 후보(`/admin/glossary-candidates`), LLM 관리(`/admin/llm`)로 나뉩니다. 수집·요약 실행 결과는 화면에서 요청 옵션과 source별 결과 요약을 먼저 보여주고, 원문 응답은 접어서 확인합니다.
+관리자 v2 P0 안전장치는 source별 요약 범위를 고정하고, 관리자 변이 API 입력을 zod schema로 검증하며, 감사 metadata 저장 전에 secret/token/password/query 값을 redaction합니다. 상세 요약 수정은 `summary_json`, `korean_title`, 태그와 검토 이력 같은 요약 산출물만 허용하고, `raw_text`, `cleaned_text`, 원문 URL, content hash 같은 원문 스냅샷 필드는 직접 수정할 수 없습니다.
 
 자체 이용 통계와 P0 감사 로그는 `site_events` 테이블에 저장합니다. 접속 컴퓨터별 rate limit 적용을 위해 IP, IP hash, User-Agent, Accept-Language, Vercel/Cloudflare 지역 헤더를 함께 저장합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다. 관리자 화면은 최근 접속 로그와 KST 기준 일별·월별 집계를 함께 보여줍니다.
 
-관리자 v2 P1 안전장치는 운영 실수를 줄이는 방향으로 적용되어 있습니다. `비공개 종결`은 단건/일괄 모두 명시 확인이 필요하고, 관리자 API는 과도한 note/model/id 입력을 DB 작업 전에 거부합니다. 감사 로그는 작업 필터를 선택식으로 제공하며, 표시 필드의 API key, bearer token, secret query 값은 redaction 처리합니다. 수집 후보 URL 상태 변경은 source, 후보 유형, 후보 URL을 감사 metadata에 함께 남깁니다.
+관리자 v2 P1은 운영자가 먼저 볼 수 있는 `/admin/operations` 홈, 대시보드 summary view/RPC fast path와 legacy fallback, 모바일/좁은 화면용 관리자 카드 뷰, 명시 버튼으로만 실행되는 LLM health check를 포함합니다. summary view/RPC migration이 아직 적용되지 않은 환경에서는 기존 legacy query path로 fallback합니다.
 
-관리자 v2 P2에서는 운영 연결성과 보안 관찰성을 보강했습니다. 대시보드의 수집원·URL 후보 표는 기사 관리와 후보 관리 필터 화면으로 바로 연결됩니다. CSP Report-Only 위반은 `/api/security/csp-report`에서 수집하고 `site_events`의 `security_event`로 보존합니다. 해당 endpoint는 16KB 초과 요청을 거부하고 `RATE_LIMIT_CSP_REPORT_MAX`, `RATE_LIMIT_CSP_REPORT_WINDOW_MS`로 별도 rate limit을 조정할 수 있습니다.
+관리자 v2 P2는 `admin_jobs` 큐를 기준으로 수집·요약·태그 갱신을 enqueue하고, bounded worker endpoint와 GitHub Actions cron drain으로 처리합니다. `/admin/jobs`에서 queued/running/succeeded/failed/cancelled 상태, 실패 원인, 선택 작업 이벤트를 확인하고, 수동 drain, 취소, 재시도를 실행할 수 있습니다. P2 DB migration이 적용되지 않은 production에서는 관리자 큐가 정상 동작하지 않으므로, 배포 전 `pnpm admin:readiness`로 dashboard/audit/triage/admin_jobs 객체 접근을 확인하세요.
+
+관리자 v2 운영 연결성도 보강되어 대시보드와 운영 홈의 수집원·URL 후보·실행 기록·감사 로그 링크가 다음 조치 화면으로 이어집니다. CSP Report-Only 위반은 `/api/security/csp-report`에서 수집하고 `site_events`의 `security_event`로 보존합니다. 해당 endpoint는 16KB 초과 요청을 거부하고 `RATE_LIMIT_CSP_REPORT_MAX`, `RATE_LIMIT_CSP_REPORT_WINDOW_MS`로 별도 rate limit을 조정할 수 있습니다.
 
 공개 조회 API, 이용 통계 이벤트 수집 endpoint, 관리자 로그인에는 IP 또는 fallback 접속 식별자 기준의 메모리 rate limit이 적용됩니다. Vercel 같은 서버리스 환경에서는 인스턴스별로 동작하므로 강한 전역 차단이 필요해지면 현재 저장되는 `site_events.client_ip_hash` 기준으로 DB/Redis 기반 차단 정책을 추가하면 됩니다.
 
@@ -813,10 +818,12 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 | `POST` | `/api/admin/articles/bulk` | 명시 선택 기사 일괄 검토 처리 |
 | `GET` | `/api/admin/candidates` | 관리자 수집 후보 URL 목록 |
 | `POST/PATCH` | `/api/admin/candidates` | 수집 후보 URL 상태 변경 |
-| `POST` | `/api/admin/ingest` | 관리자 수동 수집 |
+| `POST` | `/api/admin/ingest` | 관리자 수동 수집 요청을 작업 큐에 등록 |
 | `POST` | `/api/admin/review` | 관리자 검토 결정 |
-| `GET` | `/api/admin/cron/ingest` | cron 수집 endpoint |
-| `GET` | `/api/admin/cron/jobs` | 관리자 작업 큐 drain endpoint |
+| `POST` | `/api/admin/jobs/run` | 관리자 작업 큐 수동 worker 실행 |
+| `POST` | `/api/admin/jobs/[jobId]` | 관리자 작업 취소 또는 재시도 |
+| `GET` | `/api/admin/cron/ingest` | legacy/direct cron 수집 endpoint |
+| `GET` | `/api/admin/cron/jobs` | 관리자 작업 큐 production drain endpoint |
 
 `POST /api/admin/ingest` body 예시:
 
@@ -829,6 +836,10 @@ No Gemini routes are locally available for Summarize. This is router state, not 
   "refreshTags": true
 }
 ```
+
+정상 queue 환경에서 `POST /api/admin/ingest`는 기본적으로 HTTP `202`와 `mode: "queued"`를 반환합니다. 응답의 `job.id`, `job.status`, `job.jobType`, `job.sourceKey`는 `/admin/jobs`에서 확인할 수 있습니다. queue migration이 적용되지 않은 production에서는 장시간 inline 실행으로 fallback하지 않고 명확한 오류를 반환합니다.
+
+`GET /api/admin/cron/ingest`는 기존 공식 사이트 직접 수집용 legacy/direct cron endpoint입니다. 관리자 화면에서 생성된 queued job 처리는 `GET /api/admin/cron/jobs`와 `.github/workflows/admin-job-worker.yml`이 담당하며, 두 endpoint 모두 secret header만 허용하고 URL `?secret=` 방식은 허용하지 않습니다.
 
 요약 실패 자료 1건만 다시 시도하려면 다음처럼 보냅니다.
 
