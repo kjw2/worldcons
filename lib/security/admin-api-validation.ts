@@ -295,6 +295,16 @@ const adminLlmTestSchema = z
 
 export type AdminLlmTestBody = z.infer<typeof adminLlmTestSchema>;
 
+const adminJobRunBodySchema = z
+  .object({
+    maxJobs: optionalInteger(1, 10),
+    leaseSeconds: optionalInteger(10, 600),
+    jobTypes: z.array(z.enum(INGEST_ACTIONS)).min(1).max(5).optional(),
+  })
+  .strict();
+
+export type AdminJobRunBody = z.infer<typeof adminJobRunBodySchema>;
+
 function searchParamsObject(searchParams: URLSearchParams) {
   return Object.fromEntries(searchParams.entries());
 }
@@ -325,4 +335,8 @@ export function parseAdminLlmSettingsBody(body: unknown): ValidationResult<Admin
 
 export function parseAdminLlmTestBody(body: unknown): ValidationResult<AdminLlmTestBody> {
   return validationResult(adminLlmTestSchema.safeParse(body));
+}
+
+export function parseAdminJobRunBody(body: unknown): ValidationResult<AdminJobRunBody> {
+  return validationResult(adminJobRunBodySchema.safeParse(body));
 }

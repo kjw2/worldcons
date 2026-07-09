@@ -1076,16 +1076,23 @@ async function assertAdminRouteSecurityControls() {
     assert(oversizedIngestSlugResponse.status === 400, "admin ingest POST must reject oversized slug before work starts");
 
     const adminIngestRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/ingest/route.ts"), "utf8");
+    const adminIngestExecutorSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/admin-ingest-jobs.ts"), "utf8");
     assert(
-      /runSummarizePending\(\{\s*limit:\s*summarizeLimit,\s*sourceKey\s*\}\)/s.test(adminIngestRouteSource),
+      /runSummarizePending\(\{\s*limit:\s*summarizeLimit,\s*sourceKey\s*\}\)/s.test(adminIngestExecutorSource),
       "admin source-scoped summarize request must pass sourceKey to runSummarizePending",
     );
     assert(adminIngestRouteSource.includes("createAdminJob"), "admin ingest route must enqueue admin jobs");
     assert(adminIngestRouteSource.includes("buildAdminJobIdempotencyKey"), "admin ingest route must build stable job idempotency keys");
+    assert(adminIngestRouteSource.includes("executeAdminIngestJobContext"), "admin ingest route inline fallback must use the shared executor");
     assert(adminIngestRouteSource.includes('mode: "queued"'), "admin ingest route must return queued mode for queued jobs");
     assert(adminIngestRouteSource.includes("{ status: 202 }"), "admin ingest route must return 202 for queued jobs");
     assert(adminIngestRouteSource.includes("canRunInlineFallback"), "admin ingest route must keep inline execution as an explicit fallback only");
     assert(adminIngestRouteSource.includes('process.env.NODE_ENV !== "production"'), "admin ingest route must not default production to inline fallback");
+    assert(adminIngestExecutorSource.includes("compactAdminIngestExecutionSummary"), "admin ingest executor must produce compact job summaries");
+    assert(adminIngestExecutorSource.includes("redactAdminAuditMetadata"), "admin ingest executor summaries must use audit redaction");
+    for (const forbiddenSnapshotField of ["raw_text", "cleaned_text", "source_text", "rawText", "cleanedText", "sourceText"]) {
+      assert(!adminIngestExecutorSource.includes(forbiddenSnapshotField), `admin ingest executor result summary must not store ${forbiddenSnapshotField}`);
+    }
 
     const adminPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
     const adminActionPanelSource = fs.readFileSync(path.join(process.cwd(), "components/admin-action-panel.tsx"), "utf8");
@@ -1452,6 +1459,38 @@ async function assertAdminRouteSecurityControls() {
     }
     assert(adminJobsHelperSource.includes("redactAdminAuditMetadata"), "admin jobs helper must redact JSON payloads before storage");
     assert(adminJobsHelperSource.includes("unavailable: true"), "admin jobs helper must expose unavailable fallbacks for unapplied migrations");
+
+    const adminJobRunnerSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/admin-job-runner.ts"), "utf8");
+    for (const requiredCall of ["claimAdminJob", "markAdminJobSucceeded", "markAdminJobFailed", "appendAdminJobEvent"]) {
+      assert(adminJobRunnerSource.includes(requiredCall), `admin job runner must use ${requiredCall}`);
+    }
+    assert(adminJobRunnerSource.includes("executeAdminIngestJobOptions"), "admin job runner must execute queued ingest jobs through the shared executor");
+    assert(adminJobRunnerSource.includes('mode: "unavailable"'), "admin job runner must return unavailable mode when queue schema is missing");
+
+    const adminJobRunRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/jobs/run/route.ts"), "utf8");
+    assert(adminJobRunRouteSource.includes("adminMutationAuthFailureStatus"), "admin job run route must use admin mutation auth");
+    assert(adminJobRunRouteSource.includes("runAdminJobWorker"), "admin job run route must call the bounded job worker");
+    assert(adminJobRunRouteSource.includes("parseAdminJobRunBody"), "admin job run route must validate worker payloads");
+
+    const { GET: adminJobsRunGet, POST: adminJobsRunPost } = await import("@/app/api/admin/jobs/run/route");
+    const adminJobsRunGetResponse = adminJobsRunGet();
+    assert(adminJobsRunGetResponse.status === 405, "GET /api/admin/jobs/run must be rejected with 405");
+    const unauthenticatedAdminJobsRunResponse = await adminJobsRunPost(
+      new Request("https://example.test/api/admin/jobs/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
+    assert(unauthenticatedAdminJobsRunResponse.status === 401, "admin job worker POST without authentication must return 401");
+    const invalidAdminJobsRunResponse = await adminJobsRunPost(
+      new Request("https://example.test/api/admin/jobs/run", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ maxJobs: 11 }),
+      }),
+    );
+    assert(invalidAdminJobsRunResponse.status === 400, "admin job worker POST must reject oversized maxJobs before claiming jobs");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);
