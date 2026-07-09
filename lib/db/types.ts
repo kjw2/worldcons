@@ -129,6 +129,7 @@ export interface ArticleListFilters {
   tag?: string;
   language?: string;
   includeUnpublished?: boolean;
+  includeViewCounts?: boolean;
   page?: number;
   pageSize?: number;
   count?: "exact" | "planned" | "estimated" | "none";

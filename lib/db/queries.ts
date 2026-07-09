@@ -223,6 +223,10 @@ async function attachArticleViewCounts<T extends ArticleListItem>(items: T[]) {
   }));
 }
 
+async function attachArticleViewCountsIfNeeded<T extends ArticleListItem>(items: T[], filters: ArticleListFilters) {
+  return filters.includeViewCounts === false ? items : attachArticleViewCounts(items);
+}
+
 function matchesText(article: ArticleDetail, q?: string) {
   if (!q) {
     return true;
@@ -327,7 +331,7 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
     const items = filterMockArticles(filters);
     const start = (page - 1) * pageSize;
     return {
-      items: await attachArticleViewCounts(items.slice(start, start + pageSize)),
+      items: await attachArticleViewCountsIfNeeded(items.slice(start, start + pageSize), filters),
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
@@ -387,7 +391,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     const items = filterMockArticles(filters);
     const start = (page - 1) * pageSize;
     return {
-      items: await attachArticleViewCounts(items.slice(start, start + pageSize)),
+      items: await attachArticleViewCountsIfNeeded(items.slice(start, start + pageSize), filters),
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
@@ -432,7 +436,10 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   }
   const rows = (data ?? []) as unknown as SupabaseArticleRow[];
   const hasMore = rows.length > pageSize;
-  const items = await attachArticleViewCounts(rows.slice(0, pageSize).map((row) => articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false })));
+  const items = await attachArticleViewCountsIfNeeded(
+    rows.slice(0, pageSize).map((row) => articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false })),
+    filters,
+  );
   const minimumTotal = from + items.length + (hasMore ? 1 : 0);
   const total = Math.max(count ?? 0, minimumTotal);
 
