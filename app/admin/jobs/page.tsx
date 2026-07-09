@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Ban, CheckCircle2, Clock3, Hourglass, ListChecks, LogOut, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { AdminJobActions } from "@/components/admin-job-actions";
 import { AdminJobDrainButton } from "@/components/admin-job-drain-button";
 import { AdminTabs } from "@/components/admin-tabs";
 import {
@@ -252,7 +253,17 @@ function SelectedJobEvents({
   );
 }
 
-function JobCards({ jobs, params, selectedJobId }: { jobs: AdminJobRecord[]; params: SearchParams; selectedJobId?: string }) {
+function JobCards({
+  jobs,
+  params,
+  selectedJobId,
+  csrfToken,
+}: {
+  jobs: AdminJobRecord[];
+  params: SearchParams;
+  selectedJobId?: string;
+  csrfToken: string;
+}) {
   return (
     <div className="grid gap-3 md:hidden">
       {jobs.map((job) => (
@@ -276,16 +287,29 @@ function JobCards({ jobs, params, selectedJobId }: { jobs: AdminJobRecord[]; par
           <div className="mt-3">
             <JobError job={job} />
           </div>
+          <div className="mt-3">
+            <AdminJobActions jobId={job.id} status={job.status} csrfToken={csrfToken} />
+          </div>
         </article>
       ))}
     </div>
   );
 }
 
-function JobTable({ jobs, params, selectedJobId }: { jobs: AdminJobRecord[]; params: SearchParams; selectedJobId?: string }) {
+function JobTable({
+  jobs,
+  params,
+  selectedJobId,
+  csrfToken,
+}: {
+  jobs: AdminJobRecord[];
+  params: SearchParams;
+  selectedJobId?: string;
+  csrfToken: string;
+}) {
   return (
     <div className="hidden overflow-x-auto rounded-md border border-rule bg-white shadow-sm md:block">
-      <table className="min-w-[1280px] divide-y divide-rule text-sm">
+      <table className="min-w-[1420px] divide-y divide-rule text-sm">
         <thead className="bg-parchment">
           <tr className="text-left text-xs font-semibold text-ink/60">
             <th className="px-4 py-3">작업</th>
@@ -295,6 +319,7 @@ function JobTable({ jobs, params, selectedJobId }: { jobs: AdminJobRecord[]; par
             <th className="px-4 py-3">idempotency</th>
             <th className="px-4 py-3">실패 원인</th>
             <th className="px-4 py-3">이벤트</th>
+            <th className="px-4 py-3">조치</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-rule">
@@ -339,6 +364,9 @@ function JobTable({ jobs, params, selectedJobId }: { jobs: AdminJobRecord[]; par
                 <Link href={jobEventHref(params, job.id)} className="focus-ring inline-flex min-h-9 items-center rounded-md border border-rule px-3 text-xs font-semibold text-ink/68 hover:bg-parchment">
                   이벤트 보기
                 </Link>
+              </td>
+              <td className="px-4 py-4">
+                <AdminJobActions jobId={job.id} status={job.status} csrfToken={csrfToken} />
               </td>
             </tr>
           ))}
@@ -517,8 +545,8 @@ export default async function AdminJobsPage({ searchParams }: { searchParams?: P
             <div className="rounded-md border border-rule bg-white p-6 text-sm text-ink/58 shadow-sm">표시할 작업이 없습니다.</div>
           ) : (
             <>
-              <JobCards jobs={jobs} params={params} selectedJobId={selectedJobId} />
-              <JobTable jobs={jobs} params={params} selectedJobId={selectedJobId} />
+              <JobCards jobs={jobs} params={params} selectedJobId={selectedJobId} csrfToken={csrfToken ?? ""} />
+              <JobTable jobs={jobs} params={params} selectedJobId={selectedJobId} csrfToken={csrfToken ?? ""} />
             </>
           )}
         </section>

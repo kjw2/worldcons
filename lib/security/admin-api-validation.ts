@@ -15,6 +15,7 @@ const ADMIN_BULK_MAX_ITEMS = 100;
 const ADMIN_CANDIDATE_ID_MAX_LENGTH = 120;
 const ADMIN_RETURN_TO_MAX_LENGTH = 300;
 const ADMIN_QUERY_TEXT_MAX_LENGTH = 300;
+const ADMIN_JOB_REASON_MAX_LENGTH = 500;
 
 const INGEST_ACTIONS = ["ingest", "ingest-and-summarize", "summarize", "retry-summary", "refresh-tags"] as const;
 const REVIEW_ACTIONS = [
@@ -28,6 +29,7 @@ const REVIEW_ACTIONS = [
 const BULK_ACTIONS = ["mark-needs-review", "close-private"] as const;
 const CANDIDATE_ACTIONS = ["ignore", "retrying"] as const;
 const CANDIDATE_STATUSES = ["pending", "retrying", "fetched", "failed", "ignored"] as const;
+const JOB_ACTIONS = ["cancel", "retry"] as const;
 
 const ACTION_TO_STATUS = {
   ignore: "ignored",
@@ -305,6 +307,15 @@ const adminJobRunBodySchema = z
 
 export type AdminJobRunBody = z.infer<typeof adminJobRunBodySchema>;
 
+const adminJobActionBodySchema = z
+  .object({
+    action: z.enum(JOB_ACTIONS),
+    reason: optionalText(ADMIN_JOB_REASON_MAX_LENGTH),
+  })
+  .strict();
+
+export type AdminJobActionBody = z.infer<typeof adminJobActionBodySchema>;
+
 function searchParamsObject(searchParams: URLSearchParams) {
   return Object.fromEntries(searchParams.entries());
 }
@@ -339,4 +350,8 @@ export function parseAdminLlmTestBody(body: unknown): ValidationResult<AdminLlmT
 
 export function parseAdminJobRunBody(body: unknown): ValidationResult<AdminJobRunBody> {
   return validationResult(adminJobRunBodySchema.safeParse(body));
+}
+
+export function parseAdminJobActionBody(body: unknown): ValidationResult<AdminJobActionBody> {
+  return validationResult(adminJobActionBodySchema.safeParse(body));
 }

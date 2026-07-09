@@ -1469,6 +1469,8 @@ async function assertAdminRouteSecurityControls() {
       "export async function markAdminJobSucceeded",
       "export async function markAdminJobFailed",
       "export async function requestAdminJobCancel",
+      "export async function markAdminJobCancelled",
+      "export async function retryAdminJob",
       "export async function listAdminJobs",
       "export async function listAdminJobEvents",
       "export async function getAdminJobSummary",
@@ -1477,9 +1479,10 @@ async function assertAdminRouteSecurityControls() {
     }
     assert(adminJobsHelperSource.includes("redactAdminAuditMetadata"), "admin jobs helper must redact JSON payloads before storage");
     assert(adminJobsHelperSource.includes("unavailable: true"), "admin jobs helper must expose unavailable fallbacks for unapplied migrations");
+    assert(adminJobsHelperSource.includes("admin-job-retry:"), "admin jobs helper must use retry-specific idempotency keys");
 
     const adminJobRunnerSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/admin-job-runner.ts"), "utf8");
-    for (const requiredCall of ["claimAdminJob", "markAdminJobSucceeded", "markAdminJobFailed", "appendAdminJobEvent"]) {
+    for (const requiredCall of ["claimAdminJob", "markAdminJobSucceeded", "markAdminJobFailed", "markAdminJobCancelled", "appendAdminJobEvent"]) {
       assert(adminJobRunnerSource.includes(requiredCall), `admin job runner must use ${requiredCall}`);
     }
     assert(adminJobRunnerSource.includes("executeAdminIngestJobOptions"), "admin job runner must execute queued ingest jobs through the shared executor");
@@ -1518,12 +1521,32 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobsPageSource.includes("listAdminJobs"), "admin jobs page must list queued jobs");
     assert(adminJobsPageSource.includes("listAdminJobEvents"), "admin jobs page must support selected-job event lookup");
     assert(adminJobsPageSource.includes("/api/admin/jobs/run"), "admin jobs page must wire the manual worker endpoint");
+    assert(adminJobsPageSource.includes("AdminJobActions"), "admin jobs page must expose cancel/retry controls");
     assert(adminJobsPageSource.includes('AdminTabs active="jobs"'), "admin jobs page must mark the jobs tab active");
 
     const adminJobDrainSource = fs.readFileSync(path.join(process.cwd(), "components/admin-job-drain-button.tsx"), "utf8");
     assert(adminJobDrainSource.includes("/api/admin/jobs/run"), "admin job drain component must target the worker endpoint");
     assert(adminJobDrainSource.includes('"x-csrf-token"'), "admin job drain component must POST with the CSRF header");
     assert(adminJobDrainSource.includes('method: "POST"'), "admin job drain component must use POST");
+
+    const adminJobActionRoutePath = path.join(process.cwd(), "app/api/admin/jobs/[jobId]/route.ts");
+    assert(fs.existsSync(adminJobActionRoutePath), "admin job action route must exist");
+    const adminJobActionRouteSource = fs.readFileSync(adminJobActionRoutePath, "utf8");
+    assert(adminJobActionRouteSource.includes("adminMutationAuthFailureStatus"), "admin job action route must use admin mutation auth");
+    assert(adminJobActionRouteSource.includes("parseAdminJobActionBody"), "admin job action route must validate cancel/retry payloads");
+    assert(adminJobActionRouteSource.includes("markAdminJobCancelled"), "admin job action route must cancel jobs through the queue helper");
+    assert(adminJobActionRouteSource.includes("retryAdminJob"), "admin job action route must retry jobs through the queue helper");
+    assert(adminJobActionRouteSource.includes("appendAdminJobEvent"), "admin job action route must append queue events");
+    assert(adminJobActionRouteSource.includes("recordAdminSiteEvent"), "admin job action route must write admin audit events");
+
+    const adminJobActionSource = fs.readFileSync(path.join(process.cwd(), "components/admin-job-actions.tsx"), "utf8");
+    assert(adminJobActionSource.includes("/api/admin/jobs/"), "admin job action component must POST to the selected job endpoint");
+    assert(adminJobActionSource.includes('"x-csrf-token"'), "admin job action component must POST with the CSRF header");
+    assert(adminJobActionSource.includes('method: "POST"'), "admin job action component must use POST");
+
+    assert(adminApiValidationSource.includes("parseAdminJobActionBody"), "admin API validation must expose a job action parser");
+    assert(adminApiValidationSource.includes('const JOB_ACTIONS = ["cancel", "retry"]'), "admin job action parser must restrict actions to cancel/retry");
+    assert(adminApiValidationSource.includes("ADMIN_JOB_REASON_MAX_LENGTH"), "admin job action parser must limit reason length");
 
     const { GET: adminJobsRunGet, POST: adminJobsRunPost } = await import("@/app/api/admin/jobs/run/route");
     const adminJobsRunGetResponse = adminJobsRunGet();
@@ -1544,6 +1567,28 @@ async function assertAdminRouteSecurityControls() {
       }),
     );
     assert(invalidAdminJobsRunResponse.status === 400, "admin job worker POST must reject oversized maxJobs before claiming jobs");
+
+    const { GET: adminJobActionGet, POST: adminJobActionPost } = await import("@/app/api/admin/jobs/[jobId]/route");
+    const adminJobActionGetResponse = adminJobActionGet();
+    assert(adminJobActionGetResponse.status === 405, "GET /api/admin/jobs/[jobId] must be rejected with 405");
+    const unauthenticatedAdminJobActionResponse = await adminJobActionPost(
+      new Request("https://example.test/api/admin/jobs/00000000-0000-0000-0000-000000000000", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      }),
+      { params: Promise.resolve({ jobId: "00000000-0000-0000-0000-000000000000" }) },
+    );
+    assert(unauthenticatedAdminJobActionResponse.status === 401, "admin job action POST without authentication must return 401");
+    const invalidAdminJobActionResponse = await adminJobActionPost(
+      new Request("https://example.test/api/admin/jobs/00000000-0000-0000-0000-000000000000", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cron-secret": "c".repeat(32) },
+        body: JSON.stringify({ action: "delete" }),
+      }),
+      { params: Promise.resolve({ jobId: "00000000-0000-0000-0000-000000000000" }) },
+    );
+    assert(invalidAdminJobActionResponse.status === 400, "admin job action POST must reject invalid actions before touching jobs");
   } finally {
     for (const key of keysToRestore) {
       const value = originalEnv.get(key);

@@ -111,6 +111,17 @@ export interface RequestAdminJobCancelInput {
   reason?: string | null;
 }
 
+export interface MarkAdminJobCancelledInput {
+  jobId: string;
+  reason?: string | null;
+}
+
+export interface RetryAdminJobInput {
+  jobId: string;
+  requestedBy?: string | null;
+  reason?: string | null;
+}
+
 export interface ListAdminJobsInput {
   status?: AdminJobStatus | string | null;
   jobType?: AdminJobType | string | null;
@@ -315,6 +326,16 @@ function rowToAdminJobEvent(row: Row): AdminJobEventRecord {
   };
 }
 
+async function getAdminJobById(jobId: string): Promise<AdminJobResult<AdminJobRecord>> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+
+  const { data, error } = await supabase.from("admin_jobs").select(ADMIN_JOB_SELECT).eq("id", jobId).maybeSingle();
+  if (error) return failure(error);
+  if (!data || !isRecord(data)) return failure(`Admin job ${jobId} was not found.`);
+  return { ok: true, data: rowToAdminJob(data) };
+}
+
 export function buildAdminJobIdempotencyKey(input: AdminJobIdempotencyInput) {
   const payload = stableJsonValue({
     jobType: input.jobType,
@@ -407,9 +428,15 @@ export async function markAdminJobSucceeded(input: MarkAdminJobSucceededInput): 
     error_message: null,
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase.from("admin_jobs").update(update).eq("id", input.jobId).select("*").maybeSingle();
+  const { data, error } = await supabase
+    .from("admin_jobs")
+    .update(update)
+    .eq("id", input.jobId)
+    .in("status", ["queued", "running", "cancel_requested"])
+    .select("*")
+    .maybeSingle();
   if (error) return failure(error);
-  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
   return { ok: true, data: rowToAdminJob(data) };
 }
 
@@ -427,9 +454,15 @@ export async function markAdminJobFailed(input: MarkAdminJobFailedInput): Promis
     error_message: redactedText(input.errorMessage, 500),
     updated_at: new Date().toISOString(),
   };
-  const { data, error } = await supabase.from("admin_jobs").update(update).eq("id", input.jobId).select("*").maybeSingle();
+  const { data, error } = await supabase
+    .from("admin_jobs")
+    .update(update)
+    .eq("id", input.jobId)
+    .in("status", ["queued", "cancel_requested"])
+    .select("*")
+    .maybeSingle();
   if (error) return failure(error);
-  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
   return { ok: true, data: rowToAdminJob(data) };
 }
 
@@ -447,6 +480,81 @@ export async function requestAdminJobCancel(input: RequestAdminJobCancelInput): 
   if (error) return failure(error);
   if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
   return { ok: true, data: rowToAdminJob(data) };
+}
+
+export async function markAdminJobCancelled(input: MarkAdminJobCancelledInput): Promise<AdminJobResult<AdminJobRecord>> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+
+  const existing = await getAdminJobById(input.jobId);
+  if (!existing.ok) return existing;
+
+  if (existing.data.status === "running") {
+    return requestAdminJobCancel(input);
+  }
+
+  if (existing.data.status === "cancelled") {
+    return failure(`Admin job ${input.jobId} is already cancelled.`);
+  }
+
+  if (existing.data.status === "succeeded" || existing.data.status === "failed") {
+    return failure(`Admin job ${input.jobId} is already ${existing.data.status} and cannot be cancelled.`);
+  }
+
+  if (existing.data.status !== "queued" && existing.data.status !== "cancel_requested") {
+    return failure(`Admin job ${input.jobId} cannot be cancelled from status ${existing.data.status}.`);
+  }
+
+  const now = new Date().toISOString();
+  const update = {
+    status: "cancelled",
+    cancelled_at: now,
+    cancel_reason: redactedText(input.reason, 500),
+    finished_at: now,
+    lease_until: null,
+    worker_id: null,
+    updated_at: now,
+  };
+  const { data, error } = await supabase.from("admin_jobs").update(update).eq("id", input.jobId).select("*").maybeSingle();
+  if (error) return failure(error);
+  if (!data || !isRecord(data)) return failure(`Admin job ${input.jobId} was not found.`);
+  return { ok: true, data: rowToAdminJob(data) };
+}
+
+export async function retryAdminJob(input: RetryAdminJobInput): Promise<AdminJobResult<{ job: AdminJobRecord; parent: AdminJobRecord }>> {
+  const existing = await getAdminJobById(input.jobId);
+  if (!existing.ok) return { ok: false, unavailable: existing.unavailable, error: existing.error };
+  const parent = existing.data;
+
+  if (parent.status !== "failed" && parent.status !== "cancelled") {
+    return failure(`Admin job ${input.jobId} cannot be retried from status ${parent.status}.`);
+  }
+
+  const retryRequestedAt = new Date().toISOString();
+  const retryHash = createHash(
+    JSON.stringify(
+      stableJsonValue({
+        parentJobId: parent.id,
+        retryRequestedAt,
+        reason: redactedText(input.reason, 500),
+      }),
+    ),
+    32,
+  );
+  const created = await createAdminJob({
+    jobType: parent.jobType,
+    sourceKey: parent.sourceKey,
+    articleId: parent.articleId,
+    articleSlug: parent.articleSlug,
+    parentJobId: parent.id,
+    priority: Math.max(parent.priority, parent.jobType === "retry-summary" ? 20 : parent.jobType === "summarize" ? 10 : 0),
+    requestedBy: input.requestedBy,
+    idempotencyKey: `admin-job-retry:${parent.id}:${retryHash}`,
+    options: parent.options,
+  });
+
+  if (!created.ok) return { ok: false, unavailable: created.unavailable, error: created.error };
+  return { ok: true, data: { job: created.data.job, parent } };
 }
 
 export async function listAdminJobs(input: ListAdminJobsInput = {}): Promise<AdminJobResult<ListAdminJobsData>> {

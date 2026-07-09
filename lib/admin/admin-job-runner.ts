@@ -2,6 +2,7 @@ import { ADMIN_INGEST_JOB_TYPES, executeAdminIngestJobOptions } from "@/lib/admi
 import {
   appendAdminJobEvent,
   claimAdminJob,
+  markAdminJobCancelled,
   markAdminJobFailed,
   markAdminJobSucceeded,
   type AdminJobRecord,
@@ -20,7 +21,7 @@ export interface RunAdminJobWorkerInput {
 interface WorkerJobResult {
   id: string;
   jobType: string;
-  status: "succeeded" | "failed";
+  status: "succeeded" | "failed" | "cancelled";
   errorClass?: string | null;
   error?: string | null;
   resultSummary?: Record<string, unknown>;
@@ -79,6 +80,35 @@ async function appendEventSafe(input: Parameters<typeof appendAdminJobEvent>[0])
 }
 
 async function runClaimedJob(job: AdminJobRecord): Promise<WorkerJobResult> {
+  if (job.status === "cancel_requested" || job.status === "cancelled" || job.cancelRequestedAt) {
+    const cancelled = await markAdminJobCancelled({
+      jobId: job.id,
+      reason: job.cancelReason ?? "Cancellation was requested before worker execution.",
+    });
+    if (!cancelled.ok) {
+      return {
+        id: job.id,
+        jobType: job.jobType,
+        status: "failed",
+        errorClass: "job.cancel_failed",
+        error: cancelled.error,
+        resultSummary: { status: "failed", errorClass: "job.cancel_failed" },
+      };
+    }
+    await appendEventSafe({
+      jobId: job.id,
+      eventType: "cancelled",
+      message: "Admin job was cancelled before worker execution.",
+      metadata: publicJob(job),
+    });
+    return {
+      id: job.id,
+      jobType: job.jobType,
+      status: "cancelled",
+      resultSummary: { status: "cancelled" },
+    };
+  }
+
   await appendEventSafe({
     jobId: job.id,
     eventType: "started",
@@ -186,7 +216,7 @@ export async function runAdminJobWorker(input: RunAdminJobWorkerInput = {}): Pro
     const result = await runClaimedJob(claim.data);
     jobs.push(result);
     if (result.status === "succeeded") succeeded += 1;
-    else failed += 1;
+    else if (result.status === "failed") failed += 1;
   }
 
   return {
