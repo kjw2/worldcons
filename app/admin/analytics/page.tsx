@@ -40,6 +40,11 @@ function rangeFromParam(value?: string | null) {
   return Number.isFinite(days) && [7, 30, 90, 180].includes(days) ? days : 30;
 }
 
+function clientIpHashPreview(hash?: string | null) {
+  const normalized = hash?.trim();
+  return normalized ? normalized.slice(0, 12) : "hash 없음";
+}
+
 function MetricCard({
   title,
   value,
@@ -300,11 +305,11 @@ function AccessLogTable({ data }: { data: AnalyticsDashboardData["accessLogs"] }
               <tr className="text-left text-xs font-semibold uppercase text-ink/60">
                 <th className="px-4 py-3">시각</th>
                 <th className="px-4 py-3">유형</th>
-                <th className="px-4 py-3">IP</th>
+                <th className="px-4 py-3">접속 식별</th>
                 <th className="px-4 py-3">내용</th>
                 <th className="px-4 py-3">경로</th>
                 <th className="px-4 py-3">지역/유입</th>
-                <th className="px-4 py-3">환경</th>
+                <th className="px-4 py-3">환경 요약</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
@@ -316,8 +321,7 @@ function AccessLogTable({ data }: { data: AnalyticsDashboardData["accessLogs"] }
                     {item.isBot ? <div className="mt-1 text-xs font-semibold text-court">bot</div> : null}
                   </td>
                   <td className="max-w-44 break-all px-4 py-3">
-                    <div className="font-semibold text-ink">{item.clientIp ?? "-"}</div>
-                    {item.clientIpHash ? <div className="mt-1 text-xs text-ink/40">{item.clientIpHash.slice(0, 12)}</div> : null}
+                    <div className="font-semibold text-ink">{clientIpHashPreview(item.clientIpHash)}</div>
                   </td>
                   <td className="max-w-md px-4 py-3">
                     <div className="font-semibold text-ink">{item.label}</div>
@@ -329,9 +333,8 @@ function AccessLogTable({ data }: { data: AnalyticsDashboardData["accessLogs"] }
                     <div className="mt-1 text-xs text-ink/45">{item.referrerHost ?? "-"}</div>
                   </td>
                   <td className="max-w-sm px-4 py-3">
-                    <div>{item.deviceType ?? "-"}</div>
-                    <div className="mt-1 text-xs text-ink/45">{item.userAgentFamily ?? "-"}</div>
-                    {item.userAgent ? <div className="mt-1 line-clamp-2 text-xs text-ink/40">{item.userAgent}</div> : null}
+                    <div className="font-semibold text-ink/72">{item.deviceType ?? "device 없음"}</div>
+                    <div className="mt-1 text-xs text-ink/45">{item.userAgentFamily ?? "browser 없음"}</div>
                   </td>
                 </tr>
               ))}
@@ -535,7 +538,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           <DimensionList title="국가별 조회" data={dashboard.jurisdictionViews} />
           <DimensionList title="기관별 조회" data={dashboard.sourceViews} />
-          <DimensionList title="접속 IP" data={dashboard.clientIps} />
+          <DimensionList title="접속 식별" data={dashboard.clientIps} />
           <DimensionList title="접속 국가" data={dashboard.clientCountries} />
         </div>
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">

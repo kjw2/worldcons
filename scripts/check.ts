@@ -1096,6 +1096,19 @@ async function assertAdminRouteSecurityControls() {
     }
     assert(adminPageSource.includes('"cleaned"'), "admin source table must expose a clear pending-summary article link");
 
+    const adminAnalyticsPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/analytics/page.tsx"), "utf8");
+    assert(!/item\.clientIp(?!Hash)/.test(adminAnalyticsPageSource), "admin analytics page must not render raw item.clientIp");
+    assert(!/item\.userAgent(?!Family)/.test(adminAnalyticsPageSource), "admin analytics page must not render raw item.userAgent");
+    assert(adminAnalyticsPageSource.includes("item.clientIpHash"), "admin analytics page must keep hash-based client identifiers");
+    assert(adminAnalyticsPageSource.includes("item.userAgentFamily"), "admin analytics page must keep browser family summary");
+    assert(adminAnalyticsPageSource.includes("item.deviceType"), "admin analytics page must keep device type summary");
+    assert(adminAnalyticsPageSource.includes("접속 식별"), "admin analytics page must label IP-derived values as client identifiers");
+    assert(adminAnalyticsPageSource.includes("환경 요약"), "admin analytics page must label user-agent-derived values as a summary");
+
+    const analyticsDataSource = fs.readFileSync(path.join(process.cwd(), "lib/db/analytics.ts"), "utf8");
+    assert(!/event\.client_ip\b/.test(analyticsDataSource), "admin analytics dimensions must not aggregate raw client IP values");
+    assert(!/event\.user_agent\b/.test(analyticsDataSource), "admin analytics access logs must not expose raw user-agent values");
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {

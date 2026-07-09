@@ -20,9 +20,7 @@ interface SiteEventRow {
   referrer_host?: string | null;
   user_agent_family?: string | null;
   device_type?: string | null;
-  client_ip?: string | null;
   client_ip_hash?: string | null;
-  user_agent?: string | null;
   accept_language?: string | null;
   client_country?: string | null;
   client_region?: string | null;
@@ -120,9 +118,7 @@ export interface AccessLogEntry {
   referrerHost?: string | null;
   userAgentFamily?: string | null;
   deviceType?: string | null;
-  clientIp?: string | null;
   clientIpHash?: string | null;
-  userAgent?: string | null;
   acceptLanguage?: string | null;
   location?: string | null;
   isBot?: boolean | null;
@@ -231,6 +227,11 @@ function topDimensions(map: Map<string, number>, limit = 10): DimensionStat[] {
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
     .slice(0, limit);
+}
+
+function clientIpHashPreview(hash?: string | null) {
+  const normalized = hash?.trim();
+  return normalized ? normalized.slice(0, 12) : "hash 없음";
 }
 
 function numberValue(value?: number | null) {
@@ -384,7 +385,7 @@ async function loadSiteEvents(days: number) {
 
   const baseSelect =
     "occurred_at, event_type, path, article_slug, article_title, tag_slug, tag_name, source_key, jurisdiction, institution_name, search_query, search_mode, result_count, referrer_host, user_agent_family, device_type, metadata";
-  const accessInfoSelect = `${baseSelect}, client_ip, client_ip_hash, user_agent, accept_language, client_country, client_region, client_city, is_bot`;
+  const accessInfoSelect = `${baseSelect}, client_ip_hash, accept_language, client_country, client_region, client_city, is_bot`;
 
   const { data, error } = await supabase
     .from("site_events")
@@ -614,7 +615,7 @@ function buildTagInteractions(events: SiteEventRow[]) {
 function buildEventDimensions(events: SiteEventRow[]) {
   const jurisdictions = new Map<string, number>();
   const sources = new Map<string, number>();
-  const clientIps = new Map<string, number>();
+  const clientIpIdentifiers = new Map<string, number>();
   const clientCountries = new Map<string, number>();
   const referrers = new Map<string, number>();
   const devices = new Map<string, number>();
@@ -623,7 +624,7 @@ function buildEventDimensions(events: SiteEventRow[]) {
   for (const event of events) {
     if (event.jurisdiction) increment(jurisdictions, event.jurisdiction);
     if (event.source_key) increment(sources, event.source_key);
-    if (event.client_ip) increment(clientIps, event.client_ip);
+    increment(clientIpIdentifiers, clientIpHashPreview(event.client_ip_hash));
     if (event.client_country) increment(clientCountries, event.client_country);
     if (event.referrer_host) increment(referrers, event.referrer_host);
     if (event.device_type) increment(devices, event.device_type);
@@ -633,7 +634,7 @@ function buildEventDimensions(events: SiteEventRow[]) {
   return {
     jurisdictionViews: topDimensions(jurisdictions),
     sourceViews: topDimensions(sources),
-    clientIps: topDimensions(clientIps),
+    clientIps: topDimensions(clientIpIdentifiers),
     clientCountries: topDimensions(clientCountries),
     referrers: topDimensions(referrers),
     devices: topDimensions(devices),
@@ -791,9 +792,7 @@ function buildAccessLogs(events: SiteEventRow[]) {
     referrerHost: event.referrer_host,
     userAgentFamily: event.user_agent_family,
     deviceType: event.device_type,
-    clientIp: event.client_ip,
     clientIpHash: event.client_ip_hash,
-    userAgent: event.user_agent,
     acceptLanguage: event.accept_language,
     location: [event.client_country, event.client_region, event.client_city].filter(Boolean).join(" / ") || null,
     isBot: event.is_bot,
