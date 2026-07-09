@@ -105,6 +105,33 @@ export interface ModelHealthStat {
   failureRate: number;
 }
 
+interface AnalyticsHealthSnapshot {
+  collectionHealth?: Array<{
+    sourceKey?: string | null;
+    runs?: number | string | null;
+    completedRuns?: number | string | null;
+    failedRuns?: number | string | null;
+    discovered?: number | string | null;
+    fetched?: number | string | null;
+    failedItems?: number | string | null;
+    summarized?: number | string | null;
+    fetchRate?: number | string | null;
+  }> | null;
+  modelHealth?: Array<{
+    provider?: string | null;
+    model?: string | null;
+    successes?: number | string | null;
+    failures?: number | string | null;
+    total?: number | string | null;
+    failureRate?: number | string | null;
+  }> | null;
+}
+
+interface AnalyticsHealthData {
+  collectionHealth: CollectionHealthStat[];
+  modelHealth: ModelHealthStat[];
+}
+
 export interface AdminActionStat {
   action: string;
   count: number;
@@ -236,6 +263,15 @@ function clientIpHashPreview(hash?: string | null) {
 
 function numberValue(value?: number | null) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function numericValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 }
 
 function stringMetadataValue(metadata: Record<string, unknown> | null | undefined, keys: string[]) {
@@ -548,6 +584,66 @@ async function loadArticleSummaryRows(): Promise<AnalyticsArticleRow[]> {
   return rows;
 }
 
+function parseAnalyticsHealthSnapshot(input: unknown): AnalyticsHealthSnapshot | null {
+  const value = typeof input === "string" ? JSON.parse(input) : input;
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as AnalyticsHealthSnapshot) : null;
+}
+
+async function loadAnalyticsHealthSnapshot(days: number): Promise<AnalyticsHealthData | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.rpc("rpc_admin_analytics_health_snapshot", { days });
+  if (error) return null;
+
+  try {
+    const snapshot = parseAnalyticsHealthSnapshot(data);
+    if (!snapshot) return null;
+    const collectionHealth = (snapshot.collectionHealth ?? [])
+      .map((row) => ({
+        sourceKey: row.sourceKey || "unknown",
+        runs: numericValue(row.runs),
+        completedRuns: numericValue(row.completedRuns),
+        failedRuns: numericValue(row.failedRuns),
+        discovered: numericValue(row.discovered),
+        fetched: numericValue(row.fetched),
+        failedItems: numericValue(row.failedItems),
+        summarized: numericValue(row.summarized),
+        fetchRate: numericValue(row.fetchRate),
+      }))
+      .sort((a, b) => a.fetchRate - b.fetchRate || b.runs - a.runs || a.sourceKey.localeCompare(b.sourceKey))
+      .slice(0, 60);
+    const modelHealth = (snapshot.modelHealth ?? [])
+      .map((row) => ({
+        provider: row.provider || "unknown",
+        model: row.model || "unknown",
+        successes: numericValue(row.successes),
+        failures: numericValue(row.failures),
+        total: numericValue(row.total),
+        failureRate: numericValue(row.failureRate),
+      }))
+      .sort((a, b) => b.total - a.total || b.failureRate - a.failureRate || a.model.localeCompare(b.model))
+      .slice(0, 15);
+    return { collectionHealth, modelHealth };
+  } catch {
+    return null;
+  }
+}
+
+async function loadAnalyticsHealthData(days: number): Promise<AnalyticsHealthData> {
+  const snapshot = await loadAnalyticsHealthSnapshot(days);
+  if (snapshot) return snapshot;
+
+  const [ingestionRuns, articleRows] = await Promise.all([
+    loadIngestionRunRows(days),
+    loadArticleSummaryRows(),
+  ]);
+  return {
+    collectionHealth: buildCollectionHealth(ingestionRuns),
+    modelHealth: buildModelHealth(articleRows),
+  };
+}
+
 function buildPopularArticles(events: SiteEventRow[]) {
   const groups = new Map<string, PopularArticleStat>();
   for (const event of events) {
@@ -846,17 +942,15 @@ function buildRecommendations(data: {
 export async function getAnalyticsDashboardData(options: { days?: number } = {}): Promise<AnalyticsDashboardData> {
   const days = safeDays(options.days);
   const supabase = getSupabaseAdmin();
-  const [{ rows: events, schemaReady }, ingestionRuns, articleRows] = await Promise.all([
+  const [{ rows: events, schemaReady }, healthData] = await Promise.all([
     loadSiteEvents(days),
-    loadIngestionRunRows(days),
-    loadArticleSummaryRows(),
+    loadAnalyticsHealthData(days),
   ]);
 
   const searchQueries = buildSearchQueries(events);
   const popularArticles = buildPopularArticles(events);
   const tagInteractions = buildTagInteractions(events);
-  const collectionHealth = buildCollectionHealth(ingestionRuns);
-  const modelHealth = buildModelHealth(articleRows);
+  const { collectionHealth, modelHealth } = healthData;
   const dimensions = buildEventDimensions(events);
   const adminActions = buildAdminActions(events);
   const dailyTimeline = buildTimeline(events, dayKey);

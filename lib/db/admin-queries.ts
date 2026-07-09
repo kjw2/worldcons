@@ -128,6 +128,71 @@ export interface AdminDashboardData {
   attentionArticles: AdminAttentionArticle[];
 }
 
+interface AdminDashboardSnapshotStatusCount {
+  sourceKey?: string | null;
+  status?: string | null;
+  count?: number | string | null;
+}
+
+interface AdminDashboardSnapshotSourceSummary {
+  sourceKey?: string | null;
+  name?: string | null;
+  jurisdiction?: string | null;
+  baseUrl?: string | null;
+  language?: string | null;
+  isActive?: boolean | null;
+  totalCount?: number | string | null;
+  publicCount?: number | string | null;
+  pendingSummaryCount?: number | string | null;
+  attentionCount?: number | string | null;
+  failedCount?: number | string | null;
+  latestPublishedAt?: string | null;
+  latestFetchedAt?: string | null;
+  latestRunStatus?: string | null;
+  latestRunStartedAt?: string | null;
+}
+
+interface AdminDashboardSnapshotCandidateSummary {
+  sourceKey?: string | null;
+  pendingCount?: number | string | null;
+  retryingCount?: number | string | null;
+  fetchedCount?: number | string | null;
+  failedCount?: number | string | null;
+  ignoredCount?: number | string | null;
+  latestCreatedAt?: string | null;
+  latestAttemptAt?: string | null;
+}
+
+interface AdminDashboardSnapshotAttentionArticle {
+  id?: string | null;
+  slug?: string | null;
+  sourceKey?: string | null;
+  jurisdiction?: string | null;
+  institutionName?: string | null;
+  originalUrl?: string | null;
+  title?: string | null;
+  originalPublishedAt?: string | null;
+  status?: string | null;
+  errorMessage?: string | null;
+}
+
+interface AdminDashboardSnapshot {
+  totals?: {
+    sources?: number | string | null;
+    articles?: number | string | null;
+    publicArticles?: number | string | null;
+    pendingSummaries?: number | string | null;
+    failedArticles?: number | string | null;
+    attentionArticles?: number | string | null;
+    tags?: number | string | null;
+    candidates?: number | string | null;
+  } | null;
+  statusCounts?: AdminDashboardSnapshotStatusCount[] | null;
+  sourceSummaries?: AdminDashboardSnapshotSourceSummary[] | null;
+  candidateSummaries?: AdminDashboardSnapshotCandidateSummary[] | null;
+  attentionArticles?: AdminDashboardSnapshotAttentionArticle[] | null;
+}
+
 export type AdminArticlePublishableFilter = "all" | "yes" | "no";
 export type AdminArticleSummaryFilter = "all" | "yes" | "no";
 export type AdminArticleBulkAction = "mark-needs-review" | "close-private";
@@ -186,6 +251,19 @@ export interface AdminArticleBulkResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function optionalText(value: unknown) {
+  return typeof value === "string" && value ? value : null;
 }
 
 function boundedAdminArticlePage(value?: number) {
@@ -560,7 +638,122 @@ function buildAttentionArticles(rows: AdminArticleRow[]) {
     }));
 }
 
-export async function getAdminDashboardData(): Promise<AdminDashboardData> {
+function parseAdminDashboardSnapshot(input: unknown): AdminDashboardSnapshot | null {
+  const value = typeof input === "string" ? JSON.parse(input) : input;
+  if (!isRecord(value)) return null;
+  return value as AdminDashboardSnapshot;
+}
+
+function snapshotStatusCounts(rows: AdminDashboardSnapshotStatusCount[] | null | undefined) {
+  const statusMap = new Map<string, number>();
+  ARTICLE_STATUSES.forEach((status) => statusMap.set(status, 0));
+  for (const row of rows ?? []) {
+    if (!row.status) continue;
+    statusMap.set(row.status, (statusMap.get(row.status) ?? 0) + numberValue(row.count));
+  }
+  return [...statusMap.entries()].map(([status, count]) => ({ status, count }));
+}
+
+function snapshotSourceSummaries(rows: AdminDashboardSnapshotSourceSummary[] | null | undefined): AdminSourceSummary[] {
+  return (rows ?? [])
+    .filter((row) => Boolean(row.sourceKey))
+    .map((row) => ({
+      sourceKey: row.sourceKey ?? "",
+      name: row.name ?? row.sourceKey ?? "",
+      jurisdiction: row.jurisdiction ?? "Unknown",
+      baseUrl: row.baseUrl ?? "",
+      language: row.language ?? "-",
+      isActive: row.isActive ?? true,
+      totalCount: numberValue(row.totalCount),
+      publicCount: numberValue(row.publicCount),
+      pendingSummaryCount: numberValue(row.pendingSummaryCount),
+      failedCount: numberValue(row.failedCount),
+      attentionCount: numberValue(row.attentionCount),
+      latestPublishedAt: optionalText(row.latestPublishedAt),
+      latestFetchedAt: optionalText(row.latestFetchedAt),
+      latestRunStatus: optionalText(row.latestRunStatus),
+      latestRunStartedAt: optionalText(row.latestRunStartedAt),
+    }))
+    .sort((a, b) => a.sourceKey.localeCompare(b.sourceKey));
+}
+
+function snapshotCandidateSummaries(rows: AdminDashboardSnapshotCandidateSummary[] | null | undefined): AdminCandidateSummary[] {
+  return (rows ?? [])
+    .filter((row) => Boolean(row.sourceKey))
+    .map((row) => ({
+      sourceKey: row.sourceKey ?? "",
+      pendingCount: numberValue(row.pendingCount),
+      retryingCount: numberValue(row.retryingCount),
+      fetchedCount: numberValue(row.fetchedCount),
+      failedCount: numberValue(row.failedCount),
+      ignoredCount: numberValue(row.ignoredCount),
+      latestCreatedAt: optionalText(row.latestCreatedAt),
+      latestAttemptAt: optionalText(row.latestAttemptAt),
+    }))
+    .sort((a, b) => a.sourceKey.localeCompare(b.sourceKey));
+}
+
+function snapshotAttentionArticles(rows: AdminDashboardSnapshotAttentionArticle[] | null | undefined): AdminAttentionArticle[] {
+  return (rows ?? [])
+    .filter((row) => Boolean(row.slug || row.id || row.sourceKey))
+    .slice(0, 8)
+    .map((row) => ({
+      id: row.id ?? undefined,
+      slug: row.slug ?? row.id ?? row.sourceKey ?? "",
+      sourceKey: row.sourceKey ?? "",
+      jurisdiction: row.jurisdiction ?? "Unknown",
+      institutionName: row.institutionName ?? row.sourceKey ?? "",
+      originalUrl: row.originalUrl ?? "",
+      title: row.title ?? "제목 미상",
+      originalPublishedAt: optionalText(row.originalPublishedAt),
+      status: row.status ?? "needs_review",
+      errorMessage: optionalText(row.errorMessage),
+    }));
+}
+
+async function loadAdminDashboardSnapshot(): Promise<AdminDashboardData | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const [{ data, error }, latestRuns] = await Promise.all([
+    supabase.rpc("rpc_admin_dashboard_snapshot"),
+    listIngestionRuns(12),
+  ]);
+  if (error) return null;
+
+  try {
+    const snapshot = parseAdminDashboardSnapshot(data);
+    if (!snapshot) return null;
+    const sourceSummaries = snapshotSourceSummaries(snapshot.sourceSummaries);
+    const candidateSummaries = snapshotCandidateSummaries(snapshot.candidateSummaries);
+    const attentionArticles = snapshotAttentionArticles(snapshot.attentionArticles);
+    const totals = snapshot.totals ?? {};
+
+    return {
+      generatedAt: new Date().toISOString(),
+      hasDatabase: true,
+      totals: {
+        sources: numberValue(totals.sources) || sourceSummaries.length || mockSources.length,
+        articles: numberValue(totals.articles),
+        publicArticles: numberValue(totals.publicArticles),
+        pendingSummaries: numberValue(totals.pendingSummaries),
+        failedArticles: numberValue(totals.failedArticles),
+        attentionArticles: numberValue(totals.attentionArticles),
+        tags: numberValue(totals.tags),
+        candidates: numberValue(totals.candidates),
+      },
+      statusCounts: snapshotStatusCounts(snapshot.statusCounts),
+      sourceSummaries,
+      candidateSummaries,
+      latestRuns,
+      attentionArticles,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadAdminDashboardLegacyData(): Promise<AdminDashboardData> {
   const supabase = getSupabaseAdmin();
   const [sources, rows, candidateRows, latestRuns, tagCount, candidateCount] = await Promise.all([
     listSources(),
@@ -602,6 +795,10 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     latestRuns,
     attentionArticles: buildAttentionArticles(rows),
   };
+}
+
+export async function getAdminDashboardData(): Promise<AdminDashboardData> {
+  return (await loadAdminDashboardSnapshot()) ?? loadAdminDashboardLegacyData();
 }
 
 export async function listAdminArticles(filters: AdminArticleListFilters = {}): Promise<AdminArticleListResult> {

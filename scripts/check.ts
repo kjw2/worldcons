@@ -1124,6 +1124,31 @@ async function assertAdminRouteSecurityControls() {
     assert(adminTabsSource.includes('href: "/admin/operations"'), "AdminTabs must include an operations home link");
     assert(adminTabsSource.includes('label: "운영 홈"'), "AdminTabs must label the operations link");
 
+    const adminDashboardSummaryMigration = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/20260709120000_admin_dashboard_summary_views.sql"),
+      "utf8",
+    );
+    for (const dbObject of [
+      "admin_article_status_summary_v",
+      "admin_source_health_v",
+      "admin_candidate_summary_v",
+      "admin_attention_articles_v",
+      "rpc_admin_dashboard_snapshot",
+      "rpc_admin_analytics_health_snapshot",
+    ]) {
+      assert(adminDashboardSummaryMigration.includes(dbObject), `admin dashboard summary migration must define ${dbObject}`);
+    }
+
+    const adminQueriesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
+    assert(adminQueriesSource.includes('rpc("rpc_admin_dashboard_snapshot")'), "admin dashboard queries must try the summary snapshot RPC");
+    assert(adminQueriesSource.includes("loadAdminDashboardLegacyData"), "admin dashboard queries must keep the legacy fallback path");
+    assert(/\(await loadAdminDashboardSnapshot\(\)\) \?\? loadAdminDashboardLegacyData\(\)/.test(adminQueriesSource), "admin dashboard queries must fallback when the snapshot is unavailable");
+
+    const analyticsQueriesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/analytics.ts"), "utf8");
+    assert(analyticsQueriesSource.includes('rpc("rpc_admin_analytics_health_snapshot"'), "analytics queries must try the health snapshot RPC");
+    assert(analyticsQueriesSource.includes("loadAnalyticsHealthData"), "analytics queries must keep a callable health helper with fallback");
+    assert(analyticsQueriesSource.includes("loadIngestionRunRows(days)") && analyticsQueriesSource.includes("loadArticleSummaryRows()"), "analytics health fallback must keep legacy collection/model reads");
+
     const { POST: articlesBulkPost } = await import("@/app/api/admin/articles/bulk/route");
     const unauthenticatedBulkResponse = await articlesBulkPost(
       new Request("https://example.test/api/admin/articles/bulk", {
