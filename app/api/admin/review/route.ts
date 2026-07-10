@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction } from "@/lib/ingest/review";
+import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { parseAdminReviewBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function reviewChangedPublicContent(value: unknown) {
+  if (!isRecord(value) || value.mode !== "database") return false;
+  if (value.status === "published" || value.status === "closed_private") return true;
+  if (isRecord(value.summarize) && value.summarize.status === "summarized") return true;
+  return "ingest" in value;
+}
 
 export async function POST(request: Request) {
   const authFailureStatus = adminMutationAuthFailureStatus(request);
@@ -21,6 +33,9 @@ export async function POST(request: Request) {
   const { action, articleId, slug, note, provider, model } = parsed.data;
 
   const result = await runAdminReviewAction({ action, articleId, slug, note, provider, model });
+  if (reviewChangedPublicContent(result)) {
+    invalidatePublicContentCaches({ articleSlug: slug });
+  }
   await recordAdminSiteEvent(
     {
       eventType: "admin_review_action",

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
+import { summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
+import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
@@ -19,6 +21,8 @@ export async function GET(request: Request) {
   });
   const summarize = await runSummarizePending({ limit: boundedInteger(process.env.CRON_SUMMARY_LIMIT, 20, { min: 1, max: 100 }) });
   const tags = await runRefreshTagCounts();
+  invalidatePublicContentCaches();
+  const incomplete = summaryBatchWasDeferred(summarize) || summaryBatchHasHardFailure(summarize);
 
-  return NextResponse.json({ ingest, summarize, tags });
+  return NextResponse.json({ complete: !incomplete, ingest, summarize, tags }, { status: incomplete ? 503 : 200 });
 }

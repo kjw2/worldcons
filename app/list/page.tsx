@@ -4,6 +4,7 @@ import { ArticleListView } from "@/components/article-list-view";
 import { FilterBar } from "@/components/filter-bar";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags, listTopViewedArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -28,21 +29,21 @@ const getListFilterData = unstable_cache(
 
     return { sources, tags, jurisdictionArticleCounts };
   },
-  ["list-filter-data-v1"],
-  { revalidate: 300 },
+  ["list-filter-data-v2"],
+  { revalidate: 300, tags: [PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 
 const getListArticles = unstable_cache(
   async (filters: ArticleListFilters) => listArticles(filters),
-  ["list-articles-v1"],
-  { revalidate: 60 },
+  ["list-articles-v2"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 
 const getListTopViewedArticles = unstable_cache(
   async (filters: Pick<ArticleListFilters, "range" | "source" | "jurisdiction" | "type" | "language" | "tag">) =>
     listTopViewedArticles(5, filters),
-  ["list-top-viewed-v1"],
-  { revalidate: 300 },
+  ["list-top-viewed-v2"],
+  { revalidate: 300, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {

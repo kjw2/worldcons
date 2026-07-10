@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
+import { PUBLIC_ARTICLES_CACHE_TAG } from "@/lib/public-content-cache";
 import { getArticleSourceTextBySlug } from "@/lib/db/queries";
 import { parseSlugParam, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
@@ -9,8 +10,8 @@ export const revalidate = 0;
 
 const getCachedArticleSourceText = unstable_cache(
   async (slug: string) => getArticleSourceTextBySlug(slug),
-  ["api-article-source-text-v1"],
-  { revalidate: 300 },
+  ["api-article-source-text-v2"],
+  { revalidate: 300, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {

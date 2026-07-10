@@ -1,5 +1,7 @@
 import type { AdminJobType } from "@/lib/db/admin-jobs";
 import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
+import { summaryBatchFailureMessage, summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
+import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { redactAdminAuditMetadata } from "@/lib/security/audit-redaction";
 import { parseAdminIngestBody, type AdminIngestBody } from "@/lib/security/admin-api-validation";
 
@@ -65,6 +67,10 @@ function summarizeResultSummary(value: unknown) {
     summarizedCount: typeof value.summarizedCount === "number" ? value.summarizedCount : 0,
     failedCount: typeof value.failedCount === "number" ? value.failedCount : 0,
     skippedCount: typeof value.skippedCount === "number" ? value.skippedCount : 0,
+    deferredCount: typeof value.deferredCount === "number" ? value.deferredCount : 0,
+    retryCount: typeof value.retryCount === "number" ? value.retryCount : 0,
+    limitReached: value.limitReached === true,
+    incomplete: summaryBatchWasDeferred(value) || summaryBatchHasHardFailure(value),
   };
 }
 
@@ -180,6 +186,12 @@ export async function executeAdminIngestJobContext(context: AdminIngestRequestCo
       })
     : null;
   const resultSummary = compactAdminIngestExecutionSummary({ ingest, summarize, tags });
+  if (ingest !== null || summarize !== null || tags !== null) {
+    invalidatePublicContentCaches({ articleSlug: context.slug });
+  }
+  if (summarize && (summaryBatchWasDeferred(summarize) || summaryBatchHasHardFailure(summarize))) {
+    throw new Error(summaryBatchFailureMessage(summarize));
+  }
 
   return { ingest, summarize, tags, resultSummary };
 }

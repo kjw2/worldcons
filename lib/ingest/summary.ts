@@ -6,6 +6,12 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import { ARTICLE_ERROR_CLASS, ARTICLE_REVIEW_STATE, classifySummaryError, updateArticleTriageFields } from "@/lib/db/article-triage";
 import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
 import { canSummarizeArticle, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
+import {
+  DEFAULT_SUMMARY_RETRY_DELAY_MS,
+  isGlobalSummaryBackoff,
+  orderSummaryCandidatesRoundRobin,
+  summaryRetryDelayMs,
+} from "@/lib/ingest/summary-batch";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
 import { boundedInteger } from "@/lib/utils/numbers";
 
@@ -25,6 +31,7 @@ interface SummaryCandidateRow {
   summary_json?: SummaryJson | null;
   status?: string | null;
   source_metadata?: unknown;
+  created_at?: string | null;
   updated_at?: string | null;
 }
 
@@ -35,8 +42,15 @@ interface SummarizeArticleOptions extends LlmCompletionOptions {
 }
 
 const SUMMARY_CANDIDATE_SELECT =
-  "id, slug, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, summary_json, status, source_metadata, updated_at";
+  "id, slug, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, cleaned_text, summary_json, status, source_metadata, created_at, updated_at";
 const DEFAULT_STALE_SUMMARIZING_MINUTES = 30;
+
+export interface RunSummarizePendingOptions {
+  limit?: number;
+  sourceKey?: string;
+  retryAttempts?: number;
+  retryDelayMs?: number;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -49,6 +63,14 @@ function staleSummarizingMinutes() {
 
 function staleSummarizingCutoffIso() {
   return new Date(Date.now() - staleSummarizingMinutes() * 60 * 1000).toISOString();
+}
+
+function wait(delayMs: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+}
+
+function incrementSourceCount(counts: Record<string, number>, sourceKey: string) {
+  counts[sourceKey] = (counts[sourceKey] ?? 0) + 1;
 }
 
 function isRetryableSummaryBackoff(message?: string) {
@@ -202,25 +224,40 @@ async function summarizeCandidateRow(
   }
 }
 
-export async function runSummarizePending(options: { limit?: number; sourceKey?: string } = {}) {
+export async function runSummarizePending(options: RunSummarizePendingOptions = {}) {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return {
       mode: "no-database",
       summarizedCount: 0,
       failedCount: 0,
+      skippedCount: 0,
+      deferredCount: 0,
+      candidateCount: 0,
+      attemptedCount: 0,
+      retryCount: 0,
+      limitReached: false,
       message: "Supabase 환경변수가 없어 DB 요약 작업을 건너뜁니다. UI는 mock summary로 확인할 수 있습니다.",
     };
   }
 
   const limit = boundedInteger(options.limit, 10, { min: 1, max: 100 });
+  const retryAttempts = boundedInteger(options.retryAttempts ?? process.env.SUMMARY_RETRY_ATTEMPTS, 0, { min: 0, max: 3 });
+  const retryDelayMs = boundedInteger(options.retryDelayMs ?? process.env.SUMMARY_RETRY_DELAY_MS, DEFAULT_SUMMARY_RETRY_DELAY_MS, {
+    min: 1_000,
+    max: 5 * 60 * 1000,
+  });
+  const candidateFetchLimit = options.sourceKey ? Math.max(limit * 3, limit) : Math.min(500, Math.max(limit * 10, 100));
   const recoveredStale = await recoverStaleSummarizingArticles({ limit: Math.max(limit, 20), sourceKey: options.sourceKey });
   let query = supabase
     .from("articles")
     .select(SUMMARY_CANDIDATE_SELECT)
     .in("status", ["cleaned", "failed_summary"])
     .is("summarized_at", null)
-    .limit(Math.max(limit * 3, limit));
+    .contains("source_metadata", { collection: { publishable: true } })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(candidateFetchLimit);
 
   if (options.sourceKey) {
     query = query.eq("source_key", options.sourceKey);
@@ -230,32 +267,65 @@ export async function runSummarizePending(options: { limit?: number; sourceKey?:
 
   if (error) throw new Error(error.message);
 
+  const candidates = orderSummaryCandidatesRoundRobin((data ?? []) as SummaryCandidateRow[]);
   let summarizedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
   let deferredCount = 0;
+  let attemptedCount = 0;
+  let retryCount = 0;
   let stoppedReason: string | undefined;
+  const summarizedBySource: Record<string, number> = {};
+  const deferredBySource: Record<string, number> = {};
 
-  for (const row of data ?? []) {
+  for (const row of candidates) {
     if (summarizedCount >= limit) break;
-    const result = await summarizeCandidateRow(supabase, row as SummaryCandidateRow);
+    attemptedCount += 1;
+    let result = await summarizeCandidateRow(supabase, row);
+
+    for (let retryIndex = 0; result.status === "failed" && result.retryable && retryIndex < retryAttempts; retryIndex += 1) {
+      await wait(summaryRetryDelayMs(result.errorMessage, retryIndex, retryDelayMs));
+      retryCount += 1;
+      result = await summarizeCandidateRow(supabase, row);
+    }
+
     if (result.status === "skipped") {
       skippedCount += 1;
     } else if (result.status === "summarized") {
       summarizedCount += 1;
+      incrementSourceCount(summarizedBySource, row.source_key);
     } else {
       failedCount += 1;
       if (result.retryable) {
         deferredCount += 1;
-        stoppedReason = result.errorMessage;
-        break;
+        incrementSourceCount(deferredBySource, row.source_key);
+        if (isGlobalSummaryBackoff(result.errorMessage)) {
+          stoppedReason = result.errorMessage;
+          break;
+        }
       }
     }
   }
 
   const tagRefresh = summarizedCount > 0 ? await runRefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
+  const limitReached = summarizedCount >= limit && attemptedCount < candidates.length;
 
-  return { mode: "database", summarizedCount, failedCount, skippedCount, deferredCount, stoppedReason, recoveredStale, tagRefresh };
+  return {
+    mode: "database",
+    summarizedCount,
+    failedCount,
+    skippedCount,
+    deferredCount,
+    candidateCount: candidates.length,
+    attemptedCount,
+    retryCount,
+    limitReached,
+    stoppedReason,
+    summarizedBySource,
+    deferredBySource,
+    recoveredStale,
+    tagRefresh,
+  };
 }
 
 export async function runSummarizeArticle(options: SummarizeArticleOptions) {

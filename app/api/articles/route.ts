@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
+import { PUBLIC_ARTICLES_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters } from "@/lib/db/types";
 import { parseArticleListApiParams, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
@@ -10,8 +11,8 @@ export const revalidate = 0;
 
 const getCachedArticleList = unstable_cache(
   async (filters: ArticleListFilters) => listArticles(filters),
-  ["api-articles-v1"],
-  { revalidate: 60 },
+  ["api-articles-v2"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 
 export async function GET(request: Request) {

@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listJurisdictionArticleCounts } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { parseArticleListApiParams, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
@@ -44,8 +45,8 @@ const getHomeRangePayload = unstable_cache(
       jurisdictionArticleCounts,
     };
   },
-  ["home-range-payload-v1"],
-  { revalidate: 60 },
+  ["home-range-payload-v2"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG] },
 );
 
 export async function GET(request: Request) {

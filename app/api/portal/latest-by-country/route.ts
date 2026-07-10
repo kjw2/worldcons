@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_PORTAL_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listSources } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { displayJurisdictionLabel } from "@/lib/ui/source-labels";
@@ -72,8 +73,8 @@ const getLatestByCountryPortalPayload = unstable_cache(
       countries,
     };
   },
-  ["worldlaws-portal-latest-by-country-v2"],
-  { revalidate: PORTAL_CACHE_SECONDS },
+  ["worldlaws-portal-latest-by-country-v3"],
+  { revalidate: PORTAL_CACHE_SECONDS, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_PORTAL_CACHE_TAG] },
 );
 
 export async function GET(request: Request) {

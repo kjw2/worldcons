@@ -4,6 +4,7 @@ import { FilterBar } from "@/components/filter-bar";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listJurisdictionArticleCounts, listSources, listTags } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
@@ -21,14 +22,14 @@ const getHomeFilterData = unstable_cache(
 
     return { sources, tags, jurisdictionArticleCounts };
   },
-  ["home-filter-data-v2"],
-  { revalidate: 300 },
+  ["home-filter-data-v3"],
+  { revalidate: 300, tags: [PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 
 const getHomeArticles = unstable_cache(
   async (filters: ArticleListFilters) => listArticles(filters),
-  ["home-articles-v2"],
-  { revalidate: 60 },
+  ["home-articles-v3"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 
 function canUseJurisdictionTotal(filters: ArticleListFilters) {

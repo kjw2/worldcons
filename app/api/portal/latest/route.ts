@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_PORTAL_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles } from "@/lib/db/queries";
 import { toWorldlawsPortalItem } from "@/lib/portal/worldlaws";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -29,8 +30,8 @@ const getLatestPortalPayload = unstable_cache(
       items: result.items.map((article) => toWorldlawsPortalItem(article, baseUrl, updatedAt)),
     };
   },
-  ["worldlaws-portal-latest-v2"],
-  { revalidate: PORTAL_CACHE_SECONDS },
+  ["worldlaws-portal-latest-v3"],
+  { revalidate: PORTAL_CACHE_SECONDS, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_PORTAL_CACHE_TAG] },
 );
 
 export async function GET(request: Request) {

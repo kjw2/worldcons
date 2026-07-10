@@ -23,6 +23,14 @@ import { effectiveRangeDaysForSource } from "@/lib/ingest/run";
 import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import { jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
+import {
+  isGlobalSummaryBackoff,
+  orderSummaryCandidatesRoundRobin,
+  summaryBatchHasHardFailure,
+  summaryBatchNeedsFollowUp,
+  summaryBatchWasDeferred,
+  summaryRetryDelayMs,
+} from "@/lib/ingest/summary-batch";
 import { parseManualSummaryEditInput } from "@/lib/ingest/manual-summary-edit";
 import { parseRobotsTxt, robotsDelayMs } from "@/lib/crawler/robots";
 import { isConstitutionallyRelevant } from "@/lib/sources/relevance";
@@ -688,6 +696,79 @@ assert(
   "failed_summary records with verified full text must be eligible for retry",
 );
 
+const fairSummaryCandidates = orderSummaryCandidatesRoundRobin([
+  { id: "de-2", source_key: "de-bverfg", created_at: "2026-07-10T00:04:00Z" },
+  { id: "fr-2", source_key: "fr-conseil-constitutionnel", created_at: "2026-07-10T00:05:00Z" },
+  { id: "de-1", source_key: "de-bverfg", created_at: "2026-07-10T00:00:00Z" },
+  { id: "us-1", source_key: "us-scotus", created_at: "2026-07-10T00:02:00Z" },
+  { id: "fr-1", source_key: "fr-conseil-constitutionnel", created_at: "2026-07-10T00:01:00Z" },
+]);
+assert(
+  fairSummaryCandidates.map((candidate) => candidate.id).join(",") === "de-1,fr-1,us-1,de-2,fr-2",
+  "summary candidates must be processed in a deterministic per-source round robin",
+);
+assert(summaryRetryDelayMs("Please retry in 3.2s.", 0, 65_000) === 65_000, "summary retry must outlast the router cooldown");
+assert(summaryRetryDelayMs("Please retry after 120 seconds.", 0, 65_000) === 122_000, "provider Retry-After must override the default delay");
+assert(isGlobalSummaryBackoff("All Gemini routes failed with 429 quota errors"), "Gemini quota errors must pause the batch");
+assert(!isGlobalSummaryBackoff("One model timed out while parsing this article"), "article-local timeouts must not pause every source");
+assert(summaryBatchWasDeferred({ deferredCount: 1 }), "deferred summary work must be detected");
+assert(summaryBatchNeedsFollowUp({ limitReached: true }), "a full summary batch must trigger another drain pass");
+assert(
+  !summaryBatchHasHardFailure({ mode: "database", failedCount: 1, deferredCount: 1 }),
+  "retryable deferred work must not be classified as a hard failure",
+);
+assert(
+  summaryBatchHasHardFailure({ mode: "database", failedCount: 1, deferredCount: 0 }),
+  "non-retryable summary failures must be visible to automation",
+);
+
+const scheduledSummaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), ".github/workflows/crawlee-worker.yml"), "utf8");
+for (const requiredFlag of ["--drain", "--strict", "--max-passes=4", "--pass-delay-ms=300000", "--retry-attempts=1", "--retry-delay-ms=65000"]) {
+  assert(scheduledSummaryWorkflowSource.includes(requiredFlag), `scheduled summary workflow must include ${requiredFlag}`);
+}
+for (const requiredCacheRevalidationText of [
+  "Revalidate production public caches",
+  "secrets.CRON_SECRET",
+  "Authorization: Bearer $CRON_SECRET",
+  "/api/admin/public-content/revalidate",
+]) {
+  assert(
+    scheduledSummaryWorkflowSource.includes(requiredCacheRevalidationText),
+    `scheduled summary workflow must include ${requiredCacheRevalidationText}`,
+  );
+}
+const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
+for (const requiredCacheHelperText of [
+  "PUBLIC_ARTICLES_CACHE_TAG",
+  "PUBLIC_ARTICLE_COUNTS_CACHE_TAG",
+  "PUBLIC_TAGS_CACHE_TAG",
+  "PUBLIC_PORTAL_CACHE_TAG",
+  "revalidateTag(tag)",
+  'revalidatePath("/articles/[slug]", "page")',
+]) {
+  assert(publicContentCacheSource.includes(requiredCacheHelperText), `public cache helper must include ${requiredCacheHelperText}`);
+}
+for (const cacheConsumer of [
+  "app/page.tsx",
+  "app/list/page.tsx",
+  "app/api/articles/route.ts",
+  "app/api/home/range/route.ts",
+  "app/api/articles/[slug]/route.ts",
+  "app/api/articles/[slug]/source-text/route.ts",
+  "app/api/portal/latest/route.ts",
+  "app/api/portal/latest-by-country/route.ts",
+]) {
+  const source = fs.readFileSync(path.join(process.cwd(), cacheConsumer), "utf8");
+  assert(source.includes("@/lib/public-content-cache"), `${cacheConsumer} must use public cache tags`);
+}
+const summarizePendingScriptSource = fs.readFileSync(path.join(process.cwd(), "scripts/summarize-pending.ts"), "utf8");
+assert(summarizePendingScriptSource.includes('event: "summary_batch_pass"'), "summary CLI must log each drain pass");
+assert(summarizePendingScriptSource.includes("process.exitCode = 1"), "strict summary CLI must fail visibly when work remains incomplete");
+const summaryRunnerSource = fs.readFileSync(path.join(process.cwd(), "lib/ingest/summary.ts"), "utf8");
+assert(summaryRunnerSource.includes("orderSummaryCandidatesRoundRobin"), "summary runner must use fair source ordering");
+assert(summaryRunnerSource.includes("summaryRetryDelayMs"), "summary runner must honor bounded retry delays");
+assert(summaryRunnerSource.includes('.contains("source_metadata", { collection: { publishable: true } })'), "summary query must exclude non-publishable review rows");
+
 const originalGeminiAutoDiscoverModels = process.env.GEMINI_AUTO_DISCOVER_MODELS;
 const originalGeminiModelCatalogPath = process.env.GEMINI_MODEL_CATALOG_PATH;
 const originalGeminiModelCatalogTtlMs = process.env.GEMINI_MODEL_CATALOG_TTL_MS;
@@ -960,6 +1041,26 @@ async function assertAdminRouteSecurityControls() {
     assert(logoutGetResponse.status === 405, "GET /api/admin/logout must be rejected with 405");
     assert(logoutGetResponse.headers.get("allow") === "POST", "GET /api/admin/logout must advertise POST as the allowed method");
 
+    const { GET: cacheRevalidateGet, POST: cacheRevalidatePost } = await import("@/app/api/admin/public-content/revalidate/route");
+    const cacheRevalidateGetResponse = cacheRevalidateGet();
+    assert(cacheRevalidateGetResponse.status === 405, "GET /api/admin/public-content/revalidate must be rejected with 405");
+    assert(cacheRevalidateGetResponse.headers.get("allow") === "POST", "cache revalidation GET must advertise POST as the allowed method");
+    const unauthenticatedCacheRevalidateResponse = await cacheRevalidatePost(
+      new Request("https://example.test/api/admin/public-content/revalidate", { method: "POST" }),
+    );
+    assert(unauthenticatedCacheRevalidateResponse.status === 401, "cache revalidation POST without authentication must return 401");
+    const wrongSecretCacheRevalidateResponse = await cacheRevalidatePost(
+      new Request("https://example.test/api/admin/public-content/revalidate", {
+        method: "POST",
+        headers: { "x-cron-secret": "x".repeat(32) },
+      }),
+    );
+    assert(wrongSecretCacheRevalidateResponse.status === 401, "cache revalidation POST with a wrong secret must return 401");
+    const querySecretCacheRevalidateResponse = await cacheRevalidatePost(
+      new Request(`https://example.test/api/admin/public-content/revalidate?secret=${"c".repeat(32)}`, { method: "POST" }),
+    );
+    assert(querySecretCacheRevalidateResponse.status === 401, "cache revalidation POST must reject query string secrets");
+
     const session = createAdminSession("ap570@naver.com");
     const cookie = `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(session)}`;
     const csrfToken = createAdminCsrfTokenForSession(session);
@@ -1105,6 +1206,22 @@ async function assertAdminRouteSecurityControls() {
     assert(adminIngestRouteSource.includes('process.env.NODE_ENV !== "production"'), "admin ingest route must not default production to inline fallback");
     assert(adminIngestExecutorSource.includes("compactAdminIngestExecutionSummary"), "admin ingest executor must produce compact job summaries");
     assert(adminIngestExecutorSource.includes("redactAdminAuditMetadata"), "admin ingest executor summaries must use audit redaction");
+    assert(adminIngestExecutorSource.includes("summaryBatchWasDeferred"), "admin ingest jobs must not mark deferred summary work as succeeded");
+    assert(adminIngestExecutorSource.includes("summaryBatchHasHardFailure"), "admin ingest jobs must surface hard summary failures");
+    assert(adminIngestExecutorSource.includes("invalidatePublicContentCaches"), "admin ingest jobs must invalidate public caches after mutations");
+    for (const publicMutationRoute of [
+      "app/api/admin/review/route.ts",
+      "app/api/admin/articles/[articleRef]/summary/route.ts",
+      "app/api/admin/articles/bulk/route.ts",
+      "app/api/admin/cron/ingest/route.ts",
+    ]) {
+      const source = fs.readFileSync(path.join(process.cwd(), publicMutationRoute), "utf8");
+      assert(source.includes("invalidatePublicContentCaches"), `${publicMutationRoute} must invalidate public caches after mutations`);
+    }
+    const cacheRevalidationRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/public-content/revalidate/route.ts"), "utf8");
+    assert(cacheRevalidationRouteSource.includes("adminMutationAuthFailureStatus"), "cache revalidation route must use admin mutation auth");
+    assert(cacheRevalidationRouteSource.includes("invalidatePublicContentCaches"), "cache revalidation route must invalidate public caches");
+    assert(!cacheRevalidationRouteSource.includes("searchParams"), "cache revalidation route must not accept query string secrets");
     for (const forbiddenSnapshotField of ["raw_text", "cleaned_text", "source_text", "rawText", "cleanedText", "sourceText"]) {
       assert(!adminIngestExecutorSource.includes(forbiddenSnapshotField), `admin ingest executor result summary must not store ${forbiddenSnapshotField}`);
     }

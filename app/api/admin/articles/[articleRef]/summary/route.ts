@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { updateArticleSummaryManually } from "@/lib/ingest/manual-summary-edit";
+import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ art
   const { articleRef: articleId } = await params;
   const body = await request.json().catch(() => ({}));
   const result = await updateArticleSummaryManually({ articleId, body });
+  if (result.status === "updated") {
+    invalidatePublicContentCaches({ articleSlug: result.slug });
+  }
 
   await recordAdminSiteEvent(
     {

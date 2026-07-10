@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminArticleBulkAction } from "@/lib/db/admin-queries";
+import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { parseAdminArticleBulkBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
@@ -20,6 +21,9 @@ export async function POST(request: Request) {
   }
   const { action, refs, note } = parsed.data;
   const result = await runAdminArticleBulkAction({ action, refs, note });
+  if (result.updatedCount > 0) {
+    invalidatePublicContentCaches();
+  }
 
   await recordAdminSiteEvent(
     {

@@ -612,7 +612,7 @@ workflow cron 표현식은 다음과 같습니다.
 
 정기 worker는 DB에서 활성화된 4개 source adapter를 순서대로 실행합니다.
 기본 실행 옵션은 `strategy=auto`, `--limit=20`, `--range-days=14`, `--refresh-existing`, `--use-playwright`, `--debug`입니다.
-수집이 끝나면 `pnpm summarize-pending -- --limit=20`으로 전체 요약 대기 자료 중 최대 20건을 요약하고, 마지막에 공개 태그 카운트를 갱신합니다.
+수집이 끝나면 `pnpm summarize-pending`이 공개 가능한 요약 후보를 국가별 라운드로빈 순서로 처리합니다. Gemini의 일시적 429가 발생하면 router cooldown보다 긴 65초 후 같은 건을 한 번 재시도하고, 그래도 보류되면 5분 간격으로 후속 pass를 실행합니다. 최대 4개 pass 뒤에도 보류·실패가 남으면 workflow를 실패로 표시해 부분 완료가 성공으로 숨지 않게 합니다. 마지막에는 공개 태그 카운트를 갱신하고, production의 인증된 `/api/admin/public-content/revalidate`를 호출해 홈·목록·기사·포털 캐시를 즉시 갱신합니다.
 
 | 국가 | source key | 정기 수집 범위 | 최대 처리 건수 | 목록/수집 기준 | 비고 |
 | --- | --- | ---: | ---: | --- | --- |
@@ -1113,7 +1113,7 @@ BVERFG_USE_IPV4_FIRST=true
 
 요약 재시도 대기는 원문 수집 실패가 아닙니다.
 
-대부분 AI quota 또는 cooldown 때문에 생깁니다. 나중에 `pnpm summarize-pending`을 다시 실행하거나, 관리자 검토 목록에서 `요약 실패` 뱃지를 눌러 1건씩 다시 처리할 수 있습니다.
+대부분 AI quota 또는 cooldown 때문에 생깁니다. 정기 workflow는 짧은 cooldown을 자동 재시도하고, 해소되지 않은 보류가 남으면 성공으로 처리하지 않습니다. 이후에도 남은 건은 관리자 검토 목록에서 재시도할 수 있습니다.
 
 ## 마지막으로 기억할 것
 

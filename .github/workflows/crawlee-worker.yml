@@ -91,6 +91,24 @@ jobs:
           fi
           pnpm crawl:worker -- "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --use-playwright --debug
       - name: Summarize pending articles
-        run: pnpm summarize-pending -- --limit=20
+        # One in-process retry waits beyond the Gemini router's 60-second cooldown.
+        # Later passes make transient quota failures visible and recover without waiting for the next daily run.
+        run: pnpm summarize-pending -- --limit=20 --drain --strict --max-passes=4 --pass-delay-ms=300000 --retry-attempts=1 --retry-delay-ms=65000
       - name: Refresh public tag counts
         run: pnpm refresh-tag-counts
+      - name: Revalidate production public caches
+        env:
+          DEFAULT_BASE_URL: https://worldcons.vercel.app
+          WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret is required" >&2
+            exit 1
+          fi
+          BASE_URL="${WORLDCONS_BASE_URL:-$DEFAULT_BASE_URL}"
+          BASE_URL="${BASE_URL%/}"
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/admin/public-content/revalidate"
