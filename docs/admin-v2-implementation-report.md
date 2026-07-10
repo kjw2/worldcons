@@ -66,12 +66,13 @@ Readiness:
 
 ## Migration Files
 
-The following additive migrations were added or documented. They were not applied directly to the operating database by this implementation work.
+The following additive migrations were applied to the production database on 2026-07-10. The final migration corrects the admin job claim RPC parameter references found by the live readiness check.
 
 - `supabase/migrations/20260709120000_admin_dashboard_summary_views.sql`
 - `supabase/migrations/20260709130000_admin_audit_and_edit_history.sql`
 - `supabase/migrations/20260709140000_admin_article_triage_columns.sql`
 - `supabase/migrations/20260709150000_admin_jobs.sql`
+- `supabase/migrations/20260710100000_fix_claim_admin_job_parameter_references.sql`
 
 ## Verification Results
 
@@ -86,20 +87,14 @@ Code/build verification:
 
 Readiness verification:
 
-- `pnpm admin:readiness`: executed and failed as an environment/database readiness check, not as a code validation failure.
-- Reported missing or unavailable objects:
-  - `rpc_admin_dashboard_snapshot`
-  - `rpc_admin_analytics_health_snapshot`
-  - `articles.error_class/error_context/review_state`
-  - `claim_admin_job`
-- The script reported these migrations as required before relying on production admin queue operations:
-  - `supabase/migrations/20260709120000_admin_dashboard_summary_views.sql`
-  - `supabase/migrations/20260709140000_admin_article_triage_columns.sql`
-  - `supabase/migrations/20260709150000_admin_jobs.sql`
+- The initial production readiness check after applying the four admin v2 migrations exposed an invalid `fn.job_types` PL/pgSQL parameter reference in `claim_admin_job`.
+- `supabase/migrations/20260710100000_fix_claim_admin_job_parameter_references.sql` replaced those references with unambiguous positional aliases.
+- The final `pnpm admin:readiness` run passed every dashboard view/RPC, audit/edit history table, triage column, admin job table/event table, and live `claim_admin_job` RPC check.
+- Local and remote migration history match through `20260710100000`.
 
 ## Deployment Prerequisites
 
-- Apply the additive Supabase migrations listed above through the normal deployment process.
+- Keep every target environment migrated through `20260710100000`; production is already current.
 - Keep Vercel production admin environment variables configured, including admin session, LLM settings, Supabase, and cron secrets.
 - Ensure GitHub secret `CRON_SECRET` is available to `.github/workflows/admin-job-worker.yml`.
 - Run `pnpm admin:readiness` against the target production database before relying on `/admin/jobs` or queued ingest.

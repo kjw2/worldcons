@@ -1458,6 +1458,21 @@ async function assertAdminRouteSecurityControls() {
       assert(adminJobsMigration.toLowerCase().includes(requiredSql), `admin jobs migration must include ${requiredSql}`);
     }
 
+    const adminJobClaimFixMigration = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/20260710100000_fix_claim_admin_job_parameter_references.sql"),
+      "utf8",
+    );
+    for (const requiredSql of ["v_worker_id alias for $1", "v_job_types alias for $2", "v_lease_seconds alias for $3"]) {
+      assert(
+        adminJobClaimFixMigration.toLowerCase().includes(requiredSql),
+        `admin job claim fix migration must include ${requiredSql}`,
+      );
+    }
+    assert(
+      !adminJobClaimFixMigration.includes("fn."),
+      "admin job claim fix migration must not qualify PL/pgSQL parameters as SQL table aliases",
+    );
+
     const adminJobsHelperSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-jobs.ts"), "utf8");
     for (const requiredExport of [
       "export const ADMIN_JOB_TYPES",

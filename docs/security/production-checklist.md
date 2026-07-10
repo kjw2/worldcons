@@ -20,6 +20,7 @@
 - admin audit/edit history migration: `supabase/migrations/20260709130000_admin_audit_and_edit_history.sql`
 - article triage columns migration: `supabase/migrations/20260709140000_admin_article_triage_columns.sql`
 - admin jobs/admin job events/RPC migration: `supabase/migrations/20260709150000_admin_jobs.sql`
+- admin job claim RPC parameter fix: `supabase/migrations/20260710100000_fix_claim_admin_job_parameter_references.sql`
 
 read-mostly readiness check:
 
