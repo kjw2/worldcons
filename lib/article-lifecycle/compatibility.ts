@@ -120,6 +120,7 @@ export function shadowLegacyArticleLifecycleOutcome(
   if (!mapped.ok) {
     return shadowArticleLifecycleTransition({
       ...authority,
+      reviewState: mapped.reviewState,
       attention: {
         operation: "quarantine",
         code: mapped.anomalyCode,

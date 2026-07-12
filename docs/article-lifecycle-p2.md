@@ -73,7 +73,7 @@ stateDiagram-v2
 | `failed_summary` | `source_text_ready` | `ready` | legacy `error_class`, else `summary.failed` |
 | `needs_review` | explicit `collection.sourceTextAvailable` decides | `complete`, `ready`, or `not_ready` from summary/text evidence | review axis only unless structured legacy error exists |
 
-`needs_review` without an explicit source-text signal is quarantined. Contradictory source-text signals, summarized rows without summary JSON, invalid error codes, and approval with nonpublishable metadata are also anomalies. Existing review decisions map as follows: `closed_private` to `closed_private`, `published`/`approved` to `approved`, `approved_for_summary` to `approved_for_processing`, and `needs_review`/`needs_triage`/`retry_later` to `needs_review`. Workflow labels such as `manual_summary_edit`, `manual_resummarized`, and `summarized` do not fabricate a human review decision.
+`needs_review` without an explicit source-text signal is quarantined. Contradictory source-text signals, summarized rows without summary JSON, invalid error codes, and approval with nonpublishable metadata are also anomalies. A summarized legacy row that is publicly eligible but explicitly records unavailable source text remains public under the unchanged legacy predicate; P2 records the authoritative review decision plus an anomaly and does not invent source-text readiness. Existing review decisions map as follows: `closed_private` to `closed_private`, `published`/`approved` to `approved`, `approved_for_summary` to `approved_for_processing`, and `needs_review`/`needs_triage`/`retry_later` to `needs_review`. A current decision in `source_metadata.review` is authoritative over stale optional triage columns. Workflow labels such as `manual_summary_edit`, `manual_resummarized`, and `summarized` do not fabricate a human review decision.
 
 ## Transition Authority
 
@@ -113,7 +113,7 @@ An already matching P2 target records an immutable no-op event (`applied=false`)
 
 ## Backfill and Checkpoints
 
-Do not apply migrations or run backfill from an application deploy. Apply `20260712170000_article_lifecycle_p2.sql`, then run `20260712171000_article_lifecycle_p2_indexes.sql` outside a transaction because it uses `CREATE INDEX CONCURRENTLY`. Reapply both in a production-shaped rehearsal before production approval.
+Do not apply migrations or run backfill from an application deploy. Apply `20260712170000_article_lifecycle_p2.sql`, run `20260712171000_article_lifecycle_p2_indexes.sql` outside a transaction because it uses `CREATE INDEX CONCURRENTLY`, then apply `20260712172000_article_lifecycle_p2_evidence_reconciliation.sql`. Reapply all three in a production-shaped rehearsal before production approval.
 
 Evidence only:
 

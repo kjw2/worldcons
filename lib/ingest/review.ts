@@ -6,7 +6,12 @@ import { runRefreshTagCounts, runSummarizeArticle } from "@/lib/ingest/summary";
 import {
   ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES,
   ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  articleLifecycleP2ShadowCohorts,
+  articleLifecycleP2ShadowWriteEnabled,
+  mapLegacyArticleLifecycle,
   shadowArticleLifecycleTransition,
+  shadowLegacyArticleLifecycleOutcome,
+  type LegacyArticleLifecycleEvidence,
 } from "@/lib/article-lifecycle";
 
 export type AdminReviewAction =
@@ -17,7 +22,7 @@ export type AdminReviewAction =
   | "close-private"
   | "retry-source-ingest";
 
-interface ReviewArticleRow {
+export interface ReviewArticleRow {
   id: string;
   slug?: string | null;
   source_key: string;
@@ -27,6 +32,9 @@ interface ReviewArticleRow {
   summary_json?: unknown;
   source_metadata?: unknown;
   error_metadata?: unknown;
+  review_state?: string | null;
+  error_class?: string | null;
+  error_context?: unknown;
 }
 
 interface ReviewActionInput {
@@ -38,7 +46,8 @@ interface ReviewActionInput {
   model?: string;
 }
 
-const REVIEW_ARTICLE_SELECT = "id, slug, source_key, status, cleaned_text, raw_text, summary_json, source_metadata, error_metadata";
+const REVIEW_ARTICLE_SELECT =
+  "id, slug, source_key, status, cleaned_text, raw_text, summary_json, source_metadata, error_metadata, review_state, error_class, error_context";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -107,6 +116,60 @@ async function findReviewArticle(articleId?: string, slug?: string) {
   return { supabase, row: data ? (data as ReviewArticleRow) : null };
 }
 
+export function lifecycleEvidenceForReviewRow(row: ReviewArticleRow): LegacyArticleLifecycleEvidence {
+  return {
+    status: row.status,
+    sourceMetadata: row.source_metadata,
+    reviewState: row.review_state,
+    errorClass: row.error_class,
+    errorContext: row.error_context,
+    hasSummary: Boolean(row.summary_json),
+  };
+}
+
+async function shadowPersistedReviewOutcome(
+  articleId: string,
+  reasonCode: string,
+  resolvesCodes: readonly string[] = [],
+) {
+  if (!articleLifecycleP2ShadowWriteEnabled() || !articleLifecycleP2ShadowCohorts().has("review")) return;
+  let persisted: ReviewArticleRow | null = null;
+  try {
+    persisted = (await findReviewArticle(articleId)).row;
+  } catch {
+    console.warn("[article lifecycle shadow]", { event: "persisted_review_evidence_unavailable", source: "admin.review" });
+    return;
+  }
+  if (!persisted) return;
+
+  const evidence = lifecycleEvidenceForReviewRow(persisted);
+  const mapping = mapLegacyArticleLifecycle(evidence);
+  const shadow = await shadowLegacyArticleLifecycleOutcome({
+    articleId,
+    cohort: "review",
+    actorType: "admin",
+    source: "admin.review",
+    reasonCode,
+    evidence,
+  });
+
+  if (
+    mapping.ok
+    && !persisted.error_class
+    && resolvesCodes.length > 0
+    && (shadow.shadow === "written" || shadow.shadow === "noop")
+  ) {
+    await shadowArticleLifecycleTransition({
+      articleId,
+      cohort: "review",
+      actorType: "admin",
+      source: "admin.review",
+      reasonCode: `${reasonCode}.recovered`,
+      attention: { operation: "clear", resolvesCodes: [...resolvesCodes] },
+    });
+  }
+}
+
 async function updateArticleForSummary(row: ReviewArticleRow, note?: string) {
   const { supabase } = await findReviewArticle(row.id);
   if (!supabase) return;
@@ -130,23 +193,17 @@ async function updateArticleForSummary(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
-  const triageUpdated = await updateArticleTriageFields({
+  await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.APPROVED_FOR_SUMMARY,
   });
-  await shadowArticleLifecycleTransition({
-    articleId: row.id,
-    cohort: "review",
-    actorType: "admin",
-    source: "admin.review",
-    reasonCode: "legacy.review.approved_for_summary",
-    collectionState: "source_text_ready",
-    processingState: "ready",
-    reviewState: triageUpdated ? "approved_for_processing" : undefined,
-    attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES] },
-  });
+  await shadowPersistedReviewOutcome(
+    row.id,
+    "legacy.review.approved_for_summary",
+    ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES,
+  );
 }
 
 async function publishReviewedArticle(row: ReviewArticleRow, note?: string) {
@@ -175,26 +232,17 @@ async function publishReviewedArticle(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
-  const triageUpdated = await updateArticleTriageFields({
+  await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.PUBLISHED,
   });
-  await shadowArticleLifecycleTransition({
-    articleId: row.id,
-    cohort: "review",
-    actorType: "admin",
-    source: "admin.review",
-    reasonCode: "legacy.review.approved",
-    collectionState: "source_text_ready",
-    processingState: "complete",
-    reviewState: triageUpdated ? "approved" : undefined,
-    attention: {
-      operation: "clear",
-      resolvesCodes: [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES, ...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES],
-    },
-  });
+  await shadowPersistedReviewOutcome(
+    row.id,
+    "legacy.review.approved",
+    [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES, ...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES],
+  );
   await runRefreshTagCounts().catch(() => null);
   return { status: "published" as const };
 }
@@ -218,22 +266,13 @@ async function closePrivate(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
-  const triageUpdated = await updateArticleTriageFields({
+  await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.CLOSED_PRIVATE,
   });
-  if (triageUpdated) {
-    await shadowArticleLifecycleTransition({
-      articleId: row.id,
-      cohort: "review",
-      actorType: "admin",
-      source: "admin.review",
-      reasonCode: "legacy.review.closed_private",
-      reviewState: "closed_private",
-    });
-  }
+  await shadowPersistedReviewOutcome(row.id, "legacy.review.closed_private");
   return { status: "closed_private" as const };
 }
 
@@ -244,22 +283,17 @@ async function recordManualResummary(row: ReviewArticleRow, provider: LlmComplet
   const sourceMetadata = reviewMetadata(row, "manual_resummarized", note, {}, { provider, model });
   const { error } = await supabase.from("articles").update({ source_metadata: sourceMetadata }).eq("id", row.id);
   if (error) throw new Error(error.message);
-  const triageUpdated = await updateArticleTriageFields({
+  await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.MANUAL_RESUMMARIZED,
   });
-  if (triageUpdated) {
-    await shadowArticleLifecycleTransition({
-      articleId: row.id,
-      cohort: "review",
-      actorType: "admin",
-      source: "admin.review",
-      reasonCode: "legacy.review.manual_resummary_recorded",
-      processingState: "complete",
-    });
-  }
+  await shadowPersistedReviewOutcome(
+    row.id,
+    "legacy.review.manual_resummary_recorded",
+    ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  );
 }
 
 export async function runAdminReviewAction(input: ReviewActionInput) {

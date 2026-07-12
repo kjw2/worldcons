@@ -7,6 +7,10 @@ import { Client, Pool, type QueryResult } from "pg";
 const databaseUrl = process.env.P2_TEST_DATABASE_URL;
 const migrationSql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712170000_article_lifecycle_p2.sql"), "utf8");
 const indexSql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712171000_article_lifecycle_p2_indexes.sql"), "utf8");
+const reconciliationSql = fs.readFileSync(
+  path.join(process.cwd(), "supabase/migrations/20260712172000_article_lifecycle_p2_evidence_reconciliation.sql"),
+  "utf8",
+);
 
 interface BackfillRow {
   selected_count: number;
@@ -71,6 +75,8 @@ test("P2 PostgreSQL lifecycle authority and reconciliation", { skip: !databaseUr
     await client.query(statement);
     await client.query(statement);
   }
+  await client.query(reconciliationSql);
+  await client.query(reconciliationSql);
   await client.end();
 
   const pool = new Pool({ connectionString: databaseUrl, max: 8 });
@@ -185,6 +191,54 @@ test("P2 PostgreSQL lifecycle authority and reconciliation", { skip: !databaseUr
         [id],
       );
       assert.deepEqual(row.rows[0], { status: "cleaned", publishable: "false" });
+    });
+
+    await t.test("mixed review columns preserve metadata authority and quarantine false text readiness", async () => {
+      await pool.query("truncate article_lifecycle_events_p2, article_lifecycle_anomalies_p2, articles restart identity cascade");
+      const shortPublished = await pool.query<{ id: string }>(
+        `insert into articles(status, source_metadata, review_state, error_class, error_context, summary_json)
+         values ('summarized', $1, 'needs_triage', 'job.stale_running', '{"retryable":true}'::jsonb, '{"ok":true}'::jsonb)
+         returning id`,
+        [{
+          collection: { sourceTextAvailable: false, publishable: true },
+          review: { decision: "published" },
+        }],
+      );
+      await pool.query("select * from article_lifecycle_backfill_batch_p2(null, 10)");
+      const state = await pool.query<{
+        status: string;
+        publishable: string;
+        lifecycle_collection_state: string | null;
+        lifecycle_review_state: string;
+        lifecycle_attention_state: string;
+        lifecycle_attention_code: string;
+      }>(
+        `select status, source_metadata #>> '{collection,publishable}' as publishable,
+                lifecycle_collection_state, lifecycle_review_state,
+                lifecycle_attention_state, lifecycle_attention_code
+         from articles where id = $1`,
+        [shortPublished.rows[0].id],
+      );
+      assert.deepEqual(state.rows[0], {
+        status: "summarized",
+        publishable: "true",
+        lifecycle_collection_state: null,
+        lifecycle_review_state: "approved",
+        lifecycle_attention_state: "anomaly",
+        lifecycle_attention_code: "backfill.status_text_conflict",
+      });
+
+      const approvedWithStaleAttention = await pool.query<{ mapped: Record<string, unknown> }>(
+        `select article_lifecycle_map_legacy_p2(
+          'cleaned', $1, 'needs_triage', 'job.stale_running', '{"retryable":true}'::jsonb, null
+        ) as mapped`,
+        [{
+          collection: { sourceTextAvailable: true, publishable: true },
+          review: { decision: "approved_for_summary" },
+        }],
+      );
+      assert.equal(approvedWithStaleAttention.rows[0].mapped.reviewState, "approved_for_processing");
+      assert.equal(approvedWithStaleAttention.rows[0].mapped.attentionCode, "job.stale_running");
     });
 
     await t.test("batch backfill covers statuses, quarantines ambiguity, reruns, and proves identity parity", async () => {

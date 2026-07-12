@@ -31,7 +31,7 @@ export interface MappedArticleLifecycle {
 
 export type LegacyArticleLifecycleMapping =
   | { ok: true; state: MappedArticleLifecycle }
-  | { ok: false; anomalyCode: string };
+  | { ok: false; anomalyCode: string; reviewState?: ArticleLifecycleReviewState };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,10 +62,10 @@ const AUTHORITATIVE_REVIEW_DECISIONS = new Set([
 ]);
 
 function effectiveReviewDecision(sourceMetadata: unknown, reviewState?: string | null) {
-  if (reviewState === "needs_triage" || reviewState === "retry_later") return reviewState;
   const metadata = isRecord(sourceMetadata) ? sourceMetadata : {};
   const current = nestedRecord(metadata, "review").decision;
   if (typeof current === "string" && AUTHORITATIVE_REVIEW_DECISIONS.has(current)) return current;
+  if (reviewState === "needs_triage" || reviewState === "retry_later") return reviewState;
   if (reviewState && AUTHORITATIVE_REVIEW_DECISIONS.has(reviewState)) return reviewState;
   const history = Array.isArray(metadata.reviewHistory) ? metadata.reviewHistory : [];
   for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -76,6 +76,14 @@ function effectiveReviewDecision(sourceMetadata: unknown, reviewState?: string |
   return reviewState;
 }
 
+function lifecycleReviewState(decision: string | null | undefined, status: string): ArticleLifecycleReviewState {
+  if (decision === "closed_private") return "closed_private";
+  if (decision === "published" || decision === "approved") return "approved";
+  if (decision === "approved_for_summary") return "approved_for_processing";
+  if (["needs_review", "needs_triage", "retry_later"].includes(decision ?? "") || status === "needs_review") return "needs_review";
+  return "unreviewed";
+}
+
 const LEGACY_STATUSES = new Set([
   "discovered", "metadata_only", "robots_disallowed", "blocked", "timeout", "fetched",
   "cleaned", "summarizing", "summarized", "failed_fetch", "failed_summary", "needs_review",
@@ -83,32 +91,38 @@ const LEGACY_STATUSES = new Set([
 
 export function mapLegacyArticleLifecycle(evidence: LegacyArticleLifecycleEvidence): LegacyArticleLifecycleMapping {
   const { status } = evidence;
-  if (!LEGACY_STATUSES.has(status)) return { ok: false, anomalyCode: "backfill.unknown_legacy_status" };
-
   const collection = nestedRecord(evidence.sourceMetadata, "collection");
   const textAvailable = booleanSignal(collection.sourceTextAvailable);
   const publishable = booleanSignal(collection.publishable);
   const decision = effectiveReviewDecision(evidence.sourceMetadata, evidence.reviewState);
+  const reviewState = lifecycleReviewState(decision, status);
+  const anomaly = (anomalyCode: string): LegacyArticleLifecycleMapping => ({
+    ok: false,
+    anomalyCode,
+    ...(reviewState === "unreviewed" ? {} : { reviewState }),
+  });
+
+  if (!LEGACY_STATUSES.has(status)) return anomaly("backfill.unknown_legacy_status");
 
   if (collection.sourceTextAvailable !== undefined && textAvailable === null) {
-    return { ok: false, anomalyCode: "backfill.invalid_source_text_signal" };
+    return anomaly("backfill.invalid_source_text_signal");
   }
   if (["discovered", "metadata_only", "robots_disallowed", "blocked", "timeout", "failed_fetch"].includes(status) && textAvailable === true) {
-    return { ok: false, anomalyCode: "backfill.status_text_conflict" };
+    return anomaly("backfill.status_text_conflict");
   }
   if (["cleaned", "summarizing", "summarized", "failed_summary"].includes(status) && textAvailable === false) {
-    return { ok: false, anomalyCode: "backfill.status_text_conflict" };
+    return anomaly("backfill.status_text_conflict");
   }
-  if (status === "summarized" && !evidence.hasSummary) return { ok: false, anomalyCode: "backfill.summarized_without_summary" };
-  if (status === "needs_review" && textAvailable === null) return { ok: false, anomalyCode: "backfill.needs_review_text_ambiguous" };
+  if (status === "summarized" && !evidence.hasSummary) return anomaly("backfill.summarized_without_summary");
+  if (status === "needs_review" && textAvailable === null) return anomaly("backfill.needs_review_text_ambiguous");
   if (status === "needs_review" && textAvailable === false && evidence.hasSummary) {
-    return { ok: false, anomalyCode: "backfill.review_summary_text_conflict" };
+    return anomaly("backfill.review_summary_text_conflict");
   }
   if (["published", "approved"].includes(decision ?? "") && publishable !== true) {
-    return { ok: false, anomalyCode: "backfill.approval_publishable_conflict" };
+    return anomaly("backfill.approval_publishable_conflict");
   }
   if (evidence.errorClass && !/^[a-z][a-z0-9._-]{0,119}$/.test(evidence.errorClass)) {
-    return { ok: false, anomalyCode: "backfill.invalid_error_class" };
+    return anomaly("backfill.invalid_error_class");
   }
 
   let collectionState: ArticleCollectionState;
@@ -124,12 +138,6 @@ export function mapLegacyArticleLifecycle(evidence: LegacyArticleLifecycleEviden
   else if (status === "summarized") processingState = "complete";
   else if (status === "needs_review" && evidence.hasSummary) processingState = "complete";
   else if (status === "needs_review" && collectionState === "source_text_ready") processingState = "ready";
-
-  let reviewState: ArticleLifecycleReviewState = "unreviewed";
-  if (decision === "closed_private") reviewState = "closed_private";
-  else if (decision === "published" || decision === "approved") reviewState = "approved";
-  else if (decision === "approved_for_summary") reviewState = "approved_for_processing";
-  else if (["needs_review", "needs_triage", "retry_later"].includes(decision ?? "") || status === "needs_review") reviewState = "needs_review";
 
   const fallbackError = evidence.errorClass ?? ({
     metadata_only: "collection.metadata_only",

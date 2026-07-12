@@ -114,6 +114,9 @@ interface ExistingArticleRow {
   content_hash?: string | null;
   cleaned_text?: string | null;
   source_metadata?: unknown;
+  review_state?: string | null;
+  error_class?: string | null;
+  error_context?: unknown;
 }
 
 const SUMMARY_CANDIDATE_SELECT =
@@ -301,7 +304,7 @@ async function findExistingArticle(canonicalUrl: string): Promise<ExistingArticl
 
   const { data, error } = await supabase
     .from("articles")
-    .select("id, status, content_hash, cleaned_text, source_metadata")
+    .select("id, status, content_hash, cleaned_text, source_metadata, review_state, error_class, error_context")
     .eq("canonical_url", canonicalUrl)
     .maybeSingle();
 
@@ -713,7 +716,14 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
     actorType: "ingestion",
     source: "ingestion.refresh",
     reasonCode: "legacy.collection.refreshed",
-    evidence: { status: plan.status, sourceMetadata, hasSummary: false },
+    evidence: {
+      status: plan.status,
+      sourceMetadata,
+      reviewState: existing.review_state,
+      errorClass: existing.error_class,
+      errorContext: existing.error_context,
+      hasSummary: false,
+    },
   });
   if (plan.status === "cleaned") {
     await shadowArticleLifecycleTransition({

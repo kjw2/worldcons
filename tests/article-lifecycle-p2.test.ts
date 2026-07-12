@@ -7,6 +7,7 @@ import {
   articleLifecycleP2ShadowWriteEnabled,
   mapLegacyArticleLifecycle,
   shadowArticleLifecycleTransition,
+  shadowLegacyArticleLifecycleOutcome,
 } from "../lib/article-lifecycle";
 import type {
   ArticleLifecycleRepository,
@@ -15,9 +16,14 @@ import type {
   ArticleLifecycleTransitionResult,
 } from "../lib/article-lifecycle/types";
 import { createArticleLifecycleService } from "../lib/article-lifecycle/service";
+import { lifecycleEvidenceForReviewRow } from "../lib/ingest/review";
 
 const migrationPath = path.join(process.cwd(), "supabase/migrations/20260712170000_article_lifecycle_p2.sql");
 const indexMigrationPath = path.join(process.cwd(), "supabase/migrations/20260712171000_article_lifecycle_p2_indexes.sql");
+const reconciliationMigrationPath = path.join(
+  process.cwd(),
+  "supabase/migrations/20260712172000_article_lifecycle_p2_evidence_reconciliation.sql",
+);
 
 const expectedByStatus = {
   discovered: ["discovered", "not_ready", "unreviewed"],
@@ -55,7 +61,7 @@ test("P2 maps every existing article status to orthogonal axes", () => {
 test("ambiguous and contradictory legacy evidence is quarantined", () => {
   assert.deepEqual(
     mapLegacyArticleLifecycle({ status: "needs_review", sourceMetadata: {}, hasSummary: false }),
-    { ok: false, anomalyCode: "backfill.needs_review_text_ambiguous" },
+    { ok: false, anomalyCode: "backfill.needs_review_text_ambiguous", reviewState: "needs_review" },
   );
   assert.deepEqual(
     mapLegacyArticleLifecycle({ status: "cleaned", sourceMetadata: { collection: { sourceTextAvailable: false } }, hasSummary: false }),
@@ -117,7 +123,129 @@ test("workflow-only review labels recover the latest authoritative history decis
     hasSummary: true,
   });
   assert.equal(triage.ok, true);
-  if (triage.ok) assert.equal(triage.state.reviewState, "needs_review");
+  if (triage.ok) assert.equal(triage.state.reviewState, "approved");
+});
+
+test("short-text reviewed publication quarantines without inventing source-text readiness", async () => {
+  const evidence = lifecycleEvidenceForReviewRow({
+    id: "00000000-0000-4000-8000-000000000011",
+    source_key: "test-source",
+    status: "summarized",
+    cleaned_text: "short",
+    summary_json: { summary: true },
+    source_metadata: {
+      collection: { sourceTextAvailable: false, publishable: true },
+      review: { decision: "published" },
+    },
+    review_state: "needs_triage",
+  });
+  const mapped = mapLegacyArticleLifecycle(evidence);
+  assert.deepEqual(mapped, {
+    ok: false,
+    anomalyCode: "backfill.status_text_conflict",
+    reviewState: "approved",
+  });
+
+  let captured: ArticleLifecycleTransitionInput | undefined;
+  await shadowLegacyArticleLifecycleOutcome({
+    articleId: "00000000-0000-4000-8000-000000000011",
+    cohort: "review",
+    actorType: "admin",
+    source: "admin.review",
+    reasonCode: "legacy.review.approved",
+    evidence,
+  }, {
+    environment: {
+      ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED: "true",
+      ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS: "review",
+    },
+    service: {
+      get: async () => ({
+        ok: true as const,
+        data: {
+          articleId: "00000000-0000-4000-8000-000000000011",
+          revision: 4,
+          collectionState: "metadata_only" as const,
+          processingState: "not_ready" as const,
+          reviewState: "needs_review" as const,
+          attentionState: "clear" as const,
+          attentionCode: null,
+          attentionRetryable: null,
+          attentionSeverity: null,
+          attentionSource: null,
+        },
+      }),
+      transition: async (input) => {
+        captured = input;
+        return {
+          ok: true as const,
+          data: {
+            articleId: input.articleId,
+            revision: 5,
+            collectionState: "metadata_only" as const,
+            processingState: "not_ready" as const,
+            reviewState: "approved" as const,
+            attentionState: "anomaly" as const,
+            attentionCode: "backfill.status_text_conflict",
+            attentionRetryable: false,
+            attentionSeverity: "high" as const,
+            attentionSource: "backfill" as const,
+            applied: true,
+            idempotent: false,
+          },
+        };
+      },
+    },
+  });
+  assert(captured);
+  assert.equal(captured.collectionState, undefined);
+  assert.equal(captured.reviewState, "approved");
+  assert.deepEqual(captured.attention, {
+    operation: "quarantine",
+    code: "backfill.status_text_conflict",
+    retryable: false,
+    severity: "high",
+    source: "backfill",
+  });
+});
+
+test("persisted review metadata wins over stale optional triage while unrelated attention remains", () => {
+  const approved = mapLegacyArticleLifecycle(lifecycleEvidenceForReviewRow({
+    id: "00000000-0000-4000-8000-000000000012",
+    source_key: "test-source",
+    status: "cleaned",
+    summary_json: null,
+    source_metadata: {
+      collection: { sourceTextAvailable: true, publishable: true },
+      review: { decision: "approved_for_summary" },
+    },
+    review_state: "needs_triage",
+    error_class: "job.stale_running",
+    error_context: { retryable: true },
+  }));
+  assert.equal(approved.ok, true);
+  if (!approved.ok) return;
+  assert.equal(approved.state.reviewState, "approved_for_processing");
+  assert.deepEqual(approved.state.attention, {
+    operation: "raise",
+    code: "job.stale_running",
+    retryable: true,
+    severity: "high",
+    source: "processing",
+  });
+
+  const closed = mapLegacyArticleLifecycle(lifecycleEvidenceForReviewRow({
+    id: "00000000-0000-4000-8000-000000000013",
+    source_key: "test-source",
+    status: "needs_review",
+    source_metadata: {
+      collection: { sourceTextAvailable: true, publishable: false },
+      review: { decision: "closed_private" },
+    },
+    review_state: "needs_triage",
+  }));
+  assert.equal(closed.ok, true);
+  if (closed.ok) assert.equal(closed.state.reviewState, "closed_private");
 });
 
 test("P2 flags and cohorts are false by default and reads remain independent", async () => {
@@ -255,6 +383,7 @@ test("P2 service enforces actor ownership before repository access", async () =>
 test("P2 migration is additive, guarded, indexed online, and leaves publication untouched", () => {
   const sql = fs.readFileSync(migrationPath, "utf8");
   const indexes = fs.readFileSync(indexMigrationPath, "utf8");
+  const reconciliation = fs.readFileSync(reconciliationMigrationPath, "utf8");
   assert.match(sql, /alter table articles add column if not exists lifecycle_collection_state/i);
   assert.match(sql, /articles_lifecycle_cross_axis_p2_check[\s\S]*not valid/i);
   assert.match(sql, /validate constraint articles_lifecycle_cross_axis_p2_check/i);
@@ -265,6 +394,8 @@ test("P2 migration is additive, guarded, indexed online, and leaves publication 
   assert.match(sql, /article_lifecycle_backfill_batch_p2/);
   assert.match(sql, /article_lifecycle_evidence_p2/);
   assert.match(indexes, /create index concurrently if not exists/gi);
+  assert.match(reconciliation, /create or replace function article_lifecycle_map_legacy_p2/i);
+  assert.match(reconciliation, /null, null, v_map ->> 'reviewState', 'quarantine'/i);
   assert.doesNotMatch(sql, /drop column|alter column status|drop table articles|truncate articles/i);
 
   const transitionStart = sql.indexOf("create or replace function article_lifecycle_transition_p2");
@@ -293,6 +424,32 @@ test("all lifecycle write paths use the compatibility boundary and no applicatio
     .filter((file) => !file.includes(`${path.sep}article-lifecycle${path.sep}repository.ts`));
   for (const file of applicationFiles) {
     assert.doesNotMatch(fs.readFileSync(file, "utf8"), /\.update\(\{[\s\S]{0,800}lifecycle_(?:collection|processing|review|attention)_state/, file);
+  }
+});
+
+test("review and refresh paths use persisted authoritative evidence without triage gates", () => {
+  const reviewSource = fs.readFileSync(path.join(process.cwd(), "lib/ingest/review.ts"), "utf8");
+  assert.match(reviewSource, /shadowPersistedReviewOutcome/);
+  assert.match(reviewSource, /review_state, error_class, error_context/);
+  assert.match(reviewSource, /articleLifecycleP2ShadowWriteEnabled\(\).*articleLifecycleP2ShadowCohorts\(\)\.has\("review"\)/);
+  assert.doesNotMatch(reviewSource, /reviewState:\s*triageUpdated\s*\?/);
+  assert.doesNotMatch(reviewSource, /if \(triageUpdated\)/);
+
+  const publishBlock = reviewSource.slice(
+    reviewSource.indexOf("async function publishReviewedArticle"),
+    reviewSource.indexOf("async function closePrivate"),
+  );
+  assert.doesNotMatch(publishBlock, /collectionState:\s*"source_text_ready"/);
+  assert.match(publishBlock, /shadowPersistedReviewOutcome/);
+
+  const runSource = fs.readFileSync(path.join(process.cwd(), "lib/ingest/run.ts"), "utf8");
+  assert.match(runSource, /content_hash, cleaned_text, source_metadata, review_state, error_class, error_context/);
+  const refreshBlock = runSource.slice(
+    runSource.indexOf("async function refreshExistingArticle"),
+    runSource.indexOf("async function runSingleSource"),
+  );
+  for (const field of ["reviewState: existing.review_state", "errorClass: existing.error_class", "errorContext: existing.error_context"]) {
+    assert(refreshBlock.includes(field), `refresh evidence must include ${field}`);
   }
 });
 
