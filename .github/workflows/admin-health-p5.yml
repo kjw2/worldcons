@@ -1,0 +1,44 @@
+name: Admin P5 health evidence
+
+on:
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-health-p5
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ vars.ADMIN_P5_HEALTH_VERIFICATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ADMIN_P5_HEALTH_VERIFICATION_ENABLED: "true"
+      ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED: ${{ vars.ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED || 'false' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Produce redacted health evidence
+        run: pnpm admin:health:p5 -- --output=p5-health-evidence.json
+      - name: Upload health evidence
+        if: ${{ always() && hashFiles('p5-health-evidence.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-p5-health-evidence
+          path: p5-health-evidence.json
+          retention-days: 30
+          if-no-files-found: error

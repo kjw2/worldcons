@@ -8,6 +8,7 @@ import type {
   FailAdminCommandAttemptInput,
   SubmitAdminCommandInput,
 } from "@/lib/admin/command-control-plane/types";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 const COMMAND_TYPE_PATTERN = /^[a-z][a-z0-9._-]{0,119}$/;
 const COHORT_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
@@ -26,6 +27,16 @@ function validFencingToken(value: string) {
   return /^[1-9][0-9]{0,18}$/.test(value);
 }
 
+function observeNewQueue<T extends { ok: boolean }>(promise: Promise<T>, direction: "read" | "write" = "write") {
+  return promise.then((result) => {
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction, authority: "new", outcome: result.ok ? "succeeded" : "failed" });
+    return result;
+  }, (error) => {
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction, authority: "new", outcome: "failed" });
+    throw error;
+  });
+}
+
 export function createAdminCommandService(repository: AdminCommandRepository = postgresAdminCommandRepository) {
   return {
     submit(input: SubmitAdminCommandInput) {
@@ -37,7 +48,7 @@ export function createAdminCommandService(repository: AdminCommandRepository = p
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
       const backoffBase = boundedInteger(input.retryBackoffBaseSeconds, 15, 1, 86400);
-      return repository.submit({
+      return observeNewQueue(repository.submit({
         ...input,
         commandType: input.commandType.trim(),
         payloadRef: redactAdminAuditMetadata(input.payloadRef),
@@ -46,7 +57,7 @@ export function createAdminCommandService(repository: AdminCommandRepository = p
         maxAttempts: boundedInteger(input.maxAttempts, 3, 1, 100),
         retryBackoffBaseSeconds: backoffBase,
         retryBackoffCapSeconds: boundedInteger(input.retryBackoffCapSeconds, 900, backoffBase, 604800),
-      });
+      }));
     },
 
     claim(input: ClaimAdminCommandInput) {
@@ -57,26 +68,26 @@ export function createAdminCommandService(repository: AdminCommandRepository = p
       ) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
-      return repository.claim({
+      return observeNewQueue(repository.claim({
         workerId: redactAdminAuditText(input.workerId, 160),
         commandTypes: input.commandTypes,
         cohorts: input.cohorts,
         leaseSeconds: boundedInteger(input.leaseSeconds, 60, 1, 86400),
-      });
+      }), "read");
     },
 
     heartbeat(attemptId: string, fencingToken: string, leaseSeconds?: number) {
       if (!validText(attemptId, 120) || !validFencingToken(fencingToken)) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
-      return repository.heartbeat(attemptId, fencingToken, boundedInteger(leaseSeconds, 60, 1, 86400));
+      return observeNewQueue(repository.heartbeat(attemptId, fencingToken, boundedInteger(leaseSeconds, 60, 1, 86400)));
     },
 
     complete(attemptId: string, fencingToken: string, resultSummary: Record<string, unknown> = {}) {
       if (!validText(attemptId, 120) || !validFencingToken(fencingToken)) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
-      return repository.complete(attemptId, fencingToken, redactAdminAuditMetadata(resultSummary));
+      return observeNewQueue(repository.complete(attemptId, fencingToken, redactAdminAuditMetadata(resultSummary)));
     },
 
     fail(input: FailAdminCommandAttemptInput) {
@@ -87,34 +98,34 @@ export function createAdminCommandService(repository: AdminCommandRepository = p
       ) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
-      return repository.fail({
+      return observeNewQueue(repository.fail({
         ...input,
         errorCode: redactAdminAuditText(input.errorCode, 160),
         errorMessage: input.errorMessage ? redactAdminAuditText(input.errorMessage, 500) : null,
         resultSummary: redactAdminAuditMetadata(input.resultSummary),
-      });
+      }));
     },
 
     abort(input: AbortAdminCommandRunInput) {
       if (!validText(input.runId, 120) || !validText(input.requestedBy, 160)) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
-      return repository.abort({
+      return observeNewQueue(repository.abort({
         ...input,
         requestedBy: redactAdminAuditText(input.requestedBy, 160),
         reason: input.reason ? redactAdminAuditText(input.reason, 500) : null,
-      });
+      }));
     },
 
     retry(runId: string, requestedBy: string, reason?: string | null) {
       if (!validText(runId, 120) || !validText(requestedBy, 160)) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
-      return repository.retry(
+      return observeNewQueue(repository.retry(
         runId,
         redactAdminAuditText(requestedBy, 160),
         reason ? redactAdminAuditText(reason, 500) : null,
-      );
+      ));
     },
   };
 }

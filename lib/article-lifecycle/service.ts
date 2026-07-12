@@ -10,6 +10,7 @@ import {
   type ArticleLifecycleRepository,
   type ArticleLifecycleTransitionInput,
 } from "@/lib/article-lifecycle/types";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE_PATTERN = /^[a-z][a-z0-9._-]*$/;
@@ -56,15 +57,22 @@ function validTransition(input: ArticleLifecycleTransitionInput) {
 }
 
 export function createArticleLifecycleService(repository: ArticleLifecycleRepository = postgresArticleLifecycleRepository) {
+  const observed = <T extends { ok: boolean }>(promise: Promise<T>, direction: "read" | "write") => promise.then((result) => {
+    recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction, authority: "new", outcome: result.ok ? "succeeded" : "failed" });
+    return result;
+  }, (error) => {
+    recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction, authority: "new", outcome: "failed" });
+    throw error;
+  });
   return {
     get(articleId: string) {
       if (!UUID_PATTERN.test(articleId)) return Promise.resolve({ ok: false as const, error: articleLifecycleError("invalid_input") });
-      return repository.get(articleId);
+      return observed(repository.get(articleId), "read");
     },
 
     transition(input: ArticleLifecycleTransitionInput) {
       if (!validTransition(input)) return Promise.resolve({ ok: false as const, error: articleLifecycleError("invalid_input") });
-      return repository.transition(input);
+      return observed(repository.transition(input), "write");
     },
   };
 }

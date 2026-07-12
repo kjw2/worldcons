@@ -7,6 +7,7 @@ import {
   type ArticlePublicationRepository,
   type ArticlePublicationTransitionInput,
 } from "@/lib/article-publication/types";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -34,16 +35,23 @@ function validTransition(input: ArticlePublicationTransitionInput) {
 }
 
 export function createArticlePublicationService(repository: ArticlePublicationRepository = postgresArticlePublicationRepository) {
+  const observed = <T extends { ok: boolean }>(promise: Promise<T>, direction: "read" | "write") => promise.then((result) => {
+    recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction, authority: "new", outcome: result.ok ? "succeeded" : "failed" });
+    return result;
+  }, (error) => {
+    recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction, authority: "new", outcome: "failed" });
+    throw error;
+  });
   return {
     getSnapshot(articleId: string) {
       return UUID_PATTERN.test(articleId)
-        ? repository.getSnapshot(articleId)
+        ? observed(repository.getSnapshot(articleId), "read")
         : Promise.resolve({ ok: false as const, error: articlePublicationError("invalid_input") });
     },
 
     transition(input: ArticlePublicationTransitionInput) {
       return validTransition(input)
-        ? repository.transition(input)
+        ? observed(repository.transition(input), "write")
         : Promise.resolve({ ok: false as const, error: articlePublicationError("invalid_input") });
     },
   };

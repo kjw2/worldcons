@@ -2,6 +2,7 @@ import { articleLifecycleService } from "@/lib/article-lifecycle/service";
 import type { ArticleLifecycleTransitionInput } from "@/lib/article-lifecycle/types";
 import { mapLegacyArticleLifecycle, type LegacyArticleLifecycleEvidence } from "@/lib/article-lifecycle/mapping";
 import { createHash } from "@/lib/utils/hash";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 export const ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_FLAG = "ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED";
 export const ARTICLE_LIFECYCLE_P2_READ_FLAG = "ARTICLE_LIFECYCLE_P2_READ_ENABLED";
@@ -57,7 +58,9 @@ export function articleLifecycleP2ShadowWriteEnabled(environment: Record<string,
 }
 
 export function articleLifecycleP2ReadsEnabled(environment: Record<string, string | undefined> = process.env) {
-  return explicitTrue(environment[ARTICLE_LIFECYCLE_P2_READ_FLAG]);
+  const selected = explicitTrue(environment[ARTICLE_LIFECYCLE_P2_READ_FLAG]);
+  recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "read", authority: selected ? "new" : "legacy", outcome: "selected" }, { environment });
+  return selected;
 }
 
 export function articleLifecycleP2ShadowCohorts(environment: Record<string, string | undefined> = process.env) {
@@ -76,13 +79,23 @@ export async function shadowArticleLifecycleTransition(
   } = {},
 ): Promise<ArticleLifecycleShadowResult> {
   const environment = options.environment ?? process.env;
-  if (!articleLifecycleP2ShadowWriteEnabled(environment)) return { shadow: "disabled" };
-  if (!articleLifecycleP2ShadowCohorts(environment).has(input.cohort)) return { shadow: "cohort_disabled" };
+  recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "legacy", outcome: "succeeded" }, { environment });
+  if (!articleLifecycleP2ShadowWriteEnabled(environment)) {
+    recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "new", outcome: "disabled" }, { environment });
+    return { shadow: "disabled" };
+  }
+  if (!articleLifecycleP2ShadowCohorts(environment).has(input.cohort)) {
+    recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "new", outcome: "skipped" }, { environment });
+    return { shadow: "cohort_disabled" };
+  }
 
   const service = options.service ?? articleLifecycleService;
   try {
     const current = await service.get(input.articleId);
-    if (!current.ok) return { shadow: "failed", errorCode: current.error.code };
+    if (!current.ok) {
+      recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "new", outcome: "failed" }, { environment });
+      return { shadow: "failed", errorCode: current.error.code };
+    }
     const idempotencyKey = `p2-shadow:${createHash(`${input.articleId}:${current.data.revision}:${input.source}:${input.reasonCode}`, 64)}`;
     const result = await service.transition({
       ...input,
@@ -91,14 +104,17 @@ export async function shadowArticleLifecycleTransition(
     });
     if (!result.ok) {
       console.warn("[article lifecycle shadow]", { event: "transition_failed", source: input.source, errorCode: result.error.code });
+      recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "new", outcome: "failed" }, { environment });
       return { shadow: "failed", errorCode: result.error.code };
     }
+    recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "new", outcome: result.data.applied ? "succeeded" : "skipped" }, { environment });
     return {
       shadow: result.data.applied ? "written" : "noop",
       revision: result.data.revision,
       idempotent: result.data.idempotent,
     };
   } catch {
+    recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "write", authority: "new", outcome: "failed" }, { environment });
     console.warn("[article lifecycle shadow]", { event: "transition_failed", source: input.source, errorCode: "internal" });
     return { shadow: "failed", errorCode: "internal" };
   }

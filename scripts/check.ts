@@ -1292,7 +1292,11 @@ async function assertAdminRouteSecurityControls() {
     const adminQueriesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
     assert(adminQueriesSource.includes('rpc("rpc_admin_dashboard_snapshot")'), "admin dashboard queries must try the summary snapshot RPC");
     assert(adminQueriesSource.includes("loadAdminDashboardLegacyData"), "admin dashboard queries must keep the legacy fallback path");
-    assert(/\(await loadAdminDashboardSnapshot\(\)\) \?\? loadAdminDashboardLegacyData\(\)/.test(adminQueriesSource), "admin dashboard queries must fallback when the snapshot is unavailable");
+    assert(
+      adminQueriesSource.includes("const snapshot = await loadAdminDashboardSnapshot()")
+        && adminQueriesSource.includes("const legacy = await loadAdminDashboardLegacyData()"),
+      "admin dashboard queries must fallback when the snapshot is unavailable",
+    );
 
     const analyticsQueriesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/analytics.ts"), "utf8");
     assert(analyticsQueriesSource.includes('rpc("rpc_admin_analytics_health_snapshot"'), "analytics queries must try the health snapshot RPC");

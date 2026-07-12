@@ -123,7 +123,7 @@ const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summar
 const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text`;
 
 function publicationProjectionEnabled(includeUnpublished?: boolean) {
-  return !includeUnpublished && articlePublicationV4ReadsEnabled();
+  return !includeUnpublished && articlePublicationV4ReadsEnabled(process.env, "public_query");
 }
 
 function articleRelation(includeUnpublished?: boolean) {

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 import { fallbackErrorClassForArticleStatus, fallbackReviewStateForArticleStatus } from "@/lib/db/article-triage";
 import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
 import { listIngestionRuns, listSources } from "@/lib/db/queries";
@@ -836,7 +837,15 @@ async function loadAdminDashboardLegacyData(): Promise<AdminDashboardData> {
 }
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
-  return (await loadAdminDashboardSnapshot()) ?? loadAdminDashboardLegacyData();
+  const snapshot = await loadAdminDashboardSnapshot();
+  if (snapshot) {
+    recordCompatibilityObservation({ surface: "admin_dashboard", domain: "operations", direction: "read", authority: "new", outcome: "succeeded" });
+    return snapshot;
+  }
+  recordCompatibilityObservation({ surface: "admin_dashboard", domain: "operations", direction: "read", authority: "fallback", outcome: "fallback" });
+  const legacy = await loadAdminDashboardLegacyData();
+  recordCompatibilityObservation({ surface: "admin_dashboard", domain: "operations", direction: "read", authority: "legacy", outcome: "succeeded" });
+  return legacy;
 }
 
 export async function listAdminArticles(filters: AdminArticleListFilters = {}): Promise<AdminArticleListResult> {

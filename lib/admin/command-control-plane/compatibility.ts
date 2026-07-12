@@ -4,6 +4,7 @@ import { adminCommandService } from "@/lib/admin/command-control-plane/service";
 import type { AdminCommandResult, SubmittedAdminCommand } from "@/lib/admin/command-control-plane/types";
 import { redactAdminAuditMetadata } from "@/lib/security/audit-redaction";
 import { createHash } from "@/lib/utils/hash";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 export const ADMIN_QUEUE_V3_SHADOW_WRITE_FLAG = "ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED";
 
@@ -60,9 +61,19 @@ export async function executeAdminCompatibilityCommand<T>(
   executeLegacy: () => Promise<T> | T,
   options: AdminCompatibilityCommandOptions<T>,
 ): Promise<AdminCompatibilityCommandResult<T>> {
-  const value = await executeLegacy();
+  let value: T;
+  try {
+    value = await executeLegacy();
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction: "write", authority: "legacy", outcome: "succeeded" });
+  } catch (error) {
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction: "write", authority: "legacy", outcome: "failed" });
+    throw error;
+  }
   const shadowEnabled = options.shadowEnabled ?? adminQueueV3ShadowWriteEnabled();
-  if (!shadowEnabled) return { value, authority: "legacy", shadow: "disabled" };
+  if (!shadowEnabled) {
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction: "write", authority: "new", outcome: "disabled" });
+    return { value, authority: "legacy", shadow: "disabled" };
+  }
 
   let legacySucceeded = false;
   try {
@@ -73,7 +84,10 @@ export async function executeAdminCompatibilityCommand<T>(
       commandType: input.commandType,
     });
   }
-  if (!legacySucceeded) return { value, authority: "legacy", shadow: "skipped" };
+  if (!legacySucceeded) {
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction: "write", authority: "new", outcome: "skipped" });
+    return { value, authority: "legacy", shadow: "skipped" };
+  }
 
   const identity = buildAdminCompatibilityCommandIdentity(input);
   const submit = options.submit ?? adminCommandService.submit;
@@ -93,12 +107,14 @@ export async function executeAdminCompatibilityCommand<T>(
   }
 
   if (!shadowResult.ok) {
+    recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction: "write", authority: "new", outcome: "failed" });
     console.warn("[admin command shadow]", {
       event: "admin_command_shadow_failed",
       commandType: input.commandType,
       errorCode: shadowResult.error.code,
     });
   }
+  if (shadowResult.ok) recordCompatibilityObservation({ surface: "admin_command", domain: "queue", direction: "write", authority: "new", outcome: "succeeded" });
 
   return {
     value,

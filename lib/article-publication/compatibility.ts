@@ -5,6 +5,8 @@ import type {
   ArticleVersionProvenanceActor,
 } from "@/lib/article-publication/types";
 import { createHash } from "@/lib/utils/hash";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
+import type { P5CompatibilityObservation } from "@/lib/admin/p5/types";
 
 export const ADMIN_PUBLICATION_V4_SHADOW_WRITE_FLAG = "ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED";
 export const ADMIN_PUBLICATION_V4_READ_FLAG = "ADMIN_PUBLICATION_V4_READ_ENABLED";
@@ -38,8 +40,13 @@ export function articlePublicationV4ShadowWriteEnabled(environment: Record<strin
   return explicitTrue(environment[ADMIN_PUBLICATION_V4_SHADOW_WRITE_FLAG]);
 }
 
-export function articlePublicationV4ReadsEnabled(environment: Record<string, string | undefined> = process.env) {
-  return explicitTrue(environment[ADMIN_PUBLICATION_V4_READ_FLAG]);
+export function articlePublicationV4ReadsEnabled(
+  environment: Record<string, string | undefined> = process.env,
+  surface: P5CompatibilityObservation["surface"] = "article_publication",
+) {
+  const selected = explicitTrue(environment[ADMIN_PUBLICATION_V4_READ_FLAG]);
+  recordCompatibilityObservation({ surface, domain: "projection", direction: "read", authority: selected ? "new" : "legacy", outcome: "selected" }, { environment });
+  return selected;
 }
 
 export function articlePublicationV4OutboxProcessorEnabled(environment: Record<string, string | undefined> = process.env) {
@@ -62,12 +69,19 @@ export async function shadowConfirmedLegacyArticleMutation(
 ): Promise<ArticlePublicationShadowResult> {
   if (!input.succeeded) return { shadow: "not_confirmed" };
   const environment = options.environment ?? process.env;
-  if (!articlePublicationV4ShadowWriteEnabled(environment)) return { shadow: "disabled" };
+  recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "legacy", outcome: "succeeded" }, { environment });
+  if (!articlePublicationV4ShadowWriteEnabled(environment)) {
+    recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: "disabled" }, { environment });
+    return { shadow: "disabled" };
+  }
   const service = options.service ?? articlePublicationService;
 
   try {
     const current = await service.getSnapshot(input.articleId);
-    if (!current.ok) return { shadow: "failed", errorCode: current.error.code };
+    if (!current.ok) {
+      recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: "failed" }, { environment });
+      return { shadow: "failed", errorCode: current.error.code };
+    }
     const legacyPublic = options.legacyPublic
       ? await options.legacyPublic(input.articleId)
       : await loadLegacyPublicOutcome(input.articleId);
@@ -102,8 +116,10 @@ export async function shadowConfirmedLegacyArticleMutation(
     const result = await service.transition(transition);
     if (!result.ok) {
       console.warn("[article publication shadow]", { event: "transition_failed", errorCode: result.error.code });
+      recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: "failed" }, { environment });
       return { shadow: "failed", errorCode: result.error.code };
     }
+    recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: result.data.versionCreated || result.data.publicationApplied ? "succeeded" : "skipped" }, { environment });
     return {
       shadow: result.data.versionCreated || result.data.publicationApplied ? "written" : "noop",
       versionCreated: result.data.versionCreated,
@@ -111,6 +127,7 @@ export async function shadowConfirmedLegacyArticleMutation(
       idempotent: result.data.idempotent,
     };
   } catch {
+    recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: "failed" }, { environment });
     console.warn("[article publication shadow]", { event: "transition_failed", errorCode: "internal" });
     return { shadow: "failed", errorCode: "internal" };
   }

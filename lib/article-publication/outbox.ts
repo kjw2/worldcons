@@ -1,6 +1,7 @@
 import { postgresArticleCacheOutboxRepository } from "@/lib/article-publication/repository";
 import type { ArticleCacheOutboxEvent, ArticleCacheOutboxRepository } from "@/lib/article-publication/types";
 import { articlePublicationV4OutboxProcessorEnabled } from "@/lib/article-publication/compatibility";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 function errorCode(error: unknown) {
@@ -29,6 +30,7 @@ export async function processArticleCacheOutboxBatch(options: {
   const limit = boundedInteger(options.limit, 20, { min: 1, max: 100 });
   const leaseSeconds = boundedInteger(options.leaseSeconds, 120, { min: 15, max: 900 });
   const events = await repository.claim(options.workerId, limit, leaseSeconds);
+  recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "read", authority: "new", outcome: "succeeded" });
   if (events.length === 0) {
     return { enabled: true as const, claimedCount: 0, deliveredCount: 0, failedCount: 0, deadLetterCount: 0 };
   }
@@ -38,6 +40,7 @@ export async function processArticleCacheOutboxBatch(options: {
     let deliveredCount = 0;
     for (const event of events) {
       await repository.deliver(event, options.workerId);
+      recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: "succeeded" });
       deliveredCount += 1;
     }
     return { enabled: true as const, claimedCount: events.length, deliveredCount, failedCount: 0, deadLetterCount: 0 };
@@ -47,6 +50,7 @@ export async function processArticleCacheOutboxBatch(options: {
     for (const event of events) {
       try {
         const status = await repository.fail(event, options.workerId, errorCode(error));
+        recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction: "write", authority: "new", outcome: "failed" });
         failedCount += 1;
         if (status === "dead_letter") deadLetterCount += 1;
       } catch {

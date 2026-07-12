@@ -77,13 +77,13 @@ async function localSemanticSearch(filters: ArticleListFilters, embedding: numbe
   }
 
   let query = supabase
-    .from(articlePublicationV4ReadsEnabled() ? "public_article_projection_p3" : "articles")
+    .from(articlePublicationV4ReadsEnabled(process.env, "vector_search") ? "public_article_projection_p3" : "articles")
     .select("id, embedding")
     .not("embedding", "is", null)
     .eq("status", "summarized")
     .limit(Math.max(matchCount, 100));
 
-  if (!articlePublicationV4ReadsEnabled()) {
+  if (!articlePublicationV4ReadsEnabled(process.env, "vector_search")) {
     query = query.filter("source_metadata->collection->>publishable", "eq", "true");
   }
 
@@ -141,7 +141,7 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const matchCount = Math.min(Math.max(page * pageSize * 3, 20), 200);
-  const searchRpc = articlePublicationV4ReadsEnabled() ? "match_public_article_versions_p3" : "match_articles";
+  const searchRpc = articlePublicationV4ReadsEnabled(process.env, "vector_search") ? "match_public_article_versions_p3" : "match_articles";
   const { data, error } = await supabase.rpc(searchRpc, {
     query_embedding: embedding,
     match_count: matchCount,

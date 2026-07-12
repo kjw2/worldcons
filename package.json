@@ -31,12 +31,16 @@
     "admin:worker:p1": "tsx scripts/admin-command-worker-p1.ts",
     "admin:lifecycle:p2": "tsx scripts/article-lifecycle-p2.ts",
     "admin:publication:p3": "tsx scripts/article-publication-p3.ts",
+    "admin:health:p5": "tsx scripts/admin-health-p5.ts",
+    "admin:retirement:p5": "tsx scripts/admin-retirement-readiness-p5.ts",
+    "admin:retention:p5": "tsx scripts/admin-retention-p5.ts",
     "test:gate0": "tsx --test tests/admin-redesign-gate0.test.ts",
     "test:p0": "tsx --test tests/admin-command-control-plane.test.ts tests/admin-command-control-plane.postgres.test.ts",
     "test:p1": "tsx --test tests/admin-command-worker-p1.test.ts tests/admin-command-worker-p1-crawler.test.ts tests/admin-command-worker-p1.postgres.test.ts",
     "test:p2": "tsx --test tests/article-lifecycle-p2.test.ts tests/article-lifecycle-p2.postgres.test.ts",
     "test:p3": "tsx --test tests/article-publication-p3.test.ts tests/article-publication-p3.postgres.test.ts",
     "test:p4": "tsx --test tests/admin-redesign-p4.test.ts",
+    "test:p5": "tsx --test tests/admin-governance-p5.test.ts tests/admin-governance-p5.postgres.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {

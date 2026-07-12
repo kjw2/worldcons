@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 const DEFAULT_ANALYTICS_DAYS = 30;
 
@@ -632,12 +633,17 @@ async function loadAnalyticsHealthSnapshot(days: number): Promise<AnalyticsHealt
 
 async function loadAnalyticsHealthData(days: number): Promise<AnalyticsHealthData> {
   const snapshot = await loadAnalyticsHealthSnapshot(days);
-  if (snapshot) return snapshot;
+  if (snapshot) {
+    recordCompatibilityObservation({ surface: "admin_analytics", domain: "operations", direction: "read", authority: "new", outcome: "succeeded" });
+    return snapshot;
+  }
+  recordCompatibilityObservation({ surface: "admin_analytics", domain: "operations", direction: "read", authority: "fallback", outcome: "fallback" });
 
   const [ingestionRuns, articleRows] = await Promise.all([
     loadIngestionRunRows(days),
     loadArticleSummaryRows(),
   ]);
+  recordCompatibilityObservation({ surface: "admin_analytics", domain: "operations", direction: "read", authority: "legacy", outcome: "succeeded" });
   return {
     collectionHealth: buildCollectionHealth(ingestionRuns),
     modelHealth: buildModelHealth(articleRows),
