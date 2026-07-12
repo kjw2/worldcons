@@ -87,7 +87,7 @@ The migrations are additive and rerunnable:
 Rehearse on a production-shaped copy before any target migration:
 
 1. Capture the live legacy public count and identity digest in one repeatable-read snapshot. Gate 0 recorded 1,174 public rows, but live evidence at execution is authoritative.
-2. Apply all three files twice. Confirm the second application changes no contract and that legacy columns, indexes, readers, and writers still exist.
+2. Apply all four files twice. Confirm the second application changes no contract and that legacy columns, indexes, readers, and writers still exist.
 3. Record migration duration, longest lock wait, table/index growth, and query plans for projection list/detail/search/count queries.
 4. Run the P3 PostgreSQL suite against a disposable database whose name contains `p3`: `P3_TEST_DATABASE_URL=... pnpm test:p3`.
 5. Verify direct DML rejection, RPC `SECURITY DEFINER`, fixed `search_path`, PUBLIC/anon/authenticated revocation, and service-role-only mutation execution.

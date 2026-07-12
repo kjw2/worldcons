@@ -1,9 +1,6 @@
 -- P5 acceptance corrections: digest-scoped approvals and presence-based observations.
 -- Rerunnable; no authority data or compatibility path is removed.
 
-create index if not exists admin_governance_evidence_p5_digest_idx
-  on admin_governance_evidence_p5 (evidence_type, evidence_digest, evidence_at desc);
-
 revoke all on function admin_record_owner_approval_p5(text, text, text, timestamptz) from public;
 
 do $$

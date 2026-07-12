@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -107,6 +107,9 @@ function Navigation({ pathname, governanceEnabled, onNavigate }: { pathname: str
 export function AdminShell({ children, csrfToken, identity, governanceEnabled }: { children: React.ReactNode; csrfToken: string; identity: string; governanceEnabled: boolean }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileDialogRef = useRef<HTMLDivElement>(null);
+  const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
   const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, ...(governanceEnabled ? [governanceNavigation] : []), ...systemNavigation], [governanceEnabled]);
   const location = useMemo(
     () => allNavigation.find((item) => isCurrent(pathname, item))?.label ?? "Administrator",
@@ -116,11 +119,34 @@ export function AdminShell({ children, csrfToken, identity, governanceEnabled }:
   useEffect(() => setMobileOpen(false), [pathname]);
   useEffect(() => {
     if (!mobileOpen) return;
-    function close(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileOpen(false);
+    const menuButton = mobileMenuButtonRef.current;
+    mobileCloseButtonRef.current?.focus();
+    function handleDialogKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = mobileDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
+    window.addEventListener("keydown", handleDialogKey);
+    return () => {
+      window.removeEventListener("keydown", handleDialogKey);
+      menuButton?.focus();
+    };
   }, [mobileOpen]);
 
   return (
@@ -153,6 +179,7 @@ export function AdminShell({ children, csrfToken, identity, governanceEnabled }:
             <div className="flex min-h-16 min-w-0 items-center justify-between gap-3 px-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <button
+                  ref={mobileMenuButtonRef}
                   type="button"
                   onClick={() => setMobileOpen(true)}
                   className="focus-ring inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-rule text-ink/70 hover:bg-parchment lg:hidden"
@@ -193,12 +220,13 @@ export function AdminShell({ children, csrfToken, identity, governanceEnabled }:
       </div>
 
       {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Administrator navigation">
+        <div ref={mobileDialogRef} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Administrator navigation">
           <button type="button" className="absolute inset-0 bg-ink/35" onClick={() => setMobileOpen(false)} aria-label="Close navigation" />
           <aside className="absolute inset-y-0 left-0 flex w-[min(320px,86vw)] flex-col border-r border-rule bg-white shadow-panel">
             <div className="flex min-h-16 items-center justify-between border-b border-rule px-4">
               <span className="font-semibold text-ink">WorldCons Admin</span>
               <button
+                ref={mobileCloseButtonRef}
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 className="focus-ring inline-flex size-10 items-center justify-center rounded-md border border-rule text-ink/68"

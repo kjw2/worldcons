@@ -22,6 +22,7 @@
 - admin jobs/admin job events/RPC migration: `supabase/migrations/20260709150000_admin_jobs.sql`
 - admin job claim RPC parameter fix: `supabase/migrations/20260710100000_fix_claim_admin_job_parameter_references.sql`
 - P5 additive governance/aggregate health migration: `supabase/migrations/20260712230000_admin_governance_p5.sql` (implementation-ready; production evidence pending)
+- P5 concurrent operational indexes, outside a transaction: `supabase/migrations/20260712231000_admin_governance_p5_indexes.sql`
 - P5 digest/owner-binding corrective migration: `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`
 
 read-mostly readiness check:

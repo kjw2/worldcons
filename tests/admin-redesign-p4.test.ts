@@ -90,6 +90,10 @@ test("shell navigation covers new and retained deep links with mobile keyboard b
   assert.match(shell, /event\.key === "Escape"/);
   assert.match(shell, /min-w-0 overflow-x-clip/);
   assert.match(shell, /aria-modal="true"/);
+  assert.match(shell, /mobileCloseButtonRef\.current\?\.focus\(\)/);
+  assert.match(shell, /event\.key !== "Tab"/);
+  assert.match(shell, /const menuButton = mobileMenuButtonRef\.current/);
+  assert.match(shell, /menuButton\?\.focus\(\)/);
   assert.doesNotMatch(shell, /pathname === "\/admin\/login"/);
 });
 

@@ -4,7 +4,7 @@
 
 P5 is **implementation-ready**. Gate 5 and compatibility retirement remain **evidence-pending** until a real production observation window, current restore rehearsal, named approvals, and all health/parity gates pass. This stage does not remove a legacy reader or writer, flip a feature flag, apply a production migration, deploy, or certify production retirement.
 
-The additive migrations are `supabase/migrations/20260712230000_admin_governance_p5.sql` and the rerunnable acceptance correction `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`. Apply them in that order after P0-P3. The health RPC returns aggregate counts/presence, age values, state distributions, source keys, evidence digests, approval roles, distinct actor counts, expiry, and status only. It does not return row identifiers, URLs, article/source text, payloads, credentials, usernames, or actor hashes.
+The additive migrations are `supabase/migrations/20260712230000_admin_governance_p5.sql`, `supabase/migrations/20260712231000_admin_governance_p5_indexes.sql`, and the rerunnable acceptance correction `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`. Apply them in that order after P0-P3. Run the index file outside a transaction because every index uses `CREATE INDEX CONCURRENTLY`; the base and correction files remain transactional. The health RPC returns aggregate counts/presence, age values, state distributions, source keys, evidence digests, approval roles, distinct actor counts, expiry, and status only. It does not return row identifiers, URLs, article/source text, payloads, credentials, usernames, or actor hashes.
 
 ## Ownership placeholders
 
