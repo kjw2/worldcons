@@ -26,6 +26,9 @@
     "glossary:sync": "tsx scripts/sync-glossary-terms.ts",
     "glossary:candidates": "tsx scripts/glossary-candidates.ts",
     "admin:readiness": "tsx scripts/admin-ops-readiness.ts",
+    "admin:gate0": "tsx scripts/admin-redesign-gate0.ts",
+    "admin:gate0:dry": "tsx scripts/admin-redesign-gate0.ts --dry-run --environment=ci",
+    "test:gate0": "tsx --test tests/admin-redesign-gate0.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {
