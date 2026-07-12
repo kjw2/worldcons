@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { adminIngestResultSucceeded } from "@/lib/admin/admin-ingest-jobs";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
 import { summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
@@ -8,6 +9,20 @@ import { boundedInteger } from "@/lib/utils/numbers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function cronIngestSucceeded(value: { ingest: unknown; summarize: unknown; tags: unknown }) {
+  return (
+    adminIngestResultSucceeded(value.ingest) &&
+    !summaryBatchWasDeferred(value.summarize) &&
+    !summaryBatchHasHardFailure(value.summarize) &&
+    isRecord(value.tags) &&
+    value.tags.refreshed === true
+  );
+}
 
 export async function GET(request: Request) {
   if (!isAuthorizedSecretRequest(request)) {
@@ -32,6 +47,7 @@ export async function GET(request: Request) {
       invalidatePublicContentCaches();
       return { ingest, summarize, tags };
     },
+    { isLegacySuccess: cronIngestSucceeded },
   );
   const { ingest, summarize, tags } = compatibility.value;
   const incomplete = summaryBatchWasDeferred(summarize) || summaryBatchHasHardFailure(summarize);

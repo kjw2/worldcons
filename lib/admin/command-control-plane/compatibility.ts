@@ -18,8 +18,14 @@ export interface AdminCompatibilityCommandInput {
 export interface AdminCompatibilityCommandResult<T> {
   value: T;
   authority: "legacy";
-  shadow: "disabled" | "written" | "failed";
+  shadow: "disabled" | "skipped" | "written" | "failed";
   shadowResult?: AdminCommandResult<SubmittedAdminCommand>;
+}
+
+interface AdminCompatibilityCommandOptions<T> {
+  isLegacySuccess: (value: T) => boolean;
+  shadowEnabled?: boolean;
+  submit?: typeof adminCommandService.submit;
 }
 
 export function adminQueueV3ShadowWriteEnabled(environment: Record<string, string | undefined> = process.env) {
@@ -52,17 +58,25 @@ export function buildAdminCompatibilityCommandIdentity(input: AdminCompatibility
 export async function executeAdminCompatibilityCommand<T>(
   input: AdminCompatibilityCommandInput,
   executeLegacy: () => Promise<T> | T,
-  dependencies: {
-    shadowEnabled?: boolean;
-    submit?: typeof adminCommandService.submit;
-  } = {},
+  options: AdminCompatibilityCommandOptions<T>,
 ): Promise<AdminCompatibilityCommandResult<T>> {
   const value = await executeLegacy();
-  const shadowEnabled = dependencies.shadowEnabled ?? adminQueueV3ShadowWriteEnabled();
+  const shadowEnabled = options.shadowEnabled ?? adminQueueV3ShadowWriteEnabled();
   if (!shadowEnabled) return { value, authority: "legacy", shadow: "disabled" };
 
+  let legacySucceeded = false;
+  try {
+    legacySucceeded = options.isLegacySuccess(value);
+  } catch {
+    console.warn("[admin command shadow]", {
+      event: "admin_command_success_predicate_failed",
+      commandType: input.commandType,
+    });
+  }
+  if (!legacySucceeded) return { value, authority: "legacy", shadow: "skipped" };
+
   const identity = buildAdminCompatibilityCommandIdentity(input);
-  const submit = dependencies.submit ?? adminCommandService.submit;
+  const submit = options.submit ?? adminCommandService.submit;
   let shadowResult: AdminCommandResult<SubmittedAdminCommand>;
   try {
     shadowResult = await submit({

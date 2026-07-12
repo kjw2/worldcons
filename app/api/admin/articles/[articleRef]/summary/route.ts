@@ -23,6 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ art
       request,
     },
     () => updateArticleSummaryManually({ articleId, body }),
+    { isLegacySuccess: (result) => result.status === "updated" },
   );
   const result = compatibility.value;
   if (result.status === "updated") {

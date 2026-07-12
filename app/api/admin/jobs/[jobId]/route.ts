@@ -64,6 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     const compatibility = await executeAdminCompatibilityCommand(
       { commandType: "admin.jobs.cancel", payloadRef: { jobId, reasonPresent: Boolean(parsed.data.reason) }, request, priority: 100 },
       () => markAdminJobCancelled({ jobId, reason: parsed.data.reason }),
+      { isLegacySuccess: (result) => result.ok },
     );
     const cancelled = compatibility.value;
     if (!cancelled.ok) {
@@ -118,6 +119,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   const compatibility = await executeAdminCompatibilityCommand(
     { commandType: "admin.jobs.retry", payloadRef: { jobId, reasonPresent: Boolean(parsed.data.reason) }, request, priority: 50 },
     () => retryAdminJob({ jobId, reason: parsed.data.reason }),
+    { isLegacySuccess: (result) => result.ok },
   );
   const retried = compatibility.value;
   if (!retried.ok) {

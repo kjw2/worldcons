@@ -6,6 +6,7 @@ import {
   adminQueueV3ShadowWriteEnabled,
   executeAdminCompatibilityCommand,
 } from "../lib/admin/command-control-plane/compatibility";
+import { adminIngestResultSucceeded } from "../lib/admin/admin-ingest-jobs";
 import { adminCommandRetryBackoffSeconds, classifyAdminCommandFailure } from "../lib/admin/command-control-plane/policy";
 
 const migrationPath = path.join(
@@ -44,6 +45,19 @@ test("retry classification and exponential backoff are bounded", () => {
   assert.equal(adminCommandRetryBackoffSeconds(20, 15, 900), 900);
 });
 
+test("ingestion compatibility success rejects blocked, empty, and partial-failure results", () => {
+  assert.equal(adminIngestResultSucceeded({ mode: "blocked", results: [] }), false);
+  assert.equal(adminIngestResultSucceeded({ mode: "database", results: [] }), false);
+  assert.equal(
+    adminIngestResultSucceeded({ mode: "database", results: [{ failedCount: 1, errors: ["failed"] }] }),
+    false,
+  );
+  assert.equal(
+    adminIngestResultSucceeded({ mode: "database", results: [{ failedCount: 0, errors: [] }] }),
+    true,
+  );
+});
+
 test("compatibility authority is default-off and preserves legacy results", async () => {
   assert.equal(adminQueueV3ShadowWriteEnabled({}), false);
   assert.equal(adminQueueV3ShadowWriteEnabled({ ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED: "false" }), false);
@@ -54,6 +68,9 @@ test("compatibility authority is default-off and preserves legacy results", asyn
     { commandType: "admin.test", payloadRef: { action: "test" } },
     async () => ({ legacy: true }),
     {
+      isLegacySuccess: () => {
+        throw new Error("default-off must not evaluate the success predicate");
+      },
       shadowEnabled: false,
       submit: async () => {
         submitted = true;
@@ -78,6 +95,7 @@ test("compatibility shadow writes are terminal, redacted, and non-authoritative"
     },
     () => "legacy-result",
     {
+      isLegacySuccess: () => true,
       shadowEnabled: true,
       submit: async (input) => {
         captured = input as unknown as Record<string, unknown>;
@@ -101,6 +119,89 @@ test("compatibility shadow writes are terminal, redacted, and non-authoritative"
   assert.deepEqual(captured?.payloadRef, { action: "test", apiKey: "[redacted]", nested: { password: "[redacted]" } });
 });
 
+test("resolved legacy failure does not create false-positive shadow evidence", async () => {
+  const legacyFailure = { ok: false as const, error: "legacy failure" };
+  let submitted = false;
+  const result = await executeAdminCompatibilityCommand(
+    { commandType: "admin.test", payloadRef: { action: "test" } },
+    () => legacyFailure,
+    {
+      isLegacySuccess: (value) => value.ok,
+      shadowEnabled: true,
+      submit: async () => {
+        submitted = true;
+        throw new Error("resolved failures must not submit");
+      },
+    },
+  );
+
+  assert.equal(result.value, legacyFailure);
+  assert.equal(result.shadow, "skipped");
+  assert.equal(result.shadowResult, undefined);
+  assert.equal(submitted, false);
+});
+
+test("thrown legacy failure propagates without evaluating or shadow-submitting", async () => {
+  const legacyFailure = new Error("legacy threw");
+  let predicateEvaluated = false;
+  let submitted = false;
+
+  await assert.rejects(
+    executeAdminCompatibilityCommand(
+      { commandType: "admin.test", payloadRef: { action: "test" } },
+      async () => {
+        throw legacyFailure;
+      },
+      {
+        isLegacySuccess: () => {
+          predicateEvaluated = true;
+          return true;
+        },
+        shadowEnabled: true,
+        submit: async () => {
+          submitted = true;
+          throw new Error("thrown failures must not submit");
+        },
+      },
+    ),
+    (error: unknown) => error === legacyFailure,
+  );
+
+  assert.equal(predicateEvaluated, false);
+  assert.equal(submitted, false);
+});
+
+test("success predicate failures skip shadowing without changing the legacy value", async () => {
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  let submitted = false;
+  console.warn = (...values: unknown[]) => warnings.push(values);
+  try {
+    const result = await executeAdminCompatibilityCommand(
+      { commandType: "admin.test", payloadRef: { action: "test" } },
+      () => "legacy-result",
+      {
+        isLegacySuccess: () => {
+          throw new Error("predicate detail must not escape");
+        },
+        shadowEnabled: true,
+        submit: async () => {
+          submitted = true;
+          throw new Error("predicate failures must not submit");
+        },
+      },
+    );
+
+    assert.equal(result.value, "legacy-result");
+    assert.equal(result.shadow, "skipped");
+    assert.equal(submitted, false);
+    assert.match(JSON.stringify(warnings), /admin_command_success_predicate_failed/);
+    assert.doesNotMatch(JSON.stringify(warnings), /predicate detail must not escape/);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 test("compatibility shadow exceptions cannot change the legacy response", async () => {
   const originalWarn = console.warn;
   const warnings: unknown[][] = [];
@@ -110,6 +211,7 @@ test("compatibility shadow exceptions cannot change the legacy response", async 
       { commandType: "admin.test", payloadRef: { action: "test" } },
       () => "legacy-result",
       {
+        isLegacySuccess: () => true,
         shadowEnabled: true,
         submit: async () => {
           throw new Error("database detail must not escape");
@@ -147,11 +249,13 @@ test("all administrator execution ingress uses auth and the compatibility adapte
     const source = fs.readFileSync(path.join(process.cwd(), route), "utf8");
     assert.match(source, /adminMutationAuthFailureStatus/, `${route} must enforce mutation auth`);
     assert.match(source, /executeAdminCompatibilityCommand/, `${route} must use the compatibility adapter`);
+    assert.match(source, /isLegacySuccess/, `${route} must define command shadow success explicitly`);
   }
   for (const route of cronRoutes) {
     const source = fs.readFileSync(path.join(process.cwd(), route), "utf8");
     assert.match(source, /isAuthorizedSecretRequest/, `${route} must retain distinct cron auth`);
     assert.match(source, /executeAdminCompatibilityCommand/, `${route} must use the compatibility adapter`);
+    assert.match(source, /isLegacySuccess/, `${route} must define command shadow success explicitly`);
     assert.doesNotMatch(source, /adminMutationAuthFailureStatus/, `${route} must not use session mutation auth`);
   }
 });
@@ -167,6 +271,9 @@ test("P0 documentation fixes migration order, flag default, evidence, and rollba
   assert.match(operations, /20260710100000_fix_claim_admin_job_parameter_references\.sql/);
   assert.match(operations, /20260712090000_admin_command_control_plane\.sql/);
   assert.match(operations, /defaults to `false`/);
+  assert.match(operations, /Merely resolving is not success/);
+  assert.match(operations, /Resolved failures and no-ops/);
+  assert.match(operations, /A thrown legacy failure propagates unchanged/);
   assert.match(operations, /Do not delete commands, runs, attempts, or events to roll back/);
   assert.match(operations, /migration is rehearsed on an approved production-shaped copy/);
 });

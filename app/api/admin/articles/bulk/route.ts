@@ -28,6 +28,13 @@ export async function POST(request: Request) {
       request,
     },
     () => runAdminArticleBulkAction({ action, refs, note }),
+    {
+      isLegacySuccess: (result) =>
+        result.mode === "database" &&
+        result.requestedCount > 0 &&
+        result.updatedCount === result.requestedCount &&
+        result.notFound.length === 0,
+    },
   );
   const result = compatibility.value;
   if (result.updatedCount > 0) {

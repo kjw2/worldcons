@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       leaseSeconds: parsed.data.leaseSeconds,
       jobTypes: parsed.data.jobTypes,
     }),
+    { isLegacySuccess: (result) => result.mode === "worker" && !result.error && result.failed === 0 },
   );
   const result = compatibility.value;
 

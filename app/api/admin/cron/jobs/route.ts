@@ -28,6 +28,7 @@ export async function GET(request: Request) {
   const compatibility = await executeAdminCompatibilityCommand(
     { commandType: "cron.jobs.drain", payloadRef: { maxJobs, leaseSeconds, jobTypes }, request, requestedBy: "cron" },
     () => runAdminJobWorker({ workerId: `admin-job-cron:${Date.now()}`, maxJobs, leaseSeconds, jobTypes }),
+    { isLegacySuccess: (result) => result.mode === "worker" && !result.error && result.failed === 0 },
   );
   const result = compatibility.value;
 

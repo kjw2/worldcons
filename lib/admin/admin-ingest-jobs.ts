@@ -166,6 +166,18 @@ export function compactAdminIngestExecutionSummary(result: Pick<AdminIngestExecu
   });
 }
 
+export function adminIngestResultSucceeded(value: unknown) {
+  if (!isRecord(value) || value.mode !== "database" || !Array.isArray(value.results) || value.results.length === 0) {
+    return false;
+  }
+  return value.results.every(
+    (result) =>
+      isRecord(result) &&
+      result.failedCount === 0 &&
+      (!Array.isArray(result.errors) || result.errors.length === 0),
+  );
+}
+
 export async function executeAdminIngestJobContext(context: AdminIngestRequestContext): Promise<AdminIngestExecutionResult> {
   validateAdminIngestJobContext(context);
   const { summarizeLimit, sourceKey } = context;

@@ -106,14 +106,15 @@ export async function POST(request: Request) {
         payloadRef: { provider, model: requestedModel ?? null },
         request,
       },
-      () => completeJsonWithMetadata(LLM_HEALTH_MESSAGES, { provider, model: requestedModel }),
+      async () => {
+        const completion = await completeJsonWithMetadata(LLM_HEALTH_MESSAGES, { provider, model: requestedModel });
+        if (!completion) throw new Error("No LLM completion available.");
+        parseJsonCompletion(completion.content);
+        return completion;
+      },
+      { isLegacySuccess: () => true },
     );
     const completion = compatibility.value;
-    if (!completion) {
-      throw new Error("No LLM completion available.");
-    }
-
-    parseJsonCompletion(completion.content);
     const durationMs = Date.now() - startedAt;
     await recordLlmTestAudit({
       request,

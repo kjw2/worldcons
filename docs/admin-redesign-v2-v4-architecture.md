@@ -81,7 +81,7 @@ Flags default off in every environment and are enabled in this order:
 
 Queue and publication flags are independent. Flag evaluation must be server-side for authority decisions, environment-scoped, observable without exposing secret configuration, and covered by default-off tests.
 
-For P0, only `ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED` is read by new code. Its exact default is `false`, including when unset or set to any value other than case-insensitive `true`. With the flag off, the compatibility adapter calls only the legacy implementation and returns its existing result. With it on, the legacy implementation remains authoritative and a successful legacy call is followed by a terminal `shadowed` command/run record. No P0 code claims or executes V3 work. A failed shadow write never changes the legacy response.
+For P0, only `ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED` is read by new code. Its exact default is `false`, including when unset or set to any value other than case-insensitive `true`. With the flag off, the compatibility adapter calls only the legacy implementation and returns its existing result without evaluating shadow success. With it on, every call site must provide an explicit domain success predicate; only a confirmed success is followed by a terminal `shadowed` command/run record. Resolved failure/no-op values and thrown failures never shadow-write. No P0 code claims or executes V3 work, and a failed shadow submission never changes the legacy response.
 
 ## Acceptance Principles
 

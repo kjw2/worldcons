@@ -100,6 +100,7 @@ async function mutateCandidate(request: Request) {
       request,
     },
     () => updateSourceUrlCandidateStatus(candidateId, targetStatus),
+    { isLegacySuccess: (result) => result.ok && Boolean(result.item) },
   );
   const result = compatibility.value;
   if (!result.ok) {

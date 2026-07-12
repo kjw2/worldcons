@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { adminIngestResultSucceeded } from "@/lib/admin/admin-ingest-jobs";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction } from "@/lib/ingest/review";
@@ -18,6 +19,13 @@ function reviewChangedPublicContent(value: unknown) {
   if (value.status === "published" || value.status === "closed_private") return true;
   if (isRecord(value.summarize) && value.summarize.status === "summarized") return true;
   return "ingest" in value;
+}
+
+function reviewActionSucceeded(value: unknown) {
+  if (!isRecord(value) || value.mode !== "database") return false;
+  if (value.status === "published" || value.status === "closed_private") return true;
+  if (isRecord(value.summarize)) return value.summarize.status === "summarized";
+  return adminIngestResultSucceeded(value.ingest);
 }
 
 export async function POST(request: Request) {
@@ -40,6 +48,7 @@ export async function POST(request: Request) {
       request,
     },
     () => runAdminReviewAction({ action, articleId, slug, note, provider, model }),
+    { isLegacySuccess: reviewActionSucceeded },
   );
   const result = compatibility.value;
   if (reviewChangedPublicContent(result)) {

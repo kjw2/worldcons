@@ -20,6 +20,7 @@ export async function POST(request: Request) {
   const compatibility = await executeAdminCompatibilityCommand(
     { commandType: "admin.public-cache.revalidate", payloadRef: { scope: "all" }, request },
     () => invalidatePublicContentCaches(),
+    { isLegacySuccess: (result) => result.revalidated === true },
   );
   const result = compatibility.value;
   await recordAdminSiteEvent(

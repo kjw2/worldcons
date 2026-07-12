@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { buildAdminIngestJobContext, executeAdminIngestJobContext, type AdminIngestRequestContext } from "@/lib/admin/admin-ingest-jobs";
+import {
+  adminIngestResultSucceeded,
+  buildAdminIngestJobContext,
+  executeAdminIngestJobContext,
+  type AdminIngestRequestContext,
+} from "@/lib/admin/admin-ingest-jobs";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { buildAdminJobIdempotencyKey, createAdminJob, type AdminJobRecord } from "@/lib/db/admin-jobs";
@@ -12,6 +17,20 @@ export const maxDuration = 60;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function inlineIngestSucceeded(context: AdminIngestRequestContext, result: Awaited<ReturnType<typeof executeAdminIngestJobContext>>) {
+  if (context.shouldIngest && !adminIngestResultSucceeded(result.ingest)) return false;
+  if (
+    context.shouldRefreshTags &&
+    context.action !== "retry-summary" &&
+    (!isRecord(result.tags) || result.tags.refreshed !== true)
+  ) return false;
+  return true;
 }
 
 function canRunInlineFallback() {
@@ -83,6 +102,7 @@ export async function POST(request: Request) {
         priority: context.action === "retry-summary" ? 20 : context.action === "summarize" ? 10 : 0,
       },
       () => enqueueAdminIngestJob(context),
+      { isLegacySuccess: (result) => result.ok },
     );
     const queued = compatibility.value;
     if (queued.ok) {
@@ -142,7 +162,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const { ingest, summarize, tags, resultSummary } = await executeAdminIngestJobContext(context);
+    const inlineCompatibility = await executeAdminCompatibilityCommand(
+      {
+        commandType: "admin.ingest.inline",
+        payloadRef: context.jobOptions,
+        request,
+        priority: context.action === "retry-summary" ? 20 : context.action === "summarize" ? 10 : 0,
+      },
+      () => executeAdminIngestJobContext(context),
+      { isLegacySuccess: (result) => inlineIngestSucceeded(context, result) },
+    );
+    const { ingest, summarize, tags, resultSummary } = inlineCompatibility.value;
 
     await recordAdminSiteEvent(
       {

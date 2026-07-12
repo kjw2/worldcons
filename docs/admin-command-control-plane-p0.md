@@ -30,7 +30,11 @@ When false:
 When true:
 
 - The same legacy implementation still executes first and remains authoritative.
-- After a successful legacy call, the adapter writes an immutable command and terminal `shadowed` run.
+- Every adapter call supplies an explicit domain success predicate. Merely resolving is not success.
+- Only after the predicate confirms success does the adapter write an immutable command and terminal `shadowed` run.
+- Resolved failures and no-ops, including `{ ok: false }`, unavailable, incomplete, skipped, invalid, not-found, no-database, and null-result outcomes, return unchanged with `shadow: "skipped"` and do not submit.
+- A thrown legacy failure propagates unchanged before the predicate or submitter can run.
+- A predicate failure is treated conservatively as non-success and does not submit.
 - A shadow write is never claimable and cannot duplicate execution.
 - A shadow failure does not change the legacy response. Its result is a structured safe command error available to the caller for observability.
 
@@ -89,7 +93,7 @@ $env:P0_TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55432/worldcons_p0'
 pnpm test:p0
 ```
 
-The focused acceptance cases are concurrent duplicate idempotency, concurrent active-only dedupe, terminal dedupe reuse, expired lease reclaim, increasing fencing tokens, stale token rejection, persisted heartbeat extension, abort before claim, abort during execution, an abort/completion lock race, retryable backoff, high-attempt backoff capping, terminal failure, unsafe payload rejection, RPC grants and immutability, unauthorized ingress, and default-off compatibility.
+The focused acceptance cases are concurrent duplicate idempotency, concurrent active-only dedupe, terminal dedupe reuse, expired lease reclaim, increasing fencing tokens, stale token rejection, persisted heartbeat extension, abort before claim, abort during execution, an abort/completion lock race, retryable backoff, high-attempt backoff capping, terminal failure, unsafe payload rejection, RPC grants and immutability, unauthorized ingress, default-off compatibility, resolved legacy failures, thrown legacy failures, success-predicate failures, successful shadow writes, and non-authoritative shadow submission failures.
 
 Repository acceptance also requires:
 

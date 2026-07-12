@@ -45,6 +45,7 @@ export async function POST(request: Request) {
         request,
       },
       () => saveAdminLlmSettings(parsed.data),
+      { isLegacySuccess: () => true },
     );
     const settings = compatibility.value;
     await recordAdminSiteEvent(

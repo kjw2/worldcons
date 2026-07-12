@@ -35,6 +35,10 @@ export async function POST(request: Request) {
     const compatibility = await executeAdminCompatibilityCommand(
       { commandType: "admin.glossary.refresh", payloadRef: { persist: true }, request },
       () => generateGlossaryCandidates({ persist: true }),
+      {
+        isLegacySuccess: (result) =>
+          result.mode === "database" && result.persistedCount === result.candidates.length,
+      },
     );
     const result = compatibility.value;
     await recordAdminSiteEvent(
@@ -54,6 +58,7 @@ export async function POST(request: Request) {
     await executeAdminCompatibilityCommand(
       { commandType: "admin.glossary.ignore", payloadRef: { candidateId }, request },
       () => ignoreGlossaryCandidate(candidateId),
+      { isLegacySuccess: (result) => result.mode === "database" && result.status === "ignored" },
     );
     return redirectBack(request, "ignored");
   }
@@ -78,6 +83,7 @@ export async function POST(request: Request) {
         request,
       },
       () => approveGlossaryCandidate({ candidateId, slug, term, koreanTerm, definition, jurisdiction, relatedTags }),
+      { isLegacySuccess: (result) => result.mode === "database" && result.status === "approved" },
     );
     const result = compatibility.value;
     await recordAdminSiteEvent(
