@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { normalizeRange } from "@/lib/utils/dates";
+import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication";
 
 interface MatchArticleRow {
   article_id: string;
@@ -76,12 +77,15 @@ async function localSemanticSearch(filters: ArticleListFilters, embedding: numbe
   }
 
   let query = supabase
-    .from("articles")
+    .from(articlePublicationV4ReadsEnabled() ? "public_article_projection_p3" : "articles")
     .select("id, embedding")
     .not("embedding", "is", null)
     .eq("status", "summarized")
-    .filter("source_metadata->collection->>publishable", "eq", "true")
     .limit(Math.max(matchCount, 100));
+
+  if (!articlePublicationV4ReadsEnabled()) {
+    query = query.filter("source_metadata->collection->>publishable", "eq", "true");
+  }
 
   if (filters.source) query = query.eq("source_key", filters.source);
   if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
@@ -137,7 +141,8 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const matchCount = Math.min(Math.max(page * pageSize * 3, 20), 200);
-  const { data, error } = await supabase.rpc("match_articles", {
+  const searchRpc = articlePublicationV4ReadsEnabled() ? "match_public_article_versions_p3" : "match_articles";
+  const { data, error } = await supabase.rpc(searchRpc, {
     query_embedding: embedding,
     match_count: matchCount,
     source_filter: filters.source ?? null,

@@ -18,6 +18,7 @@ import {
   ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
   shadowArticleLifecycleTransition,
 } from "@/lib/article-lifecycle";
+import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 
 interface SummaryCandidateRow {
   id: string;
@@ -173,6 +174,13 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number;
       source: "processing",
     },
   })));
+  await Promise.all(ids.map((articleId) => shadowConfirmedLegacyArticleMutation({
+    articleId,
+    succeeded: true,
+    reason: "Legacy stale-summary recovery persisted.",
+    provenanceActorType: "import",
+    provenanceActorId: "summary-recovery",
+  })));
   return { mode: "database", recoveredCount: ids.length, cutoff };
 }
 
@@ -266,6 +274,14 @@ async function summarizeCandidateRow(
       errorContext: null,
       reviewState: ARTICLE_REVIEW_STATE.SUMMARIZED,
     });
+    await shadowConfirmedLegacyArticleMutation({
+      articleId: row.id,
+      succeeded: !summaryUpdateError,
+      reason: forceAllowed ? "Legacy re-summary persisted and remained public." : "Legacy summary persisted and became public.",
+      provenanceActorType: "llm",
+      provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
+      modelRef: options.model ?? summary.aiMetadata?.model ?? null,
+    });
     await summaryCheckpoint(options);
     await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
     await summaryCheckpoint(options);
@@ -315,6 +331,14 @@ async function summarizeCandidateRow(
         },
       });
     }
+    await shadowConfirmedLegacyArticleMutation({
+      articleId: row.id,
+      succeeded: !failureUpdateError,
+      reason: forceAllowed ? "Legacy re-summary failure persisted without changing its public outcome." : "Legacy summary failure persisted.",
+      provenanceActorType: "llm",
+      provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
+      modelRef: options.model ?? null,
+    });
     return { status: "failed" as const, errorMessage: message, retryable: retryableBackoff };
   }
 }

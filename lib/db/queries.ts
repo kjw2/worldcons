@@ -22,6 +22,7 @@ import type {
 import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
+import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication";
 
 interface SupabaseTagRow {
   id?: string;
@@ -97,6 +98,44 @@ const ARTICLE_LIST_SELECT = [
 ].join(",");
 const ARTICLE_PAGE_SELECT = `${ARTICLE_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
 const ARTICLE_DETAIL_SELECT = `${ARTICLE_PAGE_SELECT},raw_text,cleaned_text`;
+const ARTICLE_P3_LIST_SELECT = [
+  "id",
+  "slug",
+  "source_key",
+  "jurisdiction",
+  "institution_name",
+  "content_type",
+  "original_url",
+  "canonical_url",
+  "original_language",
+  "original_title",
+  "korean_title",
+  "original_published_at",
+  "discovered_at",
+  "fetched_at",
+  "summarized_at",
+  "status",
+  "one_line_summary:summary_json->summary->coreSummary->>0",
+  "resolution_type:source_metadata->>resolutionType",
+  "article_tags",
+].join(",");
+const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
+const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text`;
+
+function publicationProjectionEnabled(includeUnpublished?: boolean) {
+  return !includeUnpublished && articlePublicationV4ReadsEnabled();
+}
+
+function articleRelation(includeUnpublished?: boolean) {
+  return publicationProjectionEnabled(includeUnpublished) ? "public_article_projection_p3" : "articles";
+}
+
+function projectionSelect(select: string, includeUnpublished?: boolean) {
+  if (!publicationProjectionEnabled(includeUnpublished)) return select;
+  if (select === ARTICLE_DETAIL_SELECT) return ARTICLE_P3_DETAIL_SELECT;
+  if (select === ARTICLE_PAGE_SELECT) return ARTICLE_P3_PAGE_SELECT;
+  return ARTICLE_P3_LIST_SELECT;
+}
 
 function minimalSourceMetadata(row: SupabaseArticleRow) {
   const metadata: Record<string, unknown> = {};
@@ -337,14 +376,14 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
   }
 
   let query = supabase
-    .from("articles")
+    .from(articleRelation(filters.includeUnpublished))
     .select("id")
     .textSearch("search_vector", tsQuery, { config: "simple" })
     .order("original_published_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: true })
     .limit(Number.isFinite(Number(process.env.SEARCH_MAX_CANDIDATES)) ? Math.min(Number(process.env.SEARCH_MAX_CANDIDATES), 100) : 100);
 
-  if (!filters.includeUnpublished) {
+  if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
     query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
   }
   if (filters.ids) query = query.in("id", filters.ids);
@@ -410,12 +449,12 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
 
   const countMode = filters.count ?? "exact";
   let query = supabase
-    .from("articles")
-    .select(ARTICLE_LIST_SELECT, countMode === "none" ? undefined : { count: countMode })
+    .from(articleRelation(filters.includeUnpublished))
+    .select(projectionSelect(ARTICLE_LIST_SELECT, filters.includeUnpublished), countMode === "none" ? undefined : { count: countMode })
     .order("original_published_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: true });
 
-  if (!filters.includeUnpublished) {
+  if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
     query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
   }
   if (filters.ids) query = query.in("id", filters.ids);
@@ -458,11 +497,11 @@ async function getArticleBySlugWithSelect(slug: string, select: string, options:
   }
 
   let query = supabase
-    .from("articles")
-    .select(select)
+    .from(articleRelation(options.includeUnpublished))
+    .select(projectionSelect(select, options.includeUnpublished))
     .eq("slug", slug);
 
-  if (!options.includeUnpublished) {
+  if (!options.includeUnpublished && !publicationProjectionEnabled()) {
     query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
   }
 
@@ -500,8 +539,8 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
     return { slug: article.slug, cleanedText: article.cleanedText ?? null };
   }
 
-  let query = supabase.from("articles").select("slug,status,source_metadata,cleaned_text").eq("slug", slug);
-  if (!options.includeUnpublished) {
+  let query = supabase.from(articleRelation(options.includeUnpublished)).select("slug,status,source_metadata,cleaned_text").eq("slug", slug);
+  if (!options.includeUnpublished && !publicationProjectionEnabled()) {
     query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
   }
 
@@ -585,11 +624,14 @@ export async function listTopViewedArticles(
   const viewCountBySlug = new Map(rankedViews.map((row) => [row.slug, row.viewCount]));
 
   let query = supabase
-    .from("articles")
-    .select(ARTICLE_LIST_SELECT)
+    .from(articleRelation())
+    .select(projectionSelect(ARTICLE_LIST_SELECT))
     .in("slug", slugs)
-    .eq("status", "summarized")
-    .filter("source_metadata->collection->>publishable", "eq", "true");
+    .eq("status", "summarized");
+
+  if (!publicationProjectionEnabled()) {
+    query = query.filter("source_metadata->collection->>publishable", "eq", "true");
+  }
 
   if (filters.source) query = query.eq("source_key", filters.source);
   if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
@@ -631,7 +673,8 @@ export async function listJurisdictionArticleCounts(
   }
 
   const startIso = getRangeStartIso(options.range);
-  const { data: rpcRows, error: rpcError } = await supabase.rpc("public_jurisdiction_article_counts", { range_start: startIso });
+  const countRpc = publicationProjectionEnabled() ? "public_jurisdiction_article_counts_p3" : "public_jurisdiction_article_counts";
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(countRpc, { range_start: startIso });
   if (!rpcError && Array.isArray(rpcRows)) {
     const counts = Object.fromEntries(
       (rpcRows as SupabaseJurisdictionCountRow[])
@@ -650,11 +693,11 @@ export async function listJurisdictionArticleCounts(
   const entries = await Promise.all(
     targetJurisdictions.map(async (jurisdiction) => {
       let query = supabase
-        .from("articles")
+        .from(articleRelation())
         .select("id", { count: "exact", head: true })
         .eq("status", "summarized")
-        .filter("source_metadata->collection->>publishable", "eq", "true")
         .eq("jurisdiction", jurisdiction);
+      if (!publicationProjectionEnabled()) query = query.filter("source_metadata->collection->>publishable", "eq", "true");
       if (startIso) query = query.gte("original_published_at", startIso);
 
       const { count, error } = await query;
@@ -681,7 +724,7 @@ export async function listTags(options: { type?: string; sort?: "count" | "lates
     return limit ? tags.slice(0, limit) : tags;
   }
 
-  let query = supabase.from("tags").select("*");
+  let query = supabase.from(publicationProjectionEnabled() ? "public_tag_projection_p3" : "tags").select("*");
   if (options.type) query = query.eq("type", options.type);
   if (options.sort === "name") query = query.order("name");
   else if (options.sort === "latest") query = query.order("latest_article_at", { ascending: false, nullsFirst: false });
@@ -702,7 +745,8 @@ export async function getTagBySlug(slug: string) {
     return tag ? { tag, articles } : null;
   }
 
-  const { data: tagData, error: tagError } = await supabase.from("tags").select("*").eq("slug", slug).maybeSingle();
+  const tagRelation = publicationProjectionEnabled() ? "public_tag_projection_p3" : "tags";
+  const { data: tagData, error: tagError } = await supabase.from(tagRelation).select("*").eq("slug", slug).maybeSingle();
   if (tagError) throw new Error(tagError.message);
   if (!tagData) return null;
 

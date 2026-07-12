@@ -4,6 +4,7 @@ import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
 import { listIngestionRuns, listSources } from "@/lib/db/queries";
 import type { ArticleStatus, IngestionRunRecord, SourceRecord } from "@/lib/db/types";
 import { shadowArticleLifecycleTransition } from "@/lib/article-lifecycle";
+import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 
 const ARTICLE_STATUSES = [
   "discovered",
@@ -968,6 +969,15 @@ export async function runAdminArticleBulkAction(input: {
     });
     updatedCount += 1;
   }
+
+  await Promise.all(rows.flatMap((row) => row.id ? [shadowConfirmedLegacyArticleMutation({
+    articleId: row.id,
+    succeeded: updatedCount === refs.length,
+    reason: action === "close-private" ? "Legacy bulk private closure persisted." : "Legacy bulk review request persisted.",
+    provenanceActorType: "human",
+    provenanceActorId: "admin-bulk-review",
+    safeMetadata: { action, notePresent: Boolean(note) },
+  })] : []));
 
   return {
     mode: "database",

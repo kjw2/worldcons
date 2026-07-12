@@ -12,6 +12,7 @@ import {
   ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
   shadowArticleLifecycleTransition,
 } from "@/lib/article-lifecycle";
+import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 
 const MAX_NOTE_LENGTH = 1_000;
 const MAX_TITLE_LENGTH = 500;
@@ -244,6 +245,15 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     reasonCode: triageUpdated ? "legacy.review.summary_edited" : "legacy.review.summary_content_edited",
     processingState: "complete",
     attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+  });
+  await shadowConfirmedLegacyArticleMutation({
+    articleId: row.id,
+    succeeded: true,
+    reason: "Legacy manual summary edit persisted.",
+    provenanceActorType: "human",
+    provenanceActorId: "admin",
+    modelRef: parsed.data.summary.aiMetadata?.model ?? null,
+    safeMetadata: { changedFields: fields.slice(0, 40), notePresent: Boolean(parsed.data.note) },
   });
 
   await recordAdminArticleEditHistory({

@@ -13,6 +13,7 @@ import {
   shadowLegacyArticleLifecycleOutcome,
   type LegacyArticleLifecycleEvidence,
 } from "@/lib/article-lifecycle";
+import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 
 export type AdminReviewAction =
   | "approve-and-summarize"
@@ -132,6 +133,13 @@ async function shadowPersistedReviewOutcome(
   reasonCode: string,
   resolvesCodes: readonly string[] = [],
 ) {
+  await shadowConfirmedLegacyArticleMutation({
+    articleId,
+    succeeded: true,
+    reason: `Legacy admin review outcome persisted: ${reasonCode}.`,
+    provenanceActorType: "human",
+    provenanceActorId: "admin-review",
+  });
   if (!articleLifecycleP2ShadowWriteEnabled() || !articleLifecycleP2ShadowCohorts().has("review")) return;
   let persisted: ReviewArticleRow | null = null;
   try {

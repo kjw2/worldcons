@@ -26,6 +26,7 @@ import {
   shadowLegacyArticleLifecycleOutcome,
   type ArticleLifecycleP2Cohort,
 } from "@/lib/article-lifecycle";
+import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -410,6 +411,13 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number 
       source: "processing",
     },
   })));
+  await Promise.all(ids.map((articleId) => shadowConfirmedLegacyArticleMutation({
+    articleId,
+    succeeded: true,
+    reason: "Legacy stale-summary recovery persisted.",
+    provenanceActorType: "import",
+    provenanceActorId: "summary-recovery",
+  })));
   return { mode: "database", recoveredCount: ids.length, cutoff };
 }
 
@@ -665,6 +673,13 @@ export async function insertNormalizedArticle(
     reasonCode: "legacy.collection.inserted",
     evidence: { status: plan.status, sourceMetadata, hasSummary: false },
   });
+  await shadowConfirmedLegacyArticleMutation({
+    articleId: String(data.id),
+    succeeded: true,
+    reason: "Legacy ingestion insert persisted.",
+    provenanceActorType: "import",
+    provenanceActorId: lifecycle.source ?? "ingestion.insert",
+  });
   return { id: String(data.id), status: plan.status, collection: plan.collection };
 }
 
@@ -735,6 +750,13 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
       attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES] },
     });
   }
+  await shadowConfirmedLegacyArticleMutation({
+    articleId: existing.id,
+    succeeded: true,
+    reason: "Legacy official-source refresh persisted.",
+    provenanceActorType: "import",
+    provenanceActorId: "ingestion.refresh",
+  });
   await supabase.from("article_tags").delete().eq("article_id", existing.id);
 
   return { status: "refreshed" as const, articleStatus: plan.status, collection: plan.collection };
@@ -1080,6 +1102,14 @@ async function summarizeCandidateRow(
       errorContext: null,
       reviewState: ARTICLE_REVIEW_STATE.SUMMARIZED,
     });
+    await shadowConfirmedLegacyArticleMutation({
+      articleId: row.id,
+      succeeded: !summaryUpdateError,
+      reason: forceAllowed ? "Legacy re-summary persisted and remained public." : "Legacy summary persisted and became public.",
+      provenanceActorType: "llm",
+      provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
+      modelRef: options.model ?? summary.aiMetadata?.model ?? null,
+    });
     await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
     return { status: "summarized" as const };
   } catch (summaryError) {
@@ -1125,6 +1155,14 @@ async function summarizeCandidateRow(
         },
       });
     }
+    await shadowConfirmedLegacyArticleMutation({
+      articleId: row.id,
+      succeeded: !failureUpdateError,
+      reason: forceAllowed ? "Legacy re-summary failure persisted without changing its public outcome." : "Legacy summary failure persisted.",
+      provenanceActorType: "llm",
+      provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
+      modelRef: options.model ?? null,
+    });
     return { status: "failed" as const, errorMessage: message };
   }
 }

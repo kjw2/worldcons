@@ -7,6 +7,7 @@ import {
   terminologyRuleForSource,
 } from "@/lib/ai/terminology";
 import { normalizeTagSlug } from "@/lib/utils/slug";
+import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 
 const sourceArg = process.argv.find((arg) => arg.startsWith("--source="))?.slice("--source=".length);
 const SOURCE_KEY = sourceArg || "fr-conseil-constitutionnel";
@@ -78,6 +79,13 @@ async function canonicalizeArticles() {
         })
         .eq("id", row.id);
       if (updateError) throw new Error(updateError.message);
+      await shadowConfirmedLegacyArticleMutation({
+        articleId: row.id,
+        succeeded: true,
+        reason: "Legacy terminology canonicalization persisted.",
+        provenanceActorType: "human",
+        provenanceActorId: "terminology-maintenance",
+      });
     }
   }
 
