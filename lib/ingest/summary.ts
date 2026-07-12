@@ -14,6 +14,10 @@ import {
 } from "@/lib/ingest/summary-batch";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
 import { boundedInteger } from "@/lib/utils/numbers";
+import {
+  ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  shadowArticleLifecycleTransition,
+} from "@/lib/article-lifecycle";
 
 interface SummaryCandidateRow {
   id: string;
@@ -147,12 +151,28 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number;
     .in("id", ids);
 
   if (updateError) throw new Error(updateError.message);
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleIds: ids,
     errorClass: ARTICLE_ERROR_CLASS.JOB_STALE_RUNNING,
     errorContext: { message: `Stale summarizing state recovered after ${staleSummarizingMinutes()} minutes.` },
     reviewState: ARTICLE_REVIEW_STATE.NEEDS_TRIAGE,
   });
+  await Promise.all(ids.map((articleId) => shadowArticleLifecycleTransition({
+    articleId,
+    cohort: "summary",
+    actorType: "summary_worker",
+    source: "summary.recovery",
+    reasonCode: "legacy.summary.stale_recovered",
+    processingState: "ready",
+    reviewState: triageUpdated ? "needs_review" : undefined,
+    attention: {
+      operation: "raise",
+      code: "job.stale_running",
+      retryable: true,
+      severity: "high",
+      source: "processing",
+    },
+  })));
   return { mode: "database", recoveredCount: ids.length, cutoff };
 }
 
@@ -177,13 +197,23 @@ async function summarizeCandidateRow(
   }
 
   await summaryCheckpoint(options);
-  await supabase
+  const { error: runningUpdateError } = await supabase
     .from("articles")
     .update({
       ...(forceAllowed ? {} : { status: "summarizing" }),
       error_metadata: null,
     })
     .eq("id", row.id);
+  if (!runningUpdateError) {
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "summary",
+      actorType: "summary_worker",
+      source: forceAllowed ? "summary.resummary" : "summary.generate",
+      reasonCode: forceAllowed ? "legacy.summary.resummary_started" : "legacy.summary.started",
+      processingState: "running",
+    });
+  }
   await summaryCheckpoint(options);
 
   try {
@@ -216,7 +246,19 @@ async function summarizeCandidateRow(
       updatePayload.embedding = embedding;
     }
 
-    await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    const { error: summaryUpdateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    if (!summaryUpdateError) {
+      await shadowArticleLifecycleTransition({
+        articleId: row.id,
+        cohort: "summary",
+        actorType: "summary_worker",
+        source: forceAllowed ? "summary.resummary" : "summary.generate",
+        reasonCode: forceAllowed ? "legacy.summary.resummary_completed" : "legacy.summary.completed",
+        collectionState: "source_text_ready",
+        processingState: "complete",
+        attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+      });
+    }
     await summaryCheckpoint(options);
     await updateArticleTriageFields({
       articleId: row.id,
@@ -232,7 +274,7 @@ async function summarizeCandidateRow(
     if (options.signal?.aborted) throw summaryAbortReason(options.signal);
     const message = summaryError instanceof Error ? summaryError.message : String(summaryError);
     const retryableBackoff = isRetryableSummaryBackoff(message);
-    await supabase
+    const { error: failureUpdateError } = await supabase
       .from("articles")
       .update({
         status: forceAllowed || retryableBackoff ? row.status ?? "cleaned" : "failed_summary",
@@ -244,7 +286,7 @@ async function summarizeCandidateRow(
         },
       })
       .eq("id", row.id);
-    await updateArticleTriageFields({
+    const triageUpdated = await updateArticleTriageFields({
       articleId: row.id,
       errorClass: classifySummaryError(message, retryableBackoff),
       errorContext: {
@@ -255,6 +297,24 @@ async function summarizeCandidateRow(
       },
       reviewState: retryableBackoff ? ARTICLE_REVIEW_STATE.RETRY_LATER : ARTICLE_REVIEW_STATE.NEEDS_TRIAGE,
     });
+    if (!failureUpdateError) {
+      await shadowArticleLifecycleTransition({
+        articleId: row.id,
+        cohort: "summary",
+        actorType: "summary_worker",
+        source: forceAllowed ? "summary.resummary" : "summary.generate",
+        reasonCode: "legacy.summary.failed",
+        processingState: forceAllowed ? "complete" : "ready",
+        reviewState: triageUpdated ? "needs_review" : undefined,
+        attention: {
+          operation: "raise",
+          code: classifySummaryError(message, retryableBackoff),
+          retryable: retryableBackoff,
+          severity: "high",
+          source: "processing",
+        },
+      });
+    }
     return { status: "failed" as const, errorMessage: message, retryable: retryableBackoff };
   }
 }

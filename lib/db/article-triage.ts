@@ -101,19 +101,24 @@ export function fallbackReviewStateForArticleStatus(status?: string | null): Art
 export async function updateArticleTriageFields(input: ArticleTriageUpdateInput) {
   const supabase = getSupabaseAdmin();
   const ids = Array.from(new Set([...(input.articleIds ?? []), input.articleId].filter(Boolean) as string[]));
-  if (!supabase || ids.length === 0) return;
+  if (!supabase || ids.length === 0) return false;
 
   const update: Record<string, unknown> = {};
   if (input.errorClass !== undefined) update.error_class = input.errorClass;
   if (input.errorContext !== undefined) update.error_context = input.errorContext ? redactAdminAuditMetadata(input.errorContext) : null;
   if (input.reviewState !== undefined) update.review_state = input.reviewState ? redactAdminAuditText(input.reviewState, 80) : null;
-  if (Object.keys(update).length === 0) return;
+  if (Object.keys(update).length === 0) return true;
 
   try {
     const query = supabase.from("articles").update(update);
     const { error } = ids.length === 1 ? await query.eq("id", ids[0]) : await query.in("id", ids);
-    if (error) logOptionalTriageFailure(error.message);
+    if (error) {
+      logOptionalTriageFailure(error.message);
+      return false;
+    }
+    return true;
   } catch (error) {
     logOptionalTriageFailure(error);
+    return false;
   }
 }

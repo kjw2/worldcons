@@ -8,6 +8,10 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import type { SummaryJson } from "@/lib/db/types";
 import { runRefreshTagCounts } from "@/lib/ingest/summary";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
+import {
+  ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  shadowArticleLifecycleTransition,
+} from "@/lib/article-lifecycle";
 
 const MAX_NOTE_LENGTH = 1_000;
 const MAX_TITLE_LENGTH = 500;
@@ -226,11 +230,20 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
   const { error: updateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
   if (updateError) throw new Error(updateError.message);
 
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.MANUAL_SUMMARY_EDIT,
+  });
+  await shadowArticleLifecycleTransition({
+    articleId: row.id,
+    cohort: "review",
+    actorType: "admin",
+    source: "admin.summary_edit",
+    reasonCode: triageUpdated ? "legacy.review.summary_edited" : "legacy.review.summary_content_edited",
+    processingState: "complete",
+    attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
   });
 
   await recordAdminArticleEditHistory({

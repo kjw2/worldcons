@@ -19,6 +19,13 @@ import { summarizeArticle } from "@/lib/ai/summarize";
 import { createEmbedding } from "@/lib/ai/embeddings";
 import { generateGlossaryCandidates } from "@/lib/glossary/candidates";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
+import {
+  ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES,
+  ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  shadowArticleLifecycleTransition,
+  shadowLegacyArticleLifecycleOutcome,
+  type ArticleLifecycleP2Cohort,
+} from "@/lib/article-lifecycle";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -378,12 +385,28 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number 
     .in("id", ids);
 
   if (updateError) throw new Error(updateError.message);
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleIds: ids,
     errorClass: ARTICLE_ERROR_CLASS.JOB_STALE_RUNNING,
     errorContext: { message: `Stale summarizing state recovered after ${staleSummarizingMinutes()} minutes.` },
     reviewState: ARTICLE_REVIEW_STATE.NEEDS_TRIAGE,
   });
+  await Promise.all(ids.map((articleId) => shadowArticleLifecycleTransition({
+    articleId,
+    cohort: "summary",
+    actorType: "summary_worker",
+    source: "summary.recovery",
+    reasonCode: "legacy.summary.stale_recovered",
+    processingState: "ready",
+    reviewState: triageUpdated ? "needs_review" : undefined,
+    attention: {
+      operation: "raise",
+      code: "job.stale_running",
+      retryable: true,
+      severity: "high",
+      source: "processing",
+    },
+  })));
   return { mode: "database", recoveredCount: ids.length, cutoff };
 }
 
@@ -591,7 +614,11 @@ function sourceMetadataForArticle(
   };
 }
 
-export async function insertNormalizedArticle(article: NormalizedArticle, diagnosticsId?: string | null) {
+export async function insertNormalizedArticle(
+  article: NormalizedArticle,
+  diagnosticsId?: string | null,
+  lifecycle: { cohort?: ArticleLifecycleP2Cohort; actorType?: "ingestion" | "candidate"; source?: string } = {},
+) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return null;
 
@@ -600,6 +627,7 @@ export async function insertNormalizedArticle(article: NormalizedArticle, diagno
   if (plan.skipped) return null;
   const slug = generateArticleSlug(article);
   const dedupKeys = dedupKeysForArticle(article);
+  const sourceMetadata = sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant);
 
   const { data, error } = await supabase
     .from("articles")
@@ -620,12 +648,20 @@ export async function insertNormalizedArticle(article: NormalizedArticle, diagno
       raw_text: article.rawText,
       cleaned_text: article.cleanedText,
       content_hash: createContentHash(article.cleanedText) ?? dedupKeys.textPrefixHash,
-      source_metadata: sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant),
+      source_metadata: sourceMetadata,
     })
     .select("id")
     .single();
 
   if (error) throw new Error(error.message);
+  await shadowLegacyArticleLifecycleOutcome({
+    articleId: String(data.id),
+    cohort: lifecycle.cohort ?? "collection",
+    actorType: lifecycle.actorType ?? "ingestion",
+    source: lifecycle.source ?? "ingestion.insert",
+    reasonCode: "legacy.collection.inserted",
+    evidence: { status: plan.status, sourceMetadata, hasSummary: false },
+  });
   return { id: String(data.id), status: plan.status, collection: plan.collection };
 }
 
@@ -645,6 +681,7 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
     return { status: "unchanged" as const };
   }
 
+  const sourceMetadata = sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant, existing);
   const { error } = await supabase
     .from("articles")
     .update({
@@ -665,11 +702,29 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
       cleaned_text: article.cleanedText,
       content_hash: contentHash,
       error_metadata: null,
-      source_metadata: sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant, existing),
+      source_metadata: sourceMetadata,
     })
     .eq("id", existing.id);
 
   if (error) throw new Error(error.message);
+  await shadowLegacyArticleLifecycleOutcome({
+    articleId: existing.id,
+    cohort: "collection",
+    actorType: "ingestion",
+    source: "ingestion.refresh",
+    reasonCode: "legacy.collection.refreshed",
+    evidence: { status: plan.status, sourceMetadata, hasSummary: false },
+  });
+  if (plan.status === "cleaned") {
+    await shadowArticleLifecycleTransition({
+      articleId: existing.id,
+      cohort: "collection",
+      actorType: "ingestion",
+      source: "ingestion.refresh",
+      reasonCode: "legacy.collection.recovered",
+      attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES] },
+    });
+  }
   await supabase.from("article_tags").delete().eq("article_id", existing.id);
 
   return { status: "refreshed" as const, articleStatus: plan.status, collection: plan.collection };
@@ -953,13 +1008,23 @@ async function summarizeCandidateRow(
     };
   }
 
-  await supabase
+  const { error: runningUpdateError } = await supabase
     .from("articles")
     .update({
       ...(forceAllowed ? {} : { status: "summarizing" }),
       error_metadata: null,
     })
     .eq("id", row.id);
+  if (!runningUpdateError) {
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "summary",
+      actorType: "summary_worker",
+      source: forceAllowed ? "summary.resummary" : "summary.generate",
+      reasonCode: forceAllowed ? "legacy.summary.resummary_started" : "legacy.summary.started",
+      processingState: "running",
+    });
+  }
 
   try {
     const summary = await summarizeArticle({
@@ -986,7 +1051,19 @@ async function summarizeCandidateRow(
       updatePayload.embedding = embedding;
     }
 
-    await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    const { error: summaryUpdateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    if (!summaryUpdateError) {
+      await shadowArticleLifecycleTransition({
+        articleId: row.id,
+        cohort: "summary",
+        actorType: "summary_worker",
+        source: forceAllowed ? "summary.resummary" : "summary.generate",
+        reasonCode: forceAllowed ? "legacy.summary.resummary_completed" : "legacy.summary.completed",
+        collectionState: "source_text_ready",
+        processingState: "complete",
+        attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+      });
+    }
     await updateArticleTriageFields({
       articleId: row.id,
       errorClass: null,
@@ -999,7 +1076,7 @@ async function summarizeCandidateRow(
     const message = summaryError instanceof Error ? summaryError.message : String(summaryError);
     const requestedProvider = options.provider ?? process.env.LLM_PROVIDER ?? "openai";
     const requestedModel = options.model ?? null;
-    await supabase
+    const { error: failureUpdateError } = await supabase
       .from("articles")
       .update({
         status: forceAllowed ? row.status : "failed_summary",
@@ -1010,7 +1087,7 @@ async function summarizeCandidateRow(
         },
       })
       .eq("id", row.id);
-    await updateArticleTriageFields({
+    const triageUpdated = await updateArticleTriageFields({
       articleId: row.id,
       errorClass: classifySummaryError(message),
       errorContext: {
@@ -1020,6 +1097,24 @@ async function summarizeCandidateRow(
       },
       reviewState: ARTICLE_REVIEW_STATE.NEEDS_TRIAGE,
     });
+    if (!failureUpdateError) {
+      await shadowArticleLifecycleTransition({
+        articleId: row.id,
+        cohort: "summary",
+        actorType: "summary_worker",
+        source: forceAllowed ? "summary.resummary" : "summary.generate",
+        reasonCode: "legacy.summary.failed",
+        processingState: forceAllowed ? "complete" : "ready",
+        reviewState: triageUpdated ? "needs_review" : undefined,
+        attention: {
+          operation: "raise",
+          code: classifySummaryError(message),
+          retryable: false,
+          severity: "high",
+          source: "processing",
+        },
+      });
+    }
     return { status: "failed" as const, errorMessage: message };
   }
 }

@@ -3,6 +3,11 @@ import { ARTICLE_REVIEW_STATE, updateArticleTriageFields } from "@/lib/db/articl
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { runRefreshTagCounts, runSummarizeArticle } from "@/lib/ingest/summary";
+import {
+  ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES,
+  ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  shadowArticleLifecycleTransition,
+} from "@/lib/article-lifecycle";
 
 export type AdminReviewAction =
   | "approve-and-summarize"
@@ -125,11 +130,22 @@ async function updateArticleForSummary(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.APPROVED_FOR_SUMMARY,
+  });
+  await shadowArticleLifecycleTransition({
+    articleId: row.id,
+    cohort: "review",
+    actorType: "admin",
+    source: "admin.review",
+    reasonCode: "legacy.review.approved_for_summary",
+    collectionState: "source_text_ready",
+    processingState: "ready",
+    reviewState: triageUpdated ? "approved_for_processing" : undefined,
+    attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES] },
   });
 }
 
@@ -159,11 +175,25 @@ async function publishReviewedArticle(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.PUBLISHED,
+  });
+  await shadowArticleLifecycleTransition({
+    articleId: row.id,
+    cohort: "review",
+    actorType: "admin",
+    source: "admin.review",
+    reasonCode: "legacy.review.approved",
+    collectionState: "source_text_ready",
+    processingState: "complete",
+    reviewState: triageUpdated ? "approved" : undefined,
+    attention: {
+      operation: "clear",
+      resolvesCodes: [...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES, ...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES],
+    },
   });
   await runRefreshTagCounts().catch(() => null);
   return { status: "published" as const };
@@ -188,12 +218,22 @@ async function closePrivate(row: ReviewArticleRow, note?: string) {
     })
     .eq("id", row.id);
   if (error) throw new Error(error.message);
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.CLOSED_PRIVATE,
   });
+  if (triageUpdated) {
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "review",
+      actorType: "admin",
+      source: "admin.review",
+      reasonCode: "legacy.review.closed_private",
+      reviewState: "closed_private",
+    });
+  }
   return { status: "closed_private" as const };
 }
 
@@ -204,12 +244,22 @@ async function recordManualResummary(row: ReviewArticleRow, provider: LlmComplet
   const sourceMetadata = reviewMetadata(row, "manual_resummarized", note, {}, { provider, model });
   const { error } = await supabase.from("articles").update({ source_metadata: sourceMetadata }).eq("id", row.id);
   if (error) throw new Error(error.message);
-  await updateArticleTriageFields({
+  const triageUpdated = await updateArticleTriageFields({
     articleId: row.id,
     errorClass: null,
     errorContext: null,
     reviewState: ARTICLE_REVIEW_STATE.MANUAL_RESUMMARIZED,
   });
+  if (triageUpdated) {
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "review",
+      actorType: "admin",
+      source: "admin.review",
+      reasonCode: "legacy.review.manual_resummary_recorded",
+      processingState: "complete",
+    });
+  }
 }
 
 export async function runAdminReviewAction(input: ReviewActionInput) {

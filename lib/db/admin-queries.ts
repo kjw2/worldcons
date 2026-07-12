@@ -3,6 +3,7 @@ import { fallbackErrorClassForArticleStatus, fallbackReviewStateForArticleStatus
 import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
 import { listIngestionRuns, listSources } from "@/lib/db/queries";
 import type { ArticleStatus, IngestionRunRecord, SourceRecord } from "@/lib/db/types";
+import { shadowArticleLifecycleTransition } from "@/lib/article-lifecycle";
 
 const ARTICLE_STATUSES = [
   "discovered",
@@ -957,6 +958,14 @@ export async function runAdminArticleBulkAction(input: {
       })
       .eq("id", row.id);
     if (error) throw new Error(error.message);
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "review",
+      actorType: "admin",
+      source: "admin.bulk_review",
+      reasonCode: action === "close-private" ? "legacy.review.bulk_closed_private" : "legacy.review.bulk_needs_review",
+      reviewState: action === "close-private" ? "closed_private" : "needs_review",
+    });
     updatedCount += 1;
   }
 

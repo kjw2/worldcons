@@ -177,7 +177,11 @@ export async function executeExactCandidateRetry(
     await candidateCheckpoint(options);
     const duplicate = await dependencies.articleExistsByNormalizedContent(normalized);
     await candidateCheckpoint(options);
-    const inserted = duplicate ? null : await dependencies.insertNormalizedArticle(normalized);
+    const inserted = duplicate ? null : await dependencies.insertNormalizedArticle(normalized, null, {
+      cohort: "candidate",
+      actorType: "candidate",
+      source: "candidate.insert",
+    });
     if (!duplicate && !inserted) throw new CandidateRetryError("candidate.not_persisted", false);
 
     await candidateCheckpoint(options);
