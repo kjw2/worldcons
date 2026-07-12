@@ -130,32 +130,43 @@ export function verifyAdminCsrfToken(request: Request, token?: string | null) {
   return Boolean(expectedSignature && safeEqual(signature, expectedSignature));
 }
 
-export function verifyAdminSession(sessionValue?: string | null) {
+function verifiedAdminSessionPayload(sessionValue?: string | null): AdminSessionPayload | null {
   if (!sessionValue) {
-    return false;
+    return null;
   }
 
   const [encodedPayload, signature] = sessionValue.split(".");
   if (!encodedPayload || !signature) {
-    return false;
+    return null;
   }
 
   const expectedSignature = signPayload(encodedPayload);
   if (!expectedSignature || !safeEqual(signature, expectedSignature)) {
-    return false;
+    return null;
   }
 
   try {
     const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as Partial<AdminSessionPayload>;
-    return (
+    if (
       payload.username === configuredAdminUsername() &&
       typeof payload.expiresAt === "number" &&
       Number.isFinite(payload.expiresAt) &&
       payload.expiresAt > Date.now()
-    );
+    ) {
+      return { username: payload.username, expiresAt: payload.expiresAt };
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function verifyAdminSession(sessionValue?: string | null) {
+  return verifiedAdminSessionPayload(sessionValue) !== null;
+}
+
+export function adminSessionIdentityFromRequest(request: Request) {
+  return verifiedAdminSessionPayload(cookieValueFromRequest(request, ADMIN_SESSION_COOKIE))?.username ?? null;
 }
 
 export function isAuthorizedRequest(request: Request) {
@@ -199,6 +210,11 @@ export function portalAuthFailureStatus(request: Request) {
 export async function isAuthorizedPageRequest() {
   const cookieStore = await cookies();
   return verifyAdminSession(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
+}
+
+export async function getAuthorizedAdminPageIdentity() {
+  const cookieStore = await cookies();
+  return verifiedAdminSessionPayload(cookieStore.get(ADMIN_SESSION_COOKIE)?.value)?.username ?? null;
 }
 
 export async function createAdminCsrfToken() {
@@ -251,6 +267,15 @@ export function adminMutationAuthFailureStatus(request: Request, csrfToken = req
   }
 
   return 401;
+}
+
+export function adminSessionMutationAuthFailureStatus(request: Request, csrfToken = request.headers.get(ADMIN_CSRF_HEADER)) {
+  const sessionValue = cookieValueFromRequest(request, ADMIN_SESSION_COOKIE);
+  if (!verifyAdminSession(sessionValue)) {
+    return 401;
+  }
+
+  return isTrustedAdminMutationOrigin(request) && verifyAdminCsrfToken(request, csrfToken) ? null : 403;
 }
 
 

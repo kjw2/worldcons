@@ -5,16 +5,12 @@ import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "@/lib/admin/p4/actions";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { createHash } from "@/lib/utils/hash";
-import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
+import { adminSessionIdentityFromRequest, adminSessionMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const SAFE_ID = /^[A-Za-z0-9-]{1,120}$/;
-
-function operatorIdentity() {
-  return process.env.ADMIN_USERNAME?.trim() || "administrator";
-}
 
 function errorStatus(code: string) {
   if (code === "not_found") return 404;
@@ -39,7 +35,7 @@ async function audit(request: Request, input: { kind: string; id: string; action
   }, request.headers).catch(() => null);
 }
 
-async function candidateRetry(id: string, idempotencyKey: string) {
+async function candidateRetry(id: string, idempotencyKey: string, operatorIdentity: string) {
   const supabase = getSupabaseServiceRoleAdmin();
   if (!supabase) return { ok: false as const, code: "unavailable" };
   const { data, error } = await supabase
@@ -56,7 +52,7 @@ async function candidateRetry(id: string, idempotencyKey: string) {
     payloadRef: { cohort: "candidate-retry", candidateId: id },
     idempotencyKey: `p4:${createHash(`candidate:${id}:${idempotencyKey}`, 64)}`,
     dedupeKey: `p1.candidate.retry:${id}`,
-    requestedBy: operatorIdentity(),
+    requestedBy: operatorIdentity,
     priority: 25,
     maxAttempts: 3,
   });
@@ -71,6 +67,7 @@ async function publicationAction(
   reason: string,
   idempotencyKey: string,
   request: Request,
+  operatorIdentity: string,
 ) {
   const supabase = getSupabaseServiceRoleAdmin();
   if (!supabase) return { ok: false as const, code: "unavailable" };
@@ -101,7 +98,7 @@ async function publicationAction(
     targetState: action === "publish" ? "published" : "withdrawn",
     versionId: String(head.current_version_id),
     actorType: "human",
-    actorId: operatorIdentity(),
+    actorId: operatorIdentity,
     reason,
     requestId,
     correlationId: idempotencyKey,
@@ -116,9 +113,13 @@ export function GET() {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ kind: string; id: string }> }) {
-  const authFailure = adminMutationAuthFailureStatus(request);
+  const authFailure = adminSessionMutationAuthFailureStatus(request);
   if (authFailure) {
     return NextResponse.json({ error: authFailure === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailure });
+  }
+  const operatorIdentity = adminSessionIdentityFromRequest(request);
+  if (!operatorIdentity) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { kind, id: rawId } = await params;
@@ -137,13 +138,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ kin
     | Awaited<ReturnType<typeof adminCommandService.abort>>
     | Awaited<ReturnType<typeof adminCommandService.retry>>;
   if (kind === "execution" && action === "abort") {
-    result = await adminCommandService.abort({ runId: id, requestedBy: operatorIdentity(), reason });
+    result = await adminCommandService.abort({ runId: id, requestedBy: operatorIdentity, reason });
   } else if (kind === "execution" && action === "retry") {
-    result = await adminCommandService.retry(id, operatorIdentity(), reason);
+    result = await adminCommandService.retry(id, operatorIdentity, reason);
   } else if (kind === "candidate" && action === "candidate-retry") {
-    result = await candidateRetry(id, idempotencyKey);
+    result = await candidateRetry(id, idempotencyKey, operatorIdentity);
   } else if (kind === "article" && (action === "publish" || action === "withdraw")) {
-    result = await publicationAction(id, action, reason, idempotencyKey, request);
+    result = await publicationAction(id, action, reason, idempotencyKey, request, operatorIdentity);
   } else {
     return NextResponse.json({ error: "Unsupported action" }, { status: 409 });
   }

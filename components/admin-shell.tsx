@@ -122,8 +122,6 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
     return () => window.removeEventListener("keydown", close);
   }, [mobileOpen]);
 
-  if (pathname === "/admin/login") return children;
-
   return (
     <div className="admin-shell min-h-screen bg-[#f5f6f7] text-ink">
       <a href="#admin-main" className="focus-ring fixed left-3 top-3 z-[70] -translate-y-20 rounded-md bg-white px-3 py-2 text-sm font-semibold shadow-panel focus:translate-y-0">

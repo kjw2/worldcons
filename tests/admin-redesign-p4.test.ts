@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { AdminTabs } from "../components/admin-tabs";
+import { POST as mutateAdminWork } from "../app/api/admin/work/[kind]/[id]/route";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "../lib/admin/p4/actions";
 import { DEFAULT_ADMIN_WORK_FILTERS, adminWorkFiltersQuery, parseAdminWorkFilters } from "../lib/admin/p4/filters";
 import { adminRedesignUiEnabled } from "../lib/admin/p4/flags";
@@ -10,10 +11,18 @@ import { adminStateLabel } from "../lib/admin/p4/labels";
 import {
   ADMIN_WORK_QUERY_CONTRACT,
   filterAndSortAdminWorkItems,
+  getAdminWorkItemDetailWithClient,
   paginateAdminWorkItems,
   redactOperationalText,
 } from "../lib/admin/p4/repository";
 import type { AdminWorkItem } from "../lib/admin/p4/types";
+import {
+  ADMIN_SESSION_COOKIE,
+  adminSessionIdentityFromRequest,
+  adminSessionMutationAuthFailureStatus,
+  createAdminCsrfTokenForSession,
+  createAdminSession,
+} from "../lib/utils/auth";
 
 const root = process.cwd();
 const source = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
@@ -81,6 +90,15 @@ test("shell navigation covers new and retained deep links with mobile keyboard b
   assert.match(shell, /event\.key === "Escape"/);
   assert.match(shell, /min-w-0 overflow-x-clip/);
   assert.match(shell, /aria-modal="true"/);
+  assert.doesNotMatch(shell, /pathname === "\/admin\/login"/);
+});
+
+test("server layout renders the shell only after an authenticated session identity is verified", () => {
+  const layout = source("app/admin/layout.tsx");
+  assert.match(layout, /const identity = await getAuthorizedAdminPageIdentity\(\)/);
+  assert.match(layout, /if \(!identity\) return children;[\s\S]*createAdminCsrfToken\(\)/);
+  assert.doesNotMatch(layout, /process\.env\.ADMIN_USERNAME/);
+  assert.doesNotMatch(layout, /"administrator"/);
 });
 
 test("new pages preserve authentication redirects and flag-off compatibility redirects", () => {
@@ -173,13 +191,15 @@ test("canonical actions require bounded reason, explicit idempotency, and public
   assert.equal(actionAllowedForKind("outbox", "retry"), false);
 });
 
-test("every P4 action shares auth and CSRF enforcement and revalidates authoritative state", () => {
+test("every P4 action uses session-only CSRF auth and revalidates authoritative state", () => {
   const route = source("app/api/admin/work/[kind]/[id]/route.ts");
   const readRoute = source("app/api/admin/work/route.ts");
   assert.match(readRoute, /isAuthorizedRequest\(request\)/);
   assert.match(readRoute, /parseAdminWorkFilters/);
   assert.match(readRoute, /getAdminWorkQueueSnapshot/);
-  assert.match(route, /adminMutationAuthFailureStatus\(request\)/);
+  assert.match(route, /adminSessionMutationAuthFailureStatus\(request\)/);
+  assert.match(route, /adminSessionIdentityFromRequest\(request\)/);
+  assert.doesNotMatch(route, /adminMutationAuthFailureStatus|isAuthorizedSecretRequest|process\.env\.ADMIN_USERNAME/);
   assert.match(route, /source_url_candidates[\s\S]*select\("id,status"\)/);
   assert.match(route, /article_publications_p3[\s\S]*select\("article_id,state,revision,version_id"\)/);
   assert.match(route, /\["in_review", "withdrawn"\]\.includes\(currentState\)/);
@@ -190,14 +210,153 @@ test("every P4 action shares auth and CSRF enforcement and revalidates authorita
   assert.match(route, /status: errorStatus\(code\)/);
 });
 
+test("P4 human mutations reject cron authorization and require a valid session CSRF pair", async () => {
+  const previous = {
+    username: process.env.ADMIN_USERNAME,
+    password: process.env.ADMIN_PASSWORD,
+    sessionSecret: process.env.ADMIN_SESSION_SECRET,
+    cronSecret: process.env.CRON_SECRET,
+  };
+  process.env.ADMIN_USERNAME = "signed-session-operator";
+  process.env.ADMIN_PASSWORD = "test-password";
+  process.env.ADMIN_SESSION_SECRET = "p4-follow-up-session-secret";
+  process.env.CRON_SECRET = "cron-must-not-authorize-humans";
+  try {
+    const actionCases = [
+      ["execution", "abort"],
+      ["execution", "retry"],
+      ["article", "publish"],
+      ["article", "withdraw"],
+      ["candidate", "candidate-retry"],
+    ] as const;
+    for (const [kind, action] of actionCases) {
+      for (const secretHeaders of [
+        { authorization: `Bearer ${process.env.CRON_SECRET}` },
+        { "x-cron-secret": String(process.env.CRON_SECRET) },
+      ]) {
+        const requestHeaders = new Headers({ "content-type": "application/json" });
+        for (const [name, value] of Object.entries(secretHeaders)) {
+          if (value) requestHeaders.set(name, value);
+        }
+        const response = await mutateAdminWork(new Request(`http://localhost/api/admin/work/${kind}/work-1`, {
+          method: "POST",
+          headers: requestHeaders,
+          body: JSON.stringify({
+            action,
+            reason: "focused authority regression",
+            confirmation: action,
+            idempotencyKey: `p4.${action}.authority-123456`,
+          }),
+        }), { params: Promise.resolve({ kind, id: "work-1" }) });
+        assert.equal(response.status, 401, `${kind}/${action} must reject cron authorization`);
+      }
+    }
+
+    const session = createAdminSession("signed-session-operator");
+    const csrf = createAdminCsrfTokenForSession(session);
+    assert.ok(csrf);
+    const headers = {
+      cookie: `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(session)}`,
+      origin: "http://localhost",
+      referer: "http://localhost/admin/work",
+      "sec-fetch-site": "same-origin",
+    };
+    const missingCsrf = new Request("http://localhost/api/admin/work/execution/work-1", { method: "POST", headers });
+    const wrongCsrf = new Request("http://localhost/api/admin/work/execution/work-1", {
+      method: "POST",
+      headers: { ...headers, "x-csrf-token": "wrong.token" },
+    });
+    const valid = new Request("http://localhost/api/admin/work/execution/!", {
+      method: "POST",
+      headers: { ...headers, "x-csrf-token": csrf },
+    });
+    assert.equal(adminSessionMutationAuthFailureStatus(missingCsrf), 403);
+    assert.equal(adminSessionMutationAuthFailureStatus(wrongCsrf), 403);
+    assert.equal(adminSessionMutationAuthFailureStatus(valid), null);
+    assert.equal(adminSessionIdentityFromRequest(valid), "signed-session-operator");
+    const anonymousResponse = await mutateAdminWork(
+      new Request("http://localhost/api/admin/work/execution/work-1", { method: "POST" }),
+      { params: Promise.resolve({ kind: "execution", id: "work-1" }) },
+    );
+    const missingCsrfResponse = await mutateAdminWork(missingCsrf, { params: Promise.resolve({ kind: "execution", id: "work-1" }) });
+    const wrongCsrfResponse = await mutateAdminWork(wrongCsrf, { params: Promise.resolve({ kind: "execution", id: "work-1" }) });
+    assert.equal(anonymousResponse.status, 401);
+    assert.equal(missingCsrfResponse.status, 403);
+    assert.equal(wrongCsrfResponse.status, 403);
+    const validResponse = await mutateAdminWork(valid, { params: Promise.resolve({ kind: "execution", id: "!" }) });
+    assert.equal(validResponse.status, 400, "valid session must pass auth before input validation");
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      const envKey = key === "username" ? "ADMIN_USERNAME" : key === "password" ? "ADMIN_PASSWORD" : key === "sessionSecret" ? "ADMIN_SESSION_SECRET" : "CRON_SECRET";
+      if (value === undefined) delete process.env[envKey];
+      else process.env[envKey] = value;
+    }
+  }
+});
+
 test("queue query contract is bounded and bulk-loads attempts without N+1", () => {
   assert.equal(ADMIN_WORK_QUERY_CONTRACT.perRowQueries, 0);
   assert.equal(ADMIN_WORK_QUERY_CONTRACT.maxQueueQueries, 9);
   assert.equal(ADMIN_WORK_QUERY_CONTRACT.maxRowsPerDomain, 500);
+  assert.equal(ADMIN_WORK_QUERY_CONTRACT.detailUsesExactPrimaryKey, true);
+  assert.equal(ADMIN_WORK_QUERY_CONTRACT.maxDetailQueries, 8);
   const repository = source("lib/admin/p4/repository.ts");
   assert.match(repository, /\.in\("run_id", runIds\)/);
   assert.match(repository, /Promise\.all\(\[\s*loadExecutionItems/);
   assert.match(repository, /\.limit\(limit\)/);
+  assert.doesNotMatch(repository, /loadDetailItem[\s\S]*\.find\(/);
+  for (const table of ["admin_command_runs", "articles", "source_url_candidates", "article_cache_outbox_p3", "admin_jobs"]) {
+    assert.match(repository, new RegExp(`loadExact[\\s\\S]{0,1800}from\\(\\"${table}\\"\\)[\\s\\S]{0,900}\\.eq\\(\\"id\\", id\\)[\\s\\S]{0,200}\\.limit\\(1\\)`));
+  }
+});
+
+test("detail lookup remains valid beyond the newest 500 rows and distinguishes absence from query failure", async () => {
+  const targetId = "candidate-older-than-window";
+  const rows = Array.from({ length: 501 }, (_, index) => ({
+    id: index === 500 ? targetId : `candidate-${index}`,
+    source_key: "test-source",
+    candidate_type: "article",
+    discovered_by: "collector",
+    status: "failed",
+    attempt_count: 2,
+    last_error_code: "candidate.fetch_failed",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  }));
+  const calls: Array<{ table: string; column?: string; value?: string; limit?: number }> = [];
+  const client = {
+    from(table: string) {
+      const call = { table } as { table: string; column?: string; value?: string; limit?: number };
+      calls.push(call);
+      const builder = {
+        select() { return builder; },
+        eq(column: string, value: string) { call.column = column; call.value = value; return builder; },
+        limit(limit: number) { call.limit = limit; return builder; },
+        then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+          const matching = call.column === "id" ? rows.filter((row) => row.id === call.value) : rows;
+          return Promise.resolve({ data: matching.slice(0, call.limit), error: null }).then(resolve);
+        },
+      };
+      return builder;
+    },
+  };
+  const detail = await getAdminWorkItemDetailWithClient(client as never, "candidate", targetId);
+  assert.equal(detail?.item.id, targetId);
+  assert.deepEqual(calls, [{ table: "source_url_candidates", column: "id", value: targetId, limit: 1 }]);
+
+  const absent = await getAdminWorkItemDetailWithClient(client as never, "candidate", "actually-absent");
+  assert.equal(absent, null);
+  const failedClient = {
+    from() {
+      const builder = {
+        select() { return builder; },
+        eq() { return builder; },
+        limit() { return Promise.resolve({ data: null, error: { code: "database_unavailable" } }); },
+      };
+      return builder;
+    },
+  };
+  await assert.rejects(() => getAdminWorkItemDetailWithClient(failedClient as never, "candidate", targetId), /lookup failed/);
 });
 
 test("desktop/mobile, loading/empty/error, focus, and overflow states are present", () => {
