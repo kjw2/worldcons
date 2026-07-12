@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { parseAdminJobRunBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
@@ -23,12 +24,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid admin job worker request", detail: parsed.error }, { status: 400 });
   }
 
-  const result = await runAdminJobWorker({
-    workerId: `admin-worker:${Date.now()}`,
-    maxJobs: parsed.data.maxJobs,
-    leaseSeconds: parsed.data.leaseSeconds,
-    jobTypes: parsed.data.jobTypes,
-  });
+  const compatibility = await executeAdminCompatibilityCommand(
+    { commandType: "admin.jobs.drain", payloadRef: parsed.data, request },
+    () => runAdminJobWorker({
+      workerId: `admin-worker:${Date.now()}`,
+      maxJobs: parsed.data.maxJobs,
+      leaseSeconds: parsed.data.leaseSeconds,
+      jobTypes: parsed.data.jobTypes,
+    }),
+  );
+  const result = compatibility.value;
 
   if (result.mode === "unavailable") {
     return NextResponse.json(result, { status: 503 });

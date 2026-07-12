@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminArticleBulkAction } from "@/lib/db/admin-queries";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
@@ -20,7 +21,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid admin bulk request", detail: parsed.error }, { status: 400 });
   }
   const { action, refs, note } = parsed.data;
-  const result = await runAdminArticleBulkAction({ action, refs, note });
+  const compatibility = await executeAdminCompatibilityCommand(
+    {
+      commandType: "admin.article.bulk",
+      payloadRef: { action, refs, notePresent: Boolean(note) },
+      request,
+    },
+    () => runAdminArticleBulkAction({ action, refs, note }),
+  );
+  const result = compatibility.value;
   if (result.updatedCount > 0) {
     invalidatePublicContentCaches();
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { listSourceUrlCandidates, updateSourceUrlCandidateStatus } from "@/lib/db/source-url-candidates";
 import { parseAdminCandidateMutationBody, parseAdminCandidateQuery } from "@/lib/security/admin-api-validation";
@@ -92,7 +93,15 @@ async function mutateCandidate(request: Request) {
   }
   const { action, candidateId, returnTo, isForm, status, targetStatus } = parsed.data;
 
-  const result = await updateSourceUrlCandidateStatus(candidateId, targetStatus);
+  const compatibility = await executeAdminCompatibilityCommand(
+    {
+      commandType: "admin.candidate.status",
+      payloadRef: { candidateId, targetStatus },
+      request,
+    },
+    () => updateSourceUrlCandidateStatus(candidateId, targetStatus),
+  );
+  const result = compatibility.value;
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.error === "Candidate not found." ? 404 : 500 });
   }

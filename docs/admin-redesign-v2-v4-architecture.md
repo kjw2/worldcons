@@ -1,6 +1,6 @@
 # Administrator Redesign V2+V3+V4 Architecture Contract
 
-Status: approved implementation contract
+Status: approved implementation contract; P0 implemented but not production-applied
 Scope: administrator operations, queue execution, and publication control
 Stage 0 rule: baseline and documentation only; no queue or publication migration
 
@@ -21,7 +21,8 @@ Cross-domain updates use stable article/job identifiers and audited commands. A 
 ## Target Data Contracts
 
 - **Queue command:** immutable type, validated payload reference, idempotency key, requester, priority, and creation time.
-- **Queue attempt:** job reference, attempt number, lease owner/expiry, start/finish timestamps, outcome/error class, and bounded redacted result summary.
+- **Queue run:** command reference, active-only dedupe identity, scheduling/retry policy, abort request, terminal state, and bounded redacted result summary.
+- **Queue attempt:** run reference, attempt number, lease owner/expiry, heartbeat, fencing token, start/finish timestamps, outcome/error class, and bounded redacted result summary.
 - **Queue event:** append-only state transition with actor and redacted structured details. Payloads, credentials, source text, and URLs are not event data.
 - **Publication record:** article reference, state (`draft`, `in_review`, `published`, `withdrawn`), revision, decision actor/reason, and transition timestamps.
 - **Public projection:** only the current published revision and fields approved for public reads. Legacy `articles.status` and `source_metadata.collection.publishable` remain compatibility inputs during migration, not the final authority.
@@ -30,36 +31,36 @@ Cross-domain updates use stable article/job identifiers and audited commands. A 
 
 ### P0 - Additive Foundations
 
-Add queue/attempt and publication-contract migrations, constraints, indexes, audit vocabulary, and backfill bookkeeping. Do not switch readers or workers. Migrations must be online-safe, additive, and rerunnable where practical. Gate 0 evidence is the sizing and anomaly input.
+Add the command -> run -> attempt queue contract, constraints, indexes, audit vocabulary, repositories, and transition services. Do not switch readers or workers. Preserve `admin_jobs` and ingestion behavior through a default-off compatibility adapter. Migrations must be online-safe, additive, and rerunnable where practical. Publication, article-state, version, outbox, and UI work are explicitly outside P0.
 
-### P1 - Shadow Writes and Backfill
+### P1 - Direct GitHub Workers
 
-Dual-write existing administrator commands to the new queue contract while the V2 path remains authoritative. Backfill publication records from the legacy public predicate, recording ambiguous or malformed rows for review rather than guessing. Compare old/new state and command counts continuously.
+Add direct GitHub worker execution and bounded shadow/cutover cohorts on the P0 command control plane. Prove that the worker uses heartbeat, fencing, abort, and terminalization RPCs. The V2 queue remains available for rollback until its retirement gate.
 
-### P2 - Queue Cutover
+### P2 - Orthogonal Article States
 
-Enable new queue claiming for a bounded job-type cohort, then expand by flag. Prove lease recovery, idempotency, cancellation, retry limits, and event completeness. Keep legacy enqueue/read paths available for immediate rollback; publication reads remain unchanged.
+Separate collection, processing, review, and error state so article workflow is not overloaded into one status. Queue completion still cannot publish content.
 
-### P3 - Publication Cutover
+### P3 - Versions, Publication, Audit, and Outbox
 
-Enable publication dual-write, reconcile every legacy-public article, then switch public reads to the publication projection. Queue completion remains unable to publish directly. Cache invalidation follows committed publication transitions and is idempotent.
+Add immutable article versions, explicit publication authority, durable audit, and an outbox. Backfill and reconcile the legacy public predicate before any read cutover. Cache invalidation follows committed publication transitions and is idempotent.
 
-### P4 - Administrator Experience Cutover
+### P4 - AdminShell and Work Queue
 
-Move V2 operator pages to V3 queue and V4 publication read models. Preserve deep links and action authorization. The UI must show execution state separately from publication state, expose stale/cancel/retry outcomes, and retain audit traceability.
+Build the AdminShell and operator work queue over accepted backend contracts. Preserve deep links and action authorization. The UI must show execution state separately from article and publication state, expose stale/abort/retry outcomes, and retain audit traceability.
 
-### P5 - Compatibility Retirement
+### P5 - Governance and Retirement
 
-After the observation window, stop legacy writes and remove compatibility reads in a later, separately approved change. Destructive column/table cleanup is never part of the cutover release and requires its own backup, retention, and rollback review.
+Complete ownership, retention, alerts, and support governance. After the observation window, stop legacy writes and remove compatibility reads in a later, separately approved change. Destructive cleanup requires its own backup, retention, and rollback review.
 
 ## Phase Gates
 
 | Gate | Required evidence | Blocks |
 | --- | --- | --- |
 | Gate 0: baseline | Read-only repeatable-read baseline captured; schema/index/constraint inventory complete; state, publication, stale/cancel, and malformed aggregate counts reviewed; artifact hashes retained | P0 migrations |
-| Gate 1: foundation | Migrations tested on a production-shaped copy; locks and runtimes within budget; constraints valid; rollback/forward-fix rehearsed | P1 dual-write |
-| Gate 2: queue parity | No lost/duplicate commands; idempotency and lease recovery tests pass; old/new aggregate state parity is explained; cancellation SLA met | P2 queue expansion |
-| Gate 3: publication parity | Every public row reconciled; malformed/ambiguous set is zero or explicitly adjudicated; old/new public result counts and sampled identities match | V4 public-read cutover |
+| Gate 1: foundation | Migrations tested on a production-shaped copy; locks and runtimes within budget; constraints valid; rollback/forward-fix rehearsed | P1 worker/shadow start |
+| Gate 2: worker parity | No lost/duplicate commands; idempotency and lease recovery tests pass; old/new aggregate state parity is explained; abort SLA met | P2 article-state work |
+| Gate 3: publication parity | Every public row reconciled; malformed/ambiguous set is zero or explicitly adjudicated; old/new public result counts and sampled identities match | P3 public-read cutover |
 | Gate 4: operator acceptance | Critical desktop/mobile workflows pass; authorization and audit tests pass; support runbook and dashboards are ready | Full admin UI cutover |
 | Gate 5: retirement | Rollback window elapsed; no legacy readers/writers observed; restore evidence current; owner approval recorded | Compatibility removal |
 
@@ -79,6 +80,8 @@ Flags default off in every environment and are enabled in this order:
 | `ADMIN_PUBLICATION_V4_READ_ENABLED` | Serve public content from the V4 projection | Return public reads to legacy predicate |
 
 Queue and publication flags are independent. Flag evaluation must be server-side for authority decisions, environment-scoped, observable without exposing secret configuration, and covered by default-off tests.
+
+For P0, only `ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED` is read by new code. Its exact default is `false`, including when unset or set to any value other than case-insensitive `true`. With the flag off, the compatibility adapter calls only the legacy implementation and returns its existing result. With it on, the legacy implementation remains authoritative and a successful legacy call is followed by a terminal `shadowed` command/run record. No P0 code claims or executes V3 work. A failed shadow write never changes the legacy response.
 
 ## Acceptance Principles
 
@@ -107,3 +110,23 @@ Run `pnpm admin:gate0` only with a PostgreSQL `DATABASE_URL`; it opens `REPEATAB
 The baseline records tool/version, commit, UTC timestamp, environment label, PostgreSQL version, relevant table live/dead estimates, state distributions, legacy/explicit/malformed publication counts, stale/cancel job counts, index sizes/definitions, and constraints. The SHA-256 manifest makes a captured baseline tamper-evident. Artifacts are operational evidence and remain untracked.
 
 Gate 0 does not prove application correctness, execute migrations, claim jobs, mutate rows, or authorize P0 automatically. A human reviewer must explain anomalies and record the go/no-go decision before P0 begins.
+
+## P0 Command Control Plane
+
+Gate 0 commit `87cba71` was accepted after an independent production-pooler run completed in `REPEATABLE READ READ ONLY`. The accepted evidence reported `explicitPublic=1174`; every reported malformed, stale, and cancel anomaly was zero. No production mutation was made by that run.
+
+P0 adds `20260712090000_admin_command_control_plane.sql` after the existing `20260710100000_fix_claim_admin_job_parameter_references.sql` migration. It creates only new tables, a sequence, indexes, triggers, and RPC functions. It does not alter, backfill, delete, or claim from `admin_jobs`, ingestion tables, article tables, or publication data.
+
+The database-enforced invariants are:
+
+1. Commands and command events are immutable; events are append-only.
+2. `(command_type, idempotency_key)` identifies one accepted command, while a partial unique index permits only one active run per `dedupe_key`. Terminal history does not block later equivalent work.
+3. Claims use row locks with `FOR UPDATE SKIP LOCKED`. Expired leases are closed as `lease_expired` before a new attempt is created.
+4. Every attempt receives a globally increasing sequence-backed fencing token. Heartbeat, success, and failure lock the attempt and run and require the current token, current attempt identity, unexpired lease, running state, and no abort.
+5. Heartbeat timestamps and lease extensions are persisted. Process memory is not authoritative.
+6. Abort terminalizes queued, waiting, or running work in one transaction. A running attempt becomes `aborted`, and its worker can no longer heartbeat, complete, or fail the run.
+7. Retryable failures schedule bounded exponential backoff until `max_attempts`; terminal failures and exhausted leases finish the run.
+8. Payload references, summaries, messages, reasons, and event details are bounded. Application services redact sensitive keys and text, database payload guards reject secret-like keys, and RPC errors expose fixed codes rather than database details.
+9. Security-definer RPC execution is revoked from `PUBLIC`; only `service_role` receives execute permission. Anonymous and authenticated roles receive no table DML.
+
+Operational rehearsal, acceptance evidence, rollback, and the ingress inventory are in `docs/admin-command-control-plane-p0.md`.

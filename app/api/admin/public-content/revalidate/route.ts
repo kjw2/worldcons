@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -16,7 +17,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: authFailureStatus === 401 ? "Unauthorized" : "Forbidden" }, { status: authFailureStatus });
   }
 
-  const result = invalidatePublicContentCaches();
+  const compatibility = await executeAdminCompatibilityCommand(
+    { commandType: "admin.public-cache.revalidate", payloadRef: { scope: "all" }, request },
+    () => invalidatePublicContentCaches(),
+  );
+  const result = compatibility.value;
   await recordAdminSiteEvent(
     {
       eventType: "admin_action",

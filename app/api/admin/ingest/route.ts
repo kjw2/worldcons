@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildAdminIngestJobContext, executeAdminIngestJobContext, type AdminIngestRequestContext } from "@/lib/admin/admin-ingest-jobs";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { buildAdminJobIdempotencyKey, createAdminJob, type AdminJobRecord } from "@/lib/db/admin-jobs";
 import { parseAdminIngestBody } from "@/lib/security/admin-api-validation";
@@ -74,7 +75,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "articleId or slug is required" }, { status: 400 });
     }
 
-    const queued = await enqueueAdminIngestJob(context);
+    const compatibility = await executeAdminCompatibilityCommand(
+      {
+        commandType: "admin.ingest.enqueue",
+        payloadRef: context.jobOptions,
+        request,
+        priority: context.action === "retry-summary" ? 20 : context.action === "summarize" ? 10 : 0,
+      },
+      () => enqueueAdminIngestJob(context),
+    );
+    const queued = compatibility.value;
     if (queued.ok) {
       await recordAdminSiteEvent(
         {

@@ -1,0 +1,95 @@
+import { randomUUID } from "node:crypto";
+import { adminCommandError } from "@/lib/admin/command-control-plane/errors";
+import { adminCommandService } from "@/lib/admin/command-control-plane/service";
+import type { AdminCommandResult, SubmittedAdminCommand } from "@/lib/admin/command-control-plane/types";
+import { redactAdminAuditMetadata } from "@/lib/security/audit-redaction";
+import { createHash } from "@/lib/utils/hash";
+
+export const ADMIN_QUEUE_V3_SHADOW_WRITE_FLAG = "ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED";
+
+export interface AdminCompatibilityCommandInput {
+  commandType: string;
+  payloadRef?: Record<string, unknown>;
+  request?: Request;
+  requestedBy?: string;
+  priority?: number;
+}
+
+export interface AdminCompatibilityCommandResult<T> {
+  value: T;
+  authority: "legacy";
+  shadow: "disabled" | "written" | "failed";
+  shadowResult?: AdminCommandResult<SubmittedAdminCommand>;
+}
+
+export function adminQueueV3ShadowWriteEnabled(environment: Record<string, string | undefined> = process.env) {
+  return environment[ADMIN_QUEUE_V3_SHADOW_WRITE_FLAG]?.trim().toLowerCase() === "true";
+}
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => [key, stableJsonValue(entryValue)]),
+  );
+}
+
+export function buildAdminCompatibilityCommandIdentity(input: AdminCompatibilityCommandInput) {
+  const safePayload = redactAdminAuditMetadata(input.payloadRef);
+  const requestKey = input.request?.headers.get("idempotency-key")?.trim();
+  const invocationKey = requestKey && requestKey.length <= 200 ? requestKey : randomUUID();
+  const payloadHash = createHash(JSON.stringify(stableJsonValue(safePayload)), 48);
+  return {
+    payloadRef: safePayload,
+    idempotencyKey: `compat:${createHash(`${input.commandType}:${invocationKey}`, 64)}`,
+    dedupeKey: `compat:${input.commandType}:${payloadHash}`.slice(0, 240),
+  };
+}
+
+export async function executeAdminCompatibilityCommand<T>(
+  input: AdminCompatibilityCommandInput,
+  executeLegacy: () => Promise<T> | T,
+  dependencies: {
+    shadowEnabled?: boolean;
+    submit?: typeof adminCommandService.submit;
+  } = {},
+): Promise<AdminCompatibilityCommandResult<T>> {
+  const value = await executeLegacy();
+  const shadowEnabled = dependencies.shadowEnabled ?? adminQueueV3ShadowWriteEnabled();
+  if (!shadowEnabled) return { value, authority: "legacy", shadow: "disabled" };
+
+  const identity = buildAdminCompatibilityCommandIdentity(input);
+  const submit = dependencies.submit ?? adminCommandService.submit;
+  let shadowResult: AdminCommandResult<SubmittedAdminCommand>;
+  try {
+    shadowResult = await submit({
+      commandType: input.commandType,
+      payloadRef: identity.payloadRef,
+      idempotencyKey: identity.idempotencyKey,
+      dedupeKey: identity.dedupeKey,
+      requestedBy: input.requestedBy ?? "admin",
+      priority: input.priority,
+      shadowOnly: true,
+    });
+  } catch {
+    shadowResult = { ok: false, error: adminCommandError("internal") };
+  }
+
+  if (!shadowResult.ok) {
+    console.warn("[admin command shadow]", {
+      event: "admin_command_shadow_failed",
+      commandType: input.commandType,
+      errorCode: shadowResult.error.code,
+    });
+  }
+
+  return {
+    value,
+    authority: "legacy",
+    shadow: shadowResult.ok ? "written" : "failed",
+    shadowResult,
+  };
+}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { updateArticleSummaryManually } from "@/lib/ingest/manual-summary-edit";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
@@ -15,7 +16,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ art
 
   const { articleRef: articleId } = await params;
   const body = await request.json().catch(() => ({}));
-  const result = await updateArticleSummaryManually({ articleId, body });
+  const compatibility = await executeAdminCompatibilityCommand(
+    {
+      commandType: "admin.article.summary.manual",
+      payloadRef: { articleId, requestedFields: body && typeof body === "object" ? Object.keys(body as Record<string, unknown>) : [] },
+      request,
+    },
+    () => updateArticleSummaryManually({ articleId, body }),
+  );
+  const result = compatibility.value;
   if (result.status === "updated") {
     invalidatePublicContentCaches({ articleSlug: result.slug });
   }

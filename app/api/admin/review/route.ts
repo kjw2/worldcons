@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { runAdminReviewAction } from "@/lib/ingest/review";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
@@ -32,7 +33,15 @@ export async function POST(request: Request) {
   }
   const { action, articleId, slug, note, provider, model } = parsed.data;
 
-  const result = await runAdminReviewAction({ action, articleId, slug, note, provider, model });
+  const compatibility = await executeAdminCompatibilityCommand(
+    {
+      commandType: "admin.article.review",
+      payloadRef: { action, articleId, slug, provider, model, notePresent: Boolean(note) },
+      request,
+    },
+    () => runAdminReviewAction({ action, articleId, slug, note, provider, model }),
+  );
+  const result = compatibility.value;
   if (reviewChangedPublicContent(result)) {
     invalidatePublicContentCaches({ articleSlug: slug });
   }

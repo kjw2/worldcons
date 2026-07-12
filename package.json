@@ -29,6 +29,7 @@
     "admin:gate0": "tsx scripts/admin-redesign-gate0.ts",
     "admin:gate0:dry": "tsx scripts/admin-redesign-gate0.ts --dry-run --environment=ci",
     "test:gate0": "tsx --test tests/admin-redesign-gate0.test.ts",
+    "test:p0": "tsx --test tests/admin-command-control-plane.test.ts tests/admin-command-control-plane.postgres.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import {
   appendAdminJobEvent,
@@ -60,7 +61,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   }
 
   if (parsed.data.action === "cancel") {
-    const cancelled = await markAdminJobCancelled({ jobId, reason: parsed.data.reason });
+    const compatibility = await executeAdminCompatibilityCommand(
+      { commandType: "admin.jobs.cancel", payloadRef: { jobId, reasonPresent: Boolean(parsed.data.reason) }, request, priority: 100 },
+      () => markAdminJobCancelled({ jobId, reason: parsed.data.reason }),
+    );
+    const cancelled = compatibility.value;
     if (!cancelled.ok) {
       await recordAdminSiteEvent(
         {
@@ -110,7 +115,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     return NextResponse.json({ action: "cancel", job: publicJob(cancelled.data) });
   }
 
-  const retried = await retryAdminJob({ jobId, reason: parsed.data.reason });
+  const compatibility = await executeAdminCompatibilityCommand(
+    { commandType: "admin.jobs.retry", payloadRef: { jobId, reasonPresent: Boolean(parsed.data.reason) }, request, priority: 50 },
+    () => retryAdminJob({ jobId, reason: parsed.data.reason }),
+  );
+  const retried = compatibility.value;
   if (!retried.ok) {
     await recordAdminSiteEvent(
       {

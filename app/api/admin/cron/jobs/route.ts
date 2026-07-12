@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ADMIN_INGEST_JOB_TYPES } from "@/lib/admin/admin-ingest-jobs";
 import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
@@ -23,12 +24,12 @@ export async function GET(request: Request) {
 
   const maxJobs = boundedInteger(process.env.ADMIN_JOB_CRON_MAX_JOBS, 2, { min: 1, max: 10 });
   const leaseSeconds = boundedInteger(process.env.ADMIN_JOB_CRON_LEASE_SECONDS, 120, { min: 10, max: 600 });
-  const result = await runAdminJobWorker({
-    workerId: `admin-job-cron:${Date.now()}`,
-    maxJobs,
-    leaseSeconds,
-    jobTypes: cronJobTypes(),
-  });
+  const jobTypes = cronJobTypes();
+  const compatibility = await executeAdminCompatibilityCommand(
+    { commandType: "cron.jobs.drain", payloadRef: { maxJobs, leaseSeconds, jobTypes }, request, requestedBy: "cron" },
+    () => runAdminJobWorker({ workerId: `admin-job-cron:${Date.now()}`, maxJobs, leaseSeconds, jobTypes }),
+  );
+  const result = compatibility.value;
 
   if (result.mode === "unavailable") {
     return NextResponse.json(result, { status: 503 });

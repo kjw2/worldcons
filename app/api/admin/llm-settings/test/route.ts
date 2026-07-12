@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { completeJsonWithMetadata, type LlmMessage } from "@/lib/ai/client";
 import { getRuntimeLlmSettings } from "@/lib/ai/llm-settings";
 import type { ConfigurableLlmProvider } from "@/lib/ai/llm-settings-types";
@@ -99,7 +100,15 @@ export async function POST(request: Request) {
       throw new Error("OpenAI compatible base URL is required.");
     }
 
-    const completion = await completeJsonWithMetadata(LLM_HEALTH_MESSAGES, { provider, model: requestedModel });
+    const compatibility = await executeAdminCompatibilityCommand(
+      {
+        commandType: "admin.llm.health-check",
+        payloadRef: { provider, model: requestedModel ?? null },
+        request,
+      },
+      () => completeJsonWithMetadata(LLM_HEALTH_MESSAGES, { provider, model: requestedModel }),
+    );
+    const completion = compatibility.value;
     if (!completion) {
       throw new Error("No LLM completion available.");
     }

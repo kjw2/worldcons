@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { getAdminLlmSettingsView, saveAdminLlmSettings } from "@/lib/ai/llm-settings";
 import { parseAdminLlmSettingsBody } from "@/lib/security/admin-api-validation";
@@ -32,7 +33,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid admin LLM settings request", detail: parsed.error }, { status: 400 });
     }
 
-    const settings = await saveAdminLlmSettings(parsed.data);
+    const providerNames = Object.keys(parsed.data.providers ?? {});
+    const compatibility = await executeAdminCompatibilityCommand(
+      {
+        commandType: "admin.llm.settings.save",
+        payloadRef: {
+          summaryProvider: parsed.data.summary?.provider,
+          summaryModel: parsed.data.summary?.model,
+          providerNames,
+        },
+        request,
+      },
+      () => saveAdminLlmSettings(parsed.data),
+    );
+    const settings = compatibility.value;
     await recordAdminSiteEvent(
       {
         eventType: "admin_action",
