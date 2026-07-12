@@ -22,6 +22,7 @@
 - admin jobs/admin job events/RPC migration: `supabase/migrations/20260709150000_admin_jobs.sql`
 - admin job claim RPC parameter fix: `supabase/migrations/20260710100000_fix_claim_admin_job_parameter_references.sql`
 - P5 additive governance/aggregate health migration: `supabase/migrations/20260712230000_admin_governance_p5.sql` (implementation-ready; production evidence pending)
+- P5 digest/owner-binding corrective migration: `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`
 
 read-mostly readiness check:
 
@@ -59,4 +60,5 @@ pnpm build
 - `/api/security/csp-report`가 정상 CSP report payload에는 204, 과대 payload에는 413을 반환하는지 확인
 - CSP Report-Only 위반이 실제 사용자 화면 기능 장애를 가리키는지 모니터링
 - P5 health workflow와 governance UI는 명시적 feature flag 전에는 비활성인지 확인
+- P5 operations/data/security owner binding 환경변수는 서로 겹치지 않는 별도 운영자에 연결하고 값 자체는 로그/문서/UI에 출력하지 않음
 - Gate 5/compatibility removal은 최소 관찰 기간, 복원 리허설, 소유자 승인과 별도 파괴적 변경 승인이 있기 전에는 승인으로 표시하지 않음

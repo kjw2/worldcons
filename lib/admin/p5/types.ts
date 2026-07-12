@@ -75,6 +75,14 @@ export interface P5HealthEvidence {
     firstObservedAt: string | null;
     lastObservedAt: string | null;
     bucketCount: number;
+    legacyReadObserved: boolean;
+    legacyWriteObserved: boolean;
+    newReadObserved: boolean;
+    newWriteObserved: boolean;
+    fallbackObserved: boolean;
+    unexplainedLegacyObserved: boolean;
+    legacyLastSeenAt: string | null;
+    newLastSeenAt: string | null;
   };
   inFlight: {
     legacyCount: number;
@@ -84,7 +92,7 @@ export interface P5HealthEvidence {
   governance: {
     backupRestoreAt: string | null;
     backupRestoreExpiresAt: string | null;
-    approvedRoles: P5OwnerRole[];
+    approvalSets: P5ApprovalSet[];
   };
   retention: {
     commandAttemptsDue: number;
@@ -97,6 +105,14 @@ export interface P5HealthEvidence {
     deadLetterOutboxDue: number;
     legalHoldActive: boolean;
   };
+}
+
+export interface P5ApprovalSet {
+  evidenceDigest: string;
+  roles: P5OwnerRole[];
+  distinctActorCount: number;
+  expiresAt: string | null;
+  status: "active" | "expired";
 }
 
 export type P5SlaStatus = "healthy" | "warning" | "critical" | "unknown";

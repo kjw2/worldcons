@@ -4,7 +4,7 @@
 
 P5 is **implementation-ready**. Gate 5 and compatibility retirement remain **evidence-pending** until a real production observation window, current restore rehearsal, named approvals, and all health/parity gates pass. This stage does not remove a legacy reader or writer, flip a feature flag, apply a production migration, deploy, or certify production retirement.
 
-The additive migration is `supabase/migrations/20260712230000_admin_governance_p5.sql`. It may be rerun after P0-P3. Its health RPC returns aggregate counts, age values, state distributions, source keys, and identity digests only. It does not return row identifiers, URLs, article/source text, payloads, credentials, or secret configuration.
+The additive migrations are `supabase/migrations/20260712230000_admin_governance_p5.sql` and the rerunnable acceptance correction `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`. Apply them in that order after P0-P3. The health RPC returns aggregate counts/presence, age values, state distributions, source keys, evidence digests, approval roles, distinct actor counts, expiry, and status only. It does not return row identifiers, URLs, article/source text, payloads, credentials, usernames, or actor hashes.
 
 ## Ownership placeholders
 
@@ -18,7 +18,17 @@ Replace each placeholder in the production operations register before enabling v
 | Backup/restore role | `TBD-BACKUP-RESTORE-OWNER` | Backup verification, isolated restore rehearsal, evidence marker custody |
 | Incident commander | `TBD-INCIDENT-COMMANDER` | Severity declaration, escalation, rollback coordination |
 
-Owner approvals in `/admin/governance` are session-only, CSRF-protected, hashed, immutable evidence with a bounded expiry. They do not approve Gate 5 by themselves.
+Owner approvals in `/admin/governance` are session-only, CSRF-protected, hashed, immutable evidence with a bounded expiry. Each approval is bound to the exact current `p5-evidence-v2` digest. Three required roles must have three distinct active actors for that same digest. They do not approve Gate 5 by themselves.
+
+Configure role binding server-side with exact identity allowlists or pre-hashed actor allowlists. Document variable names, never values:
+
+| Role | Exact identity variable | Pre-hashed allowlist variable |
+| --- | --- | --- |
+| Operations | `ADMIN_P5_OWNER_OPERATIONS_IDENTITIES` | `ADMIN_P5_OWNER_OPERATIONS_ACTOR_HASHES` |
+| Data | `ADMIN_P5_OWNER_DATA_IDENTITIES` | `ADMIN_P5_OWNER_DATA_ACTOR_HASHES` |
+| Security | `ADMIN_P5_OWNER_SECURITY_IDENTITIES` | `ADMIN_P5_OWNER_SECURITY_ACTOR_HASHES` |
+
+Lists are comma-separated and bounded. A configured actor may belong to only one required role; any overlap or malformed hash invalidates the binding configuration. An unbound session cannot choose a role from the request. A single configured admin may approve at most its one bound role, so environments with only one admin identity correctly remain evidence-pending until distinct operators are provisioned.
 
 ## SLO policy and alerts
 
@@ -109,7 +119,7 @@ Rollback reverses the narrowest read/worker flag first, preserves dual-written d
 
 ## Retirement evaluator
 
-The evaluator requires explicit bounds and is read-only:
+The evaluator requires explicit bounds and is read-only. Its evidence digest excludes `generatedAt`, report wording, approval accumulation, and other presentation fields. It canonically hashes versioned thresholds, exact observation bounds, presence/last-seen evidence, aggregate gate inputs, backup marker, legal flags, and the required approval rule. Identical evidence is stable; a gate-relevant input change produces a new digest and invalidates older approval sets.
 
 ```bash
 pnpm admin:retirement:p5 -- --observation-start=2026-07-01T00:00:00Z --observation-end=2026-07-15T00:00:00Z

@@ -6,7 +6,8 @@ import { evaluateP5RetirementReadiness, evaluateP5Slas, P5_RETIREMENT_FLAG_ORDER
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
 import { P5_OWNER_ROLES, type P5SlaStatus } from "@/lib/admin/p5/types";
-import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { resolveP5OwnerRoleBindings } from "@/lib/admin/p5/owner-bindings";
+import { createAdminCsrfToken, getAuthorizedAdminPageIdentity } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,7 +27,8 @@ function formatMetric(value: number | null, unit: "seconds" | "count") {
 }
 
 export default async function AdminGovernancePage() {
-  if (!(await isAuthorizedPageRequest())) redirect("/admin/login");
+  const identity = await getAuthorizedAdminPageIdentity();
+  if (!identity) redirect("/admin/login");
   if (!adminGovernanceUiEnabled()) redirect("/admin");
   const policy = resolveP5OperationalPolicy();
   const now = new Date();
@@ -37,6 +39,8 @@ export default async function AdminGovernancePage() {
   const flags = Object.fromEntries(P5_RETIREMENT_FLAG_ORDER.map(([name]) => [name, process.env[name]?.trim().toLowerCase() === "true"]));
   const observationSampleRate = Number(process.env.ADMIN_P5_COMPATIBILITY_OBSERVATION_SAMPLE_RATE ?? "0");
   const readiness = evaluateP5RetirementReadiness({ evidence, policy, observationStart, observationEnd, flags, observationSampleRate, now });
+  const ownerBindings = resolveP5OwnerRoleBindings(identity);
+  const matchingApprovals = evidence.governance.approvalSets.find((set) => set.evidenceDigest === readiness.evidenceDigest && set.status === "active");
   const csrfToken = (await createAdminCsrfToken()) ?? "";
   const retention = Object.entries(evidence.retention).filter(([key]) => key !== "legalHoldActive") as Array<[string, number]>;
   const hardViolations = slas.filter((sla) => sla.status === "critical" || sla.status === "unknown").length;
@@ -71,7 +75,7 @@ export default async function AdminGovernancePage() {
 
       <section className="grid border-y border-rule bg-white lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.7fr)]" aria-labelledby="retirement-gates">
         <div className="min-w-0 border-b border-rule px-4 py-5 sm:px-6 lg:border-b-0 lg:border-r"><p className="text-xs font-semibold uppercase text-court">Retirement</p><h2 id="retirement-gates" className="mt-1 text-base font-semibold text-ink">Exact blocked gates</h2><div className="mt-3 divide-y divide-rule">{readiness.gates.map((gate) => <div key={gate.key} className="grid grid-cols-[20px_minmax(0,1fr)] gap-3 py-3">{gate.passed ? <CheckCircle2 className="mt-0.5 size-4 text-mint" aria-hidden="true" /> : <XCircle className="mt-0.5 size-4 text-court" aria-hidden="true" />}<div className="min-w-0"><p className="text-sm font-semibold text-ink">{gate.label}</p><p className="mt-1 break-words text-xs leading-5 text-ink/52">{gate.detail}</p></div></div>)}</div></div>
-        <div className="px-4 py-5 sm:px-6"><p className="text-xs font-semibold uppercase text-court">Ownership</p><h2 className="mt-1 text-base font-semibold text-ink">Recorded approvals</h2><div className="mt-3">{P5_OWNER_ROLES.map((role) => <AdminGovernanceApproval key={role} role={role} approved={evidence.governance.approvedRoles.includes(role)} csrfToken={csrfToken} evidenceDigest={readiness.evidenceDigest} />)}</div><div className="mt-5 border-t border-rule pt-4"><p className="text-xs font-semibold text-ink/58">Backup/restore rehearsal</p><p className="mt-1 break-words text-sm text-ink">{evidence.governance.backupRestoreAt ?? "No current evidence marker"}</p><p className="mt-1 text-xs text-ink/45">Expires: {evidence.governance.backupRestoreExpiresAt ?? "not recorded"}</p></div></div>
+        <div className="px-4 py-5 sm:px-6"><p className="text-xs font-semibold uppercase text-court">Ownership</p><h2 className="mt-1 text-base font-semibold text-ink">Digest-bound approvals</h2><p className="mt-2 text-xs leading-5 text-ink/52">Each required role must be approved by a separately bound operator for this exact evidence snapshot.</p><div className="mt-3">{P5_OWNER_ROLES.map((role) => <AdminGovernanceApproval key={role} role={role} approved={matchingApprovals?.roles.includes(role) === true} permitted={ownerBindings.permittedRoles.includes(role)} bindingValid={ownerBindings.valid} csrfToken={csrfToken} evidenceDigest={readiness.evidenceDigest} observationStart={observationStart} observationEnd={observationEnd} />)}</div><div className="mt-5 border-t border-rule pt-4"><p className="text-xs font-semibold text-ink/58">Backup/restore rehearsal</p><p className="mt-1 break-words text-sm text-ink">{evidence.governance.backupRestoreAt ?? "No current evidence marker"}</p><p className="mt-1 text-xs text-ink/45">Expires: {evidence.governance.backupRestoreExpiresAt ?? "not recorded"}</p></div></div>
       </section>
 
       <section className="px-4 py-5 sm:px-6" aria-labelledby="retention-plan"><div className="mb-3"><p className="text-xs font-semibold uppercase text-court">Retention</p><h2 id="retention-plan" className="mt-1 text-base font-semibold text-ink">Dry-run due counts</h2></div><div className="hidden overflow-x-auto md:block"><table className="min-w-[680px] table-fixed divide-y divide-rule border-y border-rule bg-white text-sm"><thead className="bg-parchment"><tr className="text-left text-xs font-semibold text-ink/58"><th className="px-4 py-3">Domain</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Disposition</th></tr></thead><tbody className="divide-y divide-rule">{retention.map(([key, count]) => <tr key={key}><td className="break-words px-4 py-3 font-semibold text-ink">{key}</td><td className="px-4 py-3">{count}</td><td className="px-4 py-3 text-ink/55">{key === "compatibilityObservationsDue" || key === "deliveredOutboxDue" ? "Guarded batch eligible" : "Archive or immutable retention"}</td></tr>)}</tbody></table></div><div className="grid divide-y divide-rule border-y border-rule bg-white md:hidden">{retention.map(([key, count]) => <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-3"><span className="break-words text-sm font-semibold text-ink">{key}</span><span className="text-sm text-ink/65">{count}</span></div>)}</div>{evidence.retention.legalHoldActive ? <p role="status" className="mt-3 text-sm font-semibold text-court">An active legal hold blocks maintenance apply mode.</p> : null}</section>

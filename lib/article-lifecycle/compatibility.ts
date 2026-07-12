@@ -58,9 +58,7 @@ export function articleLifecycleP2ShadowWriteEnabled(environment: Record<string,
 }
 
 export function articleLifecycleP2ReadsEnabled(environment: Record<string, string | undefined> = process.env) {
-  const selected = explicitTrue(environment[ARTICLE_LIFECYCLE_P2_READ_FLAG]);
-  recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction: "read", authority: selected ? "new" : "legacy", outcome: "selected" }, { environment });
-  return selected;
+  return explicitTrue(environment[ARTICLE_LIFECYCLE_P2_READ_FLAG]);
 }
 
 export function articleLifecycleP2ShadowCohorts(environment: Record<string, string | undefined> = process.env) {

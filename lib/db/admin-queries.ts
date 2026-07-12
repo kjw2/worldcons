@@ -844,7 +844,6 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   }
   recordCompatibilityObservation({ surface: "admin_dashboard", domain: "operations", direction: "read", authority: "fallback", outcome: "fallback" });
   const legacy = await loadAdminDashboardLegacyData();
-  recordCompatibilityObservation({ surface: "admin_dashboard", domain: "operations", direction: "read", authority: "legacy", outcome: "succeeded" });
   return legacy;
 }
 

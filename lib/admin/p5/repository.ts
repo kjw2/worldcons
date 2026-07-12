@@ -1,6 +1,6 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { resolveP5OperationalPolicy, type P5OperationalPolicy } from "@/lib/admin/p5/policy";
-import type { P5HealthEvidence, P5OwnerRole } from "@/lib/admin/p5/types";
+import type { P5ApprovalSet, P5HealthEvidence, P5OwnerRole } from "@/lib/admin/p5/types";
 
 interface RpcClient {
   rpc(name: string, parameters: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>;
@@ -44,9 +44,9 @@ export function unavailableP5HealthEvidence(start: string, end: string): P5Healt
     publication: { legacyPublicCount: 0, explicitPublicCount: 0, parityMismatchCount: 0, quarantineCount: 0, legacyIdentityDigest: "", explicitIdentityDigest: "" },
     outbox: { pendingCount: 0, processingCount: 0, deadLetterCount: 0, oldestUndeliveredAgeSeconds: null },
     sources: [],
-    compatibility: { totalCount: 0, legacyReadCount: 0, legacyWriteCount: 0, newReadCount: 0, newWriteCount: 0, fallbackCount: 0, unexplainedLegacyCount: 0, firstObservedAt: null, lastObservedAt: null, bucketCount: 0 },
+    compatibility: { totalCount: 0, legacyReadCount: 0, legacyWriteCount: 0, newReadCount: 0, newWriteCount: 0, fallbackCount: 0, unexplainedLegacyCount: 0, firstObservedAt: null, lastObservedAt: null, bucketCount: 0, legacyReadObserved: false, legacyWriteObserved: false, newReadObserved: false, newWriteObserved: false, fallbackObserved: false, unexplainedLegacyObserved: false, legacyLastSeenAt: null, newLastSeenAt: null },
     inFlight: { legacyCount: 0, newCount: 0, conflict: false },
-    governance: { backupRestoreAt: null, backupRestoreExpiresAt: null, approvedRoles: [] },
+    governance: { backupRestoreAt: null, backupRestoreExpiresAt: null, approvalSets: [] },
     retention: { commandAttemptsDue: 0, commandEventsDue: 0, lifecycleEventsDue: 0, publicationHistoryDue: 0, contentVersionsDue: 0, compatibilityObservationsDue: 0, deliveredOutboxDue: 0, deadLetterOutboxDue: 0, legalHoldActive: false },
   };
 }
@@ -64,9 +64,16 @@ export function parseP5HealthEvidence(value: unknown, fallback: P5HealthEvidence
   const governance = record(root.governance);
   const retention = record(root.retention);
   const states = record(queue.states);
-  const approvedRoles = Array.isArray(governance.approvedRoles)
-    ? governance.approvedRoles.filter((role): role is P5OwnerRole => role === "operations" || role === "data" || role === "security")
-    : [];
+  const approvalSets: P5ApprovalSet[] = Array.isArray(governance.approvalSets) ? governance.approvalSets.slice(0, 50).flatMap((entry) => {
+    const set = record(entry);
+    const evidenceDigest = text(set.evidenceDigest);
+    const roles = Array.isArray(set.roles)
+      ? set.roles.filter((role): role is P5OwnerRole => role === "operations" || role === "data" || role === "security")
+      : [];
+    const status = set.status === "active" ? "active" as const : set.status === "expired" ? "expired" as const : null;
+    if (!/^[0-9a-f]{64}$/.test(evidenceDigest) || !status) return [];
+    return [{ evidenceDigest, roles: [...new Set(roles)], distinctActorCount: numberValue(set.distinctActorCount), expiresAt: nullableText(set.expiresAt), status }];
+  }) : [];
   const sources = Array.isArray(root.sources) ? root.sources.slice(0, 100).map((entry) => {
     const source = record(entry);
     return { sourceKey: text(source.sourceKey), active: source.active === true, latestRunAt: nullableText(source.latestRunAt), freshnessAgeSeconds: nullableNumber(source.freshnessAgeSeconds) };
@@ -85,9 +92,18 @@ export function parseP5HealthEvidence(value: unknown, fallback: P5HealthEvidence
     publication: { legacyPublicCount: numberValue(publication.legacyPublicCount), explicitPublicCount: numberValue(publication.explicitPublicCount), parityMismatchCount: numberValue(publication.parityMismatchCount), quarantineCount: numberValue(publication.quarantineCount), legacyIdentityDigest: text(publication.legacyIdentityDigest), explicitIdentityDigest: text(publication.explicitIdentityDigest) },
     outbox: { pendingCount: numberValue(outbox.pendingCount), processingCount: numberValue(outbox.processingCount), deadLetterCount: numberValue(outbox.deadLetterCount), oldestUndeliveredAgeSeconds: nullableNumber(outbox.oldestUndeliveredAgeSeconds) },
     sources,
-    compatibility: { totalCount: numberValue(compatibility.totalCount), legacyReadCount: numberValue(compatibility.legacyReadCount), legacyWriteCount: numberValue(compatibility.legacyWriteCount), newReadCount: numberValue(compatibility.newReadCount), newWriteCount: numberValue(compatibility.newWriteCount), fallbackCount: numberValue(compatibility.fallbackCount), unexplainedLegacyCount: numberValue(compatibility.unexplainedLegacyCount), firstObservedAt: nullableText(compatibility.firstObservedAt), lastObservedAt: nullableText(compatibility.lastObservedAt), bucketCount: numberValue(compatibility.bucketCount) },
+    compatibility: {
+      totalCount: numberValue(compatibility.totalCount), legacyReadCount: numberValue(compatibility.legacyReadCount), legacyWriteCount: numberValue(compatibility.legacyWriteCount), newReadCount: numberValue(compatibility.newReadCount), newWriteCount: numberValue(compatibility.newWriteCount), fallbackCount: numberValue(compatibility.fallbackCount), unexplainedLegacyCount: numberValue(compatibility.unexplainedLegacyCount), firstObservedAt: nullableText(compatibility.firstObservedAt), lastObservedAt: nullableText(compatibility.lastObservedAt), bucketCount: numberValue(compatibility.bucketCount),
+      legacyReadObserved: compatibility.legacyReadObserved === true || numberValue(compatibility.legacyReadCount) > 0,
+      legacyWriteObserved: compatibility.legacyWriteObserved === true || numberValue(compatibility.legacyWriteCount) > 0,
+      newReadObserved: compatibility.newReadObserved === true || numberValue(compatibility.newReadCount) > 0,
+      newWriteObserved: compatibility.newWriteObserved === true || numberValue(compatibility.newWriteCount) > 0,
+      fallbackObserved: compatibility.fallbackObserved === true || numberValue(compatibility.fallbackCount) > 0,
+      unexplainedLegacyObserved: compatibility.unexplainedLegacyObserved === true || numberValue(compatibility.unexplainedLegacyCount) > 0,
+      legacyLastSeenAt: nullableText(compatibility.legacyLastSeenAt), newLastSeenAt: nullableText(compatibility.newLastSeenAt),
+    },
     inFlight: { legacyCount: numberValue(inFlight.legacyCount), newCount: numberValue(inFlight.newCount), conflict: inFlight.conflict === true },
-    governance: { backupRestoreAt: nullableText(governance.backupRestoreAt), backupRestoreExpiresAt: nullableText(governance.backupRestoreExpiresAt), approvedRoles: [...new Set(approvedRoles)] },
+    governance: { backupRestoreAt: nullableText(governance.backupRestoreAt), backupRestoreExpiresAt: nullableText(governance.backupRestoreExpiresAt), approvalSets },
     retention: { commandAttemptsDue: numberValue(retention.commandAttemptsDue), commandEventsDue: numberValue(retention.commandEventsDue), lifecycleEventsDue: numberValue(retention.lifecycleEventsDue), publicationHistoryDue: numberValue(retention.publicationHistoryDue), contentVersionsDue: numberValue(retention.contentVersionsDue), compatibilityObservationsDue: numberValue(retention.compatibilityObservationsDue), deliveredOutboxDue: numberValue(retention.deliveredOutboxDue), deadLetterOutboxDue: numberValue(retention.deadLetterOutboxDue), legalHoldActive: retention.legalHoldActive === true },
   };
 }
@@ -117,10 +133,11 @@ export async function getP5HealthEvidence(options: {
   return error ? fallback : parseP5HealthEvidence(data, fallback);
 }
 
-export async function recordP5OwnerApproval(options: { role: P5OwnerRole; actorHash: string; evidenceDigest: string; expiresAt: string; client?: RpcClient | null }) {
+export async function recordP5OwnerApproval(options: { role: P5OwnerRole; actorHash: string; evidenceDigest: string; currentEvidenceDigest: string; expiresAt: string; client?: RpcClient | null }) {
+  if (options.evidenceDigest !== options.currentEvidenceDigest) return { ok: false as const, code: "stale_evidence_digest" };
   const client = options.client === undefined ? getSupabaseServiceRoleAdmin() as unknown as RpcClient | null : options.client;
   if (!client) return { ok: false as const, code: "unavailable" };
-  const { data, error } = await client.rpc("admin_record_owner_approval_p5", { p_role_key: options.role, p_actor_hash: options.actorHash, p_evidence_digest: options.evidenceDigest, p_expires_at: options.expiresAt });
+  const { data, error } = await client.rpc("admin_record_owner_approval_p5_v2", { p_role_key: options.role, p_actor_hash: options.actorHash, p_evidence_digest: options.evidenceDigest, p_current_evidence_digest: options.currentEvidenceDigest, p_expires_at: options.expiresAt });
   return error ? { ok: false as const, code: error.code ?? "database_error" } : { ok: true as const, evidenceId: numberValue(data) };
 }
 

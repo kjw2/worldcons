@@ -22,7 +22,7 @@ import type {
 import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
-import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication";
+import { articlePublicationV4ReadsEnabled, observeArticlePublicationReadDecision } from "@/lib/article-publication";
 
 interface SupabaseTagRow {
   id?: string;
@@ -123,7 +123,11 @@ const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summar
 const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text`;
 
 function publicationProjectionEnabled(includeUnpublished?: boolean) {
-  return !includeUnpublished && articlePublicationV4ReadsEnabled(process.env, "public_query");
+  return !includeUnpublished && articlePublicationV4ReadsEnabled();
+}
+
+function observePublicProjectionRead(includeUnpublished?: boolean) {
+  if (!includeUnpublished) observeArticlePublicationReadDecision("public_query");
 }
 
 function articleRelation(includeUnpublished?: boolean) {
@@ -419,6 +423,7 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
 }
 
 export async function listArticles(filters: ArticleListFilters = {}): Promise<ArticleListResult> {
+  observePublicProjectionRead(filters.includeUnpublished);
   const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
   const supabase = getSupabaseAdmin();
 
@@ -523,14 +528,17 @@ async function getArticleBySlugWithSelect(slug: string, select: string, options:
 }
 
 export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean; includeSourceText?: boolean } = {}): Promise<ArticleDetail | null> {
+  observePublicProjectionRead(options.includeUnpublished);
   return getArticleBySlugWithSelect(slug, options.includeSourceText === false ? ARTICLE_PAGE_SELECT : ARTICLE_DETAIL_SELECT, options);
 }
 
 export async function getArticlePreviewBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
+  observePublicProjectionRead(options.includeUnpublished);
   return getArticleBySlugWithSelect(slug, ARTICLE_LIST_SELECT, options);
 }
 
 export async function getArticleSourceTextBySlug(slug: string, options: { includeUnpublished?: boolean } = {}) {
+  observePublicProjectionRead(options.includeUnpublished);
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
@@ -556,6 +564,7 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
 }
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
+  observePublicProjectionRead();
   const supabase = getSupabaseAdmin();
   const tagId = article.tags[0]?.id;
   if (supabase && tagId) {
@@ -597,6 +606,7 @@ export async function listTopViewedArticles(
   limit = 5,
   filters: Pick<ArticleListFilters, "range" | "source" | "jurisdiction" | "type" | "language" | "tag"> = {},
 ) {
+  observePublicProjectionRead();
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 20) : 5;
   const supabase = getSupabaseAdmin();
 
@@ -659,6 +669,7 @@ export async function listJurisdictionArticleCounts(
   jurisdictions: string[] = [],
   options: { range?: ArticleListFilters["range"] } = {},
 ) {
+  observePublicProjectionRead();
   const normalizedJurisdictions = Array.from(new Set(jurisdictions.map((jurisdiction) => jurisdiction.trim()).filter(Boolean)));
   const supabase = getSupabaseAdmin();
 
@@ -710,6 +721,7 @@ export async function listJurisdictionArticleCounts(
 }
 
 export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name"; limit?: number } = {}) {
+  observePublicProjectionRead();
   const supabase = getSupabaseAdmin();
   const limit = Number.isFinite(options.limit) && options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), 1_000) : null;
 
@@ -737,6 +749,7 @@ export async function listTags(options: { type?: string; sort?: "count" | "lates
 }
 
 export async function getTagBySlug(slug: string) {
+  observePublicProjectionRead();
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {

@@ -643,7 +643,6 @@ async function loadAnalyticsHealthData(days: number): Promise<AnalyticsHealthDat
     loadIngestionRunRows(days),
     loadArticleSummaryRows(),
   ]);
-  recordCompatibilityObservation({ surface: "admin_analytics", domain: "operations", direction: "read", authority: "legacy", outcome: "succeeded" });
   return {
     collectionHealth: buildCollectionHealth(ingestionRuns),
     modelHealth: buildModelHealth(articleRows),

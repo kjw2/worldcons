@@ -42,9 +42,15 @@ export function articlePublicationV4ShadowWriteEnabled(environment: Record<strin
 
 export function articlePublicationV4ReadsEnabled(
   environment: Record<string, string | undefined> = process.env,
-  surface: P5CompatibilityObservation["surface"] = "article_publication",
 ) {
-  const selected = explicitTrue(environment[ADMIN_PUBLICATION_V4_READ_FLAG]);
+  return explicitTrue(environment[ADMIN_PUBLICATION_V4_READ_FLAG]);
+}
+
+export function observeArticlePublicationReadDecision(
+  surface: P5CompatibilityObservation["surface"],
+  environment: Record<string, string | undefined> = process.env,
+) {
+  const selected = articlePublicationV4ReadsEnabled(environment);
   recordCompatibilityObservation({ surface, domain: "projection", direction: "read", authority: selected ? "new" : "legacy", outcome: "selected" }, { environment });
   return selected;
 }
