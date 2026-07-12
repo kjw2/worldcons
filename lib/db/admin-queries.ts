@@ -258,6 +258,31 @@ export interface AdminArticleBulkResult {
   notFound: AdminArticleBulkRef[];
 }
 
+export interface AdminArticleBulkPersistedOutcome {
+  articleId?: string | null;
+  persisted: boolean;
+}
+
+export async function shadowConfirmedAdminBulkArticleOutcomes(
+  outcomes: readonly AdminArticleBulkPersistedOutcome[],
+  context: { action: AdminArticleBulkAction; notePresent: boolean },
+  shadow: typeof shadowConfirmedLegacyArticleMutation = shadowConfirmedLegacyArticleMutation,
+) {
+  const articleIds = Array.from(new Set(
+    outcomes
+      .filter((outcome) => outcome.persisted && outcome.articleId)
+      .map((outcome) => outcome.articleId as string),
+  ));
+  return Promise.all(articleIds.map((articleId) => shadow({
+    articleId,
+    succeeded: true,
+    reason: context.action === "close-private" ? "Legacy bulk private closure persisted." : "Legacy bulk review request persisted.",
+    provenanceActorType: "human",
+    provenanceActorId: "admin-bulk-review",
+    safeMetadata: { action: context.action, notePresent: context.notePresent },
+  })));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -949,7 +974,7 @@ export async function runAdminArticleBulkAction(input: {
   let updatedCount = 0;
   for (const row of rows) {
     if (!row.id) continue;
-    const { error } = await supabase
+    const { data: persisted, error } = await supabase
       .from("articles")
       .update({
         status: "needs_review" satisfies ArticleStatus,
@@ -957,27 +982,26 @@ export async function runAdminArticleBulkAction(input: {
         error_metadata: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", row.id);
+      .eq("id", row.id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    await shadowArticleLifecycleTransition({
-      articleId: row.id,
-      cohort: "review",
-      actorType: "admin",
-      source: "admin.bulk_review",
-      reasonCode: action === "close-private" ? "legacy.review.bulk_closed_private" : "legacy.review.bulk_needs_review",
-      reviewState: action === "close-private" ? "closed_private" : "needs_review",
-    });
+    if (persisted?.id) {
+      await shadowArticleLifecycleTransition({
+        articleId: row.id,
+        cohort: "review",
+        actorType: "admin",
+        source: "admin.bulk_review",
+        reasonCode: action === "close-private" ? "legacy.review.bulk_closed_private" : "legacy.review.bulk_needs_review",
+        reviewState: action === "close-private" ? "closed_private" : "needs_review",
+      });
+      await shadowConfirmedAdminBulkArticleOutcomes(
+        [{ articleId: persisted.id, persisted: true }],
+        { action, notePresent: Boolean(note) },
+      );
+    }
     updatedCount += 1;
   }
-
-  await Promise.all(rows.flatMap((row) => row.id ? [shadowConfirmedLegacyArticleMutation({
-    articleId: row.id,
-    succeeded: updatedCount === refs.length,
-    reason: action === "close-private" ? "Legacy bulk private closure persisted." : "Legacy bulk review request persisted.",
-    provenanceActorType: "human",
-    provenanceActorId: "admin-bulk-review",
-    safeMetadata: { action, notePresent: Boolean(note) },
-  })] : []));
 
   return {
     mode: "database",

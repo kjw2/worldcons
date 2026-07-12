@@ -15,6 +15,7 @@ import type {
   ArticlePublicationRepository,
 } from "@/lib/article-publication/types";
 import { createArticlePublicationService } from "@/lib/article-publication/service";
+import { shadowConfirmedAdminBulkArticleOutcomes } from "@/lib/db/admin-queries";
 
 const articleId = "11111111-1111-4111-8111-111111111111";
 const versionId = "22222222-2222-4222-8222-222222222222";
@@ -111,6 +112,24 @@ test("shadow authority failures are isolated as data", async () => {
   assert.deepEqual(result, { shadow: "failed", errorCode: "stale_revision" });
 });
 
+test("bulk review shadows each unique persisted row and excludes missing or failed rows", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  await shadowConfirmedAdminBulkArticleOutcomes([
+    { articleId, persisted: true },
+    { articleId, persisted: true },
+    { articleId: "55555555-5555-4555-8555-555555555555", persisted: true },
+    { articleId: "66666666-6666-4666-8666-666666666666", persisted: false },
+    { persisted: false },
+  ], { action: "close-private", notePresent: true }, async (input) => {
+    calls.push(input as unknown as Record<string, unknown>);
+    return { shadow: "written", versionCreated: true, publicationApplied: true, idempotent: false };
+  });
+
+  assert.deepEqual(calls.map((call) => call.articleId), [articleId, "55555555-5555-4555-8555-555555555555"]);
+  assert.ok(calls.every((call) => call.succeeded === true));
+  assert.ok(calls.every((call) => String(call.reason).includes("private closure")));
+});
+
 function outboxEvent(index: number): ArticleCacheOutboxEvent {
   return {
     eventId: `${index}`.padStart(8, "0") + "-0000-4000-8000-000000000000",
@@ -179,8 +198,10 @@ test("outbox failure retries every claimed logical event without leaking the han
 test("migration and application contracts cover immutable authority, projection, and every public surface", () => {
   const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712200000_article_publication_p3.sql"), "utf8");
   const reconciliation = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712202000_article_publication_p3_reconciliation.sql"), "utf8");
+  const correction = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712203000_article_publication_p3_authority_correction.sql"), "utf8");
   const queries = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
   const vector = fs.readFileSync(path.join(process.cwd(), "lib/search/vector.ts"), "utf8");
+  const adminQueries = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
 
   for (const table of [
     "article_content_versions_p3",
@@ -199,6 +220,16 @@ test("migration and application contracts cover immutable authority, projection,
   assert.ok(reconciliation.includes("legacyIdentityDigest"));
   assert.ok(reconciliation.includes("projectionIdentityDigest"));
   assert.ok(!reconciliation.includes("original_url"));
+  assert.ok(correction.includes("where p.state = 'published'"));
+  assert.ok(!correction.includes("article_publication_eligible_p3"));
+  assert.ok(!correction.includes("join articles"));
+  assert.ok(correction.includes("create or replace view public_tag_projection_p3"));
+  assert.ok(correction.includes("create or replace function public_jurisdiction_article_counts_p3"));
+  assert.ok(correction.includes("create or replace function match_public_article_versions_p3"));
+  assert.ok(adminQueries.includes("shadowConfirmedAdminBulkArticleOutcomes"));
+  assert.ok(adminQueries.includes('.select("id")'));
+  assert.ok(adminQueries.includes("if (persisted?.id)"));
+  assert.ok(!adminQueries.includes("updatedCount === refs.length"));
 
   assert.ok(queries.includes("public_article_projection_p3"));
   assert.ok(queries.includes("public_tag_projection_p3"));

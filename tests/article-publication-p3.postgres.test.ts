@@ -11,6 +11,13 @@ const rawP3Sql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/2
 const p3Sql = vectorFallback ? rawP3Sql.replaceAll("vector(1536)", "double precision[]") : rawP3Sql;
 const p3Indexes = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712201000_article_publication_p3_indexes.sql"), "utf8");
 const p3Reconciliation = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712202000_article_publication_p3_reconciliation.sql"), "utf8");
+const rawP3AuthorityCorrection = fs.readFileSync(
+  path.join(process.cwd(), "supabase/migrations/20260712203000_article_publication_p3_authority_correction.sql"),
+  "utf8",
+);
+const p3AuthorityCorrection = vectorFallback
+  ? rawP3AuthorityCorrection.replaceAll("vector(1536)", "double precision[]")
+  : rawP3AuthorityCorrection;
 
 interface BackfillRow {
   next_after_id: string | null;
@@ -116,6 +123,8 @@ test("P3 PostgreSQL publication authority", { skip: !databaseUrl }, async (t) =>
     }
     await client.query(p3Reconciliation);
     await client.query(p3Reconciliation);
+    await client.query(p3AuthorityCorrection);
+    await client.query(p3AuthorityCorrection);
   } finally {
     await client.end();
   }
@@ -168,6 +177,85 @@ test("P3 PostgreSQL publication authority", { skip: !databaseUrl }, async (t) =>
       await assert.rejects(transition(pool, { articleId: id, versionRevision: 1, publicationRevision: Number(withdrawn.rows[0].publication_revision), key: "republish-short", state: "published", versionId: version, reason: "short" }), /REPUBLISH_REASON_REQUIRED/);
       const republished = await transition(pool, { articleId: id, versionRevision: 1, publicationRevision: Number(withdrawn.rows[0].publication_revision), key: "republish", state: "published", versionId: version, reason: "Explicit operator republish after review." });
       assert.equal(republished.rows[0].publication_state, "published");
+    });
+
+    await t.test("published projection ignores later mutable lifecycle changes and only explicit withdraw hides it", async () => {
+      const id = await insertArticle(pool);
+      if (vectorFallback) {
+        await pool.query("update articles set embedding = array[0::double precision] where id = $1", [id]);
+      }
+      const published = await transition(pool, {
+        articleId: id,
+        versionRevision: 0,
+        publicationRevision: 0,
+        key: "authority-publish",
+        state: "published",
+        capture: true,
+        actor: "compatibility",
+      });
+      const versionId = published.rows[0].version_id;
+      const tag = await pool.query<{ id: string }>("insert into tags(slug,name,normalized_name,type) values ('authority-tag','Authority','Authority','topic') returning id");
+      await pool.query("insert into article_tags(article_id,tag_id,confidence) values ($1,$2,1)", [id, tag.rows[0].id]);
+
+      const beforeHistory = await pool.query("select count(*)::integer count from article_publication_history_p3 where article_id = $1", [id]);
+      const beforeOutbox = await pool.query("select count(*)::integer count from article_cache_outbox_p3 where article_id = $1", [id]);
+      const beforeJurisdiction = await pool.query("select article_count::integer from public_jurisdiction_article_counts_p3(null) where jurisdiction = 'Test'");
+      assert.equal((await pool.query("select count(*)::integer count from public_article_projection_p3 where id = $1", [id])).rows[0].count, 1);
+      assert.equal((await pool.query("select article_count from public_tag_projection_p3 where id = $1", [tag.rows[0].id])).rows[0].article_count, 1);
+      if (vectorFallback) {
+        const vectorMatch = await pool.query("select article_id from match_public_article_versions_p3(array[0::double precision],200,null,null,null,null) where article_id = $1", [id]);
+        assert.equal(vectorMatch.rowCount, 1);
+      }
+
+      await pool.query(`select * from article_lifecycle_transition_p2(
+        $1,1,'post-publish-mutable','summary_worker','p3-test','summary.resummary','test.post_publish_mutation',
+        null,'running','needs_review','raise','review.post_publish',false,'high','review',array[]::text[]
+      )`, [id]);
+      await pool.query(`update articles set status = 'needs_review', cleaned_text = 'short',
+        source_metadata = jsonb_set(source_metadata, '{collection,publishable}', 'false'::jsonb),
+        updated_at = now() where id = $1`, [id]);
+
+      assert.equal((await pool.query("select count(*)::integer count from public_article_projection_p3 where id = $1", [id])).rows[0].count, 1);
+      assert.equal((await pool.query("select article_count from public_tag_projection_p3 where id = $1", [tag.rows[0].id])).rows[0].article_count, 1);
+      assert.equal((await pool.query("select article_count::integer from public_jurisdiction_article_counts_p3(null) where jurisdiction = 'Test'")).rows[0].article_count, beforeJurisdiction.rows[0].article_count);
+      assert.equal((await pool.query("select count(*)::integer count from article_publication_history_p3 where article_id = $1", [id])).rows[0].count, beforeHistory.rows[0].count);
+      assert.equal((await pool.query("select count(*)::integer count from article_cache_outbox_p3 where article_id = $1", [id])).rows[0].count, beforeOutbox.rows[0].count);
+      if (vectorFallback) {
+        const vectorMatch = await pool.query("select article_id from match_public_article_versions_p3(array[0::double precision],200,null,null,null,null) where article_id = $1", [id]);
+        assert.equal(vectorMatch.rowCount, 1);
+      }
+
+      const withdrawn = await transition(pool, {
+        articleId: id,
+        versionRevision: 1,
+        publicationRevision: 1,
+        key: "authority-withdraw",
+        state: "withdrawn",
+        versionId,
+      });
+      assert.equal(withdrawn.rows[0].publication_state, "withdrawn");
+      assert.equal((await pool.query("select count(*)::integer count from public_article_projection_p3 where id = $1", [id])).rows[0].count, 0);
+      assert.equal((await pool.query("select article_count from public_tag_projection_p3 where id = $1", [tag.rows[0].id])).rows[0].article_count, 0);
+      assert.equal((await pool.query("select count(*)::integer count from article_publication_history_p3 where article_id = $1", [id])).rows[0].count, beforeHistory.rows[0].count + 1);
+      assert.equal((await pool.query("select count(*)::integer count from article_cache_outbox_p3 where article_id = $1", [id])).rows[0].count, beforeOutbox.rows[0].count + 1);
+
+      await pool.query(`select * from article_lifecycle_transition_p2(
+        $1,2,'post-withdraw-restore','summary_worker','p3-test','summary.resummary','test.post_withdraw_restore',
+        null,'complete','approved','clear',null,null,null,null,array['review.post_publish']::text[]
+      )`, [id]);
+      await pool.query(`update articles set status = 'summarized', cleaned_text = repeat('x',600),
+        source_metadata = jsonb_set(source_metadata, '{collection,publishable}', 'true'::jsonb),
+        updated_at = now() where id = $1`, [id]);
+      assert.equal((await pool.query("select count(*)::integer count from public_article_projection_p3 where id = $1", [id])).rows[0].count, 0);
+      assert.equal((await pool.query("select count(*)::integer count from article_publication_history_p3 where article_id = $1", [id])).rows[0].count, beforeHistory.rows[0].count + 1);
+      assert.equal((await pool.query("select count(*)::integer count from article_cache_outbox_p3 where article_id = $1", [id])).rows[0].count, beforeOutbox.rows[0].count + 1);
+      if (vectorFallback) {
+        const vectorMatch = await pool.query("select article_id from match_public_article_versions_p3(array[0::double precision],200,null,null,null,null) where article_id = $1", [id]);
+        assert.equal(vectorMatch.rowCount, 0);
+      }
+      await pool.query(`update articles set status = 'needs_review',
+        source_metadata = jsonb_set(source_metadata, '{collection,publishable}', 'false'::jsonb),
+        updated_at = now() where id = $1`, [id]);
     });
 
     await t.test("invalid lifecycle and short text cannot publish", async () => {
