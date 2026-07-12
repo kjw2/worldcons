@@ -13,7 +13,10 @@ import {
 } from "lucide-react";
 import { AdminActionPanel } from "@/components/admin-action-panel";
 import { AdminAttentionTable } from "@/components/admin-attention-table";
+import { AdminOperationsOverview } from "@/components/admin-operations-overview";
 import { AdminTabs } from "@/components/admin-tabs";
+import { adminRedesignUiEnabled } from "@/lib/admin/p4/flags";
+import { getAdminOperationsOverviewSnapshot } from "@/lib/admin/p4/overview";
 import { getAdminDashboardData, type AdminStatusCount } from "@/lib/db/admin-queries";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
@@ -268,6 +271,10 @@ export default async function AdminPage() {
 
   if (!authorized) {
     redirect(`/admin/login?next=${encodeURIComponent("/admin")}`);
+  }
+
+  if (adminRedesignUiEnabled()) {
+    return <AdminOperationsOverview snapshot={await getAdminOperationsOverviewSnapshot()} />;
   }
 
   const dashboard = await getAdminDashboardData();

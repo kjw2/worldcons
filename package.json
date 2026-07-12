@@ -36,6 +36,7 @@
     "test:p1": "tsx --test tests/admin-command-worker-p1.test.ts tests/admin-command-worker-p1-crawler.test.ts tests/admin-command-worker-p1.postgres.test.ts",
     "test:p2": "tsx --test tests/article-lifecycle-p2.test.ts tests/article-lifecycle-p2.postgres.test.ts",
     "test:p3": "tsx --test tests/article-publication-p3.test.ts tests/article-publication-p3.postgres.test.ts",
+    "test:p4": "tsx --test tests/admin-redesign-p4.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {

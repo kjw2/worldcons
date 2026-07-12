@@ -29,6 +29,22 @@ body {
   transition: padding-top 160ms ease;
 }
 
+body:has(.admin-shell) {
+  padding-top: 0 !important;
+  background: #f5f6f7;
+}
+
+body:has(.admin-shell) > #site-header,
+body:has(.admin-shell) > #site-footer,
+body:has(.admin-shell) > .back-to-top-button,
+body:has(.admin-shell) > .chrome-toggle-button {
+  display: none !important;
+}
+
+.admin-shell * {
+  letter-spacing: 0;
+}
+
 html.chrome-fixed body {
   padding-top: var(--chrome-header-height);
 }

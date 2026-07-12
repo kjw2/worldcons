@@ -1,4 +1,5 @@
 import { BarChart3, BookOpenCheck, ClipboardList, Clock3, Home, KeyRound, LayoutDashboard, Link2, ListChecks, Newspaper } from "lucide-react";
+import { adminRedesignUiEnabled } from "@/lib/admin/p4/flags";
 
 type AdminTabKey = "operations" | "dashboard" | "articles" | "ingestion-runs" | "jobs" | "candidates" | "llm" | "audit" | "analytics" | "glossary-candidates";
 
@@ -7,6 +8,7 @@ export function AdminTabs({
 }: {
   active: AdminTabKey;
 }) {
+  if (adminRedesignUiEnabled()) return null;
   const tabs = [
     {
       key: "operations" as const,
