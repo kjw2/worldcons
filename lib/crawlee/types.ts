@@ -25,6 +25,8 @@ export interface CrawleeSpiderOptions {
   detailUrls?: string[];
   detailItems?: DiscoveredItem[];
   detailOnly?: boolean;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
 }
 
 export interface CrawleeSpiderItem {

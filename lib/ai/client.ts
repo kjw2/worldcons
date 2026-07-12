@@ -13,6 +13,7 @@ export type LlmProvider = ConfigurableLlmProvider | "mock";
 export interface LlmCompletionOptions {
   provider?: Exclude<LlmProvider, "mock">;
   model?: string;
+  signal?: AbortSignal;
 }
 
 export interface LlmCompletionResult {
@@ -115,7 +116,12 @@ interface AnthropicResponse {
   };
 }
 
-async function completeAnthropicJson(messages: LlmMessage[], model: string, apiKey: string): Promise<LlmCompletionResult | null> {
+async function completeAnthropicJson(
+  messages: LlmMessage[],
+  model: string,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<LlmCompletionResult | null> {
   if (!apiKey) {
     if (process.env.NODE_ENV === "production") throw new Error("Claude API key is not configured.");
     return null;
@@ -135,7 +141,9 @@ async function completeAnthropicJson(messages: LlmMessage[], model: string, apiK
       system: payload.system,
       messages: payload.messages,
     }),
-    signal: AbortSignal.timeout(Number(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS ?? 30_000)),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(Number(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS ?? 30_000))])
+      : AbortSignal.timeout(Number(process.env.ANTHROPIC_REQUEST_TIMEOUT_MS ?? 30_000)),
   });
 
   const responseText = await response.text();
@@ -160,6 +168,7 @@ async function completeOpenAiLikeJson(
   model: string,
   apiKey: string,
   baseURL?: string,
+  signal?: AbortSignal,
 ): Promise<LlmCompletionResult | null> {
   const client = getOpenAIClient({ apiKey, baseURL });
   if (!client) {
@@ -172,10 +181,10 @@ async function completeOpenAiLikeJson(
 
   let completion: Awaited<ReturnType<typeof client.chat.completions.create>>;
   try {
-    completion = await client.chat.completions.create(openAiCompletionPayload(messages, model));
+    completion = await client.chat.completions.create(openAiCompletionPayload(messages, model), { signal });
   } catch (error) {
     if (!isUnsupportedTemperatureError(error)) throw error;
-    completion = await client.chat.completions.create(openAiCompletionPayload(messages, model, false));
+    completion = await client.chat.completions.create(openAiCompletionPayload(messages, model, false), { signal });
   }
 
   return {
@@ -193,20 +202,24 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
     const gemini = runtime.providers.gemini;
     const model = selectedModel(provider, gemini, runtime.summary, options.model, "gemini-3.1-flash-lite");
     const useRouterModelFallbacks = !options.model && process.env.GEMINI_DISABLE_MODEL_FALLBACKS !== "true";
-    return completeGeminiJson(messages, { ...(useRouterModelFallbacks ? {} : { model }), apiKeys: gemini.apiKeys });
+    return completeGeminiJson(messages, {
+      ...(useRouterModelFallbacks ? {} : { model }),
+      apiKeys: gemini.apiKeys,
+      signal: options.signal,
+    });
   }
 
   if (provider === "anthropic") {
     const anthropic = runtime.providers.anthropic;
     const model = selectedModel(provider, anthropic, runtime.summary, options.model, "claude-3-5-haiku-latest");
-    return completeAnthropicJson(messages, model, firstApiKey(anthropic));
+    return completeAnthropicJson(messages, model, firstApiKey(anthropic), options.signal);
   }
 
   if (provider === "openai-compatible") {
     const compatible = runtime.providers["openai-compatible"];
     const model = selectedModel(provider, compatible, runtime.summary, options.model, "gpt-4.1-mini");
     if (!compatible.baseUrl) throw new Error("OpenAI compatible base URL is required.");
-    return completeOpenAiLikeJson(messages, "openai-compatible", model, firstApiKey(compatible), compatible.baseUrl);
+    return completeOpenAiLikeJson(messages, "openai-compatible", model, firstApiKey(compatible), compatible.baseUrl, options.signal);
   }
 
   if (provider !== "openai") {
@@ -217,7 +230,7 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
   const model = selectedModel(provider, openai, runtime.summary, options.model, "gpt-4.1-mini");
   const apiKey = firstApiKey(openai) || process.env.OPENAI_API_KEY || "";
   if (!apiKey && process.env.NODE_ENV !== "production") return null;
-  return completeOpenAiLikeJson(messages, "openai", model, apiKey);
+  return completeOpenAiLikeJson(messages, "openai", model, apiKey, undefined, options.signal);
 }
 
 export async function completeJson(messages: LlmMessage[], options: LlmCompletionOptions = {}) {

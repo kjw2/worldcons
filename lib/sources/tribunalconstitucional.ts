@@ -67,6 +67,8 @@ export const tribunalConstitucionalAdapter: SourceAdapter = {
       strategy: "api",
       usePlaywright: false,
       diagnostics: options?.diagnostics,
+      signal: options?.signal,
+      checkpoint: options?.checkpoint,
     });
     for (const entry of result.items) remember(entry.raw);
     return result.items.map((entry) => entry.raw ?? entry.item);
@@ -83,6 +85,8 @@ export const tribunalConstitucionalAdapter: SourceAdapter = {
       diagnostics: options?.diagnostics,
       detailUrls: [item.url],
       detailOnly: true,
+      signal: options?.signal,
+      checkpoint: options?.checkpoint,
     });
     const raw = result.items[0]?.raw;
     remember(raw);

@@ -248,6 +248,12 @@ function detailRequests(config: OfficialSpiderConfig, urls: string[], strategy: 
     }));
 }
 
+async function checkSpiderExecution(state: SpiderRunState) {
+  if (state.options.signal?.aborted) throw state.options.signal.reason;
+  await state.options.checkpoint?.();
+  if (state.options.signal?.aborted) throw state.options.signal.reason;
+}
+
 function detailRequestsFromItems(config: OfficialSpiderConfig, items: DiscoveredItem[], strategy: CrawlStrategy, fallback = false): CrawleeStartRequest[] {
   return items
     .filter((item) => config.isCandidateUrl(item.url, item.title))
@@ -349,6 +355,7 @@ async function enqueueStartRequests(queue: RequestQueue, requests: CrawleeStartR
 }
 
 async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartRequest[], name: string) {
+  await checkSpiderExecution(state);
   if (requests.length === 0) return;
   configureStorage();
   state.strategySequence.push("cheerio");
@@ -368,6 +375,7 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
     requestHandlerTimeoutSecs: settings.requestHandlerTimeoutSecs,
     navigationTimeoutSecs: settings.requestHandlerTimeoutSecs,
     async requestHandler({ request, $, response }) {
+      await checkSpiderExecution(state);
       const userData = request.userData as CrawleeStartRequest;
       const finalUrl = request.loadedUrl ?? request.url;
       const html = $.html();
@@ -441,6 +449,7 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
         fallback: userData.fallback,
         htmlLength: html.length,
       });
+      await checkSpiderExecution(state);
       remember(state, item, raw);
     },
     failedRequestHandler({ request }, error) {
@@ -457,15 +466,18 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
   });
 
   await crawler.run().catch((error) => {
+    if (state.options.signal?.aborted) throw state.options.signal.reason;
     addAttempt(state.diagnostics, {
       strategy: "cheerio",
       errorCode: errorName(error),
       errorMessage: errorMessage(error),
     });
   });
+  await checkSpiderExecution(state);
 }
 
 async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRequest[], name: string) {
+  await checkSpiderExecution(state);
   if (requests.length === 0) return;
   configureStorage();
   state.strategySequence.push("playwright");
@@ -490,6 +502,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
       },
     },
     async requestHandler({ request, page, response }) {
+      await checkSpiderExecution(state);
       const userData = request.userData as CrawleeStartRequest;
       const finalUrl = page.url() || request.loadedUrl || request.url;
       const status = response?.status() ?? 0;
@@ -564,6 +577,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
         fallback: true,
         htmlLength: html.length,
       });
+      await checkSpiderExecution(state);
       remember(state, item, raw);
     },
     failedRequestHandler({ request }, error) {
@@ -579,6 +593,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
   });
 
   await crawler.run().catch((error) => {
+    if (state.options.signal?.aborted) throw state.options.signal.reason;
     addAttempt(state.diagnostics, {
       strategy: "playwright",
       fallback: true,
@@ -587,6 +602,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
       errorMessage: errorMessage(error),
     });
   });
+  await checkSpiderExecution(state);
 }
 
 async function runSitemapFallback(state: SpiderRunState) {
@@ -660,6 +676,7 @@ export async function runOfficialSpider(config: OfficialSpiderConfig, options: C
     usedSeedFallback: false,
     limit: boundedLimit(options),
   };
+  await checkSpiderExecution(state);
   const strategy = options.strategy ?? "auto";
   const directItems = options.detailItems?.filter((item) => config.isCandidateUrl(item.url, item.title)) ?? [];
   const directItemUrls = new Set(directItems.map((item) => canonicalizeUrl(item.url)));
@@ -670,6 +687,7 @@ export async function runOfficialSpider(config: OfficialSpiderConfig, options: C
       const detailStrategy = strategy === "sitemap" || strategy === "seed" ? strategy : "cheerio";
       await runCheerioPass(state, [...detailRequestsFromItems(config, directItems, detailStrategy), ...detailRequests(config, directUrls, detailStrategy)], "direct-detail");
     }
+    await checkSpiderExecution(state);
     if (remainingCount(state) > 0 && strategyAllowed(strategy, "playwright") && shouldUsePlaywrightCrawler(options)) {
       await runPlaywrightPass(state, [...detailRequestsFromItems(config, directItems, "playwright", true), ...detailRequests(config, directUrls, "playwright", true)], "direct-detail");
     }

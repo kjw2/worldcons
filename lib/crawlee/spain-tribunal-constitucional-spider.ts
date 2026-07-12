@@ -127,7 +127,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}) {
   try {
     return await fetch(url, {
       ...init,
-      signal: controller.signal,
+      signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal,
       headers: {
         "User-Agent": userAgent(),
         ...init.headers,
@@ -634,7 +634,7 @@ export function buildSpainTcFallbackRawArticle(params: {
   };
 }
 
-async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCollector) {
+async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCollector, signal?: AbortSignal) {
   let lastError: string | undefined;
   for (const url of jsonApiUrls(hjId)) {
     try {
@@ -643,6 +643,7 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
           Accept: "application/json,text/plain;q=0.8,*/*;q=0.5",
           "Accept-Language": "es,en;q=0.8,ko;q=0.5",
         },
+        signal,
       });
       const text = await response.text();
       addAttempt(diagnostics, {
@@ -673,13 +674,14 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
   throw new Error(lastError ?? `Spain HJ JSON API failed for ${hjId}`);
 }
 
-async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector) {
+async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, signal?: AbortSignal) {
   const url = canonicalSpainTcUrl(hjId);
   const response = await fetchWithTimeout(url, {
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "es,en;q=0.8,ko;q=0.5",
     },
+    signal,
   });
   const html = await response.text();
   const $ = load(html);
@@ -710,13 +712,14 @@ async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics
   });
 }
 
-async function fetchDocumentFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector) {
+async function fetchDocumentFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, signal?: AbortSignal) {
   const url = spainTcDocumentUrl(hjId);
   const response = await fetchWithTimeout(url, {
     headers: {
       Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/octet-stream,*/*",
       "Accept-Language": "es,en;q=0.8,ko;q=0.5",
     },
+    signal,
   });
   const buffer = Buffer.from(await response.arrayBuffer());
   const text = response.ok ? textFromDocx(buffer) : "";
@@ -747,10 +750,11 @@ async function fetchRawByHjId(
     diagnostics?: CrawlerDiagnosticsCollector;
     listTitle?: string;
     htmlTitleDate?: string;
+    signal?: AbortSignal;
   } = {},
 ) {
   try {
-    const { payload, url } = await fetchJsonForHjId(hjId, options.diagnostics);
+    const { payload, url } = await fetchJsonForHjId(hjId, options.diagnostics, options.signal);
     return buildSpainTcRawArticleFromJson(payload, {
       jsonApiUrl: url,
       htmlTitle: options.listTitle,
@@ -759,10 +763,12 @@ async function fetchRawByHjId(
       parseConfidence: "high",
     });
   } catch (jsonError) {
+    if (options.signal?.aborted) throw options.signal.reason;
     const jsonApiError = errorMessage(jsonError);
     try {
-      return await fetchHtmlFallback(hjId, jsonApiError, options.diagnostics);
+      return await fetchHtmlFallback(hjId, jsonApiError, options.diagnostics, options.signal);
     } catch (htmlError) {
+      if (options.signal?.aborted) throw options.signal.reason;
       addAttempt(options.diagnostics, {
         url: canonicalSpainTcUrl(hjId),
         strategy: "api",
@@ -771,7 +777,7 @@ async function fetchRawByHjId(
         errorCode: htmlError instanceof Error ? htmlError.name : "Error",
         errorMessage: errorMessage(htmlError),
       });
-      return fetchDocumentFallback(hjId, jsonApiError, options.diagnostics);
+      return fetchDocumentFallback(hjId, jsonApiError, options.diagnostics, options.signal);
     }
   }
 }
@@ -1082,10 +1088,12 @@ async function discoverDetailUrls(options: CrawleeSpiderOptions, diagnostics: Cr
   const urls = options.detailUrls ?? [];
   const items: CrawleeSpiderItem[] = [];
   for (const url of urls) {
+    await options.checkpoint?.();
+    if (options.signal?.aborted) throw options.signal.reason;
     if (items.length >= limit) break;
     const hjId = hjIdFromUrl(url);
     if (!hjId) continue;
-    const raw = await fetchRawByHjId(hjId, { diagnostics });
+    const raw = await fetchRawByHjId(hjId, { diagnostics, signal: options.signal });
     items.push({ item: itemFromRaw(raw), raw });
   }
   return sortItems(items);

@@ -69,7 +69,11 @@ No lost command, duplicate execution, unexplained aggregate divergence, raw-data
 
 ## Abort SLA
 
-The default lease is 180 seconds and heartbeat/checkpoint cadence is at most 60 seconds. Abort must be observed at the next heartbeat or bounded-step checkpoint, with a Gate 2 target of 75 seconds from abort request to an `aborted` terminal run. A process signal stops new claims and requests retryable yield at the next checkpoint. If authority is already lost, the worker does not attempt a stale business or terminal commit; the database abort/reclaim path is authoritative. Measure p95 and maximum abort latency in production-shaped evidence.
+The default lease is 180 seconds, persisted heartbeat cadence is at most 60 seconds, and the local watchdog polls every 100 milliseconds. Workflow attempts use a 2,400-second handler deadline. Stop requests and local deadlines abort a shared `AbortController` without waiting for a handler checkpoint; persisted abort, lease loss, or stale fencing aborts it as soon as the heartbeat RPC reports the transition. Once aborted, the worker starts no new heartbeat and races away from a non-settling handler.
+
+The signal is propagated through P1 handler context into ingestion loops, supported crawler/fetch/Playwright transports, summary and embedding requests, candidate fetch/normalize/persist guards, derived-count refresh guards, and cache fetch. Some third-party or already in-flight database/network operations cannot be forcibly rolled back after dispatch. Their promises remain observed to prevent unhandled rejection, every later guarded write sees the aborted signal, and a late handler result has no path to the authoritative completion RPC. The database fencing token remains the final authority for completion/failure races.
+
+The Gate 2 target remains 75 seconds from persisted abort request to an `aborted` terminal run, reflecting the 60-second heartbeat interval plus scheduling margin. Local stop/deadline detection should return within one watchdog interval plus the bounded terminal RPC. Measure p95 and maximum persisted-abort, local-stop, and deadline latency separately in production-shaped evidence.
 
 ## Rollback
 
@@ -87,8 +91,8 @@ The additive migration normally remains in place. Forward-fix it unless an indep
 Gate 2 remains closed until all items are attached to the approval record:
 
 - production-shaped migration applied twice with lock/runtime evidence and service-role grants verified
-- default-off/no-claim, allowlist/cohort, heartbeat, abort, retry classification, stale fence, unsupported type, and signal/timeout tests
-- exact candidate URL fidelity, no discovery fallback, official ownership, transition fencing, idempotency, and bounded error evidence
+- default-off/no-claim, allowlist/cohort, heartbeat, hung-handler abort/deadline, stopped renewal, late-rejection handling, retry classification, stale fence, unsupported type, and signal propagation tests
+- exact candidate URL fidelity before and after normalization, no discovery fallback, redirect/canonical drift rejection, official ownership, transition fencing, idempotency, and bounded error evidence
 - daily schedule, ordered stage, concurrency, input bounds, four-country date settings, and legacy rollback workflow tests
 - at least one lease-expiry/reclaim rehearsal proving the old fencing token cannot complete
 - parity report for legacy and P1 aggregates with every divergence explained

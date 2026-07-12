@@ -50,6 +50,7 @@ export class AdminP1HandlerError extends Error {
 
 export interface AdminP1HandlerContext {
   checkpoint: () => Promise<void>;
+  signal: AbortSignal;
 }
 
 export type AdminP1CommandHandler = (
@@ -62,10 +63,10 @@ export interface AdminP1HandlerDependencies {
   runSummarizePending: typeof runSummarizePending;
   runRefreshTagCounts: typeof runRefreshTagCounts;
   executeExactCandidateRetry: typeof executeExactCandidateRetry;
-  revalidatePublicCaches: () => Promise<{ revalidated: boolean; statusCode: number }>;
+  revalidatePublicCaches: (signal: AbortSignal) => Promise<{ revalidated: boolean; statusCode: number }>;
 }
 
-async function revalidatePublicCaches() {
+async function revalidatePublicCaches(signal: AbortSignal) {
   const secret = process.env.CRON_SECRET?.trim();
   const baseUrl = (process.env.WORLDCONS_BASE_URL || process.env.APP_BASE_URL || "https://worldcons.vercel.app").trim();
   if (!secret || !baseUrl) throw new AdminP1HandlerError("cache.configuration_missing", "terminal");
@@ -78,7 +79,7 @@ async function revalidatePublicCaches() {
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { authorization: `Bearer ${secret}` },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
   });
   if (!response.ok) {
     throw new AdminP1HandlerError(
@@ -120,6 +121,8 @@ export function createAdminP1CommandHandlers(
         usePlaywright: payload.usePlaywright,
         rangeDays: payload.rangeDays,
         refreshExisting: payload.refreshExisting,
+        signal: context.signal,
+        checkpoint: context.checkpoint,
       });
       await context.checkpoint();
       if (!adminIngestResultSucceeded(result)) throw new AdminP1HandlerError("collect.incomplete", "retryable");
@@ -141,7 +144,12 @@ export function createAdminP1CommandHandlers(
       let needsFollowUp = false;
       for (let pass = 1; pass <= payload.maxPasses; pass += 1) {
         await context.checkpoint();
-        const result = await dependencies.runSummarizePending({ limit: payload.limit, sourceKey: payload.sourceKey });
+        const result = await dependencies.runSummarizePending({
+          limit: payload.limit,
+          sourceKey: payload.sourceKey,
+          signal: context.signal,
+          checkpoint: context.checkpoint,
+        });
         await context.checkpoint();
         passes = pass;
         summarizedCount += result.summarizedCount;
@@ -161,6 +169,7 @@ export function createAdminP1CommandHandlers(
       const result = await dependencies.executeExactCandidateRetry({
         candidateId: payload.candidateId,
         checkpoint: context.checkpoint,
+        signal: context.signal,
       });
       return {
         candidateId: result.candidateId,
@@ -173,7 +182,7 @@ export function createAdminP1CommandHandlers(
     "p1.refresh-derived": async (payloadRef, context) => {
       parsePayload(scopeSchema, payloadRef);
       await context.checkpoint();
-      const result = await dependencies.runRefreshTagCounts();
+      const result = await dependencies.runRefreshTagCounts({ signal: context.signal, checkpoint: context.checkpoint });
       await context.checkpoint();
       if (!result.refreshed) throw new AdminP1HandlerError("derived.refresh_failed", "retryable");
       return { refreshed: true, updatedTags: result.updatedTags };
@@ -182,7 +191,7 @@ export function createAdminP1CommandHandlers(
     "p1.public-cache.revalidate": async (payloadRef, context) => {
       parsePayload(scopeSchema, payloadRef);
       await context.checkpoint();
-      const result = await dependencies.revalidatePublicCaches();
+      const result = await dependencies.revalidatePublicCaches(context.signal);
       await context.checkpoint();
       if (!result.revalidated) throw new AdminP1HandlerError("cache.revalidation_failed", "retryable");
       return { revalidated: true, statusCode: result.statusCode };

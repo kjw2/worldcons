@@ -84,7 +84,10 @@ function robotsAttempt(url: string, robots: RobotsResult) {
 }
 
 export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscoveryOptions): Promise<RawArticle> {
+  await options?.checkpoint?.();
+  if (options?.signal?.aborted) throw options.signal.reason;
   const robots = await checkRobotsAllowed(item.url).catch(() => null);
+  await options?.checkpoint?.();
   if (robots) addDiagnosticAttempt(options?.diagnostics, robotsAttempt(item.url, robots));
   if (robots && !robots.allowed) {
     return {
@@ -108,10 +111,20 @@ export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscove
     };
   }
 
-  let response = await crawlUrl({ url: item.url, rateLimitDelayMs: robotsDelayMs(robots) });
+  let response = await crawlUrl({
+    url: item.url,
+    rateLimitDelayMs: robotsDelayMs(robots),
+    signal: options?.signal,
+    checkpoint: options?.checkpoint,
+  });
   addDiagnosticAttempt(options?.diagnostics, diagnosticFromResponse(response));
   if ((response.status === 403 || response.status === 0 || !response.html) && shouldUsePlaywright(options)) {
-    const playwright = await crawlWithPlaywright({ url: item.url, usePlaywright: true });
+    const playwright = await crawlWithPlaywright({
+      url: item.url,
+      usePlaywright: true,
+      signal: options?.signal,
+      checkpoint: options?.checkpoint,
+    });
     addDiagnosticAttempt(options?.diagnostics, diagnosticFromResponse(playwright, { fallback: true }));
     if (playwright.html || playwright.buffer || (playwright.status > 0 && playwright.status < 400)) {
       response = playwright;
@@ -178,7 +191,9 @@ export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscove
     }
     let text = "";
     try {
+      await options?.checkpoint?.();
       text = await extractPdfText(buffer);
+      await options?.checkpoint?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       addDiagnosticAttempt(options?.diagnostics, {

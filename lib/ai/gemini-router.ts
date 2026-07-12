@@ -374,6 +374,7 @@ interface GeminiRouteOptions {
   models?: string[];
   apiKeys?: string[];
   selectionStrategy?: GeminiSelectionStrategy;
+  signal?: AbortSignal;
 }
 
 export function getGeminiModels(taskType: GeminiTaskType = "Summarize", options: GeminiRouteOptions = {}) {
@@ -668,7 +669,7 @@ function buildGeminiPayload(messages: LlmMessage[]) {
   };
 }
 
-async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
+async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[], signal?: AbortSignal) {
   const timeoutMs = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS ?? 30_000);
   let response: Response;
 
@@ -680,7 +681,7 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
         "x-goog-api-key": route.apiKey,
       },
       body: JSON.stringify(buildGeminiPayload(messages)),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     recordCooldown(route);
@@ -743,6 +744,7 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[]) {
 export async function completeGeminiJson(messages: LlmMessage[], options: GeminiRouteOptions = {}): Promise<LlmCompletionResult | null> {
   const taskType = (process.env.GEMINI_TASK_TYPE?.trim() as GeminiTaskType | undefined) || analyzeGeminiTaskType(messages);
   await refreshGeminiModelCatalog(false, options);
+  if (options.signal?.aborted) throw options.signal.reason;
   const routes = getGeminiRoutes(taskType, options);
   if (routes.length === 0) {
     if (getGeminiApiKeys(options).length === 0 && process.env.NODE_ENV !== "production") {
@@ -757,11 +759,12 @@ export async function completeGeminiJson(messages: LlmMessage[], options: Gemini
   for (const route of routes) {
     try {
       return {
-        content: await callGeminiRoute(route, messages),
+        content: await callGeminiRoute(route, messages, options.signal),
         provider: "gemini",
         model: route.model,
       };
     } catch (error) {
+      if (options.signal?.aborted) throw options.signal.reason;
       const typedError = error as Error & { status?: number; retryable?: boolean; tryNextRoute?: boolean };
       const retryable = Boolean(typedError.retryable);
       const tryNextRoute = typedError.tryNextRoute ?? retryable;

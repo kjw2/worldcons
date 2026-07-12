@@ -13,11 +13,11 @@ function embeddingText(summary: SummaryJson) {
   ].join("\n");
 }
 
-export async function createEmbedding(summary: SummaryJson) {
-  return createTextEmbedding(embeddingText(summary));
+export async function createEmbedding(summary: SummaryJson, options: { signal?: AbortSignal } = {}) {
+  return createTextEmbedding(embeddingText(summary), options);
 }
 
-export async function createTextEmbedding(input: string) {
+export async function createTextEmbedding(input: string, options: { signal?: AbortSignal } = {}) {
   const provider = process.env.EMBEDDING_PROVIDER ?? "openai";
   if (provider !== "openai") {
     throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}`);
@@ -33,7 +33,7 @@ export async function createTextEmbedding(input: string) {
   const response = await client.embeddings.create({
     model: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
     input,
-  });
+  }, { signal: options.signal });
 
   return response.data[0]?.embedding ?? null;
 }

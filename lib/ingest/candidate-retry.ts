@@ -50,6 +50,7 @@ export interface CandidateRetryDependencies {
 export interface CandidateRetryOptions {
   candidateId: string;
   checkpoint: () => Promise<void>;
+  signal?: AbortSignal;
 }
 
 const defaultDependencies: CandidateRetryDependencies = {
@@ -60,6 +61,12 @@ const defaultDependencies: CandidateRetryDependencies = {
   articleExistsByNormalizedContent,
   insertNormalizedArticle,
 };
+
+async function candidateCheckpoint(options: CandidateRetryOptions) {
+  if (options.signal?.aborted) throw options.signal.reason;
+  await options.checkpoint();
+  if (options.signal?.aborted) throw options.signal.reason;
+}
 
 function safeCandidateErrorMessage(error: unknown) {
   const message = redactAdminAuditText(error instanceof Error ? error.message : String(error), 500);
@@ -135,9 +142,9 @@ export async function executeExactCandidateRetry(
       throw new CandidateRetryError("candidate.source_not_supported", false);
     }
 
-    await options.checkpoint();
+    await candidateCheckpoint(options);
     if (await dependencies.articleExists(claim.url)) {
-      await options.checkpoint();
+      await candidateCheckpoint(options);
       await dependencies.finish({ candidateId: claim.candidateId, attemptCount: claim.attemptCount, status: "fetched" });
       return { candidateId: claim.candidateId, status: "fetched" as const, attempted: false, idempotent: true };
     }
@@ -148,19 +155,32 @@ export async function executeExactCandidateRetry(
       canonicalUrl: claim.url,
       contentType,
     };
-    const raw = await adapter.fetchItem(exactItem, { strategy: "auto", limit: 1 });
-    await options.checkpoint();
+    const raw = await adapter.fetchItem(exactItem, {
+      strategy: "auto",
+      limit: 1,
+      signal: options.signal,
+      checkpoint: options.checkpoint,
+    });
+    await candidateCheckpoint(options);
     const normalized = await adapter.normalize(raw);
+    await candidateCheckpoint(options);
     if (normalized.sourceKey !== claim.sourceKey) {
       throw new CandidateRetryError("candidate.source_ownership_mismatch", false);
     }
+    if (!isSafeOfficialCandidateUrl(claim.sourceKey, normalized.canonicalUrl)) {
+      throw new CandidateRetryError("candidate.normalized_url_unsafe", false);
+    }
+    if (normalized.canonicalUrl !== claim.url) {
+      throw new CandidateRetryError("candidate.canonical_url_mismatch", false);
+    }
 
+    await candidateCheckpoint(options);
     const duplicate = await dependencies.articleExistsByNormalizedContent(normalized);
-    await options.checkpoint();
+    await candidateCheckpoint(options);
     const inserted = duplicate ? null : await dependencies.insertNormalizedArticle(normalized);
     if (!duplicate && !inserted) throw new CandidateRetryError("candidate.not_persisted", false);
 
-    await options.checkpoint();
+    await candidateCheckpoint(options);
     await dependencies.finish({ candidateId: claim.candidateId, attemptCount: claim.attemptCount, status: "fetched" });
     return {
       candidateId: claim.candidateId,
@@ -170,6 +190,7 @@ export async function executeExactCandidateRetry(
       inserted: Boolean(inserted),
     };
   } catch (error) {
+    if (options.signal?.aborted) throw options.signal.reason;
     if (error instanceof Error && error.name === "WorkerCheckpointError") throw error;
     if (error instanceof Error && /ADMIN_QUEUE_(STALE_CANDIDATE_ATTEMPT|CANDIDATE_STATE_CONFLICT)/.test(error.message)) {
       throw new CandidateRetryError("candidate.stale_attempt", false);

@@ -63,7 +63,7 @@ interface UncollectedCandidate {
   trackedAt?: string;
 }
 
-interface RunIngestOptions {
+export interface RunIngestOptions {
   sourceKey?: string;
   limit?: number;
   debug?: boolean;
@@ -72,6 +72,8 @@ interface RunIngestOptions {
   allowVercelCrawling?: boolean;
   rangeDays?: number;
   refreshExisting?: boolean;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
 }
 
 interface SummarizeArticleOptions extends LlmCompletionOptions {
@@ -118,6 +120,16 @@ const SPAIN_TC_SOURCE_KEY = "es-tribunal-constitucional";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function executionAbortReason(signal?: AbortSignal) {
+  return signal?.reason instanceof Error ? signal.reason : new DOMException("Operation aborted", "AbortError");
+}
+
+async function executionCheckpoint(options: Pick<RunIngestOptions, "signal" | "checkpoint">) {
+  if (options.signal?.aborted) throw executionAbortReason(options.signal);
+  await options.checkpoint?.();
+  if (options.signal?.aborted) throw executionAbortReason(options.signal);
 }
 
 function stringValue(value: unknown) {
@@ -688,6 +700,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       seedCount: 0,
     },
   };
+  await executionCheckpoint(options);
   const runId = await createIngestionRun(adapter.sourceKey);
   let rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
   if (adapter.sourceKey === SPAIN_TC_SOURCE_KEY) {
@@ -702,6 +715,8 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     strategy: options.strategy ?? "auto",
     usePlaywright: options.usePlaywright,
     diagnostics: result.diagnostics,
+    signal: options.signal,
+    checkpoint: options.checkpoint,
   };
   const runOptionsMetadata = {
     sourceKey: adapter.sourceKey,
@@ -714,13 +729,16 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
   };
 
   try {
+    await executionCheckpoint(options);
     const allDiscovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions));
+    await executionCheckpoint(options);
     result.discoveredCount = allDiscovered.length;
     const inRangeDiscovered = allDiscovered.filter((item) => isItemInDateRange(item.publishedAt, rangeStart));
     const discovered = inRangeDiscovered.slice(0, limit);
     result.skippedOutOfRangeCount = allDiscovered.length - inRangeDiscovered.length;
 
     for (const item of discovered) {
+      await executionCheckpoint(options);
       const itemDiagnostics = createDiagnosticsCollector(adapter.sourceKey);
       let itemDiagnosticsMerged = false;
       try {
@@ -731,17 +749,21 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         }
 
         const existing = await findExistingArticle(item.canonicalUrl);
+        await executionCheckpoint(options);
         if (existing && !refreshExisting) {
           result.skippedCount += 1;
           continue;
         }
 
         const raw = await adapter.fetchItem(item, { ...discoveryOptions, diagnostics: itemDiagnostics });
+        await executionCheckpoint(options);
         itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
         itemDiagnosticsMerged = true;
         const normalized = await adapter.normalize(raw);
+        await executionCheckpoint(options);
         const uncollectedCandidate = uncollectedCandidateForArticle(normalized, result.diagnostics);
         if (uncollectedCandidate) {
+          await executionCheckpoint(options);
           result.uncollectedCandidates.push(await trackUncollectedCandidate(uncollectedCandidate));
           result.skippedCount += 1;
           result.fetchedCount += 1;
@@ -755,7 +777,9 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         }
 
         if (existing) {
+          await executionCheckpoint(options);
           const refreshed = await refreshExistingArticle(existing, normalized, runId);
+          await executionCheckpoint(options);
           if (refreshed.status === "unchanged") {
             result.unchangedCount += 1;
             result.skippedCount += 1;
@@ -776,11 +800,14 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
           continue;
         }
 
+        await executionCheckpoint(options);
         if (await articleExistsByNormalizedContent(normalized)) {
           result.skippedCount += 1;
           continue;
         }
+        await executionCheckpoint(options);
         const inserted = await insertNormalizedArticle(normalized, runId);
+        await executionCheckpoint(options);
         if (inserted) {
           result.statusCounts[inserted.status] = (result.statusCounts[inserted.status] ?? 0) + 1;
           if (inserted.collection.publishable) result.collectionCounts.publishableCount += 1;
@@ -792,6 +819,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         }
         result.fetchedCount += 1;
       } catch (error) {
+        if (options.signal?.aborted) throw executionAbortReason(options.signal);
         if (!itemDiagnosticsMerged) {
           itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
         }
@@ -806,9 +834,11 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       }
     }
 
+    await executionCheckpoint(options);
     await closeIngestionRun(runId, result, "completed", runOptionsMetadata);
     return result;
   } catch (error) {
+    if (options.signal?.aborted) throw executionAbortReason(options.signal);
     result.failedCount += 1;
     result.errors.push(error instanceof Error ? error.message : String(error));
     await closeIngestionRun(runId, result, "failed", runOptionsMetadata);
@@ -817,6 +847,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
 }
 
 export async function runIngest(options: RunIngestOptions = {}) {
+  await executionCheckpoint(options);
   const limit = boundedInteger(options.limit ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const blocked = inlineCrawlerBlockReason(options);
   if (blocked) {
@@ -828,6 +859,7 @@ export async function runIngest(options: RunIngestOptions = {}) {
   }
 
   const activeSourceKeys = await getActiveSourceKeys();
+  await executionCheckpoint(options);
   const selectedAdapters = await loadSourceAdapters({ sourceKey: options.sourceKey, activeSourceKeys });
 
   if (!getSupabaseAdmin()) {
@@ -842,6 +874,8 @@ export async function runIngest(options: RunIngestOptions = {}) {
           strategy: options.strategy ?? "auto",
           usePlaywright: options.usePlaywright,
           diagnostics,
+          signal: options.signal,
+          checkpoint: options.checkpoint,
         }).then((items) => ({ items, diagnostics }));
       }),
     );
@@ -883,6 +917,7 @@ export async function runIngest(options: RunIngestOptions = {}) {
 
   const results: SourceRunResult[] = [];
   for (const adapter of selectedAdapters) {
+    await executionCheckpoint(options);
     results.push(await runSingleSource(adapter, limit, options));
   }
 

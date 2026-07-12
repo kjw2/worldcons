@@ -19,6 +19,8 @@ export interface CrawlRequest {
   usePlaywright?: boolean;
   waitUntil?: "load" | "domcontentloaded" | "networkidle";
   waitForSelector?: string;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
 }
 
 export interface CrawlDiagnostics {
@@ -116,6 +118,8 @@ export interface SourceDiscoveryOptions {
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
   diagnostics?: CrawlerDiagnosticsCollector;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
 }
 
 export type CollectionConfidence = "high" | "medium" | "low";

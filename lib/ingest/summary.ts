@@ -39,6 +39,7 @@ interface SummarizeArticleOptions extends LlmCompletionOptions {
   articleId?: string;
   slug?: string;
   force?: boolean;
+  checkpoint?: () => Promise<void>;
 }
 
 const SUMMARY_CANDIDATE_SELECT =
@@ -50,6 +51,8 @@ export interface RunSummarizePendingOptions {
   sourceKey?: string;
   retryAttempts?: number;
   retryDelayMs?: number;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,8 +68,29 @@ function staleSummarizingCutoffIso() {
   return new Date(Date.now() - staleSummarizingMinutes() * 60 * 1000).toISOString();
 }
 
-function wait(delayMs: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+function summaryAbortReason(signal?: AbortSignal) {
+  return signal?.reason instanceof Error ? signal.reason : new DOMException("Operation aborted", "AbortError");
+}
+
+async function summaryCheckpoint(options: { signal?: AbortSignal; checkpoint?: () => Promise<void> }) {
+  if (options.signal?.aborted) throw summaryAbortReason(options.signal);
+  await options.checkpoint?.();
+  if (options.signal?.aborted) throw summaryAbortReason(options.signal);
+}
+
+function wait(delayMs: number, signal?: AbortSignal) {
+  if (signal?.aborted) return Promise.reject(summaryAbortReason(signal));
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(summaryAbortReason(signal));
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function incrementSourceCount(counts: Record<string, number>, sourceKey: string) {
@@ -135,7 +159,7 @@ export async function recoverStaleSummarizingArticles(options: { limit?: number;
 async function summarizeCandidateRow(
   supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   row: SummaryCandidateRow,
-  options: Pick<SummarizeArticleOptions, "provider" | "model" | "force"> = {},
+  options: Pick<SummarizeArticleOptions, "provider" | "model" | "force" | "signal" | "checkpoint"> = {},
 ) {
   const collection = isRecord(row.source_metadata) && isRecord(row.source_metadata.collection) ? row.source_metadata.collection : {};
   const forceAllowed =
@@ -152,6 +176,7 @@ async function summarizeCandidateRow(
     };
   }
 
+  await summaryCheckpoint(options);
   await supabase
     .from("articles")
     .update({
@@ -159,6 +184,7 @@ async function summarizeCandidateRow(
       error_metadata: null,
     })
     .eq("id", row.id);
+  await summaryCheckpoint(options);
 
   try {
     const summary = await summarizeArticle({
@@ -172,8 +198,13 @@ async function summarizeCandidateRow(
       originalTitle: row.original_title ?? undefined,
       originalPublishedAt: row.original_published_at ?? undefined,
       cleanedText: row.cleaned_text ?? undefined,
-    }, { provider: options.provider, model: options.model });
-    const embedding = await createEmbedding(summary).catch(() => null);
+    }, { provider: options.provider, model: options.model, signal: options.signal });
+    await summaryCheckpoint(options);
+    const embedding = await createEmbedding(summary, { signal: options.signal }).catch((error) => {
+      if (options.signal?.aborted) throw error;
+      return null;
+    });
+    await summaryCheckpoint(options);
     const updatePayload: Record<string, unknown> = {
       status: "summarized",
       summarized_at: new Date().toISOString(),
@@ -186,15 +217,19 @@ async function summarizeCandidateRow(
     }
 
     await supabase.from("articles").update(updatePayload).eq("id", row.id);
+    await summaryCheckpoint(options);
     await updateArticleTriageFields({
       articleId: row.id,
       errorClass: null,
       errorContext: null,
       reviewState: ARTICLE_REVIEW_STATE.SUMMARIZED,
     });
+    await summaryCheckpoint(options);
     await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
+    await summaryCheckpoint(options);
     return { status: "summarized" as const };
   } catch (summaryError) {
+    if (options.signal?.aborted) throw summaryAbortReason(options.signal);
     const message = summaryError instanceof Error ? summaryError.message : String(summaryError);
     const retryableBackoff = isRetryableSummaryBackoff(message);
     await supabase
@@ -225,6 +260,7 @@ async function summarizeCandidateRow(
 }
 
 export async function runSummarizePending(options: RunSummarizePendingOptions = {}) {
+  await summaryCheckpoint(options);
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return {
@@ -249,6 +285,7 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
   });
   const candidateFetchLimit = options.sourceKey ? Math.max(limit * 3, limit) : Math.min(500, Math.max(limit * 10, 100));
   const recoveredStale = await recoverStaleSummarizingArticles({ limit: Math.max(limit, 20), sourceKey: options.sourceKey });
+  await summaryCheckpoint(options);
   let query = supabase
     .from("articles")
     .select(SUMMARY_CANDIDATE_SELECT)
@@ -264,6 +301,7 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
   }
 
   const { data, error } = await query;
+  await summaryCheckpoint(options);
 
   if (error) throw new Error(error.message);
 
@@ -279,14 +317,16 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
   const deferredBySource: Record<string, number> = {};
 
   for (const row of candidates) {
+    await summaryCheckpoint(options);
     if (summarizedCount >= limit) break;
     attemptedCount += 1;
-    let result = await summarizeCandidateRow(supabase, row);
+    let result = await summarizeCandidateRow(supabase, row, options);
 
     for (let retryIndex = 0; result.status === "failed" && result.retryable && retryIndex < retryAttempts; retryIndex += 1) {
-      await wait(summaryRetryDelayMs(result.errorMessage, retryIndex, retryDelayMs));
+      await wait(summaryRetryDelayMs(result.errorMessage, retryIndex, retryDelayMs), options.signal);
+      await summaryCheckpoint(options);
       retryCount += 1;
-      result = await summarizeCandidateRow(supabase, row);
+      result = await summarizeCandidateRow(supabase, row, options);
     }
 
     if (result.status === "skipped") {
@@ -307,7 +347,12 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
     }
   }
 
-  const tagRefresh = summarizedCount > 0 ? await runRefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
+  const tagRefresh = summarizedCount > 0
+    ? await runRefreshTagCounts({ signal: options.signal, checkpoint: options.checkpoint }).catch((error) => {
+        if (options.signal?.aborted) throw error;
+        return { refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) };
+      })
+    : undefined;
   const limitReached = summarizedCount >= limit && attemptedCount < candidates.length;
 
   return {
@@ -372,10 +417,13 @@ export async function runSummarizeArticle(options: SummarizeArticleOptions) {
   const result = await summarizeCandidateRow(supabase, row, options);
   const tagRefresh =
     result.status === "summarized"
-      ? await runRefreshTagCounts().catch((refreshError) => ({
-          refreshed: false,
-          errorMessage: refreshError instanceof Error ? refreshError.message : String(refreshError),
-        }))
+      ? await runRefreshTagCounts({ signal: options.signal, checkpoint: options.checkpoint }).catch((refreshError) => {
+          if (options.signal?.aborted) throw refreshError;
+          return {
+            refreshed: false,
+            errorMessage: refreshError instanceof Error ? refreshError.message : String(refreshError),
+          };
+        })
       : undefined;
 
   return {
@@ -392,7 +440,12 @@ export async function runSummarizeArticle(options: SummarizeArticleOptions) {
   };
 }
 
-export async function runRefreshTagCounts(options: { deleteOrphans?: boolean } = {}) {
+export async function runRefreshTagCounts(options: {
+  deleteOrphans?: boolean;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
+} = {}) {
+  await summaryCheckpoint(options);
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return { mode: "no-database", refreshed: false, message: "Supabase 환경변수가 없어 mock tag count를 사용합니다." };
@@ -401,20 +454,24 @@ export async function runRefreshTagCounts(options: { deleteOrphans?: boolean } =
   const { error } = await supabase.rpc("refresh_tag_counts");
   if (error) throw new Error(`refresh_tag_counts RPC failed: ${error.message}`);
 
+  await summaryCheckpoint(options);
   let deletedOrphans = false;
   if (options.deleteOrphans) {
     const { error: deleteError } = await supabase.from("tags").delete().eq("article_count", 0);
     if (deleteError) throw new Error(deleteError.message);
     deletedOrphans = true;
+    await summaryCheckpoint(options);
   }
 
   const { count, error: countError } = await supabase.from("tags").select("id", { count: "exact", head: true });
   if (countError) throw new Error(countError.message);
 
+  await summaryCheckpoint(options);
   const glossaryCandidates = await generateGlossaryCandidates({ persist: true }).catch((error) => ({
     mode: "error" as const,
     errorMessage: error instanceof Error ? error.message : String(error),
   }));
+  await summaryCheckpoint(options);
 
   return { mode: "database", refreshed: true, strategy: "rpc", updatedTags: count ?? undefined, deletedOrphans, glossaryCandidates };
 }

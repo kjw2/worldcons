@@ -265,6 +265,7 @@ async function discoverOpenLegalDataCandidates(options: CrawleeSpiderOptions = {
         "User-Agent": process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
         Accept: "application/json,text/plain;q=0.8,*/*;q=0.5",
       },
+      signal: options.signal,
     });
     if (!response.ok) throw new Error(`Open Legal Data fetch failed: ${response.status}`);
     const payload = (await response.json()) as OpenLegalDataCaseList;
@@ -321,13 +322,18 @@ function cleanDejureDocket(value: string) {
     .trim();
 }
 
-async function fetchIndexText(url: string, accept = "text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5") {
+async function fetchIndexText(
+  url: string,
+  accept = "text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5",
+  signal?: AbortSignal,
+) {
   const response = await fetch(url, {
     headers: {
       "User-Agent": process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
       Accept: accept,
       "Accept-Language": "de,en;q=0.8,ko;q=0.6",
     },
+    signal,
   });
   if (!response.ok) throw new Error(`Index fetch failed: ${response.status}`);
   return response.text();
@@ -341,7 +347,8 @@ async function discoverDejureCandidates(options: CrawleeSpiderOptions = {}) {
 
   for (let page = 1; page <= maxPages; page += 1) {
     const indexUrl = page === 1 ? DEJURE_BVERFG_INDEX_URL : `${DEJURE_BVERFG_INDEX_URL}&seite=${page}`;
-    const html = await fetchIndexText(indexUrl);
+    await options.checkpoint?.();
+    const html = await fetchIndexText(indexUrl, undefined, options.signal);
     const matches = [...html.matchAll(/BVerfG,\s*(\d{2}\.\d{2}\.20\d{2})\s*-\s*([^<\r\n]+)/g)];
     let sawInRange = false;
     let oldestDate: Date | undefined;
@@ -442,6 +449,7 @@ async function discoverIndexCandidates(options: CrawleeSpiderOptions = {}) {
         items.push(...candidates);
       })
       .catch((error) => {
+        if (options.signal?.aborted) throw options.signal.reason;
         addDiagnosticAttempt(options.diagnostics, {
           url: OPEN_LEGAL_DATA_BVERFG_API,
           strategy: "api",
@@ -518,6 +526,7 @@ export function runBverfgSpider(options: CrawleeSpiderOptions = {}) {
         });
       })
       .catch((error) => {
+        if (options.signal?.aborted) throw options.signal.reason;
         addDiagnosticAttempt(options.diagnostics, {
           url: DEJURE_BVERFG_INDEX_URL,
           strategy: "api",

@@ -10,9 +10,11 @@ export function isPlaywrightEnabled() {
   return process.env.PLAYWRIGHT_ENABLED !== "false";
 }
 
-async function enterPlaywrightSlot() {
+async function enterPlaywrightSlot(request: CrawlRequest) {
   const max = Math.max(1, Number(process.env.PLAYWRIGHT_MAX_CONCURRENCY ?? 1));
   while (activePlaywrightRuns >= max) {
+    await request.checkpoint?.();
+    if (request.signal?.aborted) throw request.signal.reason;
     await delay(250);
   }
   activePlaywrightRuns += 1;
@@ -38,19 +40,27 @@ export async function crawlWithPlaywright(request: CrawlRequest): Promise<CrawlR
     };
   }
 
+  await request.checkpoint?.();
+  if (request.signal?.aborted) throw request.signal.reason;
   await respectRateLimit(request.url);
-  await enterPlaywrightSlot();
+  await enterPlaywrightSlot(request);
 
   let browser: Awaited<ReturnType<(typeof import("playwright"))["chromium"]["launch"]>> | null = null;
+  const closeOnAbort = () => {
+    void browser?.close().catch(() => undefined);
+  };
+  request.signal?.addEventListener("abort", closeOnAbort, { once: true });
   try {
     const { chromium } = await import("playwright");
     const timeoutMs = request.timeoutMs ?? Number(process.env.PLAYWRIGHT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
     browser = await chromium.launch({ headless: process.env.PLAYWRIGHT_HEADLESS !== "false" });
+    if (request.signal?.aborted) throw request.signal.reason;
     const page = await browser.newPage({ userAgent: crawlerUserAgent() });
     const pageResponse = await page.goto(request.url, {
       waitUntil: request.waitUntil ?? "domcontentloaded",
       timeout: timeoutMs,
     });
+    await request.checkpoint?.();
     let selectorMatched = undefined;
     if (request.waitForSelector) {
       try {
@@ -92,6 +102,7 @@ export async function crawlWithPlaywright(request: CrawlRequest): Promise<CrawlR
     };
   } catch (error) {
     await browser?.close().catch(() => undefined);
+    if (request.signal?.aborted) throw request.signal.reason;
     const message = error instanceof Error ? error.message : String(error);
     return {
       url: request.url,
@@ -107,6 +118,7 @@ export async function crawlWithPlaywright(request: CrawlRequest): Promise<CrawlR
       },
     };
   } finally {
+    request.signal?.removeEventListener("abort", closeOnAbort);
     leavePlaywrightSlot();
   }
 }

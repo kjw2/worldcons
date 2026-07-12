@@ -31,14 +31,20 @@ function shouldRetryStatus(status: number) {
 }
 
 async function fetchOnce(request: CrawlRequest): Promise<CrawlResponse> {
+  await request.checkpoint?.();
+  if (request.signal?.aborted) throw request.signal.reason;
   await respectRateLimit(request.url, request.rateLimitDelayMs);
+  await request.checkpoint?.();
 
   const response = await fetch(request.url, {
     method: request.method ?? "GET",
     headers: crawlerHeaders(request.headers),
     redirect: "follow",
-    signal: AbortSignal.timeout(timeoutMs(request)),
+    signal: request.signal
+      ? AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs(request))])
+      : AbortSignal.timeout(timeoutMs(request)),
   });
+  await request.checkpoint?.();
   const contentType = response.headers.get("content-type") ?? undefined;
   const headers = headersToRecord(response.headers);
   const diagnostics = {
@@ -47,6 +53,7 @@ async function fetchOnce(request: CrawlRequest): Promise<CrawlResponse> {
     ...statusDiagnostics(response.status, response.statusText),
   };
   const body = await response.arrayBuffer();
+  await request.checkpoint?.();
   const buffer = Buffer.from(body);
   const isTextLike =
     !contentType ||
@@ -89,10 +96,13 @@ export async function crawlUrl(request: CrawlRequest): Promise<CrawlResponse> {
       {
         retries: retryCount(),
         delayMs: retryDelayMs(),
-        shouldRetry: (error) => Boolean((error as { retryable?: boolean }).retryable) || error instanceof DOMException,
+        shouldRetry: (error) =>
+          !request.signal?.aborted
+          && (Boolean((error as { retryable?: boolean }).retryable) || error instanceof DOMException),
       },
     );
   } catch (error) {
+    if (request.signal?.aborted) throw request.signal.reason;
     const response = (error as { response?: CrawlResponse }).response;
     if (response) return response;
 

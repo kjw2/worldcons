@@ -63,6 +63,8 @@ export const conseilConstitutionnelAdapter: SourceAdapter = {
       strategy: options?.strategy ?? "auto",
       usePlaywright: options?.usePlaywright,
       diagnostics: options?.diagnostics,
+      signal: options?.signal,
+      checkpoint: options?.checkpoint,
     });
     for (const entry of result.items) remember(entry.raw);
     if (result.items.length === 0 && !options?.rangeDays) {
@@ -111,6 +113,8 @@ export const conseilConstitutionnelAdapter: SourceAdapter = {
       diagnostics: options?.diagnostics,
       detailUrls: [item.url],
       detailOnly: true,
+      signal: options?.signal,
+      checkpoint: options?.checkpoint,
     });
     const raw = result.items[0]?.raw;
     remember(raw);

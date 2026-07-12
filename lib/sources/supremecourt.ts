@@ -34,13 +34,20 @@ function addRobotsDiagnostic(url: string, robots: RobotsResult, options?: Source
 }
 
 async function fetchHtml(url: string, options?: SourceDiscoveryOptions) {
+  await options?.checkpoint?.();
+  if (options?.signal?.aborted) throw options.signal.reason;
   const robots = await checkRobotsAllowed(url);
   addRobotsDiagnostic(url, robots, options);
   if (!robots.allowed) {
     throw new Error(`SCOTUS listing fetch disallowed by robots.txt rule ${robots.matchedRule ?? "(empty)"}`);
   }
 
-  const response = await crawlUrl({ url, rateLimitDelayMs: robotsDelayMs(robots) });
+  const response = await crawlUrl({
+    url,
+    rateLimitDelayMs: robotsDelayMs(robots),
+    signal: options?.signal,
+    checkpoint: options?.checkpoint,
+  });
   addDiagnosticAttempt(options?.diagnostics, diagnosticFromResponse(response));
   if (response.status >= 400 || !response.text) {
     throw new Error(`SCOTUS listing fetch failed: ${response.status} ${response.diagnostics?.errorMessage ?? "No body"}`);

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { AdminP1HandlerError } from "../lib/admin/command-control-plane/p1-handlers";
+import {
+  AdminP1HandlerError,
+  createAdminP1CommandHandlers,
+  type AdminP1HandlerDependencies,
+} from "../lib/admin/command-control-plane/p1-handlers";
 import {
   ADMIN_QUEUE_P1_COMMAND_TYPES,
   resolveAdminQueueP1Authority,
@@ -165,6 +169,136 @@ test("abort observed between bounded handler steps stops execution without a sta
   assert.equal(failed, false);
 });
 
+test("persisted abort cancels a hung handler promptly and stops lease renewal", async () => {
+  let heartbeatCount = 0;
+  let signalObserved = false;
+  let completed = false;
+  let failed = false;
+  const startedAt = Date.now();
+  const result = await runAdminCommandWorkerP1({
+    authority: enabledAuthority,
+    maxCommands: 1,
+    heartbeatIntervalMs: 10,
+    watchdogIntervalMs: 5,
+    attemptTimeoutMs: 1_000,
+    service: fakeService({
+      heartbeat: async () => {
+        heartbeatCount += 1;
+        return heartbeatCount >= 2 ? { ok: false as const, error: queueError("aborted") } : heartbeatSuccess();
+      },
+      complete: async () => {
+        completed = true;
+        return successfulTransition();
+      },
+      fail: async () => {
+        failed = true;
+        return successfulTransition("failed");
+      },
+    }),
+    handlers: {
+      "p1.collect": async (_payload, context) => {
+        context.signal.addEventListener("abort", () => { signalObserved = true; }, { once: true });
+        return new Promise<Record<string, unknown>>(() => undefined);
+      },
+    },
+  });
+  const elapsedMs = Date.now() - startedAt;
+  const heartbeatCountAtReturn = heartbeatCount;
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert(elapsedMs < 300, "expected prompt abort, received " + elapsedMs + "ms");
+  assert.equal(result.attempts[0].status, "aborted");
+  assert.equal(signalObserved, true);
+  assert.equal(heartbeatCount, heartbeatCountAtReturn);
+  assert.equal(completed, false);
+  assert.equal(failed, false);
+});
+
+test("attempt deadline cancels a hung handler, terminalizes retryably, and handles late rejection", async () => {
+  let heartbeatCount = 0;
+  let signalObserved = false;
+  let completed = false;
+  let failure: { disposition: string; errorCode: string } | undefined;
+  let unhandledRejections = 0;
+  const onUnhandled = () => { unhandledRejections += 1; };
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const startedAt = Date.now();
+    const result = await runAdminCommandWorkerP1({
+      authority: enabledAuthority,
+      maxCommands: 1,
+      heartbeatIntervalMs: 10,
+      watchdogIntervalMs: 5,
+      attemptTimeoutMs: 60,
+      service: fakeService({
+        heartbeat: async () => {
+          heartbeatCount += 1;
+          return heartbeatSuccess();
+        },
+        complete: async () => {
+          completed = true;
+          return successfulTransition();
+        },
+        fail: async (value) => {
+          failure = value;
+          return successfulTransition("retry_wait");
+        },
+      }),
+      handlers: {
+        "p1.collect": async (_payload, context) => new Promise<Record<string, unknown>>((_resolve, reject) => {
+          context.signal.addEventListener("abort", () => {
+            signalObserved = true;
+            setTimeout(() => reject(new Error("late handler rejection")), 20);
+          }, { once: true });
+        }),
+      },
+    });
+    const elapsedMs = Date.now() - startedAt;
+    const heartbeatCountAtReturn = heartbeatCount;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert(elapsedMs < 300, "expected deadline return within bound, received " + elapsedMs + "ms");
+    assert.equal(result.attempts[0].status, "retry_wait");
+    assert.equal(signalObserved, true);
+    assert.equal(heartbeatCount, heartbeatCountAtReturn);
+    assert.equal(completed, false);
+    assert.equal(unhandledRejections, 0);
+    assert.deepEqual(
+      failure && { disposition: failure.disposition, errorCode: failure.errorCode },
+      { disposition: "retryable", errorCode: "attempt_timeout" },
+    );
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
+
+test("deadline never retries terminalization after the failure fence is stale", async () => {
+  let completeCalled = false;
+  let failCalls = 0;
+  const result = await runAdminCommandWorkerP1({
+    authority: enabledAuthority,
+    maxCommands: 1,
+    heartbeatIntervalMs: 10,
+    watchdogIntervalMs: 5,
+    attemptTimeoutMs: 40,
+    service: fakeService({
+      complete: async () => {
+        completeCalled = true;
+        return successfulTransition();
+      },
+      fail: async () => {
+        failCalls += 1;
+        return { ok: false as const, error: queueError("stale_fence") };
+      },
+    }),
+    handlers: {
+      "p1.collect": async () => new Promise<Record<string, unknown>>(() => undefined),
+    },
+  });
+  assert.equal(result.attempts[0].status, "authority_lost");
+  assert.equal(result.attempts[0].errorCode, "stale_fence");
+  assert.equal(failCalls, 1);
+  assert.equal(completeCalled, false);
+});
+
 test("retryable and terminal handler failures use explicit classifications", async () => {
   const failures: Array<{ disposition: string; errorCode: string }> = [];
   for (const [code, disposition, expectedStatus] of [
@@ -211,10 +345,15 @@ test("lost lease or stale completion fence cannot commit success", async () => {
 
 test("process stop requests safely yield the claimed attempt as retryable", async () => {
   let stopping = false;
+  let signalObserved = false;
   let failure: { disposition: string; errorCode: string } | undefined;
+  const startedAt = Date.now();
   const result = await runAdminCommandWorkerP1({
     authority: enabledAuthority,
     maxCommands: 1,
+    heartbeatIntervalMs: 10,
+    watchdogIntervalMs: 5,
+    attemptTimeoutMs: 1_000,
     stopRequested: () => stopping,
     service: fakeService({
       fail: async (value) => {
@@ -224,13 +363,15 @@ test("process stop requests safely yield the claimed attempt as retryable", asyn
     }),
     handlers: {
       "p1.collect": async (_payload, context) => {
-        stopping = true;
-        await context.checkpoint();
-        return {};
+        context.signal.addEventListener("abort", () => { signalObserved = true; }, { once: true });
+        setTimeout(() => { stopping = true; }, 20);
+        return new Promise<Record<string, unknown>>(() => undefined);
       },
     },
   });
+  assert(Date.now() - startedAt < 300);
   assert.equal(result.attempts[0].status, "retry_wait");
+  assert.equal(signalObserved, true);
   assert.deepEqual(
     failure && { disposition: failure.disposition, errorCode: failure.errorCode },
     { disposition: "retryable", errorCode: "worker_stopping" },
@@ -258,11 +399,88 @@ test("unsupported claimed command fails terminally and observably", async () => 
   );
 });
 
+test("canonical handlers propagate one signal and checkpoints into long-running services", async () => {
+  const controller = new AbortController();
+  const observedSignals: Array<AbortSignal | undefined> = [];
+  let checkpoints = 0;
+  const dependencies = {
+    runIngest: async (options: { signal?: AbortSignal }) => {
+      observedSignals.push(options.signal);
+      return {
+        mode: "database",
+        results: [{
+          sourceKey: "de-bverfg",
+          discoveredCount: 1,
+          fetchedCount: 1,
+          refreshedCount: 0,
+          unchangedCount: 0,
+          summarizedCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          skippedOutOfRangeCount: 0,
+          skippedNonConstitutionalCount: 0,
+          uncollectedCandidates: [],
+          errors: [],
+          statusCounts: {},
+          collectionCounts: {},
+        }],
+      };
+    },
+    runSummarizePending: async (options: { signal?: AbortSignal }) => {
+      observedSignals.push(options.signal);
+      return {
+        mode: "database",
+        summarizedCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        deferredCount: 0,
+        candidateCount: 0,
+        attemptedCount: 0,
+        retryCount: 0,
+        limitReached: false,
+        summarizedBySource: {},
+        deferredBySource: {},
+        recoveredStale: {},
+      };
+    },
+    runRefreshTagCounts: async (options: { signal?: AbortSignal }) => {
+      observedSignals.push(options.signal);
+      return { mode: "database", refreshed: true, updatedTags: 1 };
+    },
+    executeExactCandidateRetry: async (options: { signal?: AbortSignal; candidateId: string }) => {
+      observedSignals.push(options.signal);
+      return { candidateId: options.candidateId, status: "fetched", attempted: true, idempotent: false };
+    },
+    revalidatePublicCaches: async (signal: AbortSignal) => {
+      observedSignals.push(signal);
+      return { revalidated: true, statusCode: 200 };
+    },
+  } as unknown as AdminP1HandlerDependencies;
+  const handlers = createAdminP1CommandHandlers(dependencies);
+  const context = {
+    signal: controller.signal,
+    checkpoint: async () => { checkpoints += 1; },
+  };
+  await handlers["p1.collect"]({ cohort: "daily" }, context);
+  await handlers["p1.summarize"]({ cohort: "daily", maxPasses: 1 }, context);
+  await handlers["p1.candidate.retry"]({
+    cohort: "candidate-retry",
+    candidateId: "11111111-1111-4111-8111-111111111111",
+  }, context);
+  await handlers["p1.refresh-derived"]({ cohort: "daily", scope: "all" }, context);
+  await handlers["p1.public-cache.revalidate"]({ cohort: "daily", scope: "all" }, context);
+  assert.equal(observedSignals.length, 5);
+  assert(observedSignals.every((signal) => signal === controller.signal));
+  assert(checkpoints >= 8);
+});
+
 test("candidate retry fetches the stored canonical URL exactly and never discovers broadly", async () => {
   const exactUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/test.html?lang=de";
   const fetchedUrls: string[] = [];
   let discoverCalled = false;
   const finishes: string[] = [];
+  const controller = new AbortController();
+  let fetchSignalMatched = false;
   const dependencies: CandidateRetryDependencies = {
     begin: async () => ({
       candidateId: "11111111-1111-4111-8111-111111111111",
@@ -284,8 +502,9 @@ test("candidate retry fetches the stored canonical URL exactly and never discove
       baseUrl: "https://www.bundesverfassungsgericht.de/",
       defaultLanguage: "de",
       discover: async () => { discoverCalled = true; throw new Error("must not discover"); },
-      fetchItem: async (item) => {
+      fetchItem: async (item, options) => {
         fetchedUrls.push(item.url);
+        fetchSignalMatched = options?.signal === controller.signal;
         return { ...item, text: "x".repeat(2500) };
       },
       normalize: async (raw) => ({
@@ -303,11 +522,85 @@ test("candidate retry fetches the stored canonical URL exactly and never discove
     articleExistsByNormalizedContent: async () => false,
     insertNormalizedArticle: async () => ({ id: "article-1", status: "cleaned", collection: {} as never }),
   };
-  const result = await executeExactCandidateRetry({ candidateId: "11111111-1111-4111-8111-111111111111", checkpoint: async () => undefined }, dependencies);
+  const result = await executeExactCandidateRetry({
+    candidateId: "11111111-1111-4111-8111-111111111111",
+    checkpoint: async () => undefined,
+    signal: controller.signal,
+  }, dependencies);
   assert.deepEqual(fetchedUrls, [exactUrl]);
   assert.equal(discoverCalled, false);
+  assert.equal(fetchSignalMatched, true);
   assert.deepEqual(finishes, ["fetched"]);
   assert.equal(result.status, "fetched");
+});
+
+test("candidate retry rejects normalized canonical drift before dedupe or persist", async () => {
+  const claimUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/exact.html";
+  for (const [normalizedUrl, expectedCode] of [
+    [
+      "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/different.html",
+      "candidate.canonical_url_mismatch",
+    ],
+    ["https://attacker.example/redirected.html", "candidate.normalized_url_unsafe"],
+  ] as const) {
+    let duplicateChecks = 0;
+    let inserts = 0;
+    const finishes: string[] = [];
+    const dependencies: CandidateRetryDependencies = {
+      begin: async () => ({
+        candidateId: "11111111-1111-4111-8111-111111111111",
+        sourceKey: "de-bverfg",
+        url: claimUrl,
+        candidateType: "decision",
+        status: "retrying",
+        attemptCount: 2,
+        shouldFetch: true,
+      }),
+      finish: async (value) => {
+        finishes.push(value.status);
+        return { candidateId: value.candidateId, status: value.status, attemptCount: value.attemptCount };
+      },
+      loadAdapter: async () => ({
+        sourceKey: "de-bverfg",
+        displayName: "test",
+        jurisdiction: "DE",
+        baseUrl: "https://www.bundesverfassungsgericht.de/",
+        defaultLanguage: "de",
+        discover: async () => [],
+        fetchItem: async (item) => ({ ...item, text: "x".repeat(2500) }),
+        normalize: async () => ({
+          sourceKey: "de-bverfg",
+          jurisdiction: "DE",
+          institutionName: "BVerfG",
+          contentType: "decision",
+          originalUrl: claimUrl,
+          canonicalUrl: normalizedUrl,
+          originalLanguage: "de",
+          cleanedText: "x".repeat(2500),
+        }),
+      }),
+      articleExists: async () => false,
+      articleExistsByNormalizedContent: async () => {
+        duplicateChecks += 1;
+        return false;
+      },
+      insertNormalizedArticle: async () => {
+        inserts += 1;
+        return null;
+      },
+    };
+    await assert.rejects(
+      executeExactCandidateRetry({
+        candidateId: "11111111-1111-4111-8111-111111111111",
+        checkpoint: async () => undefined,
+        signal: new AbortController().signal,
+      }, dependencies),
+      (error: unknown) => error instanceof CandidateRetryError && error.code === expectedCode,
+    );
+    assert.equal(duplicateChecks, 0);
+    assert.equal(inserts, 0);
+    assert.deepEqual(finishes, ["failed"]);
+  }
 });
 
 test("candidate retry validates official ownership and records failed/fetched transitions idempotently", async () => {

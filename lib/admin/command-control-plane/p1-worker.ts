@@ -43,6 +43,9 @@ export interface AdminP1WorkerOptions {
   leaseSeconds?: number;
   heartbeatSeconds?: number;
   attemptTimeoutSeconds?: number;
+  attemptTimeoutMs?: number;
+  heartbeatIntervalMs?: number;
+  watchdogIntervalMs?: number;
   stopRequested?: () => boolean;
 }
 
@@ -97,37 +100,76 @@ async function executeClaimedAttempt(
     service: AdminP1WorkerService;
     handlers: Partial<Record<string, AdminP1CommandHandler>>;
     leaseSeconds: number;
-    heartbeatSeconds: number;
-    attemptTimeoutSeconds: number;
+    heartbeatIntervalMs: number;
+    attemptTimeoutMs: number;
+    watchdogIntervalMs: number;
     stopRequested: () => boolean;
   },
 ): Promise<AdminP1AttemptResult> {
-  let heartbeatError: AdminCommandError | null = null;
+  const abortController = new AbortController();
   let heartbeatChain = Promise.resolve();
-  const deadline = Date.now() + options.attemptTimeoutSeconds * 1000;
+  let handlerActive = true;
+  const deadline = Date.now() + options.attemptTimeoutMs;
+
+  const abortExecution = (error: WorkerCheckpointError) => {
+    if (!abortController.signal.aborted) abortController.abort(error);
+  };
+
+  const abortReason = () => {
+    const reason = abortController.signal.reason;
+    return reason instanceof WorkerCheckpointError ? reason : new WorkerCheckpointError("worker_stopping", false);
+  };
+
+  const awaitWithAbort = async <T>(operation: Promise<T>) => {
+    const observed = operation.then(
+      (value) => ({ type: "value" as const, value }),
+      (error: unknown) => ({ type: "error" as const, error }),
+    );
+    if (abortController.signal.aborted) throw abortReason();
+    let resolveAbort: (() => void) | undefined;
+    const aborted = new Promise<{ type: "aborted" }>((resolve) => {
+      resolveAbort = () => resolve({ type: "aborted" });
+      abortController.signal.addEventListener("abort", resolveAbort, { once: true });
+    });
+    const outcome = await Promise.race([observed, aborted]);
+    if (resolveAbort) abortController.signal.removeEventListener("abort", resolveAbort);
+    if (outcome.type === "aborted") throw abortReason();
+    if (outcome.type === "error") throw outcome.error;
+    return outcome.value;
+  };
 
   const heartbeat = async () => {
     heartbeatChain = heartbeatChain.then(async () => {
-      if (heartbeatError) return;
+      if (!handlerActive || abortController.signal.aborted || Date.now() >= deadline) return;
       const result = await options.service.heartbeat(claim.attemptId, claim.fencingToken, options.leaseSeconds);
-      if (!result.ok) heartbeatError = result.error;
+      if (!result.ok) abortExecution(transitionFailure(result.error));
     });
-    await heartbeatChain;
-    if (heartbeatError) throw transitionFailure(heartbeatError);
+    await awaitWithAbort(heartbeatChain);
   };
 
   const checkpoint = async () => {
-    if (options.stopRequested()) throw new WorkerCheckpointError("worker_stopping", false);
-    if (Date.now() >= deadline) throw new WorkerCheckpointError("attempt_timeout", false);
-    if (heartbeatError) throw transitionFailure(heartbeatError);
+    if (abortController.signal.aborted) throw abortReason();
+    if (options.stopRequested()) abortExecution(new WorkerCheckpointError("worker_stopping", false));
+    if (Date.now() >= deadline) abortExecution(new WorkerCheckpointError("attempt_timeout", false));
+    if (abortController.signal.aborted) throw abortReason();
     await heartbeat();
-    if (options.stopRequested()) throw new WorkerCheckpointError("worker_stopping", false);
+    if (abortController.signal.aborted) throw abortReason();
   };
 
   const heartbeatTimer = setInterval(() => {
     void heartbeat().catch(() => undefined);
-  }, options.heartbeatSeconds * 1000);
+  }, options.heartbeatIntervalMs);
   heartbeatTimer.unref?.();
+  const watchdogTimer = setInterval(() => {
+    if (!handlerActive || abortController.signal.aborted) return;
+    if (options.stopRequested()) abortExecution(new WorkerCheckpointError("worker_stopping", false));
+    else if (Date.now() >= deadline) abortExecution(new WorkerCheckpointError("attempt_timeout", false));
+  }, options.watchdogIntervalMs);
+  watchdogTimer.unref?.();
+  const deadlineTimer = setTimeout(() => {
+    if (handlerActive) abortExecution(new WorkerCheckpointError("attempt_timeout", false));
+  }, Math.max(0, deadline - Date.now()));
+  deadlineTimer.unref?.();
 
   try {
     const handler = options.handlers[claim.commandType];
@@ -136,8 +178,13 @@ async function executeClaimedAttempt(
       throw new AdminP1HandlerError("authority_mismatch", "terminal");
     }
     await checkpoint();
-    const resultSummary = await handler(claim.payloadRef, { checkpoint });
+    const handlerPromise = Promise.resolve().then(() => handler(claim.payloadRef, { checkpoint, signal: abortController.signal }));
+    const resultSummary = await awaitWithAbort(handlerPromise);
     await checkpoint();
+    handlerActive = false;
+    clearInterval(heartbeatTimer);
+    clearInterval(watchdogTimer);
+    clearTimeout(deadlineTimer);
     const completed = await options.service.complete(claim.attemptId, claim.fencingToken, resultSummary);
     if (!completed.ok) throw transitionFailure(completed.error);
     return { commandId: claim.commandId, runId: claim.runId, attemptId: claim.attemptId, status: "succeeded" };
@@ -177,8 +224,11 @@ async function executeClaimedAttempt(
       errorCode: failure.code,
     };
   } finally {
+    handlerActive = false;
     clearInterval(heartbeatTimer);
-    await heartbeatChain.catch(() => undefined);
+    clearInterval(watchdogTimer);
+    clearTimeout(deadlineTimer);
+    void heartbeatChain.catch(() => undefined);
   }
 }
 
@@ -205,6 +255,9 @@ export async function runAdminCommandWorkerP1(options: AdminP1WorkerOptions = {}
     max: Math.max(5, Math.floor(leaseSeconds / 2)),
   });
   const attemptTimeoutSeconds = boundedInteger(options.attemptTimeoutSeconds, 3300, { min: 30, max: 3500 });
+  const attemptTimeoutMs = boundedInteger(options.attemptTimeoutMs, attemptTimeoutSeconds * 1000, { min: 25, max: 3_500_000 });
+  const heartbeatIntervalMs = boundedInteger(options.heartbeatIntervalMs, heartbeatSeconds * 1000, { min: 5, max: 450_000 });
+  const watchdogIntervalMs = boundedInteger(options.watchdogIntervalMs, 100, { min: 5, max: 1_000 });
   const stopRequested = options.stopRequested ?? (() => false);
   const attempts: AdminP1AttemptResult[] = [];
 
@@ -231,8 +284,9 @@ export async function runAdminCommandWorkerP1(options: AdminP1WorkerOptions = {}
       service,
       handlers,
       leaseSeconds,
-      heartbeatSeconds,
-      attemptTimeoutSeconds,
+      heartbeatIntervalMs,
+      attemptTimeoutMs,
+      watchdogIntervalMs,
       stopRequested,
     }));
   }
