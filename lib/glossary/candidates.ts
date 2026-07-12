@@ -19,6 +19,14 @@ export interface GlossaryCandidate {
   updatedAt?: string | null;
 }
 
+export function glossaryCandidateRefreshSucceeded(result: {
+  mode: string;
+  candidates: readonly unknown[];
+  persistedCount: number;
+}) {
+  return result.mode === "database" && result.candidates.length > 0 && result.persistedCount === result.candidates.length;
+}
+
 interface GlossaryCandidateRow {
   id?: string;
   tag_slug: string;

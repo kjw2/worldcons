@@ -49,6 +49,17 @@ export type AdminJobWorkerResult =
       error: string;
     };
 
+export function adminJobWorkerResultSucceeded(result: AdminJobWorkerResult) {
+  return (
+    result.mode === "worker" &&
+    !result.error &&
+    result.claimed > 0 &&
+    result.processed > 0 &&
+    result.processed === result.claimed &&
+    result.failed === 0
+  );
+}
+
 function boundedInteger(value: number | undefined, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(value ?? fallback)));

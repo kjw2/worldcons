@@ -7,7 +7,9 @@ import {
   executeAdminCompatibilityCommand,
 } from "../lib/admin/command-control-plane/compatibility";
 import { adminIngestResultSucceeded } from "../lib/admin/admin-ingest-jobs";
+import { adminJobWorkerResultSucceeded } from "../lib/admin/admin-job-runner";
 import { adminCommandRetryBackoffSeconds, classifyAdminCommandFailure } from "../lib/admin/command-control-plane/policy";
+import { glossaryCandidateRefreshSucceeded } from "../lib/glossary/candidates";
 
 const migrationPath = path.join(
   process.cwd(),
@@ -56,6 +58,28 @@ test("ingestion compatibility success rejects blocked, empty, and partial-failur
     adminIngestResultSucceeded({ mode: "database", results: [{ failedCount: 0, errors: [] }] }),
     true,
   );
+});
+
+test("worker compatibility success rejects empty and incomplete drains", () => {
+  const workerResult = {
+    mode: "worker" as const,
+    workerId: "test-worker",
+    processed: 0,
+    claimed: 0,
+    succeeded: 0,
+    failed: 0,
+    jobs: [],
+  };
+  assert.equal(adminJobWorkerResultSucceeded(workerResult), false);
+  assert.equal(adminJobWorkerResultSucceeded({ ...workerResult, claimed: 1 }), false);
+  assert.equal(adminJobWorkerResultSucceeded({ ...workerResult, claimed: 1, processed: 1, succeeded: 1 }), true);
+  assert.equal(adminJobWorkerResultSucceeded({ ...workerResult, claimed: 1, processed: 1, failed: 1 }), false);
+});
+
+test("glossary compatibility success rejects empty and partially persisted refreshes", () => {
+  assert.equal(glossaryCandidateRefreshSucceeded({ mode: "database", candidates: [], persistedCount: 0 }), false);
+  assert.equal(glossaryCandidateRefreshSucceeded({ mode: "database", candidates: [{}], persistedCount: 0 }), false);
+  assert.equal(glossaryCandidateRefreshSucceeded({ mode: "database", candidates: [{}], persistedCount: 1 }), true);
 });
 
 test("compatibility authority is default-off and preserves legacy results", async () => {
@@ -273,6 +297,8 @@ test("P0 documentation fixes migration order, flag default, evidence, and rollba
   assert.match(operations, /defaults to `false`/);
   assert.match(operations, /Merely resolving is not success/);
   assert.match(operations, /Resolved failures and no-ops/);
+  assert.match(operations, /zero-work worker drain/);
+  assert.match(operations, /empty glossary refresh/);
   assert.match(operations, /A thrown legacy failure propagates unchanged/);
   assert.match(operations, /Do not delete commands, runs, attempts, or events to roll back/);
   assert.match(operations, /migration is rehearsed on an approved production-shaped copy/);

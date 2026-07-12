@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
-import { approveGlossaryCandidate, generateGlossaryCandidates, ignoreGlossaryCandidate } from "@/lib/glossary/candidates";
+import {
+  approveGlossaryCandidate,
+  generateGlossaryCandidates,
+  glossaryCandidateRefreshSucceeded,
+  ignoreGlossaryCandidate,
+} from "@/lib/glossary/candidates";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -35,10 +40,7 @@ export async function POST(request: Request) {
     const compatibility = await executeAdminCompatibilityCommand(
       { commandType: "admin.glossary.refresh", payloadRef: { persist: true }, request },
       () => generateGlossaryCandidates({ persist: true }),
-      {
-        isLegacySuccess: (result) =>
-          result.mode === "database" && result.persistedCount === result.candidates.length,
-      },
+      { isLegacySuccess: glossaryCandidateRefreshSucceeded },
     );
     const result = compatibility.value;
     await recordAdminSiteEvent(

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import { adminJobWorkerResultSucceeded, runAdminJobWorker } from "@/lib/admin/admin-job-runner";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { parseAdminJobRunBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       leaseSeconds: parsed.data.leaseSeconds,
       jobTypes: parsed.data.jobTypes,
     }),
-    { isLegacySuccess: (result) => result.mode === "worker" && !result.error && result.failed === 0 },
+    { isLegacySuccess: adminJobWorkerResultSucceeded },
   );
   const result = compatibility.value;
 

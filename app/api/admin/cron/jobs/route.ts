@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ADMIN_INGEST_JOB_TYPES } from "@/lib/admin/admin-ingest-jobs";
-import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import { adminJobWorkerResultSucceeded, runAdminJobWorker } from "@/lib/admin/admin-job-runner";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   const compatibility = await executeAdminCompatibilityCommand(
     { commandType: "cron.jobs.drain", payloadRef: { maxJobs, leaseSeconds, jobTypes }, request, requestedBy: "cron" },
     () => runAdminJobWorker({ workerId: `admin-job-cron:${Date.now()}`, maxJobs, leaseSeconds, jobTypes }),
-    { isLegacySuccess: (result) => result.mode === "worker" && !result.error && result.failed === 0 },
+    { isLegacySuccess: adminJobWorkerResultSucceeded },
   );
   const result = compatibility.value;
 
