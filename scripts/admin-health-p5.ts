@@ -1,3 +1,4 @@
+import "dotenv/config";
 import fs from "node:fs/promises";
 import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";

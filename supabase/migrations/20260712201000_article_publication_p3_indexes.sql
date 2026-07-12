@@ -14,7 +14,7 @@ create index if not exists article_content_versions_p3_search_vector_idx
   on article_content_versions_p3 using gin (search_vector);
 
 create index if not exists article_content_versions_p3_embedding_idx
-  on article_content_versions_p3 using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+  on article_content_versions_p3 using ivfflat (embedding extensions.vector_cosine_ops) with (lists = 100);
 
 create index if not exists article_publications_p3_state_version_idx
   on article_publications_p3 (state, version_id, article_id);

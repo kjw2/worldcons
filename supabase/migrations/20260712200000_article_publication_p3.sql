@@ -91,7 +91,7 @@ returns text
 language sql
 immutable
 as $$
-  select encode(digest(convert_to(article_publication_version_document_p3(p_article)::text, 'UTF8'), 'sha256'), 'hex');
+  select encode(extensions.digest(convert_to(article_publication_version_document_p3(p_article)::text, 'UTF8'), 'sha256'), 'hex');
 $$;
 
 create or replace function article_publication_version_id_p3(p_article_id uuid, p_content_hash text)
@@ -104,7 +104,7 @@ as $$
     substr(v.hash, 1, 8) || '-' || substr(v.hash, 9, 4) || '-5' || substr(v.hash, 14, 3) ||
     '-a' || substr(v.hash, 18, 3) || '-' || substr(v.hash, 21, 12)
   )::uuid
-  from (select encode(digest(convert_to(p_article_id::text || ':' || p_content_hash, 'UTF8'), 'sha256'), 'hex') hash) v;
+  from (select encode(extensions.digest(convert_to(p_article_id::text || ':' || p_content_hash, 'UTF8'), 'sha256'), 'hex') hash) v;
 $$;
 
 create table if not exists article_content_versions_p3 (
@@ -137,7 +137,7 @@ create table if not exists article_content_versions_p3 (
   source_metadata jsonb,
   error_metadata jsonb,
   search_vector tsvector,
-  embedding vector(1536),
+  embedding extensions.vector(1536),
   created_at timestamptz not null default now(),
   constraint article_content_versions_p3_revision_check check (revision > 0),
   constraint article_content_versions_p3_hash_check check (content_hash ~ '^[0-9a-f]{64}$'),
@@ -447,7 +447,7 @@ begin
   order by l.ledger_revision desc
   limit 1;
   v_revision := coalesce(v_previous.ledger_revision, 0) + 1;
-  v_hash := encode(digest(convert_to(concat_ws('|',
+  v_hash := encode(extensions.digest(convert_to(concat_ws('|',
     p_article_id::text, v_revision::text, p_event_type, coalesce(p_version_id::text, ''),
     coalesce(p_publication_id::text, ''), coalesce(p_publication_revision::text, ''), p_actor_type,
     coalesce(p_actor_id, ''), p_reason, coalesce(p_request_id, ''), coalesce(p_correlation_id, ''),
@@ -837,7 +837,7 @@ as $$
 $$;
 
 create or replace function match_public_article_versions_p3(
-  query_embedding vector(1536),
+  query_embedding extensions.vector(1536),
   match_count integer default 20,
   source_filter text default null,
   jurisdiction_filter text default null,
@@ -850,14 +850,14 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select p.id, 1 - (p.embedding <=> query_embedding) as similarity
+  select p.id, 1 - (p.embedding OPERATOR(extensions.<=>) query_embedding) as similarity
   from public_article_projection_p3 p
   where p.embedding is not null
     and (source_filter is null or p.source_key = source_filter)
     and (jurisdiction_filter is null or p.jurisdiction = jurisdiction_filter)
     and (content_type_filter is null or p.content_type = content_type_filter)
     and (language_filter is null or p.original_language = language_filter)
-  order by p.embedding <=> query_embedding
+  order by p.embedding OPERATOR(extensions.<=>) query_embedding
   limit least(greatest(coalesce(match_count, 20), 1), 200);
 $$;
 
@@ -1010,7 +1010,7 @@ begin
       article_publication_quarantine_p3, article_cache_outbox_p3 from anon;
     grant select on public_article_projection_p3, public_tag_projection_p3 to anon;
     grant execute on function public_jurisdiction_article_counts_p3(timestamptz) to anon;
-    grant execute on function match_public_article_versions_p3(vector, integer, text, text, text, text) to anon;
+    grant execute on function match_public_article_versions_p3(extensions.vector, integer, text, text, text, text) to anon;
   end if;
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
     revoke all on table article_content_versions_p3, article_version_heads_p3, article_publications_p3,
@@ -1018,7 +1018,7 @@ begin
       article_publication_quarantine_p3, article_cache_outbox_p3 from authenticated;
     grant select on public_article_projection_p3, public_tag_projection_p3 to authenticated;
     grant execute on function public_jurisdiction_article_counts_p3(timestamptz) to authenticated;
-    grant execute on function match_public_article_versions_p3(vector, integer, text, text, text, text) to authenticated;
+    grant execute on function match_public_article_versions_p3(extensions.vector, integer, text, text, text, text) to authenticated;
   end if;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     revoke all on table article_content_versions_p3, article_version_heads_p3, article_publications_p3,
@@ -1026,7 +1026,7 @@ begin
       article_publication_quarantine_p3, article_cache_outbox_p3 from service_role;
     grant select on public_article_projection_p3, public_tag_projection_p3 to service_role;
     grant execute on function public_jurisdiction_article_counts_p3(timestamptz) to service_role;
-    grant execute on function match_public_article_versions_p3(vector, integer, text, text, text, text) to service_role;
+    grant execute on function match_public_article_versions_p3(extensions.vector, integer, text, text, text, text) to service_role;
     grant execute on function article_publication_transition_p3(uuid, bigint, bigint, text, text, uuid, boolean, text, text, text, text, text, text, text, text, text, jsonb, timestamptz) to service_role;
     grant execute on function article_cache_outbox_claim_p3(text, integer, integer) to service_role;
     grant execute on function article_cache_outbox_deliver_p3(uuid, text, uuid) to service_role;

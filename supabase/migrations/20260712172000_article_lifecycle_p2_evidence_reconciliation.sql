@@ -186,7 +186,7 @@ begin
       v_article.status, v_article.source_metadata, v_article.review_state,
       v_article.error_class, v_article.error_context, v_article.summary_json
     );
-    v_key := left('p2-backfill:' || encode(digest(
+    v_key := left('p2-backfill:' || encode(extensions.digest(
       v_article.id::text || ':' || v_article.lifecycle_revision::text || ':' || v_article.status || ':' || v_map::text,
       'sha256'
     ), 'hex'), 240);

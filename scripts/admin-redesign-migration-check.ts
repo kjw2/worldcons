@@ -24,6 +24,8 @@ export const ADMIN_REDESIGN_MIGRATION_MANIFEST: readonly ManifestEntry[] = [
   { phase: "P5", file: "20260712230000_admin_governance_p5.sql", transactionMode: "transactional", scope: "new_objects" },
   { phase: "P5", file: "20260712231000_admin_governance_p5_indexes.sql", transactionMode: "outside_transaction", scope: "existing_table_indexes" },
   { phase: "P5", file: "20260712233000_admin_governance_p5_acceptance_corrections.sql", transactionMode: "transactional", scope: "forward_fix" },
+  { phase: "P3", file: "20260713090000_article_publication_p3_review_eligibility.sql", transactionMode: "transactional", scope: "forward_fix" },
+  { phase: "P5", file: "20260713093000_admin_governance_p5_quarantine_resolution.sql", transactionMode: "transactional", scope: "forward_fix" },
 ] as const;
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -52,8 +54,10 @@ function run() {
     assert(fs.existsSync(filePath), `missing migration: ${entry.file}`);
     const sql = fs.readFileSync(filePath, "utf8");
     const normalized = sql.toLowerCase();
+    const withoutQualifiedDigest = normalized.replaceAll("extensions.digest", "");
     hashes.push(crypto.createHash("sha256").update(sql).digest("hex"));
     assert(!/\b(drop\s+table|drop\s+column|truncate)\b/i.test(sql), `${entry.file} contains destructive schema/data SQL`);
+    assert(!/\bdigest\s*\(/i.test(withoutQualifiedDigest), `${entry.file} must schema-qualify pgcrypto digest calls`);
 
     const definers = normalized.match(/security\s+definer/g)?.length ?? 0;
     const fixedSearchPaths = normalized.match(/set\s+search_path\s*=\s*public,\s*pg_temp/g)?.length ?? 0;
@@ -77,6 +81,11 @@ function run() {
 
   const p3Indexes = fs.readFileSync(path.join(migrationRoot, "20260712201000_article_publication_p3_indexes.sql"), "utf8");
   assert(!/\bon\s+(articles|sources|ingestion_runs|admin_jobs)\b/i.test(p3Indexes), "P3 transactional indexes must remain limited to new P3 tables");
+  assert(/extensions\.vector_cosine_ops/i.test(p3Indexes), "P3 vector index must schema-qualify the extension opclass");
+
+  const p3 = fs.readFileSync(path.join(migrationRoot, "20260712200000_article_publication_p3.sql"), "utf8");
+  assert(/extensions\.vector\s*\(1536\)/i.test(p3), "P3 vector types must be schema-qualified");
+  assert(/operator\s*\(extensions\.<=>\)/i.test(p3), "P3 vector distance operators must be schema-qualified");
 
   const p5 = fs.readFileSync(path.join(migrationRoot, "20260712230000_admin_governance_p5.sql"), "utf8");
   assert(!/create\s+index/i.test(p5), "P5 base migration must not build indexes while holding its transaction");

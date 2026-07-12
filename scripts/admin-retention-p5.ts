@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { applyP5Retention, getP5HealthEvidence } from "@/lib/admin/p5/repository";
 

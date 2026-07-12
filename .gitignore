@@ -12,3 +12,4 @@ test-results
 logs
 *.tsbuildinfo
 artifacts/admin-redesign/gate0/
+supabase/.temp/

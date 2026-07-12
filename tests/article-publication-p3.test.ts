@@ -199,6 +199,7 @@ test("migration and application contracts cover immutable authority, projection,
   const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712200000_article_publication_p3.sql"), "utf8");
   const reconciliation = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712202000_article_publication_p3_reconciliation.sql"), "utf8");
   const correction = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712203000_article_publication_p3_authority_correction.sql"), "utf8");
+  const reviewEligibility = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260713090000_article_publication_p3_review_eligibility.sql"), "utf8");
   const queries = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
   const vector = fs.readFileSync(path.join(process.cwd(), "lib/search/vector.ts"), "utf8");
   const adminQueries = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
@@ -226,6 +227,11 @@ test("migration and application contracts cover immutable authority, projection,
   assert.ok(correction.includes("create or replace view public_tag_projection_p3"));
   assert.ok(correction.includes("create or replace function public_jurisdiction_article_counts_p3"));
   assert.ok(correction.includes("create or replace function match_public_article_versions_p3"));
+  assert.ok(reviewEligibility.includes("'unreviewed', 'approved_for_processing', 'approved'"));
+  assert.ok(reviewEligibility.includes("article_publication_quarantine_resolutions_p3"));
+  assert.ok(reviewEligibility.includes("resolution.completed_processing_is_publishable"));
+  assert.ok(reviewEligibility.includes("from article_publication_transition_p3("));
+  assert.ok(reviewEligibility.includes("'quarantineResolvedCount'"));
   assert.ok(adminQueries.includes("shadowConfirmedAdminBulkArticleOutcomes"));
   assert.ok(adminQueries.includes('.select("id")'));
   assert.ok(adminQueries.includes("if (persisted?.id)"));

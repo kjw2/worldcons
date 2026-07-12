@@ -42,7 +42,7 @@ Compatibility and backfill may create a directly published row only to reproduce
 
 Publish eligibility is checked inside `article_publication_transition_p3` while the article, version head, and publication are locked:
 
-- P2 collection is `source_text_ready`, processing is `complete`, review is `unreviewed` or `approved`, and attention is `clear`.
+- P2 collection is `source_text_ready`, processing is `complete`, review is `unreviewed`, `approved_for_processing`, or `approved`, and attention is `clear`. `approved_for_processing` is eligible only after processing is complete, preserving articles that were explicitly approved for summarization and then successfully completed.
 - Title, source, jurisdiction, institution, language, URLs, summary JSON, and at least 500 trimmed cleaned-text characters are present.
 - Source policy says publishable, source text available, and source URL verified; robots disallow and seed strategy are absent.
 - The selected immutable version belongs to the article and both expected revisions match.
@@ -83,6 +83,7 @@ The migrations are additive and rerunnable:
 2. `20260712201000_article_publication_p3_indexes.sql`: indexes on new empty tables only. It does not scan or lock legacy article rows.
 3. `20260712202000_article_publication_p3_reconciliation.sql`: bounded backfill and aggregate evidence functions. It does not run the backfill automatically.
 4. `20260712203000_article_publication_p3_authority_correction.sql`: rerunnable projection correction that makes publication state plus immutable version the sole public visibility authority and rebuilds tag/count/vector contracts over it.
+5. `20260713090000_article_publication_p3_review_eligibility.sql`: accepts completed `approved_for_processing` rows, retains historical quarantine entries, appends immutable resolution records, and corrects already-created backfill drafts through the publication authority.
 
 Rehearse on a production-shaped copy before any target migration:
 

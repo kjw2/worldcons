@@ -1,3 +1,55 @@
+create table if not exists article_publication_quarantine_resolutions_p3 (
+  article_id uuid not null,
+  anomaly_code text not null,
+  resolution_code text not null,
+  resolved_at timestamptz not null default now(),
+  primary key (article_id, anomaly_code),
+  foreign key (article_id, anomaly_code)
+    references article_publication_quarantine_p3(article_id, anomaly_code)
+    on delete restrict,
+  constraint article_publication_quarantine_resolution_code_check
+    check (resolution_code ~ '^resolution\.[a-z0-9._-]{1,110}$')
+);
+
+alter table article_publication_quarantine_resolutions_p3 enable row level security;
+revoke all on table article_publication_quarantine_resolutions_p3 from public;
+
+drop trigger if exists article_publication_quarantine_resolutions_p3_immutable_trigger
+  on article_publication_quarantine_resolutions_p3;
+create trigger article_publication_quarantine_resolutions_p3_immutable_trigger
+before update or delete on article_publication_quarantine_resolutions_p3
+for each row execute function article_publication_immutable_p3();
+
+create or replace function article_publication_eligible_p3(
+  p_article articles,
+  p_version article_content_versions_p3
+)
+returns boolean
+language sql
+stable
+as $$
+  select
+    p_article.lifecycle_collection_state = 'source_text_ready'
+    and p_article.lifecycle_processing_state = 'complete'
+    and p_article.lifecycle_review_state in ('unreviewed', 'approved_for_processing', 'approved')
+    and p_article.lifecycle_attention_state = 'clear'
+    and length(trim(coalesce(p_version.slug, ''))) > 0
+    and length(trim(coalesce(p_version.source_key, ''))) > 0
+    and length(trim(coalesce(p_version.jurisdiction, ''))) > 0
+    and length(trim(coalesce(p_version.institution_name, ''))) > 0
+    and length(trim(coalesce(p_version.original_url, ''))) > 0
+    and length(trim(coalesce(p_version.canonical_url, ''))) > 0
+    and length(trim(coalesce(p_version.original_language, ''))) > 0
+    and length(trim(coalesce(p_version.korean_title, p_version.original_title, ''))) > 0
+    and p_version.summary_json is not null
+    and length(trim(coalesce(p_version.cleaned_text, ''))) >= 500
+    and p_version.source_metadata #>> '{collection,publishable}' = 'true'
+    and p_version.source_metadata #>> '{collection,sourceTextAvailable}' = 'true'
+    and p_version.source_metadata #>> '{collection,sourceUrlVerified}' = 'true'
+    and coalesce(p_version.source_metadata #>> '{collection,robotsDisallowed}', 'false') <> 'true'
+    and coalesce(p_version.source_metadata #>> '{collection,strategy}', '') <> 'seed';
+$$;
+
 create or replace function article_publication_backfill_anomaly_p3(p_article articles)
 returns text
 language sql
@@ -21,7 +73,7 @@ as $$
       then 'backfill.public_processing_ineligible'
     when p_article.status = 'summarized'
       and p_article.source_metadata #>> '{collection,publishable}' = 'true'
-      and p_article.lifecycle_review_state not in ('unreviewed', 'approved')
+      and p_article.lifecycle_review_state not in ('unreviewed', 'approved_for_processing', 'approved')
       then 'backfill.public_review_ineligible'
     when p_article.status = 'summarized'
       and p_article.source_metadata #>> '{collection,publishable}' = 'true'
@@ -47,108 +99,61 @@ as $$
   end;
 $$;
 
-create or replace function article_publication_backfill_batch_p3(
-  p_after_id uuid default null,
-  p_limit integer default 500
-)
-returns table(
-  selected_count integer,
-  mapped_count integer,
-  quarantined_count integer,
-  unchanged_count integer,
-  next_after_id uuid,
-  batch_complete boolean
-)
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
+do $$
 declare
-  v_article articles%rowtype;
-  v_head article_version_heads_p3%rowtype;
-  v_publication article_publications_p3%rowtype;
+  v_row record;
   v_result record;
-  v_legacy_public boolean;
-  v_desired_state text;
-  v_anomaly text;
-  v_selected integer := 0;
-  v_mapped integer := 0;
-  v_quarantined integer := 0;
-  v_unchanged integer := 0;
-  v_next uuid;
 begin
-  if p_limit is null or p_limit not between 1 and 2000 then
-    raise exception using errcode = '22023', message = 'ARTICLE_PUBLICATION_INVALID_BACKFILL_LIMIT';
-  end if;
-
-  for v_article in
-    select a.* from articles a
-    where p_after_id is null or a.id > p_after_id
-    order by a.id
-    limit p_limit
+  for v_row in
+    select
+      q.article_id,
+      h.current_version_id,
+      h.current_revision as version_revision,
+      p.revision as publication_revision
+    from article_publication_quarantine_p3 q
+    join articles a on a.id = q.article_id
+    join article_version_heads_p3 h on h.article_id = q.article_id
+    join article_content_versions_p3 v on v.id = h.current_version_id
+    join article_publications_p3 p on p.article_id = q.article_id
+    left join article_publication_quarantine_resolutions_p3 r
+      on r.article_id = q.article_id and r.anomaly_code = q.anomaly_code
+    where q.anomaly_code = 'backfill.public_review_ineligible'
+      and q.legacy_public
+      and r.article_id is null
+      and p.state = 'draft'
+      and a.lifecycle_review_state = 'approved_for_processing'
+      and article_publication_eligible_p3(a, v)
   loop
-    v_selected := v_selected + 1;
-    v_next := v_article.id;
-    v_legacy_public := v_article.status = 'summarized'
-      and v_article.source_metadata #>> '{collection,publishable}' = 'true';
-    v_anomaly := article_publication_backfill_anomaly_p3(v_article);
-    v_desired_state := case when v_legacy_public and v_anomaly is null then 'published' else 'draft' end;
+    select * into v_result
+    from article_publication_transition_p3(
+      v_row.article_id,
+      v_row.version_revision,
+      v_row.publication_revision,
+      'p3-correction:approved-for-processing:' || v_row.article_id::text,
+      'published',
+      v_row.current_version_id,
+      false,
+      'backfill',
+      'p3-reconciliation',
+      'Resolve legacy published article approved for completed processing.',
+      null,
+      'p3-review-eligibility-correction',
+      'import',
+      'legacy-backfill',
+      null,
+      null,
+      jsonb_build_object('mode', 'review-eligibility-correction'),
+      null
+    );
 
-    select h.* into v_head from article_version_heads_p3 h where h.article_id = v_article.id;
-    select p.* into v_publication from article_publications_p3 p where p.article_id = v_article.id;
-
-    if v_publication.id is not null and v_publication.state is distinct from v_desired_state then
-      v_anomaly := coalesce(v_anomaly, 'backfill.existing_state_conflict');
-    else
-      begin
-        select * into v_result from article_publication_transition_p3(
-          v_article.id,
-          coalesce(v_head.current_revision, 0),
-          coalesce(v_publication.revision, 0),
-          'p3-backfill:' || article_publication_content_hash_p3(v_article) || ':' || v_desired_state,
-          v_desired_state,
-          null,
-          true,
-          'backfill',
-          'p3-reconciliation',
-          case when v_legacy_public then 'Backfill exact legacy public outcome.' else 'Backfill exact legacy private outcome.' end,
-          null,
-          'p3-backfill',
-          case when v_article.summary_json is null then 'import' else 'llm' end,
-          'legacy-backfill',
-          left(nullif(v_article.summary_json #>> '{aiMetadata,model}', ''), 200),
-          null,
-          jsonb_build_object('mode', 'legacy-reconciliation'),
-          v_article.updated_at
-        );
-        if not coalesce(v_result.idempotent, false)
-          and (coalesce(v_result.version_created, false) or coalesce(v_result.publication_applied, false))
-        then
-          v_mapped := v_mapped + 1;
-        else
-          v_unchanged := v_unchanged + 1;
-        end if;
-      exception
-        when others then
-          v_anomaly := coalesce(v_anomaly, 'backfill.authority_rejected');
-      end;
-    end if;
-
-    if v_anomaly is not null then
-      insert into article_publication_quarantine_p3(article_id, anomaly_code, legacy_public)
-      values (v_article.id, v_anomaly, v_legacy_public)
-      on conflict (article_id, anomaly_code) do nothing;
-      v_quarantined := v_quarantined + 1;
-    end if;
+    insert into article_publication_quarantine_resolutions_p3(
+      article_id, anomaly_code, resolution_code
+    ) values (
+      v_row.article_id,
+      'backfill.public_review_ineligible',
+      'resolution.completed_processing_is_publishable'
+    ) on conflict (article_id, anomaly_code) do nothing;
   end loop;
-
-  return query select
-    v_selected,
-    v_mapped,
-    v_quarantined,
-    v_unchanged,
-    v_next,
-    v_selected < p_limit;
 end;
 $$;
 
@@ -169,6 +174,14 @@ as $$
     select id from legacy_public except select id from projected_public
   ), projection_only as (
     select id from projected_public except select id from legacy_public
+  ), unresolved_quarantine as (
+    select q.article_id, q.anomaly_code
+    from article_publication_quarantine_p3 q
+    where not exists (
+      select 1
+      from article_publication_quarantine_resolutions_p3 r
+      where r.article_id = q.article_id and r.anomaly_code = q.anomaly_code
+    )
   ), digests as (
     select
       encode(extensions.digest(convert_to(coalesce((select string_agg(id::text, ',' order by id) from legacy_public), ''), 'UTF8'), 'sha256'), 'hex') legacy_digest,
@@ -186,7 +199,8 @@ as $$
     'outboxPendingCount', (select count(*) from article_cache_outbox_p3 where status = 'pending'),
     'outboxProcessingCount', (select count(*) from article_cache_outbox_p3 where status = 'processing'),
     'outboxDeadLetterCount', (select count(*) from article_cache_outbox_p3 where status = 'dead_letter'),
-    'quarantineCount', (select count(*) from article_publication_quarantine_p3),
+    'quarantineCount', (select count(*) from unresolved_quarantine),
+    'quarantineResolvedCount', (select count(*) from article_publication_quarantine_resolutions_p3),
     'legacyPublicCount', (select count(*) from legacy_public),
     'projectionPublicCount', (select count(*) from projected_public),
     'legacyOnlyCount', (select count(*) from legacy_only),
@@ -199,22 +213,16 @@ as $$
   from digests;
 $$;
 
-revoke all on function article_publication_backfill_batch_p3(uuid, integer) from public;
-revoke all on function article_publication_evidence_p3() from public;
-
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'anon') then
-    revoke all on function article_publication_backfill_batch_p3(uuid, integer) from anon;
-    revoke all on function article_publication_evidence_p3() from anon;
+    revoke all on table article_publication_quarantine_resolutions_p3 from anon;
   end if;
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
-    revoke all on function article_publication_backfill_batch_p3(uuid, integer) from authenticated;
-    revoke all on function article_publication_evidence_p3() from authenticated;
+    revoke all on table article_publication_quarantine_resolutions_p3 from authenticated;
   end if;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    grant execute on function article_publication_backfill_batch_p3(uuid, integer) to service_role;
-    grant execute on function article_publication_evidence_p3() to service_role;
+    revoke all on table article_publication_quarantine_resolutions_p3 from service_role;
   end if;
 end;
 $$;

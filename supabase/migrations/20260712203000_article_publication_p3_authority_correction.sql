@@ -74,7 +74,7 @@ as $$
 $$;
 
 create or replace function match_public_article_versions_p3(
-  query_embedding vector(1536),
+  query_embedding extensions.vector(1536),
   match_count integer default 20,
   source_filter text default null,
   jurisdiction_filter text default null,
@@ -87,13 +87,13 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select p.id, 1 - (p.embedding <=> query_embedding) as similarity
+  select p.id, 1 - (p.embedding OPERATOR(extensions.<=>) query_embedding) as similarity
   from public_article_projection_p3 p
   where p.embedding is not null
     and (source_filter is null or p.source_key = source_filter)
     and (jurisdiction_filter is null or p.jurisdiction = jurisdiction_filter)
     and (content_type_filter is null or p.content_type = content_type_filter)
     and (language_filter is null or p.original_language = language_filter)
-  order by p.embedding <=> query_embedding
+  order by p.embedding OPERATOR(extensions.<=>) query_embedding
   limit least(greatest(coalesce(match_count, 20), 1), 200);
 $$;

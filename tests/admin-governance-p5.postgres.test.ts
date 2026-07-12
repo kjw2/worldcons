@@ -7,6 +7,7 @@ import { Client, Pool } from "pg";
 const sql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712230000_admin_governance_p5.sql"), "utf8");
 const indexSql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712231000_admin_governance_p5_indexes.sql"), "utf8");
 const correctiveSql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql"), "utf8");
+const quarantineResolutionSql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260713093000_admin_governance_p5_quarantine_resolution.sql"), "utf8");
 const databaseUrl = process.env.P5_TEST_DATABASE_URL;
 const p5Indexes = [
   "admin_compat_obs_p5_window_idx", "admin_governance_evidence_p5_current_idx",
@@ -49,6 +50,13 @@ test("P5 corrective migration binds approvals to digest and distinct actors", ()
   assert.match(correctiveSql, /count\(distinct actor_hash\) filter/);
   assert.match(indexSql, /create index concurrently if not exists admin_governance_evidence_p5_digest_idx/);
   assert.doesNotMatch(correctiveSql.slice(correctiveSql.indexOf("create or replace function admin_governance_approval_sets_p5")), /jsonb_build_object\([\s\S]{0,800}'actorHash'|'actor_hash', grouped/);
+});
+
+test("P5 health counts only unresolved publication quarantine", () => {
+  assert.match(quarantineResolutionSql, /create or replace view admin_operational_health_core_p5/);
+  assert.match(quarantineResolutionSql, /article_publication_quarantine_resolutions_p3/);
+  assert.match(quarantineResolutionSql, /where not exists/);
+  assert.match(quarantineResolutionSql, /r\.article_id = q\.article_id and r\.anomaly_code = q\.anomaly_code/);
 });
 
 const fixtureSql = `

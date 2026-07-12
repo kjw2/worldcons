@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { evaluateP5RetirementReadiness, P5_RETIREMENT_FLAG_ORDER } from "@/lib/admin/p5/evaluator";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { getP5HealthEvidence } from "@/lib/admin/p5/repository";

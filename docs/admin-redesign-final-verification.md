@@ -18,7 +18,7 @@
 - Used only an isolated local PostgreSQL cluster and dedicated database names containing `p0`, `p1`, `p2`, `p3`, or `p5`. Tests reject destructive setup against a database without the expected phase marker. `DATABASE_URL` was not used by destructive tests.
 - P0, P1, P2, P3, and P5 PostgreSQL suites passed. The P5 suite applied the complete P0 -> P1 -> P2 -> P3 -> P5 chain in timestamp order and reapplied every rerunnable file; its full-chain test completed in 2.1 seconds.
 - Local pgvector was unavailable. P3 used the existing test-only `double precision[]` operator shim and skipped only the pgvector index implementation. Production migrations were not changed for vector compatibility.
-- The read-only manifest check covers 12 redesign migrations, 35 fixed-search-path `SECURITY DEFINER` functions, two outside-transaction index files, and 18 concurrent indexes.
+- The read-only manifest check covers 14 redesign migrations, 36 fixed-search-path `SECURITY DEFINER` functions, two outside-transaction index files, and 18 concurrent indexes.
 
 Lock/deployability shape:
 
@@ -50,11 +50,22 @@ Production rollout remains gated and ordered: apply schema with every flag false
 
 Rollback disables the narrowest authority first: P3 public reads, P3 outbox claims, P1 worker claims, then the corresponding shadow writer. UI, governance, and observation flags may be disabled independently. Preserve queue, lifecycle, publication, outbox, and governance evidence; use additive forward fixes.
 
+## Production Migration Execution
+
+The production database migration and additive backfill ran on 2026-07-13 with every redesign authority flag left disabled:
+
+- Supabase migration history is current through `20260713093000`. The P2 and P5 concurrent-index files were executed one statement at a time in autocommit mode, then recorded with the official migration-repair command because Supabase CLI pipeline mode cannot execute multiple `CREATE INDEX CONCURRENTLY` statements.
+- Supabase extension references are schema-qualified (`extensions.digest`, `extensions.vector`, vector distance operator, and vector opclass). This matches the production extension installation and preserves fixed function `search_path` restrictions.
+- P2 initialized 1,174 articles in three bounded batches. Uninitialized rows, lifecycle anomalies, legacy-only rows, and compatibility-only rows are zero; legacy and compatibility public identity digests match.
+- P3 initialized 1,174 immutable versions and publication rows in 50-row batches after a 500-row attempt failed atomically on the statement timeout. Legacy and projection public counts are both 1,174, identity digests match, and both directional mismatch counts are zero.
+- Ten legacy-public articles had completed processing after an explicit summary approval. P3 now recognizes that completed state as eligible. One quarantine created before the correction remains immutable and has an appended resolution record; unresolved quarantine is zero.
+- All 1,175 publication outbox events were delivered. Pending, processing, failed/dead-letter, and projection parity counts are zero after delivery.
+- The post-migration Gate 0 anomaly set is zero and the P5 operational health check reports no hard SLO violations. Retirement readiness remains pending because observation, restore, distinct-owner, legal, and flag-order evidence is intentionally incomplete.
+
 ## Production Evidence Pending
 
-- Production-shaped migration runtime, lock-wait, table/index growth, pgvector plan, and parity evidence.
-- Live P0-P3 backfill/anomaly/identity checks, canary observation, cache/outbox SLOs, and rollback rehearsal.
+- Production canary observation, detailed lock-wait/table/index-growth capture, pgvector query-plan review, and rollback rehearsal.
 - At least 336 continuous production observation hours, current isolated restore evidence, named distinct-owner approvals, legal/retention review, and retirement approval.
 - Strict no-write browser attestation: the first local browser launch inherited the repository analytics configuration before analytics was explicitly disabled, so a bounded page-view event may have been emitted. No production inspection or cleanup was performed. All subsequent browser checks ran with analytics and every redesign writer/worker flag explicitly disabled.
 
-No production migration, deployment, push, compatibility retirement, retention action, or administrator data action occurred in this final stage.
+Production schema migration, additive lifecycle/publication backfill, tag-count refresh, cache revalidation, and outbox delivery occurred in this rollout. No redesign authority flag was enabled, and no compatibility retirement, retention deletion, or destructive article/source-snapshot mutation occurred.

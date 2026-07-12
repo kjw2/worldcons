@@ -666,7 +666,7 @@ begin
       v_article.status, v_article.source_metadata, v_article.review_state,
       v_article.error_class, v_article.error_context, v_article.summary_json
     );
-    v_key := left('p2-backfill:' || encode(digest(
+    v_key := left('p2-backfill:' || encode(extensions.digest(
       v_article.id::text || ':' || v_article.lifecycle_revision::text || ':' || v_article.status || ':' || v_map::text,
       'sha256'
     ), 'hex'), 240);
@@ -753,8 +753,8 @@ as $$
     'compatibilityPublicCount', (select count(*) from compatibility_public),
     'legacyOnlyCount', (select count(*) from legacy_only),
     'compatibilityOnlyCount', (select count(*) from compatibility_only),
-    'legacyIdentityDigest', coalesce((select encode(digest(string_agg(id::text, ',' order by id), 'sha256'), 'hex') from legacy_public), encode(digest('', 'sha256'), 'hex')),
-    'compatibilityIdentityDigest', coalesce((select encode(digest(string_agg(id::text, ',' order by id), 'sha256'), 'hex') from compatibility_public), encode(digest('', 'sha256'), 'hex')),
+    'legacyIdentityDigest', coalesce((select encode(extensions.digest(string_agg(id::text, ',' order by id), 'sha256'), 'hex') from legacy_public), encode(extensions.digest('', 'sha256'), 'hex')),
+    'compatibilityIdentityDigest', coalesce((select encode(extensions.digest(string_agg(id::text, ',' order by id), 'sha256'), 'hex') from compatibility_public), encode(extensions.digest('', 'sha256'), 'hex')),
     'uninitializedCount', (select count(*) from articles where lifecycle_attention_state is null),
     'activeAttentionCount', (select count(*) from articles where lifecycle_attention_state = 'active'),
     'anomalyCount', (select count(*) from article_lifecycle_anomalies_p2 where resolved_at is null),

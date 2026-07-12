@@ -220,8 +220,10 @@ test("retirement evaluator passes only when every prerequisite passes", () => {
 
 test("retirement and retention tools never auto-flip flags or delete authority history", () => {
   const retirement = source("scripts/admin-retirement-readiness-p5.ts");
+  assert.match(retirement, /import "dotenv\/config"/);
   assert.doesNotMatch(retirement, /\.update\(|\.delete\(|admin_apply_retention|process\.env\[[^\]]+\]\s*=/);
   const retention = source("scripts/admin-retention-p5.ts");
+  assert.match(retention, /import "dotenv\/config"/);
   assert.match(retention, /mode: "dry-run"/);
   assert.match(retention, /confirmation !== "APPLY P5 RETENTION"/);
   const migration = source("supabase/migrations/20260712230000_admin_governance_p5.sql");
@@ -299,6 +301,7 @@ test("governance UI is hidden when flags are off and has mobile/desktop layouts"
 test("health workflow is disabled by default and emits redacted machine evidence", () => {
   const workflow = source(".github/workflows/admin-health-p5.yml");
   const script = source("scripts/admin-health-p5.ts");
+  assert.match(script, /import "dotenv\/config"/);
   assert.match(workflow, /if: \$\{\{ vars\.ADMIN_P5_HEALTH_VERIFICATION_ENABLED == 'true' \}\}/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /schedule:/);
