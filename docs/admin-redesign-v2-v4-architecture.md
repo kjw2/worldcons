@@ -1,6 +1,6 @@
 # Administrator Redesign V2+V3+V4 Architecture Contract
 
-Status: approved implementation contract; P0 implemented but not production-applied
+Status: approved implementation contract; P0 and P1 implemented but not production-applied; P1 disabled by default
 Scope: administrator operations, queue execution, and publication control
 Stage 0 rule: baseline and documentation only; no queue or publication migration
 
@@ -130,3 +130,17 @@ The database-enforced invariants are:
 9. Security-definer RPC execution is revoked from `PUBLIC`; only `service_role` receives execute permission. Anonymous and authenticated roles receive no table DML.
 
 Operational rehearsal, acceptance evidence, rollback, and the ingress inventory are in `docs/admin-command-control-plane-p0.md`.
+
+## P1 Direct GitHub Workers
+
+P1 adds `20260712130000_admin_command_worker_p1.sql`, a direct GitHub worker, canonical bounded handlers, and an exact-candidate retry path. The migration is additive and rerunnable. It adds a cohort-filtered claim RPC plus service-role-only candidate begin/finish RPCs; it does not alter or remove the P0 claim RPC, `admin_jobs`, article/publication state, or public readers.
+
+Execution authority requires all three server-side settings: `ADMIN_QUEUE_V3_WORKER_ENABLED=true`, a non-empty bounded `ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES` allowlist, and a non-empty bounded `ADMIN_QUEUE_V3_WORKER_COHORTS` allowlist. The flag defaults to false. The P1 claim RPC filters command type and `payload_ref.cohort` before row locking, so a worker cannot claim outside its configured cohort. P0 `shadowed` runs remain terminal and unclaimable.
+
+The approved P1 command vocabulary is `p1.collect`, `p1.summarize`, `p1.candidate.retry`, `p1.refresh-derived`, and `p1.public-cache.revalidate`. Handlers call the existing ingestion, summary, tag-count, candidate adapter, and cache-revalidation services. Cache invalidation is invoked through the authenticated deployed Next endpoint because `revalidateTag` and `revalidatePath` are owned by that runtime; GitHub still owns the queue claim, heartbeat, handler orchestration, and fenced terminal transition.
+
+The 06:00 KST workflow has mutually exclusive P1 and legacy branches under one concurrency group. P1 submits and executes collect, bounded summary drain, derived-count refresh, and cache revalidation in that order. With the worker flag off, the existing Crawlee/summarize/tag/cache steps run unchanged. The separate V2 `admin_jobs` workflow and cron endpoint remain deployable rollback paths.
+
+Candidate retry loads one candidate by service-role RPC, validates source ownership and the official HTTPS host/path policy, and passes the stored URL unchanged to `fetchItem`. It never calls `discover`, substitutes a base/list URL, or follows a broad fallback. Candidate attempt count is the transition fence; fetched/ignored rows are idempotent no-ops, and retrying attempts finish as fetched or failed with bounded evidence.
+
+Worker heartbeat persists every lease extension through P0 RPCs. Handlers checkpoint before and after bounded steps, signals request a retryable yield, and timeout/abort/lost-lease outcomes cannot complete successfully. Completion and failure always use the claimed fencing token; a stale worker's terminal write is rejected. P1 operational settings, rollout, parity evidence, abort SLA, and rollback are specified in `docs/admin-command-control-plane-p1.md`. Gate 2 remains closed until the migration and production-shaped verification are approved and the documented observation evidence is complete.

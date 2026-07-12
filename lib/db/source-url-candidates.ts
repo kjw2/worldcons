@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { getSupabaseAdmin, getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 export const SOURCE_URL_CANDIDATE_STATUSES = ["pending", "retrying", "fetched", "failed", "ignored"] as const;
@@ -27,6 +27,16 @@ export interface SourceUrlCandidateRecord {
   lastErrorMessage?: string | null;
   firstSeenAt?: string | null;
   lastSeenAt?: string | null;
+}
+
+export interface SourceUrlCandidateRetryClaim {
+  candidateId: string;
+  sourceKey: string;
+  url: string;
+  candidateType: string;
+  status: SourceUrlCandidateStatus;
+  attemptCount: number;
+  shouldFetch: boolean;
 }
 
 export interface ListSourceUrlCandidatesInput {
@@ -85,6 +95,57 @@ function normalizeCandidateRow(row: SourceUrlCandidateRow): SourceUrlCandidateRe
     lastErrorMessage: row.last_error_message,
     firstSeenAt: row.created_at,
     lastSeenAt: row.updated_at,
+  };
+}
+
+function firstRpcRow(value: unknown) {
+  const row = Array.isArray(value) ? value[0] : value;
+  return typeof row === "object" && row !== null ? row as Record<string, unknown> : null;
+}
+
+export async function beginSourceUrlCandidateRetry(candidateId: string): Promise<SourceUrlCandidateRetryClaim> {
+  const supabase = getSupabaseServiceRoleAdmin();
+  if (!supabase) throw new Error("candidate_store_unavailable");
+  const { data, error } = await supabase.rpc("admin_begin_source_url_candidate_retry_p1", { p_candidate_id: candidateId });
+  if (error) throw new Error(error.message);
+  const row = firstRpcRow(data);
+  if (!row) throw new Error("candidate_not_found");
+  const status = parseSourceUrlCandidateStatus(typeof row.candidate_status === "string" ? row.candidate_status : null);
+  if (!status) throw new Error("candidate_status_invalid");
+  return {
+    candidateId: String(row.candidate_id ?? ""),
+    sourceKey: String(row.source_key ?? ""),
+    url: String(row.candidate_url ?? ""),
+    candidateType: String(row.candidate_type ?? ""),
+    status,
+    attemptCount: Number(row.attempt_count ?? 0),
+    shouldFetch: row.should_fetch === true,
+  };
+}
+
+export async function finishSourceUrlCandidateRetry(input: {
+  candidateId: string;
+  attemptCount: number;
+  status: Extract<SourceUrlCandidateStatus, "fetched" | "failed">;
+  errorCode?: string;
+  errorMessage?: string;
+}) {
+  const supabase = getSupabaseServiceRoleAdmin();
+  if (!supabase) throw new Error("candidate_store_unavailable");
+  const { data, error } = await supabase.rpc("admin_finish_source_url_candidate_retry_p1", {
+    p_candidate_id: input.candidateId,
+    p_attempt_count: input.attemptCount,
+    p_status: input.status,
+    p_error_code: input.errorCode?.slice(0, 160) ?? null,
+    p_error_message: input.errorMessage?.slice(0, 500) ?? null,
+  });
+  if (error) throw new Error(error.message);
+  const row = firstRpcRow(data);
+  if (!row) throw new Error("candidate_transition_failed");
+  return {
+    candidateId: String(row.candidate_id ?? ""),
+    status: String(row.candidate_status ?? "") as SourceUrlCandidateStatus,
+    attemptCount: Number(row.attempt_count ?? 0),
   };
 }
 

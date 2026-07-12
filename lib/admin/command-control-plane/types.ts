@@ -38,6 +38,7 @@ export interface SubmittedAdminCommand {
 export interface ClaimAdminCommandInput {
   workerId: string;
   commandTypes?: string[];
+  cohorts?: string[];
   leaseSeconds?: number;
 }
 

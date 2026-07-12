@@ -10,6 +10,7 @@ import type {
 } from "@/lib/admin/command-control-plane/types";
 
 const COMMAND_TYPE_PATTERN = /^[a-z][a-z0-9._-]{0,119}$/;
+const COHORT_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
 
 function boundedInteger(value: number | undefined, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
@@ -49,12 +50,17 @@ export function createAdminCommandService(repository: AdminCommandRepository = p
     },
 
     claim(input: ClaimAdminCommandInput) {
-      if (!validText(input.workerId, 160) || input.commandTypes?.some((type) => !COMMAND_TYPE_PATTERN.test(type))) {
+      if (
+        !validText(input.workerId, 160)
+        || input.commandTypes?.some((type) => !COMMAND_TYPE_PATTERN.test(type))
+        || input.cohorts?.some((cohort) => !COHORT_PATTERN.test(cohort))
+      ) {
         return Promise.resolve({ ok: false as const, error: adminCommandError("invalid_input") });
       }
       return repository.claim({
         workerId: redactAdminAuditText(input.workerId, 160),
         commandTypes: input.commandTypes,
+        cohorts: input.cohorts,
         leaseSeconds: boundedInteger(input.leaseSeconds, 60, 1, 86400),
       });
     },

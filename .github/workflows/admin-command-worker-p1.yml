@@ -1,0 +1,90 @@
+name: Admin command P1 direct worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Drain allowlisted commands or retry one exact candidate ID
+        required: true
+        type: choice
+        default: drain
+        options:
+          - drain
+          - candidate-retry
+      candidate_id:
+        description: Required UUID for candidate-retry
+        required: false
+        default: ""
+      max_commands:
+        description: Maximum commands to claim when draining (1-20)
+        required: false
+        default: "5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-command-p1
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
+      ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
+      ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES: ${{ vars.ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES }}
+      ADMIN_QUEUE_V3_WORKER_COHORTS: ${{ vars.ADMIN_QUEUE_V3_WORKER_COHORTS }}
+      CRAWLEE_WORKER: "true"
+      PLAYWRIGHT_ENABLED: "true"
+      CRAWLEE_PLAYWRIGHT_ENABLED: "true"
+      INGEST_RANGE_DAYS: "14"
+      SPAIN_INGEST_RANGE_DAYS: "180"
+      SPAIN_INGEST_RANGE_DAYS_CAP: "730"
+      BVERFG_INGEST_RANGE_DAYS: "60"
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Validate bounded dispatch inputs
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          MAX_COMMANDS: ${{ inputs.max_commands }}
+        run: |
+          [[ "$MAX_COMMANDS" =~ ^[0-9]+$ ]] && (( MAX_COMMANDS >= 1 && MAX_COMMANDS <= 20 )) || exit 2
+          if [ "$OPERATION" = "candidate-retry" ]; then
+            [[ "$CANDIDATE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || exit 2
+          elif [ "$OPERATION" != "drain" ]; then
+            exit 2
+          fi
+      - name: Run direct worker
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          MAX_COMMANDS: ${{ inputs.max_commands }}
+        run: |
+          if [ "$OPERATION" = "candidate-retry" ]; then
+            pnpm admin:worker:p1 -- --candidate-id="$CANDIDATE_ID"
+          else
+            pnpm admin:worker:p1 -- --max-commands="$MAX_COMMANDS"
+          fi

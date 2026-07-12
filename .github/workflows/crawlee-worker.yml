@@ -24,7 +24,7 @@ on:
         default: "14"
 
 concurrency:
-  group: crawlee-worker-ingest
+  group: admin-command-p1
   cancel-in-progress: false
 
 jobs:
@@ -45,6 +45,11 @@ jobs:
       PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
+      ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
+      ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES: ${{ vars.ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES }}
+      ADMIN_QUEUE_V3_WORKER_COHORTS: ${{ vars.ADMIN_QUEUE_V3_WORKER_COHORTS }}
+      WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
       INGEST_RANGE_DAYS: "14"
       SPAIN_INGEST_RANGE_DAYS: "180"
       SPAIN_INGEST_RANGE_DAYS_CAP: "730"
@@ -78,7 +83,38 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Run Crawlee worker
+      - name: Validate bounded workflow inputs
+        env:
+          SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
+          LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
+          STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
+          RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
+        run: |
+          case "$SOURCE_INPUT" in
+            ""|de-bverfg|us-scotus|fr-conseil-constitutionnel|es-tribunal-constitucional) ;;
+            *) echo "Invalid source input" >&2; exit 2 ;;
+          esac
+          case "$STRATEGY_INPUT" in
+            auto|api|cheerio|playwright|sitemap|seed) ;;
+            *) echo "Invalid strategy input" >&2; exit 2 ;;
+          esac
+          [[ "$LIMIT_INPUT" =~ ^[0-9]+$ ]] && (( LIMIT_INPUT >= 1 && LIMIT_INPUT <= 100 )) || exit 2
+          [[ "$RANGE_DAYS_INPUT" =~ ^[0-9]+$ ]] && (( RANGE_DAYS_INPUT >= 1 && RANGE_DAYS_INPUT <= 730 )) || exit 2
+      - name: Run direct P1 daily command pipeline
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED == 'true'
+        env:
+          SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
+          LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
+          STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
+          RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
+        run: |
+          SOURCE_ARG=()
+          if [ -n "$SOURCE_INPUT" ]; then
+            SOURCE_ARG=("--source=$SOURCE_INPUT")
+          fi
+          pnpm admin:worker:p1 -- --daily-pipeline "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
+      - name: Run legacy Crawlee worker
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         env:
           SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
@@ -91,12 +127,15 @@ jobs:
           fi
           pnpm crawl:worker -- "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --use-playwright --debug
       - name: Summarize pending articles
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         # One in-process retry waits beyond the Gemini router's 60-second cooldown.
         # Later passes make transient quota failures visible and recover without waiting for the next daily run.
         run: pnpm summarize-pending -- --limit=20 --drain --strict --max-passes=4 --pass-delay-ms=300000 --retry-attempts=1 --retry-delay-ms=65000
       - name: Refresh public tag counts
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         run: pnpm refresh-tag-counts
-      - name: Revalidate production public caches
+      - name: Revalidate production public caches (legacy)
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         env:
           DEFAULT_BASE_URL: https://worldcons.vercel.app
           WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}

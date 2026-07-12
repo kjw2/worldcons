@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { adminCommandError, mapAdminCommandDatabaseError } from "@/lib/admin/command-control-plane/errors";
 import type {
   AbortAdminCommandRunInput,
@@ -53,7 +53,7 @@ function failure<T>(error: unknown): AdminCommandResult<T> {
 }
 
 async function rpc<T>(name: string, args: Record<string, unknown>, map: (row: Row) => T): Promise<AdminCommandResult<T>> {
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseServiceRoleAdmin();
   if (!supabase) return { ok: false, error: adminCommandError("unavailable") };
   const { data, error } = await supabase.rpc(name, args);
   if (error) return failure(error);
@@ -89,13 +89,16 @@ export const postgresAdminCommandRepository: AdminCommandRepository = {
   },
 
   async claim(input: ClaimAdminCommandInput) {
-    const supabase = getSupabaseAdmin();
+    const supabase = getSupabaseServiceRoleAdmin();
     if (!supabase) return { ok: false as const, error: adminCommandError("unavailable") };
-    const { data, error } = await supabase.rpc("admin_claim_command_attempt_v3", {
+    const rpcName = input.cohorts?.length ? "admin_claim_command_attempt_p1" : "admin_claim_command_attempt_v3";
+    const args = {
       p_worker_id: input.workerId,
       p_command_types: input.commandTypes?.length ? input.commandTypes : null,
+      ...(input.cohorts?.length ? { p_cohorts: input.cohorts } : {}),
       p_lease_seconds: input.leaseSeconds ?? 60,
-    });
+    };
+    const { data, error } = await supabase.rpc(rpcName, args);
     if (error) return failure<ClaimedAdminCommandAttempt | null>(error);
     const row = firstRow(data);
     if (!row) return { ok: true as const, data: null };
