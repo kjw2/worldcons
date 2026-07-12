@@ -33,7 +33,7 @@ function shouldRetryStatus(status: number) {
 async function fetchOnce(request: CrawlRequest): Promise<CrawlResponse> {
   await request.checkpoint?.();
   if (request.signal?.aborted) throw request.signal.reason;
-  await respectRateLimit(request.url, request.rateLimitDelayMs);
+  await respectRateLimit(request.url, request.rateLimitDelayMs, request.signal);
   await request.checkpoint?.();
 
   const response = await fetch(request.url, {
@@ -96,6 +96,7 @@ export async function crawlUrl(request: CrawlRequest): Promise<CrawlResponse> {
       {
         retries: retryCount(),
         delayMs: retryDelayMs(),
+        signal: request.signal,
         shouldRetry: (error) =>
           !request.signal?.aborted
           && (Boolean((error as { retryable?: boolean }).retryable) || error instanceof DOMException),

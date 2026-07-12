@@ -86,7 +86,10 @@ function robotsAttempt(url: string, robots: RobotsResult) {
 export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscoveryOptions): Promise<RawArticle> {
   await options?.checkpoint?.();
   if (options?.signal?.aborted) throw options.signal.reason;
-  const robots = await checkRobotsAllowed(item.url).catch(() => null);
+  const robots = await checkRobotsAllowed(item.url, options).catch(() => {
+    if (options?.signal?.aborted) throw options.signal.reason;
+    return null;
+  });
   await options?.checkpoint?.();
   if (robots) addDiagnosticAttempt(options?.diagnostics, robotsAttempt(item.url, robots));
   if (robots && !robots.allowed) {

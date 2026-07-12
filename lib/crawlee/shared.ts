@@ -1,4 +1,5 @@
 import { CheerioCrawler, PlaywrightCrawler, RequestQueue } from "crawlee";
+import { checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { extractLinks } from "@/lib/crawler/extract-links";
 import { extractHtmlMetadata } from "@/lib/crawler/extract-metadata";
@@ -248,10 +249,38 @@ function detailRequests(config: OfficialSpiderConfig, urls: string[], strategy: 
     }));
 }
 
+export async function runCrawleeExecutionBoundary<T>(
+  options: Pick<CrawleeSpiderOptions, "signal" | "checkpoint">,
+  operation: () => Promise<T>,
+) {
+  await checkpointCrawlerExecution(options);
+  const result = await operation();
+  await checkpointCrawlerExecution(options);
+  return result;
+}
+
 async function checkSpiderExecution(state: SpiderRunState) {
-  if (state.options.signal?.aborted) throw state.options.signal.reason;
-  await state.options.checkpoint?.();
-  if (state.options.signal?.aborted) throw state.options.signal.reason;
+  await checkpointCrawlerExecution(state.options);
+}
+
+async function runCrawlerWithCancellation(
+  state: SpiderRunState,
+  crawler: { run: () => Promise<unknown>; teardown: () => Promise<void> },
+) {
+  let teardown: Promise<void> | undefined;
+  const stopCrawler = () => {
+    teardown ??= crawler.teardown().catch(() => undefined);
+  };
+  state.options.signal?.addEventListener("abort", stopCrawler, { once: true });
+  try {
+    await runCrawleeExecutionBoundary(state.options, () => crawler.run());
+  } finally {
+    state.options.signal?.removeEventListener("abort", stopCrawler);
+    if (state.options.signal?.aborted) {
+      stopCrawler();
+      await teardown;
+    }
+  }
 }
 
 function detailRequestsFromItems(config: OfficialSpiderConfig, items: DiscoveredItem[], strategy: CrawlStrategy, fallback = false): CrawleeStartRequest[] {
@@ -290,13 +319,16 @@ async function checkRequestRobots(
   url: string,
   diagnostics: CrawlerDiagnosticsCollector,
   logAllowed: boolean,
+  options: CrawleeSpiderOptions,
 ) {
+  await checkpointCrawlerExecution(options);
   if (!robotsEnabled()) {
     return { allowed: true, delayMs: 0 };
   }
 
   try {
-    const robots = await checkRobotsAllowed(url);
+    const robots = await checkRobotsAllowed(url, options);
+    await checkpointCrawlerExecution(options);
     if (logAllowed || !robots.allowed) {
       addAttempt(diagnostics, {
         url,
@@ -314,6 +346,7 @@ async function checkRequestRobots(
     }
     return { allowed: robots.allowed, delayMs: robotsDelayMs(robots, 0) };
   } catch (error) {
+    if (options.signal?.aborted) throw options.signal.reason;
     addAttempt(diagnostics, {
       url,
       strategy: "robots",
@@ -328,17 +361,20 @@ async function prepareStartRequests(
   requests: CrawleeStartRequest[],
   settings: ReturnType<typeof crawlerSettings>,
   diagnostics: CrawlerDiagnosticsCollector,
+  options: CrawleeSpiderOptions,
 ) {
   const allowedRequests: CrawleeStartRequest[] = [];
   let maxDelayMs = settings.sameDomainDelaySecs * 1000;
 
   for (const request of requests) {
-    const robots = await checkRequestRobots(request.url, diagnostics, true);
+    await checkpointCrawlerExecution(options);
+    const robots = await checkRequestRobots(request.url, diagnostics, true, options);
     if (!robots.allowed) continue;
     maxDelayMs = Math.max(maxDelayMs, robots.delayMs);
     allowedRequests.push(request);
   }
 
+  await checkpointCrawlerExecution(options);
   return {
     requests: allowedRequests,
     settings: {
@@ -348,10 +384,17 @@ async function prepareStartRequests(
   };
 }
 
-async function enqueueStartRequests(queue: RequestQueue, requests: CrawleeStartRequest[], settings: ReturnType<typeof crawlerSettings>) {
+async function enqueueStartRequests(
+  queue: RequestQueue,
+  requests: CrawleeStartRequest[],
+  settings: ReturnType<typeof crawlerSettings>,
+  options: CrawleeSpiderOptions,
+) {
   for (const request of requests) {
+    await checkpointCrawlerExecution(options);
     await queue.addRequest(buildRequest(request, settings));
   }
+  await checkpointCrawlerExecution(options);
 }
 
 async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartRequest[], name: string) {
@@ -360,12 +403,15 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
   configureStorage();
   state.strategySequence.push("cheerio");
   let settings = crawlerSettings();
-  const prepared = await prepareStartRequests(requests, settings, state.diagnostics);
+  const prepared = await prepareStartRequests(requests, settings, state.diagnostics, state.options);
+  await checkSpiderExecution(state);
   requests = prepared.requests;
   settings = prepared.settings;
   if (requests.length === 0) return;
-  const requestQueue = await RequestQueue.open(`${state.config.sourceKey}-${name}-cheerio-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  await enqueueStartRequests(requestQueue, requests, settings);
+  const requestQueue = await runCrawleeExecutionBoundary(state.options, () =>
+    RequestQueue.open(`${state.config.sourceKey}-${name}-cheerio-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+  );
+  await runCrawleeExecutionBoundary(state.options, () => enqueueStartRequests(requestQueue, requests, settings, state.options));
 
   const crawler = new CheerioCrawler({
     requestQueue,
@@ -401,7 +447,8 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
         });
 
         for (const link of links) {
-          const robots = await checkRequestRobots(link.url, state.diagnostics, false);
+          await checkSpiderExecution(state);
+          const robots = await checkRequestRobots(link.url, state.diagnostics, false, state.options);
           if (!robots.allowed) continue;
           const item = state.config.itemFromUrl(link.url, userData.collectionStrategy, {
             listingUrl: request.url,
@@ -409,7 +456,7 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
             surroundingText: link.surroundingText,
             collectionStrategy: userData.collectionStrategy,
           });
-          await requestQueue.addRequest(
+          await runCrawleeExecutionBoundary(state.options, () => requestQueue.addRequest(
             buildRequest(
               {
                 url: link.url,
@@ -421,7 +468,7 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
               },
               settings,
             ),
-          );
+          ));
         }
         return;
       }
@@ -465,7 +512,7 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
     },
   });
 
-  await crawler.run().catch((error) => {
+  await runCrawlerWithCancellation(state, crawler).catch((error) => {
     if (state.options.signal?.aborted) throw state.options.signal.reason;
     addAttempt(state.diagnostics, {
       strategy: "cheerio",
@@ -482,12 +529,15 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
   configureStorage();
   state.strategySequence.push("playwright");
   let settings = crawlerSettings();
-  const prepared = await prepareStartRequests(requests, settings, state.diagnostics);
+  const prepared = await prepareStartRequests(requests, settings, state.diagnostics, state.options);
+  await checkSpiderExecution(state);
   requests = prepared.requests;
   settings = prepared.settings;
   if (requests.length === 0) return;
-  const requestQueue = await RequestQueue.open(`${state.config.sourceKey}-${name}-playwright-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  await enqueueStartRequests(requestQueue, requests, settings);
+  const requestQueue = await runCrawleeExecutionBoundary(state.options, () =>
+    RequestQueue.open(`${state.config.sourceKey}-${name}-playwright-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+  );
+  await runCrawleeExecutionBoundary(state.options, () => enqueueStartRequests(requestQueue, requests, settings, state.options));
 
   const crawler = new PlaywrightCrawler({
     requestQueue,
@@ -508,7 +558,9 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
       const status = response?.status() ?? 0;
       const contentType = response?.headers()["content-type"];
       await page.waitForLoadState("domcontentloaded", { timeout: settings.navigationTimeoutSecs * 1000 }).catch(() => null);
+      await checkSpiderExecution(state);
       const html = await page.content();
+      await checkSpiderExecution(state);
 
       if (userData.label === "LIST") {
         const parsed = extractLinks(html, finalUrl, state.config.listSelectors);
@@ -529,7 +581,8 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
         });
 
         for (const link of links) {
-          const robots = await checkRequestRobots(link.url, state.diagnostics, false);
+          await checkSpiderExecution(state);
+          const robots = await checkRequestRobots(link.url, state.diagnostics, false, state.options);
           if (!robots.allowed) continue;
           const item = state.config.itemFromUrl(link.url, "playwright", {
             listingUrl: request.url,
@@ -537,7 +590,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
             surroundingText: link.surroundingText,
             collectionStrategy: "playwright",
           });
-          await requestQueue.addRequest(
+          await runCrawleeExecutionBoundary(state.options, () => requestQueue.addRequest(
             buildRequest(
               {
                 url: link.url,
@@ -549,7 +602,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
               },
               settings,
             ),
-          );
+          ));
         }
         return;
       }
@@ -592,7 +645,7 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
     },
   });
 
-  await crawler.run().catch((error) => {
+  await runCrawlerWithCancellation(state, crawler).catch((error) => {
     if (state.options.signal?.aborted) throw state.options.signal.reason;
     addAttempt(state.diagnostics, {
       strategy: "playwright",
@@ -606,12 +659,20 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
 }
 
 async function runSitemapFallback(state: SpiderRunState) {
+  await checkSpiderExecution(state);
   state.strategySequence.push("sitemap");
-  const discovered = (
-    await Promise.all(
-      state.config.sitemapBaseUrls.map((baseUrl) => discoverSitemapUrls(baseUrl, state.config.sitemapKeywords, state.diagnostics).catch(() => [])),
-    )
-  )
+  const sitemapResults: string[][] = [];
+  for (const baseUrl of state.config.sitemapBaseUrls) {
+    await checkSpiderExecution(state);
+    try {
+      sitemapResults.push(await discoverSitemapUrls(baseUrl, state.config.sitemapKeywords, state.diagnostics, state.options));
+    } catch {
+      if (state.options.signal?.aborted) throw state.options.signal.reason;
+      sitemapResults.push([]);
+    }
+  }
+  await checkSpiderExecution(state);
+  const discovered = sitemapResults
     .flat()
     .filter((url, index, array) => array.indexOf(url) === index)
     .filter((url) => state.config.isCandidateUrl(url))
@@ -649,6 +710,7 @@ async function runSeedFallback(state: SpiderRunState) {
   }
 
   for (const request of requests) {
+    await checkSpiderExecution(state);
     if (results(state).length >= state.limit) break;
     const key = canonicalizeUrl(request.url);
     if (state.itemsByKey.has(key)) continue;
@@ -665,6 +727,7 @@ async function runSeedFallback(state: SpiderRunState) {
 }
 
 export async function runOfficialSpider(config: OfficialSpiderConfig, options: CrawleeSpiderOptions = {}): Promise<CrawleeSpiderResult> {
+  await checkpointCrawlerExecution(options);
   configureStorage();
   const diagnostics = options.diagnostics ?? createDiagnosticsCollector(config.sourceKey);
   const state: SpiderRunState = {
@@ -691,6 +754,7 @@ export async function runOfficialSpider(config: OfficialSpiderConfig, options: C
     if (remainingCount(state) > 0 && strategyAllowed(strategy, "playwright") && shouldUsePlaywrightCrawler(options)) {
       await runPlaywrightPass(state, [...detailRequestsFromItems(config, directItems, "playwright", true), ...detailRequests(config, directUrls, "playwright", true)], "direct-detail");
     }
+    await checkSpiderExecution(state);
     return {
       sourceKey: config.sourceKey,
       items: results(state),
@@ -730,6 +794,7 @@ export async function runOfficialSpider(config: OfficialSpiderConfig, options: C
     await runSeedFallback(state);
   }
 
+  await checkSpiderExecution(state);
   return {
     sourceKey: config.sourceKey,
     items: results(state),

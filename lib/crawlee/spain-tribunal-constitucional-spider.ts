@@ -1,7 +1,8 @@
 import zlib from "node:zlib";
 import { load } from "cheerio";
+import { assertCrawlerExecution, checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
-import type { CrawlAttemptLog, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
+import type { CrawlAttemptLog, CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 import { cleanText } from "@/lib/ingest/extract-text";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, CrawleeSpiderResult } from "@/lib/crawlee/types";
 import type { DiscoveredItem, RawArticle } from "@/lib/sources/types";
@@ -121,18 +122,22 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit = {}) {
+async function fetchWithTimeout(url: string, init: RequestInit = {}, hooks?: CrawlerExecutionHooks) {
+  await checkpointCrawlerExecution(hooks);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs());
   try {
-    return await fetch(url, {
+    const signals = [init.signal, hooks?.signal, controller.signal].filter((signal): signal is AbortSignal => Boolean(signal));
+    const response = await fetch(url, {
       ...init,
-      signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal,
+      signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals),
       headers: {
         "User-Agent": userAgent(),
         ...init.headers,
       },
     });
+    await checkpointCrawlerExecution(hooks);
+    return response;
   } finally {
     clearTimeout(timeout);
   }
@@ -534,10 +539,12 @@ function decodeXmlEntities(value: string) {
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
 
-function textFromDocx(buffer: Buffer) {
+function textFromDocx(buffer: Buffer, hooks?: CrawlerExecutionHooks) {
+  assertCrawlerExecution(hooks);
   const eocdSignature = 0x06054b50;
   let eocdOffset = -1;
   for (let offset = buffer.length - 22; offset >= 0; offset -= 1) {
+    assertCrawlerExecution(hooks);
     if (buffer.readUInt32LE(offset) === eocdSignature) {
       eocdOffset = offset;
       break;
@@ -551,6 +558,7 @@ function textFromDocx(buffer: Buffer) {
   const end = centralDirectoryOffset + centralDirectorySize;
 
   while (offset < end && buffer.readUInt32LE(offset) === 0x02014b50) {
+    assertCrawlerExecution(hooks);
     const method = buffer.readUInt16LE(offset + 10);
     const compressedSize = buffer.readUInt32LE(offset + 20);
     const fileNameLength = buffer.readUInt16LE(offset + 28);
@@ -634,18 +642,19 @@ export function buildSpainTcFallbackRawArticle(params: {
   };
 }
 
-async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCollector, signal?: AbortSignal) {
+async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCollector, hooks?: CrawlerExecutionHooks) {
   let lastError: string | undefined;
   for (const url of jsonApiUrls(hjId)) {
+    await checkpointCrawlerExecution(hooks);
     try {
       const response = await fetchWithTimeout(url, {
         headers: {
           Accept: "application/json,text/plain;q=0.8,*/*;q=0.5",
           "Accept-Language": "es,en;q=0.8,ko;q=0.5",
         },
-        signal,
-      });
+      }, hooks);
       const text = await response.text();
+      await checkpointCrawlerExecution(hooks);
       addAttempt(diagnostics, {
         url,
         finalUrl: response.url,
@@ -661,6 +670,7 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
       }
       return { payload: JSON.parse(text) as SpainHjJson, url };
     } catch (error) {
+      if (hooks?.signal?.aborted) throw hooks.signal.reason;
       lastError = errorMessage(error);
       addAttempt(diagnostics, {
         url,
@@ -674,17 +684,18 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
   throw new Error(lastError ?? `Spain HJ JSON API failed for ${hjId}`);
 }
 
-async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, signal?: AbortSignal) {
+async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, hooks?: CrawlerExecutionHooks) {
   const url = canonicalSpainTcUrl(hjId);
   const response = await fetchWithTimeout(url, {
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "es,en;q=0.8,ko;q=0.5",
     },
-    signal,
-  });
+  }, hooks);
   const html = await response.text();
+  await checkpointCrawlerExecution(hooks);
   const $ = load(html);
+  assertCrawlerExecution(hooks);
   const title = $("title").text().replace(/\s+/g, " ").trim() || undefined;
   const pageText = $("main").text() || $("body").text();
   const cleanedPageText = pageText.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -712,17 +723,17 @@ async function fetchHtmlFallback(hjId: string, jsonApiError: string, diagnostics
   });
 }
 
-async function fetchDocumentFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, signal?: AbortSignal) {
+async function fetchDocumentFallback(hjId: string, jsonApiError: string, diagnostics?: CrawlerDiagnosticsCollector, hooks?: CrawlerExecutionHooks) {
   const url = spainTcDocumentUrl(hjId);
   const response = await fetchWithTimeout(url, {
     headers: {
       Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/octet-stream,*/*",
       "Accept-Language": "es,en;q=0.8,ko;q=0.5",
     },
-    signal,
-  });
+  }, hooks);
   const buffer = Buffer.from(await response.arrayBuffer());
-  const text = response.ok ? textFromDocx(buffer) : "";
+  await checkpointCrawlerExecution(hooks);
+  const text = response.ok ? textFromDocx(buffer, hooks) : "";
   addAttempt(diagnostics, {
     url,
     finalUrl: response.url,
@@ -746,15 +757,15 @@ async function fetchDocumentFallback(hjId: string, jsonApiError: string, diagnos
 
 async function fetchRawByHjId(
   hjId: string,
-  options: {
+  options: CrawlerExecutionHooks & {
     diagnostics?: CrawlerDiagnosticsCollector;
     listTitle?: string;
     htmlTitleDate?: string;
-    signal?: AbortSignal;
   } = {},
 ) {
+  await checkpointCrawlerExecution(options);
   try {
-    const { payload, url } = await fetchJsonForHjId(hjId, options.diagnostics, options.signal);
+    const { payload, url } = await fetchJsonForHjId(hjId, options.diagnostics, options);
     return buildSpainTcRawArticleFromJson(payload, {
       jsonApiUrl: url,
       htmlTitle: options.listTitle,
@@ -766,7 +777,7 @@ async function fetchRawByHjId(
     if (options.signal?.aborted) throw options.signal.reason;
     const jsonApiError = errorMessage(jsonError);
     try {
-      return await fetchHtmlFallback(hjId, jsonApiError, options.diagnostics, options.signal);
+      return await fetchHtmlFallback(hjId, jsonApiError, options.diagnostics, options);
     } catch (htmlError) {
       if (options.signal?.aborted) throw options.signal.reason;
       addAttempt(options.diagnostics, {
@@ -777,14 +788,15 @@ async function fetchRawByHjId(
         errorCode: htmlError instanceof Error ? htmlError.name : "Error",
         errorMessage: errorMessage(htmlError),
       });
-      return fetchDocumentFallback(hjId, jsonApiError, options.diagnostics, options.signal);
+      return fetchDocumentFallback(hjId, jsonApiError, options.diagnostics, options);
     }
   }
 }
 
-async function createSearchSession(diagnostics?: CrawlerDiagnosticsCollector): Promise<SearchSession> {
+async function createSearchSession(diagnostics?: CrawlerDiagnosticsCollector, hooks?: CrawlerExecutionHooks): Promise<SearchSession> {
   let lastError: string | undefined;
   for (const indexPath of SEARCH_INDEX_PATHS) {
+    await checkpointCrawlerExecution(hooks);
     const indexUrl = pathUrl(indexPath);
     try {
       const cookies = new Map<string, string>();
@@ -793,9 +805,10 @@ async function createSearchSession(diagnostics?: CrawlerDiagnosticsCollector): P
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "es,en;q=0.8,ko;q=0.5",
         },
-      });
+      }, hooks);
       mergeSetCookies(cookies, getSetCookies(response.headers));
       const html = await response.text();
+      await checkpointCrawlerExecution(hooks);
       const token = html.match(/name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)["']/i)?.[1];
       addAttempt(diagnostics, {
         url: indexUrl,
@@ -821,6 +834,7 @@ async function createSearchSession(diagnostics?: CrawlerDiagnosticsCollector): P
         cookies,
       };
     } catch (error) {
+      if (hooks?.signal?.aborted) throw hooks.signal.reason;
       lastError = errorMessage(error);
       addAttempt(diagnostics, {
         url: indexUrl,
@@ -838,6 +852,7 @@ async function submitSearch(
   session: SearchSession,
   params: { type: SpainResolutionType; year: number; from: string; to: string },
   diagnostics?: CrawlerDiagnosticsCollector,
+  hooks?: CrawlerExecutionHooks,
 ) {
   const body = new URLSearchParams({
     __RequestVerificationToken: session.token,
@@ -852,6 +867,7 @@ async function submitSearch(
 
   let lastError: string | undefined;
   for (const ajaxUrl of [session.ajaxUrl, ...SEARCH_AJAX_PATHS.map(pathUrl)].filter((url, index, values) => values.indexOf(url) === index)) {
+    await checkpointCrawlerExecution(hooks);
     try {
       const response = await fetchWithTimeout(ajaxUrl, {
         method: "POST",
@@ -865,9 +881,10 @@ async function submitSearch(
           "X-Requested-With": "XMLHttpRequest",
         },
         body,
-      });
+      }, hooks);
       mergeSetCookies(session.cookies, getSetCookies(response.headers));
       const text = await response.text();
+      await checkpointCrawlerExecution(hooks);
       const success = response.ok && /"success"\s*:\s*"1"/.test(text);
       const noResults = response.ok && /"success"\s*:\s*"0"/.test(text) && /No se han encontrado resultados/i.test(text);
       addAttempt(diagnostics, {
@@ -884,6 +901,7 @@ async function submitSearch(
       if (noResults) return false;
       lastError = `BuscarAjax failed for ${params.type} ${params.year}: ${text.slice(0, 200)}`;
     } catch (error) {
+      if (hooks?.signal?.aborted) throw hooks.signal.reason;
       lastError = errorMessage(error);
       addAttempt(diagnostics, {
         url: ajaxUrl,
@@ -897,13 +915,19 @@ async function submitSearch(
   throw new Error(lastError ?? `BuscarAjax failed for ${params.type} ${params.year}`);
 }
 
-async function fetchListPage(session: SearchSession, page: number, diagnostics?: CrawlerDiagnosticsCollector) {
+async function fetchListPage(
+  session: SearchSession,
+  page: number,
+  diagnostics?: CrawlerDiagnosticsCollector,
+  hooks?: CrawlerExecutionHooks,
+) {
   const candidates = [session.listUrl, ...LIST_PATHS.map(pathUrl)]
     .filter((url, index, values) => values.indexOf(url) === index)
     .map((url) => `${url}?page=${page}`);
   let lastError: string | undefined;
 
   for (const url of candidates) {
+    await checkpointCrawlerExecution(hooks);
     try {
       const response = await fetchWithTimeout(url, {
         headers: {
@@ -913,12 +937,14 @@ async function fetchListPage(session: SearchSession, page: number, diagnostics?:
           Referer: session.indexUrl,
           "X-Requested-With": "XMLHttpRequest",
         },
-      });
+      }, hooks);
       mergeSetCookies(session.cookies, getSetCookies(response.headers));
       const html = await response.text();
+      await checkpointCrawlerExecution(hooks);
       const $ = load(html);
       const items = new Map<string, string | undefined>();
       $("a[href*='/Resolucion/Show/']").each((_, anchor) => {
+        assertCrawlerExecution(hooks);
         const href = $(anchor).attr("href") ?? "";
         const id = href.match(/\/Resolucion\/Show\/(\d+)/i)?.[1];
         if (!id || id === "0") return;
@@ -940,6 +966,7 @@ async function fetchListPage(session: SearchSession, page: number, diagnostics?:
       if (response.ok && page > 1) return [];
       lastError = `Spain HJ List page ${page} returned ${items.size} items from ${url}`;
     } catch (error) {
+      if (hooks?.signal?.aborted) throw hooks.signal.reason;
       lastError = errorMessage(error);
       addAttempt(diagnostics, {
         url,
@@ -1010,12 +1037,13 @@ function itemFromRaw(raw: RawArticle): DiscoveredItem {
 }
 
 async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: CrawlerDiagnosticsCollector) {
+  await checkpointCrawlerExecution(options);
   const limit = boundedLimit(options);
   const perTypeLimit = Math.max(1, envNumber("SPAIN_DISCOVERY_LIMIT_PER_TYPE", limit));
   const { from, to } = dateRangeForOptions(options);
   const maxPages = maxPagesForRange(from);
   const stopAfterOldPages = envNumber("SPAIN_DISCOVERY_STOP_AFTER_OLD_PAGES", SPAIN_TC_DEFAULT_STOP_AFTER_OLD_PAGES);
-  const session = await createSearchSession(diagnostics);
+  const session = await createSearchSession(diagnostics, options);
   const results: CrawleeSpiderItem[] = [];
   const seen = new Set<string>();
   let discoveredIds = 0;
@@ -1024,21 +1052,25 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
   let sourceTextUnavailable = 0;
 
   for (const type of RESOLUTION_TYPES) {
+    await checkpointCrawlerExecution(options);
     let typeCollected = 0;
     for (const year of yearsDescending(from, to)) {
+      await checkpointCrawlerExecution(options);
       if (typeCollected >= perTypeLimit) break;
-      const hasResults = await submitSearch(session, { type, year, from, to }, diagnostics);
+      const hasResults = await submitSearch(session, { type, year, from, to }, diagnostics, options);
       if (!hasResults) continue;
       let oldPageStreak = 0;
 
       for (let page = 1; page <= maxPages; page += 1) {
+        await checkpointCrawlerExecution(options);
         if (typeCollected >= perTypeLimit) break;
-        const listItems = await fetchListPage(session, page, diagnostics);
+        const listItems = await fetchListPage(session, page, diagnostics, options);
         if (listItems.length === 0) break;
         let inRangeOnPage = false;
         let allKnownDatesWereOld = true;
 
         for (const listItem of listItems) {
+          await checkpointCrawlerExecution(options);
           if (typeCollected >= perTypeLimit) break;
           if (seen.has(listItem.id)) continue;
           seen.add(listItem.id);
@@ -1047,6 +1079,8 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
             diagnostics,
             listTitle: listItem.title,
             htmlTitleDate: parseTitleDate(listItem.title, year),
+            signal: options.signal,
+            checkpoint: options.checkpoint,
           });
           const decisionDate = typeof raw.metadata?.decisionDate === "string" ? raw.metadata.decisionDate : normalizeSpainDecisionDate(raw.publishedAt);
           if (decisionDate && compareDateOnly(decisionDate, from) >= 0) allKnownDatesWereOld = false;
@@ -1080,6 +1114,7 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
       `sourceTextUnavailable=${sourceTextUnavailable}.`,
   });
 
+  await checkpointCrawlerExecution(options);
   return sortItems(results).slice(0, limit);
 }
 
@@ -1088,22 +1123,27 @@ async function discoverDetailUrls(options: CrawleeSpiderOptions, diagnostics: Cr
   const urls = options.detailUrls ?? [];
   const items: CrawleeSpiderItem[] = [];
   for (const url of urls) {
-    await options.checkpoint?.();
-    if (options.signal?.aborted) throw options.signal.reason;
+    await checkpointCrawlerExecution(options);
     if (items.length >= limit) break;
     const hjId = hjIdFromUrl(url);
     if (!hjId) continue;
-    const raw = await fetchRawByHjId(hjId, { diagnostics, signal: options.signal });
+    const raw = await fetchRawByHjId(hjId, {
+      diagnostics,
+      signal: options.signal,
+      checkpoint: options.checkpoint,
+    });
     items.push({ item: itemFromRaw(raw), raw });
   }
   return sortItems(items);
 }
 
 export async function runSpainTcSpider(options: CrawleeSpiderOptions = {}): Promise<CrawleeSpiderResult> {
+  await checkpointCrawlerExecution(options);
   const diagnostics = options.diagnostics ?? createDiagnosticsCollector(SPAIN_TC_SOURCE_KEY);
   const items = options.detailOnly || options.detailUrls?.length
     ? await discoverDetailUrls(options, diagnostics)
     : await discoverBySearch(options, diagnostics);
+  await checkpointCrawlerExecution(options);
   return {
     sourceKey: SPAIN_TC_SOURCE_KEY,
     items,

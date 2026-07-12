@@ -1,5 +1,6 @@
 import type { CrawlStrategy } from "@/lib/crawler/types";
 import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
+import { assertCrawlerExecution, checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
 import { SITEMAP_KEYWORDS } from "@/lib/crawler/sitemap";
 import { titleFromUrl } from "@/lib/crawler/extract-metadata";
@@ -259,6 +260,7 @@ async function discoverOpenLegalDataCandidates(options: CrawleeSpiderOptions = {
   let pages = 0;
 
   while (nextUrl && pages < 4 && items.length < limit) {
+    await checkpointCrawlerExecution(options);
     pages += 1;
     const response = await fetch(nextUrl, {
       headers: {
@@ -267,11 +269,14 @@ async function discoverOpenLegalDataCandidates(options: CrawleeSpiderOptions = {
       },
       signal: options.signal,
     });
+    await checkpointCrawlerExecution(options);
     if (!response.ok) throw new Error(`Open Legal Data fetch failed: ${response.status}`);
     const payload = (await response.json()) as OpenLegalDataCaseList;
+    await checkpointCrawlerExecution(options);
     const records = payload.results ?? [];
 
     for (const record of records) {
+      await checkpointCrawlerExecution(options);
       if (!isInRange(record.date, rangeStart)) continue;
       const url = bverfgUrlFromEcli(record.ecli);
       if (!url) continue;
@@ -325,18 +330,22 @@ function cleanDejureDocket(value: string) {
 async function fetchIndexText(
   url: string,
   accept = "text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5",
-  signal?: AbortSignal,
+  options: CrawleeSpiderOptions = {},
 ) {
+  await checkpointCrawlerExecution(options);
   const response = await fetch(url, {
     headers: {
       "User-Agent": process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
       Accept: accept,
       "Accept-Language": "de,en;q=0.8,ko;q=0.6",
     },
-    signal,
+    signal: options.signal,
   });
+  await checkpointCrawlerExecution(options);
   if (!response.ok) throw new Error(`Index fetch failed: ${response.status}`);
-  return response.text();
+  const text = await response.text();
+  await checkpointCrawlerExecution(options);
+  return text;
 }
 
 async function discoverDejureCandidates(options: CrawleeSpiderOptions = {}) {
@@ -347,13 +356,14 @@ async function discoverDejureCandidates(options: CrawleeSpiderOptions = {}) {
 
   for (let page = 1; page <= maxPages; page += 1) {
     const indexUrl = page === 1 ? DEJURE_BVERFG_INDEX_URL : `${DEJURE_BVERFG_INDEX_URL}&seite=${page}`;
-    await options.checkpoint?.();
-    const html = await fetchIndexText(indexUrl, undefined, options.signal);
+    await checkpointCrawlerExecution(options);
+    const html = await fetchIndexText(indexUrl, undefined, options);
     const matches = [...html.matchAll(/BVerfG,\s*(\d{2}\.\d{2}\.20\d{2})\s*-\s*([^<\r\n]+)/g)];
     let sawInRange = false;
     let oldestDate: Date | undefined;
 
     for (const match of matches) {
+      await checkpointCrawlerExecution(options);
       const date = match[1];
       const docket = cleanDejureDocket(match[2]);
       const parsedDate = parseDate(date);
@@ -396,10 +406,11 @@ async function discoverDejureCandidates(options: CrawleeSpiderOptions = {}) {
   return sortDiscoveredItems(items).slice(0, limit);
 }
 
-function uniqueDiscoveredItems(items: DiscoveredItem[]) {
+function uniqueDiscoveredItems(items: DiscoveredItem[], options?: CrawleeSpiderOptions) {
   const seen = new Set<string>();
   const unique: DiscoveredItem[] = [];
   for (const item of items) {
+    assertCrawlerExecution(options);
     const key = canonicalizeUrl(item.canonicalUrl ?? item.url);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -426,6 +437,7 @@ async function discoverIndexCandidates(options: CrawleeSpiderOptions = {}) {
       items.push(...candidates);
     })
     .catch((error) => {
+      if (options.signal?.aborted) throw options.signal.reason;
       addDiagnosticAttempt(options.diagnostics, {
         url: DEJURE_BVERFG_INDEX_URL,
         strategy: "api",
@@ -459,7 +471,8 @@ async function discoverIndexCandidates(options: CrawleeSpiderOptions = {}) {
       });
   }
 
-  return sortDiscoveredItems(uniqueDiscoveredItems(items)).slice(0, limit);
+  await checkpointCrawlerExecution(options);
+  return sortDiscoveredItems(uniqueDiscoveredItems(items, options)).slice(0, limit);
 }
 
 const config: OfficialSpiderConfig = {

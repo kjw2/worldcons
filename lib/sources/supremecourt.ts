@@ -36,7 +36,7 @@ function addRobotsDiagnostic(url: string, robots: RobotsResult, options?: Source
 async function fetchHtml(url: string, options?: SourceDiscoveryOptions) {
   await options?.checkpoint?.();
   if (options?.signal?.aborted) throw options.signal.reason;
-  const robots = await checkRobotsAllowed(url);
+  const robots = await checkRobotsAllowed(url, options);
   addRobotsDiagnostic(url, robots, options);
   if (!robots.allowed) {
     throw new Error(`SCOTUS listing fetch disallowed by robots.txt rule ${robots.matchedRule ?? "(empty)"}`);

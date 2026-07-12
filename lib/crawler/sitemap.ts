@@ -1,8 +1,9 @@
 import { load } from "cheerio";
+import { assertCrawlerExecution, checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
 import { crawlUrl } from "@/lib/crawler/http-client";
 import { getRobotsSitemaps } from "@/lib/crawler/robots";
-import type { CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
+import type { CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 
 export const SITEMAP_KEYWORDS = {
   "de-bverfg": ["shareddocs/entscheidungen/de/", "shareddocs/entscheidungen/en/"],
@@ -15,12 +16,19 @@ function unique(items: string[]) {
   return Array.from(new Set(items));
 }
 
-function locsFromXml(xml: string) {
+async function locsFromXml(xml: string, hooks?: CrawlerExecutionHooks) {
+  assertCrawlerExecution(hooks);
   const $ = load(xml, { xmlMode: true });
-  return $("loc")
-    .map((_, loc) => $(loc).text().trim())
-    .get()
-    .filter(Boolean);
+  await checkpointCrawlerExecution(hooks);
+  const locs: string[] = [];
+  const nodes = $("loc").toArray();
+  for (let index = 0; index < nodes.length; index += 1) {
+    if (index % 25 === 0) await checkpointCrawlerExecution(hooks);
+    const loc = nodes[index];
+    const value = $(loc).text().trim();
+    if (value) locs.push(value);
+  }
+  return locs;
 }
 
 function matchesKeywords(url: string, keywords: string[]) {
@@ -28,10 +36,18 @@ function matchesKeywords(url: string, keywords: string[]) {
   return keywords.some((keyword) => lowered.includes(keyword.toLowerCase()));
 }
 
-async function readSitemap(url: string, keywords: string[], depth: number, collector?: CrawlerDiagnosticsCollector): Promise<string[]> {
+async function readSitemap(
+  url: string,
+  keywords: string[],
+  depth: number,
+  collector?: CrawlerDiagnosticsCollector,
+  hooks?: CrawlerExecutionHooks,
+): Promise<string[]> {
+  await checkpointCrawlerExecution(hooks);
   if (depth > 2) return [];
-  const response = await crawlUrl({ url });
-  const locs = response.text ? locsFromXml(response.text) : [];
+  const response = await crawlUrl({ url, signal: hooks?.signal, checkpoint: hooks?.checkpoint });
+  await checkpointCrawlerExecution(hooks);
+  const locs = response.text ? await locsFromXml(response.text, hooks) : [];
   addDiagnosticAttempt(collector, {
     url,
     finalUrl: response.finalUrl,
@@ -45,26 +61,61 @@ async function readSitemap(url: string, keywords: string[], depth: number, colle
     errorMessage: response.diagnostics?.errorMessage,
   });
 
-  if (locs.some((loc) => loc.endsWith(".xml")) && depth < 2) {
-    const nested = await Promise.all(locs.slice(0, 20).map((loc) => readSitemap(loc, keywords, depth + 1, collector)));
-    return nested.flat();
+  const nestedSitemaps: string[] = [];
+  for (const loc of locs) {
+    assertCrawlerExecution(hooks);
+    if (loc.endsWith(".xml")) nestedSitemaps.push(loc);
+  }
+  if (nestedSitemaps.length > 0 && depth < 2) {
+    const nested: string[] = [];
+    for (const loc of nestedSitemaps.slice(0, 20)) {
+      await checkpointCrawlerExecution(hooks);
+      nested.push(...await readSitemap(loc, keywords, depth + 1, collector, hooks));
+    }
+    return nested;
   }
 
-  return locs.filter((loc) => matchesKeywords(loc, keywords));
+  const matches: string[] = [];
+  for (const loc of locs) {
+    assertCrawlerExecution(hooks);
+    if (matchesKeywords(loc, keywords)) matches.push(loc);
+  }
+  await checkpointCrawlerExecution(hooks);
+  return matches;
 }
 
-export async function discoverSitemapUrls(baseUrl: string, keywords: string[], collector?: CrawlerDiagnosticsCollector) {
+export async function discoverSitemapUrls(
+  baseUrl: string,
+  keywords: string[],
+  collector?: CrawlerDiagnosticsCollector,
+  hooks?: CrawlerExecutionHooks,
+) {
+  await checkpointCrawlerExecution(hooks);
   const origin = new URL(baseUrl).origin;
-  const robotsSitemaps = await getRobotsSitemaps(origin).catch(() => []);
+  let robotsSitemaps: string[] = [];
+  try {
+    robotsSitemaps = await getRobotsSitemaps(origin, hooks);
+  } catch {
+    if (hooks?.signal?.aborted) throw hooks.signal.reason;
+    assertCrawlerExecution(hooks);
+  }
   const candidates = unique([...robotsSitemaps, `${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`]);
   const maxUrls = Math.max(1, Number(process.env.SITEMAP_MAX_URLS ?? 200));
   const results: string[] = [];
 
   for (const candidate of candidates) {
-    const urls = await readSitemap(candidate, keywords, 0, collector).catch(() => []);
+    await checkpointCrawlerExecution(hooks);
+    let urls: string[] = [];
+    try {
+      urls = await readSitemap(candidate, keywords, 0, collector, hooks);
+    } catch {
+      if (hooks?.signal?.aborted) throw hooks.signal.reason;
+      assertCrawlerExecution(hooks);
+    }
     results.push(...urls);
     if (results.length >= maxUrls) break;
   }
 
+  await checkpointCrawlerExecution(hooks);
   return unique(results).slice(0, maxUrls);
 }

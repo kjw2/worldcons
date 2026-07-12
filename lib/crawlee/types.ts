@@ -3,6 +3,7 @@ import type {
   CrawlStrategy,
   CrawlStrategyOption,
   CrawlerDiagnosticsCollector,
+  CrawlerExecutionHooks,
 } from "@/lib/crawler/types";
 import type { HtmlMetadata } from "@/lib/crawler/extract-metadata";
 import type { DiscoveredItem, RawArticle } from "@/lib/sources/types";
@@ -15,7 +16,7 @@ export interface CrawleeSeedItem {
   publishedAt?: string;
 }
 
-export interface CrawleeSpiderOptions {
+export interface CrawleeSpiderOptions extends CrawlerExecutionHooks {
   limit?: number;
   rangeDays?: number;
   dryRun?: boolean;
@@ -25,8 +26,6 @@ export interface CrawleeSpiderOptions {
   detailUrls?: string[];
   detailItems?: DiscoveredItem[];
   detailOnly?: boolean;
-  signal?: AbortSignal;
-  checkpoint?: () => Promise<void>;
 }
 
 export interface CrawleeSpiderItem {

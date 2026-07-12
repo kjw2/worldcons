@@ -10,7 +10,12 @@ export type CrawlStrategy =
   | "seed";
 export type CrawlStrategyOption = CrawlStrategy | "auto";
 
-export interface CrawlRequest {
+export interface CrawlerExecutionHooks {
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
+}
+
+export interface CrawlRequest extends CrawlerExecutionHooks {
   url: string;
   method?: "GET" | "POST";
   headers?: Record<string, string>;
@@ -19,8 +24,6 @@ export interface CrawlRequest {
   usePlaywright?: boolean;
   waitUntil?: "load" | "domcontentloaded" | "networkidle";
   waitForSelector?: string;
-  signal?: AbortSignal;
-  checkpoint?: () => Promise<void>;
 }
 
 export interface CrawlDiagnostics {
@@ -110,7 +113,7 @@ export interface CrawlerDiagnosticsCollector {
   attempts: CrawlAttemptLog[];
 }
 
-export interface SourceDiscoveryOptions {
+export interface SourceDiscoveryOptions extends CrawlerExecutionHooks {
   debug?: boolean;
   dryRun?: boolean;
   limit?: number;
@@ -118,8 +121,6 @@ export interface SourceDiscoveryOptions {
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
   diagnostics?: CrawlerDiagnosticsCollector;
-  signal?: AbortSignal;
-  checkpoint?: () => Promise<void>;
 }
 
 export type CollectionConfidence = "high" | "medium" | "low";

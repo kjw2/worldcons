@@ -1,5 +1,7 @@
 import { crawlUrl } from "@/lib/crawler/http-client";
+import { assertCrawlerExecution, checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
+import type { CrawlerExecutionHooks } from "@/lib/crawler/types";
 
 export interface RobotsResult {
   robotsUrl: string;
@@ -36,6 +38,15 @@ type RobotsGroup = {
 
 const robotsCache = new Map<string, Promise<RobotsDocument>>();
 
+async function checkpointRobotsParsing(text: string, hooks?: CrawlerExecutionHooks) {
+  if (!hooks?.signal && !hooks?.checkpoint) return;
+  const lines = text.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    assertCrawlerExecution(hooks);
+    if (index % 25 === 0) await checkpointCrawlerExecution(hooks);
+  }
+}
+
 function parseCrawlDelay(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
@@ -68,7 +79,7 @@ function agentMatches(userAgent: string, token: string) {
   return userAgent.toLowerCase().includes(normalizedToken);
 }
 
-function parseRobotsGroups(text: string) {
+function parseRobotsGroups(text: string, hooks?: CrawlerExecutionHooks) {
   const groups: RobotsGroup[] = [];
   const sitemapUrls: string[] = [];
   let current: RobotsGroup | null = null;
@@ -76,6 +87,7 @@ function parseRobotsGroups(text: string) {
   let order = 0;
 
   for (const rawLine of text.split(/\r?\n/)) {
+    assertCrawlerExecution(hooks);
     const line = rawLine.replace(/#.*/, "").trim();
     if (!line) continue;
 
@@ -119,9 +131,11 @@ function parseRobotsGroups(text: string) {
   return { groups, sitemapUrls };
 }
 
-function matchingGroups(groups: RobotsGroup[], userAgent: string) {
+function matchingGroups(groups: RobotsGroup[], userAgent: string, hooks?: CrawlerExecutionHooks) {
+  assertCrawlerExecution(hooks);
   const matched = groups
     .map((group) => {
+      assertCrawlerExecution(hooks);
       const matchedAgents = group.userAgents.filter((agent) => agentMatches(userAgent, agent));
       const score = matchedAgents.reduce((best, agent) => Math.max(best, agent === "*" ? 0 : agent.length), -1);
       return { group, matchedAgents, score };
@@ -133,15 +147,24 @@ function matchingGroups(groups: RobotsGroup[], userAgent: string) {
   return matched.filter((match) => match.score === bestScore);
 }
 
-export function parseRobotsTxt(text: string, url: string, userAgent = crawlerUserAgent()): RobotsResult {
+export function parseRobotsTxt(
+  text: string,
+  url: string,
+  userAgent = crawlerUserAgent(),
+  hooks?: CrawlerExecutionHooks,
+): RobotsResult {
+  assertCrawlerExecution(hooks);
   const parsedUrl = new URL(url);
   const robotsUrl = `${parsedUrl.origin}/robots.txt`;
-  const { groups, sitemapUrls } = parseRobotsGroups(text);
-  const matches = matchingGroups(groups, userAgent);
+  const { groups, sitemapUrls } = parseRobotsGroups(text, hooks);
+  const matches = matchingGroups(groups, userAgent, hooks);
   const target = robotsTarget(url);
   const rules = matches.flatMap((match) => match.group.rules);
   const matchingRules = rules
-    .filter((rule) => rule.pattern === "" || ruleRegex(rule.pattern).test(target))
+    .filter((rule) => {
+      assertCrawlerExecution(hooks);
+      return rule.pattern === "" || ruleRegex(rule.pattern).test(target);
+    })
     .sort((a, b) => {
       const lengthDiff = ruleMatchLength(b.pattern) - ruleMatchLength(a.pattern);
       if (lengthDiff !== 0) return lengthDiff;
@@ -149,6 +172,7 @@ export function parseRobotsTxt(text: string, url: string, userAgent = crawlerUse
       return a.order - b.order;
     });
   const winner = matchingRules[0];
+  assertCrawlerExecution(hooks);
   const matchedUserAgent = matches
     .flatMap((match) => match.matchedAgents)
     .sort((a, b) => b.length - a.length)[0];
@@ -175,7 +199,38 @@ export function robotsDelayMs(robots: Pick<RobotsResult, "crawlDelaySeconds"> | 
   return Math.max(defaultDelayMs, robotsDelayMs);
 }
 
-export async function checkRobotsAllowed(url: string): Promise<RobotsResult> {
+async function fetchRobotsDocument(
+  robotsUrl: string,
+  targetUrl: string,
+  userAgent: string,
+  hooks?: CrawlerExecutionHooks,
+): Promise<RobotsDocument> {
+  await checkpointCrawlerExecution(hooks);
+  const response = await crawlUrl({
+    url: robotsUrl,
+    timeoutMs: Math.min(Number(process.env.CRAWLER_TIMEOUT_MS ?? 30_000), 10_000),
+    signal: hooks?.signal,
+    checkpoint: hooks?.checkpoint,
+  });
+  await checkpointCrawlerExecution(hooks);
+  if (response.status >= 400 || !response.text) {
+    return {
+      robotsUrl,
+      status: response.status,
+      text: "",
+      sitemapUrls: [],
+      errorMessage: response.diagnostics?.errorMessage,
+    };
+  }
+
+  await checkpointRobotsParsing(response.text, hooks);
+  const parsed = parseRobotsTxt(response.text, targetUrl, userAgent, hooks);
+  await checkpointCrawlerExecution(hooks);
+  return { robotsUrl, status: response.status, text: response.text, sitemapUrls: parsed.sitemapUrls };
+}
+
+export async function checkRobotsAllowed(url: string, hooks?: CrawlerExecutionHooks): Promise<RobotsResult> {
+  await checkpointCrawlerExecution(hooks);
   const userAgent = crawlerUserAgent();
   if (process.env.CRAWLER_ROBOTS_ENABLED === "false") {
     return { robotsUrl: "", status: 0, allowed: true, sitemapUrls: [], userAgent };
@@ -183,25 +238,15 @@ export async function checkRobotsAllowed(url: string): Promise<RobotsResult> {
 
   const parsedUrl = new URL(url);
   const robotsUrl = `${parsedUrl.origin}/robots.txt`;
-  const cached =
-    robotsCache.get(robotsUrl) ??
-    crawlUrl({ url: robotsUrl, timeoutMs: Math.min(Number(process.env.CRAWLER_TIMEOUT_MS ?? 30_000), 10_000) }).then((response) => {
-      if (response.status >= 400 || !response.text) {
-        return {
-          robotsUrl,
-          status: response.status,
-          text: "",
-          sitemapUrls: [],
-          errorMessage: response.diagnostics?.errorMessage,
-        };
-      }
-
-      const parsed = parseRobotsTxt(response.text, url, userAgent);
-      return { robotsUrl, status: response.status, text: response.text, sitemapUrls: parsed.sitemapUrls };
-    });
-
-  robotsCache.set(robotsUrl, cached);
-  const robots = await cached;
+  let robots: RobotsDocument;
+  if (hooks?.signal || hooks?.checkpoint) {
+    robots = await fetchRobotsDocument(robotsUrl, url, userAgent, hooks);
+  } else {
+    const cached = robotsCache.get(robotsUrl) ?? fetchRobotsDocument(robotsUrl, url, userAgent);
+    robotsCache.set(robotsUrl, cached);
+    robots = await cached;
+  }
+  await checkpointCrawlerExecution(hooks);
   if (robots.status >= 400 || robots.status === 0) {
     return {
       robotsUrl,
@@ -213,11 +258,14 @@ export async function checkRobotsAllowed(url: string): Promise<RobotsResult> {
     };
   }
 
-  const parsed = parseRobotsTxt(robots.text, url, userAgent);
+  await checkpointRobotsParsing(robots.text, hooks);
+  const parsed = parseRobotsTxt(robots.text, url, userAgent, hooks);
+  await checkpointCrawlerExecution(hooks);
   return { ...parsed, status: robots.status };
 }
 
-export async function getRobotsSitemaps(baseUrl: string) {
-  const robots = await checkRobotsAllowed(baseUrl);
+export async function getRobotsSitemaps(baseUrl: string, hooks?: CrawlerExecutionHooks) {
+  const robots = await checkRobotsAllowed(baseUrl, hooks);
+  await checkpointCrawlerExecution(hooks);
   return robots.sitemapUrls;
 }
