@@ -279,20 +279,13 @@ test("governance actions are session-only, CSRF-protected, role-bound, and audit
   }
 });
 
-test("governance UI is part of the permanent administrator shell and has responsive layouts", () => {
-  const page = source("app/admin/governance/page.tsx");
+test("governance UI is retired while P5 operational controls remain internal", () => {
   const shell = source("components/admin-shell.tsx");
-  const approval = source("components/admin-governance-approval.tsx");
-  assert.doesNotMatch(page, /adminGovernanceUiEnabled/);
-  assert.match(shell, /governanceNavigation/);
-  assert.doesNotMatch(shell, /governanceEnabled/);
-  assert.match(page, /hidden overflow-x-auto md:block/);
-  assert.match(page, /md:hidden/);
-  assert.match(page, /min-w-0|break-words/);
-  assert.match(page, /role="alert"/);
-  assert.match(approval, /permitted \? <button/);
-  assert.match(approval, /현재 세션은 이 역할에 연결되어 있지 않습니다/);
-  assert.doesNotMatch(approval, /actorHash|identity/);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "app/admin/governance/page.tsx")), false);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "components/admin-governance-approval.tsx")), false);
+  assert.doesNotMatch(shell, /governanceNavigation|\/admin\/governance|상태 및 거버넌스/);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "app/api/admin/governance/route.ts")), true);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "scripts/admin-health-p5.ts")), true);
 });
 
 test("health workflow is disabled by default and emits redacted machine evidence", () => {

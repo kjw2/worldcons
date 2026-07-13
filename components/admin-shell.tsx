@@ -15,7 +15,6 @@ import {
   LogOut,
   Menu,
   Newspaper,
-  ShieldCheck,
   UserRound,
   X,
   type LucideIcon,
@@ -45,8 +44,6 @@ const systemNavigation: AdminNavigationItem[] = [
   { href: "/admin/llm", label: "LLM 설정", icon: KeyRound },
   { href: "/admin/analytics", label: "이용 통계", icon: BarChart3 },
 ];
-const governanceNavigation: AdminNavigationItem = { href: "/admin/governance", label: "상태 및 거버넌스", icon: ShieldCheck };
-
 function isCurrent(pathname: string, item: AdminNavigationItem) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
@@ -95,7 +92,7 @@ function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate?: (
     <div className="grid gap-6">
       <NavigationGroup label="운영" items={primaryNavigation} pathname={pathname} onNavigate={onNavigate} />
       <NavigationGroup label="콘텐츠" items={contentNavigation} pathname={pathname} onNavigate={onNavigate} />
-      <NavigationGroup label="시스템" items={[governanceNavigation, ...systemNavigation]} pathname={pathname} onNavigate={onNavigate} />
+      <NavigationGroup label="시스템" items={systemNavigation} pathname={pathname} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -106,7 +103,7 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileDialogRef = useRef<HTMLDivElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, governanceNavigation, ...systemNavigation], []);
+  const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, ...systemNavigation], []);
   const location = useMemo(
     () => allNavigation.find((item) => isCurrent(pathname, item))?.label ?? "관리자",
     [allNavigation, pathname],

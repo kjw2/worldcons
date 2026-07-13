@@ -67,9 +67,9 @@ test("shell navigation covers the new admin surfaces without retired screen link
   const shell = source("components/admin-shell.tsx");
   for (const href of [
     "/admin", "/admin/work", "/admin/articles", "/admin/candidates",
-    "/admin/glossary-candidates", "/admin/ingestion-runs", "/admin/audit", "/admin/llm", "/admin/analytics", "/admin/governance",
+    "/admin/glossary-candidates", "/admin/ingestion-runs", "/admin/audit", "/admin/llm", "/admin/analytics",
   ]) assert.match(shell, new RegExp(href.replaceAll("/", "\\/")));
-  assert.doesNotMatch(shell, /\/admin\/operations|\/admin\/jobs|Legacy triage|Legacy job queue/);
+  assert.doesNotMatch(shell, /\/admin\/operations|\/admin\/jobs|\/admin\/governance|상태 및 거버넌스|Legacy triage|Legacy job queue/);
   assert.match(shell, /aria-current/);
   assert.match(shell, /관리자 본문으로 건너뛰기/);
   assert.match(shell, /event\.key === "Escape"/);
