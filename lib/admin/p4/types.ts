@@ -1,5 +1,6 @@
 export const ADMIN_WORK_TYPES = ["execution", "article", "candidate", "outbox", "legacy"] as const;
 export const ADMIN_WORK_STAGES = ["collect", "process", "review", "publish"] as const;
+export const ADMIN_WORK_SCOPES = ["all", "operations", "tracking"] as const;
 export const ADMIN_WORK_ATTENTION = ["all", "required", "clear"] as const;
 export const ADMIN_WORK_SLA = ["all", "breached", "due", "healthy"] as const;
 export const ADMIN_WORK_AGES = ["all", "1h", "24h", "7d", "30d"] as const;
@@ -7,12 +8,14 @@ export const ADMIN_WORK_SORTS = ["newest", "oldest", "sla"] as const;
 
 export type AdminWorkType = (typeof ADMIN_WORK_TYPES)[number];
 export type AdminWorkStage = (typeof ADMIN_WORK_STAGES)[number];
+export type AdminWorkScope = (typeof ADMIN_WORK_SCOPES)[number];
 export type AdminWorkAttentionFilter = (typeof ADMIN_WORK_ATTENTION)[number];
 export type AdminWorkSlaFilter = (typeof ADMIN_WORK_SLA)[number];
 export type AdminWorkAgeFilter = (typeof ADMIN_WORK_AGES)[number];
 export type AdminWorkSort = (typeof ADMIN_WORK_SORTS)[number];
 
 export interface AdminWorkFilters {
+  scope: AdminWorkScope;
   owner?: string;
   stage?: AdminWorkStage;
   source?: string;
@@ -76,6 +79,10 @@ export interface AdminWorkQueueSnapshot {
     stale: number;
     abortRequested: number;
     outbox: number;
+    trackingCandidates: number;
+    candidateOfficialDetail404: number;
+    candidateDiscoveryEmpty: number;
+    candidateOther: number;
   };
 }
 

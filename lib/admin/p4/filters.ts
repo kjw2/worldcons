@@ -2,6 +2,7 @@ import {
   ADMIN_WORK_AGES,
   ADMIN_WORK_ATTENTION,
   ADMIN_WORK_SLA,
+  ADMIN_WORK_SCOPES,
   ADMIN_WORK_SORTS,
   ADMIN_WORK_STAGES,
   ADMIN_WORK_TYPES,
@@ -12,6 +13,7 @@ import type { SearchParams } from "@/lib/utils/search-params";
 const SAFE_TEXT = /^[\p{L}\p{N}._:@/ -]+$/u;
 
 export const DEFAULT_ADMIN_WORK_FILTERS: AdminWorkFilters = {
+  scope: "all",
   attention: "all",
   sla: "all",
   age: "all",
@@ -40,6 +42,7 @@ function integer(value: string | undefined, fallback: number, min: number, max: 
 
 export function parseAdminWorkFilters(params: SearchParams): AdminWorkFilters {
   return {
+    scope: oneOf(first(params, "scope"), ADMIN_WORK_SCOPES, "all") ?? "all",
     owner: boundedText(first(params, "owner"), 160),
     stage: oneOf(first(params, "stage"), ADMIN_WORK_STAGES),
     source: boundedText(first(params, "source"), 120),
@@ -57,6 +60,7 @@ export function parseAdminWorkFilters(params: SearchParams): AdminWorkFilters {
 export function adminWorkFiltersQuery(filters: AdminWorkFilters, overrides: Partial<AdminWorkFilters> = {}) {
   const value = { ...filters, ...overrides };
   const params = new URLSearchParams();
+  if (value.scope !== "all") params.set("scope", value.scope);
   if (value.owner) params.set("owner", value.owner);
   if (value.stage) params.set("stage", value.stage);
   if (value.source) params.set("source", value.source);

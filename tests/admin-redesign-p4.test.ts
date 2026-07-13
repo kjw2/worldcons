@@ -12,6 +12,7 @@ import {
   getAdminWorkItemDetailWithClient,
   paginateAdminWorkItems,
   redactOperationalText,
+  summarizeAdminWorkItems,
 } from "../lib/admin/p4/repository";
 import type { AdminWorkItem } from "../lib/admin/p4/types";
 import {
@@ -105,6 +106,7 @@ test("work filters are bounded, allowlisted, and URL-shareable", () => {
     stage: "publish",
     source: "de-bverfg",
     type: "outbox",
+    scope: "operations",
     state: "pending",
     attention: "required",
     sla: "breached",
@@ -117,13 +119,16 @@ test("work filters are bounded, allowlisted, and URL-shareable", () => {
   assert.equal(parsed.pageSize, 50);
   assert.equal(parsed.stage, "publish");
   assert.equal(parsed.type, "outbox");
+  assert.equal(parsed.scope, "operations");
   const query = adminWorkFiltersQuery(parsed);
   assert.match(query, /owner=operator/);
   assert.match(query, /stage=publish/);
   assert.match(query, /attention=required/);
+  assert.match(query, /scope=operations/);
   assert.match(query, /sort=sla/);
 
-  const invalid = parseAdminWorkFilters({ stage: "delete", type: "payload", owner: "x\u0000y", page: "-2", pageSize: "1" });
+  const invalid = parseAdminWorkFilters({ scope: "private", stage: "delete", type: "payload", owner: "x\u0000y", page: "-2", pageSize: "1" });
+  assert.equal(invalid.scope, "all");
   assert.equal(invalid.stage, undefined);
   assert.equal(invalid.type, undefined);
   assert.equal(invalid.owner, undefined);
@@ -297,6 +302,41 @@ test("queue query contract is bounded and bulk-loads attempts without N+1", () =
   for (const table of ["admin_command_runs", "articles", "source_url_candidates", "article_cache_outbox_p3", "admin_jobs"]) {
     assert.match(repository, new RegExp(`loadExact[\\s\\S]{0,1800}from\\(\\"${table}\\"\\)[\\s\\S]{0,900}\\.eq\\(\\"id\\", id\\)[\\s\\S]{0,200}\\.limit\\(1\\)`));
   }
+});
+
+test("tracked collection candidates are separated from actionable operational backlog", () => {
+  const candidate404 = item("candidate-404", {
+    type: "candidate",
+    execution: adminStateLabel(),
+    lifecycle: adminStateLabel("retrying"),
+    latestError: "BVERFG_OFFICIAL_DETAIL_404",
+    attentionCode: "BVERFG_OFFICIAL_DETAIL_404",
+  });
+  const discoveryEmpty = item("candidate-empty", {
+    type: "candidate",
+    execution: adminStateLabel(),
+    lifecycle: adminStateLabel("pending"),
+    latestError: "BVERFG_LIVE_DISCOVERY_EMPTY",
+    attentionCode: "BVERFG_LIVE_DISCOVERY_EMPTY",
+  });
+  const failedExecution = item("failed-run", {
+    execution: adminStateLabel("failed"),
+    latestError: "run.failed",
+  });
+  const counts = summarizeAdminWorkItems([candidate404, discoveryEmpty, failedExecution]);
+
+  assert.equal(counts.trackingCandidates, 2);
+  assert.equal(counts.candidateOfficialDetail404, 1);
+  assert.equal(counts.candidateDiscoveryEmpty, 1);
+  assert.equal(counts.candidateOther, 0);
+  assert.equal(counts.backlog, 1);
+  assert.equal(counts.failed, 1);
+  assert.equal(counts.breached, 1);
+
+  const operations = filterAndSortAdminWorkItems([candidate404, discoveryEmpty, failedExecution], { ...DEFAULT_ADMIN_WORK_FILTERS, scope: "operations" });
+  const tracking = filterAndSortAdminWorkItems([candidate404, discoveryEmpty, failedExecution], { ...DEFAULT_ADMIN_WORK_FILTERS, scope: "tracking" });
+  assert.deepEqual(operations.map((entry) => entry.id), ["failed-run"]);
+  assert.deepEqual(tracking.map((entry) => entry.id), ["candidate-404", "candidate-empty"]);
 });
 
 test("detail lookup remains valid beyond the newest 500 rows and distinguishes absence from query failure", async () => {

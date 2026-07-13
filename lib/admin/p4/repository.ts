@@ -10,6 +10,10 @@ import type {
   AdminWorkType,
 } from "@/lib/admin/p4/types";
 import { redactAdminAuditText } from "@/lib/security/audit-redaction";
+import {
+  BVERFG_LIVE_DISCOVERY_EMPTY,
+  BVERFG_OFFICIAL_DETAIL_404,
+} from "@/lib/ui/candidate-tracking-labels";
 
 type Row = Record<string, unknown>;
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseServiceRoleAdmin>>;
@@ -417,6 +421,7 @@ export function filterAndSortAdminWorkItems(items: AdminWorkItem[], filters: Adm
   const stateQuery = filters.state?.toLowerCase();
   const ownerQuery = filters.owner?.toLowerCase();
   return items
+    .filter((item) => filters.scope === "all" || (filters.scope === "operations" ? item.type !== "candidate" : item.type === "candidate"))
     .filter((item) => !filters.owner || item.owner?.toLowerCase().includes(ownerQuery ?? ""))
     .filter((item) => !filters.stage || item.stage === filters.stage)
     .filter((item) => !filters.source || item.source === filters.source)
@@ -445,6 +450,26 @@ export function paginateAdminWorkItems(items: AdminWorkItem[], filters: AdminWor
   };
 }
 
+export function summarizeAdminWorkItems(items: AdminWorkItem[]): AdminWorkQueueSnapshot["counts"] {
+  const trackedCandidates = items.filter((item) => item.type === "candidate" && item.attention);
+  const operationalItems = items.filter((item) => item.type !== "candidate");
+  const candidateOfficialDetail404 = trackedCandidates.filter((item) => item.attentionCode === BVERFG_OFFICIAL_DETAIL_404).length;
+  const candidateDiscoveryEmpty = trackedCandidates.filter((item) => item.attentionCode === BVERFG_LIVE_DISCOVERY_EMPTY).length;
+
+  return {
+    backlog: operationalItems.filter((item) => !["succeeded", "delivered", "fetched", "published"].includes(item.execution.value) && item.attention).length,
+    breached: operationalItems.filter((item) => item.slaState === "breached" && item.attention).length,
+    failed: operationalItems.filter((item) => item.execution.tone === "danger" || item.latestError).length,
+    stale: operationalItems.filter((item) => item.attentionCode === "lease_expired" || item.attentionCode === "job.stale_running").length,
+    abortRequested: operationalItems.filter((item) => item.execution.value === "abort_requested" || item.attentionCode === "aborted").length,
+    outbox: operationalItems.filter((item) => item.type === "outbox" && item.attention).length,
+    trackingCandidates: trackedCandidates.length,
+    candidateOfficialDetail404,
+    candidateDiscoveryEmpty,
+    candidateOther: Math.max(0, trackedCandidates.length - candidateOfficialDetail404 - candidateDiscoveryEmpty),
+  };
+}
+
 export async function getAdminWorkQueueSnapshot(filters: AdminWorkFilters): Promise<AdminWorkQueueSnapshot> {
   const generatedAt = new Date().toISOString();
   const supabase = getSupabaseServiceRoleAdmin();
@@ -456,7 +481,18 @@ export async function getAdminWorkQueueSnapshot(filters: AdminWorkFilters): Prom
       warnings: ["서비스 역할 데이터베이스 접근이 설정되지 않아 운영 기록을 조회하지 않았습니다."],
       items: [],
       pageInfo: { page: filters.page, pageSize: filters.pageSize, total: 0, hasMore: false, truncated: false },
-      counts: { backlog: 0, breached: 0, failed: 0, stale: 0, abortRequested: 0, outbox: 0 },
+      counts: {
+        backlog: 0,
+        breached: 0,
+        failed: 0,
+        stale: 0,
+        abortRequested: 0,
+        outbox: 0,
+        trackingCandidates: 0,
+        candidateOfficialDetail404: 0,
+        candidateDiscoveryEmpty: 0,
+        candidateOther: 0,
+      },
     };
   }
 
@@ -487,14 +523,7 @@ export async function getAdminWorkQueueSnapshot(filters: AdminWorkFilters): Prom
       hasMore: page.hasMore,
       truncated,
     },
-    counts: {
-      backlog: allItems.filter((item) => !["succeeded", "delivered", "fetched", "published"].includes(item.execution.value) && item.attention).length,
-      breached: allItems.filter((item) => item.slaState === "breached" && item.attention).length,
-      failed: allItems.filter((item) => item.execution.tone === "danger" || item.latestError).length,
-      stale: allItems.filter((item) => item.attentionCode === "lease_expired" || item.attentionCode === "job.stale_running").length,
-      abortRequested: allItems.filter((item) => item.execution.value === "abort_requested" || item.attentionCode === "aborted").length,
-      outbox: allItems.filter((item) => item.type === "outbox" && item.attention).length,
-    },
+    counts: summarizeAdminWorkItems(allItems),
   };
 }
 

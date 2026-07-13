@@ -7,6 +7,7 @@ import { listSources } from "@/lib/db/queries";
 import { listSourceUrlCandidates, SOURCE_URL_CANDIDATE_STATUSES, type SourceUrlCandidateRecord } from "@/lib/db/source-url-candidates";
 import { displaySourceLabel } from "@/lib/ui/source-labels";
 import { displayContentTypeLabel } from "@/lib/ui/content-type-labels";
+import { candidateTrackingReasonText, isKnownCandidateTrackingReason } from "@/lib/ui/candidate-tracking-labels";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -14,8 +15,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const statusLabels: Record<string, string> = {
-  pending: "대기",
-  retrying: "재시도",
+  pending: "확인 대기",
+  retrying: "추적 중",
   fetched: "수집됨",
   failed: "실패",
   ignored: "무시",
@@ -49,6 +50,18 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(status)}`}>
       {statusLabels[status] ?? status}
     </span>
+  );
+}
+
+function CandidateReason({ candidate }: { candidate: SourceUrlCandidateRecord }) {
+  if (!candidate.lastErrorCode) return <span className="text-ink/45">추적 사유 없음</span>;
+  const knownReason = isKnownCandidateTrackingReason(candidate.lastErrorCode);
+  return (
+    <div>
+      <div className={knownReason ? "font-semibold text-amber-900" : "font-semibold text-court"}>{candidateTrackingReasonText(candidate.lastErrorCode)}</div>
+      {knownReason ? <div className="mt-1 break-all font-mono text-[11px] text-ink/38">{candidate.lastErrorCode}</div> : null}
+      {candidate.lastErrorMessage ? <div className="mt-2 break-words text-xs leading-5 text-ink/58">{candidate.lastErrorMessage}</div> : null}
+    </div>
   );
 }
 
@@ -155,8 +168,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
               </div>
             </dl>
             <div className="mt-3 rounded-md border border-rule bg-white p-2 text-xs leading-5 text-ink/58">
-              {candidate.lastErrorCode ? <div className="font-semibold text-court">{candidate.lastErrorCode}</div> : <div className="text-ink/45">오류 없음</div>}
-              {candidate.lastErrorMessage ? <div className="mt-1 break-words text-ink/58">{candidate.lastErrorMessage}</div> : null}
+              <CandidateReason candidate={candidate} />
             </div>
             <div className="mt-3">
               <CandidateActions candidate={candidate} csrfToken={csrfToken} returnTo={returnTo} />
@@ -172,7 +184,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
               <th className="px-4 py-3">후보</th>
               <th className="px-4 py-3">상태</th>
               <th className="px-4 py-3">발견</th>
-              <th className="px-4 py-3">오류</th>
+              <th className="px-4 py-3">추적 사유</th>
               <th className="px-4 py-3">시각</th>
               <th className="px-4 py-3">조치</th>
             </tr>
@@ -205,8 +217,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
                   <div className="mt-1 text-xs text-ink/50">유형: {displayContentTypeLabel(candidate.candidateType)}</div>
                 </td>
                 <td className="px-4 py-4">
-                  {candidate.lastErrorCode ? <div className="font-semibold text-court">{candidate.lastErrorCode}</div> : <span className="text-ink/45">없음</span>}
-                  {candidate.lastErrorMessage ? <div className="mt-2 max-w-md text-xs leading-5 text-ink/58">{candidate.lastErrorMessage}</div> : null}
+                  <div className="max-w-md"><CandidateReason candidate={candidate} /></div>
                 </td>
                 <td className="px-4 py-4 text-xs leading-5 text-ink/58">
                   <div>첫 발견: {formatDateTime(candidate.firstSeenAt)}</div>
@@ -265,7 +276,7 @@ export default async function AdminCandidatesPage({ searchParams }: { searchPara
           <p className="text-xs font-semibold uppercase text-court">콘텐츠</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">URL 후보</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
-            공식 상세 확인 실패나 수집 후보로 보존된 URL을 검토하고 추적 상태를 조정합니다.
+            공식 상세 페이지를 아직 검증하지 못해 보존한 URL입니다. 기사나 요약 대기가 아니며, 공식 원문 확인 전에는 요약·공개되지 않습니다.
           </p>
         </div>
         <Link href={currentPath} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">

@@ -4,6 +4,7 @@ import { AdminWorkActionButton } from "@/components/admin-work-action";
 import { adminWorkFiltersQuery } from "@/lib/admin/p4/filters";
 import { adminSlaText, adminStateText, adminWorkStageText, adminWorkTypeText } from "@/lib/admin/p4/labels";
 import type { AdminWorkFilters, AdminWorkItem, AdminWorkQueueSnapshot, AdminWorkStateLabel } from "@/lib/admin/p4/types";
+import { candidateTrackingReasonText } from "@/lib/ui/candidate-tracking-labels";
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value));
@@ -62,6 +63,11 @@ function WorkMeta({ item }: { item: AdminWorkItem }) {
   );
 }
 
+function WorkReason({ item }: { item: AdminWorkItem }) {
+  if (!item.latestError) return <span className="text-ink/45">현재 표시할 사유 없음</span>;
+  return <span className={item.type === "candidate" ? "text-amber-900" : "text-court"}>{item.type === "candidate" ? candidateTrackingReasonText(item.attentionCode ?? item.latestError) : item.latestError}</span>;
+}
+
 function MobileWorkItem({ item, csrfToken }: { item: AdminWorkItem; csrfToken: string }) {
   return (
     <article className="border-b border-rule px-4 py-4 last:border-b-0">
@@ -74,7 +80,7 @@ function MobileWorkItem({ item, csrfToken }: { item: AdminWorkItem; csrfToken: s
       <div className="mt-3 flex items-start justify-between gap-3 border-t border-rule pt-3">
         <div className="min-w-0 text-xs leading-5 text-ink/55">
           <div className="flex items-center gap-1.5"><Clock3 className="size-3.5" aria-hidden="true" />{formatDateTime(item.updatedAt)} · 처리 기한 {adminSlaText(item.slaState)}</div>
-          {item.latestError ? <p className="mt-1 line-clamp-2 break-words text-court">{item.latestError}</p> : null}
+          {item.latestError ? <p className="mt-1 line-clamp-2 break-words"><WorkReason item={item} /></p> : null}
         </div>
         <AdminWorkActionButton kind={item.type} id={item.id} action={item.safeAction} csrfToken={csrfToken} disabledReason={item.actionDisabledReason} />
       </div>
@@ -90,7 +96,8 @@ export function AdminWorkQueue({ snapshot, filters, csrfToken }: { snapshot: Adm
 
   return (
     <>
-      <form action="/admin/work" className="grid gap-3 border-y border-rule bg-white px-4 py-4 sm:px-6 xl:grid-cols-8">
+      <form action="/admin/work" className="grid gap-3 border-y border-rule bg-white px-4 py-4 sm:px-6 xl:grid-cols-9">
+        <label className="grid gap-1 text-xs font-semibold text-ink/62">업무 범위<select name="scope" defaultValue={filters.scope} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="all">전체</option><option value="operations">운영 업무</option><option value="tracking">수집 추적 후보</option></select></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">
           담당자
           <input name="owner" defaultValue={filters.owner ?? ""} className="focus-ring h-10 min-w-0 rounded-md border border-rule px-3 text-sm font-normal text-ink" />
@@ -102,7 +109,7 @@ export function AdminWorkQueue({ snapshot, filters, csrfToken }: { snapshot: Adm
         <label className="grid gap-1 text-xs font-semibold text-ink/62">주의 여부<select name="attention" defaultValue={filters.attention} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="all">전체</option><option value="required">주의 필요</option><option value="clear">이상 없음</option></select></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">처리 기한<select name="sla" defaultValue={filters.sla} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="all">전체</option><option value="breached">기한 초과</option><option value="due">기한 임박</option><option value="healthy">정상</option></select></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">경과 시간<select name="age" defaultValue={filters.age} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="all">전체</option><option value="1h">1시간 이상</option><option value="24h">24시간 이상</option><option value="7d">7일 이상</option><option value="30d">30일 이상</option></select></label>
-        <div className="flex flex-wrap items-end gap-2 xl:col-span-8">
+        <div className="flex flex-wrap items-end gap-2 xl:col-span-9">
           <label className="grid gap-1 text-xs font-semibold text-ink/62">정렬<select name="sort" defaultValue={filters.sort} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm font-normal"><option value="newest">최신순</option><option value="oldest">오래된순</option><option value="sla">기한 우선</option></select></label>
           <label className="grid gap-1 text-xs font-semibold text-ink/62">표시 건수<select name="pageSize" defaultValue={String(filters.pageSize)} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm font-normal"><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
           <button type="submit" className="focus-ring inline-flex h-10 items-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white hover:bg-ink/90"><Search className="size-4" aria-hidden="true" />적용</button>
@@ -134,7 +141,7 @@ export function AdminWorkQueue({ snapshot, filters, csrfToken }: { snapshot: Adm
             <table className="min-w-[1180px] table-fixed divide-y divide-rule text-sm">
               <caption className="sr-only">실행, 기사 처리, 공개 상태가 독립적으로 표시되는 통합 업무 큐</caption>
               <thead className="bg-parchment">
-                <tr className="text-left text-xs font-semibold text-ink/58"><th className="w-[260px] px-3 py-3">업무</th><th className="w-[160px] px-3 py-3">수집원 / 단계</th><th className="w-[240px] px-3 py-3">독립 상태</th><th className="w-[150px] px-3 py-3">경과 / 처리 기한</th><th className="w-[220px] px-3 py-3">오류 / 담당자</th><th className="w-[130px] px-3 py-3">가능한 다음 조치</th></tr>
+                <tr className="text-left text-xs font-semibold text-ink/58"><th className="w-[260px] px-3 py-3">업무</th><th className="w-[160px] px-3 py-3">수집원 / 단계</th><th className="w-[240px] px-3 py-3">독립 상태</th><th className="w-[150px] px-3 py-3">경과 / 처리 기한</th><th className="w-[220px] px-3 py-3">사유 / 담당자</th><th className="w-[130px] px-3 py-3">가능한 다음 조치</th></tr>
               </thead>
               <tbody className="divide-y divide-rule">
                 {snapshot.items.map((item) => (
@@ -143,7 +150,7 @@ export function AdminWorkQueue({ snapshot, filters, csrfToken }: { snapshot: Adm
                     <td className="px-3 py-3"><div className="break-all font-semibold text-ink/70">{item.source ?? "-"}</div><div className="mt-1 text-xs text-ink/50">{adminWorkStageText(item.stage)} · {item.attempts}회 시도</div></td>
                     <td className="px-3 py-3"><ItemStates item={item} /></td>
                     <td className="px-3 py-3 text-xs leading-5 text-ink/58"><div>{formatDateTime(item.updatedAt)}</div><div className={item.slaState === "breached" ? "mt-1 font-semibold text-court" : "mt-1 font-semibold text-ink/65"}>처리 기한 {adminSlaText(item.slaState)}</div></td>
-                    <td className="px-3 py-3 text-xs leading-5"><div className="line-clamp-2 break-words text-court">{item.latestError ?? "현재 표시할 안전한 오류 없음"}</div><div className="mt-1 max-w-48 truncate text-ink/48">{item.owner ?? "미지정"}</div></td>
+                    <td className="px-3 py-3 text-xs leading-5"><div className="line-clamp-2 break-words"><WorkReason item={item} /></div><div className="mt-1 max-w-48 truncate text-ink/48">{item.owner ?? "미지정"}</div></td>
                     <td className="px-3 py-3"><AdminWorkActionButton kind={item.type} id={item.id} action={item.safeAction} csrfToken={csrfToken} disabledReason={item.actionDisabledReason} /></td>
                   </tr>
                 ))}
