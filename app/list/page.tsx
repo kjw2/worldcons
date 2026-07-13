@@ -107,7 +107,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
   const paramsString = params.toString();
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <PageViewTracker
         event={{
           eventType: "page_view",

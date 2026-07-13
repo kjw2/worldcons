@@ -3,8 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleListItem, ArticleListResult } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
-import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
-import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
+import { displayJurisdictionFlag, displayJurisdictionLabel } from "@/lib/ui/source-labels";
 import { cn } from "@/lib/utils/classnames";
 
 const COUNTRY_FILTERS: Array<{ label: string; jurisdiction?: string }> = [
@@ -79,16 +78,14 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
   return (
     <article data-article-slug={article.slug} className="border-b border-[#dce2de] last:border-b-0 hover:bg-[#f8faf8]">
       <div className="px-4 py-4 xl:hidden">
-        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#74817c]"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span><span>{displaySourceLabel(article.sourceKey)}</span><span>{displayArticleTypeLabel(article)}</span></div>
+        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#74817c]"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span></div>
         <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}</Link></h2>
         <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5f6c67]">{summary}</p>
         <div className="mt-2 flex items-center gap-3 text-xs text-[#7a8681]"><span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span className="inline-flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
-      <div className="hidden min-h-[74px] grid-cols-[86px_84px_130px_72px_minmax(220px,1fr)_110px] items-center gap-3 px-4 py-3 text-sm xl:grid">
+      <div className="hidden min-h-[74px] grid-cols-[94px_100px_minmax(280px,1fr)_140px] items-center gap-3 px-4 py-3 text-sm xl:grid">
         <span className="text-xs tabular-nums text-[#67746f]">{formattedArticleDate(article)}</span>
         <span className="text-xs font-semibold text-[#334d44]">{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span>
-        <span className="line-clamp-2 text-xs leading-5 text-[#52615c]">{displaySourceLabel(article.sourceKey)}</span>
-        <span className="text-xs font-semibold text-[#52615c]">{displayArticleTypeLabel(article)}</span>
         <div className="min-w-0"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}</Link><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
         <div className="min-w-0 text-xs text-[#6e7b76]">{article.tags.slice(0, 2).map((tag) => <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-[#123d32]">{tag.name}</Link>)}<span className="mt-1 flex items-center gap-1 text-[#8a9691]"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
@@ -250,7 +247,7 @@ export function ArticleListView({
           </p>
         </div>
 
-        <div className="hidden grid-cols-[86px_84px_130px_72px_minmax(220px,1fr)_110px] gap-3 border-b border-[#cbd4ce] bg-[#f4f6f3] px-4 py-2.5 text-xs font-semibold text-[#53635d] xl:grid"><span>날짜</span><span>국가</span><span>기관</span><span>유형</span><span>제목</span><span>주제 / 조회</span></div>
+        <div className="hidden grid-cols-[94px_100px_minmax(280px,1fr)_140px] gap-3 border-b border-[#cbd4ce] bg-[#f4f6f3] px-4 py-2.5 text-xs font-semibold text-[#53635d] xl:grid"><span>날짜</span><span>국가</span><span>제목</span><span>주제 / 조회</span></div>
 
         {result.items.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-ink-muted">조건에 맞는 자료가 없습니다.</div>
