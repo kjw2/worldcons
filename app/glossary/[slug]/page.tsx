@@ -32,7 +32,7 @@ export default async function GlossaryDetailPage({ params }: { params: Promise<{
   const relatedArticles = await listArticlesForGlossaryTerm(term, 8);
 
   return (
-    <PageShell className="max-w-4xl">
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <SurfaceCard className="p-6">
         <p className="mb-2 text-sm font-semibold text-court">{glossaryJurisdictionLabel(term)}</p>
         <h1 className="text-3xl font-semibold tracking-normal text-ink sm:text-4xl">{term.koreanTerm || term.term}</h1>

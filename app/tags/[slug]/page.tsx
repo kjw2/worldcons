@@ -38,7 +38,7 @@ export default async function TagDetailPage({ params }: { params: Promise<{ slug
   );
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <nav className="mb-6 flex items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치"><Link href="/" className="focus-ring rounded-sm hover:text-[#123d32]">홈</Link><ChevronRight className="size-3" aria-hidden="true" /><Link href="/tags" className="focus-ring rounded-sm hover:text-[#123d32]">주제</Link><ChevronRight className="size-3" aria-hidden="true" /><span>{result.tag.name}</span></nav>
       <section className="mb-7 border-b border-[#b8c5be] pb-7">
         <p className="archive-kicker">{result.tag.type}</p>

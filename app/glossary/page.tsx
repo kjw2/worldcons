@@ -73,7 +73,7 @@ export default async function GlossaryPage({ searchParams }: { searchParams?: Pr
   );
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <SectionHeading
         className="mb-6"
         eyebrow="용어사전"

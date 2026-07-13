@@ -149,7 +149,7 @@ export default async function GuidePage() {
   );
 
   return (
-    <PageShell className="space-y-10">
+    <PageShell className="max-w-[1248px] space-y-10 py-6 sm:py-8">
       <SectionHeading
         eyebrow="이용 가이드"
         title="World Cons 안내"

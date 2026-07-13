@@ -28,7 +28,7 @@ export default async function TagsPage() {
   );
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <SectionHeading
         className="mb-7 border-b border-[#bcc8c1] pb-6"
         eyebrow="Topics"

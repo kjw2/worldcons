@@ -48,7 +48,7 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
   );
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <nav className="mb-6 flex items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치"><Link href="/" className="focus-ring rounded-sm hover:text-[#123d32]">홈</Link><ChevronRight className="size-3" aria-hidden="true" /><Link href="/sources" className="focus-ring rounded-sm hover:text-[#123d32]">기관</Link><ChevronRight className="size-3" aria-hidden="true" /><span>{displaySourceLabel(source)}</span></nav>
       <section style={jurisdictionThemeStyle(themeForJurisdiction(source.jurisdiction))} className="relative mb-6 min-h-56 overflow-hidden border-b border-[#b8c5be] pb-7 pr-4 sm:pr-[28%]">
         <p className="text-4xl" aria-hidden="true">{displayJurisdictionFlag(source.jurisdiction)}</p>
