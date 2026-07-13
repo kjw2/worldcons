@@ -1,5 +1,7 @@
 import { unstable_cache } from "next/cache";
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { ArticleListView } from "@/components/article-list-view";
 import { FilterBar } from "@/components/filter-bar";
 import { PageViewTracker } from "@/components/page-view-tracker";
@@ -122,6 +124,13 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
           },
         }}
       />
+
+      <header className="mb-7 border-b border-[#bcc8c1] pb-6">
+        <nav className="mb-4 flex items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치"><Link href="/" className="focus-ring rounded-sm hover:text-[#123d32]">홈</Link><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div><p className="archive-kicker">Constitutional case archive</p><h1 className="archive-serif mt-2 text-4xl font-semibold text-[#123d32] sm:text-5xl">전체 판례</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-[#5a6863] sm:text-base">수집된 헌법재판 자료를 국가, 기관, 유형, 주제와 기간으로 검색하고 비교합니다.</p></div>
+        </div>
+      </header>
 
       <div className="mb-5">
         <FilterBar

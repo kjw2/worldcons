@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, Eye } from "lucide-react";
-import { SourceBadge } from "@/components/source-badge";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleListItem, ArticleListResult } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
+import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { cn } from "@/lib/utils/classnames";
 
 const COUNTRY_FILTERS: Array<{ label: string; jurisdiction?: string }> = [
@@ -77,38 +77,21 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
   const summary = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
 
   return (
-    <article data-article-slug={article.slug} className="border-b border-line px-4 py-4 last:border-b-0 sm:px-5">
-      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-ink-subtle">
-        <SourceBadge sourceKey={article.sourceKey} className="min-h-6 rounded-full px-2 text-[11px]" />
-        <span className="inline-flex min-h-6 items-center rounded-full border border-line bg-white px-2 text-[11px] font-semibold text-ink-muted">
-          {displayArticleTypeLabel(article)}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <CalendarDays className="size-3.5" aria-hidden="true" />
-          {formattedArticleDate(article)}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Eye className="size-3.5" aria-hidden="true" />
-          {formatNumber(article.viewCount)}
-        </span>
+    <article data-article-slug={article.slug} className="border-b border-[#dce2de] last:border-b-0 hover:bg-[#f8faf8]">
+      <div className="px-4 py-4 xl:hidden">
+        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#74817c]"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span><span>{displaySourceLabel(article.sourceKey)}</span><span>{displayArticleTypeLabel(article)}</span></div>
+        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}</Link></h2>
+        <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5f6c67]">{summary}</p>
+        <div className="mt-2 flex items-center gap-3 text-xs text-[#7a8681]"><span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span className="inline-flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
-
-      <h2 className="line-clamp-2 text-[15px] font-bold leading-6 tracking-normal text-ink sm:text-base">
-        <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring rounded-sm hover:text-primary">
-          {title}
-        </Link>
-      </h2>
-      <p className="mt-1 line-clamp-2 text-sm leading-6 text-ink-muted">{summary}</p>
-
-      {article.tags.length > 0 ? (
-        <div className="mt-2 flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-xs text-ink-subtle">
-          {article.tags.slice(0, 4).map((tag) => (
-            <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring rounded-sm hover:text-primary">
-              #{tag.name}
-            </Link>
-          ))}
-        </div>
-      ) : null}
+      <div className="hidden min-h-[74px] grid-cols-[86px_84px_130px_72px_minmax(220px,1fr)_110px] items-center gap-3 px-4 py-3 text-sm xl:grid">
+        <span className="text-xs tabular-nums text-[#67746f]">{formattedArticleDate(article)}</span>
+        <span className="text-xs font-semibold text-[#334d44]">{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span>
+        <span className="line-clamp-2 text-xs leading-5 text-[#52615c]">{displaySourceLabel(article.sourceKey)}</span>
+        <span className="text-xs font-semibold text-[#52615c]">{displayArticleTypeLabel(article)}</span>
+        <div className="min-w-0"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}</Link><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
+        <div className="min-w-0 text-xs text-[#6e7b76]">{article.tags.slice(0, 2).map((tag) => <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-[#123d32]">{tag.name}</Link>)}<span className="mt-1 flex items-center gap-1 text-[#8a9691]"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
+      </div>
     </article>
   );
 }
@@ -123,8 +106,9 @@ function CountryMenu({
   paramsString: string;
 }) {
   return (
-    <SurfaceCard className="overflow-hidden p-2 lg:sticky lg:top-24">
-      <nav className="flex gap-1 overflow-x-auto lg:block lg:space-y-1 lg:overflow-visible" aria-label="국가 필터">
+    <SurfaceCard className="overflow-hidden p-4">
+      <h2 className="archive-rule-title text-sm font-semibold text-[#243b33]">국가별 판례</h2>
+      <nav className="mt-2 grid gap-1" aria-label="국가 필터">
         {COUNTRY_FILTERS.map((item) => {
           const isActive = item.jurisdiction ? currentJurisdiction === item.jurisdiction : !currentJurisdiction;
           const count = item.jurisdiction ? counts[item.jurisdiction] ?? 0 : totalForCountries(counts);
@@ -135,12 +119,12 @@ function CountryMenu({
               href={hrefForJurisdiction(paramsString, item.jurisdiction)}
               prefetch={false}
               className={cn(
-                "focus-ring flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-md px-3 text-sm font-semibold transition lg:w-full",
-                isActive ? "bg-primary text-white" : "text-ink-muted hover:bg-surface-muted hover:text-ink",
+                "focus-ring flex min-h-10 items-center justify-between gap-3 rounded-sm border-b border-[#e1e6e2] px-2 text-sm font-semibold transition last:border-b-0",
+                isActive ? "bg-[#edf3ef] text-[#123d32]" : "text-[#5f6d68] hover:bg-[#f5f7f4] hover:text-[#123d32]",
               )}
             >
               <span>{item.label}</span>
-              <span className={cn("rounded-full px-2 py-0.5 text-xs tabular-nums", isActive ? "bg-white/20" : "bg-surface-muted text-ink-subtle")}>
+              <span className="text-xs tabular-nums text-[#82908a]">
                 {formatNumber(count)}
               </span>
             </Link>
@@ -161,14 +145,14 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
   const hasNext = page < totalPages;
 
   return (
-    <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-line px-4 py-4" aria-label="페이지">
+    <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-[#cbd4ce] px-4 py-5" aria-label="페이지">
       <Link
         href={hrefForPage(paramsString, page - 1)}
         prefetch={false}
         aria-disabled={!hasPrevious}
         className={cn(
-          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-md border border-line px-3 text-sm font-semibold",
-          hasPrevious ? "bg-white text-ink-muted hover:border-line-strong hover:text-ink" : "pointer-events-none bg-surface-muted text-ink-subtle",
+          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-[#d1d9d4] px-3 text-sm font-semibold",
+          hasPrevious ? "bg-white text-[#5e6d67] hover:border-[#8ca095] hover:text-[#123d32]" : "pointer-events-none bg-[#f4f6f3] text-[#a0aaa5]",
         )}
       >
         <ChevronLeft className="size-4" aria-hidden="true" />
@@ -186,8 +170,8 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
             prefetch={false}
             aria-current={item === page ? "page" : undefined}
             className={cn(
-              "focus-ring inline-flex size-9 items-center justify-center rounded-md border text-sm font-semibold tabular-nums",
-              item === page ? "border-primary bg-primary text-white" : "border-line bg-white text-ink-muted hover:border-line-strong hover:text-ink",
+              "focus-ring inline-flex size-9 items-center justify-center rounded-sm border text-sm font-semibold tabular-nums",
+              item === page ? "border-[#123d32] bg-[#123d32] text-white" : "border-[#d1d9d4] bg-white text-[#5e6d67] hover:border-[#8ca095] hover:text-[#123d32]",
             )}
           >
             {item}
@@ -199,8 +183,8 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
         prefetch={false}
         aria-disabled={!hasNext}
         className={cn(
-          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-md border border-line px-3 text-sm font-semibold",
-          hasNext ? "bg-white text-ink-muted hover:border-line-strong hover:text-ink" : "pointer-events-none bg-surface-muted text-ink-subtle",
+          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-[#d1d9d4] px-3 text-sm font-semibold",
+          hasNext ? "bg-white text-[#5e6d67] hover:border-[#8ca095] hover:text-[#123d32]" : "pointer-events-none bg-[#f4f6f3] text-[#a0aaa5]",
         )}
       >
         다음
@@ -212,19 +196,19 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
 
 function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]; paramsString: string }) {
   return (
-    <SurfaceCard className="overflow-hidden p-4 lg:sticky lg:top-24">
-      <h2 className="text-sm font-bold tracking-normal text-ink">조회수 상위 자료</h2>
+    <SurfaceCard className="overflow-hidden p-4">
+      <h2 className="archive-rule-title text-sm font-semibold text-[#243b33]">조회수 상위 자료</h2>
       <ol className="mt-3 space-y-3">
         {articles.length === 0 ? (
           <li className="text-sm leading-6 text-ink-muted">조회수 데이터가 아직 없습니다.</li>
         ) : (
           articles.slice(0, 5).map((article, index) => (
             <li key={article.slug} className="flex gap-2">
-              <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-surface-muted text-xs font-bold text-ink-muted">
+              <span className="archive-serif mt-0.5 inline-flex size-5 shrink-0 items-center justify-center text-sm font-semibold text-[#315b4d]">
                 {index + 1}
               </span>
               <div className="min-w-0">
-                <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-ink hover:text-primary">
+                <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-[#273f37] hover:text-[#123d32]">
                   {article.koreanTitle || article.originalTitle || "제목 미상"}
                 </Link>
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-ink-subtle">
@@ -257,16 +241,16 @@ export function ArticleListView({
   const to = Math.min(total, (page - 1) * pageSize + result.items.length);
 
   return (
-    <section className="grid gap-4 lg:grid-cols-[10rem_minmax(0,1fr)_17rem]" aria-label="리스트형 자료 목록">
-      <CountryMenu currentJurisdiction={currentJurisdiction} counts={jurisdictionArticleCounts} paramsString={paramsString} />
-
+    <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]" aria-label="리스트형 자료 목록">
       <SurfaceCard className="min-w-0 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
-          <h1 className="text-base font-bold tracking-normal text-ink">자료 목록</h1>
-          <p className="text-sm text-ink-muted">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#bdc9c2] px-4 py-3 sm:px-5">
+          <h2 className="text-base font-semibold text-[#243b33]">판례 목록</h2>
+          <p className="text-sm text-[#68756f]">
             총 {formatNumber(total)}건 · {formatNumber(from)}-{formatNumber(to)} 표시
           </p>
         </div>
+
+        <div className="hidden grid-cols-[86px_84px_130px_72px_minmax(220px,1fr)_110px] gap-3 border-b border-[#cbd4ce] bg-[#f4f6f3] px-4 py-2.5 text-xs font-semibold text-[#53635d] xl:grid"><span>날짜</span><span>국가</span><span>기관</span><span>유형</span><span>제목</span><span>주제 / 조회</span></div>
 
         {result.items.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-ink-muted">조건에 맞는 자료가 없습니다.</div>
@@ -277,7 +261,7 @@ export function ArticleListView({
         <ListPagination result={result} paramsString={paramsString} />
       </SurfaceCard>
 
-      <TopViewedList articles={topViewedArticles} paramsString={paramsString} />
+      <aside className="space-y-4 lg:sticky lg:top-[calc(var(--chrome-header-height)+1rem)] lg:self-start"><CountryMenu currentJurisdiction={currentJurisdiction} counts={jurisdictionArticleCounts} paramsString={paramsString} /><TopViewedList articles={topViewedArticles} paramsString={paramsString} /></aside>
     </section>
   );
 }

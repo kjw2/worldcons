@@ -20,13 +20,36 @@ html {
 body {
   min-height: 100%;
   margin: 0;
-  background:
-    linear-gradient(180deg, rgba(250, 248, 243, 0.98), rgba(255, 255, 255, 0.96) 430px),
-    #faf8f3;
+  background: #fdfdfb;
   color: #17202a;
   font-size: 15px;
   line-height: 1.6;
   transition: padding-top 160ms ease;
+}
+
+.archive-wordmark,
+.archive-serif {
+  font-family: Georgia, "Times New Roman", "Noto Serif KR", "Nanum Myeongjo", Batang, serif;
+  letter-spacing: 0;
+}
+
+.archive-kicker {
+  color: #476259;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.archive-rule-title {
+  border-bottom: 1px solid #bfc9c3;
+  padding-bottom: 0.65rem;
+}
+
+.public-site-header {
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 220ms ease;
 }
 
 body:has(.admin-shell) {
@@ -80,7 +103,7 @@ html.chrome-fixed #site-header {
   inset: 0 0 auto;
   z-index: 40;
   background: #fff;
-  box-shadow: 0 10px 28px rgba(23, 32, 42, 0.08);
+  box-shadow: 0 8px 22px rgba(18, 61, 50, 0.07);
   transform: translateY(0);
 }
 
@@ -138,10 +161,6 @@ html.chrome-fixed.chrome-header-hidden #site-header {
 }
 
 @media (min-width: 640px) {
-  :root {
-    --chrome-header-height: 82px;
-  }
-
   .back-to-top-button {
     right: 1.5rem;
     bottom: 1.5rem;

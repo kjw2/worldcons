@@ -4,15 +4,15 @@ import { cn } from "@/lib/utils/classnames";
 type SurfaceCardVariant = "default" | "muted" | "elevated" | "interactive" | "warning";
 
 const variantClassNames: Record<SurfaceCardVariant, string> = {
-  default: "border-line bg-surface shadow-card",
-  muted: "border-line bg-surface-muted/70",
-  elevated: "border-line bg-surface shadow-panel",
-  interactive: "border-line bg-surface shadow-card transition hover:border-line-strong hover:shadow-panel",
+  default: "border-[#d5dcd7] bg-white",
+  muted: "border-[#d5dcd7] bg-[#f5f7f4]",
+  elevated: "border-[#c7d1cb] bg-white shadow-[0_12px_30px_rgba(18,61,50,0.07)]",
+  interactive: "border-[#d5dcd7] bg-white transition hover:border-[#8da398] hover:shadow-[0_10px_26px_rgba(18,61,50,0.07)]",
   warning: "border-court/20 bg-court/5 text-court",
 };
 
 export function surfaceCardClassName(variant: SurfaceCardVariant = "default", className?: string) {
-  return cn("rounded-lg border", variantClassNames[variant], className);
+  return cn("rounded-sm border", variantClassNames[variant], className);
 }
 
 export function SurfaceCard({

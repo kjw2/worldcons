@@ -30,9 +30,9 @@ export default async function TagsPage() {
   return (
     <PageShell>
       <SectionHeading
-        className="mb-6"
-        eyebrow="태그 허브"
-        title="쟁점·권리·조문별 탐색"
+        className="mb-7 border-b border-[#bcc8c1] pb-6"
+        eyebrow="Topics"
+        title="헌법 주제"
         description="반복해서 등장하는 헌법 쟁점과 절차, 권리, 조문을 태그 단위로 모아봅니다. AI가 생성한 태그이므로 부정확할 수 있으니 반드시 확인하시기 바랍니다."
       />
       <TagHubList tags={tags} />

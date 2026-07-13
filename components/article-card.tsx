@@ -68,12 +68,12 @@ function TagOverflowPopover({
         type="button"
         aria-label={`전체 태그 ${tags.length}개 보기`}
         aria-haspopup="true"
-        className="focus-ring inline-flex min-h-6 items-center rounded-md border border-line-strong bg-white px-2 text-[11px] font-medium text-ink-muted transition hover:border-line-strong hover:bg-surface-muted hover:text-ink"
+        className="focus-ring inline-flex min-h-6 items-center border border-[#bdc9c2] bg-white px-2 text-[11px] font-medium text-[#50615b] transition hover:bg-[#f2f5f3] hover:text-[#123d32]"
       >
         +{hiddenTagCount}
       </button>
       <span className="absolute right-0 top-[calc(100%-1px)] z-30 hidden w-72 max-w-[calc(100vw-2rem)] pt-1 group-hover:block group-focus-within:block">
-        <span className="flex flex-wrap gap-1.5 rounded-md border border-line bg-white p-2 shadow-panel">
+        <span className="flex flex-wrap gap-1.5 rounded-sm border border-[#bdc9c2] bg-white p-2 shadow-panel">
           {tags.map((tag) => (
             <TagPill key={tag.slug} tag={tag} jurisdiction={jurisdiction} className="max-w-full min-h-6 px-2 text-[11px]" />
           ))}
@@ -140,22 +140,22 @@ export function ArticleCard({
     <article
       data-article-slug={article.slug}
       style={jurisdictionThemeStyle(theme)}
-      className={surfaceCardClassName("interactive", "relative flex h-full flex-col overflow-visible border-line bg-white p-4")}
+      className={surfaceCardClassName("interactive", "relative flex h-full flex-col overflow-visible border-[#d4dcd7] bg-white p-4 sm:p-5")}
     >
       <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-        <SourceBadge sourceKey={article.sourceKey} className="min-h-6 rounded-full bg-[color:var(--country-accent-softer)] px-2 text-[11px] font-semibold" />
-        <span className="inline-flex min-h-6 items-center rounded-full border border-[color:var(--country-border)] bg-white px-2 text-[11px] font-semibold text-[color:var(--country-text)]">
+        <SourceBadge sourceKey={article.sourceKey} className="min-h-6 rounded-sm bg-[color:var(--country-accent-softer)] px-2 text-[11px] font-semibold" />
+        <span className="inline-flex min-h-6 items-center rounded-sm border border-[color:var(--country-border)] bg-white px-2 text-[11px] font-semibold text-[color:var(--country-text)]">
           {displayArticleTypeLabel(article)}
         </span>
       </div>
 
-      <h2 className="line-clamp-2 text-base font-bold leading-6 tracking-normal text-ink">
+      <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]">
         <Link href={articleHref} prefetch={false} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
           {title}
         </Link>
       </h2>
 
-      <p className="mt-3 line-clamp-3 text-sm leading-6 text-ink-muted">{summaryText}</p>
+      <p className="mt-3 line-clamp-3 text-sm leading-6 text-[#5d6965]">{summaryText}</p>
 
       {visibleTags.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -170,7 +170,7 @@ export function ArticleCard({
 
       <div className="min-h-4 grow" aria-hidden="true" />
 
-      <div className="flex items-center justify-between gap-3 border-t border-line pt-4 text-xs text-ink-subtle">
+      <div className="flex items-center justify-between gap-3 border-t border-[#d9dfdb] pt-4 text-xs text-[#73807b]">
         <span className="inline-flex min-w-0 items-center gap-1.5">
           <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
           <span>{formattedArticleDate(article)}</span>
@@ -179,7 +179,7 @@ export function ArticleCard({
           <span
             aria-label={`조회 ${viewCountLabel}회`}
             title={`조회 ${viewCountLabel}회`}
-            className="inline-flex min-h-7 items-center gap-1 rounded-md border border-line bg-surface-muted px-2 text-[11px] font-semibold text-ink-muted"
+            className="inline-flex min-h-7 items-center gap-1 border border-[#d4dcd7] bg-[#f4f6f3] px-2 text-[11px] font-semibold text-[#56655f]"
           >
             <Eye className="size-3.5" aria-hidden="true" />
             <span className="tabular-nums">{viewCountLabel}</span>

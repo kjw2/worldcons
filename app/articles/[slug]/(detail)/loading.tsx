@@ -2,21 +2,12 @@ import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
 
 function SkeletonBlock({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-md bg-surface-muted ${className}`} />;
+  return <div aria-hidden="true" className={`animate-pulse rounded-sm bg-[#e7ebe8] ${className}`} />;
 }
 
-function SummarySkeleton({ variant = "body", lines = 3 }: { variant?: "primary" | "body" | "insight" | "muted"; lines?: number }) {
-  const variantClassName =
-    variant === "primary"
-      ? "border-primary/15 bg-primary/[0.03] p-5"
-      : variant === "insight"
-        ? "border-gold/25 bg-gold/5 p-5"
-        : variant === "muted"
-          ? "border-line bg-surface-muted/60 p-4"
-          : "border-line bg-white p-5";
-
+function SummarySkeleton({ lines = 3 }: { lines?: number }) {
   return (
-    <section className={`rounded-lg border ${variantClassName}`}>
+    <section className="border-t border-[#9bad9f] py-5 first:border-t-0 first:pt-0">
       <SkeletonBlock className="mb-4 h-6 w-28" />
       <div className="space-y-3">
         {Array.from({ length: lines }).map((_, index) => (
@@ -29,7 +20,7 @@ function SummarySkeleton({ variant = "body", lines = 3 }: { variant?: "primary" 
 
 function AsideCardSkeleton({ blocks = 3 }: { blocks?: number }) {
   return (
-    <SurfaceCard className="p-5">
+    <SurfaceCard className="p-5 sm:p-6">
       <SkeletonBlock className="h-5 w-24" />
       <div className="mt-4 space-y-4">
         {Array.from({ length: blocks }).map((_, index) => (
@@ -42,7 +33,7 @@ function AsideCardSkeleton({ blocks = 3 }: { blocks?: number }) {
           </div>
         ))}
       </div>
-      <SkeletonBlock className="mt-5 h-11 w-full rounded-lg" />
+      <SkeletonBlock className="mt-5 h-10 w-full" />
     </SurfaceCard>
   );
 }
@@ -52,7 +43,12 @@ export default function ArticleLoading() {
     <PageShell className="max-w-7xl">
       <div aria-busy="true" aria-live="polite">
         <span className="sr-only">자료를 불러오는 중입니다.</span>
-        <section className="mb-7 border-b border-line pb-7">
+        <div className="mb-7 flex gap-2">
+          <SkeletonBlock className="h-4 w-10" />
+          <SkeletonBlock className="h-4 w-20" />
+          <SkeletonBlock className="h-4 w-28" />
+        </div>
+        <section className="mb-8 border-b border-[#8fa197] pb-7">
           <div className="flex flex-wrap gap-2">
             <SkeletonBlock className="h-5 w-16" />
             <SkeletonBlock className="h-5 w-32" />
@@ -60,8 +56,8 @@ export default function ArticleLoading() {
             <SkeletonBlock className="h-5 w-12" />
           </div>
           <div className="mt-4 space-y-3">
-            <SkeletonBlock className="h-9 w-full max-w-4xl" />
-            <SkeletonBlock className="h-9 w-9/12 max-w-3xl" />
+            <SkeletonBlock className="h-11 w-full max-w-4xl" />
+            <SkeletonBlock className="h-11 w-9/12 max-w-3xl" />
           </div>
           <div className="mt-4 space-y-2">
             <SkeletonBlock className="h-5 w-full max-w-3xl" />
@@ -69,25 +65,25 @@ export default function ArticleLoading() {
           </div>
           <SkeletonBlock className="mt-3 h-4 w-full max-w-2xl" />
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <SkeletonBlock className="h-11 w-28 rounded-lg" />
-            <SkeletonBlock className="h-11 w-28 rounded-lg" />
-            <SkeletonBlock className="h-11 w-24 rounded-lg" />
+            <SkeletonBlock className="h-10 w-28" />
+            <SkeletonBlock className="h-10 w-28" />
+            <SkeletonBlock className="h-10 w-24" />
           </div>
         </section>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
           <article className="space-y-5">
-            <SummarySkeleton variant="primary" lines={4} />
+            <SummarySkeleton lines={4} />
             <SummarySkeleton lines={4} />
             <SummarySkeleton lines={3} />
             <div className="grid gap-5 md:grid-cols-2">
-              <SummarySkeleton variant="insight" lines={4} />
-              <SummarySkeleton variant="insight" lines={4} />
+              <SummarySkeleton lines={4} />
+              <SummarySkeleton lines={4} />
             </div>
-            <SummarySkeleton variant="muted" lines={2} />
-            <section className="rounded-lg border border-line bg-surface-muted/50 p-4">
+            <SummarySkeleton lines={2} />
+            <section className="border-t border-[#9bad9f] py-5">
               <SkeletonBlock className="h-5 w-36" />
-              <div className="mt-4 space-y-2 rounded-lg bg-white p-4">
+              <div className="mt-4 space-y-2 border border-[#d1d9d4] bg-white p-4">
                 {Array.from({ length: 8 }).map((_, index) => (
                   <SkeletonBlock key={index} className={index === 7 ? "h-4 w-7/12" : "h-4 w-full"} />
                 ))}
@@ -96,14 +92,14 @@ export default function ArticleLoading() {
             <SummarySkeleton lines={2} />
           </article>
 
-          <aside className="space-y-4 lg:sticky lg:top-28">
+          <aside className="space-y-4 lg:sticky lg:top-[calc(var(--chrome-header-height)+1rem)]">
             <AsideCardSkeleton blocks={4} />
             <AsideCardSkeleton blocks={3} />
             <SurfaceCard className="p-5">
               <SkeletonBlock className="h-5 w-16" />
               <div className="mt-4 flex flex-wrap gap-2">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <SkeletonBlock key={index} className="h-8 w-20 rounded-full" />
+                  <SkeletonBlock key={index} className="h-8 w-20" />
                 ))}
               </div>
             </SurfaceCard>

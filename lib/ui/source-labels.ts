@@ -5,6 +5,13 @@ const JURISDICTION_LABELS: Record<string, string> = {
   Spain: "스페인",
 };
 
+const JURISDICTION_FLAGS: Record<string, string> = {
+  "United States": "🇺🇸",
+  Germany: "🇩🇪",
+  France: "🇫🇷",
+  Spain: "🇪🇸",
+};
+
 const SOURCE_LABELS: Record<string, string> = {
   "de-bverfg": "독일 연방헌재",
   "us-scotus": "미국 연방대법원",
@@ -22,6 +29,11 @@ const LANGUAGE_LABELS: Record<string, string> = {
 export function displayJurisdictionLabel(jurisdiction?: string | null) {
   if (!jurisdiction) return "";
   return JURISDICTION_LABELS[jurisdiction] ?? jurisdiction;
+}
+
+export function displayJurisdictionFlag(jurisdiction?: string | null) {
+  if (!jurisdiction) return "🌐";
+  return JURISDICTION_FLAGS[jurisdiction] ?? "🌐";
 }
 
 export function displaySourceLabel(source?: string | { sourceKey?: string | null; name?: string | null } | null) {

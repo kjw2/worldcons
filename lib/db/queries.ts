@@ -96,6 +96,7 @@ const ARTICLE_LIST_SELECT = [
   "resolution_type:source_metadata->>resolutionType",
   `article_tags(confidence,tags(${TAG_LIST_SELECT}))`,
 ].join(",");
+const ARTICLE_LIST_WITH_TAG_FILTER_SELECT = `${ARTICLE_LIST_SELECT},article_tag_filter:article_tags!inner(tag_id)`;
 const ARTICLE_PAGE_SELECT = `${ARTICLE_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
 const ARTICLE_DETAIL_SELECT = `${ARTICLE_PAGE_SELECT},raw_text,cleaned_text`;
 const ARTICLE_P3_LIST_SELECT = [
@@ -341,6 +342,17 @@ function getRangeStartIso(rangeValue?: ArticleListFilters["range"]) {
 }
 
 async function articleIdsForTagFilter(tag: string) {
+  const tagIds = await tagIdsForTagFilter(tag);
+  if (tagIds === null || tagIds.length === 0) return tagIds;
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("article_tags").select("article_id").in("tag_id", tagIds);
+  if (error) throw new Error(error.message);
+  return data?.map((row) => String(row.article_id)) ?? [];
+}
+
+async function tagIdsForTagFilter(tag: string) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return null;
 
@@ -358,11 +370,7 @@ async function articleIdsForTagFilter(tag: string) {
         .filter((id): id is string => Boolean(id)),
     ),
   );
-  if (tagIds.length === 0) return [];
-
-  const { data, error } = await supabase.from("article_tags").select("article_id").in("tag_id", tagIds);
-  if (error) throw new Error(error.message);
-  return data?.map((row) => String(row.article_id)) ?? [];
+  return tagIds;
 }
 
 async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds: string[] | null): Promise<ArticleListResult> {
@@ -440,12 +448,20 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     };
   }
 
+  const canFilterProjectedTagBySlug = Boolean(
+    filters.tag &&
+      !filters.q &&
+      publicationProjectionEnabled(filters.includeUnpublished) &&
+      /^[a-z0-9][a-z0-9-]*$/i.test(filters.tag),
+  );
+  let tagIds: string[] | null = null;
   let tagArticleIds: string[] | null = null;
-  if (filters.tag) {
-    tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
-    if (tagArticleIds.length === 0) {
+  if (filters.tag && !canFilterProjectedTagBySlug) {
+    tagIds = (await tagIdsForTagFilter(filters.tag)) ?? [];
+    if (tagIds.length === 0) {
       return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
     }
+    if (filters.q) tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
   }
 
   if (filters.q) {
@@ -453,9 +469,13 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   }
 
   const countMode = filters.count ?? "exact";
+  const useLegacyTagJoin = Boolean(tagIds?.length && !publicationProjectionEnabled(filters.includeUnpublished));
   let query = supabase
     .from(articleRelation(filters.includeUnpublished))
-    .select(projectionSelect(ARTICLE_LIST_SELECT, filters.includeUnpublished), countMode === "none" ? undefined : { count: countMode })
+    .select(
+      projectionSelect(useLegacyTagJoin ? ARTICLE_LIST_WITH_TAG_FILTER_SELECT : ARTICLE_LIST_SELECT, filters.includeUnpublished),
+      countMode === "none" ? undefined : { count: countMode },
+    )
     .order("original_published_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: true });
 
@@ -468,6 +488,10 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   if (filters.type) query = query.eq("content_type", filters.type);
   if (filters.language) query = query.eq("original_language", filters.language);
   if (tagArticleIds) query = query.in("id", tagArticleIds);
+  if (useLegacyTagJoin && tagIds) query = query.in("article_tag_filter.tag_id", tagIds);
+  if (canFilterProjectedTagBySlug && filters.tag) {
+    query = query.contains("article_tags", JSON.stringify([{ tags: { slug: filters.tag } }]));
+  }
 
   const startIso = getRangeStartIso(filters.range);
   if (startIso) query = query.gte("original_published_at", startIso);

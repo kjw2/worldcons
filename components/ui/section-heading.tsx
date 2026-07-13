@@ -19,9 +19,9 @@ export function SectionHeading({
   return (
     <div className={cn("flex flex-wrap items-end justify-between gap-4", className)}>
       <div>
-        {eyebrow ? <p className="mb-2 text-sm font-semibold text-court">{eyebrow}</p> : null}
-        <h2 className="text-2xl font-semibold leading-tight tracking-normal text-ink sm:text-3xl">{title}</h2>
-        {description ? <p className={cn("mt-3 max-w-3xl text-base leading-7 text-ink-muted", descriptionClassName)}>{description}</p> : null}
+        {eyebrow ? <p className="archive-kicker mb-2">{eyebrow}</p> : null}
+        <h2 className="archive-serif text-2xl font-semibold leading-tight text-[#123d32] sm:text-3xl">{title}</h2>
+        {description ? <p className={cn("mt-3 max-w-3xl text-sm leading-7 text-[#5a6863] sm:text-base", descriptionClassName)}>{description}</p> : null}
       </div>
       {actions ? <div className="shrink-0">{actions}</div> : null}
     </div>

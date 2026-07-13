@@ -15,6 +15,7 @@ interface InfiniteArticleFeedProps {
   endpoint?: string;
   queryString?: string;
   pageSize?: number;
+  leadingItemCount?: number;
 }
 
 interface FeedSnapshot {
@@ -200,13 +201,14 @@ export function InfiniteArticleFeed({
   endpoint = "/api/articles",
   queryString = "",
   pageSize = 9,
+  leadingItemCount = 0,
 }: InfiniteArticleFeedProps) {
   const feedKey = `${endpoint}?${queryString}`;
   const [articles, setArticles] = useState(initialResult.items);
   const [pageInfo, setPageInfo] = useState(() => pageInfoFor(initialResult.pageInfo, pageSize));
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isExhausted, setIsExhausted] = useState(!hasMorePages(initialResult.pageInfo, initialResult.items.length));
+  const [isExhausted, setIsExhausted] = useState(!hasMorePages(initialResult.pageInfo, initialResult.items.length + leadingItemCount));
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
   const pendingRestoreRef = useRef<FeedSnapshot | null>(null);
@@ -245,7 +247,7 @@ export function InfiniteArticleFeed({
       const initialArticles = articlesWithRestoredView(initialResult.items, restoreSnapshotData);
       setArticles(initialArticles);
       setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
-      setIsExhausted(!hasMorePages(initialResult.pageInfo, initialArticles.length));
+      setIsExhausted(!hasMorePages(initialResult.pageInfo, initialArticles.length + leadingItemCount));
       pendingRestoreRef.current = null;
       setErrorMessage(null);
       loadingRef.current = false;
@@ -276,11 +278,16 @@ export function InfiniteArticleFeed({
           const snapshotPageInfo = {
             ...restoreSnapshotData.pageInfo,
             pageSize,
-            total: Math.max(restoreSnapshotData.pageInfo.total, restoredPageInfo.total, initialResult.pageInfo.total, viewedArticles.length),
+            total: Math.max(
+              restoreSnapshotData.pageInfo.total,
+              restoredPageInfo.total,
+              initialResult.pageInfo.total,
+              viewedArticles.length + leadingItemCount,
+            ),
           };
           setArticles(viewedArticles);
           setPageInfo(snapshotPageInfo);
-          setIsExhausted(restoreSnapshotData.isExhausted || !hasMorePages(snapshotPageInfo, viewedArticles.length));
+          setIsExhausted(restoreSnapshotData.isExhausted || !hasMorePages(snapshotPageInfo, viewedArticles.length + leadingItemCount));
           pendingRestoreRef.current = restoreSnapshotData;
         } catch {
           if (!cancelled) {
@@ -303,14 +310,14 @@ export function InfiniteArticleFeed({
     } else {
       setArticles(initialResult.items);
       setPageInfo(pageInfoFor(initialResult.pageInfo, pageSize));
-      setIsExhausted(!hasMorePages(initialResult.pageInfo, initialResult.items.length));
+      setIsExhausted(!hasMorePages(initialResult.pageInfo, initialResult.items.length + leadingItemCount));
       pendingRestoreRef.current = null;
     }
     setErrorMessage(null);
     loadingRef.current = false;
     lastLoadScrollYRef.current = null;
     setIsLoading(false);
-  }, [feedKey, fetchPage, initialResult, pageSize]);
+  }, [feedKey, fetchPage, initialResult, leadingItemCount, pageSize]);
 
   useEffect(() => {
     const snapshot = pendingRestoreRef.current;
@@ -325,8 +332,9 @@ export function InfiniteArticleFeed({
     });
   }, [articles, feedKey]);
 
-  const hasMore = !isExhausted && hasMorePages(pageInfo, articles.length);
-  const loadedCount = pageInfo.totalIsExact === false ? articles.length : Math.min(articles.length, pageInfo.total);
+  const hasMore = !isExhausted && hasMorePages(pageInfo, articles.length + leadingItemCount);
+  const loadedItems = articles.length + leadingItemCount;
+  const loadedCount = pageInfo.totalIsExact === false ? loadedItems : Math.min(loadedItems, pageInfo.total);
   const totalPrefix = pageInfo.totalIsExact === false ? "약 " : "";
 
   const nextUrl = useMemo(() => {
@@ -356,7 +364,7 @@ export function InfiniteArticleFeed({
 
       const result = (await response.json()) as ArticleListResult;
       const nextItems = result.items ?? [];
-      const nextLoadedCount = articles.length + nextItems.length;
+      const nextLoadedCount = articles.length + nextItems.length + leadingItemCount;
       const resultPageInfo = pageInfoFor(result.pageInfo, pageSize);
       setArticles((current) => mergeArticles(current, nextItems));
       setPageInfo((current) => {
@@ -376,7 +384,7 @@ export function InfiniteArticleFeed({
       loadingRef.current = false;
       setIsLoading(false);
     }
-  }, [articles, hasMore, nextUrl, pageSize]);
+  }, [articles, hasMore, leadingItemCount, nextUrl, pageSize]);
 
   const saveReturnState = useCallback(
     (clickedSlug: string) => {
@@ -424,8 +432,8 @@ export function InfiniteArticleFeed({
 
   return (
     <section className="space-y-4" aria-live="polite">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-ink">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#bdc9c2] pb-3">
+        <p className="text-sm font-semibold text-[#243b33]">
           총 {totalPrefix}
           {pageInfo.total.toLocaleString("ko-KR")}건
         </p>

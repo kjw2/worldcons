@@ -80,7 +80,7 @@ export function ArticlePrintButton({ printHref }: { printHref: string }) {
       onClick={handlePrint}
       disabled={isLoading}
       aria-busy={isLoading}
-      className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink disabled:cursor-wait disabled:opacity-70"
+      className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-[#c8d2cc] bg-white px-4 text-sm font-semibold text-[#53635d] transition hover:border-[#83998e] hover:text-[#123d32] disabled:cursor-wait disabled:opacity-70"
     >
       <Printer className="size-4" aria-hidden="true" />
       인쇄

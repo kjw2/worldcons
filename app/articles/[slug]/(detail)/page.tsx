@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink, FileText, Languages, Scale } from "lucide-react";
+import { ArrowLeft, ChevronRight, ExternalLink, FileText, Languages, Scale } from "lucide-react";
 import { ArticlePrintButton } from "@/components/article-print-button";
 import { ArticleSourceSnapshot } from "@/components/article-source-snapshot";
 import { PageViewTracker } from "@/components/page-view-tracker";
@@ -19,6 +19,7 @@ import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
 import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
+import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { formatDisplayDate } from "@/lib/utils/dates";
@@ -121,31 +122,38 @@ export default async function ArticlePage({
   const returnHref = articleReturnHref(paramsObject);
 
   return (
-    <PageShell className="max-w-7xl">
+    <PageShell className="max-w-[1480px]">
       <PageViewTracker event={articleViewEvent} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
-      <section style={jurisdictionThemeStyle(theme)} className="mb-7 border-b border-line pb-7">
+      <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치">
+        <Link href="/" className="focus-ring rounded-sm hover:text-[#123d32]">홈</Link><ChevronRight className="size-3" aria-hidden="true" />
+        <Link href="/list" className="focus-ring rounded-sm hover:text-[#123d32]">전체 판례</Link><ChevronRight className="size-3" aria-hidden="true" />
+        <Link href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel(article.sourceKey)}</Link><ChevronRight className="size-3" aria-hidden="true" />
+        <span className="max-w-[32rem] truncate">{article.koreanTitle || article.originalTitle}</span>
+      </nav>
+      <section style={jurisdictionThemeStyle(theme)} className="mb-8 border-b border-[#aebdb5] pb-8">
+        <p className="text-sm font-semibold text-[color:var(--country-text)]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })} · {displayArticleTypeLabel(article)}</p>
         <MetaRow
+          className="mt-3"
           items={[
             displayJurisdictionLabel(article.jurisdiction),
-            displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName }),
             formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" }),
             article.originalLanguage,
           ]}
         />
-        <h1 className="mt-4 break-keep text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">
+        <h1 className="archive-serif mt-4 max-w-6xl break-keep text-4xl font-semibold leading-[1.22] text-[#123d32] sm:text-5xl">
           {article.koreanTitle || article.originalTitle}
         </h1>
-        {primaryIssue ? <p className="mt-4 break-keep text-lg leading-8 text-ink-muted">{primaryIssue}</p> : null}
-        {article.originalTitle ? <p className="mt-3 break-keep text-sm leading-6 text-ink-subtle">원문 제목: {article.originalTitle}</p> : null}
+        {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-[#53625d] sm:text-lg">{primaryIssue}</p> : null}
+        {article.originalTitle ? <p className="mt-3 max-w-5xl break-keep text-sm leading-6 text-[#7a8581]">원문 제목: {article.originalTitle}</p> : null}
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {originalHref ? (
-            <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg bg-court px-4 text-sm font-semibold text-white transition hover:bg-court/90">
+            <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm bg-[#123d32] px-4 text-sm font-semibold text-white transition hover:bg-[#285748]">
               원문 보기
               <ExternalLink className="size-4" aria-hidden="true" />
             </a>
           ) : null}
-          <Link href={returnHref} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink">
+          <Link href={returnHref} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-[#c8d2cc] bg-white px-4 text-sm font-semibold text-[#53635d] transition hover:border-[#83998e] hover:text-[#123d32]">
             <ArrowLeft className="size-4" aria-hidden="true" />
             목록으로
           </Link>
@@ -153,8 +161,8 @@ export default async function ArticlePage({
         </div>
       </section>
 
-      <div style={jurisdictionThemeStyle(theme)} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-        <article className="space-y-5">
+      <div style={jurisdictionThemeStyle(theme)} className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:gap-12">
+        <article className="min-w-0 space-y-2">
           {collectionNotice ? (
             <DisclosureCard title={collectionNotice.title}>
               <p className="text-sm leading-6 text-ink-muted">{collectionNotice.description}</p>
@@ -176,7 +184,7 @@ export default async function ArticlePage({
               </SummarySection>
               <SummarySection title="배경" variant="body">{summary.summary.background}</SummarySection>
               <SummarySection title="사건 구조" variant="body">{summary.summary.caseStructure}</SummarySection>
-              <div className="grid gap-5 md:grid-cols-2">
+              <div className="grid gap-2 md:grid-cols-2">
                 <SummarySection title="시사점" variant="insight">{summary.summary.implications}</SummarySection>
                 <SummarySection title="실무상 참고" variant="insight">{summary.summary.practicalNotes}</SummarySection>
               </div>
@@ -204,15 +212,15 @@ export default async function ArticlePage({
           </SummarySection>
         </article>
 
-        <aside className="space-y-4 lg:sticky lg:top-28">
+        <aside className="space-y-4 lg:sticky lg:top-[calc(var(--chrome-header-height)+1rem)]">
           <SurfaceCard className="p-5">
-            <h2 className="text-base font-semibold text-ink">자료 정보</h2>
+            <h2 className="archive-rule-title text-base font-semibold text-[#243b33]">사건 정보</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-start gap-3">
                 <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-ink">기관</dt>
-                  <dd className="mt-1 text-ink-muted">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</dd>
+                  <dd className="mt-1 text-ink-muted"><Link href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</Link></dd>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -221,6 +229,10 @@ export default async function ArticlePage({
                   <dt className="font-semibold text-ink">{articleDateLabel(article.sourceKey)}</dt>
                   <dd className="mt-1 text-ink-muted">{formatDisplayDate(article.originalPublishedAt)}</dd>
                 </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
+                <div><dt className="font-semibold text-ink">유형</dt><dd className="mt-1 text-ink-muted">{displayArticleTypeLabel(article)}</dd></div>
               </div>
               {boeMetadata?.boePublishedAt ? (
                 <div className="flex items-start gap-3">
@@ -243,7 +255,7 @@ export default async function ArticlePage({
               </div>
             </dl>
             {originalHref ? (
-              <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex w-full min-h-11 items-center justify-center gap-2 rounded-lg border border-court/25 bg-court/5 px-4 text-sm font-semibold text-court transition hover:bg-court/10">
+              <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-sm border border-[#9bb0a5] bg-[#f2f6f3] px-4 text-sm font-semibold text-[#123d32] transition hover:bg-[#e7efea]">
                 공식 원문 확인
                 <ExternalLink className="size-4" aria-hidden="true" />
               </a>

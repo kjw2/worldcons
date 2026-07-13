@@ -9,10 +9,10 @@ export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
   }
 
   return (
-    <ul className="grid gap-3 md:grid-cols-2">
+    <ul className="grid border-t border-[#cbd4ce] md:grid-cols-2">
       {articles.map((article) => (
-        <li key={article.slug} className="rounded-lg border border-line bg-white p-4">
-          <Link href={`/articles/${article.slug}`} prefetch={false} className="focus-ring line-clamp-2 rounded-sm font-semibold leading-6 text-ink hover:text-primary">
+        <li key={article.slug} className="border-b border-[#dce2de] p-4 md:odd:border-r">
+          <Link href={`/articles/${article.slug}`} prefetch={false} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#213f35] hover:text-[#2e6552]">
             {article.koreanTitle || article.originalTitle}
           </Link>
           <p className="mt-2 text-xs text-ink-subtle">

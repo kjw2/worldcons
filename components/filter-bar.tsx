@@ -19,7 +19,7 @@ const contentTypes: Array<{ value: ArticleContentType; label: string }> = [
   { value: "other", label: displayContentTypeLabel("other") },
 ];
 
-const selectClassName = "focus-ring h-11 w-full min-w-0 max-w-full truncate rounded-lg border border-line bg-white px-3 text-sm text-ink shadow-sm";
+const selectClassName = "focus-ring h-11 w-full min-w-0 max-w-full truncate rounded-sm border border-[#cbd4ce] bg-white px-3 text-sm text-[#243a33]";
 
 function hrefForJurisdiction(basePath: string, params: URLSearchParams, jurisdiction: string, isActive: boolean) {
   const next = new URLSearchParams(params);
@@ -60,8 +60,8 @@ export function FilterBar({
   const searchHiddenFields = [...params.entries()].filter(([key]) => key !== "q" && key !== "page" && key !== "pageSize");
 
   return (
-    <SurfaceCard className="min-w-0 space-y-4 overflow-hidden p-4">
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <SurfaceCard className="min-w-0 overflow-hidden border-[#bdc9c2]">
+      <div className="flex min-w-0 flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <TimeRangeTabs
             activeRange={activeRange}
@@ -109,15 +109,15 @@ export function FilterBar({
         </div>
       </div>
 
-      <details className="group min-w-0 overflow-hidden rounded-lg border border-line bg-surface-muted/45" open={hasAdvancedFilters}>
-        <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-ink marker:hidden">
+      <details className="group min-w-0 overflow-hidden border-t border-[#d8dfda] bg-[#f6f8f5]" open={hasAdvancedFilters}>
+        <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#29473d] marker:hidden">
           <span className="inline-flex items-center gap-2">
             <SlidersHorizontal className="size-4 text-ink-muted" aria-hidden="true" />
             상세 필터
           </span>
           <ChevronDown className="size-4 text-ink-muted transition group-open:rotate-180" aria-hidden="true" />
         </summary>
-        <form action={basePath} className="grid min-w-0 grid-cols-1 gap-3 border-t border-line p-3 sm:p-4 md:grid-cols-2 lg:grid-cols-4">
+        <form action={basePath} className="grid min-w-0 grid-cols-1 gap-3 border-t border-[#d8dfda] p-3 sm:p-4 md:grid-cols-2 lg:grid-cols-4">
           {activeRange !== "latest" ? <input type="hidden" name="range" value={activeRange} /> : null}
           <select name="source" defaultValue={params.get("source") ?? ""} className={selectClassName}>
             <option value="">기관 전체</option>
@@ -161,7 +161,7 @@ export function FilterBar({
           </select>
           {params.get("q") ? <input type="hidden" name="q" value={params.get("q") ?? ""} /> : null}
           {params.get("mode") ? <input type="hidden" name="mode" value={params.get("mode") ?? ""} /> : null}
-          <button type="submit" className="focus-ring inline-flex h-11 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-line-strong hover:bg-surface-muted lg:col-span-3">
+          <button type="submit" className="focus-ring inline-flex h-11 w-full min-w-0 items-center justify-center gap-2 rounded-sm border border-[#123d32] bg-[#123d32] px-4 text-sm font-semibold text-white transition hover:bg-[#285748] lg:col-span-3">
             적용
           </button>
         </form>

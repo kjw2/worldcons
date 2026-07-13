@@ -12,16 +12,16 @@ export function TagHubList({ tags }: { tags: TagSummary[] }) {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {tags.map((tag) => (
         <TrackedLink
           key={tag.slug}
           href={`/tags/${tag.slug}`}
           event={{ eventType: "tag_click", tagSlug: tag.slug, tagName: tag.name, metadata: { surface: "tag_hub" } }}
-          className={surfaceCardClassName("interactive", "focus-ring block min-w-0 p-5")}
+          className={surfaceCardClassName("interactive", "focus-ring block min-w-0 p-5 sm:p-6")}
         >
           <div className="flex items-start justify-between gap-3">
-            <span className="inline-flex min-w-0 items-center gap-2 break-words text-lg font-semibold leading-snug text-ink [overflow-wrap:anywhere]">
+            <span className="archive-serif inline-flex min-w-0 items-center gap-2 break-words text-xl font-semibold leading-snug text-[#173d33] [overflow-wrap:anywhere]">
               <Hash className="size-4 shrink-0 text-court" aria-hidden="true" />
               {tag.name}
             </span>
