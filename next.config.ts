@@ -31,8 +31,28 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
 ];
 
+const publicV2Redirects = [
+  { source: "/", destination: "/v2" },
+  { source: "/list", destination: "/v2/list" },
+  { source: "/search", destination: "/v2/search" },
+  { source: "/guide", destination: "/v2/guide" },
+  { source: "/articles/:path*", destination: "/v2/articles/:path*" },
+  { source: "/glossary/:path*", destination: "/v2/glossary/:path*" },
+  { source: "/sources/:path*", destination: "/v2/sources/:path*" },
+  { source: "/tags/:path*", destination: "/v2/tags/:path*" },
+] as const;
+
 const nextConfig: NextConfig = {
   typedRoutes: false,
+  async redirects() {
+    return publicV2Redirects.map((route) => ({ ...route, permanent: false }));
+  },
+  async rewrites() {
+    return [
+      { source: "/v2", destination: "/" },
+      { source: "/v2/:path*", destination: "/:path*" },
+    ];
+  },
   async headers() {
     return [
       {
