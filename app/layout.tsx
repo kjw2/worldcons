@@ -32,7 +32,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <FixedChromeToggle />
         <BackToTopButton />
         <footer id="site-footer" className="border-t border-[#173f34] bg-[#f7f8f5]">
-          <div className="mx-auto flex min-h-[110px] max-w-[1480px] flex-col justify-center gap-2 px-4 py-6 text-sm leading-6 text-[#5d6b66] sm:px-6 lg:px-10">
+          <div className="mx-auto flex min-h-[110px] max-w-[1248px] flex-col justify-center gap-2 px-4 py-6 text-sm leading-6 text-[#5d6b66] sm:px-6 lg:px-10">
             <p className="archive-wordmark text-lg font-semibold text-[#123d32]">WORLD CONS</p>
             <p>2026 World Cons · AI 요약은 참고용입니다. 정확한 법적 판단이나 인용은 각 기관의 공식 원문을 확인하세요.</p>
           </div>

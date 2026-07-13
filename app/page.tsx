@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight, MessageSquareText, Scale, ShieldCheck, Vote } from "lucide-react";
+import { ArrowRight, CalendarDays, Landmark, MessageSquareText, Scale, ShieldCheck, Vote } from "lucide-react";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
@@ -53,8 +53,9 @@ function HomeSkeleton() {
       <div className="mb-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-28" />)}
       </div>
+      <SkeletonBlock className="mb-8 h-64 sm:h-72" />
       <div className="border border-[#d4dcd7] bg-white">
-        {Array.from({ length: 4 }).map((_, index) => (
+        {Array.from({ length: 3 }).map((_, index) => (
           <div key={index} className="grid min-h-24 grid-cols-[5rem_minmax(0,1fr)] gap-4 border-b border-[#e0e5e2] p-4 last:border-b-0">
             <SkeletonBlock className="h-14 w-14" />
             <div className="space-y-2"><SkeletonBlock className="h-4 w-36" /><SkeletonBlock className="h-5 w-10/12" /><SkeletonBlock className="h-4 w-7/12" /></div>
@@ -94,6 +95,24 @@ function articleHref(article: ArticleListItem) {
   return `/v2/articles/${article.slug}?${new URLSearchParams({ returnTo: "/v2" }).toString()}`;
 }
 
+function LeadDecision({ article }: { article: ArticleListItem }) {
+  const title = article.koreanTitle || article.originalTitle || "제목 미상";
+  const summary = article.oneLineSummary || "요약 준비 중입니다.";
+  return (
+    <section className="relative mb-8 min-h-[270px] overflow-hidden border-y border-[#c8d1cc] bg-[#f6f7f3] px-6 py-7 sm:px-8 lg:pr-[34%]" aria-labelledby="lead-decision">
+      <div className="relative z-10 max-w-3xl">
+        <p className="archive-kicker">오늘의 주요 결정</p>
+        <p className="mt-4 text-sm font-semibold text-[#38574c]">{displaySourceLabel(article.sourceKey)} · {displayArticleTypeLabel(article)}</p>
+        <h2 id="lead-decision" className="archive-serif mt-2 break-keep text-3xl font-semibold leading-tight text-[#123d32] sm:text-4xl">{title}</h2>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#596862]"><span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span>{displayJurisdictionLabel(article.jurisdiction)}</span></div>
+        <p className="mt-3 line-clamp-2 text-sm leading-7 text-[#4f5f59]">{summary}</p>
+        <Link href={articleHref(article)} prefetch={false} className="focus-ring mt-4 inline-flex items-center gap-2 rounded-sm border-b border-[#123d32] pb-1 text-sm font-semibold text-[#123d32] hover:text-[#2a6350]">자세히 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
+      </div>
+      <Landmark className="pointer-events-none absolute -bottom-10 -right-10 size-[280px] stroke-[0.65] text-[#8ea097]/25 sm:size-[350px] lg:right-2 lg:size-[400px]" aria-hidden="true" />
+    </section>
+  );
+}
+
 function CountryArticleMobile({ article }: { article: ArticleListItem }) {
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   return (
@@ -128,7 +147,7 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
   return (
     <section aria-labelledby="country-latest">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div><p className="archive-kicker">Latest by country</p><h2 id="country-latest" className="archive-serif mt-1 text-3xl font-semibold text-[#123d32]">국가별 최신 판례</h2></div>
+        <div><p className="archive-kicker">Latest by country</p><h2 id="country-latest" className="archive-serif mt-1 text-2xl font-semibold text-[#123d32]">최신 판례</h2></div>
         <Link href="/v2/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
       </div>
       <div className="overflow-hidden rounded-sm border border-[#cbd5cf] bg-white">
@@ -145,23 +164,22 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
 
 async function HomeContent() {
   const { tags, latestArticles } = await getHomePortalData();
+  const leadArticle = latestArticles[0];
+  const remainingArticles = latestArticles.slice(1);
   return (
     <>
       <PageViewTracker event={{ eventType: "page_view", path: "/v2", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />
-      <section className="mb-8 border-b border-[#b8c5be] pb-7">
-        <p className="archive-kicker">World Constitutional Cases</p>
-        <h1 className="archive-serif mt-2 text-4xl font-semibold text-[#123d32] sm:text-5xl">최신 헌법 판례</h1>
-        <p className="mt-4 max-w-3xl text-sm leading-7 text-[#596862]">미국, 독일, 프랑스, 스페인 헌법재판기관의 최신 공개 판례를 국가별로 한 건씩 확인할 수 있습니다.</p>
-      </section>
+      <h1 className="sr-only">최신 헌법 판례</h1>
       <IssueTrackers tags={tags} />
-      <CountryLatestPortal articles={latestArticles} />
+      {leadArticle ? <LeadDecision article={leadArticle} /> : null}
+      <CountryLatestPortal articles={remainingArticles} />
     </>
   );
 }
 
 export default function HomePage() {
   return (
-    <PageShell className="public-archive-page">
+    <PageShell className="public-archive-page max-w-[1248px] py-6 sm:py-8">
       <Suspense fallback={<HomeSkeleton />}><HomeContent /></Suspense>
     </PageShell>
   );

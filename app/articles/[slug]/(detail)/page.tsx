@@ -122,7 +122,7 @@ export default async function ArticlePage({
   const returnHref = articleReturnHref(paramsObject);
 
   return (
-    <PageShell className="max-w-[1480px]">
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <PageViewTracker event={articleViewEvent} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
       <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치">

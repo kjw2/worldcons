@@ -23,7 +23,7 @@ export function PublicSiteHeader() {
 
   return (
     <header id="site-header" className="public-site-header border-b border-[#173f34] bg-[#fdfdfb]/98">
-      <div className="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
         <div className="flex min-h-[92px] items-center justify-between gap-5 border-b border-[#ccd4cf] py-4 sm:min-h-[106px]">
           <Link href="/v2" className="focus-ring min-w-0 rounded-sm" aria-label="World Cons 홈">
             <span className="archive-wordmark block truncate text-[30px] font-semibold leading-none text-[#123d32] sm:text-[42px]">WORLD CONS</span>
