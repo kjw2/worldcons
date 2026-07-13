@@ -1,147 +1,66 @@
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight, CalendarDays, Landmark, MessageSquareText, Scale, ShieldCheck, Vote } from "lucide-react";
-import { FilterBar } from "@/components/filter-bar";
-import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
+import { ArrowRight, MessageSquareText, Scale, ShieldCheck, Vote } from "lucide-react";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
-import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
-import { listArticles, listJurisdictionArticleCounts, listSources, listTags } from "@/lib/db/queries";
-import type { ArticleListFilters, ArticleListItem, ArticleListResult, SourceRecord, TagSummary } from "@/lib/db/types";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
+import { listArticles, listSources, listTags } from "@/lib/db/queries";
+import type { ArticleListItem, TagSummary } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
-import { articleFiltersFromSearchParams, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const revalidate = 60;
 
-const getHomeFilterData = unstable_cache(
-  async (range: ArticleListFilters["range"]) => {
-    const sources = await listSources();
-    const jurisdictions = Array.from(new Set(sources.map((source) => source.jurisdiction)));
-    const [tags, jurisdictionArticleCounts] = await Promise.all([
+const getHomePortalData = unstable_cache(
+  async () => {
+    const [sources, tags] = await Promise.all([
+      listSources(),
       listTags({ sort: "count", limit: 30 }),
-      listJurisdictionArticleCounts(jurisdictions, { range }),
     ]);
+    const jurisdictions = Array.from(
+      new Set(sources.filter((source) => source.isActive).map((source) => source.jurisdiction)),
+    );
+    const countryResults = await Promise.all(
+      jurisdictions.map((jurisdiction) =>
+        listArticles({ jurisdiction, page: 1, pageSize: 1, count: "none", includeViewCounts: false }),
+      ),
+    );
+    const latestArticles = countryResults
+      .flatMap((result) => result.items.slice(0, 1))
+      .sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""));
 
-    return { sources, tags, jurisdictionArticleCounts };
+    return { tags, latestArticles };
   },
-  ["home-filter-data-v3"],
-  { revalidate: 300, tags: [PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
+  ["home-country-portal-v1"],
+  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
-
-const getHomeArticles = unstable_cache(
-  async (filters: ArticleListFilters) => listArticles(filters),
-  ["home-articles-v3"],
-  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
-);
-
-function canUseJurisdictionTotal(filters: ArticleListFilters) {
-  return !filters.q && !filters.source && !filters.type && !filters.tag && !filters.language;
-}
-
-function withJurisdictionTotal(articles: ArticleListResult, jurisdictionArticleCounts: Record<string, number>, filters: ArticleListFilters) {
-  const total = Math.max(
-    articles.items.length,
-    filters.jurisdiction
-      ? jurisdictionArticleCounts[filters.jurisdiction] ?? 0
-      : Object.values(jurisdictionArticleCounts).reduce((sum, count) => sum + count, 0),
-  );
-  const shownThrough = (articles.pageInfo.page - 1) * articles.pageInfo.pageSize + articles.items.length;
-
-  return {
-    ...articles,
-    pageInfo: {
-      ...articles.pageInfo,
-      total: Math.max(total, shownThrough),
-      hasMore: shownThrough < total,
-      totalIsExact: true,
-    },
-  };
-}
 
 function SkeletonBlock({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-md bg-surface-muted ${className}`} />;
-}
-
-function FilterBarSkeleton() {
-  return (
-    <div className="rounded-lg border border-line bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap gap-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonBlock key={`range-${index}`} className="h-10 w-20 rounded-lg" />
-        ))}
-      </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <SkeletonBlock className="h-11 rounded-lg" />
-        <SkeletonBlock className="h-11 rounded-lg" />
-        <SkeletonBlock className="h-11 rounded-lg" />
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {Array.from({ length: 8 }).map((_, index) => (
-          <SkeletonBlock key={`tag-${index}`} className="h-8 w-24 rounded-full" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ArticleCardSkeleton() {
-  return (
-    <div className="flex min-h-[17rem] flex-col rounded-lg border border-line bg-white p-4 shadow-sm">
-      <div className="mb-3 flex gap-2">
-        <SkeletonBlock className="h-6 w-20 rounded-full" />
-        <SkeletonBlock className="h-6 w-14 rounded-full" />
-      </div>
-      <div className="space-y-2">
-        <SkeletonBlock className="h-5 w-11/12" />
-        <SkeletonBlock className="h-5 w-8/12" />
-      </div>
-      <div className="mt-4 space-y-2">
-        <SkeletonBlock className="h-4 w-full" />
-        <SkeletonBlock className="h-4 w-10/12" />
-        <SkeletonBlock className="h-4 w-7/12" />
-      </div>
-      <div className="mt-4 flex gap-2">
-        <SkeletonBlock className="h-6 w-16 rounded-full" />
-        <SkeletonBlock className="h-6 w-20 rounded-full" />
-      </div>
-      <div className="grow" />
-      <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
-        <SkeletonBlock className="h-4 w-24" />
-        <div className="flex gap-2">
-          <SkeletonBlock className="h-8 w-14 rounded-md" />
-          <SkeletonBlock className="size-8 rounded-md" />
-          <SkeletonBlock className="size-8 rounded-md" />
-        </div>
-      </div>
-    </div>
-  );
+  return <div aria-hidden="true" className={`animate-pulse rounded-sm bg-[#e7ebe8] ${className}`} />;
 }
 
 function HomeSkeleton() {
   return (
     <div aria-busy="true" aria-live="polite">
-      <span className="sr-only">최신 자료를 불러오는 중입니다.</span>
+      <span className="sr-only">국가별 최신 판례를 불러오는 중입니다.</span>
+      <div className="mb-8 border-b border-[#b8c5be] pb-7">
+        <SkeletonBlock className="h-4 w-28" />
+        <SkeletonBlock className="mt-3 h-12 w-80 max-w-full" />
+        <SkeletonBlock className="mt-4 h-5 w-[36rem] max-w-full" />
+      </div>
       <div className="mb-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-28 rounded-sm" />)}
+        {Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-28" />)}
       </div>
-      <SkeletonBlock className="mb-8 h-72 rounded-sm" />
-      <div className="mb-6">
-        <FilterBarSkeleton />
+      <div className="border border-[#d4dcd7] bg-white">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="grid min-h-24 grid-cols-[5rem_minmax(0,1fr)] gap-4 border-b border-[#e0e5e2] p-4 last:border-b-0">
+            <SkeletonBlock className="h-14 w-14" />
+            <div className="space-y-2"><SkeletonBlock className="h-4 w-36" /><SkeletonBlock className="h-5 w-10/12" /><SkeletonBlock className="h-4 w-7/12" /></div>
+          </div>
+        ))}
       </div>
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SkeletonBlock className="h-5 w-24" />
-          <SkeletonBlock className="h-5 w-20" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 9 }).map((_, index) => (
-            <ArticleCardSkeleton key={index} />
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
@@ -153,13 +72,13 @@ function IssueTrackers({ tags }: { tags: TagSummary[] }) {
   if (featuredTags.length === 0) return null;
 
   return (
-    <section className="mb-8" aria-labelledby="issue-trackers">
+    <section className="mb-9" aria-labelledby="issue-trackers">
       <h2 id="issue-trackers" className="archive-rule-title mb-3 text-base font-semibold text-[#243b33]">주요 헌법 쟁점</h2>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {featuredTags.map((tag, index) => {
           const Icon = issueIcons[index % issueIcons.length];
           return (
-            <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring group grid min-h-28 grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-[#d4dcd7] bg-white p-4 transition hover:border-[#829b8e] hover:bg-[#f8faf8]">
+            <Link key={tag.slug} href={`/v2/tags/${tag.slug}`} prefetch={false} className="focus-ring group grid min-h-28 grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-[#d4dcd7] bg-white p-4 transition hover:border-[#829b8e] hover:bg-[#f8faf8]">
               <span className="inline-flex size-10 items-center justify-center text-[#315b4d]"><Icon className="size-6" aria-hidden="true" /></span>
               <span className="min-w-0"><span className="archive-serif block break-words text-lg font-semibold text-[#173d33]">{tag.name}</span><span className="mt-2 block text-xs text-[#68756f]">관련 판례 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</span></span>
               <ArrowRight className="mt-auto size-4 text-[#7c8983] transition group-hover:translate-x-0.5 group-hover:text-[#123d32]" aria-hidden="true" />
@@ -171,121 +90,79 @@ function IssueTrackers({ tags }: { tags: TagSummary[] }) {
   );
 }
 
-function articleHref(article: ArticleListItem, paramsString: string) {
-  const returnTo = paramsString ? `/?${paramsString}` : "/";
-  return `/articles/${article.slug}?${new URLSearchParams({ returnTo }).toString()}`;
+function articleHref(article: ArticleListItem) {
+  return `/v2/articles/${article.slug}?${new URLSearchParams({ returnTo: "/v2" }).toString()}`;
 }
 
-function LeadDecision({ article, paramsString }: { article: ArticleListItem; paramsString: string }) {
+function CountryArticleMobile({ article }: { article: ArticleListItem }) {
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
-  const summary = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
-
   return (
-    <section className="relative mb-8 min-h-[300px] overflow-hidden rounded-sm border-y border-[#c8d1cc] bg-[#f6f7f3] px-6 py-7 sm:px-8 sm:py-9 lg:pr-[34%]" aria-labelledby="lead-decision">
-      <div className="relative z-10 max-w-4xl">
-        <p className="archive-kicker">오늘의 주요 결정</p>
-        <p className="mt-5 text-sm font-semibold text-[#38574c]">{displaySourceLabel(article.sourceKey)} · {displayArticleTypeLabel(article)}</p>
-        <h1 id="lead-decision" className="archive-serif mt-3 break-keep text-3xl font-semibold leading-tight text-[#123d32] sm:text-4xl lg:text-[42px]">{title}</h1>
-        <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-[#596862]"><span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span>{displayJurisdictionLabel(article.jurisdiction)}</span></div>
-        <p className="mt-4 line-clamp-3 max-w-3xl text-sm leading-7 text-[#4f5f59] sm:text-base">{summary}</p>
-        <Link href={articleHref(article, paramsString)} prefetch={false} className="focus-ring mt-5 inline-flex items-center gap-2 rounded-sm border-b border-[#123d32] pb-1 text-sm font-semibold text-[#123d32] hover:text-[#2a6350]">자세히 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
+    <Link href={articleHref(article)} prefetch={false} className="focus-ring block border-b border-[#e0e5e2] p-4 last:border-b-0 hover:bg-[#f8faf8] xl:hidden">
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-sm font-semibold text-[#25483c]"><span className="text-2xl" aria-hidden="true">{displayJurisdictionFlag(article.jurisdiction)}</span>{displayJurisdictionLabel(article.jurisdiction)}</p>
+        <span className="text-xs text-[#6a7772]">{formattedArticleDate(article)}</span>
       </div>
-      <Landmark className="pointer-events-none absolute -bottom-10 -right-10 size-[280px] stroke-[0.7] text-[#8ea097]/25 sm:size-[360px] lg:right-4 lg:size-[420px]" aria-hidden="true" />
-    </section>
+      <h3 className="archive-serif mt-3 text-lg font-semibold leading-7 text-[#173d33]">{title}</h3>
+      <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#5b6964]">{article.oneLineSummary || "요약 준비 중입니다."}</p>
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#74817c]"><span>{displaySourceLabel(article.sourceKey)} · {displayArticleTypeLabel(article)}</span><ArrowRight className="size-4 text-[#315b4d]" aria-hidden="true" /></div>
+    </Link>
   );
 }
 
-function countryHref(jurisdiction: string, paramsString: string) {
-  const params = new URLSearchParams(paramsString);
-  params.set("jurisdiction", jurisdiction);
-  params.delete("source");
-  params.delete("page");
-  return `/?${params.toString()}`;
+function CountryArticleRow({ article }: { article: ArticleListItem }) {
+  const title = article.koreanTitle || article.originalTitle || "제목 미상";
+  const primaryTag = article.tags[0]?.name ?? "-";
+  return (
+    <Link href={articleHref(article)} prefetch={false} className="focus-ring hidden min-h-[76px] grid-cols-[100px_110px_170px_90px_minmax(260px,1fr)_150px] items-center gap-3 border-b border-[#e0e5e2] px-4 py-3 text-sm last:border-b-0 hover:bg-[#f8faf8] xl:grid">
+      <span className="tabular-nums text-[#5f6c67]">{formattedArticleDate(article)}</span>
+      <span className="flex items-center gap-2 font-semibold text-[#25483c]"><span className="text-xl" aria-hidden="true">{displayJurisdictionFlag(article.jurisdiction)}</span>{displayJurisdictionLabel(article.jurisdiction)}</span>
+      <span className="truncate text-[#52615b]">{displaySourceLabel(article.sourceKey)}</span>
+      <span className="text-[#52615b]">{displayArticleTypeLabel(article)}</span>
+      <span className="archive-serif line-clamp-2 font-semibold leading-6 text-[#173d33]">{title}</span>
+      <span className="flex items-center justify-between gap-2 text-xs text-[#65736d]"><span className="truncate">{primaryTag}</span><ArrowRight className="size-4 shrink-0 text-[#315b4d]" aria-hidden="true" /></span>
+    </Link>
+  );
 }
 
-function CountryShortcuts({ sources, counts, paramsString }: { sources: SourceRecord[]; counts: Record<string, number>; paramsString: string }) {
+function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
   return (
-    <section className="mb-10" aria-labelledby="country-shortcuts">
-      <h2 id="country-shortcuts" className="archive-rule-title mb-3 text-base font-semibold text-[#243b33]">국가별 바로가기</h2>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {sources.map((source) => (
-          <Link key={source.sourceKey} href={countryHref(source.jurisdiction, paramsString)} prefetch={false} className="focus-ring flex min-h-20 items-center gap-4 rounded-sm border border-[#d4dcd7] bg-white px-4 transition hover:border-[#879d92] hover:bg-[#f8faf8]">
-            <span className="text-3xl" aria-hidden="true">{displayJurisdictionFlag(source.jurisdiction)}</span>
-            <span><span className="archive-serif block text-lg font-semibold text-[#173d33]">{displayJurisdictionLabel(source.jurisdiction)}</span><span className="mt-1 block text-xs text-[#6a7772]">{(counts[source.jurisdiction] ?? 0).toLocaleString("ko-KR")}건</span></span>
-          </Link>
+    <section aria-labelledby="country-latest">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div><p className="archive-kicker">Latest by country</p><h2 id="country-latest" className="archive-serif mt-1 text-3xl font-semibold text-[#123d32]">국가별 최신 판례</h2></div>
+        <Link href="/v2/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
+      </div>
+      <div className="overflow-hidden rounded-sm border border-[#cbd5cf] bg-white">
+        <div className="hidden grid-cols-[100px_110px_170px_90px_minmax(260px,1fr)_150px] gap-3 border-b border-[#b9c6be] bg-[#f4f6f3] px-4 py-2.5 text-xs font-semibold text-[#53635d] xl:grid"><span>날짜</span><span>국가</span><span>기관</span><span>유형</span><span>제목</span><span>주제</span></div>
+        {articles.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm text-[#6a7772]">공개된 최신 판례가 없습니다.</p>
+        ) : articles.map((article) => (
+          <div key={article.slug}><CountryArticleMobile article={article} /><CountryArticleRow article={article} /></div>
         ))}
       </div>
     </section>
   );
 }
 
-async function HomeContent({ searchParams }: { searchParams?: Promise<SearchParams> }) {
-  const paramsObject = await resolveSearchParams(searchParams);
-  const baseFilters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9 };
-  const countFromJurisdictions = canUseJurisdictionTotal(baseFilters);
-  const filters = { ...baseFilters, count: countFromJurisdictions ? ("none" as const) : ("exact" as const) };
-  const params = new URLSearchParams();
-  Object.entries(paramsObject).forEach(([key, value]) => {
-    if (typeof value === "string" && value) params.set(key, value);
-  });
-  params.delete("page");
-  params.delete("pageSize");
-  params.delete("view");
-
-  const [articleResult, { sources, tags, jurisdictionArticleCounts }] = await Promise.all([
-    getHomeArticles(filters),
-    getHomeFilterData(filters.range),
-  ]);
-  const articles = countFromJurisdictions ? withJurisdictionTotal(articleResult, jurisdictionArticleCounts, filters) : articleResult;
-  const leadArticle = articles.items[0];
-  const feedArticles = leadArticle ? { ...articles, items: articles.items.slice(1) } : articles;
-  const pageViewEvent = {
-    eventType: "page_view" as const,
-    path: "/",
-    resultCount: articles.pageInfo.total,
-    metadata: {
-      source: filters.source,
-      jurisdiction: filters.jurisdiction,
-      tag: filters.tag,
-      language: filters.language,
-      type: filters.type,
-      range: filters.range,
-      totalIsExact: articles.pageInfo.totalIsExact,
-    },
-  };
-
+async function HomeContent() {
+  const { tags, latestArticles } = await getHomePortalData();
   return (
     <>
-      <PageViewTracker event={pageViewEvent} />
-      <IssueTrackers tags={tags} />
-      {leadArticle ? <LeadDecision article={leadArticle} paramsString={params.toString()} /> : null}
-      <CountryShortcuts sources={sources} counts={jurisdictionArticleCounts} paramsString={params.toString()} />
-      <section aria-labelledby="latest-decisions">
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div><p className="archive-kicker">Archive</p><h2 id="latest-decisions" className="archive-serif mt-1 text-3xl font-semibold text-[#123d32]">최신 판례</h2></div>
-          <Link href="/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 목록<ArrowRight className="size-4" aria-hidden="true" /></Link>
-        </div>
-      <div className="mb-6">
-        <FilterBar
-          activeRange={filters.range ?? "latest"}
-          sources={sources}
-          tags={tags}
-          paramsString={params.toString()}
-          jurisdictionArticleCounts={jurisdictionArticleCounts}
-        />
-      </div>
-      <InfiniteArticleFeed initialResult={feedArticles} queryString={params.toString()} pageSize={9} leadingItemCount={leadArticle ? 1 : 0} />
+      <PageViewTracker event={{ eventType: "page_view", path: "/v2", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />
+      <section className="mb-8 border-b border-[#b8c5be] pb-7">
+        <p className="archive-kicker">World Constitutional Cases</p>
+        <h1 className="archive-serif mt-2 text-4xl font-semibold text-[#123d32] sm:text-5xl">최신 헌법 판례</h1>
+        <p className="mt-4 max-w-3xl text-sm leading-7 text-[#596862]">미국, 독일, 프랑스, 스페인 헌법재판기관의 최신 공개 판례를 국가별로 한 건씩 확인할 수 있습니다.</p>
       </section>
+      <IssueTrackers tags={tags} />
+      <CountryLatestPortal articles={latestArticles} />
     </>
   );
 }
 
-export default function HomePage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+export default function HomePage() {
   return (
     <PageShell className="public-archive-page">
-      <Suspense fallback={<HomeSkeleton />}>
-        <HomeContent searchParams={searchParams} />
-      </Suspense>
+      <Suspense fallback={<HomeSkeleton />}><HomeContent /></Suspense>
     </PageShell>
   );
 }
