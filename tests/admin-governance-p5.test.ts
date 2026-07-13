@@ -236,10 +236,8 @@ test("retirement and retention tools never auto-flip flags or delete authority h
   assert.match(applyBody, /deadLettersDeleted', 0/);
 });
 
-test("governance actions are feature-gated, session-only, CSRF-protected, role-bound, and audited", async () => {
-  const previous = { ui: process.env.ADMIN_REDESIGN_UI_ENABLED, p5: process.env.ADMIN_P5_GOVERNANCE_UI_ENABLED, user: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD, session: process.env.ADMIN_SESSION_SECRET, cron: process.env.CRON_SECRET, operations: process.env.ADMIN_P5_OWNER_OPERATIONS_IDENTITIES, data: process.env.ADMIN_P5_OWNER_DATA_IDENTITIES, security: process.env.ADMIN_P5_OWNER_SECURITY_IDENTITIES };
-  process.env.ADMIN_REDESIGN_UI_ENABLED = "true";
-  process.env.ADMIN_P5_GOVERNANCE_UI_ENABLED = "true";
+test("governance actions are session-only, CSRF-protected, role-bound, and audited", async () => {
+  const previous = { user: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD, session: process.env.ADMIN_SESSION_SECRET, cron: process.env.CRON_SECRET, operations: process.env.ADMIN_P5_OWNER_OPERATIONS_IDENTITIES, data: process.env.ADMIN_P5_OWNER_DATA_IDENTITIES, security: process.env.ADMIN_P5_OWNER_SECURITY_IDENTITIES };
   process.env.ADMIN_USERNAME = "p5-operator";
   process.env.ADMIN_PASSWORD = "test-password";
   process.env.ADMIN_SESSION_SECRET = "p5-session-secret-for-focused-tests";
@@ -273,7 +271,7 @@ test("governance actions are feature-gated, session-only, CSRF-protected, role-b
     assert.doesNotMatch(route, /isAuthorizedSecretRequest|adminMutationAuthFailureStatus/);
     assert.doesNotMatch(JSON.stringify(await unboundRole.json()), /p5-operator|different-operator|[0-9a-f]{64}/);
   } finally {
-    const mapping = { ui: "ADMIN_REDESIGN_UI_ENABLED", p5: "ADMIN_P5_GOVERNANCE_UI_ENABLED", user: "ADMIN_USERNAME", password: "ADMIN_PASSWORD", session: "ADMIN_SESSION_SECRET", cron: "CRON_SECRET", operations: "ADMIN_P5_OWNER_OPERATIONS_IDENTITIES", data: "ADMIN_P5_OWNER_DATA_IDENTITIES", security: "ADMIN_P5_OWNER_SECURITY_IDENTITIES" } as const;
+    const mapping = { user: "ADMIN_USERNAME", password: "ADMIN_PASSWORD", session: "ADMIN_SESSION_SECRET", cron: "CRON_SECRET", operations: "ADMIN_P5_OWNER_OPERATIONS_IDENTITIES", data: "ADMIN_P5_OWNER_DATA_IDENTITIES", security: "ADMIN_P5_OWNER_SECURITY_IDENTITIES" } as const;
     for (const [key, envKey] of Object.entries(mapping)) {
       const value = previous[key as keyof typeof previous];
       if (value === undefined) delete process.env[envKey]; else process.env[envKey] = value;
@@ -281,14 +279,13 @@ test("governance actions are feature-gated, session-only, CSRF-protected, role-b
   }
 });
 
-test("governance UI is hidden when flags are off and has mobile/desktop layouts", () => {
-  const flags = source("lib/admin/p4/flags.ts");
+test("governance UI is part of the permanent administrator shell and has responsive layouts", () => {
   const page = source("app/admin/governance/page.tsx");
   const shell = source("components/admin-shell.tsx");
   const approval = source("components/admin-governance-approval.tsx");
-  assert.match(flags, /adminRedesignUiEnabled\(environment\)[\s\S]*ADMIN_P5_GOVERNANCE_UI_FLAG/);
-  assert.match(page, /if \(!adminGovernanceUiEnabled\(\)\) redirect\("\/admin"\)/);
-  assert.match(shell, /governanceEnabled \? \[governanceNavigation/);
+  assert.doesNotMatch(page, /adminGovernanceUiEnabled/);
+  assert.match(shell, /governanceNavigation/);
+  assert.doesNotMatch(shell, /governanceEnabled/);
   assert.match(page, /hidden overflow-x-auto md:block/);
   assert.match(page, /md:hidden/);
   assert.match(page, /min-w-0|break-words/);

@@ -15,8 +15,6 @@ import {
   LogOut,
   Menu,
   Newspaper,
-  PanelLeftClose,
-  Route,
   ShieldCheck,
   UserRound,
   X,
@@ -33,7 +31,6 @@ interface AdminNavigationItem {
 const primaryNavigation: AdminNavigationItem[] = [
   { href: "/admin", label: "Operations overview", icon: Home, exact: true },
   { href: "/admin/work", label: "Unified work queue", icon: ListChecks },
-  { href: "/admin/operations", label: "Legacy triage", icon: Route },
 ];
 
 const contentNavigation: AdminNavigationItem[] = [
@@ -44,7 +41,6 @@ const contentNavigation: AdminNavigationItem[] = [
 
 const systemNavigation: AdminNavigationItem[] = [
   { href: "/admin/ingestion-runs", label: "Ingestion runs", icon: ListChecks },
-  { href: "/admin/jobs", label: "Legacy job queue", icon: PanelLeftClose },
   { href: "/admin/audit", label: "Audit", icon: ClipboardList },
   { href: "/admin/llm", label: "LLM settings", icon: KeyRound },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
@@ -94,23 +90,23 @@ function NavigationGroup({
     </section>
   );
 }
-function Navigation({ pathname, governanceEnabled, onNavigate }: { pathname: string; governanceEnabled: boolean; onNavigate?: () => void }) {
+function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
     <div className="grid gap-6">
       <NavigationGroup label="Operate" items={primaryNavigation} pathname={pathname} onNavigate={onNavigate} />
       <NavigationGroup label="Content" items={contentNavigation} pathname={pathname} onNavigate={onNavigate} />
-      <NavigationGroup label="System" items={governanceEnabled ? [governanceNavigation, ...systemNavigation] : systemNavigation} pathname={pathname} onNavigate={onNavigate} />
+      <NavigationGroup label="System" items={[governanceNavigation, ...systemNavigation]} pathname={pathname} onNavigate={onNavigate} />
     </div>
   );
 }
 
-export function AdminShell({ children, csrfToken, identity, governanceEnabled }: { children: React.ReactNode; csrfToken: string; identity: string; governanceEnabled: boolean }) {
+export function AdminShell({ children, csrfToken, identity }: { children: React.ReactNode; csrfToken: string; identity: string }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileDialogRef = useRef<HTMLDivElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, ...(governanceEnabled ? [governanceNavigation] : []), ...systemNavigation], [governanceEnabled]);
+  const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, governanceNavigation, ...systemNavigation], []);
   const location = useMemo(
     () => allNavigation.find((item) => isCurrent(pathname, item))?.label ?? "Administrator",
     [allNavigation, pathname],
@@ -164,7 +160,7 @@ export function AdminShell({ children, csrfToken, identity, governanceEnabled }:
             </Link>
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-5">
-            <Navigation pathname={pathname} governanceEnabled={governanceEnabled} />
+            <Navigation pathname={pathname} />
           </div>
           <div className="border-t border-rule p-3">
             <Link href="/" className="focus-ring flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold text-ink/62 hover:bg-parchment">
@@ -237,7 +233,7 @@ export function AdminShell({ children, csrfToken, identity, governanceEnabled }:
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-5">
-              <Navigation pathname={pathname} governanceEnabled={governanceEnabled} onNavigate={() => setMobileOpen(false)} />
+              <Navigation pathname={pathname} onNavigate={() => setMobileOpen(false)} />
             </div>
           </aside>
         </div>

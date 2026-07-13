@@ -2,11 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { AdminTabs } from "../components/admin-tabs";
 import { POST as mutateAdminWork } from "../app/api/admin/work/[kind]/[id]/route";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "../lib/admin/p4/actions";
 import { DEFAULT_ADMIN_WORK_FILTERS, adminWorkFiltersQuery, parseAdminWorkFilters } from "../lib/admin/p4/filters";
-import { adminRedesignUiEnabled } from "../lib/admin/p4/flags";
 import { adminStateLabel } from "../lib/admin/p4/labels";
 import {
   ADMIN_WORK_QUERY_CONTRACT,
@@ -55,36 +53,23 @@ function item(id: string, patch: Partial<AdminWorkItem> = {}): AdminWorkItem {
   };
 }
 
-test("P4 UI flag is explicit-true only and legacy tabs retain flag-off parity", () => {
-  assert.equal(adminRedesignUiEnabled({}), false);
-  assert.equal(adminRedesignUiEnabled({ ADMIN_REDESIGN_UI_ENABLED: "false" }), false);
-  assert.equal(adminRedesignUiEnabled({ ADMIN_REDESIGN_UI_ENABLED: "1" }), false);
-  assert.equal(adminRedesignUiEnabled({ ADMIN_REDESIGN_UI_ENABLED: "TRUE" }), true);
-
-  const previous = process.env.ADMIN_REDESIGN_UI_ENABLED;
-  try {
-    delete process.env.ADMIN_REDESIGN_UI_ENABLED;
-    const tabs = source("components/admin-tabs.tsx");
-    assert.match(tabs, /운영 홈/);
-    assert.match(tabs, /\/admin\/jobs/);
-    process.env.ADMIN_REDESIGN_UI_ENABLED = "true";
-    assert.equal(AdminTabs({ active: "dashboard" }), null);
-  } finally {
-    if (previous === undefined) delete process.env.ADMIN_REDESIGN_UI_ENABLED;
-    else process.env.ADMIN_REDESIGN_UI_ENABLED = previous;
-  }
-
+test("redesigned administrator UI is the only supported surface", () => {
+  assert.equal(fs.existsSync(path.join(root, "components/admin-tabs.tsx")), false);
+  assert.equal(fs.existsSync(path.join(root, "lib/admin/p4/flags.ts")), false);
   const page = source("app/admin/page.tsx");
-  assert.match(page, /if \(adminRedesignUiEnabled\(\)\)[\s\S]*AdminOperationsOverview/);
-  assert.match(page, /const dashboard = await getAdminDashboardData\(\)/, "legacy dashboard must remain after the flag branch");
+  assert.match(page, /return <AdminOperationsOverview/);
+  assert.doesNotMatch(page, /adminRedesignUiEnabled|getAdminDashboardData|AdminTabs/);
+  assert.match(source("app/admin/operations/page.tsx"), /permanentRedirect\("\/admin"\)/);
+  assert.match(source("app/admin/jobs/page.tsx"), /permanentRedirect\("\/admin\/work\?type=execution"\)/);
 });
 
-test("shell navigation covers new and retained deep links with mobile keyboard behavior", () => {
+test("shell navigation covers the new admin surfaces without retired screen links", () => {
   const shell = source("components/admin-shell.tsx");
   for (const href of [
-    "/admin", "/admin/work", "/admin/operations", "/admin/articles", "/admin/candidates",
-    "/admin/glossary-candidates", "/admin/ingestion-runs", "/admin/jobs", "/admin/audit", "/admin/llm", "/admin/analytics",
+    "/admin", "/admin/work", "/admin/articles", "/admin/candidates",
+    "/admin/glossary-candidates", "/admin/ingestion-runs", "/admin/audit", "/admin/llm", "/admin/analytics", "/admin/governance",
   ]) assert.match(shell, new RegExp(href.replaceAll("/", "\\/")));
+  assert.doesNotMatch(shell, /\/admin\/operations|\/admin\/jobs|Legacy triage|Legacy job queue/);
   assert.match(shell, /aria-current/);
   assert.match(shell, /Skip to administrator content/);
   assert.match(shell, /event\.key === "Escape"/);
@@ -105,12 +90,12 @@ test("server layout renders the shell only after an authenticated session identi
   assert.doesNotMatch(layout, /"administrator"/);
 });
 
-test("new pages preserve authentication redirects and flag-off compatibility redirects", () => {
+test("new pages preserve authentication redirects without legacy UI fallbacks", () => {
   for (const file of ["app/admin/work/page.tsx", "app/admin/work/[kind]/[id]/page.tsx"]) {
     const contents = source(file);
     assert.match(contents, /isAuthorizedPageRequest/);
     assert.match(contents, /\/admin\/login\?next=/);
-    assert.match(contents, /if \(!adminRedesignUiEnabled\(\)\) redirect\("\/admin\/jobs"\)/);
+    assert.doesNotMatch(contents, /adminRedesignUiEnabled|\/admin\/jobs/);
   }
 });
 
@@ -385,5 +370,6 @@ test("specialized article actions and immutable source snapshot protections rema
   assert.match(reviewPanel, /AdminSummaryEditor/);
   assert.match(reviewApi, /includeSourceText: true/);
   assert.match(summaryEditor, /manual-summary|\/summary/);
-  assert.match(source("app/admin/layout.tsx"), /if \(!adminRedesignUiEnabled\(\)\) return children/);
+  assert.doesNotMatch(source("app/admin/layout.tsx"), /adminRedesignUiEnabled/);
+  assert.match(source("app/admin/layout.tsx"), /return <AdminShell csrfToken=\{csrfToken\} identity=\{identity\}>/);
 });

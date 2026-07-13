@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { AlertTriangle, Archive, CheckCircle2, Clock3, DatabaseBackup, ShieldCheck, XCircle } from "lucide-react";
 import { AdminGovernanceApproval } from "@/components/admin-governance-approval";
-import { adminGovernanceUiEnabled } from "@/lib/admin/p4/flags";
 import { evaluateP5RetirementReadiness, evaluateP5Slas, P5_RETIREMENT_FLAG_ORDER } from "@/lib/admin/p5/evaluator";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
@@ -29,7 +28,6 @@ function formatMetric(value: number | null, unit: "seconds" | "count") {
 export default async function AdminGovernancePage() {
   const identity = await getAuthorizedAdminPageIdentity();
   if (!identity) redirect("/admin/login");
-  if (!adminGovernanceUiEnabled()) redirect("/admin");
   const policy = resolveP5OperationalPolicy();
   const now = new Date();
   const observationStart = new Date(now.getTime() - policy.minimumObservationHours * 3_600_000).toISOString();

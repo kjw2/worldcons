@@ -72,7 +72,6 @@ Flags default off in every environment. Their controls and immediate rollback ef
 
 | Flag | Purpose | Rollback effect |
 | --- | --- | --- |
-| `ADMIN_REDESIGN_UI_ENABLED` | Use redesigned operator navigation and views | Return to V2 UI |
 | `ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED` | Mirror legacy commands into the new queue | Stop new shadow writes |
 | `ADMIN_QUEUE_V3_WORKER_ENABLED` | Claim selected job types from the new queue | Return execution to legacy worker |
 | `ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED` | Mirror confirmed legacy lifecycle outcomes for configured cohorts | Stop lifecycle evidence writes |
@@ -81,9 +80,8 @@ Flags default off in every environment. Their controls and immediate rollback ef
 | `ADMIN_PUBLICATION_V4_READ_ENABLED` | Serve public content from the V4 projection | Return public reads to legacy predicate |
 | `ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED` | Deliver publication cache events | Stop claims and preserve pending events |
 | `ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED` | Record bounded compatibility aggregates | Stop observation writes |
-| `ADMIN_P5_GOVERNANCE_UI_ENABLED` | Show governance only inside the redesigned shell | Hide governance without changing authority |
 
-Queue, lifecycle, publication, UI, and governance controls remain independent except that governance UI requires the redesigned shell. Flag evaluation must be server-side for authority decisions, environment-scoped, observable without exposing secret configuration, and covered by default-off tests. The legal rollout order is phase-gated rather than the display order of this inventory.
+The redesigned administrator shell and governance screen became the only supported UI on 2026-07-13. Queue, lifecycle, publication, and observation authority controls remain independent. Flag evaluation must be server-side for authority decisions, environment-scoped, observable without exposing secret configuration, and covered by default-off tests. The legal rollout order is phase-gated rather than the display order of this inventory.
 
 For P0, only `ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED` is read by new code. Its exact default is `false`, including when unset or set to any value other than case-insensitive `true`. With the flag off, the compatibility adapter calls only the legacy implementation and returns its existing result without evaluating shadow success. With it on, every call site must provide an explicit domain success predicate; only confirmed non-empty work is followed by a terminal `shadowed` command/run record. Resolved failure/no-op values, zero-work results, and thrown failures never shadow-write. No P0 code claims or executes V3 work, and a failed shadow submission never changes the legacy response.
 

@@ -47,8 +47,9 @@ pnpm build
 ## 배포 후 확인
 
 - 관리자 수집 실행 버튼이 정상 동작하는지 확인
-- 관리자 수집 버튼 클릭 시 HTTP 202 queued 응답이 표시되고 `/admin/jobs` 작업 큐에 job이 보이는지 확인
-- `/admin/jobs`가 로그인 후 열리고 queued/running/failed 상태와 최근 이벤트를 표시하는지 확인
+- 관리자 수집 버튼 클릭 시 HTTP 202 queued 응답이 표시되고 `/admin/work?type=execution` 통합 업무 큐에 작업이 보이는지 확인
+- `/admin/work`가 로그인 후 열리고 실행·기사·후보·공개·호환 작업 상태를 표시하는지 확인
+- `/admin/operations`는 `/admin`, `/admin/jobs`는 `/admin/work?type=execution`으로 영구 이동하는지 확인
 - 실패 또는 취소된 작업에 재시도 UI가 보이고, queued/running/cancel_requested 작업에 취소 UI가 보이는지 확인
 - 관리자 상세 화면 재요약 버튼이 정상 동작하는지 확인
 - `/admin/audit`가 로그인 없이 열리지 않고, 로그인 후 관리자 작업 이벤트를 읽기 전용으로 보여주는지 확인

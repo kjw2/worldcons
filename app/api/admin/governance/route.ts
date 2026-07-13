@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { adminGovernanceUiEnabled } from "@/lib/admin/p4/flags";
 import { P5_OWNER_ROLES, type P5OwnerRole } from "@/lib/admin/p5/types";
 import { getP5HealthEvidence, recordP5OwnerApproval } from "@/lib/admin/p5/repository";
 import { p5GovernanceActorHash, resolveP5OwnerRoleBindings } from "@/lib/admin/p5/owner-bindings";
@@ -9,7 +8,6 @@ import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { adminSessionIdentityFromRequest, adminSessionMutationAuthFailureStatus } from "@/lib/utils/auth";
 
 export async function POST(request: Request) {
-  if (!adminGovernanceUiEnabled()) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const authFailure = adminSessionMutationAuthFailureStatus(request);
   if (authFailure) return NextResponse.json({ error: "Unauthorized" }, { status: authFailure });
   const identity = adminSessionIdentityFromRequest(request);

@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, ArrowRight, LogOut, RefreshCw, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, RefreshCw, Search } from "lucide-react";
 import { AdminArticlesTable } from "@/components/admin-articles-table";
-import { AdminTabs } from "@/components/admin-tabs";
 import {
   listAdminArticles,
   type AdminArticleListFilters,
@@ -109,35 +108,20 @@ export default async function AdminArticlesPage({ searchParams }: { searchParams
   const to = Math.min(pageInfo.page * pageInfo.pageSize, pageInfo.total);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-2 text-sm font-semibold text-court">관리자</p>
-          <h1 className="text-3xl font-semibold tracking-normal text-ink">기사 관리</h1>
+          <p className="text-xs font-semibold uppercase text-court">Content</p>
+          <h1 className="mt-1 text-2xl font-semibold text-ink">기사 관리</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             전체 기사 상태와 공개 가능 여부를 필터링하고, 선택한 기사만 제한적으로 일괄 처리합니다.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/admin" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            대시보드
-          </Link>
-          <Link href={pageHref(filters, pageInfo.page)} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
-            <RefreshCw className="size-4" aria-hidden="true" />
-            새로고침
-          </Link>
-          <form action="/api/admin/logout" method="post">
-            <input type="hidden" name="csrfToken" value={csrfToken ?? ""} />
-            <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
-              <LogOut className="size-4" aria-hidden="true" />
-              로그아웃
-            </button>
-          </form>
-        </div>
+        <Link href={pageHref(filters, pageInfo.page)} className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
+          <RefreshCw className="size-4" aria-hidden="true" />
+          새로고침
+        </Link>
       </div>
-
-      <AdminTabs active="articles" />
 
       <form action="/admin/articles" className="mb-5 grid gap-3 rounded-md border border-rule bg-white p-4 shadow-sm lg:grid-cols-12">
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-3">
@@ -244,6 +228,6 @@ export default async function AdminArticlesPage({ searchParams }: { searchParams
           <ArrowRight className="size-4" aria-hidden="true" />
         </Link>
       </div>
-    </main>
+    </div>
   );
 }

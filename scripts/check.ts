@@ -1227,24 +1227,17 @@ async function assertAdminRouteSecurityControls() {
     }
 
     const adminPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
-    const adminActionPanelSource = fs.readFileSync(path.join(process.cwd(), "components/admin-action-panel.tsx"), "utf8");
-    assert(adminActionPanelSource.includes("작업 대기열 등록"), "admin action panel must display queued ingest responses");
-    assert(adminActionPanelSource.includes("작업 큐"), "admin action panel must label admin actions as queued work");
-    assert(adminActionPanelSource.includes("QueuedResult"), "admin action panel must render queued job details");
-
+    const adminOverviewSource = fs.readFileSync(path.join(process.cwd(), "components/admin-operations-overview.tsx"), "utf8");
+    const adminShellSource = fs.readFileSync(path.join(process.cwd(), "components/admin-shell.tsx"), "utf8");
+    assert(adminPageSource.includes("AdminOperationsOverview"), "admin dashboard must render the redesigned operations overview");
+    assert(!adminPageSource.includes("AdminTabs"), "admin dashboard must not retain the old tab strip");
+    assert(!fs.existsSync(path.join(process.cwd(), "components/admin-tabs.tsx")), "old admin tabs component must be removed");
+    assert(!adminShellSource.includes("/admin/operations") && !adminShellSource.includes("/admin/jobs"), "new shell must not link retired admin screens");
     const ingestionStatusPanelSource = fs.readFileSync(path.join(process.cwd(), "components/ingestion-status-panel.tsx"), "utf8");
-    for (const [label, source] of [
-      ["admin source table", adminPageSource],
-      ["ingestion status panel", ingestionStatusPanelSource],
-    ] as const) {
-      assert(source.includes("/admin/articles?sourceKey="), `${label} must link source rows to filtered article management`);
-      assert(source.includes("/admin/candidates?source="), `${label} must link source rows to filtered URL candidates`);
-      assert(source.includes("/admin/audit?q="), `${label} must link source rows to filtered audit logs`);
-      assert(source.includes('"failed_summary"'), `${label} must expose a clear failed-summary article link`);
-      assert(source.includes('"failed_fetch"'), `${label} must expose a clear failed-fetch article link`);
-      assert(source.includes('"metadata_only"'), `${label} must expose a clear metadata-only article link`);
-    }
-    assert(adminPageSource.includes('"cleaned"'), "admin source table must expose a clear pending-summary article link");
+    assert(adminOverviewSource.includes("/admin/work?"), "redesigned overview must link operational signals to the unified queue");
+    assert(ingestionStatusPanelSource.includes("/admin/articles?sourceKey="), "ingestion runs must link source rows to filtered article management");
+    assert(ingestionStatusPanelSource.includes("/admin/candidates?source="), "ingestion runs must link source rows to URL candidates");
+    assert(ingestionStatusPanelSource.includes("/admin/audit?q="), "ingestion runs must link source rows to audit logs");
 
     const adminAnalyticsPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/analytics/page.tsx"), "utf8");
     assert(!/item\.clientIp(?!Hash)/.test(adminAnalyticsPageSource), "admin analytics page must not render raw item.clientIp");
@@ -1260,19 +1253,7 @@ async function assertAdminRouteSecurityControls() {
     assert(!/event\.user_agent\b/.test(analyticsDataSource), "admin analytics access logs must not expose raw user-agent values");
 
     const adminOperationsPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/operations/page.tsx"), "utf8");
-    assert(adminOperationsPageSource.includes("isAuthorizedPageRequest"), "admin operations page must keep the admin auth gate");
-    assert(adminOperationsPageSource.includes('encodeURIComponent("/admin/operations")'), "admin operations page must redirect unauthenticated users back to /admin/operations");
-    assert(adminOperationsPageSource.includes('<AdminTabs active="operations" />'), "admin operations page must select the operations tab");
-    assert(adminOperationsPageSource.includes("/admin/ingestion-runs"), "admin operations page must link to ingestion runs");
-    assert(adminOperationsPageSource.includes("/admin/articles"), "admin operations page must link to article management");
-    assert(adminOperationsPageSource.includes("/admin/candidates"), "admin operations page must link to URL candidates");
-    assert(adminOperationsPageSource.includes("/admin/llm"), "admin operations page must link to LLM management");
-    assert(adminOperationsPageSource.includes("/admin/audit"), "admin operations page must link to audit logs");
-
-    const adminTabsSource = fs.readFileSync(path.join(process.cwd(), "components/admin-tabs.tsx"), "utf8");
-    assert(adminTabsSource.includes('"operations"'), "AdminTabs active union must include operations");
-    assert(adminTabsSource.includes('href: "/admin/operations"'), "AdminTabs must include an operations home link");
-    assert(adminTabsSource.includes('label: "운영 홈"'), "AdminTabs must label the operations link");
+    assert(adminOperationsPageSource.includes('permanentRedirect("/admin")'), "retired operations screen must redirect to the redesigned overview");
 
     const adminDashboardSummaryMigration = fs.readFileSync(
       path.join(process.cwd(), "supabase/migrations/20260709120000_admin_dashboard_summary_views.sql"),
@@ -1656,24 +1637,12 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobWorkflowSource.includes("*/15 * * * *"), "admin job workflow must run on a 15 minute schedule");
     assert(!adminJobWorkflowSource.includes("?secret="), "admin job workflow must not use query string secrets");
 
-    const adminTabsJobsSource = fs.readFileSync(path.join(process.cwd(), "components/admin-tabs.tsx"), "utf8");
-    assert(adminTabsJobsSource.includes('"jobs"'), "AdminTabs must include jobs in the active tab union");
-    assert(adminTabsJobsSource.includes("/admin/jobs"), "AdminTabs must link to the admin jobs page");
-    assert(adminTabsJobsSource.includes("작업 큐"), "AdminTabs must label the jobs tab");
-
     const adminJobsPagePath = path.join(process.cwd(), "app/admin/jobs/page.tsx");
-    assert(fs.existsSync(adminJobsPagePath), "admin jobs page must exist");
+    assert(fs.existsSync(adminJobsPagePath), "retired admin jobs route must preserve a redirect");
     const adminJobsPageSource = fs.readFileSync(adminJobsPagePath, "utf8");
-    assert(adminJobsPageSource.includes("listAdminJobs"), "admin jobs page must list queued jobs");
-    assert(adminJobsPageSource.includes("listAdminJobEvents"), "admin jobs page must support selected-job event lookup");
-    assert(adminJobsPageSource.includes("/api/admin/jobs/run"), "admin jobs page must wire the manual worker endpoint");
-    assert(adminJobsPageSource.includes("AdminJobActions"), "admin jobs page must expose cancel/retry controls");
-    assert(adminJobsPageSource.includes('AdminTabs active="jobs"'), "admin jobs page must mark the jobs tab active");
-
-    const adminJobDrainSource = fs.readFileSync(path.join(process.cwd(), "components/admin-job-drain-button.tsx"), "utf8");
-    assert(adminJobDrainSource.includes("/api/admin/jobs/run"), "admin job drain component must target the worker endpoint");
-    assert(adminJobDrainSource.includes('"x-csrf-token"'), "admin job drain component must POST with the CSRF header");
-    assert(adminJobDrainSource.includes('method: "POST"'), "admin job drain component must use POST");
+    assert(adminJobsPageSource.includes('permanentRedirect("/admin/work?type=execution")'), "retired jobs screen must redirect to the unified queue");
+    assert(!fs.existsSync(path.join(process.cwd(), "components/admin-job-drain-button.tsx")), "retired job drain UI must be removed");
+    assert(!fs.existsSync(path.join(process.cwd(), "components/admin-job-actions.tsx")), "retired job action UI must be removed");
 
     const adminJobActionRoutePath = path.join(process.cwd(), "app/api/admin/jobs/[jobId]/route.ts");
     assert(fs.existsSync(adminJobActionRoutePath), "admin job action route must exist");
@@ -1684,11 +1653,6 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobActionRouteSource.includes("retryAdminJob"), "admin job action route must retry jobs through the queue helper");
     assert(adminJobActionRouteSource.includes("appendAdminJobEvent"), "admin job action route must append queue events");
     assert(adminJobActionRouteSource.includes("recordAdminSiteEvent"), "admin job action route must write admin audit events");
-
-    const adminJobActionSource = fs.readFileSync(path.join(process.cwd(), "components/admin-job-actions.tsx"), "utf8");
-    assert(adminJobActionSource.includes("/api/admin/jobs/"), "admin job action component must POST to the selected job endpoint");
-    assert(adminJobActionSource.includes('"x-csrf-token"'), "admin job action component must POST with the CSRF header");
-    assert(adminJobActionSource.includes('method: "POST"'), "admin job action component must use POST");
 
     assert(adminApiValidationSource.includes("parseAdminJobActionBody"), "admin API validation must expose a job action parser");
     assert(adminApiValidationSource.includes('const JOB_ACTIONS = ["cancel", "retry"]'), "admin job action parser must restrict actions to cancel/retry");

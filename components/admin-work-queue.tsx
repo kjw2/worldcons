@@ -43,7 +43,7 @@ function WorkIdentity({ item }: { item: AdminWorkItem }) {
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink/52">
         <span className="font-semibold uppercase">{item.type}</span>
         <span className="break-all">{item.target}</span>
-        {item.compatibility ? <span className="rounded border border-amber-400/40 bg-amber-50 px-1.5 text-amber-900">legacy fallback</span> : null}
+        {item.compatibility ? <span className="rounded border border-amber-400/40 bg-amber-50 px-1.5 text-amber-900">compatibility</span> : null}
       </div>
     </div>
   );
@@ -95,7 +95,7 @@ export function AdminWorkQueue({ snapshot, filters, csrfToken }: { snapshot: Adm
         </label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">Stage<select name="stage" defaultValue={filters.stage ?? ""} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="">All</option><option value="collect">Collect</option><option value="process">Process</option><option value="review">Review</option><option value="publish">Publish</option></select></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">Source<input name="source" defaultValue={filters.source ?? ""} className="focus-ring h-10 min-w-0 rounded-md border border-rule px-3 text-sm font-normal" /></label>
-        <label className="grid gap-1 text-xs font-semibold text-ink/62">Type<select name="type" defaultValue={filters.type ?? ""} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="">All</option><option value="execution">Execution</option><option value="article">Article</option><option value="candidate">Candidate</option><option value="outbox">Outbox</option><option value="legacy">Legacy</option></select></label>
+        <label className="grid gap-1 text-xs font-semibold text-ink/62">Type<select name="type" defaultValue={filters.type ?? ""} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="">All</option><option value="execution">Execution</option><option value="article">Article</option><option value="candidate">Candidate</option><option value="outbox">Outbox</option><option value="legacy">Compatibility</option></select></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">State<input name="state" defaultValue={filters.state ?? ""} className="focus-ring h-10 min-w-0 rounded-md border border-rule px-3 text-sm font-normal" /></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">Attention<select name="attention" defaultValue={filters.attention} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="all">All</option><option value="required">Required</option><option value="clear">Clear</option></select></label>
         <label className="grid gap-1 text-xs font-semibold text-ink/62">SLA<select name="sla" defaultValue={filters.sla} className="focus-ring h-10 min-w-0 rounded-md border border-rule bg-white px-2 text-sm font-normal"><option value="all">All</option><option value="breached">Breached</option><option value="due">Due soon</option><option value="healthy">Healthy</option></select></label>

@@ -52,8 +52,8 @@ export function AdminOperationsOverview({ snapshot }: { snapshot: AdminOperation
 
       {work.compatibilityMode ? (
         <div className="border-y border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-6" role="status">
-          <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="size-4" aria-hidden="true" />Compatibility coverage is active</div>
-          <p className="mt-1">Unavailable P0-P3 domains remain empty while retained V2 data and routes continue to work.</p>
+          <div className="flex items-center gap-2 font-semibold"><AlertTriangle className="size-4" aria-hidden="true" />Compatibility data is active</div>
+          <p className="mt-1">Earlier job records remain available inside the unified queue. Retired administrator screens are no longer exposed.</p>
         </div>
       ) : null}
 

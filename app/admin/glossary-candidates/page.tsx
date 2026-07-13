@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { LogOut, RefreshCw } from "lucide-react";
-import { AdminTabs } from "@/components/admin-tabs";
+import { RefreshCw } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { listGlossaryCandidates, languageLabels, jurisdictionFromLanguages } from "@/lib/glossary/candidates";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
@@ -22,35 +21,24 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
   const candidates = result.candidates;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-2 text-sm font-semibold text-court">관리자</p>
-          <h1 className="text-3xl font-semibold tracking-normal text-ink">용어 후보</h1>
+          <p className="text-xs font-semibold uppercase text-court">Content</p>
+          <h1 className="mt-1 text-2xl font-semibold text-ink">용어 후보</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             공개 자료 태그에서 자주 등장하지만 용어사전에 아직 연결되지 않은 후보를 검토합니다.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <form action="/api/admin/glossary-candidates" method="post">
-            <input type="hidden" name="action" value="refresh" />
-            <input type="hidden" name="csrfToken" value={csrfToken} />
-            <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
-              <RefreshCw className="size-4" aria-hidden="true" />
-              후보 갱신
-            </button>
-          </form>
-          <form action="/api/admin/logout" method="post">
-            <input type="hidden" name="csrfToken" value={csrfToken} />
-            <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
-              <LogOut className="size-4" aria-hidden="true" />
-              로그아웃
-            </button>
-          </form>
-        </div>
+        <form action="/api/admin/glossary-candidates" method="post">
+          <input type="hidden" name="action" value="refresh" />
+          <input type="hidden" name="csrfToken" value={csrfToken} />
+          <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90">
+            <RefreshCw className="size-4" aria-hidden="true" />
+            후보 갱신
+          </button>
+        </form>
       </div>
-
-      <AdminTabs active="glossary-candidates" />
 
       {status ? (
         <div className="mb-5 rounded-md border border-rule bg-white px-4 py-3 text-sm font-semibold text-ink/72 shadow-sm">
@@ -130,6 +118,6 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
           })}
         </div>
       )}
-    </main>
+    </div>
   );
 }

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Activity, BarChart3, Bot, CalendarDays, Database, Hash, LogOut, Search, TrendingUp } from "lucide-react";
-import { AdminTabs } from "@/components/admin-tabs";
+import { Activity, BarChart3, Bot, CalendarDays, Database, Hash, Search, TrendingUp } from "lucide-react";
 import { getAnalyticsDashboardData, type AnalyticsDashboardData, type DimensionStat } from "@/lib/db/analytics";
-import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
@@ -471,29 +470,19 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
   }
 
   const days = rangeFromParam(getSearchParam(params, "days"));
-  const csrfToken = (await createAdminCsrfToken()) ?? "";
   const dashboard = await getAnalyticsDashboardData({ days });
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-2 text-sm font-semibold text-court">관리자</p>
-          <h1 className="text-3xl font-semibold tracking-normal text-ink">이용 통계</h1>
+          <p className="text-xs font-semibold uppercase text-court">System</p>
+          <h1 className="mt-1 text-2xl font-semibold text-ink">이용 통계</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             공개 자료 이용, 검색 공백, 태그 관심도, 수집 성공률, 요약 모델 품질을 함께 확인합니다.
           </p>
         </div>
-        <form action="/api/admin/logout" method="post">
-          <input type="hidden" name="csrfToken" value={csrfToken} />
-          <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
-            <LogOut className="size-4" aria-hidden="true" />
-            로그아웃
-          </button>
-        </form>
       </div>
-
-      <AdminTabs active="analytics" />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
         <span>데이터 기준: {dashboard.hasDatabase ? (dashboard.schemaReady ? "Supabase site_events" : "Supabase, migration 필요") : "Mock 데이터"}</span>
@@ -565,6 +554,6 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
           </section>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

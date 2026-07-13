@@ -1,10 +1,10 @@
 # Administrator Redesign P4 Runbook
 
-Status: implementation complete; default off; no production migration, deployment, or P5 retirement performed
+Status: production UI cutover complete; redesigned administrator shell is the only supported interface
 
 ## Scope And Authority
 
-P4 adds the feature-flagged `AdminShell`, operational overview, unified work queue, safe work detail, canonical P0/P1/P3 actions, and operator acceptance documentation. Existing V2 pages, APIs, article review/edit/resummary behavior, immutable source snapshots, legacy jobs, and public routes remain present.
+P4 provides the permanent `AdminShell`, operational overview, unified work queue, safe work detail, canonical P0/P1/P3 actions, and operator acceptance documentation. Existing article review/edit/resummary behavior, immutable source snapshots, compatibility APIs, and public routes remain present. The V2 tab strip, operations screen, and job queue screen were removed on 2026-07-13.
 
 P4 does not change worker authority, public read authority, P2 lifecycle authority, P3 publication eligibility, outbox authority, or production data. Queue completion still cannot publish. Lifecycle completion still cannot publish. P5 governance, retention, and compatibility retirement are outside this stage.
 
@@ -22,7 +22,7 @@ P4 does not change worker authority, public read authority, P2 lifecycle authori
 | Publish an eligible reviewed version | Article detail/row | `Publish`, confirmation and reason required | P3 publication authority |
 | Withdraw a published version | Article detail/row | `Withdraw`, confirmation and reason required | P3 publication authority |
 | Inspect publication/version/audit/outbox history | `/admin/work/article/[articleId]` | Related article and audit links | P2/P3 read only |
-| Operate retained V2 jobs | `/admin/jobs` | Existing cancel/retry controls | Legacy compatibility API |
+| Inspect compatibility jobs | `/admin/work?type=legacy` | Unified work detail | Compatibility read |
 | Inspect candidate raw URL | `/admin/candidates` | Existing protected specialist page | Existing candidate API |
 
 Review assignment/claim/release is unavailable because P2 has no accepted ownership contract. Manual outbox retry/dead-letter is unavailable because P3 exposes only leased processor transitions. P4 renders an accessible disabled explanation and never writes those states directly.
@@ -31,17 +31,16 @@ Review assignment/claim/release is unavailable because P2 has no accepted owners
 
 | Area | Route | Notes |
 | --- | --- | --- |
-| Operations overview | `/admin` | Flag-on first screen; collect -> process/summarize -> review -> publish |
+| Operations overview | `/admin` | First screen; collect -> process/summarize -> review -> publish |
 | Unified queue | `/admin/work` | URL-shareable owner/stage/source/type/state/attention/SLA/age/sort/page filters |
 | Unified queue API | `/api/admin/work` | Authenticated GET using the same bounded parser and snapshot repository |
 | Work detail | `/admin/work/[type]/[id]` | Safe timeline; no payload, raw/source URL, source text, summary content, or secrets |
-| Legacy triage | `/admin/operations` | Retained specialized V2 overview |
 | Article management | `/admin/articles`, `/admin/articles/[slug]` | Existing deep links and critical actions preserved |
 | Candidate management | `/admin/candidates` | Existing protected raw-URL workflow preserved |
-| Runs and legacy jobs | `/admin/ingestion-runs`, `/admin/jobs` | Existing execution detail and fallback actions preserved |
+| Runs and compatibility jobs | `/admin/ingestion-runs`, `/admin/work?type=legacy` | Execution history and compatibility work remain visible in the new UI |
 | Audit/configuration | `/admin/audit`, `/admin/llm`, `/admin/analytics`, `/admin/glossary-candidates` | Reachable under the shell |
 
-With `ADMIN_REDESIGN_UI_ENABLED` off, `/admin` and every existing page render their V2 layout and tab strip unchanged. New `/admin/work` routes redirect to `/admin/jobs`. Login remains outside the shell.
+`/admin/operations` permanently redirects to `/admin`; `/admin/jobs` permanently redirects to `/admin/work?type=execution`. Login remains outside the authenticated shell.
 
 ## Work Queue Contract
 
@@ -92,32 +91,15 @@ Queue/detail selects omit command `payload_ref`, command/result summaries, candi
 
 Use the retained protected candidate/article pages when raw operational evidence is required. Do not add that evidence to P4 rows, browser logs, screenshots, support tickets, or audit summaries.
 
-## Feature Flag, Rollout, And Rollback
+## Production Cutover And Rollback
 
-`ADMIN_REDESIGN_UI_ENABLED` is server-only and false unless its trimmed case-insensitive value is exactly `true`.
-
-Rollout:
-
-1. Keep the flag false and run P0-P4 focused suites, typecheck, lint, check, build, and diff check.
-2. Verify all P0-P3 migrations and data cohorts separately under their accepted gates. P4 does not apply them.
-3. Enable P4 in a non-production environment. Verify login, overview, filters, work detail, retained deep links, and conflict responses.
-4. Run keyboard and screen-reader checks plus 1440px and approximately 390px visual checks.
-5. Canary the flag for approved administrators only at the environment/deployment level. Do not create an unreviewed per-row predicate.
-6. Observe page errors, bounded-query warnings, action conflict rates, CSRF failures, stale/abort outcomes, and support reports through Gate 4.
-
-Rollback:
-
-1. Set `ADMIN_REDESIGN_UI_ENABLED=false`.
-2. Confirm `/admin` and retained pages render V2 tabs/layout; `/admin/work` redirects to `/admin/jobs`.
-3. Leave P0-P3 and P4 evidence intact. Do not delete commands, events, versions, history, audit, or outbox rows.
-4. If a mutation issue exists, disable the relevant P0/P1/P3 authority flag under its own runbook. UI rollback alone does not change backend authority.
-5. Record trigger, affected routes/action IDs, bounded error codes, owner, and follow-up without payloads or URLs.
+The administrator UI no longer has a V2 fallback flag. Rollback uses a reviewed deployment rollback or forward fix; it must not restore the removed tab strip or retired screens. Queue, lifecycle, publication, and observation authority flags remain independently reversible without changing the administrator interface.
 
 ## Support Triage
 
 | Signal | First check | Next route/runbook | Escalate when |
 | --- | --- | --- | --- |
-| Empty queue with compatibility notice | Service-role config and named unavailable domain | Retained `/admin/jobs`, `/admin/articles`, `/admin/candidates` | Expected P0-P3 schema should be available |
+| Empty queue with compatibility notice | Service-role config and named unavailable domain | `/admin/work?type=legacy`, `/admin/articles`, `/admin/candidates` | Expected P0-P3 schema should be available |
 | Abort conflict | Reopen execution detail and inspect terminal state/event | P0 abort SLA section | Active run remains nonterminal past SLA |
 | Retry conflict | Check active duplicate and latest run | P0/P1 runbook | No active duplicate exists but retry remains blocked |
 | Publish conflict | Check all three labels and latest publication revision | P2/P3 runbooks | UI and P3 authority disagree after refresh |

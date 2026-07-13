@@ -382,7 +382,7 @@ function legacyWorkItem(row: Row): AdminWorkItem {
     latestError: redactOperationalText(text(row, "error_class")),
     attempts: 0,
     compatibility: true,
-    detailHref: `/admin/jobs?jobId=${encodeURIComponent(id)}`,
+    detailHref: `/admin/work/legacy/${encodeURIComponent(id)}`,
     safeAction: null,
     actionDisabledReason: "Use the retained V2 job page for compatibility actions.",
   };
@@ -838,7 +838,7 @@ async function simpleDetail(item: AdminWorkItem) {
       ? [{ href: `/admin/candidates?source=${encodeURIComponent(item.source ?? "")}`, label: "URL candidates" }]
       : item.type === "outbox"
         ? [{ href: `/admin/audit?q=${encodeURIComponent(item.target)}`, label: "Audit search" }]
-        : [{ href: `/admin/jobs?jobId=${encodeURIComponent(item.id)}`, label: "Legacy job" }],
+        : [{ href: `/admin/work/legacy/${encodeURIComponent(item.id)}`, label: "Compatibility job" }],
   };
 }
 

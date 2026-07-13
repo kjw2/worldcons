@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { Layers3 } from "lucide-react";
 import { AdminWorkQueue } from "@/components/admin-work-queue";
 import { parseAdminWorkFilters } from "@/lib/admin/p4/filters";
-import { adminRedesignUiEnabled } from "@/lib/admin/p4/flags";
 import { getAdminWorkQueueSnapshot } from "@/lib/admin/p4/repository";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
@@ -15,7 +14,6 @@ export default async function AdminWorkPage({ searchParams }: { searchParams?: P
   const nextQuery = new URLSearchParams(Object.entries(params).flatMap(([key, value]) => Array.isArray(value) ? value.map((item) => [key, item]) : value ? [[key, value]] : [])).toString();
   const nextPath = `/admin/work${nextQuery ? `?${nextQuery}` : ""}`;
   if (!(await isAuthorizedPageRequest())) redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`);
-  if (!adminRedesignUiEnabled()) redirect("/admin/jobs");
 
   const filters = parseAdminWorkFilters(params);
   const [snapshot, csrfToken] = await Promise.all([getAdminWorkQueueSnapshot(filters), createAdminCsrfToken()]);

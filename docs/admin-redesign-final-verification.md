@@ -28,18 +28,26 @@ Lock/deployability shape:
 - P5 base/correction files are transactional. Fourteen governance/operability indexes, including indexes on existing tables, were moved to `20260712231000_admin_governance_p5_indexes.sql` and must run outside a transaction with `CREATE INDEX CONCURRENTLY`.
 - RLS, PUBLIC/anon/authenticated revocation, service-role grants, fixed `search_path`, index validity/readiness, idempotence, and aggregate-only evidence passed. Routine rollback preserves additive data and uses forward fixes rather than destructive migration reversal.
 
-## Flags And Compatibility
+## Authority Flags And Compatibility
 
-All authority flags are server-side and enabled only by trimmed, case-insensitive `true`. Defaults remain legacy:
+The redesigned administrator shell, unified work queue, and governance screen are permanent and have no V2 fallback flag. Remaining authority flags are server-side and enabled only by trimmed, case-insensitive `true`. Defaults remain compatible:
 
-- UI, queue shadow/worker, lifecycle shadow/read, publication shadow/read/outbox, P5 observation, governance UI, and health verification are false by default; queue command/cohort and lifecycle cohort allowlists are empty.
+- Queue shadow/worker, lifecycle shadow/read, publication shadow/read/outbox, P5 observation, and health verification are false by default; queue command/cohort and lifecycle cohort allowlists are empty.
 - Queue worker authority additionally requires bounded command and cohort allowlists.
-- Governance UI additionally requires the redesigned shell flag. Observation, governance UI, and health verification do not change queue, lifecycle, or publication authority.
-- With flags off, public home/list/detail/search and V2 admin behavior remained intact. Public visibility continued to use the legacy publication predicate.
+- Governance visibility does not change queue, lifecycle, or publication authority.
+- Public visibility continues to use the independently controlled publication predicate.
+
+## Permanent Administrator Cutover
+
+- `/admin` always renders the redesigned operations overview after authentication.
+- `/admin/work` and `/admin/governance` no longer have UI feature-flag redirects.
+- The V2 tab strip and standalone action/attention/job components were deleted.
+- `/admin/operations` permanently redirects to `/admin`; `/admin/jobs` permanently redirects to `/admin/work?type=execution`.
+- Compatibility job data remains available through `/admin/work/legacy/[id]`; no retired screen is linked from the new shell.
 
 ## Browser And Security
 
-- Local production build passed at 1440x900 and 390x844. Flag-off public routes and V2 admin, plus flag-on shell, work queue, work detail, and governance rendered without console errors, hydration overlays, document overflow, or login identity disclosure.
+- The pre-cutover local production build passed at 1440x900 and 390x844. The permanent-cutover verification reruns the redesigned shell, work queue, work detail, governance, and retained specialist pages with no V2 fallback surface.
 - Fixed the mobile modal-navigation focus defect found during verification: focus now enters the dialog, remains contained, closes on Escape, and returns to the opener.
 - Security smoke: unauthenticated new actions returned 401; cron credentials returned 401 for P4/P5 human actions; authenticated requests without CSRF returned 403; GET mutation routes returned 405; unchanged public APIs returned 200. Redaction and session-only action contracts also passed focused suites.
 - Browser/server logs and screenshots were not retained. Local servers and PostgreSQL were stopped after verification.

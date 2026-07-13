@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ClipboardList, Filter, LogOut, Search } from "lucide-react";
-import { AdminTabs } from "@/components/admin-tabs";
+import { ClipboardList, Filter, Search } from "lucide-react";
 import { getAdminAuditLogData, type AdminAuditLogEntry } from "@/lib/db/analytics";
-import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
+import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getNumberSearchParam, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
@@ -162,7 +161,6 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
     page: getNumberSearchParam(params, "page"),
     pageSize: getNumberSearchParam(params, "pageSize"),
   });
-  const csrfToken = (await createAdminCsrfToken()) ?? "";
   const { filters, pageInfo } = data;
   const actionOptions =
     filters.action && !data.actionOptions.includes(filters.action)
@@ -170,25 +168,16 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
       : data.actionOptions;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-2 text-sm font-semibold text-court">관리자</p>
-          <h1 className="text-3xl font-semibold tracking-normal text-ink">감사 로그</h1>
+          <p className="text-xs font-semibold uppercase text-court">System</p>
+          <h1 className="mt-1 text-2xl font-semibold text-ink">감사 로그</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             `site_events`에 저장된 관리자 작업 이벤트를 읽기 전용으로 확인합니다.
           </p>
         </div>
-        <form action="/api/admin/logout" method="post">
-          <input type="hidden" name="csrfToken" value={csrfToken} />
-          <button type="submit" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-4 py-2 text-sm font-semibold text-ink/72 hover:bg-parchment">
-            <LogOut className="size-4" aria-hidden="true" />
-            로그아웃
-          </button>
-        </form>
       </div>
-
-      <AdminTabs active="audit" />
 
       <section className="mb-5 rounded-md border border-rule bg-white p-4 shadow-sm">
         <form className="grid gap-3 md:grid-cols-[180px_180px_minmax(220px,1fr)_120px_auto]">
@@ -270,6 +259,6 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
           </Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
