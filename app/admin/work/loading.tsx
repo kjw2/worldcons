@@ -5,7 +5,7 @@ export default function AdminWorkLoading() {
       <div className="mt-6 grid gap-2 border-y border-rule bg-white py-4">
         {Array.from({ length: 8 }, (_, index) => <div key={index} className="h-14 animate-pulse bg-parchment" />)}
       </div>
-      <span className="sr-only">Loading administrator work queue</span>
+      <span className="sr-only">관리자 업무 큐 불러오는 중</span>
     </div>
   );
 }

@@ -324,9 +324,9 @@ export function AdminSummaryEditor({
                   onChange={(event) => updateProvision(index, { confidence: event.target.value as ReferencedProvision["confidence"] })}
                   className="focus-ring h-10 rounded-md border border-rule bg-white px-2 text-sm text-ink"
                 >
-                  <option value="high">high</option>
-                  <option value="medium">medium</option>
-                  <option value="low">low</option>
+                  <option value="high">높음</option>
+                  <option value="medium">보통</option>
+                  <option value="low">낮음</option>
                 </select>
                 <button
                   type="button"

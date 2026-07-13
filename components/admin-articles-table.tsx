@@ -231,7 +231,7 @@ export function AdminArticlesTable({
                     <dd className="max-w-full break-words text-right font-semibold text-ink/72">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</dd>
                   </div>
                   <div className="flex flex-wrap justify-between gap-2">
-                    <dt className="font-semibold text-ink/45">source</dt>
+                    <dt className="font-semibold text-ink/45">수집원 키</dt>
                     <dd className="max-w-full break-all text-right">{article.sourceKey}</dd>
                   </div>
                   <div className="flex flex-wrap justify-between gap-2">
@@ -275,7 +275,7 @@ export function AdminArticlesTable({
               <th className="px-4 py-3">제목</th>
               <th className="px-4 py-3">기관</th>
               <th className="px-4 py-3">국가</th>
-              <th className="px-4 py-3">status</th>
+              <th className="px-4 py-3">상태</th>
               <th className="px-4 py-3">공개 가능</th>
               <th className="px-4 py-3">요약</th>
               <th className="px-4 py-3">기준일</th>

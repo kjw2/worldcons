@@ -19,7 +19,7 @@ export default async function IngestionRunsPage() {
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">System</p>
+          <p className="text-xs font-semibold uppercase text-court">시스템</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">수집 실행 기록</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">최근 50개 실행의 수집·요약·진단 결과를 확인합니다.</p>
         </div>

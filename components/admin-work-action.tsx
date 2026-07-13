@@ -6,11 +6,11 @@ import { Ban, Loader2, Rocket, RotateCcw, Send, Undo2 } from "lucide-react";
 import type { AdminWorkAction } from "@/lib/admin/p4/actions";
 
 const actionCopy: Record<AdminWorkAction, { label: string; prompt: string; confirmation?: string }> = {
-  abort: { label: "Request abort", prompt: "Reason for requesting an abort:" },
-  retry: { label: "Retry", prompt: "Reason for retrying this terminal run:" },
-  "candidate-retry": { label: "Requeue", prompt: "Reason for requeueing this candidate:" },
-  publish: { label: "Publish", prompt: "Publication reason:", confirmation: "publish" },
-  withdraw: { label: "Withdraw", prompt: "Withdrawal reason:", confirmation: "withdraw" },
+  abort: { label: "중단 요청", prompt: "중단을 요청하는 이유를 입력하세요:" },
+  retry: { label: "재시도", prompt: "이 작업을 재시도하는 이유를 입력하세요:" },
+  "candidate-retry": { label: "후보 재등록", prompt: "이 후보를 다시 등록하는 이유를 입력하세요:" },
+  publish: { label: "공개", prompt: "공개 사유를 입력하세요:", confirmation: "publish" },
+  withdraw: { label: "공개 철회", prompt: "공개 철회 사유를 입력하세요:", confirmation: "withdraw" },
 };
 
 function ActionIcon({ action, pending }: { action: AdminWorkAction; pending: boolean }) {
@@ -46,9 +46,9 @@ export function AdminWorkActionButton({
 
   if (!action) {
     return (
-      <span className="inline-flex min-h-8 items-center text-xs font-medium text-ink/45" title={disabledReason ?? "No safe action is available."}>
-        No safe action
-        <span className="sr-only">: {disabledReason ?? "No safe action is available."}</span>
+      <span className="inline-flex min-h-8 items-center text-xs font-medium text-ink/45" title={disabledReason ?? "현재 안전하게 실행할 수 있는 조치가 없습니다."}>
+        실행 가능한 조치 없음
+        <span className="sr-only">: {disabledReason ?? "현재 안전하게 실행할 수 있는 조치가 없습니다."}</span>
       </span>
     );
   }
@@ -59,10 +59,10 @@ export function AdminWorkActionButton({
     const reason = window.prompt(copy.prompt)?.trim();
     if (!reason) return;
     if (reason.length < 5) {
-      setMessage("A reason of at least 5 characters is required.");
+      setMessage("사유를 5자 이상 입력하세요.");
       return;
     }
-    if (copy.confirmation && !window.confirm(`${copy.label} this article through P3 publication authority?`)) return;
+    if (copy.confirmation && !window.confirm(`P3 공개 권한으로 이 기사를 ${copy.label} 처리하시겠습니까?`)) return;
 
     setPending(true);
     setMessage(null);
@@ -80,10 +80,10 @@ export function AdminWorkActionButton({
       });
       const payload = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-      setMessage("Action accepted.");
+      setMessage("조치가 접수되었습니다.");
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Action failed.");
+      setMessage(error instanceof Error ? error.message : "조치에 실패했습니다.");
     } finally {
       setPending(false);
     }
@@ -98,7 +98,7 @@ export function AdminWorkActionButton({
         className="focus-ring inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-rule bg-white px-2.5 text-xs font-semibold text-ink/70 hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-50"
       >
         <ActionIcon action={action} pending={pending} />
-        {pending ? "Working" : actionCopy[action].label}
+        {pending ? "처리 중" : actionCopy[action].label}
       </button>
       {message ? <span className="max-w-48 break-words text-xs leading-4 text-court" role="status">{message}</span> : null}
     </div>

@@ -24,9 +24,9 @@ export default async function AdminWorkPage({ searchParams }: { searchParams?: P
         <div className="flex items-start gap-3">
           <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-rule bg-white text-court"><Layers3 className="size-4" aria-hidden="true" /></span>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase text-court">Operations</p>
-            <h1 className="mt-1 text-2xl font-semibold text-ink">Unified work queue</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/60">Execution, article lifecycle, candidate, publication, and outbox attention in one bounded server snapshot.</p>
+            <p className="text-xs font-semibold uppercase text-court">운영</p>
+            <h1 className="mt-1 text-2xl font-semibold text-ink">통합 업무 큐</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/60">실행, 기사 처리 단계, URL 후보, 공개 및 캐시 전달 상태를 하나의 제한된 서버 조회 결과로 확인합니다.</p>
           </div>
         </div>
       </header>

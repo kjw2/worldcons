@@ -22,7 +22,7 @@ export default async function AdminLlmPage() {
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">System</p>
+          <p className="text-xs font-semibold uppercase text-court">시스템</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">LLM 관리</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             자동요약 provider, 모델, 서버 키 상태를 관리합니다. 저장된 키 값은 다시 표시하지 않습니다.

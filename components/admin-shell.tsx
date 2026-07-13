@@ -29,23 +29,23 @@ interface AdminNavigationItem {
 }
 
 const primaryNavigation: AdminNavigationItem[] = [
-  { href: "/admin", label: "Operations overview", icon: Home, exact: true },
-  { href: "/admin/work", label: "Unified work queue", icon: ListChecks },
+  { href: "/admin", label: "운영 개요", icon: Home, exact: true },
+  { href: "/admin/work", label: "통합 업무 큐", icon: ListChecks },
 ];
 
 const contentNavigation: AdminNavigationItem[] = [
-  { href: "/admin/articles", label: "Articles", icon: Newspaper },
-  { href: "/admin/candidates", label: "URL candidates", icon: Link2 },
-  { href: "/admin/glossary-candidates", label: "Glossary candidates", icon: BookOpenCheck },
+  { href: "/admin/articles", label: "기사 관리", icon: Newspaper },
+  { href: "/admin/candidates", label: "URL 후보", icon: Link2 },
+  { href: "/admin/glossary-candidates", label: "용어 후보", icon: BookOpenCheck },
 ];
 
 const systemNavigation: AdminNavigationItem[] = [
-  { href: "/admin/ingestion-runs", label: "Ingestion runs", icon: ListChecks },
-  { href: "/admin/audit", label: "Audit", icon: ClipboardList },
-  { href: "/admin/llm", label: "LLM settings", icon: KeyRound },
-  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/ingestion-runs", label: "수집 실행 기록", icon: ListChecks },
+  { href: "/admin/audit", label: "감사 로그", icon: ClipboardList },
+  { href: "/admin/llm", label: "LLM 설정", icon: KeyRound },
+  { href: "/admin/analytics", label: "이용 통계", icon: BarChart3 },
 ];
-const governanceNavigation: AdminNavigationItem = { href: "/admin/governance", label: "Health & governance", icon: ShieldCheck };
+const governanceNavigation: AdminNavigationItem = { href: "/admin/governance", label: "상태 및 거버넌스", icon: ShieldCheck };
 
 function isCurrent(pathname: string, item: AdminNavigationItem) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -93,9 +93,9 @@ function NavigationGroup({
 function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
     <div className="grid gap-6">
-      <NavigationGroup label="Operate" items={primaryNavigation} pathname={pathname} onNavigate={onNavigate} />
-      <NavigationGroup label="Content" items={contentNavigation} pathname={pathname} onNavigate={onNavigate} />
-      <NavigationGroup label="System" items={[governanceNavigation, ...systemNavigation]} pathname={pathname} onNavigate={onNavigate} />
+      <NavigationGroup label="운영" items={primaryNavigation} pathname={pathname} onNavigate={onNavigate} />
+      <NavigationGroup label="콘텐츠" items={contentNavigation} pathname={pathname} onNavigate={onNavigate} />
+      <NavigationGroup label="시스템" items={[governanceNavigation, ...systemNavigation]} pathname={pathname} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -108,7 +108,7 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
   const allNavigation = useMemo(() => [...primaryNavigation, ...contentNavigation, governanceNavigation, ...systemNavigation], []);
   const location = useMemo(
-    () => allNavigation.find((item) => isCurrent(pathname, item))?.label ?? "Administrator",
+    () => allNavigation.find((item) => isCurrent(pathname, item))?.label ?? "관리자",
     [allNavigation, pathname],
   );
 
@@ -148,15 +148,15 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
   return (
     <div className="admin-shell min-h-screen bg-[#f5f6f7] text-ink">
       <a href="#admin-main" className="focus-ring fixed left-3 top-3 z-[70] -translate-y-20 rounded-md bg-white px-3 py-2 text-sm font-semibold shadow-panel focus:translate-y-0">
-        Skip to administrator content
+        관리자 본문으로 건너뛰기
       </a>
 
       <div className="grid min-h-screen min-w-0 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-rule bg-white lg:flex lg:min-h-screen lg:flex-col" aria-label="Administrator navigation">
+        <aside className="hidden border-r border-rule bg-white lg:flex lg:min-h-screen lg:flex-col" aria-label="관리자 내비게이션">
           <div className="border-b border-rule px-5 py-5">
             <Link href="/admin" className="focus-ring block rounded-sm">
-              <span className="block text-base font-semibold text-ink">WorldCons Admin</span>
-              <span className="mt-1 block text-xs text-ink/50">Operations workspace</span>
+              <span className="block text-base font-semibold text-ink">WorldCons 관리자</span>
+              <span className="mt-1 block text-xs text-ink/50">운영 작업공간</span>
             </Link>
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-5">
@@ -165,7 +165,7 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
           <div className="border-t border-rule p-3">
             <Link href="/" className="focus-ring flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold text-ink/62 hover:bg-parchment">
               <ExternalLink className="size-4" aria-hidden="true" />
-              Public site
+              공개 사이트
             </Link>
           </div>
         </aside>
@@ -179,13 +179,13 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
                   type="button"
                   onClick={() => setMobileOpen(true)}
                   className="focus-ring inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-rule text-ink/70 hover:bg-parchment lg:hidden"
-                  aria-label="Open administrator navigation"
-                  title="Open navigation"
+                  aria-label="관리자 메뉴 열기"
+                  title="메뉴 열기"
                 >
                   <Menu className="size-5" aria-hidden="true" />
                 </button>
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-court">Administrator</p>
+                  <p className="truncate text-xs font-semibold text-court">관리자</p>
                   <p className="truncate text-sm font-semibold text-ink" aria-live="polite">{location}</p>
                 </div>
               </div>
@@ -199,8 +199,8 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
                   <button
                     type="submit"
                     className="focus-ring inline-flex size-10 items-center justify-center rounded-md border border-rule text-ink/64 hover:bg-parchment"
-                    aria-label="Sign out"
-                    title="Sign out"
+                    aria-label="로그아웃"
+                    title="로그아웃"
                   >
                     <LogOut className="size-4" aria-hidden="true" />
                   </button>
@@ -216,18 +216,18 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
       </div>
 
       {mobileOpen ? (
-        <div ref={mobileDialogRef} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Administrator navigation">
-          <button type="button" className="absolute inset-0 bg-ink/35" onClick={() => setMobileOpen(false)} aria-label="Close navigation" />
+        <div ref={mobileDialogRef} className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="관리자 내비게이션">
+          <button type="button" className="absolute inset-0 bg-ink/35" onClick={() => setMobileOpen(false)} aria-label="메뉴 닫기" />
           <aside className="absolute inset-y-0 left-0 flex w-[min(320px,86vw)] flex-col border-r border-rule bg-white shadow-panel">
             <div className="flex min-h-16 items-center justify-between border-b border-rule px-4">
-              <span className="font-semibold text-ink">WorldCons Admin</span>
+              <span className="font-semibold text-ink">WorldCons 관리자</span>
               <button
                 ref={mobileCloseButtonRef}
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 className="focus-ring inline-flex size-10 items-center justify-center rounded-md border border-rule text-ink/68"
-                aria-label="Close administrator navigation"
-                title="Close navigation"
+                aria-label="관리자 메뉴 닫기"
+                title="메뉴 닫기"
               >
                 <X className="size-5" aria-hidden="true" />
               </button>

@@ -194,7 +194,7 @@ export function AdminReviewActions({
     <div className="rounded-md border border-rule bg-white p-4">
       <div className="mb-3">
         <h3 className="text-base font-semibold tracking-normal text-ink">검토 결정</h3>
-        <p className="mt-1 text-sm leading-6 text-ink/62">자료를 확인한 뒤 다음 절차를 선택합니다. 결정과 메모는 metadata에 저장됩니다.</p>
+        <p className="mt-1 text-sm leading-6 text-ink/62">자료를 확인한 뒤 다음 절차를 선택합니다. 결정과 메모는 메타데이터에 저장됩니다.</p>
       </div>
       <label className="mb-3 block">
         <span className="mb-1 block text-xs font-semibold text-ink/58">검토 메모</span>
@@ -251,7 +251,7 @@ export function AdminReviewActions({
                   <option value="gemini">Gemini</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Claude</option>
-                  <option value="openai-compatible">OpenAI Compatible</option>
+                  <option value="openai-compatible">OpenAI 호환</option>
                 </select>
               </label>
               <label>

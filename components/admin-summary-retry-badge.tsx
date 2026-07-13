@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RotateCcw } from "lucide-react";
+import { adminStateText } from "@/lib/admin/p4/labels";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -11,7 +12,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function summarizeMessage(payload: unknown) {
   if (isRecord(payload) && payload.mode === "queued" && isRecord(payload.job)) {
     const status = typeof payload.job.status === "string" ? payload.job.status : "queued";
-    return `재요약 작업 등록 (${status})`;
+    return `재요약 작업 등록 (${adminStateText(status)})`;
   }
   if (!isRecord(payload) || !isRecord(payload.summarize)) {
     return "재요약 요청을 보냈습니다.";

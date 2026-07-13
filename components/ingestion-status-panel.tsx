@@ -68,6 +68,14 @@ const statusLabels: Record<string, string> = {
   partial: "부분 완료",
 };
 
+const diagnosticResultLabels: Record<string, string> = {
+  success: "성공",
+  failed: "실패",
+  skipped: "건너뜀",
+  blocked: "차단",
+  timeout: "시간 초과",
+};
+
 function diagnosticsFor(run: IngestionRunRecord) {
   const metadata = run.metadata as
     | {
@@ -256,15 +264,15 @@ function AttemptBadge({ attempt }: { attempt: DiagnosticAttempt }) {
     <div className="rounded-md border border-rule bg-white p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn("inline-flex min-h-6 items-center rounded-md border px-2 font-semibold", toneClassName(tone))}>
-          {attempt.result ?? attempt.status ?? "진단"}
+          {attempt.result ? (diagnosticResultLabels[attempt.result] ?? attempt.result) : (attempt.status ?? "진단")}
         </span>
-        <span className="font-semibold text-ink">{attempt.strategy ?? "strategy 없음"}</span>
+        <span className="font-semibold text-ink">{attempt.strategy ?? "수집 방식 없음"}</span>
         {attempt.status ? <span className="text-ink/58">HTTP {attempt.status}</span> : null}
         {attempt.discoveredCount !== undefined ? <span className="text-ink/58">발견 {formatNumber(attempt.discoveredCount)}</span> : null}
         {attempt.textLength !== undefined ? <span className="text-ink/58">본문 {formatNumber(attempt.textLength)}자</span> : null}
-        {attempt.selectorMatchCount !== undefined ? <span className="text-ink/58">selector {formatNumber(attempt.selectorMatchCount)}</span> : null}
-        {attempt.fallback ? <span className="text-ink/58">fallback</span> : null}
-        {attempt.robotsAllowed !== undefined ? <span className="text-ink/58">robots {attempt.robotsAllowed ? "허용" : "차단"}</span> : null}
+        {attempt.selectorMatchCount !== undefined ? <span className="text-ink/58">선택자 일치 {formatNumber(attempt.selectorMatchCount)}</span> : null}
+        {attempt.fallback ? <span className="text-ink/58">대체 경로</span> : null}
+        {attempt.robotsAllowed !== undefined ? <span className="text-ink/58">robots.txt {attempt.robotsAllowed ? "허용" : "차단"}</span> : null}
       </div>
       {attempt.url ? <div className="mt-2 break-all text-ink/50">{attempt.url}</div> : null}
       {attempt.errorCode || attempt.errorMessage ? (
@@ -276,12 +284,12 @@ function AttemptBadge({ attempt }: { attempt: DiagnosticAttempt }) {
       {attempt.recommendedAction ? <div className="mt-2 text-ink/56">조치: {attempt.recommendedAction}</div> : null}
       {attempt.robotsMatchedRule ? (
         <div className="mt-2 text-ink/50">
-          robots rule: {attempt.robotsMatchedDirective ?? "-"} {attempt.robotsMatchedRule}
+          robots.txt 규칙: {attempt.robotsMatchedDirective ?? "-"} {attempt.robotsMatchedRule}
         </div>
       ) : null}
-      {attempt.timeoutPhase ? <div className="mt-2 text-ink/50">timeout: {attempt.timeoutPhase}</div> : null}
-      {attempt.maxConcurrency ? <div className="mt-2 text-ink/50">maxConcurrency: {attempt.maxConcurrency}</div> : null}
-      {attempt.robotsCrawlDelaySeconds !== undefined ? <div className="mt-2 text-ink/50">crawl-delay: {attempt.robotsCrawlDelaySeconds}s</div> : null}
+      {attempt.timeoutPhase ? <div className="mt-2 text-ink/50">시간 초과 단계: {attempt.timeoutPhase}</div> : null}
+      {attempt.maxConcurrency ? <div className="mt-2 text-ink/50">최대 동시 실행: {attempt.maxConcurrency}</div> : null}
+      {attempt.robotsCrawlDelaySeconds !== undefined ? <div className="mt-2 text-ink/50">수집 지연: {attempt.robotsCrawlDelaySeconds}초</div> : null}
     </div>
   );
 }
@@ -311,12 +319,12 @@ function RunOptions({ options }: { options: RunOptionsMetadata }) {
   if (Object.keys(options).length === 0) return <span className="text-xs text-ink/45">기록 없음</span>;
   return (
     <div className="flex max-w-sm flex-wrap gap-1.5">
-      <OptionBadge label="limit" value={options.limit} />
-      <OptionBadge label="range" value={options.rangeDays ? `${options.rangeDays}일` : null} />
-      <OptionBadge label="strategy" value={options.strategy} />
-      <OptionBadge label="playwright" value={options.usePlaywright} />
+      <OptionBadge label="수집 한도" value={options.limit} />
+      <OptionBadge label="기간" value={options.rangeDays ? `${options.rangeDays}일` : null} />
+      <OptionBadge label="수집 방식" value={options.strategy} />
+      <OptionBadge label="브라우저 수집" value={options.usePlaywright} />
       <OptionBadge label="Vercel" value={options.allowVercelCrawling} />
-      <OptionBadge label="refresh" value={options.refreshExisting} />
+      <OptionBadge label="기존 자료 갱신" value={options.refreshExisting} />
     </div>
   );
 }
@@ -341,7 +349,7 @@ function UncollectedCandidates({ candidates }: { candidates: UncollectedCandidat
               <span className="font-semibold text-ink">{candidate.title ?? "제목 없음"}</span>
               {candidate.publishedAt ? <span className="text-ink/55">{formatDateTime(candidate.publishedAt)}</span> : null}
               {candidate.caseNumber ? <span className="text-ink/55">{candidate.caseNumber}</span> : null}
-              <span className="text-ink/55">{candidate.discoveredBy ?? "discovery"}</span>
+              <span className="text-ink/55">{candidate.discoveredBy ?? "발견 경로 미상"}</span>
               <span className={candidate.trackedAsRetryCandidate ? "text-mint" : "text-court"}>
                 {candidate.trackedAsRetryCandidate ? "재시도 큐 저장" : "재시도 큐 저장 실패"}
               </span>
@@ -351,7 +359,7 @@ function UncollectedCandidates({ candidates }: { candidates: UncollectedCandidat
             {candidate.trackingError ? <div className="mt-2 text-court">{candidate.trackingError}</div> : null}
           </div>
         ))}
-        {candidates.length > 5 ? <div className="text-xs text-amber-900/70">나머지 {formatNumber(candidates.length - 5)}건도 실행 metadata에 보존되어 있습니다.</div> : null}
+        {candidates.length > 5 ? <div className="text-xs text-amber-900/70">나머지 {formatNumber(candidates.length - 5)}건도 실행 메타데이터에 보존되어 있습니다.</div> : null}
       </div>
     </div>
   );
@@ -379,14 +387,14 @@ function RunDiagnostics({
       </summary>
       <div className="mt-3 min-w-[min(760px,calc(100vw-2rem))] rounded-md border border-rule bg-parchment/35 p-3">
         {run.errorMessage ? <div className="mb-3 rounded-md border border-court/20 bg-white p-3 text-xs leading-5 text-court">{run.errorMessage}</div> : null}
-        {fallbackUsed ? <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-50 p-3 text-xs leading-5 text-amber-800">fallback 경로가 사용되었습니다.</div> : null}
+        {fallbackUsed ? <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-50 p-3 text-xs leading-5 text-amber-800">대체 경로가 사용되었습니다.</div> : null}
         <UncollectedCandidates candidates={uncollectedCandidates} />
         {attempts.length > 0 ? (
           <div className="grid gap-2">
             {attempts.slice(0, 8).map((attempt, index) => (
               <AttemptBadge key={`${attempt.strategy}-${attempt.url}-${index}`} attempt={attempt} />
             ))}
-            {attempts.length > 8 ? <div className="text-xs text-ink/50">나머지 {formatNumber(attempts.length - 8)}건은 최근 실행 metadata에 보존되어 있습니다.</div> : null}
+            {attempts.length > 8 ? <div className="text-xs text-ink/50">나머지 {formatNumber(attempts.length - 8)}건은 최근 실행 메타데이터에 보존되어 있습니다.</div> : null}
           </div>
         ) : null}
       </div>
@@ -437,7 +445,7 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
             const diagnosticsSummary = [
               diagnostics.attempts.length > 0 ? `진단 ${formatNumber(diagnostics.attempts.length)}건` : "진단 없음",
               diagnostics.uncollectedCandidates.length > 0 ? `추적 후보 ${formatNumber(diagnostics.uncollectedCandidates.length)}건` : null,
-              diagnostics.fallbackUsed ? "fallback" : null,
+              diagnostics.fallbackUsed ? "대체 경로" : null,
               run.errorMessage ? "오류 있음" : null,
             ]
               .filter(Boolean)
@@ -472,10 +480,10 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <ResultPill label="공개" value={counts.publishableCount} tone="success" />
                   <ResultPill label="메타" value={counts.metadataOnlyCount} tone={counts.metadataOnlyCount ? "warning" : "neutral"} />
-                  <ResultPill label="robots" value={counts.robotsDisallowedCount} tone={counts.robotsDisallowedCount ? "warning" : "neutral"} />
+                  <ResultPill label="robots.txt 차단" value={counts.robotsDisallowedCount} tone={counts.robotsDisallowedCount ? "warning" : "neutral"} />
                   <ResultPill label="차단" value={counts.blockedCount} tone={counts.blockedCount ? "danger" : "neutral"} />
-                  <ResultPill label="timeout" value={counts.timeoutCount} tone={counts.timeoutCount ? "danger" : "neutral"} />
-                  <ResultPill label="seed" value={counts.seedCount} />
+                  <ResultPill label="시간 초과" value={counts.timeoutCount} tone={counts.timeoutCount ? "danger" : "neutral"} />
+                  <ResultPill label="초기값" value={counts.seedCount} />
                 </div>
                 <div className="mt-3">
                   <RunOptions options={diagnostics.runOptions} />
@@ -538,10 +546,10 @@ export function IngestionStatusPanel({ runs }: { runs: IngestionRunRecord[] }) {
                       <div className="flex max-w-sm flex-wrap gap-1.5">
                         <ResultPill label="공개" value={counts.publishableCount} tone="success" />
                         <ResultPill label="메타" value={counts.metadataOnlyCount} tone={counts.metadataOnlyCount ? "warning" : "neutral"} />
-                        <ResultPill label="robots" value={counts.robotsDisallowedCount} tone={counts.robotsDisallowedCount ? "warning" : "neutral"} />
+                        <ResultPill label="robots.txt 차단" value={counts.robotsDisallowedCount} tone={counts.robotsDisallowedCount ? "warning" : "neutral"} />
                         <ResultPill label="차단" value={counts.blockedCount} tone={counts.blockedCount ? "danger" : "neutral"} />
-                        <ResultPill label="timeout" value={counts.timeoutCount} tone={counts.timeoutCount ? "danger" : "neutral"} />
-                        <ResultPill label="seed" value={counts.seedCount} />
+                        <ResultPill label="시간 초과" value={counts.timeoutCount} tone={counts.timeoutCount ? "danger" : "neutral"} />
+                        <ResultPill label="초기값" value={counts.seedCount} />
                       </div>
                     </td>
                     <td className="px-4 py-4">

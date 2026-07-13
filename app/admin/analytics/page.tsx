@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { adminActionText } from "@/lib/admin/p4/labels";
 import { redirect } from "next/navigation";
 import { Activity, BarChart3, Bot, CalendarDays, Database, Hash, Search, TrendingUp } from "lucide-react";
 import { getAnalyticsDashboardData, type AnalyticsDashboardData, type DimensionStat } from "@/lib/db/analytics";
@@ -317,7 +318,7 @@ function AccessLogTable({ data }: { data: AnalyticsDashboardData["accessLogs"] }
                   <td className="whitespace-nowrap px-4 py-3">{formatDateTime(item.occurredAt)}</td>
                   <td className="px-4 py-3">
                     <span className="rounded-md border border-rule bg-parchment px-2 py-1 text-xs font-semibold text-ink/64">{item.eventType}</span>
-                    {item.isBot ? <div className="mt-1 text-xs font-semibold text-court">bot</div> : null}
+                    {item.isBot ? <div className="mt-1 text-xs font-semibold text-court">봇</div> : null}
                   </td>
                   <td className="max-w-44 break-all px-4 py-3">
                     <div className="font-semibold text-ink">{clientIpHashPreview(item.clientIpHash)}</div>
@@ -332,8 +333,8 @@ function AccessLogTable({ data }: { data: AnalyticsDashboardData["accessLogs"] }
                     <div className="mt-1 text-xs text-ink/45">{item.referrerHost ?? "-"}</div>
                   </td>
                   <td className="max-w-sm px-4 py-3">
-                    <div className="font-semibold text-ink/72">{item.deviceType ?? "device 없음"}</div>
-                    <div className="mt-1 text-xs text-ink/45">{item.userAgentFamily ?? "browser 없음"}</div>
+                    <div className="font-semibold text-ink/72">{item.deviceType ?? "기기 정보 없음"}</div>
+                    <div className="mt-1 text-xs text-ink/45">{item.userAgentFamily ?? "브라우저 정보 없음"}</div>
                   </td>
                 </tr>
               ))}
@@ -367,7 +368,7 @@ function CollectionHealthTable({ data }: { data: AnalyticsDashboardData["collect
                 <th className="px-4 py-3">발견</th>
                 <th className="px-4 py-3">수집</th>
                 <th className="px-4 py-3">실패 항목</th>
-                <th className="px-4 py-3">fetch rate</th>
+                <th className="px-4 py-3">수집 성공률</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
@@ -476,7 +477,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">System</p>
+          <p className="text-xs font-semibold uppercase text-court">시스템</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">이용 통계</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             공개 자료 이용, 검색 공백, 태그 관심도, 수집 성공률, 요약 모델 품질을 함께 확인합니다.
@@ -485,7 +486,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
       </div>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
-        <span>데이터 기준: {dashboard.hasDatabase ? (dashboard.schemaReady ? "Supabase site_events" : "Supabase, migration 필요") : "Mock 데이터"}</span>
+        <span>데이터 기준: {dashboard.hasDatabase ? (dashboard.schemaReady ? "Supabase site_events" : "Supabase, 마이그레이션 필요") : "시험용 데이터"}</span>
         <span>갱신 시각: {formatDateTime(dashboard.generatedAt)}</span>
         <div className="flex flex-wrap gap-1">
           {[7, 30, 90, 180].map((range) => (
@@ -545,7 +546,7 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
               <div className="grid gap-2">
                 {dashboard.adminActions.map((item) => (
                   <div key={item.action} className="flex items-center justify-between gap-3 rounded-md border border-rule bg-parchment/40 px-3 py-2 text-sm">
-                    <span className="font-medium text-ink/72">{item.action}</span>
+                    <span className="font-medium text-ink/72">{adminActionText(item.action)}</span>
                     <span className="font-semibold text-ink">{formatNumber(item.count)}</span>
                   </div>
                 ))}

@@ -71,7 +71,7 @@ test("shell navigation covers the new admin surfaces without retired screen link
   ]) assert.match(shell, new RegExp(href.replaceAll("/", "\\/")));
   assert.doesNotMatch(shell, /\/admin\/operations|\/admin\/jobs|Legacy triage|Legacy job queue/);
   assert.match(shell, /aria-current/);
-  assert.match(shell, /Skip to administrator content/);
+  assert.match(shell, /관리자 본문으로 건너뛰기/);
   assert.match(shell, /event\.key === "Escape"/);
   assert.match(shell, /min-w-0 overflow-x-clip/);
   assert.match(shell, /aria-modal="true"/);
@@ -154,9 +154,9 @@ test("execution, lifecycle, and publication labels remain independent", () => {
   assert.equal(article.publication.value, "in_review");
   assert.notEqual(article.lifecycle.tone, article.publication.tone);
   const queue = source("components/admin-work-queue.tsx");
-  assert.match(queue, /Execution state/);
-  assert.match(queue, /Lifecycle state/);
-  assert.match(queue, /Publication state/);
+  assert.match(queue, /실행 상태/);
+  assert.match(queue, /기사 처리 상태/);
+  assert.match(queue, /공개 상태/);
 });
 
 test("operational errors redact URLs, queries, tokens, and long values", () => {
@@ -345,14 +345,14 @@ test("detail lookup remains valid beyond the newest 500 rows and distinguishes a
       return builder;
     },
   };
-  await assert.rejects(() => getAdminWorkItemDetailWithClient(failedClient as never, "candidate", targetId), /lookup failed/);
+  await assert.rejects(() => getAdminWorkItemDetailWithClient(failedClient as never, "candidate", targetId), /조회에 실패했습니다/);
 });
 
 test("desktop/mobile, loading/empty/error, focus, and overflow states are present", () => {
   const queue = source("components/admin-work-queue.tsx");
   assert.match(queue, /md:hidden/);
   assert.match(queue, /hidden overflow-x-auto md:block/);
-  assert.match(queue, /No work matches these filters/);
+  assert.match(queue, /조건에 맞는 업무가 없습니다/);
   assert.match(queue, /table-fixed/);
   assert.match(queue, /min-w-0/);
   assert.match(source("app/admin/work/loading.tsx"), /role="status"/);

@@ -291,7 +291,7 @@ test("governance UI is part of the permanent administrator shell and has respons
   assert.match(page, /min-w-0|break-words/);
   assert.match(page, /role="alert"/);
   assert.match(approval, /permitted \? <button/);
-  assert.match(approval, /Current session is not bound to this role/);
+  assert.match(approval, /현재 세션은 이 역할에 연결되어 있지 않습니다/);
   assert.doesNotMatch(approval, /actorHash|identity/);
 });
 

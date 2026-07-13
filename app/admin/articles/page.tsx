@@ -111,7 +111,7 @@ export default async function AdminArticlesPage({ searchParams }: { searchParams
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">Content</p>
+          <p className="text-xs font-semibold uppercase text-court">콘텐츠</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">기사 관리</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             전체 기사 상태와 공개 가능 여부를 필터링하고, 선택한 기사만 제한적으로 일괄 처리합니다.
@@ -132,7 +132,7 @@ export default async function AdminArticlesPage({ searchParams }: { searchParams
           </div>
         </label>
         <label className="grid gap-1 text-sm font-semibold text-ink/70 lg:col-span-2">
-          status
+          상태
           <select name="status" defaultValue={filters.status ?? ""} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
             <option value="">전체</option>
             {statusOptions.map((status) => (

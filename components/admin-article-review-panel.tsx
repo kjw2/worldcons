@@ -5,6 +5,7 @@ import { AlertTriangle, ExternalLink } from "lucide-react";
 import { AdminReviewActions, type SummaryModelOption } from "@/components/admin-review-actions";
 import { AdminSummaryEditor } from "@/components/admin-summary-editor";
 import type { AdminLlmSettingsView } from "@/lib/ai/llm-settings-types";
+import { adminStateText } from "@/lib/admin/p4/labels";
 import type { ArticleDetail } from "@/lib/db/types";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 
@@ -68,7 +69,7 @@ function reviewPlan(article: ArticleDetail, collection: Record<string, unknown>)
   if (article.status === "failed_summary") {
     return {
       type: "요약 실패 검토",
-      required: ["오류 metadata에서 실패 원인을 확인", "추출 본문이 원문과 맞는지 확인", "모델/quota 문제라면 재요약 실행"],
+      required: ["오류 메타데이터에서 실패 원인을 확인", "추출 본문이 원문과 맞는지 확인", "모델 사용량 제한 문제라면 재요약 실행"],
       next: hasText ? "본문이 정상이라면 `재요약 실행`을 선택합니다." : "추출 본문이 부족하므로 먼저 원문 수집을 다시 시도합니다.",
     };
   }
@@ -92,7 +93,7 @@ function reviewPlan(article: ArticleDetail, collection: Record<string, unknown>)
   if (article.status === "blocked" || article.status === "timeout" || article.status === "failed_fetch" || article.status === "robots_disallowed") {
     return {
       type: "수집 장애 검토",
-      required: ["공식 사이트 접근 제한 또는 timeout 원인 확인", "robots 정책상 자동 수집 가능한지 확인", "수집 재시도 가능성과 공개 보류 여부 결정"],
+      required: ["공식 사이트 접근 제한 또는 시간 초과 원인 확인", "robots.txt 정책상 자동 수집 가능한지 확인", "수집 재시도 가능성과 공개 보류 여부 결정"],
       next: "자동 수집이 가능한 상태라면 `수집원 재시도`, 정책상 불가하거나 원문 확인이 안 되면 `비공개 종결`합니다.",
     };
   }
@@ -107,7 +108,7 @@ function reviewPlan(article: ArticleDetail, collection: Record<string, unknown>)
 
   return {
     type: "운영 검토",
-    required: ["원문, 본문, 요약, metadata를 확인", "공개 또는 비공개 유지 여부 결정"],
+    required: ["원문, 본문, 요약, 메타데이터를 확인", "공개 또는 비공개 유지 여부 결정"],
     next: hasSummary ? "`검토 완료 후 공개`를 선택할 수 있습니다." : "요약이 없으면 먼저 요약 실행 여부를 결정합니다.",
   };
 }
@@ -198,7 +199,7 @@ function AdminArticleReviewPanel({ article, csrfToken, modelOptions }: AdminArti
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <ReviewFact label="상태" value={article.status} />
+        <ReviewFact label="상태" value={adminStateText(article.status)} />
         <ReviewFact label="수집 방식" value={asText(collection.strategy)} />
         <ReviewFact label="신뢰도" value={asText(collection.confidence)} />
         <ReviewFact label="공개 가능" value={yesNo(collection.publishable)} />
@@ -217,7 +218,7 @@ function AdminArticleReviewPanel({ article, csrfToken, modelOptions }: AdminArti
         ) : null}
         {canonicalHref ? (
           <a href={canonicalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex items-center gap-2 rounded-md border border-rule bg-white px-3 py-2 text-sm font-semibold text-ink/70 hover:bg-parchment">
-            canonical URL
+            대표 URL
             <ExternalLink className="size-4" aria-hidden="true" />
           </a>
         ) : null}
@@ -238,8 +239,8 @@ function AdminArticleReviewPanel({ article, csrfToken, modelOptions }: AdminArti
         <AdminSummaryEditor articleId={article.id} csrfToken={csrfToken} summary={article.summaryJson} />
         <TextDetails title="추출 본문" text={article.cleanedText} />
         {article.rawText && article.rawText !== article.cleanedText ? <TextDetails title="원시 본문" text={article.rawText} /> : null}
-        <JsonDetails title="수집 metadata" value={article.sourceMetadata} />
-        <JsonDetails title="오류 metadata" value={article.errorMetadata} />
+        <JsonDetails title="수집 메타데이터" value={article.sourceMetadata} />
+        <JsonDetails title="오류 메타데이터" value={article.errorMetadata} />
       </div>
     </section>
   );

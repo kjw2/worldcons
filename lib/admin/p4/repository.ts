@@ -107,7 +107,7 @@ function executionWorkItem(run: Row, attempt: Row = {}): AdminWorkItem {
   const id = text(run, "id") ?? "unknown";
   const command = relation(run.admin_commands);
   const status = text(run, "status") ?? "unknown";
-  const commandType = text(command, "command_type") ?? "administrator command";
+  const commandType = text(command, "command_type") ?? "관리자 명령";
   const updatedAt = dateOrNow(text(run, "updated_at") ?? text(run, "created_at"));
   const dueAt = addMinutes(updatedAt, status === "running" ? 5 : 30);
   const leaseExpiresAt = text(attempt, "lease_expires_at");
@@ -118,7 +118,7 @@ function executionWorkItem(run: Row, attempt: Row = {}): AdminWorkItem {
     type: "execution",
     stage: commandStage(commandType),
     title: commandType,
-    target: `run ${number(run, "run_number") || 1}`,
+    target: `실행 ${number(run, "run_number") || 1}`,
     source: null,
     owner: text(attempt, "worker_id") ?? text(command, "requested_by"),
     execution: adminStateLabel(stale ? "lease_expired" : status),
@@ -135,7 +135,7 @@ function executionWorkItem(run: Row, attempt: Row = {}): AdminWorkItem {
     compatibility: status === "shadowed",
     detailHref: `/admin/work/execution/${encodeURIComponent(id)}`,
     safeAction: ["queued", "running", "retry_wait"].includes(status) ? "abort" : ["failed", "aborted"].includes(status) ? "retry" : null,
-    actionDisabledReason: status === "shadowed" ? "Compatibility shadow evidence is terminal and cannot execute." : null,
+    actionDisabledReason: status === "shadowed" ? "호환 기록은 종료 상태이므로 실행할 수 없습니다." : null,
   };
 }
 
@@ -147,7 +147,7 @@ async function loadExecutionItems(supabase: SupabaseAdmin, limit: number, warnin
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .limit(limit),
-    "P0 command reads are unavailable; compatibility work remains visible.",
+    "P0 명령을 조회할 수 없어 호환 업무만 표시합니다.",
     warnings,
   );
   if (runs.length === 0) return { items: [] as AdminWorkItem[], truncated: false };
@@ -160,7 +160,7 @@ async function loadExecutionItems(supabase: SupabaseAdmin, limit: number, warnin
       .in("run_id", runIds)
       .order("attempt_number", { ascending: false })
       .limit(Math.min(MAX_ROWS_PER_DOMAIN * 3, Math.max(limit * 3, 50))),
-    "P0 attempt telemetry is unavailable.",
+    "P0 실행 시도 측정정보를 조회할 수 없습니다.",
     warnings,
   );
   const attemptByRun = new Map<string, Row>();
@@ -195,7 +195,7 @@ function articleWorkItem(row: Row, publication: Row = {}): AdminWorkItem {
     id,
     type: "article",
     stage: publicationState ? "publish" : lifecycleStage(processing, review),
-    title: text(row, "korean_title") ?? text(row, "original_title") ?? "Untitled article",
+    title: text(row, "korean_title") ?? text(row, "original_title") ?? "제목 없는 기사",
     target: text(row, "slug") ?? id,
     source: text(row, "source_key"),
     owner: null,
@@ -216,10 +216,10 @@ function articleWorkItem(row: Row, publication: Row = {}): AdminWorkItem {
     actionDisabledReason: safeAction
       ? null
       : publicationState === "draft"
-        ? "A draft must enter review through an accepted authority before publication."
+        ? "초안은 승인된 권한을 통해 검토 단계에 들어가야 공개할 수 있습니다."
         : !eligible
-          ? "Collection, processing, review, and attention state are not publication-eligible."
-          : "No legal publication transition is available from the current state.",
+          ? "수집, 처리, 검토 또는 주의 상태가 공개 요건을 충족하지 않습니다."
+          : "현재 상태에서 허용되는 공개 전환이 없습니다.",
   };
 }
 
@@ -231,7 +231,7 @@ async function loadArticleItems(supabase: SupabaseAdmin, limit: number, warnings
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .limit(limit),
-    "P2 lifecycle columns are unavailable; article rows use legacy compatibility labels.",
+    "P2 기사 처리 열을 조회할 수 없어 호환 상태를 표시합니다.",
     warnings,
   );
   if (rows.length === 0) {
@@ -242,7 +242,7 @@ async function loadArticleItems(supabase: SupabaseAdmin, limit: number, warnings
         .order("updated_at", { ascending: false })
         .order("id", { ascending: true })
         .limit(limit),
-      "Article compatibility reads are unavailable.",
+    "기사 호환 데이터를 조회할 수 없습니다.",
       warnings,
     );
   }
@@ -255,7 +255,7 @@ async function loadArticleItems(supabase: SupabaseAdmin, limit: number, warnings
       .select("article_id,state,revision,updated_at")
       .in("article_id", articleIds)
       .limit(limit),
-    "P3 publication reads are unavailable; publication labels remain unlinked.",
+    "P3 공개 정보를 조회할 수 없어 공개 상태를 연결하지 않습니다.",
     warnings,
   );
   const publicationByArticle = new Map(publications.map((row) => [text(row, "article_id"), row]));
@@ -273,8 +273,8 @@ function candidateWorkItem(row: Row): AdminWorkItem {
     id,
     type: "candidate",
     stage: "collect",
-    title: text(row, "candidate_type") ?? "URL candidate",
-    target: `candidate ${id.slice(0, 8)}`,
+    title: text(row, "candidate_type") ?? "URL 후보",
+    target: `후보 ${id.slice(0, 8)}`,
     source: text(row, "source_key"),
     owner: text(row, "discovered_by"),
     execution: adminStateLabel(),
@@ -291,7 +291,7 @@ function candidateWorkItem(row: Row): AdminWorkItem {
     compatibility: true,
     detailHref: `/admin/work/candidate/${encodeURIComponent(id)}`,
     safeAction: ["pending", "failed"].includes(status) ? "candidate-retry" : null,
-    actionDisabledReason: status === "retrying" ? "A retry is already in progress." : ["fetched", "ignored"].includes(status) ? "Terminal candidates cannot be requeued." : null,
+    actionDisabledReason: status === "retrying" ? "이미 재시도 중입니다." : ["fetched", "ignored"].includes(status) ? "종료된 후보는 다시 등록할 수 없습니다." : null,
   };
 }
 
@@ -303,7 +303,7 @@ async function loadCandidateItems(supabase: SupabaseAdmin, limit: number, warnin
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .limit(limit),
-    "URL candidate reads are unavailable.",
+    "URL 후보를 조회할 수 없습니다.",
     warnings,
   );
   const items = rows.map(candidateWorkItem);
@@ -320,7 +320,7 @@ function outboxWorkItem(row: Row): AdminWorkItem {
     type: "outbox",
     stage: "publish",
     title: text(row, "event_type") ?? "publication.changed",
-    target: text(row, "article_slug") ?? `article ${String(text(row, "article_id") ?? "").slice(0, 8)}`,
+    target: text(row, "article_slug") ?? `기사 ${String(text(row, "article_id") ?? "").slice(0, 8)}`,
     source: null,
     owner: text(row, "lease_owner"),
     execution: adminStateLabel(status),
@@ -337,7 +337,7 @@ function outboxWorkItem(row: Row): AdminWorkItem {
     compatibility: false,
     detailHref: `/admin/work/outbox/${encodeURIComponent(id)}`,
     safeAction: null,
-    actionDisabledReason: "P3 has no accepted manual retry or dead-letter transition; use the bounded outbox processor runbook.",
+    actionDisabledReason: "P3에는 승인된 수동 재시도 또는 영구 실패 전환 기능이 없습니다. 제한된 캐시 전달 처리 절차를 사용하세요.",
   };
 }
 
@@ -349,7 +349,7 @@ async function loadOutboxItems(supabase: SupabaseAdmin, limit: number, warnings:
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .limit(limit),
-    "P3 outbox reads are unavailable.",
+    "P3 캐시 전달 정보를 조회할 수 없습니다.",
     warnings,
   );
   const items = rows.map(outboxWorkItem);
@@ -359,7 +359,7 @@ async function loadOutboxItems(supabase: SupabaseAdmin, limit: number, warnings:
 function legacyWorkItem(row: Row): AdminWorkItem {
   const id = text(row, "id") ?? "unknown";
   const status = text(row, "status") ?? "unknown";
-  const jobType = text(row, "job_type") ?? "legacy job";
+  const jobType = text(row, "job_type") ?? "호환 작업";
   const updatedAt = dateOrNow(text(row, "updated_at") ?? text(row, "requested_at") ?? text(row, "created_at"));
   const dueAt = addMinutes(updatedAt, status === "running" ? 30 : 60);
   return {
@@ -367,7 +367,7 @@ function legacyWorkItem(row: Row): AdminWorkItem {
     type: "legacy",
     stage: commandStage(jobType),
     title: jobType,
-    target: text(row, "article_slug") ?? text(row, "source_key") ?? `job ${id.slice(0, 8)}`,
+    target: text(row, "article_slug") ?? text(row, "source_key") ?? `작업 ${id.slice(0, 8)}`,
     source: text(row, "source_key"),
     owner: text(row, "worker_id"),
     execution: adminStateLabel(status),
@@ -384,7 +384,7 @@ function legacyWorkItem(row: Row): AdminWorkItem {
     compatibility: true,
     detailHref: `/admin/work/legacy/${encodeURIComponent(id)}`,
     safeAction: null,
-    actionDisabledReason: "Use the retained V2 job page for compatibility actions.",
+    actionDisabledReason: "호환 작업은 읽기 전용으로 표시됩니다.",
   };
 }
 
@@ -396,7 +396,7 @@ async function loadLegacyItems(supabase: SupabaseAdmin, limit: number, warnings:
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .limit(limit),
-    "Legacy admin job reads are unavailable.",
+    "호환 관리자 작업을 조회할 수 없습니다.",
     warnings,
   );
   const items = rows.map(legacyWorkItem);
@@ -453,7 +453,7 @@ export async function getAdminWorkQueueSnapshot(filters: AdminWorkFilters): Prom
       generatedAt,
       available: false,
       compatibilityMode: true,
-      warnings: ["Service-role database access is not configured. No operational records were queried."],
+      warnings: ["서비스 역할 데이터베이스 접근이 설정되지 않아 운영 기록을 조회하지 않았습니다."],
       items: [],
       pageInfo: { page: filters.page, pageSize: filters.pageSize, total: 0, hasMore: false, truncated: false },
       counts: { backlog: 0, breached: 0, failed: 0, stale: 0, abortRequested: 0, outbox: 0 },
@@ -505,10 +505,10 @@ async function loadExactExecutionItem(supabase: SupabaseAdmin, id: string, warni
       .select("id,command_id,run_number,status,priority,available_at,retry_count,current_attempt_id,abort_requested_at,started_at,finished_at,terminal_error_code,terminal_error_message,created_at,updated_at,admin_commands!inner(command_type,requested_by,created_at)")
       .eq("id", id)
       .limit(1),
-    "P0 command detail is unavailable.",
+    "P0 명령 상세정보를 조회할 수 없습니다.",
     warnings,
   );
-  if (!runResult.available) throw new Error("P0 command detail lookup failed.");
+  if (!runResult.available) throw new Error("P0 명령 상세정보 조회에 실패했습니다.");
   const run = runResult.rows[0];
   if (!run) return null;
   const attempts = await safeRows(
@@ -518,7 +518,7 @@ async function loadExactExecutionItem(supabase: SupabaseAdmin, id: string, warni
       .eq("run_id", id)
       .order("attempt_number", { ascending: false })
       .limit(1),
-    "P0 attempt telemetry is unavailable.",
+    "P0 실행 시도 측정정보를 조회할 수 없습니다.",
     warnings,
   );
   return executionWorkItem(run, attempts[0] ?? {});
@@ -531,7 +531,7 @@ async function loadExactArticleItem(supabase: SupabaseAdmin, id: string, warning
       .select("id,slug,source_key,institution_name,original_title,korean_title,status,error_class,review_state,updated_at,created_at,lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state,lifecycle_attention_code,lifecycle_attention_retryable,lifecycle_attention_severity")
       .eq("id", id)
       .limit(1),
-    "P2 lifecycle columns are unavailable; article detail uses legacy compatibility labels.",
+    "P2 기사 처리 열을 조회할 수 없어 상세 화면에 호환 상태를 표시합니다.",
     warnings,
   );
   let row = lifecycleResult.rows[0];
@@ -542,10 +542,10 @@ async function loadExactArticleItem(supabase: SupabaseAdmin, id: string, warning
         .select("id,slug,source_key,institution_name,original_title,korean_title,status,error_class,review_state,updated_at,created_at")
         .eq("id", id)
         .limit(1),
-      "Article compatibility detail is unavailable.",
+    "기사 호환 상세정보를 조회할 수 없습니다.",
       warnings,
     );
-    if (!legacyResult.available) throw new Error("Article detail lookup failed.");
+    if (!legacyResult.available) throw new Error("기사 상세정보 조회에 실패했습니다.");
     row = legacyResult.rows[0];
   }
   if (!row) return null;
@@ -555,7 +555,7 @@ async function loadExactArticleItem(supabase: SupabaseAdmin, id: string, warning
       .select("article_id,state,revision,updated_at")
       .eq("article_id", id)
       .limit(1),
-    "P3 publication detail is unavailable; publication remains unlinked.",
+    "P3 공개 상세정보를 조회할 수 없어 공개 상태를 연결하지 않습니다.",
     warnings,
   );
   return articleWorkItem(row, publications[0] ?? {});
@@ -568,10 +568,10 @@ async function loadExactCandidateItem(supabase: SupabaseAdmin, id: string, warni
       .select("id,source_key,candidate_type,discovered_by,status,last_attempt_at,attempt_count,last_error_code,last_error_message,created_at,updated_at")
       .eq("id", id)
       .limit(1),
-    "URL candidate detail is unavailable.",
+    "URL 후보 상세정보를 조회할 수 없습니다.",
     warnings,
   );
-  if (!result.available) throw new Error("URL candidate detail lookup failed.");
+  if (!result.available) throw new Error("URL 후보 상세정보 조회에 실패했습니다.");
   return result.rows[0] ? candidateWorkItem(result.rows[0]) : null;
 }
 
@@ -582,10 +582,10 @@ async function loadExactOutboxItem(supabase: SupabaseAdmin, id: string, warnings
       .select("id,event_type,article_id,publication_id,publication_revision,version_id,publication_state,article_slug,status,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,last_error_code,delivered_at,dead_lettered_at,created_at,updated_at")
       .eq("id", id)
       .limit(1),
-    "P3 outbox detail is unavailable.",
+    "P3 캐시 전달 상세정보를 조회할 수 없습니다.",
     warnings,
   );
-  if (!result.available) throw new Error("P3 outbox detail lookup failed.");
+  if (!result.available) throw new Error("P3 캐시 전달 상세정보 조회에 실패했습니다.");
   return result.rows[0] ? outboxWorkItem(result.rows[0]) : null;
 }
 
@@ -596,10 +596,10 @@ async function loadExactLegacyItem(supabase: SupabaseAdmin, id: string, warnings
       .select("id,job_type,status,source_key,article_id,article_slug,requested_at,started_at,finished_at,worker_id,progress_current,error_class,error_message,created_at,updated_at")
       .eq("id", id)
       .limit(1),
-    "Legacy admin job detail is unavailable.",
+    "호환 관리자 작업 상세정보를 조회할 수 없습니다.",
     warnings,
   );
-  if (!result.available) throw new Error("Legacy admin job detail lookup failed.");
+  if (!result.available) throw new Error("호환 관리자 작업 상세정보 조회에 실패했습니다.");
   return result.rows[0] ? legacyWorkItem(result.rows[0]) : null;
 }
 
@@ -642,7 +642,7 @@ async function executionDetail(supabase: SupabaseAdmin, item: AdminWorkItem, war
         .eq("run_id", item.id)
         .order("attempt_number", { ascending: false })
         .limit(100),
-      "Attempt history is unavailable.",
+      "실행 시도 이력을 조회할 수 없습니다.",
       warnings,
     ),
     safeRows(
@@ -653,7 +653,7 @@ async function executionDetail(supabase: SupabaseAdmin, item: AdminWorkItem, war
         .order("occurred_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(200),
-      "Command event history is unavailable.",
+      "명령 이벤트 이력을 조회할 수 없습니다.",
       warnings,
     ),
     safeRows(
@@ -662,7 +662,7 @@ async function executionDetail(supabase: SupabaseAdmin, item: AdminWorkItem, war
         .select("id,status,abort_requested_at,abort_requested_by,abort_reason,created_at,updated_at")
         .eq("id", item.id)
         .limit(1),
-      "Command run telemetry is unavailable.",
+      "명령 실행 상태정보를 조회할 수 없습니다.",
       warnings,
     ),
   ]);
@@ -672,7 +672,7 @@ async function executionDetail(supabase: SupabaseAdmin, item: AdminWorkItem, war
     ...events.map((row) => timelineEvent({
       id: String(row.id ?? "event"),
       category: "execution",
-      title: text(row, "event_type") ?? "command event",
+      title: text(row, "event_type") ?? "명령 이벤트",
       state: text(row, "event_type"),
       occurredAt: text(row, "occurred_at"),
       actor: [text(row, "actor_type"), text(row, "actor_id")].filter(Boolean).join(": "),
@@ -680,7 +680,7 @@ async function executionDetail(supabase: SupabaseAdmin, item: AdminWorkItem, war
     ...attempts.map((row) => timelineEvent({
       id: text(row, "id") ?? `attempt-${number(row, "attempt_number")}`,
       category: "execution",
-      title: `Attempt ${number(row, "attempt_number")}`,
+      title: `실행 시도 ${number(row, "attempt_number")}`,
       state: text(row, "status"),
       occurredAt: text(row, "finished_at") ?? text(row, "started_at"),
       actor: text(row, "worker_id"),
@@ -694,8 +694,8 @@ async function executionDetail(supabase: SupabaseAdmin, item: AdminWorkItem, war
     fencingToken: latestAttempt.fencing_token === undefined ? null : String(latestAttempt.fencing_token),
     abortRequestedAt: text(run, "abort_requested_at"),
     links: [
-      { href: "/admin/ingestion-runs", label: "Ingestion runs" },
-      { href: `/admin/audit?q=${encodeURIComponent(item.id)}`, label: "Audit search" },
+      { href: "/admin/ingestion-runs", label: "수집 실행 기록" },
+      { href: `/admin/audit?q=${encodeURIComponent(item.id)}`, label: "감사 로그 검색" },
     ],
   };
 }
@@ -710,7 +710,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
         .order("occurred_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(200),
-      "P2 lifecycle history is unavailable.",
+      "P2 기사 처리 이력을 조회할 수 없습니다.",
       warnings,
     ),
     safeRows(
@@ -720,7 +720,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
         .eq("article_id", item.id)
         .order("revision", { ascending: false })
         .limit(100),
-      "P3 version history is unavailable.",
+      "P3 버전 이력을 조회할 수 없습니다.",
       warnings,
     ),
     safeRows(
@@ -731,7 +731,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
         .order("occurred_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(100),
-      "P3 publication history is unavailable.",
+      "P3 공개 이력을 조회할 수 없습니다.",
       warnings,
     ),
     safeRows(
@@ -742,7 +742,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
         .order("occurred_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(200),
-      "P3 audit ledger is unavailable.",
+      "P3 감사 원장을 조회할 수 없습니다.",
       warnings,
     ),
     safeRows(
@@ -752,7 +752,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
         .eq("article_id", item.id)
         .order("created_at", { ascending: false })
         .limit(100),
-      "P3 outbox history is unavailable.",
+      "P3 캐시 전달 이력을 조회할 수 없습니다.",
       warnings,
     ),
   ]);
@@ -760,7 +760,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
     ...lifecycle.map((row) => timelineEvent({
       id: `lifecycle-${String(row.id ?? "event")}`,
       category: "lifecycle",
-      title: text(row, "transition_source") ?? "lifecycle transition",
+      title: text(row, "transition_source") ?? "기사 처리 단계 전환",
       state: [text(row, "collection_state"), text(row, "processing_state"), text(row, "review_state"), text(row, "attention_state")].filter(Boolean).join(" / "),
       occurredAt: text(row, "occurred_at"),
       actor: [text(row, "actor_type"), text(row, "actor_id")].filter(Boolean).join(": "),
@@ -769,7 +769,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
     ...versions.map((row) => timelineEvent({
       id: `version-${text(row, "id") ?? number(row, "revision")}`,
       category: "publication",
-      title: `Content version ${number(row, "revision")}`,
+      title: `콘텐츠 버전 ${number(row, "revision")}`,
       state: "immutable",
       occurredAt: text(row, "created_at"),
       actor: [text(row, "provenance_actor_type"), text(row, "provenance_actor_id")].filter(Boolean).join(": "),
@@ -778,8 +778,8 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
     ...publication.map((row) => timelineEvent({
       id: `publication-${String(row.id ?? "event")}`,
       category: "publication",
-      title: `Publication revision ${number(row, "publication_revision")}`,
-      state: `${text(row, "from_state") ?? "none"} -> ${text(row, "to_state") ?? "unknown"}`,
+      title: `공개 개정 ${number(row, "publication_revision")}`,
+      state: `${text(row, "from_state") ?? "없음"} -> ${text(row, "to_state") ?? "알 수 없음"}`,
       occurredAt: text(row, "occurred_at"),
       actor: [text(row, "actor_type"), text(row, "actor_id")].filter(Boolean).join(": "),
       reason: text(row, "reason"),
@@ -788,8 +788,8 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
     ...audit.map((row) => timelineEvent({
       id: `audit-${String(row.id ?? "event")}`,
       category: "audit",
-      title: text(row, "event_type") ?? "audit event",
-      state: `ledger ${number(row, "ledger_revision")}`,
+      title: text(row, "event_type") ?? "감사 이벤트",
+      state: `원장 ${number(row, "ledger_revision")}`,
       occurredAt: text(row, "occurred_at"),
       actor: [text(row, "actor_type"), text(row, "actor_id")].filter(Boolean).join(": "),
       reason: text(row, "reason"),
@@ -798,7 +798,7 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
     ...outbox.map((row) => timelineEvent({
       id: `outbox-${text(row, "id") ?? "event"}`,
       category: "outbox",
-      title: `Outbox revision ${number(row, "publication_revision")}`,
+      title: `캐시 전달 개정 ${number(row, "publication_revision")}`,
       state: text(row, "status"),
       occurredAt: text(row, "delivered_at") ?? text(row, "dead_lettered_at") ?? text(row, "updated_at") ?? text(row, "created_at"),
       reason: text(row, "last_error_code"),
@@ -811,9 +811,9 @@ async function articleDetail(supabase: SupabaseAdmin, item: AdminWorkItem, warni
     fencingToken: null,
     abortRequestedAt: null,
     links: [
-      { href: `/admin/articles/${encodeURIComponent(item.target)}`, label: "Article review" },
-      { href: `/articles/${encodeURIComponent(item.target)}`, label: "Public article" },
-      { href: `/admin/audit?q=${encodeURIComponent(item.target)}`, label: "Audit search" },
+      { href: `/admin/articles/${encodeURIComponent(item.target)}`, label: "기사 검토" },
+      { href: `/articles/${encodeURIComponent(item.target)}`, label: "공개 기사" },
+      { href: `/admin/audit?q=${encodeURIComponent(item.target)}`, label: "감사 로그 검색" },
     ],
   };
 }
@@ -835,10 +835,10 @@ async function simpleDetail(item: AdminWorkItem) {
     fencingToken: null,
     abortRequestedAt: null,
     links: item.type === "candidate"
-      ? [{ href: `/admin/candidates?source=${encodeURIComponent(item.source ?? "")}`, label: "URL candidates" }]
+      ? [{ href: `/admin/candidates?source=${encodeURIComponent(item.source ?? "")}`, label: "URL 후보" }]
       : item.type === "outbox"
-        ? [{ href: `/admin/audit?q=${encodeURIComponent(item.target)}`, label: "Audit search" }]
-        : [{ href: `/admin/work/legacy/${encodeURIComponent(item.id)}`, label: "Compatibility job" }],
+        ? [{ href: `/admin/audit?q=${encodeURIComponent(item.target)}`, label: "감사 로그 검색" }]
+        : [{ href: `/admin/work/legacy/${encodeURIComponent(item.id)}`, label: "호환 작업" }],
   };
 }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ClipboardList, Filter, Search } from "lucide-react";
+import { adminActionText, adminEventTypeText, adminStateText } from "@/lib/admin/p4/labels";
 import { getAdminAuditLogData, type AdminAuditLogEntry } from "@/lib/db/analytics";
 import { isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getNumberSearchParam, getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
@@ -47,7 +48,7 @@ function ResultBadge({ entry }: { entry: AdminAuditLogEntry }) {
     return <span className="inline-flex min-h-7 items-center rounded-md border border-court/25 bg-court/5 px-2.5 text-xs font-semibold text-court">오류</span>;
   }
   if (entry.result) {
-    return <span className="inline-flex min-h-7 items-center rounded-md border border-mint/25 bg-mint/10 px-2.5 text-xs font-semibold text-mint">{entry.result}</span>;
+    return <span className="inline-flex min-h-7 items-center rounded-md border border-mint/25 bg-mint/10 px-2.5 text-xs font-semibold text-mint">{adminStateText(entry.result)}</span>;
   }
   return <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-parchment px-2.5 text-xs font-semibold text-ink/62">기록됨</span>;
 }
@@ -69,8 +70,8 @@ function AuditTable({ entries }: { entries: AdminAuditLogEntry[] }) {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-ink/50">{formatDateTime(entry.createdAt)}</div>
-                <div className="mt-1 break-words font-semibold text-ink">{entry.action}</div>
-                <div className="mt-1 break-all text-xs text-ink/45">{entry.eventType}</div>
+                <div className="mt-1 break-words font-semibold text-ink">{adminActionText(entry.action)}</div>
+                <div className="mt-1 break-all text-xs text-ink/45">{adminEventTypeText(entry.eventType)}</div>
               </div>
               <ResultBadge entry={entry} />
             </div>
@@ -80,7 +81,7 @@ function AuditTable({ entries }: { entries: AdminAuditLogEntry[] }) {
                 <dd className="max-w-full break-all text-right font-semibold text-ink/72">{compactText(entry.articleSlug)}</dd>
               </div>
               <div className="flex flex-wrap justify-between gap-2">
-                <dt className="font-semibold text-ink/45">source</dt>
+                <dt className="font-semibold text-ink/45">수집원</dt>
                 <dd className="max-w-full break-all text-right">{compactText(entry.sourceKey)}</dd>
               </div>
               <div className="flex flex-wrap justify-between gap-2">
@@ -119,8 +120,8 @@ function AuditTable({ entries }: { entries: AdminAuditLogEntry[] }) {
               <tr key={entry.id} className="align-top transition hover:bg-parchment/35">
                 <td className="whitespace-nowrap px-4 py-4 text-ink/72">{formatDateTime(entry.createdAt)}</td>
                 <td className="px-4 py-4">
-                  <div className="font-semibold text-ink">{entry.action}</div>
-                  <div className="mt-1 text-xs text-ink/45">{entry.eventType}</div>
+                  <div className="font-semibold text-ink">{adminActionText(entry.action)}</div>
+                  <div className="mt-1 text-xs text-ink/45">{adminEventTypeText(entry.eventType)}</div>
                 </td>
                 <td className="max-w-xs break-all px-4 py-4 text-ink/64">{compactText(entry.path)}</td>
                 <td className="max-w-sm px-4 py-4">
@@ -171,7 +172,7 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">System</p>
+          <p className="text-xs font-semibold uppercase text-court">시스템</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">감사 로그</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             `site_events`에 저장된 관리자 작업 이벤트를 읽기 전용으로 확인합니다.
@@ -185,8 +186,8 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
             이벤트
             <select name="eventType" defaultValue={filterValue(filters.eventType)} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm text-ink">
               <option value="">전체</option>
-              <option value="admin_action">admin_action</option>
-              <option value="admin_review_action">admin_review_action</option>
+              <option value="admin_action">관리자 작업</option>
+              <option value="admin_review_action">관리자 검토 작업</option>
             </select>
           </label>
           <label className="grid gap-1 text-sm font-medium text-ink/72">
@@ -195,14 +196,14 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
               <option value="">전체</option>
               {actionOptions.map((action) => (
                 <option key={action} value={action}>
-                  {action}
+                  {adminActionText(action)}
                 </option>
               ))}
             </select>
           </label>
           <label className="grid gap-1 text-sm font-medium text-ink/72">
             검색
-            <input name="q" defaultValue={filterValue(filters.q)} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm text-ink" placeholder="경로, slug, source, action" />
+            <input name="q" defaultValue={filterValue(filters.q)} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm text-ink" placeholder="경로, 주소 식별자, 수집원, 작업" />
           </label>
           <label className="grid gap-1 text-sm font-medium text-ink/72">
             페이지 크기
@@ -228,7 +229,7 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
       </section>
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
-        <span>데이터 기준: {data.hasDatabase ? (data.schemaReady ? "Supabase site_events" : "Supabase, migration 확인 필요") : "DB 미연결"}</span>
+        <span>데이터 기준: {data.hasDatabase ? (data.schemaReady ? "Supabase site_events" : "Supabase, 마이그레이션 확인 필요") : "DB 미연결"}</span>
         <span>갱신 시각: {formatDateTime(data.generatedAt)}</span>
         <span className="inline-flex items-center gap-2 font-semibold text-ink/72">
           <ClipboardList className="size-4 text-court" aria-hidden="true" />

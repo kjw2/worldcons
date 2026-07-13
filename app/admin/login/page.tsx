@@ -42,7 +42,7 @@ export default async function AdminLoginPage({ searchParams }: { searchParams?: 
         <div className="p-8">
           <div className="mb-6">
             <p className="text-sm font-semibold text-court">관리자 인증</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-normal text-ink">ID/PW 입력</h2>
+            <h2 className="mt-1 text-2xl font-semibold tracking-normal text-ink">아이디와 비밀번호 입력</h2>
           </div>
 
           {isRateLimited ? (

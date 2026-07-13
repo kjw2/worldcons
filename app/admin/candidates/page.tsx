@@ -6,6 +6,7 @@ import { ARTICLE_CONTENT_TYPES } from "@/lib/db/types";
 import { listSources } from "@/lib/db/queries";
 import { listSourceUrlCandidates, SOURCE_URL_CANDIDATE_STATUSES, type SourceUrlCandidateRecord } from "@/lib/db/source-url-candidates";
 import { displaySourceLabel } from "@/lib/ui/source-labels";
+import { displayContentTypeLabel } from "@/lib/ui/content-type-labels";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -117,7 +118,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
                 <div className="break-words font-semibold text-ink">{displaySourceLabel(candidate.sourceKey)}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink/56">
                   <span className="break-all">{candidate.sourceKey}</span>
-                  <span>유형 {candidate.candidateType}</span>
+                  <span>유형 {displayContentTypeLabel(candidate.candidateType)}</span>
                 </div>
               </div>
               <StatusBadge status={candidate.status} />
@@ -183,7 +184,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
                   <div className="font-semibold text-ink">{displaySourceLabel(candidate.sourceKey)}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink/56">
                     <span>{candidate.sourceKey}</span>
-                    <span>유형 {candidate.candidateType}</span>
+                    <span>유형 {displayContentTypeLabel(candidate.candidateType)}</span>
                   </div>
                   <a
                     href={candidate.url}
@@ -201,7 +202,7 @@ function CandidateTable({ candidates, csrfToken, returnTo }: { candidates: Sourc
                 </td>
                 <td className="px-4 py-4">
                   <div className="font-semibold text-ink/72">{candidate.discoveredBy}</div>
-                  <div className="mt-1 text-xs text-ink/50">유형: {candidate.candidateType}</div>
+                  <div className="mt-1 text-xs text-ink/50">유형: {displayContentTypeLabel(candidate.candidateType)}</div>
                 </td>
                 <td className="px-4 py-4">
                   {candidate.lastErrorCode ? <div className="font-semibold text-court">{candidate.lastErrorCode}</div> : <span className="text-ink/45">없음</span>}
@@ -261,7 +262,7 @@ export default async function AdminCandidatesPage({ searchParams }: { searchPara
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">Content</p>
+          <p className="text-xs font-semibold uppercase text-court">콘텐츠</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">URL 후보</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             공식 상세 확인 실패나 수집 후보로 보존된 URL을 검토하고 추적 상태를 조정합니다.
@@ -316,7 +317,7 @@ export default async function AdminCandidatesPage({ searchParams }: { searchPara
               <option value="">전체</option>
               {ARTICLE_CONTENT_TYPES.map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {displayContentTypeLabel(item)}
                 </option>
               ))}
             </select>

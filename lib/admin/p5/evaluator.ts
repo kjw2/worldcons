@@ -9,20 +9,20 @@ function metric(key: string, label: string, value: number | null, threshold: { w
 
 export function evaluateP5Slas(evidence: P5HealthEvidence, policy: P5OperationalPolicy): P5SlaResult[] {
   const results = [
-    metric("queue.latency", "Command queue latency", evidence.queue.oldestQueuedAgeSeconds ?? ((evidence.queue.states.queued ?? 0) === 0 ? 0 : null), policy.queueLatencySeconds, "seconds"),
-    metric("queue.heartbeat", "Lease heartbeat age", evidence.queue.oldestHeartbeatAgeSeconds ?? ((evidence.queue.states.running ?? 0) === 0 ? 0 : null), policy.leaseHeartbeatAgeSeconds, "seconds"),
-    metric("queue.abort", "Abort completion", evidence.queue.oldestAbortAgeSeconds ?? (evidence.queue.abortPendingCount === 0 ? 0 : null), policy.abortCompletionSeconds, "seconds"),
-    metric("queue.retry", "Retry wait age", evidence.queue.oldestRetryAgeSeconds ?? (evidence.queue.retryWaitingCount === 0 ? 0 : null), policy.retryAgeSeconds, "seconds"),
-    metric("lifecycle.backlog", "Lifecycle attention backlog", evidence.lifecycle.backlogCount, policy.lifecycleBacklogCount, "count"),
-    metric("lifecycle.review", "Oldest review age", evidence.lifecycle.oldestReviewAgeSeconds ?? (evidence.lifecycle.backlogCount === 0 ? 0 : null), policy.lifecycleReviewAgeSeconds, "seconds"),
-    metric("publication.parity", "Publication parity", evidence.publication.parityMismatchCount + evidence.publication.quarantineCount, policy.publicationParityCount, "count"),
-    metric("outbox.delivery", "Cache outbox delivery", evidence.outbox.oldestUndeliveredAgeSeconds ?? (evidence.outbox.pendingCount + evidence.outbox.processingCount === 0 ? 0 : null), policy.outboxDeliveryAgeSeconds, "seconds"),
-    metric("outbox.dead_letter", "Cache outbox dead letters", evidence.outbox.deadLetterCount, policy.outboxDeadLetterCount, "count"),
+    metric("queue.latency", "명령 큐 대기 시간", evidence.queue.oldestQueuedAgeSeconds ?? ((evidence.queue.states.queued ?? 0) === 0 ? 0 : null), policy.queueLatencySeconds, "seconds"),
+    metric("queue.heartbeat", "실행 임대 상태 신호 경과 시간", evidence.queue.oldestHeartbeatAgeSeconds ?? ((evidence.queue.states.running ?? 0) === 0 ? 0 : null), policy.leaseHeartbeatAgeSeconds, "seconds"),
+    metric("queue.abort", "중단 완료 시간", evidence.queue.oldestAbortAgeSeconds ?? (evidence.queue.abortPendingCount === 0 ? 0 : null), policy.abortCompletionSeconds, "seconds"),
+    metric("queue.retry", "재시도 대기 시간", evidence.queue.oldestRetryAgeSeconds ?? (evidence.queue.retryWaitingCount === 0 ? 0 : null), policy.retryAgeSeconds, "seconds"),
+    metric("lifecycle.backlog", "기사 처리 주의 대기 건수", evidence.lifecycle.backlogCount, policy.lifecycleBacklogCount, "count"),
+    metric("lifecycle.review", "최장 검토 대기 시간", evidence.lifecycle.oldestReviewAgeSeconds ?? (evidence.lifecycle.backlogCount === 0 ? 0 : null), policy.lifecycleReviewAgeSeconds, "seconds"),
+    metric("publication.parity", "공개 데이터 일치", evidence.publication.parityMismatchCount + evidence.publication.quarantineCount, policy.publicationParityCount, "count"),
+    metric("outbox.delivery", "캐시 전달 지연", evidence.outbox.oldestUndeliveredAgeSeconds ?? (evidence.outbox.pendingCount + evidence.outbox.processingCount === 0 ? 0 : null), policy.outboxDeliveryAgeSeconds, "seconds"),
+    metric("outbox.dead_letter", "캐시 전달 영구 실패", evidence.outbox.deadLetterCount, policy.outboxDeadLetterCount, "count"),
   ];
   for (const source of evidence.sources) {
     if (!source.active) continue;
     const configured = policy.sourceFreshnessOverrides[source.sourceKey] ?? policy.sourceFreshnessSeconds;
-    results.push(metric(`source.${source.sourceKey}`, `Source freshness: ${source.sourceKey}`, source.freshnessAgeSeconds, { ...configured, owner: "operations" }, "seconds"));
+    results.push(metric(`source.${source.sourceKey}`, `수집원 최신성: ${source.sourceKey}`, source.freshnessAgeSeconds, { ...configured, owner: "operations" }, "seconds"));
   }
   return evidence.available
     ? results
@@ -161,18 +161,18 @@ export function evaluateP5RetirementReadiness(input: P5RetirementEvaluationInput
     && approvalSet?.distinctActorCount === P5_OWNER_ROLES.length
     && P5_OWNER_ROLES.every((role) => approvalRoles.has(role));
   const gates: P5RetirementGate[] = [
-    { key: "health.available", label: "P5 aggregate health evidence is available", passed: input.evidence.available, detail: input.evidence.available ? "Aggregate RPC returned evidence." : "Migration, credentials, or health RPC is unavailable." },
-    { key: "observation.window", label: "Explicit observation window is complete", passed: validWindow, detail: validWindow ? `${hours} observed hours meet the ${input.policy.minimumObservationHours}-hour minimum.` : `A closed window of at least ${input.policy.minimumObservationHours} hours is required.` },
-    { key: "observation.coverage", label: "Observation coverage spans the requested window", passed: Boolean(validWindow && input.evidence.compatibility.firstObservedAt && input.evidence.compatibility.lastObservedAt && new Date(input.evidence.compatibility.firstObservedAt) <= start && new Date(input.evidence.compatibility.lastObservedAt) >= end), detail: "First and last aggregate observations must cover the requested window." },
-    { key: "observation.full_capture", label: "Observation sampling is 100%", passed: input.observationSampleRate === 1, detail: input.observationSampleRate === 1 ? "The full window uses unsampled compatibility observations." : "Sampled observations cannot prove zero legacy activity; set the bounded sample rate to 1 for the retirement window." },
-    { key: "compatibility.zero", label: "No unexplained legacy reads or writes", passed: !input.evidence.compatibility.unexplainedLegacyObserved, detail: input.evidence.compatibility.unexplainedLegacyObserved ? `Legacy compatibility was last observed at ${input.evidence.compatibility.legacyLastSeenAt ?? "an unknown time"}.` : "No unexplained legacy presence was observed in the window." },
-    { key: "parity.p0_p3", label: "P0-P3 parity and anomalies pass", passed: input.evidence.lifecycle.unresolvedAnomalyCount === 0 && input.evidence.publication.parityMismatchCount === 0 && input.evidence.publication.quarantineCount === 0 && input.evidence.publication.legacyIdentityDigest === input.evidence.publication.explicitIdentityDigest, detail: "Lifecycle anomalies, publication mismatch/quarantine, and identity digests must all pass." },
-    { key: "sla.hard", label: "No hard operational SLO violation", passed: hardSlaKeys.length === 0 && input.evidence.queue.staleLeaseCount === 0, detail: `${hardSlaKeys.length} hard/unknown SLOs and ${input.evidence.queue.staleLeaseCount} stale leases.` },
-    { key: "work.conflict", label: "No in-flight legacy/V3 conflict", passed: !input.evidence.inFlight.conflict && input.evidence.inFlight.legacyCount === 0, detail: `${input.evidence.inFlight.legacyCount} legacy and ${input.evidence.inFlight.newCount} V3 in-flight items.` },
-    { key: "outbox.healthy", label: "Cache outbox is healthy", passed: input.evidence.outbox.deadLetterCount === 0 && slas.filter((item) => item.key.startsWith("outbox.")).every((item) => item.status === "healthy"), detail: `${input.evidence.outbox.deadLetterCount} dead letters; undelivered age ${input.evidence.outbox.oldestUndeliveredAgeSeconds ?? "unknown"} seconds.` },
-    { key: "backup.current", label: "Backup/restore rehearsal evidence is current", passed: backupCurrent, detail: backupCurrent ? "Current rehearsal marker is recorded." : "A current successful backup/restore rehearsal marker is required." },
-    { key: "owners.approved", label: "Digest-bound distinct owners approved", passed: approvalsPass, detail: `Matching digest set: ${approvalRoles.size} roles, ${approvalSet?.distinctActorCount ?? 0} distinct actors, ${approvalSetCurrent ? "active" : "missing or expired"}.` },
-    { key: "flags.legal_order", label: "Feature flags are in the legal retirement order", passed: flagOrderLegal, detail: flagOrderLegal ? "Authority reads/workers precede disabled compatibility writes." : "One or more required flag states are missing or out of order." },
+    { key: "health.available", label: "P5 통합 상태 근거 사용 가능", passed: input.evidence.available, detail: input.evidence.available ? "통합 RPC에서 운영 근거를 반환했습니다." : "마이그레이션, 인증 정보 또는 상태 RPC를 사용할 수 없습니다." },
+    { key: "observation.window", label: "명시적 관찰 기간 완료", passed: validWindow, detail: validWindow ? `${hours}시간의 관찰이 최소 기준 ${input.policy.minimumObservationHours}시간을 충족합니다.` : `종료된 관찰 기간이 최소 ${input.policy.minimumObservationHours}시간 이상이어야 합니다.` },
+    { key: "observation.coverage", label: "요청한 전체 기간의 관찰 근거 확보", passed: Boolean(validWindow && input.evidence.compatibility.firstObservedAt && input.evidence.compatibility.lastObservedAt && new Date(input.evidence.compatibility.firstObservedAt) <= start && new Date(input.evidence.compatibility.lastObservedAt) >= end), detail: "최초 및 최종 통합 관찰 시각이 요청한 전체 기간을 포함해야 합니다." },
+    { key: "observation.full_capture", label: "관찰 표본 비율 100%", passed: input.observationSampleRate === 1, detail: input.observationSampleRate === 1 ? "전체 기간에 표본 추출 없는 호환 관찰을 사용했습니다." : "표본 관찰만으로는 이전 체계 활동이 없음을 입증할 수 없습니다. 폐기 관찰 기간의 표본 비율을 1로 설정해야 합니다." },
+    { key: "compatibility.zero", label: "설명되지 않은 이전 체계 읽기·쓰기 없음", passed: !input.evidence.compatibility.unexplainedLegacyObserved, detail: input.evidence.compatibility.unexplainedLegacyObserved ? `이전 호환 체계가 마지막으로 관찰된 시각: ${input.evidence.compatibility.legacyLastSeenAt ?? "알 수 없음"}.` : "관찰 기간에 설명되지 않은 이전 체계 활동이 없었습니다." },
+    { key: "parity.p0_p3", label: "P0-P3 데이터 일치 및 이상 없음", passed: input.evidence.lifecycle.unresolvedAnomalyCount === 0 && input.evidence.publication.parityMismatchCount === 0 && input.evidence.publication.quarantineCount === 0 && input.evidence.publication.legacyIdentityDigest === input.evidence.publication.explicitIdentityDigest, detail: "기사 처리 이상, 공개 불일치·격리 및 식별자 다이제스트가 모두 기준을 충족해야 합니다." },
+    { key: "sla.hard", label: "중대 운영 기준 위반 없음", passed: hardSlaKeys.length === 0 && input.evidence.queue.staleLeaseCount === 0, detail: `중대 또는 미확인 운영 기준 ${hardSlaKeys.length}건, 만료된 임대 ${input.evidence.queue.staleLeaseCount}건입니다.` },
+    { key: "work.conflict", label: "진행 중인 이전 체계와 V3 업무 충돌 없음", passed: !input.evidence.inFlight.conflict && input.evidence.inFlight.legacyCount === 0, detail: `진행 중인 이전 체계 업무 ${input.evidence.inFlight.legacyCount}건, V3 업무 ${input.evidence.inFlight.newCount}건입니다.` },
+    { key: "outbox.healthy", label: "캐시 전달 상태 정상", passed: input.evidence.outbox.deadLetterCount === 0 && slas.filter((item) => item.key.startsWith("outbox.")).every((item) => item.status === "healthy"), detail: `영구 실패 ${input.evidence.outbox.deadLetterCount}건, 최장 미전달 경과 시간 ${input.evidence.outbox.oldestUndeliveredAgeSeconds ?? "알 수 없음"}초입니다.` },
+    { key: "backup.current", label: "백업·복구 훈련 근거가 유효함", passed: backupCurrent, detail: backupCurrent ? "유효한 훈련 완료 표시가 기록되어 있습니다." : "최근 성공한 백업·복구 훈련 완료 표시가 필요합니다." },
+    { key: "owners.approved", label: "근거 묶음별 담당자 승인 완료", passed: approvalsPass, detail: `일치하는 근거 묶음: 역할 ${approvalRoles.size}개, 서로 다른 작업자 ${approvalSet?.distinctActorCount ?? 0}명, 상태 ${approvalSetCurrent ? "유효" : "없음 또는 만료"}.` },
+    { key: "flags.legal_order", label: "기능 플래그가 올바른 폐기 순서에 있음", passed: flagOrderLegal, detail: flagOrderLegal ? "권한 읽기 및 작업자가 호환 쓰기 비활성화보다 먼저 적용되었습니다." : "필수 기능 플래그 중 하나 이상이 없거나 순서가 올바르지 않습니다." },
   ];
   const unsigned = {
     schemaVersion: 1 as const,

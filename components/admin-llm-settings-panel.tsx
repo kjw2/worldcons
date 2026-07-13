@@ -48,7 +48,7 @@ const PROVIDER_LABELS: Record<ConfigurableLlmProvider, string> = {
   gemini: "Gemini",
   openai: "OpenAI",
   anthropic: "Claude",
-  "openai-compatible": "OpenAI Compatible",
+  "openai-compatible": "OpenAI 호환",
 };
 
 const MODEL_PLACEHOLDERS: Record<ConfigurableLlmProvider, string> = {
@@ -379,13 +379,13 @@ export function AdminLlmSettingsPanel({
                   <h2 className="mt-1 text-lg font-semibold tracking-normal text-ink">{statusText(providerForm)}</h2>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                     <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-parchment px-2.5 font-semibold text-ink/62">
-                      DB {databaseKeyCount}
+                      DB 저장 {databaseKeyCount}
                     </span>
                     <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-parchment px-2.5 font-semibold text-ink/62">
-                      ENV {providerView.envKeyCount}
+                      환경변수 {providerView.envKeyCount}
                     </span>
                     <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 font-semibold ${providerView.hasUsableKey ? "border-mint/25 bg-mint/10 text-mint" : "border-court/25 bg-court/5 text-court"}`}>
-                      {providerView.hasUsableKey ? "usable" : "no key"}
+                      {providerView.hasUsableKey ? "사용 가능" : "키 없음"}
                     </span>
                   </div>
                 </div>
@@ -408,7 +408,7 @@ export function AdminLlmSettingsPanel({
                       <input
                         value={providerForm.displayName}
                         onChange={(event) => updateProvider(provider, { displayName: event.target.value })}
-                        placeholder="OpenAI Compatible"
+                        placeholder="OpenAI 호환"
                         className="focus-ring h-10 rounded-md border border-rule bg-white px-3 text-sm text-ink"
                       />
                     </label>
@@ -436,7 +436,7 @@ export function AdminLlmSettingsPanel({
 
               <div className="mt-4 grid gap-2">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase text-ink/50">API Keys</p>
+                  <p className="text-xs font-semibold text-ink/50">API 키</p>
                   <button
                     type="button"
                     onClick={() => addKey(provider)}

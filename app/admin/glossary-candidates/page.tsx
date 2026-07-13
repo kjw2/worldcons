@@ -8,6 +8,20 @@ import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/ut
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const tagTypeLabels: Record<string, string> = {
+  court: "재판기관",
+  country: "국가",
+  law: "법령",
+  article: "조문",
+  right: "권리",
+  party: "당사자",
+  institution: "기관",
+  topic: "쟁점",
+  doctrine: "법리",
+  procedure: "절차",
+  case_type: "사건 유형",
+};
+
 export default async function AdminGlossaryCandidatesPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const params = await resolveSearchParams(searchParams);
   const status = getSearchParam(params, "status");
@@ -24,7 +38,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
     <div className="min-w-0 px-4 py-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-court">Content</p>
+          <p className="text-xs font-semibold uppercase text-court">콘텐츠</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">용어 후보</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/66">
             공개 자료 태그에서 자주 등장하지만 용어사전에 아직 연결되지 않은 후보를 검토합니다.
@@ -42,7 +56,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
 
       {status ? (
         <div className="mb-5 rounded-md border border-rule bg-white px-4 py-3 text-sm font-semibold text-ink/72 shadow-sm">
-          {status === "approved" ? "용어로 추가했습니다." : status === "ignored" ? "후보를 숨겼습니다." : status === "refreshed" ? "용어 후보를 갱신했습니다." : status}
+          {status === "approved" ? "용어로 추가했습니다." : status === "ignored" ? "후보를 숨겼습니다." : status === "refreshed" ? "용어 후보를 갱신했습니다." : "요청 결과를 확인할 수 없습니다."}
         </div>
       ) : null}
 
@@ -56,7 +70,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
               <section key={candidate.id ?? candidate.tagSlug} className="rounded-md border border-rule bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase text-court">{candidate.tagType}</p>
+                    <p className="text-xs font-semibold text-court">{tagTypeLabels[candidate.tagType] ?? "기타"}</p>
                     <h2 className="mt-1 text-xl font-semibold tracking-normal text-ink">{candidate.tagName}</h2>
                     <p className="mt-2 text-sm text-ink/60">
                       자료 {candidate.articleCount.toLocaleString("ko-KR")}건 · 출처 언어: {languageLabels(candidate.sourceLanguages)}
@@ -79,7 +93,7 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
                   <input type="hidden" name="csrfToken" value={csrfToken} />
                   {candidate.id ? <input type="hidden" name="candidateId" value={candidate.id} /> : null}
                   <label className="grid gap-1 text-sm font-semibold text-ink/70">
-                    slug
+                    주소 식별자
                     <input name="slug" defaultValue={candidate.suggestedSlug} required className="focus-ring h-10 rounded-md border border-rule px-3 font-normal text-ink" />
                   </label>
                   <label className="grid gap-1 text-sm font-semibold text-ink/70">
@@ -94,9 +108,9 @@ export default async function AdminGlossaryCandidatesPage({ searchParams }: { se
                     관할
                     <select name="jurisdiction" defaultValue={defaultJurisdiction} className="focus-ring h-10 rounded-md border border-rule bg-white px-3 font-normal text-ink">
                       <option value="">공통</option>
-                      <option value="Germany">Germany</option>
-                      <option value="United States">United States</option>
-                      <option value="France">France</option>
+                      <option value="Germany">독일</option>
+                      <option value="United States">미국</option>
+                      <option value="France">프랑스</option>
                     </select>
                   </label>
                   <label className="grid gap-1 text-sm font-semibold text-ink/70 md:col-span-2">
