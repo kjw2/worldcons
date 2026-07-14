@@ -83,7 +83,7 @@ function HomeSkeleton() {
       </div>
       <SkeletonBlock className="mb-8 h-64 sm:h-72" />
       <div className="border border-[#d4dcd7] bg-white">
-        {Array.from({ length: 3 }).map((_, index) => (
+        {Array.from({ length: 4 }).map((_, index) => (
           <div key={index} className="grid min-h-24 grid-cols-[5rem_minmax(0,1fr)] gap-4 border-b border-[#e0e5e2] p-4 last:border-b-0">
             <SkeletonBlock className="h-14 w-14" />
             <div className="space-y-2"><SkeletonBlock className="h-4 w-36" /><SkeletonBlock className="h-5 w-10/12" /><SkeletonBlock className="h-4 w-7/12" /></div>
@@ -168,14 +168,13 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
 async function HomeContent() {
   const { issueTags, latestArticles } = await getHomePortalData();
   const leadArticle = latestArticles[0];
-  const remainingArticles = latestArticles.slice(1);
   return (
     <>
       <PageViewTracker event={{ eventType: "page_view", path: "/v2", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />
       <h1 className="sr-only">최신 헌법 판례</h1>
       <IssueTopicCarousel tags={issueTags} />
       {leadArticle ? <LeadDecision article={leadArticle} /> : null}
-      <CountryLatestPortal articles={remainingArticles} />
+      <CountryLatestPortal articles={latestArticles} />
     </>
   );
 }
