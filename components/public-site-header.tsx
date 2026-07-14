@@ -25,8 +25,8 @@ export function PublicSiteHeader() {
     <header id="site-header" className="public-site-header border-b border-[#173f34] bg-[#fdfdfb]/98">
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
         <div className="flex min-h-[92px] items-center justify-between gap-5 border-b border-[#ccd4cf] py-4 sm:min-h-[106px]">
-          <Link href="/v2" className="focus-ring min-w-0 rounded-sm" aria-label="World Cons 홈">
-            <span className="archive-wordmark block truncate text-[30px] font-semibold leading-none text-[#123d32] sm:text-[42px]">WORLD CONS</span>
+          <Link href="/v2" className="focus-ring min-w-0 rounded-sm" aria-label="헌법판례요약시스템 홈">
+            <span className="block truncate font-sans text-[25px] font-extrabold leading-none text-[#123d32] sm:text-[38px]">헌법판례요약시스템</span>
             <span className="mt-2 block text-xs font-medium text-[#52635d] sm:text-sm">세계 헌법재판과 헌법 판례</span>
           </Link>
           <div className="flex shrink-0 items-center gap-2 text-sm font-semibold text-[#44554f] sm:gap-5">

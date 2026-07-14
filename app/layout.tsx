@@ -9,8 +9,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "World Cons",
-    template: "%s | World Cons",
+    default: "헌법판례요약시스템",
+    template: "%s | 헌법판례요약시스템",
   },
   description: "세계 헌법재판기관의 최신 뉴스와 판례를 한국어 요약으로 탐색하는 큐레이션 플랫폼",
   alternates: {
