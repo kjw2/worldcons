@@ -1,23 +1,26 @@
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight, CalendarDays, Landmark, MessageSquareText, Scale, ShieldCheck, Vote } from "lucide-react";
+import { ArrowRight, CalendarDays, Landmark } from "lucide-react";
+import { IssueTopicCarousel } from "@/components/issue-topic-carousel";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
-import type { ArticleListItem, TagSummary } from "@/lib/db/types";
+import type { ArticleListItem, TagType } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 
 export const revalidate = 60;
 
+const CONSTITUTIONAL_ISSUE_TYPES = new Set<TagType>(["right", "topic", "doctrine", "procedure"]);
+
 const getHomePortalData = unstable_cache(
   async () => {
     const [sources, tags] = await Promise.all([
       listSources(),
-      listTags({ sort: "count", limit: 30 }),
+      listTags({ sort: "count", limit: 120 }),
     ]);
     const jurisdictions = Array.from(
       new Set(sources.filter((source) => source.isActive).map((source) => source.jurisdiction)),
@@ -31,9 +34,34 @@ const getHomePortalData = unstable_cache(
       .flatMap((result) => result.items.slice(0, 1))
       .sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""));
 
-    return { tags, latestArticles };
+    const issueCandidates = tags.filter(
+      (tag) => CONSTITUTIONAL_ISSUE_TYPES.has(tag.type) && (tag.articleCount ?? 0) > 0 && tag.latestArticleAt,
+    );
+    const maxCount = Math.max(1, ...issueCandidates.map((tag) => tag.articleCount ?? 0));
+    const newestUpdate = Math.max(0, ...issueCandidates.map((tag) => Date.parse(tag.latestArticleAt ?? "") || 0));
+    const oneYear = 365 * 24 * 60 * 60 * 1_000;
+    const seenNames = new Set<string>();
+    const issueTags = issueCandidates
+      .sort((left, right) => {
+        const score = (tag: (typeof issueCandidates)[number]) => {
+          const popularity = Math.log1p(tag.articleCount ?? 0) / Math.log1p(maxCount);
+          const updatedAt = Date.parse(tag.latestArticleAt ?? "") || 0;
+          const recency = Math.max(0, 1 - (newestUpdate - updatedAt) / oneYear);
+          return popularity * 0.7 + recency * 0.3;
+        };
+        return score(right) - score(left);
+      })
+      .filter((tag) => {
+        const key = (tag.normalizedName || tag.name).trim().toLocaleLowerCase("ko-KR");
+        if (seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+      })
+      .slice(0, 12);
+
+    return { issueTags, latestArticles };
   },
-  ["home-country-portal-v1"],
+  ["home-country-portal-v2"],
   { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 
@@ -63,31 +91,6 @@ function HomeSkeleton() {
         ))}
       </div>
     </div>
-  );
-}
-
-const issueIcons = [MessageSquareText, Vote, ShieldCheck, Scale] as const;
-
-function IssueTrackers({ tags }: { tags: TagSummary[] }) {
-  const featuredTags = tags.slice(0, 4);
-  if (featuredTags.length === 0) return null;
-
-  return (
-    <section className="mb-9" aria-labelledby="issue-trackers">
-      <h2 id="issue-trackers" className="archive-rule-title mb-3 text-base font-semibold text-[#243b33]">주요 헌법 쟁점</h2>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {featuredTags.map((tag, index) => {
-          const Icon = issueIcons[index % issueIcons.length];
-          return (
-            <Link key={tag.slug} href={`/v2/tags/${tag.slug}`} prefetch={false} className="focus-ring group grid min-h-28 grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-[#d4dcd7] bg-white p-4 transition hover:border-[#829b8e] hover:bg-[#f8faf8]">
-              <span className="inline-flex size-10 items-center justify-center text-[#315b4d]"><Icon className="size-6" aria-hidden="true" /></span>
-              <span className="min-w-0"><span className="archive-serif block break-words text-lg font-semibold text-[#173d33]">{tag.name}</span><span className="mt-2 block text-xs text-[#68756f]">관련 판례 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</span></span>
-              <ArrowRight className="mt-auto size-4 text-[#7c8983] transition group-hover:translate-x-0.5 group-hover:text-[#123d32]" aria-hidden="true" />
-            </Link>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -163,14 +166,14 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
 }
 
 async function HomeContent() {
-  const { tags, latestArticles } = await getHomePortalData();
+  const { issueTags, latestArticles } = await getHomePortalData();
   const leadArticle = latestArticles[0];
   const remainingArticles = latestArticles.slice(1);
   return (
     <>
       <PageViewTracker event={{ eventType: "page_view", path: "/v2", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />
       <h1 className="sr-only">최신 헌법 판례</h1>
-      <IssueTrackers tags={tags} />
+      <IssueTopicCarousel tags={issueTags} />
       {leadArticle ? <LeadDecision article={leadArticle} /> : null}
       <CountryLatestPortal articles={remainingArticles} />
     </>

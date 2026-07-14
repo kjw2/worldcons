@@ -45,6 +45,22 @@ body {
   padding-bottom: 0.65rem;
 }
 
+.issue-carousel-page {
+  animation: issue-carousel-enter 260ms ease-out;
+}
+
+@keyframes issue-carousel-enter {
+  from {
+    opacity: 0.45;
+    transform: translateX(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .public-site-header {
   transition:
     background-color 160ms ease,
@@ -153,6 +169,7 @@ html.chrome-fixed.chrome-header-hidden #site-header {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .issue-carousel-page,
   .navigation-progress-bar,
   .navigation-spinner {
     animation-duration: 1ms;
