@@ -6,7 +6,6 @@ import { Search } from "lucide-react";
 import { cn } from "@/lib/utils/classnames";
 
 const primaryNavigation = [
-  { href: "/v2", label: "최신 판례", exact: true },
   { href: "/v2/list", label: "전체 판례" },
   { href: "/v2/sources", label: "기관" },
   { href: "/v2/tags", label: "주제" },
@@ -14,8 +13,8 @@ const primaryNavigation = [
   { href: "/v2/guide", label: "안내" },
 ] as const;
 
-function isCurrent(pathname: string, href: string, exact?: boolean) {
-  return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+function isCurrent(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function PublicSiteHeader() {
@@ -36,9 +35,9 @@ export function PublicSiteHeader() {
             </Link>
           </div>
         </div>
-        <nav className="grid grid-cols-6 overflow-x-auto" aria-label="주요 메뉴">
+        <nav className="grid grid-cols-5 overflow-x-auto" aria-label="주요 메뉴">
           {primaryNavigation.map((item) => {
-            const current = isCurrent(pathname, item.href, "exact" in item ? item.exact : false);
+            const current = isCurrent(pathname, item.href);
             return (
               <Link
                 key={item.href}

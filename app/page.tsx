@@ -154,7 +154,7 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
   return (
     <section aria-labelledby="country-latest">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div><p className="archive-kicker">Latest by country</p><h2 id="country-latest" className="archive-serif mt-1 text-2xl font-semibold text-[#123d32]">최신 판례</h2></div>
+        <h2 id="country-latest" className="archive-serif text-2xl font-semibold text-[#123d32]">국가별 최신 판례</h2>
         <Link href="/v2/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
       </div>
       <div className="overflow-hidden rounded-sm border border-[#cbd5cf] bg-white">
