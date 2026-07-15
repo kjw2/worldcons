@@ -32,7 +32,7 @@ export default async function TagDetailPage({ params }: { params: Promise<{ slug
       path: `/tags/${result.tag.slug}`,
       tagSlug: result.tag.slug,
       tagName: result.tag.name,
-      resultCount: result.articles.length,
+      resultCount: result.tag.articleCount ?? result.articles.length,
     },
     await headers(),
   );
@@ -50,7 +50,7 @@ export default async function TagDetailPage({ params }: { params: Promise<{ slug
         <div className="flex min-h-24 items-center gap-3 border-b border-[#dce2de] p-4 md:border-b-0 md:border-r"><CalendarDays className="size-5 text-[#315b4d]" aria-hidden="true" /><div><p className="text-xs text-[#74817c]">최근 업데이트</p><p className="mt-1 font-semibold text-[#243b33]">{formatDisplayDate(result.tag.latestArticleAt)}</p></div></div>
         <div className="flex min-h-24 items-start gap-3 p-4"><Hash className="mt-1 size-5 shrink-0 text-[#315b4d]" aria-hidden="true" /><div><p className="text-xs text-[#74817c]">다른 최신 주제</p><div className="mt-2 flex flex-wrap gap-2">{relatedTags.slice(0, 5).map((tag) => <TagPill key={tag.slug} tag={tag} />)}</div></div></div>
       </section>
-      <div className="mb-4 flex items-end justify-between gap-4"><div><p className="archive-kicker">Related cases</p><h2 className="archive-serif mt-1 text-3xl font-semibold text-[#123d32]">관련 판례</h2></div><Link href={`/list?tag=${encodeURIComponent(result.tag.slug)}`} className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 목록<ArrowRight className="size-4" aria-hidden="true" /></Link></div>
+      <div className="mb-4 flex items-end justify-between gap-4"><div><p className="archive-kicker">Related cases</p><h2 className="archive-serif mt-1 text-3xl font-semibold text-[#123d32]">최신 관련 판례</h2><p className="mt-2 text-xs text-[#74817c]">전체 {(result.tag.articleCount ?? result.articles.length).toLocaleString("ko-KR")}건 중 최신 {result.articles.length.toLocaleString("ko-KR")}건</p></div><Link href={`/list?tag=${encodeURIComponent(result.tag.slug)}`} className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 목록<ArrowRight className="size-4" aria-hidden="true" /></Link></div>
       <ArticleGrid articles={result.articles} />
     </PageShell>
   );
