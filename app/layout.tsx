@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import { Suspense } from "react";
 import { BackToTopButton } from "@/components/back-to-top-button";
 import { FixedChromeToggle } from "@/components/fixed-chrome-toggle";
@@ -6,6 +7,39 @@ import { NavigationProgress } from "@/components/navigation-progress";
 import { PublicSiteHeader } from "@/components/public-site-header";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import "./globals.css";
+
+const nanumSquareNeo = localFont({
+  src: [
+    {
+      path: "./fonts/nanum-square-neo-regular.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/nanum-square-neo-bold.woff2",
+      weight: "700",
+      style: "normal",
+    },
+  ],
+  variable: "--font-nanum-square-neo",
+  display: "swap",
+  preload: false,
+  fallback: ["Arial", "sans-serif"],
+});
+
+const maruBuri = localFont({
+  src: [
+    {
+      path: "./fonts/maru-buri-semibold.woff2",
+      weight: "600",
+      style: "normal",
+    },
+  ],
+  variable: "--font-maru-buri",
+  display: "swap",
+  preload: false,
+  fallback: ["Batang", "serif"],
+});
 
 export const metadata: Metadata = {
   title: {
@@ -22,7 +56,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className="chrome-fixed">
+    <html lang="ko" className={`chrome-fixed ${nanumSquareNeo.variable} ${maruBuri.variable}`}>
       <body className="min-h-screen antialiased">
         <PublicSiteHeader />
         <Suspense fallback={null}>

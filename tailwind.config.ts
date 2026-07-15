@@ -8,6 +8,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-nanum-square-neo)", "NanumSquare Neo", "Arial", "sans-serif"],
+        serif: ["var(--font-maru-buri)", "MaruBuri", "Batang", "serif"],
+      },
       colors: {
         background: "#FAF8F3",
         surface: "#FFFFFF",
