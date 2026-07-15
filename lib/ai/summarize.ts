@@ -4,6 +4,7 @@ import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { completeJsonWithMetadata, type LlmCompletionOptions, type LlmCompletionResult } from "@/lib/ai/client";
 import { buildRepairPrompt, buildSummaryUserPrompt, SUMMARY_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { canonicalizeTerminologyValue } from "@/lib/ai/terminology";
+import { ensureJudicialComplaintTags } from "@/lib/tags/judicial-complaint";
 
 export function mockSummary(article: NormalizedArticle): SummaryJson {
   return {
@@ -46,7 +47,13 @@ function attachAiMetadata(summary: SummaryJson, completion: LlmCompletionResult)
 }
 
 function finalizeSummary(summary: SummaryJson, article: NormalizedArticle, completion: LlmCompletionResult) {
-  return canonicalizeTerminologyValue(attachAiMetadata(summary, completion), article.sourceKey);
+  const canonicalSummary = canonicalizeTerminologyValue(attachAiMetadata(summary, completion), article.sourceKey);
+  return ensureJudicialComplaintTags(canonicalSummary, {
+    sourceKey: article.sourceKey,
+    canonicalUrl: article.canonicalUrl,
+    cleanedText: article.cleanedText,
+    sourceMetadata: article.metadata,
+  });
 }
 
 export async function summarizeArticle(article: NormalizedArticle, options: LlmCompletionOptions = {}): Promise<SummaryJson> {

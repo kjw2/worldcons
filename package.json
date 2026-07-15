@@ -23,6 +23,7 @@
     "canonicalize:terms": "tsx scripts/canonicalize-source-terminology.ts",
     "canonicalize:french-terms": "tsx scripts/canonicalize-source-terminology.ts --source=fr-conseil-constitutionnel",
     "canonicalize:us-terms": "tsx scripts/canonicalize-source-terminology.ts --source=us-scotus",
+    "backfill:judicial-complaints": "tsx scripts/backfill-judicial-complaint-tags.ts",
     "glossary:sync": "tsx scripts/sync-glossary-terms.ts",
     "glossary:candidates": "tsx scripts/glossary-candidates.ts",
     "admin:readiness": "tsx scripts/admin-ops-readiness.ts",

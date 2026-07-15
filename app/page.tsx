@@ -11,6 +11,7 @@ import type { ArticleListItem, TagType } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
+import { JUDICIAL_COMPLAINT_TAG_SLUG } from "@/lib/tags/judicial-complaint";
 
 export const revalidate = 60;
 
@@ -41,7 +42,7 @@ const getHomePortalData = unstable_cache(
     const newestUpdate = Math.max(0, ...issueCandidates.map((tag) => Date.parse(tag.latestArticleAt ?? "") || 0));
     const oneYear = 365 * 24 * 60 * 60 * 1_000;
     const seenNames = new Set<string>();
-    const issueTags = issueCandidates
+    const rankedIssueTags = issueCandidates
       .sort((left, right) => {
         const score = (tag: (typeof issueCandidates)[number]) => {
           const popularity = Math.log1p(tag.articleCount ?? 0) / Math.log1p(maxCount);
@@ -56,8 +57,11 @@ const getHomePortalData = unstable_cache(
         if (seenNames.has(key)) return false;
         seenNames.add(key);
         return true;
-      })
-      .slice(0, 12);
+      });
+    const judicialComplaintTag = rankedIssueTags.find((tag) => tag.slug === JUDICIAL_COMPLAINT_TAG_SLUG);
+    const issueTags = judicialComplaintTag
+      ? [judicialComplaintTag, ...rankedIssueTags.filter((tag) => tag.slug !== JUDICIAL_COMPLAINT_TAG_SLUG)].slice(0, 12)
+      : rankedIssueTags.slice(0, 12);
 
     return { issueTags, latestArticles };
   },

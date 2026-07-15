@@ -72,6 +72,11 @@ import { canonicalizeTerminologyText, canonicalizeTerminologyValue } from "@/lib
 import { adminAuditEntryFromSiteEvent } from "@/lib/db/analytics";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
+import {
+  classifyJudicialComplaint,
+  ensureJudicialComplaintTags,
+  JUDICIAL_COMPLAINT_TAG_NAME,
+} from "@/lib/tags/judicial-complaint";
 import type { NormalizedArticle } from "@/lib/sources/types";
 
 function assert(condition: unknown, message: string) {
@@ -320,6 +325,58 @@ function manualSummaryEditFixture(title: string) {
     riskFlags: [],
   };
 }
+assert(
+  classifyJudicialComplaint({
+    sourceKey: "de-bverfg",
+    canonicalUrl: "https://www.bundesverfassungsgericht.de/example_1bvr012325.html",
+    cleanedText:
+      "BUNDESVERFASSUNGSGERICHT - 1 BvR 123/25 - In dem Verfahren über die Verfassungsbeschwerde gegen den Beschluss des Landgerichts Berlin wird entschieden.",
+  }).matched,
+  "BVerfG constitutional complaints against court decisions must be classified as judicial complaints",
+);
+assert(
+  !classifyJudicialComplaint({
+    sourceKey: "de-bverfg",
+    canonicalUrl: "https://www.bundesverfassungsgericht.de/example_1bvr045625.html",
+    cleanedText:
+      "BUNDESVERFASSUNGSGERICHT - 1 BvR 456/25 - In dem Verfahren über die Verfassungsbeschwerde gegen das Gesetz zur Änderung des Wahlrechts.",
+  }).matched,
+  "BVerfG constitutional complaints directly against legislation must not be tagged as judicial complaints",
+);
+assert(
+  !classifyJudicialComplaint({
+    sourceKey: "de-bverfg",
+    canonicalUrl: "https://www.bundesverfassungsgericht.de/example_1bvq000125.html",
+    cleanedText:
+      "BUNDESVERFASSUNGSGERICHT - 1 BvQ 1/25 - Antrag auf Erlass einer einstweiligen Anordnung gegen den Beschluss des Landgerichts Berlin.",
+  }).matched,
+  "standalone BVerfG interim applications must not be tagged as judicial constitutional complaints",
+);
+assert(
+  classifyJudicialComplaint({
+    sourceKey: "es-tribunal-constitucional",
+    cleanedText:
+      "En el recurso de amparo núm. 123-2025, promovido por doña A, respecto de las sentencias dictadas por el Juzgado de lo Penal y la Audiencia Provincial. Se ha personado el Ministerio Fiscal.",
+  }).matched,
+  "Spanish amparo proceedings against judicial decisions must be classified as judicial complaints",
+);
+assert(
+  !classifyJudicialComplaint({
+    sourceKey: "es-tribunal-constitucional",
+    cleanedText:
+      "En el recurso de amparo núm. 456-2025, promovido por diputados, contra el acuerdo de la mesa del Parlamento. Ha intervenido el Ministerio Fiscal.",
+  }).matched,
+  "Spanish parliamentary amparo proceedings must not be tagged as judicial complaints",
+);
+const judicialComplaintSummary = ensureJudicialComplaintTags(manualSummaryEditFixture("재판소원 판례"), {
+  sourceKey: "es-tribunal-constitucional",
+  cleanedText:
+    "En el recurso de amparo núm. 789-2025, promovido por don A en pleito social, ha dictado el siguiente auto. Antecedentes",
+});
+assert(
+  judicialComplaintSummary.tags.includes("헌법소원") && judicialComplaintSummary.tags.includes(JUDICIAL_COMPLAINT_TAG_NAME),
+  "judicial complaint summaries must retain both parent and child tags",
+);
 const manualSummaryEditForbiddenSnakeFields = ["cleaned_text", "raw_text", "original_url", "canonical_url", "content_hash", "source_text"] as const;
 for (const field of manualSummaryEditForbiddenSnakeFields) {
   const blocked = parseManualSummaryEditInput(

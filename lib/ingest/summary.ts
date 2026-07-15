@@ -236,6 +236,7 @@ async function summarizeCandidateRow(
       originalTitle: row.original_title ?? undefined,
       originalPublishedAt: row.original_published_at ?? undefined,
       cleanedText: row.cleaned_text ?? undefined,
+      metadata: isRecord(row.source_metadata) ? row.source_metadata : undefined,
     }, { provider: options.provider, model: options.model, signal: options.signal });
     await summaryCheckpoint(options);
     const embedding = await createEmbedding(summary, { signal: options.signal }).catch((error) => {

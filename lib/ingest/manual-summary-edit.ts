@@ -8,6 +8,7 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import type { SummaryJson } from "@/lib/db/types";
 import { runRefreshTagCounts } from "@/lib/ingest/summary";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
+import { ensureJudicialComplaintTags } from "@/lib/tags/judicial-complaint";
 import {
   ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
   shadowArticleLifecycleTransition,
@@ -56,6 +57,8 @@ interface ManualSummaryEditRow {
   id: string;
   slug?: string | null;
   source_key: string;
+  canonical_url?: string | null;
+  cleaned_text?: string | null;
   status: string;
   korean_title?: string | null;
   original_published_at?: string | null;
@@ -185,7 +188,7 @@ async function findArticle(articleId?: string, slug?: string) {
 
   let query = supabase
     .from("articles")
-    .select("id, slug, source_key, status, korean_title, original_published_at, summarized_at, summary_json, source_metadata");
+    .select("id, slug, source_key, canonical_url, cleaned_text, status, korean_title, original_published_at, summarized_at, summary_json, source_metadata");
   query = articleId ? query.eq("id", articleId) : query.eq("slug", slug);
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error(error.message);
@@ -209,17 +212,23 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     return { mode: "database" as const, status: "invalid" as const, reason: parsed.error };
   }
 
-  const fields = changedFields(row.summary_json, parsed.data.summary);
-  const hasSummaryChange = hasMeaningfulChange(row.summary_json, parsed.data.summary);
+  const nextSummary = ensureJudicialComplaintTags(parsed.data.summary, {
+    sourceKey: row.source_key,
+    canonicalUrl: row.canonical_url,
+    cleanedText: row.cleaned_text,
+    sourceMetadata: row.source_metadata,
+  });
+  const fields = changedFields(row.summary_json, nextSummary);
+  const hasSummaryChange = hasMeaningfulChange(row.summary_json, nextSummary);
   if (!hasSummaryChange && !parsed.data.note) {
     return { mode: "database" as const, status: "skipped" as const, reason: "변경된 내용이 없습니다." };
   }
 
-  const embedding = hasSummaryChange ? await createEmbedding(parsed.data.summary).catch(() => null) : undefined;
+  const embedding = hasSummaryChange ? await createEmbedding(nextSummary).catch(() => null) : undefined;
   const sourceMetadata = reviewMetadata(row, parsed.data.note, fields, Boolean(embedding));
   const updatePayload: Record<string, unknown> = {
-    korean_title: parsed.data.summary.koreanTitle,
-    summary_json: parsed.data.summary,
+    korean_title: nextSummary.koreanTitle,
+    summary_json: nextSummary,
     summarized_at: new Date().toISOString(),
     source_metadata: sourceMetadata,
     error_metadata: null,
@@ -252,7 +261,7 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     reason: "Legacy manual summary edit persisted.",
     provenanceActorType: "human",
     provenanceActorId: "admin",
-    modelRef: parsed.data.summary.aiMetadata?.model ?? null,
+    modelRef: nextSummary.aiMetadata?.model ?? null,
     safeMetadata: { changedFields: fields.slice(0, 40), notePresent: Boolean(parsed.data.note) },
   });
 
@@ -260,13 +269,13 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     articleId: row.id,
     articleSlug: row.slug,
     previousSummary: row.summary_json,
-    nextSummary: parsed.data.summary,
+    nextSummary,
     changedFields: fields,
     note: parsed.data.note,
   });
 
   const tagSync = hasSummaryChange
-    ? await syncSummaryTags(row.id, parsed.data.summary, row.original_published_at, { replace: true })
+    ? await syncSummaryTags(row.id, nextSummary, row.original_published_at, { replace: true })
     : { synced: false, upsertedTags: 0, removedArticleTags: 0 };
   const tagRefresh = hasSummaryChange ? await runRefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
 
