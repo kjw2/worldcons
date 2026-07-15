@@ -13,6 +13,11 @@ const RATE_LIMIT_PROFILES = {
     defaultMax: 120,
     defaultWindowMs: 60_000,
   },
+  cclMetasearch: {
+    envPrefix: "RATE_LIMIT_CCL_METASEARCH",
+    defaultMax: 120,
+    defaultWindowMs: 60_000,
+  },
   analyticsEvent: {
     envPrefix: "RATE_LIMIT_ANALYTICS_EVENT",
     defaultMax: 240,
