@@ -115,7 +115,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
   ].filter(Boolean) as Array<{ key: string; label: string }>;
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <SectionHeading
         className="mb-6"
         eyebrow="통합 검색"
