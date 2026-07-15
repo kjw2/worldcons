@@ -27,20 +27,6 @@ const nanumSquareNeo = localFont({
   fallback: ["Arial", "sans-serif"],
 });
 
-const maruBuri = localFont({
-  src: [
-    {
-      path: "./fonts/maru-buri-semibold.woff2",
-      weight: "600",
-      style: "normal",
-    },
-  ],
-  variable: "--font-maru-buri",
-  display: "swap",
-  preload: false,
-  fallback: ["Batang", "serif"],
-});
-
 export const metadata: Metadata = {
   title: {
     default: "헌법판례요약시스템",
@@ -56,7 +42,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className={`chrome-fixed ${nanumSquareNeo.variable} ${maruBuri.variable}`}>
+    <html lang="ko" className={`chrome-fixed ${nanumSquareNeo.variable}`}>
       <body className="min-h-screen antialiased">
         <PublicSiteHeader />
         <Suspense fallback={null}>

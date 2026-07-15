@@ -1,7 +1,7 @@
 Naver Open Font Notice
 
-This directory includes NanumSquare Neo and MaruBuri font files distributed
-through NAVER's official Hangeul font site.
+This directory includes NanumSquare Neo font files distributed through NAVER's
+official Hangeul font site.
 
 The fonts are used and redistributed under the NAVER font license. The font
 files themselves may not be sold separately. Refer to the official source and
