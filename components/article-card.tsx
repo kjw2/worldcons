@@ -11,6 +11,7 @@ import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
+import { articleHrefWithReturnTo, articleReturnPathForLocation } from "@/lib/navigation/article-return";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 
 function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
@@ -19,20 +20,6 @@ function shouldSaveNavigation(event: MouseEvent<HTMLAnchorElement>) {
 
 function formatViewCount(count?: number) {
   return new Intl.NumberFormat("ko-KR").format(Math.max(0, Math.floor(count ?? 0)));
-}
-
-function returnPathForCurrentView(pathname: string, searchParams: { toString(): string }) {
-  if (pathname !== "/" && pathname !== "/list") return null;
-  const query = searchParams.toString();
-  return query ? `${pathname}?${query}` : pathname;
-}
-
-function articleHrefWithReturnTo(slug: string, returnTo: string | null) {
-  const href = `/articles/${slug}`;
-  if (!returnTo) return href;
-
-  const params = new URLSearchParams({ returnTo });
-  return `${href}?${params.toString()}`;
 }
 
 async function copyTextToClipboard(text: string) {
@@ -106,7 +93,7 @@ export function ArticleCard({
   const originalHref = safeExternalUrl(article.originalUrl);
   const viewCountLabel = formatViewCount(article.viewCount);
   const canonicalArticleHref = `/articles/${article.slug}`;
-  const articleHref = articleHrefWithReturnTo(article.slug, returnPathForCurrentView(pathname, searchParams));
+  const articleHref = articleHrefWithReturnTo(article.slug, articleReturnPathForLocation(pathname, searchParams));
 
   async function shareArticle() {
     const url = new URL(canonicalArticleHref, window.location.origin).toString();

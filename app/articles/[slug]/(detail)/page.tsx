@@ -18,6 +18,7 @@ import { getArticleDetailPageData, getArticlePreviewBySlug } from "@/lib/db/quer
 import type { ArticleDetail } from "@/lib/db/types";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
+import { safeArticleReturnPath } from "@/lib/navigation/article-return";
 import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
@@ -35,19 +36,7 @@ function firstSearchParam(value: string | string[] | undefined) {
 
 function articleReturnHref(searchParams?: ArticlePageSearchParams) {
   const rawReturnTo = firstSearchParam(searchParams?.returnTo);
-  if (!rawReturnTo) return "/";
-
-  const returnTo = rawReturnTo.trim();
-  if (!returnTo.startsWith("/") || returnTo.startsWith("//")) return "/";
-
-  try {
-    const url = new URL(returnTo, "https://worldcons.local");
-    if (url.origin !== "https://worldcons.local") return "/";
-    if (url.pathname !== "/" && url.pathname !== "/list") return "/";
-    return `${url.pathname}${url.search}`;
-  } catch {
-    return "/";
-  }
+  return safeArticleReturnPath(rawReturnTo) ?? "/";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -208,7 +197,7 @@ export default async function ArticlePage({
           )}
           {sourceTextAvailable ? <ArticleSourceSnapshot slug={article.slug} /> : null}
           <SummarySection title="관련 기사" variant="body">
-            <RelatedArticles articles={related} />
+            <RelatedArticles articles={related} returnTo={returnHref} />
           </SummarySection>
         </article>
 

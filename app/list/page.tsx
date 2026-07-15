@@ -77,7 +77,6 @@ function paramsFromSearchParams(paramsObject: SearchParams) {
   Object.entries(paramsObject).forEach(([key, value]) => {
     if (typeof value === "string" && value) params.set(key, value);
   });
-  params.delete("page");
   params.delete("pageSize");
   params.delete("view");
   return params;

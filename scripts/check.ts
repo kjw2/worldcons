@@ -66,6 +66,10 @@ import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
+import {
+  articleHrefWithReturnTo,
+  safeArticleReturnPath,
+} from "@/lib/navigation/article-return";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { canonicalizeTerminologyText, canonicalizeTerminologyValue } from "@/lib/ai/terminology";
@@ -133,6 +137,31 @@ for (const fixture of xssFixtures) {
 assert(safeExternalUrl("javascript:alert(1)") === null, "javascript: URLs must not be rendered as external links");
 assert(safeExternalUrl("data:text/html,<script>alert(1)</script>") === null, "data: URLs must not be rendered as external links");
 assert(safeExternalUrl("https://example.test/source?id=1") === "https://example.test/source?id=1", "http(s) external URLs should remain available");
+assert(
+  safeArticleReturnPath("/v2/list?tag=f0cc9e78&page=7") === "/v2/list?tag=f0cc9e78&page=7",
+  "article return paths must retain list filters and pagination",
+);
+assert(
+  safeArticleReturnPath("/v2/search?q=%ED%91%9C%ED%98%84&page=3") === "/v2/search?q=%ED%91%9C%ED%98%84&page=3",
+  "article return paths must retain search state",
+);
+assert(
+  safeArticleReturnPath("/v2/tags/f0cc9e78") === "/v2/tags/f0cc9e78"
+    && safeArticleReturnPath("/sources/de-bverfg") === "/sources/de-bverfg",
+  "article return paths must allow public tag and source lists",
+);
+assert(
+  safeArticleReturnPath("//evil.example/list") === null
+    && safeArticleReturnPath("https://evil.example/list") === null
+    && safeArticleReturnPath("/admin/articles") === null
+    && safeArticleReturnPath("/api/articles") === null,
+  "article return paths must reject external and privileged destinations",
+);
+assert(
+  articleHrefWithReturnTo("example-case", "/v2/list?tag=f0cc9e78&page=7")
+    === "/articles/example-case?returnTo=%2Fv2%2Flist%3Ftag%3Df0cc9e78%26page%3D7",
+  "article links must encode the complete return path",
+);
 assert(parseArticleListApiParams(new URLSearchParams("q=due+process&page=2&pageSize=100&tag=due-process")).ok, "valid article API params should pass");
 assert(!parseArticleListApiParams(new URLSearchParams("pageSize=101")).ok, "oversized pageSize must fail validation");
 assert(!parseArticleListApiParams(new URLSearchParams("tag=slug.eq.safe,name.eq.unsafe")).ok, "PostgREST .or metacharacters in tag filters must fail validation");

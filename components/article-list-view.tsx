@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { ArticleListReturnState } from "@/components/article-list-return-state";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleListItem, ArticleListResult } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
@@ -79,14 +80,14 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
     <article data-article-slug={article.slug} className="border-b border-[#dce2de] last:border-b-0 hover:bg-[#f8faf8]">
       <div className="px-4 py-4 xl:hidden">
         <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#74817c]"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span></div>
-        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}</Link></h2>
+        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} data-list-article-slug={article.slug} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}</Link></h2>
         <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5f6c67]">{summary}</p>
         <div className="mt-2 flex items-center gap-3 text-xs text-[#7a8681]"><span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span className="inline-flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
       <div className="hidden min-h-[74px] grid-cols-[94px_100px_minmax(280px,1fr)_140px] items-center gap-3 px-4 py-3 text-sm xl:grid">
         <span className="text-xs tabular-nums text-[#67746f]">{formattedArticleDate(article)}</span>
         <span className="text-xs font-semibold text-[#334d44]">{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span>
-        <div className="min-w-0"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}</Link><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
+        <div className="min-w-0"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}</Link><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
         <div className="min-w-0 text-xs text-[#6e7b76]">{article.tags.slice(0, 2).map((tag) => <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-[#123d32]">{tag.name}</Link>)}<span className="mt-1 flex items-center gap-1 text-[#8a9691]"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
     </article>
@@ -205,7 +206,7 @@ function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]
                 {index + 1}
               </span>
               <div className="min-w-0">
-                <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-[#273f37] hover:text-[#123d32]">
+                <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-[#273f37] hover:text-[#123d32]">
                   {article.koreanTitle || article.originalTitle || "제목 미상"}
                 </Link>
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-ink-subtle">
@@ -239,6 +240,7 @@ export function ArticleListView({
 
   return (
     <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]" aria-label="리스트형 자료 목록">
+      <ArticleListReturnState />
       <SurfaceCard className="min-w-0 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#bdc9c2] px-4 py-3 sm:px-5">
           <h2 className="text-base font-semibold text-[#243b33]">판례 목록</h2>
