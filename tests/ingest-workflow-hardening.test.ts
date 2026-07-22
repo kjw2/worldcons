@@ -77,4 +77,3 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(summary, /syncIngestionRunSummarizedCounts/);
   assert.match(summary, /Failed to persist article summary/);
 });
-
