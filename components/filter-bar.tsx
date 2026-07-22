@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { SearchBox } from "@/components/search-box";
 import type { ArticleContentType, SourceRecord, TagSummary } from "@/lib/db/types";
 import type { TimeRange } from "@/lib/utils/dates";
@@ -79,10 +79,9 @@ export function FilterBar({
                   : "rounded-full bg-white/75 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-current tabular-nums";
 
                 return (
-                  <Link
+                  <IntentPrefetchLink
                     key={jurisdiction}
                     href={hrefForJurisdiction(basePath, params, jurisdiction, isActive)}
-                    prefetch={false}
                     style={jurisdictionThemeStyle(theme)}
                     className={chipClassName(isActive ? "selected" : "country")}
                   >
@@ -92,7 +91,7 @@ export function FilterBar({
                         {count.toLocaleString("ko-KR")}
                       </span>
                     )}
-                  </Link>
+                  </IntentPrefetchLink>
                 );
               })}
             </div>

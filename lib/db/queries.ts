@@ -608,14 +608,14 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
         ),
       );
       if (ids.length > 0) {
-        const result = await listArticles({ ids, pageSize: ids.length, count: "none" });
+        const result = await listArticles({ ids, pageSize: ids.length, count: "none", includeViewCounts: false });
         return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
       }
     }
   }
 
   const tag = article.tags[0]?.slug;
-  const result = await listArticles({ tag, pageSize: limit + 1, count: "none" });
+  const result = await listArticles({ tag, pageSize: limit + 1, count: "none", includeViewCounts: false });
   return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 

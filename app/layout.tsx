@@ -9,18 +9,9 @@ import { getAppBaseUrl } from "@/lib/seo/metadata";
 import "./globals.css";
 
 const nanumSquareNeo = localFont({
-  src: [
-    {
-      path: "./fonts/nanum-square-neo-regular.woff2",
-      weight: "400",
-      style: "normal",
-    },
-    {
-      path: "./fonts/nanum-square-neo-bold.woff2",
-      weight: "700",
-      style: "normal",
-    },
-  ],
+  src: "./fonts/nanum-square-neo-regular.woff2",
+  weight: "400",
+  style: "normal",
   variable: "--font-nanum-square-neo",
   display: "swap",
   preload: false,

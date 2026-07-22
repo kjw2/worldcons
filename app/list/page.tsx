@@ -1,9 +1,9 @@
 import { unstable_cache } from "next/cache";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { ArticleListView } from "@/components/article-list-view";
 import { FilterBar } from "@/components/filter-bar";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
@@ -17,7 +17,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "리스트형 최신 자료",
   description: "세계 헌법재판기관의 최신 자료를 국가별 리스트와 페이지네이션으로 확인합니다.",
-  alternates: { canonical: `${getAppBaseUrl()}/list` },
+  alternates: { canonical: `${getAppBaseUrl()}/v2/list` },
 };
 
 const getListFilterData = unstable_cache(
@@ -110,7 +110,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
       <PageViewTracker
         event={{
           eventType: "page_view",
-          path: "/list",
+          path: "/v2/list",
           resultCount: articles.pageInfo.total,
           metadata: {
             source: filters.source,
@@ -125,7 +125,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
       />
 
       <header className="mb-7 border-b border-[#bcc8c1] pb-6">
-        <nav className="mb-4 flex items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치"><Link href="/" className="focus-ring rounded-sm hover:text-[#123d32]">홈</Link><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
+        <nav className="mb-4 flex items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치"><IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-[#123d32]">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h1 className="archive-serif text-2xl font-semibold leading-tight text-[#123d32] sm:text-3xl">전체 판례</h1>
         </div>
@@ -138,7 +138,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
           tags={tags}
           paramsString={paramsString}
           jurisdictionArticleCounts={jurisdictionArticleCounts}
-          basePath="/list"
+          basePath="/v2/list"
           showJurisdictionChips={false}
         />
       </div>

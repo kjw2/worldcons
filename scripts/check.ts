@@ -159,7 +159,7 @@ assert(
 );
 assert(
   articleHrefWithReturnTo("example-case", "/v2/list?tag=f0cc9e78&page=7")
-    === "/articles/example-case?returnTo=%2Fv2%2Flist%3Ftag%3Df0cc9e78%26page%3D7",
+    === "/v2/articles/example-case#returnTo=%2Fv2%2Flist%3Ftag%3Df0cc9e78%26page%3D7",
   "article links must encode the complete return path",
 );
 assert(parseArticleListApiParams(new URLSearchParams("q=due+process&page=2&pageSize=100&tag=due-process")).ok, "valid article API params should pass");
@@ -834,6 +834,23 @@ for (const requiredCacheHelperText of [
 ]) {
   assert(publicContentCacheSource.includes(requiredCacheHelperText), `public cache helper must include ${requiredCacheHelperText}`);
 }
+assert(publicContentCacheSource.includes('revalidatePath("/v2/articles/[slug]", "page")'), "v2 article pages must be invalidated after public mutations");
+const vercelConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { regions?: string[] };
+assert(vercelConfig.regions?.length === 1 && vercelConfig.regions[0] === "icn1", "Vercel functions must run in the Seoul region");
+const articleDetailPageSource = fs.readFileSync(path.join(process.cwd(), "app/articles/[slug]/(detail)/page.tsx"), "utf8");
+assert(articleDetailPageSource.includes("getCachedArticleDetailPageData"), "article detail and metadata must share the persistent detail cache");
+assert(!articleDetailPageSource.includes("searchParams"), "article detail server rendering must not vary by returnTo search params");
+assert(articleDetailPageSource.includes('dynamic = "force-static"') && articleDetailPageSource.includes("generateStaticParams"), "article detail HTML must use on-demand ISR");
+const articleDetailCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-article-detail-cache.ts"), "utf8");
+assert(articleDetailCacheSource.includes("unstable_cache") && articleDetailCacheSource.includes("PUBLIC_ARTICLES_CACHE_TAG"), "article detail cache must be tag invalidated");
+const detailNavigationSource = fs.readFileSync(path.join(process.cwd(), "components/article-detail-navigation.tsx"), "utf8");
+assert(detailNavigationSource.includes("window.location.hash") && detailNavigationSource.includes("safeArticleReturnPath"), "returnTo must be resolved safely from a client-only fragment");
+const intentPrefetchSource = fs.readFileSync(path.join(process.cwd(), "components/intent-prefetch-link.tsx"), "utf8");
+for (const intentEvent of ["onFocus", "onMouseEnter", "onTouchStart"]) {
+  assert(intentPrefetchSource.includes(intentEvent), `intent prefetch links must handle ${intentEvent}`);
+}
+const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+assert(!layoutSource.includes("nanum-square-neo-bold.woff2"), "the initial font payload must not include a separate bold font file");
 for (const cacheConsumer of [
   "app/page.tsx",
   "app/list/page.tsx",

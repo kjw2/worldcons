@@ -35,9 +35,9 @@ export function articleReturnPathForLocation(pathname: string, searchParams: { t
 }
 
 export function articleHrefWithReturnTo(slug: string, returnTo?: string | null) {
-  const href = `/articles/${encodeURIComponent(slug)}`;
+  const href = `/v2/articles/${encodeURIComponent(slug)}`;
   const safeReturnTo = safeArticleReturnPath(returnTo);
   if (!safeReturnTo) return href;
 
-  return `${href}?${new URLSearchParams({ returnTo: safeReturnTo }).toString()}`;
+  return `${href}#${new URLSearchParams({ returnTo: safeReturnTo }).toString()}`;
 }

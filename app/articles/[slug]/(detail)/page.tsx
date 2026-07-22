@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ChevronRight, ExternalLink, FileText, Languages, Scale } from "lucide-react";
+import { ChevronRight, ExternalLink, FileText, Languages, Scale } from "lucide-react";
+import { ArticleReturnLink } from "@/components/article-detail-navigation";
 import { ArticlePrintButton } from "@/components/article-print-button";
 import { ArticleSourceSnapshot } from "@/components/article-source-snapshot";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { ReferencedProvisionList } from "@/components/referenced-provision-list";
 import { RelatedArticles } from "@/components/related-articles";
@@ -14,11 +15,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
-import { getArticleDetailPageData, getArticlePreviewBySlug } from "@/lib/db/queries";
 import type { ArticleDetail } from "@/lib/db/types";
+import { getCachedArticleDetailPageData } from "@/lib/public-article-detail-cache";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleMetadata } from "@/lib/seo/metadata";
-import { safeArticleReturnPath } from "@/lib/navigation/article-return";
 import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
@@ -26,17 +26,12 @@ import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-la
 import { formatDisplayDate } from "@/lib/utils/dates";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 
-export const revalidate = 60;
+export const dynamic = "force-static";
+export const dynamicParams = true;
+export const revalidate = 3_600;
 
-type ArticlePageSearchParams = Record<string, string | string[] | undefined>;
-
-function firstSearchParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function articleReturnHref(searchParams?: ArticlePageSearchParams) {
-  const rawReturnTo = firstSearchParam(searchParams?.returnTo);
-  return safeArticleReturnPath(rawReturnTo) ?? "/";
+export function generateStaticParams() {
+  return [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,21 +65,14 @@ function publicCollectionNotice(article: ArticleDetail) {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const article = await getArticlePreviewBySlug(slug);
-  if (!article) return {};
-  return articleMetadata(article);
+  const detailData = await getCachedArticleDetailPageData(slug);
+  if (!detailData) return {};
+  return articleMetadata(detailData.article);
 }
 
-export default async function ArticlePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ slug: string }>;
-  searchParams?: Promise<ArticlePageSearchParams>;
-}) {
+export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const paramsObject = await searchParams;
-  const detailData = await getArticleDetailPageData(slug);
+  const detailData = await getCachedArticleDetailPageData(slug);
   if (!detailData) notFound();
 
   const { article, related } = detailData;
@@ -108,16 +96,15 @@ export default async function ArticlePage({
   const missingOriginalUrl = !originalHref;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
-  const returnHref = articleReturnHref(paramsObject);
 
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <PageViewTracker event={articleViewEvent} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
       <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치">
-        <Link href="/" className="focus-ring rounded-sm hover:text-[#123d32]">홈</Link><ChevronRight className="size-3" aria-hidden="true" />
-        <Link href="/list" className="focus-ring rounded-sm hover:text-[#123d32]">전체 판례</Link><ChevronRight className="size-3" aria-hidden="true" />
-        <Link href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel(article.sourceKey)}</Link><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-[#123d32]">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href="/v2/list" className="focus-ring rounded-sm hover:text-[#123d32]">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel(article.sourceKey)}</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
         <span className="max-w-[32rem] truncate">{article.koreanTitle || article.originalTitle}</span>
       </nav>
       <section style={jurisdictionThemeStyle(theme)} className="mb-8 border-b border-[#aebdb5] pb-8">
@@ -142,11 +129,8 @@ export default async function ArticlePage({
               <ExternalLink className="size-4" aria-hidden="true" />
             </a>
           ) : null}
-          <Link href={returnHref} className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-[#c8d2cc] bg-white px-4 text-sm font-semibold text-[#53635d] transition hover:border-[#83998e] hover:text-[#123d32]">
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            목록으로
-          </Link>
-          <ArticlePrintButton printHref={`/articles/${article.slug}/print`} />
+          <ArticleReturnLink className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-[#c8d2cc] bg-white px-4 text-sm font-semibold text-[#53635d] transition hover:border-[#83998e] hover:text-[#123d32]" />
+          <ArticlePrintButton printHref={`/v2/articles/${article.slug}/print`} />
         </div>
       </section>
 
@@ -197,7 +181,7 @@ export default async function ArticlePage({
           )}
           {sourceTextAvailable ? <ArticleSourceSnapshot slug={article.slug} /> : null}
           <SummarySection title="관련 기사" variant="body">
-            <RelatedArticles articles={related} returnTo={returnHref} />
+            <RelatedArticles articles={related} />
           </SummarySection>
         </article>
 
@@ -209,7 +193,7 @@ export default async function ArticlePage({
                 <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-ink">기관</dt>
-                  <dd className="mt-1 text-ink-muted"><Link href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</Link></dd>
+                  <dd className="mt-1 text-ink-muted"><IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</IntentPrefetchLink></dd>
                 </div>
               </div>
               <div className="flex items-start gap-3">

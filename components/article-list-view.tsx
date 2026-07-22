@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { ArticleListReturnState } from "@/components/article-list-return-state";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleListItem, ArticleListResult } from "@/lib/db/types";
+import { articleHrefWithReturnTo } from "@/lib/navigation/article-return";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayJurisdictionFlag, displayJurisdictionLabel } from "@/lib/ui/source-labels";
 import { cn } from "@/lib/utils/classnames";
@@ -29,7 +30,7 @@ function baseParams(paramsString: string) {
 
 function hrefWithParams(params: URLSearchParams) {
   const query = params.toString();
-  return query ? `/list?${query}` : "/list";
+  return query ? `/v2/list?${query}` : "/v2/list";
 }
 
 function hrefForJurisdiction(paramsString: string, jurisdiction?: string) {
@@ -46,12 +47,11 @@ function hrefForPage(paramsString: string, page: number) {
 }
 
 function currentListReturnPath(paramsString: string) {
-  return paramsString ? `/list?${paramsString}` : "/list";
+  return paramsString ? `/v2/list?${paramsString}` : "/v2/list";
 }
 
 function hrefForArticle(slug: string, paramsString: string) {
-  const params = new URLSearchParams({ returnTo: currentListReturnPath(paramsString) });
-  return `/articles/${slug}?${params.toString()}`;
+  return articleHrefWithReturnTo(slug, currentListReturnPath(paramsString));
 }
 
 function totalForCountries(counts: Record<string, number>) {
@@ -80,15 +80,15 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
     <article data-article-slug={article.slug} className="border-b border-[#dce2de] last:border-b-0 hover:bg-[#f8faf8]">
       <div className="px-4 py-4 xl:hidden">
         <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#74817c]"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span></div>
-        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} data-list-article-slug={article.slug} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}</Link></h2>
+        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}</IntentPrefetchLink></h2>
         <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5f6c67]">{summary}</p>
         <div className="mt-2 flex items-center gap-3 text-xs text-[#7a8681]"><span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span className="inline-flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
       <div className="hidden min-h-[74px] grid-cols-[94px_100px_minmax(280px,1fr)_140px] items-center gap-3 px-4 py-3 text-sm xl:grid">
         <span className="text-xs tabular-nums text-[#67746f]">{formattedArticleDate(article)}</span>
         <span className="text-xs font-semibold text-[#334d44]">{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span>
-        <div className="min-w-0"><Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}</Link><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
-        <div className="min-w-0 text-xs text-[#6e7b76]">{article.tags.slice(0, 2).map((tag) => <Link key={tag.slug} href={`/tags/${tag.slug}`} prefetch={false} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-[#123d32]">{tag.name}</Link>)}<span className="mt-1 flex items-center gap-1 text-[#8a9691]"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
+        <div className="min-w-0"><IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}</IntentPrefetchLink><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
+        <div className="min-w-0 text-xs text-[#6e7b76]">{article.tags.slice(0, 2).map((tag) => <IntentPrefetchLink key={tag.slug} href={`/v2/tags/${tag.slug}`} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-[#123d32]">{tag.name}</IntentPrefetchLink>)}<span className="mt-1 flex items-center gap-1 text-[#8a9691]"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
     </article>
   );
@@ -112,10 +112,9 @@ function CountryMenu({
           const count = item.jurisdiction ? counts[item.jurisdiction] ?? 0 : totalForCountries(counts);
 
           return (
-            <Link
+            <IntentPrefetchLink
               key={item.jurisdiction ?? "all"}
               href={hrefForJurisdiction(paramsString, item.jurisdiction)}
-              prefetch={false}
               className={cn(
                 "focus-ring flex min-h-10 items-center justify-between gap-3 rounded-sm border-b border-[#e1e6e2] px-2 text-sm font-semibold transition last:border-b-0",
                 isActive ? "bg-[#edf3ef] text-[#123d32]" : "text-[#5f6d68] hover:bg-[#f5f7f4] hover:text-[#123d32]",
@@ -125,7 +124,7 @@ function CountryMenu({
               <span className="text-xs tabular-nums text-[#82908a]">
                 {formatNumber(count)}
               </span>
-            </Link>
+            </IntentPrefetchLink>
           );
         })}
       </nav>
@@ -144,9 +143,8 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
 
   return (
     <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-[#cbd4ce] px-4 py-5" aria-label="페이지">
-      <Link
+      <IntentPrefetchLink
         href={hrefForPage(paramsString, page - 1)}
-        prefetch={false}
         aria-disabled={!hasPrevious}
         className={cn(
           "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-[#d1d9d4] px-3 text-sm font-semibold",
@@ -155,17 +153,16 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
       >
         <ChevronLeft className="size-4" aria-hidden="true" />
         이전
-      </Link>
+      </IntentPrefetchLink>
       {items.map((item, index) =>
         item === "ellipsis" ? (
           <span key={`ellipsis-${index}`} className="px-2 text-sm text-ink-subtle">
             ...
           </span>
         ) : (
-          <Link
+          <IntentPrefetchLink
             key={item}
             href={hrefForPage(paramsString, item)}
-            prefetch={false}
             aria-current={item === page ? "page" : undefined}
             className={cn(
               "focus-ring inline-flex size-9 items-center justify-center rounded-sm border text-sm font-semibold tabular-nums",
@@ -173,12 +170,11 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
             )}
           >
             {item}
-          </Link>
+          </IntentPrefetchLink>
         ),
       )}
-      <Link
+      <IntentPrefetchLink
         href={hrefForPage(paramsString, page + 1)}
-        prefetch={false}
         aria-disabled={!hasNext}
         className={cn(
           "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-[#d1d9d4] px-3 text-sm font-semibold",
@@ -187,7 +183,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
       >
         다음
         <ChevronRight className="size-4" aria-hidden="true" />
-      </Link>
+      </IntentPrefetchLink>
     </nav>
   );
 }
@@ -206,9 +202,9 @@ function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]
                 {index + 1}
               </span>
               <div className="min-w-0">
-                <Link href={hrefForArticle(article.slug, paramsString)} prefetch={false} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-[#273f37] hover:text-[#123d32]">
+                <IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-[#273f37] hover:text-[#123d32]">
                   {article.koreanTitle || article.originalTitle || "제목 미상"}
-                </Link>
+                </IntentPrefetchLink>
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-ink-subtle">
                   <Eye className="size-3.5" aria-hidden="true" />
                   {formatNumber(article.viewCount)}

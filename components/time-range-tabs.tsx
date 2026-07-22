@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { cn } from "@/lib/utils/classnames";
 import type { TimeRange } from "@/lib/utils/dates";
 
@@ -35,17 +35,16 @@ export function TimeRangeTabs({
         const href = hrefForRange(range.value, basePath, params);
 
         return (
-          <Link
+          <IntentPrefetchLink
             key={range.value}
             href={href}
-            prefetch={false}
             className={cn(
               "focus-ring relative whitespace-nowrap px-3 py-2 text-sm font-semibold text-[#697670] transition",
               activeRange === range.value ? "text-[#123d32] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[#123d32]" : "hover:bg-[#f3f6f4] hover:text-[#123d32]",
             )}
           >
             {range.label}
-          </Link>
+          </IntentPrefetchLink>
         );
       })}
     </div>

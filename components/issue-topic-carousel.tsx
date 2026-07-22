@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, MessageSquareText, Scale, ShieldCheck, Vote } from "lucide-react";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import type { TagSummary } from "@/lib/db/types";
 import { cn } from "@/lib/utils/classnames";
 
@@ -62,11 +62,11 @@ export function IssueTopicCarousel({ tags }: { tags: TagSummary[] }) {
         {pages[page].map((tag, index) => {
           const Icon = issueIcons[(page * PAGE_SIZE + index) % issueIcons.length];
           return (
-            <Link key={tag.slug} href={`/v2/list?tag=${encodeURIComponent(tag.slug)}`} prefetch={false} className="focus-ring group grid min-h-28 min-w-[84%] snap-start grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-[#d4dcd7] bg-white p-4 transition hover:border-[#829b8e] hover:bg-[#f8faf8] sm:min-w-0">
+            <IntentPrefetchLink key={tag.slug} href={`/v2/list?tag=${encodeURIComponent(tag.slug)}`} className="focus-ring group grid min-h-28 min-w-[84%] snap-start grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-[#d4dcd7] bg-white p-4 transition hover:border-[#829b8e] hover:bg-[#f8faf8] sm:min-w-0">
               <span className="inline-flex size-10 items-center justify-center text-[#315b4d]"><Icon className="size-6" aria-hidden="true" /></span>
               <span className="min-w-0"><span className="archive-serif block break-words text-lg font-semibold text-[#173d33]">{tag.name}</span><span className="mt-2 block text-xs text-[#68756f]">관련 판례 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</span></span>
               <ChevronRight className="mt-auto size-4 text-[#7c8983] transition group-hover:translate-x-0.5 group-hover:text-[#123d32]" aria-hidden="true" />
-            </Link>
+            </IntentPrefetchLink>
           );
         })}
       </div>

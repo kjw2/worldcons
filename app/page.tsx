@@ -1,13 +1,14 @@
 import { unstable_cache } from "next/cache";
-import Link from "next/link";
 import { Suspense } from "react";
 import { ArrowRight, CalendarDays, Landmark } from "lucide-react";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { IssueTopicCarousel } from "@/components/issue-topic-carousel";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
 import type { ArticleListItem, TagType } from "@/lib/db/types";
+import { articleHrefWithReturnTo } from "@/lib/navigation/article-return";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
@@ -99,7 +100,7 @@ function HomeSkeleton() {
 }
 
 function articleHref(article: ArticleListItem) {
-  return `/v2/articles/${article.slug}?${new URLSearchParams({ returnTo: "/v2" }).toString()}`;
+  return articleHrefWithReturnTo(article.slug, "/v2");
 }
 
 function LeadDecision({ article }: { article: ArticleListItem }) {
@@ -113,7 +114,7 @@ function LeadDecision({ article }: { article: ArticleListItem }) {
         <h2 id="lead-decision" className="archive-serif mt-2 break-keep text-3xl font-semibold leading-tight text-[#123d32] sm:text-4xl">{title}</h2>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#596862]"><span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span>{displayJurisdictionLabel(article.jurisdiction)}</span></div>
         <p className="mt-3 line-clamp-2 text-sm leading-7 text-[#4f5f59]">{summary}</p>
-        <Link href={articleHref(article)} prefetch={false} className="focus-ring mt-4 inline-flex items-center gap-2 rounded-sm border-b border-[#123d32] pb-1 text-sm font-semibold text-[#123d32] hover:text-[#2a6350]">자세히 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
+        <IntentPrefetchLink href={articleHref(article)} className="focus-ring mt-4 inline-flex items-center gap-2 rounded-sm border-b border-[#123d32] pb-1 text-sm font-semibold text-[#123d32] hover:text-[#2a6350]">자세히 보기<ArrowRight className="size-4" aria-hidden="true" /></IntentPrefetchLink>
       </div>
       <Landmark className="pointer-events-none absolute -bottom-10 -right-10 size-[280px] stroke-[0.65] text-[#8ea097]/25 sm:size-[350px] lg:right-2 lg:size-[400px]" aria-hidden="true" />
     </section>
@@ -123,7 +124,7 @@ function LeadDecision({ article }: { article: ArticleListItem }) {
 function CountryArticleMobile({ article }: { article: ArticleListItem }) {
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   return (
-    <Link href={articleHref(article)} prefetch={false} className="focus-ring block border-b border-[#e0e5e2] p-4 last:border-b-0 hover:bg-[#f8faf8] xl:hidden">
+    <IntentPrefetchLink href={articleHref(article)} className="focus-ring block border-b border-[#e0e5e2] p-4 last:border-b-0 hover:bg-[#f8faf8] xl:hidden">
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-2 text-sm font-semibold text-[#25483c]"><span className="text-2xl" aria-hidden="true">{displayJurisdictionFlag(article.jurisdiction)}</span>{displayJurisdictionLabel(article.jurisdiction)}</p>
         <span className="text-xs text-[#6a7772]">{formattedArticleDate(article)}</span>
@@ -131,7 +132,7 @@ function CountryArticleMobile({ article }: { article: ArticleListItem }) {
       <h3 className="archive-serif mt-3 text-lg font-semibold leading-7 text-[#173d33]">{title}</h3>
       <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#5b6964]">{article.oneLineSummary || "요약 준비 중입니다."}</p>
       <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#74817c]"><span>{displaySourceLabel(article.sourceKey)} · {displayArticleTypeLabel(article)}</span><ArrowRight className="size-4 text-[#315b4d]" aria-hidden="true" /></div>
-    </Link>
+    </IntentPrefetchLink>
   );
 }
 
@@ -139,14 +140,14 @@ function CountryArticleRow({ article }: { article: ArticleListItem }) {
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const primaryTag = article.tags[0]?.name ?? "-";
   return (
-    <Link href={articleHref(article)} prefetch={false} className="focus-ring hidden min-h-[76px] grid-cols-[100px_110px_170px_90px_minmax(260px,1fr)_150px] items-center gap-3 border-b border-[#e0e5e2] px-4 py-3 text-sm last:border-b-0 hover:bg-[#f8faf8] xl:grid">
+    <IntentPrefetchLink href={articleHref(article)} className="focus-ring hidden min-h-[76px] grid-cols-[100px_110px_170px_90px_minmax(260px,1fr)_150px] items-center gap-3 border-b border-[#e0e5e2] px-4 py-3 text-sm last:border-b-0 hover:bg-[#f8faf8] xl:grid">
       <span className="tabular-nums text-[#5f6c67]">{formattedArticleDate(article)}</span>
       <span className="flex items-center gap-2 font-semibold text-[#25483c]"><span className="text-xl" aria-hidden="true">{displayJurisdictionFlag(article.jurisdiction)}</span>{displayJurisdictionLabel(article.jurisdiction)}</span>
       <span className="truncate text-[#52615b]">{displaySourceLabel(article.sourceKey)}</span>
       <span className="text-[#52615b]">{displayArticleTypeLabel(article)}</span>
       <span className="archive-serif line-clamp-2 font-semibold leading-6 text-[#173d33]">{title}</span>
       <span className="flex items-center justify-between gap-2 text-xs text-[#65736d]"><span className="truncate">{primaryTag}</span><ArrowRight className="size-4 shrink-0 text-[#315b4d]" aria-hidden="true" /></span>
-    </Link>
+    </IntentPrefetchLink>
   );
 }
 
@@ -155,7 +156,7 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
     <section aria-labelledby="country-latest">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <h2 id="country-latest" className="archive-serif text-2xl font-semibold text-[#123d32]">국가별 최신 판례</h2>
-        <Link href="/v2/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></Link>
+        <IntentPrefetchLink href="/v2/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-[#345a4d] hover:text-[#123d32]">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></IntentPrefetchLink>
       </div>
       <div className="overflow-hidden rounded-sm border border-[#cbd5cf] bg-white">
         <div className="hidden grid-cols-[100px_110px_170px_90px_minmax(260px,1fr)_150px] gap-3 border-b border-[#b9c6be] bg-[#f4f6f3] px-4 py-2.5 text-xs font-semibold text-[#53635d] xl:grid"><span>날짜</span><span>국가</span><span>기관</span><span>유형</span><span>제목</span><span>주제</span></div>

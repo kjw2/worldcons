@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { BookOpenText, CalendarDays, Check, ExternalLink, Eye, Share2 } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 import type { ArticleListItem } from "@/lib/db/types";
 import { SourceBadge } from "@/components/source-badge";
 import { TagPill } from "@/components/tag-pill";
+import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
@@ -92,7 +92,7 @@ export function ArticleCard({
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const originalHref = safeExternalUrl(article.originalUrl);
   const viewCountLabel = formatViewCount(article.viewCount);
-  const canonicalArticleHref = `/articles/${article.slug}`;
+  const canonicalArticleHref = `/v2/articles/${article.slug}`;
   const articleHref = articleHrefWithReturnTo(article.slug, articleReturnPathForLocation(pathname, searchParams));
 
   async function shareArticle() {
@@ -137,9 +137,9 @@ export function ArticleCard({
       </div>
 
       <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]">
-        <Link href={articleHref} prefetch={false} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
+        <IntentPrefetchLink href={articleHref} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
           {title}
-        </Link>
+        </IntentPrefetchLink>
       </h2>
 
       <p className="mt-3 line-clamp-3 text-sm leading-6 text-[#5d6965]">{summaryText}</p>
@@ -180,16 +180,15 @@ export function ArticleCard({
           >
             {shareState === "copied" ? <Check className="size-4" aria-hidden="true" /> : <Share2 className="size-4" aria-hidden="true" />}
           </button>
-          <Link
+          <IntentPrefetchLink
             href={articleHref}
-            prefetch={false}
             onClick={handleArticleLinkClick}
             aria-label={`자세히 읽기: ${title}`}
             title="자세히 읽기"
             className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-muted hover:text-primary"
           >
             <BookOpenText className="size-4" aria-hidden="true" />
-          </Link>
+          </IntentPrefetchLink>
           {originalHref ? (
             <a
               href={originalHref}
