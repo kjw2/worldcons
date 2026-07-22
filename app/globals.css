@@ -7,6 +7,7 @@
   background: #faf8f3;
   color: #17202a;
   --chrome-header-height: 118px;
+  --font-system-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", Roboto, Arial, sans-serif;
 }
 
 * {
@@ -22,7 +23,7 @@ body {
   margin: 0;
   background: #fdfdfb;
   color: #17202a;
-  font-family: var(--font-nanum-gothic), "Nanum Gothic", Arial, sans-serif;
+  font-family: var(--font-system-sans);
   font-size: 15px;
   line-height: 1.6;
   transition: padding-top 160ms ease;
@@ -30,7 +31,7 @@ body {
 
 .archive-wordmark,
 .archive-serif {
-  font-family: var(--font-nanum-gothic), "Nanum Gothic", Arial, sans-serif;
+  font-family: var(--font-system-sans);
   letter-spacing: 0;
 }
 

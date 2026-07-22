@@ -856,8 +856,16 @@ for (const intentEvent of ["onFocus", "onMouseEnter", "onTouchStart"]) {
   assert(intentPrefetchSource.includes(intentEvent), `intent prefetch links must handle ${intentEvent}`);
 }
 const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
-assert(layoutSource.includes("nanum-gothic-regular.woff2"), "the public UI must use the Nanum Gothic regular font");
-assert(!layoutSource.includes("nanum-square-neo") && !layoutSource.includes("nanum-gothic-bold"), "the initial font payload must include only Nanum Gothic regular");
+const globalStylesSource = fs.readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8");
+for (const systemFont of ["-apple-system", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR"]) {
+  assert(globalStylesSource.includes(systemFont), `the public UI system font stack must include ${systemFont}`);
+}
+assert(!layoutSource.includes("next/font/local"), "the public UI must not load a bundled webfont");
+assert(!globalStylesSource.toLowerCase().includes("nanum"), "the public UI must not retain Nanum font references");
+assert(
+  !fs.existsSync(path.join(process.cwd(), "app/fonts/nanum-gothic-regular.woff2")),
+  "the retired Nanum Gothic font payload must not remain in the app bundle",
+);
 for (const cacheConsumer of [
   "app/page.tsx",
   "app/list/page.tsx",
