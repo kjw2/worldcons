@@ -120,7 +120,6 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
         className="mb-6"
         eyebrow="통합 검색"
         title="제목·요약·원문·태그 검색"
-        description="정확한 문구부터 의미가 가까운 쟁점까지 공식 헌법재판 자료 안에서 탐색합니다."
       />
       <div className="mb-5">
         <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} paramsString={params.toString()} basePath="/search" />
