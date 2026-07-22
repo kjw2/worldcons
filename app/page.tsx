@@ -11,6 +11,7 @@ import type { ArticleListItem, TagType } from "@/lib/db/types";
 import { articleHrefWithReturnTo } from "@/lib/navigation/article-return";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
+import { compareHomeCountries } from "@/lib/ui/home-country-order";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { JUDICIAL_COMPLAINT_TAG_SLUG } from "@/lib/tags/judicial-complaint";
 
@@ -26,15 +27,13 @@ const getHomePortalData = unstable_cache(
     ]);
     const jurisdictions = Array.from(
       new Set(sources.filter((source) => source.isActive).map((source) => source.jurisdiction)),
-    );
+    ).sort(compareHomeCountries);
     const countryResults = await Promise.all(
       jurisdictions.map((jurisdiction) =>
         listArticles({ jurisdiction, page: 1, pageSize: 1, count: "none", includeViewCounts: false }),
       ),
     );
-    const latestArticles = countryResults
-      .flatMap((result) => result.items.slice(0, 1))
-      .sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""));
+    const latestArticles = countryResults.flatMap((result) => result.items.slice(0, 1));
 
     const issueCandidates = tags.filter(
       (tag) => CONSTITUTIONAL_ISSUE_TYPES.has(tag.type) && (tag.articleCount ?? 0) > 0 && tag.latestArticleAt,
@@ -66,7 +65,7 @@ const getHomePortalData = unstable_cache(
 
     return { issueTags, latestArticles };
   },
-  ["home-country-portal-v2"],
+  ["home-country-portal-v3"],
   { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 
@@ -172,7 +171,8 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
 
 async function HomeContent() {
   const { issueTags, latestArticles } = await getHomePortalData();
-  const leadArticle = latestArticles[0];
+  const leadArticle = [...latestArticles]
+    .sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""))[0];
   return (
     <>
       <PageViewTracker event={{ eventType: "page_view", path: "/v2", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />

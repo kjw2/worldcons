@@ -75,6 +75,7 @@ import { generateArticleSlug } from "@/lib/utils/slug";
 import { canonicalizeTerminologyText, canonicalizeTerminologyValue } from "@/lib/ai/terminology";
 import { adminAuditEntryFromSiteEvent } from "@/lib/db/analytics";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
+import { compareHomeCountries, HOME_COUNTRY_ORDER } from "@/lib/ui/home-country-order";
 import { tribunalConstitucionalAdapter } from "@/lib/sources/tribunalconstitucional";
 import {
   classifyJudicialComplaint,
@@ -283,6 +284,11 @@ assert(
 assert(
   displayArticleTypeLabel({ sourceKey: "fr-conseil-constitutionnel", contentType: "opinion", sourceMetadata: null }) === "의견",
   "generic opinion labels should remain 의견",
+);
+assert(
+  ["Spain", "France", "United States", "Germany"].sort(compareHomeCountries).join("|") ===
+    HOME_COUNTRY_ORDER.join("|"),
+  "home country latest records must keep Germany, United States, France, Spain order",
 );
 assert(
   canonicalizeTerminologyText("프랑스 헌법이사회와 프랑스 헌법재판소", "fr-conseil-constitutionnel") ===
