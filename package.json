@@ -44,6 +44,7 @@
     "test:p4": "tsx --test tests/admin-redesign-p4.test.ts",
     "test:p5": "tsx --test tests/admin-governance-p5.test.ts tests/admin-governance-p5.postgres.test.ts",
     "test:cclmetasearch": "tsx --test tests/cclmetasearch-api.test.ts",
+    "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {

@@ -7,6 +7,7 @@ import { boundedInteger } from "@/lib/utils/numbers";
 import { parseDate } from "@/lib/utils/dates";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
 import { SPAIN_TC_BACKFILL_START_DECISION_DATE, SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
+import { ingestResultFailureMessage, ingestResultSucceeded } from "@/lib/ingest/results";
 
 process.env.CRAWLEE_WORKER = "true";
 
@@ -95,6 +96,7 @@ async function main() {
 
   const result = await runIngest({ sourceKey: normalizedSourceKey, limit, strategy, usePlaywright, debug: boolArg("debug"), rangeDays, refreshExisting });
   console.log(JSON.stringify(result, null, 2));
+  if (!ingestResultSucceeded(result)) throw new Error(ingestResultFailureMessage(result));
 }
 
 main().catch((error) => {

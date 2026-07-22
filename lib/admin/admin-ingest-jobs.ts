@@ -1,6 +1,7 @@
 import type { AdminJobType } from "@/lib/db/admin-jobs";
 import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
 import { summaryBatchFailureMessage, summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
+import { ingestResultSucceeded } from "@/lib/ingest/results";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { redactAdminAuditMetadata } from "@/lib/security/audit-redaction";
 import { parseAdminIngestBody, type AdminIngestBody } from "@/lib/security/admin-api-validation";
@@ -167,15 +168,7 @@ export function compactAdminIngestExecutionSummary(result: Pick<AdminIngestExecu
 }
 
 export function adminIngestResultSucceeded(value: unknown) {
-  if (!isRecord(value) || value.mode !== "database" || !Array.isArray(value.results) || value.results.length === 0) {
-    return false;
-  }
-  return value.results.every(
-    (result) =>
-      isRecord(result) &&
-      result.failedCount === 0 &&
-      (!Array.isArray(result.errors) || result.errors.length === 0),
-  );
+  return ingestResultSucceeded(value);
 }
 
 export async function executeAdminIngestJobContext(context: AdminIngestRequestContext): Promise<AdminIngestExecutionResult> {

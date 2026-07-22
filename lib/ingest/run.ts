@@ -1085,18 +1085,17 @@ async function summarizeCandidateRow(
     }
 
     const { error: summaryUpdateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
-    if (!summaryUpdateError) {
-      await shadowArticleLifecycleTransition({
-        articleId: row.id,
-        cohort: "summary",
-        actorType: "summary_worker",
-        source: forceAllowed ? "summary.resummary" : "summary.generate",
-        reasonCode: forceAllowed ? "legacy.summary.resummary_completed" : "legacy.summary.completed",
-        collectionState: "source_text_ready",
-        processingState: "complete",
-        attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
-      });
-    }
+    if (summaryUpdateError) throw new Error(`Failed to persist article summary: ${summaryUpdateError.message}`);
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "summary",
+      actorType: "summary_worker",
+      source: forceAllowed ? "summary.resummary" : "summary.generate",
+      reasonCode: forceAllowed ? "legacy.summary.resummary_completed" : "legacy.summary.completed",
+      collectionState: "source_text_ready",
+      processingState: "complete",
+      attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+    });
     await updateArticleTriageFields({
       articleId: row.id,
       errorClass: null,
@@ -1105,7 +1104,7 @@ async function summarizeCandidateRow(
     });
     await shadowConfirmedLegacyArticleMutation({
       articleId: row.id,
-      succeeded: !summaryUpdateError,
+      succeeded: true,
       reason: forceAllowed ? "Legacy re-summary persisted and remained public." : "Legacy summary persisted and became public.",
       provenanceActorType: "llm",
       provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",

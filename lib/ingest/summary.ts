@@ -64,6 +64,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function ingestionRunIdFromSourceMetadata(sourceMetadata: unknown) {
+  if (!isRecord(sourceMetadata) || !isRecord(sourceMetadata.collection)) return undefined;
+  const diagnosticsId = sourceMetadata.collection.diagnosticsId;
+  return typeof diagnosticsId === "string" && UUID_PATTERN.test(diagnosticsId) ? diagnosticsId : undefined;
+}
+
+async function syncIngestionRunSummarizedCounts(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  runIds: Iterable<string>,
+) {
+  const counts: Record<string, number> = {};
+  for (const runId of new Set(runIds)) {
+    const { count, error } = await supabase
+      .from("articles")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "summarized")
+      .filter("source_metadata->collection->>diagnosticsId", "eq", runId);
+    if (error) throw new Error(`Failed to count summaries for ingestion run ${runId}: ${error.message}`);
+
+    const summarizedCount = count ?? 0;
+    const { error: updateError } = await supabase
+      .from("ingestion_runs")
+      .update({ summarized_count: summarizedCount })
+      .eq("id", runId);
+    if (updateError) throw new Error(`Failed to update ingestion run ${runId}: ${updateError.message}`);
+    counts[runId] = summarizedCount;
+  }
+  return counts;
+}
+
 function staleSummarizingMinutes() {
   const value = Number(process.env.STALE_SUMMARIZING_MINUTES ?? DEFAULT_STALE_SUMMARIZING_MINUTES);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_STALE_SUMMARIZING_MINUTES;
@@ -256,18 +288,17 @@ async function summarizeCandidateRow(
     }
 
     const { error: summaryUpdateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
-    if (!summaryUpdateError) {
-      await shadowArticleLifecycleTransition({
-        articleId: row.id,
-        cohort: "summary",
-        actorType: "summary_worker",
-        source: forceAllowed ? "summary.resummary" : "summary.generate",
-        reasonCode: forceAllowed ? "legacy.summary.resummary_completed" : "legacy.summary.completed",
-        collectionState: "source_text_ready",
-        processingState: "complete",
-        attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
-      });
-    }
+    if (summaryUpdateError) throw new Error(`Failed to persist article summary: ${summaryUpdateError.message}`);
+    await shadowArticleLifecycleTransition({
+      articleId: row.id,
+      cohort: "summary",
+      actorType: "summary_worker",
+      source: forceAllowed ? "summary.resummary" : "summary.generate",
+      reasonCode: forceAllowed ? "legacy.summary.resummary_completed" : "legacy.summary.completed",
+      collectionState: "source_text_ready",
+      processingState: "complete",
+      attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+    });
     await summaryCheckpoint(options);
     await updateArticleTriageFields({
       articleId: row.id,
@@ -277,7 +308,7 @@ async function summarizeCandidateRow(
     });
     await shadowConfirmedLegacyArticleMutation({
       articleId: row.id,
-      succeeded: !summaryUpdateError,
+      succeeded: true,
       reason: forceAllowed ? "Legacy re-summary persisted and remained public." : "Legacy summary persisted and became public.",
       provenanceActorType: "llm",
       provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
@@ -400,6 +431,7 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
   let stoppedReason: string | undefined;
   const summarizedBySource: Record<string, number> = {};
   const deferredBySource: Record<string, number> = {};
+  const summarizedIngestionRunIds = new Set<string>();
 
   for (const row of candidates) {
     await summaryCheckpoint(options);
@@ -419,6 +451,8 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
     } else if (result.status === "summarized") {
       summarizedCount += 1;
       incrementSourceCount(summarizedBySource, row.source_key);
+      const ingestionRunId = ingestionRunIdFromSourceMetadata(row.source_metadata);
+      if (ingestionRunId) summarizedIngestionRunIds.add(ingestionRunId);
     } else {
       failedCount += 1;
       if (result.retryable) {
@@ -432,6 +466,7 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
     }
   }
 
+  const ingestionRunSummaryCounts = await syncIngestionRunSummarizedCounts(supabase, summarizedIngestionRunIds);
   const tagRefresh = summarizedCount > 0
     ? await runRefreshTagCounts({ signal: options.signal, checkpoint: options.checkpoint }).catch((error) => {
         if (options.signal?.aborted) throw error;
@@ -453,6 +488,7 @@ export async function runSummarizePending(options: RunSummarizePendingOptions = 
     stoppedReason,
     summarizedBySource,
     deferredBySource,
+    ingestionRunSummaryCounts,
     recoveredStale,
     tagRefresh,
   };
@@ -500,6 +536,11 @@ export async function runSummarizeArticle(options: SummarizeArticleOptions) {
 
   const row = data as SummaryCandidateRow;
   const result = await summarizeCandidateRow(supabase, row, options);
+  const ingestionRunId = result.status === "summarized" ? ingestionRunIdFromSourceMetadata(row.source_metadata) : undefined;
+  const ingestionRunSummaryCounts = await syncIngestionRunSummarizedCounts(
+    supabase,
+    ingestionRunId ? [ingestionRunId] : [],
+  );
   const tagRefresh =
     result.status === "summarized"
       ? await runRefreshTagCounts({ signal: options.signal, checkpoint: options.checkpoint }).catch((refreshError) => {
@@ -521,6 +562,7 @@ export async function runSummarizeArticle(options: SummarizeArticleOptions) {
     skippedCount: result.status === "skipped" ? 1 : 0,
     errorMessage: result.status === "failed" ? result.errorMessage : undefined,
     reason: result.status === "skipped" ? result.reason : undefined,
+    ingestionRunSummaryCounts,
     tagRefresh,
   };
 }

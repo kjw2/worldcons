@@ -2,6 +2,8 @@ import zlib from "node:zlib";
 import { load } from "cheerio";
 import { assertCrawlerExecution, checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
+import { respectRateLimit } from "@/lib/crawler/rate-limit";
+import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/crawler/robots";
 import type { CrawlAttemptLog, CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 import { cleanText } from "@/lib/ingest/extract-text";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, CrawleeSpiderResult } from "@/lib/crawlee/types";
@@ -23,6 +25,7 @@ const SEARCH_INDEX_PATHS = ["/HJ/es/Busqueda/Index", "/es/Busqueda/Index"];
 const SEARCH_AJAX_PATHS = ["/HJ/es/Busqueda/BuscarAjax", "/es/Busqueda/BuscarAjax"];
 const LIST_PATHS = ["/HJ/es/Resolucion/List", "/es/Resolucion/List"];
 const RESOLUTION_TYPES = ["SENTENCIA", "AUTO", "DECLARACION"] as const;
+const spainRobotsByOrigin = new Map<string, RobotsResult>();
 
 type SpainResolutionType = (typeof RESOLUTION_TYPES)[number];
 
@@ -89,6 +92,15 @@ function requestTimeoutMs() {
   return envNumber("SPAIN_REQUEST_TIMEOUT_MS", envNumber("CRAWLER_TIMEOUT_MS", 30000));
 }
 
+function requestDelayMs() {
+  const configuredDelayMs = Number(process.env.SPAIN_REQUEST_DELAY_MS);
+  if (Number.isFinite(configuredDelayMs) && configuredDelayMs >= 0) return configuredDelayMs;
+  const sameDomainDelaySeconds = Number(process.env.CRAWLEE_SAME_DOMAIN_DELAY_SECS);
+  return Number.isFinite(sameDomainDelaySeconds) && sameDomainDelaySeconds >= 0
+    ? sameDomainDelaySeconds * 1000
+    : 2000;
+}
+
 function userAgent() {
   return process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler";
 }
@@ -123,6 +135,17 @@ function errorMessage(error: unknown) {
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, hooks?: CrawlerExecutionHooks) {
+  await checkpointCrawlerExecution(hooks);
+  const origin = new URL(url).origin;
+  let robots = spainRobotsByOrigin.get(origin);
+  if (!robots) {
+    robots = await checkRobotsAllowed(url, hooks);
+    spainRobotsByOrigin.set(origin, robots);
+  }
+  if (!robots.allowed) {
+    throw new Error(`Spain HJ robots policy disallows ${new URL(url).pathname}.`);
+  }
+  await respectRateLimit(url, robotsDelayMs(robots, requestDelayMs()), hooks?.signal);
   await checkpointCrawlerExecution(hooks);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs());

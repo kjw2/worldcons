@@ -37,9 +37,15 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      LLM_SETTINGS_SECRET: ${{ secrets.LLM_SETTINGS_SECRET }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+      OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
+      OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.OPENAI_COMPATIBLE_BASE_URL }}
+      OPENAI_COMPATIBLE_SUMMARY_MODEL: ${{ secrets.OPENAI_COMPATIBLE_SUMMARY_MODEL }}
       EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER }}
       OPENAI_EMBEDDING_MODEL: text-embedding-3-small
       PLAYWRIGHT_ENABLED: "true"
@@ -57,6 +63,7 @@ jobs:
       SPAIN_BACKFILL_MAX_PAGES: "200"
       SPAIN_DISCOVERY_STOP_AFTER_OLD_PAGES: "5"
       SPAIN_MIN_SOURCE_TEXT_LENGTH: "2000"
+      SPAIN_REQUEST_DELAY_MS: "2000"
       INGEST_REFRESH_EXISTING: "true"
       CRAWLEE_MAX_CONCURRENCY: "1"
       CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
@@ -130,6 +137,7 @@ jobs:
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         # One in-process retry waits beyond the Gemini router's 60-second cooldown.
         # Later passes make transient quota failures visible and recover without waiting for the next daily run.
+        # LLM_SETTINGS_SECRET must match Production so DB-stored provider keys can be decrypted here.
         run: pnpm summarize-pending -- --limit=20 --drain --strict --max-passes=4 --pass-delay-ms=300000 --retry-attempts=1 --retry-delay-ms=65000
       - name: Refresh public tag counts
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
