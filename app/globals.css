@@ -22,7 +22,7 @@ body {
   margin: 0;
   background: #fdfdfb;
   color: #17202a;
-  font-family: var(--font-nanum-square-neo), "NanumSquare Neo", Arial, sans-serif;
+  font-family: var(--font-nanum-gothic), "Nanum Gothic", Arial, sans-serif;
   font-size: 15px;
   line-height: 1.6;
   transition: padding-top 160ms ease;
@@ -30,7 +30,7 @@ body {
 
 .archive-wordmark,
 .archive-serif {
-  font-family: var(--font-nanum-square-neo), "NanumSquare Neo", Arial, sans-serif;
+  font-family: var(--font-nanum-gothic), "Nanum Gothic", Arial, sans-serif;
   letter-spacing: 0;
 }
 

@@ -8,11 +8,11 @@ import { PublicSiteHeader } from "@/components/public-site-header";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import "./globals.css";
 
-const nanumSquareNeo = localFont({
-  src: "./fonts/nanum-square-neo-regular.woff2",
+const nanumGothic = localFont({
+  src: "./fonts/nanum-gothic-regular.woff2",
   weight: "400",
   style: "normal",
-  variable: "--font-nanum-square-neo",
+  variable: "--font-nanum-gothic",
   display: "swap",
   preload: false,
   fallback: ["Arial", "sans-serif"],
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className={`chrome-fixed ${nanumSquareNeo.variable}`}>
+    <html lang="ko" className={`chrome-fixed ${nanumGothic.variable}`}>
       <body className="min-h-screen antialiased">
         <PublicSiteHeader />
         <Suspense fallback={null}>

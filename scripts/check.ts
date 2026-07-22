@@ -850,7 +850,8 @@ for (const intentEvent of ["onFocus", "onMouseEnter", "onTouchStart"]) {
   assert(intentPrefetchSource.includes(intentEvent), `intent prefetch links must handle ${intentEvent}`);
 }
 const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
-assert(!layoutSource.includes("nanum-square-neo-bold.woff2"), "the initial font payload must not include a separate bold font file");
+assert(layoutSource.includes("nanum-gothic-regular.woff2"), "the public UI must use the Nanum Gothic regular font");
+assert(!layoutSource.includes("nanum-square-neo") && !layoutSource.includes("nanum-gothic-bold"), "the initial font payload must include only Nanum Gothic regular");
 for (const cacheConsumer of [
   "app/page.tsx",
   "app/list/page.tsx",
