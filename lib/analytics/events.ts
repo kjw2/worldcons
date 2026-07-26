@@ -47,6 +47,10 @@ const BOT_MARKERS = [
   "semrush",
   "vercelbot",
 ];
+const SEARCH_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const SEARCH_URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/gi;
+const SEARCH_PHONE_PATTERN = /(?:\+?\d{1,3}[\s.-]?)?(?:0\d{1,2}|\(?\d{2,3}\)?)[\s.-]\d{3,4}[\s.-]\d{4}\b/g;
+const SEARCH_IDENTIFIER_PATTERN = /\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi;
 
 function limitText(value?: string | null, max = 300) {
   const text = value?.trim();
@@ -54,8 +58,30 @@ function limitText(value?: string | null, max = 300) {
   return text.length > max ? text.slice(0, max) : text;
 }
 
-function normalizeSearchQuery(value?: string | null) {
-  return limitText(value?.replace(/\s+/g, " ").toLowerCase(), 200);
+export function normalizeAnalyticsSearchQuery(value?: string | null) {
+  const normalized = value
+    ?.replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(SEARCH_EMAIL_PATTERN, "[email]")
+    .replace(SEARCH_URL_PATTERN, "[url]")
+    .replace(SEARCH_PHONE_PATTERN, "[number]")
+    .replace(SEARCH_IDENTIFIER_PATTERN, "[identifier]");
+  return limitText(normalized, 120);
+}
+
+function kstDateKey(now: Date) {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export function analyticsClientIdentifier(headers?: HeaderLike, now = new Date()) {
+  const ip = getClientIp(headers);
+  return hashRequestValue(ip ? `site-analytics:${kstDateKey(now)}:${ip}` : null);
+}
+
+export function primaryAcceptLanguage(headers?: HeaderLike) {
+  const primary = headers?.get("accept-language")?.split(",")[0]?.split(";")[0]?.trim();
+  if (!primary || !/^[a-z]{1,8}(?:-[a-z0-9]{1,8})*$/i.test(primary)) return null;
+  return primary.slice(0, 35);
 }
 
 function referrerHost(headers?: HeaderLike) {
@@ -138,7 +164,6 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
   if (!supabase) return;
 
   const safeInput = redactAdminAuditEventInput(input);
-  const ip = getClientIp(headers);
   const payload = {
     event_type: safeInput.eventType,
     path: limitText(safeInput.path, 500),
@@ -150,19 +175,15 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
     source_key: limitText(safeInput.sourceKey, 120),
     jurisdiction: limitText(safeInput.jurisdiction, 120),
     institution_name: limitText(safeInput.institutionName, 300),
-    search_query: normalizeSearchQuery(safeInput.searchQuery),
+    search_query: normalizeAnalyticsSearchQuery(safeInput.searchQuery),
     search_mode: limitText(safeInput.searchMode, 40),
     result_count: typeof safeInput.resultCount === "number" && Number.isFinite(safeInput.resultCount) ? Math.max(0, Math.round(safeInput.resultCount)) : null,
     referrer_host: referrerHost(headers),
     user_agent_family: userAgentFamily(headers),
     device_type: deviceType(headers),
-    client_ip: ip,
-    client_ip_hash: hashRequestValue(ip),
-    user_agent: headerText(headers, "user-agent", 1000),
-    accept_language: headerText(headers, "accept-language", 300),
+    client_ip_hash: analyticsClientIdentifier(headers),
+    accept_language: primaryAcceptLanguage(headers),
     client_country: headerText(headers, "x-vercel-ip-country", 20) ?? headerText(headers, "cf-ipcountry", 20),
-    client_region: headerText(headers, "x-vercel-ip-country-region", 120),
-    client_city: headerText(headers, "x-vercel-ip-city", 120),
     is_bot: isBot(headers),
     metadata: sanitizedMetadata(safeInput.metadata),
   };

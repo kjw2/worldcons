@@ -142,6 +142,8 @@ jobs:
       - name: Refresh public tag counts
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         run: pnpm refresh-tag-counts
+      - name: Enforce site analytics retention
+        run: pnpm analytics:retention
       - name: Revalidate production public caches (legacy)
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         env:

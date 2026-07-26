@@ -794,7 +794,7 @@ No Gemini routes are locally available for Summarize. This is router state, not 
 
 관리자 v2 P0 안전장치는 source별 요약 범위를 고정하고, 관리자 변이 API 입력을 zod schema로 검증하며, 감사 metadata 저장 전에 secret/token/password/query 값을 redaction합니다. 상세 요약 수정은 `summary_json`, `korean_title`, 태그와 검토 이력 같은 요약 산출물만 허용하고, `raw_text`, `cleaned_text`, 원문 URL, content hash 같은 원문 스냅샷 필드는 직접 수정할 수 없습니다.
 
-자체 이용 통계와 P0 감사 로그는 `site_events` 테이블에 저장합니다. 접속 컴퓨터별 rate limit 적용을 위해 IP, IP hash, User-Agent, Accept-Language, Vercel/Cloudflare 지역 헤더를 함께 저장합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다. 관리자 화면은 최근 접속 로그와 KST 기준 일별·월별 집계를 함께 보여줍니다.
+자체 이용 통계는 `site_events`에 저장하고 관리자 감사 기록은 별도 `admin_audit_logs`에도 분리해 보존합니다. 이용 통계에는 원시 IP와 전체 User-Agent를 저장하지 않으며, IP 파생 식별자는 KST 날짜마다 바뀌고 위치는 국가 수준으로만 보존합니다. Accept-Language는 첫 번째 언어 코드만 저장하고 이메일·전화번호·URL 같은 민감정보가 포함된 검색어는 마스킹합니다. `site_events` 보관기간은 기본 90일이며 일일 작업에서 만료 자료를 정리합니다. 쿠키 기반 사용자 식별자는 저장하지 않습니다.
 
 기존 관리자 v2의 `/admin/operations`와 `/admin/jobs` 화면은 관리자 전면 전환과 함께 폐기했습니다. 새 `/admin` 운영 개요와 `/admin/work` 통합 업무 큐가 수집·요약·검토·공개·실패 복구 흐름을 일관되게 제공합니다. 기존 `admin_jobs` 데이터와 API는 전환 기간의 호환 작업을 안전하게 처리하기 위해 백엔드에만 유지되며 별도 구형 화면으로 노출되지 않습니다.
 

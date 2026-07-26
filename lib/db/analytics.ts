@@ -24,8 +24,6 @@ interface SiteEventRow {
   client_ip_hash?: string | null;
   accept_language?: string | null;
   client_country?: string | null;
-  client_region?: string | null;
-  client_city?: string | null;
   is_bot?: boolean | null;
   metadata?: Record<string, unknown> | null;
 }
@@ -422,7 +420,7 @@ async function loadSiteEvents(days: number) {
 
   const baseSelect =
     "occurred_at, event_type, path, article_slug, article_title, tag_slug, tag_name, source_key, jurisdiction, institution_name, search_query, search_mode, result_count, referrer_host, user_agent_family, device_type, metadata";
-  const accessInfoSelect = `${baseSelect}, client_ip_hash, accept_language, client_country, client_region, client_city, is_bot`;
+  const accessInfoSelect = `${baseSelect}, client_ip_hash, accept_language, client_country, is_bot`;
 
   const { data, error } = await supabase
     .from("site_events")
@@ -895,7 +893,7 @@ function buildAccessLogs(events: SiteEventRow[]) {
     deviceType: event.device_type,
     clientIpHash: event.client_ip_hash,
     acceptLanguage: event.accept_language,
-    location: [event.client_country, event.client_region, event.client_city].filter(Boolean).join(" / ") || null,
+    location: event.client_country || null,
     isBot: event.is_bot,
     resultCount: event.result_count,
   }));

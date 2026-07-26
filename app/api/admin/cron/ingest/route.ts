@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminIngestResultSucceeded } from "@/lib/admin/admin-ingest-jobs";
+import { runSiteAnalyticsRetention } from "@/lib/analytics/retention";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
 import { summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
@@ -44,13 +45,14 @@ export async function GET(request: Request) {
       const ingest = await runIngest({ limit: ingestLimit, rangeDays, refreshExisting: true });
       const summarize = await runSummarizePending({ limit: summaryLimit });
       const tags = await runRefreshTagCounts();
+      const analyticsRetention = await runSiteAnalyticsRetention();
       invalidatePublicContentCaches();
-      return { ingest, summarize, tags };
+      return { ingest, summarize, tags, analyticsRetention };
     },
     { isLegacySuccess: cronIngestSucceeded },
   );
-  const { ingest, summarize, tags } = compatibility.value;
+  const { ingest, summarize, tags, analyticsRetention } = compatibility.value;
   const incomplete = summaryBatchWasDeferred(summarize) || summaryBatchHasHardFailure(summarize);
 
-  return NextResponse.json({ complete: !incomplete, ingest, summarize, tags }, { status: incomplete ? 503 : 200 });
+  return NextResponse.json({ complete: !incomplete, ingest, summarize, tags, analyticsRetention }, { status: incomplete ? 503 : 200 });
 }
