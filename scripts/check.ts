@@ -506,6 +506,8 @@ function spainPayload(overrides: Record<string, unknown> = {}) {
 const spainNormalRaw = buildSpainTcRawArticleFromJson(spainPayload());
 const spainNormalArticle = normalizeRawArticle(spainNormalRaw, tribunalConstitucionalAdapter);
 assert(normalizeSpainDecisionDate("2026-04-27T00:00:00") === "2026-04-27", "Spain HJ FECHA_REGISTRO must normalize as date-only");
+assert(normalizeSpainDecisionDate("08/07/2026 0:00:00") === "2026-07-08", "Spain HJ slash date with time must normalize as date-only");
+assert(normalizeSpainDecisionDate("31/02/2026 0:00:00") === undefined, "Spain HJ invalid calendar dates must be rejected");
 assert(parseSpanishLongDate("de 27 de abril de 2026") === "2026-04-27", "Spanish FECHA_FIRMA parsing failed");
 assert(spainNormalRaw.publishedAt === "2026-04-27T00:00:00.000Z", "Spain publishedAt must use FECHA_REGISTRO, not BOE");
 assert(spainNormalArticle.originalPublishedAt === "2026-04-27T00:00:00.000Z", "Spain original_published_at must use FECHA_REGISTRO, not BOE");
@@ -546,6 +548,29 @@ const spainNoSubstantiveRaw = buildSpainTcRawArticleFromJson(
 const spainNoSubstantiveArticle = normalizeRawArticle(spainNoSubstantiveRaw, tribunalConstitucionalAdapter);
 assert(spainNoSubstantiveRaw.metadata?.collection?.sourceTextAvailable === false, "Spain header/pie-only JSON must fail sourceTextAvailable");
 assert(deriveCollectionStatus(spainNoSubstantiveArticle) === "metadata_only", "Spain header/pie-only JSON must not be summarized");
+
+const spainPendingSourceTextRaw = buildSpainTcRawArticleFromJson({
+  TIPO_RESOLUCION: "SENTENCIA",
+  NUMERO_RESOLUCION: 52,
+  ANNO_RESOLUCION: 2026,
+  FECHA_REGISTRO: "08/07/2026 0:00:00",
+  CONTENIDO_IRRELEVANTE_PARA_INTERNET: false,
+  AVISO: "Este auto no incorpora doctrina constitucional.",
+  ID: 32117,
+});
+const spainPendingSourceTextArticle = normalizeRawArticle(spainPendingSourceTextRaw, tribunalConstitucionalAdapter);
+assert(spainPendingSourceTextRaw.publishedAt === "2026-07-08T00:00:00.000Z", "Spain metadata-only HJ record must preserve its decision date");
+assert(spainPendingSourceTextRaw.metadata?.sourceTextStatus === "awaiting_hj_full_text", "Spain metadata-only HJ record must be marked for source-text tracking");
+assert(spainPendingSourceTextRaw.metadata?.notice === "Este auto no incorpora doctrina constitucional.", "Spain HJ notice must be preserved");
+assert(deriveCollectionStatus(spainPendingSourceTextArticle) === "metadata_only", "Spain HJ source-text pending record must remain private");
+assert(
+  !canSummarizeArticle({
+    status: deriveCollectionStatus(spainPendingSourceTextArticle),
+    cleaned_text: spainPendingSourceTextArticle.cleanedText,
+    source_metadata: spainPendingSourceTextArticle.metadata,
+  }),
+  "Spain HJ source-text pending record must not enter the summary queue",
+);
 
 const spainIrrelevantRaw = buildSpainTcRawArticleFromJson(spainPayload({ CONTENIDO_IRRELEVANTE_PARA_INTERNET: true }));
 const spainIrrelevantArticle = normalizeRawArticle(spainIrrelevantRaw, tribunalConstitucionalAdapter);

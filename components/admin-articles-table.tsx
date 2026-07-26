@@ -22,6 +22,11 @@ const statusLabels: Record<string, string> = {
   needs_review: "검토 필요",
 };
 
+function articleStatusLabel(status: string, sourceKey: string) {
+  if (status === "metadata_only" && sourceKey === "es-tribunal-constitucional") return "HJ 원문 공개 대기";
+  return statusLabels[status] ?? status;
+}
+
 function formatDateTime(input?: string | null) {
   if (!input) return "없음";
   const date = new Date(input);
@@ -216,7 +221,7 @@ export function AdminArticlesTable({
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(article.status)}`}>
-                    {statusLabels[article.status] ?? article.status}
+                    {articleStatusLabel(article.status, article.sourceKey)}
                   </span>
                   <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-white px-2.5 text-xs font-semibold text-ink/68">
                     {article.publishable ? "공개 가능" : "공개 불가"}
@@ -320,7 +325,7 @@ export function AdminArticlesTable({
                     <td className="px-4 py-3">{displayJurisdictionLabel(article.jurisdiction)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(article.status)}`}>
-                        {statusLabels[article.status] ?? article.status}
+                        {articleStatusLabel(article.status, article.sourceKey)}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-semibold">{article.publishable ? "가능" : "불가"}</td>

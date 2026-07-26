@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
-import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
+import { ARTICLE_CONTENT_TYPES, type ArticleContentType, type SummaryJson } from "@/lib/db/types";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import type { CrawlAttemptLog, CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
 import {
@@ -442,6 +442,7 @@ function isGenericCourtTitle(article: NormalizedArticle) {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_SPAIN_PENDING_RECHECK_LIMIT = 20;
 
 function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fallbackUrls: Array<string | undefined | null>) {
   const configured = stringArray(metadata?.officialUrlCandidates);
@@ -471,6 +472,57 @@ export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[],
     const lastAttempt = Date.parse(record.lastAttemptAt);
     return !Number.isFinite(lastAttempt) || now.getTime() - lastAttempt >= delay;
   });
+}
+
+function articleContentType(value?: string | null): ArticleContentType {
+  return ARTICLE_CONTENT_TYPES.includes(value as ArticleContentType) ? value as ArticleContentType : "decision";
+}
+
+async function loadTrackedSpainSourceTextPendingItems() {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return [] as DiscoveredItem[];
+
+  const limit = boundedInteger(process.env.SPAIN_PENDING_RECHECK_LIMIT, DEFAULT_SPAIN_PENDING_RECHECK_LIMIT, { min: 1, max: 100 });
+  const { data, error } = await supabase
+    .from("articles")
+    .select("original_url, canonical_url, original_title, original_published_at, content_type, source_metadata")
+    .eq("source_key", SPAIN_TC_SOURCE_KEY)
+    .in("status", ["metadata_only", "needs_review"])
+    .filter("source_metadata->collection->>sourceTextAvailable", "eq", "false")
+    .order("fetched_at", { ascending: true, nullsFirst: true })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  const items: DiscoveredItem[] = [];
+  for (const row of data ?? []) {
+    const canonicalUrl = safeCanonicalUrl(row.canonical_url ?? row.original_url);
+    if (!canonicalUrl) continue;
+    items.push({
+      sourceKey: SPAIN_TC_SOURCE_KEY,
+      url: canonicalUrl,
+      canonicalUrl,
+      title: row.original_title ?? undefined,
+      publishedAt: row.original_published_at ?? undefined,
+      contentType: articleContentType(row.content_type),
+      metadata: isRecord(row.source_metadata) ? row.source_metadata : undefined,
+    });
+  }
+  return items;
+}
+
+async function touchTrackedSpainSourceTextPending(articleId: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+  await supabase
+    .from("articles")
+    .update({ fetched_at: new Date().toISOString() })
+    .eq("id", articleId);
+}
+
+function isSpainSourceTextPending(article: NormalizedArticle) {
+  if (article.sourceKey !== SPAIN_TC_SOURCE_KEY) return false;
+  const collection = isRecord(article.metadata?.collection) ? article.metadata.collection : {};
+  return collection.sourceTextAvailable !== true;
 }
 
 async function closeTrackedBverfgCandidates(urls: string[], diagnostics?: CrawlerDiagnosticsCollector) {
@@ -898,10 +950,25 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     await executionCheckpoint(options);
     const allDiscovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions));
     await executionCheckpoint(options);
-    result.discoveredCount = allDiscovered.length;
     const inRangeDiscovered = allDiscovered.filter((item) => isItemInDateRange(item.publishedAt, rangeStart));
-    const discovered = inRangeDiscovered.slice(0, limit);
+    const primaryDiscovered = inRangeDiscovered.slice(0, limit);
+    const trackedSpainItems =
+      adapter.sourceKey === SPAIN_TC_SOURCE_KEY && refreshExisting
+        ? await loadTrackedSpainSourceTextPendingItems()
+        : [];
+    const discovered = uniqueDiscoveredItems([...primaryDiscovered, ...trackedSpainItems]);
+    result.discoveredCount = uniqueDiscoveredItems([...allDiscovered, ...trackedSpainItems]).length;
     result.skippedOutOfRangeCount = allDiscovered.length - inRangeDiscovered.length;
+    if (trackedSpainItems.length > 0) {
+      addDiagnosticAttempt(result.diagnostics, {
+        url: "database://articles/spain-source-text-pending",
+        strategy: "api",
+        result: "success",
+        discoveredCount: trackedSpainItems.length,
+        errorCode: "SPAIN_HJ_PENDING_RECHECK",
+        errorMessage: "Previously discovered Spain HJ metadata-only records were included for an official source-text recheck.",
+      });
+    }
 
     for (const item of discovered) {
       await executionCheckpoint(options);
@@ -989,6 +1056,9 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
           const refreshed = await refreshExistingArticle(existing, normalized, runId);
           await executionCheckpoint(options);
           if (refreshed.status === "unchanged") {
+            if (isSpainSourceTextPending(normalized)) {
+              await touchTrackedSpainSourceTextPending(existing.id);
+            }
             result.unchangedCount += 1;
             result.skippedCount += 1;
           } else if (refreshed.status === "refreshed") {

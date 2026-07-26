@@ -502,10 +502,14 @@ pnpm start
 | `SPAIN_DISCOVERY_MAX_PAGES` | `20` | 일일 증분 HJ 목록 page 상한 |
 | `SPAIN_BACKFILL_MAX_PAGES` | `200` | 초기/수동 백필 HJ 목록 page 상한 |
 | `SPAIN_DISCOVERY_STOP_AFTER_OLD_PAGES` | `5` | 오래된 결정만 연속으로 나온 뒤 중단할 page 수 |
+| `SPAIN_HJ_TAIL_PROBE_LIMIT` | `30` | HJ 검색 목록에 아직 노출되지 않은 후속 숫자 ID 확인 상한 |
+| `SPAIN_HJ_TAIL_PROBE_EMPTY_STOP` | `3` | 연속으로 비어 있는 후속 ID를 만났을 때 탐색을 중단하는 기준 |
+| `SPAIN_PENDING_RECHECK_LIMIT` | `20` | 원문 공개를 기다리는 HJ 메타데이터 기록의 일일 재확인 상한 |
 | `SPAIN_MIN_SOURCE_TEXT_LENGTH` | `2000` | 실체 섹션이 있는 HJ 원문을 요약 후보로 인정하는 최소 정리 본문 길이 |
 
 스페인은 21:00 UTC, 즉 06:00 KST 일일 worker에서 함께 수집됩니다.
 `INGEST_RANGE_DAYS=14`로 worker를 실행해도 스페인은 소스별 기본값 때문에 최소 180일을 다시 확인합니다.
+HJ 검색 목록보다 JSON 메타데이터가 먼저 공개된 기록은 비공개 `metadata_only` 상태로 추적합니다. 이후 HJ 원문이 공개되면 일일 재확인에서 `cleaned`로 전환되어 기존 번역·요약·공개 단계로 자동 진행됩니다.
 
 ## 데이터베이스 준비
 

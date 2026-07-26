@@ -20,6 +20,8 @@ export const SPAIN_TC_DEFAULT_DISCOVERY_MAX_PAGES = 20;
 export const SPAIN_TC_DEFAULT_BACKFILL_MAX_PAGES = 200;
 export const SPAIN_TC_DEFAULT_STOP_AFTER_OLD_PAGES = 5;
 export const SPAIN_TC_MIN_SOURCE_TEXT_LENGTH = 2000;
+export const SPAIN_TC_DEFAULT_TAIL_PROBE_LIMIT = 30;
+export const SPAIN_TC_DEFAULT_TAIL_PROBE_EMPTY_STOP = 3;
 
 const SEARCH_INDEX_PATHS = ["/HJ/es/Busqueda/Index", "/es/Busqueda/Index"];
 const SEARCH_AJAX_PATHS = ["/HJ/es/Busqueda/BuscarAjax", "/es/Busqueda/BuscarAjax"];
@@ -50,6 +52,7 @@ interface SpainHjJson extends Record<string, unknown> {
   REFERENCIA_BOE?: string | null;
   ULTIMA_ACTUALIZACION?: string | null;
   CONTENIDO_IRRELEVANTE_PARA_INTERNET?: boolean | null;
+  AVISO?: string | null;
   SINTESIS_DESCRIPTIVA?: string | null;
   SINTESIS_ANALITICA?: string | null;
   RESUMEN?: string | null;
@@ -196,12 +199,22 @@ function dateOnlyFromDate(date: Date) {
 export function normalizeSpainDecisionDate(value?: string | null) {
   if (!value) return undefined;
   const trimmed = String(value).trim();
-  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
-  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (iso) return validDateOnly(iso[1], iso[2], iso[3]);
 
-  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) return `${slash[3]}-${slash[2].padStart(2, "0")}-${slash[1].padStart(2, "0")}`;
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T\s]+\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/);
+  if (slash) return validDateOnly(slash[3], slash[2], slash[1]);
   return undefined;
+}
+
+function validDateOnly(yearValue: string, monthValue: string, dayValue: string) {
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  if (!Number.isInteger(year) || year < 1900 || !Number.isInteger(month) || !Number.isInteger(day)) return undefined;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function dateOnlyToUtcIso(dateOnly?: string) {
@@ -511,6 +524,8 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
       contenidoIrrelevanteParaInternet: contentIrrelevant,
       publishable,
     },
+    sourceTextStatus: quality.sourceTextAvailable ? "available" : "awaiting_hj_full_text",
+    notice: stringValue(payload.AVISO),
     sections,
     auxiliaryMetadata: {
       resumenLength: stripHtml(payload.RESUMEN).length || undefined,
@@ -789,7 +804,10 @@ async function fetchRawByHjId(
   await checkpointCrawlerExecution(options);
   try {
     const { payload, url } = await fetchJsonForHjId(hjId, options.diagnostics, options);
-    return buildSpainTcRawArticleFromJson(payload, {
+    return buildSpainTcRawArticleFromJson({
+      ...payload,
+      ID: payload.ID ?? hjId,
+    }, {
       jsonApiUrl: url,
       htmlTitle: options.listTitle,
       htmlTitleDate: options.htmlTitleDate,
@@ -1073,6 +1091,8 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
   let fallbackParsed = 0;
   let needsReview = 0;
   let sourceTextUnavailable = 0;
+  let tailProbed = 0;
+  let tailDiscovered = 0;
 
   for (const type of RESOLUTION_TYPES) {
     await checkpointCrawlerExecution(options);
@@ -1125,6 +1145,59 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
     }
   }
 
+  const highestSearchId = Math.max(0, ...[...seen].map((id) => Number(id)).filter(Number.isFinite));
+  if (highestSearchId > 0) {
+    const tailProbeLimit = envNumber("SPAIN_HJ_TAIL_PROBE_LIMIT", SPAIN_TC_DEFAULT_TAIL_PROBE_LIMIT);
+    const emptyStop = Math.max(1, envNumber("SPAIN_HJ_TAIL_PROBE_EMPTY_STOP", SPAIN_TC_DEFAULT_TAIL_PROBE_EMPTY_STOP));
+    let emptyStreak = 0;
+
+    for (let offset = 1; offset <= tailProbeLimit && emptyStreak < emptyStop; offset += 1) {
+      await checkpointCrawlerExecution(options);
+      const hjId = String(highestSearchId + offset);
+      tailProbed += 1;
+      try {
+        const { payload, url } = await fetchJsonForHjId(hjId, diagnostics, options);
+        const decisionDate = normalizeSpainDecisionDate(payload.FECHA_REGISTRO);
+        const resolutionType = stringValue(payload.TIPO_RESOLUCION);
+        if (!decisionDate || !resolutionType) {
+          emptyStreak += 1;
+          continue;
+        }
+
+        emptyStreak = 0;
+        if (seen.has(hjId)) continue;
+        seen.add(hjId);
+        discoveredIds += 1;
+        const raw = buildSpainTcRawArticleFromJson({
+          ...payload,
+          ID: payload.ID ?? hjId,
+        }, {
+          jsonApiUrl: url,
+          fetchMethod: "json_api",
+          parseConfidence: "high",
+        });
+        if (!isRawInRange(raw, from, to)) continue;
+        if (raw.metadata?.review && typeof raw.metadata.review === "object") needsReview += 1;
+        if (raw.metadata?.collection && typeof raw.metadata.collection === "object" && (raw.metadata.collection as { sourceTextAvailable?: unknown }).sourceTextAvailable !== true) {
+          sourceTextUnavailable += 1;
+        }
+        results.push({ item: itemFromRaw(raw), raw });
+        tailDiscovered += 1;
+      } catch (error) {
+        if (options.signal?.aborted) throw options.signal.reason;
+        emptyStreak += 1;
+        addAttempt(diagnostics, {
+          url: jsonApiUrls(hjId)[0],
+          strategy: "api",
+          fallback: true,
+          result: "failed",
+          errorCode: "SPAIN_HJ_TAIL_PROBE_EMPTY",
+          errorMessage: errorMessage(error),
+        });
+      }
+    }
+  }
+
   addAttempt(diagnostics, {
     url: session.listUrl,
     strategy: "api",
@@ -1134,7 +1207,7 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
       `Spain HJ diagnostics: dateBasis=FECHA_REGISTRO; datePrecision=date; boeFiltering=false; ` +
       `backfillStart=${SPAIN_TC_BACKFILL_START_DECISION_DATE}; inRange=${results.length}; fallbackParsed=${fallbackParsed}; ` +
       `needsReview=${needsReview}; publishable=${results.filter((entry) => entry.raw?.metadata?.collection && (entry.raw.metadata.collection as { publishable?: unknown }).publishable === true).length}; ` +
-      `sourceTextUnavailable=${sourceTextUnavailable}.`,
+      `sourceTextUnavailable=${sourceTextUnavailable}; tailProbed=${tailProbed}; tailDiscovered=${tailDiscovered}.`,
   });
 
   await checkpointCrawlerExecution(options);
