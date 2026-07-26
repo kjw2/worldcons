@@ -109,9 +109,9 @@ function LeadDecision({ article }: { article: ArticleListItem }) {
   return (
     <section className="relative mb-8 min-h-[270px] overflow-hidden border-y border-[#c8d1cc] bg-[#f6f7f3] px-6 py-7 sm:px-8 lg:pr-[34%]" aria-labelledby="lead-decision">
       <div className="relative z-10 max-w-3xl">
-        <p className="archive-kicker">오늘의 주요 결정</p>
+        <p className="archive-kicker">최근 주요 판례</p>
         <p className="mt-4 text-sm font-semibold text-[#38574c]">{displaySourceLabel(article.sourceKey)} · {displayArticleTypeLabel(article)}</p>
-        <h2 id="lead-decision" className="archive-serif mt-2 break-keep text-3xl font-semibold leading-tight text-[#123d32] sm:text-4xl">{title}<RecentDecisionMark publishedAt={article.originalPublishedAt} className="text-xs sm:text-sm" /></h2>
+        <h2 id="lead-decision" className="archive-serif mt-2 break-keep text-3xl font-semibold leading-tight text-[#123d32] sm:text-4xl">{title}</h2>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#596862]"><span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span>{displayJurisdictionLabel(article.jurisdiction)}</span></div>
         <p className="mt-3 line-clamp-2 text-sm leading-7 text-[#4f5f59]">{summary}</p>
         <IntentPrefetchLink href={articleHref(article)} className="focus-ring mt-4 inline-flex items-center gap-2 rounded-sm border-b border-[#123d32] pb-1 text-sm font-semibold text-[#123d32] hover:text-[#2a6350]">자세히 보기<ArrowRight className="size-4" aria-hidden="true" /></IntentPrefetchLink>
