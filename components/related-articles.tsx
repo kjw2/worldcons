@@ -1,4 +1,5 @@
 import { RelatedArticleLink } from "@/components/article-detail-navigation";
+import { RecentDecisionMark } from "@/components/recent-decision-mark";
 import type { ArticleListItem } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayJurisdictionLabel } from "@/lib/ui/source-labels";
@@ -16,6 +17,7 @@ export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
         <li key={article.slug} className="border-b border-[#dce2de] p-4 md:odd:border-r">
           <RelatedArticleLink slug={article.slug} className={relatedArticleClassName}>
             {article.koreanTitle || article.originalTitle}
+            <RecentDecisionMark publishedAt={article.originalPublishedAt} />
           </RelatedArticleLink>
           <p className="mt-2 text-xs text-ink-subtle">
             {displayJurisdictionLabel(article.jurisdiction)} · {formattedArticleDate(article, { includeLabel: article.sourceKey === "es-tribunal-constitucional" })}

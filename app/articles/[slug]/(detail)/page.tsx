@@ -7,6 +7,7 @@ import { ArticleSourceSnapshot } from "@/components/article-source-snapshot";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { ReferencedProvisionList } from "@/components/referenced-provision-list";
+import { RecentDecisionMark } from "@/components/recent-decision-mark";
 import { RelatedArticles } from "@/components/related-articles";
 import { SummarySection } from "@/components/summary-section";
 import { TagPill } from "@/components/tag-pill";
@@ -119,6 +120,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         />
         <h1 className="archive-serif mt-4 max-w-6xl break-keep text-4xl font-semibold leading-[1.22] text-[#123d32] sm:text-5xl">
           {article.koreanTitle || article.originalTitle}
+          <RecentDecisionMark publishedAt={article.originalPublishedAt} className="text-xs sm:text-sm" />
         </h1>
         {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-[#53625d] sm:text-lg">{primaryIssue}</p> : null}
         {article.originalTitle ? <p className="mt-3 max-w-5xl break-keep text-sm leading-6 text-[#7a8581]">원문 제목: {article.originalTitle}</p> : null}

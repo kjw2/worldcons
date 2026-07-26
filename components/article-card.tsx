@@ -7,6 +7,7 @@ import type { ArticleListItem } from "@/lib/db/types";
 import { SourceBadge } from "@/components/source-badge";
 import { TagPill } from "@/components/tag-pill";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
+import { RecentDecisionMark } from "@/components/recent-decision-mark";
 import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
@@ -139,6 +140,7 @@ export function ArticleCard({
       <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]">
         <IntentPrefetchLink href={articleHref} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
           {title}
+          <RecentDecisionMark publishedAt={article.originalPublishedAt} />
         </IntentPrefetchLink>
       </h2>
 

@@ -63,7 +63,7 @@ import {
   WORLDLAWS_PORTAL_TOKEN_HEADER,
 } from "@/lib/utils/auth";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
-import { isWithinRange, toIsoDate } from "@/lib/utils/dates";
+import { isRecentDecisionDate, isWithinRange, toIsoDate } from "@/lib/utils/dates";
 import { boundedInteger } from "@/lib/utils/numbers";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 import {
@@ -271,6 +271,10 @@ const article: NormalizedArticle = {
 assert(generateArticleSlug(article).includes("united-states-us-scotus-2026-04-29"), "slug generation failed");
 assert(normalizeTagForStorage("Free Speech").slug === "free-speech", "tag normalization failed");
 assert(isWithinRange("2026-05-08T10:00:00.000Z", "today", new Date("2026-05-08T12:00:00.000Z")), "date range filter failed");
+assert(isRecentDecisionDate("2026-07-11T00:00:00.000Z", new Date("2026-07-26T12:00:00.000Z")), "decision exactly 15 days old must show N");
+assert(!isRecentDecisionDate("2026-07-10T00:00:00.000Z", new Date("2026-07-26T12:00:00.000Z")), "decision older than 15 days must not show N");
+assert(!isRecentDecisionDate("2026-07-27T00:00:00.000Z", new Date("2026-07-26T12:00:00.000Z")), "future decision date must not show N");
+assert(!isRecentDecisionDate("2026-07-10T00:00:00.000Z", new Date("2026-07-25T15:01:00.000Z")), "recent decision age must follow the Korea calendar date");
 assert(toIsoDate("17 avril 2026") === "2026-04-17T00:00:00.000Z", "French date parsing failed");
 assert(toIsoDate("28.08.2025") === "2025-08-28T00:00:00.000Z", "German dotted date parsing failed");
 assert(isConstitutionallyRelevant(article), "constitutional relevance keyword filter failed");

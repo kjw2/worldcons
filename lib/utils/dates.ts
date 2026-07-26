@@ -1,6 +1,23 @@
 import { format, parse, parseISO, subDays } from "date-fns";
 
 export type TimeRange = "latest" | "today" | "week" | "month";
+export const RECENT_DECISION_MAX_AGE_DAYS = 15;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const KOREA_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function koreaCalendarDay(date: Date) {
+  const parts = KOREA_DATE_FORMATTER.formatToParts(date);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+  return Date.UTC(year, month - 1, day);
+}
 
 export function normalizeRange(value?: string | null): TimeRange {
   if (value === "today" || value === "week" || value === "month") {
@@ -34,6 +51,24 @@ export function isWithinRange(dateValue: string | null | undefined, range: TimeR
 
   const date = parseDate(dateValue);
   return date ? date >= start : false;
+}
+
+export function isRecentDecisionDate(
+  dateValue?: string | null,
+  now = new Date(),
+  maxAgeDays = RECENT_DECISION_MAX_AGE_DAYS,
+) {
+  const decisionDate = parseDate(dateValue);
+  if (!decisionDate || Number.isNaN(now.getTime()) || maxAgeDays < 0) return false;
+
+  const decisionDay = Date.UTC(
+    decisionDate.getUTCFullYear(),
+    decisionDate.getUTCMonth(),
+    decisionDate.getUTCDate(),
+  );
+  const currentDay = koreaCalendarDay(now);
+  const ageDays = Math.floor((currentDay - decisionDay) / DAY_MS);
+  return ageDays >= 0 && ageDays <= maxAgeDays;
 }
 
 export function parseDate(input?: string | null) {
