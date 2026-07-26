@@ -199,6 +199,41 @@ export async function upsertSourceUrlCandidates(candidates: SourceUrlCandidateIn
   return { inserted: rows.length, skipped: 0 };
 }
 
+export async function findSourceUrlCandidatesByUrls(sourceKey: string, urls: string[]) {
+  const supabase = getSupabaseAdmin();
+  const uniqueUrls = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
+  if (!supabase || uniqueUrls.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("source_url_candidates")
+    .select("id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at")
+    .eq("source_key", sourceKey)
+    .in("url", uniqueUrls);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow);
+}
+
+export async function markSourceUrlCandidatesFetched(sourceKey: string, urls: string[]) {
+  const supabase = getSupabaseAdmin();
+  const uniqueUrls = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
+  if (!supabase || uniqueUrls.length === 0) return { updated: 0 };
+
+  const { data, error } = await supabase
+    .from("source_url_candidates")
+    .update({
+      status: "fetched",
+      last_attempt_at: new Date().toISOString(),
+      last_error_code: null,
+      last_error_message: null,
+    })
+    .eq("source_key", sourceKey)
+    .in("url", uniqueUrls)
+    .neq("status", "fetched")
+    .select("id");
+  if (error) return { updated: 0, error: error.message };
+  return { updated: data?.length ?? 0 };
+}
+
 export async function listSourceUrlCandidates(input: ListSourceUrlCandidatesInput = {}): Promise<ListSourceUrlCandidatesResult> {
   const supabase = getSupabaseAdmin();
   const page = boundedInteger(input.page, 1, { min: 1, max: 10_000 });

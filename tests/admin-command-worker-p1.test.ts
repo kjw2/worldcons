@@ -534,6 +534,64 @@ test("candidate retry fetches the stored canonical URL exactly and never discove
   assert.equal(result.status, "fetched");
 });
 
+test("candidate retry accepts the verified BVerfG senate variant for a stored chamber URL", async () => {
+  const chamberUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/rk20260722_2bvr031926.html";
+  const senateUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/rs20260722_2bvr031926.html";
+  const finishes: string[] = [];
+  let insertedUrl = "";
+  const dependencies: CandidateRetryDependencies = {
+    begin: async () => ({
+      candidateId: "11111111-1111-4111-8111-111111111111",
+      sourceKey: "de-bverfg",
+      url: chamberUrl,
+      candidateType: "decision",
+      status: "retrying",
+      attemptCount: 16,
+      shouldFetch: true,
+    }),
+    finish: async (value) => {
+      finishes.push(value.status);
+      return { candidateId: value.candidateId, status: value.status, attemptCount: value.attemptCount };
+    },
+    loadAdapter: async () => ({
+      sourceKey: "de-bverfg",
+      displayName: "test",
+      jurisdiction: "DE",
+      baseUrl: "https://www.bundesverfassungsgericht.de/",
+      defaultLanguage: "de",
+      discover: async () => [],
+      fetchItem: async (item) => {
+        assert.deepEqual(item.metadata?.officialUrlCandidates, [chamberUrl, senateUrl]);
+        return { ...item, url: senateUrl, canonicalUrl: senateUrl, text: "x".repeat(2500) };
+      },
+      normalize: async (raw) => ({
+        sourceKey: "de-bverfg",
+        jurisdiction: "DE",
+        institutionName: "BVerfG",
+        contentType: "decision",
+        originalUrl: raw.url,
+        canonicalUrl: raw.canonicalUrl,
+        originalLanguage: "de",
+        cleanedText: raw.text,
+      }),
+    }),
+    articleExists: async () => false,
+    articleExistsByNormalizedContent: async () => false,
+    insertNormalizedArticle: async (article) => {
+      insertedUrl = article.canonicalUrl;
+      return { id: "article-1", status: "cleaned", collection: {} as never };
+    },
+  };
+
+  const result = await executeExactCandidateRetry({
+    candidateId: "11111111-1111-4111-8111-111111111111",
+    checkpoint: async () => undefined,
+  }, dependencies);
+  assert.equal(insertedUrl, senateUrl);
+  assert.deepEqual(finishes, ["fetched"]);
+  assert.equal(result.status, "fetched");
+});
+
 test("candidate retry rejects normalized canonical drift before dedupe or persist", async () => {
   const claimUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/exact.html";
   for (const [normalizedUrl, expectedCode] of [

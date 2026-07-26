@@ -13,6 +13,7 @@ import { redactAdminAuditText } from "@/lib/security/audit-redaction";
 import {
   BVERFG_LIVE_DISCOVERY_EMPTY,
   BVERFG_OFFICIAL_DETAIL_404,
+  BVERFG_OFFICIAL_VARIANTS_404,
 } from "@/lib/ui/candidate-tracking-labels";
 
 type Row = Record<string, unknown>;
@@ -453,7 +454,9 @@ export function paginateAdminWorkItems(items: AdminWorkItem[], filters: AdminWor
 export function summarizeAdminWorkItems(items: AdminWorkItem[]): AdminWorkQueueSnapshot["counts"] {
   const trackedCandidates = items.filter((item) => item.type === "candidate" && item.attention);
   const operationalItems = items.filter((item) => item.type !== "candidate");
-  const candidateOfficialDetail404 = trackedCandidates.filter((item) => item.attentionCode === BVERFG_OFFICIAL_DETAIL_404).length;
+  const candidateOfficialDetail404 = trackedCandidates.filter(
+    (item) => item.attentionCode === BVERFG_OFFICIAL_DETAIL_404 || item.attentionCode === BVERFG_OFFICIAL_VARIANTS_404,
+  ).length;
   const candidateDiscoveryEmpty = trackedCandidates.filter((item) => item.attentionCode === BVERFG_LIVE_DISCOVERY_EMPTY).length;
 
   return {

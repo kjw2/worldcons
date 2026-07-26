@@ -4,6 +4,12 @@ import path from "node:path";
 import test from "node:test";
 import { ingestResultFailureMessage, ingestResultSucceeded } from "../lib/ingest/results";
 import { ingestionRunIdFromSourceMetadata } from "../lib/ingest/summary";
+import {
+  bverfgOfficialUrlCandidatesFromDocket,
+  bverfgOfficialUrlCandidatesFromUrl,
+} from "../lib/crawlee/bverfg-spider";
+import { bverfgCandidateRetryDelayMs, shouldRetryBverfgCandidates } from "../lib/ingest/run";
+import type { SourceUrlCandidateRecord } from "../lib/db/source-url-candidates";
 
 test("ingestion success distinguishes a verified empty listing from swallowed discovery failures", () => {
   const verifiedEmpty = {
@@ -51,6 +57,49 @@ test("summary accounting only accepts an ingestion run UUID from collection meta
   assert.equal(ingestionRunIdFromSourceMetadata({ collection: { diagnosticsId: runId } }), runId);
   assert.equal(ingestionRunIdFromSourceMetadata({ collection: { diagnosticsId: "not-a-uuid" } }), undefined);
   assert.equal(ingestionRunIdFromSourceMetadata({}), undefined);
+});
+
+test("BVerfG URL resolution checks chamber and senate filename variants", () => {
+  assert.deepEqual(
+    bverfgOfficialUrlCandidatesFromDocket("22.07.2026", "2 BvR 319/26").map((url) => url.split("/").at(-1)),
+    ["rk20260722_2bvr031926.html", "rs20260722_2bvr031926.html"],
+  );
+  assert.deepEqual(
+    bverfgOfficialUrlCandidatesFromDocket("09.07.2026", "2 BvQ 47/26").map((url) => url.split("/").at(-1)),
+    ["qk20260709_2bvq004726.html", "qs20260709_2bvq004726.html"],
+  );
+  assert.deepEqual(
+    bverfgOfficialUrlCandidatesFromDocket("09.07.2026", "2 BvE 4/26").map((url) => url.split("/").at(-1)),
+    ["es20260709_2bve000426.html"],
+  );
+  assert.deepEqual(
+    bverfgOfficialUrlCandidatesFromUrl(
+      "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/07/rk20260722_2bvr031926.html",
+    ).map((url) => url.split("/").at(-1)),
+    ["rk20260722_2bvr031926.html", "rs20260722_2bvr031926.html"],
+  );
+});
+
+test("BVerfG unresolved variant retries use bounded exponential backoff", () => {
+  assert.equal(bverfgCandidateRetryDelayMs(16, "BVERFG_OFFICIAL_DETAIL_404"), 0);
+  assert.equal(bverfgCandidateRetryDelayMs(1, "BVERFG_OFFICIAL_VARIANTS_404"), 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(3, "BVERFG_OFFICIAL_VARIANTS_404"), 3 * 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(6, "BVERFG_OFFICIAL_VARIANTS_404"), 7 * 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(10, "BVERFG_OFFICIAL_VARIANTS_404"), 14 * 24 * 60 * 60 * 1000);
+
+  const candidate: SourceUrlCandidateRecord = {
+    id: "candidate-1",
+    sourceKey: "de-bverfg",
+    url: "https://www.bundesverfassungsgericht.de/example.html",
+    candidateType: "decision",
+    discoveredBy: "dejure",
+    status: "retrying",
+    lastAttemptAt: "2026-07-20T00:00:00.000Z",
+    attemptCount: 10,
+    lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404",
+  };
+  assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-07-26T00:00:00.000Z")), false);
+  assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-08-03T00:00:00.000Z")), true);
 });
 
 test("daily workflow and all ingestion CLIs retain hardening controls", () => {

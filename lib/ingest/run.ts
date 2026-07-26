@@ -2,7 +2,12 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import type { ArticleContentType, SummaryJson } from "@/lib/db/types";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import type { CrawlAttemptLog, CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
-import { upsertSourceUrlCandidates } from "@/lib/db/source-url-candidates";
+import {
+  findSourceUrlCandidatesByUrls,
+  markSourceUrlCandidatesFetched,
+  upsertSourceUrlCandidates,
+  type SourceUrlCandidateRecord,
+} from "@/lib/db/source-url-candidates";
 import { ARTICLE_ERROR_CLASS, ARTICLE_REVIEW_STATE, classifySummaryError, updateArticleTriageFields } from "@/lib/db/article-triage";
 import { createContentHash } from "@/lib/utils/hash";
 import { boundedInteger } from "@/lib/utils/numbers";
@@ -27,6 +32,7 @@ import {
   type ArticleLifecycleP2Cohort,
 } from "@/lib/article-lifecycle";
 import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
+import { BVERFG_OFFICIAL_VARIANTS_404 } from "@/lib/ui/candidate-tracking-labels";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -145,6 +151,11 @@ async function executionCheckpoint(options: Pick<RunIngestOptions, "signal" | "c
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
 }
 
 function safeCanonicalUrl(value?: string | null) {
@@ -299,14 +310,17 @@ export async function articleExists(canonicalUrl: string) {
   return Boolean(data);
 }
 
-async function findExistingArticle(canonicalUrl: string): Promise<ExistingArticleRow | null> {
+async function findExistingArticle(canonicalUrls: string | string[]): Promise<ExistingArticleRow | null> {
   const supabase = getSupabaseAdmin();
   if (!supabase) return null;
+  const urls = [...new Set((Array.isArray(canonicalUrls) ? canonicalUrls : [canonicalUrls]).map((url) => canonicalizeUrl(url)))];
+  if (urls.length === 0) return null;
 
   const { data, error } = await supabase
     .from("articles")
     .select("id, status, content_hash, cleaned_text, source_metadata, review_state, error_class, error_context")
-    .eq("canonical_url", canonicalUrl)
+    .in("canonical_url", urls)
+    .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
@@ -427,6 +441,50 @@ function isGenericCourtTitle(article: NormalizedArticle) {
   return /^(?:Beschluss|Urteil)\s+vom\s+\d{1,2}\.\s+[A-Za-zÄÖÜäöüß]+\s+\d{4}$/i.test(title);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fallbackUrls: Array<string | undefined | null>) {
+  const configured = stringArray(metadata?.officialUrlCandidates);
+  return [
+    ...new Set(
+      [...configured, ...fallbackUrls]
+        .map((url) => safeCanonicalUrl(url))
+        .filter((url): url is string => Boolean(url)),
+    ),
+  ];
+}
+
+export function bverfgCandidateRetryDelayMs(attemptCount: number, errorCode?: string | null) {
+  if (errorCode !== BVERFG_OFFICIAL_VARIANTS_404) return 0;
+  if (attemptCount >= 10) return 14 * DAY_MS;
+  if (attemptCount >= 6) return 7 * DAY_MS;
+  if (attemptCount >= 3) return 3 * DAY_MS;
+  return DAY_MS;
+}
+
+export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[], now = new Date()) {
+  const retrying = records.filter((record) => record.status === "retrying");
+  if (retrying.length === 0) return true;
+  return retrying.some((record) => {
+    const delay = bverfgCandidateRetryDelayMs(record.attemptCount, record.lastErrorCode);
+    if (delay === 0 || !record.lastAttemptAt) return true;
+    const lastAttempt = Date.parse(record.lastAttemptAt);
+    return !Number.isFinite(lastAttempt) || now.getTime() - lastAttempt >= delay;
+  });
+}
+
+async function closeTrackedBverfgCandidates(urls: string[], diagnostics?: CrawlerDiagnosticsCollector) {
+  if (urls.length === 0) return;
+  const result = await markSourceUrlCandidatesFetched("de-bverfg", urls);
+  if (result.error) {
+    addDiagnosticAttempt(diagnostics, {
+      strategy: "api",
+      errorCode: "BVERFG_CANDIDATE_CLOSE_FAILED",
+      errorMessage: result.error,
+    });
+  }
+}
+
 function isUnverifiedBverfgFetch(article: NormalizedArticle) {
   if (article.sourceKey !== "de-bverfg") return false;
   const collection = isRecord(article.metadata?.collection) ? article.metadata.collection : {};
@@ -461,8 +519,22 @@ function statusFromAttempt(attempt?: CrawlAttemptLog) {
   return typeof status === "number" && Number.isFinite(status) ? status : undefined;
 }
 
-function bverfgUncollectedReason(status?: number) {
+function allCandidateUrlsReturned404(attempts: CrawlAttemptLog[], urls: string[]) {
+  if (urls.length === 0) return false;
+  const latestStatuses = new Map<string, number>();
+  for (const attempt of attempts) {
+    const url = safeCanonicalUrl(attempt.finalUrl ?? attempt.url);
+    const status = statusFromAttempt(attempt);
+    if (url && status !== undefined && urls.includes(url)) latestStatuses.set(url, status);
+  }
+  return urls.every((url) => latestStatuses.get(url) === 404);
+}
+
+function bverfgUncollectedReason(status?: number, exhaustedOfficialCandidates = false) {
   if (status === 404) {
+    if (exhaustedOfficialCandidates) {
+      return "All known BVerfG official URL candidates returned HTTP 404. The candidate is retained with exponential retry backoff for delayed or selective official publication.";
+    }
     return "BVerfG official detail URL returned HTTP 404. The external index candidate is saved for later retry in case the official page appears or the URL pattern changes.";
   }
   if (status && status >= 400) {
@@ -481,21 +553,25 @@ function uncollectedCandidateForArticle(article: NormalizedArticle, diagnostics?
   if (!isUnverifiedBverfgFetch(article)) return null;
 
   const metadata = isRecord(article.metadata) ? article.metadata : {};
-  const attempt = latestProblemAttempt([...diagnosticsForArticle(article), ...(diagnostics?.attempts ?? [])], [article.canonicalUrl, article.originalUrl]);
+  const candidateUrls = bverfgCandidateUrls(metadata, [article.canonicalUrl, article.originalUrl]);
+  const attempts = [...diagnosticsForArticle(article), ...(diagnostics?.attempts ?? [])];
+  const attempt = latestProblemAttempt(attempts, candidateUrls);
   const httpStatus = statusFromAttempt(attempt);
+  const exhaustedOfficialCandidates =
+    Number(metadata.officialUrlResolverVersion) >= 2 && allCandidateUrlsReturned404(attempts, candidateUrls);
   const detailDiscoveryStrategy = stringValue(metadata.detailDiscoveryStrategy);
   const discoveredBy = detailDiscoveryStrategy ?? stringValue(metadata.discoveryIndex) ?? "official-detail-verification";
 
   return {
     sourceKey: article.sourceKey,
-    url: article.originalUrl,
-    canonicalUrl: article.canonicalUrl,
+    url: candidateUrls[0] ?? article.originalUrl,
+    canonicalUrl: candidateUrls[0] ?? article.canonicalUrl,
     title: article.originalTitle ?? null,
     publishedAt: article.originalPublishedAt ?? null,
     candidateType: article.contentType,
     discoveredBy,
-    reason: bverfgUncollectedReason(httpStatus),
-    errorCode: bverfgUncollectedErrorCode(httpStatus, attempt?.errorCode),
+    reason: bverfgUncollectedReason(httpStatus, exhaustedOfficialCandidates),
+    errorCode: exhaustedOfficialCandidates ? BVERFG_OFFICIAL_VARIANTS_404 : bverfgUncollectedErrorCode(httpStatus, attempt?.errorCode),
     httpStatus,
     caseNumber: stringValue(metadata.caseNumber),
     detailDiscoveryStrategy,
@@ -505,24 +581,27 @@ function uncollectedCandidateForArticle(article: NormalizedArticle, diagnostics?
 function uncollectedCandidateForFailedItem(item: DiscoveredItem, diagnostics: CrawlerDiagnosticsCollector, error: unknown): UncollectedCandidate | null {
   if (item.sourceKey !== "de-bverfg") return null;
 
-  const attempt = latestProblemAttempt(diagnostics.attempts, [item.canonicalUrl, item.url]);
+  const metadata = isRecord(item.metadata) ? item.metadata : {};
+  const candidateUrls = bverfgCandidateUrls(metadata, [item.canonicalUrl, item.url]);
+  const attempt = latestProblemAttempt(diagnostics.attempts, candidateUrls);
   const httpStatus = statusFromAttempt(attempt);
   if (!httpStatus || httpStatus < 400) return null;
 
-  const metadata = isRecord(item.metadata) ? item.metadata : {};
+  const exhaustedOfficialCandidates =
+    Number(metadata.officialUrlResolverVersion) >= 2 && allCandidateUrlsReturned404(diagnostics.attempts, candidateUrls);
   const detailDiscoveryStrategy = stringValue(metadata.detailDiscoveryStrategy);
   const discoveredBy = detailDiscoveryStrategy ?? stringValue(metadata.discoveryIndex) ?? "official-detail-verification";
-  const errorCode = bverfgUncollectedErrorCode(httpStatus, attempt?.errorCode);
+  const errorCode = exhaustedOfficialCandidates ? BVERFG_OFFICIAL_VARIANTS_404 : bverfgUncollectedErrorCode(httpStatus, attempt?.errorCode);
 
   return {
     sourceKey: item.sourceKey,
-    url: item.url,
-    canonicalUrl: item.canonicalUrl,
+    url: candidateUrls[0] ?? item.url,
+    canonicalUrl: candidateUrls[0] ?? item.canonicalUrl,
     title: item.title ?? null,
     publishedAt: item.publishedAt ?? null,
     candidateType: item.contentType,
     discoveredBy,
-    reason: `${bverfgUncollectedReason(httpStatus)} Fetch error: ${error instanceof Error ? error.message : String(error)}`,
+    reason: `${bverfgUncollectedReason(httpStatus, exhaustedOfficialCandidates)} Fetch error: ${error instanceof Error ? error.message : String(error)}`,
     errorCode,
     httpStatus,
     caseNumber: stringValue(metadata.caseNumber),
@@ -835,11 +914,42 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
           continue;
         }
 
-        const existing = await findExistingArticle(item.canonicalUrl);
+        const itemMetadata = isRecord(item.metadata) ? item.metadata : undefined;
+        const candidateUrls = adapter.sourceKey === "de-bverfg"
+          ? bverfgCandidateUrls(itemMetadata, [item.canonicalUrl, item.url])
+          : [item.canonicalUrl];
+        const existing = await findExistingArticle(candidateUrls);
         await executionCheckpoint(options);
+        if (existing && adapter.sourceKey === "de-bverfg") {
+          await closeTrackedBverfgCandidates(candidateUrls, result.diagnostics);
+        }
         if (existing && !refreshExisting) {
           result.skippedCount += 1;
           continue;
+        }
+
+        if (adapter.sourceKey === "de-bverfg" && !existing) {
+          let trackedCandidates: SourceUrlCandidateRecord[] = [];
+          try {
+            trackedCandidates = await findSourceUrlCandidatesByUrls(adapter.sourceKey, candidateUrls);
+          } catch (error) {
+            addDiagnosticAttempt(result.diagnostics, {
+              strategy: "api",
+              errorCode: "BVERFG_CANDIDATE_LOOKUP_FAILED",
+              errorMessage: error instanceof Error ? error.message : String(error),
+            });
+          }
+          if (!shouldRetryBverfgCandidates(trackedCandidates)) {
+            addDiagnosticAttempt(result.diagnostics, {
+              url: candidateUrls[0],
+              strategy: "api",
+              fallback: true,
+              errorCode: "BVERFG_CANDIDATE_RETRY_DEFERRED",
+              errorMessage: "Known official URL candidates remain unavailable and are inside their retry backoff window.",
+            });
+            result.skippedCount += 1;
+            continue;
+          }
         }
 
         const raw = await adapter.fetchItem(item, { ...discoveryOptions, diagnostics: itemDiagnostics });
@@ -855,6 +965,17 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
           result.skippedCount += 1;
           result.fetchedCount += 1;
           continue;
+        }
+
+        if (adapter.sourceKey === "de-bverfg") {
+          await closeTrackedBverfgCandidates(
+            bverfgCandidateUrls(isRecord(normalized.metadata) ? normalized.metadata : undefined, [
+              ...candidateUrls,
+              normalized.canonicalUrl,
+              normalized.originalUrl,
+            ]),
+            result.diagnostics,
+          );
         }
 
         if (adapter.sourceKey === "us-scotus" && !isConstitutionallyRelevant(normalized)) {

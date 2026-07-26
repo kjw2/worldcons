@@ -3,7 +3,7 @@ import { load } from "cheerio";
 import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
 import { articleExists, articleExistsByNormalizedContent, insertNormalizedArticle } from "@/lib/ingest/run";
-import { BVERFG_SEED_DECISIONS } from "@/lib/crawlee/bverfg-spider";
+import { BVERFG_SEED_DECISIONS, bverfgOfficialUrlCandidatesFromDocket } from "@/lib/crawlee/bverfg-spider";
 import { SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
 import { getSourceAdapter } from "@/lib/sources";
 import type { DiscoveredItem, SourceAdapter } from "@/lib/sources/types";
@@ -266,33 +266,6 @@ function bverfgUrlFromEcli(ecli?: string | null) {
   return `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix.toLowerCase()}${year}${month}${day}_${casePart.toLowerCase()}.html`;
 }
 
-function bverfgPrefixForProcedure(procedure: string) {
-  const normalized = procedure.toLowerCase();
-  if (normalized === "bvr") return "rk";
-  if (normalized === "bvq") return "qk";
-  if (normalized === "bvc") return "cs";
-  if (normalized === "bvl") return "ls";
-  if (normalized === "bve") return "es";
-  if (normalized === "bvf") return "fs";
-  if (normalized === "bvb") return "bs";
-  return undefined;
-}
-
-function bverfgUrlFromDocket(date: string, docket: string) {
-  const dateMatch = date.match(/^(\d{2})\.(\d{2})\.(20\d{2})$/);
-  const docketMatch = docket.match(/^([12])\s+Bv([A-Za-z]+)\s+(\d+)\/(\d{2,4})/);
-  if (!dateMatch || !docketMatch) return undefined;
-
-  const [, day, month, year] = dateMatch;
-  const [, senate, procedureSuffix, number, docketYear] = docketMatch;
-  const procedure = `bv${procedureSuffix.toLowerCase()}`;
-  const prefix = bverfgPrefixForProcedure(procedure);
-  if (!prefix) return undefined;
-
-  const casePart = `${senate}${procedure}${number.padStart(4, "0")}${docketYear.length === 4 ? docketYear.slice(-2) : docketYear}`;
-  return `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix}${year}${month}${day}_${casePart}.html`;
-}
-
 function bverfgDateFromUrl(url: string) {
   const match = url.match(/\/SharedDocs\/Entscheidungen\/DE\/(20\d{2})\/(\d{2})\/[a-z]{2}(20\d{2})(\d{2})(\d{2})_/i);
   if (!match) return undefined;
@@ -441,7 +414,8 @@ async function discoverBverfgFromDejureIndex() {
       if (parsedDate && (!oldestDate || parsedDate < oldestDate)) oldestDate = parsedDate;
       if (!inRange(date)) continue;
 
-      const itemUrl = bverfgUrlFromDocket(date, docket);
+      const officialUrlCandidates = bverfgOfficialUrlCandidatesFromDocket(date, docket);
+      const itemUrl = officialUrlCandidates[0];
       if (!itemUrl) continue;
       sawInRange = true;
       items.push({
@@ -456,6 +430,8 @@ async function discoverBverfgFromDejureIndex() {
           discoveryIndex: "dejure.org",
           discoveryIndexUrl: indexUrl,
           caseNumber: docket,
+          officialUrlCandidates,
+          officialUrlResolverVersion: 2,
           collection: {
             source: BVERFG_BASE_URL,
             strategy: "cheerio",

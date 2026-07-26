@@ -1,6 +1,7 @@
 import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
 import type { SourceDiscoveryOptions } from "@/lib/crawler/types";
 import { BVERFG_BASE_URL, BVERFG_SEED_DECISIONS, runBverfgSpider } from "@/lib/crawlee";
+import { bverfgOfficialUrlCandidatesFromUrl } from "@/lib/crawlee/bverfg-spider";
 import { upsertSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import type { DiscoveredItem, RawArticle, SourceAdapter } from "@/lib/sources/types";
@@ -12,6 +13,34 @@ function remember(raw?: RawArticle) {
   if (!raw) return;
   rawCache.set(raw.canonicalUrl, raw);
   rawCache.set(canonicalizeUrl(raw.url), raw);
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+}
+
+function officialUrlCandidates(item: DiscoveredItem) {
+  const configured = stringArray(item.metadata?.officialUrlCandidates);
+  const candidates = configured.length > 0 ? configured : bverfgOfficialUrlCandidatesFromUrl(item.canonicalUrl || item.url);
+  return [...new Set(candidates.map((url) => canonicalizeUrl(url)))];
+}
+
+function detailItemForUrl(item: DiscoveredItem, url: string, candidates: string[]): DiscoveredItem {
+  return {
+    ...item,
+    url,
+    canonicalUrl: url,
+    metadata: {
+      ...item.metadata,
+      officialUrlCandidates: candidates,
+      officialUrlResolverVersion: 2,
+    },
+  };
+}
+
+function verifiedRaw(raw?: RawArticle) {
+  return raw?.metadata?.collection?.sourceUrlVerified === true;
 }
 
 function discoveryLimit(options?: SourceDiscoveryOptions) {
@@ -59,7 +88,9 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
     const result = await runBverfgSpider({
       limit: discoveryLimit(options),
       rangeDays: options?.rangeDays,
-      dryRun: options?.dryRun,
+      // Discovery must remain list-only. Detail fetching happens per item after
+      // dedupe and retry-backoff checks in the ingest pipeline.
+      dryRun: true,
       strategy: options?.strategy ?? "auto",
       usePlaywright: options?.usePlaywright,
       diagnostics: options?.diagnostics,
@@ -103,22 +134,28 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
   },
 
   async fetchItem(item: DiscoveredItem, options?: SourceDiscoveryOptions): Promise<RawArticle> {
-    const cached = rawCache.get(item.canonicalUrl) ?? rawCache.get(canonicalizeUrl(item.url));
+    const candidates = officialUrlCandidates(item);
+    const cached = candidates.map((url) => rawCache.get(url)).find(verifiedRaw)
+      ?? rawCache.get(item.canonicalUrl)
+      ?? rawCache.get(canonicalizeUrl(item.url));
     if (cached) return cached;
 
     const result = await runBverfgSpider({
-      limit: 1,
+      limit: candidates.length,
       strategy: options?.strategy ?? "auto",
       usePlaywright: options?.usePlaywright,
       diagnostics: options?.diagnostics,
-      detailUrls: [item.url],
+      detailItems: candidates.map((url) => detailItemForUrl(item, url, candidates)),
       detailOnly: true,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
     });
-    const raw = result.items[0]?.raw;
-    remember(raw);
-    return raw ?? metadataOnlyRaw(item, options);
+    const raws = result.items.map((entry) => entry.raw).filter((raw): raw is RawArticle => Boolean(raw));
+    for (const raw of raws) remember(raw);
+    const raw = raws.find(verifiedRaw)
+      ?? raws.find((entry) => canonicalizeUrl(entry.canonicalUrl) === candidates[0])
+      ?? raws[0];
+    return raw ?? metadataOnlyRaw(detailItemForUrl(item, candidates[0] ?? item.url, candidates), options);
   },
 
   async normalize(raw: RawArticle) {

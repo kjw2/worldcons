@@ -8,6 +8,8 @@ import { articleExists, articleExistsByNormalizedContent, insertNormalizedArticl
 import { loadSourceAdapter } from "@/lib/sources/lazy";
 import type { DiscoveredItem, SourceAdapter } from "@/lib/sources/types";
 import { redactAdminAuditText } from "@/lib/security/audit-redaction";
+import { bverfgOfficialUrlCandidatesFromUrl } from "@/lib/crawlee/bverfg-spider";
+import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 
 const OFFICIAL_SOURCE_HOSTS: Record<string, ReadonlySet<string>> = {
   "de-bverfg": new Set(["www.bundesverfassungsgericht.de", "bundesverfassungsgericht.de"]),
@@ -106,6 +108,11 @@ function candidateContentType(value: string): ArticleContentType | null {
   return ARTICLE_CONTENT_TYPES.includes(value as ArticleContentType) ? value as ArticleContentType : null;
 }
 
+function candidateOfficialUrls(sourceKey: string, storedUrl: string) {
+  const urls = sourceKey === "de-bverfg" ? bverfgOfficialUrlCandidatesFromUrl(storedUrl) : [storedUrl];
+  return [...new Set(urls.map((url) => canonicalizeUrl(url)))];
+}
+
 async function markFailed(
   claim: SourceUrlCandidateRetryClaim,
   error: unknown,
@@ -137,13 +144,18 @@ export async function executeExactCandidateRetry(
     if (!isSafeOfficialCandidateUrl(claim.sourceKey, claim.url)) {
       throw new CandidateRetryError("candidate.unsafe_official_url", false);
     }
+    const officialUrls = candidateOfficialUrls(claim.sourceKey, claim.url);
+    if (officialUrls.some((url) => !isSafeOfficialCandidateUrl(claim.sourceKey, url))) {
+      throw new CandidateRetryError("candidate.unsafe_official_url", false);
+    }
     const adapter = await dependencies.loadAdapter(claim.sourceKey);
     if (!adapter || adapter.sourceKey !== claim.sourceKey) {
       throw new CandidateRetryError("candidate.source_not_supported", false);
     }
 
     await candidateCheckpoint(options);
-    if (await dependencies.articleExists(claim.url)) {
+    const existing = await Promise.all(officialUrls.map((url) => dependencies.articleExists(url)));
+    if (existing.some(Boolean)) {
       await candidateCheckpoint(options);
       await dependencies.finish({ candidateId: claim.candidateId, attemptCount: claim.attemptCount, status: "fetched" });
       return { candidateId: claim.candidateId, status: "fetched" as const, attempted: false, idempotent: true };
@@ -154,6 +166,10 @@ export async function executeExactCandidateRetry(
       url: claim.url,
       canonicalUrl: claim.url,
       contentType,
+      metadata: {
+        officialUrlCandidates: officialUrls,
+        officialUrlResolverVersion: claim.sourceKey === "de-bverfg" ? 2 : undefined,
+      },
     };
     const raw = await adapter.fetchItem(exactItem, {
       strategy: "auto",
@@ -170,7 +186,7 @@ export async function executeExactCandidateRetry(
     if (!isSafeOfficialCandidateUrl(claim.sourceKey, normalized.canonicalUrl)) {
       throw new CandidateRetryError("candidate.normalized_url_unsafe", false);
     }
-    if (normalized.canonicalUrl !== claim.url) {
+    if (!officialUrls.includes(canonicalizeUrl(normalized.canonicalUrl))) {
       throw new CandidateRetryError("candidate.canonical_url_mismatch", false);
     }
 

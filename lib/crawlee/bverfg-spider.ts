@@ -151,31 +151,57 @@ function bverfgUrlFromEcli(ecli?: string | null) {
   return `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix.toLowerCase()}${year}${month}${day}_${casePart.toLowerCase()}.html`;
 }
 
-function bverfgPrefixForProcedure(procedure: string) {
+function bverfgPrefixesForProcedure(procedure: string) {
   const normalized = procedure.toLowerCase();
-  if (normalized === "bvr") return "rk";
-  if (normalized === "bvq") return "qk";
-  if (normalized === "bvc") return "cs";
-  if (normalized === "bvl") return "ls";
-  if (normalized === "bve") return "es";
-  if (normalized === "bvf") return "fs";
-  if (normalized === "bvb") return "bs";
-  return undefined;
+  if (normalized === "bvr") return ["rk", "rs"];
+  if (normalized === "bvq") return ["qk", "qs"];
+  if (normalized === "bvc") return ["cs"];
+  if (normalized === "bvl") return ["ls"];
+  if (normalized === "bve") return ["es"];
+  if (normalized === "bvf") return ["fs"];
+  if (normalized === "bvb") return ["bs"];
+  return [];
 }
 
-function bverfgUrlFromDocket(date: string, docket: string) {
+export function bverfgOfficialUrlCandidatesFromDocket(date: string, docket: string) {
   const dateMatch = date.match(/^(\d{2})\.(\d{2})\.(20\d{2})$/);
   const docketMatch = docket.match(/^([12])\s+Bv([A-Za-z]+)\s+(\d+)\/(\d{2,4})/);
-  if (!dateMatch || !docketMatch) return undefined;
+  if (!dateMatch || !docketMatch) return [];
 
   const [, day, month, year] = dateMatch;
   const [, senate, procedureSuffix, number, docketYear] = docketMatch;
   const procedure = `bv${procedureSuffix.toLowerCase()}`;
-  const prefix = bverfgPrefixForProcedure(procedure);
-  if (!prefix) return undefined;
+  const prefixes = bverfgPrefixesForProcedure(procedure);
+  if (prefixes.length === 0) return [];
 
   const casePart = `${senate}${procedure}${number.padStart(4, "0")}${docketYear.length === 4 ? docketYear.slice(-2) : docketYear}`;
-  return `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix}${year}${month}${day}_${casePart}.html`;
+  return prefixes.map(
+    (prefix) => `${BVERFG_BASE_URL}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix}${year}${month}${day}_${casePart}.html`,
+  );
+}
+
+export function bverfgOfficialUrlCandidatesFromUrl(value: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return [value];
+  }
+
+  const match = parsed.pathname.match(
+    /^(.*\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/)(rk|rs|qk|qs)(\d{8}_[a-z0-9]+\.html)$/i,
+  );
+  if (!match) return [canonicalizeUrl(value)];
+
+  const [, directory, prefix, suffix] = match;
+  const variants = prefix.toLowerCase().startsWith("r") ? ["rk", "rs"] : ["qk", "qs"];
+  return variants.map((variant) => {
+    const candidate = new URL(parsed.toString());
+    candidate.pathname = `${directory}${variant}${suffix}`;
+    candidate.search = "";
+    candidate.hash = "";
+    return canonicalizeUrl(candidate.toString());
+  });
 }
 
 function germanDisplayDate(date?: string | null) {
@@ -370,7 +396,8 @@ async function discoverDejureCandidates(options: CrawleeSpiderOptions = {}) {
       if (parsedDate && (!oldestDate || parsedDate < oldestDate)) oldestDate = parsedDate;
       if (!isInRange(date, rangeStart)) continue;
 
-      const url = bverfgUrlFromDocket(date, docket);
+      const officialUrlCandidates = bverfgOfficialUrlCandidatesFromDocket(date, docket);
+      const url = officialUrlCandidates[0];
       if (!url) continue;
       sawInRange = true;
       items.push({
@@ -384,6 +411,8 @@ async function discoverDejureCandidates(options: CrawleeSpiderOptions = {}) {
           discoveryIndex: "dejure.org",
           discoveryIndexUrl: indexUrl,
           caseNumber: docket,
+          officialUrlCandidates,
+          officialUrlResolverVersion: 2,
           collection: {
             source: BVERFG_BASE_URL,
             strategy: "api",

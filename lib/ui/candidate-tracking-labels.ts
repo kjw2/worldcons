@@ -1,8 +1,10 @@
 export const BVERFG_OFFICIAL_DETAIL_404 = "BVERFG_OFFICIAL_DETAIL_404";
+export const BVERFG_OFFICIAL_VARIANTS_404 = "BVERFG_OFFICIAL_VARIANTS_404";
 export const BVERFG_LIVE_DISCOVERY_EMPTY = "BVERFG_LIVE_DISCOVERY_EMPTY";
 
 const candidateTrackingLabels: Record<string, string> = {
   [BVERFG_OFFICIAL_DETAIL_404]: "공식 상세 페이지 확인 대기",
+  [BVERFG_OFFICIAL_VARIANTS_404]: "공식 URL 후보 게시 확인 대기",
   [BVERFG_LIVE_DISCOVERY_EMPTY]: "공식 탐색 결과 없음",
 };
 
