@@ -64,6 +64,7 @@ interface SupabaseArticleRow {
   content_hash?: string | null;
   source_metadata?: Record<string, unknown> | null;
   resolution_type?: string | null;
+  case_number?: string | null;
   error_metadata?: Record<string, unknown> | null;
   article_tags?: SupabaseArticleTagRow[] | null;
 }
@@ -94,6 +95,7 @@ const ARTICLE_LIST_SELECT = [
   "status",
   "one_line_summary:summary_json->summary->coreSummary->>0",
   "resolution_type:source_metadata->>resolutionType",
+  "case_number:source_metadata->>caseNumber",
   `article_tags(confidence,tags(${TAG_LIST_SELECT}))`,
 ].join(",");
 const ARTICLE_LIST_WITH_TAG_FILTER_SELECT = `${ARTICLE_LIST_SELECT},article_tag_filter:article_tags!inner(tag_id)`;
@@ -118,6 +120,7 @@ const ARTICLE_P3_LIST_SELECT = [
   "status",
   "one_line_summary:summary_json->summary->coreSummary->>0",
   "resolution_type:source_metadata->>resolutionType",
+  "case_number:source_metadata->>caseNumber",
   "article_tags",
 ].join(",");
 const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
@@ -145,6 +148,7 @@ function projectionSelect(select: string, includeUnpublished?: boolean) {
 function minimalSourceMetadata(row: SupabaseArticleRow) {
   const metadata: Record<string, unknown> = {};
   if (row.resolution_type) metadata.resolutionType = row.resolution_type;
+  if (row.case_number) metadata.caseNumber = row.case_number;
   return Object.keys(metadata).length > 0 ? metadata : null;
 }
 

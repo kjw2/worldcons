@@ -4,6 +4,7 @@ import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { normalizeRange } from "@/lib/utils/dates";
 import { articlePublicationV4ReadsEnabled, observeArticlePublicationReadDecision } from "@/lib/article-publication";
+import { exactCaseSearch } from "@/lib/search/exact-case";
 
 interface MatchArticleRow {
   article_id: string;
@@ -169,17 +170,16 @@ export async function hybridSearch(filters: ArticleListFilters): Promise<Article
     return listArticles(filters);
   }
 
+  const exact = await exactCaseSearch(filters);
+  if (exact.items.length > 0) {
+    return exact;
+  }
+
   const [fulltext, semantic] = await Promise.all([
     listArticles(filters),
     semanticSearch({ ...filters, page: 1, pageSize: Math.max((filters.page ?? 1) * (filters.pageSize ?? 20), 50) }),
   ]);
-  const seen = new Set<string>();
-  const merged = [...fulltext.items, ...semantic.items].filter((item) => {
-    const key = item.id ?? item.slug;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const merged = mergeRankedArticleItems(fulltext.items, semantic.items);
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const start = (page - 1) * pageSize;
@@ -187,4 +187,16 @@ export async function hybridSearch(filters: ArticleListFilters): Promise<Article
     items: merged.slice(start, start + pageSize),
     pageInfo: { page, pageSize, total: merged.length },
   };
+}
+
+export function mergeRankedArticleItems(
+  ...groups: ArticleListResult["items"][]
+): ArticleListResult["items"] {
+  const seen = new Set<string>();
+  return groups.flat().filter((item) => {
+    const key = item.id ?? item.slug;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

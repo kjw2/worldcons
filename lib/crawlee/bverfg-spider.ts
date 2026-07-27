@@ -113,8 +113,16 @@ function dateFromText(text: string) {
   return text.match(/\b20\d{2}\b/)?.[0];
 }
 
-function caseNumberFromText(text: string) {
-  return text.match(/\b(?:1|2)\s+Bv[A-Za-z]+\s+\d+\/\d{2,4}\b/)?.[0];
+export function bverfgCaseNumberFromText(text: string) {
+  const displayed = text.match(/\b(?:1|2)\s+Bv[A-Za-z]+\s+\d+\/\d{2,4}\b/)?.[0];
+  if (displayed) return displayed;
+
+  const compact = text.match(/[_./]([12])bv([a-z]+)(\d{4})(\d{2})(?:\.html)?\b/i);
+  if (!compact) return undefined;
+
+  const number = String(Number(compact[3]));
+  const suffix = `${compact[2].slice(0, 1).toUpperCase()}${compact[2].slice(1).toLowerCase()}`;
+  return `${compact[1]} Bv${suffix} ${number}/${compact[4]}`;
 }
 
 function senateFromText(text: string) {
@@ -261,7 +269,7 @@ function itemFromUrl(url: string, strategy: CrawlStrategy, metadata: Record<stri
       bodySelectors: BODY_SELECTORS,
       collectionStrategy: strategy,
       decisionDate: dateFromText(text),
-      caseNumber: caseNumberFromText(text),
+      caseNumber: bverfgCaseNumberFromText(text),
       senateOrChamber: senateFromText(text),
       originalLanguage: "de",
     },
