@@ -369,7 +369,14 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
   const rawSourceMetadata = optionalRecord(row.source_metadata);
   const summaryJson = boundedRecord(rawSummaryJson, MAX_SUMMARY_JSON_CHARS);
   const sourceMetadata = boundedRecord(rawSourceMetadata, MAX_SOURCE_METADATA_CHARS);
-  const coreSummary = stringArray(optionalRecord(summaryJson?.summary)?.coreSummary);
+  const summaryRecord = optionalRecord(summaryJson?.summary);
+  const coreSummary = stringArray(summaryRecord?.coreSummary);
+  const supportingSummary = stringArray([
+    summaryRecord?.background,
+    summaryRecord?.implications,
+    summaryRecord?.caseStructure,
+    summaryRecord?.practicalNotes,
+  ]);
   const oneLineSummary = truncatePlainText(
     coreSummary[0] ?? "요약이 아직 생성되지 않았습니다.",
     800,
@@ -383,6 +390,15 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
   const originalPublishedAt = optionalString(row.original_published_at);
   const bodyExcerpt = truncatePlainText(optionalString(row.body_excerpt) ?? "", MAX_BODY_EXCERPT_CHARS);
   const bodyChecksum = normalizedSha256(row.content_hash);
+  const summaryText = truncatePlainText(coreSummary.join(" "), 4_000);
+  const evidenceSummaryText = truncatePlainText(
+    [...coreSummary, ...supportingSummary].join(" "),
+    4_000,
+  );
+  const substantiveSnippet = truncatePlainText(
+    [evidenceSummaryText, bodyExcerpt].filter(Boolean).join(" ") || oneLineSummary,
+    800,
+  );
   const sectionAnchors = bodyExcerpt
     ? [{
         kind: "passage",
@@ -401,12 +417,12 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
     title: optionalString(row.korean_title) ?? optionalString(row.original_title) ?? "제목 미상",
     koreanTitle: optionalString(row.korean_title),
     originalTitle: optionalString(row.original_title),
-    summary: truncatePlainText(coreSummary.join(" "), 4_000) || null,
-    snippet: truncatePlainText(oneLineSummary, 800),
+    summary: summaryText || null,
+    snippet: substantiveSnippet,
     oneLineSummary,
     summaryJson,
     bodyExcerpt: bodyExcerpt || null,
-    excerptKind: "search_snippet",
+    excerptKind: "passage",
     ...(bodyChecksum ? { bodyChecksum, checksumAlgorithm: "sha256" } : {}),
     sectionAnchors,
     sourceType: SOURCE_TYPE,
@@ -461,7 +477,7 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
       originalTitle: optionalString(row.original_title),
       officialUrl: officialUri,
       officialUri,
-      excerptKind: "search_snippet",
+      excerptKind: "passage",
       ...(bodyChecksum ? { bodyChecksum } : {}),
       detailApiUrl,
       sourceTextUrl: `${detailApiUrl}/source-text`,

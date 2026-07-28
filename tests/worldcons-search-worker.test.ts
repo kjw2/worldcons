@@ -16,6 +16,8 @@ const v2MigrationPath = path.join(
   "supabase/migrations/20260728100000_worldcons_provider_contract_v2.sql",
 );
 const NEUBAUER_CHECKSUM = "527b41e3310651a4ba4d1a9a0c1e358e0cf6c292241fe019a8c71f1fc18058ba";
+const NEUBAUER_EXCERPT =
+  "공식 독일 연방헌법재판소 결정문 발췌로서 기후보호법의 감축부담이 미래세대의 자유행사에 미치는 영향과 국가의 헌법상 보호의무를 설명한다. 재판소는 세대 간 자유 보장의 균형을 중심으로 심사하였다.";
 
 const env = {
   ENVIRONMENT: "test",
@@ -66,8 +68,9 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(payload.items[0].countryName, "독일");
   assert.equal(payload.items[0].courtName, "Bundesverfassungsgericht");
   assert.equal(payload.items[0].decisionDate, "2021-03-24");
-  assert.equal(payload.items[0].bodyExcerpt, "공식 독일 연방헌법재판소 결정문 발췌");
-  assert.equal(payload.items[0].excerptKind, "search_snippet");
+  assert.equal(payload.items[0].bodyExcerpt, NEUBAUER_EXCERPT);
+  assert.equal(payload.items[0].excerptKind, "passage");
+  assert.ok(payload.items[0].snippet.length >= 80);
   assert.equal(payload.items[0].bodyChecksum, NEUBAUER_CHECKSUM);
   assert.deepEqual(payload.items[0].legalIdentity, {
     documentId: "552950ac-de82-41f5-ae88-411efc5ae9b2",
@@ -345,7 +348,7 @@ function neubauerRow() {
     },
     article_tags: [],
     case_number: "1 BvR 2656/18",
-    body_excerpt: "공식 독일 연방헌법재판소 결정문 발췌",
+    body_excerpt: NEUBAUER_EXCERPT,
     content_hash: NEUBAUER_CHECKSUM,
     relevance_score: 1000,
   };

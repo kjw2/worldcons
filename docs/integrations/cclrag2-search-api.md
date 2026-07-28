@@ -77,7 +77,7 @@ Search items expose native Provider Contract V2 evidence:
       "snippet": "한국어 한줄 요약",
       "summaryJson": {},
       "bodyExcerpt": "보존 원문 발췌",
-      "excerptKind": "search_snippet",
+      "excerptKind": "passage",
       "bodyChecksum": "64-character SHA-256",
       "legalIdentity": {
         "documentId": "stable UUID",
