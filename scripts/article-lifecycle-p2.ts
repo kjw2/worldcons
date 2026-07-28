@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { assertLifecycleParity } from "@/lib/admin/rollout-parity";
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { boundedInteger } from "@/lib/utils/numbers";
 
@@ -42,6 +43,9 @@ async function main() {
   const { data, error } = await supabase.rpc("article_lifecycle_evidence_p2");
   if (error) throw new Error(`P2 evidence query failed: ${error.code ?? "unknown"}`);
   console.log(JSON.stringify({ mode: "evidence", evidence: data }));
+  if (process.argv.includes("--require-parity")) {
+    assertLifecycleParity(data && typeof data === "object" ? data as Record<string, unknown> : {});
+  }
 }
 
 main().catch((error) => {

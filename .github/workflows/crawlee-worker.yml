@@ -54,6 +54,11 @@ jobs:
       ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
       ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES: ${{ vars.ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES }}
       ADMIN_QUEUE_V3_WORKER_COHORTS: ${{ vars.ADMIN_QUEUE_V3_WORKER_COHORTS }}
+      ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED: ${{ vars.ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED || 'false' }}
+      ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS: ${{ vars.ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS }}
+      ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED || 'false' }}
+      ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED || 'false' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       INGEST_RANGE_DAYS: "14"
@@ -143,12 +148,12 @@ jobs:
         # LLM_SETTINGS_SECRET must match Production so DB-stored provider keys can be decrypted here.
         run: pnpm summarize-pending -- --limit=20 --drain --strict --max-passes=4 --pass-delay-ms=300000 --retry-attempts=1 --retry-delay-ms=65000
       - name: Refresh public tag counts
-        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED != 'true'
         run: pnpm refresh-tag-counts
       - name: Enforce site analytics retention
         run: pnpm analytics:retention
       - name: Revalidate production public caches (legacy)
-        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED != 'true'
         env:
           DEFAULT_BASE_URL: https://worldcons.vercel.app
           WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
@@ -164,3 +169,11 @@ jobs:
             --request POST \
             --header "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/api/admin/public-content/revalidate"
+      - name: Deliver P3 publication cache outbox
+        if: env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED == 'true'
+        run: pnpm admin:publication:p3 -- --outbox --drain --max-passes=10 --worker="github-actions-${GITHUB_RUN_ID}" --limit=100 --lease-seconds=120
+      - name: Require P2 and P3 publication parity
+        if: env.ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED == 'true' && env.ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED == 'true'
+        run: |
+          pnpm admin:lifecycle:p2 --require-parity
+          pnpm admin:publication:p3 -- --require-parity

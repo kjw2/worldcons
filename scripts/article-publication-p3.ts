@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { assertPublicationParity } from "@/lib/admin/rollout-parity";
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { createExistingPublicCacheHandler, processArticleCacheOutboxBatch } from "@/lib/article-publication";
 import { boundedInteger } from "@/lib/utils/numbers";
@@ -30,24 +31,53 @@ async function main() {
   if (process.argv.includes("--outbox")) {
     const workerId = argument("worker")?.trim() || `p3-cli-${process.pid}`;
     const cacheHandler = createExistingPublicCacheHandler();
-    const result = await processArticleCacheOutboxBatch({
-      workerId,
-      limit: boundedInteger(argument("limit"), 20, { min: 1, max: 100 }),
-      leaseSeconds: boundedInteger(argument("lease-seconds"), 120, { min: 15, max: 900 }),
-      handler: {
-        async invalidate(events) {
-          await runRefreshTagCounts();
-          await cacheHandler.invalidate(events);
+    const limit = boundedInteger(argument("limit"), 20, { min: 1, max: 100 });
+    const leaseSeconds = boundedInteger(argument("lease-seconds"), 120, { min: 15, max: 900 });
+    const maxPasses = process.argv.includes("--drain")
+      ? boundedInteger(argument("max-passes"), 10, { min: 1, max: 50 })
+      : 1;
+    const totals = { claimedCount: 0, deliveredCount: 0, failedCount: 0, deadLetterCount: 0 };
+    let enabled = false;
+    let completed = false;
+    let passes = 0;
+
+    for (let pass = 1; pass <= maxPasses; pass += 1) {
+      passes = pass;
+      const result = await processArticleCacheOutboxBatch({
+        workerId,
+        limit,
+        leaseSeconds,
+        handler: {
+          async invalidate(events) {
+            await runRefreshTagCounts();
+            await cacheHandler.invalidate(events);
+          },
         },
-      },
-    });
-    console.log(JSON.stringify({ mode: "outbox", ...result }));
+      });
+      enabled = result.enabled;
+      totals.claimedCount += result.claimedCount;
+      totals.deliveredCount += result.deliveredCount;
+      totals.failedCount += result.failedCount;
+      totals.deadLetterCount += result.deadLetterCount;
+      if (!result.enabled || result.claimedCount < limit || result.failedCount > 0) {
+        completed = result.failedCount === 0;
+        break;
+      }
+    }
+
+    if (!completed && process.argv.includes("--drain")) {
+      throw new Error(`P3 outbox drain exceeded ${maxPasses} passes.`);
+    }
+    console.log(JSON.stringify({ mode: "outbox", enabled, completed, passes, ...totals }));
     return;
   }
 
   const { data, error } = await supabase.rpc("article_publication_evidence_p3");
   if (error) throw new Error(`P3 evidence query failed: ${error.code ?? "unknown"}`);
   console.log(JSON.stringify({ mode: "evidence", evidence: data }));
+  if (process.argv.includes("--require-parity")) {
+    assertPublicationParity(data && typeof data === "object" ? data as Record<string, unknown> : {});
+  }
 }
 
 main().catch((error) => {

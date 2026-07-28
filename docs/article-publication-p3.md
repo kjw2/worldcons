@@ -140,6 +140,19 @@ Operational targets:
 
 P3 retains delivered and dead-letter rows indefinitely through P5 acceptance. No cleanup job is introduced in P3. Investigate dead letters, fix the handler/configuration, document the event IDs and aggregate impact, then use a separately reviewed forward-fix/requeue procedure. Never delete audit, history, versions, or outbox evidence to recover service.
 
+## Production Continuous Synchronization
+
+The scheduled ingestion workflow carries the following repository variables into both the legacy and P1 execution paths:
+
+- `ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED=true`
+- `ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS=collection,summary,review,candidate`
+- `ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED=true`
+- `ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED=true`
+
+After collection and summarization, the workflow drains a bounded maximum of 1,000 cache events in 100-event batches. It then runs `admin:lifecycle:p2 --require-parity` and `admin:publication:p3 -- --require-parity`. The run fails when lifecycle initialization, public counts, identity digests, version/publication coverage, or outbox health diverges. Private metadata-only records may retain explicit attention or quarantine evidence, but they cannot change the public identity set.
+
+Production application functions use the same P2/P3 shadow variables so administrator review, editing, retranslation, and resummary writes remain synchronized. Preview environments are not part of this rollout.
+
 ## Rollout And Rollback
 
 Rollout cohorts are operational environments, not hidden per-row predicates:

@@ -113,6 +113,13 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
 
   assert.match(workflow, /LLM_SETTINGS_SECRET: \$\{\{ secrets\.LLM_SETTINGS_SECRET \}\}/);
   assert.match(workflow, /SPAIN_REQUEST_DELAY_MS: "2000"/);
+  assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED:/);
+  assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS:/);
+  assert.match(workflow, /ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED:/);
+  assert.match(workflow, /ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED:/);
+  assert.match(workflow, /admin:publication:p3 -- --outbox --drain/);
+  assert.match(workflow, /admin:lifecycle:p2 --require-parity/);
+  assert.match(workflow, /admin:publication:p3 -- --require-parity/);
   for (const cli of [scheduledCli, secondaryCli, directCli]) {
     assert.match(cli, /ingestResultSucceeded/);
     assert.match(cli, /ingestResultFailureMessage/);
