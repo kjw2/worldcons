@@ -11,6 +11,11 @@ const migrationPath = path.join(
   process.cwd(),
   "supabase/migrations/20260727120000_worldcons_cloudflare_search_api.sql",
 );
+const v2MigrationPath = path.join(
+  process.cwd(),
+  "supabase/migrations/20260728100000_worldcons_provider_contract_v2.sql",
+);
+const NEUBAUER_CHECKSUM = "527b41e3310651a4ba4d1a9a0c1e358e0cf6c292241fe019a8c71f1fc18058ba";
 
 const env = {
   ENVIRONMENT: "test",
@@ -20,10 +25,16 @@ const env = {
 } satisfies SearchWorkerEnv;
 
 test("Worker search accepts the cclrag2 contract and returns the Neubauer case first", async () => {
-  const calls: Array<{ url: string; body: Record<string, unknown>; authorization: string | null }> = [];
+  const calls: Array<{
+    url: string;
+    body: Record<string, unknown>;
+    authorization: string | null;
+    requestId: string | null;
+  }> = [];
   const response = await handleWorldconsSearchRequest(
     new Request(
       "https://worldcons-search-api.example.workers.dev/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none&jurisdiction=Germany&source=de-bverfg",
+      { headers: { "x-request-id": "cclrag2-neubauer-test" } },
     ),
     env,
     {
@@ -32,6 +43,7 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
           url: String(input),
           body: JSON.parse(String(init?.body)) as Record<string, unknown>,
           authorization: new Headers(init?.headers).get("authorization"),
+          requestId: new Headers(init?.headers).get("x-request-id"),
         });
         return Response.json({
           items: [neubauerRow()],
@@ -42,9 +54,33 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   const payload = await response.json();
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-provider-contract-version"), "2.0");
+  assert.equal(response.headers.get("x-request-id"), "cclrag2-neubauer-test");
+  assert.equal(payload.contractVersion, "2.0");
+  assert.equal(payload.requestId, "cclrag2-neubauer-test");
   assert.equal(payload.transport, "cloudflare-worker");
   assert.equal(payload.items[0].caseNumber, "1 BvR 2656/18");
   assert.equal(payload.items[0].sourceType, "foreign_constitutional");
+  assert.equal(payload.items[0].authorityLevel, "persuasive");
+  assert.equal(payload.items[0].jurisdictionCode, "DE");
+  assert.equal(payload.items[0].countryName, "독일");
+  assert.equal(payload.items[0].courtName, "Bundesverfassungsgericht");
+  assert.equal(payload.items[0].decisionDate, "2021-03-24");
+  assert.equal(payload.items[0].bodyExcerpt, "공식 독일 연방헌법재판소 결정문 발췌");
+  assert.equal(payload.items[0].excerptKind, "search_snippet");
+  assert.equal(payload.items[0].bodyChecksum, NEUBAUER_CHECKSUM);
+  assert.deepEqual(payload.items[0].legalIdentity, {
+    documentId: "552950ac-de82-41f5-ae88-411efc5ae9b2",
+    caseNumber: "1 BvR 2656/18",
+    court: "Bundesverfassungsgericht",
+    jurisdiction: "DE",
+  });
+  assert.deepEqual(payload.items[0].temporalValidity, {
+    decisionDate: "2021-03-24",
+    publishedAt: "2021-03-24",
+  });
+  assert.match(payload.items[0].officialUri, /^https:\/\/www\.bundesverfassungsgericht\.de\//u);
+  assert.equal(payload.items[0].sectionAnchors[0].kind, "passage");
   assert.equal(
     payload.items[0].detailApiUrl,
     "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer",
@@ -61,6 +97,9 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(calls[0].body.p_source, "de-bverfg");
   assert.equal(calls[0].body.p_jurisdiction, "Germany");
   assert.equal(calls[0].authorization, "Bearer test-service-role-key");
+  assert.equal(calls[0].requestId, "cclrag2-neubauer-test");
+  assert.match(calls[0].url, /worldcons_provider_search_v2$/u);
+  assert.ok(Number(response.headers.get("content-length")) < 1_500_000);
   assert.doesNotMatch(JSON.stringify(payload), /vercel\.app/iu);
 });
 
@@ -85,9 +124,14 @@ test("Worker preserves the Korean comparison query and returns Neubauer first", 
   assert.match(String(rpcBody?.p_query), /Neubauer/u);
 });
 
-test("Worker source and article endpoints read Supabase RPCs directly", async () => {
-  const fetcher: typeof fetch = async (input) => {
+test("Worker source and article endpoints expose bounded Contract V2 evidence", async () => {
+  const calls: Array<{ pathname: string; body: Record<string, unknown> }> = [];
+  const fetcher: typeof fetch = async (input, init) => {
     const pathname = new URL(String(input)).pathname;
+    calls.push({
+      pathname,
+      body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
+    });
     if (pathname.endsWith("/worldcons_provider_sources_v1")) {
       return Response.json([
         {
@@ -100,10 +144,26 @@ test("Worker source and article endpoints read Supabase RPCs directly", async ()
         },
       ]);
     }
-    if (pathname.endsWith("/worldcons_provider_article_v1")) {
+    if (pathname.endsWith("/worldcons_provider_article_v2")) {
       return Response.json({
         ...neubauerRow(),
         cleaned_text: "공식 원문 스냅샷",
+        cleaned_text_offset: 0,
+        cleaned_text_limit: 350000,
+        cleaned_text_total_chars: 9,
+        cleaned_text_has_more: false,
+      });
+    }
+    if (pathname.endsWith("/worldcons_provider_source_text_v2")) {
+      return Response.json({
+        id: neubauerRow().id,
+        slug: neubauerRow().slug,
+        cleaned_text: "공식 원문 스냅샷 일부",
+        cleaned_text_offset: 10,
+        cleaned_text_limit: 20,
+        cleaned_text_total_chars: 100,
+        cleaned_text_has_more: true,
+        content_hash: NEUBAUER_CHECKSUM,
       });
     }
     return Response.json({}, { status: 404 });
@@ -120,17 +180,45 @@ test("Worker source and article endpoints read Supabase RPCs directly", async ()
     { fetcher },
   );
   const sourceText = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer/source-text"),
+    new Request(
+      "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer/source-text?offset=10&limit=20",
+    ),
     env,
     { fetcher },
   );
 
   assert.equal(sources.status, 200);
-  assert.equal((await sources.json()).items[0].sourceType, "foreign_constitutional");
+  const sourcesPayload = await sources.json();
+  assert.equal(sourcesPayload.contractVersion, "2.0");
+  assert.equal(sourcesPayload.items[0].sourceType, "foreign_constitutional");
+  assert.equal(sourcesPayload.items[0].countryCode, "DE");
+  assert.equal(sourcesPayload.items[0].officialUri, "https://www.bundesverfassungsgericht.de/");
   assert.equal(detail.status, 200);
-  assert.equal((await detail.json()).cleanedText, "공식 원문 스냅샷");
+  const detailPayload = await detail.json();
+  assert.equal(detailPayload.contractVersion, "2.0");
+  assert.equal(detailPayload.cleanedText, "공식 원문 스냅샷");
+  assert.equal(detailPayload.excerptKind, "document_section");
+  assert.equal(detailPayload.bodyChecksum, NEUBAUER_CHECKSUM);
+  assert.equal(detailPayload.textPage.hasMore, false);
+  assert.ok(Number(detail.headers.get("content-length")) < 1_900_000);
   assert.equal(sourceText.status, 200);
-  assert.equal((await sourceText.json()).cleanedText, "공식 원문 스냅샷");
+  const sourceTextPayload = await sourceText.json();
+  assert.equal(sourceTextPayload.cleanedText, "공식 원문 스냅샷 일부");
+  assert.equal(sourceTextPayload.bodyChecksum, NEUBAUER_CHECKSUM);
+  assert.deepEqual(sourceTextPayload.textPage, {
+    offset: 10,
+    limit: 20,
+    returnedChars: 12,
+    totalChars: 100,
+    hasMore: true,
+    nextOffset: 22,
+  });
+  const sourceTextCall = calls.find((call) => call.pathname.endsWith("/worldcons_provider_source_text_v2"));
+  assert.deepEqual(sourceTextCall?.body, {
+    p_slug: "germany-neubauer",
+    p_offset: 10,
+    p_limit: 20,
+  });
 });
 
 test("Worker rejects invalid input and normalizes dependency failures", async () => {
@@ -163,6 +251,15 @@ test("Worker rejects invalid input and normalizes dependency failures", async ()
   );
   assert.equal(unavailable.status, 503);
   assert.equal((await unavailable.json()).error.code, "SERVICE_UNAVAILABLE");
+
+  const invalidTextPage = await handleWorldconsSearchRequest(
+    new Request(
+      "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer/source-text?limit=350001",
+    ),
+    env,
+  );
+  assert.equal(invalidTextPage.status, 400);
+  assert.equal((await invalidTextPage.json()).contractVersion, "2.0");
 });
 
 test("migration is projection-only, page-bounded, and service-role restricted", () => {
@@ -176,6 +273,47 @@ test("migration is projection-only, page-bounded, and service-role restricted", 
   assert.match(sql, /grant execute on function worldcons_provider_search_v1[\s\S]*to service_role/iu);
   assert.match(sql, /revoke all on function worldcons_provider_search_v1[\s\S]*from anon/iu);
   assert.doesNotMatch(sql, /\bfrom\s+articles\b/iu);
+});
+
+test("Contract V2 migration bounds evidence and preserves paginated source text", () => {
+  const sql = fs.readFileSync(v2MigrationPath, "utf8");
+
+  assert.match(sql, /create or replace function worldcons_provider_search_v2/iu);
+  assert.match(sql, /from public_article_projection_p3 article/iu);
+  assert.match(sql, /limit p_limit \+ 1\s+offset p_offset/iu);
+  assert.match(sql, /'body_excerpt', left\(page\.cleaned_text, 6000\)/iu);
+  assert.match(sql, /p_text_limit integer default 350000/iu);
+  assert.match(sql, /substring\(article\.cleaned_text from p_offset \+ 1 for p_limit\)/iu);
+  assert.match(sql, /grant execute on function worldcons_provider_search_v2[\s\S]*to service_role/iu);
+  assert.match(sql, /revoke all on function worldcons_provider_source_text_v2[\s\S]*from anon/iu);
+  assert.doesNotMatch(sql, /\bfrom\s+articles\b/iu);
+});
+
+test("Worker truncates a large article body without dropping the preserved text API contract", async () => {
+  const oversizedText = "가".repeat(600_000);
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer"),
+    env,
+    {
+      fetcher: async () => Response.json({
+        ...neubauerRow(),
+        cleaned_text: oversizedText,
+        cleaned_text_offset: 0,
+        cleaned_text_limit: 350000,
+        cleaned_text_total_chars: oversizedText.length,
+        cleaned_text_has_more: true,
+      }),
+    },
+  );
+  const raw = await response.clone().text();
+  const payload = JSON.parse(raw);
+
+  assert.equal(response.status, 200);
+  assert.ok(Buffer.byteLength(payload.cleanedText, "utf8") <= 1_200_000);
+  assert.equal(payload.textPage.hasMore, true);
+  assert.ok(payload.textPage.nextOffset > 0);
+  assert.ok(Buffer.byteLength(raw, "utf8") < 1_900_000);
+  assert.match(payload.sourceTextUrl, /\/source-text$/u);
 });
 
 function neubauerRow() {
@@ -207,6 +345,8 @@ function neubauerRow() {
     },
     article_tags: [],
     case_number: "1 BvR 2656/18",
+    body_excerpt: "공식 독일 연방헌법재판소 결정문 발췌",
+    content_hash: NEUBAUER_CHECKSUM,
     relevance_score: 1000,
   };
 }
