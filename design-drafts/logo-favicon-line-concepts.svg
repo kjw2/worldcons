@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">worldCons identity logo and favicon concepts</title>
+  <desc id="desc">Three draft logo directions for worldCons based on global constitutional case discovery. No flower, seal, or red palette is used. Draft only, not applied.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f4f7f5; }
+      .panel { fill: #ffffff; stroke: #cfd9d3; stroke-width: 1.5; }
+      .chip { fill: #ffffff; stroke: #cfd9d3; stroke-width: 1; }
+      .title { fill: #1f2a36; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 28px; font-weight: 830; letter-spacing: 0; }
+      .sub { fill: #62716b; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0; }
+      .label { fill: #1f2a36; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 17px; font-weight: 830; letter-spacing: 0; }
+      .small { fill: #62716b; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 13px; font-weight: 500; letter-spacing: 0; }
+      .word { fill: #1f2a36; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 34px; font-weight: 850; letter-spacing: 0; }
+      .ko { fill: #62716b; font-family: Pretendard, Inter, Arial, sans-serif; font-size: 16px; font-weight: 650; letter-spacing: 0; }
+      .ink-line { fill: none; stroke: #1f2a36; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+      .ink-thin { fill: none; stroke: #1f2a36; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .teal-line { fill: none; stroke: #0f766e; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .teal-thin { fill: none; stroke: #0f766e; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      .blue-line { fill: none; stroke: #2457a6; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .blue-thin { fill: none; stroke: #2457a6; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      .gold-line { fill: none; stroke: #c9902e; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .gold-thin { fill: none; stroke: #c9902e; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      .soft-fill { fill: #eef5f2; }
+    </style>
+
+    <g id="mark-a-world-loop">
+      <circle r="92" class="ink-line"/>
+      <ellipse rx="34" ry="92" class="teal-thin"/>
+      <path class="blue-thin" d="M -86 -24 C -46 -5 46 -5 86 -24"/>
+      <path class="blue-thin" d="M -86 24 C -46 5 46 5 86 24"/>
+      <path class="gold-line" d="M -48 34 L -27 -30 L 0 20 L 27 -30 L 48 34"/>
+      <circle r="8" class="gold-thin"/>
+    </g>
+
+    <g id="mark-b-case-grid">
+      <rect x="-92" y="-92" width="184" height="184" rx="34" class="ink-line"/>
+      <path class="teal-thin" d="M -92 0 H 92"/>
+      <path class="teal-thin" d="M 0 -92 V 92"/>
+      <rect x="-55" y="-52" width="34" height="104" rx="8" class="blue-line"/>
+      <rect x="-17" y="-66" width="34" height="132" rx="8" class="ink-thin"/>
+      <rect x="21" y="-52" width="34" height="104" rx="8" class="blue-line"/>
+      <path class="gold-line" d="M -54 18 C -28 -10 -8 36 18 8 C 34 -8 42 -8 56 -2"/>
+    </g>
+
+    <g id="mark-c-worldcons-monoline">
+      <path class="ink-line" d="M 74 -58 C 35 -86 -23 -88 -59 -54 C -99 -16 -99 51 -57 78 C -20 102 31 91 61 55"/>
+      <path class="teal-line" d="M -53 -16 L -30 42 L 0 -32 L 30 42 L 53 -16"/>
+      <path class="blue-thin" d="M -73 0 H 73"/>
+      <path class="gold-thin" d="M 0 -78 C 24 -42 24 42 0 78 C -24 42 -24 -42 0 -78"/>
+      <circle cx="74" cy="-58" r="7" class="gold-thin"/>
+      <circle cx="61" cy="55" r="7" class="gold-thin"/>
+    </g>
+
+    <g id="favicon-a">
+      <circle r="92" class="ink-line"/>
+      <ellipse rx="34" ry="92" class="teal-thin"/>
+      <path class="blue-thin" d="M -86 -24 C -46 -5 46 -5 86 -24"/>
+      <path class="blue-thin" d="M -86 24 C -46 5 46 5 86 24"/>
+      <path class="gold-line" d="M -48 34 L -27 -30 L 0 20 L 27 -30 L 48 34"/>
+    </g>
+
+    <g id="favicon-b">
+      <rect x="-86" y="-86" width="172" height="172" rx="32" class="ink-line"/>
+      <path class="teal-thin" d="M -86 0 H 86"/>
+      <path class="teal-thin" d="M 0 -86 V 86"/>
+      <rect x="-42" y="-52" width="28" height="104" rx="7" class="blue-line"/>
+      <rect x="-14" y="-66" width="28" height="132" rx="7" class="ink-thin"/>
+      <rect x="14" y="-52" width="28" height="104" rx="7" class="blue-line"/>
+      <path class="gold-line" d="M -44 18 C -22 -8 -5 30 17 8 C 30 -5 37 -6 45 -2"/>
+    </g>
+
+    <g id="favicon-c">
+      <path class="ink-line" d="M 68 -54 C 31 -80 -22 -81 -55 -50 C -91 -15 -91 46 -53 71 C -18 93 29 83 57 50"/>
+      <path class="teal-line" d="M -50 -13 L -28 39 L 0 -29 L 28 39 L 50 -13"/>
+      <path class="blue-thin" d="M -67 0 H 67"/>
+      <path class="gold-thin" d="M 0 -72 C 22 -38 22 38 0 72 C -22 38 -22 -38 0 -72"/>
+    </g>
+  </defs>
+
+  <rect class="bg" width="1440" height="900"/>
+  <text x="70" y="76" class="title">worldCons identity concepts</text>
+  <text x="70" y="106" class="sub">A full rewrite around world-scale constitutional case discovery. No flower, no seal, no red. Draft only, not applied.</text>
+
+  <g transform="translate(70 145)">
+    <rect class="panel" width="400" height="650" rx="16"/>
+    <text x="28" y="48" class="label">A. World Case Loop</text>
+    <text x="28" y="76" class="small">세계 판례 지도를 W 형태로 압축한 방향</text>
+    <g transform="translate(200 218) scale(1.03)"><use href="#mark-a-world-loop"/></g>
+    <g transform="translate(72 388)">
+      <use href="#mark-a-world-loop" transform="scale(0.34)"/>
+      <text x="82" y="-5" class="word">worldCons</text>
+      <text x="84" y="24" class="ko">세계 헌법판례 큐레이션</text>
+    </g>
+    <text x="28" y="478" class="small">Favicon preview</text>
+    <rect x="28" y="500" width="72" height="72" rx="16" class="chip"/>
+    <g transform="translate(64 536) scale(0.31)"><use href="#favicon-a"/></g>
+    <rect x="120" y="508" width="48" height="48" rx="10" class="chip"/>
+    <g transform="translate(144 532) scale(0.20)"><use href="#favicon-a"/></g>
+    <rect x="188" y="516" width="32" height="32" rx="7" class="chip"/>
+    <g transform="translate(204 532) scale(0.13)"><use href="#favicon-a"/></g>
+    <text x="28" y="610" class="small">장점: 세계성과 브랜드 이니셜이 함께 보임.</text>
+    <text x="28" y="634" class="small">주의: 초소형에서는 W만 남기는 단순화가 좋음.</text>
+  </g>
+
+  <g transform="translate(520 145)">
+    <rect class="panel" width="400" height="650" rx="16"/>
+    <text x="28" y="48" class="label">B. Constitutional Case Grid</text>
+    <text x="28" y="76" class="small">국가별 판례 묶음과 비교 흐름을 상징</text>
+    <g transform="translate(200 218) scale(1.03)"><use href="#mark-b-case-grid"/></g>
+    <g transform="translate(72 388)">
+      <use href="#mark-b-case-grid" transform="scale(0.34)"/>
+      <text x="82" y="-5" class="word">worldCons</text>
+      <text x="84" y="24" class="ko">constitutional case index</text>
+    </g>
+    <text x="28" y="478" class="small">Favicon preview</text>
+    <rect x="28" y="500" width="72" height="72" rx="16" class="chip"/>
+    <g transform="translate(64 536) scale(0.31)"><use href="#favicon-b"/></g>
+    <rect x="120" y="508" width="48" height="48" rx="10" class="chip"/>
+    <g transform="translate(144 532) scale(0.20)"><use href="#favicon-b"/></g>
+    <rect x="188" y="516" width="32" height="32" rx="7" class="chip"/>
+    <g transform="translate(204 532) scale(0.13)"><use href="#favicon-b"/></g>
+    <text x="28" y="610" class="small">장점: 서비스 성격이 가장 명확하고 안정적.</text>
+    <text x="28" y="634" class="small">주의: 로고보다는 시스템/아카이브 느낌이 강함.</text>
+  </g>
+
+  <g transform="translate(970 145)">
+    <rect class="panel" width="400" height="650" rx="16"/>
+    <text x="28" y="48" class="label">C. worldCons Monoline</text>
+    <text x="28" y="76" class="small">W와 C를 하나의 세계선으로 읽히게 한 방향</text>
+    <g transform="translate(200 218) scale(1.03)"><use href="#mark-c-worldcons-monoline"/></g>
+    <g transform="translate(72 388)">
+      <use href="#mark-c-worldcons-monoline" transform="scale(0.34)"/>
+      <text x="82" y="-5" class="word">worldCons</text>
+      <text x="84" y="24" class="ko">world constitutional intelligence</text>
+    </g>
+    <text x="28" y="478" class="small">Favicon preview</text>
+    <rect x="28" y="500" width="72" height="72" rx="16" class="chip"/>
+    <g transform="translate(64 536) scale(0.31)"><use href="#favicon-c"/></g>
+    <rect x="120" y="508" width="48" height="48" rx="10" class="chip"/>
+    <g transform="translate(144 532) scale(0.20)"><use href="#favicon-c"/></g>
+    <rect x="188" y="516" width="32" height="32" rx="7" class="chip"/>
+    <g transform="translate(204 532) scale(0.13)"><use href="#favicon-c"/></g>
+    <text x="28" y="610" class="small">장점: 이름 자체를 가장 직접적으로 형상화.</text>
+    <text x="28" y="634" class="small">주의: C의 열린 형태 때문에 가장 동적인 인상.</text>
+  </g>
+
+  <text x="70" y="846" class="sub">Recommendation: A for brand balance, B for a serious product system, C for the most distinctive worldCons monogram.</text>
+</svg>

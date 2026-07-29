@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">World Cons logo and favicon concept sheet</title>
+  <desc id="desc">Three draft logo and favicon directions inspired by the current burgundy and gold constitutional rosette mark. These are draft assets only and are not wired into the app.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f3ea; }
+      .panel { fill: #fffdf8; stroke: #d8c7a4; stroke-width: 1.5; }
+      .muted-panel { fill: #f5efe4; stroke: #d8c7a4; stroke-width: 1; }
+      .title { fill: #231f1f; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: 0; }
+      .sub { fill: #6f6255; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0; }
+      .label { fill: #8f1930; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 17px; font-weight: 800; letter-spacing: 0; }
+      .small { fill: #6f6255; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 13px; font-weight: 500; letter-spacing: 0; }
+      .word { fill: #231f1f; font-family: Inter, Pretendard, Arial, sans-serif; font-size: 34px; font-weight: 850; letter-spacing: 0; }
+      .ko { fill: #6f6255; font-family: Pretendard, Inter, Arial, sans-serif; font-size: 16px; font-weight: 650; letter-spacing: 0; }
+      .maroon { fill: #9f1730; }
+      .maroon-dark { fill: #801226; }
+      .gold { fill: #e9bd72; }
+      .cream { fill: #fff8e9; }
+      .ink { fill: #241b1c; }
+      .stroke-gold { stroke: #e9bd72; stroke-width: 8; stroke-linejoin: round; stroke-linecap: round; }
+      .stroke-maroon { stroke: #9f1730; stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+      .stroke-cream { stroke: #fff8e9; stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+
+    <g id="petal">
+      <path class="maroon" d="M 0 -91 C 31 -96 60 -74 61 -42 C 62 -12 36 13 0 23 C -36 13 -62 -12 -61 -42 C -60 -74 -31 -96 0 -91 Z"/>
+      <path fill="none" class="stroke-gold" d="M 0 -91 C 31 -96 60 -74 61 -42 C 62 -12 36 13 0 23 C -36 13 -62 -12 -61 -42 C -60 -74 -31 -96 0 -91 Z"/>
+    </g>
+
+    <g id="rosette-base">
+      <use href="#petal" transform="rotate(0)"/>
+      <use href="#petal" transform="rotate(72)"/>
+      <use href="#petal" transform="rotate(144)"/>
+      <use href="#petal" transform="rotate(216)"/>
+      <use href="#petal" transform="rotate(288)"/>
+      <circle r="74" class="maroon"/>
+      <circle r="68" fill="none" stroke="#e9bd72" stroke-width="7"/>
+    </g>
+
+    <g id="rays">
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(24)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(48)"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(72)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(96)"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(120)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(144)"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(168)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(192)"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(216)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(240)"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(264)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(288)"/>
+      <line x1="0" y1="-43" x2="0" y2="-82" stroke="#e9bd72" stroke-width="6" stroke-linecap="round" transform="rotate(312)"/>
+      <line x1="0" y1="-43" x2="0" y2="-88" stroke="#e9bd72" stroke-width="7" stroke-linecap="round" transform="rotate(336)"/>
+    </g>
+
+    <g id="mark-a">
+      <use href="#rosette-base"/>
+      <use href="#rays"/>
+      <circle r="50" class="cream"/>
+      <circle r="50" fill="none" stroke="#e9bd72" stroke-width="4"/>
+      <text x="0" y="15" text-anchor="middle" fill="#9f1730" font-family="Pretendard, Inter, Arial, sans-serif" font-size="33" font-weight="900">헌법</text>
+    </g>
+
+    <g id="mark-b">
+      <use href="#rosette-base"/>
+      <circle r="57" class="cream"/>
+      <circle r="57" fill="none" stroke="#e9bd72" stroke-width="4"/>
+      <circle r="35" fill="none" stroke="#9f1730" stroke-width="7"/>
+      <path d="M -33 0 H 33 M 0 -34 V 34 M -23 -22 C -9 -10 9 -10 23 -22 M -23 22 C -9 10 9 10 23 22" fill="none" stroke="#9f1730" stroke-width="5" stroke-linecap="round"/>
+      <circle r="12" class="gold"/>
+    </g>
+
+    <g id="mark-c">
+      <use href="#rosette-base"/>
+      <use href="#rays" opacity="0.85"/>
+      <circle r="52" class="cream"/>
+      <circle r="52" fill="none" stroke="#e9bd72" stroke-width="4"/>
+      <path d="M -30 -8 C -18 -18 -6 -18 0 -9 C 6 -18 18 -18 30 -8 V 26 C 18 18 6 18 0 28 C -6 18 -18 18 -30 26 Z" fill="none" stroke="#9f1730" stroke-width="6" stroke-linejoin="round"/>
+      <text x="0" y="-23" text-anchor="middle" fill="#9f1730" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="900">WC</text>
+    </g>
+  </defs>
+
+  <rect class="bg" width="1440" height="900"/>
+  <text x="70" y="76" class="title">World Cons favicon / logo draft concepts</text>
+  <text x="70" y="106" class="sub">Current mark direction preserved: burgundy constitutional rosette, gold rim, central civic seal. Draft only, not applied.</text>
+
+  <g transform="translate(70 145)">
+    <rect class="panel" width="400" height="650" rx="18"/>
+    <text x="28" y="48" class="label">A. Heritage Seal</text>
+    <text x="28" y="76" class="small">가장 현재 로고와 가까운 안</text>
+    <g transform="translate(200 205) scale(1.22)">
+      <use href="#mark-a"/>
+    </g>
+    <g transform="translate(72 388)">
+      <use href="#mark-a" transform="scale(0.35)"/>
+      <text x="82" y="-5" class="word">World Cons</text>
+      <text x="84" y="24" class="ko">헌법판례요약시스템</text>
+    </g>
+    <text x="28" y="478" class="small">Favicon preview</text>
+    <rect x="28" y="500" width="72" height="72" rx="16" class="muted-panel"/>
+    <g transform="translate(64 536) scale(0.33)"><use href="#mark-a"/></g>
+    <rect x="120" y="508" width="48" height="48" rx="10" class="muted-panel"/>
+    <g transform="translate(144 532) scale(0.22)"><use href="#mark-a"/></g>
+    <rect x="188" y="516" width="32" height="32" rx="7" class="muted-panel"/>
+    <g transform="translate(204 532) scale(0.145)"><use href="#mark-a"/></g>
+    <text x="28" y="610" class="small">장점: 기존 인지도 유지. 단점: 16px에서는 '헌법' 가독성 약함.</text>
+  </g>
+
+  <g transform="translate(520 145)">
+    <rect class="panel" width="400" height="650" rx="18"/>
+    <text x="28" y="48" class="label">B. World Rosette</text>
+    <text x="28" y="76" class="small">세계 헌법재판 큐레이션 의미 강화</text>
+    <g transform="translate(200 205) scale(1.22)">
+      <use href="#mark-b"/>
+    </g>
+    <g transform="translate(72 388)">
+      <use href="#mark-b" transform="scale(0.35)"/>
+      <text x="82" y="-5" class="word">World Cons</text>
+      <text x="84" y="24" class="ko">세계 헌법재판 큐레이션</text>
+    </g>
+    <text x="28" y="478" class="small">Favicon preview</text>
+    <rect x="28" y="500" width="72" height="72" rx="16" class="muted-panel"/>
+    <g transform="translate(64 536) scale(0.33)"><use href="#mark-b"/></g>
+    <rect x="120" y="508" width="48" height="48" rx="10" class="muted-panel"/>
+    <g transform="translate(144 532) scale(0.22)"><use href="#mark-b"/></g>
+    <rect x="188" y="516" width="32" height="32" rx="7" class="muted-panel"/>
+    <g transform="translate(204 532) scale(0.145)"><use href="#mark-b"/></g>
+    <text x="28" y="610" class="small">장점: 작은 크기에서 안정적. 단점: 기존 '헌법' 텍스트 상징은 줄어듦.</text>
+  </g>
+
+  <g transform="translate(970 145)">
+    <rect class="panel" width="400" height="650" rx="18"/>
+    <text x="28" y="48" class="label">C. Library + WC</text>
+    <text x="28" y="76" class="small">새 이름과 도서관/판례 아카이브 성격 반영</text>
+    <g transform="translate(200 205) scale(1.22)">
+      <use href="#mark-c"/>
+    </g>
+    <g transform="translate(72 388)">
+      <use href="#mark-c" transform="scale(0.35)"/>
+      <text x="82" y="-5" class="word">World Cons</text>
+      <text x="84" y="24" class="ko">Constitutional Case Library</text>
+    </g>
+    <text x="28" y="478" class="small">Favicon preview</text>
+    <rect x="28" y="500" width="72" height="72" rx="16" class="muted-panel"/>
+    <g transform="translate(64 536) scale(0.33)"><use href="#mark-c"/></g>
+    <rect x="120" y="508" width="48" height="48" rx="10" class="muted-panel"/>
+    <g transform="translate(144 532) scale(0.22)"><use href="#mark-c"/></g>
+    <rect x="188" y="516" width="32" height="32" rx="7" class="muted-panel"/>
+    <g transform="translate(204 532) scale(0.145)"><use href="#mark-c"/></g>
+    <text x="28" y="610" class="small">장점: 브랜드 전환에 적합. 단점: 현재 로고와의 차이가 A보다 큼.</text>
+  </g>
+
+  <text x="70" y="845" class="sub">Recommendation: use A if continuity is most important, B if favicon legibility is most important, C if the new World Cons name should be prominent.</text>
+</svg>
