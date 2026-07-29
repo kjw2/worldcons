@@ -4,8 +4,8 @@
 
 :root {
   color-scheme: light;
-  background: #faf8f3;
-  color: #17202a;
+  background: #f4f6f8;
+  color: #20242b;
   --chrome-header-height: 118px;
   --font-system-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", Roboto, Arial, sans-serif;
 }
@@ -21,8 +21,8 @@ html {
 body {
   min-height: 100%;
   margin: 0;
-  background: #fdfdfb;
-  color: #17202a;
+  background: #fbfcfd;
+  color: #20242b;
   font-family: var(--font-system-sans);
   font-size: 15px;
   line-height: 1.6;
@@ -36,14 +36,14 @@ body {
 }
 
 .archive-kicker {
-  color: #476259;
+  color: #243b5a;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .archive-rule-title {
-  border-bottom: 1px solid #bfc9c3;
+  border-bottom: 1px solid #b8c0cb;
   padding-bottom: 0.65rem;
 }
 
@@ -102,7 +102,7 @@ select {
 }
 
 ::selection {
-  background: #f3d6a2;
+  background: #dbe5f0;
 }
 
 .focus-ring {
@@ -121,7 +121,7 @@ html.chrome-fixed #site-header {
   inset: 0 0 auto;
   z-index: 40;
   background: #fff;
-  box-shadow: 0 8px 22px rgba(18, 61, 50, 0.07);
+  box-shadow: 0 8px 22px rgba(32, 36, 43, 0.08);
   transform: translateY(0);
 }
 

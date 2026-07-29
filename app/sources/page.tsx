@@ -36,7 +36,7 @@ export default async function SourcesPage() {
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <SectionHeading
-        className="mb-7 border-b border-[#bcc8c1] pb-6"
+        className="mb-7 border-b border-archive-line-strong pb-6"
         eyebrow="Institutions"
         title="헌법재판 기관"
         description="World Cons가 공식 자료를 수집하는 국가별 헌법재판기관과 공개 판례를 확인합니다."
@@ -49,7 +49,7 @@ export default async function SourcesPage() {
             const sourceHref = safeExternalUrl(source.baseUrl);
             return (
             <SurfaceCard key={source.sourceKey} style={jurisdictionThemeStyle(themeForJurisdiction(source.jurisdiction))} className="relative flex min-h-60 h-full flex-col overflow-hidden p-5 sm:p-6">
-              <div className="relative z-10 flex items-start gap-4"><span className="text-4xl" aria-hidden="true">{displayJurisdictionFlag(source.jurisdiction)}</span><div><p className="text-sm font-semibold text-[color:var(--country-text)]">{displayJurisdictionLabel(source.jurisdiction)}</p><h2 className="archive-serif mt-1 text-2xl font-semibold leading-snug text-[#173d33]">{displaySourceLabel(source)}</h2>{source.name !== displaySourceLabel(source) ? <p className="mt-1 text-xs text-[#74817c]">{source.name}</p> : null}</div></div>
+              <div className="relative z-10 flex items-start gap-4"><span className="text-4xl" aria-hidden="true">{displayJurisdictionFlag(source.jurisdiction)}</span><div><p className="text-sm font-semibold text-[color:var(--country-text)]">{displayJurisdictionLabel(source.jurisdiction)}</p><h2 className="archive-serif mt-1 text-2xl font-semibold leading-snug text-archive-heading">{displaySourceLabel(source)}</h2>{source.name !== displaySourceLabel(source) ? <p className="mt-1 text-xs text-archive-muted">{source.name}</p> : null}</div></div>
               <dl className="mt-4 space-y-2 text-sm text-ink-muted">
                 <div className="flex items-center justify-between gap-3">
                   <dt>기관 코드</dt>
@@ -65,11 +65,11 @@ export default async function SourcesPage() {
                 </div>
               </dl>
               <div className="mt-auto flex flex-wrap gap-2 pt-5">
-                <Link href={`/sources/${source.sourceKey}`} className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-sm bg-[#123d32] px-3.5 text-sm font-semibold text-white transition hover:bg-[#285748]">
+                <Link href={`/sources/${source.sourceKey}`} className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-sm bg-archive-accent px-3.5 text-sm font-semibold text-white transition hover:bg-archive-accent-hover">
                   기관 보기<ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
                 {sourceHref ? (
-                <a href={sourceHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-sm border border-[#c8d2cc] px-3.5 text-sm font-semibold text-[#5b6964] transition hover:border-[#879a90] hover:text-[#123d32]">
+                <a href={sourceHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-sm border border-archive-line px-3.5 text-sm font-semibold text-archive-text transition hover:border-archive-accent hover:text-archive-accent">
                   공식 사이트
                   <ExternalLink className="size-4" aria-hidden="true" />
                 </a>

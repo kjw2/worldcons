@@ -4,7 +4,7 @@ import type { ArticleListItem } from "@/lib/db/types";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayJurisdictionLabel } from "@/lib/ui/source-labels";
 
-const relatedArticleClassName = "focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#213f35] hover:text-[#2e6552]";
+const relatedArticleClassName = "focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-archive-heading hover:text-archive-accent-hover";
 
 export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
   if (articles.length === 0) {
@@ -12,9 +12,9 @@ export function RelatedArticles({ articles }: { articles: ArticleListItem[] }) {
   }
 
   return (
-    <ul className="grid border-t border-[#cbd4ce] md:grid-cols-2">
+    <ul className="grid border-t border-archive-line md:grid-cols-2">
       {articles.map((article) => (
-        <li key={article.slug} className="border-b border-[#dce2de] p-4 md:odd:border-r">
+        <li key={article.slug} className="border-b border-archive-line p-4 md:odd:border-r">
           <RelatedArticleLink slug={article.slug} className={relatedArticleClassName}>
             {article.koreanTitle || article.originalTitle}
             <RecentDecisionMark publishedAt={article.originalPublishedAt} />

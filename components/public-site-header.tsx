@@ -21,25 +21,25 @@ export function PublicSiteHeader() {
   const pathname = usePathname();
 
   return (
-    <header id="site-header" className="public-site-header border-b border-[#173f34] bg-[#fdfdfb]/98">
+    <header id="site-header" className="public-site-header border-b border-archive-line-strong bg-white/95">
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
-        <div className="flex min-h-[92px] items-center justify-between gap-3 border-b border-[#ccd4cf] py-4 sm:min-h-[106px] sm:gap-5">
+        <div className="flex min-h-[92px] items-center justify-between gap-3 border-b border-archive-line py-4 sm:min-h-[106px] sm:gap-5">
           <IntentPrefetchLink href="/v2" className="focus-ring min-w-0 rounded-sm" aria-label="헌법판례요약시스템 홈">
-            <span className="block truncate font-sans text-[18px] font-extrabold leading-none text-[#123d32] sm:text-[30px]">헌법판례요약시스템</span>
-            <span className="mt-2 block text-xs font-medium text-[#52635d] sm:text-sm">세계 헌법재판과 헌법 판례</span>
+            <span className="block truncate font-sans text-[18px] font-extrabold leading-none text-archive-accent sm:text-[30px]">헌법판례요약시스템</span>
+            <span className="mt-2 block text-xs font-medium text-archive-text sm:text-sm">세계 헌법재판과 헌법 판례</span>
           </IntentPrefetchLink>
-          <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#44554f] sm:gap-5">
-            <IntentPrefetchLink href="/v2/guide" className="focus-ring hidden rounded-sm py-2 hover:text-[#123d32] sm:inline-flex">사이트 안내</IntentPrefetchLink>
+          <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-archive-text sm:gap-5">
+            <IntentPrefetchLink href="/v2/guide" className="focus-ring hidden rounded-sm py-2 hover:text-archive-accent sm:inline-flex">사이트 안내</IntentPrefetchLink>
             <a
               href="https://worldlaws.cclib.workers.dev/"
               target="_blank"
               rel="noopener noreferrer"
               title="WORLDLAWS 새 창에서 열기"
-              className="focus-ring inline-flex rounded-sm py-2 text-[11px] hover:text-[#123d32] sm:text-sm"
+              className="focus-ring inline-flex rounded-sm py-2 text-[11px] hover:text-archive-accent sm:text-sm"
             >
               WORLDLAWS
             </a>
-            <IntentPrefetchLink href="/v2/search" aria-label="검색" title="검색" className="focus-ring inline-flex size-10 items-center justify-center rounded-sm hover:bg-[#eef2ef] hover:text-[#123d32]">
+            <IntentPrefetchLink href="/v2/search" aria-label="검색" title="검색" className="focus-ring inline-flex size-10 items-center justify-center rounded-sm hover:bg-archive-tint hover:text-archive-accent">
               <Search className="size-5" aria-hidden="true" />
             </IntentPrefetchLink>
           </div>
@@ -53,8 +53,8 @@ export function PublicSiteHeader() {
                 href={item.href}
                 aria-current={current ? "page" : undefined}
                 className={cn(
-                  "focus-ring relative flex min-h-12 min-w-[84px] items-center justify-center px-2 text-center text-xs font-semibold text-[#53635d] transition hover:bg-[#f3f6f4] hover:text-[#123d32] sm:min-h-14 sm:text-sm",
-                  current && "text-[#123d32] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[#123d32]",
+                  "focus-ring relative flex min-h-12 min-w-[84px] items-center justify-center px-2 text-center text-xs font-semibold text-archive-text transition hover:bg-archive-surface hover:text-archive-accent sm:min-h-14 sm:text-sm",
+                  current && "text-archive-accent after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-archive-accent",
                 )}
               >
                 {item.label}

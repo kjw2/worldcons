@@ -72,12 +72,12 @@ export function IssueTopicCarousel({ tags }: { tags: TagSummary[] }) {
       }}
     >
       <div className="archive-rule-title mb-3 flex min-h-9 items-start justify-between gap-4">
-        <h2 id="issue-trackers" className="text-base font-semibold text-[#243b33]">주요 헌법 쟁점</h2>
+        <h2 id="issue-trackers" className="text-base font-semibold text-archive-heading">주요 헌법 쟁점</h2>
         {tags.length > 1 ? (
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs tabular-nums text-[#74817c]">{activeIndex + 1} / {tags.length}</span>
-            <button type="button" onClick={() => selectTag(activeIndex - 1)} aria-label="이전 헌법 주제" title="이전 헌법 주제" className="focus-ring inline-flex size-8 items-center justify-center rounded-sm border border-[#c8d2cc] bg-white text-[#456056] hover:border-[#879a90] hover:text-[#123d32]"><ChevronLeft className="size-4" aria-hidden="true" /></button>
-            <button type="button" onClick={() => selectTag(activeIndex + 1)} aria-label="다음 헌법 주제" title="다음 헌법 주제" className="focus-ring inline-flex size-8 items-center justify-center rounded-sm border border-[#c8d2cc] bg-white text-[#456056] hover:border-[#879a90] hover:text-[#123d32]"><ChevronRight className="size-4" aria-hidden="true" /></button>
+            <span className="text-xs tabular-nums text-archive-muted">{activeIndex + 1} / {tags.length}</span>
+            <button type="button" onClick={() => selectTag(activeIndex - 1)} aria-label="이전 헌법 주제" title="이전 헌법 주제" className="focus-ring inline-flex size-8 items-center justify-center rounded-sm border border-archive-line bg-white text-archive-muted hover:border-archive-accent hover:text-archive-accent"><ChevronLeft className="size-4" aria-hidden="true" /></button>
+            <button type="button" onClick={() => selectTag(activeIndex + 1)} aria-label="다음 헌법 주제" title="다음 헌법 주제" className="focus-ring inline-flex size-8 items-center justify-center rounded-sm border border-archive-line bg-white text-archive-muted hover:border-archive-accent hover:text-archive-accent"><ChevronRight className="size-4" aria-hidden="true" /></button>
           </div>
         ) : null}
       </div>
@@ -90,10 +90,10 @@ export function IssueTopicCarousel({ tags }: { tags: TagSummary[] }) {
         {tags.map((tag, index) => {
           const Icon = issueIcons[index % issueIcons.length];
           return (
-            <IntentPrefetchLink key={tag.slug} href={`/v2/list?tag=${encodeURIComponent(tag.slug)}`} className="focus-ring group grid min-h-28 min-w-[84%] snap-start grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-[#d4dcd7] bg-white p-4 transition hover:border-[#829b8e] hover:bg-[#f8faf8] sm:min-w-[calc((100%-0.75rem)/2)] xl:min-w-[calc((100%-2.25rem)/4)]">
-              <span className="inline-flex size-10 items-center justify-center text-[#315b4d]"><Icon className="size-6" aria-hidden="true" /></span>
-              <span className="min-w-0"><span className="archive-serif block break-words text-lg font-semibold text-[#173d33]">{tag.name}</span><span className="mt-2 block text-xs text-[#68756f]">관련 판례 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</span></span>
-              <ChevronRight className="mt-auto size-4 text-[#7c8983] transition group-hover:translate-x-0.5 group-hover:text-[#123d32]" aria-hidden="true" />
+            <IntentPrefetchLink key={tag.slug} href={`/v2/list?tag=${encodeURIComponent(tag.slug)}`} className="focus-ring group grid min-h-28 min-w-[84%] snap-start grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-archive-line bg-white p-4 transition hover:border-archive-accent hover:bg-archive-surface-soft sm:min-w-[calc((100%-0.75rem)/2)] xl:min-w-[calc((100%-2.25rem)/4)]">
+              <span className="inline-flex size-10 items-center justify-center text-archive-accent"><Icon className="size-6" aria-hidden="true" /></span>
+              <span className="min-w-0"><span className="archive-serif block break-words text-lg font-semibold text-archive-heading">{tag.name}</span><span className="mt-2 block text-xs text-archive-muted">관련 판례 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</span></span>
+              <ChevronRight className="mt-auto size-4 text-archive-subtle transition group-hover:translate-x-0.5 group-hover:text-archive-accent" aria-hidden="true" />
             </IntentPrefetchLink>
           );
         })}
@@ -102,7 +102,7 @@ export function IssueTopicCarousel({ tags }: { tags: TagSummary[] }) {
       {tags.length > 1 ? (
         <div className="mt-3 flex justify-center gap-2" aria-label="헌법 주제 페이지">
           {tags.map((tag, index) => (
-            <button key={tag.slug} type="button" onClick={() => selectTag(index)} aria-label={`${index + 1}번째 헌법 주제 보기`} aria-current={activeIndex === index ? "page" : undefined} title={`${index + 1}번째 헌법 주제`} className={cn("focus-ring size-2 rounded-full transition", activeIndex === index ? "bg-[#123d32]" : "bg-[#bdc8c2] hover:bg-[#70847a]")} />
+            <button key={tag.slug} type="button" onClick={() => selectTag(index)} aria-label={`${index + 1}번째 헌법 주제 보기`} aria-current={activeIndex === index ? "page" : undefined} title={`${index + 1}번째 헌법 주제`} className={cn("focus-ring size-2 rounded-full transition", activeIndex === index ? "bg-archive-accent" : "bg-archive-line-strong hover:bg-archive-muted")} />
           ))}
         </div>
       ) : null}

@@ -30,7 +30,7 @@ export default async function TagsPage() {
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <SectionHeading
-        className="mb-7 border-b border-[#bcc8c1] pb-6"
+        className="mb-7 border-b border-archive-line-strong pb-6"
         eyebrow="Topics"
         title="헌법 주제"
         description="반복해서 등장하는 헌법 쟁점과 절차, 권리, 조문을 태그 단위로 모아봅니다. AI가 생성한 태그이므로 부정확할 수 있으니 반드시 확인하시기 바랍니다."

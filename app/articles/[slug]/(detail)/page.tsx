@@ -102,13 +102,13 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <PageViewTracker event={articleViewEvent} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
-      <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치">
-        <IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-[#123d32]">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
-        <IntentPrefetchLink href="/v2/list" className="focus-ring rounded-sm hover:text-[#123d32]">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
-        <IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel(article.sourceKey)}</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+      <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치">
+        <IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href="/v2/list" className="focus-ring rounded-sm hover:text-archive-accent">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel(article.sourceKey)}</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
         <span className="max-w-[32rem] truncate">{article.koreanTitle || article.originalTitle}</span>
       </nav>
-      <section style={jurisdictionThemeStyle(theme)} className="mb-8 border-b border-[#aebdb5] pb-8">
+      <section style={jurisdictionThemeStyle(theme)} className="mb-8 border-b border-archive-line-strong pb-8">
         <p className="text-sm font-semibold text-[color:var(--country-text)]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })} · {displayArticleTypeLabel(article)}</p>
         <MetaRow
           className="mt-3"
@@ -118,20 +118,20 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             article.originalLanguage,
           ]}
         />
-        <h1 className="archive-serif mt-4 max-w-6xl break-keep text-4xl font-semibold leading-[1.22] text-[#123d32] sm:text-5xl">
+        <h1 className="archive-serif mt-4 max-w-6xl break-keep text-4xl font-semibold leading-[1.22] text-archive-ink sm:text-5xl">
           {article.koreanTitle || article.originalTitle}
           <RecentDecisionMark publishedAt={article.originalPublishedAt} className="text-xs sm:text-sm" />
         </h1>
-        {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-[#53625d] sm:text-lg">{primaryIssue}</p> : null}
-        {article.originalTitle ? <p className="mt-3 max-w-5xl break-keep text-sm leading-6 text-[#7a8581]">원문 제목: {article.originalTitle}</p> : null}
+        {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-archive-text sm:text-lg">{primaryIssue}</p> : null}
+        {article.originalTitle ? <p className="mt-3 max-w-5xl break-keep text-sm leading-6 text-archive-subtle">원문 제목: {article.originalTitle}</p> : null}
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {originalHref ? (
-            <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm bg-[#123d32] px-4 text-sm font-semibold text-white transition hover:bg-[#285748]">
+            <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm bg-archive-accent px-4 text-sm font-semibold text-white transition hover:bg-archive-accent-hover">
               원문 보기
               <ExternalLink className="size-4" aria-hidden="true" />
             </a>
           ) : null}
-          <ArticleReturnLink className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-[#c8d2cc] bg-white px-4 text-sm font-semibold text-[#53635d] transition hover:border-[#83998e] hover:text-[#123d32]" />
+          <ArticleReturnLink className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-archive-line bg-white px-4 text-sm font-semibold text-archive-text transition hover:border-archive-accent hover:text-archive-accent" />
           <ArticlePrintButton printHref={`/v2/articles/${article.slug}/print`} />
         </div>
       </section>
@@ -189,13 +189,13 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
 
         <aside className="space-y-4 lg:sticky lg:top-[calc(var(--chrome-header-height)+1rem)]">
           <SurfaceCard className="p-5">
-            <h2 className="archive-rule-title text-base font-semibold text-[#243b33]">사건 정보</h2>
+            <h2 className="archive-rule-title text-base font-semibold text-archive-heading">사건 정보</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-start gap-3">
                 <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-ink">기관</dt>
-                  <dd className="mt-1 text-ink-muted"><IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-[#123d32]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</IntentPrefetchLink></dd>
+                  <dd className="mt-1 text-ink-muted"><IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</IntentPrefetchLink></dd>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -230,7 +230,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
               </div>
             </dl>
             {originalHref ? (
-              <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-sm border border-[#9bb0a5] bg-[#f2f6f3] px-4 text-sm font-semibold text-[#123d32] transition hover:bg-[#e7efea]">
+              <a href={originalHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-sm border border-archive-line-strong bg-archive-tint px-4 text-sm font-semibold text-archive-accent transition hover:bg-archive-surface">
                 공식 원문 확인
                 <ExternalLink className="size-4" aria-hidden="true" />
               </a>

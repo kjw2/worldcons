@@ -124,10 +124,10 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
         }}
       />
 
-      <header className="mb-7 border-b border-[#bcc8c1] pb-6">
-        <nav className="mb-4 flex items-center gap-1.5 text-xs text-[#73807b]" aria-label="현재 위치"><IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-[#123d32]">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
+      <header className="mb-7 border-b border-archive-line-strong pb-6">
+        <nav className="mb-4 flex items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치"><IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h1 className="archive-serif text-2xl font-semibold leading-tight text-[#123d32] sm:text-3xl">전체 판례</h1>
+          <h1 className="archive-serif text-2xl font-semibold leading-tight text-archive-ink sm:text-3xl">전체 판례</h1>
         </div>
       </header>
 

@@ -432,8 +432,8 @@ export function InfiniteArticleFeed({
 
   return (
     <section className="space-y-4" aria-live="polite">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#bdc9c2] pb-3">
-        <p className="text-sm font-semibold text-[#243b33]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-archive-line-strong pb-3">
+        <p className="text-sm font-semibold text-archive-heading">
           총 {totalPrefix}
           {pageInfo.total.toLocaleString("ko-KR")}건
         </p>

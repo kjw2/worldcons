@@ -33,7 +33,7 @@ export function SearchBox({
           defaultValue={defaultValue}
           placeholder={resolvedPlaceholder}
           className={cn(
-            "focus-ring w-full rounded-sm border border-[#cbd4ce] bg-white outline-none placeholder:text-[#8b9691]",
+            "focus-ring w-full rounded-sm border border-archive-line bg-white outline-none placeholder:text-archive-subtle",
             isHero ? "h-14 px-12 text-base" : "h-11 px-10 text-sm",
           )}
         />
@@ -41,7 +41,7 @@ export function SearchBox({
       <button
         type="submit"
         className={cn(
-          "focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-sm bg-[#123d32] font-semibold text-white transition hover:bg-[#285748]",
+          "focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-sm bg-archive-accent font-semibold text-white transition hover:bg-archive-accent-hover",
           isHero ? "h-14 px-5 text-base" : "h-11 px-4 text-sm",
         )}
       >

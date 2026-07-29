@@ -78,18 +78,18 @@ function ListArticleRow({ article, paramsString }: { article: ArticleListItem; p
   const summary = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
 
   return (
-    <article data-article-slug={article.slug} className="border-b border-[#dce2de] last:border-b-0 hover:bg-[#f8faf8]">
+    <article data-article-slug={article.slug} className="border-b border-archive-line last:border-b-0 hover:bg-archive-surface-soft">
       <div className="px-4 py-4 xl:hidden">
-        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#74817c]"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span></div>
-        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-[#173d33]"><IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring rounded-sm hover:text-[#2e6552]">{title}<RecentDecisionMark publishedAt={article.originalPublishedAt} /></IntentPrefetchLink></h2>
-        <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#5f6c67]">{summary}</p>
-        <div className="mt-2 flex items-center gap-3 text-xs text-[#7a8681]"><span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span className="inline-flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
+        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 text-xs text-archive-muted"><span>{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span></div>
+        <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-archive-heading"><IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring rounded-sm hover:text-archive-accent-hover">{title}<RecentDecisionMark publishedAt={article.originalPublishedAt} /></IntentPrefetchLink></h2>
+        <p className="mt-1 line-clamp-2 text-sm leading-6 text-archive-text">{summary}</p>
+        <div className="mt-2 flex items-center gap-3 text-xs text-archive-subtle"><span className="inline-flex items-center gap-1"><CalendarDays className="size-3.5" aria-hidden="true" />{formattedArticleDate(article)}</span><span className="inline-flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
       <div className="hidden min-h-[74px] grid-cols-[94px_100px_minmax(280px,1fr)_140px] items-center gap-3 px-4 py-3 text-sm xl:grid">
-        <span className="text-xs tabular-nums text-[#67746f]">{formattedArticleDate(article)}</span>
-        <span className="text-xs font-semibold text-[#334d44]">{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span>
-        <div className="min-w-0"><IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-[#173d33] hover:text-[#2e6552]">{title}<RecentDecisionMark publishedAt={article.originalPublishedAt} /></IntentPrefetchLink><p className="mt-0.5 line-clamp-1 text-xs text-[#73807b]">{summary}</p></div>
-        <div className="min-w-0 text-xs text-[#6e7b76]">{article.tags.slice(0, 2).map((tag) => <IntentPrefetchLink key={tag.slug} href={`/v2/tags/${tag.slug}`} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-[#123d32]">{tag.name}</IntentPrefetchLink>)}<span className="mt-1 flex items-center gap-1 text-[#8a9691]"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
+        <span className="text-xs tabular-nums text-archive-muted">{formattedArticleDate(article)}</span>
+        <span className="text-xs font-semibold text-archive-heading">{displayJurisdictionFlag(article.jurisdiction)} {displayJurisdictionLabel(article.jurisdiction)}</span>
+        <div className="min-w-0"><IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm font-semibold leading-6 text-archive-heading hover:text-archive-accent-hover">{title}<RecentDecisionMark publishedAt={article.originalPublishedAt} /></IntentPrefetchLink><p className="mt-0.5 line-clamp-1 text-xs text-archive-muted">{summary}</p></div>
+        <div className="min-w-0 text-xs text-archive-muted">{article.tags.slice(0, 2).map((tag) => <IntentPrefetchLink key={tag.slug} href={`/v2/tags/${tag.slug}`} className="focus-ring mr-2 inline-block max-w-full truncate rounded-sm hover:text-archive-accent">{tag.name}</IntentPrefetchLink>)}<span className="mt-1 flex items-center gap-1 text-archive-subtle"><Eye className="size-3" aria-hidden="true" />{formatNumber(article.viewCount)}</span></div>
       </div>
     </article>
   );
@@ -106,7 +106,7 @@ function CountryMenu({
 }) {
   return (
     <SurfaceCard className="overflow-hidden p-4">
-      <h2 className="archive-rule-title text-sm font-semibold text-[#243b33]">국가별 판례</h2>
+      <h2 className="archive-rule-title text-sm font-semibold text-archive-heading">국가별 판례</h2>
       <nav className="mt-2 grid gap-1" aria-label="국가 필터">
         {COUNTRY_FILTERS.map((item) => {
           const isActive = item.jurisdiction ? currentJurisdiction === item.jurisdiction : !currentJurisdiction;
@@ -117,12 +117,12 @@ function CountryMenu({
               key={item.jurisdiction ?? "all"}
               href={hrefForJurisdiction(paramsString, item.jurisdiction)}
               className={cn(
-                "focus-ring flex min-h-10 items-center justify-between gap-3 rounded-sm border-b border-[#e1e6e2] px-2 text-sm font-semibold transition last:border-b-0",
-                isActive ? "bg-[#edf3ef] text-[#123d32]" : "text-[#5f6d68] hover:bg-[#f5f7f4] hover:text-[#123d32]",
+                "focus-ring flex min-h-10 items-center justify-between gap-3 rounded-sm border-b border-archive-line px-2 text-sm font-semibold transition last:border-b-0",
+                isActive ? "bg-archive-tint text-archive-accent" : "text-archive-text hover:bg-archive-surface hover:text-archive-accent",
               )}
             >
               <span>{item.label}</span>
-              <span className="text-xs tabular-nums text-[#82908a]">
+              <span className="text-xs tabular-nums text-archive-subtle">
                 {formatNumber(count)}
               </span>
             </IntentPrefetchLink>
@@ -143,13 +143,13 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
   const hasNext = page < totalPages;
 
   return (
-    <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-[#cbd4ce] px-4 py-5" aria-label="페이지">
+    <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-archive-line px-4 py-5" aria-label="페이지">
       <IntentPrefetchLink
         href={hrefForPage(paramsString, page - 1)}
         aria-disabled={!hasPrevious}
         className={cn(
-          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-[#d1d9d4] px-3 text-sm font-semibold",
-          hasPrevious ? "bg-white text-[#5e6d67] hover:border-[#8ca095] hover:text-[#123d32]" : "pointer-events-none bg-[#f4f6f3] text-[#a0aaa5]",
+          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-archive-line px-3 text-sm font-semibold",
+          hasPrevious ? "bg-white text-archive-text hover:border-archive-accent hover:text-archive-accent" : "pointer-events-none bg-archive-surface text-archive-subtle",
         )}
       >
         <ChevronLeft className="size-4" aria-hidden="true" />
@@ -167,7 +167,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
             aria-current={item === page ? "page" : undefined}
             className={cn(
               "focus-ring inline-flex size-9 items-center justify-center rounded-sm border text-sm font-semibold tabular-nums",
-              item === page ? "border-[#123d32] bg-[#123d32] text-white" : "border-[#d1d9d4] bg-white text-[#5e6d67] hover:border-[#8ca095] hover:text-[#123d32]",
+              item === page ? "border-archive-accent bg-archive-accent text-white" : "border-archive-line bg-white text-archive-text hover:border-archive-accent hover:text-archive-accent",
             )}
           >
             {item}
@@ -178,8 +178,8 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
         href={hrefForPage(paramsString, page + 1)}
         aria-disabled={!hasNext}
         className={cn(
-          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-[#d1d9d4] px-3 text-sm font-semibold",
-          hasNext ? "bg-white text-[#5e6d67] hover:border-[#8ca095] hover:text-[#123d32]" : "pointer-events-none bg-[#f4f6f3] text-[#a0aaa5]",
+          "focus-ring inline-flex min-h-9 items-center gap-1 rounded-sm border border-archive-line px-3 text-sm font-semibold",
+          hasNext ? "bg-white text-archive-text hover:border-archive-accent hover:text-archive-accent" : "pointer-events-none bg-archive-surface text-archive-subtle",
         )}
       >
         다음
@@ -192,18 +192,18 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
 function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]; paramsString: string }) {
   return (
     <SurfaceCard className="overflow-hidden p-4">
-      <h2 className="archive-rule-title text-sm font-semibold text-[#243b33]">조회수 상위 자료</h2>
+      <h2 className="archive-rule-title text-sm font-semibold text-archive-heading">조회수 상위 자료</h2>
       <ol className="mt-3 space-y-3">
         {articles.length === 0 ? (
           <li className="text-sm leading-6 text-ink-muted">조회수 데이터가 아직 없습니다.</li>
         ) : (
           articles.slice(0, 5).map((article, index) => (
             <li key={article.slug} className="flex gap-2">
-              <span className="archive-serif mt-0.5 inline-flex size-5 shrink-0 items-center justify-center text-sm font-semibold text-[#315b4d]">
+              <span className="archive-serif mt-0.5 inline-flex size-5 shrink-0 items-center justify-center text-sm font-semibold text-archive-accent">
                 {index + 1}
               </span>
               <div className="min-w-0">
-                <IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-[#273f37] hover:text-[#123d32]">
+                <IntentPrefetchLink href={hrefForArticle(article.slug, paramsString)} data-list-article-slug={article.slug} className="focus-ring archive-serif line-clamp-2 rounded-sm text-sm font-semibold leading-5 text-archive-heading hover:text-archive-accent">
                   {article.koreanTitle || article.originalTitle || "제목 미상"}
                   <RecentDecisionMark publishedAt={article.originalPublishedAt} />
                 </IntentPrefetchLink>
@@ -240,14 +240,14 @@ export function ArticleListView({
     <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]" aria-label="리스트형 자료 목록">
       <ArticleListReturnState />
       <SurfaceCard className="min-w-0 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#bdc9c2] px-4 py-3 sm:px-5">
-          <h2 className="text-base font-semibold text-[#243b33]">판례 목록</h2>
-          <p className="text-sm text-[#68756f]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-archive-line-strong px-4 py-3 sm:px-5">
+          <h2 className="text-base font-semibold text-archive-heading">판례 목록</h2>
+          <p className="text-sm text-archive-muted">
             총 {formatNumber(total)}건 · {formatNumber(from)}-{formatNumber(to)} 표시
           </p>
         </div>
 
-        <div className="hidden grid-cols-[94px_100px_minmax(280px,1fr)_140px] gap-3 border-b border-[#cbd4ce] bg-[#f4f6f3] px-4 py-2.5 text-xs font-semibold text-[#53635d] xl:grid"><span>날짜</span><span>국가</span><span>제목</span><span>주제 / 조회</span></div>
+        <div className="hidden grid-cols-[94px_100px_minmax(280px,1fr)_140px] gap-3 border-b border-archive-line bg-archive-surface px-4 py-2.5 text-xs font-semibold text-archive-text xl:grid"><span>날짜</span><span>국가</span><span>제목</span><span>주제 / 조회</span></div>
 
         {result.items.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-ink-muted">조건에 맞는 자료가 없습니다.</div>

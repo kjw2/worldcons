@@ -4,10 +4,10 @@ import { cn } from "@/lib/utils/classnames";
 type SurfaceCardVariant = "default" | "muted" | "elevated" | "interactive" | "warning";
 
 const variantClassNames: Record<SurfaceCardVariant, string> = {
-  default: "border-[#d5dcd7] bg-white",
-  muted: "border-[#d5dcd7] bg-[#f5f7f4]",
-  elevated: "border-[#c7d1cb] bg-white shadow-[0_12px_30px_rgba(18,61,50,0.07)]",
-  interactive: "border-[#d5dcd7] bg-white transition hover:border-[#8da398] hover:shadow-[0_10px_26px_rgba(18,61,50,0.07)]",
+  default: "border-archive-line bg-white",
+  muted: "border-archive-line bg-archive-surface",
+  elevated: "border-archive-line bg-white shadow-[0_12px_30px_rgba(32,36,43,0.08)]",
+  interactive: "border-archive-line bg-white transition hover:border-archive-accent hover:shadow-[0_10px_26px_rgba(32,36,43,0.08)]",
   warning: "border-court/20 bg-court/5 text-court",
 };
 

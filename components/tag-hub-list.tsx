@@ -21,7 +21,7 @@ export function TagHubList({ tags }: { tags: TagSummary[] }) {
           className={surfaceCardClassName("interactive", "focus-ring block min-w-0 p-5 sm:p-6")}
         >
           <div className="flex items-start justify-between gap-3">
-            <span className="archive-serif inline-flex min-w-0 items-center gap-2 break-words text-xl font-semibold leading-snug text-[#173d33] [overflow-wrap:anywhere]">
+            <span className="archive-serif inline-flex min-w-0 items-center gap-2 break-words text-xl font-semibold leading-snug text-archive-heading [overflow-wrap:anywhere]">
               <Hash className="size-4 shrink-0 text-court" aria-hidden="true" />
               {tag.name}
             </span>

@@ -2,12 +2,12 @@ import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
 
 function SkeletonBlock({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-sm bg-[#e7ebe8] ${className}`} />;
+  return <div aria-hidden="true" className={`animate-pulse rounded-sm bg-archive-skeleton ${className}`} />;
 }
 
 function SummarySkeleton({ lines = 3 }: { lines?: number }) {
   return (
-    <section className="border-t border-[#9bad9f] py-5 first:border-t-0 first:pt-0">
+    <section className="border-t border-archive-line-strong py-5 first:border-t-0 first:pt-0">
       <SkeletonBlock className="mb-4 h-6 w-28" />
       <div className="space-y-3">
         {Array.from({ length: lines }).map((_, index) => (
@@ -48,7 +48,7 @@ export default function ArticleLoading() {
           <SkeletonBlock className="h-4 w-20" />
           <SkeletonBlock className="h-4 w-28" />
         </div>
-        <section className="mb-8 border-b border-[#8fa197] pb-7">
+        <section className="mb-8 border-b border-archive-line-strong pb-7">
           <div className="flex flex-wrap gap-2">
             <SkeletonBlock className="h-5 w-16" />
             <SkeletonBlock className="h-5 w-32" />
@@ -81,9 +81,9 @@ export default function ArticleLoading() {
               <SummarySkeleton lines={4} />
             </div>
             <SummarySkeleton lines={2} />
-            <section className="border-t border-[#9bad9f] py-5">
+            <section className="border-t border-archive-line-strong py-5">
               <SkeletonBlock className="h-5 w-36" />
-              <div className="mt-4 space-y-2 border border-[#d1d9d4] bg-white p-4">
+              <div className="mt-4 space-y-2 border border-archive-line bg-white p-4">
                 {Array.from({ length: 8 }).map((_, index) => (
                   <SkeletonBlock key={index} className={index === 7 ? "h-4 w-7/12" : "h-4 w-full"} />
                 ))}
