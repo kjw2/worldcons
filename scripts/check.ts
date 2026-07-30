@@ -885,6 +885,20 @@ for (const intentEvent of ["onFocus", "onMouseEnter", "onTouchStart"]) {
   assert(intentPrefetchSource.includes(intentEvent), `intent prefetch links must handle ${intentEvent}`);
 }
 const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+const articleHistoryRestorationSource = fs.readFileSync(
+  path.join(process.cwd(), "components/article-history-restoration.tsx"),
+  "utf8",
+);
+assert(
+  layoutSource.includes("ArticleHistoryRestoration"),
+  "the root layout must preserve article list history across browser back navigation",
+);
+for (const historySignal of ["history.replaceState", "\"popstate\"", "\"pageshow\"", "MutationObserver"]) {
+  assert(
+    articleHistoryRestorationSource.includes(historySignal),
+    `article history restoration must include ${historySignal}`,
+  );
+}
 const globalStylesSource = fs.readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8");
 for (const systemFont of ["-apple-system", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR"]) {
   assert(globalStylesSource.includes(systemFont), `the public UI system font stack must include ${systemFont}`);

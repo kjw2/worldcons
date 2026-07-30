@@ -251,7 +251,7 @@ export function InfiniteArticleFeed({
       pendingRestoreRef.current = null;
       setErrorMessage(null);
       loadingRef.current = false;
-      lastLoadScrollYRef.current = null;
+      lastLoadScrollYRef.current = restoreSnapshotData.scrollY;
       setIsLoading(false);
 
       async function restoreLoadedPages() {

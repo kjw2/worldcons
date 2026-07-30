@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { ArticleHistoryRestoration } from "@/components/article-history-restoration";
 import { BackToTopButton } from "@/components/back-to-top-button";
 import { FixedChromeToggle } from "@/components/fixed-chrome-toggle";
 import { NavigationProgress } from "@/components/navigation-progress";
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ko" className="chrome-fixed">
       <body className="min-h-screen antialiased">
+        <ArticleHistoryRestoration />
         <PublicSiteHeader />
         <Suspense fallback={null}>
           <NavigationProgress />
