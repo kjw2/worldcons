@@ -127,14 +127,14 @@ export function NavigationProgress() {
       if (document.visibilityState === "visible") finish();
     };
 
-    window.addEventListener("popstate", start);
+    window.addEventListener("popstate", forceFinish);
     window.addEventListener("pageshow", handlePageShow);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("click", handleClick, true);
     document.addEventListener("submit", handleSubmit, true);
 
     return () => {
-      window.removeEventListener("popstate", start);
+      window.removeEventListener("popstate", forceFinish);
       window.removeEventListener("pageshow", handlePageShow);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("click", handleClick, true);

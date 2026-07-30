@@ -885,6 +885,18 @@ for (const intentEvent of ["onFocus", "onMouseEnter", "onTouchStart"]) {
   assert(intentPrefetchSource.includes(intentEvent), `intent prefetch links must handle ${intentEvent}`);
 }
 const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+const navigationProgressSource = fs.readFileSync(
+  path.join(process.cwd(), "components/navigation-progress.tsx"),
+  "utf8",
+);
+assert(
+  navigationProgressSource.includes('window.addEventListener("popstate", forceFinish)'),
+  "browser history navigation must clear rather than start the global navigation progress",
+);
+assert(
+  !navigationProgressSource.includes('window.addEventListener("popstate", start)'),
+  "browser history navigation must not leave a progress indicator waiting for a route signal",
+);
 const articleHistoryRestorationSource = fs.readFileSync(
   path.join(process.cwd(), "components/article-history-restoration.tsx"),
   "utf8",
