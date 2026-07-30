@@ -137,7 +137,7 @@ export function ArticleCard({
         </span>
       </div>
 
-      <h2 className="archive-serif line-clamp-2 text-[17px] font-semibold leading-7 text-archive-heading">
+      <h2 className="archive-serif text-[17px] font-semibold leading-7 text-archive-heading">
         <IntentPrefetchLink href={articleHref} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
           {title}
           <RecentDecisionMark publishedAt={article.originalPublishedAt} />
