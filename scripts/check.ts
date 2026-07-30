@@ -70,6 +70,7 @@ import {
   articleHrefWithReturnTo,
   safeArticleReturnPath,
 } from "@/lib/navigation/article-return";
+import { paginationWindow } from "@/lib/navigation/pagination";
 import { articleFiltersFromSearchParams } from "@/lib/utils/search-params";
 import { generateArticleSlug } from "@/lib/utils/slug";
 import { canonicalizeTerminologyText, canonicalizeTerminologyValue } from "@/lib/ai/terminology";
@@ -162,6 +163,16 @@ assert(
   articleHrefWithReturnTo("example-case", "/v2/list?tag=f0cc9e78&page=7")
     === "/v2/articles/example-case#returnTo=%2Fv2%2Flist%3Ftag%3Df0cc9e78%26page%3D7",
   "article links must encode the complete return path",
+);
+assert(
+  paginationWindow(1, 25).join(",") === "1,2,3,4,5,6,7,8,9,10"
+    && paginationWindow(10, 25).join(",") === "1,2,3,4,5,6,7,8,9,10",
+  "list pagination must show the first ten-page window",
+);
+assert(
+  paginationWindow(11, 25).join(",") === "11,12,13,14,15,16,17,18,19,20"
+    && paginationWindow(25, 25).join(",") === "21,22,23,24,25",
+  "list pagination must advance in ten-page windows",
 );
 assert(parseArticleListApiParams(new URLSearchParams("q=due+process&page=2&pageSize=100&tag=due-process")).ok, "valid article API params should pass");
 assert(!parseArticleListApiParams(new URLSearchParams("pageSize=101")).ok, "oversized pageSize must fail validation");
