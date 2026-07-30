@@ -29,7 +29,6 @@ export function PublicSiteHeader() {
             <span className="mt-2 block text-xs font-medium text-archive-text sm:text-sm">세계 헌법재판과 헌법 판례</span>
           </IntentPrefetchLink>
           <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-archive-text sm:gap-5">
-            <IntentPrefetchLink href="/v2/guide" className="focus-ring hidden rounded-sm py-2 hover:text-archive-accent sm:inline-flex">사이트 안내</IntentPrefetchLink>
             <a
               href="https://worldlaws.cclib.workers.dev/"
               target="_blank"
