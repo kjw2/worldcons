@@ -120,7 +120,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         />
         <h1 className="archive-serif mt-4 max-w-6xl break-keep text-4xl font-semibold leading-[1.22] text-archive-ink sm:text-5xl">
           {article.koreanTitle || article.originalTitle}
-          <RecentDecisionMark publishedAt={article.originalPublishedAt} className="text-xs sm:text-sm" />
+          <RecentDecisionMark publishedAt={article.originalPublishedAt} className="size-5 text-[10px]" />
         </h1>
         {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-archive-text sm:text-lg">{primaryIssue}</p> : null}
         {article.originalTitle ? <p className="mt-3 max-w-5xl break-keep text-sm leading-6 text-archive-subtle">원문 제목: {article.originalTitle}</p> : null}
