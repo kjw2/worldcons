@@ -896,6 +896,27 @@ for (const intentEvent of ["onFocus", "onMouseEnter", "onTouchStart"]) {
   assert(intentPrefetchSource.includes(intentEvent), `intent prefetch links must handle ${intentEvent}`);
 }
 const layoutSource = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+const supabaseClientSource = fs.readFileSync(path.join(process.cwd(), "lib/db/client.ts"), "utf8");
+assert(
+  !supabaseClientSource.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+  "server-side database clients must never fall back to the public Supabase anon key",
+);
+const publicDataApiSecurityMigration = fs.readFileSync(
+  path.join(process.cwd(), "supabase/migrations/20260731010000_secure_public_data_api.sql"),
+  "utf8",
+);
+for (const requiredSecurityControl of [
+  "enable row level security",
+  "revoke all privileges on all tables in schema public",
+  "revoke all privileges on all sequences in schema public",
+  "revoke all privileges on all routines in schema public",
+  "alter default privileges for role postgres in schema public",
+]) {
+  assert(
+    publicDataApiSecurityMigration.includes(requiredSecurityControl),
+    `public Data API security migration must include ${requiredSecurityControl}`,
+  );
+}
 const navigationProgressSource = fs.readFileSync(
   path.join(process.cwd(), "components/navigation-progress.tsx"),
   "utf8",
