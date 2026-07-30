@@ -78,7 +78,6 @@ export default async function GlossaryPage({ searchParams }: { searchParams?: Pr
         className="mb-6"
         eyebrow="용어사전"
         title="헌법재판 용어"
-        description="권리, 절차, 심사 기준, 국가별 제도 용어를 짧은 설명과 관련 태그로 확인합니다. AI가 생성한 설명과 태그이므로 부정확할 수 있으니 반드시 확인하시기 바랍니다."
       />
       <div className="mb-5 rounded-lg border border-line bg-white p-4 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

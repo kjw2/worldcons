@@ -39,7 +39,6 @@ export default async function SourcesPage() {
         className="mb-7 border-b border-archive-line-strong pb-6"
         eyebrow="Institutions"
         title="헌법재판 기관"
-        description="World Cons가 공식 자료를 수집하는 국가별 헌법재판기관과 공개 판례를 확인합니다."
       />
       {sources.length === 0 ? (
         <EmptyState title="등록된 수집 기관이 없습니다" description="공식 기관이 추가되면 이곳에서 국가와 언어별로 확인할 수 있습니다." />
