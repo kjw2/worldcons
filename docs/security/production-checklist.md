@@ -4,6 +4,7 @@
 
 - `ADMIN_PASSWORD`가 6자 이상인지 확인
 - `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`가 모두 32바이트 이상인지 확인
+- MasterDash 연동을 활성화할 때 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`가 각각 32바이트 이상이며 기존 관리자/cron secret과 다른지 확인
 - 위 5개 secret 값이 서로 다른지 확인
 - server secret이 `NEXT_PUBLIC_` 환경변수로 노출되지 않는지 확인
 - Vercel production 환경변수에 `LLM_SETTINGS_SECRET`이 설정되어 있는지 확인
@@ -24,6 +25,7 @@
 - P5 additive governance/aggregate health migration: `supabase/migrations/20260712230000_admin_governance_p5.sql` (implementation-ready; production evidence pending)
 - P5 concurrent operational indexes, outside a transaction: `supabase/migrations/20260712231000_admin_governance_p5_indexes.sql`
 - P5 digest/owner-binding corrective migration: `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`
+- MasterDash replay/idempotency/pause state migration: `supabase/migrations/20260801090000_masterdash_integration.sql`
 
 read-mostly readiness check:
 

@@ -51,6 +51,7 @@
     "worker:search:check": "pnpm worker:search:types && tsc -p workers/search-api/tsconfig.json --noEmit",
     "worker:search:deploy": "wrangler deploy --config workers/search-api/wrangler.jsonc",
     "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts",
+    "test:masterdash": "tsx --test tests/masterdash-integration.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {
