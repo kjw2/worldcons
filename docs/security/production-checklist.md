@@ -5,6 +5,7 @@
 - `ADMIN_PASSWORD`가 6자 이상인지 확인
 - `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`가 모두 32바이트 이상인지 확인
 - MasterDash 연동을 활성화할 때 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`가 각각 32바이트 이상이며 기존 관리자/cron secret과 다른지 확인
+- MasterDash SSO의 `email` 또는 `sub`가 비밀번호가 설정된 기존 `ADMIN_USERNAME`과 일치하는지 확인하며, 별도 계정 생성이나 `operator`의 관리자 승격은 허용하지 않음
 - 위 5개 secret 값이 서로 다른지 확인
 - server secret이 `NEXT_PUBLIC_` 환경변수로 노출되지 않는지 확인
 - Vercel production 환경변수에 `LLM_SETTINGS_SECRET`이 설정되어 있는지 확인

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { consumeMasterdashJti } from "@/lib/masterdash/store";
-import { MasterdashSecurityError, verifyMasterdashSsoToken } from "@/lib/masterdash/security";
+import { MasterdashSecurityError, sha256Base64Url, verifyMasterdashSsoToken } from "@/lib/masterdash/security";
 import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_MAX_AGE_SECONDS,
   createAdminSession,
+  resolveExistingAdminSessionIdentityForMasterdash,
 } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,19 @@ export async function GET(request: Request) {
 
   try {
     const claims = verifyMasterdashSsoToken(tokens[0]);
+    const localIdentity = resolveExistingAdminSessionIdentityForMasterdash({
+      subject: claims.sub,
+      email: claims.email,
+      role: claims.role,
+    });
+    if (!localIdentity) {
+      throw new MasterdashSecurityError(
+        "MasterDash identity does not map to an active local administrator.",
+        403,
+      );
+    }
+    const sessionValue = createAdminSession(localIdentity);
+
     const consumed = await consumeMasterdashJti(claims.jti, claims.exp + 60);
     if (!consumed.ok) {
       const status = consumed.replay ? 409 : 503;
@@ -36,7 +50,7 @@ export async function GET(request: Request) {
     const response = NextResponse.redirect(new URL("/admin", request.url), { status: 303 });
     response.cookies.set({
       name: ADMIN_SESSION_COOKIE,
-      value: createAdminSession(),
+      value: sessionValue,
       httpOnly: true,
       secure: true,
       sameSite: "lax",
@@ -50,7 +64,7 @@ export async function GET(request: Request) {
         metadata: {
           action: "masterdash.sso.exchange",
           result: "success",
-          actorId: claims.sub,
+          actorId: `masterdash:${sha256Base64Url(claims.sub).slice(0, 20)}`,
           actorRole: claims.role,
           targetType: "admin_session",
           targetId: "worldcons",

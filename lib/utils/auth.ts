@@ -91,6 +91,25 @@ export function validateAdminCredentials(username: string, password: string) {
   return usernameMatches && Boolean(expectedPassword) && passwordMatches;
 }
 
+export function resolveExistingAdminSessionIdentityForMasterdash(input: {
+  subject: string;
+  email?: string;
+  role: string;
+}) {
+  if (!configuredAdminPassword() || (input.role !== "owner" && input.role !== "admin")) {
+    return null;
+  }
+
+  const username = configuredAdminUsername();
+  const expectedIdentity = username.trim().toLocaleLowerCase("en-US");
+  const matchesExistingAccount = [input.email, input.subject].some((value) => {
+    if (!value?.trim()) return false;
+    return safeEqual(value.trim().toLocaleLowerCase("en-US"), expectedIdentity);
+  });
+
+  return matchesExistingAccount ? username : null;
+}
+
 export function createAdminSession(username = configuredAdminUsername()) {
   const payload: AdminSessionPayload = {
     username,

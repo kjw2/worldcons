@@ -3,12 +3,16 @@
 WorldCons exposes three production adapter endpoints:
 
 - `GET /api/auth/masterdash?masterdash_token=...` validates a one-minute HS256 JWT for issuer
-  `masterdash`, audience `worldcons-admin`, and system `worldcons`. A consumed `jti` is stored only
-  as a SHA-256 digest, then the normal `worldcons_admin_session` cookie is created and the browser
-  is redirected to the fixed `/admin` path.
+  `masterdash`, audience `worldcons-admin`, and system `worldcons`. The token must carry an `owner`
+  or `admin` identity whose `email` or `sub` matches the configured, password-enabled local
+  `ADMIN_USERNAME`. No account is created and an `operator` token is never elevated to the local
+  administrator. A consumed `jti` is stored only as a SHA-256 digest, then the normal
+  `worldcons_admin_session` cookie is created and the browser is redirected to the fixed `/admin`
+  path.
 - `POST /api/masterdash/control` accepts only `incremental_collect`, `pause_collection`, and
   `resume_collection`. It validates the raw-body HMAC contract and persists every request ID before
-  applying an action.
+  applying an action. Operators may request incremental collection; changing pause state requires
+  an `admin` or `owner` role.
 - `GET /api/masterdash/health` returns collection freshness, queue, error, and pause metrics without
   credentials or row-level content.
 
@@ -22,7 +26,6 @@ Configure these Vercel production secrets without committing their values:
 ```text
 MASTERDASH_SSO_SECRET=<same value as MasterDash PORTAL_SSO_SECRET>
 MASTERDASH_CONTROL_SECRET=<same value as MasterDash PORTAL_CONTROL_SECRET>
-MASTERDASH_SSO_ISSUER=masterdash
 ```
 
 MasterDash target configuration uses:

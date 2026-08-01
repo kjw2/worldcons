@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 export const MASTERDASH_SYSTEM_ID = "worldcons";
+export const MASTERDASH_SSO_ISSUER = "masterdash";
 export const MASTERDASH_SSO_AUDIENCE = "worldcons-admin";
 export const MASTERDASH_CONTROL_VERSION = "2026-08-01";
 export const MASTERDASH_ACTIONS = ["incremental_collect", "pause_collection", "resume_collection"] as const;
@@ -120,12 +121,11 @@ export function verifyMasterdashSsoToken(token: string, now = new Date()): Maste
   if (!safeEqual(signature, expected)) throw new MasterdashSecurityError("Invalid MasterDash token signature.", 401);
   if (!isRecord(payload)) throw new MasterdashSecurityError("Invalid MasterDash token claims.", 401);
 
-  const issuer = process.env.MASTERDASH_SSO_ISSUER?.trim() || "masterdash";
   const nowSeconds = Math.floor(now.getTime() / 1000);
   const iat = payload.iat;
   const exp = payload.exp;
   if (
-    payload.iss !== issuer ||
+    payload.iss !== MASTERDASH_SSO_ISSUER ||
     payload.aud !== MASTERDASH_SSO_AUDIENCE ||
     payload.systemId !== MASTERDASH_SYSTEM_ID ||
     !Number.isInteger(iat) ||
@@ -133,7 +133,7 @@ export function verifyMasterdashSsoToken(token: string, now = new Date()): Maste
     (exp as number) <= (iat as number) ||
     (exp as number) - (iat as number) > MAX_TOKEN_LIFETIME_SECONDS ||
     (iat as number) > nowSeconds + MAX_CLOCK_SKEW_SECONDS ||
-    (exp as number) < nowSeconds - MAX_CLOCK_SKEW_SECONDS ||
+    (exp as number) <= nowSeconds ||
     (exp as number) > nowSeconds + MAX_TOKEN_LIFETIME_SECONDS + MAX_CLOCK_SKEW_SECONDS
   ) {
     throw new MasterdashSecurityError("Invalid or expired MasterDash token claims.", 401);
@@ -143,7 +143,7 @@ export function verifyMasterdashSsoToken(token: string, now = new Date()): Maste
   if (!ALLOWED_ROLES.has(role)) throw new MasterdashSecurityError("MasterDash role is not allowed.", 403);
 
   return {
-    iss: issuer,
+    iss: MASTERDASH_SSO_ISSUER,
     aud: MASTERDASH_SSO_AUDIENCE,
     sub: requiredBoundedString(payload.sub, "sub", 200),
     role: role as MasterdashSsoClaims["role"],
@@ -174,17 +174,21 @@ function parseControlBody(rawBody: string): MasterdashControlRequest {
   if (typeof value.action !== "string" || !(MASTERDASH_ACTIONS as readonly string[]).includes(value.action)) {
     throw new MasterdashSecurityError("Unsupported MasterDash control action.", 400);
   }
+  const action = value.action as MasterdashAction;
   const requestId = requiredBoundedString(value.requestId, "requestId", 64);
   if (!UUID_PATTERN.test(requestId)) throw new MasterdashSecurityError("Invalid requestId.", 400);
   const requestedAt = requiredBoundedString(value.requestedAt, "requestedAt", 64);
   const requestedBy = value.requestedBy;
   const role = requiredBoundedString(requestedBy.role, "requestedBy.role", 40);
   if (!ALLOWED_ROLES.has(role)) throw new MasterdashSecurityError("MasterDash role is not allowed.", 403);
+  if (role === "operator" && action !== "incremental_collect") {
+    throw new MasterdashSecurityError("MasterDash operator role cannot change collection pause state.", 403);
+  }
   return {
     version: MASTERDASH_CONTROL_VERSION,
     requestId,
     systemId: MASTERDASH_SYSTEM_ID,
-    action: value.action as MasterdashAction,
+    action,
     requestedAt,
     requestedBy: {
       userId: requiredBoundedString(requestedBy.userId, "requestedBy.userId", 200),
@@ -217,7 +221,7 @@ export function verifyMasterdashControlRequest(input: {
     throw new MasterdashSecurityError("MasterDash control timestamp is outside the allowed window.", 401);
   }
   const expected = createHmac("sha256", secret).update(`${timestamp}.${input.rawBody}`).digest("base64url");
-  if (!safeEqual(signature, expected)) throw new MasterdashSecurityError("Invalid MasterDash control signature.", 401);
+  if (!safeEqual(signature, expected)) throw new MasterdashSecurityError("Invalid MasterDash control signature.", 403);
 
   const body = parseControlBody(input.rawBody);
   if (body.requestId !== input.requestId?.trim() || body.requestedAt !== timestamp) {
