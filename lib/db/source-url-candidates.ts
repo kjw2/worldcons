@@ -213,6 +213,22 @@ export async function findSourceUrlCandidatesByUrls(sourceKey: string, urls: str
   return ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow);
 }
 
+export async function listSourceUrlCandidatesForRetry(sourceKey: string, limit = 100) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return [] as SourceUrlCandidateRecord[];
+  const boundedLimit = boundedInteger(limit, 100, { min: 1, max: 500 });
+  const { data, error } = await supabase
+    .from("source_url_candidates")
+    .select("id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at")
+    .eq("source_key", sourceKey)
+    .eq("status", "retrying")
+    .order("last_attempt_at", { ascending: true, nullsFirst: true })
+    .limit(boundedLimit);
+
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow);
+}
+
 export async function markSourceUrlCandidatesFetched(sourceKey: string, urls: string[]) {
   const supabase = getSupabaseAdmin();
   const uniqueUrls = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];

@@ -8,7 +8,11 @@ import {
   bverfgOfficialUrlCandidatesFromDocket,
   bverfgOfficialUrlCandidatesFromUrl,
 } from "../lib/crawlee/bverfg-spider";
-import { bverfgCandidateRetryDelayMs, shouldRetryBverfgCandidates } from "../lib/ingest/run";
+import {
+  bverfgCandidateRetryDelayMs,
+  refreshQualityRegressionReason,
+  shouldRetryBverfgCandidates,
+} from "../lib/ingest/run";
 import type { SourceUrlCandidateRecord } from "../lib/db/source-url-candidates";
 
 test("ingestion success distinguishes a verified empty listing from swallowed discovery failures", () => {
@@ -80,12 +84,12 @@ test("BVerfG URL resolution checks chamber and senate filename variants", () => 
   );
 });
 
-test("BVerfG unresolved variant retries use bounded exponential backoff", () => {
+test("BVerfG unresolved variant retries use short bounded backoff with schedule grace", () => {
   assert.equal(bverfgCandidateRetryDelayMs(16, "BVERFG_OFFICIAL_DETAIL_404"), 0);
-  assert.equal(bverfgCandidateRetryDelayMs(1, "BVERFG_OFFICIAL_VARIANTS_404"), 24 * 60 * 60 * 1000);
-  assert.equal(bverfgCandidateRetryDelayMs(3, "BVERFG_OFFICIAL_VARIANTS_404"), 3 * 24 * 60 * 60 * 1000);
-  assert.equal(bverfgCandidateRetryDelayMs(6, "BVERFG_OFFICIAL_VARIANTS_404"), 7 * 24 * 60 * 60 * 1000);
-  assert.equal(bverfgCandidateRetryDelayMs(10, "BVERFG_OFFICIAL_VARIANTS_404"), 14 * 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(1, "BVERFG_OFFICIAL_VARIANTS_404"), 12 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(3, "BVERFG_OFFICIAL_VARIANTS_404"), 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(6, "BVERFG_OFFICIAL_VARIANTS_404"), 2 * 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(10, "BVERFG_OFFICIAL_VARIANTS_404"), 3 * 24 * 60 * 60 * 1000);
 
   const candidate: SourceUrlCandidateRecord = {
     id: "candidate-1",
@@ -98,8 +102,42 @@ test("BVerfG unresolved variant retries use bounded exponential backoff", () => 
     attemptCount: 10,
     lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404",
   };
-  assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-07-26T00:00:00.000Z")), false);
-  assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-08-03T00:00:00.000Z")), true);
+  assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-07-22T12:00:00.000Z")), false);
+  assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-07-22T18:00:00.000Z")), true);
+});
+
+test("public article refreshes reject incomplete or suspiciously shrunken source text", () => {
+  const baseline = {
+    existingWasPublic: true,
+    existingTextLength: 10_000,
+    incomingPublishable: true,
+    incomingSourceTextAvailable: true,
+  };
+
+  assert.equal(
+    refreshQualityRegressionReason({
+      ...baseline,
+      incomingTextLength: 52,
+      incomingPublishable: false,
+      incomingSourceTextAvailable: false,
+    }),
+    "incoming_source_text_unavailable",
+  );
+  assert.equal(
+    refreshQualityRegressionReason({ ...baseline, incomingTextLength: 5_999 }),
+    "incoming_source_text_shrank_suspiciously",
+  );
+  assert.equal(refreshQualityRegressionReason({ ...baseline, incomingTextLength: 6_000 }), null);
+  assert.equal(
+    refreshQualityRegressionReason({
+      ...baseline,
+      existingWasPublic: false,
+      incomingTextLength: 52,
+      incomingPublishable: false,
+      incomingSourceTextAvailable: false,
+    }),
+    null,
+  );
 });
 
 test("daily workflow and all ingestion CLIs retain hardening controls", () => {
@@ -109,6 +147,7 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   const secondaryCli = read("workers/crawler/src/cli.ts");
   const directCli = read("scripts/ingest.ts");
   const spainSpider = read("lib/crawlee/spain-tribunal-constitucional-spider.ts");
+  const ingest = read("lib/ingest/run.ts");
   const summary = read("lib/ingest/summary.ts");
 
   assert.match(workflow, /LLM_SETTINGS_SECRET: \$\{\{ secrets\.LLM_SETTINGS_SECRET \}\}/);
@@ -130,6 +169,8 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   }
   assert.match(spainSpider, /checkRobotsAllowed/);
   assert.match(spainSpider, /respectRateLimit/);
+  assert.match(ingest, /BVERFG_TRACKED_CANDIDATE_RECHECK/);
+  assert.match(ingest, /REFRESH_QUALITY_REGRESSION_BLOCKED/);
   assert.match(summary, /syncIngestionRunSummarizedCounts/);
   assert.match(summary, /Failed to persist article summary/);
 });

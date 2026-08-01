@@ -4,6 +4,7 @@ import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/
 import type { CrawlAttemptLog, CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
 import {
   findSourceUrlCandidatesByUrls,
+  listSourceUrlCandidatesForRetry,
   markSourceUrlCandidatesFetched,
   upsertSourceUrlCandidates,
   type SourceUrlCandidateRecord,
@@ -33,6 +34,10 @@ import {
 } from "@/lib/article-lifecycle";
 import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 import { BVERFG_OFFICIAL_VARIANTS_404 } from "@/lib/ui/candidate-tracking-labels";
+import {
+  bverfgCaseNumberFromText,
+  bverfgOfficialUrlCandidatesFromUrl,
+} from "@/lib/crawlee/bverfg-spider";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -441,7 +446,10 @@ function isGenericCourtTitle(article: NormalizedArticle) {
   return /^(?:Beschluss|Urteil)\s+vom\s+\d{1,2}\.\s+[A-Za-zÄÖÜäöüß]+\s+\d{4}$/i.test(title);
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const BVERFG_RETRY_SCHEDULE_GRACE_MS = 6 * HOUR_MS;
+const DEFAULT_BVERFG_PENDING_RECHECK_LIMIT = 20;
 const DEFAULT_SPAIN_PENDING_RECHECK_LIMIT = 20;
 
 function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fallbackUrls: Array<string | undefined | null>) {
@@ -457,10 +465,10 @@ function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fall
 
 export function bverfgCandidateRetryDelayMs(attemptCount: number, errorCode?: string | null) {
   if (errorCode !== BVERFG_OFFICIAL_VARIANTS_404) return 0;
-  if (attemptCount >= 10) return 14 * DAY_MS;
-  if (attemptCount >= 6) return 7 * DAY_MS;
-  if (attemptCount >= 3) return 3 * DAY_MS;
-  return DAY_MS;
+  if (attemptCount >= 10) return 3 * DAY_MS;
+  if (attemptCount >= 6) return 2 * DAY_MS;
+  if (attemptCount >= 3) return DAY_MS;
+  return 12 * HOUR_MS;
 }
 
 export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[], now = new Date()) {
@@ -470,12 +478,69 @@ export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[],
     const delay = bverfgCandidateRetryDelayMs(record.attemptCount, record.lastErrorCode);
     if (delay === 0 || !record.lastAttemptAt) return true;
     const lastAttempt = Date.parse(record.lastAttemptAt);
-    return !Number.isFinite(lastAttempt) || now.getTime() - lastAttempt >= delay;
+    const effectiveDelay = Math.max(0, delay - BVERFG_RETRY_SCHEDULE_GRACE_MS);
+    return !Number.isFinite(lastAttempt) || now.getTime() - lastAttempt >= effectiveDelay;
   });
 }
 
 function articleContentType(value?: string | null): ArticleContentType {
   return ARTICLE_CONTENT_TYPES.includes(value as ArticleContentType) ? value as ArticleContentType : "decision";
+}
+
+function bverfgPublishedAtFromCandidate(record: SourceUrlCandidateRecord) {
+  const filenameDate = record.url.match(/\b[a-z]{2}(20\d{2})(\d{2})(\d{2})_[a-z0-9]+\.html\b/i);
+  if (filenameDate) return `${filenameDate[1]}-${filenameDate[2]}-${filenameDate[3]}`;
+
+  const messageDate = record.lastErrorMessage?.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  return messageDate ? `${messageDate[1]}-${messageDate[2]}-${messageDate[3]}` : undefined;
+}
+
+function trackedBverfgCandidateItem(record: SourceUrlCandidateRecord): DiscoveredItem | null {
+  const canonicalUrl = safeCanonicalUrl(record.url);
+  if (!canonicalUrl) return null;
+  const publishedAt = bverfgPublishedAtFromCandidate(record);
+  const caseNumber = bverfgCaseNumberFromText(`${record.lastErrorMessage ?? ""} ${canonicalUrl}`);
+  const recordedTitle = record.lastErrorMessage?.split(" | ")[0]?.trim();
+  const title = recordedTitle || ["Beschluss", publishedAt, caseNumber].filter(Boolean).join(" - ");
+  const officialUrlCandidates = bverfgOfficialUrlCandidatesFromUrl(canonicalUrl);
+
+  return {
+    sourceKey: "de-bverfg",
+    url: canonicalUrl,
+    canonicalUrl,
+    title: title || undefined,
+    publishedAt,
+    contentType: articleContentType(record.candidateType),
+    metadata: {
+      discoveryIndex: "source_url_candidates",
+      caseNumber,
+      officialUrlCandidates,
+      officialUrlResolverVersion: 2,
+      detailDiscoveryStrategy: record.discoveredBy,
+      candidateTrackingId: record.id,
+      candidateAttemptCount: record.attemptCount,
+      originalLanguage: "de",
+      collection: {
+        strategy: "api",
+        confidence: "medium",
+        sourceUrlVerified: true,
+        publishable: false,
+        sourceTextAvailable: false,
+        reason: "Previously unresolved official BVerfG URL candidate selected for a scheduled source-text recheck.",
+      },
+    },
+  };
+}
+
+async function loadTrackedBverfgRetryItems(now = new Date()) {
+  const limit = boundedInteger(process.env.BVERFG_PENDING_RECHECK_LIMIT, DEFAULT_BVERFG_PENDING_RECHECK_LIMIT, { min: 1, max: 100 });
+  const candidates = await listSourceUrlCandidatesForRetry("de-bverfg", 100);
+
+  return candidates
+    .filter((record) => shouldRetryBverfgCandidates([record], now))
+    .map(trackedBverfgCandidateItem)
+    .filter((item): item is DiscoveredItem => Boolean(item))
+    .slice(0, limit);
 }
 
 async function loadTrackedSpainSourceTextPendingItems() {
@@ -540,7 +605,12 @@ async function closeTrackedBverfgCandidates(urls: string[], diagnostics?: Crawle
 function isUnverifiedBverfgFetch(article: NormalizedArticle) {
   if (article.sourceKey !== "de-bverfg") return false;
   const collection = isRecord(article.metadata?.collection) ? article.metadata.collection : {};
-  return collection.sourceUrlVerified === false || /^HTTP Status \d+/i.test(article.originalTitle ?? "");
+  return (
+    collection.sourceUrlVerified !== true ||
+    collection.sourceTextAvailable !== true ||
+    collection.publishable !== true ||
+    /^HTTP Status \d+/i.test(article.originalTitle ?? "")
+  );
 }
 
 function diagnosticsForArticle(article: NormalizedArticle) {
@@ -756,6 +826,27 @@ function sourceMetadataForArticle(
   };
 }
 
+export function refreshQualityRegressionReason(input: {
+  existingWasPublic: boolean;
+  existingTextLength: number;
+  incomingTextLength: number;
+  incomingPublishable: boolean;
+  incomingSourceTextAvailable: boolean;
+}) {
+  if (!input.existingWasPublic) return null;
+  if (!input.incomingSourceTextAvailable) return "incoming_source_text_unavailable";
+  if (!input.incomingPublishable) return "incoming_content_not_publishable";
+
+  const minimumAcceptedLength = Math.max(
+    MIN_PUBLISHABLE_TEXT_LENGTH,
+    Math.floor(input.existingTextLength * 0.6),
+  );
+  if (input.existingTextLength >= MIN_PUBLISHABLE_TEXT_LENGTH && input.incomingTextLength < minimumAcceptedLength) {
+    return "incoming_source_text_shrank_suspiciously";
+  }
+  return null;
+}
+
 export async function insertNormalizedArticle(
   article: NormalizedArticle,
   diagnosticsId?: string | null,
@@ -821,6 +912,28 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
   const plan = storagePlanForArticle(article, diagnosticsId);
   if (plan.skipped) {
     return { status: "skipped_nonconstitutional" as const, reason: plan.reason };
+  }
+
+  const existingMetadata = isRecord(existing.source_metadata) ? existing.source_metadata : {};
+  const existingCollection = isRecord(existingMetadata.collection) ? existingMetadata.collection : {};
+  const existingTextLength = existing.cleaned_text?.trim().length ?? 0;
+  const incomingTextLength = (article.cleanedText || article.rawText || "").trim().length;
+  const regressionReason = refreshQualityRegressionReason({
+    existingWasPublic:
+      existing.status === "summarized" &&
+      existingCollection.publishable === true,
+    existingTextLength,
+    incomingTextLength,
+    incomingPublishable: plan.collection.publishable === true,
+    incomingSourceTextAvailable: plan.collection.sourceTextAvailable === true,
+  });
+  if (regressionReason) {
+    return {
+      status: "preserved" as const,
+      reason: regressionReason,
+      existingTextLength,
+      incomingTextLength,
+    };
   }
 
   const dedupKeys = dedupKeysForArticle(article);
@@ -952,13 +1065,27 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     await executionCheckpoint(options);
     const inRangeDiscovered = allDiscovered.filter((item) => isItemInDateRange(item.publishedAt, rangeStart));
     const primaryDiscovered = inRangeDiscovered.slice(0, limit);
+    const trackedBverfgItems =
+      adapter.sourceKey === "de-bverfg"
+        ? await loadTrackedBverfgRetryItems()
+        : [];
     const trackedSpainItems =
       adapter.sourceKey === SPAIN_TC_SOURCE_KEY && refreshExisting
         ? await loadTrackedSpainSourceTextPendingItems()
         : [];
-    const discovered = uniqueDiscoveredItems([...primaryDiscovered, ...trackedSpainItems]);
-    result.discoveredCount = uniqueDiscoveredItems([...allDiscovered, ...trackedSpainItems]).length;
+    const discovered = uniqueDiscoveredItems([...primaryDiscovered, ...trackedBverfgItems, ...trackedSpainItems]);
+    result.discoveredCount = uniqueDiscoveredItems([...allDiscovered, ...trackedBverfgItems, ...trackedSpainItems]).length;
     result.skippedOutOfRangeCount = allDiscovered.length - inRangeDiscovered.length;
+    if (trackedBverfgItems.length > 0) {
+      addDiagnosticAttempt(result.diagnostics, {
+        url: "database://source_url_candidates/de-bverfg/retrying",
+        strategy: "api",
+        result: "success",
+        discoveredCount: trackedBverfgItems.length,
+        errorCode: "BVERFG_TRACKED_CANDIDATE_RECHECK",
+        errorMessage: "Due BVerfG retry candidates were included independently of the current discovery date range.",
+      });
+    }
     if (trackedSpainItems.length > 0) {
       addDiagnosticAttempt(result.diagnostics, {
         url: "database://articles/spain-source-text-pending",
@@ -1059,6 +1186,17 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
             if (isSpainSourceTextPending(normalized)) {
               await touchTrackedSpainSourceTextPending(existing.id);
             }
+            result.unchangedCount += 1;
+            result.skippedCount += 1;
+          } else if (refreshed.status === "preserved") {
+            addDiagnosticAttempt(result.diagnostics, {
+              url: normalized.canonicalUrl,
+              strategy: "api",
+              result: "success",
+              fallback: true,
+              errorCode: "REFRESH_QUALITY_REGRESSION_BLOCKED",
+              errorMessage: `Existing public article was preserved (${refreshed.reason}; ${refreshed.existingTextLength} -> ${refreshed.incomingTextLength} characters).`,
+            });
             result.unchangedCount += 1;
             result.skippedCount += 1;
           } else if (refreshed.status === "refreshed") {
