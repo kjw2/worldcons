@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokens = url.searchParams.getAll("masterdash_token");
   if (tokens.length !== 1) {
-    return secured(NextResponse.json({ error: "A single MasterDash token is required." }, { status: 400 }));
+    return secured(NextResponse.json({ error: "A single MasterDash token is required." }, { status: 401 }));
   }
 
   try {

@@ -7,6 +7,7 @@ import {
   verifyMasterdashControlRequest,
   verifyMasterdashSsoToken,
 } from "../lib/masterdash/security";
+import { GET as exchangeMasterdashSso } from "../app/api/auth/masterdash/route";
 
 const originalSsoSecret = process.env.MASTERDASH_SSO_SECRET;
 const originalControlSecret = process.env.MASTERDASH_CONTROL_SECRET;
@@ -35,6 +36,11 @@ function jwt(payload: Record<string, unknown>, secret = ssoSecret) {
   const signature = createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
+
+test("requires exactly one token for the SSO exchange", async () => {
+  const response = await exchangeMasterdashSso(new Request("https://worldcons.example/api/auth/masterdash"));
+  assert.equal(response.status, 401);
+});
 
 test("accepts the exact one-minute WorldCons SSO contract", () => {
   const now = new Date("2026-08-01T10:00:00.000Z");
