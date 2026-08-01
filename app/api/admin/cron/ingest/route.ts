@@ -5,6 +5,7 @@ import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-pl
 import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
 import { summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
+import { CollectionPausedError, assertCollectionCanStart } from "@/lib/masterdash/store";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
@@ -28,6 +29,19 @@ function cronIngestSucceeded(value: { ingest: unknown; summarize: unknown; tags:
 export async function GET(request: Request) {
   if (!isAuthorizedSecretRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    await assertCollectionCanStart();
+  } catch (error) {
+    const paused = error instanceof CollectionPausedError;
+    return NextResponse.json(
+      {
+        complete: false,
+        error: paused ? error.message : "Collection control state is unavailable; scheduled collection was not started.",
+      },
+      { status: paused ? error.status : 503 },
+    );
   }
 
   const ingestLimit = boundedInteger(process.env.INGEST_LIMIT_PER_SOURCE, 5, { min: 1, max: 100 });

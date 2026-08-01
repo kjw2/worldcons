@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { assertCollectionCanStart } from "@/lib/masterdash/store";
 import { ARTICLE_CONTENT_TYPES, type ArticleContentType, type SummaryJson } from "@/lib/db/types";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import type { CrawlAttemptLog, CrawlStrategyOption, CrawlerDiagnosticsCollector } from "@/lib/crawler/types";
@@ -1263,6 +1264,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
 }
 
 export async function runIngest(options: RunIngestOptions = {}) {
+  await assertCollectionCanStart();
   await executionCheckpoint(options);
   const limit = boundedInteger(options.limit ?? process.env.INGEST_LIMIT_PER_SOURCE, 20, { min: 1, max: 100 });
   const blocked = inlineCrawlerBlockReason(options);

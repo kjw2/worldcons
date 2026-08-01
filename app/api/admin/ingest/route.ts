@@ -8,6 +8,7 @@ import {
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { buildAdminJobIdempotencyKey, createAdminJob, type AdminJobRecord } from "@/lib/db/admin-jobs";
+import { CollectionPausedError, assertCollectionCanStart } from "@/lib/masterdash/store";
 import { parseAdminIngestBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
 
@@ -89,6 +90,18 @@ export async function POST(request: Request) {
     const context = buildAdminIngestJobContext(parsed.data);
     const { action, sourceKey, articleId, slug } = context;
     auditMetadata = context.auditMetadata;
+
+    if (context.shouldIngest) {
+      try {
+        await assertCollectionCanStart();
+      } catch (error) {
+        const paused = error instanceof CollectionPausedError;
+        return NextResponse.json(
+          { error: paused ? error.message : "Collection control state is unavailable; no new collection was started." },
+          { status: paused ? error.status : 503 },
+        );
+      }
+    }
 
     if (action === "retry-summary" && !articleId && !slug) {
       return NextResponse.json({ error: "articleId or slug is required" }, { status: 400 });

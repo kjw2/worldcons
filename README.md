@@ -432,9 +432,12 @@ pnpm start
 | `ADMIN_USERNAME` | 관리자 아이디 | 기본값은 `ap570@naver.com` |
 | `ADMIN_PASSWORD` | 관리자 비밀번호 | 브라우저 로그인용 비밀번호. 운영 환경에서는 6자 이상 필요 |
 | `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 운영 환경에서는 필수. `ADMIN_PASSWORD`와 다른 32자 이상 값 |
+| `MASTERDASH_SSO_SECRET` | MasterDash SSO 검증 열쇠 | 32바이트 이상. MasterDash의 `PORTAL_SSO_SECRET`과 동일한 별도 secret |
+| `MASTERDASH_CONTROL_SECRET` | MasterDash 수집 제어 검증 열쇠 | 32바이트 이상. MasterDash의 `PORTAL_CONTROL_SECRET`과 동일한 별도 secret |
+| `MASTERDASH_SSO_ISSUER` | MasterDash JWT 발급자 | 선택값. 기본값 `masterdash` |
 | `APP_BASE_URL` | 서비스 주소 | canonical, sitemap URL base |
 
-운영 환경에서는 `ADMIN_PASSWORD`를 6자 이상으로 설정하고, `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`는 모두 32자 이상으로 설정해야 합니다. 위 값은 서로 달라야 하며, 서버 secret은 `NEXT_PUBLIC_` 환경변수로 노출하지 않습니다.
+운영 환경에서는 `ADMIN_PASSWORD`를 6자 이상으로 설정하고, `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`는 모두 32자 이상으로 설정해야 합니다. 용도가 다른 secret은 서로 달라야 하며, 서버 secret은 `NEXT_PUBLIC_` 환경변수로 노출하지 않습니다. MasterDash 연동의 endpoint, 서명 계약, migration 순서는 [`docs/integrations/masterdash.md`](docs/integrations/masterdash.md)를 참고합니다.
 
 ### AI 관련 값
 
