@@ -44,6 +44,7 @@ interface SourceRunResult {
   sourceKey: string;
   discoveredCount: number;
   fetchedCount: number;
+  recordsAdded?: number;
   refreshedCount: number;
   unchangedCount: number;
   summarizedCount: number;
@@ -304,6 +305,7 @@ async function closeIngestionRun(runId: string | null, result: SourceRunResult, 
         uncollectedCandidates: result.uncollectedCandidates.slice(0, 20),
         statusCounts: result.statusCounts,
         collectionCounts: result.collectionCounts,
+        recordsAdded: result.recordsAdded ?? null,
         refreshedCount: result.refreshedCount,
         unchangedCount: result.unchangedCount,
         skippedOutOfRangeCount: result.skippedOutOfRangeCount,
@@ -1091,6 +1093,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     sourceKey: adapter.sourceKey,
     discoveredCount: 0,
     fetchedCount: 0,
+    recordsAdded: 0,
     refreshedCount: 0,
     unchangedCount: 0,
     summarizedCount: 0,
@@ -1337,6 +1340,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         const inserted = await insertNormalizedArticle(normalized, runId);
         await executionCheckpoint(options);
         if (inserted) {
+          result.recordsAdded = (result.recordsAdded ?? 0) + 1;
           result.statusCounts[inserted.status] = (result.statusCounts[inserted.status] ?? 0) + 1;
           if (inserted.collection.publishable) result.collectionCounts.publishableCount += 1;
           if (!inserted.collection.sourceTextAvailable) result.collectionCounts.metadataOnlyCount += 1;

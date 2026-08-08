@@ -10,6 +10,7 @@ import {
 import { GET as exchangeMasterdashSso } from "../app/api/auth/masterdash/route";
 import { GET as getMasterdashHealth } from "../app/api/masterdash/health/route";
 import { resolveExistingAdminSessionIdentityForMasterdash } from "../lib/utils/auth";
+import { collectionHealthMetrics } from "../lib/masterdash/health";
 
 const originalSsoSecret = process.env.MASTERDASH_SSO_SECRET;
 const originalControlSecret = process.env.MASTERDASH_CONTROL_SECRET;
@@ -173,6 +174,71 @@ test("returns a compact 2xx degraded health response when the database is unavai
       else process.env[name] = value;
     }
   }
+});
+
+test("reports the stored successful collection metrics without recomputing missing values", () => {
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "run-success",
+      source_key: "fr-conseil-constitutionnel",
+      status: "completed",
+      started_at: "2026-08-08T00:00:00.000Z",
+      finished_at: "2026-08-08T00:02:00.000Z",
+      fetched_count: 12,
+      failed_count: 0,
+      metadata: { recordsAdded: 4 },
+    },
+    successful: {
+      source_key: "fr-conseil-constitutionnel",
+      finished_at: "2026-08-08T00:02:00.000Z",
+    },
+    pendingItems: 2,
+    failedJobCount: 0,
+    now: Date.parse("2026-08-08T00:03:00.000Z"),
+  });
+  assert.equal(metrics.lastRunStatus, "success");
+  assert.equal(metrics.recordsCollected, 12);
+  assert.equal(metrics.recordsAdded, 4);
+  assert.equal(metrics.durationMs, 120000);
+  assert.equal(metrics.failureReason, null);
+  assert.equal(metrics.runId, "run-success");
+});
+
+test("reports the latest failed collection and its actual failure target", () => {
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "run-failed",
+      source_key: "us-scotus",
+      status: "failed",
+      started_at: "2026-08-08T01:00:00.000Z",
+      finished_at: "2026-08-08T01:00:10.000Z",
+      fetched_count: 0,
+      failed_count: 1,
+      error_message: "SCOTUS source unavailable",
+      metadata: { errors: ["secondary error"] },
+    },
+    pendingItems: 1,
+    now: Date.parse("2026-08-08T01:01:00.000Z"),
+  });
+  assert.equal(metrics.lastRunStatus, "failed");
+  assert.equal(metrics.failureReason, "SCOTUS source unavailable");
+  assert.equal(metrics.failureTarget, "us-scotus");
+  assert.equal(metrics.errorCount, 1);
+  assert.equal(metrics.durationMs, 10000);
+});
+
+test("returns null for collection metrics that are absent from stored data", () => {
+  const metrics = collectionHealthMetrics({ latest: null, successful: null });
+  assert.equal(metrics.lastRunStatus, null);
+  assert.equal(metrics.recordsCollected, null);
+  assert.equal(metrics.recordsAdded, null);
+  assert.equal(metrics.pendingItems, null);
+  assert.equal(metrics.errorCount, null);
+  assert.equal(metrics.failureReason, null);
+  assert.equal(metrics.failureTarget, null);
+  assert.equal(metrics.runId, null);
+  assert.equal(metrics.durationMs, null);
+  assert.equal(metrics.checkpoint, null);
 });
 
 test("accepts the exact one-minute WorldCons SSO contract", () => {
