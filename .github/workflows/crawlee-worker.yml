@@ -30,7 +30,6 @@ concurrency:
 jobs:
   crawl:
     name: Incremental ingest (${{ matrix.source }})
-    if: github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -112,6 +111,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Validate bounded workflow inputs
+        if: github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source
         env:
           SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
@@ -129,14 +129,14 @@ jobs:
           [[ "$LIMIT_INPUT" =~ ^[0-9]+$ ]] && (( LIMIT_INPUT >= 1 && LIMIT_INPUT <= 100 )) || exit 2
           [[ "$RANGE_DAYS_INPUT" =~ ^[0-9]+$ ]] && (( RANGE_DAYS_INPUT >= 1 && RANGE_DAYS_INPUT <= 730 )) || exit 2
       - name: Run direct P1 daily command pipeline
-        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED == 'true'
+        if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED == 'true'
         env:
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
         run: pnpm admin:worker:p1 -- --daily-pipeline --source=${{ matrix.source }} --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
       - name: Run isolated source worker
-        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
+        if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         env:
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
