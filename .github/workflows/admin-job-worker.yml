@@ -15,24 +15,59 @@ concurrency:
 jobs:
   drain:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
     env:
-      DEFAULT_BASE_URL: https://worldcons.vercel.app
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      LLM_SETTINGS_SECRET: ${{ secrets.LLM_SETTINGS_SECRET }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+      OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
+      OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.OPENAI_COMPATIBLE_BASE_URL }}
+      OPENAI_COMPATIBLE_SUMMARY_MODEL: ${{ secrets.OPENAI_COMPATIBLE_SUMMARY_MODEL }}
+      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER }}
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      PLAYWRIGHT_ENABLED: "true"
+      CRAWLEE_PLAYWRIGHT_ENABLED: "true"
+      CRAWLEE_WORKER: "true"
+      CRAWLEE_MAX_CONCURRENCY: "1"
+      CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
+      CRAWLEE_SAME_DOMAIN_DELAY_SECS: "2"
+      BVERFG_CRAWL_DELAY_MS: "3000"
+      BVERFG_TIMEOUT_MS: "60000"
+      BVERFG_MAX_CONCURRENCY: "1"
+      BVERFG_RETRY_COUNT: "2"
+      BVERFG_DEJURE_PAGES: "4"
+      BVERFG_INGEST_RANGE_DAYS: "60"
+      BVERFG_USE_IPV4_FIRST: "true"
+      FRANCE_CRAWL_DELAY_MS: "3000"
+      FRANCE_TIMEOUT_MS: "90000"
+      FRANCE_MAX_CONCURRENCY: "1"
+      INGEST_RANGE_DAYS: "14"
+      SPAIN_INGEST_RANGE_DAYS: "180"
+      SPAIN_INGEST_RANGE_DAYS_CAP: "730"
+      SPAIN_DISCOVERY_MAX_PAGES: "20"
+      SPAIN_REQUEST_DELAY_MS: "2000"
+      INGEST_REFRESH_EXISTING: "true"
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
     steps:
-      - name: Validate cron secret
-        run: |
-          if [ -z "$CRON_SECRET" ]; then
-            echo "CRON_SECRET secret is required" >&2
-            exit 1
-          fi
-
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - name: Drain admin job queue
-        run: |
-          BASE_URL="${WORLDCONS_BASE_URL:-$DEFAULT_BASE_URL}"
-          BASE_URL="${BASE_URL%/}"
-          curl --fail-with-body --show-error --silent \
-            --request GET \
-            --header "Authorization: Bearer $CRON_SECRET" \
-            "$BASE_URL/api/admin/cron/jobs"
+        run: pnpm admin:job:worker

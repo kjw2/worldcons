@@ -31,6 +31,7 @@
     "admin:gate0": "tsx scripts/admin-redesign-gate0.ts",
     "admin:gate0:dry": "tsx scripts/admin-redesign-gate0.ts --dry-run --environment=ci",
     "admin:worker:p1": "tsx scripts/admin-command-worker-p1.ts",
+    "admin:job:worker": "tsx scripts/admin-job-worker.ts",
     "admin:lifecycle:p2": "tsx scripts/article-lifecycle-p2.ts",
     "admin:publication:p3": "tsx scripts/article-publication-p3.ts",
     "admin:health:p5": "tsx scripts/admin-health-p5.ts",

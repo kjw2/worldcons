@@ -452,6 +452,34 @@ const DAY_MS = 24 * HOUR_MS;
 const BVERFG_RETRY_SCHEDULE_GRACE_MS = 6 * HOUR_MS;
 const DEFAULT_BVERFG_PENDING_RECHECK_LIMIT = 20;
 const DEFAULT_SPAIN_PENDING_RECHECK_LIMIT = 20;
+const DEFAULT_INGESTION_RUN_STALE_MINUTES = 180;
+
+function staleIngestionRunMinutes() {
+  const value = Number(process.env.INGESTION_RUN_STALE_MINUTES ?? DEFAULT_INGESTION_RUN_STALE_MINUTES);
+  return Number.isFinite(value) && value >= 30 ? Math.min(Math.floor(value), 24 * 60) : DEFAULT_INGESTION_RUN_STALE_MINUTES;
+}
+
+async function recoverStaleIngestionRuns(sourceKey: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return 0;
+
+  const finishedAt = new Date().toISOString();
+  const cutoff = new Date(Date.now() - staleIngestionRunMinutes() * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("ingestion_runs")
+    .update({
+      status: "failed",
+      finished_at: finishedAt,
+      error_message: `Recovered stale ingestion run after ${staleIngestionRunMinutes()} minutes without completion.`,
+    })
+    .eq("source_key", sourceKey)
+    .eq("status", "running")
+    .lt("started_at", cutoff)
+    .select("id");
+
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
 
 function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fallbackUrls: Array<string | undefined | null>) {
   const configured = stringArray(metadata?.officialUrlCandidates);
@@ -1033,6 +1061,17 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     },
   };
   await executionCheckpoint(options);
+  const recoveredStaleRunCount = await recoverStaleIngestionRuns(adapter.sourceKey);
+  if (recoveredStaleRunCount > 0) {
+    addDiagnosticAttempt(result.diagnostics, {
+      url: `database://ingestion_runs/${adapter.sourceKey}`,
+      strategy: "api",
+      result: "success",
+      discoveredCount: recoveredStaleRunCount,
+      errorCode: "STALE_INGESTION_RUN_RECOVERED",
+      errorMessage: `Recovered ${recoveredStaleRunCount} stale ingestion run(s) before starting a new run.`,
+    });
+  }
   const runId = await createIngestionRun(adapter.sourceKey);
   let rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
   if (adapter.sourceKey === SPAIN_TC_SOURCE_KEY) {

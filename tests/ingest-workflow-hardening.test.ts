@@ -151,6 +151,10 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   const summary = read("lib/ingest/summary.ts");
 
   assert.match(workflow, /LLM_SETTINGS_SECRET: \$\{\{ secrets\.LLM_SETTINGS_SECRET \}\}/);
+  assert.match(workflow, /matrix:\s+source:/, "daily workflow must isolate each source in its own job");
+  assert.match(workflow, /max-parallel: 4/, "daily workflow must allow independent sources to continue after one source stalls");
+  assert.match(workflow, /BVERFG_PENDING_RECHECK_LIMIT: "5"/, "BVerfG retry work must be bounded per run");
+  assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");
   assert.match(workflow, /SPAIN_REQUEST_DELAY_MS: "2000"/);
   assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED:/);
   assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS:/);
@@ -170,6 +174,8 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(spainSpider, /checkRobotsAllowed/);
   assert.match(spainSpider, /respectRateLimit/);
   assert.match(ingest, /BVERFG_TRACKED_CANDIDATE_RECHECK/);
+  assert.match(ingest, /recoverStaleIngestionRuns/);
+  assert.match(ingest, /INGESTION_RUN_STALE_MINUTES/);
   assert.match(ingest, /REFRESH_QUALITY_REGRESSION_BLOCKED/);
   assert.match(summary, /syncIngestionRunSummarizedCounts/);
   assert.match(summary, /Failed to persist article summary/);

@@ -179,6 +179,9 @@ export async function executeAdminIngestJobContext(context: AdminIngestRequestCo
         runIngest({ sourceKey, limit: context.limit, allowVercelCrawling: context.allowVercelCrawling }),
       )
     : null;
+  if (isRecord(ingest) && ingest.mode === "blocked") {
+    throw new Error(typeof ingest.message === "string" ? ingest.message : "Ingest is blocked in the current environment.");
+  }
   const summarize = context.action === "retry-summary"
     ? await runSummarizeArticle({ articleId: context.articleId, slug: context.slug })
     : context.shouldSummarize

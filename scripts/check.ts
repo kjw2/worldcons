@@ -855,7 +855,7 @@ assert(
 );
 
 const scheduledSummaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), ".github/workflows/crawlee-worker.yml"), "utf8");
-for (const requiredFlag of ["--drain", "--strict", "--max-passes=4", "--pass-delay-ms=300000", "--retry-attempts=1", "--retry-delay-ms=65000"]) {
+for (const requiredFlag of ["--drain", "--strict", "--max-passes=4", "--pass-delay-ms=65000", "--retry-attempts=1", "--retry-delay-ms=65000"]) {
   assert(scheduledSummaryWorkflowSource.includes(requiredFlag), `scheduled summary workflow must include ${requiredFlag}`);
 }
 for (const requiredCacheRevalidationText of [
@@ -1837,8 +1837,8 @@ async function assertAdminRouteSecurityControls() {
     const adminJobWorkflowPath = path.join(process.cwd(), ".github/workflows/admin-job-worker.yml");
     assert(fs.existsSync(adminJobWorkflowPath), "admin job worker workflow must exist");
     const adminJobWorkflowSource = fs.readFileSync(adminJobWorkflowPath, "utf8");
-    assert(adminJobWorkflowSource.includes("/api/admin/cron/jobs"), "admin job workflow must call the cron jobs endpoint");
-    assert(adminJobWorkflowSource.includes("Authorization: Bearer"), "admin job workflow must pass CRON_SECRET through an Authorization header");
+    assert(adminJobWorkflowSource.includes("pnpm admin:job:worker"), "admin job workflow must run the direct queue worker");
+    assert(adminJobWorkflowSource.includes("CRAWLEE_WORKER: \"true\""), "admin job workflow must allow Crawlee execution outside Vercel");
     assert(adminJobWorkflowSource.includes("*/15 * * * *"), "admin job workflow must run on a 15 minute schedule");
     assert(!adminJobWorkflowSource.includes("?secret="), "admin job workflow must not use query string secrets");
 

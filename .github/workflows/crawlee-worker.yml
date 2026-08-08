@@ -29,8 +29,19 @@ concurrency:
 
 jobs:
   crawl:
+    name: Incremental ingest (${{ matrix.source }})
+    if: github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        source:
+          - de-bverfg
+          - us-scotus
+          - fr-conseil-constitutionnel
+          - es-tribunal-constitucional
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -61,6 +72,7 @@ jobs:
       APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      INGESTION_RUN_STALE_MINUTES: "180"
       INGEST_RANGE_DAYS: "14"
       SPAIN_INGEST_RANGE_DAYS: "180"
       SPAIN_INGEST_RANGE_DAYS_CAP: "730"
@@ -77,9 +89,10 @@ jobs:
       CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
       CRAWLEE_SAME_DOMAIN_DELAY_SECS: "2"
       BVERFG_CRAWL_DELAY_MS: "3000"
-      BVERFG_TIMEOUT_MS: "60000"
+      BVERFG_TIMEOUT_MS: "30000"
       BVERFG_MAX_CONCURRENCY: "1"
-      BVERFG_RETRY_COUNT: "2"
+      BVERFG_RETRY_COUNT: "1"
+      BVERFG_PENDING_RECHECK_LIMIT: "5"
       BVERFG_DEJURE_PAGES: "4"
       BVERFG_INGEST_RANGE_DAYS: "60"
       BVERFG_USE_IPV4_FIRST: "true"
@@ -118,52 +131,77 @@ jobs:
       - name: Run direct P1 daily command pipeline
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED == 'true'
         env:
-          SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
-        run: |
-          SOURCE_ARG=()
-          if [ -n "$SOURCE_INPUT" ]; then
-            SOURCE_ARG=("--source=$SOURCE_INPUT")
-          fi
-          pnpm admin:worker:p1 -- --daily-pipeline "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
-      - name: Run legacy Crawlee worker
+        run: pnpm admin:worker:p1 -- --daily-pipeline --source=${{ matrix.source }} --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
+      - name: Run isolated source worker
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
         env:
-          SOURCE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.source || '' }}
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
-        run: |
-          SOURCE_ARG=()
-          if [ -n "$SOURCE_INPUT" ]; then
-            SOURCE_ARG=("--source=$SOURCE_INPUT")
-          fi
-          pnpm crawl:worker -- "${SOURCE_ARG[@]}" --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --use-playwright --debug
+        run: pnpm crawl:worker -- --source=${{ matrix.source }} --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --use-playwright --debug
+
+  postprocess:
+    name: Summarize and refresh public state
+    if: always()
+    needs: crawl
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      LLM_SETTINGS_SECRET: ${{ secrets.LLM_SETTINGS_SECRET }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+      OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
+      OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.OPENAI_COMPATIBLE_BASE_URL }}
+      OPENAI_COMPATIBLE_SUMMARY_MODEL: ${{ secrets.OPENAI_COMPATIBLE_SUMMARY_MODEL }}
+      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER }}
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
+      ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED: ${{ vars.ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED || 'false' }}
+      ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS: ${{ vars.ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS }}
+      ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED || 'false' }}
+      ADMIN_PUBLICATION_V4_SHADOW_COHORTS: ${{ vars.ADMIN_PUBLICATION_V4_SHADOW_COHORTS }}
+      ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED || 'false' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
+      WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Summarize pending articles
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
-        # One in-process retry waits beyond the Gemini router's 60-second cooldown.
-        # Later passes make transient quota failures visible and recover without waiting for the next daily run.
-        # LLM_SETTINGS_SECRET must match Production so DB-stored provider keys can be decrypted here.
-        run: pnpm summarize-pending -- --limit=20 --drain --strict --max-passes=4 --pass-delay-ms=300000 --retry-attempts=1 --retry-delay-ms=65000
+        run: pnpm summarize-pending -- --limit=20 --drain --strict --max-passes=4 --pass-delay-ms=65000 --retry-attempts=1 --retry-delay-ms=65000
       - name: Refresh public tag counts
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED != 'true'
         run: pnpm refresh-tag-counts
       - name: Enforce site analytics retention
         run: pnpm analytics:retention
-      - name: Revalidate production public caches (legacy)
+      - name: Revalidate production public caches
         if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED != 'true'
-        env:
-          DEFAULT_BASE_URL: https://worldcons.vercel.app
-          WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
             echo "CRON_SECRET secret is required" >&2
             exit 1
           fi
-          BASE_URL="${WORLDCONS_BASE_URL:-$DEFAULT_BASE_URL}"
+          BASE_URL="${WORLDCONS_BASE_URL:-https://worldcons.vercel.app}"
           BASE_URL="${BASE_URL%/}"
           curl --fail-with-body --show-error --silent \
             --request POST \
