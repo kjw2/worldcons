@@ -430,6 +430,7 @@ pnpm start
 | `CRON_SECRET` | 자동 실행용 비밀값 | cron/API `Authorization: Bearer` 또는 `x-cron-secret` 헤더 |
 | `LLM_SETTINGS_SECRET` | LLM 키 암호화 열쇠 | 관리자 화면에 저장한 LLM API key 암호화용 전용 secret |
 | `ADMIN_USERNAME` | 관리자 아이디 | 기본값은 `ap570@naver.com` |
+| `MASTERDASH_ADMIN_IDENTITIES` | MasterDash SSO 허용 identity 목록 | 쉼표 구분. `ADMIN_USERNAME`은 항상 호환되며 `owner/admin`만 기존 관리자 세션으로 교환 |
 | `ADMIN_PASSWORD` | 관리자 비밀번호 | 브라우저 로그인용 비밀번호. 운영 환경에서는 6자 이상 필요 |
 | `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 운영 환경에서는 필수. `ADMIN_PASSWORD`와 다른 32자 이상 값 |
 | `MASTERDASH_SSO_SECRET` | MasterDash SSO 검증 열쇠 | 32바이트 이상. MasterDash의 `PORTAL_SSO_SECRET`과 동일한 별도 secret |

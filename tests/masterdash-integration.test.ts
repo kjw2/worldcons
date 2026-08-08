@@ -15,6 +15,7 @@ const originalSsoSecret = process.env.MASTERDASH_SSO_SECRET;
 const originalControlSecret = process.env.MASTERDASH_CONTROL_SECRET;
 const originalAdminUsername = process.env.ADMIN_USERNAME;
 const originalAdminPassword = process.env.ADMIN_PASSWORD;
+const originalMasterdashAdminIdentities = process.env.MASTERDASH_ADMIN_IDENTITIES;
 const ssoSecret = "worldcons-masterdash-sso-secret-for-tests-0001";
 const controlSecret = "worldcons-masterdash-control-secret-tests-0001";
 const adminUsername = "admin@worldcons.example";
@@ -24,6 +25,7 @@ before(() => {
   process.env.MASTERDASH_CONTROL_SECRET = controlSecret;
   process.env.ADMIN_USERNAME = adminUsername;
   process.env.ADMIN_PASSWORD = "active-local-admin-password";
+  process.env.MASTERDASH_ADMIN_IDENTITIES = " admin , , ADMIN2 ";
 });
 
 after(() => {
@@ -35,6 +37,8 @@ after(() => {
   else process.env.ADMIN_USERNAME = originalAdminUsername;
   if (originalAdminPassword === undefined) delete process.env.ADMIN_PASSWORD;
   else process.env.ADMIN_PASSWORD = originalAdminPassword;
+  if (originalMasterdashAdminIdentities === undefined) delete process.env.MASTERDASH_ADMIN_IDENTITIES;
+  else process.env.MASTERDASH_ADMIN_IDENTITIES = originalMasterdashAdminIdentities;
 });
 
 function jwt(payload: Record<string, unknown>, secret = ssoSecret) {
@@ -79,6 +83,33 @@ test("maps only owner or admin identities to the existing active local administr
       subject: "different-user",
       email: "different@worldcons.example",
       role: "admin",
+    }),
+    null,
+  );
+});
+
+test("accepts normalized allowlisted owner/admin identities and rejects unregistered identities", () => {
+  assert.equal(
+    resolveExistingAdminSessionIdentityForMasterdash({
+      subject: " ADMIN2 ",
+      email: "admin2@masterdash.example",
+      role: "admin",
+    }),
+    adminUsername,
+  );
+  assert.equal(
+    resolveExistingAdminSessionIdentityForMasterdash({
+      subject: "admin3",
+      email: "admin3@masterdash.example",
+      role: "owner",
+    }),
+    null,
+  );
+  assert.equal(
+    resolveExistingAdminSessionIdentityForMasterdash({
+      subject: "admin2",
+      email: "admin2@masterdash.example",
+      role: "operator",
     }),
     null,
   );

@@ -29,6 +29,21 @@ function configuredAdminUsername() {
   return process.env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME;
 }
 
+function normalizeMasterdashIdentity(value?: string) {
+  const normalized = value?.trim().toLocaleLowerCase("en-US");
+  return normalized || null;
+}
+
+function configuredMasterdashAdminIdentities() {
+  const identities = (process.env.MASTERDASH_ADMIN_IDENTITIES ?? "")
+    .split(",")
+    .map((value) => normalizeMasterdashIdentity(value))
+    .filter((value): value is string => Boolean(value));
+  const configuredUsername = normalizeMasterdashIdentity(configuredAdminUsername());
+  if (configuredUsername) identities.push(configuredUsername);
+  return new Set(identities);
+}
+
 function configuredAdminPassword() {
   const password = process.env.ADMIN_PASSWORD?.trim();
   return password || null;
@@ -101,10 +116,11 @@ export function resolveExistingAdminSessionIdentityForMasterdash(input: {
   }
 
   const username = configuredAdminUsername();
-  const expectedIdentity = username.trim().toLocaleLowerCase("en-US");
+  const allowedIdentities = configuredMasterdashAdminIdentities();
   const matchesExistingAccount = [input.email, input.subject].some((value) => {
-    if (!value?.trim()) return false;
-    return safeEqual(value.trim().toLocaleLowerCase("en-US"), expectedIdentity);
+    const normalized = normalizeMasterdashIdentity(value);
+    if (!normalized) return false;
+    return [...allowedIdentities].some((allowedIdentity) => safeEqual(normalized, allowedIdentity));
   });
 
   return matchesExistingAccount ? username : null;
