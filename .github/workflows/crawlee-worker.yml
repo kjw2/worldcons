@@ -88,10 +88,10 @@ jobs:
       CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
       CRAWLEE_SAME_DOMAIN_DELAY_SECS: "2"
       BVERFG_CRAWL_DELAY_MS: "3000"
-      BVERFG_TIMEOUT_MS: "30000"
+      BVERFG_TIMEOUT_MS: "15000"
       BVERFG_MAX_CONCURRENCY: "1"
-      BVERFG_RETRY_COUNT: "1"
-      BVERFG_PENDING_RECHECK_LIMIT: "5"
+      BVERFG_RETRY_COUNT: "0"
+      BVERFG_PENDING_RECHECK_LIMIT: "3"
       BVERFG_DEJURE_PAGES: "4"
       BVERFG_INGEST_RANGE_DAYS: "60"
       BVERFG_USE_IPV4_FIRST: "true"
@@ -135,8 +135,15 @@ jobs:
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
         run: pnpm admin:worker:p1 -- --daily-pipeline --source=${{ matrix.source }} --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
+      - name: Run isolated BVerfG worker without browser fallback
+        if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && matrix.source == 'de-bverfg'
+        env:
+          LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
+          STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
+          RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
+        run: pnpm crawl:worker -- --source=de-bverfg --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --no-playwright --debug
       - name: Run isolated source worker
-        if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'
+        if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && matrix.source != 'de-bverfg'
         env:
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}

@@ -153,7 +153,9 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(workflow, /LLM_SETTINGS_SECRET: \$\{\{ secrets\.LLM_SETTINGS_SECRET \}\}/);
   assert.match(workflow, /matrix:\s+source:/, "daily workflow must isolate each source in its own job");
   assert.match(workflow, /max-parallel: 4/, "daily workflow must allow independent sources to continue after one source stalls");
-  assert.match(workflow, /BVERFG_PENDING_RECHECK_LIMIT: "5"/, "BVerfG retry work must be bounded per run");
+  assert.match(workflow, /BVERFG_PENDING_RECHECK_LIMIT: "3"/, "BVerfG retry work must be bounded per run");
+  assert.match(workflow, /BVERFG_RETRY_COUNT: "0"/, "BVerfG daily retries must not multiply a slow official endpoint");
+  assert.match(workflow, /Run isolated BVerfG worker without browser fallback[\s\S]*--no-playwright/, "BVerfG daily detail checks must use bounded HTTP fallback only");
   assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");
   assert.match(workflow, /SPAIN_REQUEST_DELAY_MS: "2000"/);
   assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED:/);
