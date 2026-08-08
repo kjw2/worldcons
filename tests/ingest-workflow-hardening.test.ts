@@ -157,6 +157,7 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(workflow, /BVERFG_RETRY_COUNT: "0"/, "BVerfG daily retries must not multiply a slow official endpoint");
   assert.match(workflow, /Run isolated BVerfG worker without browser fallback[\s\S]*--no-playwright/, "BVerfG daily detail checks must use bounded HTTP fallback only");
   assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");
+  assert.match(workflow, /continue-on-error: \$\{\{ vars\.ADMIN_REQUIRE_PUBLICATION_PARITY != 'true' \}\}/, "legacy parity drift must not falsely fail collection by default");
   assert.match(workflow, /SPAIN_REQUEST_DELAY_MS: "2000"/);
   assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED:/);
   assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS:/);

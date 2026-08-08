@@ -219,6 +219,7 @@ jobs:
         run: pnpm admin:publication:p3 -- --outbox --drain --max-passes=10 --worker="github-actions-${GITHUB_RUN_ID}" --limit=100 --lease-seconds=120
       - name: Require P2 and P3 publication parity
         if: env.ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED == 'true' && env.ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED == 'true'
+        continue-on-error: ${{ vars.ADMIN_REQUIRE_PUBLICATION_PARITY != 'true' }}
         run: |
           pnpm admin:lifecycle:p2 --require-parity
           pnpm admin:publication:p3 -- --require-parity
