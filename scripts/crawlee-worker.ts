@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { effectiveRangeDaysForSource, runIngest } from "@/lib/ingest/run";
+import { effectiveRangeDaysForSource, isDiscoveredItemInCollectionRange, runIngest } from "@/lib/ingest/run";
 import { getSourceAdapter } from "@/lib/sources";
 import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
@@ -41,11 +41,22 @@ async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyO
   if (!adapter) throw new Error(`Unknown source: ${sourceKey}`);
   const diagnostics = createDiagnosticsCollector(sourceKey);
   const discovered = await adapter.discover({ strategy, usePlaywright, diagnostics, debug: true, dryRun: true, limit, rangeDays });
-  const items = discovered.filter((item) => isInRange(item.publishedAt, rangeDays)).slice(0, limit);
+  const revisionRangeDays = sourceKey === "us-scotus"
+    ? optionalPositiveInteger(process.env.SCOTUS_REVISION_RECHECK_DAYS) ?? 90
+    : undefined;
+  const revisionRangeStart = revisionRangeDays ? rangeStartForDays(revisionRangeDays) : undefined;
+  const primaryItems = discovered.filter((item) => isInRange(item.publishedAt, rangeDays)).slice(0, limit);
+  const revisionItems = sourceKey === "us-scotus" && revisionRangeStart
+    ? discovered
+      .filter((item) => !isInRange(item.publishedAt, rangeDays) && isDiscoveredItemInCollectionRange(item, undefined, revisionRangeStart))
+      .slice(0, optionalPositiveInteger(process.env.SCOTUS_REVISION_RECHECK_LIMIT) ?? 100)
+    : [];
+  const items = [...new Map([...primaryItems, ...revisionItems].map((item) => [item.canonicalUrl, item])).values()];
   return {
     mode: "dry-run",
     sourceKey,
     rangeDays,
+    revisionRangeDays,
     spainDateBasis: sourceKey === SPAIN_TC_SOURCE_KEY
       ? {
           dateBasis: "HJ FECHA_REGISTRO",
@@ -65,6 +76,7 @@ async function dryRun(sourceKey: string, limit: number, strategy: CrawlStrategyO
       confidence: item.metadata?.collection?.confidence,
       decisionDate: typeof item.metadata?.decisionDate === "string" ? item.metadata.decisionDate : undefined,
       boePublishedAt: typeof item.metadata?.boePublishedAt === "string" ? item.metadata.boePublishedAt : undefined,
+      revisionDate: typeof item.metadata?.revisionDate === "string" ? item.metadata.revisionDate : undefined,
       publishable: item.metadata?.collection?.publishable,
       sourceTextAvailable: item.metadata?.collection?.sourceTextAvailable,
       reviewReason:

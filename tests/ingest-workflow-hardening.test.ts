@@ -10,9 +10,11 @@ import {
 } from "../lib/crawlee/bverfg-spider";
 import {
   bverfgCandidateRetryDelayMs,
+  isDiscoveredItemInCollectionRange,
   refreshQualityRegressionReason,
   shouldRetryBverfgCandidates,
 } from "../lib/ingest/run";
+import { scotusRevisionDateFromRowText } from "../lib/sources/supremecourt";
 import type { SourceUrlCandidateRecord } from "../lib/db/source-url-candidates";
 
 test("ingestion success distinguishes a verified empty listing from swallowed discovery failures", () => {
@@ -140,6 +142,44 @@ test("public article refreshes reject incomplete or suspiciously shrunken source
   );
 });
 
+test("SCOTUS revision dates are independently eligible from the opinion date window", () => {
+  assert.equal(scotusRevisionDateFromRowText("Opinion PDF Revisions: 7/07/26"), "2026-07-07T00:00:00.000Z");
+
+  const revisedOpinion = {
+    sourceKey: "us-scotus" as const,
+    publishedAt: "2026-06-30",
+    metadata: { revisionDate: "2026-07-07T00:00:00.000Z" },
+  };
+  assert.equal(
+    isDiscoveredItemInCollectionRange(
+      revisedOpinion,
+      new Date("2026-07-25T00:00:00.000Z"),
+      new Date("2026-05-10T00:00:00.000Z"),
+    ),
+    true,
+  );
+  assert.equal(
+    isDiscoveredItemInCollectionRange(
+      { ...revisedOpinion, metadata: { revisionDate: "2026-04-01T00:00:00.000Z" } },
+      new Date("2026-07-25T00:00:00.000Z"),
+      new Date("2026-05-10T00:00:00.000Z"),
+    ),
+    false,
+  );
+  assert.equal(
+    isDiscoveredItemInCollectionRange(revisedOpinion, undefined, new Date("2026-05-10T00:00:00.000Z")),
+    true,
+  );
+  assert.equal(
+    isDiscoveredItemInCollectionRange(
+      { ...revisedOpinion, metadata: { revisionDate: "2026-04-01T00:00:00.000Z" } },
+      undefined,
+      new Date("2026-05-10T00:00:00.000Z"),
+    ),
+    false,
+  );
+});
+
 test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
   const workflow = read(".github/workflows/crawlee-worker.yml");
@@ -154,6 +194,8 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(workflow, /matrix:\s+source:/, "daily workflow must isolate each source in its own job");
   assert.match(workflow, /max-parallel: 4/, "daily workflow must allow independent sources to continue after one source stalls");
   assert.match(workflow, /BVERFG_PENDING_RECHECK_LIMIT: "3"/, "BVerfG retry work must be bounded per run");
+  assert.match(workflow, /SCOTUS_REVISION_RECHECK_DAYS: "90"/, "SCOTUS revisions must have an independent recheck window");
+  assert.match(workflow, /SCOTUS_REVISION_RECHECK_LIMIT: "100"/, "SCOTUS revision rechecks must be bounded per run");
   assert.match(workflow, /BVERFG_RETRY_COUNT: "0"/, "BVerfG daily retries must not multiply a slow official endpoint");
   assert.match(workflow, /Run isolated BVerfG worker without browser fallback[\s\S]*--no-playwright/, "BVerfG daily detail checks must use bounded HTTP fallback only");
   assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");

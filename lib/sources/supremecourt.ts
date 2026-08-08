@@ -83,6 +83,14 @@ async function discoverScotusListings(options?: SourceDiscoveryOptions) {
   return items;
 }
 
+export function scotusRevisionDateFromRowText(value: string) {
+  const match = value.match(/\bRevisions?:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/i);
+  if (!match) return undefined;
+  const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
+  const date = new Date(Date.UTC(year, Number(match[1]) - 1, Number(match[2])));
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 function discoverOpinions(html: string, listingUrl: string): DiscoveredItem[] {
   const $ = load(html);
   const items: DiscoveredItem[] = [];
@@ -91,6 +99,7 @@ function discoverOpinions(html: string, listingUrl: string): DiscoveredItem[] {
     const cells = $(row).find("td");
     if (cells.length < 4) return;
 
+    const rowText = $(row).text().replace(/\s+/g, " ").trim();
     const publishedAt = $(cells[1]).text().trim();
     const docket = $(cells[2]).text().trim();
     const link = $(cells[3]).find("a[href$='.pdf']").first();
@@ -110,6 +119,7 @@ function discoverOpinions(html: string, listingUrl: string): DiscoveredItem[] {
       metadata: {
         docket,
         syllabus,
+        revisionDate: scotusRevisionDateFromRowText(rowText),
         listingUrl,
         officialListingCollected: true,
         officialPdfUrlDiscovered: true,

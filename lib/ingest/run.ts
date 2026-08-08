@@ -246,6 +246,19 @@ function isItemInDateRange(publishedAt: string | undefined, rangeStart: Date | u
   return Boolean(parsed && parsed >= rangeStart);
 }
 
+export function isDiscoveredItemInCollectionRange(
+  item: Pick<DiscoveredItem, "sourceKey" | "publishedAt" | "metadata">,
+  rangeStart: Date | undefined,
+  revisionRangeStart?: Date,
+) {
+  if (rangeStart && isItemInDateRange(item.publishedAt, rangeStart)) return true;
+  if (item.sourceKey !== "us-scotus" || !revisionRangeStart) return !rangeStart;
+  const revisionDate = isRecord(item.metadata) && typeof item.metadata.revisionDate === "string"
+    ? item.metadata.revisionDate
+    : undefined;
+  return isItemInDateRange(revisionDate, revisionRangeStart);
+}
+
 function shouldRefreshExistingArticles(options: RunIngestOptions = {}, sourceKey?: string) {
   if (typeof options.refreshExisting === "boolean") return options.refreshExisting;
   const env = process.env.INGEST_REFRESH_EXISTING;
@@ -452,11 +465,21 @@ const DAY_MS = 24 * HOUR_MS;
 const BVERFG_RETRY_SCHEDULE_GRACE_MS = 6 * HOUR_MS;
 const DEFAULT_BVERFG_PENDING_RECHECK_LIMIT = 20;
 const DEFAULT_SPAIN_PENDING_RECHECK_LIMIT = 20;
+const DEFAULT_SCOTUS_REVISION_RECHECK_DAYS = 90;
+const DEFAULT_SCOTUS_REVISION_RECHECK_LIMIT = 100;
 const DEFAULT_INGESTION_RUN_STALE_MINUTES = 180;
 
 function staleIngestionRunMinutes() {
   const value = Number(process.env.INGESTION_RUN_STALE_MINUTES ?? DEFAULT_INGESTION_RUN_STALE_MINUTES);
   return Number.isFinite(value) && value >= 30 ? Math.min(Math.floor(value), 24 * 60) : DEFAULT_INGESTION_RUN_STALE_MINUTES;
+}
+
+function scotusRevisionRecheckDays() {
+  return optionalPositiveInteger(process.env.SCOTUS_REVISION_RECHECK_DAYS) ?? DEFAULT_SCOTUS_REVISION_RECHECK_DAYS;
+}
+
+function scotusRevisionRecheckLimit() {
+  return boundedInteger(process.env.SCOTUS_REVISION_RECHECK_LIMIT, DEFAULT_SCOTUS_REVISION_RECHECK_LIMIT, { min: 1, max: 500 });
 }
 
 async function recoverStaleIngestionRuns(sourceKey: string) {
@@ -1078,6 +1101,8 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     rangeDays = await dynamicSpainRangeDays(rangeDays);
   }
   const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
+  const revisionRangeDays = adapter.sourceKey === "us-scotus" ? scotusRevisionRecheckDays() : undefined;
+  const revisionRangeStart = revisionRangeDays ? rangeStartForDays(revisionRangeDays) : undefined;
   const refreshExisting = shouldRefreshExistingArticles(options, adapter.sourceKey);
   const discoveryOptions = {
     debug: options.debug,
@@ -1093,6 +1118,8 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     sourceKey: adapter.sourceKey,
     limit,
     rangeDays: rangeDays ?? null,
+    revisionRangeDays: revisionRangeDays ?? null,
+    revisionRecheckLimit: adapter.sourceKey === "us-scotus" ? scotusRevisionRecheckLimit() : null,
     strategy: discoveryOptions.strategy,
     usePlaywright: discoveryOptions.usePlaywright ?? null,
     allowVercelCrawling: options.allowVercelCrawling === true,
@@ -1103,8 +1130,15 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     await executionCheckpoint(options);
     const allDiscovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions));
     await executionCheckpoint(options);
-    const inRangeDiscovered = allDiscovered.filter((item) => isItemInDateRange(item.publishedAt, rangeStart));
-    const primaryDiscovered = inRangeDiscovered.slice(0, limit);
+    const inRangeDiscovered = allDiscovered.filter((item) => isDiscoveredItemInCollectionRange(item, rangeStart, revisionRangeStart));
+    const primaryDiscovered = allDiscovered
+      .filter((item) => isItemInDateRange(item.publishedAt, rangeStart))
+      .slice(0, limit);
+    const revisionDiscovered = adapter.sourceKey === "us-scotus" && revisionRangeStart
+      ? allDiscovered
+        .filter((item) => !isItemInDateRange(item.publishedAt, rangeStart) && isDiscoveredItemInCollectionRange(item, undefined, revisionRangeStart))
+        .slice(0, scotusRevisionRecheckLimit())
+      : [];
     const trackedBverfgItems =
       adapter.sourceKey === "de-bverfg"
         ? await loadTrackedBverfgRetryItems()
@@ -1113,9 +1147,19 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       adapter.sourceKey === SPAIN_TC_SOURCE_KEY && refreshExisting
         ? await loadTrackedSpainSourceTextPendingItems()
         : [];
-    const discovered = uniqueDiscoveredItems([...primaryDiscovered, ...trackedBverfgItems, ...trackedSpainItems]);
+    const discovered = uniqueDiscoveredItems([...primaryDiscovered, ...revisionDiscovered, ...trackedBverfgItems, ...trackedSpainItems]);
     result.discoveredCount = uniqueDiscoveredItems([...allDiscovered, ...trackedBverfgItems, ...trackedSpainItems]).length;
     result.skippedOutOfRangeCount = allDiscovered.length - inRangeDiscovered.length;
+    if (revisionDiscovered.length > 0) {
+      addDiagnosticAttempt(result.diagnostics, {
+        url: "database://articles/us-scotus/revisions",
+        strategy: "api",
+        result: "success",
+        discoveredCount: revisionDiscovered.length,
+        errorCode: "SCOTUS_REVISION_RECHECK",
+        errorMessage: `SCOTUS revision dates were rechecked independently of the ${rangeDays ?? "configured"}-day opinion date window.`,
+      });
+    }
     if (trackedBverfgItems.length > 0) {
       addDiagnosticAttempt(result.diagnostics, {
         url: "database://source_url_candidates/de-bverfg/retrying",
