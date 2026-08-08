@@ -329,7 +329,11 @@ export async function articleExists(canonicalUrl: string) {
   return Boolean(data);
 }
 
-async function findExistingArticle(canonicalUrls: string | string[]): Promise<ExistingArticleRow | null> {
+async function findExistingArticle(
+  canonicalUrls: string | string[],
+  sourceKey?: string,
+  sourceMetadata?: Record<string, unknown>,
+): Promise<ExistingArticleRow | null> {
   const supabase = getSupabaseAdmin();
   if (!supabase) return null;
   const urls = [...new Set((Array.isArray(canonicalUrls) ? canonicalUrls : [canonicalUrls]).map((url) => canonicalizeUrl(url)))];
@@ -343,7 +347,21 @@ async function findExistingArticle(canonicalUrls: string | string[]): Promise<Ex
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data as ExistingArticleRow | null;
+  if (data) return data as ExistingArticleRow;
+
+  if (sourceKey === "us-scotus" && typeof sourceMetadata?.docket === "string" && sourceMetadata.docket.trim()) {
+    const docketResult = await supabase
+      .from("articles")
+      .select("id, status, content_hash, cleaned_text, source_metadata, review_state, error_class, error_context")
+      .eq("source_key", "us-scotus")
+      .filter("source_metadata->>docket", "eq", sourceMetadata.docket.trim())
+      .limit(1)
+      .maybeSingle();
+    if (docketResult.error) throw new Error(docketResult.error.message);
+    return docketResult.data as ExistingArticleRow | null;
+  }
+
+  return null;
 }
 
 export async function articleExistsByNormalizedContent(article: NormalizedArticle) {
@@ -991,11 +1009,21 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
   const dedupKeys = dedupKeysForArticle(article);
   const contentHash = createContentHash(article.cleanedText) ?? dedupKeys.textPrefixHash;
   const existingHash = existing.content_hash ?? createContentHash(existing.cleaned_text);
+  const sourceMetadata = sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant, existing);
   if (contentHash && existingHash && contentHash === existingHash) {
+    const { error } = await supabase
+      .from("articles")
+      .update({
+        original_url: article.originalUrl,
+        canonical_url: article.canonicalUrl,
+        source_metadata: sourceMetadata,
+        fetched_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+    if (error) throw new Error(error.message);
     return { status: "unchanged" as const };
   }
 
-  const sourceMetadata = sourceMetadataForArticle(article, plan.collection, plan.constitutionalRelevant, existing);
   const { error } = await supabase
     .from("articles")
     .update({
@@ -1196,7 +1224,7 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         const candidateUrls = adapter.sourceKey === "de-bverfg"
           ? bverfgCandidateUrls(itemMetadata, [item.canonicalUrl, item.url])
           : [item.canonicalUrl];
-        const existing = await findExistingArticle(candidateUrls);
+        const existing = await findExistingArticle(candidateUrls, adapter.sourceKey, itemMetadata);
         await executionCheckpoint(options);
         if (existing && adapter.sourceKey === "de-bverfg") {
           await closeTrackedBverfgCandidates(candidateUrls, result.diagnostics);
