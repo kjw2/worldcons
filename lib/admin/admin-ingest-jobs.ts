@@ -15,6 +15,8 @@ export interface AdminIngestRequestContext {
   articleId?: string;
   slug?: string;
   limit?: number;
+  rangeDays?: number;
+  refreshExisting?: boolean;
   summarizeLimit: number;
   allowVercelCrawling: boolean;
   shouldSummarize: boolean;
@@ -88,7 +90,7 @@ function supportedAction(value: string): value is AdminIngestJobType {
 }
 
 export function buildAdminIngestJobContext(input: AdminIngestBody): AdminIngestRequestContext {
-  const { action, sourceKey, articleId, slug, limit, allowVercelCrawling } = input;
+  const { action, sourceKey, articleId, slug, limit, rangeDays, refreshExisting, allowVercelCrawling } = input;
   if (!supportedAction(action)) throw new Error(`Unsupported admin ingest job action: ${action}`);
 
   const requestedAction = action;
@@ -100,6 +102,8 @@ export function buildAdminIngestJobContext(input: AdminIngestBody): AdminIngestR
     action,
     sourceKey: sourceKey ?? null,
     limit: limit ?? null,
+    rangeDays: rangeDays ?? null,
+    refreshExisting: refreshExisting ?? null,
     summarizeLimit,
     summarize: input.summarize,
     refreshTags: input.refreshTags,
@@ -135,6 +139,8 @@ export function buildAdminIngestJobContext(input: AdminIngestBody): AdminIngestR
     articleId,
     slug,
     limit,
+    rangeDays,
+    refreshExisting,
     summarizeLimit,
     allowVercelCrawling,
     shouldSummarize,
@@ -176,7 +182,13 @@ export async function executeAdminIngestJobContext(context: AdminIngestRequestCo
   const { summarizeLimit, sourceKey } = context;
   const ingest = context.shouldIngest
     ? await import("@/lib/ingest/run").then(({ runIngest }) =>
-        runIngest({ sourceKey, limit: context.limit, allowVercelCrawling: context.allowVercelCrawling }),
+        runIngest({
+          sourceKey,
+          limit: context.limit,
+          rangeDays: context.rangeDays,
+          refreshExisting: context.refreshExisting,
+          allowVercelCrawling: context.allowVercelCrawling,
+        }),
       )
     : null;
   if (isRecord(ingest) && ingest.mode === "blocked") {

@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { ingestResultFailureMessage, ingestResultSucceeded } from "../lib/ingest/results";
+import {
+  incrementalRangeDaysFromCheckpoint,
+  ingestSourceOutcomeLine,
+} from "../lib/ingest/incremental";
+import {
+  ingestProcessExitCode,
+  ingestResultFailureMessage,
+  ingestResultOutcome,
+  ingestResultSucceeded,
+} from "../lib/ingest/results";
 import { ingestionRunIdFromSourceMetadata } from "../lib/ingest/summary";
 import {
   bverfgOfficialUrlCandidatesFromDocket,
@@ -58,6 +67,109 @@ test("ingestion success rejects blocked, no-database, empty, and partial failure
   );
 });
 
+test("ingestion treats all-uncollected BVerfG runs as degraded, not success", () => {
+  const blocked = {
+    mode: "database",
+    results: [{
+      sourceKey: "de-bverfg",
+      discoveredCount: 21,
+      attemptedCount: 21,
+      verifiedSourceTextCount: 0,
+      fetchedCount: 21,
+      failedCount: 0,
+      errors: [],
+      uncollectedCount: 21,
+      uncollectedCandidates: Array.from({ length: 21 }, () => ({ errorCode: "BVERFG_OFFICIAL_DETAIL_UNVERIFIED" })),
+    }],
+  };
+  assert.equal(ingestResultOutcome(blocked), "degraded");
+  assert.equal(ingestResultSucceeded(blocked), false);
+  assert.equal(ingestProcessExitCode(blocked), 2);
+  assert.match(ingestResultFailureMessage(blocked), /degraded collection/);
+});
+
+test("expected empty sitemap and Spain tail probes do not fail a verified listing", () => {
+  const france = {
+    mode: "database",
+    results: [{
+      sourceKey: "fr-conseil-constitutionnel",
+      discoveredCount: 10,
+      attemptedCount: 10,
+      verifiedSourceTextCount: 10,
+      failedCount: 0,
+      errors: [],
+      diagnostics: {
+        attempts: [
+          { strategy: "cheerio", status: 200, discoveredCount: 10 },
+          {
+            strategy: "sitemap",
+            status: 404,
+            optional: true,
+            result: "empty",
+            url: "https://www.conseil-constitutionnel.fr/sitemap_index.xml",
+          },
+        ],
+      },
+    }],
+  };
+  const spainEmptyDiscovery = {
+    mode: "database",
+    results: [{
+      sourceKey: "es-tribunal-constitucional",
+      discoveredCount: 0,
+      failedCount: 0,
+      errors: [],
+      diagnostics: {
+        attempts: [
+          { strategy: "api", status: 200, discoveredCount: 0 },
+          { strategy: "api", optional: true, result: "empty", errorCode: "SPAIN_HJ_TAIL_PROBE_EMPTY" },
+        ],
+      },
+    }],
+  };
+  assert.equal(ingestResultSucceeded(france), true);
+  assert.equal(ingestResultSucceeded(spainEmptyDiscovery), true);
+});
+
+test("incremental range widens from the last verified checkpoint and never shrinks below the floor", () => {
+  assert.equal(
+    incrementalRangeDaysFromCheckpoint({
+      sourceKey: "de-bverfg",
+      floorDays: 60,
+      lastVerifiedPublishedAt: "2026-08-15T00:00:00.000Z",
+      now: Date.parse("2026-08-16T00:00:00.000Z"),
+    }),
+    60,
+  );
+  assert.equal(
+    incrementalRangeDaysFromCheckpoint({
+      sourceKey: "us-scotus",
+      floorDays: 14,
+      lastSuccessfulRunAt: "2026-07-01T00:00:00.000Z",
+      now: Date.parse("2026-08-16T00:00:00.000Z"),
+    }),
+    30,
+  );
+});
+
+test("worker outcome lines stay compact and omit source URLs", () => {
+  const line = ingestSourceOutcomeLine({
+    sourceKey: "de-bverfg",
+    outcome: "degraded",
+    discoveredCount: 21,
+    attemptedCount: 21,
+    verifiedSourceTextCount: 0,
+    uncollectedCount: 21,
+    blocked403Count: 21,
+    circuitBroken: true,
+  });
+  assert.equal(line.source, "de-bverfg");
+  assert.equal(line.outcome, "degraded");
+  assert.equal(line.verified, 0);
+  assert.equal(line.uncollected, 21);
+  assert.equal(JSON.stringify(line).includes("http"), false);
+});
+
 test("summary accounting only accepts an ingestion run UUID from collection metadata", () => {
   const runId = "c5347191-0607-4d11-bff7-2f7ac6617c79";
   assert.equal(ingestionRunIdFromSourceMetadata({ collection: { diagnosticsId: runId } }), runId);
@@ -92,6 +204,10 @@ test("BVerfG unresolved variant retries use short bounded backoff with schedule 
   assert.equal(bverfgCandidateRetryDelayMs(3, "BVERFG_OFFICIAL_VARIANTS_404"), 24 * 60 * 60 * 1000);
   assert.equal(bverfgCandidateRetryDelayMs(6, "BVERFG_OFFICIAL_VARIANTS_404"), 2 * 24 * 60 * 60 * 1000);
   assert.equal(bverfgCandidateRetryDelayMs(10, "BVERFG_OFFICIAL_VARIANTS_404"), 3 * 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(1, "BVERFG_OFFICIAL_DETAIL_403"), 6 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(3, "BVERFG_OFFICIAL_DETAIL_UNVERIFIED"), 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(6, "BVERFG_SITE_BLOCK_CIRCUIT_OPEN"), 3 * 24 * 60 * 60 * 1000);
+  assert.equal(bverfgCandidateRetryDelayMs(1, "CRAWLEE_DETAIL_EMPTY"), 3 * 60 * 60 * 1000);
 
   const candidate: SourceUrlCandidateRecord = {
     id: "candidate-1",
@@ -106,6 +222,15 @@ test("BVerfG unresolved variant retries use short bounded backoff with schedule 
   };
   assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-07-22T12:00:00.000Z")), false);
   assert.equal(shouldRetryBverfgCandidates([candidate], new Date("2026-07-22T18:00:00.000Z")), true);
+
+  const blocked: SourceUrlCandidateRecord = {
+    ...candidate,
+    lastAttemptAt: "2026-08-15T21:15:00.000Z",
+    attemptCount: 1,
+    lastErrorCode: "BVERFG_OFFICIAL_DETAIL_UNVERIFIED",
+  };
+  assert.equal(shouldRetryBverfgCandidates([blocked], new Date("2026-08-16T00:00:00.000Z")), false);
+  assert.equal(shouldRetryBverfgCandidates([blocked], new Date("2026-08-16T03:16:00.000Z")), true);
 });
 
 test("public article refreshes reject incomplete or suspiciously shrunken source text", () => {
@@ -187,6 +312,7 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   const secondaryCli = read("workers/crawler/src/cli.ts");
   const directCli = read("scripts/ingest.ts");
   const spainSpider = read("lib/crawlee/spain-tribunal-constitucional-spider.ts");
+  const sitemap = read("lib/crawler/sitemap.ts");
   const ingest = read("lib/ingest/run.ts");
   const summary = read("lib/ingest/summary.ts");
 
@@ -197,6 +323,8 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(workflow, /SCOTUS_REVISION_RECHECK_DAYS: "90"/, "SCOTUS revisions must have an independent recheck window");
   assert.match(workflow, /SCOTUS_REVISION_RECHECK_LIMIT: "100"/, "SCOTUS revision rechecks must be bounded per run");
   assert.match(workflow, /BVERFG_RETRY_COUNT: "0"/, "BVerfG daily retries must not multiply a slow official endpoint");
+  assert.match(workflow, /BVERFG_SITE_BLOCK_CIRCUIT_THRESHOLD: "3"/);
+  assert.match(workflow, /BVERFG_PLAYWRIGHT_ESCALATE_LIMIT: "3"/);
   assert.match(workflow, /Run isolated BVerfG worker without browser fallback[\s\S]*--no-playwright/, "BVerfG daily detail checks must use bounded HTTP fallback only");
   assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");
   assert.match(workflow, /continue-on-error: \$\{\{ vars\.ADMIN_REQUIRE_PUBLICATION_PARITY != 'true' \}\}/, "legacy parity drift must not falsely fail collection by default");
@@ -209,8 +337,9 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(workflow, /admin:lifecycle:p2 --require-parity/);
   assert.match(workflow, /admin:publication:p3 -- --require-parity/);
   for (const cli of [scheduledCli, secondaryCli, directCli]) {
-    assert.match(cli, /ingestResultSucceeded/);
+    assert.match(cli, /ingestProcessExitCode/);
     assert.match(cli, /ingestResultFailureMessage/);
+    assert.match(cli, /ingestSourceOutcomeLine/);
   }
   for (const cli of [scheduledCli, secondaryCli, directCli]) {
     assert.match(cli, /range-days/);
@@ -218,6 +347,10 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   }
   assert.match(spainSpider, /checkRobotsAllowed/);
   assert.match(spainSpider, /respectRateLimit/);
+  assert.match(spainSpider, /result: "empty"/);
+  assert.match(spainSpider, /SPAIN_HJ_TAIL_PROBE_EMPTY/);
+  assert.match(sitemap, /sitemap_index\\.xml/);
+  assert.match(sitemap, /optionalIndex/);
   assert.match(ingest, /BVERFG_TRACKED_CANDIDATE_RECHECK/);
   assert.match(ingest, /recoverStaleIngestionRuns/);
   assert.match(ingest, /INGESTION_RUN_STALE_MINUTES/);

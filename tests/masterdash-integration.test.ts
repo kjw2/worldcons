@@ -202,6 +202,61 @@ test("reports the stored successful collection metrics without recomputing missi
   assert.equal(metrics.durationMs, 120000);
   assert.equal(metrics.failureReason, null);
   assert.equal(metrics.runId, "run-success");
+  assert.equal(metrics.bySource[0]?.sourceKey, "fr-conseil-constitutionnel");
+});
+
+test("reports per-source degraded collection and verified counts instead of raw fetch counts", () => {
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "run-bverfg",
+      source_key: "de-bverfg",
+      status: "completed",
+      started_at: "2026-08-15T21:04:00.000Z",
+      finished_at: "2026-08-15T21:15:00.000Z",
+      fetched_count: 21,
+      failed_count: 0,
+      metadata: {
+        outcome: "degraded",
+        recordsAdded: 0,
+        verifiedSourceTextCount: 0,
+        uncollectedCandidateCount: 21,
+        lastVerifiedPublishedAt: "2026-07-28T00:00:00.000Z",
+      },
+    },
+    successful: {
+      source_key: "es-tribunal-constitucional",
+      finished_at: "2026-08-15T21:07:00.000Z",
+      metadata: { lastVerifiedPublishedAt: "2026-08-14T00:00:00.000Z", checkpoint: "es-tribunal-constitucional:2026-08-14T00:00:00.000Z" },
+    },
+    recentRuns: [
+      {
+        id: "run-bverfg",
+        source_key: "de-bverfg",
+        status: "completed",
+        started_at: "2026-08-15T21:04:00.000Z",
+        finished_at: "2026-08-15T21:15:00.000Z",
+        fetched_count: 21,
+        metadata: { outcome: "degraded", verifiedSourceTextCount: 0, uncollectedCandidateCount: 21 },
+      },
+      {
+        id: "run-es",
+        source_key: "es-tribunal-constitucional",
+        status: "completed",
+        started_at: "2026-08-15T21:04:00.000Z",
+        finished_at: "2026-08-15T21:07:00.000Z",
+        fetched_count: 28,
+        metadata: { outcome: "success", verifiedSourceTextCount: 19, recordsAdded: 0 },
+      },
+    ],
+    pendingItems: 21,
+    now: Date.parse("2026-08-15T21:16:00.000Z"),
+  });
+  assert.equal(metrics.lastRunStatus, "degraded");
+  assert.equal(metrics.recordsCollected, 0);
+  assert.equal(metrics.failureTarget, "de-bverfg");
+  assert.equal(metrics.bySource.length, 2);
+  assert.equal(metrics.bySource.find((source) => source.sourceKey === "de-bverfg")?.lastRunStatus, "degraded");
+  assert.equal(metrics.bySource.find((source) => source.sourceKey === "es-tribunal-constitucional")?.verifiedSourceText, 19);
 });
 
 test("reports the latest failed collection and its actual failure target", () => {
@@ -239,6 +294,7 @@ test("returns null for collection metrics that are absent from stored data", () 
   assert.equal(metrics.runId, null);
   assert.equal(metrics.durationMs, null);
   assert.equal(metrics.checkpoint, null);
+  assert.deepEqual(metrics.bySource, []);
 });
 
 test("accepts the exact one-minute WorldCons SSO contract", () => {

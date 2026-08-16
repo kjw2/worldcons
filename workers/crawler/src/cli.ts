@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
-import { ingestResultFailureMessage, ingestResultSucceeded } from "@/lib/ingest/results";
+import { ingestSourceOutcomeLine } from "@/lib/ingest/incremental";
+import { ingestProcessExitCode, ingestResultFailureMessage } from "@/lib/ingest/results";
 import { effectiveRangeDaysForSource, runIngest } from "@/lib/ingest/run";
 import { boundedInteger } from "@/lib/utils/numbers";
 import type { CrawlStrategyOption } from "@/lib/crawler/types";
@@ -40,8 +41,16 @@ async function main() {
     rangeDays,
     refreshExisting,
   });
-  console.log(JSON.stringify(result, null, 2));
-  if (!ingestResultSucceeded(result)) throw new Error(ingestResultFailureMessage(result));
+  const compact = {
+    mode: result.mode,
+    results: (result.results ?? []).map((sourceResult) => ingestSourceOutcomeLine(sourceResult)),
+  };
+  console.log(JSON.stringify(compact));
+  const exitCode = ingestProcessExitCode(result);
+  if (exitCode !== 0) {
+    console.error(ingestResultFailureMessage(result));
+    process.exit(exitCode);
+  }
 }
 
 main().catch((error) => {

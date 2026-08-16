@@ -213,6 +213,19 @@ export async function findSourceUrlCandidatesByUrls(sourceKey: string, urls: str
   return ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow);
 }
 
+export async function countOpenSourceUrlCandidates(sourceKey?: string) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return 0;
+  let query = supabase
+    .from("source_url_candidates")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["pending", "retrying"]);
+  if (sourceKey) query = query.eq("source_key", sourceKey);
+  const { count, error } = await query;
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 export async function listSourceUrlCandidatesForRetry(sourceKey: string, limit = 100) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return [] as SourceUrlCandidateRecord[];

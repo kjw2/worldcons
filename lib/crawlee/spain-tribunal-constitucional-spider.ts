@@ -1190,7 +1190,8 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
           url: jsonApiUrls(hjId)[0],
           strategy: "api",
           fallback: true,
-          result: "failed",
+          optional: true,
+          result: "empty",
           errorCode: "SPAIN_HJ_TAIL_PROBE_EMPTY",
           errorMessage: errorMessage(error),
         });

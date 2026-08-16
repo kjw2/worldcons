@@ -10,10 +10,28 @@ export interface CollectionHealthRunRow {
   metadata?: unknown;
 }
 
+export type CollectionRunStatus = "success" | "failed" | "running" | "degraded" | null;
+
+export interface CollectionSourceHealth {
+  sourceKey: string;
+  lastCollectionAt: string | null;
+  lastSuccessfulCollectionAt: string | null;
+  lastVerifiedPublishedAt: string | null;
+  lastRunStatus: CollectionRunStatus;
+  recordsCollected: number | null;
+  recordsAdded: number | null;
+  verifiedSourceText: number | null;
+  uncollectedCount: number | null;
+  pendingRetryCount: number | null;
+  runId: string | null;
+  checkpoint: string | null;
+  failureReason: string | null;
+}
+
 export interface CollectionHealthMetrics {
   lastCollectionAt: string | null;
   lastSuccessfulCollectionAt: string | null;
-  lastRunStatus: "success" | "failed" | "running" | null;
+  lastRunStatus: CollectionRunStatus;
   recordsCollected: number | null;
   recordsAdded: number | null;
   pendingItems: number | null;
@@ -23,6 +41,7 @@ export interface CollectionHealthMetrics {
   runId: string | null;
   durationMs: number | null;
   checkpoint: string | null;
+  bySource: CollectionSourceHealth[];
 }
 
 function numberValue(value: unknown) {
@@ -39,21 +58,6 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function runStatus(value: unknown): CollectionHealthMetrics["lastRunStatus"] {
-  if (value === "completed" || value === "success" || value === "succeeded") return "success";
-  if (value === "failed" || value === "error") return "failed";
-  if (value === "running" || value === "queued") return "running";
-  return null;
-}
-
-function duration(startedAt: string | null, finishedAt: string | null, now: number) {
-  if (!startedAt) return null;
-  const started = Date.parse(startedAt);
-  const ended = finishedAt ? Date.parse(finishedAt) : now;
-  if (!Number.isFinite(started) || !Number.isFinite(ended)) return null;
-  return Math.max(0, ended - started);
-}
-
 function metadataNumber(metadata: Record<string, unknown> | null, ...keys: string[]) {
   for (const key of keys) {
     const value = numberValue(metadata?.[key]);
@@ -67,39 +71,114 @@ function metadataError(metadata: Record<string, unknown> | null) {
   return metadata.errors.find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim() ?? null;
 }
 
+function runStatus(value: unknown, metadata?: Record<string, unknown> | null): CollectionRunStatus {
+  const outcome = textValue(metadata?.outcome);
+  if (outcome === "degraded") return "degraded";
+  if (outcome === "failed") return "failed";
+  if (outcome === "success") return "success";
+  if (value === "completed" || value === "success" || value === "succeeded") return "success";
+  if (value === "failed" || value === "error") return "failed";
+  if (value === "degraded") return "degraded";
+  if (value === "running" || value === "queued") return "running";
+  return null;
+}
+
+function duration(startedAt: string | null, finishedAt: string | null, now: number) {
+  if (!startedAt) return null;
+  const started = Date.parse(startedAt);
+  const ended = finishedAt ? Date.parse(finishedAt) : now;
+  if (!Number.isFinite(started) || !Number.isFinite(ended)) return null;
+  return Math.max(0, ended - started);
+}
+
+function verifiedCount(row: CollectionHealthRunRow | null) {
+  const metadata = recordValue(row?.metadata);
+  return metadataNumber(metadata, "verifiedSourceTextCount", "verifiedCount") ?? null;
+}
+
+function collectedCount(row: CollectionHealthRunRow | null) {
+  return verifiedCount(row) ?? numberValue(row?.fetched_count);
+}
+
+function checkpointFor(row: CollectionHealthRunRow | null) {
+  const metadata = recordValue(row?.metadata);
+  const explicit = textValue(metadata?.checkpoint);
+  if (explicit) return explicit;
+  const verifiedAt = textValue(metadata?.lastVerifiedPublishedAt);
+  const source = textValue(row?.source_key);
+  const finishedAt = textValue(row?.finished_at);
+  if (source && verifiedAt) return `${source}:${verifiedAt}`;
+  if (source && finishedAt) return `${source}:${finishedAt}`;
+  return null;
+}
+
+export function collectionHealthBySource(runs: CollectionHealthRunRow[] = []): CollectionSourceHealth[] {
+  const latestBySource = new Map<string, CollectionHealthRunRow>();
+  const successfulBySource = new Map<string, CollectionHealthRunRow>();
+  for (const run of runs) {
+    const sourceKey = textValue(run.source_key);
+    if (!sourceKey) continue;
+    if (!latestBySource.has(sourceKey)) latestBySource.set(sourceKey, run);
+    const metadata = recordValue(run.metadata);
+    const status = runStatus(run.status, metadata);
+    if (status === "success" && !successfulBySource.has(sourceKey)) successfulBySource.set(sourceKey, run);
+  }
+
+  return [...latestBySource.entries()].map(([sourceKey, latest]) => {
+    const successful = successfulBySource.get(sourceKey) ?? null;
+    const latestMetadata = recordValue(latest.metadata);
+    const successfulMetadata = recordValue(successful?.metadata);
+    return {
+      sourceKey,
+      lastCollectionAt: textValue(latest.started_at),
+      lastSuccessfulCollectionAt: textValue(successful?.finished_at),
+      lastVerifiedPublishedAt: textValue(latestMetadata?.lastVerifiedPublishedAt) ?? textValue(successfulMetadata?.lastVerifiedPublishedAt),
+      lastRunStatus: runStatus(latest.status, latestMetadata),
+      recordsCollected: collectedCount(latest),
+      recordsAdded: metadataNumber(latestMetadata, "recordsAdded", "addedCount"),
+      verifiedSourceText: verifiedCount(latest),
+      uncollectedCount: metadataNumber(latestMetadata, "uncollectedCandidateCount", "uncollectedCount"),
+      pendingRetryCount: metadataNumber(latestMetadata, "openCandidateCount"),
+      runId: textValue(latest.id),
+      checkpoint: checkpointFor(successful ?? latest),
+      failureReason: textValue(latest.error_message) ?? metadataError(latestMetadata),
+    };
+  });
+}
+
 export function collectionHealthMetrics(input: {
   latest?: CollectionHealthRunRow | null;
   successful?: CollectionHealthRunRow | null;
+  recentRuns?: CollectionHealthRunRow[] | null;
   pendingItems?: number | null;
   failedJobCount?: number | null;
   now?: number;
 }): CollectionHealthMetrics {
   const latest = input.latest ?? null;
   const successful = input.successful ?? null;
-  const latestStatus = runStatus(latest?.status);
+  const latestMetadata = recordValue(latest?.metadata);
+  const successfulMetadata = recordValue(successful?.metadata);
+  const latestStatus = runStatus(latest?.status, latestMetadata);
   const latestStartedAt = textValue(latest?.started_at);
   const latestFinishedAt = textValue(latest?.finished_at);
   const successfulFinishedAt = textValue(successful?.finished_at);
-  const latestMetadata = recordValue(latest?.metadata);
-  const successfulMetadata = recordValue(successful?.metadata);
   const errorCount = numberValue(latest?.failed_count) ?? numberValue(input.failedJobCount);
   const failureReason = textValue(latest?.error_message) ?? metadataError(latestMetadata);
-  const successfulSource = textValue(successful?.source_key);
-  const checkpoint = textValue(successfulMetadata?.checkpoint)
-    ?? (successfulSource && successfulFinishedAt ? `${successfulSource}:${successfulFinishedAt}` : null);
+  const bySource = collectionHealthBySource(input.recentRuns ?? (latest ? [latest] : []));
 
   return {
     lastCollectionAt: latestStartedAt,
     lastSuccessfulCollectionAt: successfulFinishedAt,
     lastRunStatus: latestStatus,
-    recordsCollected: numberValue(latest?.fetched_count),
+    recordsCollected: collectedCount(latest),
     recordsAdded: metadataNumber(latestMetadata, "recordsAdded", "addedCount"),
     pendingItems: numberValue(input.pendingItems),
     errorCount,
     failureReason,
-    failureTarget: latestStatus === "failed" ? textValue(latest?.source_key) : null,
+    failureTarget: latestStatus === "failed" || latestStatus === "degraded" ? textValue(latest?.source_key) : null,
     runId: textValue(latest?.id),
     durationMs: duration(latestStartedAt, latestFinishedAt, input.now ?? Date.now()),
-    checkpoint,
+    checkpoint: checkpointFor(successful) ?? textValue(successfulMetadata?.checkpoint),
+    bySource,
   };
 }

@@ -34,6 +34,8 @@ import {
   type ArticleLifecycleP2Cohort,
 } from "@/lib/article-lifecycle";
 import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
+import { incrementalRangeDaysFromCheckpoint, isIncrementalSourceKey } from "@/lib/ingest/incremental";
+import { sourceResultOutcome, type IngestSourceOutcome } from "@/lib/ingest/results";
 import { BVERFG_OFFICIAL_VARIANTS_404 } from "@/lib/ui/candidate-tracking-labels";
 import {
   bverfgCaseNumberFromText,
@@ -43,7 +45,10 @@ import {
 interface SourceRunResult {
   sourceKey: string;
   discoveredCount: number;
+  discoveredBeforeFilterCount: number;
   fetchedCount: number;
+  attemptedCount: number;
+  verifiedSourceTextCount: number;
   recordsAdded?: number;
   refreshedCount: number;
   unchangedCount: number;
@@ -52,6 +57,17 @@ interface SourceRunResult {
   skippedCount: number;
   skippedOutOfRangeCount: number;
   skippedNonConstitutionalCount: number;
+  revisionRecheckCount: number;
+  deferredBackoffCount: number;
+  uncollectedCount: number;
+  blocked403Count: number;
+  spainSourceTextPromotedCount: number;
+  pendingRecheckCount: number;
+  lastVerifiedPublishedAt?: string;
+  circuitBroken: boolean;
+  playwrightEscalated: boolean;
+  spainPendingPromotionStale: boolean;
+  outcome: IngestSourceOutcome;
   uncollectedCandidates: UncollectedCandidate[];
   errors: string[];
   diagnostics?: CrawlerDiagnosticsCollector;
@@ -218,27 +234,71 @@ function rangeStartForDays(days: number) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
 }
 
-async function dynamicSpainRangeDays(baseRangeDays?: number) {
+interface SourceCollectionCheckpoint {
+  lastSuccessfulRunAt?: string;
+  lastVerifiedPublishedAt?: string;
+}
+
+async function loadSourceCollectionCheckpoint(sourceKey: string): Promise<SourceCollectionCheckpoint> {
   const supabase = getSupabaseAdmin();
-  const cap = optionalPositiveInteger(process.env.SPAIN_INGEST_RANGE_DAYS_CAP) ?? DEFAULT_SPAIN_INGEST_RANGE_CAP_DAYS;
-  const base = baseRangeDays ?? DEFAULT_SPAIN_INGEST_RANGE_DAYS;
-  if (!supabase) return Math.min(base, cap);
+  if (!supabase) return {};
 
   const { data } = await supabase
     .from("ingestion_runs")
-    .select("finished_at, started_at")
+    .select("finished_at, started_at, metadata")
+    .eq("source_key", sourceKey)
+    .eq("status", "completed")
+    .order("finished_at", { ascending: false, nullsFirst: false })
+    .limit(8);
+
+  const runs = data ?? [];
+  const latest = runs[0];
+  const lastSuccessfulRunAt = typeof latest?.finished_at === "string"
+    ? latest.finished_at
+    : typeof latest?.started_at === "string"
+      ? latest.started_at
+      : undefined;
+  for (const run of runs) {
+    const metadata = isRecord(run.metadata) ? run.metadata : {};
+    const verifiedAt = stringValue(metadata.lastVerifiedPublishedAt);
+    if (verifiedAt) return { lastSuccessfulRunAt, lastVerifiedPublishedAt: verifiedAt };
+  }
+  return { lastSuccessfulRunAt };
+}
+
+async function incrementalRangeDaysForSource(sourceKey: string, baseRangeDays?: number) {
+  const floor = baseRangeDays ?? rangeDaysForOptions({}, sourceKey);
+  if (!floor || !isIncrementalSourceKey(sourceKey)) return floor;
+  const checkpoint = await loadSourceCollectionCheckpoint(sourceKey);
+  return incrementalRangeDaysFromCheckpoint({
+    sourceKey,
+    floorDays: floor,
+    lastVerifiedPublishedAt: checkpoint.lastVerifiedPublishedAt,
+    lastSuccessfulRunAt: checkpoint.lastSuccessfulRunAt,
+  });
+}
+
+async function spainPendingPromotionIsStale(pendingRecheckCount: number, promotedCount: number) {
+  if (pendingRecheckCount === 0 || promotedCount > 0) return false;
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return false;
+  const { data } = await supabase
+    .from("ingestion_runs")
+    .select("metadata")
     .eq("source_key", SPAIN_TC_SOURCE_KEY)
     .eq("status", "completed")
     .order("finished_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(2);
+  const recent = data ?? [];
+  if (recent.length < 2) return false;
+  return recent.every((row) => {
+    const metadata = isRecord(row.metadata) ? row.metadata : {};
+    return numericMetadata(metadata.pendingRecheckCount) > 0 && numericMetadata(metadata.spainSourceTextPromotedCount) === 0;
+  });
+}
 
-  const latest = data?.finished_at ?? data?.started_at;
-  if (!latest) return Math.min(base, cap);
-  const timestamp = new Date(latest).getTime();
-  if (!Number.isFinite(timestamp)) return Math.min(base, cap);
-  const daysSinceLastRun = Math.ceil((Date.now() - timestamp) / (24 * 60 * 60 * 1000));
-  return Math.min(Math.max(base, daysSinceLastRun + 30), cap);
+function numericMetadata(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isItemInDateRange(publishedAt: string | undefined, rangeStart: Date | undefined) {
@@ -297,6 +357,7 @@ async function closeIngestionRun(runId: string | null, result: SourceRunResult, 
       error_message: result.errors[0] ?? null,
       metadata: {
         runOptions,
+        outcome: result.outcome,
         skippedCount: result.skippedCount,
         errors: result.errors.slice(0, 10),
         diagnostics: result.diagnostics,
@@ -310,6 +371,21 @@ async function closeIngestionRun(runId: string | null, result: SourceRunResult, 
         unchangedCount: result.unchangedCount,
         skippedOutOfRangeCount: result.skippedOutOfRangeCount,
         skippedNonConstitutionalCount: result.skippedNonConstitutionalCount,
+        discoveredBeforeFilterCount: result.discoveredBeforeFilterCount,
+        attemptedCount: result.attemptedCount,
+        verifiedSourceTextCount: result.verifiedSourceTextCount,
+        deferredBackoffCount: result.deferredBackoffCount,
+        blocked403Count: result.blocked403Count,
+        revisionRecheckCount: result.revisionRecheckCount,
+        spainSourceTextPromotedCount: result.spainSourceTextPromotedCount,
+        pendingRecheckCount: result.pendingRecheckCount,
+        lastVerifiedPublishedAt: result.lastVerifiedPublishedAt ?? null,
+        checkpoint: result.lastVerifiedPublishedAt
+          ? `${result.sourceKey}:${result.lastVerifiedPublishedAt}`
+          : null,
+        circuitBroken: result.circuitBroken,
+        playwrightEscalated: result.playwrightEscalated,
+        spainPendingPromotionStale: result.spainPendingPromotionStale,
       },
     })
     .eq("id", runId);
@@ -535,12 +611,33 @@ function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fall
   ];
 }
 
+function bverfgRetryErrorClass(errorCode?: string | null) {
+  const code = errorCode ?? "";
+  if (code === BVERFG_OFFICIAL_VARIANTS_404) return "variants-404" as const;
+  if (code === "BVERFG_OFFICIAL_DETAIL_404") return "single-404" as const;
+  if (code === "BVERFG_OFFICIAL_DETAIL_403" || /403|blocked/i.test(code)) return "blocked" as const;
+  if (code === "CRAWLEE_DETAIL_EMPTY") return "empty" as const;
+  if (code === "BVERFG_OFFICIAL_DETAIL_UNVERIFIED" || code === "BVERFG_SITE_BLOCK_CIRCUIT_OPEN") return "blocked" as const;
+  return "none" as const;
+}
+
 export function bverfgCandidateRetryDelayMs(attemptCount: number, errorCode?: string | null) {
-  if (errorCode !== BVERFG_OFFICIAL_VARIANTS_404) return 0;
-  if (attemptCount >= 10) return 3 * DAY_MS;
-  if (attemptCount >= 6) return 2 * DAY_MS;
+  const kind = bverfgRetryErrorClass(errorCode);
+  if (kind === "none" || kind === "single-404") return 0;
+  if (kind === "variants-404") {
+    if (attemptCount >= 10) return 3 * DAY_MS;
+    if (attemptCount >= 6) return 2 * DAY_MS;
+    if (attemptCount >= 3) return DAY_MS;
+    return 12 * HOUR_MS;
+  }
+  if (kind === "empty") {
+    if (attemptCount >= 6) return DAY_MS;
+    if (attemptCount >= 3) return 12 * HOUR_MS;
+    return 3 * HOUR_MS;
+  }
+  if (attemptCount >= 6) return 3 * DAY_MS;
   if (attemptCount >= 3) return DAY_MS;
-  return 12 * HOUR_MS;
+  return 6 * HOUR_MS;
 }
 
 export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[], now = new Date()) {
@@ -550,7 +647,8 @@ export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[],
     const delay = bverfgCandidateRetryDelayMs(record.attemptCount, record.lastErrorCode);
     if (delay === 0 || !record.lastAttemptAt) return true;
     const lastAttempt = Date.parse(record.lastAttemptAt);
-    const effectiveDelay = Math.max(0, delay - BVERFG_RETRY_SCHEDULE_GRACE_MS);
+    const grace = bverfgRetryErrorClass(record.lastErrorCode) === "variants-404" ? BVERFG_RETRY_SCHEDULE_GRACE_MS : 0;
+    const effectiveDelay = Math.max(0, delay - grace);
     return !Number.isFinite(lastAttempt) || now.getTime() - lastAttempt >= effectiveDelay;
   });
 }
@@ -1088,11 +1186,14 @@ async function refreshExistingArticle(existing: ExistingArticleRow, article: Nor
   return { status: "refreshed" as const, articleStatus: plan.status, collection: plan.collection };
 }
 
-async function runSingleSource(adapter: SourceAdapter, limit: number, options: RunIngestOptions = {}): Promise<SourceRunResult> {
-  const result: SourceRunResult = {
-    sourceKey: adapter.sourceKey,
+function emptySourceRunResult(sourceKey: string): SourceRunResult {
+  return {
+    sourceKey,
     discoveredCount: 0,
+    discoveredBeforeFilterCount: 0,
     fetchedCount: 0,
+    attemptedCount: 0,
+    verifiedSourceTextCount: 0,
     recordsAdded: 0,
     refreshedCount: 0,
     unchangedCount: 0,
@@ -1101,9 +1202,19 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     skippedCount: 0,
     skippedOutOfRangeCount: 0,
     skippedNonConstitutionalCount: 0,
+    revisionRecheckCount: 0,
+    deferredBackoffCount: 0,
+    uncollectedCount: 0,
+    blocked403Count: 0,
+    spainSourceTextPromotedCount: 0,
+    pendingRecheckCount: 0,
+    circuitBroken: false,
+    playwrightEscalated: false,
+    spainPendingPromotionStale: false,
+    outcome: "success",
     uncollectedCandidates: [],
     errors: [],
-    diagnostics: createDiagnosticsCollector(adapter.sourceKey),
+    diagnostics: createDiagnosticsCollector(sourceKey),
     statusCounts: {},
     collectionCounts: {
       publishableCount: 0,
@@ -1114,6 +1225,95 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       seedCount: 0,
     },
   };
+}
+
+function itemKey(item: Pick<DiscoveredItem, "canonicalUrl" | "url">) {
+  return safeCanonicalUrl(item.canonicalUrl ?? item.url) ?? item.url;
+}
+
+function existingWasMetadataOnly(existing: ExistingArticleRow) {
+  const metadata = isRecord(existing.source_metadata) ? existing.source_metadata : {};
+  const collection = isRecord(metadata.collection) ? metadata.collection : {};
+  return existing.status === "metadata_only" || collection.sourceTextAvailable === false;
+}
+
+function noteVerifiedPublishedAt(result: SourceRunResult, publishedAt?: string | null) {
+  const parsed = parseDate(publishedAt ?? undefined);
+  if (!parsed) return;
+  const iso = parsed.toISOString();
+  if (!result.lastVerifiedPublishedAt || iso > result.lastVerifiedPublishedAt) {
+    result.lastVerifiedPublishedAt = iso;
+  }
+}
+
+function recordCollectionCounts(
+  result: SourceRunResult,
+  status: string,
+  collection: { publishable?: boolean; sourceTextAvailable?: boolean; robotsDisallowed?: boolean; strategy?: string },
+) {
+  result.statusCounts[status] = (result.statusCounts[status] ?? 0) + 1;
+  if (collection.publishable) result.collectionCounts.publishableCount += 1;
+  if (!collection.sourceTextAvailable) result.collectionCounts.metadataOnlyCount += 1;
+  if (collection.robotsDisallowed) result.collectionCounts.robotsDisallowedCount += 1;
+  if (status === "blocked") result.collectionCounts.blockedCount += 1;
+  if (status === "timeout") result.collectionCounts.timeoutCount += 1;
+  if (collection.strategy === "seed") result.collectionCounts.seedCount += 1;
+  if (collection.sourceTextAvailable === true) result.verifiedSourceTextCount += 1;
+}
+
+function isBlockedUncollected(candidate: UncollectedCandidate) {
+  return candidate.httpStatus === 403 || candidate.errorCode === "BVERFG_OFFICIAL_DETAIL_403" || /403|blocked/i.test(candidate.errorCode);
+}
+
+function siteBlockCircuitThreshold() {
+  return boundedInteger(process.env.BVERFG_SITE_BLOCK_CIRCUIT_THRESHOLD, 3, { min: 2, max: 20 });
+}
+
+function playwrightEscalateLimit() {
+  return boundedInteger(process.env.BVERFG_PLAYWRIGHT_ESCALATE_LIMIT, 3, { min: 1, max: 10 });
+}
+
+async function partitionBverfgBackoffItems(items: DiscoveredItem[], now = new Date()) {
+  const due: DiscoveredItem[] = [];
+  const deferred: DiscoveredItem[] = [];
+  if (items.length === 0) return { due, deferred };
+
+  const urls = items.flatMap((item) => {
+    const metadata = isRecord(item.metadata) ? item.metadata : undefined;
+    return bverfgCandidateUrls(metadata, [item.canonicalUrl, item.url]);
+  });
+  let records: SourceUrlCandidateRecord[] = [];
+  try {
+    records = await findSourceUrlCandidatesByUrls("de-bverfg", urls);
+  } catch {
+    return { due: items, deferred };
+  }
+
+  for (const item of items) {
+    const metadata = isRecord(item.metadata) ? item.metadata : undefined;
+    const candidateUrls = bverfgCandidateUrls(metadata, [item.canonicalUrl, item.url]);
+    const tracked = records.filter((record) => candidateUrls.includes(record.url));
+    if (tracked.length > 0 && !shouldRetryBverfgCandidates(tracked, now)) deferred.push(item);
+    else due.push(item);
+  }
+  return { due, deferred };
+}
+
+function finalizeSourceRunResult(result: SourceRunResult) {
+  const seen = new Set<string>();
+  result.uncollectedCandidates = result.uncollectedCandidates.filter((candidate) => {
+    const key = safeCanonicalUrl(candidate.canonicalUrl ?? candidate.url) ?? candidate.url;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  result.uncollectedCount = result.uncollectedCandidates.length;
+  result.outcome = sourceResultOutcome({ ...result, outcome: undefined });
+  return result;
+}
+
+async function runSingleSource(adapter: SourceAdapter, limit: number, options: RunIngestOptions = {}): Promise<SourceRunResult> {
+  const result = emptySourceRunResult(adapter.sourceKey);
   await executionCheckpoint(options);
   const recoveredStaleRunCount = await recoverStaleIngestionRuns(adapter.sourceKey);
   if (recoveredStaleRunCount > 0) {
@@ -1128,8 +1328,8 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
   }
   const runId = await createIngestionRun(adapter.sourceKey);
   let rangeDays = rangeDaysForOptions(options, adapter.sourceKey);
-  if (adapter.sourceKey === SPAIN_TC_SOURCE_KEY) {
-    rangeDays = await dynamicSpainRangeDays(rangeDays);
+  if (isIncrementalSourceKey(adapter.sourceKey)) {
+    rangeDays = await incrementalRangeDaysForSource(adapter.sourceKey, rangeDays);
   }
   const rangeStart = rangeDays ? rangeStartForDays(rangeDays) : undefined;
   const revisionRangeDays = adapter.sourceKey === "us-scotus" ? scotusRevisionRecheckDays() : undefined;
@@ -1162,9 +1362,13 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     const allDiscovered = uniqueDiscoveredItems(await adapter.discover(discoveryOptions));
     await executionCheckpoint(options);
     const inRangeDiscovered = allDiscovered.filter((item) => isDiscoveredItemInCollectionRange(item, rangeStart, revisionRangeStart));
-    const primaryDiscovered = allDiscovered
-      .filter((item) => isItemInDateRange(item.publishedAt, rangeStart))
-      .slice(0, limit);
+    const primaryInRange = allDiscovered.filter((item) => isItemInDateRange(item.publishedAt, rangeStart));
+    const bverfgPartition = adapter.sourceKey === "de-bverfg"
+      ? await partitionBverfgBackoffItems(primaryInRange)
+      : { due: primaryInRange, deferred: [] };
+    const deferredInBudget = new Set(primaryInRange.slice(0, limit).map(itemKey));
+    result.deferredBackoffCount += bverfgPartition.deferred.filter((item) => deferredInBudget.has(itemKey(item))).length;
+    const primaryDiscovered = bverfgPartition.due.slice(0, limit);
     const revisionDiscovered = adapter.sourceKey === "us-scotus" && revisionRangeStart
       ? allDiscovered
         .filter((item) => !isItemInDateRange(item.publishedAt, rangeStart) && isDiscoveredItemInCollectionRange(item, undefined, revisionRangeStart))
@@ -1179,7 +1383,12 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         ? await loadTrackedSpainSourceTextPendingItems()
         : [];
     const discovered = uniqueDiscoveredItems([...primaryDiscovered, ...revisionDiscovered, ...trackedBverfgItems, ...trackedSpainItems]);
-    result.discoveredCount = uniqueDiscoveredItems([...allDiscovered, ...trackedBverfgItems, ...trackedSpainItems]).length;
+    const primaryKeys = new Set(primaryDiscovered.map(itemKey));
+    const revisionOnlyKeys = new Set(revisionDiscovered.map(itemKey).filter((key) => !primaryKeys.has(key)));
+    result.discoveredBeforeFilterCount = uniqueDiscoveredItems([...allDiscovered, ...trackedBverfgItems, ...trackedSpainItems]).length;
+    result.discoveredCount = discovered.length;
+    result.revisionRecheckCount = revisionDiscovered.length;
+    result.pendingRecheckCount = trackedBverfgItems.length + trackedSpainItems.length;
     result.skippedOutOfRangeCount = allDiscovered.length - inRangeDiscovered.length;
     if (revisionDiscovered.length > 0) {
       addDiagnosticAttempt(result.diagnostics, {
@@ -1212,6 +1421,101 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       });
     }
 
+    const blockedItemsForEscalate: DiscoveredItem[] = [];
+    let consecutiveOfficial403 = 0;
+
+    const persistNormalized = async (
+      item: DiscoveredItem,
+      normalized: NormalizedArticle,
+      existing: ExistingArticleRow | null,
+      candidateUrls: string[],
+    ) => {
+      const uncollectedCandidate = uncollectedCandidateForArticle(normalized, result.diagnostics);
+      if (uncollectedCandidate) {
+        result.uncollectedCandidates.push(await trackUncollectedCandidate(uncollectedCandidate));
+        result.skippedCount += 1;
+        result.fetchedCount += 1;
+        if (isBlockedUncollected(uncollectedCandidate)) {
+          result.blocked403Count += 1;
+          consecutiveOfficial403 += 1;
+          blockedItemsForEscalate.push(item);
+          if (adapter.sourceKey === "de-bverfg" && consecutiveOfficial403 >= siteBlockCircuitThreshold()) {
+            result.circuitBroken = true;
+          }
+        } else {
+          consecutiveOfficial403 = 0;
+        }
+        return "uncollected" as const;
+      }
+
+      consecutiveOfficial403 = 0;
+      if (adapter.sourceKey === "de-bverfg") {
+        await closeTrackedBverfgCandidates(
+          bverfgCandidateUrls(isRecord(normalized.metadata) ? normalized.metadata : undefined, [
+            ...candidateUrls,
+            normalized.canonicalUrl,
+            normalized.originalUrl,
+          ]),
+          result.diagnostics,
+        );
+      }
+
+      if (adapter.sourceKey === "us-scotus" && !isConstitutionallyRelevant(normalized)) {
+        result.skippedNonConstitutionalCount += 1;
+        result.skippedCount += 1;
+        return "skipped" as const;
+      }
+
+      if (existing) {
+        const refreshed = await refreshExistingArticle(existing, normalized, runId);
+        if (refreshed.status === "unchanged") {
+          if (isSpainSourceTextPending(normalized)) await touchTrackedSpainSourceTextPending(existing.id);
+          result.unchangedCount += 1;
+          result.skippedCount += 1;
+        } else if (refreshed.status === "preserved") {
+          addDiagnosticAttempt(result.diagnostics, {
+            url: normalized.canonicalUrl,
+            strategy: "api",
+            result: "success",
+            fallback: true,
+            errorCode: "REFRESH_QUALITY_REGRESSION_BLOCKED",
+            errorMessage: `Existing public article was preserved (${refreshed.reason}; ${refreshed.existingTextLength} -> ${refreshed.incomingTextLength} characters).`,
+          });
+          result.unchangedCount += 1;
+          result.skippedCount += 1;
+        } else if (refreshed.status === "refreshed") {
+          result.refreshedCount += 1;
+          recordCollectionCounts(result, refreshed.articleStatus, refreshed.collection);
+          if (existingWasMetadataOnly(existing) && refreshed.collection.sourceTextAvailable === true) {
+            result.spainSourceTextPromotedCount += 1;
+          }
+          if (refreshed.collection.sourceTextAvailable === true) {
+            noteVerifiedPublishedAt(result, normalized.originalPublishedAt);
+          }
+        } else {
+          result.skippedNonConstitutionalCount += 1;
+          result.skippedCount += 1;
+        }
+        result.fetchedCount += 1;
+        return "existing" as const;
+      }
+
+      if (await articleExistsByNormalizedContent(normalized)) {
+        result.skippedCount += 1;
+        return "duplicate" as const;
+      }
+      const inserted = await insertNormalizedArticle(normalized, runId);
+      if (inserted) {
+        result.recordsAdded = (result.recordsAdded ?? 0) + 1;
+        recordCollectionCounts(result, inserted.status, inserted.collection);
+        if (inserted.collection.sourceTextAvailable === true) {
+          noteVerifiedPublishedAt(result, normalized.originalPublishedAt);
+        }
+      }
+      result.fetchedCount += 1;
+      return "inserted" as const;
+    };
+
     for (const item of discovered) {
       await executionCheckpoint(options);
       const itemDiagnostics = createDiagnosticsCollector(adapter.sourceKey);
@@ -1237,6 +1541,22 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
           continue;
         }
 
+        if (
+          existing
+          && adapter.sourceKey === "us-scotus"
+          && revisionOnlyKeys.has(itemKey(item))
+          && (existing.cleaned_text?.trim().length ?? 0) >= MIN_PUBLISHABLE_TEXT_LENGTH
+        ) {
+          const existingMetadata = isRecord(existing.source_metadata) ? existing.source_metadata : {};
+          const existingRevision = typeof existingMetadata.revisionDate === "string" ? existingMetadata.revisionDate : undefined;
+          const incomingRevision = typeof itemMetadata?.revisionDate === "string" ? itemMetadata.revisionDate : undefined;
+          if (existingRevision && incomingRevision && existingRevision === incomingRevision) {
+            result.unchangedCount += 1;
+            result.skippedCount += 1;
+            continue;
+          }
+        }
+
         if (adapter.sourceKey === "de-bverfg" && !existing) {
           let trackedCandidates: SourceUrlCandidateRecord[] = [];
           try {
@@ -1256,100 +1576,41 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
               errorCode: "BVERFG_CANDIDATE_RETRY_DEFERRED",
               errorMessage: "Known official URL candidates remain unavailable and are inside their retry backoff window.",
             });
+            result.deferredBackoffCount += 1;
             result.skippedCount += 1;
             continue;
           }
         }
 
+        if (result.circuitBroken && adapter.sourceKey === "de-bverfg") {
+          const circuitCandidate: UncollectedCandidate = {
+            sourceKey: adapter.sourceKey,
+            url: candidateUrls[0] ?? item.url,
+            canonicalUrl: candidateUrls[0] ?? item.canonicalUrl,
+            title: item.title ?? null,
+            publishedAt: item.publishedAt ?? null,
+            candidateType: item.contentType,
+            discoveredBy: stringValue(itemMetadata?.detailDiscoveryStrategy) ?? "official-detail-verification",
+            reason: "BVerfG official site block circuit is open; remaining official detail fetches were skipped and saved for later retry.",
+            errorCode: "BVERFG_SITE_BLOCK_CIRCUIT_OPEN",
+            httpStatus: 403,
+            caseNumber: stringValue(itemMetadata?.caseNumber),
+            detailDiscoveryStrategy: stringValue(itemMetadata?.detailDiscoveryStrategy),
+          };
+          result.uncollectedCandidates.push(await trackUncollectedCandidate(circuitCandidate));
+          result.skippedCount += 1;
+          result.blocked403Count += 1;
+          continue;
+        }
+
+        result.attemptedCount += 1;
         const raw = await adapter.fetchItem(item, { ...discoveryOptions, diagnostics: itemDiagnostics });
         await executionCheckpoint(options);
         itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
         itemDiagnosticsMerged = true;
         const normalized = await adapter.normalize(raw);
         await executionCheckpoint(options);
-        const uncollectedCandidate = uncollectedCandidateForArticle(normalized, result.diagnostics);
-        if (uncollectedCandidate) {
-          await executionCheckpoint(options);
-          result.uncollectedCandidates.push(await trackUncollectedCandidate(uncollectedCandidate));
-          result.skippedCount += 1;
-          result.fetchedCount += 1;
-          continue;
-        }
-
-        if (adapter.sourceKey === "de-bverfg") {
-          await closeTrackedBverfgCandidates(
-            bverfgCandidateUrls(isRecord(normalized.metadata) ? normalized.metadata : undefined, [
-              ...candidateUrls,
-              normalized.canonicalUrl,
-              normalized.originalUrl,
-            ]),
-            result.diagnostics,
-          );
-        }
-
-        if (adapter.sourceKey === "us-scotus" && !isConstitutionallyRelevant(normalized)) {
-          result.skippedNonConstitutionalCount += 1;
-          result.skippedCount += 1;
-          continue;
-        }
-
-        if (existing) {
-          await executionCheckpoint(options);
-          const refreshed = await refreshExistingArticle(existing, normalized, runId);
-          await executionCheckpoint(options);
-          if (refreshed.status === "unchanged") {
-            if (isSpainSourceTextPending(normalized)) {
-              await touchTrackedSpainSourceTextPending(existing.id);
-            }
-            result.unchangedCount += 1;
-            result.skippedCount += 1;
-          } else if (refreshed.status === "preserved") {
-            addDiagnosticAttempt(result.diagnostics, {
-              url: normalized.canonicalUrl,
-              strategy: "api",
-              result: "success",
-              fallback: true,
-              errorCode: "REFRESH_QUALITY_REGRESSION_BLOCKED",
-              errorMessage: `Existing public article was preserved (${refreshed.reason}; ${refreshed.existingTextLength} -> ${refreshed.incomingTextLength} characters).`,
-            });
-            result.unchangedCount += 1;
-            result.skippedCount += 1;
-          } else if (refreshed.status === "refreshed") {
-            result.refreshedCount += 1;
-            result.statusCounts[refreshed.articleStatus] = (result.statusCounts[refreshed.articleStatus] ?? 0) + 1;
-            if (refreshed.collection.publishable) result.collectionCounts.publishableCount += 1;
-            if (!refreshed.collection.sourceTextAvailable) result.collectionCounts.metadataOnlyCount += 1;
-            if (refreshed.collection.robotsDisallowed) result.collectionCounts.robotsDisallowedCount += 1;
-            if (refreshed.articleStatus === "blocked") result.collectionCounts.blockedCount += 1;
-            if (refreshed.articleStatus === "timeout") result.collectionCounts.timeoutCount += 1;
-            if (refreshed.collection.strategy === "seed") result.collectionCounts.seedCount += 1;
-          } else {
-            result.skippedNonConstitutionalCount += 1;
-            result.skippedCount += 1;
-          }
-          result.fetchedCount += 1;
-          continue;
-        }
-
-        await executionCheckpoint(options);
-        if (await articleExistsByNormalizedContent(normalized)) {
-          result.skippedCount += 1;
-          continue;
-        }
-        await executionCheckpoint(options);
-        const inserted = await insertNormalizedArticle(normalized, runId);
-        await executionCheckpoint(options);
-        if (inserted) {
-          result.recordsAdded = (result.recordsAdded ?? 0) + 1;
-          result.statusCounts[inserted.status] = (result.statusCounts[inserted.status] ?? 0) + 1;
-          if (inserted.collection.publishable) result.collectionCounts.publishableCount += 1;
-          if (!inserted.collection.sourceTextAvailable) result.collectionCounts.metadataOnlyCount += 1;
-          if (inserted.collection.robotsDisallowed) result.collectionCounts.robotsDisallowedCount += 1;
-          if (inserted.status === "blocked") result.collectionCounts.blockedCount += 1;
-          if (inserted.status === "timeout") result.collectionCounts.timeoutCount += 1;
-          if (inserted.collection.strategy === "seed") result.collectionCounts.seedCount += 1;
-        }
-        result.fetchedCount += 1;
+        await persistNormalized(item, normalized, existing, candidateUrls);
       } catch (error) {
         if (options.signal?.aborted) throw executionAbortReason(options.signal);
         if (!itemDiagnosticsMerged) {
@@ -1359,6 +1620,12 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
         if (uncollectedCandidate) {
           result.uncollectedCandidates.push(await trackUncollectedCandidate(uncollectedCandidate));
           result.skippedCount += 1;
+          if (isBlockedUncollected(uncollectedCandidate)) {
+            result.blocked403Count += 1;
+            consecutiveOfficial403 += 1;
+            blockedItemsForEscalate.push(item);
+            if (consecutiveOfficial403 >= siteBlockCircuitThreshold()) result.circuitBroken = true;
+          }
         } else {
           result.failedCount += 1;
           result.errors.push(error instanceof Error ? error.message : String(error));
@@ -1366,13 +1633,60 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
       }
     }
 
+    if (result.circuitBroken && options.usePlaywright !== true && blockedItemsForEscalate.length > 0) {
+      addDiagnosticAttempt(result.diagnostics, {
+        strategy: "playwright",
+        fallback: true,
+        result: "success",
+        errorCode: "BVERFG_PLAYWRIGHT_ESCALATE",
+        errorMessage: "Official HTTP collection was blocked; a bounded Playwright sample will be tried once.",
+        discoveredCount: Math.min(playwrightEscalateLimit(), blockedItemsForEscalate.length),
+      });
+      result.playwrightEscalated = true;
+      for (const item of blockedItemsForEscalate.slice(0, playwrightEscalateLimit())) {
+        await executionCheckpoint(options);
+        const itemDiagnostics = createDiagnosticsCollector(adapter.sourceKey);
+        const itemMetadata = isRecord(item.metadata) ? item.metadata : undefined;
+        const candidateUrls = bverfgCandidateUrls(itemMetadata, [item.canonicalUrl, item.url]);
+        try {
+          result.attemptedCount += 1;
+          const raw = await adapter.fetchItem(item, { ...discoveryOptions, usePlaywright: true, diagnostics: itemDiagnostics });
+          itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
+          const normalized = await adapter.normalize(raw);
+          const existing = await findExistingArticle(candidateUrls, adapter.sourceKey, itemMetadata);
+          const beforeUncollected = result.uncollectedCandidates.length;
+          await persistNormalized(item, normalized, existing, candidateUrls);
+          if (result.uncollectedCandidates.length < beforeUncollected || result.verifiedSourceTextCount > 0) {
+            result.uncollectedCandidates = result.uncollectedCandidates.filter((candidate) => {
+              const url = safeCanonicalUrl(candidate.canonicalUrl ?? candidate.url);
+              return url !== itemKey(item);
+            });
+          }
+        } catch (error) {
+          if (options.signal?.aborted) throw executionAbortReason(options.signal);
+          itemDiagnostics.attempts.forEach((attempt) => addDiagnosticAttempt(result.diagnostics, attempt));
+          result.errors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    if (adapter.sourceKey === SPAIN_TC_SOURCE_KEY) {
+      result.spainPendingPromotionStale = await spainPendingPromotionIsStale(
+        trackedSpainItems.length,
+        result.spainSourceTextPromotedCount,
+      );
+    }
+
     await executionCheckpoint(options);
-    await closeIngestionRun(runId, result, "completed", runOptionsMetadata);
+    finalizeSourceRunResult(result);
+    await closeIngestionRun(runId, result, result.outcome === "failed" ? "failed" : "completed", runOptionsMetadata);
     return result;
   } catch (error) {
     if (options.signal?.aborted) throw executionAbortReason(options.signal);
     result.failedCount += 1;
     result.errors.push(error instanceof Error ? error.message : String(error));
+    finalizeSourceRunResult(result);
+    result.outcome = "failed";
     await closeIngestionRun(runId, result, "failed", runOptionsMetadata);
     return result;
   }

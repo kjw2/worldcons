@@ -48,6 +48,8 @@ async function readSitemap(
   const response = await crawlUrl({ url, signal: hooks?.signal, checkpoint: hooks?.checkpoint });
   await checkpointCrawlerExecution(hooks);
   const locs = response.text ? await locsFromXml(response.text, hooks) : [];
+  const optionalIndex = /\/sitemap_index\.xml$/i.test(url);
+  const optionalMissing = optionalIndex && response.status === 404;
   addDiagnosticAttempt(collector, {
     url,
     finalUrl: response.finalUrl,
@@ -57,8 +59,10 @@ async function readSitemap(
     discoveredCount: locs.length,
     timeout: response.diagnostics?.timeout,
     timeoutPhase: response.diagnostics?.timeoutPhase,
-    errorCode: response.diagnostics?.errorCode,
-    errorMessage: response.diagnostics?.errorMessage,
+    optional: optionalIndex,
+    result: optionalMissing ? "empty" : undefined,
+    errorCode: optionalMissing ? undefined : response.diagnostics?.errorCode,
+    errorMessage: optionalMissing ? "Optional sitemap index is absent." : response.diagnostics?.errorMessage,
   });
 
   const nestedSitemaps: string[] = [];

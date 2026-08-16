@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { getCollectionControlState } from "@/lib/masterdash/store";
 import { collectionHealthMetrics } from "@/lib/masterdash/health";
 
@@ -32,6 +33,7 @@ function degradedHealth(message: string) {
         durationMs: null,
         collectionPaused: false,
         controlUpdatedAt: null,
+        bySource: [],
       },
     },
     { status: 200, headers: HEALTH_HEADERS },
@@ -43,23 +45,27 @@ export async function GET() {
     const supabase = getSupabaseAdmin();
     if (!supabase) return degradedHealth("Collector database is not configured.");
 
-    const [latest, successful, pending, failed, control] = await Promise.all([
+    const [latest, successful, recent, pending, failed, openCandidates, control] = await Promise.all([
       supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("ingestion_runs").select("source_key, finished_at, metadata").eq("status", "completed").order("finished_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
+      supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(40),
       supabase.from("admin_jobs").select("id", { count: "exact", head: true }).in("status", ["queued", "running", "cancel_requested"]),
       supabase.from("admin_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
+      countOpenSourceUrlCandidates().catch(() => null),
       getCollectionControlState(),
     ]);
-    const queryFailed = Boolean(latest.error || successful.error || pending.error || failed.error);
+    const queryFailed = Boolean(latest.error || successful.error || recent.error || pending.error || failed.error || openCandidates === null);
     const controlRequired = Boolean(process.env.MASTERDASH_CONTROL_SECRET?.trim());
-    const degraded = queryFailed || (controlRequired && !control.available);
     const paused = control.available && control.paused;
     const metrics = collectionHealthMetrics({
       latest: latest.data,
       successful: successful.data,
-      pendingItems: pending.count ?? null,
+      recentRuns: recent.data ?? [],
+      pendingItems: (pending.count ?? 0) + (openCandidates ?? 0),
       failedJobCount: failed.count ?? null,
     });
+    const sourceUnhealthy = metrics.bySource.some((source) => source.lastRunStatus === "degraded" || source.lastRunStatus === "failed");
+    const degraded = queryFailed || (controlRequired && !control.available) || sourceUnhealthy;
     const lastSuccessAt = metrics.lastSuccessfulCollectionAt;
     const lastSuccessMs = lastSuccessAt ? Date.parse(lastSuccessAt) : Number.NaN;
     const freshnessSeconds = Number.isFinite(lastSuccessMs)
@@ -71,11 +77,13 @@ export async function GET() {
         schemaVersion: 1,
         systemId: "worldcons",
         status: degraded ? "degraded" : "healthy",
-        message: degraded
+        message: queryFailed || (controlRequired && !control.available)
           ? "Collector metrics or control state are unavailable."
-          : paused
-            ? "Collector is ready; new collection starts are paused."
-            : "Collector is ready.",
+          : sourceUnhealthy
+            ? "Collector is ready, but at least one source completed in a degraded or failed state."
+            : paused
+              ? "Collector is ready; new collection starts are paused."
+              : "Collector is ready.",
         version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "0.1.0",
         metrics: {
           ...metrics,

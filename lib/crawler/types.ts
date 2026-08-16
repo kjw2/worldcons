@@ -94,7 +94,8 @@ export interface CrawlAttemptLog {
     | "selector_wait"
     | "text_extraction";
   timeoutMs?: number;
-  result?: "success" | "timeout" | "blocked" | "failed";
+  result?: "success" | "timeout" | "blocked" | "failed" | "empty";
+  optional?: boolean;
   statusCode?: number | null;
   redirectChain?: string[];
   dnsResolved?: boolean;

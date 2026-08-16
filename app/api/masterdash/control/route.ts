@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { createAdminJob } from "@/lib/db/admin-jobs";
+import { INCREMENTAL_SOURCE_KEYS, incrementalJobOptionsForSource } from "@/lib/ingest/incremental";
 import {
   MasterdashSecurityError,
   verifyMasterdashControlRequest,
@@ -26,24 +27,20 @@ function json(body: Record<string, unknown>, status: number) {
 
 async function queueIncrementalCollection(body: MasterdashControlRequest) {
   await assertCollectionCanStart();
-  const queued = await createAdminJob({
-    jobType: "ingest",
-    requestedBy: `masterdash:${body.requestedBy.userId}`,
-    idempotencyKey: `masterdash-control:${body.requestId}`,
-    options: {
-      action: "ingest",
-      sourceKey: null,
-      limit: null,
-      summarizeLimit: 20,
-      summarize: false,
-      refreshTags: false,
-      allowVercelCrawling: false,
-      articleId: null,
-      slug: null,
-    },
-  });
-  if (!queued.ok) throw new Error(queued.error);
-  return `Incremental collection job ${queued.data.job.id} ${queued.data.created ? "was queued" : "was already queued"}.`;
+  const queuedIds: string[] = [];
+  const reusedIds: string[] = [];
+  for (const sourceKey of INCREMENTAL_SOURCE_KEYS) {
+    const queued = await createAdminJob({
+      jobType: "ingest",
+      requestedBy: `masterdash:${body.requestedBy.userId}`,
+      idempotencyKey: `masterdash-control:${body.requestId}:${sourceKey}`,
+      options: incrementalJobOptionsForSource(sourceKey),
+    });
+    if (!queued.ok) throw new Error(queued.error);
+    if (queued.data.created) queuedIds.push(queued.data.job.id);
+    else reusedIds.push(queued.data.job.id);
+  }
+  return `Incremental collection jobs ${[...queuedIds, ...reusedIds].join(", ")} ${reusedIds.length === INCREMENTAL_SOURCE_KEYS.length ? "were already queued" : "were queued"} for ${INCREMENTAL_SOURCE_KEYS.join(", ")}.`;
 }
 
 async function executeControl(body: MasterdashControlRequest) {

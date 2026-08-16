@@ -94,6 +94,8 @@ const adminIngestBodySchema = z
     slug: optionalText(ADMIN_REF_MAX_LENGTH),
     limit: optionalInteger(1, 100),
     summarizeLimit: optionalInteger(1, 100),
+    rangeDays: optionalInteger(1, 730),
+    refreshExisting: z.boolean().optional(),
     summarize: optionalBoolean(),
     refreshTags: optionalBoolean(),
     allowVercelCrawling: optionalBoolean(),
