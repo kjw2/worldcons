@@ -32,7 +32,7 @@ function baseParams(paramsString: string) {
 
 function hrefWithParams(params: URLSearchParams) {
   const query = params.toString();
-  return query ? `/v2/list?${query}` : "/v2/list";
+  return query ? `/list?${query}` : "/list";
 }
 
 function hrefForJurisdiction(paramsString: string, jurisdiction?: string) {
@@ -49,7 +49,7 @@ function hrefForPage(paramsString: string, page: number) {
 }
 
 function currentListReturnPath(paramsString: string) {
-  return paramsString ? `/v2/list?${paramsString}` : "/v2/list";
+  return paramsString ? `/list?${paramsString}` : "/list";
 }
 
 function hrefForArticle(slug: string, paramsString: string) {

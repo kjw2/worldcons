@@ -6,11 +6,11 @@ import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { cn } from "@/lib/utils/classnames";
 
 const primaryNavigation = [
-  { href: "/v2/list", label: "전체 판례" },
-  { href: "/v2/sources", label: "기관" },
-  { href: "/v2/tags", label: "주제" },
-  { href: "/v2/glossary", label: "용어" },
-  { href: "/v2/guide", label: "안내" },
+  { href: "/list", label: "전체 판례" },
+  { href: "/sources", label: "기관" },
+  { href: "/tags", label: "주제" },
+  { href: "/glossary", label: "용어" },
+  { href: "/guide", label: "안내" },
 ] as const;
 
 function isCurrent(pathname: string, href: string) {
@@ -24,7 +24,7 @@ export function PublicSiteHeader() {
     <header id="site-header" className="public-site-header border-b border-archive-line-strong bg-white/95">
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
         <div className="flex min-h-[92px] items-center justify-between gap-3 border-b border-archive-line py-4 sm:min-h-[106px] sm:gap-5">
-          <IntentPrefetchLink href="/v2" className="focus-ring min-w-0 rounded-sm" aria-label="헌법판례요약시스템 홈">
+          <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label="헌법판례요약시스템 홈">
             <span className="block truncate font-sans text-[18px] font-extrabold leading-none text-archive-accent sm:text-[30px]">헌법판례요약시스템</span>
             <span className="mt-2 block text-xs font-medium text-archive-text sm:text-sm">세계 헌법재판과 헌법 판례</span>
           </IntentPrefetchLink>
@@ -38,7 +38,7 @@ export function PublicSiteHeader() {
             >
               WORLDLAWS
             </a>
-            <IntentPrefetchLink href="/v2/search" aria-label="검색" title="검색" className="focus-ring inline-flex size-10 items-center justify-center rounded-sm hover:bg-archive-tint hover:text-archive-accent">
+            <IntentPrefetchLink href="/search" aria-label="검색" title="검색" className="focus-ring inline-flex size-10 items-center justify-center rounded-sm hover:bg-archive-tint hover:text-archive-accent">
               <Search className="size-5" aria-hidden="true" />
             </IntentPrefetchLink>
           </div>

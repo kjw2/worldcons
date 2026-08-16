@@ -93,7 +93,7 @@ export function ArticleCard({
   const title = article.koreanTitle || article.originalTitle || "제목 미상";
   const originalHref = safeExternalUrl(article.originalUrl);
   const viewCountLabel = formatViewCount(article.viewCount);
-  const canonicalArticleHref = `/v2/articles/${article.slug}`;
+  const canonicalArticleHref = `/articles/${article.slug}`;
   const articleHref = articleHrefWithReturnTo(article.slug, articleReturnPathForLocation(pathname, searchParams));
 
   async function shareArticle() {

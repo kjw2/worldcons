@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { FilterBar } from "@/components/filter-bar";
@@ -17,6 +18,12 @@ import { articleFiltersFromSearchParams, getSearchParam, resolveSearchParams, ty
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: "검색",
+  description: "세계 헌법재판 뉴스와 판례를 검색합니다.",
+  robots: { index: false, follow: true },
+};
 
 const modeOptions = [
   { value: "hybrid", label: "혼합 검색" },

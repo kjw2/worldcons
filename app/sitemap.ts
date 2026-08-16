@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import { listArticles, listGlossaryTerms, listSources, listTags } from "@/lib/db/queries";
-import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { listGlossaryTerms, listPublicSitemapArticles, listSources, listTags } from "@/lib/db/queries";
+import { getAppBaseUrl, isIndexablePublicTag } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,7 +8,7 @@ export const revalidate = 0;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getAppBaseUrl();
   const [articles, sources, tags, glossary] = await Promise.all([
-    listArticles({ pageSize: 1000 }),
+    listPublicSitemapArticles(),
     listSources(),
     listTags({ sort: "count" }),
     listGlossaryTerms(),
@@ -17,7 +17,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     { url: `${baseUrl}/`, changeFrequency: "hourly", priority: 1 },
     { url: `${baseUrl}/list`, changeFrequency: "hourly", priority: 0.9 },
-    { url: `${baseUrl}/search`, changeFrequency: "daily", priority: 0.7 },
     { url: `${baseUrl}/tags`, changeFrequency: "daily", priority: 0.8 },
     { url: `${baseUrl}/sources`, changeFrequency: "weekly", priority: 0.5 },
     { url: `${baseUrl}/glossary`, changeFrequency: "weekly", priority: 0.5 },
@@ -29,17 +28,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: "weekly" as const,
         priority: 0.5,
       })),
-    ...articles.items.map((article) => ({
+    ...articles.map((article) => ({
       url: `${baseUrl}/articles/${article.slug}`,
-      lastModified: article.summarizedAt || article.fetchedAt || article.discoveredAt || undefined,
+      lastModified: article.lastModified || undefined,
       changeFrequency: "weekly" as const,
       priority: 0.8,
     })),
-    ...tags.map((tag) => ({
+    ...tags.filter(isIndexablePublicTag).map((tag) => ({
       url: `${baseUrl}/tags/${tag.slug}`,
       lastModified: tag.latestArticleAt || undefined,
       changeFrequency: "daily" as const,
-      priority: 0.7,
+      priority: 0.6,
     })),
     ...glossary.map((term) => ({
       url: `${baseUrl}/glossary/${term.slug}`,

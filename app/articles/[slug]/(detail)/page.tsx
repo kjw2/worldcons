@@ -103,9 +103,9 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
       <PageViewTracker event={articleViewEvent} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
       <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치">
-        <IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
-        <IntentPrefetchLink href="/v2/list" className="focus-ring rounded-sm hover:text-archive-accent">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
-        <IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel(article.sourceKey)}</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href="/" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href="/list" className="focus-ring rounded-sm hover:text-archive-accent">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
+        <IntentPrefetchLink href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel(article.sourceKey)}</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
         <span className="max-w-[32rem] truncate">{article.koreanTitle || article.originalTitle}</span>
       </nav>
       <section style={jurisdictionThemeStyle(theme)} className="mb-8 border-b border-archive-line-strong pb-8">
@@ -132,7 +132,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             </a>
           ) : null}
           <ArticleReturnLink className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-sm border border-archive-line bg-white px-4 text-sm font-semibold text-archive-text transition hover:border-archive-accent hover:text-archive-accent" />
-          <ArticlePrintButton printHref={`/v2/articles/${article.slug}/print`} />
+          <ArticlePrintButton printHref={`/articles/${article.slug}/print`} />
         </div>
       </section>
 
@@ -195,7 +195,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
                 <Scale className="mt-0.5 size-4 text-[color:var(--country-text)]" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-ink">기관</dt>
-                  <dd className="mt-1 text-ink-muted"><IntentPrefetchLink href={`/v2/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</IntentPrefetchLink></dd>
+                  <dd className="mt-1 text-ink-muted"><IntentPrefetchLink href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })}</IntentPrefetchLink></dd>
                 </div>
               </div>
               <div className="flex items-start gap-3">

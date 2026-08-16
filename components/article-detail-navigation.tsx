@@ -6,14 +6,14 @@ import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { articleHrefWithReturnTo, safeArticleReturnPath } from "@/lib/navigation/article-return";
 
 function useArticleReturnHref() {
-  const [returnHref, setReturnHref] = useState("/v2");
+  const [returnHref, setReturnHref] = useState("/");
 
   useEffect(() => {
     const resolveReturnHref = () => {
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
       const legacySearchParams = new URLSearchParams(window.location.search);
       setReturnHref(
-        safeArticleReturnPath(hashParams.get("returnTo") ?? legacySearchParams.get("returnTo")) ?? "/v2",
+        safeArticleReturnPath(hashParams.get("returnTo") ?? legacySearchParams.get("returnTo")) ?? "/",
       );
     };
 

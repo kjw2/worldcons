@@ -5,10 +5,11 @@ import { BackToTopButton } from "@/components/back-to-top-button";
 import { FixedChromeToggle } from "@/components/fixed-chrome-toggle";
 import { NavigationProgress } from "@/components/navigation-progress";
 import { PublicSiteHeader } from "@/components/public-site-header";
-import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { getAppBaseUrl, siteVerificationMetadata } from "@/lib/seo/metadata";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getAppBaseUrl()),
   title: {
     default: "헌법판례요약시스템",
     template: "%s | 헌법판례요약시스템",
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
       "application/rss+xml": `${getAppBaseUrl()}/rss.xml`,
     },
   },
+  ...siteVerificationMetadata(),
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

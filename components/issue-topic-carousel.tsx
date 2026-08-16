@@ -90,7 +90,7 @@ export function IssueTopicCarousel({ tags }: { tags: TagSummary[] }) {
         {tags.map((tag, index) => {
           const Icon = issueIcons[index % issueIcons.length];
           return (
-            <IntentPrefetchLink key={tag.slug} href={`/v2/list?tag=${encodeURIComponent(tag.slug)}`} className="focus-ring group grid min-h-28 min-w-[84%] snap-start grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-archive-line bg-white p-4 transition hover:border-archive-accent hover:bg-archive-surface-soft sm:min-w-[calc((100%-0.75rem)/2)] xl:min-w-[calc((100%-2.25rem)/4)]">
+            <IntentPrefetchLink key={tag.slug} href={`/list?tag=${encodeURIComponent(tag.slug)}`} className="focus-ring group grid min-h-28 min-w-[84%] snap-start grid-cols-[42px_minmax(0,1fr)_auto] gap-3 rounded-sm border border-archive-line bg-white p-4 transition hover:border-archive-accent hover:bg-archive-surface-soft sm:min-w-[calc((100%-0.75rem)/2)] xl:min-w-[calc((100%-2.25rem)/4)]">
               <span className="inline-flex size-10 items-center justify-center text-archive-accent"><Icon className="size-6" aria-hidden="true" /></span>
               <span className="min-w-0"><span className="archive-serif block break-words text-lg font-semibold text-archive-heading">{tag.name}</span><span className="mt-2 block text-xs text-archive-muted">관련 판례 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</span></span>
               <ChevronRight className="mt-auto size-4 text-archive-subtle transition group-hover:translate-x-0.5 group-hover:text-archive-accent" aria-hidden="true" />

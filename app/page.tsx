@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
 import { ArrowRight, CalendarDays, Landmark } from "lucide-react";
@@ -15,8 +16,13 @@ import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { compareHomeCountries } from "@/lib/ui/home-country-order";
 import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { JUDICIAL_COMPLAINT_TAG_SLUG } from "@/lib/tags/judicial-complaint";
+import { getAppBaseUrl } from "@/lib/seo/metadata";
 
 export const revalidate = 60;
+
+export const metadata: Metadata = {
+  alternates: { canonical: `${getAppBaseUrl()}/` },
+};
 
 const CONSTITUTIONAL_ISSUE_TYPES = new Set<TagType>(["right", "topic", "doctrine", "procedure"]);
 
@@ -100,7 +106,7 @@ function HomeSkeleton() {
 }
 
 function articleHref(article: ArticleListItem) {
-  return articleHrefWithReturnTo(article.slug, "/v2");
+  return articleHrefWithReturnTo(article.slug, "/");
 }
 
 function LeadDecision({ article }: { article: ArticleListItem }) {
@@ -156,7 +162,7 @@ function CountryLatestPortal({ articles }: { articles: ArticleListItem[] }) {
     <section aria-labelledby="country-latest">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <h2 id="country-latest" className="archive-serif text-2xl font-semibold text-archive-ink">국가별 최신 판례</h2>
-        <IntentPrefetchLink href="/v2/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></IntentPrefetchLink>
+        <IntentPrefetchLink href="/list" className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">전체 판례 보기<ArrowRight className="size-4" aria-hidden="true" /></IntentPrefetchLink>
       </div>
       <div className="overflow-hidden rounded-sm border border-archive-line bg-white">
         <div className="hidden grid-cols-[100px_110px_170px_90px_minmax(260px,1fr)_150px] gap-3 border-b border-archive-line-strong bg-archive-surface px-4 py-2.5 text-xs font-semibold text-archive-text xl:grid"><span>날짜</span><span>국가</span><span>기관</span><span>유형</span><span>제목</span><span>주제</span></div>
@@ -176,7 +182,7 @@ async function HomeContent() {
     .sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""))[0];
   return (
     <>
-      <PageViewTracker event={{ eventType: "page_view", path: "/v2", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />
+      <PageViewTracker event={{ eventType: "page_view", path: "/", resultCount: latestArticles.length, metadata: { surface: "country_latest_portal" } }} />
       <h1 className="sr-only">최신 헌법 판례</h1>
       <IssueTopicCarousel tags={issueTags} />
       {leadArticle ? <LeadDecision article={leadArticle} /> : null}

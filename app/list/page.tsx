@@ -17,7 +17,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "리스트형 최신 자료",
   description: "세계 헌법재판기관의 최신 자료를 국가별 리스트와 페이지네이션으로 확인합니다.",
-  alternates: { canonical: `${getAppBaseUrl()}/v2/list` },
+  alternates: { canonical: `${getAppBaseUrl()}/list` },
 };
 
 const getListFilterData = unstable_cache(
@@ -110,7 +110,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
       <PageViewTracker
         event={{
           eventType: "page_view",
-          path: "/v2/list",
+          path: "/list",
           resultCount: articles.pageInfo.total,
           metadata: {
             source: filters.source,
@@ -125,7 +125,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
       />
 
       <header className="mb-7 border-b border-archive-line-strong pb-6">
-        <nav className="mb-4 flex items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치"><IntentPrefetchLink href="/v2" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
+        <nav className="mb-4 flex items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치"><IntentPrefetchLink href="/" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" /><span>전체 판례</span></nav>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h1 className="archive-serif text-2xl font-semibold leading-tight text-archive-ink sm:text-3xl">전체 판례</h1>
         </div>
@@ -138,7 +138,7 @@ export default async function ArticleListPage({ searchParams }: { searchParams?:
           tags={tags}
           paramsString={paramsString}
           jurisdictionArticleCounts={jurisdictionArticleCounts}
-          basePath="/v2/list"
+          basePath="/list"
           showJurisdictionChips={false}
         />
       </div>

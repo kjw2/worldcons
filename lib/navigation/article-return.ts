@@ -1,18 +1,17 @@
+import { publicPath } from "@/lib/seo/public-urls";
+
 const ARTICLE_RETURN_PATH_MAX_LENGTH = 2_048;
 const RETURN_ORIGIN = "https://worldcons.local";
 
 const STATIC_RETURN_PATHS = new Set([
   "/",
-  "/v2",
   "/list",
-  "/v2/list",
   "/search",
-  "/v2/search",
 ]);
 
 function isAllowedReturnPath(pathname: string) {
   if (STATIC_RETURN_PATHS.has(pathname)) return true;
-  return /^\/(?:v2\/)?(?:sources|tags)\/[a-z0-9][a-z0-9-]*$/i.test(pathname);
+  return /^\/(?:sources|tags)\/[a-z0-9][a-z0-9-]*$/i.test(pathname);
 }
 
 export function safeArticleReturnPath(value?: string | null) {
@@ -22,8 +21,10 @@ export function safeArticleReturnPath(value?: string | null) {
 
   try {
     const url = new URL(candidate, RETURN_ORIGIN);
-    if (url.origin !== RETURN_ORIGIN || !isAllowedReturnPath(url.pathname)) return null;
-    return `${url.pathname}${url.search}`;
+    if (url.origin !== RETURN_ORIGIN) return null;
+    const pathname = publicPath(url.pathname);
+    if (!isAllowedReturnPath(pathname)) return null;
+    return `${pathname}${url.search}`;
   } catch {
     return null;
   }
@@ -35,7 +36,7 @@ export function articleReturnPathForLocation(pathname: string, searchParams: { t
 }
 
 export function articleHrefWithReturnTo(slug: string, returnTo?: string | null) {
-  const href = `/v2/articles/${encodeURIComponent(slug)}`;
+  const href = `/articles/${encodeURIComponent(slug)}`;
   const safeReturnTo = safeArticleReturnPath(returnTo);
   if (!safeReturnTo) return href;
 

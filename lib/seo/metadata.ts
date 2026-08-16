@@ -1,29 +1,25 @@
 import type { Metadata } from "next";
 import type { ArticleListItem, TagSummary } from "@/lib/db/types";
+import { isIndexablePublicTag, publicAbsoluteUrl } from "@/lib/seo/public-urls";
 
-const DEFAULT_BASE_URL = "http://localhost:3000";
+export { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "@/lib/seo/public-urls";
 
-function normalizeBaseUrl(value: string) {
-  return value.replace(/\/+$/, "");
-}
-
-export function getAppBaseUrl() {
-  if (process.env.APP_BASE_URL) {
-    return normalizeBaseUrl(process.env.APP_BASE_URL);
-  }
-
-  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  if (vercelUrl) {
-    return normalizeBaseUrl(vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`);
-  }
-
-  return DEFAULT_BASE_URL;
+export function siteVerificationMetadata(): Pick<Metadata, "verification"> {
+  const google = process.env.GOOGLE_SITE_VERIFICATION?.trim();
+  const naver = process.env.NAVER_SITE_VERIFICATION?.trim();
+  if (!google && !naver) return {};
+  return {
+    verification: {
+      ...(google ? { google } : {}),
+      ...(naver ? { other: { "naver-site-verification": naver } } : {}),
+    },
+  };
 }
 
 export function articleMetadata(article: ArticleListItem): Metadata {
   const title = article.koreanTitle || article.originalTitle || "헌법재판 기사";
   const description = article.oneLineSummary;
-  const url = `${getAppBaseUrl()}/articles/${article.slug}`;
+  const url = publicAbsoluteUrl(`/articles/${article.slug}`);
 
   return {
     title,
@@ -44,11 +40,13 @@ export function articleMetadata(article: ArticleListItem): Metadata {
 export function tagMetadata(tag: TagSummary): Metadata {
   const title = `${tag.name} 관련 헌법재판 뉴스·판례`;
   const description = `${tag.name} 태그와 연결된 헌법재판 뉴스·판례 ${tag.articleCount ?? 0}건`;
-  const url = `${getAppBaseUrl()}/tags/${tag.slug}`;
+  const url = publicAbsoluteUrl(`/tags/${tag.slug}`);
+  const indexable = isIndexablePublicTag(tag);
 
   return {
     title,
     description,
+    robots: indexable ? undefined : { index: false, follow: true },
     alternates: {
       canonical: url,
     },

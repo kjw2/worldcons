@@ -521,6 +521,49 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   };
 }
 
+export async function listPublicSitemapArticles() {
+  observePublicProjectionRead();
+  const supabase = getSupabaseAdmin();
+  const pageSize = 1000;
+
+  if (!supabase) {
+    return filterMockArticles({}).map((article) => ({
+      slug: article.slug,
+      lastModified: article.summarizedAt || article.fetchedAt || article.discoveredAt || null,
+    }));
+  }
+
+  const items: Array<{ slug: string; lastModified: string | null }> = [];
+  for (let from = 0; from < 50_000; from += pageSize) {
+    let query = supabase
+      .from(articleRelation())
+      .select("slug, summarized_at, fetched_at, discovered_at")
+      .order("original_published_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (!publicationProjectionEnabled()) {
+      query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+    }
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<{
+      slug?: string | null;
+      summarized_at?: string | null;
+      fetched_at?: string | null;
+      discovered_at?: string | null;
+    }>;
+    for (const row of rows) {
+      if (!row.slug) continue;
+      items.push({
+        slug: row.slug,
+        lastModified: row.summarized_at || row.fetched_at || row.discovered_at || null,
+      });
+    }
+    if (rows.length < pageSize) break;
+  }
+  return items;
+}
+
 async function getArticleBySlugWithSelect(slug: string, select: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
   const supabase = getSupabaseAdmin();
 
