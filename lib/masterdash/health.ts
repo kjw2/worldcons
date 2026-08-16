@@ -71,15 +71,26 @@ function metadataError(metadata: Record<string, unknown> | null) {
   return metadata.errors.find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim() ?? null;
 }
 
-function runStatus(value: unknown, metadata?: Record<string, unknown> | null): CollectionRunStatus {
+function inferredDegraded(row: CollectionHealthRunRow | null, metadata?: Record<string, unknown> | null) {
+  const uncollected = metadataNumber(metadata ?? recordValue(row?.metadata), "uncollectedCandidateCount", "uncollectedCount") ?? 0;
+  const verified = verifiedCount(row);
+  const fetched = numberValue(row?.fetched_count) ?? 0;
+  const added = metadataNumber(metadata ?? recordValue(row?.metadata), "recordsAdded", "addedCount") ?? 0;
+  return uncollected > 0 && fetched > 0 && added === 0 && (verified === null || verified === 0);
+}
+
+function runStatus(value: unknown, metadata?: Record<string, unknown> | null, row?: CollectionHealthRunRow | null): CollectionRunStatus {
   const outcome = textValue(metadata?.outcome);
   if (outcome === "degraded") return "degraded";
   if (outcome === "failed") return "failed";
   if (outcome === "success") return "success";
-  if (value === "completed" || value === "success" || value === "succeeded") return "success";
   if (value === "failed" || value === "error") return "failed";
   if (value === "degraded") return "degraded";
   if (value === "running" || value === "queued") return "running";
+  if ((value === "completed" || value === "success" || value === "succeeded") && inferredDegraded(row ?? null, metadata)) {
+    return "degraded";
+  }
+  if (value === "completed" || value === "success" || value === "succeeded") return "success";
   return null;
 }
 
@@ -120,7 +131,7 @@ export function collectionHealthBySource(runs: CollectionHealthRunRow[] = []): C
     if (!sourceKey) continue;
     if (!latestBySource.has(sourceKey)) latestBySource.set(sourceKey, run);
     const metadata = recordValue(run.metadata);
-    const status = runStatus(run.status, metadata);
+    const status = runStatus(run.status, metadata, run);
     if (status === "success" && !successfulBySource.has(sourceKey)) successfulBySource.set(sourceKey, run);
   }
 
@@ -133,7 +144,7 @@ export function collectionHealthBySource(runs: CollectionHealthRunRow[] = []): C
       lastCollectionAt: textValue(latest.started_at),
       lastSuccessfulCollectionAt: textValue(successful?.finished_at),
       lastVerifiedPublishedAt: textValue(latestMetadata?.lastVerifiedPublishedAt) ?? textValue(successfulMetadata?.lastVerifiedPublishedAt),
-      lastRunStatus: runStatus(latest.status, latestMetadata),
+      lastRunStatus: runStatus(latest.status, latestMetadata, latest),
       recordsCollected: collectedCount(latest),
       recordsAdded: metadataNumber(latestMetadata, "recordsAdded", "addedCount"),
       verifiedSourceText: verifiedCount(latest),
@@ -158,7 +169,7 @@ export function collectionHealthMetrics(input: {
   const successful = input.successful ?? null;
   const latestMetadata = recordValue(latest?.metadata);
   const successfulMetadata = recordValue(successful?.metadata);
-  const latestStatus = runStatus(latest?.status, latestMetadata);
+  const latestStatus = runStatus(latest?.status, latestMetadata, latest);
   const latestStartedAt = textValue(latest?.started_at);
   const latestFinishedAt = textValue(latest?.finished_at);
   const successfulFinishedAt = textValue(successful?.finished_at);

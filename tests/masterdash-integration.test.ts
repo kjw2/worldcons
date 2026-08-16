@@ -259,6 +259,31 @@ test("reports per-source degraded collection and verified counts instead of raw 
   assert.equal(metrics.bySource.find((source) => source.sourceKey === "es-tribunal-constitucional")?.verifiedSourceText, 19);
 });
 
+test("infers degraded status from legacy uncollected runs that have no outcome field", () => {
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "legacy-bverfg",
+      source_key: "de-bverfg",
+      status: "completed",
+      started_at: "2026-08-15T21:04:00.000Z",
+      finished_at: "2026-08-15T21:15:00.000Z",
+      fetched_count: 21,
+      failed_count: 0,
+      metadata: { recordsAdded: 0, uncollectedCandidateCount: 21 },
+    },
+    recentRuns: [{
+      id: "legacy-bverfg",
+      source_key: "de-bverfg",
+      status: "completed",
+      fetched_count: 21,
+      metadata: { recordsAdded: 0, uncollectedCandidateCount: 21 },
+    }],
+  });
+  assert.equal(metrics.lastRunStatus, "degraded");
+  assert.equal(metrics.bySource[0]?.lastRunStatus, "degraded");
+  assert.equal(metrics.failureTarget, "de-bverfg");
+});
+
 test("reports the latest failed collection and its actual failure target", () => {
   const metrics = collectionHealthMetrics({
     latest: {
