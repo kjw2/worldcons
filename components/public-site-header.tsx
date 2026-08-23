@@ -22,12 +22,6 @@ export function PublicSiteHeader() {
 
   return (
     <header id="site-header" className="public-site-header border-b border-archive-line-strong bg-white">
-      <div className="border-b border-archive-line bg-archive-surface-soft">
-        <div className="mx-auto flex min-h-7 max-w-[1248px] items-center px-4 text-[11px] text-archive-muted sm:px-6 sm:text-[12px] lg:px-10">
-          세계 각국 헌법재판기관의 공개 판례를 제공하는 비공식 연구·정보 서비스입니다.
-        </div>
-      </div>
-
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
         <div className="flex min-h-[62px] items-center justify-between gap-4 py-2.5">
           <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label="WORLD CONS 홈">
