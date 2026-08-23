@@ -5,7 +5,6 @@ import { ArrowRight } from "lucide-react";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { RecentDecisionMark } from "@/components/recent-decision-mark";
-import { SearchBox } from "@/components/search-box";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
@@ -75,8 +74,6 @@ const getHomePortalData = unstable_cache(
     return {
       issueTags,
       latestArticles,
-      activeSourceCount: sources.filter((source) => source.isActive).length,
-      jurisdictionCount: jurisdictions.length,
     };
   },
   ["home-country-portal-v4"],
@@ -91,12 +88,6 @@ function HomeSkeleton() {
   return (
     <div aria-busy="true" aria-live="polite" className="space-y-10">
       <span className="sr-only">홈페이지 정보를 불러오는 중입니다.</span>
-      <div className="border-b border-archive-line-strong pb-8">
-        <SkeletonBlock className="h-4 w-28" />
-        <SkeletonBlock className="mt-4 h-10 w-80 max-w-full" />
-        <SkeletonBlock className="mt-4 h-5 w-[34rem] max-w-full" />
-        <SkeletonBlock className="mt-6 h-14 w-[48rem] max-w-full" />
-      </div>
       <SkeletonBlock className="h-64" />
       <SkeletonBlock className="h-56" />
     </div>
@@ -164,25 +155,11 @@ function IssueIndex({ tags }: { tags: Awaited<ReturnType<typeof getHomePortalDat
 }
 
 async function HomeContent() {
-  const { issueTags, latestArticles, activeSourceCount, jurisdictionCount } = await getHomePortalData();
+  const { issueTags, latestArticles } = await getHomePortalData();
 
   return (
     <>
       <PageViewTracker event={{ eventType: "page_view", path: "/", resultCount: latestArticles.length, metadata: { surface: "public_information_portal" } }} />
-
-      <section className="border-b border-archive-line-strong pb-8 pt-2" aria-labelledby="home-title">
-        <p className="text-sm font-bold text-archive-accent">WORLD CONS</p>
-        <h1 id="home-title" className="mt-2 text-3xl font-extrabold tracking-[-0.035em] text-archive-ink sm:text-4xl">세계 헌법판례를 한 곳에서 찾습니다</h1>
-        <p className="mt-3 max-w-3xl text-[15px] leading-7 text-archive-text">각국 헌법재판기관의 공개 판례와 결정례를 국가·기관·쟁점별로 검색하고 한국어 요약과 공식 원문을 함께 확인할 수 있습니다.</p>
-        <div className="mt-6 max-w-4xl">
-          <SearchBox variant="hero" placeholder="판례명, 사건번호, 헌법 쟁점을 검색하세요" />
-        </div>
-        <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-archive-muted">
-          <span><strong className="font-bold text-archive-heading">{jurisdictionCount}</strong>개 국가</span>
-          <span><strong className="font-bold text-archive-heading">{activeSourceCount}</strong>개 기관</span>
-          <IntentPrefetchLink href="/sources" className="font-semibold text-archive-accent hover:text-archive-accent-hover">수록 기관 보기 →</IntentPrefetchLink>
-        </div>
-      </section>
 
       <div className="mt-10 space-y-12">
         <LatestDecisionList articles={latestArticles} />
