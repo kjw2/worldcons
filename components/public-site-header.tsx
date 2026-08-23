@@ -34,7 +34,7 @@ export function PublicSiteHeader() {
               href="https://worldlaws.cclib.workers.dev/"
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring hidden rounded-sm text-xs font-semibold text-archive-text hover:text-archive-accent sm:inline"
+              className="focus-ring inline-flex rounded-sm text-xs font-semibold text-archive-text hover:text-archive-accent"
             >
               WORLDLAWS
             </a>
