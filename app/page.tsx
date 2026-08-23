@@ -7,14 +7,14 @@ import { PageViewTracker } from "@/components/page-view-tracker";
 import { RecentDecisionMark } from "@/components/recent-decision-mark";
 import { SearchBox } from "@/components/search-box";
 import { PageShell } from "@/components/ui/page-shell";
-import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
-import { listArticles, listSources, listTags } from "@/lib/db/queries";
+import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
+import { listArticles, listJurisdictionArticleCounts, listSources, listTags } from "@/lib/db/queries";
 import type { ArticleListItem, TagType } from "@/lib/db/types";
 import { articleHrefWithReturnTo } from "@/lib/navigation/article-return";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { compareHomeCountries } from "@/lib/ui/home-country-order";
-import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
+import { displayJurisdictionFlag, displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
 import { JUDICIAL_COMPLAINT_TAG_SLUG } from "@/lib/tags/judicial-complaint";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
@@ -23,6 +23,8 @@ import { articleTitleForDisplay } from "@/lib/ui/article-title";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
+  title: "세계 헌법판례 데이터베이스",
+  description: "독일·미국·프랑스·스페인 헌법재판기관의 판례를 사건번호, 헌법 쟁점, 국가와 기관별로 검색하고 한국어 요약과 공식 원문을 확인합니다.",
   alternates: { canonical: `${getAppBaseUrl()}/` },
 };
 
@@ -37,11 +39,22 @@ const getHomePortalData = unstable_cache(
     const jurisdictions = Array.from(
       new Set(sources.filter((source) => source.isActive).map((source) => source.jurisdiction)),
     ).sort(compareHomeCountries);
-    const countryResults = await Promise.all(
-      jurisdictions.map((jurisdiction) =>
-        listArticles({ jurisdiction, page: 1, pageSize: 1, count: "none", includeViewCounts: false }),
+    const [countryResults, jurisdictionArticleCounts] = await Promise.all([
+      Promise.all(
+        jurisdictions.map((jurisdiction) =>
+          listArticles({ jurisdiction, page: 1, pageSize: 1, count: "none", includeViewCounts: false }),
+        ),
       ),
-    );
+      listJurisdictionArticleCounts(jurisdictions),
+    ]);
+    const countries = jurisdictions.map((jurisdiction) => {
+      const source = sources.find((candidate) => candidate.isActive && candidate.jurisdiction === jurisdiction);
+      return {
+        jurisdiction,
+        sourceLabel: source ? displaySourceLabel(source) : "",
+        articleCount: jurisdictionArticleCounts[jurisdiction] ?? 0,
+      };
+    });
     const latestArticles = countryResults.flatMap((result) => result.items.slice(0, 1));
 
     const issueCandidates = tags.filter(
@@ -73,12 +86,13 @@ const getHomePortalData = unstable_cache(
       : rankedIssueTags.slice(0, 12);
 
     return {
+      countries,
       issueTags,
       latestArticles,
     };
   },
   ["home-country-portal-v4"],
-  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
+  { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 
 function SkeletonBlock({ className = "" }: { className?: string }) {
@@ -94,6 +108,12 @@ function HomeSkeleton() {
         <SkeletonBlock className="mt-4 h-14 w-[52rem] max-w-full" />
       </div>
       <div className="mt-8 space-y-12">
+        <div>
+          <SkeletonBlock className="h-8 w-44" />
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => <SkeletonBlock key={index} className="h-24" />)}
+          </div>
+        </div>
         <SkeletonBlock className="h-64" />
         <SkeletonBlock className="h-56" />
       </div>
@@ -103,6 +123,39 @@ function HomeSkeleton() {
 
 function articleHref(article: ArticleListItem) {
   return articleHrefWithReturnTo(article.slug, "/");
+}
+
+function CountryShortcuts({ countries }: { countries: Awaited<ReturnType<typeof getHomePortalData>>["countries"] }) {
+  if (countries.length === 0) return null;
+
+  return (
+    <section aria-labelledby="country-shortcuts" className="border-t-2 border-archive-accent">
+      <div className="flex items-center justify-between gap-4 border-b border-archive-line-strong py-4">
+        <h2 id="country-shortcuts" className="text-xl font-bold text-archive-ink">국가별 바로가기</h2>
+        <IntentPrefetchLink href="/sources" className="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">
+          수록 기관 <ArrowRight className="size-4" aria-hidden="true" />
+        </IntentPrefetchLink>
+      </div>
+      <div className="grid grid-cols-2 gap-px bg-archive-line lg:grid-cols-4">
+        {countries.map((country) => (
+          <IntentPrefetchLink
+            key={country.jurisdiction}
+            href={`/list?jurisdiction=${encodeURIComponent(country.jurisdiction)}`}
+            className="focus-ring flex min-h-28 flex-col justify-between gap-3 bg-archive-surface px-4 py-4 hover:bg-archive-surface-soft"
+          >
+            <span className="flex items-start justify-between gap-3">
+              <span className="text-2xl" aria-hidden="true">{displayJurisdictionFlag(country.jurisdiction)}</span>
+              <span className="shrink-0 text-xs font-semibold tabular-nums text-archive-muted">판례 {country.articleCount.toLocaleString("ko-KR")}건</span>
+            </span>
+            <span>
+              <span className="block font-bold text-archive-heading">{displayJurisdictionLabel(country.jurisdiction)}</span>
+              <span className="mt-1 block text-xs leading-5 text-archive-muted">{country.sourceLabel}</span>
+            </span>
+          </IntentPrefetchLink>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function LatestDecisionList({ articles }: { articles: ArticleListItem[] }) {
@@ -162,7 +215,7 @@ function IssueIndex({ tags }: { tags: Awaited<ReturnType<typeof getHomePortalDat
 }
 
 async function HomeContent() {
-  const { issueTags, latestArticles } = await getHomePortalData();
+  const { countries, issueTags, latestArticles } = await getHomePortalData();
 
   return (
     <>
@@ -176,6 +229,7 @@ async function HomeContent() {
       </section>
 
       <div className="mt-8 space-y-12">
+        <CountryShortcuts countries={countries} />
         <LatestDecisionList articles={latestArticles} />
         <IssueIndex tags={issueTags} />
       </div>
