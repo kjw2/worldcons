@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 const getCachedArticle = unstable_cache(
   async (slug: string) => getArticleBySlug(slug),
-  ["api-article-detail-v2"],
+  ["api-article-detail-v3"],
   { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG] },
 );
 

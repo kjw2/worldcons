@@ -1,11 +1,10 @@
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { SearchBox } from "@/components/search-box";
 import type { ArticleContentType, SourceRecord, TagSummary } from "@/lib/db/types";
 import type { TimeRange } from "@/lib/utils/dates";
 import { TimeRangeTabs } from "@/components/time-range-tabs";
 import { chipClassName } from "@/components/ui/chip";
-import { SurfaceCard } from "@/components/ui/surface-card";
 import { displayContentTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
@@ -60,7 +59,7 @@ export function FilterBar({
   const searchHiddenFields = [...params.entries()].filter(([key]) => key !== "q" && key !== "page" && key !== "pageSize");
 
   return (
-    <SurfaceCard className="min-w-0 overflow-hidden border-archive-line-strong">
+    <div className="min-w-0 overflow-hidden border-y border-archive-line-strong bg-white">
       <div className="flex min-w-0 flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <TimeRangeTabs
@@ -111,7 +110,6 @@ export function FilterBar({
       <details className="group min-w-0 overflow-hidden border-t border-archive-line bg-archive-surface-soft" open={hasAdvancedFilters}>
         <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-archive-heading marker:hidden">
           <span className="inline-flex items-center gap-2">
-            <SlidersHorizontal className="size-4 text-ink-muted" aria-hidden="true" />
             상세 필터
           </span>
           <ChevronDown className="size-4 text-ink-muted transition group-open:rotate-180" aria-hidden="true" />
@@ -165,6 +163,6 @@ export function FilterBar({
           </button>
         </form>
       </details>
-    </SurfaceCard>
+    </div>
   );
 }

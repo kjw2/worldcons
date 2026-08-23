@@ -5,6 +5,7 @@ export {
   buildSpainTcFallbackRawArticle,
   canonicalSpainTcUrl,
   contentTypeForResolutionType,
+  isSpainMetadataOnlyNotice,
   jsonApiUrls,
   normalizeSpainDecisionDate,
   parseSpanishLongDate,

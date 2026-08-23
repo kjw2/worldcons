@@ -6,7 +6,7 @@
   color-scheme: light;
   background: #f4f6f8;
   color: #20242b;
-  --chrome-header-height: 118px;
+  --chrome-header-height: 134px;
   --font-system-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", Roboto, Arial, sans-serif;
 }
 
@@ -45,6 +45,25 @@ body {
 .archive-rule-title {
   border-bottom: 1px solid #b8c0cb;
   padding-bottom: 0.65rem;
+}
+
+/* Public information portal: keep legal data visually primary over decorative cards. */
+body:not(:has(.admin-shell)) .public-information-page .shadow-card,
+body:not(:has(.admin-shell)) .public-information-page .shadow-panel,
+body:not(:has(.admin-shell)) .public-information-page .shadow-soft {
+  box-shadow: none !important;
+}
+
+body:not(:has(.admin-shell)) .public-information-page .rounded-lg,
+body:not(:has(.admin-shell)) .public-information-page .rounded-xl,
+body:not(:has(.admin-shell)) .public-information-page .rounded-2xl {
+  border-radius: 2px !important;
+}
+
+body:not(:has(.admin-shell)) .public-information-page h1,
+body:not(:has(.admin-shell)) .public-information-page h2,
+body:not(:has(.admin-shell)) .public-information-page h3 {
+  letter-spacing: -0.02em;
 }
 
 .issue-carousel-page {

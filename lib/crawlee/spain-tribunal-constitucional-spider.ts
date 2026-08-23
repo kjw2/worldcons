@@ -5,6 +5,7 @@ import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/
 import { respectRateLimit } from "@/lib/crawler/rate-limit";
 import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/crawler/robots";
 import type { CrawlAttemptLog, CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
+import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { cleanText } from "@/lib/ingest/extract-text";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, CrawleeSpiderResult } from "@/lib/crawlee/types";
 import type { DiscoveredItem, RawArticle } from "@/lib/sources/types";
@@ -105,7 +106,7 @@ function requestDelayMs() {
 }
 
 function userAgent() {
-  return process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler";
+  return crawlerUserAgent();
 }
 
 function pathUrl(path: string) {
@@ -441,6 +442,16 @@ function sourceTextQuality(text: string, hasSubstantiveSection: boolean, canonic
   };
 }
 
+export function isSpainMetadataOnlyNotice(value?: string | null) {
+  const normalized = (value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  return /no incorpora doctrina constitucional|no contiene doctrina constitucional|sin doctrina constitucional/.test(normalized);
+}
+
 function reviewFor(reason?: string) {
   if (!reason) return undefined;
   return {
@@ -449,8 +460,15 @@ function reviewFor(reason?: string) {
   };
 }
 
-function collectionReason(params: { publishable: boolean; sourceTextAvailable: boolean; reviewReason?: string; fetchMethod: string }) {
+function collectionReason(params: {
+  publishable: boolean;
+  sourceTextAvailable: boolean;
+  expectedMetadataOnly?: boolean;
+  reviewReason?: string;
+  fetchMethod: string;
+}) {
   if (params.publishable) return undefined;
+  if (params.expectedMetadataOnly) return "HJ explicitly reports that this resolution contains no constitutional doctrine; official source text is intentionally unavailable.";
   if (params.reviewReason === "contenido_irrelevante_para_internet") return "HJ marks this resolution as irrelevant for internet publication; automatic summarization is blocked.";
   if (params.reviewReason === "date_validation_failed") return "HJ decision date validation failed; official metadata requires human review.";
   if (params.reviewReason === "fallback_parse") return "HJ JSON API was unavailable and fallback parsing requires human review.";
@@ -484,6 +502,8 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
   const parseConfidence = options.parseConfidence ?? "high";
   const { ecli, derived } = ecliFor(payload);
   const contentIrrelevant = payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true;
+  const notice = stringValue(payload.AVISO);
+  const expectedMetadataOnly = !quality.sourceTextAvailable && isSpainMetadataOnlyNotice(notice);
   const fallbackReview = fetchMethod !== "json_api";
   const reviewReason =
     options.fallbackReason ??
@@ -524,8 +544,8 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
       contenidoIrrelevanteParaInternet: contentIrrelevant,
       publishable,
     },
-    sourceTextStatus: quality.sourceTextAvailable ? "available" : "awaiting_hj_full_text",
-    notice: stringValue(payload.AVISO),
+    sourceTextStatus: quality.sourceTextAvailable ? "available" : expectedMetadataOnly ? "not_available" : "awaiting_hj_full_text",
+    notice,
     sections,
     auxiliaryMetadata: {
       resumenLength: stripHtml(payload.RESUMEN).length || undefined,
@@ -559,7 +579,13 @@ export function buildSpainTcRawArticleFromJson(payload: SpainHjJson, options: Bu
         publishable,
         sourceTextAvailable: quality.sourceTextAvailable,
         strictSourceTextAvailable: true,
-        reason: collectionReason({ publishable, sourceTextAvailable: quality.sourceTextAvailable, reviewReason, fetchMethod }),
+        reason: collectionReason({
+          publishable,
+          sourceTextAvailable: quality.sourceTextAvailable,
+          expectedMetadataOnly,
+          reviewReason,
+          fetchMethod,
+        }),
         source: SPAIN_TC_BASE_URL,
       },
     },
@@ -693,6 +719,7 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
       }, hooks);
       const text = await response.text();
       await checkpointCrawlerExecution(hooks);
+      const emptyBody = response.ok && text.trim().length === 0;
       addAttempt(diagnostics, {
         url,
         finalUrl: response.url,
@@ -700,10 +727,17 @@ async function fetchJsonForHjId(hjId: string, diagnostics?: CrawlerDiagnosticsCo
         status: response.status,
         contentType: response.headers.get("content-type") ?? undefined,
         textLength: text.length,
-        result: response.ok ? "success" : "failed",
+        optional: emptyBody,
+        result: emptyBody ? "empty" : response.ok ? "success" : "failed",
+        errorCode: emptyBody ? "SPAIN_HJ_EMPTY_BODY" : undefined,
+        errorMessage: emptyBody ? `Spain HJ API returned an empty HTTP ${response.status} body for ${hjId}.` : undefined,
       });
       if (!response.ok) {
         lastError = `HTTP ${response.status} from ${url}`;
+        continue;
+      }
+      if (emptyBody) {
+        lastError = `SPAIN_HJ_EMPTY_BODY from ${url}`;
         continue;
       }
       return { payload: JSON.parse(text) as SpainHjJson, url };

@@ -21,6 +21,7 @@
     "summarize-pending": "tsx scripts/summarize-pending.ts",
     "refresh-tag-counts": "tsx scripts/refresh-tag-counts.ts",
     "analytics:retention": "tsx scripts/purge-site-analytics.ts",
+    "backfill:case-numbers": "tsx scripts/backfill-case-numbers.ts",
     "canonicalize:terms": "tsx scripts/canonicalize-source-terminology.ts",
     "canonicalize:french-terms": "tsx scripts/canonicalize-source-terminology.ts --source=fr-conseil-constitutionnel",
     "canonicalize:us-terms": "tsx scripts/canonicalize-source-terminology.ts --source=us-scotus",

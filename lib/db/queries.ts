@@ -212,6 +212,7 @@ function articleRowToItem(
     fetchedAt: row.fetched_at,
     summarizedAt: row.summarized_at,
     status: row.status as ArticleDetail["status"],
+    caseNumber: row.case_number ?? null,
     summaryJson: includeSummaryJson ? summary : null,
     tags,
     sourceMetadata: row.source_metadata ?? minimalSourceMetadata(row),
@@ -390,6 +391,10 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
   }
+
+  const { exactCaseSearch } = await import("@/lib/search/exact-case");
+  const exactCaseResult = await exactCaseSearch(filters);
+  if (exactCaseResult.items.length > 0) return exactCaseResult;
 
   let query = supabase
     .from(articleRelation(filters.includeUnpublished))

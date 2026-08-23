@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import { ArticlePrintActions } from "@/components/article-print-actions";
 import { getArticleBySlug } from "@/lib/db/queries";
 import type { ArticleDetail, ReferencedProvision } from "@/lib/db/types";
+import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleDateLabel, spainBoeMetadata } from "@/lib/ui/article-date-label";
+import { articleTitleForDisplay } from "@/lib/ui/article-title";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { provisionReviewLabel } from "@/lib/ui/provision-confidence";
 import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-labels";
@@ -16,7 +18,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function printTitle(article: ArticleDetail) {
-  return article.koreanTitle || article.originalTitle || "제목 미상";
+  return articleTitleForDisplay(article);
 }
 
 function provisionLabel(provision: ReferencedProvision) {
@@ -71,6 +73,7 @@ export default async function ArticlePrintPage({
 
   const summary = article.summaryJson;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
+  const caseNumber = articleCaseNumber(article);
   const provisions = summary?.summary.referencedProvisions.filter((provision) => provisionLabel(provision)) ?? [];
   const originalHref = safeExternalUrl(article.originalUrl);
 
@@ -81,7 +84,10 @@ export default async function ArticlePrintPage({
       <article className="print-document rounded-lg border border-line bg-white p-6 shadow-card sm:p-8">
         <header className="pb-6">
           <p className="text-sm font-semibold text-court">헌법판례요약시스템</p>
-          <h1 className="mt-3 break-keep text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">{printTitle(article)}</h1>
+          <h1 className="mt-3 break-keep text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">
+            {printTitle(article)}
+            {caseNumber ? <span className="ml-1 font-sans text-[0.62em] font-medium tracking-normal text-ink-subtle align-baseline">({caseNumber})</span> : null}
+          </h1>
           {summary?.summary.coreSummary[0] || article.oneLineSummary ? (
             <p className="mt-4 break-keep text-lg leading-8 text-ink-muted">{summary?.summary.coreSummary[0] || article.oneLineSummary}</p>
           ) : null}

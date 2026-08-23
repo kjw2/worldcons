@@ -1,5 +1,5 @@
 export const DEFAULT_CRAWLER_USER_AGENT =
-  "Mozilla/5.0 compatible; ConstitutionalCourtCurationBot/0.1; +https://example.com/bot";
+  "Mozilla/5.0 (compatible; ConstitutionalCourtCurationBot/0.1; +https://worldcons.vercel.app/)";
 
 export function crawlerUserAgent() {
   return process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || DEFAULT_CRAWLER_USER_AGENT;

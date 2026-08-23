@@ -153,13 +153,13 @@ export default async function GuidePage() {
       <SectionHeading
         eyebrow="이용 가이드"
         title="World Cons 안내"
-        description="World Cons는 주요 헌법재판기관의 공식 자료를 모아 한국어 요약으로 빠르게 훑어보고, 필요할 때 공식 원문으로 확인할 수 있게 만든 큐레이션 서비스입니다."
+        description="WORLD CONS는 주요 헌법재판기관의 공식 공개자료를 국가·기관·쟁점별로 검색하고, 한국어 요약과 공식 원문을 함께 확인할 수 있도록 정리한 헌법판례 데이터베이스입니다."
         descriptionClassName={guideHeadingDescriptionClassName}
       />
 
       <section className="grid gap-4 md:grid-cols-3" aria-labelledby="guide-purpose">
-        <SurfaceCard className="p-5">
-          <p className="text-sm font-semibold text-court">목적</p>
+        <SurfaceCard className="rounded-none border-x-0 border-b-0 border-t-2 border-t-archive-accent p-5 shadow-none">
+          <p className="text-sm font-bold text-archive-accent">목적</p>
           <h2 id="guide-purpose" className="mt-2 text-xl font-semibold tracking-normal text-ink">
             공식 자료를 한국어로 먼저 파악
           </h2>
@@ -167,15 +167,15 @@ export default async function GuidePage() {
             여러 나라 헌법재판기관의 최신 자료를 한곳에서 확인하고, 원문을 읽기 전에 사건의 핵심 쟁점과 관련 조문을 빠르게 파악하도록 돕습니다.
           </p>
         </SurfaceCard>
-        <SurfaceCard className="p-5">
-          <p className="text-sm font-semibold text-court">원칙</p>
+        <SurfaceCard className="rounded-none border-x-0 border-b-0 border-t-2 border-t-archive-accent p-5 shadow-none">
+          <p className="text-sm font-bold text-archive-accent">원칙</p>
           <h2 className="mt-2 text-xl font-semibold tracking-normal text-ink">원문이 최종 기준</h2>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
             AI 요약, 번역, 태그, 참조 조문은 참고용입니다. 법적 판단, 논문 인용, 실무 검토에는 반드시 각 기관의 공식 원문을 확인해야 합니다.
           </p>
         </SurfaceCard>
-        <SurfaceCard className="p-5">
-          <p className="text-sm font-semibold text-court">범위</p>
+        <SurfaceCard className="rounded-none border-x-0 border-b-0 border-t-2 border-t-archive-accent p-5 shadow-none">
+          <p className="text-sm font-bold text-archive-accent">범위</p>
           <h2 className="mt-2 text-xl font-semibold tracking-normal text-ink">4개 국가 우선 운영</h2>
           <p className="mt-3 text-sm leading-7 text-ink-muted">
             현재는 독일, 미국, 프랑스, 스페인 헌법재판 관련 공식 자료 중 2025년과 2026년 자료를 중심으로 수집합니다. 앞으로 수집 연도와 대상 범위는 단계적으로 확대할 예정입니다.
@@ -215,7 +215,7 @@ export default async function GuidePage() {
           description="아래 건수는 일반 화면에 공개되는 summarized + publishable 자료 기준입니다. 현재는 2025년과 2026년 자료를 우선 수집했으며, 향후 과거 연도와 대상 범위를 단계적으로 확대할 예정입니다."
           descriptionClassName={guideHeadingDescriptionClassName}
         />
-        <div className="overflow-x-auto rounded-lg border border-line bg-white shadow-card">
+        <div className="overflow-x-auto border-y border-archive-line-strong bg-white">
           <table className="min-w-full divide-y divide-line text-left text-sm">
             <thead className="bg-surface-muted/70 text-xs font-semibold uppercase tracking-normal text-ink-subtle">
               <tr>

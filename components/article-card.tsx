@@ -10,6 +10,8 @@ import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { RecentDecisionMark } from "@/components/recent-decision-mark";
 import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
+import { articleCaseNumber } from "@/lib/ui/article-case-number";
+import { articleTitleForDisplay } from "@/lib/ui/article-title";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
 import { jurisdictionThemeStyle, themeForJurisdiction } from "@/lib/ui/jurisdiction-theme";
 import { articleHrefWithReturnTo, articleReturnPathForLocation } from "@/lib/navigation/article-return";
@@ -90,7 +92,8 @@ export function ArticleCard({
   const visibleTags = article.tags.slice(0, 2);
   const hiddenTagCount = Math.max(0, article.tags.length - visibleTags.length);
   const summaryText = article.oneLineSummary || article.summaryJson?.summary.coreSummary[0] || "요약 준비 중입니다.";
-  const title = article.koreanTitle || article.originalTitle || "제목 미상";
+  const title = articleTitleForDisplay(article);
+  const caseNumber = articleCaseNumber(article);
   const originalHref = safeExternalUrl(article.originalUrl);
   const viewCountLabel = formatViewCount(article.viewCount);
   const canonicalArticleHref = `/articles/${article.slug}`;
@@ -140,6 +143,7 @@ export function ArticleCard({
       <h2 className="archive-serif text-[17px] font-semibold leading-7 text-archive-heading">
         <IntentPrefetchLink href={articleHref} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
           {title}
+          {caseNumber ? <span className="ml-1 font-sans text-[0.62em] font-medium tracking-normal text-archive-muted align-baseline">({caseNumber})</span> : null}
           <RecentDecisionMark publishedAt={article.originalPublishedAt} />
         </IntentPrefetchLink>
       </h2>

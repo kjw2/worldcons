@@ -1,9 +1,16 @@
 import { cleanText } from "@/lib/ingest/extract-text";
+import { withCaseNumberMetadata } from "@/lib/ingest/case-number";
 import type { NormalizedArticle, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { toIsoDate } from "@/lib/utils/dates";
 
 export function normalizeRawArticle(raw: RawArticle, adapter: SourceAdapter): NormalizedArticle {
   const cleanedText = cleanText(raw.text);
+  const metadata = withCaseNumberMetadata({
+    sourceKey: adapter.sourceKey,
+    metadata: raw.metadata,
+    title: raw.title,
+    url: raw.url,
+  });
 
   return {
     sourceKey: adapter.sourceKey,
@@ -17,6 +24,6 @@ export function normalizeRawArticle(raw: RawArticle, adapter: SourceAdapter): No
     originalPublishedAt: toIsoDate(raw.publishedAt),
     rawText: raw.text,
     cleanedText,
-    metadata: raw.metadata,
+    metadata,
   };
 }

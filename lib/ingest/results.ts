@@ -95,10 +95,6 @@ export function sourceResultOutcome(value: unknown): IngestSourceOutcome {
   return "success";
 }
 
-function sourceResultSucceeded(value: unknown) {
-  return sourceResultOutcome(value) === "success";
-}
-
 export function ingestResultOutcome(value: unknown): IngestSourceOutcome {
   if (!isRecord(value) || value.mode !== "database" || !Array.isArray(value.results) || value.results.length === 0) {
     return "failed";

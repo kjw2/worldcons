@@ -6,8 +6,6 @@ import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
 import { chipClassName } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageShell } from "@/components/ui/page-shell";
-import { SectionHeading } from "@/components/ui/section-heading";
-import { SurfaceCard } from "@/components/ui/surface-card";
 import { recordSearchEvent, recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listGlossaryTerms, listSources, listTags } from "@/lib/db/queries";
 import { glossarySourceLanguageLabel } from "@/lib/glossary/languages";
@@ -123,16 +121,16 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
 
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
-      <SectionHeading
-        className="mb-6"
-        eyebrow="통합 검색"
-        title="제목·요약·원문·태그 검색"
-      />
+      <header className="mb-7 border-b border-archive-line-strong pb-6">
+        <p className="text-sm font-bold text-archive-accent">통합검색</p>
+        <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-archive-ink">판례와 헌법 쟁점 검색</h1>
+        <p className="mt-3 max-w-3xl text-[15px] leading-7 text-archive-text">판례명, 사건번호, 요약, 원문, 기관과 헌법 쟁점을 한 번에 검색할 수 있습니다.</p>
+      </header>
       <div className="mb-5">
         <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} paramsString={params.toString()} basePath="/search" />
       </div>
 
-      <SurfaceCard className="mb-5 space-y-4 p-4">
+      <section className="mb-5 space-y-4 border-y border-archive-line-strong bg-white px-1 py-4 sm:px-3" aria-label="검색 방식과 현재 조건">
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-sm font-semibold text-ink-muted">검색 방식</span>
           {modeOptions.map((option) => (
@@ -165,25 +163,25 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
             ))}
           </div>
         ) : null}
-      </SurfaceCard>
+      </section>
 
       {relatedTerms.length > 0 ? (
-        <SurfaceCard className="mb-5 p-4">
+        <section className="mb-6 border-t-2 border-archive-accent border-b border-archive-line-strong py-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-ink">관련 용어</h2>
             <Link href={`/glossary?q=${encodeURIComponent(q ?? "")}`} className="focus-ring rounded-md text-sm font-semibold text-primary hover:text-court">
               용어사전에서 보기
             </Link>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid border-t border-archive-line md:grid-cols-2 lg:grid-cols-3">
             {relatedTerms.map((term) => (
-              <Link key={term.slug} href={`/glossary/${term.slug}`} className="focus-ring rounded-lg border border-line bg-white p-3 transition hover:border-line-strong hover:bg-surface-muted/45">
-                <span className="line-clamp-1 text-sm font-semibold text-ink">{term.koreanTerm || term.term}</span>
-                <span className="mt-1 block text-xs text-ink-subtle">출처 언어: {glossarySourceLanguageLabel(term)}</span>
+              <Link key={term.slug} href={`/glossary/${term.slug}`} className="focus-ring border-b border-archive-line px-2 py-3 hover:bg-archive-surface-soft">
+                <span className="line-clamp-1 text-sm font-semibold text-archive-heading">{term.koreanTerm || term.term}</span>
+                <span className="mt-1 block text-xs text-archive-muted">출처 언어: {glossarySourceLanguageLabel(term)}</span>
               </Link>
             ))}
           </div>
-        </SurfaceCard>
+        </section>
       ) : null}
 
       {articles.pageInfo.total === 0 ? (

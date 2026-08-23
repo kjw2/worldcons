@@ -41,6 +41,7 @@ import {
   bverfgCaseNumberFromText,
   bverfgOfficialUrlCandidatesFromUrl,
 } from "@/lib/crawlee/bverfg-spider";
+import { isSpainMetadataOnlyNotice } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -725,11 +726,16 @@ async function loadTrackedSpainSourceTextPendingItems() {
     .in("status", ["metadata_only", "needs_review"])
     .filter("source_metadata->collection->>sourceTextAvailable", "eq", "false")
     .order("fetched_at", { ascending: true, nullsFirst: true })
-    .limit(limit);
+    .limit(Math.min(400, Math.max(limit, limit * 4)));
 
   if (error) throw new Error(error.message);
   const items: DiscoveredItem[] = [];
   for (const row of data ?? []) {
+    const metadata = isRecord(row.source_metadata) ? row.source_metadata : undefined;
+    const sourceTextStatus = stringValue(metadata?.sourceTextStatus);
+    const notice = stringValue(metadata?.notice);
+    if (sourceTextStatus === "not_available" || isSpainMetadataOnlyNotice(notice)) continue;
+    if (sourceTextStatus && sourceTextStatus !== "awaiting_hj_full_text") continue;
     const canonicalUrl = safeCanonicalUrl(row.canonical_url ?? row.original_url);
     if (!canonicalUrl) continue;
     items.push({
@@ -739,7 +745,7 @@ async function loadTrackedSpainSourceTextPendingItems() {
       title: row.original_title ?? undefined,
       publishedAt: row.original_published_at ?? undefined,
       contentType: articleContentType(row.content_type),
-      metadata: isRecord(row.source_metadata) ? row.source_metadata : undefined,
+      metadata,
     });
   }
   return items;
@@ -757,7 +763,10 @@ async function touchTrackedSpainSourceTextPending(articleId: string) {
 function isSpainSourceTextPending(article: NormalizedArticle) {
   if (article.sourceKey !== SPAIN_TC_SOURCE_KEY) return false;
   const collection = isRecord(article.metadata?.collection) ? article.metadata.collection : {};
-  return collection.sourceTextAvailable !== true;
+  const sourceTextStatus = stringValue(article.metadata?.sourceTextStatus);
+  return collection.sourceTextAvailable !== true
+    && (!sourceTextStatus || sourceTextStatus === "awaiting_hj_full_text")
+    && !isSpainMetadataOnlyNotice(stringValue(article.metadata?.notice));
 }
 
 async function closeTrackedBverfgCandidates(urls: string[], diagnostics?: CrawlerDiagnosticsCollector) {

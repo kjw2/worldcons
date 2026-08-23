@@ -101,6 +101,7 @@ export interface ArticleListItem {
   originalTitle?: string | null;
   koreanTitle?: string | null;
   originalPublishedAt?: string | null;
+  caseNumber?: string | null;
   discoveredAt?: string | null;
   fetchedAt?: string | null;
   summarizedAt?: string | null;

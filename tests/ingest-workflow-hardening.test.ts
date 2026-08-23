@@ -23,6 +23,10 @@ import {
   refreshQualityRegressionReason,
   shouldRetryBverfgCandidates,
 } from "../lib/ingest/run";
+import { crawlerErrorStatus } from "../lib/crawlee/shared";
+import { DEFAULT_CRAWLER_USER_AGENT, crawlerHeaders } from "../lib/crawler/user-agents";
+import { buildSpainTcRawArticleFromJson, isSpainMetadataOnlyNotice } from "../lib/crawlee/spain-tribunal-constitucional-spider";
+import { caseNumberFromArticle, withCaseNumberMetadata } from "../lib/ingest/case-number";
 import { scotusRevisionDateFromRowText } from "../lib/sources/supremecourt";
 import type { SourceUrlCandidateRecord } from "../lib/db/source-url-candidates";
 
@@ -86,6 +90,53 @@ test("ingestion treats all-uncollected BVerfG runs as degraded, not success", ()
   assert.equal(ingestResultSucceeded(blocked), false);
   assert.equal(ingestProcessExitCode(blocked), 2);
   assert.match(ingestResultFailureMessage(blocked), /degraded collection/);
+});
+
+test("Crawlee failures preserve HTTP status for BVerfG block classification", () => {
+  assert.equal(crawlerErrorStatus(new Error("Request blocked - received 403 status code.")), 403);
+  assert.equal(crawlerErrorStatus({ response: { statusCode: 429 } }), 429);
+  assert.equal(crawlerErrorStatus(new Error("network reset")), undefined);
+});
+
+test("crawler defaults identify the bot and send browser-compatible request headers", () => {
+  assert.match(DEFAULT_CRAWLER_USER_AGENT, /ConstitutionalCourtCurationBot/);
+  assert.match(DEFAULT_CRAWLER_USER_AGENT, /worldcons\.vercel\.app/);
+  const headers = crawlerHeaders();
+  assert.equal(headers["User-Agent"], DEFAULT_CRAWLER_USER_AGENT);
+  assert.match(headers.Accept, /text\/html/);
+  assert.match(headers["Accept-Language"], /de/);
+});
+
+test("Spain explicitly metadata-only notices are not retried as missing full text", () => {
+  assert.equal(isSpainMetadataOnlyNotice("Este auto no incorpora doctrina constitucional."), true);
+  assert.equal(isSpainMetadataOnlyNotice("Resolución con doctrina constitucional."), false);
+  const raw = buildSpainTcRawArticleFromJson({
+    ID: 32117,
+    TIPO_RESOLUCION: "AUTO",
+    NUMERO_RESOLUCION: 52,
+    ANNO_RESOLUCION: 2026,
+    FECHA_REGISTRO: "08/07/2026 0:00:00",
+    AVISO: "Este auto no incorpora doctrina constitucional.",
+  });
+  assert.equal(raw.metadata?.sourceTextStatus, "not_available");
+  assert.match(String(raw.metadata?.collection?.reason), /intentionally unavailable/);
+});
+
+test("canonical caseNumber metadata is populated from source-specific aliases", () => {
+  assert.equal(caseNumberFromArticle({ sourceKey: "us-scotus", metadata: { docket: "24-109" } }), "24-109");
+  assert.equal(caseNumberFromArticle({ sourceKey: "fr-conseil-constitutionnel", metadata: { decisionNumber: "Décision n° 2026-912 DC" } }), "2026-912 DC");
+  assert.equal(caseNumberFromArticle({ sourceKey: "es-tribunal-constitucional", metadata: { resolutionNumber: "53/2025" } }), "53/2025");
+  assert.equal(
+    caseNumberFromArticle({
+      sourceKey: "de-bverfg",
+      url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/08/rk20260811_2bvr150226.html",
+    }),
+    "2 BvR 1502/26",
+  );
+  assert.deepEqual(
+    withCaseNumberMetadata({ sourceKey: "us-scotus", metadata: { docket: "24-109" } }),
+    { docket: "24-109", caseNumber: "24-109" },
+  );
 });
 
 test("expected empty sitemap and Spain tail probes do not fail a verified listing", () => {
@@ -325,6 +376,7 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   assert.match(workflow, /BVERFG_RETRY_COUNT: "0"/, "BVerfG daily retries must not multiply a slow official endpoint");
   assert.match(workflow, /BVERFG_SITE_BLOCK_CIRCUIT_THRESHOLD: "3"/);
   assert.match(workflow, /BVERFG_PLAYWRIGHT_ESCALATE_LIMIT: "3"/);
+  assert.match(workflow, /CRAWLER_USER_AGENT: .*ConstitutionalCourtCurationBot/);
   assert.match(workflow, /Run isolated BVerfG worker without browser fallback[\s\S]*--no-playwright/, "BVerfG daily detail checks must use bounded HTTP fallback only");
   assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");
   assert.match(workflow, /continue-on-error: \$\{\{ vars\.ADMIN_REQUIRE_PUBLICATION_PARITY != 'true' \}\}/, "legacy parity drift must not falsely fail collection by default");

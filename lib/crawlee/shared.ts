@@ -6,6 +6,7 @@ import { extractHtmlMetadata } from "@/lib/crawler/extract-metadata";
 import { extractReadableText } from "@/lib/crawler/extract-readable-text";
 import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
 import { discoverSitemapUrls } from "@/lib/crawler/sitemap";
+import { crawlerHeaders, crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import type {
   CollectionConfidence,
@@ -62,7 +63,7 @@ function crawlerSettings() {
     sameDomainDelaySecs: envNumber("CRAWLEE_SAME_DOMAIN_DELAY_SECS", envNumber("CRAWLER_DELAY_MS", 2000) / 1000),
     requestHandlerTimeoutSecs: Math.max(5, envNumber("CRAWLEE_REQUEST_TIMEOUT_SECS", timeoutMs / 1000)),
     navigationTimeoutSecs: Math.max(5, envNumber("CRAWLEE_NAVIGATION_TIMEOUT_SECS", envNumber("PLAYWRIGHT_TIMEOUT_MS", 45000) / 1000)),
-    userAgent: process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
+    userAgent: crawlerUserAgent(),
   };
 }
 
@@ -78,6 +79,59 @@ function errorName(error: unknown) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function numericStatus(value: unknown) {
+  const status = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(status) && status >= 400 && status <= 599 ? status : undefined;
+}
+
+export function crawlerErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object") return undefined;
+  const record = error as Record<string, unknown>;
+  const response = record.response && typeof record.response === "object"
+    ? record.response as Record<string, unknown>
+    : undefined;
+  const direct = [
+    record.statusCode,
+    record.status,
+    response?.statusCode,
+    response?.status,
+  ];
+  for (const value of direct) {
+    const status = numericStatus(value);
+    if (status) return status;
+  }
+
+  const message = errorMessage(error);
+  const matches = [
+    message.match(/\b(?:HTTP|status(?:\s+code)?)\s*[:=]?\s*(\d{3})\b/i),
+    message.match(/\b(\d{3})\s+status\s+code\b/i),
+    message.match(/\breceived\s+(\d{3})\b/i),
+  ];
+  for (const match of matches) {
+    const status = numericStatus(match?.[1]);
+    if (status) return status;
+  }
+  return undefined;
+}
+
+function failedAttempt(
+  error: unknown,
+  extra: Pick<CrawlAttemptLog, "strategy"> & Partial<CrawlAttemptLog>,
+): CrawlAttemptLog {
+  const status = crawlerErrorStatus(error);
+  const timeout = isTimeout(error);
+  return {
+    ...extra,
+    status,
+    statusCode: status,
+    blocked: status === 403 || status === 429,
+    timeout,
+    result: status === 403 || status === 429 ? "blocked" : timeout ? "timeout" : "failed",
+    errorCode: status ? `HTTP_${status}` : errorName(error),
+    errorMessage: errorMessage(error),
+  };
 }
 
 function isTimeout(error: unknown) {
@@ -220,11 +274,11 @@ function buildRequest(request: CrawleeStartRequest, settings: ReturnType<typeof 
   return {
     url: request.url,
     uniqueKey: uniqueKey(request.url, request.label, request.collectionStrategy),
-    headers: {
+    headers: crawlerHeaders({
       "User-Agent": settings.userAgent,
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "de,fr,en;q=0.8,ko;q=0.6",
-    },
+    }),
     userData: request,
   };
 }
@@ -501,14 +555,11 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
     },
     failedRequestHandler({ request }, error) {
       const userData = request.userData as CrawleeStartRequest;
-      addAttempt(state.diagnostics, {
+      addAttempt(state.diagnostics, failedAttempt(error, {
         url: request.url,
         strategy: userData.collectionStrategy,
         fallback: userData.fallback,
-        timeout: isTimeout(error),
-        errorCode: errorName(error),
-        errorMessage: errorMessage(error),
-      });
+      }));
     },
   });
 
@@ -634,14 +685,11 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
       remember(state, item, raw);
     },
     failedRequestHandler({ request }, error) {
-      addAttempt(state.diagnostics, {
+      addAttempt(state.diagnostics, failedAttempt(error, {
         url: request.url,
         strategy: "playwright",
         fallback: true,
-        timeout: isTimeout(error),
-        errorCode: errorName(error),
-        errorMessage: errorMessage(error),
-      });
+      }));
     },
   });
 

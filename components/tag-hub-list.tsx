@@ -1,35 +1,51 @@
-import { Hash } from "lucide-react";
 import { TrackedLink } from "@/components/tracked-link";
 import { EmptyState } from "@/components/ui/empty-state";
-import { chipClassName } from "@/components/ui/chip";
-import { surfaceCardClassName } from "@/components/ui/surface-card";
 import type { TagSummary } from "@/lib/db/types";
 import { formatDisplayDate } from "@/lib/utils/dates";
 
+const TYPE_LABELS: Record<string, string> = {
+  right: "기본권",
+  topic: "쟁점",
+  doctrine: "헌법원칙",
+  procedure: "절차",
+  provision: "조문",
+};
+
 export function TagHubList({ tags }: { tags: TagSummary[] }) {
   if (tags.length === 0) {
-    return <EmptyState title="아직 생성된 태그가 없습니다" description="자료가 수집되고 요약되면 쟁점, 권리, 조문 태그가 이곳에 정리됩니다." />;
+    return <EmptyState title="아직 생성된 헌법 쟁점이 없습니다" description="자료가 수집되고 정리되면 권리, 쟁점, 원칙, 절차별 색인이 이곳에 표시됩니다." />;
   }
 
+  const grouped = tags.reduce<Record<string, TagSummary[]>>((acc, tag) => {
+    const key = TYPE_LABELS[tag.type] ?? "기타";
+    (acc[key] ??= []).push(tag);
+    return acc;
+  }, {});
+
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {tags.map((tag) => (
-        <TrackedLink
-          key={tag.slug}
-          href={`/tags/${tag.slug}`}
-          event={{ eventType: "tag_click", tagSlug: tag.slug, tagName: tag.name, metadata: { surface: "tag_hub" } }}
-          className={surfaceCardClassName("interactive", "focus-ring block min-w-0 p-5 sm:p-6")}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <span className="archive-serif inline-flex min-w-0 items-center gap-2 break-words text-xl font-semibold leading-snug text-archive-heading [overflow-wrap:anywhere]">
-              <Hash className="size-4 shrink-0 text-court" aria-hidden="true" />
-              {tag.name}
-            </span>
-            <span className={chipClassName("muted", "min-h-7 px-2 text-xs")}>{tag.type}</span>
+    <div className="space-y-10">
+      {Object.entries(grouped).map(([group, items]) => (
+        <section key={group} aria-labelledby={`tag-group-${group}`}>
+          <div className="border-t-2 border-archive-accent border-b border-archive-line-strong py-3">
+            <h2 id={`tag-group-${group}`} className="text-xl font-bold text-archive-ink">{group}</h2>
           </div>
-          <p className="mt-4 text-sm font-semibold text-ink">누적 자료 {(tag.articleCount ?? 0).toLocaleString("ko-KR")}건</p>
-          <p className="mt-1 text-xs text-ink-subtle">최근 업데이트 {formatDisplayDate(tag.latestArticleAt)}</p>
-        </TrackedLink>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((tag) => (
+              <TrackedLink
+                key={tag.slug}
+                href={`/tags/${tag.slug}`}
+                event={{ eventType: "tag_click", tagSlug: tag.slug, tagName: tag.name, metadata: { surface: "tag_hub" } }}
+                className="focus-ring flex min-h-[76px] min-w-0 items-center justify-between gap-4 border-b border-archive-line px-2 py-4 hover:bg-archive-surface-soft sm:px-3"
+              >
+                <span className="min-w-0">
+                  <span className="block break-words text-[16px] font-bold leading-6 text-archive-heading [overflow-wrap:anywhere]">{tag.name}</span>
+                  <span className="mt-1 block text-xs text-archive-muted">최근 업데이트 {formatDisplayDate(tag.latestArticleAt)}</span>
+                </span>
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-archive-muted">{(tag.articleCount ?? 0).toLocaleString("ko-KR")}</span>
+              </TrackedLink>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );

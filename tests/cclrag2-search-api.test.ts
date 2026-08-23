@@ -24,6 +24,18 @@ test("Neubauer comparison queries resolve the German climate decision reference"
   }
 });
 
+test("exact case extraction recognizes French, Spanish, and US case numbers", () => {
+  assert.deepEqual(extractExactCaseReferences("2026-912 QPC"), [
+    { sourceKey: "fr-conseil-constitutionnel", caseNumber: "2026-912 QPC" },
+  ]);
+  assert.deepEqual(extractExactCaseReferences("SENTENCIA 53/2025"), [
+    { sourceKey: "es-tribunal-constitucional", caseNumber: "53/2025" },
+  ]);
+  assert.deepEqual(extractExactCaseReferences("No. 24-109"), [
+    { sourceKey: "us-scotus", caseNumber: "24-109" },
+  ]);
+});
+
 test("BVerfG compact official URLs preserve the docket number during collection", () => {
   assert.equal(
     bverfgCaseNumberFromText(

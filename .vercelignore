@@ -1,0 +1,15 @@
+.git
+.omo
+.codex-remote-attachments
+.next
+node_modules
+.env
+.env.local
+.vercel
+.cache
+.crawlee-storage
+coverage
+playwright-report
+test-results
+logs
+artifacts

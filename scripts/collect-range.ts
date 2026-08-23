@@ -2,6 +2,7 @@ import "dotenv/config";
 import { load } from "cheerio";
 import { createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
+import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { articleExists, articleExistsByNormalizedContent, insertNormalizedArticle } from "@/lib/ingest/run";
 import { BVERFG_SEED_DECISIONS, bverfgOfficialUrlCandidatesFromDocket } from "@/lib/crawlee/bverfg-spider";
 import { SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
@@ -10,7 +11,7 @@ import type { DiscoveredItem, SourceAdapter } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 import { parseDate } from "@/lib/utils/dates";
 
-const USER_AGENT = process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler";
+const USER_AGENT = crawlerUserAgent();
 const FROM = argValue("from") ?? "2026-01-01";
 const TO = argValue("to") ?? "2026-05-09";
 const DELAY_MS = Number(argValue("delay-ms") ?? process.env.RANGE_COLLECT_DELAY_MS ?? 5000);

@@ -575,7 +575,7 @@ const spainPendingSourceTextRaw = buildSpainTcRawArticleFromJson({
 });
 const spainPendingSourceTextArticle = normalizeRawArticle(spainPendingSourceTextRaw, tribunalConstitucionalAdapter);
 assert(spainPendingSourceTextRaw.publishedAt === "2026-07-08T00:00:00.000Z", "Spain metadata-only HJ record must preserve its decision date");
-assert(spainPendingSourceTextRaw.metadata?.sourceTextStatus === "awaiting_hj_full_text", "Spain metadata-only HJ record must be marked for source-text tracking");
+assert(spainPendingSourceTextRaw.metadata?.sourceTextStatus === "not_available", "Spain HJ no-doctrine metadata-only record must not be marked for source-text tracking");
 assert(spainPendingSourceTextRaw.metadata?.notice === "Este auto no incorpora doctrina constitucional.", "Spain HJ notice must be preserved");
 assert(deriveCollectionStatus(spainPendingSourceTextArticle) === "metadata_only", "Spain HJ source-text pending record must remain private");
 assert(

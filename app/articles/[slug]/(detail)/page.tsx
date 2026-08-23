@@ -19,6 +19,8 @@ import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleDetail } from "@/lib/db/types";
 import { getCachedArticleDetailPageData } from "@/lib/public-article-detail-cache";
 import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
+import { articleCaseNumber } from "@/lib/ui/article-case-number";
+import { articleTitleForDisplay } from "@/lib/ui/article-title";
 import { articleMetadata } from "@/lib/seo/metadata";
 import { articleDateLabel, formattedArticleDate, spainBoeMetadata } from "@/lib/ui/article-date-label";
 import { displayArticleTypeLabel } from "@/lib/ui/content-type-labels";
@@ -97,6 +99,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const missingOriginalUrl = !originalHref;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
+  const caseNumber = articleCaseNumber(article);
+  const title = articleTitleForDisplay(article);
 
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
@@ -106,7 +110,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         <IntentPrefetchLink href="/" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
         <IntentPrefetchLink href="/list" className="focus-ring rounded-sm hover:text-archive-accent">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
         <IntentPrefetchLink href={`/sources/${article.sourceKey}`} className="focus-ring rounded-sm hover:text-archive-accent">{displaySourceLabel(article.sourceKey)}</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
-        <span className="max-w-[32rem] truncate">{article.koreanTitle || article.originalTitle}</span>
+        <span className="max-w-[32rem] truncate">{title}</span>
       </nav>
       <section style={jurisdictionThemeStyle(theme)} className="mb-8 border-b border-archive-line-strong pb-8">
         <p className="text-sm font-semibold text-[color:var(--country-text)]">{displaySourceLabel({ sourceKey: article.sourceKey, name: article.institutionName })} · {displayArticleTypeLabel(article)}</p>
@@ -118,8 +122,9 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             article.originalLanguage,
           ]}
         />
-        <h1 className="archive-serif mt-4 max-w-6xl break-keep text-4xl font-semibold leading-[1.22] text-archive-ink sm:text-5xl">
-          {article.koreanTitle || article.originalTitle}
+        <h1 className="mt-4 max-w-6xl break-keep text-3xl font-extrabold leading-[1.28] tracking-[-0.03em] text-archive-ink sm:text-4xl">
+          {title}
+          {caseNumber ? <span className="ml-1 font-sans text-[0.62em] font-medium tracking-normal text-archive-muted align-baseline">({caseNumber})</span> : null}
           <RecentDecisionMark publishedAt={article.originalPublishedAt} className="size-5 text-[10px]" />
         </h1>
         {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-archive-text sm:text-lg">{primaryIssue}</p> : null}
@@ -256,7 +261,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
           ) : null}
 
           {summary ? (
-            <SurfaceCard variant="muted" className="p-5">
+            <SurfaceCard variant="muted" className="rounded-none border-x-0 border-b-0 p-5 shadow-none">
               <h2 className="text-base font-semibold text-ink">AI 요약 참고</h2>
               <p className="mt-2 text-sm leading-6 text-ink-muted">
                 이 요약은 AI 언어 모델({summaryModelName})을 사용해 생성한 참고용 정보입니다. 정확한 법적 판단이나 인용은 공식 원문을 확인하세요.

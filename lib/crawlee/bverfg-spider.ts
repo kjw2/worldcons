@@ -5,6 +5,7 @@ import { applyIpv4FirstForSource } from "@/lib/crawler/dns-policy";
 import { SITEMAP_KEYWORDS } from "@/lib/crawler/sitemap";
 import { titleFromUrl } from "@/lib/crawler/extract-metadata";
 import { runOfficialSpider } from "@/lib/crawlee/shared";
+import { crawlerHeaders } from "@/lib/crawler/user-agents";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, OfficialSpiderConfig } from "@/lib/crawlee/types";
 import type { DiscoveredItem } from "@/lib/sources/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
@@ -297,10 +298,9 @@ async function discoverOpenLegalDataCandidates(options: CrawleeSpiderOptions = {
     await checkpointCrawlerExecution(options);
     pages += 1;
     const response = await fetch(nextUrl, {
-      headers: {
-        "User-Agent": process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
+      headers: crawlerHeaders({
         Accept: "application/json,text/plain;q=0.8,*/*;q=0.5",
-      },
+      }),
       signal: options.signal,
     });
     await checkpointCrawlerExecution(options);
@@ -368,11 +368,10 @@ async function fetchIndexText(
 ) {
   await checkpointCrawlerExecution(options);
   const response = await fetch(url, {
-    headers: {
-      "User-Agent": process.env.CRAWLER_USER_AGENT || process.env.INGEST_USER_AGENT || "worldcons/0.1 crawler",
+    headers: crawlerHeaders({
       Accept: accept,
       "Accept-Language": "de,en;q=0.8,ko;q=0.6",
-    },
+    }),
     signal: options.signal,
   });
   await checkpointCrawlerExecution(options);

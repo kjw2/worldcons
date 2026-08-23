@@ -6,11 +6,11 @@ import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { cn } from "@/lib/utils/classnames";
 
 const primaryNavigation = [
-  { href: "/list", label: "전체 판례" },
-  { href: "/sources", label: "기관" },
-  { href: "/tags", label: "주제" },
-  { href: "/glossary", label: "용어" },
-  { href: "/guide", label: "안내" },
+  { href: "/list", label: "판례" },
+  { href: "/sources", label: "국가·기관" },
+  { href: "/tags", label: "헌법 쟁점" },
+  { href: "/glossary", label: "용어집" },
+  { href: "/guide", label: "이용안내" },
 ] as const;
 
 function isCurrent(pathname: string, href: string) {
@@ -21,29 +21,37 @@ export function PublicSiteHeader() {
   const pathname = usePathname();
 
   return (
-    <header id="site-header" className="public-site-header border-b border-archive-line-strong bg-white/95">
+    <header id="site-header" className="public-site-header border-b border-archive-line-strong bg-white">
+      <div className="border-b border-archive-line bg-archive-surface-soft">
+        <div className="mx-auto flex min-h-7 max-w-[1248px] items-center px-4 text-[11px] text-archive-muted sm:px-6 sm:text-[12px] lg:px-10">
+          세계 각국 헌법재판기관의 공개 판례를 제공하는 비공식 연구·정보 서비스입니다.
+        </div>
+      </div>
+
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
-        <div className="flex min-h-[92px] items-center justify-between gap-3 border-b border-archive-line py-4 sm:min-h-[106px] sm:gap-5">
-          <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label="헌법판례요약시스템 홈">
-            <span className="block truncate font-sans text-[18px] font-extrabold leading-none text-archive-accent sm:text-[30px]">헌법판례요약시스템</span>
-            <span className="mt-2 block text-xs font-medium text-archive-text sm:text-sm">세계 헌법재판과 헌법 판례</span>
+        <div className="flex min-h-[62px] items-center justify-between gap-4 py-2.5">
+          <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label="WORLD CONS 홈">
+            <span className="block text-[22px] font-extrabold leading-none tracking-[-0.03em] text-archive-accent sm:text-[28px]">WORLD CONS</span>
+            <span className="mt-1.5 block text-[12px] font-medium text-archive-text sm:text-[13px]">세계 헌법판례 데이터베이스</span>
           </IntentPrefetchLink>
-          <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-archive-text sm:gap-5">
+
+          <div className="flex shrink-0 items-center gap-3">
             <a
               href="https://worldlaws.cclib.workers.dev/"
               target="_blank"
               rel="noopener noreferrer"
-              title="WORLDLAWS 새 창에서 열기"
-              className="focus-ring inline-flex rounded-sm py-2 text-[11px] hover:text-archive-accent sm:text-sm"
+              className="focus-ring hidden rounded-sm text-xs font-semibold text-archive-text hover:text-archive-accent sm:inline"
             >
               WORLDLAWS
             </a>
-            <IntentPrefetchLink href="/search" aria-label="검색" title="검색" className="focus-ring inline-flex size-10 items-center justify-center rounded-sm hover:bg-archive-tint hover:text-archive-accent">
-              <Search className="size-5" aria-hidden="true" />
+            <IntentPrefetchLink href="/search" aria-label="통합검색" title="통합검색" className="focus-ring inline-flex h-10 items-center gap-2 rounded-sm border border-archive-line px-3 text-sm font-semibold text-archive-text hover:border-archive-accent hover:text-archive-accent">
+              <Search className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">통합검색</span>
             </IntentPrefetchLink>
           </div>
         </div>
-        <nav className="grid grid-cols-5 overflow-x-auto" aria-label="주요 메뉴">
+
+        <nav className="flex overflow-x-auto border-t border-archive-line" aria-label="주요 메뉴">
           {primaryNavigation.map((item) => {
             const current = isCurrent(pathname, item.href);
             return (
@@ -52,8 +60,8 @@ export function PublicSiteHeader() {
                 href={item.href}
                 aria-current={current ? "page" : undefined}
                 className={cn(
-                  "focus-ring relative flex min-h-12 min-w-[84px] items-center justify-center px-2 text-center text-xs font-semibold text-archive-text transition hover:bg-archive-surface hover:text-archive-accent sm:min-h-14 sm:text-sm",
-                  current && "text-archive-accent after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-archive-accent",
+                  "focus-ring relative flex min-h-11 min-w-[92px] items-center justify-center px-4 text-sm font-semibold text-archive-text transition hover:text-archive-accent",
+                  current && "text-archive-accent after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-archive-accent",
                 )}
               >
                 {item.label}

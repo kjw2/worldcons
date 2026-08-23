@@ -4,7 +4,7 @@ import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 
 export type ExactCaseReference = {
-  sourceKey: "de-bverfg";
+  sourceKey?: "de-bverfg" | "fr-conseil-constitutionnel" | "es-tribunal-constitucional" | "us-scotus";
   caseNumber: string;
 };
 
@@ -37,6 +37,17 @@ export function extractExactCaseReferences(query: string): ExactCaseReference[] 
     if (alias.pattern.test(query)) references.push(alias.reference);
   }
 
+  const normalized = query.normalize("NFKC");
+  for (const match of normalized.matchAll(/\b(\d{4}-\d+(?:[/_-]\d+)*(?:\s+(?:QPC|DC|AN|SEN))?)\b/giu)) {
+    references.push({ sourceKey: "fr-conseil-constitutionnel", caseNumber: match[1].trim() });
+  }
+  for (const match of normalized.matchAll(/\b(\d{1,3}\/\d{4})\b/gu)) {
+    references.push({ sourceKey: "es-tribunal-constitucional", caseNumber: match[1] });
+  }
+  for (const match of normalized.matchAll(/\b(?:No\.\s*)?(\d{2,3}-\d+)\b/gu)) {
+    references.push({ sourceKey: "us-scotus", caseNumber: match[1] });
+  }
+
   const seen = new Set<string>();
   return references.filter((reference) => {
     const key = `${reference.sourceKey}:${reference.caseNumber.toLowerCase()}`;
@@ -66,7 +77,8 @@ export async function exactCaseSearch(filters: ArticleListFilters): Promise<Arti
   for (const reference of references) {
     const compactUrlToken = reference.caseNumber.toLowerCase().replace(/[^a-z0-9]/gu, "");
     const baseQuery = () => {
-      let query = supabase.from(relation).select("id").eq("source_key", reference.sourceKey);
+      let query = supabase.from(relation).select("id");
+      if (reference.sourceKey) query = query.eq("source_key", reference.sourceKey);
       if (!articlePublicationV4ReadsEnabled()) {
         query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
       }
@@ -76,10 +88,10 @@ export async function exactCaseSearch(filters: ArticleListFilters): Promise<Arti
       return query;
     };
 
-    const [metadataResult, urlResult] = await Promise.all([
-      baseQuery().filter("source_metadata->>caseNumber", "ilike", `%${reference.caseNumber}%`).limit(10),
-      baseQuery().ilike("original_url", `%${compactUrlToken}%`).limit(10),
-    ]);
+    const metadataResult = await baseQuery().eq("source_metadata->>caseNumber", reference.caseNumber).limit(10);
+    const urlResult = reference.sourceKey === "de-bverfg"
+      ? await baseQuery().ilike("original_url", `%${compactUrlToken}%`).limit(10)
+      : { data: [], error: null };
 
     for (const result of [metadataResult, urlResult]) {
       if (result.error || !Array.isArray(result.data)) continue;

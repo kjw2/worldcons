@@ -61,6 +61,7 @@ jobs:
       PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
+      CRAWLER_USER_AGENT: "Mozilla/5.0 (compatible; ConstitutionalCourtCurationBot/0.1; +https://worldcons.vercel.app/)"
       ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
       ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES: ${{ vars.ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES }}
       ADMIN_QUEUE_V3_WORKER_COHORTS: ${{ vars.ADMIN_QUEUE_V3_WORKER_COHORTS }}
