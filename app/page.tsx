@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { RecentDecisionMark } from "@/components/recent-decision-mark";
+import { SearchBox } from "@/components/search-box";
 import { PageShell } from "@/components/ui/page-shell";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listSources, listTags } from "@/lib/db/queries";
@@ -86,10 +87,16 @@ function SkeletonBlock({ className = "" }: { className?: string }) {
 
 function HomeSkeleton() {
   return (
-    <div aria-busy="true" aria-live="polite" className="space-y-10">
+    <div aria-busy="true" aria-live="polite">
       <span className="sr-only">홈페이지 정보를 불러오는 중입니다.</span>
-      <SkeletonBlock className="h-64" />
-      <SkeletonBlock className="h-56" />
+      <div className="border-b border-archive-line-strong pb-6">
+        <SkeletonBlock className="h-9 w-72 max-w-full" />
+        <SkeletonBlock className="mt-4 h-14 w-[52rem] max-w-full" />
+      </div>
+      <div className="mt-8 space-y-12">
+        <SkeletonBlock className="h-64" />
+        <SkeletonBlock className="h-56" />
+      </div>
     </div>
   );
 }
@@ -104,7 +111,7 @@ function LatestDecisionList({ articles }: { articles: ArticleListItem[] }) {
   return (
     <section aria-labelledby="latest-decisions" className="border-t-2 border-archive-accent">
       <div className="flex items-center justify-between gap-4 border-b border-archive-line-strong py-4">
-        <h2 id="latest-decisions" className="text-xl font-bold text-archive-ink">최신 판례</h2>
+        <h2 id="latest-decisions" className="text-xl font-bold text-archive-ink">국가별 최신 판례</h2>
         <IntentPrefetchLink href="/list" className="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">
           전체 판례 <ArrowRight className="size-4" aria-hidden="true" />
         </IntentPrefetchLink>
@@ -161,7 +168,14 @@ async function HomeContent() {
     <>
       <PageViewTracker event={{ eventType: "page_view", path: "/", resultCount: latestArticles.length, metadata: { surface: "public_information_portal" } }} />
 
-      <div className="mt-10 space-y-12">
+      <section aria-labelledby="home-title" className="border-b border-archive-line-strong pb-6">
+        <h1 id="home-title" className="text-2xl font-extrabold tracking-[-0.03em] text-archive-ink sm:text-3xl">세계 헌법판례 데이터베이스</h1>
+        <div className="mt-4 max-w-4xl">
+          <SearchBox variant="hero" placeholder="판례명, 사건번호, 헌법 쟁점을 검색하세요" />
+        </div>
+      </section>
+
+      <div className="mt-8 space-y-12">
         <LatestDecisionList articles={latestArticles} />
         <IssueIndex tags={issueTags} />
       </div>
