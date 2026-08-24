@@ -5,6 +5,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { listTags } from "@/lib/db/queries";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
+import { MIN_INDEXABLE_TAG_ARTICLE_COUNT } from "@/lib/seo/public-urls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function TagsPage() {
-  const tags = await listTags({ sort: "count" });
+  const tags = await listTags({ sort: "count", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT });
   await recordSiteEvent(
     {
       eventType: "page_view",

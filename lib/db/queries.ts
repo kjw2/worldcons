@@ -642,7 +642,10 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
   observePublicProjectionRead();
   const supabase = getSupabaseAdmin();
-  const tagId = article.tags[0]?.id;
+  const strongestTag = [...article.tags]
+    .filter((tag) => (tag.articleCount ?? 0) >= 3)
+    .sort((left, right) => (right.articleCount ?? 0) - (left.articleCount ?? 0))[0];
+  const tagId = strongestTag?.id;
   if (supabase && tagId) {
     const { data: relatedTagRows, error: relatedTagError } = await supabase
       .from("article_tags")
@@ -666,9 +669,19 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
     }
   }
 
-  const tag = article.tags[0]?.slug;
-  const result = await listArticles({ tag, pageSize: limit + 1, count: "none", includeViewCounts: false });
-  return result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
+  if (strongestTag?.slug) {
+    const result = await listArticles({ tag: strongestTag.slug, pageSize: limit + 1, count: "none", includeViewCounts: false });
+    const related = result.items.filter((item) => item.slug !== article.slug).slice(0, limit);
+    if (related.length > 0) return related;
+  }
+
+  const sourceFallback = await listArticles({
+    source: article.sourceKey,
+    pageSize: Math.max(limit + 1, 4),
+    count: "none",
+    includeViewCounts: false,
+  });
+  return sourceFallback.items.filter((item) => item.slug !== article.slug).slice(0, limit);
 }
 
 export async function getArticleDetailPageData(slug: string) {
@@ -796,14 +809,18 @@ export async function listJurisdictionArticleCounts(
   return Object.fromEntries(entries);
 }
 
-export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name"; limit?: number } = {}) {
+export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name"; limit?: number; minArticleCount?: number } = {}) {
   observePublicProjectionRead();
   const supabase = getSupabaseAdmin();
   const limit = Number.isFinite(options.limit) && options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), 1_000) : null;
+  const minArticleCount = Number.isFinite(options.minArticleCount) && (options.minArticleCount ?? 0) > 0
+    ? Math.floor(options.minArticleCount ?? 0)
+    : null;
 
   if (!supabase) {
     const tags = [...mockTags]
       .filter((tag) => !options.type || tag.type === options.type)
+      .filter((tag) => !minArticleCount || (tag.articleCount ?? 0) >= minArticleCount)
       .sort((a, b) => {
         if (options.sort === "name") return a.name.localeCompare(b.name);
         if (options.sort === "latest") return (b.latestArticleAt || "").localeCompare(a.latestArticleAt || "");
@@ -814,6 +831,7 @@ export async function listTags(options: { type?: string; sort?: "count" | "lates
 
   let query = supabase.from(publicationProjectionEnabled() ? "public_tag_projection_p3" : "tags").select("*");
   if (options.type) query = query.eq("type", options.type);
+  if (minArticleCount) query = query.gte("article_count", minArticleCount);
   if (options.sort === "name") query = query.order("name");
   else if (options.sort === "latest") query = query.order("latest_article_at", { ascending: false, nullsFirst: false });
   else query = query.order("article_count", { ascending: false });

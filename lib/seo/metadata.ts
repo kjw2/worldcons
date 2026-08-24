@@ -24,6 +24,7 @@ export function articleMetadata(article: ArticleListItem): Metadata {
   return {
     title,
     description,
+    robots: { index: true, follow: true },
     alternates: {
       canonical: url,
     },

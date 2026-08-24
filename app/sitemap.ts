@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { listGlossaryTerms, listPublicSitemapArticles, listSources, listTags } from "@/lib/db/queries";
 import { getAppBaseUrl, isIndexablePublicTag } from "@/lib/seo/metadata";
+import { MIN_INDEXABLE_TAG_ARTICLE_COUNT } from "@/lib/seo/public-urls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,7 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [articles, sources, tags, glossary] = await Promise.all([
     listPublicSitemapArticles(),
     listSources(),
-    listTags({ sort: "count" }),
+    listTags({ sort: "count", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT }),
     listGlossaryTerms(),
   ]);
 

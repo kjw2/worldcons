@@ -18,7 +18,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleDetail } from "@/lib/db/types";
 import { getCachedArticleDetailPageData } from "@/lib/public-article-detail-cache";
-import { articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
+import { articleBreadcrumbJsonLd, articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleTitleForDisplay } from "@/lib/ui/article-title";
 import { articleMetadata } from "@/lib/seo/metadata";
@@ -106,6 +106,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <PageViewTracker event={articleViewEvent} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleJsonLd(article)) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptValue(articleBreadcrumbJsonLd(article)) }} />
       <nav className="mb-6 flex flex-wrap items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치">
         <IntentPrefetchLink href="/" className="focus-ring rounded-sm hover:text-archive-accent">홈</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
         <IntentPrefetchLink href="/list" className="focus-ring rounded-sm hover:text-archive-accent">전체 판례</IntentPrefetchLink><ChevronRight className="size-3" aria-hidden="true" />
