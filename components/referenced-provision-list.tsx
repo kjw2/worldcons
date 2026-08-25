@@ -7,7 +7,7 @@ function provisionLabel(provision: ReferencedProvision) {
 
 function ProvisionReviewBadge({ confidence }: { confidence: ReferencedProvision["confidence"] }) {
   const label = provisionReviewLabel(confidence);
-  return label ? <span className="rounded-md bg-white px-2 py-0.5 text-xs font-medium text-ink-muted">{label}</span> : null;
+  return label ? <span className="border-l border-archive-line pl-2 text-xs font-medium text-ink-muted">{label}</span> : null;
 }
 
 export function ReferencedProvisionList({ provisions }: { provisions: ReferencedProvision[] }) {
@@ -18,9 +18,9 @@ export function ReferencedProvisionList({ provisions }: { provisions: Referenced
   }
 
   return (
-    <ul className="space-y-3">
+    <ul className="border-y border-archive-line-strong bg-white">
       {visibleProvisions.map((provision, index) => (
-        <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="rounded-lg border border-line bg-surface-muted/60 p-4">
+        <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="border-b border-archive-line px-1 py-4 last:border-b-0 sm:px-3">
           <div className="flex flex-wrap items-center gap-2">
             <strong className="text-ink">{provisionLabel(provision)}</strong>
             <ProvisionReviewBadge confidence={provision.confidence} />

@@ -41,7 +41,7 @@ export function BackToTopButton() {
       title="맨 위로 가기"
       onClick={scrollToTop}
       className={[
-        "back-to-top-button focus-ring fixed z-50 inline-flex size-12 items-center justify-center rounded-md border border-rule bg-white text-ink shadow-soft transition duration-200 hover:bg-parchment hover:text-court",
+        "back-to-top-button focus-ring fixed z-50 inline-flex size-11 items-center justify-center rounded-sm border border-archive-line-strong bg-white text-archive-text transition-colors duration-200 hover:bg-archive-surface-soft hover:text-archive-accent",
         isVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0",
       ].join(" ")}
     >

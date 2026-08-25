@@ -36,7 +36,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {children}
         <FixedChromeToggle />
         <BackToTopButton />
-        <footer id="site-footer" className="border-t-2 border-archive-accent bg-archive-surface-soft">
+        <footer id="site-footer" className="border-t border-archive-line-strong bg-archive-surface-soft">
           <div className="mx-auto max-w-[1248px] px-4 py-8 text-sm leading-6 text-archive-text sm:px-6 lg:px-10">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               <div>

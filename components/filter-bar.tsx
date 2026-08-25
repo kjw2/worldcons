@@ -74,8 +74,8 @@ export function FilterBar({
                 const theme = themeForJurisdiction(jurisdiction);
                 const count = jurisdictionArticleCounts?.[jurisdiction];
                 const countBadgeClassName = isActive
-                  ? "rounded-full bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white tabular-nums"
-                  : "rounded-full bg-white/75 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-current tabular-nums";
+                  ? "border-l border-white/35 pl-1.5 text-[11px] font-semibold leading-none text-white tabular-nums"
+                  : "border-l border-current/20 pl-1.5 text-[11px] font-semibold leading-none text-current tabular-nums";
 
                 return (
                   <IntentPrefetchLink

@@ -5,9 +5,9 @@ type SurfaceCardVariant = "default" | "muted" | "elevated" | "interactive" | "wa
 
 const variantClassNames: Record<SurfaceCardVariant, string> = {
   default: "border-archive-line bg-white",
-  muted: "border-archive-line bg-archive-surface",
-  elevated: "border-archive-line bg-white shadow-[0_12px_30px_rgba(32,36,43,0.08)]",
-  interactive: "border-archive-line bg-white transition hover:border-archive-accent hover:shadow-[0_10px_26px_rgba(32,36,43,0.08)]",
+  muted: "border-archive-line bg-archive-surface-soft",
+  elevated: "border-archive-line-strong bg-white",
+  interactive: "border-archive-line bg-white transition-colors hover:border-archive-line-strong hover:bg-archive-surface-soft",
   warning: "border-court/20 bg-court/5 text-court",
 };
 

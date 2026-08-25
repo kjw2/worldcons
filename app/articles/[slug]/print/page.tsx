@@ -81,7 +81,7 @@ export default async function ArticlePrintPage({
     <main className="print-page mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       <ArticlePrintActions articleHref={`/articles/${article.slug}`} originalUrl={originalHref} />
 
-      <article className="print-document rounded-lg border border-line bg-white p-6 shadow-card sm:p-8">
+      <article className="print-document border border-line bg-white p-6 sm:p-8">
         <header className="pb-6">
           <p className="text-sm font-semibold text-court">헌법판례요약시스템</p>
           <h1 className="mt-3 break-keep text-3xl font-semibold leading-tight tracking-normal text-ink sm:text-4xl">
@@ -142,7 +142,7 @@ export default async function ArticlePrintPage({
                   {provisions.map((provision, index) => {
                     const reviewLabel = provisionReviewLabel(provision.confidence);
                     return (
-                      <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="print-section rounded-lg border border-line bg-surface-muted/60 p-4">
+                      <li key={`${provision.jurisdiction}-${provision.lawName}-${provision.article}-${index}`} className="print-section border border-line bg-surface-muted/60 p-4">
                         <strong className="text-ink">{provisionLabel(provision)}</strong>
                         {reviewLabel ? <span className="ml-2 text-xs font-semibold text-ink-subtle">{reviewLabel}</span> : null}
                         <p className="mt-2 text-sm leading-6 text-ink-muted">{provision.description}</p>

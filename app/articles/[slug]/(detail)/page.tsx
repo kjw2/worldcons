@@ -15,7 +15,6 @@ import { DisclosureCard } from "@/components/ui/disclosure-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
-import { SurfaceCard } from "@/components/ui/surface-card";
 import type { ArticleDetail } from "@/lib/db/types";
 import { getCachedArticleDetailPageData } from "@/lib/public-article-detail-cache";
 import { articleBreadcrumbJsonLd, articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
@@ -123,10 +122,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             article.originalLanguage,
           ]}
         />
-        <h1 className="mt-4 max-w-6xl break-keep text-3xl font-extrabold leading-[1.28] tracking-[-0.03em] text-archive-ink sm:text-4xl">
+        <h1 className="mt-4 max-w-5xl break-keep text-3xl font-bold leading-[1.3] text-archive-ink sm:text-4xl">
           {title}
           {caseNumber ? <span className="ml-1 font-sans text-[0.62em] font-medium tracking-normal text-archive-muted align-baseline">({caseNumber})</span> : null}
-          <RecentDecisionMark publishedAt={article.originalPublishedAt} className="size-5 text-[10px]" />
+          <RecentDecisionMark publishedAt={article.originalPublishedAt} className="text-[11px]" />
         </h1>
         {primaryIssue ? <p className="mt-5 max-w-5xl break-keep text-base leading-8 text-archive-text sm:text-lg">{primaryIssue}</p> : null}
         {article.originalTitle ? <p className="mt-3 max-w-5xl break-keep text-sm leading-6 text-archive-subtle">원문 제목: {article.originalTitle}</p> : null}
@@ -193,8 +192,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
           </SummarySection>
         </article>
 
-        <aside className="space-y-4 lg:sticky lg:top-[calc(var(--chrome-header-height)+1rem)]">
-          <SurfaceCard className="p-5">
+        <aside className="divide-y divide-archive-line border-y border-archive-line-strong bg-white lg:sticky lg:top-[calc(var(--chrome-header-height)+1rem)]">
+          <section className="px-1 py-5 sm:px-4">
             <h2 className="archive-rule-title text-base font-semibold text-archive-heading">사건 정보</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <div className="flex items-start gap-3">
@@ -241,33 +240,33 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
                 <ExternalLink className="size-4" aria-hidden="true" />
               </a>
             ) : null}
-          </SurfaceCard>
+          </section>
 
           {summary ? (
-            <SurfaceCard className="p-5">
+            <section className="px-1 py-5 sm:px-4">
               <h2 className="mb-4 text-base font-semibold text-ink">참조 조문</h2>
               <ReferencedProvisionList provisions={summary.summary.referencedProvisions} />
-            </SurfaceCard>
+            </section>
           ) : null}
 
           {article.tags.length > 0 ? (
-            <SurfaceCard className="p-5">
+            <section className="px-1 py-5 sm:px-4">
               <h2 className="mb-4 text-base font-semibold text-ink">태그</h2>
               <div className="flex flex-wrap gap-2">
                 {article.tags.map((tag) => (
                   <TagPill key={tag.slug} tag={tag} jurisdiction={article.jurisdiction} />
                 ))}
               </div>
-            </SurfaceCard>
+            </section>
           ) : null}
 
           {summary ? (
-            <SurfaceCard variant="muted" className="rounded-none border-x-0 border-b-0 p-5 shadow-none">
+            <section className="bg-archive-surface-soft px-1 py-5 sm:px-4">
               <h2 className="text-base font-semibold text-ink">AI 요약 참고</h2>
               <p className="mt-2 text-sm leading-6 text-ink-muted">
                 이 요약은 AI 언어 모델({summaryModelName})을 사용해 생성한 참고용 정보입니다. 정확한 법적 판단이나 인용은 공식 원문을 확인하세요.
               </p>
-            </SurfaceCard>
+            </section>
           ) : null}
         </aside>
       </div>

@@ -63,12 +63,11 @@ export default async function GlossaryPage({ searchParams }: { searchParams?: Pr
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <header className="mb-7 border-b border-archive-line-strong pb-6">
-        <p className="text-sm font-bold text-archive-accent">용어집</p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-archive-ink">헌법재판 용어</h1>
-        <p className="mt-3 max-w-3xl text-[15px] leading-7 text-archive-text">국가별 헌법재판 제도와 권리·절차·법리를 한국어와 원어 기준으로 찾아볼 수 있습니다.</p>
+        <h1 className="text-3xl font-semibold text-archive-ink">헌법재판 용어</h1>
+        <p className="mt-3 max-w-[72ch] text-[15px] leading-7 text-archive-text">국가별 헌법재판 제도와 권리·절차·법리를 한국어와 원어 기준으로 찾아볼 수 있습니다.</p>
       </header>
 
-      <section className="mb-8 border-t-2 border-archive-accent border-b border-archive-line-strong py-4" aria-label="용어 검색 및 필터">
+      <section className="mb-8 border-y border-archive-line-strong py-4" aria-label="용어 검색 및 필터">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold" aria-label="출처 언어">
             {languageFilters.map((filter) => (

@@ -26,7 +26,7 @@ export function TagHubList({ tags }: { tags: TagSummary[] }) {
     <div className="space-y-10">
       {Object.entries(grouped).map(([group, items]) => (
         <section key={group} aria-labelledby={`tag-group-${group}`}>
-          <div className="border-t-2 border-archive-accent border-b border-archive-line-strong py-3">
+          <div className="border-y border-archive-line-strong py-3">
             <h2 id={`tag-group-${group}`} className="text-xl font-bold text-archive-ink">{group}</h2>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3">

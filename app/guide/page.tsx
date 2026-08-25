@@ -4,7 +4,6 @@ import { headers } from "next/headers";
 import { ExternalLink } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { SurfaceCard, surfaceCardClassName } from "@/components/ui/surface-card";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listSources } from "@/lib/db/queries";
 import type { SourceRecord } from "@/lib/db/types";
@@ -157,31 +156,19 @@ export default async function GuidePage() {
         descriptionClassName={guideHeadingDescriptionClassName}
       />
 
-      <section className="grid gap-4 md:grid-cols-3" aria-labelledby="guide-purpose">
-        <SurfaceCard className="rounded-none border-x-0 border-b-0 border-t-2 border-t-archive-accent p-5 shadow-none">
-          <p className="text-sm font-bold text-archive-accent">목적</p>
-          <h2 id="guide-purpose" className="mt-2 text-xl font-semibold tracking-normal text-ink">
-            공식 자료를 한국어로 먼저 파악
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            여러 나라 헌법재판기관의 최신 자료를 한곳에서 확인하고, 원문을 읽기 전에 사건의 핵심 쟁점과 관련 조문을 빠르게 파악하도록 돕습니다.
-          </p>
-        </SurfaceCard>
-        <SurfaceCard className="rounded-none border-x-0 border-b-0 border-t-2 border-t-archive-accent p-5 shadow-none">
-          <p className="text-sm font-bold text-archive-accent">원칙</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-normal text-ink">원문이 최종 기준</h2>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            AI 요약, 번역, 태그, 참조 조문은 참고용입니다. 법적 판단, 논문 인용, 실무 검토에는 반드시 각 기관의 공식 원문을 확인해야 합니다.
-          </p>
-        </SurfaceCard>
-        <SurfaceCard className="rounded-none border-x-0 border-b-0 border-t-2 border-t-archive-accent p-5 shadow-none">
-          <p className="text-sm font-bold text-archive-accent">범위</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-normal text-ink">4개 국가 우선 운영</h2>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            현재는 독일, 미국, 프랑스, 스페인 헌법재판 관련 공식 자료 중 2025년과 2026년 자료를 중심으로 수집합니다. 앞으로 수집 연도와 대상 범위는 단계적으로 확대할 예정입니다.
-            국가별 날짜 기준과 목록 수집 방식은 서로 다릅니다.
-          </p>
-        </SurfaceCard>
+      <section className="grid border-y border-archive-line-strong bg-white md:grid-cols-3" aria-labelledby="guide-purpose">
+        <div className="border-b border-archive-line p-5 md:border-b-0 md:border-r">
+          <h2 id="guide-purpose" className="text-lg font-semibold text-ink">공식 자료를 한국어로 먼저 파악</h2>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">여러 나라 헌법재판기관의 최신 자료를 한곳에서 확인하고, 원문을 읽기 전에 사건의 핵심 쟁점과 관련 조문을 빠르게 파악하도록 돕습니다.</p>
+        </div>
+        <div className="border-b border-archive-line p-5 md:border-b-0 md:border-r">
+          <h2 className="text-lg font-semibold text-ink">원문이 최종 기준</h2>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">AI 요약, 번역, 태그, 참조 조문은 참고용입니다. 법적 판단, 논문 인용, 실무 검토에는 반드시 각 기관의 공식 원문을 확인해야 합니다.</p>
+        </div>
+        <div className="p-5">
+          <h2 className="text-lg font-semibold text-ink">4개 국가 우선 운영</h2>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">현재는 독일, 미국, 프랑스, 스페인 헌법재판 관련 공식 자료 중 2025년과 2026년 자료를 중심으로 수집합니다. 앞으로 수집 연도와 대상 범위는 단계적으로 확대할 예정이며 국가별 날짜 기준과 목록 수집 방식은 서로 다릅니다.</p>
+        </div>
       </section>
 
       <section className="space-y-4">
@@ -191,7 +178,7 @@ export default async function GuidePage() {
           description="목록에서 빠르게 훑고, 상세 화면에서 요약 구조를 확인한 뒤, 중요한 사안은 공식 원문으로 다시 확인하는 흐름을 권장합니다."
           descriptionClassName={guideHeadingDescriptionClassName}
         />
-        <ol className="grid gap-3 md:grid-cols-5">
+        <ol className="border-y border-archive-line-strong bg-white">
           {[
             ["1", "최신", "새로 공개된 자료를 날짜순으로 확인합니다."],
             ["2", "필터", "국가, 기관, 기간, 유형, 언어, 태그로 좁힙니다."],
@@ -199,10 +186,10 @@ export default async function GuidePage() {
             ["4", "태그·용어", "관련 쟁점과 용어를 눌러 비슷한 자료를 이어 봅니다."],
             ["5", "원문", "공식 원문 링크와 보존된 원문 스냅샷으로 최종 확인합니다."],
           ].map(([step, title, description]) => (
-            <li key={step} className={surfaceCardClassName("muted", "p-4")}>
-              <span className="text-sm font-semibold text-court">{step}</span>
-              <h3 className="mt-2 text-base font-semibold text-ink">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-ink-muted">{description}</p>
+            <li key={step} className="grid gap-2 border-b border-archive-line px-1 py-4 last:border-b-0 sm:grid-cols-[3rem_8rem_minmax(0,1fr)] sm:items-baseline sm:px-3">
+              <span className="text-sm font-semibold tabular-nums text-archive-muted">{step}</span>
+              <h3 className="text-base font-semibold text-ink">{title}</h3>
+              <p className="text-sm leading-6 text-ink-muted">{description}</p>
             </li>
           ))}
         </ol>
@@ -217,7 +204,7 @@ export default async function GuidePage() {
         />
         <div className="overflow-x-auto border-y border-archive-line-strong bg-white">
           <table className="min-w-full divide-y divide-line text-left text-sm">
-            <thead className="bg-surface-muted/70 text-xs font-semibold uppercase tracking-normal text-ink-subtle">
+            <thead className="bg-archive-surface-soft text-xs font-semibold text-archive-muted">
               <tr>
                 <th className="px-4 py-3">국가</th>
                 <th className="px-4 py-3">기관</th>
@@ -229,7 +216,7 @@ export default async function GuidePage() {
                 <tr key={row.source.sourceKey} className="align-top">
                   <td className="px-4 py-3 font-medium text-ink">{displayJurisdictionLabel(row.source.jurisdiction)}</td>
                   <td className="px-4 py-3">
-                    <Link href={`/sources/${row.source.sourceKey}`} className="focus-ring rounded-md font-medium text-primary hover:text-court">
+                    <Link href={`/sources/${row.source.sourceKey}`} className="focus-ring rounded-sm font-medium text-archive-accent hover:text-archive-accent-hover">
                       {displaySourceLabel(row.source)}
                     </Link>
                     <span className="mt-1 block text-xs text-ink-subtle">{row.source.sourceKey}</span>
@@ -255,15 +242,17 @@ export default async function GuidePage() {
           description="각 기관은 목록 제공 방식, 날짜 기준, robots 정책이 다르므로 하나의 방식으로 강제로 맞추지 않습니다."
           descriptionClassName={guideHeadingDescriptionClassName}
         />
-        <div className="grid gap-4">
+        <div className="border-y border-archive-line-strong bg-white">
           {rows.map((row) => {
             const sourceHref = safeExternalUrl(row.source.baseUrl);
             return (
-            <SurfaceCard key={row.source.sourceKey} className="p-5">
+            <section key={row.source.sourceKey} className="border-b border-archive-line p-5 last:border-b-0">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-court">{displayJurisdictionLabel(row.source.jurisdiction)}</p>
-                  <h3 className="mt-1 text-xl font-semibold tracking-normal text-ink">{displaySourceLabel(row.source)}</h3>
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h3 className="text-xl font-semibold text-ink">{displaySourceLabel(row.source)}</h3>
+                    <span className="text-sm font-medium text-archive-muted">{displayJurisdictionLabel(row.source.jurisdiction)}</span>
+                  </div>
                   <p className="mt-1 text-sm text-ink-subtle">
                     원문 언어: {displaySourceLanguageLabel(row.source.language)} · 날짜 라벨: {articleDateLabel(row.source.sourceKey)}
                   </p>
@@ -273,7 +262,7 @@ export default async function GuidePage() {
                   href={sourceHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="focus-ring inline-flex min-h-10 w-fit items-center gap-1.5 rounded-lg border border-line px-3.5 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink"
+                  className="focus-ring inline-flex min-h-10 w-fit items-center gap-1.5 rounded-sm border border-line px-3.5 text-sm font-semibold text-ink-muted transition-colors hover:border-line-strong hover:bg-archive-surface-soft hover:text-ink"
                 >
                   공식 사이트
                   <ExternalLink className="size-4" aria-hidden="true" />
@@ -302,7 +291,7 @@ export default async function GuidePage() {
                   <dd className="mt-1 text-sm leading-6 text-ink-muted">{row.guide.compliance}</dd>
                 </div>
               </dl>
-            </SurfaceCard>
+            </section>
           );
           })}
         </div>
@@ -315,56 +304,35 @@ export default async function GuidePage() {
           description="SCOTUS 공개 자료에는 성격이 다른 의견들이 함께 존재합니다. World Cons는 현재 사용자가 일반적인 헌법판례로 기대하는 본안 판결 중심성을 유지하기 위해 Opinions of the Court만 정기 수집합니다."
           descriptionClassName={guideHeadingDescriptionClassName}
         />
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="border-y border-archive-line-strong bg-white">
           {scotusOpinionCategories.map((category) => (
-            <SurfaceCard key={category.name} className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-court">{category.name}</p>
-                  <h3 className="mt-2 text-xl font-semibold tracking-normal text-ink">
-                    {category.label}
-                  </h3>
-                </div>
-                <span className="shrink-0 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-xs font-semibold text-ink-muted">
-                  {category.status}
-                </span>
-              </div>
-              <p className="mt-4 text-sm leading-7 text-ink-muted">{category.description}</p>
-            </SurfaceCard>
+            <div key={category.name} className="grid gap-2 border-b border-archive-line px-1 py-4 last:border-b-0 md:grid-cols-[220px_120px_minmax(0,1fr)] md:px-3">
+              <div><p className="text-sm font-semibold text-archive-heading">{category.label}</p><p className="mt-1 text-xs text-archive-muted">{category.name}</p></div>
+              <span className="text-sm font-semibold text-archive-text">{category.status}</span>
+              <p className="text-sm leading-7 text-ink-muted">{category.description}</p>
+            </div>
           ))}
         </div>
-        <SurfaceCard className="p-5">
-          <h3 className="text-lg font-semibold tracking-normal text-ink">현재 운영 기준</h3>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            Opinions Relating to Orders와 In-Chambers Opinions에도 헌법 쟁점이 언급될 수는 있습니다. 다만 구속력 있는 본안 판단과 보조적·임시적 의견이 한 목록에 섞이면
-            공개 카드와 유형 필터가 판례의 성격을 과장하거나 혼동시킬 수 있습니다. 따라서 이 자료들은 향후 별도 보조 자료 분류를 만들 때 검토하고, 현재 수집·요약·공개
-            흐름에는 Opinions of the Court만 포함합니다.
-          </p>
-        </SurfaceCard>
+        <div className="border-b border-archive-line-strong pb-5">
+          <h3 className="text-lg font-semibold text-ink">현재 운영 기준</h3>
+          <p className="mt-3 max-w-[75ch] text-sm leading-7 text-ink-muted">Opinions Relating to Orders와 In-Chambers Opinions에도 헌법 쟁점이 언급될 수는 있습니다. 다만 구속력 있는 본안 판단과 보조적·임시적 의견이 한 목록에 섞이면 공개 목록과 유형 필터가 판례의 성격을 과장하거나 혼동시킬 수 있습니다. 따라서 이 자료들은 향후 별도 보조 자료 분류를 만들 때 검토하고, 현재 수집·요약·공개 흐름에는 Opinions of the Court만 포함합니다.</p>
+        </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2" aria-labelledby="guide-notes">
-        <SurfaceCard className="p-5">
-          <p className="text-sm font-semibold text-court">공개 기준</p>
-          <h2 id="guide-notes" className="mt-2 text-xl font-semibold tracking-normal text-ink">
-            화면에 보이는 자료의 조건
-          </h2>
+      <section className="grid border-y border-archive-line-strong bg-white md:grid-cols-2" aria-labelledby="guide-notes">
+        <div className="border-b border-archive-line p-5 md:border-b-0 md:border-r">
+          <h2 id="guide-notes" className="text-lg font-semibold text-ink">화면에 보이는 자료의 조건</h2>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-ink-muted">
             <li>원문 수집과 정리가 끝난 자료만 요약 대상으로 보냅니다.</li>
             <li>요약이 완료되고 공개 가능 상태인 자료만 일반 목록에 표시합니다.</li>
             <li>본문이 불완전하거나 공개 적합성 검토가 필요한 자료는 관리자 검토 대상으로 남깁니다.</li>
           </ul>
-        </SurfaceCard>
-        <SurfaceCard className="p-5">
-          <p className="text-sm font-semibold text-court">문의 및 피드백</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-normal text-ink">오류를 발견했을 때</h2>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            요약 오류, 번역 오류, 잘못된 참조 조문, 원문 링크 문제를 알려주실 때는 자료 URL, 기관명, 문제가 된 문장, 기대하는 수정 방향을 함께 전달해 주세요.
-          </p>
-          <p className="mt-3 text-sm leading-7 text-ink-muted">
-            중요한 법률 판단이나 인용에는 이 사이트의 요약이 아니라 각 기관의 공식 원문을 우선해 주세요.
-          </p>
-        </SurfaceCard>
+        </div>
+        <div className="p-5">
+          <h2 className="text-lg font-semibold text-ink">오류를 발견했을 때</h2>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">요약 오류, 번역 오류, 잘못된 참조 조문, 원문 링크 문제를 알려주실 때는 자료 URL, 기관명, 문제가 된 문장, 기대하는 수정 방향을 함께 전달해 주세요.</p>
+          <p className="mt-3 text-sm leading-7 text-ink-muted">중요한 법률 판단이나 인용에는 이 사이트의 요약이 아니라 각 기관의 공식 원문을 우선해 주세요.</p>
+        </div>
       </section>
     </PageShell>
   );

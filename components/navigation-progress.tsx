@@ -159,17 +159,10 @@ export function NavigationProgress() {
         visible ? "opacity-100" : "opacity-0",
       )}
     >
-      <div className="h-0.5 overflow-hidden bg-primary/10">
-        <div className="navigation-progress-bar h-full w-1/2 rounded-r-full bg-primary shadow-[0_0_18px_rgba(31,42,68,0.42)]" />
+      <div className="h-0.5 overflow-hidden bg-archive-line">
+        <div className="navigation-progress-bar h-full w-1/2 bg-archive-accent" />
       </div>
-      <div className="absolute right-4 top-[calc(var(--chrome-header-height)+0.75rem)] sm:right-6 lg:right-8">
-        <div className="flex min-h-9 items-center gap-2 rounded-full border border-line bg-white/95 px-3 text-sm font-semibold text-ink shadow-floating backdrop-blur">
-          <span className="relative size-4 rounded-full border border-primary/20" aria-hidden="true">
-            <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary navigation-spinner" />
-          </span>
-          <span>이동 중</span>
-        </div>
-      </div>
+      <span className="sr-only">페이지 이동 중</span>
     </div>
   );
 }

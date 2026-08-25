@@ -31,9 +31,8 @@ export default async function SourcesPage() {
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <header className="mb-8 border-b border-archive-line-strong pb-6">
-        <p className="text-sm font-bold text-archive-accent">국가·기관</p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-archive-ink">헌법재판기관</h1>
-        <p className="mt-3 max-w-3xl text-[15px] leading-7 text-archive-text">WORLD CONS가 공식 공개자료를 수집·정리하는 국가와 헌법재판기관을 확인할 수 있습니다.</p>
+        <h1 className="text-3xl font-semibold text-archive-ink">헌법재판기관</h1>
+        <p className="mt-3 max-w-[72ch] text-[15px] leading-7 text-archive-text">WORLD CONS가 공식 공개자료를 수집·정리하는 국가와 헌법재판기관을 확인할 수 있습니다.</p>
       </header>
 
       {sources.length === 0 ? (
@@ -42,7 +41,7 @@ export default async function SourcesPage() {
         <div className="space-y-10">
           {Object.entries(grouped).map(([jurisdiction, rows]) => (
             <section key={jurisdiction} aria-labelledby={`jurisdiction-${jurisdiction}`}>
-              <div className="border-t-2 border-archive-accent border-b border-archive-line-strong py-3">
+              <div className="border-y border-archive-line-strong py-3">
                 <h2 id={`jurisdiction-${jurisdiction}`} className="text-xl font-bold text-archive-ink">{displayJurisdictionLabel(jurisdiction)}</h2>
               </div>
               <div>

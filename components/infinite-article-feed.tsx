@@ -152,32 +152,22 @@ function SkeletonBlock({ className = "" }: { className?: string }) {
 
 function ArticleCardSkeleton() {
   return (
-    <div className="flex min-h-[17rem] flex-col rounded-lg border border-line bg-white p-4 shadow-sm">
-      <div className="mb-3 flex gap-2">
-        <SkeletonBlock className="h-6 w-20 rounded-full" />
-        <SkeletonBlock className="h-6 w-14 rounded-full" />
+    <div className="border-b border-archive-line px-1 py-5 last:border-b-0 sm:grid sm:grid-cols-[132px_minmax(0,1fr)_72px] sm:gap-5 sm:px-3">
+      <div className="mb-3 space-y-2 sm:mb-0">
+        <SkeletonBlock className="h-4 w-24 rounded-sm" />
+        <SkeletonBlock className="h-4 w-20 rounded-sm" />
       </div>
-      <div className="space-y-2">
-        <SkeletonBlock className="h-5 w-11/12" />
-        <SkeletonBlock className="h-5 w-8/12" />
-      </div>
-      <div className="mt-4 space-y-2">
-        <SkeletonBlock className="h-4 w-full" />
-        <SkeletonBlock className="h-4 w-10/12" />
-        <SkeletonBlock className="h-4 w-7/12" />
-      </div>
-      <div className="mt-4 flex gap-2">
-        <SkeletonBlock className="h-6 w-16 rounded-full" />
-        <SkeletonBlock className="h-6 w-20 rounded-full" />
-      </div>
-      <div className="grow" />
-      <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
-        <SkeletonBlock className="h-4 w-24" />
-        <div className="flex gap-2">
-          <SkeletonBlock className="h-8 w-14 rounded-md" />
-          <SkeletonBlock className="size-8 rounded-md" />
-          <SkeletonBlock className="size-8 rounded-md" />
+      <div>
+        <SkeletonBlock className="h-5 w-11/12 rounded-sm" />
+        <SkeletonBlock className="mt-2 h-4 w-full rounded-sm" />
+        <SkeletonBlock className="mt-2 h-4 w-9/12 rounded-sm" />
+        <div className="mt-3 flex gap-2">
+          <SkeletonBlock className="h-6 w-16 rounded-sm" />
+          <SkeletonBlock className="h-6 w-20 rounded-sm" />
         </div>
+      </div>
+      <div className="mt-4 sm:mt-0 sm:flex sm:justify-end">
+        <SkeletonBlock className="h-4 w-12 rounded-sm" />
       </div>
     </div>
   );
@@ -187,7 +177,7 @@ function LoadMoreSkeletonGrid({ count }: { count: number }) {
   return (
     <div aria-busy="true" aria-live="polite" className="[overflow-anchor:none]">
       <span className="sr-only">더 많은 자료를 불러오는 중입니다.</span>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="border-y border-archive-line-strong bg-white">
         {Array.from({ length: count }).map((_, index) => (
           <ArticleCardSkeleton key={index} />
         ))}
@@ -446,7 +436,7 @@ export function InfiniteArticleFeed({
           <button
             type="button"
             onClick={() => void loadNext("manual")}
-            className="focus-ring rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-ink-muted"
+            className="focus-ring rounded-sm border border-archive-line-strong bg-white px-3 py-2 text-sm font-semibold text-archive-text hover:bg-archive-surface-soft"
           >
             다시 불러오기
           </button>
@@ -455,7 +445,7 @@ export function InfiniteArticleFeed({
           <button
             type="button"
             onClick={() => void loadNext("manual")}
-            className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border border-line bg-white px-4 text-sm font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink"
+            className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-sm border border-archive-line-strong bg-white px-4 text-sm font-semibold text-archive-text transition-colors hover:bg-archive-surface-soft hover:text-archive-accent"
           >
             더 보기
             <ChevronDown className="size-4" aria-hidden="true" />

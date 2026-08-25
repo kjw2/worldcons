@@ -13,7 +13,7 @@ const variantClassNames: Record<ChipVariant, string> = {
 
 export function chipClassName(variant: ChipVariant = "default", className?: string) {
   return cn(
-    "focus-ring inline-flex min-h-8 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition",
+    "focus-ring inline-flex min-h-8 items-center gap-1.5 rounded-sm border px-3 text-sm font-medium transition-colors",
     variantClassNames[variant],
     className,
   );

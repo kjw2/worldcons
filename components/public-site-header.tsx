@@ -25,7 +25,7 @@ export function PublicSiteHeader() {
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
         <div className="flex min-h-[62px] items-center justify-between gap-4 py-2.5">
           <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label="WORLD CONS 홈">
-            <span className="block text-[22px] font-extrabold leading-none tracking-[-0.03em] text-archive-accent sm:text-[28px]">WORLD CONS</span>
+            <span className="block text-[22px] font-extrabold leading-none tracking-normal text-archive-accent sm:text-[26px]">WORLD CONS</span>
             <span className="mt-1.5 block text-[12px] font-medium text-archive-text sm:text-[13px]">세계 헌법판례 데이터베이스</span>
           </IntentPrefetchLink>
 

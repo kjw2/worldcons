@@ -93,7 +93,7 @@ export function FixedChromeToggle() {
       title={enabled ? "헤더 고정 끄기" : "헤더 고정 켜기"}
       onClick={toggleFixedChrome}
       className={[
-        "chrome-toggle-button focus-ring inline-flex min-h-11 items-center gap-2 rounded-md border border-rule bg-white px-3 text-xs font-semibold text-ink shadow-soft transition hover:bg-parchment hover:text-court",
+        "chrome-toggle-button focus-ring inline-flex min-h-10 items-center gap-2 rounded-sm border border-archive-line-strong bg-white px-3 text-xs font-semibold text-archive-text transition-colors hover:bg-archive-surface-soft hover:text-archive-accent",
         mounted ? "opacity-100" : "opacity-0",
       ].join(" ")}
     >

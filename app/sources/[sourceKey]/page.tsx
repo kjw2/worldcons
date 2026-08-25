@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, ChevronRight, ExternalLink, FileText, Globe2, Landmark } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink } from "lucide-react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArticleGrid } from "@/components/article-grid";
@@ -50,27 +50,25 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ s
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <nav className="mb-6 flex items-center gap-1.5 text-xs text-archive-muted" aria-label="현재 위치"><Link href="/" className="focus-ring rounded-sm hover:text-archive-accent">홈</Link><ChevronRight className="size-3" aria-hidden="true" /><Link href="/sources" className="focus-ring rounded-sm hover:text-archive-accent">기관</Link><ChevronRight className="size-3" aria-hidden="true" /><span>{displaySourceLabel(source)}</span></nav>
-      <section style={jurisdictionThemeStyle(themeForJurisdiction(source.jurisdiction))} className="relative mb-6 min-h-56 overflow-hidden border-b border-archive-line-strong pb-7 pr-4 sm:pr-[28%]">
-        <p className="text-4xl" aria-hidden="true">{displayJurisdictionFlag(source.jurisdiction)}</p>
-        <p className="mt-4 text-sm font-semibold text-[color:var(--country-text)]">{displayJurisdictionLabel(source.jurisdiction)}</p>
-        <h1 className="archive-serif mt-2 text-4xl font-semibold text-archive-ink sm:text-5xl">{displaySourceLabel(source)}</h1>
-        {source.name !== displaySourceLabel(source) ? <p className="mt-2 text-base text-archive-text">{source.name}</p> : null}
-        <p className="mt-5 max-w-3xl text-sm leading-7 text-archive-text">{displayJurisdictionLabel(source.jurisdiction)}의 공식 헌법재판 자료를 수집해 한국어 요약과 원문 링크로 제공합니다.</p>
+      <section style={jurisdictionThemeStyle(themeForJurisdiction(source.jurisdiction))} className="mb-7 border-b border-archive-line-strong pb-7">
+        <p className="text-sm font-semibold text-[color:var(--country-text)]"><span className="mr-2" aria-hidden="true">{displayJurisdictionFlag(source.jurisdiction)}</span>{displayJurisdictionLabel(source.jurisdiction)}</p>
+        <h1 className="mt-2 text-3xl font-semibold text-archive-ink sm:text-4xl">{displaySourceLabel(source)}</h1>
+        {source.name !== displaySourceLabel(source) ? <p className="mt-2 text-sm text-archive-muted">{source.name}</p> : null}
+        <p className="mt-4 max-w-[72ch] text-[15px] leading-7 text-archive-text">공식 공개자료를 수집해 한국어 요약과 원문 링크로 제공합니다.</p>
         {sourceHref ? (
-        <a href={sourceHref} target="_blank" rel="noreferrer" className="focus-ring mt-5 inline-flex min-h-11 items-center gap-2 rounded-sm border border-archive-line-strong bg-archive-tint px-4 text-sm font-semibold text-archive-accent transition hover:bg-archive-surface">
+        <a href={sourceHref} target="_blank" rel="noreferrer" className="focus-ring mt-4 inline-flex min-h-10 items-center gap-2 rounded-sm border border-archive-line-strong px-3 text-sm font-semibold text-archive-accent transition-colors hover:bg-archive-surface-soft">
           공식 사이트
           <ExternalLink className="size-4" aria-hidden="true" />
         </a>
         ) : null}
-        <Landmark className="pointer-events-none absolute -bottom-12 right-0 size-72 stroke-[0.8] text-[color:var(--country-accent)] opacity-[0.11]" aria-hidden="true" />
       </section>
-      <section className="mb-8 grid border border-archive-line bg-white sm:grid-cols-2 lg:grid-cols-4" aria-label="기관 현황">
-        <div className="flex min-h-24 items-center gap-3 border-b border-archive-line p-4 sm:border-r lg:border-b-0"><Globe2 className="size-5 text-archive-accent" aria-hidden="true" /><div><p className="text-xs text-archive-muted">국가</p><p className="mt-1 font-semibold text-archive-heading">{displayJurisdictionLabel(source.jurisdiction)}</p></div></div>
-        <div className="flex min-h-24 items-center gap-3 border-b border-archive-line p-4 lg:border-b-0 lg:border-r"><FileText className="size-5 text-archive-accent" aria-hidden="true" /><div><p className="text-xs text-archive-muted">공개 판례</p><p className="archive-serif mt-1 text-xl font-semibold text-archive-heading">{articles.pageInfo.total.toLocaleString("ko-KR")}건</p></div></div>
-        <div className="flex min-h-24 items-center gap-3 border-b border-archive-line p-4 sm:border-b-0 sm:border-r"><CalendarDays className="size-5 text-archive-accent" aria-hidden="true" /><div><p className="text-xs text-archive-muted">최근 업데이트</p><p className="mt-1 font-semibold text-archive-heading">{formatDisplayDate(latestArticleAt)}</p></div></div>
-        <div className="flex min-h-24 items-center gap-3 p-4"><Landmark className="size-5 text-archive-accent" aria-hidden="true" /><div><p className="text-xs text-archive-muted">자료 기준</p><p className="mt-1 font-semibold text-archive-heading">{dateBasis ?? `원문 ${displaySourceLanguageLabel(source.language)}`}</p></div></div>
-      </section>
-      <div className="mb-4 flex items-end justify-between gap-4"><div><p className="archive-kicker">Latest cases</p><h2 className="archive-serif mt-1 text-3xl font-semibold text-archive-ink">최신 판례</h2></div><Link href={`/list?source=${encodeURIComponent(source.sourceKey)}`} className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">전체 보기<ArrowRight className="size-4" aria-hidden="true" /></Link></div>
+      <dl className="mb-8 grid border-y border-archive-line-strong bg-white sm:grid-cols-2 lg:grid-cols-4" aria-label="기관 현황">
+        <div className="border-b border-archive-line px-1 py-4 sm:border-r lg:border-b-0 lg:px-4"><dt className="text-xs font-medium text-archive-muted">국가</dt><dd className="mt-1 text-sm font-semibold text-archive-heading">{displayJurisdictionLabel(source.jurisdiction)}</dd></div>
+        <div className="border-b border-archive-line px-1 py-4 lg:border-b-0 lg:border-r lg:px-4"><dt className="text-xs font-medium text-archive-muted">공개 판례</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-archive-heading">{articles.pageInfo.total.toLocaleString("ko-KR")}건</dd></div>
+        <div className="border-b border-archive-line px-1 py-4 sm:border-b-0 sm:border-r lg:px-4"><dt className="text-xs font-medium text-archive-muted">최근 업데이트</dt><dd className="mt-1 text-sm font-semibold text-archive-heading">{formatDisplayDate(latestArticleAt)}</dd></div>
+        <div className="px-1 py-4 lg:px-4"><dt className="text-xs font-medium text-archive-muted">자료 기준</dt><dd className="mt-1 text-sm font-semibold text-archive-heading">{dateBasis ?? `원문 ${displaySourceLanguageLabel(source.language)}`}</dd></div>
+      </dl>
+      <div className="mb-4 flex items-end justify-between gap-4"><h2 className="text-2xl font-semibold text-archive-ink">최신 판례</h2><Link href={`/list?source=${encodeURIComponent(source.sourceKey)}`} className="focus-ring inline-flex items-center gap-2 rounded-sm text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">전체 보기<ArrowRight className="size-4" aria-hidden="true" /></Link></div>
       <ArticleGrid articles={articles.items} />
     </PageShell>
   );

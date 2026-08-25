@@ -4,7 +4,6 @@ import { RelatedArticles } from "@/components/related-articles";
 import { TagPill } from "@/components/tag-pill";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
-import { SurfaceCard } from "@/components/ui/surface-card";
 import { getGlossaryTerm, listArticlesForGlossaryTerm } from "@/lib/db/queries";
 import { glossaryJurisdictionLabel, glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -33,9 +32,11 @@ export default async function GlossaryDetailPage({ params }: { params: Promise<{
 
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
-      <SurfaceCard className="p-6">
-        <p className="mb-2 text-sm font-semibold text-court">{glossaryJurisdictionLabel(term)}</p>
-        <h1 className="text-3xl font-semibold tracking-normal text-ink sm:text-4xl">{term.koreanTerm || term.term}</h1>
+      <section className="border-y border-archive-line-strong bg-white px-1 py-6 sm:px-4">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-3xl font-semibold text-ink sm:text-4xl">{term.koreanTerm || term.term}</h1>
+          <span className="text-sm font-medium text-archive-muted">{glossaryJurisdictionLabel(term)}</span>
+        </div>
         <MetaRow className="mt-3" items={[term.koreanTerm ? term.term : null, `출처 언어: ${glossarySourceLanguageLabel(term)}`]} />
         <p className="mt-6 text-base leading-8 text-ink-muted">{term.definition}</p>
         {term.relatedTags.length > 0 ? (
@@ -49,7 +50,7 @@ export default async function GlossaryDetailPage({ params }: { params: Promise<{
             </div>
           </div>
         ) : null}
-      </SurfaceCard>
+      </section>
       <section className="mt-6">
         <h2 className="mb-3 text-lg font-semibold tracking-normal text-ink">관련 자료</h2>
         <RelatedArticles articles={relatedArticles} />

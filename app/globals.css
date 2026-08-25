@@ -26,7 +26,6 @@ body {
   font-family: var(--font-system-sans);
   font-size: 15px;
   line-height: 1.6;
-  transition: padding-top 160ms ease;
 }
 
 .archive-wordmark,
@@ -35,51 +34,9 @@ body {
   letter-spacing: 0;
 }
 
-.archive-kicker {
-  color: #243b5a;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
 .archive-rule-title {
   border-bottom: 1px solid #b8c0cb;
   padding-bottom: 0.65rem;
-}
-
-/* Public information portal: keep legal data visually primary over decorative cards. */
-body:not(:has(.admin-shell)) .public-information-page .shadow-card,
-body:not(:has(.admin-shell)) .public-information-page .shadow-panel,
-body:not(:has(.admin-shell)) .public-information-page .shadow-soft {
-  box-shadow: none !important;
-}
-
-body:not(:has(.admin-shell)) .public-information-page .rounded-lg,
-body:not(:has(.admin-shell)) .public-information-page .rounded-xl,
-body:not(:has(.admin-shell)) .public-information-page .rounded-2xl {
-  border-radius: 2px !important;
-}
-
-body:not(:has(.admin-shell)) .public-information-page h1,
-body:not(:has(.admin-shell)) .public-information-page h2,
-body:not(:has(.admin-shell)) .public-information-page h3 {
-  letter-spacing: -0.02em;
-}
-
-.issue-carousel-page {
-  animation: issue-carousel-enter 260ms ease-out;
-}
-
-@keyframes issue-carousel-enter {
-  from {
-    opacity: 0.45;
-    transform: translateX(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 .public-site-header {
@@ -140,7 +97,6 @@ html.chrome-fixed #site-header {
   inset: 0 0 auto;
   z-index: 40;
   background: #fff;
-  box-shadow: 0 8px 22px rgba(32, 36, 43, 0.08);
   transform: translateY(0);
 }
 
@@ -183,16 +139,8 @@ html.chrome-fixed.chrome-header-hidden #site-header {
   }
 }
 
-@keyframes navigation-spinner {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .issue-carousel-page,
-  .navigation-progress-bar,
-  .navigation-spinner {
+  .navigation-progress-bar {
     animation-duration: 1ms;
     animation-iteration-count: 1;
   }

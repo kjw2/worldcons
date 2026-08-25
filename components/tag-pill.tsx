@@ -18,7 +18,7 @@ export function TagPill({
   const sharedProps = {
     style: jurisdictionThemeStyle(theme),
     className: cn(
-      "inline-flex min-h-7 items-center gap-1 rounded-md border px-2.5 text-xs font-medium",
+      "inline-flex min-h-7 items-center gap-1 rounded-sm border px-2.5 text-xs font-medium",
       "border-[color:var(--country-border)] bg-[color:var(--country-accent-softer)] text-[color:var(--country-text)]",
       className,
     ),

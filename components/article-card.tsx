@@ -8,7 +8,6 @@ import { SourceBadge } from "@/components/source-badge";
 import { TagPill } from "@/components/tag-pill";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { RecentDecisionMark } from "@/components/recent-decision-mark";
-import { surfaceCardClassName } from "@/components/ui/surface-card";
 import { formattedArticleDate } from "@/lib/ui/article-date-label";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleTitleForDisplay } from "@/lib/ui/article-title";
@@ -63,7 +62,7 @@ function TagOverflowPopover({
         +{hiddenTagCount}
       </button>
       <span className="absolute right-0 top-[calc(100%-1px)] z-30 hidden w-72 max-w-[calc(100vw-2rem)] pt-1 group-hover:block group-focus-within:block">
-        <span className="flex flex-wrap gap-1.5 rounded-sm border border-archive-line-strong bg-white p-2 shadow-panel">
+        <span className="flex flex-wrap gap-1.5 rounded-sm border border-archive-line-strong bg-white p-2">
           {tags.map((tag) => (
             <TagPill key={tag.slug} tag={tag} jurisdiction={jurisdiction} className="max-w-full min-h-6 px-2 text-[11px]" />
           ))}
@@ -131,58 +130,51 @@ export function ArticleCard({
     <article
       data-article-slug={article.slug}
       style={jurisdictionThemeStyle(theme)}
-      className={surfaceCardClassName("interactive", "relative flex h-full flex-col overflow-visible border-archive-line bg-white p-4 sm:p-5")}
+      className="relative border-b border-archive-line px-1 py-5 last:border-b-0 sm:grid sm:grid-cols-[132px_minmax(0,1fr)_auto] sm:gap-5 sm:px-3"
     >
-      <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2">
-        <SourceBadge sourceKey={article.sourceKey} className="min-h-6 rounded-sm bg-[color:var(--country-accent-softer)] px-2 text-[11px] font-semibold" />
-        <span className="inline-flex min-h-6 items-center rounded-sm border border-[color:var(--country-border)] bg-white px-2 text-[11px] font-semibold text-[color:var(--country-text)]">
-          {displayArticleTypeLabel(article)}
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-archive-muted sm:mb-0 sm:block">
+        <span className="inline-flex items-center gap-1.5 tabular-nums sm:flex">
+          <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
+          {formattedArticleDate(article)}
         </span>
+        <SourceBadge sourceKey={article.sourceKey} className="sm:mt-2" />
+        <span className="text-[color:var(--country-text)] sm:mt-1 sm:block">{displayArticleTypeLabel(article)}</span>
       </div>
 
-      <h2 className="archive-serif text-[17px] font-semibold leading-7 text-archive-heading">
-        <IntentPrefetchLink href={articleHref} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-primary">
-          {title}
-          {caseNumber ? <span className="ml-1 font-sans text-[0.62em] font-medium tracking-normal text-archive-muted align-baseline">({caseNumber})</span> : null}
-          <RecentDecisionMark publishedAt={article.originalPublishedAt} />
-        </IntentPrefetchLink>
-      </h2>
+      <div className="min-w-0">
+        <h2 className="text-[17px] font-semibold leading-7 text-archive-heading sm:text-[18px]">
+          <IntentPrefetchLink href={articleHref} onClick={handleArticleLinkClick} className="focus-ring rounded-sm hover:text-archive-accent">
+            {title}
+            {caseNumber ? <span className="ml-1 text-[0.72em] font-medium text-archive-muted">({caseNumber})</span> : null}
+            <RecentDecisionMark publishedAt={article.originalPublishedAt} />
+          </IntentPrefetchLink>
+        </h2>
+        <p className="mt-2 line-clamp-2 max-w-[72ch] text-sm leading-6 text-archive-text">{summaryText}</p>
 
-      <p className="mt-3 line-clamp-3 text-sm leading-6 text-archive-text">{summaryText}</p>
+        {visibleTags.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {visibleTags.map((tag) => (
+              <TagPill key={tag.slug} tag={tag} jurisdiction={article.jurisdiction} className="min-h-6 px-2 text-[11px]" />
+            ))}
+            {hiddenTagCount > 0 ? (
+              <TagOverflowPopover tags={article.tags} hiddenTagCount={hiddenTagCount} jurisdiction={article.jurisdiction} />
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
-      {visibleTags.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {visibleTags.map((tag) => (
-            <TagPill key={tag.slug} tag={tag} jurisdiction={article.jurisdiction} className="min-h-6 px-2 text-[11px]" />
-          ))}
-          {hiddenTagCount > 0 ? (
-            <TagOverflowPopover tags={article.tags} hiddenTagCount={hiddenTagCount} jurisdiction={article.jurisdiction} />
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="min-h-4 grow" aria-hidden="true" />
-
-      <div className="flex items-center justify-between gap-3 border-t border-archive-line pt-4 text-xs text-archive-muted">
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
-          <span>{formattedArticleDate(article)}</span>
+      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-archive-muted sm:mt-0 sm:flex-col sm:items-end sm:justify-start">
+        <span aria-label={`조회 ${viewCountLabel}회`} title={`조회 ${viewCountLabel}회`} className="inline-flex items-center gap-1 text-xs tabular-nums">
+          <Eye className="size-3.5" aria-hidden="true" />
+          {viewCountLabel}
         </span>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span
-            aria-label={`조회 ${viewCountLabel}회`}
-            title={`조회 ${viewCountLabel}회`}
-            className="inline-flex min-h-7 items-center gap-1 border border-archive-line bg-archive-surface px-2 text-[11px] font-semibold text-archive-text"
-          >
-            <Eye className="size-3.5" aria-hidden="true" />
-            <span className="tabular-nums">{viewCountLabel}</span>
-          </span>
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={shareArticle}
             aria-label={`공유: ${title}`}
             title={shareState === "copied" ? "링크 복사됨" : "공유"}
-            className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-muted hover:text-primary"
+            className="focus-ring inline-flex size-8 items-center justify-center rounded-sm text-archive-muted transition-colors hover:bg-archive-surface-soft hover:text-archive-accent"
           >
             {shareState === "copied" ? <Check className="size-4" aria-hidden="true" /> : <Share2 className="size-4" aria-hidden="true" />}
           </button>
@@ -191,7 +183,7 @@ export function ArticleCard({
             onClick={handleArticleLinkClick}
             aria-label={`자세히 읽기: ${title}`}
             title="자세히 읽기"
-            className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-muted hover:text-primary"
+            className="focus-ring inline-flex size-8 items-center justify-center rounded-sm text-archive-muted transition-colors hover:bg-archive-surface-soft hover:text-archive-accent"
           >
             <BookOpenText className="size-4" aria-hidden="true" />
           </IntentPrefetchLink>
@@ -202,7 +194,7 @@ export function ArticleCard({
               rel="noreferrer"
               aria-label={`공식 원문 보기: ${title}`}
               title="공식 원문"
-              className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-ink-subtle transition hover:bg-surface-muted hover:text-court"
+              className="focus-ring inline-flex size-8 items-center justify-center rounded-sm text-archive-muted transition-colors hover:bg-archive-surface-soft hover:text-archive-accent"
             >
               <ExternalLink className="size-4" aria-hidden="true" />
             </a>

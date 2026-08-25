@@ -15,11 +15,11 @@ export function RecentDecisionMark({
       aria-label="최근 선고"
       title="선고일 기준 15일 이내"
       className={cn(
-        "ml-1.5 inline-flex size-[18px] shrink-0 -translate-y-px items-center justify-center rounded-full bg-[#c62828] align-middle text-[9px] font-extrabold leading-none tracking-normal text-white ring-1 ring-[#991b1b]/20",
+        "ml-2 inline-flex shrink-0 -translate-y-px items-center border border-[#b42318]/35 px-1 py-0.5 align-middle text-[11px] font-bold leading-none tracking-normal text-[#9f1d14]",
         className,
       )}
     >
-      N
+      NEW
     </span>
   );
 }

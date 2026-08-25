@@ -129,28 +129,25 @@ function CountryShortcuts({ countries }: { countries: Awaited<ReturnType<typeof 
   if (countries.length === 0) return null;
 
   return (
-    <section aria-labelledby="country-shortcuts" className="border-t-2 border-archive-accent">
+    <section aria-labelledby="country-shortcuts" className="border-t border-archive-line-strong">
       <div className="flex items-center justify-between gap-4 border-b border-archive-line-strong py-4">
         <h2 id="country-shortcuts" className="text-xl font-bold text-archive-ink">국가별 바로가기</h2>
         <IntentPrefetchLink href="/sources" className="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">
           수록 기관 <ArrowRight className="size-4" aria-hidden="true" />
         </IntentPrefetchLink>
       </div>
-      <div className="grid grid-cols-2 gap-px bg-archive-line lg:grid-cols-4">
+      <div className="grid grid-cols-2 border-b border-archive-line lg:grid-cols-4">
         {countries.map((country) => (
           <IntentPrefetchLink
             key={country.jurisdiction}
             href={`/list?jurisdiction=${encodeURIComponent(country.jurisdiction)}`}
-            className="focus-ring flex min-h-28 flex-col justify-between gap-3 bg-archive-surface px-4 py-4 hover:bg-archive-surface-soft"
+            className="focus-ring flex min-h-20 items-center justify-between gap-4 border-r border-archive-line px-3 py-4 last:border-r-0 hover:bg-archive-surface-soft sm:px-4"
           >
-            <span className="flex items-start justify-between gap-3">
-              <span className="text-2xl" aria-hidden="true">{displayJurisdictionFlag(country.jurisdiction)}</span>
-              <span className="shrink-0 text-xs font-semibold tabular-nums text-archive-muted">판례 {country.articleCount.toLocaleString("ko-KR")}건</span>
+            <span className="min-w-0">
+              <span className="block font-bold text-archive-heading"><span className="mr-2 text-base" aria-hidden="true">{displayJurisdictionFlag(country.jurisdiction)}</span>{displayJurisdictionLabel(country.jurisdiction)}</span>
+              <span className="mt-1 block truncate text-xs leading-5 text-archive-muted">{country.sourceLabel}</span>
             </span>
-            <span>
-              <span className="block font-bold text-archive-heading">{displayJurisdictionLabel(country.jurisdiction)}</span>
-              <span className="mt-1 block text-xs leading-5 text-archive-muted">{country.sourceLabel}</span>
-            </span>
+            <span className="shrink-0 text-xs font-semibold tabular-nums text-archive-muted">{country.articleCount.toLocaleString("ko-KR")}건</span>
           </IntentPrefetchLink>
         ))}
       </div>
@@ -162,7 +159,7 @@ function LatestDecisionList({ articles }: { articles: ArticleListItem[] }) {
   const sorted = [...articles].sort((left, right) => (right.originalPublishedAt || "").localeCompare(left.originalPublishedAt || ""));
 
   return (
-    <section aria-labelledby="latest-decisions" className="border-t-2 border-archive-accent">
+    <section aria-labelledby="latest-decisions" className="border-t border-archive-line-strong">
       <div className="flex items-center justify-between gap-4 border-b border-archive-line-strong py-4">
         <h2 id="latest-decisions" className="text-xl font-bold text-archive-ink">국가별 최신 판례</h2>
         <IntentPrefetchLink href="/list" className="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">
@@ -197,7 +194,7 @@ function IssueIndex({ tags }: { tags: Awaited<ReturnType<typeof getHomePortalDat
   if (tags.length === 0) return null;
 
   return (
-    <section aria-labelledby="issue-index" className="border-t-2 border-archive-accent">
+    <section aria-labelledby="issue-index" className="border-t border-archive-line-strong">
       <div className="flex items-center justify-between gap-4 border-b border-archive-line-strong py-4">
         <h2 id="issue-index" className="text-xl font-bold text-archive-ink">주요 헌법 쟁점</h2>
         <IntentPrefetchLink href="/tags" className="focus-ring inline-flex items-center gap-1 text-sm font-semibold text-archive-accent hover:text-archive-accent-hover">전체 주제 <ArrowRight className="size-4" aria-hidden="true" /></IntentPrefetchLink>
@@ -222,7 +219,7 @@ async function HomeContent() {
       <PageViewTracker event={{ eventType: "page_view", path: "/", resultCount: latestArticles.length, metadata: { surface: "public_information_portal" } }} />
 
       <section aria-labelledby="home-title" className="border-b border-archive-line-strong pb-6">
-        <h1 id="home-title" className="text-2xl font-extrabold tracking-[-0.03em] text-archive-ink sm:text-3xl">세계 헌법판례 데이터베이스</h1>
+        <h1 id="home-title" className="text-2xl font-bold text-archive-ink sm:text-3xl">세계 헌법판례 데이터베이스</h1>
         <div className="mt-4 max-w-4xl">
           <SearchBox variant="hero" placeholder="판례명, 사건번호, 헌법 쟁점을 검색하세요" />
         </div>

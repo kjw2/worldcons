@@ -9,8 +9,7 @@ export function SourceBadge({ sourceKey, className }: { sourceKey: string; class
     <span
       style={jurisdictionThemeStyle(theme)}
       className={cn(
-        "inline-flex min-h-7 items-center rounded-md border bg-white px-2.5 text-xs font-medium",
-        "border-[color:var(--country-border)] text-[color:var(--country-text)]",
+        "inline-flex min-h-6 items-center text-xs font-semibold text-[color:var(--country-text)]",
         className,
       )}
     >

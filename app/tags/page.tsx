@@ -30,9 +30,8 @@ export default async function TagsPage() {
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <header className="mb-7 border-b border-archive-line-strong pb-6">
-        <p className="text-sm font-bold text-archive-accent">헌법 쟁점</p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-archive-ink">주제별 판례 색인</h1>
-        <p className="mt-3 max-w-3xl text-[15px] leading-7 text-archive-text">기본권, 헌법원칙, 절차와 주요 쟁점을 기준으로 관련 판례를 찾아볼 수 있습니다.</p>
+        <h1 className="text-3xl font-semibold text-archive-ink">주제별 판례 색인</h1>
+        <p className="mt-3 max-w-[72ch] text-[15px] leading-7 text-archive-text">기본권, 헌법원칙, 절차와 주요 쟁점을 기준으로 관련 판례를 찾아볼 수 있습니다.</p>
       </header>
       <TagHubList tags={tags} />
     </PageShell>

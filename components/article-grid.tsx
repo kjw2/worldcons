@@ -123,7 +123,7 @@ export function ArticleGrid({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="border-y border-archive-line-strong bg-white">
       {articles.map((article) => (
         <ArticleCard key={article.slug} article={article} onArticleNavigate={handleArticleNavigate} />
       ))}

@@ -122,9 +122,8 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
   return (
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <header className="mb-7 border-b border-archive-line-strong pb-6">
-        <p className="text-sm font-bold text-archive-accent">통합검색</p>
-        <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-archive-ink">판례와 헌법 쟁점 검색</h1>
-        <p className="mt-3 max-w-3xl text-[15px] leading-7 text-archive-text">판례명, 사건번호, 요약, 원문, 기관과 헌법 쟁점을 한 번에 검색할 수 있습니다.</p>
+        <h1 className="text-3xl font-semibold text-archive-ink">판례와 헌법 쟁점 검색</h1>
+        <p className="mt-3 max-w-[72ch] text-[15px] leading-7 text-archive-text">판례명, 사건번호, 요약, 원문, 기관과 헌법 쟁점을 한 번에 검색할 수 있습니다.</p>
       </header>
       <div className="mb-5">
         <FilterBar activeRange={filters.range ?? "latest"} sources={sources} tags={tags} paramsString={params.toString()} basePath="/search" />
@@ -166,7 +165,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
       </section>
 
       {relatedTerms.length > 0 ? (
-        <section className="mb-6 border-t-2 border-archive-accent border-b border-archive-line-strong py-4">
+        <section className="mb-6 border-y border-archive-line-strong py-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-ink">관련 용어</h2>
             <Link href={`/glossary?q=${encodeURIComponent(q ?? "")}`} className="focus-ring rounded-md text-sm font-semibold text-primary hover:text-court">

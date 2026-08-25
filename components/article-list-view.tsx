@@ -97,7 +97,7 @@ function CountryMenu({
   paramsString: string;
 }) {
   return (
-    <section className="border-t-2 border-archive-accent pt-3">
+    <section className="border-t border-archive-line-strong pt-3">
       <h2 className="border-b border-archive-line-strong pb-3 text-sm font-bold text-archive-heading">국가별 판례</h2>
       <nav className="mt-2 grid gap-1" aria-label="국가 필터">
         {COUNTRY_FILTERS.map((item) => {
@@ -177,7 +177,7 @@ function ListPagination({ result, paramsString }: { result: ArticleListResult; p
 
 function TopViewedList({ articles, paramsString }: { articles: ArticleListItem[]; paramsString: string }) {
   return (
-    <section className="border-t-2 border-archive-accent pt-3">
+    <section className="border-t border-archive-line-strong pt-3">
       <h2 className="border-b border-archive-line-strong pb-3 text-sm font-bold text-archive-heading">조회수 상위 자료</h2>
       <ol className="mt-3 space-y-3">
         {articles.length === 0 ? (
@@ -229,7 +229,7 @@ export function ArticleListView({
   return (
     <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]" aria-label="리스트형 자료 목록">
       <ArticleListReturnState />
-      <div className="min-w-0 overflow-hidden border-t-2 border-archive-accent border-b border-archive-line-strong bg-white">
+      <div className="min-w-0 overflow-hidden border-y border-archive-line-strong bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-archive-line-strong px-4 py-3 sm:px-5">
           <h2 className="text-[17px] font-semibold text-archive-heading">판례 목록</h2>
           <p className="text-[15px] text-archive-muted">
