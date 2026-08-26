@@ -6,13 +6,28 @@ import { MIN_INDEXABLE_TAG_ARTICLE_COUNT } from "@/lib/seo/public-urls";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+async function resilientSitemapRead<T>(source: string, read: () => Promise<T[]>): Promise<T[]> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await read();
+    } catch {
+      if (attempt === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        continue;
+      }
+      console.error(JSON.stringify({ event: "sitemap_source_unavailable", source }));
+    }
+  }
+  return [];
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getAppBaseUrl();
   const [articles, sources, tags, glossary] = await Promise.all([
-    listPublicSitemapArticles(),
-    listSources(),
-    listTags({ sort: "count", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT }),
-    listGlossaryTerms(),
+    resilientSitemapRead("articles", () => listPublicSitemapArticles()),
+    resilientSitemapRead("sources", () => listSources()),
+    resilientSitemapRead("tags", () => listTags({ sort: "count", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT })),
+    resilientSitemapRead("glossary", () => listGlossaryTerms()),
   ]);
 
   return [

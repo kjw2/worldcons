@@ -45,6 +45,9 @@ test("sitemap and routing keep clean canonical URLs and drop search/thin-tag noi
   const header = fs.readFileSync(path.join(process.cwd(), "components/public-site-header.tsx"), "utf8");
 
   assert.match(sitemap, /listPublicSitemapArticles/);
+  assert.match(sitemap, /resilientSitemapRead/);
+  assert.match(sitemap, /sitemap_source_unavailable/);
+  assert.match(sitemap, /setTimeout\(resolve, 150\)/);
   assert.match(sitemap, /isIndexablePublicTag/);
   assert.match(sitemap, /minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT/);
   assert.match(tagsPage, /minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT/);
