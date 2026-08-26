@@ -44,13 +44,25 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 ## 2단계 — 실제 Hybrid ranking
 
-상태: 대기
+상태: 완료 (2026-08-26)
+
+### 범위
 
 - 현재 full-text 우선 concat 구조를 실제 rank fusion으로 교체한다.
 - exact 사건번호/정확 제목을 강한 우선순위로 유지한다.
 - FTS rank와 vector rank를 RRF 또는 동등한 안정적 fusion 방식으로 결합한다.
 - recency는 법적 관련성을 훼손하지 않는 약한 tie-breaker로만 사용한다.
 - 한국어 개념 질의와 외국어 판례 retrieval fixture를 추가한다.
+
+### 완료 결과
+
+- Hybrid 후보 결합을 단순 concat에서 reciprocal rank fusion(RRF, k=60)으로 교체했다.
+- exact 사건번호는 기존 exact-case preflight가 계속 절대 우선하며, normalized exact title은 RRF 점수보다 먼저 정렬한다.
+- 동일 문서가 FTS와 semantic 양쪽에서 높은 순위를 얻으면 양쪽 reciprocal rank가 합산되어 상위로 승격된다.
+- 동일 RRF 점수에서만 `originalPublishedAt`을 최신순 tie-breaker로 사용해 법적 관련성보다 최신성이 앞서지 않도록 했다.
+- `public_fulltext_ranked_ids_v1` service-role 전용 RPC를 추가해 P3 공개 projection에서 `ts_rank_cd` 기반 FTS 순위를 제공한다. RPC 미적용/실패, tag/legacy 특수 경로에서는 기존 full-text 검색으로 fail-soft한다.
+- 한국어 개념 질의가 semantic으로 발견한 외국 판례를 낮은 FTS 결과보다 앞에 배치할 수 있는 fixture, exact title 우선, 양 검색 합의 승격, recency tie-breaker 테스트를 추가했다.
+- `test:cclrag2` 14/14, `test:cclmetasearch` 9/9, Search Worker 7/7, `pnpm check`, lint, production build를 모두 통과했다.
 
 ## 3단계 — Cloudflare Search Worker 검색 계약 통일
 

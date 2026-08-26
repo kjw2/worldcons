@@ -16,7 +16,13 @@ interface VectorArticleRow {
   embedding: number[] | string | null;
 }
 
+interface FullTextRankRow {
+  article_id?: string;
+  relevance_score?: number;
+}
+
 const MAX_RANKED_LOOKUP_BATCH_SIZE = 100;
+const RECIPROCAL_RANK_FUSION_K = 60;
 
 export function rankedSearchWindow(filters: Pick<ArticleListFilters, "page" | "pageSize">, minimum = 0) {
   const page = Number.isFinite(filters.page) && (filters.page ?? 0) > 0 ? Math.floor(filters.page ?? 1) : 1;
@@ -120,6 +126,50 @@ async function rankedItemsByIds(filters: ArticleListFilters, ids: string[]) {
 async function reorderAndPage(filters: ArticleListFilters, ids: string[]) {
   const ordered = await rankedItemsByIds(filters, ids);
   return paginateRankedArticleItems(ordered, filters);
+}
+
+async function rankedFullTextCandidates(filters: ArticleListFilters): Promise<ArticleListResult> {
+  const page = filters.page ?? 1;
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 20, 1), MAX_RANKED_LOOKUP_BATCH_SIZE);
+  if (!filters.q || filters.includeUnpublished || filters.tag || filters.ids || !articlePublicationV4ReadsEnabled()) {
+    return listArticles(filters);
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return listArticles(filters);
+
+  const { data, error } = await supabase.rpc("public_fulltext_ranked_ids_v1", {
+    p_query: filters.q,
+    p_limit: pageSize,
+    p_source: filters.source ?? null,
+    p_jurisdiction: filters.jurisdiction ?? null,
+    p_content_type: filters.type ?? null,
+    p_language: filters.language ?? null,
+    p_range: filters.range ?? "latest",
+  });
+  if (error || !Array.isArray(data)) return listArticles(filters);
+
+  const ids = (data as FullTextRankRow[])
+    .map((row) => row.article_id)
+    .filter((id): id is string => Boolean(id));
+  if (ids.length === 0) {
+    return {
+      items: [],
+      pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: false },
+    };
+  }
+
+  const items = await rankedItemsByIds(filters, ids);
+  return {
+    items,
+    pageInfo: {
+      page,
+      pageSize,
+      total: items.length,
+      hasMore: items.length >= pageSize,
+      totalIsExact: false,
+    },
+  };
 }
 
 async function localSemanticSearch(filters: ArticleListFilters, embedding: number[], matchCount: number) {
@@ -233,11 +283,68 @@ export async function hybridSearch(filters: ArticleListFilters): Promise<Article
   const windowSize = rankedSearchWindow(filters, 50);
   const candidateFilters = { ...filters, page: 1, pageSize: windowSize };
   const [fulltext, semantic] = await Promise.all([
-    listArticles(candidateFilters),
+    rankedFullTextCandidates(candidateFilters),
     semanticSearch(candidateFilters),
   ]);
-  const merged = mergeRankedArticleItems(fulltext.items, semantic.items);
-  return paginateRankedArticleItems(merged, filters);
+  const fused = fuseHybridArticleItems(filters.q, fulltext.items, semantic.items);
+  return paginateRankedArticleItems(fused, filters);
+}
+
+function normalizeTitleForExactMatch(value?: string | null) {
+  return value?.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR") ?? "";
+}
+
+function isExactTitleMatch(query: string, item: ArticleListResult["items"][number]) {
+  const normalizedQuery = normalizeTitleForExactMatch(query);
+  if (!normalizedQuery) return false;
+  return [item.koreanTitle, item.originalTitle]
+    .map((value) => normalizeTitleForExactMatch(value))
+    .some((value) => value === normalizedQuery);
+}
+
+function publishedTimestamp(item: ArticleListResult["items"][number]) {
+  const value = Date.parse(item.originalPublishedAt ?? "");
+  return Number.isFinite(value) ? value : 0;
+}
+
+export function fuseHybridArticleItems(
+  query: string,
+  fulltext: ArticleListResult["items"],
+  semantic: ArticleListResult["items"],
+): ArticleListResult["items"] {
+  const entries = new Map<string, {
+    item: ArticleListResult["items"][number];
+    score: number;
+    exactTitle: boolean;
+  }>();
+
+  for (const group of [fulltext, semantic]) {
+    const seenInGroup = new Set<string>();
+    group.forEach((item, index) => {
+      const key = item.id ?? item.slug;
+      if (seenInGroup.has(key)) return;
+      seenInGroup.add(key);
+      const current = entries.get(key) ?? {
+        item,
+        score: 0,
+        exactTitle: isExactTitleMatch(query, item),
+      };
+      current.score += 1 / (RECIPROCAL_RANK_FUSION_K + index + 1);
+      current.exactTitle = current.exactTitle || isExactTitleMatch(query, item);
+      entries.set(key, current);
+    });
+  }
+
+  return [...entries.values()]
+    .sort((left, right) => {
+      if (left.exactTitle !== right.exactTitle) return left.exactTitle ? -1 : 1;
+      const scoreDelta = right.score - left.score;
+      if (Math.abs(scoreDelta) > Number.EPSILON) return scoreDelta;
+      const dateDelta = publishedTimestamp(right.item) - publishedTimestamp(left.item);
+      if (dateDelta !== 0) return dateDelta;
+      return (left.item.id ?? left.item.slug).localeCompare(right.item.id ?? right.item.slug);
+    })
+    .map((entry) => entry.item);
 }
 
 export function mergeRankedArticleItems(

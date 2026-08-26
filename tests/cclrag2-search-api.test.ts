@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { bverfgCaseNumberFromText } from "../lib/crawlee/bverfg-spider";
 import type { ArticleListItem } from "../lib/db/types";
 import { mapSearchApiArticle, mapSearchApiSource } from "../lib/search/api-contract";
 import { extractExactCaseReferences } from "../lib/search/exact-case";
 import {
+  fuseHybridArticleItems,
   mergeRankedArticleItems,
   paginateRankedArticleItems,
   rankedLookupFilters,
@@ -111,6 +113,67 @@ test("hybrid candidate windows grow with the requested page without exceeding bo
   assert.equal(rankedSearchWindow({ page: 8, pageSize: 20 }, 50), 100);
 });
 
+test("hybrid RRF rewards agreement between lexical and semantic rankings", () => {
+  const lexicalFirst = article({ id: "rrf-lexical-first", slug: "rrf-lexical-first", originalPublishedAt: "2026-08-20T00:00:00Z" });
+  const shared = article({ id: "rrf-shared", slug: "rrf-shared", originalPublishedAt: "2024-01-01T00:00:00Z" });
+  const semanticFirst = article({ id: "rrf-semantic-first", slug: "rrf-semantic-first", originalPublishedAt: "2026-08-21T00:00:00Z" });
+
+  const fused = fuseHybridArticleItems(
+    "표현의 자유",
+    [lexicalFirst, shared],
+    [semanticFirst, shared],
+  );
+
+  assert.equal(fused[0]?.id, "rrf-shared");
+  assert.deepEqual(new Set(fused.map((item) => item.id)), new Set(["rrf-lexical-first", "rrf-shared", "rrf-semantic-first"]));
+});
+
+test("exact normalized title remains above RRF score", () => {
+  const consensus = article({ id: "rrf-consensus", slug: "rrf-consensus", koreanTitle: "다른 판례" });
+  const exactTitle = article({
+    id: "rrf-exact-title",
+    slug: "rrf-exact-title",
+    koreanTitle: "  표현의   자유 결정  ",
+    originalPublishedAt: "2020-01-01T00:00:00Z",
+  });
+
+  const fused = fuseHybridArticleItems(
+    "표현의 자유 결정",
+    [consensus, exactTitle],
+    [consensus],
+  );
+
+  assert.equal(fused[0]?.id, "rrf-exact-title");
+});
+
+test("Korean concept queries can surface semantically retrieved foreign decisions ahead of lower lexical ranks", () => {
+  const lexicalFirst = article({ id: "climate-lex-1", slug: "climate-lex-1", koreanTitle: "기후 정책 일반" });
+  const lexicalSecond = article({ id: "climate-lex-2", slug: "climate-lex-2", koreanTitle: "환경 정책 일반" });
+  const foreignSemantic = article({
+    id: "climate-neubauer-semantic",
+    slug: "climate-neubauer-semantic",
+    originalTitle: "Beschluss des Ersten Senats vom 24. März 2021",
+    koreanTitle: "세대 간 자유와 기후보호 의무",
+    jurisdiction: "Germany",
+    originalPublishedAt: "2021-03-24T00:00:00Z",
+  });
+
+  const fused = fuseHybridArticleItems(
+    "기후변화 세대 간 자유",
+    [lexicalFirst, lexicalSecond],
+    [foreignSemantic],
+  );
+
+  assert.ok(fused.findIndex((item) => item.id === "climate-neubauer-semantic") < fused.findIndex((item) => item.id === "climate-lex-2"));
+});
+
+test("recency is only a tie-breaker when RRF scores are equal", () => {
+  const olderLexical = article({ id: "tie-older", slug: "tie-older", originalPublishedAt: "2020-01-01T00:00:00Z" });
+  const newerSemantic = article({ id: "tie-newer", slug: "tie-newer", originalPublishedAt: "2026-01-01T00:00:00Z" });
+  const fused = fuseHybridArticleItems("평등권", [olderLexical], [newerSemantic]);
+  assert.deepEqual(fused.map((item) => item.id), ["tie-newer", "tie-older"]);
+});
+
 test("search API items expose cclrag2 normalization and follow-up content URLs", () => {
   const mapped = mapSearchApiArticle(
     article({
@@ -133,6 +196,15 @@ test("search API items expose cclrag2 normalization and follow-up content URLs",
     "https://worldcons.vercel.app/api/articles/germany-neubauer-climate-decision/source-text",
   );
   assert.equal(mapped.metadata.officialUrl, mapped.officialUrl);
+});
+
+test("ranked full-text migration uses published projection relevance and service-role-only execution", () => {
+  const sql = readFileSync("supabase/migrations/20260826200000_public_fulltext_ranked_search.sql", "utf8");
+  assert.match(sql, /from public_article_projection_p3 article/i);
+  assert.match(sql, /ts_rank_cd\(article\.search_vector, v_query, 32\)/i);
+  assert.match(sql, /grant execute on function public_fulltext_ranked_ids_v1[\s\S]+service_role/i);
+  assert.match(sql, /revoke all on function public_fulltext_ranked_ids_v1[\s\S]+from anon/i);
+  assert.match(sql, /p_limit is null or p_limit not between 1 and 100/i);
 });
 
 test("source inventory identifies WorldCons records as foreign constitutional material", () => {
