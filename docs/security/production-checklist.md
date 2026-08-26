@@ -27,6 +27,7 @@
 - P5 concurrent operational indexes, outside a transaction: `supabase/migrations/20260712231000_admin_governance_p5_indexes.sql`
 - P5 digest/owner-binding corrective migration: `supabase/migrations/20260712233000_admin_governance_p5_acceptance_corrections.sql`
 - MasterDash replay/idempotency/pause state migration: `supabase/migrations/20260801090000_masterdash_integration.sql`
+- distributed rate-limit bucket/RPC migration: `supabase/migrations/20260826500000_distributed_rate_limit.sql`
 
 read-mostly readiness check:
 
@@ -63,7 +64,9 @@ pnpm build
 - `/api/admin/jobs/run` GET이 405인지 확인
 - 공개 검색 API에서 비정상 `pageSize`, `mode`, `tag` 입력이 400인지 확인
 - `/api/security/csp-report`가 정상 CSP report payload에는 204, 과대 payload에는 413을 반환하는지 확인
-- CSP Report-Only 위반이 실제 사용자 화면 기능 장애를 가리키는지 모니터링
+- production 응답이 `Content-Security-Policy` enforcement 헤더를 사용하고 `script-src`에 `unsafe-eval`이 없는지 확인
+- 기능 장애가 확인된 비상 rollback에서만 `CSP_REPORT_ONLY_ENABLED=true`를 사용하고 정상화 후 즉시 제거
+- rate-limited 응답의 `X-RateLimit-Backend`가 정상 운영에서 `distributed`인지 확인하고 지속적인 `local` fallback은 DB/RPC 장애로 취급
 - P5 health workflow와 governance UI는 명시적 feature flag 전에는 비활성인지 확인
 - P5 operations/data/security owner binding 환경변수는 서로 겹치지 않는 별도 운영자에 연결하고 값 자체는 로그/문서/UI에 출력하지 않음
 - Gate 5/compatibility removal은 최소 관찰 기간, 복원 리허설, 소유자 승인과 별도 파괴적 변경 승인이 있기 전에는 승인으로 표시하지 않음

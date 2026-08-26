@@ -8,7 +8,7 @@ export const revalidate = 0;
 const MAX_ANALYTICS_EVENT_BYTES = 16 * 1024;
 
 export async function POST(request: Request) {
-  const rateLimit = consumeRateLimit(request, "analyticsEvent");
+  const rateLimit = await consumeRateLimit(request, "analyticsEvent");
   if (rateLimit?.limited) {
     return rateLimitExceededResponse(rateLimit);
   }

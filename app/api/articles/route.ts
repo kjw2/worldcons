@@ -16,7 +16,7 @@ const getCachedArticleList = unstable_cache(
 );
 
 export async function GET(request: Request) {
-  const rateLimit = consumeRateLimit(request, "publicApi");
+  const rateLimit = await consumeRateLimit(request, "publicApi");
   if (rateLimit?.limited) {
     return rateLimitExceededResponse(rateLimit);
   }

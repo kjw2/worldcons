@@ -5,14 +5,16 @@ if (process.env.VERCEL_ENV === "production") {
   assertProductionSecurityConfig(process.env);
 }
 
-const contentSecurityPolicyReportOnly = [
+const productionRuntime = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+const cspReportOnly = !productionRuntime || process.env.CSP_REPORT_ONLY_ENABLED?.trim().toLowerCase() === "true";
+const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
   "frame-src 'self'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+  `script-src 'self' 'unsafe-inline'${productionRuntime ? "" : " 'unsafe-eval'"} https:`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
@@ -22,7 +24,7 @@ const contentSecurityPolicyReportOnly = [
 ].join("; ");
 
 const securityHeaders = [
-  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicyReportOnly },
+  { key: cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy", value: contentSecurityPolicy },
   { key: "Reporting-Endpoints", value: "csp=\"/api/security/csp-report\"" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Content-Type-Options", value: "nosniff" },

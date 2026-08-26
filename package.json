@@ -49,6 +49,7 @@
     "test:cclmetasearch": "tsx --test tests/cclmetasearch-api.test.ts",
     "test:cclrag2": "tsx --test tests/cclrag2-search-api.test.ts",
     "test:worker:search": "tsx --test tests/worldcons-search-worker.test.ts",
+    "test:security": "tsx --test tests/security-platform-hardening.test.ts",
     "worker:search:types": "wrangler types --config workers/search-api/wrangler.jsonc workers/search-api/worker-configuration.d.ts",
     "worker:search:check": "pnpm worker:search:types && tsc -p workers/search-api/tsconfig.json --noEmit",
     "worker:search:deploy": "wrangler deploy --config workers/search-api/wrangler.jsonc",

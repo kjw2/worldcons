@@ -18,7 +18,7 @@ function redirectUrl(request: Request, path: string) {
 
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
-  const rateLimit = consumeRateLimit(request, "adminLogin");
+  const rateLimit = await consumeRateLimit(request, "adminLogin");
   if (rateLimit?.limited) {
     if (contentType.includes("application/json")) {
       return rateLimitExceededResponse(rateLimit, "Too many login attempts");

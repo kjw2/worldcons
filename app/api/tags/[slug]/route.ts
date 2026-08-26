@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
-  const rateLimit = consumeRateLimit(request, "publicApi");
+  const rateLimit = await consumeRateLimit(request, "publicApi");
   if (rateLimit?.limited) {
     return rateLimitExceededResponse(rateLimit);
   }

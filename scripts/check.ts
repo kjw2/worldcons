@@ -1974,13 +1974,17 @@ async function assertSecurityHeadersConfigured() {
   }
   const routes = await headers();
   const allHeaders = new Map(routes.flatMap((route) => route.headers).map((header) => [header.key.toLowerCase(), header.value]));
-  const cspReportOnly = allHeaders.get("content-security-policy-report-only") ?? "";
+  const enforcingCsp = allHeaders.get("content-security-policy") ?? "";
+  const reportOnlyCsp = allHeaders.get("content-security-policy-report-only") ?? "";
+  const csp = enforcingCsp || reportOnlyCsp;
 
-  assert(cspReportOnly.includes("default-src 'self'"), "CSP report-only must define default-src");
-  assert(cspReportOnly.includes("frame-ancestors 'self'"), "CSP report-only must allow same-origin print framing only");
-  assert(cspReportOnly.includes("frame-src 'self'"), "CSP report-only must allow same-origin print frames");
-  assert(cspReportOnly.includes("report-uri /api/security/csp-report"), "CSP report-only must report to the local CSP collector");
-  assert(cspReportOnly.includes("report-to csp"), "CSP report-only must declare the csp reporting group");
+  assert(Boolean(csp), "CSP must be configured in enforcing or report-only mode");
+  assert(csp.includes("default-src 'self'"), "CSP must define default-src");
+  assert(csp.includes("frame-ancestors 'self'"), "CSP must allow same-origin print framing only");
+  assert(csp.includes("frame-src 'self'"), "CSP must allow same-origin print frames");
+  assert(csp.includes("report-uri /api/security/csp-report"), "CSP must report to the local CSP collector");
+  assert(csp.includes("report-to csp"), "CSP must declare the csp reporting group");
+  if (enforcingCsp) assert(!enforcingCsp.includes("'unsafe-eval'"), "enforcing CSP must not allow unsafe-eval");
   assert(allHeaders.get("reporting-endpoints") === 'csp="/api/security/csp-report"', "Reporting-Endpoints must expose the CSP collector");
   assert(allHeaders.get("strict-transport-security")?.includes("max-age="), "HSTS header must be configured");
   assert(allHeaders.get("x-content-type-options") === "nosniff", "X-Content-Type-Options must be nosniff");

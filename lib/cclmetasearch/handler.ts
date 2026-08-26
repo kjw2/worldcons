@@ -10,7 +10,7 @@ import { searchCclMetasearch } from "@/lib/cclmetasearch/search";
 import { consumeRateLimit, type RateLimitResult } from "@/lib/security/rate-limit";
 
 type SearchExecutor = (input: CclMetasearchSearchInput) => Promise<CclMetasearchSearchPage>;
-type RateLimitConsumer = (request: Request) => RateLimitResult | null;
+type RateLimitConsumer = (request: Request) => RateLimitResult | null | Promise<RateLimitResult | null>;
 
 type HandlerOptions = {
   getExpectedToken?: () => string | null;
@@ -34,7 +34,7 @@ export function createCclMetasearchSearchHandler(options: HandlerOptions = {}) {
       });
     }
 
-    const rateLimit = rateLimitConsumer(request);
+    const rateLimit = await rateLimitConsumer(request);
     if (rateLimit?.limited) {
       return errorResponse(429, "RATE_LIMITED", "The WorldCons search rate limit was exceeded.", {
         headers: rateLimit.headers,

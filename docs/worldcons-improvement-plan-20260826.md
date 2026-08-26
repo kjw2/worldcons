@@ -108,12 +108,20 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 ## 5단계 — 운영 안정성과 보안
 
-상태: 대기
+상태: 완료 (2026-08-27)
 
 - 인메모리 rate limit을 서버리스 분산 환경에서 유효한 저장소 기반으로 교체한다.
 - CSP Report-Only 위반을 정리한 뒤 enforcement 전환을 준비한다.
 - `unsafe-eval` 제거 및 script source 축소 가능성을 검증한다.
 - 공개 read path의 service-role 의존성을 최소화한다.
+
+### 완료 결과
+
+- `security_rate_limit_buckets_v1`과 `worldcons_consume_rate_limit_v1`을 추가해 Vercel 인스턴스 간 공유되는 원자적 분산 rate limit으로 전환했다. DB/RPC 장애 때만 기존 process-local limiter로 fail-soft하며 `X-RateLimit-Backend`로 상태를 노출한다.
+- 공개 API, cclmetasearch, analytics, CSP collector, 관리자 로그인 등 기존 rate-limit profile 전부가 async 분산 소비 경로를 사용한다.
+- production CSP는 기본 enforcement로 전환하고 production `script-src`에서 `unsafe-eval`을 제거했다. 로컬/개발은 Report-Only를 유지하고, 운영 비상 rollback은 `CSP_REPORT_ONLY_ENABLED=true`로 제한했다.
+- 2026-07-31의 anon/authenticated public-schema revoke 경계를 유지했다. 검색 공개 read는 4단계에서 도입한 service-role 전용 bounded security-definer RPC를 계속 사용해 임의 테이블 접근 면적을 축소하고 anon 권한을 재개방하지 않았다.
+- security hardening 회귀 테스트를 추가하고 `pnpm test:security`, `pnpm check`, lint, production build를 통과했다.
 
 ## 6단계 — Legacy/P2/P3 수렴과 최종 검증
 

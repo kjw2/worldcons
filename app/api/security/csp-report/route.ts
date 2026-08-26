@@ -118,7 +118,7 @@ async function readLimitedRequestText(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const rateLimit = consumeRateLimit(request, "cspReport");
+  const rateLimit = await consumeRateLimit(request, "cspReport");
   if (rateLimit?.limited) return rateLimitExceededResponse(rateLimit);
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
