@@ -20,6 +20,7 @@ import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleTitleForDisplay } from "@/lib/ui/article-title";
 
+export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
@@ -211,8 +212,17 @@ function IssueIndex({ tags }: { tags: Awaited<ReturnType<typeof getHomePortalDat
   );
 }
 
+async function loadHomePortalData() {
+  try {
+    return await getHomePortalData();
+  } catch {
+    console.error(JSON.stringify({ event: "home_portal_data_unavailable" }));
+    return { countries: [], issueTags: [], latestArticles: [] };
+  }
+}
+
 async function HomeContent() {
-  const { countries, issueTags, latestArticles } = await getHomePortalData();
+  const { countries, issueTags, latestArticles } = await loadHomePortalData();
 
   return (
     <>

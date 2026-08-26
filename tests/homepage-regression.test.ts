@@ -8,6 +8,13 @@ import { displayJurisdictionLabel } from "../lib/ui/source-labels";
 const homePage = fs.readFileSync(path.join(process.cwd(), "app/page.tsx"), "utf8");
 const searchBox = fs.readFileSync(path.join(process.cwd(), "components/search-box.tsx"), "utf8");
 
+test("homepage avoids build-time database coupling and fails soft at runtime", () => {
+  assert.match(homePage, /export const dynamic = "force-dynamic"/);
+  assert.match(homePage, /async function loadHomePortalData\(\)/);
+  assert.match(homePage, /event: "home_portal_data_unavailable"/);
+  assert.match(homePage, /return \{ countries: \[\], issueTags: \[\], latestArticles: \[\] \}/);
+});
+
 test("homepage keeps the primary heading and direct search entry point", () => {
   assert.match(homePage, /<h1[^>]*>세계 헌법판례 데이터베이스<\/h1>/);
   assert.match(homePage, /<SearchBox variant="hero" placeholder="판례명, 사건번호, 헌법 쟁점을 검색하세요" \/>/);
