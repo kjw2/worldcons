@@ -4,7 +4,12 @@ import { bverfgCaseNumberFromText } from "../lib/crawlee/bverfg-spider";
 import type { ArticleListItem } from "../lib/db/types";
 import { mapSearchApiArticle, mapSearchApiSource } from "../lib/search/api-contract";
 import { extractExactCaseReferences } from "../lib/search/exact-case";
-import { mergeRankedArticleItems } from "../lib/search/vector";
+import {
+  mergeRankedArticleItems,
+  paginateRankedArticleItems,
+  rankedLookupFilters,
+  rankedSearchWindow,
+} from "../lib/search/vector";
 
 const NEUBAUER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -62,6 +67,48 @@ test("exact case matches remain above full-text and semantic results", () => {
     merged.map((item) => item.id),
     [NEUBAUER_ID, "22222222-2222-4222-8222-222222222222"],
   );
+});
+
+test("ranked candidate lookup always starts at page one", () => {
+  const lookup = rankedLookupFilters(
+    { q: "평등권", page: 3, pageSize: 20, jurisdiction: "Germany" },
+    Array.from({ length: 80 }, (_, index) => `candidate-${index + 1}`),
+  );
+
+  assert.equal(lookup.page, 1);
+  assert.equal(lookup.pageSize, 80);
+  assert.equal(lookup.q, undefined);
+  assert.equal(lookup.count, "none");
+  assert.equal(lookup.jurisdiction, "Germany");
+});
+
+test("ranked pagination applies exactly once across consecutive pages", () => {
+  const ranked = Array.from({ length: 65 }, (_, index) =>
+    article({
+      id: `ranked-${String(index + 1).padStart(3, "0")}`,
+      slug: `ranked-case-${index + 1}`,
+    }),
+  );
+
+  const page1 = paginateRankedArticleItems(ranked, { page: 1, pageSize: 20 });
+  const page2 = paginateRankedArticleItems(ranked, { page: 2, pageSize: 20 });
+  const page3 = paginateRankedArticleItems(ranked, { page: 3, pageSize: 20 });
+
+  assert.deepEqual(page1.items.map((item) => item.id), ranked.slice(0, 20).map((item) => item.id));
+  assert.deepEqual(page2.items.map((item) => item.id), ranked.slice(20, 40).map((item) => item.id));
+  assert.deepEqual(page3.items.map((item) => item.id), ranked.slice(40, 60).map((item) => item.id));
+  assert.equal(new Set([...page1.items, ...page2.items, ...page3.items].map((item) => item.id)).size, 60);
+  assert.equal(page1.pageInfo.hasMore, true);
+  assert.equal(page3.pageInfo.hasMore, true);
+  assert.equal(page3.pageInfo.total, 65);
+  assert.equal(page3.pageInfo.totalIsExact, false);
+});
+
+test("hybrid candidate windows grow with the requested page without exceeding bounded lookup size", () => {
+  assert.equal(rankedSearchWindow({ page: 1, pageSize: 20 }, 50), 50);
+  assert.equal(rankedSearchWindow({ page: 2, pageSize: 20 }, 50), 60);
+  assert.equal(rankedSearchWindow({ page: 3, pageSize: 20 }, 50), 80);
+  assert.equal(rankedSearchWindow({ page: 8, pageSize: 20 }, 50), 100);
 });
 
 test("search API items expose cclrag2 normalization and follow-up content URLs", () => {

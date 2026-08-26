@@ -16,6 +16,50 @@ interface VectorArticleRow {
   embedding: number[] | string | null;
 }
 
+const MAX_RANKED_LOOKUP_BATCH_SIZE = 100;
+
+export function rankedSearchWindow(filters: Pick<ArticleListFilters, "page" | "pageSize">, minimum = 0) {
+  const page = Number.isFinite(filters.page) && (filters.page ?? 0) > 0 ? Math.floor(filters.page ?? 1) : 1;
+  const pageSize = Number.isFinite(filters.pageSize) && (filters.pageSize ?? 0) > 0
+    ? Math.min(Math.floor(filters.pageSize ?? 20), MAX_RANKED_LOOKUP_BATCH_SIZE)
+    : 20;
+  return Math.min(Math.max((page + 1) * pageSize, minimum, pageSize), MAX_RANKED_LOOKUP_BATCH_SIZE);
+}
+
+export function rankedLookupFilters(filters: ArticleListFilters, ids: string[]): ArticleListFilters {
+  return {
+    ...filters,
+    ids,
+    q: undefined,
+    page: 1,
+    pageSize: Math.min(Math.max(ids.length, 1), MAX_RANKED_LOOKUP_BATCH_SIZE),
+    count: "none",
+  };
+}
+
+export function paginateRankedArticleItems(
+  items: ArticleListResult["items"],
+  filters: Pick<ArticleListFilters, "page" | "pageSize">,
+): ArticleListResult {
+  const page = Number.isFinite(filters.page) && (filters.page ?? 0) > 0 ? Math.floor(filters.page ?? 1) : 1;
+  const pageSize = Number.isFinite(filters.pageSize) && (filters.pageSize ?? 0) > 0
+    ? Math.min(Math.floor(filters.pageSize ?? 20), MAX_RANKED_LOOKUP_BATCH_SIZE)
+    : 20;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+
+  return {
+    items: items.slice(start, end),
+    pageInfo: {
+      page,
+      pageSize,
+      total: items.length,
+      hasMore: end < items.length,
+      totalIsExact: false,
+    },
+  };
+}
+
 function reorderByIds(result: ArticleListResult, ids: string[]) {
   const order = new Map(ids.map((id, index) => [id, index]));
   return {
@@ -54,17 +98,28 @@ function cosineSimilarity(a: number[], b: number[]) {
   return dot / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
 }
 
-async function reorderAndPage(filters: ArticleListFilters, ids: string[]) {
-  const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 20;
-  const result = await listArticles({ ...filters, ids, q: undefined, pageSize: ids.length });
-  const ordered = reorderByIds(result, ids);
-  const start = (page - 1) * pageSize;
+async function rankedItemsByIds(filters: ArticleListFilters, ids: string[]) {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
 
-  return {
-    items: ordered.items.slice(start, start + pageSize),
-    pageInfo: { page, pageSize, total: ordered.items.length },
+  const batches: string[][] = [];
+  for (let index = 0; index < uniqueIds.length; index += MAX_RANKED_LOOKUP_BATCH_SIZE) {
+    batches.push(uniqueIds.slice(index, index + MAX_RANKED_LOOKUP_BATCH_SIZE));
+  }
+
+  const results = await Promise.all(
+    batches.map((batch) => listArticles(rankedLookupFilters(filters, batch))),
+  );
+  const combined: ArticleListResult = {
+    items: results.flatMap((result) => result.items),
+    pageInfo: { page: 1, pageSize: uniqueIds.length, total: uniqueIds.length },
   };
+  return reorderByIds(combined, uniqueIds).items;
+}
+
+async function reorderAndPage(filters: ArticleListFilters, ids: string[]) {
+  const ordered = await rankedItemsByIds(filters, ids);
+  return paginateRankedArticleItems(ordered, filters);
 }
 
 async function localSemanticSearch(filters: ArticleListFilters, embedding: number[], matchCount: number) {
@@ -175,18 +230,14 @@ export async function hybridSearch(filters: ArticleListFilters): Promise<Article
     return exact;
   }
 
+  const windowSize = rankedSearchWindow(filters, 50);
+  const candidateFilters = { ...filters, page: 1, pageSize: windowSize };
   const [fulltext, semantic] = await Promise.all([
-    listArticles(filters),
-    semanticSearch({ ...filters, page: 1, pageSize: Math.max((filters.page ?? 1) * (filters.pageSize ?? 20), 50) }),
+    listArticles(candidateFilters),
+    semanticSearch(candidateFilters),
   ]);
   const merged = mergeRankedArticleItems(fulltext.items, semantic.items);
-  const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 20;
-  const start = (page - 1) * pageSize;
-  return {
-    items: merged.slice(start, start + pageSize),
-    pageInfo: { page, pageSize, total: merged.length },
-  };
+  return paginateRankedArticleItems(merged, filters);
 }
 
 export function mergeRankedArticleItems(
