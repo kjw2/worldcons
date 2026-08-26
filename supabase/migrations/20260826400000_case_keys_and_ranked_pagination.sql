@@ -1,3 +1,5 @@
+set maintenance_work_mem = '128MB';
+
 create or replace function worldcons_case_key_v1(
   p_source_key text,
   p_case_number text default null,
