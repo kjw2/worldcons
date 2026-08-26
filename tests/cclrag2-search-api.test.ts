@@ -5,6 +5,8 @@ import { bverfgCaseNumberFromText } from "../lib/crawlee/bverfg-spider";
 import type { ArticleListItem } from "../lib/db/types";
 import { mapSearchApiArticle, mapSearchApiSource } from "../lib/search/api-contract";
 import { extractExactCaseReferences } from "../lib/search/exact-case";
+import { caseNumberKey, normalizeCaseNumber } from "../lib/search/case-number";
+import { parseSearchApiParams } from "../lib/security/public-api-validation";
 import {
   fuseHybridArticleItems,
   mergeRankedArticleItems,
@@ -26,6 +28,7 @@ test("Neubauer comparison queries resolve the German climate decision reference"
       {
         sourceKey: "de-bverfg",
         caseNumber: "1 BvR 2656/18",
+        caseKey: "1bvr265618",
       },
     ]);
   }
@@ -33,14 +36,33 @@ test("Neubauer comparison queries resolve the German climate decision reference"
 
 test("exact case extraction recognizes French, Spanish, and US case numbers", () => {
   assert.deepEqual(extractExactCaseReferences("2026-912 QPC"), [
-    { sourceKey: "fr-conseil-constitutionnel", caseNumber: "2026-912 QPC" },
+    { sourceKey: "fr-conseil-constitutionnel", caseNumber: "2026-912 QPC", caseKey: "2026912qpc" },
   ]);
   assert.deepEqual(extractExactCaseReferences("SENTENCIA 53/2025"), [
-    { sourceKey: "es-tribunal-constitucional", caseNumber: "53/2025" },
+    { sourceKey: "es-tribunal-constitucional", caseNumber: "53/2025", caseKey: "532025" },
   ]);
   assert.deepEqual(extractExactCaseReferences("No. 24-109"), [
-    { sourceKey: "us-scotus", caseNumber: "24-109" },
+    { sourceKey: "us-scotus", caseNumber: "24-109", caseKey: "24109" },
   ]);
+});
+
+test("source-aware case normalization produces the same canonical key across display variants", () => {
+  assert.equal(normalizeCaseNumber("de-bverfg", "1 BVR 2656 / 2018"), "1 BvR 2656/18");
+  assert.equal(caseNumberKey("de-bverfg", "1 BvR 2656/18"), "1bvr265618");
+  assert.equal(normalizeCaseNumber("fr-conseil-constitutionnel", "Décision n° 2026-912 qpc"), "2026-912 QPC");
+  assert.equal(caseNumberKey("fr-conseil-constitutionnel", "2026-912 QPC"), "2026912qpc");
+  assert.equal(normalizeCaseNumber("es-tribunal-constitucional", "SENTENCIA 053/2025"), "53/2025");
+  assert.equal(caseNumberKey("es-tribunal-constitucional", "53/2025"), "532025");
+  assert.equal(normalizeCaseNumber("us-scotus", "No. 24-0109"), "24-109");
+  assert.equal(caseNumberKey("us-scotus", "24-109"), "24109");
+});
+
+test("public search rejects offsets beyond the shared 10,000-row deep-pagination boundary", () => {
+  const accepted = parseSearchApiParams(new URLSearchParams("q=climate&page=101&pageSize=100&mode=hybrid"));
+  assert.equal(accepted.ok, true);
+  if (accepted.ok) assert.equal(accepted.data.filters.count, "none");
+  const rejected = parseSearchApiParams(new URLSearchParams("q=climate&page=102&pageSize=100&mode=hybrid"));
+  assert.equal(rejected.ok, false);
 });
 
 test("BVerfG compact official URLs preserve the docket number during collection", () => {

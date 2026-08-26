@@ -87,12 +87,24 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 ## 4단계 — 사건번호 검색 통합과 검색 확장성
 
-상태: 대기
+상태: 완료 (2026-08-26)
+
+### 범위
 
 - 독일·미국·프랑스·스페인 사건번호를 공통 canonical normalization 규칙으로 통일한다.
-- 검색 시 반복 regexp 계산 대신 저장/인덱싱 가능한 canonical case key를 검토한다.
+- 검색 시 반복 regexp 계산 대신 저장/인덱싱 가능한 canonical case key를 도입한다.
 - Next FTS의 100 candidate 제한과 deep pagination 한계를 DB-native ranking/pagination 중심으로 개선한다.
 - `total`, `hasMore`, `totalIsExact` 의미를 Next/Worker에서 통일한다.
+
+### 완료 결과
+
+- `lib/search/case-number.ts`를 공용 normalization 계층으로 추가하고 ingestion, Next exact-case 검색, Cloudflare Worker preflight가 같은 독일·프랑스·스페인·미국 규칙을 사용하도록 통일했다.
+- `articles`와 `article_content_versions_p3`에 source-aware generated `case_key`를 추가하고 `(source_key, case_key)` partial index를 구성했다. 공개 P3 projection에도 `case_key`를 노출해 exact 검색이 반복 regexp/URL scan 대신 인덱스 키를 우선 사용한다.
+- `worldcons_ranked_search_page_v1`을 추가해 fulltext/semantic/hybrid/exact-case 페이지를 DB에서 직접 잘라 반환하도록 변경했다. 정상 P3 경로에서는 기존 Next FTS 100-candidate preload가 더 이상 검색 페이지 한계가 되지 않는다.
+- Hybrid 후보 depth는 요청 offset에 비례해 최대 30,063건까지 oversampling하며, 공개 검색 deep-pagination 경계는 Next와 Worker 모두 offset 10,000으로 통일했다.
+- 검색 API의 `count` 기본값을 양쪽 모두 `none`으로 맞추고, `count=exact`일 때만 정확한 `total`과 `totalIsExact=true`를 전달하도록 정리했다.
+- Worker DB 계약은 rollback 가능한 V3를 남긴 채 `worldcons_provider_search_v4`로 전환해 V4가 공용 ranked-page 결과와 count metadata를 그대로 사용하도록 했다.
+- cclrag2 16/16, Search Worker 15/15, ingestion 16/16, cclmetasearch 9/9, `pnpm check`, lint, Worker TypeScript check, production build를 모두 통과했다.
 
 ## 5단계 — 운영 안정성과 보안
 

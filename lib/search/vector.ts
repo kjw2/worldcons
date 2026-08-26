@@ -5,6 +5,7 @@ import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { normalizeRange } from "@/lib/utils/dates";
 import { articlePublicationV4ReadsEnabled, observeArticlePublicationReadDecision } from "@/lib/article-publication";
 import { exactCaseSearch } from "@/lib/search/exact-case";
+import { rankedSearchPage, type RankedSearchPage } from "@/lib/search/ranked-page";
 
 interface MatchArticleRow {
   article_id: string;
@@ -128,6 +129,15 @@ async function reorderAndPage(filters: ArticleListFilters, ids: string[]) {
   return paginateRankedArticleItems(ordered, filters);
 }
 
+async function materializeRankedPage(filters: ArticleListFilters, page: RankedSearchPage): Promise<ArticleListResult> {
+  if (page.ids.length === 0) return { items: [], pageInfo: page.pageInfo };
+  const items = await rankedItemsByIds(
+    { ...filters, page: 1, pageSize: Math.min(page.ids.length, MAX_RANKED_LOOKUP_BATCH_SIZE) },
+    page.ids,
+  );
+  return { items, pageInfo: page.pageInfo };
+}
+
 async function rankedFullTextCandidates(filters: ArticleListFilters): Promise<ArticleListResult> {
   const page = filters.page ?? 1;
   const pageSize = Math.min(Math.max(filters.pageSize ?? 20, 1), MAX_RANKED_LOOKUP_BATCH_SIZE);
@@ -235,6 +245,9 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
     return listArticles(filters);
   }
 
+  const exact = await exactCaseSearch(filters);
+  if (exact.items.length > 0) return exact;
+
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return listArticles(filters);
@@ -244,6 +257,9 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
   if (!embedding) {
     return listArticles(filters);
   }
+
+  const databasePage = await rankedSearchPage(filters, "semantic", embedding);
+  if (databasePage) return materializeRankedPage(filters, databasePage);
 
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
@@ -278,6 +294,12 @@ export async function hybridSearch(filters: ArticleListFilters): Promise<Article
   const exact = await exactCaseSearch(filters);
   if (exact.items.length > 0) {
     return exact;
+  }
+
+  const embedding = await createTextEmbedding(filters.q).catch(() => null);
+  if (embedding) {
+    const databasePage = await rankedSearchPage(filters, "hybrid", embedding);
+    if (databasePage) return materializeRankedPage(filters, databasePage);
   }
 
   const windowSize = rankedSearchWindow(filters, 50);

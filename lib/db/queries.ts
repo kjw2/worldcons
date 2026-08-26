@@ -23,6 +23,7 @@ import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { articlePublicationV4ReadsEnabled, observeArticlePublicationReadDecision } from "@/lib/article-publication";
+import { rankedSearchPage } from "@/lib/search/ranked-page";
 
 interface SupabaseTagRow {
   id?: string;
@@ -396,13 +397,35 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
   const exactCaseResult = await exactCaseSearch(filters);
   if (exactCaseResult.items.length > 0) return exactCaseResult;
 
+  const rankedPage = await rankedSearchPage(filters, "fulltext", null);
+  if (rankedPage) {
+    if (rankedPage.ids.length === 0) return { items: [], pageInfo: rankedPage.pageInfo };
+    const rankedResult = await listArticles({
+      ...filters,
+      q: undefined,
+      ids: rankedPage.ids,
+      page: 1,
+      pageSize: rankedPage.ids.length,
+      count: "none",
+    });
+    const order = new Map(rankedPage.ids.map((id, index) => [id, index]));
+    const items = [...rankedResult.items].sort(
+      (left, right) => (order.get(left.id ?? "") ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id ?? "") ?? Number.MAX_SAFE_INTEGER),
+    );
+    return {
+      items,
+      pageInfo: rankedPage.pageInfo,
+    };
+  }
+
+  const fallbackCandidateLimit = Math.min(Math.max((page + 1) * pageSize, 200), 1000);
   let query = supabase
     .from(articleRelation(filters.includeUnpublished))
     .select("id")
     .textSearch("search_vector", tsQuery, { config: "simple" })
     .order("original_published_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: true })
-    .limit(Number.isFinite(Number(process.env.SEARCH_MAX_CANDIDATES)) ? Math.min(Number(process.env.SEARCH_MAX_CANDIDATES), 100) : 100);
+    .limit(fallbackCandidateLimit);
 
   if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
     query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
@@ -433,9 +456,16 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
     .sort((left, right) => (order.get(left.id ?? "") ?? 9999) - (order.get(right.id ?? "") ?? 9999));
   const start = (page - 1) * pageSize;
 
+  const hasMore = start + pageSize < matched.length || matched.length >= fallbackCandidateLimit;
   return {
     items: matched.slice(start, start + pageSize),
-    pageInfo: { page, pageSize, total: matched.length, hasMore: start + pageSize < matched.length, totalIsExact: true },
+    pageInfo: {
+      page,
+      pageSize,
+      total: matched.length + (hasMore && start + pageSize >= matched.length ? 1 : 0),
+      hasMore,
+      totalIsExact: matched.length < fallbackCandidateLimit,
+    },
   };
 }
 
@@ -470,7 +500,9 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     if (tagIds.length === 0) {
       return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
     }
-    if (filters.q) tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
+    if (filters.q && !publicationProjectionEnabled(filters.includeUnpublished)) {
+      tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
+    }
   }
 
   if (filters.q) {

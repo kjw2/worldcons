@@ -51,6 +51,15 @@ const articleListSchema = z.object({
 
 const searchSchema = articleListSchema.extend({
   mode: z.enum(SEARCH_MODE_VALUES).optional().default("hybrid"),
+  count: z.enum(COUNT_MODE_VALUES).optional().default("none"),
+}).superRefine((value, ctx) => {
+  if ((value.page - 1) * value.pageSize > 10_000) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["page"],
+      message: "search offset must not exceed 10000",
+    });
+  }
 });
 
 const tagsSchema = z.object({

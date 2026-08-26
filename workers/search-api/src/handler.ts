@@ -1,3 +1,5 @@
+import { hasExactCaseReference } from "../../../lib/search/case-number";
+
 export type SearchWorkerEnv = {
   ENVIRONMENT: string;
   PUBLIC_BASE_URL: string;
@@ -144,7 +146,7 @@ export async function handleWorldconsSearchRequest(
 async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, requestId: string) {
   const input = parseSearchInput(url.searchParams);
   const retrieval = await resolveRetrievalPlan(input.query, input.mode, env, fetcher, requestId);
-  const rpcPayload = await callRpc(env, "worldcons_provider_search_v3", {
+  const rpcPayload = await callRpc(env, "worldcons_provider_search_v4", {
     p_query: input.query,
     p_mode: retrieval.effectiveMode,
     p_query_embedding: retrieval.embedding,
@@ -153,13 +155,17 @@ async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, 
     p_source: input.source,
     p_jurisdiction: input.jurisdiction,
     p_range: input.range,
+    p_count: input.count,
   }, fetcher, requestId);
   const payload = requiredRecord(rpcPayload, "search response");
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
-  const hasMore = rawItems.length > input.pageSize;
   const items = rawItems.slice(0, input.pageSize).map((item) => mapSearchItem(item, env.PUBLIC_BASE_URL));
   const offset = (input.page - 1) * input.pageSize;
+  const hasMore = typeof payload.hasMore === "boolean" ? payload.hasMore : rawItems.length > input.pageSize;
   const lowerBoundTotal = offset + items.length + (hasMore ? 1 : 0);
+  const upstreamTotal = nonNegativeInteger(payload.total);
+  const totalIsExact = payload.totalIsExact === true;
+  const total = Math.max(upstreamTotal ?? 0, lowerBoundTotal);
   const databaseRetrievalMode = optionalString(payload.retrievalMode);
 
   return jsonResponse({
@@ -179,16 +185,16 @@ async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, 
     meta: {
       limit: input.pageSize,
       offset,
-      total: lowerBoundTotal,
+      total,
       hasMore,
-      totalIsExact: false,
+      totalIsExact,
     },
     pageInfo: {
       page: input.page,
       pageSize: input.pageSize,
-      total: lowerBoundTotal,
+      total,
       hasMore,
-      totalIsExact: false,
+      totalIsExact,
     },
   }, 200, SEARCH_CACHE_CONTROL, requestId, MAX_SEARCH_RESPONSE_BYTES);
 }
@@ -261,9 +267,7 @@ async function resolveRetrievalPlan(
 }
 
 function isExactCasePreflightQuery(query: string) {
-  const normalized = query.normalize("NFKC");
-  return /\b[12]\s+Bv[A-Za-z]+\s+\d+\s*\/\s*\d{2,4}\b/iu.test(normalized)
-    || /\b(?:neubauer|klimabeschluss)\b/iu.test(normalized);
+  return hasExactCaseReference(query);
 }
 
 async function createQueryEmbedding(

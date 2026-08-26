@@ -19,6 +19,10 @@ const v3SearchMigrationPath = path.join(
   process.cwd(),
   "supabase/migrations/20260826300000_worldcons_provider_search_v3.sql",
 );
+const v4SearchMigrationPath = path.join(
+  process.cwd(),
+  "supabase/migrations/20260826400000_case_keys_and_ranked_pagination.sql",
+);
 const NEUBAUER_CHECKSUM = "527b41e3310651a4ba4d1a9a0c1e358e0cf6c292241fe019a8c71f1fc18058ba";
 const NEUBAUER_EXCERPT =
   "공식 독일 연방헌법재판소 결정문 발췌로서 기후보호법의 감축부담이 미래세대의 자유행사에 미치는 영향과 국가의 헌법상 보호의무를 설명한다. 재판소는 세대 간 자유 보장의 균형을 중심으로 심사하였다.";
@@ -115,9 +119,10 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(calls[0].body.p_query_embedding, null);
   assert.equal(calls[0].body.p_source, "de-bverfg");
   assert.equal(calls[0].body.p_jurisdiction, "Germany");
+  assert.equal(calls[0].body.p_count, "none");
   assert.equal(calls[0].authorization, "Bearer test-service-role-key");
   assert.equal(calls[0].requestId, "cclrag2-neubauer-test");
-  assert.match(calls[0].url, /worldcons_provider_search_v3$/u);
+  assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
   assert.ok(Number(response.headers.get("content-length")) < 1_500_000);
   assert.doesNotMatch(JSON.stringify(payload), /vercel\.app/iu);
 });
@@ -143,7 +148,7 @@ test("Worker preserves the Korean comparison query and returns Neubauer first", 
   assert.match(String(rpcBody?.p_query), /Neubauer/u);
 });
 
-test("Worker fulltext mode bypasses embeddings and executes V3 lexical retrieval", async () => {
+test("Worker fulltext mode bypasses embeddings and executes V4 lexical retrieval", async () => {
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const response = await handleWorldconsSearchRequest(
     new Request("https://worldcons-search-api.example.workers.dev/api/search?q=freedom&mode=fulltext&pageSize=5"),
@@ -162,7 +167,7 @@ test("Worker fulltext mode bypasses embeddings and executes V3 lexical retrieval
 
   assert.equal(response.status, 200);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /worldcons_provider_search_v3$/u);
+  assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
   assert.equal(calls[0].body.p_mode, "fulltext");
   assert.equal(calls[0].body.p_query_embedding, null);
   assert.equal(payload.requestedMode, "fulltext");
@@ -195,7 +200,7 @@ test("Worker reports an explicit fulltext fallback when semantic capability is n
   assert.equal(payload.degradationReason, "embedding_not_configured");
 });
 
-test("Worker semantic mode creates an embedding and passes it to V3 vector retrieval", async () => {
+test("Worker semantic mode creates an embedding and passes it to V4 vector retrieval", async () => {
   const rpcCalls: Array<Record<string, unknown>> = [];
   let embeddingCalls = 0;
   const response = await handleWorldconsSearchRequest(
@@ -279,6 +284,70 @@ test("Worker hybrid mode uses embeddings when available and degrades explicitly 
   assert.equal(degradedPayload.mode, "fulltext");
   assert.equal(degradedPayload.degraded, true);
   assert.equal(degradedPayload.degradationReason, "embedding_unavailable");
+});
+
+test("Worker exact-case preflight covers France, Spain, and the US without embedding calls", async () => {
+  const cases = [
+    ["2026-912%20QPC", "fr-conseil-constitutionnel"],
+    ["53%2F2025", "es-tribunal-constitucional"],
+    ["No.%2024-109", "us-scotus"],
+  ] as const;
+
+  for (const [query, sourceKey] of cases) {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const response = await handleWorldconsSearchRequest(
+      new Request(`https://worldcons-search-api.example.workers.dev/api/search?q=${query}&mode=hybrid&source=${sourceKey}`),
+      env,
+      {
+        fetcher: async (input, init) => {
+          calls.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+          return Response.json({ items: [], retrievalMode: "exact-case", total: 0, hasMore: false, totalIsExact: false });
+        },
+      },
+    );
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
+    assert.equal(calls[0].body.p_query_embedding, null);
+    assert.equal(calls[0].body.p_mode, "hybrid");
+    assert.equal(payload.degraded, false);
+    assert.equal(payload.databaseRetrievalMode, "exact-case");
+  }
+});
+
+test("Worker preserves exact total semantics returned by the DB-native page contract", async () => {
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=freedom&mode=fulltext&page=2&pageSize=10&count=exact"),
+    env,
+    {
+      fetcher: async () => Response.json({
+        items: [neubauerRow()],
+        retrievalMode: "fulltext",
+        total: 37,
+        hasMore: true,
+        totalIsExact: true,
+      }),
+    },
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.meta, {
+    limit: 10,
+    offset: 10,
+    total: 37,
+    hasMore: true,
+    totalIsExact: true,
+  });
+  assert.deepEqual(payload.pageInfo, {
+    page: 2,
+    pageSize: 10,
+    total: 37,
+    hasMore: true,
+    totalIsExact: true,
+  });
 });
 
 test("Worker source and article endpoints expose bounded Contract V2 evidence", async () => {
@@ -462,6 +531,25 @@ test("Search V3 migration makes retrieval mode real and keeps published projecti
   assert.match(sql, /grant execute on function worldcons_provider_search_v3[\s\S]*to service_role/iu);
   assert.match(sql, /revoke all on function worldcons_provider_search_v3[\s\S]*from anon/iu);
   assert.doesNotMatch(sql, /\bfrom\s+articles\b/iu);
+});
+
+test("Search V4 migration adds indexed four-country case keys and DB-native deep pagination", () => {
+  const sql = fs.readFileSync(v4SearchMigrationPath, "utf8");
+
+  assert.match(sql, /create or replace function worldcons_case_key_v1/iu);
+  assert.match(sql, /fr-conseil-constitutionnel/iu);
+  assert.match(sql, /es-tribunal-constitucional/iu);
+  assert.match(sql, /us-scotus/iu);
+  assert.match(sql, /add column if not exists case_key text generated always as/iu);
+  assert.match(sql, /on article_content_versions_p3 \(source_key, case_key\)/iu);
+  assert.match(sql, /create or replace function worldcons_ranked_search_page_v1/iu);
+  assert.match(sql, /p_offset is null or p_offset not between 0 and 10000/iu);
+  assert.match(sql, /p_source is not null and p_source <> v_exact_source/iu);
+  assert.match(sql, /limit p_limit \+ 1 offset p_offset/iu);
+  assert.match(sql, /v_candidate_limit integer := least\(greatest\(\(coalesce\(p_offset, 0\) \+ coalesce\(p_limit, 20\) \+ 1\) \* 3, 100\), 30063\)/iu);
+  assert.match(sql, /create or replace function worldcons_provider_search_v4/iu);
+  assert.match(sql, /'totalIsExact', coalesce\(\(v_page ->> 'totalIsExact'\)::boolean, false\)/iu);
+  assert.match(sql, /grant execute on function worldcons_provider_search_v4[\s\S]*to service_role/iu);
 });
 
 test("Worker truncates a large article body without dropping the preserved text API contract", async () => {

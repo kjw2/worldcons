@@ -45,12 +45,12 @@ GET /api/search
 | `mode` | `fulltext`, `semantic`, or `hybrid`; 각 값이 실제 lexical/vector/RRF retrieval을 선택한다 |
 | `page` | Integer from 1 through 500, with a maximum offset of 10,000 |
 | `pageSize` | Integer from 1 through 20; default 10 |
-| `count` | `none`, `exact`, `planned`, or `estimated`; the response total is a bounded lower bound |
+| `count` | `none`, `exact`, `planned`, or `estimated`; `exact` requests an exact total, while the others return a bounded lower bound |
 | `jurisdiction` | Optional jurisdiction label, such as `Germany` |
 | `source` | Optional stable source key, such as `de-bverfg` |
 | `range` | `latest`, `today`, `week`, or `month`; `latest` means the full published archive |
 
-The Worker fetches only `pageSize + 1` rows. It never preloads the full result set.
+The Worker delegates pagination to the DB-native ranked-page contract. The database keeps only the requested page plus one lookahead row; hybrid candidate oversampling grows with the requested offset instead of using the former fixed 100-row preload.
 
 ## Contract V2 evidence
 
@@ -133,11 +133,11 @@ Search items expose native Provider Contract V2 evidence:
 
 ## Ranking and full content
 
-Recognized case references are handled by an exact-case preflight before ordinary retrieval. BVerfG docket references such as `1 BvR 2656/18` are recognized independently of surrounding Korean or English text, and `Neubauer`/`Klimabeschluss` resolve to that docket without requiring an embedding request.
+Recognized case references are handled by an indexed exact-case preflight before ordinary retrieval. The same source-aware canonicalization is used for Germany (`1 BvR 2656/18`), France (`2026-912 QPC`), Spain (`53/2025`), and the US (`24-109`). `Neubauer`/`Klimabeschluss` resolve to the German docket without requiring an embedding request. Published records carry a generated `case_key`, indexed together with `source_key`, so exact lookup does not depend on repeated URL/metadata regex scans.
 
 For ordinary queries, `fulltext` uses PostgreSQL `ts_rank_cd`, `semantic` uses pgvector cosine similarity, and `hybrid` fuses the lexical and semantic ranks with reciprocal rank fusion (RRF, `k=60`). Exact normalized titles sort above the fused score, while decision recency is used only as a tie-breaker after relevance. This matches the Next.js hybrid-search policy introduced in the main application.
 
-`requestedMode` records the caller's requested mode. `effectiveMode` and the legacy-compatible `mode` field record what actually executed. When semantic/hybrid embedding generation is unavailable, the Worker fails soft to `fulltext`, returns `degraded: true`, and includes `degradationReason` (`embedding_not_configured`, `embedding_unavailable`, or `empty_query`). `databaseRetrievalMode` reports the V3 RPC path (`fulltext`, `semantic`, `hybrid`, `exact-case`, or `latest`) when supplied by the database response.
+`requestedMode` records the caller's requested mode. `effectiveMode` and the legacy-compatible `mode` field record what actually executed. When semantic/hybrid embedding generation is unavailable, the Worker fails soft to `fulltext`, returns `degraded: true`, and includes `degradationReason` (`embedding_not_configured`, `embedding_unavailable`, or `empty_query`). `databaseRetrievalMode` reports the V4 ranked-page path (`fulltext`, `semantic`, `hybrid`, `exact-case`, or `latest`) when supplied by the database response. `totalIsExact` is `true` only when `count=exact` produced an exact total; otherwise `total` is a lower bound consistent with `hasMore`.
 
 `GET /api/articles/{slug}` returns the same identity, source, temporal, and checksum evidence as search, plus `summaryJson`, `bodyExcerpt`, and the first bounded `cleanedText` page. cclrag2 should hydrate only selected search hits.
 

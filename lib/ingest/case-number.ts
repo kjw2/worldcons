@@ -1,3 +1,5 @@
+import { normalizeCaseNumber } from "@/lib/search/case-number";
+
 type MetadataRecord = Record<string, unknown>;
 
 function stringValue(value: unknown) {
@@ -53,7 +55,7 @@ export function caseNumberFromArticle(input: {
 }) {
   const metadata = input.metadata ?? {};
   const direct = stringValue(metadata.caseNumber) ?? stringValue(metadata.case_number);
-  if (direct) return direct;
+  if (direct) return normalizeCaseNumber(input.sourceKey, direct) ?? direct;
 
   const alias =
     stringValue(metadata.docketNumber) ??
@@ -61,9 +63,10 @@ export function caseNumberFromArticle(input: {
     stringValue(metadata.docket) ??
     plainDecisionNumber(stringValue(metadata.decisionNumber)) ??
     stringValue(metadata.resolutionNumber);
-  if (alias) return alias;
+  if (alias) return normalizeCaseNumber(input.sourceKey, alias) ?? alias;
 
-  return titleCaseNumber(input.sourceKey, stringValue(input.title)) ?? urlCaseNumber(input.sourceKey, stringValue(input.url));
+  const inferred = titleCaseNumber(input.sourceKey, stringValue(input.title)) ?? urlCaseNumber(input.sourceKey, stringValue(input.url));
+  return inferred ? normalizeCaseNumber(input.sourceKey, inferred) ?? inferred : undefined;
 }
 
 export function withCaseNumberMetadata(input: {

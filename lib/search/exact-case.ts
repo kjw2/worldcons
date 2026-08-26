@@ -2,65 +2,21 @@ import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
+import { extractExactCaseReferences } from "@/lib/search/case-number";
 
-export type ExactCaseReference = {
-  sourceKey?: "de-bverfg" | "fr-conseil-constitutionnel" | "es-tribunal-constitucional" | "us-scotus";
-  caseNumber: string;
-};
+export { extractExactCaseReferences, type ExactCaseReference } from "@/lib/search/case-number";
 
-const BVERFG_CASE_NUMBER_PATTERN = /\b(\d{1,2})\s+Bv([A-Za-z]+)\s+(\d{1,7})\s*\/\s*(\d{2,4})\b/giu;
-const LANDMARK_CASE_ALIASES: Array<{
-  pattern: RegExp;
-  reference: ExactCaseReference;
-}> = [
-  {
-    pattern: /\bneubauer\b|\bklimabeschluss\b/iu,
-    reference: {
-      sourceKey: "de-bverfg",
-      caseNumber: "1 BvR 2656/18",
-    },
-  },
-];
-
-export function extractExactCaseReferences(query: string): ExactCaseReference[] {
-  const references: ExactCaseReference[] = [];
-
-  for (const match of query.normalize("NFKC").matchAll(BVERFG_CASE_NUMBER_PATTERN)) {
-    const suffix = match[2];
-    references.push({
-      sourceKey: "de-bverfg",
-      caseNumber: `${match[1]} Bv${suffix.slice(0, 1).toUpperCase()}${suffix.slice(1).toLowerCase()} ${match[3]}/${match[4]}`,
-    });
-  }
-
-  for (const alias of LANDMARK_CASE_ALIASES) {
-    if (alias.pattern.test(query)) references.push(alias.reference);
-  }
-
-  const normalized = query.normalize("NFKC");
-  for (const match of normalized.matchAll(/\b(\d{4}-\d+(?:[/_-]\d+)*(?:\s+(?:QPC|DC|AN|SEN))?)\b/giu)) {
-    references.push({ sourceKey: "fr-conseil-constitutionnel", caseNumber: match[1].trim() });
-  }
-  for (const match of normalized.matchAll(/\b(\d{1,3}\/\d{4})\b/gu)) {
-    references.push({ sourceKey: "es-tribunal-constitucional", caseNumber: match[1] });
-  }
-  for (const match of normalized.matchAll(/\b(?:No\.\s*)?(\d{2,3}-\d+)\b/gu)) {
-    references.push({ sourceKey: "us-scotus", caseNumber: match[1] });
-  }
-
-  const seen = new Set<string>();
-  return references.filter((reference) => {
-    const key = `${reference.sourceKey}:${reference.caseNumber.toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+function emptyResult(page: number, pageSize: number): ArticleListResult {
+  return {
+    items: [],
+    pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true },
+  };
 }
 
 export async function exactCaseSearch(filters: ArticleListFilters): Promise<ArticleListResult> {
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
-  const empty = { items: [], pageInfo: { page, pageSize, total: 0 } };
+  const empty = emptyResult(page, pageSize);
   if (!filters.q) return empty;
 
   const references = extractExactCaseReferences(filters.q).filter(
@@ -75,10 +31,8 @@ export async function exactCaseSearch(filters: ArticleListFilters): Promise<Arti
   const ids: string[] = [];
 
   for (const reference of references) {
-    const compactUrlToken = reference.caseNumber.toLowerCase().replace(/[^a-z0-9]/gu, "");
     const baseQuery = () => {
-      let query = supabase.from(relation).select("id");
-      if (reference.sourceKey) query = query.eq("source_key", reference.sourceKey);
+      let query = supabase.from(relation).select("id").eq("source_key", reference.sourceKey);
       if (!articlePublicationV4ReadsEnabled()) {
         query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
       }
@@ -88,9 +42,19 @@ export async function exactCaseSearch(filters: ArticleListFilters): Promise<Arti
       return query;
     };
 
-    const metadataResult = await baseQuery().eq("source_metadata->>caseNumber", reference.caseNumber).limit(10);
-    const urlResult = reference.sourceKey === "de-bverfg"
-      ? await baseQuery().ilike("original_url", `%${compactUrlToken}%`).limit(10)
+    const indexedResult = await baseQuery().eq("case_key", reference.caseKey).limit(100);
+    if (!indexedResult.error && Array.isArray(indexedResult.data)) {
+      for (const row of indexedResult.data as Array<{ id?: string }>) {
+        if (row.id && !ids.includes(row.id)) ids.push(row.id);
+      }
+      continue;
+    }
+
+    // Rollout fallback for databases that have not applied the indexed case_key migration yet.
+    const metadataResult = await baseQuery().ilike("source_metadata->>caseNumber", `%${reference.caseNumber}%`).limit(100);
+    const urlToken = reference.sourceKey === "de-bverfg" ? reference.caseKey : reference.caseNumber;
+    const urlResult = reference.sourceKey === "de-bverfg" || reference.sourceKey === "us-scotus"
+      ? await baseQuery().ilike("original_url", `%${urlToken}%`).limit(100)
       : { data: [], error: null };
 
     for (const result of [metadataResult, urlResult]) {
@@ -112,17 +76,19 @@ export async function exactCaseSearch(filters: ArticleListFilters): Promise<Arti
     count: "none",
   });
   const order = new Map(ids.map((id, index) => [id, index]));
-  const items = [...result.items].sort(
+  const orderedItems = [...result.items].sort(
     (left, right) => (order.get(left.id ?? "") ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id ?? "") ?? Number.MAX_SAFE_INTEGER),
   );
+  const start = (page - 1) * pageSize;
+  const items = orderedItems.slice(start, start + pageSize);
 
   return {
     items,
     pageInfo: {
-      page: 1,
+      page,
       pageSize,
-      total: items.length,
-      hasMore: false,
+      total: orderedItems.length,
+      hasMore: start + pageSize < orderedItems.length,
       totalIsExact: true,
     },
   };
