@@ -15,6 +15,10 @@ const v2MigrationPath = path.join(
   process.cwd(),
   "supabase/migrations/20260728100000_worldcons_provider_contract_v2.sql",
 );
+const v3SearchMigrationPath = path.join(
+  process.cwd(),
+  "supabase/migrations/20260826300000_worldcons_provider_search_v3.sql",
+);
 const NEUBAUER_CHECKSUM = "527b41e3310651a4ba4d1a9a0c1e358e0cf6c292241fe019a8c71f1fc18058ba";
 const NEUBAUER_EXCERPT =
   "공식 독일 연방헌법재판소 결정문 발췌로서 기후보호법의 감축부담이 미래세대의 자유행사에 미치는 영향과 국가의 헌법상 보호의무를 설명한다. 재판소는 세대 간 자유 보장의 균형을 중심으로 심사하였다.";
@@ -24,6 +28,12 @@ const env = {
   PUBLIC_BASE_URL: "https://worldcons-search-api.example.workers.dev",
   SUPABASE_URL: "https://project.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+} satisfies SearchWorkerEnv;
+
+const embeddingEnv = {
+  ...env,
+  OPENAI_API_KEY: "test-openai-key",
+  OPENAI_EMBEDDING_MODEL: "text-embedding-3-small",
 } satisfies SearchWorkerEnv;
 
 test("Worker search accepts the cclrag2 contract and returns the Neubauer case first", async () => {
@@ -61,6 +71,10 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(payload.contractVersion, "2.0");
   assert.equal(payload.requestId, "cclrag2-neubauer-test");
   assert.equal(payload.transport, "cloudflare-worker");
+  assert.equal(payload.requestedMode, "hybrid");
+  assert.equal(payload.effectiveMode, "hybrid");
+  assert.equal(payload.mode, "hybrid");
+  assert.equal(payload.degraded, false);
   assert.equal(payload.items[0].caseNumber, "1 BvR 2656/18");
   assert.equal(payload.items[0].sourceType, "foreign_constitutional");
   assert.equal(payload.items[0].authorityLevel, "persuasive");
@@ -97,11 +111,13 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
     totalIsExact: false,
   });
   assert.equal(calls[0].body.p_query, "1 BvR 2656/18 climate");
+  assert.equal(calls[0].body.p_mode, "hybrid");
+  assert.equal(calls[0].body.p_query_embedding, null);
   assert.equal(calls[0].body.p_source, "de-bverfg");
   assert.equal(calls[0].body.p_jurisdiction, "Germany");
   assert.equal(calls[0].authorization, "Bearer test-service-role-key");
   assert.equal(calls[0].requestId, "cclrag2-neubauer-test");
-  assert.match(calls[0].url, /worldcons_provider_search_v2$/u);
+  assert.match(calls[0].url, /worldcons_provider_search_v3$/u);
   assert.ok(Number(response.headers.get("content-length")) < 1_500_000);
   assert.doesNotMatch(JSON.stringify(payload), /vercel\.app/iu);
 });
@@ -125,6 +141,144 @@ test("Worker preserves the Korean comparison query and returns Neubauer first", 
   assert.equal(response.status, 200);
   assert.equal(payload.items[0].caseNumber, "1 BvR 2656/18");
   assert.match(String(rpcBody?.p_query), /Neubauer/u);
+});
+
+test("Worker fulltext mode bypasses embeddings and executes V3 lexical retrieval", async () => {
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=freedom&mode=fulltext&pageSize=5"),
+    embeddingEnv,
+    {
+      fetcher: async (input, init) => {
+        calls.push({
+          url: String(input),
+          body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
+        });
+        return Response.json({ items: [neubauerRow()], retrievalMode: "fulltext" });
+      },
+    },
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /worldcons_provider_search_v3$/u);
+  assert.equal(calls[0].body.p_mode, "fulltext");
+  assert.equal(calls[0].body.p_query_embedding, null);
+  assert.equal(payload.requestedMode, "fulltext");
+  assert.equal(payload.effectiveMode, "fulltext");
+  assert.equal(payload.degraded, false);
+  assert.equal(payload.databaseRetrievalMode, "fulltext");
+});
+
+test("Worker reports an explicit fulltext fallback when semantic capability is not configured", async () => {
+  const rpcBodies: Array<Record<string, unknown>> = [];
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
+    env,
+    {
+      fetcher: async (_input, init) => {
+        rpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ items: [neubauerRow()], retrievalMode: "fulltext" });
+      },
+    },
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(rpcBodies.length, 1);
+  assert.equal(rpcBodies[0].p_mode, "fulltext");
+  assert.equal(rpcBodies[0].p_query_embedding, null);
+  assert.equal(payload.requestedMode, "hybrid");
+  assert.equal(payload.effectiveMode, "fulltext");
+  assert.equal(payload.degraded, true);
+  assert.equal(payload.degradationReason, "embedding_not_configured");
+});
+
+test("Worker semantic mode creates an embedding and passes it to V3 vector retrieval", async () => {
+  const rpcCalls: Array<Record<string, unknown>> = [];
+  let embeddingCalls = 0;
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=intergenerational%20climate%20freedom&mode=semantic&pageSize=5"),
+    embeddingEnv,
+    {
+      fetcher: async (input, init) => {
+        const url = String(input);
+        if (url === "https://api.openai.com/v1/embeddings") {
+          embeddingCalls += 1;
+          const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          assert.equal(requestBody.model, "text-embedding-3-small");
+          assert.equal(requestBody.dimensions, 1536);
+          assert.match(String(requestBody.input), /climate/u);
+          assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-openai-key");
+          return embeddingResponse();
+        }
+        rpcCalls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ items: [neubauerRow()], retrievalMode: "semantic" });
+      },
+    },
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(embeddingCalls, 1);
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].p_mode, "semantic");
+  assert.equal(Array.isArray(rpcCalls[0].p_query_embedding), true);
+  assert.equal((rpcCalls[0].p_query_embedding as unknown[]).length, 1536);
+  assert.equal(payload.requestedMode, "semantic");
+  assert.equal(payload.effectiveMode, "semantic");
+  assert.equal(payload.mode, "semantic");
+  assert.equal(payload.degraded, false);
+  assert.equal(payload.databaseRetrievalMode, "semantic");
+});
+
+test("Worker hybrid mode uses embeddings when available and degrades explicitly when embedding fails", async () => {
+  const hybridRpcBodies: Array<Record<string, unknown>> = [];
+  const hybrid = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
+    embeddingEnv,
+    {
+      fetcher: async (input, init) => {
+        if (String(input) === "https://api.openai.com/v1/embeddings") return embeddingResponse();
+        hybridRpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ items: [neubauerRow()], retrievalMode: "hybrid" });
+      },
+    },
+  );
+  const hybridPayload = await hybrid.json();
+
+  assert.equal(hybrid.status, 200);
+  assert.equal(hybridRpcBodies[0].p_mode, "hybrid");
+  assert.equal((hybridRpcBodies[0].p_query_embedding as unknown[]).length, 1536);
+  assert.equal(hybridPayload.requestedMode, "hybrid");
+  assert.equal(hybridPayload.effectiveMode, "hybrid");
+  assert.equal(hybridPayload.degraded, false);
+
+  const degradedRpcBodies: Array<Record<string, unknown>> = [];
+  const degraded = await handleWorldconsSearchRequest(
+    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
+    embeddingEnv,
+    {
+      fetcher: async (input, init) => {
+        if (String(input) === "https://api.openai.com/v1/embeddings") {
+          return Response.json({ error: "embedding unavailable" }, { status: 503 });
+        }
+        degradedRpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ items: [neubauerRow()], retrievalMode: "fulltext" });
+      },
+    },
+  );
+  const degradedPayload = await degraded.json();
+
+  assert.equal(degraded.status, 200);
+  assert.equal(degradedRpcBodies[0].p_mode, "fulltext");
+  assert.equal(degradedRpcBodies[0].p_query_embedding, null);
+  assert.equal(degradedPayload.requestedMode, "hybrid");
+  assert.equal(degradedPayload.effectiveMode, "fulltext");
+  assert.equal(degradedPayload.mode, "fulltext");
+  assert.equal(degradedPayload.degraded, true);
+  assert.equal(degradedPayload.degradationReason, "embedding_unavailable");
 });
 
 test("Worker source and article endpoints expose bounded Contract V2 evidence", async () => {
@@ -292,6 +446,24 @@ test("Contract V2 migration bounds evidence and preserves paginated source text"
   assert.doesNotMatch(sql, /\bfrom\s+articles\b/iu);
 });
 
+test("Search V3 migration makes retrieval mode real and keeps published projection boundaries", () => {
+  const sql = fs.readFileSync(v3SearchMigrationPath, "utf8");
+
+  assert.match(sql, /create or replace function worldcons_provider_search_v3/iu);
+  assert.match(sql, /p_mode text default 'hybrid'/iu);
+  assert.match(sql, /p_query_embedding extensions\.vector\(1536\)/iu);
+  assert.match(sql, /v_mode not in \('fulltext', 'semantic', 'hybrid'\)/iu);
+  assert.match(sql, /v_mode in \('semantic', 'hybrid'\)[\s\S]*WORLDCONS_PROVIDER_EMBEDDING_REQUIRED/iu);
+  assert.match(sql, /ts_rank_cd\(\(filtered\.article\)\.search_vector, v_tsquery, 32\)/iu);
+  assert.match(sql, /embedding OPERATOR\(extensions\.<=>\) p_query_embedding/iu);
+  assert.match(sql, /1\.0 \/ \(60 \+ candidates\.lexical_rank\)/iu);
+  assert.match(sql, /1\.0 \/ \(60 \+ candidates\.semantic_rank\)/iu);
+  assert.match(sql, /from public_article_projection_p3 article/iu);
+  assert.match(sql, /grant execute on function worldcons_provider_search_v3[\s\S]*to service_role/iu);
+  assert.match(sql, /revoke all on function worldcons_provider_search_v3[\s\S]*from anon/iu);
+  assert.doesNotMatch(sql, /\bfrom\s+articles\b/iu);
+});
+
 test("Worker truncates a large article body without dropping the preserved text API contract", async () => {
   const oversizedText = "가".repeat(600_000);
   const response = await handleWorldconsSearchRequest(
@@ -318,6 +490,12 @@ test("Worker truncates a large article body without dropping the preserved text 
   assert.ok(Buffer.byteLength(raw, "utf8") < 1_900_000);
   assert.match(payload.sourceTextUrl, /\/source-text$/u);
 });
+
+function embeddingResponse() {
+  return Response.json({
+    data: [{ embedding: Array.from({ length: 1536 }, (_, index) => index === 0 ? 1 : 0) }],
+  });
+}
 
 function neubauerRow() {
   return {

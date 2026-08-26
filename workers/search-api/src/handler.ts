@@ -3,6 +3,8 @@ export type SearchWorkerEnv = {
   PUBLIC_BASE_URL: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_EMBEDDING_MODEL?: string;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -33,6 +35,11 @@ const SEARCH_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
 const DETAIL_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=900";
 const CONTRACT_VERSION = "2.0";
 const UPSTREAM_TIMEOUT_MS = 8_000;
+const EMBEDDING_TIMEOUT_MS = 5_000;
+const OPENAI_EMBEDDING_ENDPOINT = "https://api.openai.com/v1/embeddings";
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const EXPECTED_EMBEDDING_DIMENSIONS = 1536;
+const MAX_EMBEDDING_RESPONSE_BYTES = 256_000;
 const MAX_UPSTREAM_RPC_BYTES = 4_000_000;
 const MAX_SEARCH_RESPONSE_BYTES = 1_500_000;
 const MAX_SOURCES_RESPONSE_BYTES = 200_000;
@@ -136,8 +143,11 @@ export async function handleWorldconsSearchRequest(
 
 async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, requestId: string) {
   const input = parseSearchInput(url.searchParams);
-  const rpcPayload = await callRpc(env, "worldcons_provider_search_v2", {
+  const retrieval = await resolveRetrievalPlan(input.query, input.mode, env, fetcher, requestId);
+  const rpcPayload = await callRpc(env, "worldcons_provider_search_v3", {
     p_query: input.query,
+    p_mode: retrieval.effectiveMode,
+    p_query_embedding: retrieval.embedding,
     p_limit: input.pageSize,
     p_offset: (input.page - 1) * input.pageSize,
     p_source: input.source,
@@ -150,6 +160,7 @@ async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, 
   const items = rawItems.slice(0, input.pageSize).map((item) => mapSearchItem(item, env.PUBLIC_BASE_URL));
   const offset = (input.page - 1) * input.pageSize;
   const lowerBoundTotal = offset + items.length + (hasMore ? 1 : 0);
+  const databaseRetrievalMode = optionalString(payload.retrievalMode);
 
   return jsonResponse({
     contractVersion: CONTRACT_VERSION,
@@ -158,7 +169,12 @@ async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, 
     query: input.query,
     service: "worldcons",
     transport: "cloudflare-worker",
-    mode: input.mode,
+    mode: retrieval.effectiveMode,
+    requestedMode: retrieval.requestedMode,
+    effectiveMode: retrieval.effectiveMode,
+    degraded: retrieval.degraded,
+    ...(retrieval.degradationReason ? { degradationReason: retrieval.degradationReason } : {}),
+    ...(databaseRetrievalMode ? { databaseRetrievalMode } : {}),
     items,
     meta: {
       limit: input.pageSize,
@@ -175,6 +191,131 @@ async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, 
       totalIsExact: false,
     },
   }, 200, SEARCH_CACHE_CONTROL, requestId, MAX_SEARCH_RESPONSE_BYTES);
+}
+
+type SearchMode = "fulltext" | "semantic" | "hybrid";
+
+type RetrievalPlan = {
+  requestedMode: SearchMode;
+  effectiveMode: SearchMode;
+  embedding: number[] | null;
+  degraded: boolean;
+  degradationReason?: "empty_query" | "embedding_not_configured" | "embedding_unavailable";
+};
+
+async function resolveRetrievalPlan(
+  query: string,
+  requestedMode: string,
+  env: SearchWorkerEnv,
+  fetcher: Fetcher,
+  requestId: string,
+): Promise<RetrievalPlan> {
+  const normalizedMode = requestedMode as SearchMode;
+  if (normalizedMode === "fulltext") {
+    return { requestedMode: normalizedMode, effectiveMode: "fulltext", embedding: null, degraded: false };
+  }
+  if (!query) {
+    return {
+      requestedMode: normalizedMode,
+      effectiveMode: "fulltext",
+      embedding: null,
+      degraded: true,
+      degradationReason: "empty_query",
+    };
+  }
+  if (isExactCasePreflightQuery(query)) {
+    return {
+      requestedMode: normalizedMode,
+      effectiveMode: normalizedMode,
+      embedding: null,
+      degraded: false,
+    };
+  }
+  if (!env.OPENAI_API_KEY?.trim()) {
+    return {
+      requestedMode: normalizedMode,
+      effectiveMode: "fulltext",
+      embedding: null,
+      degraded: true,
+      degradationReason: "embedding_not_configured",
+    };
+  }
+
+  const embedding = await createQueryEmbedding(query, env, fetcher, requestId);
+  if (!embedding) {
+    return {
+      requestedMode: normalizedMode,
+      effectiveMode: "fulltext",
+      embedding: null,
+      degraded: true,
+      degradationReason: "embedding_unavailable",
+    };
+  }
+
+  return {
+    requestedMode: normalizedMode,
+    effectiveMode: normalizedMode,
+    embedding,
+    degraded: false,
+  };
+}
+
+function isExactCasePreflightQuery(query: string) {
+  const normalized = query.normalize("NFKC");
+  return /\b[12]\s+Bv[A-Za-z]+\s+\d+\s*\/\s*\d{2,4}\b/iu.test(normalized)
+    || /\b(?:neubauer|klimabeschluss)\b/iu.test(normalized);
+}
+
+async function createQueryEmbedding(
+  query: string,
+  env: SearchWorkerEnv,
+  fetcher: Fetcher,
+  requestId: string,
+): Promise<number[] | null> {
+  const apiKey = env.OPENAI_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetcher(OPENAI_EMBEDDING_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "X-Request-Id": requestId,
+      },
+      body: JSON.stringify({
+        model: env.OPENAI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL,
+        input: query,
+        dimensions: EXPECTED_EMBEDDING_DIMENSIONS,
+      }),
+      signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      console.warn(JSON.stringify({
+        event: "worldcons_embedding_unavailable",
+        status: response.status,
+        requestId,
+      }));
+      return null;
+    }
+
+    const payload = requiredRecord(await readBoundedJson(response, MAX_EMBEDDING_RESPONSE_BYTES), "embedding response");
+    const data = Array.isArray(payload.data) ? payload.data : [];
+    const first = optionalRecord(data[0]);
+    const rawEmbedding = Array.isArray(first?.embedding) ? first.embedding : [];
+    if (rawEmbedding.length !== EXPECTED_EMBEDDING_DIMENSIONS) return null;
+    const embedding = rawEmbedding.map((value) => finiteNumber(value));
+    return embedding.every((value): value is number => value !== null) ? embedding : null;
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "worldcons_embedding_unavailable",
+      error: error instanceof Error ? error.name : "UnknownError",
+      requestId,
+    }));
+    return null;
+  }
 }
 
 async function sourcesResponse(env: SearchWorkerEnv, fetcher: Fetcher, requestId: string) {

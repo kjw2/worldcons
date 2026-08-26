@@ -42,7 +42,7 @@ GET /api/search
 | Parameter | Contract |
 | --- | --- |
 | `q` | Optional search text, maximum 200 characters |
-| `mode` | `fulltext`, `semantic`, or `hybrid`; compatibility modes use the same provider ranking |
+| `mode` | `fulltext`, `semantic`, or `hybrid`; 각 값이 실제 lexical/vector/RRF retrieval을 선택한다 |
 | `page` | Integer from 1 through 500, with a maximum offset of 10,000 |
 | `pageSize` | Integer from 1 through 20; default 10 |
 | `count` | `none`, `exact`, `planned`, or `estimated`; the response total is a bounded lower bound |
@@ -64,6 +64,11 @@ Search items expose native Provider Contract V2 evidence:
   "query": "1 BvR 2656/18 climate",
   "service": "worldcons",
   "transport": "cloudflare-worker",
+  "mode": "hybrid",
+  "requestedMode": "hybrid",
+  "effectiveMode": "hybrid",
+  "degraded": false,
+  "databaseRetrievalMode": "hybrid",
   "items": [
     {
       "id": "stable UUID",
@@ -128,7 +133,11 @@ Search items expose native Provider Contract V2 evidence:
 
 ## Ranking and full content
 
-Recognized case references are ranked first, followed by PostgreSQL full-text relevance and decision date. BVerfG docket references such as `1 BvR 2656/18` are recognized independently of surrounding Korean or English text. `Neubauer` and `Klimabeschluss` resolve to that docket.
+Recognized case references are handled by an exact-case preflight before ordinary retrieval. BVerfG docket references such as `1 BvR 2656/18` are recognized independently of surrounding Korean or English text, and `Neubauer`/`Klimabeschluss` resolve to that docket without requiring an embedding request.
+
+For ordinary queries, `fulltext` uses PostgreSQL `ts_rank_cd`, `semantic` uses pgvector cosine similarity, and `hybrid` fuses the lexical and semantic ranks with reciprocal rank fusion (RRF, `k=60`). Exact normalized titles sort above the fused score, while decision recency is used only as a tie-breaker after relevance. This matches the Next.js hybrid-search policy introduced in the main application.
+
+`requestedMode` records the caller's requested mode. `effectiveMode` and the legacy-compatible `mode` field record what actually executed. When semantic/hybrid embedding generation is unavailable, the Worker fails soft to `fulltext`, returns `degraded: true`, and includes `degradationReason` (`embedding_not_configured`, `embedding_unavailable`, or `empty_query`). `databaseRetrievalMode` reports the V3 RPC path (`fulltext`, `semantic`, `hybrid`, `exact-case`, or `latest`) when supplied by the database response.
 
 `GET /api/articles/{slug}` returns the same identity, source, temporal, and checksum evidence as search, plus `summaryJson`, `bodyExcerpt`, and the first bounded `cleanedText` page. cclrag2 should hydrate only selected search hits.
 
@@ -165,6 +174,9 @@ GET /api/articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
 - Search cache directive: `s-maxage=60, stale-while-revalidate=300`
 - Detail/source cache directive: `s-maxage=300, stale-while-revalidate=900`
 - Worker-to-Supabase timeout: 8 seconds
+- Semantic/hybrid embedding timeout: 5 seconds
+- Semantic/hybrid mode requires the Worker secret `OPENAI_API_KEY`; the default model is `text-embedding-3-small` and can be changed with `OPENAI_EMBEDDING_MODEL`
+- Missing or failed embedding generation does not fail the request; it is surfaced as an explicit degraded full-text fallback
 - `400`: invalid query, range, pagination, or unsupported parameter
 - `404`: unknown endpoint, article, or source snapshot
 - `429`: upstream rate limit; honor `Retry-After`

@@ -66,12 +66,24 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 ## 3단계 — Cloudflare Search Worker 검색 계약 통일
 
-상태: 대기
+상태: 완료 (2026-08-26)
+
+### 범위
 
 - Worker가 수신하는 `fulltext|semantic|hybrid` mode를 실제 retrieval에 반영한다.
 - `worldcons_provider_search_v3` 등 명시적 mode-aware RPC를 도입한다.
 - requested/effective mode 및 degraded 상태를 일관되게 표현한다.
 - Next.js 검색과 Worker 검색이 동일한 핵심 ranking 정책을 사용하도록 정렬한다.
+
+### 완료 결과
+
+- Search Worker를 `worldcons_provider_search_v3`로 전환하고 `p_mode`와 optional query embedding을 실제 RPC에 전달하도록 수정했다.
+- `fulltext`는 `ts_rank_cd`, `semantic`은 pgvector cosine similarity, `hybrid`는 RRF(`k=60`)를 사용하도록 DB retrieval을 분리했다.
+- Hybrid의 exact normalized title 우선 및 relevance 이후 recency tie-break 규칙을 Next.js 검색과 맞췄다.
+- BVerfG 사건번호/Neubauer/Klimabeschluss exact-case preflight는 embedding 호출 전에 처리해 불필요한 semantic 비용과 잘못된 degraded 판정을 제거했다.
+- Worker는 semantic/hybrid 질의에서 OpenAI embedding을 생성하며, 키 미설정·호출 실패·빈 질의는 full-text로 fail-soft하고 `requestedMode`, `effectiveMode`, `mode`, `degraded`, `degradationReason`으로 실제 실행 상태를 반환한다.
+- HTTP Provider Contract는 기존 `2.0`을 유지해 소비자 하위 호환성을 보존하고, 내부 DB 검색 계약만 V3로 올렸다.
+- 공개 projection만 읽는 service-role 전용 V3 RPC와 migration 회귀 테스트를 추가했다.
 
 ## 4단계 — 사건번호 검색 통합과 검색 확장성
 
