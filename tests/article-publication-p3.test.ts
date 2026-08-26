@@ -7,6 +7,9 @@ import {
   articlePublicationV4ReadsEnabled,
   articlePublicationV4ShadowWriteEnabled,
   processArticleCacheOutboxBatch,
+  publicArticleReadAuthority,
+  publicArticleRelation,
+  publicVectorMatchRpc,
   shadowConfirmedLegacyArticleMutation,
 } from "@/lib/article-publication";
 import type {
@@ -60,6 +63,18 @@ test("P3 flags are false unless explicitly true", () => {
   assert.equal(articlePublicationV4ShadowWriteEnabled({}), false);
   assert.equal(articlePublicationV4ReadsEnabled({ ADMIN_PUBLICATION_V4_READ_ENABLED: "1" }), false);
   assert.equal(articlePublicationV4OutboxProcessorEnabled({ ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: "TRUE" }), true);
+});
+
+test("public read authority centralizes the P3 cutover and legacy rollback boundary", () => {
+  const projection = { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" };
+  assert.equal(publicArticleReadAuthority(false, projection), "projection");
+  assert.equal(publicArticleRelation(false, projection), "public_article_projection_p3");
+  assert.equal(publicVectorMatchRpc(false, projection), "match_public_article_versions_p3");
+
+  assert.equal(publicArticleReadAuthority(false, {}), "legacy");
+  assert.equal(publicArticleRelation(false, {}), "articles");
+  assert.equal(publicVectorMatchRpc(false, {}), "match_articles");
+  assert.equal(publicArticleReadAuthority(true, projection), "legacy");
 });
 
 test("compatibility shadows only confirmed outcomes and builds deterministic persisted-row transitions", async () => {
@@ -202,6 +217,7 @@ test("migration and application contracts cover immutable authority, projection,
   const reviewEligibility = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260713090000_article_publication_p3_review_eligibility.sql"), "utf8");
   const queries = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
   const vector = fs.readFileSync(path.join(process.cwd(), "lib/search/vector.ts"), "utf8");
+  const publicReadAuthoritySource = fs.readFileSync(path.join(process.cwd(), "lib/article-publication/public-read-authority.ts"), "utf8");
   const adminQueries = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
 
   for (const table of [
@@ -237,10 +253,22 @@ test("migration and application contracts cover immutable authority, projection,
   assert.ok(adminQueries.includes("if (persisted?.id)"));
   assert.ok(!adminQueries.includes("updatedCount === refs.length"));
 
-  assert.ok(queries.includes("public_article_projection_p3"));
+  assert.ok(publicReadAuthoritySource.includes("public_article_projection_p3"));
+  assert.ok(publicReadAuthoritySource.includes("match_public_article_versions_p3"));
+  assert.ok(queries.includes("publicArticleRelation"));
+  assert.ok(queries.includes("publicProjectionReadsEnabled"));
   assert.ok(queries.includes("public_tag_projection_p3"));
   assert.ok(queries.includes("public_jurisdiction_article_counts_p3"));
-  assert.ok(vector.includes("match_public_article_versions_p3"));
+  assert.ok(vector.includes("publicVectorMatchRpc"));
+  for (const centralizedReader of [
+    "lib/db/queries.ts",
+    "lib/search/vector.ts",
+    "lib/search/exact-case.ts",
+    "lib/search/ranked-page.ts",
+  ]) {
+    const source = fs.readFileSync(path.join(process.cwd(), centralizedReader), "utf8");
+    assert.ok(!source.includes("articlePublicationV4ReadsEnabled"), `${centralizedReader} must use the centralized public read authority`);
+  }
   for (const surface of [
     "app/page.tsx",
     "app/list/page.tsx",

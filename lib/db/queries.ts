@@ -22,7 +22,7 @@ import type {
 import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
-import { articlePublicationV4ReadsEnabled, observeArticlePublicationReadDecision } from "@/lib/article-publication";
+import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
 
 interface SupabaseTagRow {
@@ -128,7 +128,7 @@ const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summar
 const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text`;
 
 function publicationProjectionEnabled(includeUnpublished?: boolean) {
-  return !includeUnpublished && articlePublicationV4ReadsEnabled();
+  return publicProjectionReadsEnabled(Boolean(includeUnpublished));
 }
 
 function observePublicProjectionRead(includeUnpublished?: boolean) {
@@ -136,7 +136,7 @@ function observePublicProjectionRead(includeUnpublished?: boolean) {
 }
 
 function articleRelation(includeUnpublished?: boolean) {
-  return publicationProjectionEnabled(includeUnpublished) ? "public_article_projection_p3" : "articles";
+  return publicArticleRelation(Boolean(includeUnpublished));
 }
 
 function projectionSelect(select: string, includeUnpublished?: boolean) {

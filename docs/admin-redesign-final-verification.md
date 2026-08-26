@@ -77,3 +77,14 @@ The production database migration and additive backfill ran on 2026-07-13 with e
 - Strict no-write browser attestation: the first local browser launch inherited the repository analytics configuration before analytics was explicitly disabled, so a bounded page-view event may have been emitted. No production inspection or cleanup was performed. All subsequent browser checks ran with analytics and every redesign writer/worker flag explicitly disabled.
 
 Production schema migration, additive lifecycle/publication backfill, tag-count refresh, cache revalidation, and outbox delivery occurred in this rollout. No redesign authority flag was enabled, and no compatibility retirement, retention deletion, or destructive article/source-snapshot mutation occurred.
+
+## 2026-08-27 Retirement Re-evaluation
+
+A fresh read-only Gate 5 evaluation was performed before the WorldCons six-stage cleanup attempted any compatibility removal. The result remains **not ready for destructive retirement**.
+
+- 24-hour explicit retirement evaluation: `ready=false`; the policy requires at least 336 continuous hours and full-sample observation coverage.
+- 336-hour health evidence: public identity parity itself is intact (`legacyPublicCount=1246`, `explicitPublicCount=1246`, `parityMismatchCount=0`, matching identity digests), but unresolved publication quarantine is 12 and therefore `publication.parity` remains critical.
+- Lifecycle evidence: backlog 9, oldest review age 2,529,046 seconds, therefore `lifecycle.review` remains critical.
+- Compatibility observations have no full-window coverage yet; backup/restore evidence and distinct-owner approval sets are absent.
+
+Accordingly, the cleanup does not delete P0/P2/P3 compatibility readers/writers or rollback flags. Public read authority selection was instead centralized behind one module so the remaining rollback boundary is explicit and mechanically testable. Future destructive retirement must rerun the same Gate 5 evaluator and may proceed only when every gate passes.

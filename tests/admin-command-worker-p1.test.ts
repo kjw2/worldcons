@@ -706,7 +706,7 @@ test("candidate retry validates official ownership and records failed/fetched tr
   assert.equal(fetchCalled, false);
 });
 
-test("P1 migration and workflows enforce cohort claims, ordered daily execution, and legacy rollback", () => {
+test("P1 migration and workflows enforce cohort claims, ordered daily execution, and direct queue draining", () => {
   const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712130000_admin_command_worker_p1.sql"), "utf8");
   const daily = fs.readFileSync(path.join(process.cwd(), ".github/workflows/crawlee-worker.yml"), "utf8");
   const direct = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-command-worker-p1.yml"), "utf8");
@@ -734,7 +734,8 @@ test("P1 migration and workflows enforce cohort claims, ordered daily execution,
     previousIndex = commandIndex;
   }
   assert.match(legacy, /cron: "\*\/15 \* \* \* \*"/);
-  assert.match(legacy, /api\/admin\/cron\/jobs/);
+  assert.match(legacy, /run: pnpm admin:job:worker/);
+  assert.doesNotMatch(legacy, /api\/admin\/cron\/jobs/);
 
   const architecture = fs.readFileSync(path.join(process.cwd(), "docs/admin-redesign-v2-v4-architecture.md"), "utf8");
   const runbook = fs.readFileSync(path.join(process.cwd(), "docs/admin-command-control-plane-p1.md"), "utf8");

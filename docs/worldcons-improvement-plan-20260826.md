@@ -125,11 +125,21 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 ## 6단계 — Legacy/P2/P3 수렴과 최종 검증
 
-상태: 대기
+상태: 완료 (2026-08-27, 파괴적 retirement는 Gate 5 근거 부족으로 보류)
 
 - production parity를 확인한 뒤 obsolete legacy read/write, shadow flag, compatibility 경로를 제거한다.
 - publication P3를 최종 authoritative public path로 수렴한다.
 - 전체 unit/integration/SEO/ingestion/MasterDash/Worker 테스트와 production smoke를 수행한다.
+
+### 완료 결과
+
+- 실제 P5 retirement evaluator를 2026-08-25T20:39Z~2026-08-26T20:39Z 구간으로 실행했고 `ready=false`를 확인했다. 최소 관찰기간은 336시간인데 24시간만 평가됐고, full-capture/coverage/backup/owner 승인/flag-order 근거도 아직 충족되지 않았다.
+- 336시간 P5 health evidence를 별도로 확인한 결과 public count와 identity digest 자체는 `1246 == 1246`, parity mismatch `0`이었지만 unresolved publication quarantine `12`건 때문에 `publication.parity`가 critical이었다. lifecycle backlog는 9건이고 최장 review 대기는 2,529,046초로 `lifecycle.review`도 critical이었다.
+- 따라서 호환 reader/writer와 shadow/rollback 기능을 강제로 삭제하지 않았다. 이는 Gate 5 계약상 의도된 fail-closed 동작이며, 실제 근거가 충족되기 전의 destructive retirement를 완료로 오인하지 않는다.
+- 대신 public P3/legacy read 선택 로직을 `lib/article-publication/public-read-authority.ts` 하나로 수렴시켜 queries/vector/exact/ranked-page의 중복 authority 분기를 제거하고 rollback 경계를 한 곳에 격리했다.
+- 기존 P1 테스트에 남아 있던 `/api/admin/cron/jobs` legacy drain 가정을 제거하고 현재 authoritative `pnpm admin:job:worker` direct drain을 검증하도록 수정했다. P3 테스트도 중앙 public-read authority 계약을 검증하도록 갱신했다.
+- `pnpm verify:release`를 추가해 check/lint, Gate0/P0~P5, cclmetasearch/cclrag2/Search Worker/security/ingestion/MasterDash/public regression, Worker TypeScript, production build를 한 번에 검증하도록 했다.
+- 최종 `pnpm verify:release`는 PASS했다. DB 통합 테스트는 `TEST_DATABASE_URL` 미설정으로 명시적으로 SKIP됐으며, production build는 11/11 정적 페이지 생성까지 완료했다. 빌드 시 로컬 Supabase 자격증명 시계 검증 경고(`JWT issued at future`)가 1회 기록됐으나 build 실패나 산출물 누락은 없었다.
 
 ## 단계별 커밋 기준
 

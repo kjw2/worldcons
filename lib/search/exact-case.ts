@@ -1,4 +1,4 @@
-import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication";
+import { publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
@@ -27,13 +27,13 @@ export async function exactCaseSearch(filters: ArticleListFilters): Promise<Arti
   const supabase = getSupabaseAdmin();
   if (!supabase) return empty;
 
-  const relation = articlePublicationV4ReadsEnabled() ? "public_article_projection_p3" : "articles";
+  const relation = publicArticleRelation();
   const ids: string[] = [];
 
   for (const reference of references) {
     const baseQuery = () => {
       let query = supabase.from(relation).select("id").eq("source_key", reference.sourceKey);
-      if (!articlePublicationV4ReadsEnabled()) {
+      if (!publicProjectionReadsEnabled()) {
         query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
       }
       if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);

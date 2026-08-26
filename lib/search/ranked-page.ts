@@ -1,4 +1,4 @@
-import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication";
+import { publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import type { ArticleListFilters, PageInfo } from "@/lib/db/types";
 
@@ -34,7 +34,7 @@ export async function rankedSearchPage(
   mode: RankedSearchMode,
   embedding: number[] | null,
 ): Promise<RankedSearchPage | null> {
-  if (filters.includeUnpublished || !articlePublicationV4ReadsEnabled()) return null;
+  if (filters.includeUnpublished || !publicProjectionReadsEnabled()) return null;
 
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
