@@ -93,7 +93,7 @@ jobs:
       BVERFG_CRAWL_DELAY_MS: "3000"
       BVERFG_TIMEOUT_MS: "15000"
       BVERFG_MAX_CONCURRENCY: "1"
-      BVERFG_RETRY_COUNT: "0"
+      BVERFG_RETRY_COUNT: "2"
       BVERFG_SITE_BLOCK_CIRCUIT_THRESHOLD: "3"
       BVERFG_PLAYWRIGHT_ESCALATE_LIMIT: "3"
       BVERFG_PENDING_RECHECK_LIMIT: "3"
@@ -140,13 +140,13 @@ jobs:
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
         run: pnpm admin:worker:p1 -- --daily-pipeline --source=${{ matrix.source }} --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
-      - name: Run isolated BVerfG worker without browser fallback
+      - name: Run isolated BVerfG worker
         if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && matrix.source == 'de-bverfg'
         env:
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
-        run: pnpm crawl:worker -- --source=de-bverfg --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --no-playwright --debug
+        run: pnpm crawl:worker -- --source=de-bverfg --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --debug
       - name: Run isolated source worker
         if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && matrix.source != 'de-bverfg'
         env:

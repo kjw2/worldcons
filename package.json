@@ -36,6 +36,7 @@
     "admin:lifecycle:p2": "tsx scripts/article-lifecycle-p2.ts",
     "admin:publication:p3": "tsx scripts/article-publication-p3.ts",
     "admin:health:p5": "tsx scripts/admin-health-p5.ts",
+    "ops:watchdog": "tsx scripts/ops-watchdog.ts",
     "admin:retirement:p5": "tsx scripts/admin-retirement-readiness-p5.ts",
     "admin:retention:p5": "tsx scripts/admin-retention-p5.ts",
     "admin:migrations:check": "tsx scripts/admin-redesign-migration-check.ts",

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   BarChart3,
   BookOpenCheck,
   ClipboardList,
@@ -39,6 +40,7 @@ const contentNavigation: AdminNavigationItem[] = [
 ];
 
 const systemNavigation: AdminNavigationItem[] = [
+  { href: "/admin/ops", label: "무인운영 현황", icon: Activity },
   { href: "/admin/ingestion-runs", label: "수집 실행 기록", icon: ListChecks },
   { href: "/admin/audit", label: "감사 로그", icon: ClipboardList },
   { href: "/admin/llm", label: "LLM 설정", icon: KeyRound },
