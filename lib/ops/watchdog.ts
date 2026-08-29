@@ -2,12 +2,26 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { getCollectionControlState } from "@/lib/masterdash/store";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
+import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
+import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";
 import { INCREMENTAL_SOURCE_KEYS } from "@/lib/ingest/incremental";
 
 export const OPS_EVENT_RETENTION_DAYS = 30;
 const MISSED_WINDOW_HOURS = 26;
 const CANDIDATE_BACKLOG_WARNING_DAYS = 7;
 const LOOKBACK_HOURS = 48;
+const P5_OBSERVATION_HOURS = 24;
+const P5_SLA_KEYS = [
+  "queue.latency",
+  "queue.heartbeat",
+  "queue.abort",
+  "queue.retry",
+  "lifecycle.backlog",
+  "lifecycle.review",
+  "publication.parity",
+  "outbox.delivery",
+  "outbox.dead_letter",
+] as const;
 
 export type WatchdogSeverity = "info" | "warning" | "critical";
 
@@ -230,16 +244,34 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     violations.push(...sourceViolations);
   }
 
-  if (!paused) {
-    const lastCompletedMs = parseTimestamp(lastCompletedRunAt);
-    if (lastCompletedMs === null) {
-      violations.push({ key: "missed-window", severity: "critical", summary: `${LOOKBACK_HOURS}시간 내 완료된 수집 실행이 없습니다.` });
-    } else if (now.getTime() - lastCompletedMs > MISSED_WINDOW_HOURS * 3_600_000) {
-      violations.push({
-        key: "missed-window",
-        severity: "critical",
-        summary: `마지막 완료 수집 실행이 ${hoursLabel((now.getTime() - lastCompletedMs) / 3_600_000)} 전입니다 (기대 주기 ${MISSED_WINDOW_HOURS}h).`,
-      });
+  const evidence = await getP5HealthEvidence({
+    observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
+    observationEnd: generatedAt,
+    now,
+    policy,
+  });
+  if (!evidence.available) {
+    violations.push({
+      key: "p5-evidence-unavailable",
+      severity: "warning",
+      summary: "P5 운영 지표(명령 큐/수명주기/아웃박스)를 조회할 수 없어 해당 SLA 평가를 생략했습니다.",
+    });
+  } else {
+    for (const sla of evaluateP5Slas(evidence, policy)) {
+      if (!P5_SLA_KEYS.includes(sla.key)) continue;
+      if (sla.status === "critical" && sla.value !== null) {
+        violations.push({
+          key: `p5:${sla.key}`,
+          severity: "critical",
+          summary: `${sla.label}: ${sla.value}${sla.unit === "seconds" ? "초" : sla.unit} (치명 임계 ${sla.criticalThreshold}${sla.unit === "seconds" ? "초" : sla.unit}).`,
+        });
+      } else if (sla.status === "unknown") {
+        violations.push({
+          key: `p5:${sla.key}`,
+          severity: "warning",
+          summary: `${sla.label}을(를) 평가할 수 없습니다.`,
+        });
+      }
     }
   }
 

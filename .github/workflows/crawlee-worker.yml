@@ -2,8 +2,8 @@ name: Crawlee worker ingest
 
 on:
   schedule:
-    # GitHub cron uses UTC. This is KST 06:00.
-    - cron: "0 21 * * *"
+    # GitHub cron uses UTC. 00:00 UTC = KST 09:00; buffer for GitHub schedule drift.
+    - cron: "0 0 * * *"
   workflow_dispatch:
     inputs:
       source:
