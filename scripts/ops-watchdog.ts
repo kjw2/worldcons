@@ -113,7 +113,10 @@ async function manageIssue(evaluation: WatchdogEvaluation, now: Date): Promise<s
     if (issueSignature(existing) === signature) {
       return `unchanged #${existing.number}`;
     }
-    await githubApi("PATCH", `issues/${existing.number}`, { body: issueBody(evaluation) });
+    await githubApi("PATCH", `issues/${existing.number}`, {
+      title: `${ISSUE_TITLE_PREFIX} (${evaluation.violations.length}건)`,
+      body: issueBody(evaluation),
+    });
     await recordAdminOpsEvent({
       eventType: "watchdog_issue_updated",
       severity: evaluation.violations.some((violation) => violation.severity === "critical") ? "critical" : "warning",

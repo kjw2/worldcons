@@ -273,10 +273,11 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     for (const sla of evaluateP5Slas(evidence, policy)) {
       if (!P5_SLA_KEYS[sla.key]) continue;
       if (sla.status === "critical" && sla.value !== null) {
+        const unit = sla.unit === "seconds" ? "초" : sla.unit === "count" ? "건" : sla.unit;
         violations.push({
           key: `p5:${sla.key}`,
           severity: "critical",
-          summary: `${sla.label}: ${sla.value}${sla.unit === "seconds" ? "초" : sla.unit} (치명 임계 ${sla.criticalThreshold}${sla.unit === "seconds" ? "초" : sla.unit}).`,
+          summary: `${sla.label}: ${sla.value}${unit} (치명 임계 ${sla.criticalThreshold}${unit}).`,
         });
       } else if (sla.status === "unknown") {
         violations.push({
