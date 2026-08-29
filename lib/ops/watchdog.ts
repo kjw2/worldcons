@@ -11,17 +11,17 @@ const MISSED_WINDOW_HOURS = 26;
 const CANDIDATE_BACKLOG_WARNING_DAYS = 7;
 const LOOKBACK_HOURS = 48;
 const P5_OBSERVATION_HOURS = 24;
-const P5_SLA_KEYS = [
-  "queue.latency",
-  "queue.heartbeat",
-  "queue.abort",
-  "queue.retry",
-  "lifecycle.backlog",
-  "lifecycle.review",
-  "publication.parity",
-  "outbox.delivery",
-  "outbox.dead_letter",
-] as const;
+const P5_SLA_KEYS: Record<string, true> = {
+  "queue.latency": true,
+  "queue.heartbeat": true,
+  "queue.abort": true,
+  "queue.retry": true,
+  "lifecycle.backlog": true,
+  "lifecycle.review": true,
+  "publication.parity": true,
+  "outbox.delivery": true,
+  "outbox.dead_letter": true,
+};
 
 export type WatchdogSeverity = "info" | "warning" | "critical";
 
@@ -244,6 +244,19 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     violations.push(...sourceViolations);
   }
 
+  if (!paused) {
+    const lastCompletedMs = parseTimestamp(lastCompletedRunAt);
+    if (lastCompletedMs === null) {
+      violations.push({ key: "missed-window", severity: "critical", summary: `${LOOKBACK_HOURS}시간 내 완료된 수집 실행이 없습니다.` });
+    } else if (now.getTime() - lastCompletedMs > MISSED_WINDOW_HOURS * 3_600_000) {
+      violations.push({
+        key: "missed-window",
+        severity: "critical",
+        summary: `마지막 완료 수집 실행이 ${hoursLabel((now.getTime() - lastCompletedMs) / 3_600_000)} 전입니다 (기대 주기 ${MISSED_WINDOW_HOURS}h).`,
+      });
+    }
+  }
+
   const evidence = await getP5HealthEvidence({
     observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
     observationEnd: generatedAt,
@@ -258,7 +271,7 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     });
   } else {
     for (const sla of evaluateP5Slas(evidence, policy)) {
-      if (!P5_SLA_KEYS.includes(sla.key)) continue;
+      if (!P5_SLA_KEYS[sla.key]) continue;
       if (sla.status === "critical" && sla.value !== null) {
         violations.push({
           key: `p5:${sla.key}`,
