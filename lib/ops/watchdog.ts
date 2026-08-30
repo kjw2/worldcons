@@ -11,6 +11,13 @@ const MISSED_WINDOW_HOURS = 26;
 const CANDIDATE_BACKLOG_WARNING_DAYS = 7;
 const LOOKBACK_HOURS = 48;
 const P5_OBSERVATION_HOURS = 24;
+// Source text can be collected successfully while summarization stays behind, and that
+// gap is what keeps an article out of the public listing. Watch it per source so a single
+// backlogged jurisdiction cannot hide behind a healthy total.
+const SUMMARY_BACKLOG_WARNING_COUNT = 40;
+const SUMMARY_BACKLOG_CRITICAL_COUNT = 120;
+const SUMMARY_BACKLOG_WARNING_AGE_HOURS = 72;
+const SUMMARY_BACKLOG_STATUSES = ["cleaned", "failed_summary"] as const;
 const P5_SLA_KEYS: Record<string, true> = {
   "queue.latency": true,
   "queue.heartbeat": true,
@@ -61,6 +68,8 @@ export interface WatchdogSourceStatus {
   addedCount: number | null;
   refreshedCount: number | null;
   uncollectedCount: number | null;
+  summaryBacklogCount: number | null;
+  oldestSummaryBacklogAt: string | null;
   healthy: boolean;
 }
 
@@ -113,6 +122,82 @@ function hoursLabel(hours: number | null) {
 export function evaluationViolationSignature(evaluation: WatchdogEvaluation) {
   if (evaluation.violations.length === 0) return "ok";
   return evaluation.violations.map((violation) => violation.key).sort().join("|");
+}
+
+export interface SummaryBacklogStatus {
+  count: number;
+  oldestCreatedAt: string | null;
+}
+
+// Articles whose source text is verified publishable but whose summary has not landed yet.
+// These rows are collected but invisible to the public listing, so they measure the real
+// gap between ingestion and publication.
+async function getSummaryBacklogBySource(): Promise<Map<string, SummaryBacklogStatus>> {
+  const backlog = new Map<string, SummaryBacklogStatus>();
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return backlog;
+
+  for (const sourceKey of INCREMENTAL_SOURCE_KEYS) {
+    try {
+      const { count, error } = await supabase
+        .from("articles")
+        .select("id", { count: "exact", head: true })
+        .eq("source_key", sourceKey)
+        .in("status", [...SUMMARY_BACKLOG_STATUSES])
+        .contains("source_metadata", { collection: { publishable: true } });
+      if (error) continue;
+
+      const pendingCount = count ?? 0;
+      let oldestCreatedAt: string | null = null;
+      if (pendingCount > 0) {
+        const { data: oldest } = await supabase
+          .from("articles")
+          .select("created_at")
+          .eq("source_key", sourceKey)
+          .in("status", [...SUMMARY_BACKLOG_STATUSES])
+          .contains("source_metadata", { collection: { publishable: true } })
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        oldestCreatedAt = textValue(oldest?.created_at as string | null | undefined);
+      }
+
+      backlog.set(sourceKey, { count: pendingCount, oldestCreatedAt });
+    } catch {
+      // Backlog metrics are best-effort and must not fail the whole evaluation.
+    }
+  }
+
+  return backlog;
+}
+
+export function summaryBacklogViolation(sourceKey: string, status: SummaryBacklogStatus, now: Date): WatchdogViolation | null {
+  if (status.count <= 0) return null;
+
+  const oldestMs = parseTimestamp(status.oldestCreatedAt);
+  const waitingHours = oldestMs === null ? null : Math.max(0, (now.getTime() - oldestMs) / 3_600_000);
+  const waitingLabel = waitingHours === null ? "" : `, 최고령 ${hoursLabel(waitingHours)} 전`;
+
+  if (status.count >= SUMMARY_BACKLOG_CRITICAL_COUNT) {
+    return {
+      key: `summary-backlog:${sourceKey}`,
+      severity: "critical",
+      sourceKey,
+      summary: `원문은 확보됐지만 요약 대기 ${status.count}건${waitingLabel} (치명 임계 ${SUMMARY_BACKLOG_CRITICAL_COUNT}건). 해당 자료는 공개 목록에 보이지 않습니다.`,
+    };
+  }
+
+  const staleBeyondWindow = waitingHours !== null && waitingHours > SUMMARY_BACKLOG_WARNING_AGE_HOURS;
+  if (status.count >= SUMMARY_BACKLOG_WARNING_COUNT || staleBeyondWindow) {
+    return {
+      key: `summary-backlog:${sourceKey}`,
+      severity: "warning",
+      sourceKey,
+      summary: `원문은 확보됐지만 요약 대기 ${status.count}건${waitingLabel} (경고 임계 ${SUMMARY_BACKLOG_WARNING_COUNT}건 또는 ${SUMMARY_BACKLOG_WARNING_AGE_HOURS}h 초과).`,
+    };
+  }
+
+  return null;
 }
 
 export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvaluation> {
@@ -176,6 +261,8 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
   const sources: WatchdogSourceStatus[] = [];
   let lastCompletedRunAt: string | null = null;
 
+  const summaryBacklog = await getSummaryBacklogBySource();
+
   for (const sourceKey of INCREMENTAL_SOURCE_KEYS) {
     const rows = rowsBySource.get(sourceKey) ?? [];
     const lastRun = rows[0] ?? null;
@@ -200,6 +287,11 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     }
 
     const sourceViolations: WatchdogViolation[] = [];
+    const backlogStatus = summaryBacklog.get(sourceKey) ?? null;
+    if (backlogStatus) {
+      const backlogViolation = summaryBacklogViolation(sourceKey, backlogStatus, now);
+      if (backlogViolation) sourceViolations.push(backlogViolation);
+    }
 
     if (lastRunStatus === "failed") {
       sourceViolations.push({ key: `source-outcome:${sourceKey}`, severity: "critical", sourceKey, summary: "마지막 수집 실행이 실패(failed)했습니다." });
@@ -239,6 +331,8 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
       addedCount: numberValue(lastCompletedMetadata?.recordsAdded),
       refreshedCount: numberValue(lastCompletedMetadata?.refreshedCount),
       uncollectedCount: numberValue(lastCompletedMetadata?.uncollectedCandidateCount),
+      summaryBacklogCount: backlogStatus?.count ?? null,
+      oldestSummaryBacklogAt: backlogStatus?.oldestCreatedAt ?? null,
       healthy: sourceViolations.length === 0,
     });
     violations.push(...sourceViolations);

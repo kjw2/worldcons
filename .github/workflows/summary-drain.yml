@@ -1,0 +1,96 @@
+# Source text collection and summarization run at different speeds. The daily ingest
+# workflow only drains a small summary batch, so a source that collects in bulk can stay
+# invisible on the public listing for weeks. This workflow drains the summary queue on its
+# own schedule so publication throughput is not capped by the ingest cadence.
+name: Summary queue drain
+
+on:
+  schedule:
+    # Every 6 hours (UTC). Offset from the 00:00 ingest run to avoid overlapping API load.
+    - cron: "30 3,9,15,21 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Source key to drain, or empty for all pending sources
+        required: false
+        default: ""
+      limit:
+        description: Maximum articles to summarize in this run
+        required: false
+        default: "60"
+      max_passes:
+        description: Retry passes when the provider defers on quota
+        required: false
+        default: "6"
+
+concurrency:
+  # Shares the ingest group so summarization never competes with a running crawl
+  # for the same provider quota.
+  group: admin-command-p1
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    name: Drain pending summaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      LLM_SETTINGS_SECRET: ${{ secrets.LLM_SETTINGS_SECRET }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+      OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
+      OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.OPENAI_COMPATIBLE_BASE_URL }}
+      OPENAI_COMPATIBLE_SUMMARY_MODEL: ${{ secrets.OPENAI_COMPATIBLE_SUMMARY_MODEL }}
+      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER }}
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
+      ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED || 'false' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
+      WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      SUMMARY_LIMIT_INPUT: ${{ github.event.inputs.limit || '60' }}
+      SUMMARY_PASSES_INPUT: ${{ github.event.inputs.max_passes || '6' }}
+      SUMMARY_SOURCE_INPUT: ${{ github.event.inputs.source }}
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Drain pending summaries
+        # No --strict: a provider quota deferral is an expected pause, not a run failure.
+        run: |
+          if [ -n "$SUMMARY_SOURCE_INPUT" ]; then
+            pnpm summarize-pending -- --source="$SUMMARY_SOURCE_INPUT" --limit="$SUMMARY_LIMIT_INPUT" --drain --max-passes="$SUMMARY_PASSES_INPUT" --pass-delay-ms=65000 --retry-attempts=1 --retry-delay-ms=65000
+          else
+            pnpm summarize-pending -- --limit="$SUMMARY_LIMIT_INPUT" --drain --max-passes="$SUMMARY_PASSES_INPUT" --pass-delay-ms=65000 --retry-attempts=1 --retry-delay-ms=65000
+          fi
+      - name: Refresh public tag counts
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED != 'true'
+        run: pnpm refresh-tag-counts
+      - name: Revalidate production public caches
+        if: env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && env.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED != 'true'
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret is required" >&2
+            exit 1
+          fi
+          BASE_URL="${WORLDCONS_BASE_URL:-https://worldcons.vercel.app}"
+          BASE_URL="${BASE_URL%/}"
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/admin/public-content/revalidate"

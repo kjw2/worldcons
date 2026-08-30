@@ -700,7 +700,7 @@ assert(
 );
 const validProductionEnv = {
   NODE_ENV: "production",
-  ADMIN_PASSWORD: "admin6",
+  ADMIN_PASSWORD: "admin-password-long-enough",
   ADMIN_SESSION_SECRET: "b".repeat(32),
   CRON_SECRET: "c".repeat(32),
   LLM_SETTINGS_SECRET: "d".repeat(32),
@@ -708,6 +708,10 @@ const validProductionEnv = {
 };
 assert(validateProductionSecurityConfig(validProductionEnv).ok, "valid production security config should pass");
 assert(!validateProductionSecurityConfig({ ...validProductionEnv, ADMIN_PASSWORD: "short" }).ok, "short admin passwords must fail");
+assert(
+  !validateProductionSecurityConfig({ ...validProductionEnv, ADMIN_PASSWORD: "admin6" }).ok,
+  "a 6-character admin password must no longer satisfy the production floor",
+);
 assert(!validateProductionSecurityConfig({ ...validProductionEnv, CRON_SECRET: "short" }).ok, "short production secrets must fail");
 assert(
   !validateProductionSecurityConfig({ ...validProductionEnv, LLM_SETTINGS_SECRET: validProductionEnv.CRON_SECRET }).ok,
@@ -869,6 +873,33 @@ for (const requiredCacheRevalidationText of [
     `scheduled summary workflow must include ${requiredCacheRevalidationText}`,
   );
 }
+
+// The ingest workflow drains only a small summary batch per run, so a dedicated queue
+// drain keeps publication throughput independent of the daily crawl cadence.
+const summaryDrainWorkflowSource = fs.readFileSync(path.join(process.cwd(), ".github/workflows/summary-drain.yml"), "utf8");
+for (const requiredDrainText of [
+  "summarize-pending",
+  "--drain",
+  "--pass-delay-ms=65000",
+  "Revalidate production public caches",
+  "/api/admin/public-content/revalidate",
+]) {
+  assert(summaryDrainWorkflowSource.includes(requiredDrainText), `summary drain workflow must include ${requiredDrainText}`);
+}
+assert(/cron: "[^"]+"/.test(summaryDrainWorkflowSource), "summary drain workflow must run on its own schedule");
+// Inspect executed lines only; a "--strict" mention inside a YAML comment must not trip this.
+const summaryDrainExecutableLines = summaryDrainWorkflowSource
+  .split(/\r?\n/)
+  .filter((line) => !line.trim().startsWith("#"))
+  .join("\n");
+assert(
+  !summaryDrainExecutableLines.includes("--strict"),
+  "summary drain must not fail the run on provider quota deferrals",
+);
+assert(
+  summaryDrainWorkflowSource.includes("group: admin-command-p1"),
+  "summary drain must share the ingest concurrency group so it cannot compete for provider quota",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",
@@ -880,7 +911,10 @@ for (const requiredCacheHelperText of [
 ]) {
   assert(publicContentCacheSource.includes(requiredCacheHelperText), `public cache helper must include ${requiredCacheHelperText}`);
 }
-assert(publicContentCacheSource.includes('revalidatePath("/v2/articles/[slug]", "page")'), "v2 article pages must be invalidated after public mutations");
+assert(
+  !publicContentCacheSource.includes("/v2"),
+  "retired /v2 paths must not be revalidated; next.config.ts permanently redirects them to clean public URLs",
+);
 const vercelConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { regions?: string[] };
 assert(vercelConfig.regions?.length === 1 && vercelConfig.regions[0] === "icn1", "Vercel functions must run in the Seoul region");
 const articleDetailPageSource = fs.readFileSync(path.join(process.cwd(), "app/articles/[slug]/(detail)/page.tsx"), "utf8");
