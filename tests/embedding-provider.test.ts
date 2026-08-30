@@ -36,6 +36,31 @@ test("embedding provider selection supports Gemini without dropping OpenAI", () 
   assert.match(embeddings, /text-embedding-3-small/u);
 });
 
+test("an unset embedding provider defaults to Gemini rather than OpenAI", () => {
+  // An OpenAI default produced no vectors at all when no OpenAI key was configured,
+  // and the failure was swallowed, so summaries saved without embeddings.
+  const embeddings = read("lib/ai/embeddings.ts");
+  assert.match(embeddings, /process\.env\.EMBEDDING_PROVIDER\?\.trim\(\) \|\| "gemini"/u);
+  assert.doesNotMatch(embeddings, /EMBEDDING_PROVIDER \?\? "openai"/u);
+});
+
+test("scheduled workflows embed with Gemini when the secret is unset", () => {
+  // Every workflow that can write embeddings must agree on the provider, otherwise a
+  // single unset secret reintroduces silently missing vectors.
+  const workflows = [
+    ".github/workflows/summary-drain.yml",
+    ".github/workflows/crawlee-worker.yml",
+    ".github/workflows/admin-job-worker.yml",
+    ".github/workflows/admin-command-worker-p1.yml",
+  ];
+
+  for (const workflow of workflows) {
+    const source = read(workflow);
+    assert.match(source, /EMBEDDING_PROVIDER: \$\{\{ secrets\.EMBEDDING_PROVIDER \|\| .gemini. \}\}/u, workflow);
+    assert.match(source, /GEMINI_EMBEDDING_MODEL: \$\{\{ vars\.GEMINI_EMBEDDING_MODEL \|\| .gemini-embedding-001. \}\}/u, workflow);
+  }
+});
+
 test("embedding backfill only writes vectors and resumes after a provider deferral", () => {
   const backlog = read("lib/ingest/embedding-backlog.ts");
   // The backfill must never rewrite summary text; only the vector column.

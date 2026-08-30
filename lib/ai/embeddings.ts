@@ -25,7 +25,9 @@ export async function createEmbedding(summary: SummaryJson, options: { signal?: 
 
 export async function createTextEmbedding(input: string, options: { signal?: AbortSignal } = {}) {
   const runtime = await getRuntimeLlmSettings();
-  const provider = process.env.EMBEDDING_PROVIDER ?? "openai";
+  // Default to Gemini: the summary provider is Gemini and an unset value previously
+  // fell back to OpenAI, which silently produced no vectors when no OpenAI key existed.
+  const provider = process.env.EMBEDDING_PROVIDER?.trim() || "gemini";
 
   if (provider === "gemini") {
     return createGeminiEmbedding(input, {
