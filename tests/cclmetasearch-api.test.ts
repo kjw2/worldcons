@@ -183,6 +183,7 @@ test("handler emits normalized 429 and 503 errors", async () => {
       remaining: 0,
       resetAt: Date.now() + 12_000,
       retryAfterSeconds: 12,
+      backend: "local" as const,
       headers: { "X-RateLimit-Limit": "1", "Retry-After": "12" },
     }),
   })(searchRequest(TOKEN));
