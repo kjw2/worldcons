@@ -81,6 +81,15 @@ interface GeminiListModelsResponse {
   nextPageToken?: string;
 }
 
+interface GeminiEmbeddingResponse {
+  embedding?: { values?: number[] };
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+  };
+}
+
 interface GeminiAttemptError {
   route: string;
   status?: number;
@@ -741,6 +750,125 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[], signa
   return text;
 }
 
+
+async function callGeminiEmbeddingRoute(route: GeminiRoute, input: string, dimensions: number, signal?: AbortSignal) {
+  const timeoutMs = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS ?? 30_000);
+  let response: Response;
+
+  try {
+    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${route.model}:embedContent`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": route.apiKey,
+      },
+      body: JSON.stringify({
+        model: `models/${route.model}`,
+        content: { parts: [{ text: input }] },
+        // The articles.embedding column is vector(1536), so the model must be asked for
+        // exactly that width rather than its default output size.
+        outputDimensionality: dimensions,
+      }),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    recordCooldown(route);
+    const message = error instanceof Error ? error.message : String(error);
+    const retryableError = new Error(`Gemini embedding route ${routeLabel(route)} transport/timeout failure: ${redact(message, 200)}`) as Error & {
+      retryable?: boolean;
+      tryNextRoute?: boolean;
+    };
+    retryableError.retryable = true;
+    retryableError.tryNextRoute = true;
+    throw retryableError;
+  }
+
+  const responseText = await response.text();
+  let data: GeminiEmbeddingResponse | null = null;
+  try {
+    data = responseText ? (JSON.parse(responseText) as GeminiEmbeddingResponse) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    if (response.status === 429) {
+      record429(route, responseText);
+    } else if (isRouteUnavailableHttpError(response.status, responseText)) {
+      recordCooldown(route, UNAVAILABLE_COOLDOWN_SECONDS);
+    } else if (RECOVERABLE_HTTP_STATUSES.has(response.status)) {
+      recordCooldown(route, COOLDOWN_SECONDS);
+    }
+
+    const apiMessage = data?.error?.message ?? responseText;
+    const error = new Error(`Gemini embedding route ${routeLabel(route)} failed: ${response.status} ${redact(apiMessage)}`) as Error & {
+      status?: number;
+      retryable?: boolean;
+      tryNextRoute?: boolean;
+    };
+    error.status = response.status;
+    error.retryable = response.status === 429 || RECOVERABLE_HTTP_STATUSES.has(response.status);
+    error.tryNextRoute = error.retryable;
+    throw error;
+  }
+
+  const values = data?.embedding?.values;
+  if (!Array.isArray(values) || values.length === 0) {
+    const error = new Error(`Gemini embedding route ${routeLabel(route)} returned no vector`) as Error & { tryNextRoute?: boolean };
+    error.tryNextRoute = true;
+    throw error;
+  }
+
+  if (values.length !== dimensions) {
+    // A width mismatch would be rejected by the vector column, so fail loudly here
+    // instead of persisting an unusable vector.
+    throw new Error(`Gemini embedding route ${routeLabel(route)} returned ${values.length} dimensions, expected ${dimensions}`);
+  }
+
+  recordSuccess(route);
+  return values;
+}
+
+export async function createGeminiEmbedding(
+  input: string,
+  options: GeminiRouteOptions & { dimensions: number },
+): Promise<number[] | null> {
+  await refreshGeminiModelCatalog(false, options);
+  if (options.signal?.aborted) throw options.signal.reason;
+
+  const routes = getGeminiRoutes("Embedding", options);
+  if (routes.length === 0) {
+    if (getGeminiApiKeys(options).length === 0 && process.env.NODE_ENV !== "production") {
+      return null;
+    }
+
+    throw new Error(unavailableRoutesMessage("Embedding", options));
+  }
+
+  const attempts: GeminiAttemptError[] = [];
+
+  for (const route of routes) {
+    try {
+      return await callGeminiEmbeddingRoute(route, input, options.dimensions, options.signal);
+    } catch (error) {
+      if (options.signal?.aborted) throw options.signal.reason;
+      const typedError = error as Error & { status?: number; retryable?: boolean; tryNextRoute?: boolean };
+      const retryable = Boolean(typedError.retryable);
+      const tryNextRoute = typedError.tryNextRoute ?? retryable;
+      attempts.push({
+        route: routeLabel(route),
+        status: typedError.status,
+        message: typedError.message,
+        retryable,
+        tryNextRoute,
+      });
+
+      if (!tryNextRoute) break;
+    }
+  }
+
+  throw new Error(`All Gemini embedding routes failed: ${JSON.stringify(attempts)}`);
+}
 export async function completeGeminiJson(messages: LlmMessage[], options: GeminiRouteOptions = {}): Promise<LlmCompletionResult | null> {
   const taskType = (process.env.GEMINI_TASK_TYPE?.trim() as GeminiTaskType | undefined) || analyzeGeminiTaskType(messages);
   await refreshGeminiModelCatalog(false, options);
