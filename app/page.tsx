@@ -20,8 +20,11 @@ import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
 import { articleTitleForDisplay } from "@/lib/ui/article-title";
 
+// force-dynamic keeps the homepage shell out of the build-time prerender so a database
+// outage cannot fail the build; see the homepage regression test. Because that also
+// disables the route-level cache, freshness is owned by the unstable_cache below rather
+// than by a route-level revalidate value.
 export const dynamic = "force-dynamic";
-export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "세계 헌법판례 데이터베이스",

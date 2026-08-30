@@ -14,9 +14,7 @@ export const PUBLIC_CONTENT_CACHE_TAGS = [
 
 const PUBLIC_CONTENT_PATHS = [
   "/",
-  "/v2",
   "/list",
-  "/v2/list",
   "/api/articles",
   "/api/home/range",
   "/api/portal/latest",
@@ -40,16 +38,12 @@ export function invalidatePublicContentCaches(options: { articleSlug?: string | 
   }
   revalidatePath("/articles/[slug]", "page");
   revalidatePath("/articles/[slug]/print", "page");
-  revalidatePath("/v2/articles/[slug]", "page");
-  revalidatePath("/v2/articles/[slug]/print", "page");
 
   const articleSlug = validArticleSlug(options.articleSlug);
   const articlePaths = articleSlug
     ? [
         `/articles/${articleSlug}`,
         `/articles/${articleSlug}/print`,
-        `/v2/articles/${articleSlug}`,
-        `/v2/articles/${articleSlug}/print`,
         `/api/articles/${articleSlug}`,
         `/api/articles/${articleSlug}/source-text`,
       ]
@@ -65,8 +59,6 @@ export function invalidatePublicContentCaches(options: { articleSlug?: string | 
       ...PUBLIC_CONTENT_PATHS,
       "/articles/[slug]",
       "/articles/[slug]/print",
-      "/v2/articles/[slug]",
-      "/v2/articles/[slug]/print",
       ...articlePaths,
     ],
   };
