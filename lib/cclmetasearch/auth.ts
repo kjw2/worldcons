@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { CCL_METASEARCH_TOKEN_HEADER } from "@/lib/cclmetasearch/contract";
+import { timingSafeStringEqual as safeEqual } from "@/lib/security/constant-time";
 
 export type CclMetasearchAuthFailure = {
   status: 401 | 403 | 503;
@@ -41,16 +41,4 @@ export function cclMetasearchAuthFailure(
   }
 
   return null;
-}
-
-function safeEqual(left: string, right: string) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  const comparisonLength = Math.max(leftBuffer.length, rightBuffer.length, 1);
-  const paddedLeft = Buffer.alloc(comparisonLength);
-  const paddedRight = Buffer.alloc(comparisonLength);
-  leftBuffer.copy(paddedLeft);
-  rightBuffer.copy(paddedRight);
-
-  return timingSafeEqual(paddedLeft, paddedRight) && leftBuffer.length === rightBuffer.length;
 }

@@ -5,10 +5,58 @@ import {
   normalizeAnalyticsSearchQuery,
   primaryAcceptLanguage,
 } from "@/lib/analytics/events";
+import { clientIpHeaderPriority, getClientIp } from "@/lib/security/request-client";
 
 function headers(values: Record<string, string>) {
   return new Headers(values);
 }
+
+function withEnvironment(values: Record<string, string | undefined>, run: () => void) {
+  const previous = new Map(Object.keys(values).map((key) => [key, process.env[key]]));
+  try {
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test("spoofable proxy IP headers are ignored unless explicitly trusted", () => {
+  withEnvironment({ TRUSTED_CLIENT_IP_HEADERS: undefined }, () => {
+    const spoofed = headers({
+      "cf-connecting-ip": "198.51.100.1",
+      "true-client-ip": "198.51.100.2",
+      "x-real-ip": "198.51.100.3",
+      "x-vercel-forwarded-for": "203.0.113.7",
+    });
+
+    // A caller cannot rotate its rate-limit bucket key by forging proxy headers.
+    assert.equal(getClientIp(spoofed), "203.0.113.7");
+    assert.equal(clientIpHeaderPriority().includes("cf-connecting-ip"), false);
+  });
+});
+
+test("an explicitly trusted proxy header takes precedence", () => {
+  withEnvironment({ TRUSTED_CLIENT_IP_HEADERS: "cf-connecting-ip" }, () => {
+    const proxied = headers({ "cf-connecting-ip": "198.51.100.1", "x-vercel-forwarded-for": "203.0.113.7" });
+    assert.equal(getClientIp(proxied), "198.51.100.1");
+  });
+});
+
+test("client IP resolution uses the left-most forwarded address and rejects unknown headers", () => {
+  withEnvironment({ TRUSTED_CLIENT_IP_HEADERS: "x-forwarded-host" }, () => {
+    assert.equal(getClientIp(headers({ "x-forwarded-for": "203.0.113.9, 70.41.3.18" })), "203.0.113.9");
+    // An unsupported header name cannot be injected into the trust list.
+    assert.equal(clientIpHeaderPriority().includes("x-forwarded-host"), false);
+    assert.equal(getClientIp(headers({ "x-client-ip": "198.51.100.4" })), null);
+  });
+});
 
 test("analytics search queries redact direct identifiers", () => {
   assert.equal(normalizeAnalyticsSearchQuery("  표현의 자유 TEST@EXAMPLE.COM  "), "표현의 자유 [email]");

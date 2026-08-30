@@ -3,8 +3,42 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { consumeRateLimit } from "../lib/security/rate-limit";
+import { validateProductionSecurityConfig } from "../lib/security/production-config";
 
 const rateLimitMigration = path.join(process.cwd(), "supabase/migrations/20260826500000_distributed_rate_limit.sql");
+
+// A 32-byte machine secret and a human-entered admin password are held to different
+// standards, so the admin account needs its own explicit floor.
+function productionEnvironment(overrides: Record<string, string> = {}) {
+  return {
+    NODE_ENV: "production",
+    ADMIN_PASSWORD: "sufficiently-long-admin-password",
+    ADMIN_SESSION_SECRET: "a".repeat(32),
+    CRON_SECRET: "b".repeat(32),
+    LLM_SETTINGS_SECRET: "c".repeat(32),
+    SUPABASE_SERVICE_ROLE_KEY: "d".repeat(32),
+    ...overrides,
+  };
+}
+
+test("production rejects a short admin password even when machine secrets are strong", () => {
+  const short = validateProductionSecurityConfig(productionEnvironment({ ADMIN_PASSWORD: "abc123" }));
+  assert.equal(short.ok, false);
+  assert.ok(short.errors.some((error) => /ADMIN_PASSWORD must be at least 12 characters/u.test(error)));
+
+  assert.equal(validateProductionSecurityConfig(productionEnvironment()).ok, true);
+});
+
+test("production still rejects reused or publicly exposed secrets", () => {
+  const reused = validateProductionSecurityConfig(productionEnvironment({ CRON_SECRET: "a".repeat(32) }));
+  assert.equal(reused.ok, false);
+  assert.ok(reused.errors.some((error) => /must not reuse the same value/u.test(error)));
+
+  const leaked = validateProductionSecurityConfig(
+    productionEnvironment({ NEXT_PUBLIC_SUPABASE_SERVICE_ROLE: "d".repeat(32) }),
+  );
+  assert.equal(leaked.ok, false);
+});
 
 function withEnvironment(values: Record<string, string | undefined>, run: () => Promise<void>) {
   const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));

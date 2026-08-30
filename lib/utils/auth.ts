@@ -1,5 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { timingSafeStringEqual as safeEqual } from "@/lib/security/constant-time";
 export { validateProductionSecurityConfig } from "@/lib/security/production-config";
 
 export const ADMIN_SESSION_COOKIE = "worldcons_admin_session";
@@ -56,17 +57,6 @@ function configuredSessionSecret() {
     return process.env.ADMIN_PASSWORD?.trim() || "worldcons-local-admin-session-secret";
   }
   return null;
-}
-
-function safeEqual(left: string, right: string) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  const length = Math.max(leftBuffer.length, rightBuffer.length, 1);
-  const paddedLeft = Buffer.alloc(length);
-  const paddedRight = Buffer.alloc(length);
-  leftBuffer.copy(paddedLeft);
-  rightBuffer.copy(paddedRight);
-  return timingSafeEqual(paddedLeft, paddedRight) && leftBuffer.length === rightBuffer.length;
 }
 
 function signPayload(payload: string) {

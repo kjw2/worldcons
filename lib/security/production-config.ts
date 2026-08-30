@@ -6,7 +6,9 @@ const REQUIRED_PRODUCTION_SECRET_NAMES = [
   "SUPABASE_SERVICE_ROLE_KEY",
 ] as const;
 
-const MIN_ADMIN_PASSWORD_CHARS = 6;
+// The admin account can publish content, change LLM settings, and control collection,
+// and there is no second factor, so a human-entered password needs real length.
+const MIN_ADMIN_PASSWORD_CHARS = 12;
 const MIN_SERVER_SECRET_BYTES = 32;
 
 export function validateProductionSecurityConfig(env: Record<string, string | undefined> = process.env) {
