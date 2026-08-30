@@ -33,6 +33,9 @@ const publicDesignSource = publicDesignFiles.map(read).join("\n");
 
 test("public design keeps high-confidence generated-UI slop patterns out", () => {
   assert.doesNotMatch(publicDesignSource, /archive-kicker/);
+  // DESIGN.md forbids eyebrow/kicker labels, but only the archive-kicker class was
+  // checked, so a SectionHeading eyebrow prop slipped past this gate.
+  assert.doesNotMatch(publicDesignSource, /eyebrow/i);
   assert.doesNotMatch(publicDesignSource, /border-t-2 border-archive-accent/);
   assert.doesNotMatch(publicDesignSource, /backdrop-blur/);
   assert.doesNotMatch(publicDesignSource, /shadow-floating/);
