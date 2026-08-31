@@ -1,12 +1,16 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { KeyRound, LogIn, ShieldCheck } from "lucide-react";
-import { isAuthorizedPageRequest, safeAdminNextPath } from "@/lib/utils/auth";
+import { isAuthorizedPageRequest, isMasterdashSsoOnly, safeAdminNextPath } from "@/lib/utils/auth";
 import { getSearchParam, resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AdminLoginPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+  if (isMasterdashSsoOnly()) {
+    notFound();
+  }
+
   const params = await resolveSearchParams(searchParams);
   const nextPath = safeAdminNextPath(getSearchParam(params, "next"));
   const alreadyAuthorized = await isAuthorizedPageRequest();

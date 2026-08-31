@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { ADMIN_SESSION_COOKIE, adminMutationAuthFailureStatus, isSecureRequest } from "@/lib/utils/auth";
+import { ADMIN_SESSION_COOKIE, adminMutationAuthFailureStatus, isMasterdashSsoOnly, isSecureRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function logoutResponse(request: Request) {
-  const response = NextResponse.redirect(new URL("/admin/login?loggedOut=1", request.url), { status: 303 });
+  const response = NextResponse.redirect(new URL(isMasterdashSsoOnly() ? "/" : "/admin/login?loggedOut=1", request.url), { status: 303 });
   response.cookies.set({
     name: ADMIN_SESSION_COOKIE,
     value: "",

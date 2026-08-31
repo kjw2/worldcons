@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
-import { createAdminCsrfToken, getAuthorizedAdminPageIdentity } from "@/lib/utils/auth";
+import { createAdminCsrfToken, getAuthorizedAdminPageIdentity, isMasterdashSsoOnly } from "@/lib/utils/auth";
 
 export const metadata: Metadata = {
   robots: {
@@ -12,7 +13,12 @@ export const metadata: Metadata = {
 
 export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const identity = await getAuthorizedAdminPageIdentity();
-  if (!identity) return children;
+  if (!identity) {
+    if (isMasterdashSsoOnly()) {
+      notFound();
+    }
+    return children;
+  }
   const csrfToken = (await createAdminCsrfToken()) ?? "";
   return <AdminShell csrfToken={csrfToken} identity={identity}>{children}</AdminShell>;
 }

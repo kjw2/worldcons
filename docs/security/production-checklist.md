@@ -3,6 +3,8 @@
 ## 배포 전 필수
 
 - `ADMIN_PASSWORD`가 12자 이상인지 확인 (`lib/security/production-config.ts`가 빌드 시 강제)
+- 프로덕션 관리자 진입은 MasterDash SSO만 허용되는지 확인: `/admin/login` 및 `POST /api/admin/login`은 404를 반환해야 하며, `/admin/*`의 미인증 접근도 직접 로그인 폼으로 폴백하지 않아야 함
+- `ADMIN_PASSWORD`는 직접 로그인용이 아니라 MasterDash SSO가 기존 활성 관리자 계정에 매핑되는지 확인하기 위해 계속 필요함. 비밀번호 자체를 공유하거나 로그에 남기지 않음
 - `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`가 모두 32바이트 이상인지 확인
 - MasterDash 연동을 활성화할 때 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`가 각각 32바이트 이상이며 기존 관리자/cron secret과 다른지 확인
 - MasterDash SSO의 `email` 또는 `sub`가 비밀번호가 설정된 기존 `ADMIN_USERNAME` 또는 명시적 `MASTERDASH_ADMIN_IDENTITIES` allowlist와 일치하는지 확인하며, 별도 계정 생성이나 `operator`의 관리자 승격은 허용하지 않음
@@ -49,6 +51,7 @@ pnpm masterdash:readiness
 
 ### 배포 후 확인
 
+- 인증되지 않은 브라우저에서 `/admin/login`과 `POST /api/admin/login`이 404인지 확인하고, MasterDash에서 WorldCons SSO 진입 시에만 `/admin` 세션이 생성되는지 확인
 - `GET /api/masterdash/health`가 무인증으로 200과 `status`를 반환하는지 확인
 - 허브 `GET https://masterdash-prod.cclib.workers.dev/api/ready`의 `checks.portalSecrets`로 허브 측 시크릿 존재를 상시 확인 (허브가 해당 커밋을 배포한 이후부터 노출)
 - 허브 UI에서 worldcons SSO 진입 후 `/admin`으로 리다이렉트되고 관리자 세션이 생성되는지 확인

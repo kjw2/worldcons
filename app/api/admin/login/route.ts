@@ -3,6 +3,7 @@ import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_MAX_AGE_SECONDS,
   createAdminSession,
+  isMasterdashSsoOnly,
   isSecureRequest,
   safeAdminNextPath,
   validateAdminCredentials,
@@ -17,6 +18,16 @@ function redirectUrl(request: Request, path: string) {
 }
 
 export async function POST(request: Request) {
+  if (isMasterdashSsoOnly()) {
+    return new NextResponse(null, {
+      status: 404,
+      headers: {
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
+
   const contentType = request.headers.get("content-type") ?? "";
   const rateLimit = await consumeRateLimit(request, "adminLogin");
   if (rateLimit?.limited) {

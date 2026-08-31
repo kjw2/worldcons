@@ -8,8 +8,9 @@ import {
   verifyMasterdashSsoToken,
 } from "../lib/masterdash/security";
 import { GET as exchangeMasterdashSso } from "../app/api/auth/masterdash/route";
+import { POST as loginAdmin } from "../app/api/admin/login/route";
 import { GET as getMasterdashHealth } from "../app/api/masterdash/health/route";
-import { resolveExistingAdminSessionIdentityForMasterdash } from "../lib/utils/auth";
+import { isMasterdashSsoOnly, resolveExistingAdminSessionIdentityForMasterdash } from "../lib/utils/auth";
 import {
   collectionHealthMetrics,
   FAILURE_RECENCY_WINDOW_HOURS,
@@ -290,6 +291,57 @@ test("infers degraded status from legacy uncollected runs that have no outcome f
   assert.equal(metrics.lastRunStatus, "degraded");
   assert.equal(metrics.bySource[0]?.lastRunStatus, "degraded");
   assert.equal(metrics.failureTarget, "de-bverfg");
+});
+
+test("enables SSO-only administrator access only on production deployments", () => {
+  const mutableEnv = process.env as unknown as Record<string, string | undefined>;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalVercelEnv = process.env.VERCEL_ENV;
+
+  try {
+    mutableEnv.NODE_ENV = "production";
+    mutableEnv.VERCEL_ENV = "production";
+    assert.equal(isMasterdashSsoOnly(), true);
+
+    mutableEnv.VERCEL_ENV = "preview";
+    assert.equal(isMasterdashSsoOnly(), false);
+
+    mutableEnv.NODE_ENV = "test";
+    delete mutableEnv.VERCEL_ENV;
+    assert.equal(isMasterdashSsoOnly(), false);
+  } finally {
+    if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+    else mutableEnv.NODE_ENV = originalNodeEnv;
+    if (originalVercelEnv === undefined) delete mutableEnv.VERCEL_ENV;
+    else mutableEnv.VERCEL_ENV = originalVercelEnv;
+  }
+});
+
+test("blocks the direct administrator login API in production", async () => {
+  const mutableEnv = process.env as unknown as Record<string, string | undefined>;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalVercelEnv = process.env.VERCEL_ENV;
+
+  try {
+    mutableEnv.NODE_ENV = "production";
+    mutableEnv.VERCEL_ENV = "production";
+    const response = await loginAdmin(
+      new Request("https://worldcons.example/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: adminUsername, password: "active-local-admin-password" }),
+      }),
+    );
+
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("set-cookie"), null);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  } finally {
+    if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+    else mutableEnv.NODE_ENV = originalNodeEnv;
+    if (originalVercelEnv === undefined) delete mutableEnv.VERCEL_ENV;
+    else mutableEnv.VERCEL_ENV = originalVercelEnv;
+  }
 });
 
 test("reports the latest failed collection and its actual failure target", () => {

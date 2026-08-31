@@ -59,6 +59,20 @@ function configuredSessionSecret() {
   return null;
 }
 
+/**
+ * Production administrator entry is intentionally brokered by MasterDash.
+ * Vercel preview deployments remain directly log-in capable so an isolated
+ * deployment can be tested without a production hub session.
+ */
+export function isMasterdashSsoOnly() {
+  if (process.env.NODE_ENV !== "production") {
+    return false;
+  }
+
+  const deploymentEnvironment = process.env.VERCEL_ENV?.trim().toLowerCase();
+  return deploymentEnvironment !== "preview" && deploymentEnvironment !== "development";
+}
+
 function signPayload(payload: string) {
   const secret = configuredSessionSecret();
   if (!secret) return null;
