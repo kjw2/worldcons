@@ -20,6 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { SITE_NAME } from "@/lib/site-brand";
 
 interface AdminNavigationItem {
   href: string;
@@ -154,7 +155,7 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
         <aside className="hidden border-r border-rule bg-white lg:flex lg:min-h-screen lg:flex-col" aria-label="관리자 내비게이션">
           <div className="border-b border-rule px-5 py-5">
             <Link href="/admin" className="focus-ring block rounded-sm">
-              <span className="block text-base font-semibold text-ink">WorldCons 관리자</span>
+              <span className="block text-base font-semibold text-ink">{SITE_NAME} 관리자</span>
               <span className="mt-1 block text-xs text-ink/50">운영 작업공간</span>
             </Link>
           </div>
@@ -219,7 +220,7 @@ export function AdminShell({ children, csrfToken, identity }: { children: React.
           <button type="button" className="absolute inset-0 bg-ink/35" onClick={() => setMobileOpen(false)} aria-label="메뉴 닫기" />
           <aside className="absolute inset-y-0 left-0 flex w-[min(320px,86vw)] flex-col border-r border-rule bg-white shadow-panel">
             <div className="flex min-h-16 items-center justify-between border-b border-rule px-4">
-              <span className="font-semibold text-ink">WorldCons 관리자</span>
+              <span className="font-semibold text-ink">{SITE_NAME} 관리자</span>
               <button
                 ref={mobileCloseButtonRef}
                 type="button"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listArticles } from "@/lib/db/queries";
+import { SITE_NAME } from "@/lib/site-brand";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { displaySourceLabel } from "@/lib/ui/source-labels";
 
@@ -70,9 +71,9 @@ export async function GET() {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
     "  <channel>",
-    "    <title>World Cons 최신 헌법판례 요약</title>",
+    `    <title>${escapeXml(`${SITE_NAME} 최신 헌법판례 요약`)}</title>`,
     `    <link>${escapeXml(baseUrl)}</link>`,
-    "    <description>세계 헌법재판기관의 최신 공개 자료를 한국어 요약으로 제공하는 World Cons RSS 피드입니다.</description>",
+    `    <description>${escapeXml(`세계 헌법재판기관의 최신 공개 자료를 한국어 요약으로 제공하는 ${SITE_NAME} RSS 피드입니다.`)}</description>`,
     "    <language>ko</language>",
     `    <lastBuildDate>${escapeXml(feedDate(latestUpdatedAt))}</lastBuildDate>`,
     `    <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml" />`,

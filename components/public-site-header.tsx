@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
+import { SITE_NAME } from "@/lib/site-brand";
 import { cn } from "@/lib/utils/classnames";
 
 const primaryNavigation = [
@@ -24,8 +25,8 @@ export function PublicSiteHeader() {
     <header id="site-header" className="public-site-header border-b border-archive-line-strong bg-white">
       <div className="mx-auto max-w-[1248px] px-4 sm:px-6 lg:px-10">
         <div className="flex min-h-[62px] items-center justify-between gap-4 py-2.5">
-          <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label="WORLD CONS 홈">
-            <span className="block text-[22px] font-extrabold leading-none tracking-normal text-archive-accent sm:text-[26px]">WORLD CONS</span>
+          <IntentPrefetchLink href="/" className="focus-ring min-w-0 rounded-sm" aria-label={`${SITE_NAME} 홈`}>
+            <span className="block text-[22px] font-extrabold leading-none tracking-normal text-archive-accent sm:text-[26px]">{SITE_NAME}</span>
             <span className="mt-1.5 block text-[12px] font-medium text-archive-text sm:text-[13px]">세계 헌법판례 데이터베이스</span>
           </IntentPrefetchLink>
 

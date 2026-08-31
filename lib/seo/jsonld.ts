@@ -1,4 +1,5 @@
 import type { ArticleDetail } from "@/lib/db/types";
+import { SITE_NAME } from "@/lib/site-brand";
 import { getAppBaseUrl, publicAbsoluteUrl } from "@/lib/seo/metadata";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 
@@ -25,12 +26,12 @@ export function articleJsonLd(article: ArticleDetail) {
     ...(keywords.length > 0 ? { keywords } : {}),
     author: {
       "@type": "Organization",
-      name: "WORLD CONS",
+      name: SITE_NAME,
       url: `${getAppBaseUrl()}/`,
     },
     publisher: {
       "@type": "Organization",
-      name: "WORLD CONS",
+      name: SITE_NAME,
       url: `${getAppBaseUrl()}/`,
     },
     about: keywords,

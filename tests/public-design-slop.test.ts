@@ -44,6 +44,21 @@ test("public design keeps high-confidence generated-UI slop patterns out", () =>
   assert.doesNotMatch(publicDesignSource, /tracking-\[-0\.0[3-9]em\]/);
 });
 
+test("public brand surfaces use the canonical Korean wordmark", () => {
+  const brand = read("lib/site-brand.ts");
+  const header = read("components/public-site-header.tsx");
+  const layout = read("app/layout.tsx");
+  const jsonld = read("lib/seo/jsonld.ts");
+  const rss = read("app/rss.xml/route.ts");
+
+  assert.match(brand, /SITE_NAME = "헌법판례요약시스템"/u);
+  for (const source of [header, layout, jsonld, rss]) assert.match(source, /SITE_NAME/u);
+  assert.doesNotMatch(header, /WORLD CONS/u);
+  assert.doesNotMatch(layout, /WORLD CONS/u);
+  assert.doesNotMatch(jsonld, /WORLD CONS/u);
+  assert.doesNotMatch(rss, /World Cons/u);
+});
+
 test("legal content surfaces prefer lists and document structure over repeated card grids", () => {
   const articleGrid = read("components/article-grid.tsx");
   const guide = read("app/guide/page.tsx");

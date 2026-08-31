@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageShell } from "@/components/ui/page-shell";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { listSources } from "@/lib/db/queries";
+import { SITE_NAME } from "@/lib/site-brand";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
@@ -15,7 +16,7 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "국가·기관",
-  description: "WORLD CONS가 수록하는 세계 헌법재판기관과 수집 상태를 확인합니다.",
+  description: `${SITE_NAME}이 수록하는 세계 헌법재판기관과 수집 상태를 확인합니다.`,
   alternates: { canonical: `${getAppBaseUrl()}/sources` },
 };
 
@@ -32,7 +33,7 @@ export default async function SourcesPage() {
     <PageShell className="max-w-[1248px] py-6 sm:py-8">
       <header className="mb-8 border-b border-archive-line-strong pb-6">
         <h1 className="text-3xl font-semibold text-archive-ink">헌법재판기관</h1>
-        <p className="mt-3 max-w-[72ch] text-[15px] leading-7 text-archive-text">WORLD CONS가 공식 공개자료를 수집·정리하는 국가와 헌법재판기관을 확인할 수 있습니다.</p>
+        <p className="mt-3 max-w-[72ch] text-[15px] leading-7 text-archive-text">{SITE_NAME}이 공식 공개자료를 수집·정리하는 국가와 헌법재판기관을 확인할 수 있습니다.</p>
       </header>
 
       {sources.length === 0 ? (

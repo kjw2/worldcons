@@ -7,6 +7,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { recordSiteEvent } from "@/lib/analytics/events";
 import { listArticles, listSources } from "@/lib/db/queries";
 import type { SourceRecord } from "@/lib/db/types";
+import { SITE_NAME } from "@/lib/site-brand";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { articleDateLabel } from "@/lib/ui/article-date-label";
 import { displayJurisdictionLabel, displaySourceLabel, displaySourceLanguageLabel } from "@/lib/ui/source-labels";
@@ -17,7 +18,7 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "안내",
-  description: "World Cons의 목적, 이용방법, 수집현황, 수집·번역·요약 기준을 안내합니다.",
+  description: `${SITE_NAME}의 목적, 이용방법, 수집현황, 수집·번역·요약 기준을 안내합니다.`,
   alternates: { canonical: `${getAppBaseUrl()}/guide` },
 };
 
@@ -150,8 +151,8 @@ export default async function GuidePage() {
   return (
     <PageShell className="max-w-[1248px] space-y-10 py-6 sm:py-8">
       <SectionHeading
-        title="World Cons 안내"
-        description="WORLD CONS는 주요 헌법재판기관의 공식 공개자료를 국가·기관·쟁점별로 검색하고, 한국어 요약과 공식 원문을 함께 확인할 수 있도록 정리한 헌법판례 데이터베이스입니다."
+        title={`${SITE_NAME} 안내`}
+        description={`${SITE_NAME}은 주요 헌법재판기관의 공식 공개자료를 국가·기관·쟁점별로 검색하고, 한국어 요약과 공식 원문을 함께 확인할 수 있도록 정리한 헌법판례 데이터베이스입니다.`}
         descriptionClassName={guideHeadingDescriptionClassName}
       />
 
@@ -296,7 +297,7 @@ export default async function GuidePage() {
       <section className="space-y-4" aria-label="미국 SCOTUS 수집 범위">
         <SectionHeading
           title="미국 SCOTUS에서 Opinions of the Court만 수집하는 이유"
-          description="SCOTUS 공개 자료에는 성격이 다른 의견들이 함께 존재합니다. World Cons는 현재 사용자가 일반적인 헌법판례로 기대하는 본안 판결 중심성을 유지하기 위해 Opinions of the Court만 정기 수집합니다."
+          description={`SCOTUS 공개 자료에는 성격이 다른 의견들이 함께 존재합니다. ${SITE_NAME}은 현재 사용자가 일반적인 헌법판례로 기대하는 본안 판결 중심성을 유지하기 위해 Opinions of the Court만 정기 수집합니다.`}
           descriptionClassName={guideHeadingDescriptionClassName}
         />
         <div className="border-y border-archive-line-strong bg-white">
