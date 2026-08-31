@@ -29,9 +29,11 @@ pnpm masterdash:readiness
 
 이 명령은 시크릿 값을 출력하지 않고 존재 여부와 바이트 길이만 보고하며, 허브의 공개 readiness 응답도 함께 조회합니다.
 
+두 시크릿이 설정된 환경에서는 계약 왕복 검증까지 수행합니다. 허브가 발급하는 형태의 SSO 토큰을 만들어 실제 검증기를 통과시키고 관리자 매핑 결과를 확인하며, 제어 요청도 같은 방식으로 서명해 검증합니다. `blocking`이 빈 배열이면 이 쪽 계약 이행이 증명된 상태입니다. 허브가 같은 시크릿 값을 갖고 있는지는 증명할 수 없으므로 최종 확인은 실제 SSO 왕복으로 해야 합니다.
+
 ### 확인 항목
 
-- 허브(Cloudflare) 측 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`은 프로덕션에 설정 완료 (허브 담당 확인, `wrangler secret list --env production`)
+- 허브(Cloudflare) 측 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`은 프로덕션에 설정 완료. `pnpm masterdash:readiness`가 허브 `/api/ready`의 `checks.portalSecrets`를 읽어 상시 확인 (2026-08-31 두 항목 모두 true 확인)
 - Vercel production에 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`이 설정되어 있는지 확인
 - 위 두 값이 각각 허브의 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`과 **동일한 값**인지 확인. 변수 이름이 다른 것은 정상이며 값만 같아야 함
 - 두 시크릿이 각각 32바이트 이상이고 서로 다른 값이며 다른 관리자/cron secret과도 겹치지 않는지 확인
