@@ -316,6 +316,19 @@ test("reports the latest failed collection and its actual failure target", () =>
 });
 
 test("returns null for collection metrics that are absent from stored data", () => {
+  const metrics = collectionHealthMetrics({ latest: null, successful: null });
+  assert.equal(metrics.lastRunStatus, null);
+  assert.equal(metrics.recordsCollected, null);
+  assert.equal(metrics.recordsAdded, null);
+  assert.equal(metrics.pendingItems, null);
+  assert.equal(metrics.errorCount, null);
+  assert.equal(metrics.failureReason, null);
+  assert.equal(metrics.failureTarget, null);
+  assert.equal(metrics.runId, null);
+  assert.equal(metrics.durationMs, null);
+  assert.equal(metrics.checkpoint, null);
+  assert.deepEqual(metrics.bySource, []);
+});
 
 test("a failure is reported while recent and ages out of the badge", () => {
   const now = Date.parse("2026-08-31T00:00:00.000Z");
@@ -357,6 +370,27 @@ test("a failure is reported while recent and ages out of the badge", () => {
 });
 
 test("a run that never finished is aged from when it started", () => {
+  const now = Date.parse("2026-08-31T00:00:00.000Z");
+  const startedAt = new Date(now - 3 * 3_600_000).toISOString();
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "run-2",
+      source_key: "fr-conseil-constitutionnel",
+      status: "failed",
+      started_at: startedAt,
+      finished_at: null,
+      fetched_count: 0,
+      failed_count: 1,
+      error_message: "aborted",
+      metadata: { outcome: "failed" },
+    },
+    successful: null,
+    now,
+  });
+
+  assert.equal(metrics.failureTarget, "fr-conseil-constitutionnel");
+  assert.equal(metrics.failureObservedAt, startedAt);
+});
 
 test("a stalled summariser is visible even while collection stays healthy", () => {
   const now = Date.parse("2026-08-31T00:00:00.000Z");
@@ -390,7 +424,7 @@ test("summary backlog is reported as its own axis, separate from pending items",
       failed_count: 0,
       metadata: { outcome: "success", recordsAdded: 5, verifiedSourceTextCount: 5 },
     },
-     successful: null,
+    successful: null,
     pendingItems: 15,
     summaryBacklogCount: 161,
     oldestSummaryBacklogAt: "2026-08-01T00:00:00.000Z",
@@ -403,40 +437,6 @@ test("summary backlog is reported as its own axis, separate from pending items",
   assert.equal(metrics.oldestSummaryBacklogAt, "2026-08-01T00:00:00.000Z");
   // Collection itself succeeded, which is exactly why the backlog needs its own signal.
   assert.equal(metrics.lastRunStatus, "success");
-});
-  const now = Date.parse("2026-08-31T00:00:00.000Z");
-  const startedAt = new Date(now - 3 * 3_600_000).toISOString();
-  const metrics = collectionHealthMetrics({
-    latest: {
-      id: "run-2",
-      source_key: "fr-conseil-constitutionnel",
-      status: "failed",
-      started_at: startedAt,
-      finished_at: null,
-      fetched_count: 0,
-      failed_count: 1,
-      error_message: "aborted",
-      metadata: { outcome: "failed" },
-    },
-    successful: null,
-    now,
-  });
-
-  assert.equal(metrics.failureTarget, "fr-conseil-constitutionnel");
-  assert.equal(metrics.failureObservedAt, startedAt);
-});
-  const metrics = collectionHealthMetrics({ latest: null, successful: null });
-  assert.equal(metrics.lastRunStatus, null);
-  assert.equal(metrics.recordsCollected, null);
-  assert.equal(metrics.recordsAdded, null);
-  assert.equal(metrics.pendingItems, null);
-  assert.equal(metrics.errorCount, null);
-  assert.equal(metrics.failureReason, null);
-  assert.equal(metrics.failureTarget, null);
-  assert.equal(metrics.runId, null);
-  assert.equal(metrics.durationMs, null);
-  assert.equal(metrics.checkpoint, null);
-  assert.deepEqual(metrics.bySource, []);
 });
 
 test("accepts the exact one-minute WorldCons SSO contract", () => {

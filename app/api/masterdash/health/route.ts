@@ -77,7 +77,16 @@ export async function GET() {
         .limit(1)
         .maybeSingle(),
     ]);
-    const queryFailed = Boolean(latest.error || successful.error || recent.error || pending.error || failed.error || openCandidates === null);
+    const queryFailed = Boolean(
+      latest.error ||
+        successful.error ||
+        recent.error ||
+        pending.error ||
+        failed.error ||
+        summaryBacklog.error ||
+        oldestSummaryBacklog.error ||
+        openCandidates === null,
+    );
     const controlRequired = Boolean(process.env.MASTERDASH_CONTROL_SECRET?.trim());
     const paused = control.available && control.paused;
     const metrics = collectionHealthMetrics({
