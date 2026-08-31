@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { getCollectionControlState } from "@/lib/masterdash/store";
-import { collectionHealthMetrics, FAILURE_RECENCY_WINDOW_HOURS } from "@/lib/masterdash/health";
+import {
+  collectionHealthMetrics,
+  FAILURE_RECENCY_WINDOW_HOURS,
+  SUMMARY_BACKLOG_STATUSES,
+  summaryBacklogIsStale,
+} from "@/lib/masterdash/health";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +31,8 @@ function degradedHealth(message: string) {
         recordsCollected: null,
         recordsAdded: null,
         pendingItems: null,
+        summaryBacklogCount: null,
+        oldestSummaryBacklogAt: null,
         errorCount: null,
         failureReason: null,
         failureTarget: null,
@@ -46,7 +53,9 @@ export async function GET() {
     const supabase = getSupabaseAdmin();
     if (!supabase) return degradedHealth("Collector database is not configured.");
 
-    const [latest, successful, recent, pending, failed, openCandidates, control] = await Promise.all([
+    // Collection freshness alone cannot reveal a stalled summariser: source text can keep
+    // arriving while nothing reaches the public listing. Report that backlog as its own axis.
+    const [latest, successful, recent, pending, failed, openCandidates, control, summaryBacklog, oldestSummaryBacklog] = await Promise.all([
       supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("ingestion_runs").select("source_key, finished_at, metadata").eq("status", "completed").order("finished_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
       supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(40),
@@ -54,6 +63,19 @@ export async function GET() {
       supabase.from("admin_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
       countOpenSourceUrlCandidates().catch(() => null),
       getCollectionControlState(),
+      supabase
+        .from("articles")
+        .select("id", { count: "exact", head: true })
+        .in("status", [...SUMMARY_BACKLOG_STATUSES])
+        .contains("source_metadata", { collection: { publishable: true } }),
+      supabase
+        .from("articles")
+        .select("created_at")
+        .in("status", [...SUMMARY_BACKLOG_STATUSES])
+        .contains("source_metadata", { collection: { publishable: true } })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
     ]);
     const queryFailed = Boolean(latest.error || successful.error || recent.error || pending.error || failed.error || openCandidates === null);
     const controlRequired = Boolean(process.env.MASTERDASH_CONTROL_SECRET?.trim());
@@ -63,6 +85,8 @@ export async function GET() {
       successful: successful.data,
       recentRuns: recent.data ?? [],
       pendingItems: (pending.count ?? 0) + (openCandidates ?? 0),
+      summaryBacklogCount: summaryBacklog.error ? null : summaryBacklog.count ?? 0,
+      oldestSummaryBacklogAt: (oldestSummaryBacklog.data?.created_at as string | undefined) ?? null,
       failedJobCount: failed.count ?? null,
     });
     // Age the per-source signal the same way as failureTarget: once collection stops the
@@ -73,7 +97,10 @@ export async function GET() {
       const observedMs = source.lastCollectionAt ? Date.parse(source.lastCollectionAt) : Number.NaN;
       return !Number.isFinite(observedMs) || observedMs >= recencyCutoffMs;
     });
-    const degraded = queryFailed || (controlRequired && !control.available) || sourceUnhealthy;
+    // A stalled summariser keeps articles out of the public listing even while collection
+    // looks healthy, so it has to be able to move the status on its own.
+    const summaryStalled = summaryBacklogIsStale(metrics.summaryBacklogCount, metrics.oldestSummaryBacklogAt);
+    const degraded = queryFailed || (controlRequired && !control.available) || sourceUnhealthy || summaryStalled;
     const lastSuccessAt = metrics.lastSuccessfulCollectionAt;
     const lastSuccessMs = lastSuccessAt ? Date.parse(lastSuccessAt) : Number.NaN;
     const freshnessSeconds = Number.isFinite(lastSuccessMs)
@@ -89,9 +116,11 @@ export async function GET() {
           ? "Collector metrics or control state are unavailable."
           : sourceUnhealthy
             ? "Collector is ready, but at least one source completed in a degraded or failed state."
-            : paused
-              ? "Collector is ready; new collection starts are paused."
-              : "Collector is ready.",
+            : summaryStalled
+              ? "Collection is running, but summarization is behind, so verified material is not reaching the public listing."
+              : paused
+                ? "Collector is ready; new collection starts are paused."
+                : "Collector is ready.",
         version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "0.1.0",
         metrics: {
           ...metrics,

@@ -10,7 +10,12 @@ import {
 import { GET as exchangeMasterdashSso } from "../app/api/auth/masterdash/route";
 import { GET as getMasterdashHealth } from "../app/api/masterdash/health/route";
 import { resolveExistingAdminSessionIdentityForMasterdash } from "../lib/utils/auth";
-import { collectionHealthMetrics, FAILURE_RECENCY_WINDOW_HOURS } from "../lib/masterdash/health";
+import {
+  collectionHealthMetrics,
+  FAILURE_RECENCY_WINDOW_HOURS,
+  SUMMARY_BACKLOG_STALE_HOURS,
+  summaryBacklogIsStale,
+} from "../lib/masterdash/health";
 
 const originalSsoSecret = process.env.MASTERDASH_SSO_SECRET;
 const originalControlSecret = process.env.MASTERDASH_CONTROL_SECRET;
@@ -352,6 +357,53 @@ test("a failure is reported while recent and ages out of the badge", () => {
 });
 
 test("a run that never finished is aged from when it started", () => {
+
+test("a stalled summariser is visible even while collection stays healthy", () => {
+  const now = Date.parse("2026-08-31T00:00:00.000Z");
+  const hoursAgo = (hours: number) => new Date(now - hours * 3_600_000).toISOString();
+
+  // Nothing waiting is not a stall.
+  assert.equal(summaryBacklogIsStale(0, null, now), false);
+  assert.equal(summaryBacklogIsStale(null, null, now), false);
+
+  // A queue that the six-hourly drain will clear is normal throughput, not a fault.
+  assert.equal(summaryBacklogIsStale(40, hoursAgo(2), now), false);
+
+  // Waiting longer than the drain interval means the worker is not keeping up. This is the
+  // case collection freshness cannot express: source text keeps arriving while nothing
+  // reaches the public listing.
+  assert.equal(summaryBacklogIsStale(3, hoursAgo(SUMMARY_BACKLOG_STALE_HOURS + 1), now), true);
+
+  // A large backlog with no usable timestamp must not be silently ignored.
+  assert.equal(summaryBacklogIsStale(161, null, now), true);
+});
+
+test("summary backlog is reported as its own axis, separate from pending items", () => {
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "run-ok",
+      source_key: "fr-conseil-constitutionnel",
+      status: "completed",
+      started_at: "2026-08-30T00:00:00.000Z",
+      finished_at: "2026-08-30T00:10:00.000Z",
+      fetched_count: 5,
+      failed_count: 0,
+      metadata: { outcome: "success", recordsAdded: 5, verifiedSourceTextCount: 5 },
+    },
+     successful: null,
+    pendingItems: 15,
+    summaryBacklogCount: 161,
+    oldestSummaryBacklogAt: "2026-08-01T00:00:00.000Z",
+    now: Date.parse("2026-08-30T01:00:00.000Z"),
+  });
+
+  // pendingItems counts queue work; it never reflected the publication gap.
+  assert.equal(metrics.pendingItems, 15);
+  assert.equal(metrics.summaryBacklogCount, 161);
+  assert.equal(metrics.oldestSummaryBacklogAt, "2026-08-01T00:00:00.000Z");
+  // Collection itself succeeded, which is exactly why the backlog needs its own signal.
+  assert.equal(metrics.lastRunStatus, "success");
+});
   const now = Date.parse("2026-08-31T00:00:00.000Z");
   const startedAt = new Date(now - 3 * 3_600_000).toISOString();
   const metrics = collectionHealthMetrics({

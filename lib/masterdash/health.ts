@@ -35,6 +35,8 @@ export interface CollectionHealthMetrics {
   recordsCollected: number | null;
   recordsAdded: number | null;
   pendingItems: number | null;
+  summaryBacklogCount: number | null;
+  oldestSummaryBacklogAt: string | null;
   errorCount: number | null;
   failureReason: string | null;
   failureTarget: string | null;
@@ -50,6 +52,28 @@ export interface CollectionHealthMetrics {
 // failure that nobody can act on. Report the failure only while it is recent, and always
 // say when it was observed so the consumer can age it independently.
 export const FAILURE_RECENCY_WINDOW_HOURS = 168;
+
+// Article states that hold verified source text but no summary yet. These rows are collected
+// and invisible, so they measure the gap between ingestion and publication.
+export const SUMMARY_BACKLOG_STATUSES = ["cleaned", "failed_summary"] as const;
+
+// A backlog only means something once it has waited longer than the pipeline needs to clear
+// it. The summary drain runs every six hours, so a day of no progress indicates the worker
+// is not keeping up rather than a normal queue.
+export const SUMMARY_BACKLOG_STALE_HOURS = 24;
+
+/**
+ * Reports whether summarization has stalled: rows are waiting and the oldest has sat there
+ * longer than the drain interval. Collection freshness cannot express this, because source
+ * text keeps arriving while nothing becomes publicly visible.
+ */
+export function summaryBacklogIsStale(count: number | null, oldestAt: string | null, now = Date.now()) {
+  if (!count || count <= 0) return false;
+  const oldestMs = oldestAt ? Date.parse(oldestAt) : Number.NaN;
+  // An unparseable timestamp with a non-empty backlog is treated as stale rather than ignored.
+  if (!Number.isFinite(oldestMs)) return true;
+  return now - oldestMs > SUMMARY_BACKLOG_STALE_HOURS * 3_600_000;
+}
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -169,6 +193,8 @@ export function collectionHealthMetrics(input: {
   successful?: CollectionHealthRunRow | null;
   recentRuns?: CollectionHealthRunRow[] | null;
   pendingItems?: number | null;
+  summaryBacklogCount?: number | null;
+  oldestSummaryBacklogAt?: string | null;
   failedJobCount?: number | null;
   now?: number;
 }): CollectionHealthMetrics {
@@ -200,6 +226,8 @@ export function collectionHealthMetrics(input: {
     recordsCollected: collectedCount(latest),
     recordsAdded: metadataNumber(latestMetadata, "recordsAdded", "addedCount"),
     pendingItems: numberValue(input.pendingItems),
+    summaryBacklogCount: numberValue(input.summaryBacklogCount),
+    oldestSummaryBacklogAt: textValue(input.oldestSummaryBacklogAt),
     errorCount,
     failureReason: failureIsRecent ? failureReason : null,
     failureTarget: failureIsRecent ? textValue(latest?.source_key) : null,

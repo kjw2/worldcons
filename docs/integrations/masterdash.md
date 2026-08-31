@@ -22,6 +22,11 @@ WorldCons exposes three production adapter endpoints:
   Without that bound the newest run stays failed forever once collection stops, so a consumer would
   keep showing a failure nobody can act on. `lastRunStatus` still reports what actually happened, and
   `failureObservedAt` lets a consumer apply its own recency rule.
+  `summaryBacklogCount` and `oldestSummaryBacklogAt` report material that has verified source text but
+  no summary yet. Collection freshness cannot express this: source text keeps arriving while nothing
+  reaches the public listing, so a stalled summariser would otherwise be invisible. A backlog whose
+  oldest entry has waited more than 24 hours, longer than the six-hourly drain needs, sets
+  `status: "degraded"` on its own. `pendingItems` is queue depth and never covered this gap.
 
 Apply `supabase/migrations/20260801090000_masterdash_integration.sql` before configuring either
 MasterDash secret. The migration adds service-role-only replay, request ledger, and collection
