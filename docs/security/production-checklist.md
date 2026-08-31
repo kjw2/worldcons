@@ -2,17 +2,56 @@
 
 ## 배포 전 필수
 
-- `ADMIN_PASSWORD`가 6자 이상인지 확인
+- `ADMIN_PASSWORD`가 12자 이상인지 확인 (`lib/security/production-config.ts`가 빌드 시 강제)
 - `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`가 모두 32바이트 이상인지 확인
 - MasterDash 연동을 활성화할 때 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`가 각각 32바이트 이상이며 기존 관리자/cron secret과 다른지 확인
 - MasterDash SSO의 `email` 또는 `sub`가 비밀번호가 설정된 기존 `ADMIN_USERNAME` 또는 명시적 `MASTERDASH_ADMIN_IDENTITIES` allowlist와 일치하는지 확인하며, 별도 계정 생성이나 `operator`의 관리자 승격은 허용하지 않음
 - 위 5개 secret 값이 서로 다른지 확인
 - server secret이 `NEXT_PUBLIC_` 환경변수로 노출되지 않는지 확인
-- Vercel production 환경변수에 `LLM_SETTINGS_SECRET`이 설정되어 있는지 확인
+- Vercel production 환경변수에 `LLM_SETTINGS_SECRET`이 설정되어 있는지 확인 (미설정이면 프로덕션 빌드가 실패)
+- 임베딩을 Gemini로 운영할 때 `EMBEDDING_PROVIDER`가 `openai`로 고정돼 있지 않은지 확인. 코드 기본값이 `gemini`이므로 미설정도 허용되며, 명시된 `openai` 값은 Gemini 설정을 덮어씀
+- `GEMINI_API_KEY`가 Vercel과 GitHub Actions 양쪽에 설정되어 있는지 확인
 - cron 호출은 `Authorization: Bearer <CRON_SECRET>` 또는 `x-cron-secret: <CRON_SECRET>` 헤더만 사용
 - URL `?secret=` 방식 호출 제거
 - GitHub Actions secret `CRON_SECRET`이 `.github/workflows/crawlee-worker.yml`과 `.github/workflows/admin-job-worker.yml` 양쪽에서 사용할 수 있는지 확인
 - `LLM_SETTINGS_SECRET` 신규 도입 후 기존 DB 저장 LLM API key가 복호화되지 않을 수 있습니다. 배포 후 관리자 LLM 설정 화면에서 DB 저장 키 상태를 확인하고, 필요하면 키를 재등록하세요.
+
+
+## MasterDash 연동 확인 (허브와 대조 완료: 2026-08-31)
+
+양쪽 코드 계약은 일치가 확인되어 코드 변경이 필요하지 않습니다. 남은 것은 시크릿 값 대조뿐입니다.
+
+로컬/CI에서 실행할 수 있는 확인 명령:
+
+```bash
+pnpm masterdash:readiness
+```
+
+이 명령은 시크릿 값을 출력하지 않고 존재 여부와 바이트 길이만 보고하며, 허브의 공개 readiness 응답도 함께 조회합니다.
+
+### 확인 항목
+
+- 허브(Cloudflare) 측 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`은 프로덕션에 설정 완료 (허브 담당 확인, `wrangler secret list --env production`)
+- Vercel production에 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`이 설정되어 있는지 확인
+- 위 두 값이 각각 허브의 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`과 **동일한 값**인지 확인. 변수 이름이 다른 것은 정상이며 값만 같아야 함
+- 두 시크릿이 각각 32바이트 이상이고 서로 다른 값이며 다른 관리자/cron secret과도 겹치지 않는지 확인
+- 허브 배포가 `pnpm deploy:prod`로 수행됐는지 확인. 일반 `pnpm deploy`는 `PORTAL_SYSTEMS_CONFIG` 주입을 건너뛰어 `ssoUrl`/`controlUrl`이 미설정으로 처리되고, 시크릿이 정상이어도 SSO와 제어가 조용히 비활성화됨
+- `supabase/migrations/20260801090000_masterdash_integration.sql`의 `masterdash_sso_jtis`, `masterdash_control_requests`, `masterdash_collection_control` 세 테이블이 원격 DB에 존재하는지 확인 (2026-08-31 적용 확인)
+
+### 검증된 계약 (변경 금지)
+
+- SSO 토큰: HS256, 유효기간 60초, `iss=masterdash`, `aud=worldcons-admin`, `systemId=worldcons`
+- 관리자 매핑: 허브는 `sub`에 내부 ID(`user_<uuid>`)를, `email`에 실제 이메일을 담아 보냄. WorldCons는 `sub`과 `email` 양쪽을 검사하므로 `email`이 `ADMIN_USERNAME`과 일치하면 통과. `MASTERDASH_ADMIN_IDENTITIES`에 UUID를 등록할 필요 없음
+- 제어 서명: `HMAC-SHA256(secret, "<x-masterdash-timestamp>.<raw body>")`를 base64url로 인코딩. raw body를 재직렬화하면 서명이 깨짐
+- 로컬 허브는 `iss=masterdash-local`이라 프로덕션 검증에서 401. 로컬 통합 테스트가 필요하면 WorldCons 로컬 `.env`에 `MASTERDASH_SSO_ISSUER=masterdash-local`을 설정 (코드 수정 불필요)
+
+### 배포 후 확인
+
+- `GET /api/masterdash/health`가 무인증으로 200과 `status`를 반환하는지 확인
+- 허브 `GET https://masterdash-prod.cclib.workers.dev/api/ready`의 `checks.portalSecrets`로 허브 측 시크릿 존재를 상시 확인 (허브가 해당 커밋을 배포한 이후부터 노출)
+- 허브 UI에서 worldcons SSO 진입 후 `/admin`으로 리다이렉트되고 관리자 세션이 생성되는지 확인
+- 동일한 SSO 토큰 재사용이 409로 거부되는지 확인 (`jti` replay 방어)
+- `POST /api/masterdash/control`이 서명 없이 401, 잘못된 서명으로 403을 반환하는지 확인
 
 ## 배포 전 DB migration 확인
 

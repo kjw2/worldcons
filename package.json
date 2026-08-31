@@ -30,6 +30,7 @@
     "glossary:sync": "tsx scripts/sync-glossary-terms.ts",
     "glossary:candidates": "tsx scripts/glossary-candidates.ts",
     "admin:readiness": "tsx scripts/admin-ops-readiness.ts",
+    "masterdash:readiness": "tsx scripts/masterdash-readiness.ts",
     "admin:gate0": "tsx scripts/admin-redesign-gate0.ts",
     "admin:gate0:dry": "tsx scripts/admin-redesign-gate0.ts --dry-run --environment=ci",
     "admin:worker:p1": "tsx scripts/admin-command-worker-p1.ts",
