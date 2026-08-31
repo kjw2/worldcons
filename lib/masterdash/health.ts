@@ -38,11 +38,18 @@ export interface CollectionHealthMetrics {
   errorCount: number | null;
   failureReason: string | null;
   failureTarget: string | null;
+  failureObservedAt: string | null;
   runId: string | null;
   durationMs: number | null;
   checkpoint: string | null;
   bySource: CollectionSourceHealth[];
 }
+
+// A failure badge should describe the current state, not a permanent scar. Once collection
+// stops entirely the newest run stays failed forever, so consumers would keep showing a
+// failure that nobody can act on. Report the failure only while it is recent, and always
+// say when it was observed so the consumer can age it independently.
+export const FAILURE_RECENCY_WINDOW_HOURS = 168;
 
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -177,6 +184,15 @@ export function collectionHealthMetrics(input: {
   const failureReason = textValue(latest?.error_message) ?? metadataError(latestMetadata);
   const bySource = collectionHealthBySource(input.recentRuns ?? (latest ? [latest] : []));
 
+  const now = input.now ?? Date.now();
+  const failed = latestStatus === "failed" || latestStatus === "degraded";
+  // Prefer the finish time; a run that never finished is aged from when it started.
+  const failureObservedAt = failed ? (latestFinishedAt ?? latestStartedAt) : null;
+  const failureObservedMs = failureObservedAt ? Date.parse(failureObservedAt) : Number.NaN;
+  const failureIsRecent =
+    failed &&
+    (!Number.isFinite(failureObservedMs) || now - failureObservedMs <= FAILURE_RECENCY_WINDOW_HOURS * 3_600_000);
+
   return {
     lastCollectionAt: latestStartedAt,
     lastSuccessfulCollectionAt: successfulFinishedAt,
@@ -185,10 +201,11 @@ export function collectionHealthMetrics(input: {
     recordsAdded: metadataNumber(latestMetadata, "recordsAdded", "addedCount"),
     pendingItems: numberValue(input.pendingItems),
     errorCount,
-    failureReason,
-    failureTarget: latestStatus === "failed" || latestStatus === "degraded" ? textValue(latest?.source_key) : null,
+    failureReason: failureIsRecent ? failureReason : null,
+    failureTarget: failureIsRecent ? textValue(latest?.source_key) : null,
+    failureObservedAt: failureIsRecent ? failureObservedAt : null,
     runId: textValue(latest?.id),
-    durationMs: duration(latestStartedAt, latestFinishedAt, input.now ?? Date.now()),
+    durationMs: duration(latestStartedAt, latestFinishedAt, now),
     checkpoint: checkpointFor(successful) ?? textValue(successfulMetadata?.checkpoint),
     bySource,
   };

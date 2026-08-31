@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { getCollectionControlState } from "@/lib/masterdash/store";
-import { collectionHealthMetrics } from "@/lib/masterdash/health";
+import { collectionHealthMetrics, FAILURE_RECENCY_WINDOW_HOURS } from "@/lib/masterdash/health";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,6 +29,7 @@ function degradedHealth(message: string) {
         errorCount: null,
         failureReason: null,
         failureTarget: null,
+        failureObservedAt: null,
         runId: null,
         durationMs: null,
         collectionPaused: false,
@@ -64,7 +65,14 @@ export async function GET() {
       pendingItems: (pending.count ?? 0) + (openCandidates ?? 0),
       failedJobCount: failed.count ?? null,
     });
-    const sourceUnhealthy = metrics.bySource.some((source) => source.lastRunStatus === "degraded" || source.lastRunStatus === "failed");
+    // Age the per-source signal the same way as failureTarget: once collection stops the
+    // newest run stays failed forever and would pin this system to degraded permanently.
+    const recencyCutoffMs = Date.now() - FAILURE_RECENCY_WINDOW_HOURS * 3_600_000;
+    const sourceUnhealthy = metrics.bySource.some((source) => {
+      if (source.lastRunStatus !== "degraded" && source.lastRunStatus !== "failed") return false;
+      const observedMs = source.lastCollectionAt ? Date.parse(source.lastCollectionAt) : Number.NaN;
+      return !Number.isFinite(observedMs) || observedMs >= recencyCutoffMs;
+    });
     const degraded = queryFailed || (controlRequired && !control.available) || sourceUnhealthy;
     const lastSuccessAt = metrics.lastSuccessfulCollectionAt;
     const lastSuccessMs = lastSuccessAt ? Date.parse(lastSuccessAt) : Number.NaN;

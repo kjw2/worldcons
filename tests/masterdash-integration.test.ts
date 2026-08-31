@@ -10,7 +10,7 @@ import {
 import { GET as exchangeMasterdashSso } from "../app/api/auth/masterdash/route";
 import { GET as getMasterdashHealth } from "../app/api/masterdash/health/route";
 import { resolveExistingAdminSessionIdentityForMasterdash } from "../lib/utils/auth";
-import { collectionHealthMetrics } from "../lib/masterdash/health";
+import { collectionHealthMetrics, FAILURE_RECENCY_WINDOW_HOURS } from "../lib/masterdash/health";
 
 const originalSsoSecret = process.env.MASTERDASH_SSO_SECRET;
 const originalControlSecret = process.env.MASTERDASH_CONTROL_SECRET;
@@ -278,6 +278,9 @@ test("infers degraded status from legacy uncollected runs that have no outcome f
       fetched_count: 21,
       metadata: { recordsAdded: 0, uncollectedCandidateCount: 21 },
     }],
+    // Pin the clock: the run timestamps are fixed, so without this the assertion would
+    // start failing once the failure recency window elapsed in real time.
+    now: Date.parse("2026-08-15T22:00:00.000Z"),
   });
   assert.equal(metrics.lastRunStatus, "degraded");
   assert.equal(metrics.bySource[0]?.lastRunStatus, "degraded");
@@ -308,6 +311,68 @@ test("reports the latest failed collection and its actual failure target", () =>
 });
 
 test("returns null for collection metrics that are absent from stored data", () => {
+
+test("a failure is reported while recent and ages out of the badge", () => {
+  const now = Date.parse("2026-08-31T00:00:00.000Z");
+  const hoursAgo = (hours: number) => new Date(now - hours * 3_600_000).toISOString();
+
+  function metricsForFailureAge(hours: number) {
+    const startedAt = hoursAgo(hours);
+    return collectionHealthMetrics({
+      latest: {
+        id: "run-1",
+        source_key: "de-bverfg",
+        status: "failed",
+        started_at: startedAt,
+        finished_at: startedAt,
+        fetched_count: 0,
+        failed_count: 3,
+        error_message: "listing fetch timed out",
+        metadata: { outcome: "failed" },
+      },
+      successful: null,
+      now,
+    });
+  }
+
+  // A failure inside the window is actionable, so it is named with when it happened.
+  const recent = metricsForFailureAge(2);
+  assert.equal(recent.failureTarget, "de-bverfg");
+  assert.equal(recent.failureReason, "listing fetch timed out");
+  assert.equal(recent.failureObservedAt, hoursAgo(2));
+
+  // Once collection stops the newest run stays failed forever. Beyond the window the badge
+  // clears so a consumer does not surface a failure nobody can act on, while lastRunStatus
+  // still records what actually happened.
+  const stale = metricsForFailureAge(FAILURE_RECENCY_WINDOW_HOURS + 24);
+  assert.equal(stale.failureTarget, null);
+  assert.equal(stale.failureReason, null);
+  assert.equal(stale.failureObservedAt, null);
+  assert.equal(stale.lastRunStatus, "failed");
+});
+
+test("a run that never finished is aged from when it started", () => {
+  const now = Date.parse("2026-08-31T00:00:00.000Z");
+  const startedAt = new Date(now - 3 * 3_600_000).toISOString();
+  const metrics = collectionHealthMetrics({
+    latest: {
+      id: "run-2",
+      source_key: "fr-conseil-constitutionnel",
+      status: "failed",
+      started_at: startedAt,
+      finished_at: null,
+      fetched_count: 0,
+      failed_count: 1,
+      error_message: "aborted",
+      metadata: { outcome: "failed" },
+    },
+    successful: null,
+    now,
+  });
+
+  assert.equal(metrics.failureTarget, "fr-conseil-constitutionnel");
+  assert.equal(metrics.failureObservedAt, startedAt);
+});
   const metrics = collectionHealthMetrics({ latest: null, successful: null });
   assert.equal(metrics.lastRunStatus, null);
   assert.equal(metrics.recordsCollected, null);

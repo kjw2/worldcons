@@ -17,6 +17,11 @@ WorldCons exposes three production adapter endpoints:
   an `admin` or `owner` role.
 - `GET /api/masterdash/health` returns collection freshness, queue, error, and pause metrics without
   credentials or row-level content.
+  `failureTarget`, `failureReason`, and `failureObservedAt` describe only a failure observed within
+  the last 168 hours, and the per-source signal that drives `status: "degraded"` is aged the same way.
+  Without that bound the newest run stays failed forever once collection stops, so a consumer would
+  keep showing a failure nobody can act on. `lastRunStatus` still reports what actually happened, and
+  `failureObservedAt` lets a consumer apply its own recency rule.
 
 Apply `supabase/migrations/20260801090000_masterdash_integration.sql` before configuring either
 MasterDash secret. The migration adds service-role-only replay, request ledger, and collection
