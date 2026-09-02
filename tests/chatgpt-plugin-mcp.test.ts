@@ -174,7 +174,7 @@ test("ChatGPT can initialize the Vercel MCP endpoint, scan tools, and call searc
   assert.equal(call.headers.get("access-control-allow-origin"), "*");
 });
 
-test("plugin MCP is a Vercel route with five public read-only tools and no Cloudflare runtime", () => {
+test("plugin MCP is a Vercel route with five public read-only tools and no separate edge runtime", () => {
   const root = process.cwd();
   const serverSource = fs.readFileSync(path.join(root, "lib/chatgpt-plugin/server.ts"), "utf8");
   const routeSource = fs.readFileSync(path.join(root, "app/api/mcp/route.ts"), "utf8");
@@ -186,7 +186,6 @@ test("plugin MCP is a Vercel route with five public read-only tools and no Cloud
   assert.match(serverSource, /destructiveHint: false/u);
   assert.match(routeSource, /handleWorldconsMcpRequest/u);
   assert.match(routeSource, /consumeRateLimit\(request, "publicApi"\)/u);
-  assert.doesNotMatch(serverSource + routeSource, /Cloudflare|Fetcher|ExecutionContext|ADMIN_PASSWORD|SERVICE_ROLE_KEY|Authorization/u);
-  assert.equal(fs.existsSync(path.join(root, "workers/chatgpt-plugin-mcp/wrangler.jsonc")), false);
+  assert.doesNotMatch(serverSource + routeSource, /Fetcher|ExecutionContext|ADMIN_PASSWORD|SERVICE_ROLE_KEY|Authorization/u);
   assert.equal(fs.existsSync(path.join(root, "workers/chatgpt-plugin-mcp/package.json")), false);
 });

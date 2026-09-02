@@ -5,7 +5,7 @@
 WorldCons owns the constitutional-case corpus, publication state, PostgreSQL full-text index, ranking, and pagination. cclmetasearch receives only a normalized response page for its short-lived search session; it does not fetch or replicate the WorldCons result set.
 
 - Production endpoint: `GET https://worldcons.vercel.app/api/cclmetasearch/search`
-- Transport: public HTTPS. WorldCons runs on Vercel, so no Cloudflare Service Binding is available.
+- Transport: public HTTPS through the canonical Vercel deployment. No private runtime binding is required.
 - Authentication header: `X-CCL-Metasearch-Token`
 - Provider secret: `CCL_METASEARCH_API_TOKEN` in the WorldCons Vercel Production environment
 - Consumer secret: use the same value as `WORLDCONS_SEARCH_TOKEN` in cclmetasearch

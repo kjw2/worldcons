@@ -4,7 +4,7 @@
 
 ## 목표
 
-WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면서, 검색 correctness와 retrieval 품질을 우선 개선하고 외부 Search Worker/cclrag2 계약을 일치시킨 뒤 운영 보안과 legacy 경로를 정리한다.
+WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면서, 검색 correctness와 retrieval 품질을 우선 개선하고 외부 provider/cclrag2 계약을 일치시킨 뒤 운영 보안과 legacy 경로를 정리한다.
 
 ## 원칙
 
@@ -30,7 +30,7 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 - semantic/hybrid pagination helper 회귀 테스트 PASS
 - 기존 cclrag2 검색 테스트 PASS
-- Search Worker 회귀 테스트 PASS
+- provider 검색 회귀 테스트 PASS
 - `pnpm check`, lint, production build PASS
 
 ### 완료 결과
@@ -62,26 +62,26 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 - 동일 RRF 점수에서만 `originalPublishedAt`을 최신순 tie-breaker로 사용해 법적 관련성보다 최신성이 앞서지 않도록 했다.
 - `public_fulltext_ranked_ids_v1` service-role 전용 RPC를 추가해 P3 공개 projection에서 `ts_rank_cd` 기반 FTS 순위를 제공한다. RPC 미적용/실패, tag/legacy 특수 경로에서는 기존 full-text 검색으로 fail-soft한다.
 - 한국어 개념 질의가 semantic으로 발견한 외국 판례를 낮은 FTS 결과보다 앞에 배치할 수 있는 fixture, exact title 우선, 양 검색 합의 승격, recency tie-breaker 테스트를 추가했다.
-- `test:cclrag2` 14/14, `test:cclmetasearch` 9/9, Search Worker 7/7, `pnpm check`, lint, production build를 모두 통과했다.
+- `test:cclrag2` 14/14, `test:cclmetasearch` 9/9, provider 검색 7/7, `pnpm check`, lint, production build를 모두 통과했다.
 
-## 3단계 — Cloudflare Search Worker 검색 계약 통일
+## 3단계 — Vercel provider 검색 계약 통일
 
 상태: 완료 (2026-08-26)
 
 ### 범위
 
-- Worker가 수신하는 `fulltext|semantic|hybrid` mode를 실제 retrieval에 반영한다.
+- provider route가 수신하는 `fulltext|semantic|hybrid` mode를 실제 retrieval에 반영한다.
 - `worldcons_provider_search_v3` 등 명시적 mode-aware RPC를 도입한다.
 - requested/effective mode 및 degraded 상태를 일관되게 표현한다.
-- Next.js 검색과 Worker 검색이 동일한 핵심 ranking 정책을 사용하도록 정렬한다.
+- Next.js 검색과 provider 검색이 동일한 핵심 ranking 정책을 사용하도록 정렬한다.
 
 ### 완료 결과
 
-- Search Worker를 `worldcons_provider_search_v3`로 전환하고 `p_mode`와 optional query embedding을 실제 RPC에 전달하도록 수정했다.
+- provider 검색을 `worldcons_provider_search_v3`로 전환하고 `p_mode`와 optional query embedding을 실제 RPC에 전달하도록 수정했다.
 - `fulltext`는 `ts_rank_cd`, `semantic`은 pgvector cosine similarity, `hybrid`는 RRF(`k=60`)를 사용하도록 DB retrieval을 분리했다.
 - Hybrid의 exact normalized title 우선 및 relevance 이후 recency tie-break 규칙을 Next.js 검색과 맞췄다.
 - BVerfG 사건번호/Neubauer/Klimabeschluss exact-case preflight는 embedding 호출 전에 처리해 불필요한 semantic 비용과 잘못된 degraded 판정을 제거했다.
-- Worker는 semantic/hybrid 질의에서 OpenAI embedding을 생성하며, 키 미설정·호출 실패·빈 질의는 full-text로 fail-soft하고 `requestedMode`, `effectiveMode`, `mode`, `degraded`, `degradationReason`으로 실제 실행 상태를 반환한다.
+- provider는 semantic/hybrid 질의에서 Gemini embedding을 생성하며, 키 미설정·호출 실패·빈 질의는 full-text로 fail-soft하고 `requestedMode`, `effectiveMode`, `mode`, `degraded`, `degradationReason`으로 실제 실행 상태를 반환한다.
 - HTTP Provider Contract는 기존 `2.0`을 유지해 소비자 하위 호환성을 보존하고, 내부 DB 검색 계약만 V3로 올렸다.
 - 공개 projection만 읽는 service-role 전용 V3 RPC와 migration 회귀 테스트를 추가했다.
 
@@ -94,17 +94,17 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 - 독일·미국·프랑스·스페인 사건번호를 공통 canonical normalization 규칙으로 통일한다.
 - 검색 시 반복 regexp 계산 대신 저장/인덱싱 가능한 canonical case key를 도입한다.
 - Next FTS의 100 candidate 제한과 deep pagination 한계를 DB-native ranking/pagination 중심으로 개선한다.
-- `total`, `hasMore`, `totalIsExact` 의미를 Next/Worker에서 통일한다.
+- `total`, `hasMore`, `totalIsExact` 의미를 Next/provider에서 통일한다.
 
 ### 완료 결과
 
-- `lib/search/case-number.ts`를 공용 normalization 계층으로 추가하고 ingestion, Next exact-case 검색, Cloudflare Worker preflight가 같은 독일·프랑스·스페인·미국 규칙을 사용하도록 통일했다.
+- `lib/search/case-number.ts`를 공용 normalization 계층으로 추가하고 ingestion, Next exact-case 검색, provider preflight가 같은 독일·프랑스·스페인·미국 규칙을 사용하도록 통일했다.
 - `articles`와 `article_content_versions_p3`에 source-aware generated `case_key`를 추가하고 `(source_key, case_key)` partial index를 구성했다. 공개 P3 projection에도 `case_key`를 노출해 exact 검색이 반복 regexp/URL scan 대신 인덱스 키를 우선 사용한다.
 - `worldcons_ranked_search_page_v1`을 추가해 fulltext/semantic/hybrid/exact-case 페이지를 DB에서 직접 잘라 반환하도록 변경했다. 정상 P3 경로에서는 기존 Next FTS 100-candidate preload가 더 이상 검색 페이지 한계가 되지 않는다.
-- Hybrid 후보 depth는 요청 offset에 비례해 최대 30,063건까지 oversampling하며, 공개 검색 deep-pagination 경계는 Next와 Worker 모두 offset 10,000으로 통일했다.
+- Hybrid 후보 depth는 요청 offset에 비례해 최대 30,063건까지 oversampling하며, 공개 검색 deep-pagination 경계는 Next와 provider 모두 offset 10,000으로 통일했다.
 - 검색 API의 `count` 기본값을 양쪽 모두 `none`으로 맞추고, `count=exact`일 때만 정확한 `total`과 `totalIsExact=true`를 전달하도록 정리했다.
-- Worker DB 계약은 rollback 가능한 V3를 남긴 채 `worldcons_provider_search_v4`로 전환해 V4가 공용 ranked-page 결과와 count metadata를 그대로 사용하도록 했다.
-- cclrag2 16/16, Search Worker 15/15, ingestion 16/16, cclmetasearch 9/9, `pnpm check`, lint, Worker TypeScript check, production build를 모두 통과했다.
+- provider DB 계약은 rollback 가능한 V3를 남긴 채 `worldcons_provider_search_v4`로 전환해 V4가 공용 ranked-page 결과와 count metadata를 그대로 사용하도록 했다.
+- cclrag2 16/16, provider 검색 15/15, ingestion 16/16, cclmetasearch 9/9, `pnpm check`, lint, TypeScript check, production build를 모두 통과했다.
 
 ## 5단계 — 운영 안정성과 보안
 
@@ -129,7 +129,7 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 
 - production parity를 확인한 뒤 obsolete legacy read/write, shadow flag, compatibility 경로를 제거한다.
 - publication P3를 최종 authoritative public path로 수렴한다.
-- 전체 unit/integration/SEO/ingestion/MasterDash/Worker 테스트와 production smoke를 수행한다.
+- 전체 unit/integration/SEO/ingestion/MasterDash/provider 테스트와 production smoke를 수행한다.
 
 ### 완료 결과
 
@@ -138,7 +138,7 @@ WorldCons의 수집 안정성·공개 projection·SEO/UI 기반은 유지하면�
 - 따라서 호환 reader/writer와 shadow/rollback 기능을 강제로 삭제하지 않았다. 이는 Gate 5 계약상 의도된 fail-closed 동작이며, 실제 근거가 충족되기 전의 destructive retirement를 완료로 오인하지 않는다.
 - 대신 public P3/legacy read 선택 로직을 `lib/article-publication/public-read-authority.ts` 하나로 수렴시켜 queries/vector/exact/ranked-page의 중복 authority 분기를 제거하고 rollback 경계를 한 곳에 격리했다.
 - 기존 P1 테스트에 남아 있던 `/api/admin/cron/jobs` legacy drain 가정을 제거하고 현재 authoritative `pnpm admin:job:worker` direct drain을 검증하도록 수정했다. P3 테스트도 중앙 public-read authority 계약을 검증하도록 갱신했다.
-- `pnpm verify:release`를 추가해 check/lint, Gate0/P0~P5, cclmetasearch/cclrag2/Search Worker/security/ingestion/MasterDash/public regression, Worker TypeScript, production build를 한 번에 검증하도록 했다.
+- `pnpm verify:release`를 추가해 check/lint, Gate0/P0~P5, cclmetasearch/cclrag2/provider/security/ingestion/MasterDash/public regression, TypeScript, production build를 한 번에 검증하도록 했다.
 - 최종 `pnpm verify:release`는 PASS했다. DB 통합 테스트는 `TEST_DATABASE_URL` 미설정으로 명시적으로 SKIP됐으며, production build는 11/11 정적 페이지 생성까지 완료했다. 빌드 시 로컬 Supabase 자격증명 시계 검증 경고(`JWT issued at future`)가 1회 기록됐으나 build 실패나 산출물 누락은 없었다.
 
 ## 단계별 커밋 기준

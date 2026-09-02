@@ -1,3 +1,4 @@
+-- Provider search contract V1. The timestamp is preserved for migration history compatibility.
 create or replace function worldcons_provider_search_v1(
   p_query text default '',
   p_limit integer default 10,

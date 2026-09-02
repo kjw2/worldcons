@@ -4,12 +4,12 @@ import path from "node:path";
 import test from "node:test";
 import {
   handleWorldconsSearchRequest,
-  type SearchWorkerEnv,
-} from "../workers/search-api/src/handler";
+  type Cclrag2ProviderEnv,
+} from "../lib/integrations/cclrag2/provider-handler";
 
 const migrationPath = path.join(
   process.cwd(),
-  "supabase/migrations/20260727120000_worldcons_cloudflare_search_api.sql",
+  "supabase/migrations/20260727120000_worldcons_provider_search_v1.sql",
 );
 const v2MigrationPath = path.join(
   process.cwd(),
@@ -23,16 +23,20 @@ const v4SearchMigrationPath = path.join(
   process.cwd(),
   "supabase/migrations/20260826400000_case_keys_and_ranked_pagination.sql",
 );
+const providerRoutePath = path.join(
+  process.cwd(),
+  "app/api/cclrag2/[...path]/route.ts",
+);
 const NEUBAUER_CHECKSUM = "527b41e3310651a4ba4d1a9a0c1e358e0cf6c292241fe019a8c71f1fc18058ba";
 const NEUBAUER_EXCERPT =
   "공식 독일 연방헌법재판소 결정문 발췌로서 기후보호법의 감축부담이 미래세대의 자유행사에 미치는 영향과 국가의 헌법상 보호의무를 설명한다. 재판소는 세대 간 자유 보장의 균형을 중심으로 심사하였다.";
 
 const env = {
   ENVIRONMENT: "test",
-  PUBLIC_BASE_URL: "https://worldcons-search-api.example.workers.dev",
+  PUBLIC_BASE_URL: "https://worldcons.vercel.app/api/cclrag2",
   SUPABASE_URL: "https://project.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
-} satisfies SearchWorkerEnv;
+} satisfies Cclrag2ProviderEnv;
 
 const embeddingEnv = {
   ...env,
@@ -40,9 +44,20 @@ const embeddingEnv = {
   SEMANTIC_SEARCH_ENABLED: "true",
   GEMINI_API_KEY: "test-gemini-key",
   GEMINI_EMBEDDING_MODEL: "gemini-embedding-001",
-} satisfies SearchWorkerEnv;
+} satisfies Cclrag2ProviderEnv;
 
-test("Worker search accepts the cclrag2 contract and returns the Neubauer case first", async () => {
+test("Vercel catch-all route preserves the provider contract and applies public rate limiting", () => {
+  const route = fs.readFileSync(providerRoutePath, "utf8");
+
+  assert.match(route, /https:\/\/worldcons\.vercel\.app\/api\/cclrag2/u);
+  assert.match(route, /consumeRateLimit\(request, "publicApi"\)/u);
+  assert.match(route, /providerRateLimitExceededResponse/u);
+  assert.match(route, /replace\(\/\^\\\/api\\\/cclrag2/u);
+  assert.match(route, /handleWorldconsSearchRequest/u);
+  assert.doesNotMatch(route, /Fetcher|ExecutionContext|workers\.dev|wrangler/iu);
+});
+
+test("Vercel provider accepts the cclrag2 contract and returns the Neubauer case first", async () => {
   const calls: Array<{
     url: string;
     body: Record<string, unknown>;
@@ -51,7 +66,7 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   }> = [];
   const response = await handleWorldconsSearchRequest(
     new Request(
-      "https://worldcons-search-api.example.workers.dev/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none&jurisdiction=Germany&source=de-bverfg",
+      "https://provider.example/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none&jurisdiction=Germany&source=de-bverfg",
       { headers: { "x-request-id": "cclrag2-neubauer-test" } },
     ),
     env,
@@ -76,7 +91,7 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(response.headers.get("x-request-id"), "cclrag2-neubauer-test");
   assert.equal(payload.contractVersion, "2.0");
   assert.equal(payload.requestId, "cclrag2-neubauer-test");
-  assert.equal(payload.transport, "cloudflare-worker");
+  assert.equal(payload.transport, "vercel-route-handler");
   assert.equal(payload.requestedMode, "hybrid");
   assert.equal(payload.effectiveMode, "hybrid");
   assert.equal(payload.mode, "hybrid");
@@ -106,7 +121,7 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(payload.items[0].sectionAnchors[0].kind, "passage");
   assert.equal(
     payload.items[0].detailApiUrl,
-    "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer",
+    "https://worldcons.vercel.app/api/cclrag2/articles/germany-neubauer",
   );
   assert.equal(payload.items[0].summaryJson.summary.background, "기후위기와 미래세대의 자유가 문제 되었다.");
   assert.deepEqual(payload.meta, {
@@ -126,14 +141,14 @@ test("Worker search accepts the cclrag2 contract and returns the Neubauer case f
   assert.equal(calls[0].requestId, "cclrag2-neubauer-test");
   assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
   assert.ok(Number(response.headers.get("content-length")) < 1_500_000);
-  assert.doesNotMatch(JSON.stringify(payload), /vercel\.app/iu);
+  assert.doesNotMatch(JSON.stringify(payload), /workers\.dev/iu);
 });
 
-test("Worker preserves the Korean comparison query and returns Neubauer first", async () => {
+test("Vercel provider preserves the Korean comparison query and returns Neubauer first", async () => {
   let rpcBody: Record<string, unknown> | undefined;
   const response = await handleWorldconsSearchRequest(
     new Request(
-      "https://worldcons-search-api.example.workers.dev/api/search?q=%ED%95%9C%EA%B5%AD%20%ED%97%8C%EC%9E%AC%20%EA%B8%B0%ED%9B%84%EA%B2%B0%EC%A0%95%EA%B3%BC%20%EB%8F%85%EC%9D%BC%20%EC%97%B0%EB%B0%A9%ED%97%8C%EB%B2%95%EC%9E%AC%ED%8C%90%EC%86%8C%20Neubauer%20%EA%B8%B0%ED%9B%84%EA%B2%B0%EC%A0%95%EC%9D%84%20%EB%B9%84%EA%B5%90&mode=hybrid&pageSize=5&count=none",
+      "https://provider.example/api/search?q=%ED%95%9C%EA%B5%AD%20%ED%97%8C%EC%9E%AC%20%EA%B8%B0%ED%9B%84%EA%B2%B0%EC%A0%95%EA%B3%BC%20%EB%8F%85%EC%9D%BC%20%EC%97%B0%EB%B0%A9%ED%97%8C%EB%B2%95%EC%9E%AC%ED%8C%90%EC%86%8C%20Neubauer%20%EA%B8%B0%ED%9B%84%EA%B2%B0%EC%A0%95%EC%9D%84%20%EB%B9%84%EA%B5%90&mode=hybrid&pageSize=5&count=none",
     ),
     env,
     {
@@ -150,10 +165,10 @@ test("Worker preserves the Korean comparison query and returns Neubauer first", 
   assert.match(String(rpcBody?.p_query), /Neubauer/u);
 });
 
-test("Worker fulltext mode bypasses embeddings and executes V4 lexical retrieval", async () => {
+test("Vercel provider fulltext mode bypasses embeddings and executes V4 lexical retrieval", async () => {
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const response = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=freedom&mode=fulltext&pageSize=5"),
+    new Request("https://provider.example/api/search?q=freedom&mode=fulltext&pageSize=5"),
     embeddingEnv,
     {
       fetcher: async (input, init) => {
@@ -178,10 +193,10 @@ test("Worker fulltext mode bypasses embeddings and executes V4 lexical retrieval
   assert.equal(payload.databaseRetrievalMode, "fulltext");
 });
 
-test("Worker reports an explicit fulltext fallback when semantic capability is not configured", async () => {
+test("Vercel provider reports an explicit fulltext fallback when semantic capability is not configured", async () => {
   const rpcBodies: Array<Record<string, unknown>> = [];
   const response = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
+    new Request("https://provider.example/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
     env,
     {
       fetcher: async (_input, init) => {
@@ -202,11 +217,11 @@ test("Worker reports an explicit fulltext fallback when semantic capability is n
   assert.equal(payload.degradationReason, "embedding_not_configured");
 });
 
-test("Worker semantic mode creates an embedding and passes it to V4 vector retrieval", async () => {
+test("Vercel provider semantic mode creates an embedding and passes it to V4 vector retrieval", async () => {
   const rpcCalls: Array<Record<string, unknown>> = [];
   let embeddingCalls = 0;
   const response = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=intergenerational%20climate%20freedom&mode=semantic&pageSize=5"),
+    new Request("https://provider.example/api/search?q=intergenerational%20climate%20freedom&mode=semantic&pageSize=5"),
     embeddingEnv,
     {
       fetcher: async (input, init) => {
@@ -242,10 +257,10 @@ test("Worker semantic mode creates an embedding and passes it to V4 vector retri
   assert.equal(payload.databaseRetrievalMode, "semantic");
 });
 
-test("Worker hybrid mode uses embeddings when available and degrades explicitly when embedding fails", async () => {
+test("Vercel provider hybrid mode uses embeddings when available and degrades explicitly when embedding fails", async () => {
   const hybridRpcBodies: Array<Record<string, unknown>> = [];
   const hybrid = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
+    new Request("https://provider.example/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
     embeddingEnv,
     {
       fetcher: async (input, init) => {
@@ -266,7 +281,7 @@ test("Worker hybrid mode uses embeddings when available and degrades explicitly 
 
   const degradedRpcBodies: Array<Record<string, unknown>> = [];
   const degraded = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
+    new Request("https://provider.example/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
     embeddingEnv,
     {
       fetcher: async (input, init) => {
@@ -290,7 +305,7 @@ test("Worker hybrid mode uses embeddings when available and degrades explicitly 
   assert.equal(degradedPayload.degradationReason, "embedding_unavailable");
 });
 
-test("Worker exact-case preflight covers France, Spain, and the US without embedding calls", async () => {
+test("Vercel provider exact-case preflight covers France, Spain, and the US without embedding calls", async () => {
   const cases = [
     ["2026-912%20QPC", "fr-conseil-constitutionnel"],
     ["53%2F2025", "es-tribunal-constitucional"],
@@ -300,7 +315,7 @@ test("Worker exact-case preflight covers France, Spain, and the US without embed
   for (const [query, sourceKey] of cases) {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     const response = await handleWorldconsSearchRequest(
-      new Request(`https://worldcons-search-api.example.workers.dev/api/search?q=${query}&mode=hybrid&source=${sourceKey}`),
+      new Request(`https://provider.example/api/search?q=${query}&mode=hybrid&source=${sourceKey}`),
       env,
       {
         fetcher: async (input, init) => {
@@ -321,9 +336,9 @@ test("Worker exact-case preflight covers France, Spain, and the US without embed
   }
 });
 
-test("Worker preserves exact total semantics returned by the DB-native page contract", async () => {
+test("Vercel provider preserves exact total semantics returned by the DB-native page contract", async () => {
   const response = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=freedom&mode=fulltext&page=2&pageSize=10&count=exact"),
+    new Request("https://provider.example/api/search?q=freedom&mode=fulltext&page=2&pageSize=10&count=exact"),
     env,
     {
       fetcher: async () => Response.json({
@@ -354,7 +369,7 @@ test("Worker preserves exact total semantics returned by the DB-native page cont
   });
 });
 
-test("Worker source and article endpoints expose bounded Contract V2 evidence", async () => {
+test("Vercel provider source and article endpoints expose bounded Contract V2 evidence", async () => {
   const calls: Array<{ pathname: string; body: Record<string, unknown> }> = [];
   const fetcher: typeof fetch = async (input, init) => {
     const pathname = new URL(String(input)).pathname;
@@ -400,18 +415,18 @@ test("Worker source and article endpoints expose bounded Contract V2 evidence", 
   };
 
   const sources = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/sources"),
+    new Request("https://provider.example/api/sources"),
     env,
     { fetcher },
   );
   const detail = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer?textLimit=16000"),
+    new Request("https://provider.example/api/articles/germany-neubauer?textLimit=16000"),
     env,
     { fetcher },
   );
   const sourceText = await handleWorldconsSearchRequest(
     new Request(
-      "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer/source-text?offset=10&limit=20",
+      "https://provider.example/api/articles/germany-neubauer/source-text?offset=10&limit=20",
     ),
     env,
     { fetcher },
@@ -456,16 +471,16 @@ test("Worker source and article endpoints expose bounded Contract V2 evidence", 
   });
 });
 
-test("Worker rejects invalid input and normalizes dependency failures", async () => {
+test("Vercel provider rejects invalid input and normalizes dependency failures", async () => {
   const invalid = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=test&pageSize=21"),
+    new Request("https://provider.example/api/search?q=test&pageSize=21"),
     env,
   );
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).error.code, "INVALID_REQUEST");
 
   const rateLimited = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=test"),
+    new Request("https://provider.example/api/search?q=test"),
     env,
     {
       fetcher: async () => Response.json({ error: "rate limited" }, {
@@ -478,7 +493,7 @@ test("Worker rejects invalid input and normalizes dependency failures", async ()
   assert.equal(rateLimited.headers.get("retry-after"), "17");
 
   const unavailable = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/search?q=test"),
+    new Request("https://provider.example/api/search?q=test"),
     env,
     {
       fetcher: async () => Response.json({ error: "upstream unavailable" }, { status: 500 }),
@@ -489,7 +504,7 @@ test("Worker rejects invalid input and normalizes dependency failures", async ()
 
   const invalidTextPage = await handleWorldconsSearchRequest(
     new Request(
-      "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer/source-text?limit=350001",
+      "https://provider.example/api/articles/germany-neubauer/source-text?limit=350001",
     ),
     env,
   );
@@ -498,7 +513,7 @@ test("Worker rejects invalid input and normalizes dependency failures", async ()
 
   const invalidDetailTextLimit = await handleWorldconsSearchRequest(
     new Request(
-      "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer?textLimit=350001",
+      "https://provider.example/api/articles/germany-neubauer?textLimit=350001",
     ),
     env,
   );
@@ -570,10 +585,10 @@ test("Search V4 migration adds indexed four-country case keys and DB-native deep
   assert.match(sql, /grant execute on function worldcons_provider_search_v4[\s\S]*to service_role/iu);
 });
 
-test("Worker truncates a large article body without dropping the preserved text API contract", async () => {
+test("Vercel provider truncates a large article body without dropping the preserved text API contract", async () => {
   const oversizedText = "가".repeat(600_000);
   const response = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer"),
+    new Request("https://provider.example/api/articles/germany-neubauer"),
     env,
     {
       fetcher: async () => Response.json({

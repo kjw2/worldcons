@@ -36,7 +36,7 @@ pnpm masterdash:readiness
 
 ### 확인 항목
 
-- 허브(Cloudflare) 측 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`은 프로덕션에 설정 완료. `pnpm masterdash:readiness`가 허브 `/api/ready`의 `checks.portalSecrets`를 읽어 상시 확인 (2026-08-31 두 항목 모두 true 확인)
+- 외부 MasterDash 허브 측 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`은 프로덕션에 설정 완료. `pnpm masterdash:readiness`가 허브 `/api/ready`의 `checks.portalSecrets`를 읽어 상시 확인 (2026-08-31 두 항목 모두 true 확인)
 - Vercel production에 `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`이 설정되어 있는지 확인
 - 위 두 값이 각각 허브의 `PORTAL_SSO_SECRET`, `PORTAL_CONTROL_SECRET`과 **동일한 값**인지 확인. 변수 이름이 다른 것은 정상이며 값만 같아야 함
 - 두 시크릿이 각각 32바이트 이상이고 서로 다른 값이며 다른 관리자/cron secret과도 겹치지 않는지 확인

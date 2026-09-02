@@ -1,7 +1,7 @@
-import { hasExactCaseReference } from "../../../lib/search/case-number";
-import { normalizeEmbeddingVector } from "../../../lib/ai/embedding-vector";
+import { normalizeEmbeddingVector } from "@/lib/ai/embedding-vector";
+import { hasExactCaseReference } from "@/lib/search/case-number";
 
-export type SearchWorkerEnv = {
+export type Cclrag2ProviderEnv = {
   ENVIRONMENT: string;
   PUBLIC_BASE_URL: string;
   SUPABASE_URL: string;
@@ -15,7 +15,7 @@ export type SearchWorkerEnv = {
 type JsonRecord = Record<string, unknown>;
 type Fetcher = typeof fetch;
 
-export type WorkerDependencies = {
+export type ProviderDependencies = {
   fetcher?: Fetcher;
 };
 
@@ -91,8 +91,8 @@ const SOURCE_CONTEXT: Record<string, {
 
 export async function handleWorldconsSearchRequest(
   request: Request,
-  env: SearchWorkerEnv,
-  dependencies: WorkerDependencies = {},
+  env: Cclrag2ProviderEnv,
+  dependencies: ProviderDependencies = {},
 ): Promise<Response> {
   const requestId = requestIdFor(request);
   if (request.method !== "GET") {
@@ -147,7 +147,7 @@ export async function handleWorldconsSearchRequest(
   }
 }
 
-async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, requestId: string) {
+async function searchResponse(url: URL, env: Cclrag2ProviderEnv, fetcher: Fetcher, requestId: string) {
   const input = parseSearchInput(url.searchParams);
   const retrieval = await resolveRetrievalPlan(input.query, input.mode, env, fetcher, requestId);
   const rpcPayload = await callRpc(env, "worldcons_provider_search_v4", {
@@ -178,7 +178,7 @@ async function searchResponse(url: URL, env: SearchWorkerEnv, fetcher: Fetcher, 
     requestId,
     query: input.query,
     service: "worldcons",
-    transport: "cloudflare-worker",
+    transport: "vercel-route-handler",
     mode: retrieval.effectiveMode,
     requestedMode: retrieval.requestedMode,
     effectiveMode: retrieval.effectiveMode,
@@ -216,7 +216,7 @@ type RetrievalPlan = {
 async function resolveRetrievalPlan(
   query: string,
   requestedMode: string,
-  env: SearchWorkerEnv,
+  env: Cclrag2ProviderEnv,
   fetcher: Fetcher,
   requestId: string,
 ): Promise<RetrievalPlan> {
@@ -280,7 +280,7 @@ function isExactCasePreflightQuery(query: string) {
 
 async function createQueryEmbedding(
   query: string,
-  env: SearchWorkerEnv,
+  env: Cclrag2ProviderEnv,
   fetcher: Fetcher,
   requestId: string,
 ): Promise<number[] | null> {
@@ -332,7 +332,7 @@ async function createQueryEmbedding(
   }
 }
 
-async function sourcesResponse(env: SearchWorkerEnv, fetcher: Fetcher, requestId: string) {
+async function sourcesResponse(env: Cclrag2ProviderEnv, fetcher: Fetcher, requestId: string) {
   const rpcPayload = await callRpc(env, "worldcons_provider_sources_v1", {}, fetcher, requestId);
   const sources = Array.isArray(rpcPayload) ? rpcPayload : [];
   return jsonResponse({
@@ -340,7 +340,7 @@ async function sourcesResponse(env: SearchWorkerEnv, fetcher: Fetcher, requestId
     schemaVersion: 1,
     requestId,
     service: "worldcons",
-    transport: "cloudflare-worker",
+    transport: "vercel-route-handler",
     items: sources.map((source) => {
       const row = requiredRecord(source, "source");
       const sourceKey = requiredString(row.sourceKey ?? row.source_key, "sourceKey");
@@ -372,7 +372,7 @@ async function articleResponse(
   url: URL,
   slug: string,
   sourceTextOnly: boolean,
-  env: SearchWorkerEnv,
+  env: Cclrag2ProviderEnv,
   fetcher: Fetcher,
   requestId: string,
 ) {
@@ -556,7 +556,7 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
     coreSummary[0] ?? "요약이 아직 생성되지 않았습니다.",
     800,
   );
-  const detailApiUrl = `${normalizedBaseUrl(publicBaseUrl)}/api/articles/${encodeURIComponent(slug)}`;
+  const detailApiUrl = `${normalizedBaseUrl(publicBaseUrl)}/articles/${encodeURIComponent(slug)}`;
   const caseNumber = optionalString(row.case_number)
     ?? firstString(rawSourceMetadata, ["caseNumber", "case_number", "docketNumber", "docket_number"]);
   const institutionName = requiredString(row.institution_name, "institution_name");
@@ -703,7 +703,7 @@ function mapArticleDetail(value: unknown, publicBaseUrl: string) {
 }
 
 async function callRpc(
-  env: SearchWorkerEnv,
+  env: Cclrag2ProviderEnv,
   functionName: string,
   payload: JsonRecord,
   fetcher: Fetcher,
@@ -1096,6 +1096,16 @@ function errorResponse(
       ...Object.fromEntries(new Headers(headers)),
     },
   });
+}
+
+export function providerRateLimitExceededResponse(request: Request, retryAfterSeconds: number) {
+  return errorResponse(
+    429,
+    "RATE_LIMITED",
+    "WorldCons search is temporarily rate limited.",
+    { "Retry-After": String(Math.max(1, retryAfterSeconds)) },
+    requestIdFor(request),
+  );
 }
 
 class RequestValidationError extends Error {

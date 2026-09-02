@@ -2,33 +2,33 @@
 
 ## Production boundary
 
-WorldCons owns the foreign constitutional-case records, publication state, search index, summaries, and preserved source snapshots. The Cloudflare Worker reads the published Supabase projection through service-role-only RPC functions. It does not call, proxy, or expose the WorldCons Vercel application.
+WorldCons owns the foreign constitutional-case records, publication state, search index, summaries, and preserved source snapshots. The provider API runs in the same Vercel project as the website and reads the published Supabase projection through service-role-only RPC functions.
 
 - Provider contract: `2.0`
-- Cloudflare Worker service: `worldcons-search-api`
-- Public HTTPS base URL: `https://worldcons-search-api.cclib.workers.dev`
+- Runtime: Vercel Next.js Route Handler
+- Public HTTPS base URL: `https://worldcons.vercel.app/api/cclrag2`
 - Authentication: none; only the published read-only projection is exposed
-- Internal data access: encrypted Worker secrets and service-role-only Supabase RPCs
+- Internal data access: encrypted Vercel environment variables and service-role-only Supabase RPCs
 - Consumer timeout: 8 seconds
-- Request correlation: send `X-Request-Id`; the Worker echoes it in the response body and header
+- Request correlation: send `X-Request-Id`; the provider echoes it in the response body and header
 
-cclrag2 must call the public HTTPS base URL. No Vercel URL, database credential, storage binding, or provider-owned internal RPC is part of the consumer contract.
+cclrag2 must call the public HTTPS base URL. No database credential or provider-owned internal RPC is part of the consumer contract.
 
 ## Endpoints
 
 | Method and path | Purpose | Maximum response |
 | --- | --- | --- |
-| `GET /api/search` | Bounded published-case search | 1.5 MB |
-| `GET /api/sources` | Active source inventory and health probe | 200 KB |
-| `GET /api/articles/{slug}` | Structured summary and the first preserved-text page | 1.9 MB |
-| `GET /api/articles/{slug}/source-text` | Offset-based preserved-text page | 1.8 MB |
+| `GET /search` | Bounded published-case search | 1.5 MB |
+| `GET /sources` | Active source inventory and health probe | 200 KB |
+| `GET /articles/{slug}` | Structured summary and the first preserved-text page | 1.9 MB |
+| `GET /articles/{slug}/source-text` | Offset-based preserved-text page | 1.8 MB |
 
 Only `GET` is accepted. Unknown resources return `404`; unsupported methods return `405`.
 
 ## Search request
 
 ```text
-GET /api/search
+GET /search
   ?q=<query>
   &mode=hybrid
   &page=<optional, default 1>
@@ -50,7 +50,7 @@ GET /api/search
 | `source` | Optional stable source key, such as `de-bverfg` |
 | `range` | `latest`, `today`, `week`, or `month`; `latest` means the full published archive |
 
-The Worker delegates pagination to the DB-native ranked-page contract. The database keeps only the requested page plus one lookahead row; hybrid candidate oversampling grows with the requested offset instead of using the former fixed 100-row preload.
+The Vercel provider delegates pagination to the DB-native ranked-page contract. The database keeps only the requested page plus one lookahead row; hybrid candidate oversampling grows with the requested offset instead of using the former fixed 100-row preload.
 
 ## Contract V2 evidence
 
@@ -63,7 +63,7 @@ Search items expose native Provider Contract V2 evidence:
   "requestId": "consumer-request-id",
   "query": "1 BvR 2656/18 climate",
   "service": "worldcons",
-  "transport": "cloudflare-worker",
+  "transport": "vercel-route-handler",
   "mode": "hybrid",
   "requestedMode": "hybrid",
   "effectiveMode": "hybrid",
@@ -113,8 +113,8 @@ Search items expose native Provider Contract V2 evidence:
       "decisionDate": "2021-03-24",
       "originalLanguage": "de",
       "officialUri": "https://www.bundesverfassungsgericht.de/...",
-      "detailApiUrl": "https://worldcons-search-api.cclib.workers.dev/api/articles/stable-slug",
-      "sourceTextUrl": "https://worldcons-search-api.cclib.workers.dev/api/articles/stable-slug/source-text"
+      "detailApiUrl": "https://worldcons.vercel.app/api/cclrag2/articles/stable-slug",
+      "sourceTextUrl": "https://worldcons.vercel.app/api/cclrag2/articles/stable-slug/source-text"
     }
   ],
   "meta": {
@@ -137,16 +137,16 @@ Recognized case references are handled by an indexed exact-case preflight before
 
 For ordinary queries, `fulltext` uses PostgreSQL `ts_rank_cd`, `semantic` uses pgvector cosine similarity, and `hybrid` fuses the lexical and semantic ranks with reciprocal rank fusion (RRF, `k=60`). Exact normalized titles sort above the fused score, while decision recency is used only as a tie-breaker after relevance. This matches the Next.js hybrid-search policy introduced in the main application.
 
-`requestedMode` records the caller's requested mode. `effectiveMode` and the legacy-compatible `mode` field record what actually executed. When semantic/hybrid embedding generation is unavailable, the Worker fails soft to `fulltext`, returns `degraded: true`, and includes `degradationReason` (`embedding_not_configured`, `embedding_unavailable`, or `empty_query`). `databaseRetrievalMode` reports the V4 ranked-page path (`fulltext`, `semantic`, `hybrid`, `exact-case`, or `latest`) when supplied by the database response. `totalIsExact` is `true` only when `count=exact` produced an exact total; otherwise `total` is a lower bound consistent with `hasMore`.
+`requestedMode` records the caller's requested mode. `effectiveMode` and the legacy-compatible `mode` field record what actually executed. When semantic/hybrid embedding generation is unavailable, the provider fails soft to `fulltext`, returns `degraded: true`, and includes `degradationReason` (`embedding_not_configured`, `embedding_unavailable`, or `empty_query`). `databaseRetrievalMode` reports the V4 ranked-page path (`fulltext`, `semantic`, `hybrid`, `exact-case`, or `latest`) when supplied by the database response. `totalIsExact` is `true` only when `count=exact` produced an exact total; otherwise `total` is a lower bound consistent with `hasMore`.
 
-`GET /api/articles/{slug}` returns the same identity, source, temporal, and checksum evidence as search, plus `summaryJson`, `bodyExcerpt`, and the first bounded `cleanedText` page. cclrag2 should hydrate only selected search hits.
+`GET /articles/{slug}` returns the same identity, source, temporal, and checksum evidence as search, plus `summaryJson`, `bodyExcerpt`, and the first bounded `cleanedText` page. cclrag2 should hydrate only selected search hits.
 
 Consumers that need a smaller first page may pass `textLimit=<1..350000>`. Omitting it preserves the 350,000-character default. ChatGPT plugin retrieval uses a smaller bounded value to avoid transferring a full source page when a summary and short verification excerpt are sufficient.
 
 The complete preserved text remains available as bounded pages:
 
 ```text
-GET /api/articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
+GET /articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
 ```
 
 ```json
@@ -175,9 +175,9 @@ GET /api/articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
 
 - Search cache directive: `s-maxage=60, stale-while-revalidate=300`
 - Detail/source cache directive: `s-maxage=300, stale-while-revalidate=900`
-- Worker-to-Supabase timeout: 8 seconds
+- Vercel-to-Supabase timeout: 8 seconds
 - Semantic/hybrid embedding timeout: 5 seconds
-- Semantic/hybrid mode requires the Worker secret `GEMINI_API_KEY`. Both the document pipeline and query Worker are pinned to `gemini-embedding-001`, 1536 dimensions, complementary `RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY` task types, and L2 normalization. Mixed-provider vectors are rejected.
+- Semantic/hybrid mode requires the Vercel environment variable `GEMINI_API_KEY`. Both the document pipeline and query provider are pinned to `gemini-embedding-001`, 1536 dimensions, complementary `RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY` task types, and L2 normalization. Mixed-provider vectors are rejected.
 - `SEMANTIC_SEARCH_ENABLED` defaults to `false`. Keep it false while the Gemini corpus backfill is incomplete; requests explicitly fall back to full text instead of comparing Gemini queries with legacy vectors.
 - Missing or failed embedding generation does not fail the request; it is surfaced as an explicit degraded full-text fallback
 - `400`: invalid query, range, pagination, or unsupported parameter
@@ -190,14 +190,14 @@ GET /api/articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
 ```bash
 curl --fail-with-body \
   -H "X-Request-Id: cclrag2-neubauer-check" \
-  "https://worldcons-search-api.cclib.workers.dev/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none"
+  "https://worldcons.vercel.app/api/cclrag2/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none"
 
 curl --fail-with-body \
-  "https://worldcons-search-api.cclib.workers.dev/api/sources"
+  "https://worldcons.vercel.app/api/cclrag2/sources"
 
 curl --fail-with-body \
-  "https://worldcons-search-api.cclib.workers.dev/api/articles/{slug}"
+  "https://worldcons.vercel.app/api/cclrag2/articles/{slug}"
 
 curl --fail-with-body \
-  "https://worldcons-search-api.cclib.workers.dev/api/articles/{slug}/source-text?offset=0&limit=350000"
+  "https://worldcons.vercel.app/api/cclrag2/articles/{slug}/source-text?offset=0&limit=350000"
 ```
