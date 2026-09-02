@@ -2,7 +2,7 @@
   "mcpServers": {
     "worldcons": {
       "type": "http",
-      "url": "https://worldcons-plugin-mcp.cclib.workers.dev/mcp"
+      "url": "https://worldcons.vercel.app/api/mcp"
     }
   }
 }

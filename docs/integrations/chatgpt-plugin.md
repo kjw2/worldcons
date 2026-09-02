@@ -8,15 +8,15 @@
 
 ```text
 ChatGPT 사용자 지정 앱
-  → worldcons-plugin-mcp Cloudflare Worker
-    → SEARCH_API Service Binding
-      → worldcons-search-api Worker
-        → 공개 판례 projection/RPC
+  → worldcons.vercel.app/api/mcp (Next.js Route Handler)
+    → Vercel 애플리케이션의 검색·판례 조회 서비스
+      → 운영 PostgreSQL
 ```
 
 - 사용자 인증과 API 키가 없다.
-- 외부에서 데이터베이스 자격 증명이나 검색 API 서비스 키에 접근하지 않는다.
-- 플러그인 Worker와 검색 Worker 사이는 Cloudflare Service Binding으로 연결한다.
+- MCP는 홈페이지와 같은 Vercel 프로젝트에서 실행한다.
+- MCP 구현은 공개 API를 다시 HTTP로 호출하지 않고 서버 내부의 검색·판례 조회 함수를 직접 사용한다.
+- 외부에서 데이터베이스 자격 증명이나 서비스 키에 접근하지 않는다.
 - 운영·관리·수집 제어 경로는 도구에 포함하지 않는다.
 - 도구 실행 로그는 요청 식별자, 도구명, 성공 여부, 소요 시간만 기록하고 검색어와 응답 본문은 기록하지 않는다.
 
@@ -34,25 +34,22 @@ ChatGPT 사용자 지정 앱
 
 ## 엔드포인트
 
-- MCP: `https://worldcons-plugin-mcp.cclib.workers.dev/mcp`
-- 상태: `https://worldcons-plugin-mcp.cclib.workers.dev/health`
+- MCP: `https://worldcons.vercel.app/api/mcp`
+- 상태: `https://worldcons.vercel.app/api/mcp/health`
 - 홈페이지 안내: `https://worldcons.vercel.app/guide/chatgpt-plugin`
 
 ## 로컬 검증
 
 ```bash
-pnpm plugin:mcp:check
+pnpm typecheck
 pnpm plugin:validate
 pnpm test:plugin
+pnpm plugin:smoke http://localhost:3000/api/mcp
 ```
 
 ## 배포
 
-```bash
-pnpm plugin:mcp:deploy
-```
-
-배포 후 `/health`가 `ready`인지 확인하고 ChatGPT의 사용자 지정 앱 생성 화면에서 MCP 주소를 등록한 뒤 도구 스캔과 실제 `search` → `fetch` 왕복을 확인한다.
+MCP는 기존 Vercel 애플리케이션과 함께 배포한다. 배포 후 `/api/mcp/health`가 `ready`인지 확인하고 `pnpm plugin:smoke https://worldcons.vercel.app/api/mcp`로 초기화·도구 스캔·검색 왕복을 검증한다. 마지막으로 ChatGPT의 사용자 지정 앱 생성 화면에서 MCP 주소를 등록해 `search` → `fetch` 왕복을 확인한다.
 
 ## 이용 고지
 

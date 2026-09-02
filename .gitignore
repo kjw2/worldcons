@@ -14,5 +14,4 @@ logs
 artifacts/admin-redesign/gate0/
 supabase/.temp/
 workers/search-api/worker-configuration.d.ts
-workers/chatgpt-plugin-mcp/worker-configuration.d.ts
 nul

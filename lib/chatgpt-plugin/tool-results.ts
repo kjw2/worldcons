@@ -1,4 +1,4 @@
-import { safeToolError } from "./errors";
+import { safeToolError } from "@/lib/chatgpt-plugin/errors";
 
 export function jsonToolResult(value: unknown) {
   const structuredContent = value && typeof value === "object" && !Array.isArray(value)

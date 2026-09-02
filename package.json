@@ -57,21 +57,19 @@
     "test:embeddings": "tsx --test tests/embedding-provider.test.ts tests/embedding-vector.test.ts",
     "test:public-regression": "tsx --test tests/homepage-regression.test.ts tests/public-design-slop.test.ts tests/seo-public-surface.test.ts",
     "typecheck": "tsc --noEmit",
-    "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:worker:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:masterdash && pnpm test:public-regression && pnpm test:plugin && pnpm plugin:validate && pnpm worker:search:check && pnpm plugin:mcp:check && pnpm build",
+    "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:worker:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:masterdash && pnpm test:public-regression && pnpm test:plugin && pnpm plugin:validate && pnpm worker:search:check && pnpm build",
     "worker:search:types": "wrangler types --config workers/search-api/wrangler.jsonc workers/search-api/worker-configuration.d.ts",
     "worker:search:check": "pnpm worker:search:types && tsc -p workers/search-api/tsconfig.json --noEmit",
     "worker:search:deploy": "wrangler deploy --config workers/search-api/wrangler.jsonc",
     "plugin:validate": "tsx scripts/validate-chatgpt-plugin.ts",
-    "plugin:mcp:types": "pnpm --filter @worldcons/chatgpt-plugin-mcp types",
-    "plugin:mcp:check": "pnpm --filter @worldcons/chatgpt-plugin-mcp check",
-    "plugin:mcp:dev": "pnpm --filter @worldcons/chatgpt-plugin-mcp dev",
-    "plugin:mcp:deploy": "pnpm --filter @worldcons/chatgpt-plugin-mcp run deploy",
+    "plugin:smoke": "tsx scripts/smoke-chatgpt-plugin.ts",
     "test:plugin": "tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts",
     "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts tests/bverfg-workflow-contract.test.ts",
     "test:masterdash": "tsx --test tests/masterdash-integration.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "@supabase/supabase-js": "^2.49.0",
     "cheerio": "^1.0.0",
@@ -92,7 +90,7 @@
     "rss-parser": "^3.13.0",
     "slugify": "^1.6.6",
     "tailwind-merge": "^2.6.0",
-    "zod": "^3.24.1"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

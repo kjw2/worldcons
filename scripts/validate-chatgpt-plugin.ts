@@ -5,7 +5,7 @@ const root = process.cwd();
 const pluginRoot = path.join(root, "plugins/worldcons-constitutional-cases");
 const expectedName = "worldcons-constitutional-cases";
 const expectedDisplayName = "헌법판례요약시스템";
-const expectedEndpoint = "https://worldcons-plugin-mcp.cclib.workers.dev/mcp";
+const expectedEndpoint = "https://worldcons.vercel.app/api/mcp";
 
 function readJson(relativePath: string) {
   const absolutePath = path.join(root, relativePath);

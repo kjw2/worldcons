@@ -1,6 +1,6 @@
 {
   "name": "worldcons-constitutional-cases",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "헌법판례요약시스템의 공개 판례를 ChatGPT 대화에서 검색하고 공식 원문과 함께 확인합니다.",
   "author": {
     "name": "헌법판례요약시스템 운영팀",

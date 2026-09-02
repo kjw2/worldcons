@@ -1,7 +1,7 @@
-import { McpServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { WorldconsSearchClient } from "./search-client";
-import { runTool } from "./tool-results";
+import { WorldconsCaseService } from "@/lib/chatgpt-plugin/case-service";
+import { runTool } from "@/lib/chatgpt-plugin/tool-results";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -12,10 +12,10 @@ const READ_ONLY_ANNOTATIONS = {
 
 const slugSchema = z.string().trim().min(1).max(240).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 
-export function createWorldconsMcpServer(client: WorldconsSearchClient) {
+export function createWorldconsMcpServer(service: WorldconsCaseService) {
   const server = new McpServer({
     name: "worldcons-constitutional-cases",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   server.registerTool(
@@ -31,10 +31,8 @@ export function createWorldconsMcpServer(client: WorldconsSearchClient) {
     async ({ query }) => {
       const requestId = crypto.randomUUID();
       return runTool("search", requestId, async () => {
-        const items = await client.search({ query, limit: 10 }, requestId);
-        return {
-          results: items.map(({ id, title, url }) => ({ id, title, url })),
-        };
+        const items = await service.search({ query, limit: 10 });
+        return { results: items.map(({ id, title, url }) => ({ id, title, url })) };
       });
     },
   );
@@ -52,7 +50,7 @@ export function createWorldconsMcpServer(client: WorldconsSearchClient) {
     async ({ id }) => {
       const requestId = crypto.randomUUID();
       return runTool("fetch", requestId, async () => {
-        const article = await client.fetchArticle(id, requestId);
+        const article = await service.fetchArticle(id);
         return {
           id: article.id,
           title: article.title,
@@ -61,7 +59,6 @@ export function createWorldconsMcpServer(client: WorldconsSearchClient) {
           metadata: {
             sourceKey: article.sourceKey,
             jurisdiction: article.jurisdiction,
-            countryName: article.countryName,
             court: article.court,
             caseNumber: article.caseNumber,
             decisionDate: article.decisionDate,
@@ -96,7 +93,7 @@ export function createWorldconsMcpServer(client: WorldconsSearchClient) {
     async ({ query, jurisdiction, source, range, limit }) => {
       const requestId = crypto.randomUUID();
       return runTool("search_cases", requestId, async () => ({
-        results: await client.search({ query, jurisdiction, source, range, limit }, requestId),
+        results: await service.search({ query, jurisdiction, source, range, limit }),
       }));
     },
   );
@@ -111,9 +108,7 @@ export function createWorldconsMcpServer(client: WorldconsSearchClient) {
     },
     async () => {
       const requestId = crypto.randomUUID();
-      return runTool("list_sources", requestId, async () => ({
-        sources: await client.listSources(requestId),
-      }));
+      return runTool("list_sources", requestId, async () => ({ sources: await service.listSources() }));
     },
   );
 
@@ -125,24 +120,20 @@ export function createWorldconsMcpServer(client: WorldconsSearchClient) {
       inputSchema: z.object({
         id: slugSchema.describe("Stable WorldCons case id returned by search"),
         offset: z.number().int().min(0).max(10_000_000).default(0),
-        limit: z.number().int().min(1).max(client.sourceTextPageLimit).default(client.sourceTextPageLimit),
+        limit: z.number().int().min(1).max(service.sourceTextPageLimit).default(service.sourceTextPageLimit),
       }).strict(),
       annotations: READ_ONLY_ANNOTATIONS,
     },
     async ({ id, offset, limit }) => {
       const requestId = crypto.randomUUID();
-      return runTool(
-        "fetch_source_text",
-        requestId,
-        () => client.fetchSourceText(id, offset, limit, requestId),
-      );
+      return runTool("fetch_source_text", requestId, () => service.fetchSourceText(id, offset, limit));
     },
   );
 
   return server;
 }
 
-type ArticleForText = Awaited<ReturnType<WorldconsSearchClient["fetchArticle"]>>;
+type ArticleForText = Awaited<ReturnType<WorldconsCaseService["fetchArticle"]>>;
 
 function articleText(article: ArticleForText) {
   const lines = [
@@ -151,7 +142,7 @@ function articleText(article: ArticleForText) {
     `재판기관: ${article.court}`,
     article.caseNumber ? `사건번호: ${article.caseNumber}` : null,
     article.decisionDate ? `선고일: ${article.decisionDate}` : null,
-    `관할: ${article.countryName ?? article.jurisdiction}`,
+    `관할: ${article.jurisdiction}`,
     "",
     "## 한국어 AI 요약(참고용)",
     ...article.koreanSummary.coreSummary.map((item) => `- ${item}`),
@@ -166,7 +157,7 @@ function articleText(article: ArticleForText) {
     "## 보존된 공식 원문 발췌",
     article.sourceExcerpt ?? "공개된 원문 발췌가 없습니다.",
     "",
-    `WorldCons: ${article.url}`,
+    `헌법판례요약시스템: ${article.url}`,
     `법원 공식 원문: ${article.officialUrl}`,
     "한국어 번역·요약은 참고용입니다. 법적 판단이나 인용에는 법원 공식 원문을 확인하세요.",
   ];

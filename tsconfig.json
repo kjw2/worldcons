@@ -37,9 +37,6 @@
   "exclude": [
     "node_modules",
     "workers/search-api/src/index.ts",
-    "workers/search-api/worker-configuration.d.ts",
-    "workers/chatgpt-plugin-mcp/src/**/*.ts",
-    "workers/chatgpt-plugin-mcp/worker-configuration.d.ts",
-    "tests/chatgpt-plugin-mcp.test.ts"
+    "workers/search-api/worker-configuration.d.ts"
   ]
 }

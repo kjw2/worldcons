@@ -23,7 +23,7 @@ test("guide explains direct no-auth installation without claiming OpenAI listing
 
   assert.match(guide, /헌법판례요약시스템/u);
   assert.match(guide, /OpenAI 플러그인 디렉터리에는 게시하지 않습니다/u);
-  assert.match(guide, /worldcons-plugin-mcp\.cclib\.workers\.dev\/mcp/u);
+  assert.match(guide, /worldcons\.vercel\.app\/api\/mcp/u);
   assert.match(guide, /회원가입, 비밀번호, API 키, OAuth 연결은 필요하지 않습니다/u);
   assert.match(guide, /한국어 번역·요약·태그는 AI가 만든 참고 자료/u);
   assert.match(guide, /법원 공식 원문/u);

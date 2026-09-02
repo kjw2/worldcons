@@ -21,7 +21,7 @@ test("ChatGPT plugin package keeps the canonical identity and no-auth endpoint",
     mcpServers: {
       worldcons: {
         type: "http",
-        url: "https://worldcons-plugin-mcp.cclib.workers.dev/mcp",
+        url: "https://worldcons.vercel.app/api/mcp",
       },
     },
   });

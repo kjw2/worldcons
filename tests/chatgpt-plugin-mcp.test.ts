@@ -1,126 +1,128 @@
-// @ts-nocheck -- this runtime contract test supplies Worker platform bindings as fakes.
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
-import { handleWorldconsPluginRequest } from "../workers/chatgpt-plugin-mcp/src/index";
-import { WorldconsSearchClient } from "../workers/chatgpt-plugin-mcp/src/search-client";
+import {
+  WorldconsCaseService,
+  type WorldconsCaseRepository,
+} from "../lib/chatgpt-plugin/case-service";
+import { handleWorldconsMcpRequest } from "../lib/chatgpt-plugin/http-handler";
 
-function fixtureFetcher(requests: URL[]) {
+const fixtureArticle = {
+  id: "article-1",
+  slug: "germany-neubauer",
+  sourceKey: "de-bverfg",
+  jurisdiction: "Germany",
+  institutionName: "Bundesverfassungsgericht",
+  contentType: "decision" as const,
+  originalUrl: "https://www.bundesverfassungsgericht.de/example",
+  canonicalUrl: "https://www.bundesverfassungsgericht.de/example",
+  originalLanguage: "de",
+  originalTitle: "Klimabeschluss",
+  koreanTitle: "독일 연방헌법재판소 기후보호법 결정",
+  originalPublishedAt: "2021-03-24",
+  caseNumber: "1 BvR 2656/18",
+  status: "summarized" as const,
+  tags: [{
+    slug: "climate-protection",
+    name: "기후보호",
+    normalizedName: "기후보호",
+    type: "topic" as const,
+  }],
+  oneLineSummary: "미래세대의 자유와 기후보호 의무를 다룬 결정",
+  summaryJson: {
+    koreanTitle: "독일 연방헌법재판소 기후보호법 결정",
+    summary: {
+      coreSummary: ["기후보호 부담의 세대 간 배분을 헌법상 자유의 관점에서 심사했다."],
+      background: "기후보호법의 감축 경로가 문제 되었다.",
+      caseStructure: "헌법소원",
+      implications: "미래 자유에 대한 선제적 보호를 확인했다.",
+      practicalNotes: "공식 결정문을 확인해야 한다.",
+      referencedProvisions: [{
+        jurisdiction: "Germany",
+        lawName: "기본법",
+        article: "제20a조",
+        description: "국가의 환경보호 의무",
+        confidence: "high" as const,
+      }],
+    },
+    entities: [],
+    tags: ["기후보호"],
+    categories: [],
+    riskFlags: [],
+  },
+  cleanedText: "공식 독일어 결정문 발췌와 다음 공식 원문 구간",
+  contentHash: "abc123",
+};
+
+function fixtureRepository(calls: string[]): WorldconsCaseRepository {
   return {
-    async fetch(input: RequestInfo | URL) {
-      const url = new URL(String(input));
-      requests.push(url);
-      if (url.pathname === "/api/search") {
-        return Response.json({ items: [caseRecord()] });
-      }
-      if (url.pathname === "/api/articles/germany-neubauer") {
-        return Response.json({
-          ...caseRecord(),
-          summaryJson: {
-            summary: {
-              coreSummary: ["기후보호 부담의 세대 간 배분을 헌법상 자유의 관점에서 심사했다."],
-              background: "기후보호법의 감축 경로가 문제 되었다.",
-              referencedProvisions: ["기본법 제20a조"],
-            },
-          },
-          cleanedText: "공식 독일어 결정문 발췌",
-          originalLanguage: "de",
-          contentType: "decision",
-          bodyChecksum: "abc123",
-          textPage: { offset: 0, returnedChars: 14, totalChars: 100, hasMore: true, nextOffset: 14 },
-        });
-      }
-      if (url.pathname.endsWith("/source-text")) {
-        return Response.json({
-          slug: "germany-neubauer",
-          cleanedText: "다음 공식 원문 구간",
-          bodyChecksum: "abc123",
-          textPage: { offset: 14, returnedChars: 11, totalChars: 100, hasMore: true, nextOffset: 25 },
-        });
-      }
-      if (url.pathname === "/api/sources") {
-        return Response.json({
-          items: [{
-            sourceKey: "de-bverfg",
-            name: "Bundesverfassungsgericht",
-            jurisdiction: "Germany",
-            jurisdictionCode: "DE",
-            countryName: "독일",
-            language: "de",
-            officialUri: "https://www.bundesverfassungsgericht.de/",
-          }],
-        });
-      }
-      return Response.json({}, { status: 404 });
+    async search(filters) {
+      calls.push(`search:${filters.q ?? ""}:${filters.pageSize ?? ""}`);
+      return {
+        items: [fixtureArticle],
+        pageInfo: { page: 1, pageSize: filters.pageSize ?? 10, total: 1 },
+      };
+    },
+    async getArticle(slug) {
+      calls.push(`article:${slug}`);
+      return slug === fixtureArticle.slug ? fixtureArticle : null;
+    },
+    async getSourceText(slug) {
+      calls.push(`source-text:${slug}`);
+      return slug === fixtureArticle.slug ? {
+        slug,
+        cleanedText: fixtureArticle.cleanedText,
+        contentHash: fixtureArticle.contentHash,
+      } : null;
+    },
+    async getSources() {
+      calls.push("sources");
+      return [{
+        id: "source-1",
+        sourceKey: "de-bverfg",
+        name: "Bundesverfassungsgericht",
+        jurisdiction: "Germany",
+        baseUrl: "https://www.bundesverfassungsgericht.de/",
+        language: "de",
+        isActive: true,
+      }];
     },
   };
 }
 
-function client(requests: URL[]) {
-  return new WorldconsSearchClient({
-    searchApi: fixtureFetcher(requests),
+function service(calls: string[] = []) {
+  return new WorldconsCaseService({
+    repository: fixtureRepository(calls),
     siteBaseUrl: "https://worldcons.vercel.app",
-    detailTextLimit: 16_000,
-    sourceTextPageLimit: 12_000,
+    detailTextLimit: 24,
+    sourceTextPageLimit: 12,
   });
 }
 
-test("plugin search client exposes bounded public evidence and canonical citation URLs", async () => {
-  const requests: URL[] = [];
-  const api = client(requests);
-  const results = await api.search({ query: "기후 자유", jurisdiction: "Germany", limit: 3 }, "request-1");
-  const article = await api.fetchArticle("germany-neubauer", "request-2");
-  const sourceText = await api.fetchSourceText("germany-neubauer", 14, 50_000, "request-3");
+test("Vercel-integrated case service exposes bounded public evidence and canonical citation URLs", async () => {
+  const calls: string[] = [];
+  const api = service(calls);
+  const results = await api.search({ query: "기후 자유", jurisdiction: "Germany", limit: 3 });
+  const article = await api.fetchArticle("germany-neubauer");
+  const sourceText = await api.fetchSourceText("germany-neubauer", 12, 50_000);
 
   assert.equal(results[0].url, "https://worldcons.vercel.app/articles/germany-neubauer");
   assert.equal(results[0].officialUrl, "https://www.bundesverfassungsgericht.de/example");
   assert.equal(article.koreanSummary.coreSummary.length, 1);
-  assert.equal(article.sourceExcerpt, "공식 독일어 결정문 발췌");
+  assert.equal(article.sourceExcerpt?.length, 24);
+  assert.equal(sourceText.text.length, 12);
   assert.equal(sourceText.url, "https://worldcons.vercel.app/articles/germany-neubauer");
-  assert.equal(requests[0].searchParams.get("mode"), "hybrid");
-  assert.equal(requests[0].searchParams.get("pageSize"), "3");
-  assert.equal(requests[1].searchParams.get("textLimit"), "16000");
-  assert.equal(requests[2].searchParams.get("limit"), "12000");
+  assert.deepEqual(calls, [
+    "search:기후 자유:3",
+    "article:germany-neubauer",
+    "source-text:germany-neubauer",
+  ]);
 });
 
-test("public Worker metadata and health disclose no credential requirement", async () => {
-  const requests: URL[] = [];
-  const env = {
-    SEARCH_API: fixtureFetcher(requests),
-    SITE_BASE_URL: "https://worldcons.vercel.app",
-    SEARCH_DETAIL_TEXT_LIMIT: "16000",
-    SOURCE_TEXT_PAGE_LIMIT: "12000",
-    VERSION_METADATA: { id: "test-version", tag: "" },
-  };
-  const ctx = { waitUntil() {}, passThroughOnException() {} };
-  const root = await handleWorldconsPluginRequest(new Request("https://plugin.example/"), env, ctx);
-  const health = await handleWorldconsPluginRequest(new Request("https://plugin.example/health"), env, ctx);
-
-  assert.deepEqual(await root.json(), {
-    service: "worldcons-plugin-mcp",
-    name: "헌법판례요약시스템",
-    homepage: "https://worldcons.vercel.app/guide/chatgpt-plugin",
-    mcp: "/mcp",
-  });
-  assert.equal(health.status, 200);
-  assert.deepEqual(await health.json(), {
-    status: "ready",
-    service: "worldcons-plugin-mcp",
-    version: "test-version",
-    checks: { searchApi: "ok" },
-  });
-});
-
-test("ChatGPT can initialize the public MCP endpoint and scan its tools", async () => {
-  const requests: URL[] = [];
-  const env = {
-    SEARCH_API: fixtureFetcher(requests),
-    SITE_BASE_URL: "https://worldcons.vercel.app",
-    SEARCH_DETAIL_TEXT_LIMIT: "16000",
-    SOURCE_TEXT_PAGE_LIMIT: "12000",
-    VERSION_METADATA: { id: "test-version", tag: "" },
-  };
-  const ctx = { waitUntil() {}, passThroughOnException() {} };
-  const rpc = (body: object) => handleWorldconsPluginRequest(new Request("https://plugin.example/mcp", {
+test("ChatGPT can initialize the Vercel MCP endpoint, scan tools, and call search", async () => {
+  const api = service();
+  const rpc = (body: object) => handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
     method: "POST",
     headers: {
       Accept: "application/json, text/event-stream",
@@ -128,7 +130,7 @@ test("ChatGPT can initialize the public MCP endpoint and scan its tools", async 
       "MCP-Protocol-Version": "2025-11-25",
     },
     body: JSON.stringify(body),
-  }), env, ctx);
+  }), api);
 
   const initialize = await rpc({
     jsonrpc: "2.0",
@@ -140,19 +142,20 @@ test("ChatGPT can initialize the public MCP endpoint and scan its tools", async 
       clientInfo: { name: "worldcons-contract-test", version: "1.0.0" },
     },
   });
-  const initialized = await rpcPayload(initialize);
-
+  const initialized = await initialize.json() as { result: { serverInfo: { name: string } } };
   assert.equal(initialize.status, 200);
   assert.equal(initialized.result.serverInfo.name, "worldcons-constitutional-cases");
 
   const list = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
-  const listed = await rpcPayload(list);
+  const listed = await list.json() as {
+    result: { tools: Array<{ name: string; annotations: { readOnlyHint: boolean; destructiveHint: boolean } }> };
+  };
   assert.equal(list.status, 200);
   assert.deepEqual(
-    listed.result.tools.map((tool: { name: string }) => tool.name).sort(),
+    listed.result.tools.map((tool) => tool.name).sort(),
     ["fetch", "fetch_source_text", "list_sources", "search", "search_cases"],
   );
-  assert.ok(listed.result.tools.every((tool: { annotations: { readOnlyHint: boolean; destructiveHint: boolean } }) =>
+  assert.ok(listed.result.tools.every((tool) =>
     tool.annotations.readOnlyHint === true && tool.annotations.destructiveHint === false));
 
   const call = await rpc({
@@ -161,50 +164,29 @@ test("ChatGPT can initialize the public MCP endpoint and scan its tools", async 
     method: "tools/call",
     params: { name: "search", arguments: { query: "기후 자유" } },
   });
-  const called = await rpcPayload(call);
+  const called = await call.json() as {
+    result: { isError?: boolean; structuredContent: { results: Array<{ id: string; url: string }> } };
+  };
   assert.equal(call.status, 200);
   assert.notEqual(called.result.isError, true);
   assert.equal(called.result.structuredContent.results[0].id, "germany-neubauer");
   assert.equal(called.result.structuredContent.results[0].url, "https://worldcons.vercel.app/articles/germany-neubauer");
+  assert.equal(call.headers.get("access-control-allow-origin"), "*");
 });
 
-async function rpcPayload(response: Response) {
-  const text = await response.text();
-  if (response.headers.get("content-type")?.includes("text/event-stream")) {
-    const dataLine = text.split(/\r?\n/u).find((line) => line.startsWith("data: "));
-    assert.ok(dataLine, "MCP SSE response must include a data event");
-    return JSON.parse(dataLine.slice(6));
-  }
-  return JSON.parse(text);
-}
+test("plugin MCP is a Vercel route with five public read-only tools and no Cloudflare runtime", () => {
+  const root = process.cwd();
+  const serverSource = fs.readFileSync(path.join(root, "lib/chatgpt-plugin/server.ts"), "utf8");
+  const routeSource = fs.readFileSync(path.join(root, "app/api/mcp/route.ts"), "utf8");
 
-test("plugin Worker registers five public read-only tools", () => {
-  const serverSource = require("node:fs").readFileSync(
-    require("node:path").join(process.cwd(), "workers/chatgpt-plugin-mcp/src/server.ts"),
-    "utf8",
-  );
   for (const tool of ["search", "fetch", "search_cases", "list_sources", "fetch_source_text"]) {
     assert.match(serverSource, new RegExp(`registerTool\\(\\s*\\n\\s*"${tool}"`, "u"));
   }
   assert.match(serverSource, /readOnlyHint: true/u);
   assert.match(serverSource, /destructiveHint: false/u);
-  assert.doesNotMatch(serverSource, /ADMIN_PASSWORD|SERVICE_ROLE_KEY|Authorization/u);
+  assert.match(routeSource, /handleWorldconsMcpRequest/u);
+  assert.match(routeSource, /consumeRateLimit\(request, "publicApi"\)/u);
+  assert.doesNotMatch(serverSource + routeSource, /Cloudflare|Fetcher|ExecutionContext|ADMIN_PASSWORD|SERVICE_ROLE_KEY|Authorization/u);
+  assert.equal(fs.existsSync(path.join(root, "workers/chatgpt-plugin-mcp/wrangler.jsonc")), false);
+  assert.equal(fs.existsSync(path.join(root, "workers/chatgpt-plugin-mcp/package.json")), false);
 });
-
-function caseRecord() {
-  return {
-    slug: "germany-neubauer",
-    title: "독일 연방헌법재판소 기후보호법 결정",
-    originalTitle: "Klimabeschluss",
-    summary: "미래세대의 자유와 기후보호 의무를 다룬 결정",
-    snippet: "기후보호 부담의 세대 간 배분",
-    sourceKey: "de-bverfg",
-    jurisdiction: "Germany",
-    countryName: "독일",
-    courtName: "Bundesverfassungsgericht",
-    caseNumber: "1 BvR 2656/18",
-    decisionDate: "2021-03-24",
-    officialUri: "https://www.bundesverfassungsgericht.de/example",
-    tags: ["기후보호", "미래세대"],
-  };
-}
