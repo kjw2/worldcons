@@ -1,6 +1,11 @@
-import { createEmbedding, EMBEDDING_DIMENSIONS } from "@/lib/ai/embeddings";
-import { getSupabaseAdmin } from "@/lib/db/client";
+import {
+  createEmbeddingArtifact,
+  DEFAULT_GEMINI_EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
+} from "@/lib/ai/embeddings";
+import { getSupabaseAdmin, getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import type { SummaryJson } from "@/lib/db/types";
+import { persistArticleEmbedding } from "@/lib/ingest/embedding-store";
 import { isGlobalSummaryBackoff, summaryRetryDelayMs } from "@/lib/ingest/summary-batch";
 
 export interface EmbeddingBacklogOptions {
@@ -46,9 +51,9 @@ function wait(delayMs: number, signal?: AbortSignal) {
 }
 
 /**
- * Fills in embeddings for articles that were summarized while the embedding provider
- * was unavailable. Summary text is left untouched; only the vector column is written,
- * so a partial run is safe to repeat.
+ * Fills missing or non-Gemini embeddings. Summary text is left untouched and the
+ * provenance-locked RPC updates both the article and its published P3 derived
+ * artifact, so a partial run is safe to repeat.
  */
 export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {}): Promise<EmbeddingBacklogResult> {
   const supabase = getSupabaseAdmin();
@@ -63,7 +68,16 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
     .from("articles")
     .select("id, source_key, summary_json")
     .eq("status", "summarized")
-    .is("embedding", null)
+    .or([
+      "embedding.is.null",
+      "embedding_provider.is.null",
+      "embedding_provider.neq.gemini",
+      "embedding_model.is.null",
+      `embedding_model.neq.${DEFAULT_GEMINI_EMBEDDING_MODEL}`,
+      "embedding_dimensions.is.null",
+      `embedding_dimensions.neq.${EMBEDDING_DIMENSIONS}`,
+      "embedding_input_hash.is.null",
+    ].join(","))
     .order("created_at", { ascending: true })
     .limit(limit);
   if (options.sourceKey) query = query.eq("source_key", options.sourceKey);
@@ -88,25 +102,24 @@ export async function runEmbeddingBacklog(options: EmbeddingBacklogOptions = {})
     }
 
     try {
-      const vector = await createEmbedding(row.summary_json, { signal: options.signal });
-      if (!vector) {
+      const artifact = await createEmbeddingArtifact(row.summary_json, { signal: options.signal });
+      if (!artifact) {
         skipped += 1;
         continue;
       }
 
-      if (vector.length !== EMBEDDING_DIMENSIONS) {
+      if (artifact.vector.length !== EMBEDDING_DIMENSIONS) {
         return {
           status: "deferred",
           scanned: index + 1,
           embedded,
           skipped,
           failed: failed + 1,
-          stoppedReason: `Embedding provider returned ${vector.length} dimensions, expected ${EMBEDDING_DIMENSIONS}.`,
+          stoppedReason: `Embedding provider returned ${artifact.vector.length} dimensions, expected ${EMBEDDING_DIMENSIONS}.`,
         };
       }
 
-      const { error: updateError } = await supabase.from("articles").update({ embedding: vector }).eq("id", row.id);
-      if (updateError) throw new Error(updateError.message);
+      await persistArticleEmbedding(row.id, artifact);
       embedded += 1;
     } catch (caught) {
       if (options.signal?.aborted) throw options.signal.reason;
@@ -155,9 +168,41 @@ export async function countMissingEmbeddings(sourceKey?: string) {
     .from("articles")
     .select("id", { count: "exact", head: true })
     .eq("status", "summarized")
-    .is("embedding", null);
+    .or([
+      "embedding.is.null",
+      "embedding_provider.is.null",
+      "embedding_provider.neq.gemini",
+      "embedding_model.is.null",
+      `embedding_model.neq.${DEFAULT_GEMINI_EMBEDDING_MODEL}`,
+      "embedding_dimensions.is.null",
+      `embedding_dimensions.neq.${EMBEDDING_DIMENSIONS}`,
+      "embedding_input_hash.is.null",
+    ].join(","));
   if (sourceKey) query = query.eq("source_key", sourceKey);
 
   const { count, error } = await query;
   return error ? null : count ?? 0;
+}
+
+export interface EmbeddingReadiness {
+  missingArticleCount: number;
+  publishedVersionCount: number;
+  missingPublishedArtifactCount: number;
+}
+
+export async function getEmbeddingReadiness(): Promise<EmbeddingReadiness | null> {
+  const supabase = getSupabaseServiceRoleAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc("article_embedding_readiness_v1");
+  if (error || typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const row = data as Record<string, unknown>;
+  const number = (value: unknown) => {
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : null;
+  };
+  const missingArticleCount = number(row.missingArticleCount);
+  const publishedVersionCount = number(row.publishedVersionCount);
+  const missingPublishedArtifactCount = number(row.missingPublishedArtifactCount);
+  if (missingArticleCount === null || publishedVersionCount === null || missingPublishedArtifactCount === null) return null;
+  return { missingArticleCount, publishedVersionCount, missingPublishedArtifactCount };
 }

@@ -2,13 +2,16 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "worldcons-search-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-07-27",
+  "compatibility_date": "2026-08-31",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
   "vars": {
     "ENVIRONMENT": "production",
-    "PUBLIC_BASE_URL": "https://worldcons-search-api.cclib.workers.dev"
+    "PUBLIC_BASE_URL": "https://worldcons-search-api.cclib.workers.dev",
+    "EMBEDDING_PROVIDER": "gemini",
+    "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",
+    "SEMANTIC_SEARCH_ENABLED": "false"
   },
   "observability": {
     "enabled": true,

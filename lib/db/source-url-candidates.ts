@@ -58,6 +58,13 @@ export interface ListSourceUrlCandidatesResult {
   };
 }
 
+export interface SourceUrlCandidateHealthMetrics {
+  openCandidateCount: number;
+  retryableCandidateCount: number;
+  exhaustedCandidateCount: number;
+  oldestOpenCandidateAt: string | null;
+}
+
 interface SourceUrlCandidateRow {
   id: string;
   source_key: string;
@@ -224,6 +231,33 @@ export async function countOpenSourceUrlCandidates(sourceKey?: string) {
   const { count, error } = await query;
   if (error) throw new Error(error.message);
   return count ?? 0;
+}
+
+export async function getSourceUrlCandidateHealthMetrics(): Promise<SourceUrlCandidateHealthMetrics | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+
+  const [open, retryable, exhausted, oldest] = await Promise.all([
+    supabase.from("source_url_candidates").select("id", { count: "exact", head: true }).in("status", ["pending", "retrying"]),
+    supabase.from("source_url_candidates").select("id", { count: "exact", head: true }).eq("status", "retrying"),
+    supabase.from("source_url_candidates").select("id", { count: "exact", head: true }).eq("status", "failed"),
+    supabase
+      .from("source_url_candidates")
+      .select("created_at")
+      .in("status", ["pending", "retrying"])
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const error = open.error ?? retryable.error ?? exhausted.error ?? oldest.error;
+  if (error) throw new Error(error.message);
+
+  return {
+    openCandidateCount: open.count ?? 0,
+    retryableCandidateCount: retryable.count ?? 0,
+    exhaustedCandidateCount: exhausted.count ?? 0,
+    oldestOpenCandidateAt: typeof oldest.data?.created_at === "string" ? oldest.data.created_at : null,
+  };
 }
 
 export async function listSourceUrlCandidatesForRetry(sourceKey: string, limit = 100) {

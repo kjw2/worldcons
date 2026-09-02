@@ -11,7 +11,8 @@
 - 위 5개 secret 값이 서로 다른지 확인
 - server secret이 `NEXT_PUBLIC_` 환경변수로 노출되지 않는지 확인
 - Vercel production 환경변수에 `LLM_SETTINGS_SECRET`이 설정되어 있는지 확인 (미설정이면 프로덕션 빌드가 실패)
-- 임베딩을 Gemini로 운영할 때 `EMBEDDING_PROVIDER`가 `openai`로 고정돼 있지 않은지 확인. 코드 기본값이 `gemini`이므로 미설정도 허용되며, 명시된 `openai` 값은 Gemini 설정을 덮어씀
+- `EMBEDDING_PROVIDER=gemini`, `GEMINI_EMBEDDING_MODEL=gemini-embedding-001`인지 확인. WorldCons 문서·질의 임베딩은 Gemini-only이며 다른 공급자 값은 실패 처리
+- Search Worker의 `GEMINI_API_KEY` secret 존재 여부를 확인하되 값은 로그나 설정 파일에 출력하지 않음
 - `GEMINI_API_KEY`가 Vercel과 GitHub Actions 양쪽에 설정되어 있는지 확인
 - cron 호출은 `Authorization: Bearer <CRON_SECRET>` 또는 `x-cron-secret: <CRON_SECRET>` 헤더만 사용
 - URL `?secret=` 방식 호출 제거

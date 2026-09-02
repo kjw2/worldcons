@@ -283,7 +283,7 @@ function recommendedAction(report: {
 export async function diagnoseBverfgNetwork(options: { detailUrl?: string; includePlaywright?: boolean } = {}) {
   const baseUrl = "https://www.bundesverfassungsgericht.de";
   const robotsUrl = `${baseUrl}/robots.txt`;
-  const sitemapUrl = `${baseUrl}/sitemap.xml`;
+  const defaultSitemapUrl = `${baseUrl}/sitemap.xml`;
   const hostname = hostnameFor(baseUrl);
   const timeout = timeoutMs();
 
@@ -298,7 +298,11 @@ export async function diagnoseBverfgNetwork(options: { detailUrl?: string; inclu
   ]);
 
   const robots = await probeHttpUrl(robotsUrl, { family: 4, method: "GET", timeoutMs: timeout, maxBytes: 200_000 });
-  const robotsParsed = robots.bodyText ? parseRobotsTxt(robots.bodyText, sitemapUrl) : null;
+  const robotsParsed = robots.bodyText ? parseRobotsTxt(robots.bodyText, defaultSitemapUrl) : null;
+  // BVerfG currently advertises /Sitemap_Index.xml. The old diagnostic always
+  // probed /sitemap.xml and therefore reported a false 404 even though the
+  // crawler itself correctly consumes robots.txt sitemap declarations.
+  const sitemapUrl = robotsParsed?.sitemapUrls[0] ?? defaultSitemapUrl;
   const sitemap = await probeHttpUrl(sitemapUrl, { family: 4, method: "GET", timeoutMs: timeout, maxBytes: 2_000_000 });
   const sitemapDecisionUrls = sitemap.bodyText ? locsFromXml(sitemap.bodyText).filter(isBverfgDecisionUrl).slice(0, 20) : [];
   const detailUrl = options.detailUrl ?? sitemapDecisionUrls[0];

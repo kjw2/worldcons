@@ -1,6 +1,7 @@
 import "dotenv/config";
-import { countMissingEmbeddings, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
+import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { boundedInteger } from "@/lib/utils/numbers";
+import { runWithWorkflowHeartbeats } from "@/lib/ops/workflow-heartbeat";
 
 function argumentValue(name: string) {
   return process.argv.find((argument) => argument.startsWith(`--${name}=`))?.split("=", 2)[1];
@@ -21,7 +22,8 @@ async function main() {
   const passDelayMs = boundedInteger(argumentValue("pass-delay-ms"), 65_000, { min: 1_000, max: 10 * 60_000 });
 
   const before = await countMissingEmbeddings(sourceKey);
-  console.log(JSON.stringify({ event: "embedding_backlog_start", sourceKey: sourceKey ?? null, missingBefore: before, limit, maxPasses }));
+  const readinessBefore = sourceKey ? null : await getEmbeddingReadiness();
+  console.log(JSON.stringify({ event: "embedding_backlog_start", sourceKey: sourceKey ?? null, missingBefore: before, readinessBefore, limit, maxPasses }));
 
   let totalEmbedded = 0;
   for (let pass = 1; pass <= maxPasses; pass += 1) {
@@ -46,10 +48,11 @@ async function main() {
   }
 
   const after = await countMissingEmbeddings(sourceKey);
-  console.log(JSON.stringify({ event: "embedding_backlog_done", embedded: totalEmbedded, missingAfter: after }));
+  const readinessAfter = sourceKey ? null : await getEmbeddingReadiness();
+  console.log(JSON.stringify({ event: "embedding_backlog_done", embedded: totalEmbedded, missingAfter: after, readinessAfter }));
 }
 
-main().catch((error) => {
+runWithWorkflowHeartbeats(["embedding"], main).catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

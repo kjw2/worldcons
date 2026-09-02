@@ -1,4 +1,4 @@
-import { createEmbedding } from "@/lib/ai/embeddings";
+import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 import { summarizeArticle } from "@/lib/ai/summarize";
 import { generateGlossaryCandidates } from "@/lib/glossary/candidates";
@@ -19,6 +19,7 @@ import {
   shadowArticleLifecycleTransition,
 } from "@/lib/article-lifecycle";
 import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
+import { EMPTY_EMBEDDING_FIELDS, tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
 
 interface SummaryCandidateRow {
   id: string;
@@ -271,7 +272,7 @@ async function summarizeCandidateRow(
       metadata: isRecord(row.source_metadata) ? row.source_metadata : undefined,
     }, { provider: options.provider, model: options.model, signal: options.signal });
     await summaryCheckpoint(options);
-    const embedding = await createEmbedding(summary, { signal: options.signal }).catch((error) => {
+    const embedding = await createEmbeddingArtifact(summary, { signal: options.signal }).catch((error) => {
       if (options.signal?.aborted) throw error;
       return null;
     });
@@ -282,13 +283,12 @@ async function summarizeCandidateRow(
       summary_json: summary,
       korean_title: summary.koreanTitle,
       error_metadata: null,
+      ...EMPTY_EMBEDDING_FIELDS,
     };
-    if (embedding) {
-      updatePayload.embedding = embedding;
-    }
 
     const { error: summaryUpdateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
     if (summaryUpdateError) throw new Error(`Failed to persist article summary: ${summaryUpdateError.message}`);
+    await tryPersistArticleEmbedding(row.id, embedding);
     await shadowArticleLifecycleTransition({
       articleId: row.id,
       cohort: "summary",
@@ -314,6 +314,7 @@ async function summarizeCandidateRow(
       provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
       modelRef: options.model ?? summary.aiMetadata?.model ?? null,
     });
+    await tryPersistArticleEmbedding(row.id, embedding);
     await summaryCheckpoint(options);
     await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
     await summaryCheckpoint(options);

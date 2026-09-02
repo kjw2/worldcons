@@ -1,14 +1,23 @@
+import { createHash } from "node:crypto";
 import type { SummaryJson } from "@/lib/db/types";
-import { getOpenAIClient } from "@/lib/ai/client";
 import { getRuntimeLlmSettings } from "@/lib/ai/llm-settings";
-import { createGeminiEmbedding } from "@/lib/ai/gemini-router";
+import { createGeminiEmbeddingResult } from "@/lib/ai/gemini-router";
 
-// articles.embedding is declared vector(1536), and the ivfflat index plus every
-// similarity query depend on that exact width. Any provider must return this many
-// dimensions or the vector cannot be stored alongside the existing corpus.
+// Both articles.embedding and article_content_versions_p3.embedding are
+// vector(1536). Search and persistence reject every other width.
 export const EMBEDDING_DIMENSIONS = 1536;
+export const DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-001";
 
-function embeddingText(summary: SummaryJson) {
+export interface EmbeddingArtifact {
+  vector: number[];
+  provider: "gemini";
+  model: string;
+  dimensions: typeof EMBEDDING_DIMENSIONS;
+  inputHash: string;
+  generatedAt: string;
+}
+
+export function embeddingText(summary: SummaryJson) {
   return [
     summary.koreanTitle,
     ...summary.summary.coreSummary,
@@ -19,39 +28,51 @@ function embeddingText(summary: SummaryJson) {
   ].join("\n");
 }
 
+function configuredProvider() {
+  const provider = process.env.EMBEDDING_PROVIDER?.trim().toLowerCase() || "gemini";
+  if (provider !== "gemini") {
+    throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}. WorldCons embeddings are Gemini-only.`);
+  }
+}
+
+export async function createEmbeddingArtifact(summary: SummaryJson, options: { signal?: AbortSignal } = {}) {
+  return createTextEmbeddingArtifact(embeddingText(summary), {
+    ...options,
+    taskType: "RETRIEVAL_DOCUMENT",
+  });
+}
+
+export async function createTextEmbeddingArtifact(
+  input: string,
+  options: { signal?: AbortSignal; taskType?: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY" } = {},
+): Promise<EmbeddingArtifact | null> {
+  configuredProvider();
+  const runtime = await getRuntimeLlmSettings();
+  const result = await createGeminiEmbeddingResult(input, {
+    apiKeys: runtime.providers.gemini.apiKeys,
+    model: process.env.GEMINI_EMBEDDING_MODEL?.trim() || DEFAULT_GEMINI_EMBEDDING_MODEL,
+    dimensions: EMBEDDING_DIMENSIONS,
+    taskType: options.taskType ?? "SEMANTIC_SIMILARITY",
+    signal: options.signal,
+  });
+  if (!result) return null;
+
+  return {
+    vector: result.vector,
+    provider: "gemini",
+    model: result.model,
+    dimensions: EMBEDDING_DIMENSIONS,
+    inputHash: createHash("sha256").update(input, "utf8").digest("hex"),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export async function createEmbedding(summary: SummaryJson, options: { signal?: AbortSignal } = {}) {
-  return createTextEmbedding(embeddingText(summary), options);
+  const artifact = await createEmbeddingArtifact(summary, options);
+  return artifact?.vector ?? null;
 }
 
 export async function createTextEmbedding(input: string, options: { signal?: AbortSignal } = {}) {
-  const runtime = await getRuntimeLlmSettings();
-  // Default to Gemini: the summary provider is Gemini and an unset value previously
-  // fell back to OpenAI, which silently produced no vectors when no OpenAI key existed.
-  const provider = process.env.EMBEDDING_PROVIDER?.trim() || "gemini";
-
-  if (provider === "gemini") {
-    return createGeminiEmbedding(input, {
-      apiKeys: runtime.providers.gemini.apiKeys,
-      model: process.env.GEMINI_EMBEDDING_MODEL?.trim() || undefined,
-      dimensions: EMBEDDING_DIMENSIONS,
-      signal: options.signal,
-    });
-  }
-
-  if (provider !== "openai") {
-    throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}`);
-  }
-
-  const apiKey = runtime.providers.openai.apiKeys[0] ?? process.env.OPENAI_API_KEY;
-  const client = getOpenAIClient({ apiKey });
-  if (!client) {
-    return null;
-  }
-
-  const response = await client.embeddings.create({
-    model: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
-    input,
-  }, { signal: options.signal });
-
-  return response.data[0]?.embedding ?? null;
+  const artifact = await createTextEmbeddingArtifact(input, options);
+  return artifact?.vector ?? null;
 }

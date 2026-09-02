@@ -27,11 +27,27 @@ WorldCons exposes three production adapter endpoints:
   reaches the public listing, so a stalled summariser would otherwise be invisible. A backlog whose
   oldest entry has waited more than 24 hours, longer than the six-hourly drain needs, sets
   `status: "degraded"` on its own. `pendingItems` is queue depth and never covered this gap.
+  `pendingItems` remains backward compatible, while `pendingAdminJobs`, `openCandidateCount`,
+  `retryableCandidateCount`, `exhaustedCandidateCount`, and `oldestOpenCandidateAt` identify what
+  is actually waiting and whether candidate retries are progressing.
+  `missingEmbeddingCount` is the count of summarized rows that lack the pinned Gemini provenance;
+  `missingPublishedEmbeddingArtifactCount` independently proves that every currently published P3
+  version has a matching derived Gemini artifact. Either non-zero count degrades health.
+  Collection, summary, embedding, and watchdog workflows also report their latest run time and
+  status. `stalledWorkflows` contains a scheduled workflow whose heartbeat is missing, failed, or
+  older than 2.5 times its declared interval. Summary/embedding staleness affects health only while
+  their corresponding backlog is non-empty; collection and watchdog heartbeats are always required.
 
 Apply `supabase/migrations/20260801090000_masterdash_integration.sql` before configuring either
 MasterDash secret. The migration adds service-role-only replay, request ledger, and collection
 pause tables. Code fails closed for new collection starts when the control secret is enabled but
 the durable state cannot be read.
+
+Before deploying the expanded health payload, apply
+`supabase/migrations/20260831130000_gemini_embedding_provenance.sql` and
+`supabase/migrations/20260831140000_workflow_heartbeats.sql` in that order. After deployment, run
+the collection and summary workflows once so their first durable heartbeats exist. The watchdog
+records its own heartbeat every 15 minutes.
 
 Configure these Vercel production secrets without committing their values:
 

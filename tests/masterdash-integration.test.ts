@@ -478,6 +478,11 @@ test("summary backlog is reported as its own axis, separate from pending items",
     },
     successful: null,
     pendingItems: 15,
+    pendingAdminJobs: 4,
+    openCandidateCount: 11,
+    retryableCandidateCount: 3,
+    exhaustedCandidateCount: 2,
+    oldestOpenCandidateAt: "2026-08-20T00:00:00.000Z",
     summaryBacklogCount: 161,
     oldestSummaryBacklogAt: "2026-08-01T00:00:00.000Z",
     now: Date.parse("2026-08-30T01:00:00.000Z"),
@@ -485,6 +490,11 @@ test("summary backlog is reported as its own axis, separate from pending items",
 
   // pendingItems counts queue work; it never reflected the publication gap.
   assert.equal(metrics.pendingItems, 15);
+  assert.equal(metrics.pendingAdminJobs, 4);
+  assert.equal(metrics.openCandidateCount, 11);
+  assert.equal(metrics.retryableCandidateCount, 3);
+  assert.equal(metrics.exhaustedCandidateCount, 2);
+  assert.equal(metrics.oldestOpenCandidateAt, "2026-08-20T00:00:00.000Z");
   assert.equal(metrics.summaryBacklogCount, 161);
   assert.equal(metrics.oldestSummaryBacklogAt, "2026-08-01T00:00:00.000Z");
   // Collection itself succeeded, which is exactly why the backlog needs its own signal.

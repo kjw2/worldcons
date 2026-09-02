@@ -175,7 +175,8 @@ GET /api/articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
 - Detail/source cache directive: `s-maxage=300, stale-while-revalidate=900`
 - Worker-to-Supabase timeout: 8 seconds
 - Semantic/hybrid embedding timeout: 5 seconds
-- Semantic/hybrid mode requires the Worker secret `OPENAI_API_KEY`; the default model is `text-embedding-3-small` and can be changed with `OPENAI_EMBEDDING_MODEL`
+- Semantic/hybrid mode requires the Worker secret `GEMINI_API_KEY`. Both the document pipeline and query Worker are pinned to `gemini-embedding-001`, 1536 dimensions, complementary `RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY` task types, and L2 normalization. Mixed-provider vectors are rejected.
+- `SEMANTIC_SEARCH_ENABLED` defaults to `false`. Keep it false while the Gemini corpus backfill is incomplete; requests explicitly fall back to full text instead of comparing Gemini queries with legacy vectors.
 - Missing or failed embedding generation does not fail the request; it is surfaced as an explicit degraded full-text fallback
 - `400`: invalid query, range, pagination, or unsupported parameter
 - `404`: unknown endpoint, article, or source snapshot

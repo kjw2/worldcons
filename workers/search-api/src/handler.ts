@@ -1,12 +1,15 @@
 import { hasExactCaseReference } from "../../../lib/search/case-number";
+import { normalizeEmbeddingVector } from "../../../lib/ai/embedding-vector";
 
 export type SearchWorkerEnv = {
   ENVIRONMENT: string;
   PUBLIC_BASE_URL: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
-  OPENAI_API_KEY?: string;
-  OPENAI_EMBEDDING_MODEL?: string;
+  EMBEDDING_PROVIDER?: string;
+  SEMANTIC_SEARCH_ENABLED?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_EMBEDDING_MODEL?: string;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -38,8 +41,8 @@ const DETAIL_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=900";
 const CONTRACT_VERSION = "2.0";
 const UPSTREAM_TIMEOUT_MS = 8_000;
 const EMBEDDING_TIMEOUT_MS = 5_000;
-const OPENAI_EMBEDDING_ENDPOINT = "https://api.openai.com/v1/embeddings";
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const GEMINI_EMBEDDING_API = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
 const EXPECTED_EMBEDDING_DIMENSIONS = 1536;
 const MAX_EMBEDDING_RESPONSE_BYTES = 256_000;
 const MAX_UPSTREAM_RPC_BYTES = 4_000_000;
@@ -237,7 +240,11 @@ async function resolveRetrievalPlan(
       degraded: false,
     };
   }
-  if (!env.OPENAI_API_KEY?.trim()) {
+  if (
+    env.SEMANTIC_SEARCH_ENABLED?.trim().toLowerCase() !== "true" ||
+    (env.EMBEDDING_PROVIDER?.trim().toLowerCase() || "gemini") !== "gemini" ||
+    !env.GEMINI_API_KEY?.trim()
+  ) {
     return {
       requestedMode: normalizedMode,
       effectiveMode: "fulltext",
@@ -276,22 +283,24 @@ async function createQueryEmbedding(
   fetcher: Fetcher,
   requestId: string,
 ): Promise<number[] | null> {
-  const apiKey = env.OPENAI_API_KEY?.trim();
+  const apiKey = env.GEMINI_API_KEY?.trim();
   if (!apiKey) return null;
+  const model = env.GEMINI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
 
   try {
-    const response = await fetcher(OPENAI_EMBEDDING_ENDPOINT, {
+    const response = await fetcher(`${GEMINI_EMBEDDING_API}/${encodeURIComponent(model)}:embedContent`, {
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "X-Request-Id": requestId,
       },
       body: JSON.stringify({
-        model: env.OPENAI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL,
-        input: query,
-        dimensions: EXPECTED_EMBEDDING_DIMENSIONS,
+        model: `models/${model}`,
+        content: { parts: [{ text: query }] },
+        taskType: "RETRIEVAL_QUERY",
+        outputDimensionality: EXPECTED_EMBEDDING_DIMENSIONS,
       }),
       signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
     });
@@ -306,12 +315,12 @@ async function createQueryEmbedding(
     }
 
     const payload = requiredRecord(await readBoundedJson(response, MAX_EMBEDDING_RESPONSE_BYTES), "embedding response");
-    const data = Array.isArray(payload.data) ? payload.data : [];
-    const first = optionalRecord(data[0]);
-    const rawEmbedding = Array.isArray(first?.embedding) ? first.embedding : [];
+    const embeddingPayload = optionalRecord(payload.embedding);
+    const rawEmbedding = Array.isArray(embeddingPayload?.values) ? embeddingPayload.values : [];
     if (rawEmbedding.length !== EXPECTED_EMBEDDING_DIMENSIONS) return null;
     const embedding = rawEmbedding.map((value) => finiteNumber(value));
-    return embedding.every((value): value is number => value !== null) ? embedding : null;
+    if (!embedding.every((value): value is number => value !== null)) return null;
+    return normalizeEmbeddingVector(embedding, EXPECTED_EMBEDDING_DIMENSIONS);
   } catch (error) {
     console.warn(JSON.stringify({
       event: "worldcons_embedding_unavailable",

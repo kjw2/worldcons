@@ -5,6 +5,11 @@ import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
 import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";
 import { INCREMENTAL_SOURCE_KEYS } from "@/lib/ingest/incremental";
+import {
+  getWorkflowHeartbeats,
+  workflowHeartbeatIsStale,
+  WORKFLOW_KEYS,
+} from "@/lib/ops/workflow-heartbeat";
 
 export const OPS_EVENT_RETENTION_DAYS = 30;
 const MISSED_WINDOW_HOURS = 26;
@@ -347,6 +352,28 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
         key: "missed-window",
         severity: "critical",
         summary: `마지막 완료 수집 실행이 ${hoursLabel((now.getTime() - lastCompletedMs) / 3_600_000)} 전입니다 (기대 주기 ${MISSED_WINDOW_HOURS}h).`,
+      });
+    }
+  }
+
+  const workflowHeartbeats = await getWorkflowHeartbeats().catch(() => null);
+  if (workflowHeartbeats === null) {
+    violations.push({
+      key: "workflow-heartbeat-unavailable",
+      severity: "warning",
+      summary: "예약 워크플로 heartbeat를 조회할 수 없습니다.",
+    });
+  } else {
+    const heartbeatByKey = new Map(workflowHeartbeats.map((heartbeat) => [heartbeat.workflowKey, heartbeat]));
+    for (const workflowKey of WORKFLOW_KEYS) {
+      const heartbeat = heartbeatByKey.get(workflowKey);
+      if (!workflowHeartbeatIsStale(heartbeat, now.getTime())) continue;
+      violations.push({
+        key: `workflow-heartbeat:${workflowKey}`,
+        severity: heartbeat?.lastStatus === "failed" || !heartbeat ? "critical" : "warning",
+        summary: heartbeat
+          ? `${workflowKey} 예약 작업 heartbeat가 오래됐거나 실패했습니다 (마지막 상태 ${heartbeat.lastStatus}, 관측 ${heartbeat.lastCompletedAt ?? heartbeat.lastStartedAt}).`
+          : `${workflowKey} 예약 작업 heartbeat가 없습니다.`,
       });
     }
   }

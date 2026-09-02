@@ -715,7 +715,9 @@ test("P1 migration and workflows enforce cohort claims, ordered daily execution,
   assert.match(migration, /c\.payload_ref->>'cohort' = any\(p_cohorts\)/);
   assert.match(migration, /r\.status in \('queued', 'retry_wait'\)/);
   assert.doesNotMatch(migration, /r\.status\s*=\s*'shadowed'/);
-  assert.match(daily, /cron: "0 21 \* \* \*"/);
+  // Production collection is explicitly scheduled at 00:00 UTC; freshness
+  // thresholds derive from the 24-hour interval rather than an obsolete wall time.
+  assert.match(daily, /cron: "0 0 \* \* \*"/);
   assert.match(daily, /group: admin-command-p1/);
   assert.match(direct, /group: admin-command-p1/);
   assert.match(daily, /ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'/);

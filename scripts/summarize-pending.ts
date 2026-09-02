@@ -8,6 +8,7 @@ import {
   summaryBatchWasDeferred,
 } from "@/lib/ingest/summary-batch";
 import { boundedInteger } from "@/lib/utils/numbers";
+import { runWithWorkflowHeartbeats } from "@/lib/ops/workflow-heartbeat";
 
 function argumentValue(name: string) {
   return process.argv.find((argument) => argument.startsWith(`--${name}=`))?.split("=", 2)[1];
@@ -64,7 +65,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+runWithWorkflowHeartbeats(["summary", "embedding"], main).catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

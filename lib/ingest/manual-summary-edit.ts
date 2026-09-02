@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createEmbedding } from "@/lib/ai/embeddings";
+import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
 import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { canonicalizeTerminologyValue } from "@/lib/ai/terminology";
 import { recordAdminArticleEditHistory } from "@/lib/db/admin-audit";
@@ -14,6 +14,7 @@ import {
   shadowArticleLifecycleTransition,
 } from "@/lib/article-lifecycle";
 import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
+import { EMPTY_EMBEDDING_FIELDS, tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
 
 const MAX_NOTE_LENGTH = 1_000;
 const MAX_TITLE_LENGTH = 500;
@@ -224,7 +225,7 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     return { mode: "database" as const, status: "skipped" as const, reason: "변경된 내용이 없습니다." };
   }
 
-  const embedding = hasSummaryChange ? await createEmbedding(nextSummary).catch(() => null) : undefined;
+  const embedding = hasSummaryChange ? await createEmbeddingArtifact(nextSummary).catch(() => null) : undefined;
   const sourceMetadata = reviewMetadata(row, parsed.data.note, fields, Boolean(embedding));
   const updatePayload: Record<string, unknown> = {
     korean_title: nextSummary.koreanTitle,
@@ -234,11 +235,12 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     error_metadata: null,
   };
   if (hasSummaryChange) {
-    updatePayload.embedding = embedding ?? null;
+    Object.assign(updatePayload, EMPTY_EMBEDDING_FIELDS);
   }
 
   const { error: updateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
   if (updateError) throw new Error(updateError.message);
+  await tryPersistArticleEmbedding(row.id, embedding);
 
   const triageUpdated = await updateArticleTriageFields({
     articleId: row.id,
@@ -264,6 +266,7 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
     modelRef: nextSummary.aiMetadata?.model ?? null,
     safeMetadata: { changedFields: fields.slice(0, 40), notePresent: Boolean(parsed.data.note) },
   });
+  await tryPersistArticleEmbedding(row.id, embedding);
 
   await recordAdminArticleEditHistory({
     articleId: row.id,

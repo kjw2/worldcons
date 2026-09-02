@@ -431,20 +431,21 @@ pnpm start
 | `LLM_SETTINGS_SECRET` | LLM 키 암호화 열쇠 | 관리자 화면에 저장한 LLM API key 암호화용 전용 secret |
 | `ADMIN_USERNAME` | 관리자 아이디 | 기본값은 `ap570@naver.com` |
 | `MASTERDASH_ADMIN_IDENTITIES` | MasterDash SSO 허용 identity 목록 | 쉼표 구분. `ADMIN_USERNAME`은 항상 호환되며 `owner/admin`만 기존 관리자 세션으로 교환 |
-| `ADMIN_PASSWORD` | 관리자 비밀번호 | 브라우저 로그인용 비밀번호. 운영 환경에서는 6자 이상 필요 |
+| `ADMIN_PASSWORD` | 관리자 비밀번호 | 비운영 복구 경로용 비밀번호. 운영 환경에서는 12자 이상 필요하며 공개 로그인은 SSO-only 정책으로 차단 |
 | `ADMIN_SESSION_SECRET` | 로그인 쿠키 서명 열쇠 | 운영 환경에서는 필수. `ADMIN_PASSWORD`와 다른 32자 이상 값 |
 | `MASTERDASH_SSO_SECRET` | MasterDash SSO 검증 열쇠 | 32바이트 이상. MasterDash의 `PORTAL_SSO_SECRET`과 동일한 별도 secret |
 | `MASTERDASH_CONTROL_SECRET` | MasterDash 수집 제어 검증 열쇠 | 32바이트 이상. MasterDash의 `PORTAL_CONTROL_SECRET`과 동일한 별도 secret |
 | `APP_BASE_URL` | 서비스 주소 | canonical, sitemap URL base |
 
-운영 환경에서는 `ADMIN_PASSWORD`를 6자 이상으로 설정하고, `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`는 모두 32자 이상으로 설정해야 합니다. 용도가 다른 secret은 서로 달라야 하며, 서버 secret은 `NEXT_PUBLIC_` 환경변수로 노출하지 않습니다. MasterDash 연동의 endpoint, 서명 계약, migration 순서는 [`docs/integrations/masterdash.md`](docs/integrations/masterdash.md)를 참고합니다.
+운영 환경에서는 `ADMIN_PASSWORD`를 12자 이상으로 설정하고, `ADMIN_SESSION_SECRET`, `CRON_SECRET`, `LLM_SETTINGS_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `MASTERDASH_SSO_SECRET`, `MASTERDASH_CONTROL_SECRET`는 모두 32자 이상으로 설정해야 합니다. 용도가 다른 secret은 서로 달라야 하며, 서버 secret은 `NEXT_PUBLIC_` 환경변수로 노출하지 않습니다. MasterDash 연동의 endpoint, 서명 계약, migration 순서는 [`docs/integrations/masterdash.md`](docs/integrations/masterdash.md)를 참고합니다.
 
 ### AI 관련 값
 
 | 이름 | 기본값 | 설명 |
 | --- | --- | --- |
 | `ALLOW_MOCK_SUMMARY` | `false` | `true`이면 API key가 없어도 개발용 대체 요약을 저장할 수 있음 |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | embedding 모델 |
+| `EMBEDDING_PROVIDER` | `gemini` | 임베딩 공급자. WorldCons는 문서·질의 모두 Gemini만 허용 |
+| `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | 1536차원으로 고정·정규화하는 문서/질의 embedding 모델 |
 | `STALE_SUMMARIZING_MINUTES` | `30` | 이 시간보다 오래된 `summarizing` 자료를 중단된 요약 작업으로 보고 재시도 대기로 복구 |
 | `GEMINI_PINNED_MODEL` | 비어 있음 | 특정 Gemini 모델만 쓰고 싶을 때 |
 | `GEMINI_ALLOW_MODEL_OVERRIDE` | `false` | `GEMINI_SUMMARY_MODELS` 같은 override 허용 여부 |

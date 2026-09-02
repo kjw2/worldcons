@@ -86,7 +86,7 @@ test("shell navigation covers the new admin surfaces without retired screen link
 test("server layout renders the shell only after an authenticated session identity is verified", () => {
   const layout = source("app/admin/layout.tsx");
   assert.match(layout, /const identity = await getAuthorizedAdminPageIdentity\(\)/);
-  assert.match(layout, /if \(!identity\) return children;[\s\S]*createAdminCsrfToken\(\)/);
+  assert.match(layout, /if \(!identity\) \{[\s\S]*isMasterdashSsoOnly\(\)[\s\S]*notFound\(\)[\s\S]*return children;[\s\S]*createAdminCsrfToken\(\)/);
   assert.doesNotMatch(layout, /process\.env\.ADMIN_USERNAME/);
   assert.doesNotMatch(layout, /"administrator"/);
 });

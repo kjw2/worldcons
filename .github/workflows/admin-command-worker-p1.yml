@@ -40,7 +40,7 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
-      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER || 'gemini' }}
+      EMBEDDING_PROVIDER: gemini
       GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}

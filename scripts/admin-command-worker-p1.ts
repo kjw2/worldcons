@@ -8,6 +8,7 @@ import {
 } from "@/lib/admin/command-control-plane/p1-authority";
 import { adminCommandService } from "@/lib/admin/command-control-plane/service";
 import { ADMIN_P1_WORKER_EXIT, runAdminCommandWorkerP1 } from "@/lib/admin/command-control-plane/p1-worker";
+import { tryRecordWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
 process.env.CRAWLEE_WORKER = "true";
 
@@ -135,6 +136,19 @@ async function runDailyPipeline() {
   return ADMIN_P1_WORKER_EXIT.success;
 }
 
+async function runDailyPipelineWithHeartbeats() {
+  const keys = ["collection", "summary", "embedding"] as const;
+  await Promise.all(keys.map((key) => tryRecordWorkflowHeartbeat(key, "running")));
+  let status: "success" | "failed" = "failed";
+  try {
+    const exitCode = await runDailyPipeline();
+    status = exitCode === ADMIN_P1_WORKER_EXIT.success ? "success" : "failed";
+    return exitCode;
+  } finally {
+    await Promise.all(keys.map((key) => tryRecordWorkflowHeartbeat(key, status)));
+  }
+}
+
 async function main() {
   const authority = resolveAdminQueueP1Authority();
   if (!authority.enabled) {
@@ -142,7 +156,7 @@ async function main() {
     return authority.reason === "flag_disabled" ? ADMIN_P1_WORKER_EXIT.success : ADMIN_P1_WORKER_EXIT.configuration;
   }
 
-  if (hasFlag("daily-pipeline")) return runDailyPipeline();
+  if (hasFlag("daily-pipeline")) return runDailyPipelineWithHeartbeats();
   const candidateId = argumentValue("candidate-id")?.trim();
   if (candidateId) {
     return submitAndRun("p1.candidate.retry", { cohort: "candidate-retry", candidateId }, invocationIdentity());

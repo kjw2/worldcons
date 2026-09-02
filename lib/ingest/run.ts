@@ -23,7 +23,7 @@ import { dedupKeysForArticle, uniqueDiscoveredItems } from "@/lib/ingest/dedup";
 import { canSummarizeArticle, deriveCollectionStatus, finalizeCollectionMetadata, MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
 import { syncSummaryTags } from "@/lib/ingest/summary-tags";
 import { summarizeArticle } from "@/lib/ai/summarize";
-import { createEmbedding } from "@/lib/ai/embeddings";
+import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
 import { generateGlossaryCandidates } from "@/lib/glossary/candidates";
 import type { LlmCompletionOptions } from "@/lib/ai/client";
 import {
@@ -37,6 +37,7 @@ import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication"
 import { incrementalRangeDaysFromCheckpoint, isIncrementalSourceKey } from "@/lib/ingest/incremental";
 import { sourceResultOutcome, type IngestSourceOutcome } from "@/lib/ingest/results";
 import { BVERFG_OFFICIAL_VARIANTS_404 } from "@/lib/ui/candidate-tracking-labels";
+import { EMPTY_EMBEDDING_FIELDS, tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
 import {
   bverfgCaseNumberFromText,
   bverfgOfficialUrlCandidatesFromUrl,
@@ -1841,20 +1842,19 @@ async function summarizeCandidateRow(
       cleanedText: row.cleaned_text ?? undefined,
       metadata: isRecord(row.source_metadata) ? row.source_metadata : undefined,
     }, { provider: options.provider, model: options.model });
-    const embedding = await createEmbedding(summary).catch(() => null);
+    const embedding = await createEmbeddingArtifact(summary).catch(() => null);
     const updatePayload: Record<string, unknown> = {
       status: "summarized",
       summarized_at: new Date().toISOString(),
       summary_json: summary,
       korean_title: summary.koreanTitle,
       error_metadata: null,
+      ...EMPTY_EMBEDDING_FIELDS,
     };
-    if (embedding) {
-      updatePayload.embedding = embedding;
-    }
 
     const { error: summaryUpdateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
     if (summaryUpdateError) throw new Error(`Failed to persist article summary: ${summaryUpdateError.message}`);
+    await tryPersistArticleEmbedding(row.id, embedding);
     await shadowArticleLifecycleTransition({
       articleId: row.id,
       cohort: "summary",
@@ -1879,6 +1879,7 @@ async function summarizeCandidateRow(
       provenanceActorId: options.provider ?? process.env.LLM_PROVIDER ?? "openai",
       modelRef: options.model ?? summary.aiMetadata?.model ?? null,
     });
+    await tryPersistArticleEmbedding(row.id, embedding);
     await syncSummaryTags(String(row.id), summary, row.original_published_at, { replace: true });
     return { status: "summarized" as const };
   } catch (summaryError) {

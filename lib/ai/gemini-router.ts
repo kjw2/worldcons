@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { SummaryResponseJsonSchema } from "@/lib/ai/schema";
 import type { LlmCompletionResult, LlmMessage } from "@/lib/ai/client";
+import { normalizeEmbeddingVector } from "@/lib/ai/embedding-vector";
 
 export type GeminiTaskType =
   | "Embedding"
@@ -88,6 +89,13 @@ interface GeminiEmbeddingResponse {
     message?: string;
     status?: string;
   };
+}
+
+export type GeminiEmbeddingTaskType = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY";
+
+export interface GeminiEmbeddingResult {
+  vector: number[];
+  model: string;
 }
 
 interface GeminiAttemptError {
@@ -751,7 +759,13 @@ async function callGeminiRoute(route: GeminiRoute, messages: LlmMessage[], signa
 }
 
 
-async function callGeminiEmbeddingRoute(route: GeminiRoute, input: string, dimensions: number, signal?: AbortSignal) {
+async function callGeminiEmbeddingRoute(
+  route: GeminiRoute,
+  input: string,
+  dimensions: number,
+  taskType: GeminiEmbeddingTaskType,
+  signal?: AbortSignal,
+) {
   const timeoutMs = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS ?? 30_000);
   let response: Response;
 
@@ -765,6 +779,7 @@ async function callGeminiEmbeddingRoute(route: GeminiRoute, input: string, dimen
       body: JSON.stringify({
         model: `models/${route.model}`,
         content: { parts: [{ text: input }] },
+        taskType,
         // The articles.embedding column is vector(1536), so the model must be asked for
         // exactly that width rather than its default output size.
         outputDimensionality: dimensions,
@@ -819,20 +834,14 @@ async function callGeminiEmbeddingRoute(route: GeminiRoute, input: string, dimen
     throw error;
   }
 
-  if (values.length !== dimensions) {
-    // A width mismatch would be rejected by the vector column, so fail loudly here
-    // instead of persisting an unusable vector.
-    throw new Error(`Gemini embedding route ${routeLabel(route)} returned ${values.length} dimensions, expected ${dimensions}`);
-  }
-
   recordSuccess(route);
-  return values;
+  return normalizeEmbeddingVector(values, dimensions);
 }
 
-export async function createGeminiEmbedding(
+export async function createGeminiEmbeddingResult(
   input: string,
-  options: GeminiRouteOptions & { dimensions: number },
-): Promise<number[] | null> {
+  options: GeminiRouteOptions & { dimensions: number; taskType?: GeminiEmbeddingTaskType },
+): Promise<GeminiEmbeddingResult | null> {
   await refreshGeminiModelCatalog(false, options);
   if (options.signal?.aborted) throw options.signal.reason;
 
@@ -849,7 +858,16 @@ export async function createGeminiEmbedding(
 
   for (const route of routes) {
     try {
-      return await callGeminiEmbeddingRoute(route, input, options.dimensions, options.signal);
+      return {
+        vector: await callGeminiEmbeddingRoute(
+          route,
+          input,
+          options.dimensions,
+          options.taskType ?? "SEMANTIC_SIMILARITY",
+          options.signal,
+        ),
+        model: route.model,
+      };
     } catch (error) {
       if (options.signal?.aborted) throw options.signal.reason;
       const typedError = error as Error & { status?: number; retryable?: boolean; tryNextRoute?: boolean };
@@ -868,6 +886,14 @@ export async function createGeminiEmbedding(
   }
 
   throw new Error(`All Gemini embedding routes failed: ${JSON.stringify(attempts)}`);
+}
+
+export async function createGeminiEmbedding(
+  input: string,
+  options: GeminiRouteOptions & { dimensions: number; taskType?: GeminiEmbeddingTaskType },
+): Promise<number[] | null> {
+  const result = await createGeminiEmbeddingResult(input, options);
+  return result?.vector ?? null;
 }
 export async function completeGeminiJson(messages: LlmMessage[], options: GeminiRouteOptions = {}): Promise<LlmCompletionResult | null> {
   const taskType = (process.env.GEMINI_TASK_TYPE?.trim() as GeminiTaskType | undefined) || analyzeGeminiTaskType(messages);

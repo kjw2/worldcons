@@ -56,8 +56,7 @@ jobs:
       OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
       OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.OPENAI_COMPATIBLE_BASE_URL }}
       OPENAI_COMPATIBLE_SUMMARY_MODEL: ${{ secrets.OPENAI_COMPATIBLE_SUMMARY_MODEL }}
-      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER || 'gemini' }}
-      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_PROVIDER: gemini
       GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
       PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
@@ -92,9 +91,15 @@ jobs:
       CRAWLEE_PLAYWRIGHT_MAX_CONCURRENCY: "1"
       CRAWLEE_SAME_DOMAIN_DELAY_SECS: "2"
       BVERFG_CRAWL_DELAY_MS: "3000"
-      BVERFG_TIMEOUT_MS: "15000"
+      # The official BVerfG host regularly exceeds 15s. Keep collection aligned
+      # with the diagnostic/admin paths so a healthy but slow response is not
+      # misclassified as an uncollected item.
+      BVERFG_TIMEOUT_MS: "60000"
       BVERFG_MAX_CONCURRENCY: "1"
-      BVERFG_RETRY_COUNT: "2"
+      # One request can legitimately occupy the full 60s budget. Variant
+      # resolution and the durable candidate retry queue already provide retry;
+      # transport retries here only multiply a slow/blocked endpoint.
+      BVERFG_RETRY_COUNT: "0"
       BVERFG_SITE_BLOCK_CIRCUIT_THRESHOLD: "3"
       BVERFG_PLAYWRIGHT_ESCALATE_LIMIT: "3"
       BVERFG_PENDING_RECHECK_LIMIT: "3"
@@ -141,13 +146,13 @@ jobs:
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
         run: pnpm admin:worker:p1 -- --daily-pipeline --source=${{ matrix.source }} --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --summary-limit=20 --summary-passes=4
-      - name: Run isolated BVerfG worker
+      - name: Run isolated BVerfG worker without browser fallback
         if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && matrix.source == 'de-bverfg'
         env:
           LIMIT_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '20' }}
           STRATEGY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'auto' }}
           RANGE_DAYS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.range_days || '14' }}
-        run: pnpm crawl:worker -- --source=de-bverfg --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --debug
+        run: pnpm crawl:worker -- --source=de-bverfg --limit="$LIMIT_INPUT" --strategy="$STRATEGY_INPUT" --range-days="$RANGE_DAYS_INPUT" --refresh-existing --no-playwright --debug
       - name: Run isolated source worker
         if: (github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source) && env.ADMIN_QUEUE_V3_WORKER_ENABLED != 'true' && matrix.source != 'de-bverfg'
         env:
@@ -177,8 +182,7 @@ jobs:
       OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
       OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.OPENAI_COMPATIBLE_BASE_URL }}
       OPENAI_COMPATIBLE_SUMMARY_MODEL: ${{ secrets.OPENAI_COMPATIBLE_SUMMARY_MODEL }}
-      EMBEDDING_PROVIDER: ${{ secrets.EMBEDDING_PROVIDER || 'gemini' }}
-      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_PROVIDER: gemini
       GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
       ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
       ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED: ${{ vars.ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED || 'false' }}

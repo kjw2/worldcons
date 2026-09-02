@@ -10,6 +10,7 @@ import {
   recordWatchdogEvents,
   type WatchdogEvaluation,
 } from "@/lib/ops/watchdog";
+import { runWithWorkflowHeartbeats } from "@/lib/ops/workflow-heartbeat";
 
 const ISSUE_TITLE_PREFIX = "[무인운영] 수집 경고";
 const COMPENSATION_MIN_INTERVAL_HOURS = 24;
@@ -208,7 +209,7 @@ async function main() {
   );
 }
 
-main()
+runWithWorkflowHeartbeats(["watchdog"], main)
   .catch(async (error) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`watchdog failed: ${message}`);

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/client";
-import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
+import { getSourceUrlCandidateHealthMetrics } from "@/lib/db/source-url-candidates";
 import { getCollectionControlState } from "@/lib/masterdash/store";
+import { getEmbeddingReadiness } from "@/lib/ingest/embedding-backlog";
+import {
+  getWorkflowHeartbeats,
+  workflowHeartbeatIsStale,
+  type WorkflowHeartbeatRecord,
+  type WorkflowKey,
+} from "@/lib/ops/workflow-heartbeat";
 import {
   collectionHealthMetrics,
   FAILURE_RECENCY_WINDOW_HOURS,
@@ -31,6 +38,14 @@ function degradedHealth(message: string) {
         recordsCollected: null,
         recordsAdded: null,
         pendingItems: null,
+        pendingAdminJobs: null,
+        openCandidateCount: null,
+        retryableCandidateCount: null,
+        exhaustedCandidateCount: null,
+        oldestOpenCandidateAt: null,
+        missingEmbeddingCount: null,
+        publishedEmbeddingVersionCount: null,
+        missingPublishedEmbeddingArtifactCount: null,
         summaryBacklogCount: null,
         oldestSummaryBacklogAt: null,
         errorCount: null,
@@ -41,6 +56,15 @@ function degradedHealth(message: string) {
         durationMs: null,
         collectionPaused: false,
         controlUpdatedAt: null,
+        collectionWorkflowLastRunAt: null,
+        collectionWorkflowLastStatus: null,
+        summaryWorkflowLastRunAt: null,
+        summaryWorkflowLastStatus: null,
+        embeddingWorkflowLastRunAt: null,
+        embeddingWorkflowLastStatus: null,
+        watchdogWorkflowLastRunAt: null,
+        watchdogWorkflowLastStatus: null,
+        stalledWorkflows: [],
         bySource: [],
       },
     },
@@ -55,13 +79,13 @@ export async function GET() {
 
     // Collection freshness alone cannot reveal a stalled summariser: source text can keep
     // arriving while nothing reaches the public listing. Report that backlog as its own axis.
-    const [latest, successful, recent, pending, failed, openCandidates, control, summaryBacklog, oldestSummaryBacklog] = await Promise.all([
+    const [latest, successful, recent, pending, failed, candidateMetrics, control, summaryBacklog, oldestSummaryBacklog, embeddingReadiness, heartbeats] = await Promise.all([
       supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("ingestion_runs").select("source_key, finished_at, metadata").eq("status", "completed").order("finished_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
       supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(40),
       supabase.from("admin_jobs").select("id", { count: "exact", head: true }).in("status", ["queued", "running", "cancel_requested"]),
       supabase.from("admin_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
-      countOpenSourceUrlCandidates().catch(() => null),
+      getSourceUrlCandidateHealthMetrics().catch(() => null),
       getCollectionControlState(),
       supabase
         .from("articles")
@@ -76,6 +100,8 @@ export async function GET() {
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle(),
+      getEmbeddingReadiness().catch(() => null),
+      getWorkflowHeartbeats().catch(() => null),
     ]);
     const queryFailed = Boolean(
       latest.error ||
@@ -85,7 +111,9 @@ export async function GET() {
         failed.error ||
         summaryBacklog.error ||
         oldestSummaryBacklog.error ||
-        openCandidates === null,
+        candidateMetrics === null ||
+        embeddingReadiness === null ||
+        heartbeats === null,
     );
     const controlRequired = Boolean(process.env.MASTERDASH_CONTROL_SECRET?.trim());
     const paused = control.available && control.paused;
@@ -93,7 +121,12 @@ export async function GET() {
       latest: latest.data,
       successful: successful.data,
       recentRuns: recent.data ?? [],
-      pendingItems: (pending.count ?? 0) + (openCandidates ?? 0),
+      pendingItems: (pending.count ?? 0) + (candidateMetrics?.openCandidateCount ?? 0),
+      pendingAdminJobs: pending.error ? null : pending.count ?? 0,
+      openCandidateCount: candidateMetrics?.openCandidateCount ?? null,
+      retryableCandidateCount: candidateMetrics?.retryableCandidateCount ?? null,
+      exhaustedCandidateCount: candidateMetrics?.exhaustedCandidateCount ?? null,
+      oldestOpenCandidateAt: candidateMetrics?.oldestOpenCandidateAt ?? null,
       summaryBacklogCount: summaryBacklog.error ? null : summaryBacklog.count ?? 0,
       oldestSummaryBacklogAt: (oldestSummaryBacklog.data?.created_at as string | undefined) ?? null,
       failedJobCount: failed.count ?? null,
@@ -109,7 +142,19 @@ export async function GET() {
     // A stalled summariser keeps articles out of the public listing even while collection
     // looks healthy, so it has to be able to move the status on its own.
     const summaryStalled = summaryBacklogIsStale(metrics.summaryBacklogCount, metrics.oldestSummaryBacklogAt);
-    const degraded = queryFailed || (controlRequired && !control.available) || sourceUnhealthy || summaryStalled;
+    const heartbeatByKey = new Map((heartbeats ?? []).map((heartbeat) => [heartbeat.workflowKey, heartbeat]));
+    const stalledWorkflows = ([
+      ["collection", true],
+      ["summary", (metrics.summaryBacklogCount ?? 0) > 0],
+      ["embedding", (embeddingReadiness?.missingArticleCount ?? 0) > 0],
+      ["watchdog", true],
+    ] as const)
+      .filter(([key, required]) => required && workflowHeartbeatIsStale(heartbeatByKey.get(key)))
+      .map(([key]) => key);
+    const workflowStalled = stalledWorkflows.length > 0;
+    const embeddingIncomplete = (embeddingReadiness?.missingArticleCount ?? 0) > 0 ||
+      (embeddingReadiness?.missingPublishedArtifactCount ?? 0) > 0;
+    const degraded = queryFailed || (controlRequired && !control.available) || sourceUnhealthy || summaryStalled || workflowStalled || embeddingIncomplete;
     const lastSuccessAt = metrics.lastSuccessfulCollectionAt;
     const lastSuccessMs = lastSuccessAt ? Date.parse(lastSuccessAt) : Number.NaN;
     const freshnessSeconds = Number.isFinite(lastSuccessMs)
@@ -127,6 +172,10 @@ export async function GET() {
             ? "Collector is ready, but at least one source completed in a degraded or failed state."
             : summaryStalled
               ? "Collection is running, but summarization is behind, so verified material is not reaching the public listing."
+              : workflowStalled
+                ? `Scheduled workflow heartbeat is stale or missing: ${stalledWorkflows.join(", ")}.`
+                : embeddingIncomplete
+                  ? "Gemini embedding corpus or published P3 artifact coverage is incomplete."
               : paused
                 ? "Collector is ready; new collection starts are paused."
                 : "Collector is ready.",
@@ -134,8 +183,12 @@ export async function GET() {
         metrics: {
           ...metrics,
           freshnessSeconds,
+          missingEmbeddingCount: embeddingReadiness?.missingArticleCount ?? null,
+          publishedEmbeddingVersionCount: embeddingReadiness?.publishedVersionCount ?? null,
+          missingPublishedEmbeddingArtifactCount: embeddingReadiness?.missingPublishedArtifactCount ?? null,
           collectionPaused: paused,
           controlUpdatedAt: control.updatedAt,
+          ...workflowHealthFields(heartbeatByKey, stalledWorkflows),
         },
       },
       { status: 200, headers: HEALTH_HEADERS },
@@ -143,4 +196,23 @@ export async function GET() {
   } catch {
     return degradedHealth("Collector metrics are temporarily unavailable.");
   }
+}
+
+function workflowHealthFields(
+  heartbeats: Map<WorkflowKey, WorkflowHeartbeatRecord>,
+  stalledWorkflows: WorkflowKey[],
+) {
+  const value = (key: WorkflowKey) => heartbeats.get(key);
+  const observedAt = (key: WorkflowKey) => value(key)?.lastCompletedAt ?? value(key)?.lastStartedAt ?? null;
+  return {
+    collectionWorkflowLastRunAt: observedAt("collection"),
+    collectionWorkflowLastStatus: value("collection")?.lastStatus ?? null,
+    summaryWorkflowLastRunAt: observedAt("summary"),
+    summaryWorkflowLastStatus: value("summary")?.lastStatus ?? null,
+    embeddingWorkflowLastRunAt: observedAt("embedding"),
+    embeddingWorkflowLastStatus: value("embedding")?.lastStatus ?? null,
+    watchdogWorkflowLastRunAt: observedAt("watchdog"),
+    watchdogWorkflowLastStatus: value("watchdog")?.lastStatus ?? null,
+    stalledWorkflows,
+  };
 }

@@ -36,8 +36,10 @@ const env = {
 
 const embeddingEnv = {
   ...env,
-  OPENAI_API_KEY: "test-openai-key",
-  OPENAI_EMBEDDING_MODEL: "text-embedding-3-small",
+  EMBEDDING_PROVIDER: "gemini",
+  SEMANTIC_SEARCH_ENABLED: "true",
+  GEMINI_API_KEY: "test-gemini-key",
+  GEMINI_EMBEDDING_MODEL: "gemini-embedding-001",
 } satisfies SearchWorkerEnv;
 
 test("Worker search accepts the cclrag2 contract and returns the Neubauer case first", async () => {
@@ -209,13 +211,15 @@ test("Worker semantic mode creates an embedding and passes it to V4 vector retri
     {
       fetcher: async (input, init) => {
         const url = String(input);
-        if (url === "https://api.openai.com/v1/embeddings") {
+        if (url === "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") {
           embeddingCalls += 1;
           const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          assert.equal(requestBody.model, "text-embedding-3-small");
-          assert.equal(requestBody.dimensions, 1536);
-          assert.match(String(requestBody.input), /climate/u);
-          assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-openai-key");
+          assert.equal(requestBody.model, "models/gemini-embedding-001");
+          assert.equal(requestBody.outputDimensionality, 1536);
+          assert.equal(requestBody.taskType, "RETRIEVAL_QUERY");
+          assert.match(JSON.stringify(requestBody.content), /climate/u);
+          assert.equal(new Headers(init?.headers).get("x-goog-api-key"), "test-gemini-key");
+          assert.equal(new Headers(init?.headers).get("authorization"), null);
           return embeddingResponse();
         }
         rpcCalls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -245,7 +249,7 @@ test("Worker hybrid mode uses embeddings when available and degrades explicitly 
     embeddingEnv,
     {
       fetcher: async (input, init) => {
-        if (String(input) === "https://api.openai.com/v1/embeddings") return embeddingResponse();
+        if (String(input) === "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") return embeddingResponse();
         hybridRpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return Response.json({ items: [neubauerRow()], retrievalMode: "hybrid" });
       },
@@ -266,7 +270,7 @@ test("Worker hybrid mode uses embeddings when available and degrades explicitly 
     embeddingEnv,
     {
       fetcher: async (input, init) => {
-        if (String(input) === "https://api.openai.com/v1/embeddings") {
+        if (String(input) === "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") {
           return Response.json({ error: "embedding unavailable" }, { status: 503 });
         }
         degradedRpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -581,7 +585,7 @@ test("Worker truncates a large article body without dropping the preserved text 
 
 function embeddingResponse() {
   return Response.json({
-    data: [{ embedding: Array.from({ length: 1536 }, (_, index) => index === 0 ? 1 : 0) }],
+    embedding: { values: Array.from({ length: 1536 }, (_, index) => index === 0 ? 2 : 0) },
   });
 }
 

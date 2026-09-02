@@ -35,6 +35,11 @@ export interface CollectionHealthMetrics {
   recordsCollected: number | null;
   recordsAdded: number | null;
   pendingItems: number | null;
+  pendingAdminJobs: number | null;
+  openCandidateCount: number | null;
+  retryableCandidateCount: number | null;
+  exhaustedCandidateCount: number | null;
+  oldestOpenCandidateAt: string | null;
   summaryBacklogCount: number | null;
   oldestSummaryBacklogAt: string | null;
   errorCount: number | null;
@@ -193,6 +198,11 @@ export function collectionHealthMetrics(input: {
   successful?: CollectionHealthRunRow | null;
   recentRuns?: CollectionHealthRunRow[] | null;
   pendingItems?: number | null;
+  pendingAdminJobs?: number | null;
+  openCandidateCount?: number | null;
+  retryableCandidateCount?: number | null;
+  exhaustedCandidateCount?: number | null;
+  oldestOpenCandidateAt?: string | null;
   summaryBacklogCount?: number | null;
   oldestSummaryBacklogAt?: string | null;
   failedJobCount?: number | null;
@@ -226,6 +236,11 @@ export function collectionHealthMetrics(input: {
     recordsCollected: collectedCount(latest),
     recordsAdded: metadataNumber(latestMetadata, "recordsAdded", "addedCount"),
     pendingItems: numberValue(input.pendingItems),
+    pendingAdminJobs: numberValue(input.pendingAdminJobs),
+    openCandidateCount: numberValue(input.openCandidateCount),
+    retryableCandidateCount: numberValue(input.retryableCandidateCount),
+    exhaustedCandidateCount: numberValue(input.exhaustedCandidateCount),
+    oldestOpenCandidateAt: textValue(input.oldestOpenCandidateAt),
     summaryBacklogCount: numberValue(input.summaryBacklogCount),
     oldestSummaryBacklogAt: textValue(input.oldestSummaryBacklogAt),
     errorCount,

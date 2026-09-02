@@ -9,6 +9,7 @@ import type { CrawlStrategyOption } from "@/lib/crawler/types";
 import { SPAIN_TC_BACKFILL_START_DECISION_DATE, SPAIN_TC_SOURCE_KEY } from "@/lib/crawlee";
 import { ingestSourceOutcomeLine } from "@/lib/ingest/incremental";
 import { ingestProcessExitCode, ingestResultFailureMessage } from "@/lib/ingest/results";
+import { runWithWorkflowHeartbeats } from "@/lib/ops/workflow-heartbeat";
 
 process.env.CRAWLEE_WORKER = "true";
 
@@ -117,11 +118,12 @@ async function main() {
   const exitCode = ingestProcessExitCode(result);
   if (exitCode !== 0) {
     console.error(ingestResultFailureMessage(result));
-    process.exit(exitCode);
+    process.exitCode = exitCode;
   }
 }
 
-main().catch((error) => {
+const operation = boolArg("dry-run") ? main() : runWithWorkflowHeartbeats(["collection"], main);
+operation.catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

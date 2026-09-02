@@ -5,7 +5,7 @@ import {
 
 type WorkerEnv = Cloudflare.Env & Pick<
   SearchWorkerEnv,
-  "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY"
+  "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY" | "GEMINI_API_KEY"
 >;
 
 export default {
