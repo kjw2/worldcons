@@ -22,6 +22,7 @@ const eslintConfig = [
       "playwright-report/**",
       "test-results/**",
       "workers/search-api/worker-configuration.d.ts",
+      "workers/chatgpt-plugin-mcp/worker-configuration.d.ts",
       "next-env.d.ts",
       "*.tsbuildinfo",
     ],

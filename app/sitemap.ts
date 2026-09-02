@@ -37,6 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/sources`, changeFrequency: "weekly", priority: 0.5 },
     { url: `${baseUrl}/glossary`, changeFrequency: "weekly", priority: 0.5 },
     { url: `${baseUrl}/guide`, changeFrequency: "weekly", priority: 0.5 },
+    { url: `${baseUrl}/guide/chatgpt-plugin`, changeFrequency: "monthly", priority: 0.6 },
     ...sources
       .filter((source) => source.isActive)
       .map((source) => ({

@@ -141,6 +141,8 @@ For ordinary queries, `fulltext` uses PostgreSQL `ts_rank_cd`, `semantic` uses p
 
 `GET /api/articles/{slug}` returns the same identity, source, temporal, and checksum evidence as search, plus `summaryJson`, `bodyExcerpt`, and the first bounded `cleanedText` page. cclrag2 should hydrate only selected search hits.
 
+Consumers that need a smaller first page may pass `textLimit=<1..350000>`. Omitting it preserves the 350,000-character default. ChatGPT plugin retrieval uses a smaller bounded value to avoid transferring a full source page when a summary and short verification excerpt are sufficient.
+
 The complete preserved text remains available as bounded pages:
 
 ```text

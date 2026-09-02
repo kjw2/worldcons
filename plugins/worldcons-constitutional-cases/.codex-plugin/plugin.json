@@ -1,0 +1,41 @@
+{
+  "name": "worldcons-constitutional-cases",
+  "version": "0.1.0",
+  "description": "헌법판례요약시스템의 공개 판례를 ChatGPT 대화에서 검색하고 공식 원문과 함께 확인합니다.",
+  "author": {
+    "name": "헌법판례요약시스템 운영팀",
+    "url": "https://worldcons.vercel.app"
+  },
+  "homepage": "https://worldcons.vercel.app/guide/chatgpt-plugin",
+  "repository": "https://github.com/kjw2/worldcons",
+  "keywords": [
+    "constitutional-law",
+    "case-law",
+    "legal-research",
+    "헌법판례"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "헌법판례요약시스템",
+    "shortDescription": "세계 헌법판례를 한국어 요약과 공식 원문으로 검색합니다.",
+    "longDescription": "독일·미국·프랑스·스페인의 공개 헌법판례를 대화에서 검색하고, 사건 정보와 한국어 AI 요약을 확인한 뒤 법원 공식 원문으로 검증할 수 있습니다. 회원가입이나 API 키는 필요하지 않습니다.",
+    "developerName": "헌법판례요약시스템 운영팀",
+    "category": "Research",
+    "capabilities": [
+      "Read-only search",
+      "Korean case summaries",
+      "Official-source citations"
+    ],
+    "websiteURL": "https://worldcons.vercel.app/guide/chatgpt-plugin",
+    "defaultPrompt": [
+      "최근 독일 연방헌법재판소 판례를 핵심 쟁점별로 찾아줘.",
+      "표현의 자유와 관련된 프랑스 헌법판례를 비교해줘.",
+      "이 판례의 한국어 요약과 법원 공식 원문 링크를 보여줘."
+    ],
+    "brandColor": "#173F5F",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/logo.svg",
+    "logoDark": "./assets/logo-dark.svg"
+  }
+}

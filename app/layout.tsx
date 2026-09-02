@@ -46,6 +46,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </div>
               <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold" aria-label="하단 메뉴">
                 <Link href="/guide" className="hover:text-archive-accent">이용안내</Link>
+                <Link href="/guide/chatgpt-plugin" className="hover:text-archive-accent">ChatGPT 플러그인</Link>
                 <Link href="/sources" className="hover:text-archive-accent">수록기관</Link>
                 <a href="/rss.xml" className="hover:text-archive-accent">RSS</a>
               </nav>

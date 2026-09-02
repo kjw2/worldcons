@@ -29,6 +29,7 @@ const SEARCH_PARAMETERS = new Set([
   "source",
   "range",
 ]);
+const DETAIL_PARAMETERS = new Set(["textLimit"]);
 const SOURCE_TEXT_PARAMETERS = new Set(["offset", "limit"]);
 const SEARCH_MODES = new Set(["fulltext", "semantic", "hybrid"]);
 const COUNT_MODES = new Set(["exact", "planned", "estimated", "none"]);
@@ -424,10 +425,10 @@ async function articleResponse(
     }, 200, DETAIL_CACHE_CONTROL, requestId, MAX_SOURCE_TEXT_RESPONSE_BYTES);
   }
 
-  assertNoParameters(url.searchParams);
+  const detailInput = parseDetailInput(url.searchParams);
   const rpcPayload = await callRpc(env, "worldcons_provider_article_v2", {
     p_slug: slug,
-    p_text_limit: MAX_DETAIL_TEXT_CHARS,
+    p_text_limit: detailInput.textLimit,
   }, fetcher, requestId);
   if (rpcPayload === null) {
     return errorResponse(404, "NOT_FOUND", "Article not found.", {}, requestId);
@@ -502,6 +503,26 @@ function parseSourceTextInput(searchParams: URLSearchParams) {
   return {
     offset: boundedInteger(searchParams.get("offset"), "offset", 0, 0, 10_000_000),
     limit: boundedInteger(searchParams.get("limit"), "limit", MAX_DETAIL_TEXT_CHARS, 1, MAX_DETAIL_TEXT_CHARS),
+  };
+}
+
+function parseDetailInput(searchParams: URLSearchParams) {
+  for (const key of searchParams.keys()) {
+    if (!DETAIL_PARAMETERS.has(key)) {
+      throw new RequestValidationError(`Unsupported parameter: ${key}`);
+    }
+    if (searchParams.getAll(key).length > 1) {
+      throw new RequestValidationError(`Parameter must appear once: ${key}`);
+    }
+  }
+  return {
+    textLimit: boundedInteger(
+      searchParams.get("textLimit"),
+      "textLimit",
+      MAX_DETAIL_TEXT_CHARS,
+      1,
+      MAX_DETAIL_TEXT_CHARS,
+    ),
   };
 }
 

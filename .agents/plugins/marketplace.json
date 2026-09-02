@@ -1,0 +1,20 @@
+{
+  "name": "worldcons-public",
+  "interface": {
+    "displayName": "헌법판례요약시스템"
+  },
+  "plugins": [
+    {
+      "name": "worldcons-constitutional-cases",
+      "source": {
+        "source": "local",
+        "path": "./plugins/worldcons-constitutional-cases"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Research"
+    }
+  ]
+}

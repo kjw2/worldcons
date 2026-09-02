@@ -19,6 +19,7 @@ const publicDesignFiles = [
   "app/glossary/page.tsx",
   "app/glossary/[slug]/page.tsx",
   "app/guide/page.tsx",
+  "app/guide/chatgpt-plugin/page.tsx",
   "app/articles/[slug]/(detail)/page.tsx",
   "components/article-card.tsx",
   "components/article-grid.tsx",

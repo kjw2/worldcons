@@ -215,6 +215,27 @@ function IssueIndex({ tags }: { tags: Awaited<ReturnType<typeof getHomePortalDat
   );
 }
 
+function ChatGptPluginGuide() {
+  return (
+    <section aria-labelledby="chatgpt-plugin-guide" className="border-y border-archive-line-strong bg-archive-surface-soft">
+      <div className="grid gap-5 px-1 py-6 sm:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div>
+          <h2 id="chatgpt-plugin-guide" className="text-xl font-bold text-archive-ink">ChatGPT에서 헌법판례를 바로 검색하세요</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-7 text-archive-text">
+            {"헌법판례요약시스템의 공개 판례를 ChatGPT에서 찾고, 한국어 AI 요약과 법원 공식 원문 링크를 함께 확인할 수 있습니다. 계정이나 API 키는 필요하지 않습니다."}
+          </p>
+        </div>
+        <IntentPrefetchLink
+          href="/guide/chatgpt-plugin"
+          className="focus-ring inline-flex min-h-11 items-center justify-center gap-2 border border-archive-accent px-4 text-sm font-bold text-archive-accent hover:bg-white"
+        >
+          소개와 연결 방법 <ArrowRight className="size-4" aria-hidden="true" />
+        </IntentPrefetchLink>
+      </div>
+    </section>
+  );
+}
+
 async function loadHomePortalData() {
   try {
     return await getHomePortalData();
@@ -242,6 +263,7 @@ async function HomeContent() {
         <CountryShortcuts countries={countries} />
         <LatestDecisionList articles={latestArticles} />
         <IssueIndex tags={issueTags} />
+        <ChatGptPluginGuide />
       </div>
     </>
   );

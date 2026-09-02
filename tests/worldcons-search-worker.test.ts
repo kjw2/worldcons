@@ -405,7 +405,7 @@ test("Worker source and article endpoints expose bounded Contract V2 evidence", 
     { fetcher },
   );
   const detail = await handleWorldconsSearchRequest(
-    new Request("https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer"),
+    new Request("https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer?textLimit=16000"),
     env,
     { fetcher },
   );
@@ -430,6 +430,11 @@ test("Worker source and article endpoints expose bounded Contract V2 evidence", 
   assert.equal(detailPayload.excerptKind, "document_section");
   assert.equal(detailPayload.bodyChecksum, NEUBAUER_CHECKSUM);
   assert.equal(detailPayload.textPage.hasMore, false);
+  const detailCall = calls.find((call) => call.pathname.endsWith("/worldcons_provider_article_v2"));
+  assert.deepEqual(detailCall?.body, {
+    p_slug: "germany-neubauer",
+    p_text_limit: 16000,
+  });
   assert.ok(Number(detail.headers.get("content-length")) < 1_900_000);
   assert.equal(sourceText.status, 200);
   const sourceTextPayload = await sourceText.json();
@@ -490,6 +495,15 @@ test("Worker rejects invalid input and normalizes dependency failures", async ()
   );
   assert.equal(invalidTextPage.status, 400);
   assert.equal((await invalidTextPage.json()).contractVersion, "2.0");
+
+  const invalidDetailTextLimit = await handleWorldconsSearchRequest(
+    new Request(
+      "https://worldcons-search-api.example.workers.dev/api/articles/germany-neubauer?textLimit=350001",
+    ),
+    env,
+  );
+  assert.equal(invalidDetailTextLimit.status, 400);
+  assert.equal((await invalidDetailTextLimit.json()).error.code, "INVALID_REQUEST");
 });
 
 test("migration is projection-only, page-bounded, and service-role restricted", () => {

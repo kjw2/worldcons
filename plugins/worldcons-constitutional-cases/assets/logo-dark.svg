@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160" role="img" aria-labelledby="title">
+  <title id="title">헌법판례요약시스템</title>
+  <rect width="720" height="160" rx="20" fill="#111827"/>
+  <rect x="24" y="24" width="112" height="112" rx="20" fill="#E7EEF4"/>
+  <path d="M48 51h64v10H48zm5 20h54v37H53z" fill="#173F5F"/>
+  <path d="M62 82h36v6H62zm0 12h28v6H62z" fill="#E7EEF4"/>
+  <path d="M46 113h68v7H46z" fill="#D8B56A"/>
+  <text x="164" y="95" fill="#F8FAFC" font-family="Pretendard, Noto Sans KR, sans-serif" font-size="42" font-weight="800">헌법판례요약시스템</text>
+  <text x="166" y="122" fill="#B7C2CC" font-family="Pretendard, Noto Sans KR, sans-serif" font-size="17" font-weight="600">세계 헌법판례 데이터베이스</text>
+</svg>

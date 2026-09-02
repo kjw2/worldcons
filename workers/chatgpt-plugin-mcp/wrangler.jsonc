@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "worldcons-plugin-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "ENVIRONMENT": "production",
+    "SITE_BASE_URL": "https://worldcons.vercel.app",
+    "SEARCH_DETAIL_TEXT_LIMIT": "16000",
+    "SOURCE_TEXT_PAGE_LIMIT": "12000"
+  },
+  "services": [
+    {
+      "binding": "SEARCH_API",
+      "service": "worldcons-search-api"
+    }
+  ],
+  "version_metadata": {
+    "binding": "VERSION_METADATA"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
