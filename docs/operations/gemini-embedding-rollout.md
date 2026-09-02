@@ -14,6 +14,9 @@ WorldCons uses one vector space only: `gemini-embedding-001`, 1536 dimensions, L
    ```
 
    Re-run until `missingAfter` is zero. A quota deferral is resumable and must not be treated as data loss.
+   Production uses the same command through `.github/workflows/embedding-backfill.yml` so the
+   GitHub Gemini secret never has to be copied to an operator machine. The daily schedule safely
+   resumes a deferred migration and becomes a no-op once coverage is complete.
 5. Verify every currently published P3 version resolves to a Gemini artifact and that the public projection has no null vectors for summarized records. Verify `/api/masterdash/health` reports `missingEmbeddingCount=0`, `missingPublishedEmbeddingArtifactCount=0`, and a recent successful embedding heartbeat.
 6. Change `SEMANTIC_SEARCH_ENABLED=true`, deploy only the Search Worker, then canary exact-case, full-text, semantic, and hybrid searches. Exact-case preflight must remain embedding-free.
 

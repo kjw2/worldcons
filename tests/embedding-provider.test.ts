@@ -48,6 +48,7 @@ test("scheduled workflows embed with Gemini when the secret is unset", () => {
   // Every workflow that can write embeddings must agree on the provider, otherwise a
   // single unset secret reintroduces silently missing vectors.
   const workflows = [
+    ".github/workflows/embedding-backfill.yml",
     ".github/workflows/summary-drain.yml",
     ".github/workflows/crawlee-worker.yml",
     ".github/workflows/admin-job-worker.yml",
@@ -59,6 +60,16 @@ test("scheduled workflows embed with Gemini when the secret is unset", () => {
     assert.match(source, /EMBEDDING_PROVIDER: gemini/u, workflow);
     assert.match(source, /GEMINI_EMBEDDING_MODEL: \$\{\{ vars\.GEMINI_EMBEDDING_MODEL \|\| .gemini-embedding-001. \}\}/u, workflow);
   }
+});
+
+test("embedding backfill workflow is quota-bounded and resumable", () => {
+  const workflow = read(".github/workflows/embedding-backfill.yml");
+  assert.match(workflow, /cron: "30 1 \* \* \*"/u);
+  assert.match(workflow, /group: admin-command-p1/u);
+  assert.match(workflow, /--drain --limit=/u);
+  assert.match(workflow, /--max-passes=/u);
+  assert.match(workflow, /--pass-delay-ms=65000/u);
+  assert.match(workflow, /timeout-minutes: 50/u);
 });
 
 test("embedding backfill uses the provenance RPC and resumes after a provider deferral", () => {

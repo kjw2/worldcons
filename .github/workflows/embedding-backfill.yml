@@ -1,0 +1,53 @@
+name: Gemini embedding backfill
+
+on:
+  schedule:
+    # Resume a quota-deferred migration backlog once per day. A completed corpus
+    # is a cheap no-op while still refreshing the embedding heartbeat.
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Maximum rows scanned per pass
+        required: false
+        default: "50"
+      max_passes:
+        description: Bounded passes before yielding to the next run
+        required: false
+        default: "20"
+
+concurrency:
+  # Gemini routing state and provider quota are shared with collection/summary.
+  group: admin-command-p1
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Backfill Gemini embeddings
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      LLM_SETTINGS_SECRET: ${{ secrets.LLM_SETTINGS_SECRET }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+      EMBEDDING_PROVIDER: gemini
+      GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
+      EMBEDDING_LIMIT_INPUT: ${{ github.event.inputs.limit || '50' }}
+      EMBEDDING_PASSES_INPUT: ${{ github.event.inputs.max_passes || '20' }}
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run bounded resumable backfill
+        run: pnpm backfill:embeddings -- --drain --limit="$EMBEDDING_LIMIT_INPUT" --max-passes="$EMBEDDING_PASSES_INPUT" --pass-delay-ms=65000
