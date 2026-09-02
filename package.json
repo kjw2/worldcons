@@ -65,7 +65,7 @@
     "plugin:mcp:types": "pnpm --filter @worldcons/chatgpt-plugin-mcp types",
     "plugin:mcp:check": "pnpm --filter @worldcons/chatgpt-plugin-mcp check",
     "plugin:mcp:dev": "pnpm --filter @worldcons/chatgpt-plugin-mcp dev",
-    "plugin:mcp:deploy": "pnpm --filter @worldcons/chatgpt-plugin-mcp deploy",
+    "plugin:mcp:deploy": "pnpm --filter @worldcons/chatgpt-plugin-mcp run deploy",
     "test:plugin": "tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts",
     "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts tests/bverfg-workflow-contract.test.ts",
     "test:masterdash": "tsx --test tests/masterdash-integration.test.ts",
