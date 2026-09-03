@@ -111,6 +111,8 @@ Implementation status as of 2026-09-04: steps 1–4 are implemented and covered 
 
 The public-attribution guard required by step 6 is also implemented in advance. It fail-closes Germany Catalog publication unless the authoritative BVerfG URL, exact sealed inventory item, dejure page and boundary-probe evidence, and source identifier all match. The website, print page, and ChatGPT response identify dejure only as a discovery aid and state that German official text is authoritative. This code does not authorize steps 5 or 6 in production; the owner decisions below remain mandatory.
 
+After the owner creates the immutable policy row, run `pnpm verify:bverfg-shadow-readiness -- --year=2024 --policy-version=<version>` before any write command. The read-only result is `ready` only when the history flag and every reviewed policy constraint match, `complete` only for a closed snapshot with both item and enumeration manifest hashes, and otherwise `blocked` with machine-readable reasons. The check never inserts a policy, opens a snapshot, enables public Catalog data, or authorizes a production write.
+
 1. Make the durable request governor phase-aware: external index hosts are discover-only, while fetch remains restricted to authority/redirect hosts.
 2. Add a bounded, resumable Germany annual scope and P1 strategy without changing the daily crawler's operational limit.
 3. Build an append-only external enumeration artifact with provider page/count/hash evidence and no external full text.

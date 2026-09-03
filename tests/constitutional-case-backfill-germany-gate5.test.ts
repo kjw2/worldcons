@@ -18,6 +18,11 @@ import {
   validateBverfgInventoryResult,
   verifyBverfgInventoryReadOnly,
 } from "../lib/backfill/germany-inventory-verification";
+import { verifyBverfgPrivateShadowReadiness } from "../lib/backfill/germany-shadow-readiness";
+import type {
+  BverfgShadowPolicyEvidence,
+  BverfgShadowReadinessRepository,
+} from "../lib/backfill/germany-shadow-readiness-repository";
 import type { CaseBackfillRepository } from "../lib/backfill/repository";
 import type {
   CaseBackfillAttemptAuthority,
@@ -197,6 +202,109 @@ test("read-only verifier seals a bounded report and never authorizes writes or G
       safeDetails: { ...artifact.safeDetails, externalText: "must not be stored" },
     } : artifact),
   }), /artifact_contract_invalid/);
+});
+
+const reviewedGermanyPolicy: BverfgShadowPolicyEvidence = {
+  sourceKey: "de-bverfg",
+  policyVersion: "bverfg-reviewed-v1",
+  officialScopeUrl: "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html",
+  discoveryMethods: ["external_index_dejure_paged_listing"],
+  authorityHosts: ["www.bundesverfassungsgericht.de"],
+  redirectHosts: ["www.bverfg.de"],
+  externalIndexHosts: ["dejure.org"],
+  robotsUrl: "https://www.bundesverfassungsgericht.de/robots.txt",
+  licenseBasis: "official-public-record",
+  defaultTextAccessPolicy: "metadata_only",
+  allowRawSnapshot: false,
+  normalizeReplayPolicy: "bounded_evidence",
+  boundedReplayFields: ["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"],
+  retentionDays: 365,
+  minRequestDelayMs: 30_000,
+  maxConcurrency: 1,
+  reviewedBy: "catalog-owner",
+  reviewedAt: "2026-09-03T00:00:00.000Z",
+  reviewDueAt: "2027-09-03T00:00:00.000Z",
+};
+
+function shadowRepository(input: {
+  policy?: BverfgShadowPolicyEvidence | null;
+  snapshots?: Awaited<ReturnType<BverfgShadowReadinessRepository["listAnnualSnapshots"]>>;
+} = {}): BverfgShadowReadinessRepository {
+  return {
+    async getPolicy() { return input.policy === undefined ? reviewedGermanyPolicy : input.policy; },
+    async listAnnualSnapshots() { return input.snapshots ?? []; },
+  };
+}
+
+test("private-shadow readiness is read-only and requires every owner policy decision", async () => {
+  const ready = await verifyBverfgPrivateShadowReadiness({
+    year: 2024,
+    policyVersion: reviewedGermanyPolicy.policyVersion,
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  }, {
+    repository: shadowRepository(),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    currentYear: 2026,
+  });
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.nextAction, "open_private_shadow_snapshot");
+  assert.equal(ready.ownerApprovalRecorded, true);
+  assert.equal(ready.readOnly, true);
+  assert.equal(ready.productionWriteAuthorizedByThisCheck, false);
+  assert.equal(ready.publicCatalogEnabledByThisCheck, false);
+  assert.equal(ready.geminiCalls, 0);
+
+  const blocked = await verifyBverfgPrivateShadowReadiness({
+    year: 2024,
+    policyVersion: reviewedGermanyPolicy.policyVersion,
+    environment: {},
+  }, {
+    repository: shadowRepository({ policy: null }),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    currentYear: 2026,
+  });
+  assert.equal(blocked.status, "blocked");
+  assert.deepEqual(blocked.blocking, ["germany_history_flag_disabled", "immutable_source_policy_missing"]);
+});
+
+test("private-shadow readiness resumes one open snapshot and recognizes only fully sealed completion", async () => {
+  const base = {
+    sourcePolicyVersion: reviewedGermanyPolicy.policyVersion,
+    openedAt: "2026-09-04T00:00:00.000Z",
+    closedAt: null,
+    manifestHash: null,
+    enumerationManifestHash: null,
+  };
+  const resumable = await verifyBverfgPrivateShadowReadiness({
+    year: 2024,
+    policyVersion: reviewedGermanyPolicy.policyVersion,
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  }, {
+    repository: shadowRepository({ snapshots: [{ ...base,id: "00000000-0000-4000-8000-000000000321",status: "open" }] }),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    currentYear: 2026,
+  });
+  assert.equal(resumable.status, "ready");
+  assert.equal(resumable.nextAction, "resume_existing_private_shadow");
+
+  const complete = await verifyBverfgPrivateShadowReadiness({
+    year: 2024,
+    policyVersion: reviewedGermanyPolicy.policyVersion,
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  }, {
+    repository: shadowRepository({ snapshots: [{
+      ...base,
+      id: "00000000-0000-4000-8000-000000000322",
+      status: "closed",
+      closedAt: "2026-09-04T01:00:00.000Z",
+      manifestHash: "a".repeat(64),
+      enumerationManifestHash: "b".repeat(64),
+    }] }),
+    now: () => new Date("2026-09-04T02:00:00.000Z"),
+    currentYear: 2026,
+  });
+  assert.equal(complete.status, "complete");
+  assert.equal(complete.nextAction, "inspect_private_shadow_reconciliation");
 });
 
 test("Germany discovery persists enumeration evidence before items and closes one manifest", async () => {
