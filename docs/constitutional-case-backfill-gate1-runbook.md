@@ -41,6 +41,8 @@ BACKFILL_TEST_DATABASE_URL=<disposable-postgres-url> pnpm test:backfill
 
 PostgreSQL 테스트의 skip은 승인 증거가 아니다. 깨끗한 스키마에 migration을 적용하고 service-role grant, anon/authenticated 접근 거부, 닫힌 manifest 수정 거부, stale fencing 거부, item lease 상한, attempt 실패 시 claim 회수, append-only artifact 변경 거부를 확인한다.
 
+미국 후보의 `verified` 검토는 구 `us_conan_candidate_review_v1`로 실행하지 않는다. `us_conan_candidate_review_v2`에 현재 authority artifact ID, 같은 candidate에 속한 essay evidence ID 배열, GovInfo details 또는 PDF URL에 결속된 holding locator와 constitutional question을 전달한다. resolver 성공은 authority 관측만 기록하며 검토 revision을 만들지 않는다. 오래된 authority artifact나 다른 후보의 essay evidence가 하나라도 섞이면 검토를 중단한다.
+
 ## 3. 비공개 실행
 
 계획 출력은 데이터베이스 없이 확인할 수 있다.

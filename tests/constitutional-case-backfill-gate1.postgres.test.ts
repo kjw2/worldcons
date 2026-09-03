@@ -11,6 +11,7 @@ const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
+const usReviewGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903172000_constitutional_case_us_review_gate5.sql");
 
 const policyInsert = `
 insert into source_corpus_policies(
@@ -51,6 +52,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
+    await client.query(fs.readFileSync(usReviewGate5Migration, "utf8"));
   } finally {
     await client.end();
   }
@@ -173,7 +175,8 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
           "f".repeat(64), [], "2026-09-03T09:01:00.000Z",
         ],
       );
-      assert.notEqual(authorityFresh.rows[0].us_conan_candidate_authority_record_v1, authorityArtifactId);
+      const authorityFreshId = authorityFresh.rows[0].us_conan_candidate_authority_record_v1;
+      assert.notEqual(authorityFreshId, authorityArtifactId);
       const authorityCurrent = await pool.query<{ status: string; citation: string; observed_at: Date }>(
         "select status,citation,observed_at from us_conan_candidate_authority_current_v1 where candidate_id=$1", [bakerId],
       );
@@ -240,7 +243,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
             "https://www.supremecourt.gov/opinions/test.pdf", {}, "postgres-test", "missing context",
           ],
         ),
-        /us_conan_candidate_reviews_verified_shape_check/,
+        /US_CONAN_VERIFIED_REQUIRES_REVIEW_V2/,
       );
       const uncertain = await pool.query<{ review_revision: number; review_status: string }>(
         "select * from us_conan_candidate_review_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
@@ -257,12 +260,62 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         ),
         /US_CONAN_REVIEW_STALE_REVISION/,
       );
+      const essayEvidence = await pool.query<{ id: string }>(
+        "select id from us_conan_candidate_essay_evidence_v1 where candidate_id=$1 and essay_id=$2",
+        [bakerId, "ALDE_00001001"],
+      );
+      const essayEvidenceId = essayEvidence.rows[0].id;
+      const holdingEvidence = [{
+        sourceUrl: "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+        locator: "pp. 208-237",
+        constitutionalQuestion: "Whether legislative apportionment claims present a justiciable federal constitutional question.",
+      }];
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_review_v2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+          [
+            bakerId, 1, "verified", true, true, true, true, authorityArtifactId,
+            "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+            [essayEvidenceId], JSON.stringify(holdingEvidence), {}, "postgres-test", "Stale authority artifact.",
+          ],
+        ),
+        /US_CONAN_AUTHORITY_ARTIFACT_STALE/,
+      );
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_review_v2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+          [
+            bakerId, 1, "verified", true, true, true, true, authorityFreshId,
+            "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+            ["00000000-0000-4000-8000-000000000099"], JSON.stringify(holdingEvidence), {},
+            "postgres-test", "Unknown essay evidence.",
+          ],
+        ),
+        /US_CONAN_VERIFIED_ESSAY_EVIDENCE_INVALID/,
+      );
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_review_v2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+          [
+            bakerId, 1, "verified", true, true, true, true, authorityFreshId,
+            "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+            [essayEvidenceId], JSON.stringify([{
+              sourceUrl: "https://example.com/not-authority",
+              locator: "",
+              constitutionalQuestion: "Article III justiciability.",
+            }]), {}, "postgres-test", "Invalid holding locator.",
+          ],
+        ),
+        /US_CONAN_VERIFIED_HOLDING_EVIDENCE_INVALID/,
+      );
       const verified = await pool.query<{ review_revision: number; review_status: string }>(
-        "select * from us_conan_candidate_review_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+        "select * from us_conan_candidate_review_v2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
         [
-          bakerId, 1, "verified", true, true, true, true,
-          "https://www.supremecourt.gov/opinions/boundvolumes/369us1.pdf",
-          { identity: "369 U.S. 186", essayId: "ALDE_00001001" }, "postgres-test", "All four gates reviewed.",
+          bakerId, 1, "verified", true, true, true, true, authorityFreshId,
+          "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+          [essayEvidenceId], JSON.stringify(holdingEvidence),
+          { identity: "369 U.S. 186", essayId: "ALDE_00001001", authorityArtifactId: authorityFreshId },
+          "postgres-test", "All four gates and bound evidence reviewed.",
         ],
       );
       assert.deepEqual(
@@ -273,7 +326,24 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         "select constitutional_relevance_status,review_revision from us_conan_candidate_current_v1 where id=$1", [bakerId],
       );
       assert.deepEqual(current.rows[0], { constitutional_relevance_status: "verified", review_revision: 2 });
-      const security = await pool.query<{ rls: boolean; public_select: boolean; public_execute: boolean }>(`
+      const reviewEvidence = await pool.query<{
+        authority_artifact_id: string;
+        essay_evidence_ids: string[];
+        holding_evidence: unknown[];
+      }>(
+        `select authority_artifact_id,essay_evidence_ids,holding_evidence
+         from us_conan_candidate_reviews_v1 where candidate_id=$1 and revision=2`,
+        [bakerId],
+      );
+      assert.equal(reviewEvidence.rows[0].authority_artifact_id, authorityFreshId);
+      assert.deepEqual(reviewEvidence.rows[0].essay_evidence_ids, [essayEvidenceId]);
+      assert.deepEqual(reviewEvidence.rows[0].holding_evidence, holdingEvidence);
+      const security = await pool.query<{
+        rls: boolean;
+        public_select: boolean;
+        public_execute: boolean;
+        public_execute_v2: boolean;
+      }>(`
         select
           (select relrowsecurity from pg_class where oid='us_conan_case_candidates_v1'::regclass) rls,
           has_table_privilege('public','us_conan_case_candidates_v1','select') public_select,
@@ -281,9 +351,19 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
             'public',
             'us_conan_candidate_review_v1(uuid,integer,text,boolean,boolean,boolean,boolean,text,jsonb,text,text)',
             'execute'
-          ) public_execute
+          ) public_execute,
+          has_function_privilege(
+            'public',
+            'us_conan_candidate_review_v2(uuid,integer,text,boolean,boolean,boolean,boolean,uuid,text,uuid[],jsonb,jsonb,text,text)',
+            'execute'
+          ) public_execute_v2
       `);
-      assert.deepEqual(security.rows[0], { rls: true, public_select: false, public_execute: false });
+      assert.deepEqual(security.rows[0], {
+        rls: true,
+        public_select: false,
+        public_execute: false,
+        public_execute_v2: false,
+      });
       await assert.rejects(
         pool.query("update us_conan_candidate_reviews_v1 set review_reason='tampered' where candidate_id=$1", [bakerId]),
         /CASE_BACKFILL_IMMUTABLE/,
