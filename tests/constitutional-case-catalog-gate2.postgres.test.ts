@@ -19,6 +19,7 @@ const caseKeys = vectorFallback(migration("20260826400000_case_keys_and_ranked_p
 const gate1 = migration("20260903120000_constitutional_case_backfill_gate1.sql");
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
 const gate3 = migration("20260903140000_constitutional_case_search_gate3.sql");
+const gate4 = migration("20260903150000_constitutional_case_multilingual_search_gate4.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -195,6 +196,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     )`, [legacyArticle.rows[0].id]);
     await setup.query(gate2);
     await setup.query(gate3);
+    await setup.query(gate4);
   } finally {
     await setup.end();
   }
@@ -437,7 +439,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       );
     });
 
-    await t.test("Gate 3 searches a source-only Catalog case by exact identity and lexical text once", async () => {
+    await t.test("Gate 4 preserves Gate 3 source-only identity and lexical search", async () => {
       const articleId = await insertArticle(pool, "88");
       await pool.query(`update articles set
         search_vector=to_tsvector('simple','SENTENCIA 88/2024 libertad de expresion'),
@@ -465,12 +467,12 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       const lexical = await pool.query<{ payload: { entries: Array<{ id: string }>; retrievalMode: string } }>(
         "select worldcons_case_search_page_v2($1,10,null) payload", ["libertad"],
       );
-      assert.equal(lexical.rows[0].payload.retrievalMode, "lexical");
+      assert.equal(lexical.rows[0].payload.retrievalMode, "rrf");
       assert.deepEqual(lexical.rows[0].payload.entries.map((entry) => entry.id), [articleId]);
       assert.equal((await pool.query("select count(*)::integer count from public_case_search_documents_v1 where id=$1", [articleId])).rows[0].count, 1);
     });
 
-    await t.test("Gate 3 keyset cursor is deterministic, bounded, and query-bound", async () => {
+    await t.test("Gate 4 keyset cursor is deterministic, bounded, and query-bound", async () => {
       const ids: string[] = [];
       for (const [suffix, date] of [["201","2024-03-03"],["202","2024-03-02"],["203","2024-03-01"]]) {
         const articleId = await insertArticle(pool, suffix);
@@ -492,7 +494,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       } }>("select worldcons_case_search_page_v2($1,2,null) payload", ["control"]);
       assert.equal(first.rows[0].payload.entries.length, 2);
       assert.equal(first.rows[0].payload.hasMore, true);
-      assert.equal(first.rows[0].payload.rankingVersion, "gate3-exact-lexical-v1");
+      assert.match(first.rows[0].payload.rankingVersion, /^gate4-multilingual-rrf-v1:/u);
       assert.match(first.rows[0].payload.nextCursor, /^[A-Za-z0-9_-]+$/u);
 
       const second = await pool.query<{ payload: { entries: Array<{ id: string }>; hasMore: boolean } }>(
@@ -513,7 +515,115 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       );
     });
 
-    await t.test("Gate 3 search authority is private, fixed-path, and statement-bounded", async () => {
+    await t.test("Gate 4 reviewed aliases expand five languages with bounded RRF and jurisdiction diversity", async () => {
+      const aliasSet = await pool.query<{ id: string }>(`insert into legal_concept_alias_sets_v1(
+        set_version,provenance
+      ) values('constitutional-multilingual-test-v1','reviewed PostgreSQL fixture') returning id`);
+      const concept = await pool.query<{ id: string }>(`insert into legal_concepts_v1(
+        alias_set_id,stable_key,label_ko,definition
+      ) values($1,'gerrymandering','게리맨더링','선거구 획정 왜곡에 관한 비교헌법 개념') returning id`, [aliasSet.rows[0].id]);
+      const aliases = [
+        ["ko","게리맨더링","preferred"],
+        ["en","gerrymandering","preferred"],
+        ["de","Wahlkreiseinteilung","translated"],
+        ["fr","découpage électoral","translated"],
+        ["es","delimitación electoral","translated"],
+      ];
+      for (const [language, rawAlias, aliasType] of aliases) {
+        await pool.query(`insert into legal_concept_aliases_v1(
+          alias_set_id,concept_id,language,raw_alias,normalized_alias,alias_type,provenance,review_status
+        ) values($1,$2,$3,$4,worldcons_legal_alias_normalize_v1($4),$5,'Gate 4 reviewed fixture','approved')`, [
+          aliasSet.rows[0].id,concept.rows[0].id,language,rawAlias,aliasType,
+        ]);
+      }
+      await pool.query(`update legal_concept_alias_sets_v1 set
+        status='reviewed',reviewed_by='catalog-test',reviewed_at='2026-09-03T00:00:00Z'
+        where id=$1`, [aliasSet.rows[0].id]);
+
+      const caseRows: Array<{ id: string; jurisdiction: string }> = [];
+      const documents = [
+        ["gerry-ko","게리맨더링 gerrymandering 선거구", "Spain", "ko", "2024-06-10"],
+        ["gerry-en","gerrymandering voting district", "Spain", "en", "2024-06-09"],
+        ["gerry-de","Wahlkreiseinteilung Wahlrecht", "Spain", "de", "2024-06-08"],
+        ["gerry-fr","découpage électoral élections", "France", "fr", "2024-06-01"],
+        ["gerry-es","delimitación electoral elecciones", "Spain", "es", "2024-05-31"],
+      ];
+      for (const [suffix, text, jurisdiction, language, date] of documents) {
+        const articleId = await insertArticle(pool, suffix);
+        caseRows.push({ id: articleId, jurisdiction });
+        await pool.query(`update articles set jurisdiction=$2,original_language=$3,
+          search_vector=to_tsvector('simple',$4),cleaned_text=$4,original_published_at=$5 where id=$1`, [
+          articleId,jurisdiction,language,text,date,
+        ]);
+        await seedCaseMetadata(pool, articleId);
+        const source = await capture(pool, {
+          articleId,expected: 0,role: "authoritative_source",sourceHash: `${caseRows.length}`.repeat(64),
+        });
+        await catalogTransition(pool, {
+          articleId,anchor: source.rows[0].version_id,expected: 0,key: `search-${suffix}`,
+        });
+      }
+
+      for (const query of ["게리맨더링","gerrymandering","Wahlkreiseinteilung","découpage électoral","delimitación electoral"]) {
+        const result = await pool.query<{ payload: {
+          entries: Array<{ id: string; matchType: string }>;
+          retrievalMode: string;
+          rankingVersion: string;
+        } }>("select worldcons_case_search_page_v2($1,20,null) payload", [query]);
+        assert.equal(result.rows[0].payload.retrievalMode, "rrf");
+        assert.match(result.rows[0].payload.rankingVersion, /^gate4-multilingual-rrf-v1:constitutional-multilingual-test-v1:/u);
+        assert.deepEqual(new Set(result.rows[0].payload.entries.map((entry) => entry.id)), new Set(caseRows.map((row) => row.id)));
+        assert.ok(result.rows[0].payload.entries.every((entry) => entry.matchType === "rrf"));
+      }
+
+      const diversified = await pool.query<{ payload: { entries: Array<{ id: string }> } }>(
+        "select worldcons_case_search_page_v2('게리맨더링',3,null) payload",
+      );
+      const jurisdictionById = new Map(caseRows.map((row) => [row.id, row.jurisdiction]));
+      assert.ok(new Set(diversified.rows[0].payload.entries.map((entry) => jurisdictionById.get(entry.id))).size >= 2);
+
+      const absent = await pool.query<{ payload: { entries: unknown[] } }>(
+        "select worldcons_case_search_page_v2('존재하지않는법률개념',20,null) payload",
+      );
+      assert.equal(absent.rows[0].payload.entries.length, 0);
+      await assert.rejects(
+        pool.query("update legal_concept_aliases_v1 set raw_alias='변조' where alias_set_id=$1", [aliasSet.rows[0].id]),
+        /WORLDCONS_REVIEWED_ALIAS_SET_IMMUTABLE/,
+      );
+    });
+
+    await t.test("Gate 4 expires cursors when the reviewed alias ranking input changes", async () => {
+      const first = await pool.query<{ payload: { nextCursor: string } }>(
+        "select worldcons_case_search_page_v2('control',1,null) payload",
+      );
+      assert.ok(first.rows[0].payload.nextCursor);
+
+      const replacement = await pool.query<{ id: string }>(`insert into legal_concept_alias_sets_v1(
+        set_version,provenance,supersedes_alias_set_id
+      ) values('constitutional-multilingual-test-v2','reviewed PostgreSQL replacement',(
+        select id from legal_concept_alias_sets_v1 where status='reviewed' order by reviewed_at desc,id desc limit 1
+      )) returning id`);
+      const concept = await pool.query<{ id: string }>(`insert into legal_concepts_v1(
+        alias_set_id,stable_key,label_ko
+      ) values($1,'proportionality','비례원칙') returning id`, [replacement.rows[0].id]);
+      for (const [language, rawAlias] of [["ko","비례원칙"],["en","proportionality"]]) {
+        await pool.query(`insert into legal_concept_aliases_v1(
+          alias_set_id,concept_id,language,raw_alias,normalized_alias,alias_type,provenance,review_status
+        ) values($1,$2,$3,$4,worldcons_legal_alias_normalize_v1($4),'preferred','Gate 4 replacement','approved')`, [
+          replacement.rows[0].id,concept.rows[0].id,language,rawAlias,
+        ]);
+      }
+      await pool.query(`update legal_concept_alias_sets_v1 set
+        status='reviewed',reviewed_by='catalog-test',reviewed_at='2026-09-04T00:00:00Z'
+        where id=$1`, [replacement.rows[0].id]);
+
+      await assert.rejects(
+        pool.query("select worldcons_case_search_page_v2('control',1,$1)", [first.rows[0].payload.nextCursor]),
+        /WORLDCONS_CASE_SEARCH_CURSOR_RANKING_VERSION_EXPIRED/,
+      );
+    });
+
+    await t.test("Gate 4 search authority and reviewed aliases are private and statement-bounded", async () => {
       const authority = await pool.query<{ prosecdef: boolean; proconfig: string[]; public_execute: boolean }>(`
         select p.prosecdef,p.proconfig,has_function_privilege('public',p.oid,'execute') public_execute
         from pg_proc p join pg_namespace n on n.oid=p.pronamespace
@@ -525,6 +635,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       assert.ok(authority.rows[0].proconfig.some((value) => value.startsWith("statement_timeout=")));
       assert.equal(authority.rows[0].public_execute, false);
       assert.equal((await pool.query("select has_table_privilege('public','public_case_search_documents_v1','select') allowed")).rows[0].allowed, false);
+      assert.equal((await pool.query("select has_table_privilege('public','legal_concept_aliases_v1','select') allowed")).rows[0].allowed, false);
     });
   } finally {
     await pool.end();
