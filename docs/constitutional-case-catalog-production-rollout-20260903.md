@@ -12,7 +12,7 @@ Gate 1~5와 Catalog 보안 보정 migration을 운영 Supabase에 적용하고, 
 - Vercel deployment: `dpl_GNviMjQxjDm4idfF5o3dPbfvqnp6`
 - Deployment URL: `https://worldcons-ltl2pojvo-jwkms-projects.vercel.app`
 - Canonical alias: `https://worldcons.vercel.app`
-- Supabase migrations: `20260903120000`~`20260903175000`
+- Supabase migrations: `20260903120000`~`20260903180000`
 
 ## 백업과 migration
 
@@ -24,6 +24,8 @@ Gate 1~5와 Catalog 보안 보정 migration을 운영 Supabase에 적용하고, 
 | `worldcons-prod-public-data-pre-catalog-20260903.sql` | 554,596,445 | `d8117f14be53d8fd602cbb31211c0cb82afff506caab8b7a8a3e8d9580919c28` |
 
 Supabase CLI의 linked migration 목록에서 local/remote가 `20260903175000`까지 일치했다. 적용 뒤 기존 공개 P3 row와 통합 detail row는 각각 1,258건으로 동일했고, Catalog publication·source policy·미국 candidate는 모두 0건이었다.
+
+후속 DB lint에서 기존 `append_admin_job_event`의 PL/pgSQL 블록 라벨을 SQL relation으로 해석하는 오류를 발견했다. `20260903180000_fix_append_admin_job_event_parameter_references.sql`에서 RPC 입력 이름은 유지하고 위치 인수 alias로 교체했으며, fixed `search_path`와 service-role-only 실행 권한을 적용했다. 실제 PostgreSQL에서 이벤트 기록과 ACL을 확인한 뒤 운영에 적용했고, `supabase db lint --linked --schema public --level error --fail-on error` 결과는 빈 `results`로 통과했다.
 
 ## 보안 보정 증거
 

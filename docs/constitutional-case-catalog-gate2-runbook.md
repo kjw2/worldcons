@@ -37,7 +37,7 @@ PostgreSQL 테스트 skip은 승인 증거가 아니다. 다음 항목을 실제
 
 ## 2. 운영 migration 점검
 
-2026-09-03 schema-only 이행은 `20260903120000`~`20260903175000`까지 적용했고, 증거는 `docs/constitutional-case-catalog-production-rollout-20260903.md`에 기록했다. 아래 source policy와 실데이터 조건은 아직 완료되지 않았다.
+2026-09-03 schema-only 이행과 후속 DB lint 보정은 `20260903120000`~`20260903180000`까지 적용했고, 증거는 `docs/constitutional-case-catalog-production-rollout-20260903.md`에 기록했다. 아래 source policy와 실데이터 조건은 아직 완료되지 않았다.
 
 1. production DB 백업과 migration dry run 결과를 보존한다.
 2. `source_corpus_policies`에 검토자가 승인한 immutable Spain policy가 있는지 확인한다.
