@@ -13,6 +13,7 @@ const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
 const usReviewGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903172000_constitutional_case_us_review_gate5.sql");
+const inventoryProvenanceMigration = path.join(process.cwd(), "supabase/migrations/20260903182000_constitutional_case_inventory_provenance.sql");
 
 const policyInsert = `
 insert into source_corpus_policies(
@@ -37,6 +38,11 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
   try {
     const database = await client.query<{ current_database: string }>("select current_database()");
     assert.match(database.rows[0].current_database, /backfill/i, "Backfill tests refuse to reset a database whose name does not contain backfill");
+    await client.query(`do $role$ begin
+      if not exists(select 1 from pg_roles where rolname='service_role') then
+        create role service_role nologin;
+      end if;
+    end $role$`);
     await client.query("drop schema public cascade; create schema public; drop schema if exists extensions cascade; create schema extensions");
     await client.query("create extension if not exists pgcrypto with schema extensions");
     await client.query(fs.readFileSync(p0Migration, "utf8"));
@@ -55,6 +61,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usReviewGate5Migration, "utf8"));
+    await client.query(fs.readFileSync(inventoryProvenanceMigration, "utf8"));
   } finally {
     await client.end();
   }
@@ -80,6 +87,125 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         'postgres-test', now(), now() + interval '1 year'
       )
     `);
+
+    await pool.query(`
+      insert into source_corpus_policies(
+        source_key, policy_version, scope_definition, official_scope_url, discovery_methods,
+        authority_hosts, redirect_hosts, robots_url, robots_observed_at, robots_rules_hash,
+        terms_url, terms_observed_at, license_basis, default_text_access_policy,
+        allow_raw_snapshot, normalize_replay_policy, bounded_replay_fields, retention_days,
+        min_request_delay_ms, max_concurrency, reviewed_by, reviewed_at, review_due_at
+      ) values (
+        'fr-conseil-constitutionnel', 'fr-dila-test-v1', '{"scope":"2024 QPC","aiEgress":"denied"}',
+        'https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/', array['official_dila_stock','conseil_identity_crosscheck'],
+        array['echanges.dila.gouv.fr','www.conseil-constitutionnel.fr'], '{}',
+        'https://echanges.dila.gouv.fr/robots.txt', now(), repeat('e', 64),
+        'https://www.data.gouv.fr/pages/legal/licences/etalab-2.0', now(),
+        'licence-ouverte-2.0', 'full', false, 'bounded_evidence',
+        array['sourceKey','url','canonicalUrl','title','publishedAt','contentType','text','metadata'],
+        3650, 3000, 1, 'postgres-test', now(), now() + interval '1 year'
+      )
+    `);
+
+    await t.test("France DILA provenance is validated, secret-free, immutable, and part of the manifest hash", async () => {
+      const metadata = (sha256: string) => ({
+        dila: {
+          id: "CONSTEXT000050783534", nature: "QPC", ecli: "ECLI:FR:CC:2024:2024.1115.QPC",
+          decisionNumber: "2024-1115", qualifiedNature: "QPC",
+          archiveMemberPath: "constit/global/CONS/TEXT/00/00/50/78/35/CONSTEXT000050783534.xml",
+        },
+        stock: {
+          filename: "Freemium_constit_global_20250713-140000.tar.gz",
+          url: "https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/Freemium_constit_global_20250713-140000.tar.gz",
+          extractedAt: "2025-07-13T14:00:00.000Z", lastModified: null, etag: null,
+          contentLength: 12_511_366, sha256,
+        },
+        license: {
+          id: "licence-ouverte-2.0",
+          url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
+          attribution: "DILA",
+        },
+      });
+      const openSnapshot = async () => {
+        const opened = await pool.query<{ source_inventory_snapshot_open_v1: string }>(
+          "select source_inventory_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+          [
+            "fr-conseil-constitutionnel", "2024-01-01", "2024-12-31", "QPC",
+            "official_dila_constit_stock_with_conseil_identity_crosscheck", "france-conseil-normalize-v1",
+            "fr-dila-test-v1", "authoritative_crosschecked", 1,
+            "official_dila_stock_and_conseil_facet_exact_identity_set",
+            { dilaStock: true, exactIdentitySetMatch: true }, JSON.stringify([]), "postgres-test",
+          ],
+        );
+        return opened.rows[0].source_inventory_snapshot_open_v1;
+      };
+      const firstSnapshot = await openSnapshot();
+      await assert.rejects(
+        pool.query("select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)", [
+          firstSnapshot, "constit:constext000050783534", "20241115QPC",
+          "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm", "QPC", "2024-12-13",
+          { ...metadata("6".repeat(64)), accessToken: "sk-secret-must-not-enter-the-ledger" },
+        ]),
+        /CASE_BACKFILL_INVALID_INVENTORY_METADATA/,
+      );
+      await assert.rejects(
+        pool.query("select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)", [
+          firstSnapshot, "constit:constext000050783534", "20241115QPC",
+          "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm", "QPC", "2024-12-13",
+          { ...metadata("6".repeat(64)), license: { ...metadata("6".repeat(64)).license, attribution: "Unknown" } },
+        ]),
+        /CASE_BACKFILL_FRANCE_DILA_PROVENANCE_INVALID/,
+      );
+      const item = await pool.query<{ source_inventory_item_upsert_v2: string }>(
+        "select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)",
+        [
+          firstSnapshot, "constit:constext000050783534", "20241115QPC",
+          "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm", "QPC", "2024-12-13",
+          metadata("6".repeat(64)),
+        ],
+      );
+      const firstClose = await pool.query<{ manifest_hash: string }>(
+        "select * from source_inventory_snapshot_close_v2($1)", [firstSnapshot],
+      );
+      await assert.rejects(
+        pool.query("update source_backfill_items set inventory_metadata = '{}' where id = $1", [item.rows[0].source_inventory_item_upsert_v2]),
+        /CASE_BACKFILL_MANIFEST_CLOSED/,
+      );
+
+      const secondSnapshot = await openSnapshot();
+      await pool.query("select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)", [
+        secondSnapshot, "constit:constext000050783534", "20241115QPC",
+        "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm", "QPC", "2024-12-13",
+        metadata("7".repeat(64)),
+      ]);
+      const secondClose = await pool.query<{ manifest_hash: string }>(
+        "select * from source_inventory_snapshot_close_v2($1)", [secondSnapshot],
+      );
+      assert.notEqual(firstClose.rows[0].manifest_hash, secondClose.rows[0].manifest_hash);
+      const publicExecute = await pool.query<{ upsert: boolean; close: boolean; claim: boolean }>(`select
+        has_function_privilege('public','source_inventory_item_upsert_v2(uuid,text,text,text,text,date,jsonb)','execute') upsert,
+        has_function_privilege('public','source_inventory_snapshot_close_v2(uuid)','execute') close,
+        has_function_privilege('public','source_backfill_items_claim_v2(uuid,text,integer,uuid,bigint,integer,text)','execute') claim`);
+      assert.deepEqual(publicExecute.rows[0], { upsert: false, close: false, claim: false });
+      const serviceExecute = await pool.query<{
+        old_upsert: boolean;
+        old_close: boolean;
+        old_claim: boolean;
+        new_upsert: boolean;
+        new_close: boolean;
+        new_claim: boolean;
+      }>(`select
+        has_function_privilege('service_role','source_inventory_item_upsert_v1(uuid,text,text,text,text,date)','execute') old_upsert,
+        has_function_privilege('service_role','source_inventory_snapshot_close_v1(uuid)','execute') old_close,
+        has_function_privilege('service_role','source_backfill_items_claim_v1(uuid,text,integer,uuid,bigint,integer,text)','execute') old_claim,
+        has_function_privilege('service_role','source_inventory_item_upsert_v2(uuid,text,text,text,text,date,jsonb)','execute') new_upsert,
+        has_function_privilege('service_role','source_inventory_snapshot_close_v2(uuid)','execute') new_close,
+        has_function_privilege('service_role','source_backfill_items_claim_v2(uuid,text,integer,uuid,bigint,integer,text)','execute') new_claim`);
+      assert.deepEqual(serviceExecute.rows[0], {
+        old_upsert: false, old_close: false, old_claim: false,
+        new_upsert: true, new_close: true, new_claim: true,
+      });
+    });
 
     await t.test("US candidate graph is immutable and requires explicit authority review", async () => {
       const opened = await pool.query<{ us_conan_candidate_snapshot_open_v1: string }>(
@@ -470,11 +596,16 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
       const sourceRun = await pool.query<{ source_backfill_run_begin_v1: string }>("select source_backfill_run_begin_v1($1,$2,$3,$4,$5)", [
         snapshotId, "fetch", 1, attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
       ]);
-      const claimed = await pool.query<{ item_id: string; item_lease_expires_at: string }>(
-        "select * from source_backfill_items_claim_v1($1,$2,$3,$4,$5,$6,$7)",
+      const claimed = await pool.query<{
+        item_id: string;
+        item_lease_expires_at: string;
+        inventory_metadata: Record<string, unknown>;
+      }>(
+        "select * from source_backfill_items_claim_v2($1,$2,$3,$4,$5,$6,$7)",
         [snapshotId, "fetch", 1, attempt.rows[0].attempt_id, attempt.rows[0].fencing_token, 600, "spain-hj-fetch-v1"],
       );
       assert.equal(claimed.rowCount, 1);
+      assert.deepEqual(claimed.rows[0].inventory_metadata, {});
       assert(Date.parse(claimed.rows[0].item_lease_expires_at) <= Date.parse(attempt.rows[0].lease_expires_at));
       await assert.rejects(
         pool.query("select * from source_backfill_items_claim_v1($1,$2,$3,$4,$5,$6,$7)", [

@@ -151,7 +151,7 @@ Until then, the correct operational state is: code and read-only verification al
 
 ## Implementation progress
 
-Completed in the first post-review implementation stage:
+Completed in the first two post-review implementation stages:
 
 - bounded governed directory and stock fetch;
 - strict latest-stock selection;
@@ -160,10 +160,12 @@ Completed in the first post-review implementation stage:
 - exact QPC/DC `NATURE` scope filtering;
 - DILA-to-Conseil exact identity-set reconciliation;
 - read-only live verification of the 2024 QPC 42/42 and DC 12/12 scopes.
+- immutable, bounded, secret-screened item provenance containing the DILA identity, stock hash, archive member, and licence attribution;
+- v2 inventory upsert/close/claim RPCs, manifest hashing of provenance, and `service_role` revocation from the bypassable v1 RPCs;
+- fetch replay and normalization propagation under `metadata.sourceInventory`;
+- live PostgreSQL tests proving France shape rejection, secret rejection, closed-manifest immutability, hash sensitivity, and v2 claim compatibility.
 
 Still required before owner approval and any production inventory write:
 
-- persist DILA item provenance through the immutable manifest into bounded replay metadata;
 - expose and verify required DILA attribution on public article/plugin representations;
-- add database-level tests for the new provenance contract;
 - record the owner decisions listed above and insert the immutable policy row only after those checks pass.

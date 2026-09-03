@@ -29,7 +29,9 @@ import {
 
 const migrationPath = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const requestGovernorMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
+const inventoryProvenanceMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903182000_constitutional_case_inventory_provenance.sql");
 const crawlerHttpClientPath = path.join(process.cwd(), "lib/crawler/http-client.ts");
+const repositoryPath = path.join(process.cwd(), "lib/backfill/repository.ts");
 
 const authority: CaseBackfillAttemptAuthority = {
   attemptId: "11111111-1111-4111-8111-111111111111",
@@ -57,6 +59,7 @@ const claimedItem: CaseBackfillClaimedItem = {
   authorityUrl: null,
   documentType: "SENTENCIA",
   decisionDateHint: "2024-05-08",
+  inventoryMetadata: { inventoryRecord: "hj:12345" },
   resolutionStatus: "fetching",
   currentFetchArtifactId: null,
   currentNormalizationArtifactId: null,
@@ -367,12 +370,79 @@ test("fetch pass records a bounded artifact and preserves a published terminal o
   }, { repository, loadAdapter: async () => adapter, now: () => new Date("2026-09-03T00:00:00.000Z") });
   assert.equal(result.succeeded, 1);
   assert.equal((artifactPayload.metadata as Record<string, unknown>).resolutionType, "SENTENCIA");
+  assert.deepEqual((artifactPayload.metadata as Record<string, unknown>).sourceInventory, claimedItem.inventoryMetadata);
   assert.deepEqual(completion, {
     nextStatus: "published",
     artifactId: "66666666-6666-4666-8666-666666666666",
   });
   assert.deepEqual(finished, { claimed: 1, succeeded: 1 });
   assert.deepEqual(claimedBatchLimits, [1, 1]);
+});
+
+test("normalize pass carries immutable inventory provenance into the publication artifact", async () => {
+  const fetchArtifactId = "66666666-6666-4666-8666-666666666667";
+  const item = { ...claimedItem, resolutionStatus: "fetched", currentFetchArtifactId: fetchArtifactId };
+  let recordedOutput: Record<string, unknown> | null = null;
+  let served = false;
+  const repository = fakeRepository({
+    claimItems: async () => {
+      if (served) return [];
+      served = true;
+      return [item];
+    },
+    getFetchArtifact: async () => ({
+      id: fetchArtifactId,
+      itemId: item.itemId,
+      sourcePolicyVersion: snapshot.sourcePolicyVersion,
+      authorityUrl: item.discoveredUrl,
+      payloadHash: "a".repeat(64),
+      replayability: "bounded_evidence",
+      immutableStorageRef: null,
+      boundedReplayPayload: {
+        sourceKey: snapshot.sourceKey,
+        url: item.discoveredUrl,
+        canonicalUrl: item.discoveredUrl,
+        contentType: "decision",
+        text: "official text",
+      },
+      fetchContractVersion: "spain-hj-fetch-v1",
+    }),
+    recordNormalizationArtifact: async (input) => {
+      recordedOutput = input.normalizedOutput;
+      return "77777777-7777-4777-8777-777777777778";
+    },
+  });
+  const adapter: SourceAdapter = {
+    sourceKey: snapshot.sourceKey,
+    displayName: "Spain",
+    jurisdiction: "Spain",
+    baseUrl: "https://hj.tribunalconstitucional.es",
+    defaultLanguage: "es",
+    discover: async () => [],
+    fetchItem: async () => { throw new Error("unused"); },
+    normalize: async (raw) => ({
+      sourceKey: raw.sourceKey,
+      jurisdiction: "Spain",
+      institutionName: "Tribunal Constitucional de España",
+      contentType: "decision",
+      originalUrl: raw.url,
+      canonicalUrl: raw.canonicalUrl,
+      originalLanguage: "es",
+      originalTitle: "SENTENCIA 53/2024",
+      metadata: { adapterField: "kept" },
+    }),
+  };
+  const result = await runCaseBackfillPass(pass("normalize"), {
+    authority,
+    checkpoint: async () => undefined,
+    signal: new AbortController().signal,
+  }, { repository, loadAdapter: async () => adapter, now: () => new Date("2026-09-03T00:00:00.000Z") });
+  assert.equal(result.succeeded, 1);
+  const output = recordedOutput as Record<string, unknown> | null;
+  assert(output);
+  const metadata = (output.metadata ?? {}) as Record<string, unknown>;
+  assert.equal(metadata.adapterField, "kept");
+  assert.deepEqual(metadata.sourceInventory, claimedItem.inventoryMetadata);
 });
 
 test("P1 authority and handler carry the exact attempt fence into a bounded backfill pass", async () => {
@@ -486,7 +556,9 @@ test("enabled publish pass delegates the fenced item to the atomic Catalog publi
 test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invariants in the database", () => {
   const sql = fs.readFileSync(migrationPath, "utf8");
   const requestGovernorSql = fs.readFileSync(requestGovernorMigrationPath, "utf8");
+  const inventoryProvenanceSql = fs.readFileSync(inventoryProvenanceMigrationPath, "utf8");
   const crawlerHttpClient = fs.readFileSync(crawlerHttpClientPath, "utf8");
+  const repository = fs.readFileSync(repositoryPath, "utf8");
   for (const table of [
     "source_corpus_policies",
     "source_inventory_snapshots",
@@ -526,4 +598,16 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   assert.doesNotMatch(requestGovernorSql, /grant\s+(?:select|insert|update|delete|all)[^;]+\s+to\s+(?:anon|authenticated)/i);
   assert.match(crawlerHttpClient, /governedBufferedFetch\(request\.url/);
   assert.match(crawlerHttpClient, /}, request\);/);
+  assert.match(inventoryProvenanceSql, /inventory_metadata jsonb not null default/);
+  assert.match(inventoryProvenanceSql, /new\.inventory_metadata is distinct from old\.inventory_metadata/);
+  assert.match(inventoryProvenanceSql, /i\.discovered_decision_date_hint, i\.inventory_metadata/);
+  assert.match(inventoryProvenanceSql, /CASE_BACKFILL_FRANCE_DILA_PROVENANCE_INVALID/);
+  assert.match(inventoryProvenanceSql, /case_backfill_inventory_json_has_secret_v1/);
+  assert.match(inventoryProvenanceSql, /revoke execute on function source_inventory_item_upsert_v1[\s\S]*from service_role/);
+  assert.match(inventoryProvenanceSql, /revoke execute on function source_inventory_snapshot_close_v1[\s\S]*from service_role/);
+  assert.match(inventoryProvenanceSql, /revoke execute on function source_backfill_items_claim_v1[\s\S]*from service_role/);
+  assert.doesNotMatch(inventoryProvenanceSql, /grant execute on function source_inventory_item_upsert_v1[\s\S]*to service_role/);
+  assert.match(repository, /rpc\("source_inventory_item_upsert_v2"/);
+  assert.match(repository, /rpc\("source_inventory_snapshot_close_v2"/);
+  assert.match(repository, /rpc\("source_backfill_items_claim_v2"/);
 });

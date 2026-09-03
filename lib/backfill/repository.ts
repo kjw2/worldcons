@@ -64,6 +64,7 @@ function mapClaim(row: Row): CaseBackfillClaimedItem {
     authorityUrl: nullableText(row, "authority_url"),
     documentType: nullableText(row, "document_type"),
     decisionDateHint: nullableText(row, "decision_date_hint"),
+    inventoryMetadata: recordValue(row, "inventory_metadata") ?? {},
     resolutionStatus: text(row, "resolution_status"),
     currentFetchArtifactId: nullableText(row, "current_fetch_artifact_id"),
     currentNormalizationArtifactId: nullableText(row, "current_normalization_artifact_id"),
@@ -96,6 +97,7 @@ export interface InventoryItemInput {
   discoveredUrl: string;
   documentType: string;
   decisionDateHint: string | null;
+  inventoryMetadata: Record<string, unknown>;
 }
 
 export interface RecordFetchArtifactInput {
@@ -226,13 +228,14 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async upsertInventoryItem(input) {
-    const { data, error } = await requiredClient().rpc("source_inventory_item_upsert_v1", {
+    const { data, error } = await requiredClient().rpc("source_inventory_item_upsert_v2", {
       p_snapshot_id: input.snapshotId,
       p_stable_item_key: input.stableItemKey,
       p_source_record_id: input.sourceRecordId,
       p_discovered_url: input.discoveredUrl,
       p_document_type: input.documentType,
       p_decision_date_hint: input.decisionDateHint,
+      p_inventory_metadata: input.inventoryMetadata,
     });
     databaseError(error);
     if (typeof data !== "string") throw new Error("case_backfill.inventory_write_failed");
@@ -251,7 +254,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async closeSnapshot(snapshotId) {
-    const { data, error } = await requiredClient().rpc("source_inventory_snapshot_close_v1", { p_snapshot_id: snapshotId });
+    const { data, error } = await requiredClient().rpc("source_inventory_snapshot_close_v2", { p_snapshot_id: snapshotId });
     databaseError(error);
     const status = firstRow(data);
     if (!status) throw new Error("case_backfill.snapshot_close_failed");
@@ -427,7 +430,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       : input.phase === "normalize"
         ? `${input.parserVersion ?? "spain-hj-normalize-v1"}:${input.normalizationContractVersion ?? "case-normalized-v1"}`
         : null;
-    const { data, error } = await requiredClient().rpc("source_backfill_items_claim_v1", {
+    const { data, error } = await requiredClient().rpc("source_backfill_items_claim_v2", {
       p_snapshot_id: input.snapshotId,
       p_phase: input.phase,
       p_batch_limit: input.batchLimit,

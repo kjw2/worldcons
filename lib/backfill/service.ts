@@ -128,7 +128,10 @@ function discoveredItem(item: CaseBackfillClaimedItem, sourceKey: string): Disco
     canonicalUrl: item.discoveredUrl,
     publishedAt: item.decisionDateHint ? `${item.decisionDateHint}T00:00:00.000Z` : undefined,
     contentType: "decision",
-    metadata: item.sourceRecordId ? { sourceRecordId: item.sourceRecordId } : undefined,
+    metadata: {
+      ...(item.sourceRecordId ? { sourceRecordId: item.sourceRecordId } : {}),
+      sourceInventory: item.inventoryMetadata,
+    },
   };
 }
 
@@ -178,6 +181,10 @@ async function processFetch(
     requestGovernor: context.requestGovernor,
   });
   const replayPayload = buildBoundedReplayPayload(raw, policy.boundedReplayFields);
+  // Inventory provenance is already size/secret validated and sealed into the
+  // snapshot manifest. Preserve it even when a source policy projects a narrow
+  // subset of network response metadata.
+  assignPath(replayPayload, "metadata.sourceInventory", item.inventoryMetadata);
   replayRawArticle(replayPayload);
   const payloadDocument = canonicalJson(replayPayload);
   const artifactId = await repository.recordFetchArtifact({
@@ -219,8 +226,15 @@ async function processNormalize(
     throw new Error("case_backfill.fetch_artifact_not_replayable");
   }
   const normalized = await adapter.normalize(replayRawArticle(fetchArtifact.boundedReplayPayload));
-  const normalizedOutput = jsonSafe(normalized) as unknown as Record<string, unknown>;
-  const validationErrors = typeof normalized.canonicalUrl === "string" && typeof normalized.sourceKey === "string"
+  const normalizedWithProvenance: NormalizedArticle = {
+    ...normalized,
+    metadata: {
+      ...normalized.metadata,
+      sourceInventory: item.inventoryMetadata,
+    },
+  };
+  const normalizedOutput = jsonSafe(normalizedWithProvenance) as unknown as Record<string, unknown>;
+  const validationErrors = typeof normalizedWithProvenance.canonicalUrl === "string" && typeof normalizedWithProvenance.sourceKey === "string"
     ? []
     : ["normalized_shape_invalid"];
   const artifactId = await repository.recordNormalizationArtifact({
@@ -334,6 +348,7 @@ export async function runCaseBackfillPass(
           discoveredUrl: item.discoveredUrl,
           documentType: item.documentType,
           decisionDateHint: item.decisionDateHint,
+          inventoryMetadata: item.inventoryMetadata ?? {},
         });
         written += 1;
       }

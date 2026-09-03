@@ -38,6 +38,7 @@ export interface CaseBackfillClaimedItem {
   authorityUrl: string | null;
   documentType: string | null;
   decisionDateHint: string | null;
+  inventoryMetadata: Record<string, unknown>;
   resolutionStatus: string;
   currentFetchArtifactId: string | null;
   currentNormalizationArtifactId: string | null;

@@ -50,9 +50,21 @@ This read-only probe obeys robots policy, request delay, timeout, bounded respon
 
 The parser rejects malformed timestamps, cross-origin or redirecting stock URLs, oversized compressed/expanded/member data, path traversal, duplicate paths or identities, links and other non-regular tar members, invalid tar checksums/terminators, non-UTF-8 XML, DTD/entity declarations, wrong origin/jurisdiction, invalid dates, and non-Conseil authority URLs.
 
+## Immutable item provenance contract
+
+Migration `20260903182000_constitutional_case_inventory_provenance.sql` makes the official evidence part of each inventory item and of the closed manifest hash. France items must carry:
+
+- DILA ID, exact `NATURE`, ECLI (including an explicit null), decision number, qualified nature, and the bound XML member path;
+- stock filename, long DILA URL, extraction timestamp, `Last-Modified`, ETag, compressed content length, and SHA-256;
+- Open Licence 2.0 identifier/URL and `DILA` attribution.
+
+The payload is a bounded JSON object, recursively screened for credential-like keys and common secret values. France-specific identity, URL, archive path, stock, hash, and licence shapes are checked in the database. Once the snapshot closes, item provenance cannot be updated, and changing only the stock hash changes the manifest hash.
+
+The worker uses the v2 upsert, close, and claim RPCs. Production `service_role` execution is revoked from the corresponding v1 RPCs, preventing an application path from omitting the new provenance field or closing a legacy hash. The provenance is copied into `metadata.sourceInventory` for bounded fetch replay and normalization, so the Catalog source revision receives the same immutable evidence. Direct table writes remain unavailable to the worker.
+
 ## Private-shadow execution prerequisites
 
-Do not enable the flag from this runbook alone. Before execution, an owner must approve the review document, choose its explicit reviewer/retention/review deadline, and create the resulting immutable `source_corpus_policies` row. The policy must cover the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields, request delay, concurrency, retention, and `review_due_at`.
+Do not enable the flag from this runbook alone. Before execution, an owner must approve the review document, choose its explicit reviewer/retention/review deadline, and create the resulting immutable `source_corpus_policies` row. The policy must cover the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields (including `metadata`), request delay, concurrency, retention, and `review_due_at`.
 
 After that approval, use a scoped environment:
 

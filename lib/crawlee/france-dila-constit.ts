@@ -56,6 +56,7 @@ export interface FranceDilaInventoryItem {
   ecli: string | null;
   decisionNumber: string;
   archiveMemberPath: string;
+  inventoryMetadata: Record<string, unknown>;
 }
 
 export interface FranceDilaInventoryResult {
@@ -405,6 +406,21 @@ export async function discoverFranceDilaConstitInventory(input: {
   const compressed = new Uint8Array(await stockResponse.arrayBuffer());
   const archiveSha256 = createHash("sha256").update(compressed).digest("hex");
   const parsed = parseDilaConstitArchive(compressed, { year: scope.year, documentType: scope.documentType });
+  const stockContentLength = Number(stockResponse.headers.get("content-length"));
+  const stockProvenance = {
+    filename: stock.filename,
+    url: stock.url,
+    extractedAt: stock.extractedAt,
+    lastModified: stockResponse.headers.get("last-modified"),
+    etag: stockResponse.headers.get("etag"),
+    contentLength: Number.isFinite(stockContentLength) ? stockContentLength : compressed.byteLength,
+    sha256: archiveSha256,
+  };
+  const license = {
+    id: "licence-ouverte-2.0",
+    url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
+    attribution: "DILA",
+  };
   const items: FranceDilaInventoryItem[] = parsed.records.map((record) => ({
     stableItemKey: `constit:${record.dilaId.toLowerCase()}`,
     sourceRecordId: record.conseilRecordId,
@@ -416,6 +432,18 @@ export async function discoverFranceDilaConstitInventory(input: {
     ecli: record.ecli,
     decisionNumber: record.decisionNumber,
     archiveMemberPath: record.archiveMemberPath,
+    inventoryMetadata: {
+      dila: {
+        id: record.dilaId,
+        nature: record.nature,
+        ecli: record.ecli,
+        decisionNumber: record.decisionNumber,
+        qualifiedNature: record.qualifiedNature,
+        archiveMemberPath: record.archiveMemberPath,
+      },
+      stock: stockProvenance,
+      license,
+    },
   }));
   const conseil = await (input.discoverConseilInventory ?? discoverFranceConseilInventory)({
     year: scope.year,
@@ -428,7 +456,6 @@ export async function discoverFranceDilaConstitInventory(input: {
   });
   if (conseil.expectedCount !== items.length) throw new Error("case_backfill.france_inventory_count_mismatch");
   sameConseilIdentitySet(items, conseil);
-  const stockContentLength = Number(stockResponse.headers.get("content-length"));
   return {
     sourceKey: "fr-conseil-constitutionnel",
     year: scope.year,

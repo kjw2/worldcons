@@ -93,6 +93,31 @@ function dilaArchive(entries: Array<{ name: string; xml: string; type?: string }
   ]));
 }
 
+const franceInventoryMetadata = {
+  dila: {
+    id: "CONSTEXT000050783534",
+    nature: "QPC",
+    ecli: "ECLI:FR:CC:2024:2024.1115.QPC",
+    decisionNumber: "2024-1115",
+    qualifiedNature: "QPC",
+    archiveMemberPath: "constit/global/CONS/TEXT/00/00/50/78/35/CONSTEXT000050783534.xml",
+  },
+  stock: {
+    filename: "Freemium_constit_global_20250713-140000.tar.gz",
+    url: "https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/Freemium_constit_global_20250713-140000.tar.gz",
+    extractedAt: "2025-07-13T14:00:00.000Z",
+    lastModified: "Sun, 13 Jul 2025 14:00:00 GMT",
+    etag: null,
+    contentLength: 12_511_366,
+    sha256: "6".repeat(64),
+  },
+  license: {
+    id: "licence-ouverte-2.0",
+    url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
+    attribution: "DILA",
+  },
+};
+
 test("France scope is annual, QPC/DC-only, current-year bounded, and disabled by default", () => {
   assert.deepEqual(franceConseilScope(2010, "qpc", 2026), {
     year: 2010, scopeFrom: "2010-01-01", scopeTo: "2010-12-31", documentType: "QPC",
@@ -447,13 +472,13 @@ test("France discovery guard rejects execution before creating a run", async () 
 });
 
 test("France discovery fixes official count evidence before closing its manifest", async () => {
-  const written: string[] = [];
+  const written: Array<{ stableItemKey: string; inventoryMetadata: Record<string, unknown> }> = [];
   let evidenceCall: unknown[] = [];
   let closed = false;
   const repository = discoveryRepository({
     beginRun: async () => "55555555-5555-4555-8555-555555555557",
     upsertInventoryItem: async (input) => {
-      written.push(input.stableItemKey);
+      written.push({ stableItemKey: input.stableItemKey, inventoryMetadata: input.inventoryMetadata });
       return "66666666-6666-4666-8666-666666666668";
     },
     updateSnapshotEvidence: async (...args) => { evidenceCall = args; },
@@ -506,6 +531,7 @@ test("France discovery fixes official count evidence before closing its manifest
             ecli: "ECLI:FR:CC:2024:2024.1115.QPC",
             decisionNumber: "2024-1115",
             archiveMemberPath: "constit/global/CONS/TEXT/00/00/50/78/35/CONSTEXT000050783534.xml",
+            inventoryMetadata: franceInventoryMetadata,
           }],
           pageCount: 1,
           expectedCount: 1,
@@ -514,7 +540,10 @@ test("France discovery fixes official count evidence before closing its manifest
         };
       },
     });
-  assert.deepEqual(written, ["constit:constext000050783534"]);
+  assert.deepEqual(written, [{
+    stableItemKey: "constit:constext000050783534",
+    inventoryMetadata: franceInventoryMetadata,
+  }]);
   assert.deepEqual(evidenceCall, [
     franceSnapshot.id,
     { method: "official_dila_constit_stock_with_conseil_identity_crosscheck", expectedCount: 1 },
@@ -534,6 +563,7 @@ test("France authority verification binds host, type, date, and official path id
     authorityUrl: null,
     documentType: "QPC",
     decisionDateHint: "2024-12-13",
+    inventoryMetadata: franceInventoryMetadata,
     resolutionStatus: "normalized",
     currentFetchArtifactId: null,
     currentNormalizationArtifactId: null,

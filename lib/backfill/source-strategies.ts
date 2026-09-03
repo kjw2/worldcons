@@ -29,6 +29,7 @@ export interface CaseBackfillInventoryItem {
   documentType: string;
   decisionDateHint: string | null;
   title: string | null;
+  inventoryMetadata?: Record<string, unknown>;
 }
 
 export interface CaseBackfillInventoryResult {
