@@ -6,12 +6,15 @@ This stage supports one immutable snapshot per calendar year and decision facet 
 
 - source: `fr-conseil-constitutionnel`
 - document types: `QPC` and `DC` only
-- primary inventory: the official Conseil annual/type result pages
+- primary inventory: the latest official DILA `CONSTIT` global stock, filtered by exact `NATURE` and decision year
+- independent count cross-check: the official Conseil annual/type result pages
 - authority detail: `https://www.conseil-constitutionnel.fr/decision/{year}/{record}.htm`
-- coverage: `authoritative_counted` only when the official active-type facet count equals the unique manifest count
+- coverage: `authoritative_crosschecked` only when the DILA stock scope count, official active-type facet count, and unique manifest count all match
 - public Catalog and Gemini: not enabled by this stage
 
 QPC and DC use separate snapshots. QPC360 results from Conseil d'État, Cour de cassation, and other courts are outside this first France scope. QPC360 is not part of the primary manifest until its export terms and stable automated contract are reviewed in a versioned source policy.
+
+The source-policy evidence and proposed immutable row are in [france-constit-source-policy-review-20260903.md](./france-constit-source-policy-review-20260903.md). That review is ready for owner approval but is not itself an approved policy row.
 
 ## Fail-closed rules
 
@@ -20,10 +23,11 @@ Discovery stops without closing the manifest when any of these conditions occurs
 1. `CASE_CATALOG_FRANCE_HISTORY_ENABLED` is not exactly `true`.
 2. The year is before 2010 or after the current UTC year.
 3. The document type is not QPC or DC.
-4. robots policy rejects the official annual/type path.
-5. the active official facet count is missing or changes during pagination.
-6. pagination does not exhaust within the configured bound.
-7. the unique official detail links do not equal the fixed expected count.
+4. the DILA directory or stock request violates the reviewed host, redirect, byte, archive, lease, or fencing contract.
+5. latest-stock selection is ambiguous or the stock/XML structure is malformed.
+6. the active official facet count is missing or changes during pagination.
+7. pagination does not exhaust within the configured bound.
+8. the exact DILA `NATURE` count, unique manifest count, and official Conseil facet count differ.
 
 Sitemap `lastmod` values are update metadata and never become decision dates. Dates come from the official decision title/detail and must remain within the snapshot year.
 
@@ -36,17 +40,17 @@ pnpm backfill:corpus plan --source=france --year=2024 --document-type=DC
 
 Both plans report `executionEnabled: false` under the default environment.
 
-The official inventory contract can be checked without database writes:
+The existing Conseil count probe can be checked without database writes:
 
 ```bash
 pnpm verify:france-inventory --year=2024 --document-type=QPC
 ```
 
-This read-only probe still obeys robots policy, request delay, timeout, bounded pagination, and count reconciliation.
+This read-only probe still obeys robots policy, request delay, timeout, bounded pagination, and count reconciliation. The DILA stock parser and three-way reconciliation probe are required by the next implementation stage before this runbook may be used for production execution.
 
 ## Private-shadow execution prerequisites
 
-Do not enable the flag from this runbook alone. Before execution, an operator must create and review an immutable `source_corpus_policies` row covering the official list/detail paths, robots observation, text egress, bounded replay fields, request delay, concurrency, retention, and `review_due_at`.
+Do not enable the flag from this runbook alone. Before execution, an owner must approve the review document, choose its explicit reviewer/retention/review deadline, and create the resulting immutable `source_corpus_policies` row. The policy must cover the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields, request delay, concurrency, retention, and `review_due_at`.
 
 After that approval, use a scoped environment:
 
@@ -87,7 +91,8 @@ These controls only make a future approved run enforceable. They do not approve 
 
 For each snapshot retain:
 
-- official annual/type URL and observed expected count;
+- DILA stock filename, long URL, file timestamp, ETag, compressed size, SHA-256, and exact in-scope count;
+- official annual/type URL and independently observed facet count;
 - page count and pagination exhaustion marker;
 - unique manifest count and hash;
 - parser/fetch contract versions;
@@ -100,4 +105,8 @@ The authoritative official references are:
 - <https://www.conseil-constitutionnel.fr/les-decisions>
 - <https://www.conseil-constitutionnel.fr/decisions/qpc>
 - <https://www.conseil-constitutionnel.fr/decisions/dc>
+- <https://www.data.gouv.fr/datasets/constit-les-decisions-du-conseil-constitutionnel>
+- <https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/>
+- <https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/DILA_CONSTIT_Presentation_20170824.pdf>
+- <https://www.data.gouv.fr/pages/legal/licences/etalab-2.0>
 - <https://qpc360.conseil-constitutionnel.fr/recherche/jurisprudence>
