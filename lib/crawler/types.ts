@@ -10,9 +10,18 @@ export type CrawlStrategy =
   | "seed";
 export type CrawlStrategyOption = CrawlStrategy | "auto";
 
+export interface CrawlerRequestPermit {
+  release(): Promise<void>;
+}
+
+export interface CrawlerRequestGovernor {
+  acquire(url: string): Promise<CrawlerRequestPermit>;
+}
+
 export interface CrawlerExecutionHooks {
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
+  requestGovernor?: CrawlerRequestGovernor;
 }
 
 export interface CrawlRequest extends CrawlerExecutionHooks {

@@ -17,6 +17,7 @@ import {
   assertFranceConseilScopeEnabled,
   franceConseilDocumentType,
 } from "@/lib/backfill/france-scope";
+import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
 
 export interface CaseBackfillInventoryItem {
   stableItemKey: string;
@@ -38,12 +39,14 @@ export interface CaseBackfillDiscoveryContext {
   signal: AbortSignal;
   checkpoint: () => Promise<void>;
   environment: Record<string, string | undefined>;
+  requestGovernor: CrawlerRequestGovernor;
 }
 
 export interface CaseBackfillSourceStrategy {
   sourceKey: string;
   defaultFetchContractVersion: string;
   defaultParserVersion: string;
+  governedNetworkPhases: readonly ("discover" | "fetch")[];
   assertDiscoveryScope(
     snapshot: CaseBackfillSnapshot,
     environment: Record<string, string | undefined>,
@@ -122,6 +125,7 @@ function spainStrategy(
     sourceKey: "es-tribunal-constitucional",
     defaultFetchContractVersion: "spain-hj-fetch-v1",
     defaultParserVersion: "spain-hj-normalize-v1",
+    governedNetworkPhases: ["discover", "fetch"],
     assertDiscoveryScope(snapshot, environment) {
       assertAnnualScope(snapshot);
       if (snapshot.documentType.toUpperCase() !== "SENTENCIA") {
@@ -137,6 +141,7 @@ function spainStrategy(
         documentType: "SENTENCIA",
         signal: context.signal,
         checkpoint: context.checkpoint,
+        requestGovernor: context.requestGovernor,
       });
       return inventory;
     },
@@ -183,6 +188,7 @@ function franceStrategy(
     sourceKey: "fr-conseil-constitutionnel",
     defaultFetchContractVersion: "france-conseil-fetch-v1",
     defaultParserVersion: "france-conseil-normalize-v1",
+    governedNetworkPhases: ["discover"],
     assertDiscoveryScope(snapshot, environment) {
       assertAnnualScope(snapshot);
       const documentType = franceConseilDocumentType(snapshot.documentType);
@@ -205,6 +211,7 @@ function franceStrategy(
         currentYear: dependencies.currentYear,
         signal: context.signal,
         checkpoint: context.checkpoint,
+        requestGovernor: context.requestGovernor,
       });
       return {
         ...inventory,

@@ -5,6 +5,7 @@ import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/
 import { respectRateLimit } from "@/lib/crawler/rate-limit";
 import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/crawler/robots";
 import type { CrawlAttemptLog, CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
+import { governedBufferedFetch } from "@/lib/crawler/request-governor";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { cleanText } from "@/lib/ingest/extract-text";
 import type { CrawleeSpiderItem, CrawleeSpiderOptions, CrawleeSpiderResult } from "@/lib/crawlee/types";
@@ -173,14 +174,14 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, hooks?: Cra
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs());
   try {
     const signals = [init.signal, hooks?.signal, controller.signal].filter((signal): signal is AbortSignal => Boolean(signal));
-    const response = await fetch(url, {
+    const response = await governedBufferedFetch(url, {
       ...init,
       signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals),
       headers: {
         "User-Agent": userAgent(),
         ...init.headers,
       },
-    });
+    }, hooks);
     await checkpointCrawlerExecution(hooks);
     return response;
   } finally {
@@ -1086,6 +1087,7 @@ export async function discoverSpainTcInventory(input: {
   diagnostics?: CrawlerDiagnosticsCollector;
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
+  requestGovernor?: CrawlerExecutionHooks["requestGovernor"];
 }): Promise<SpainTcInventoryResult> {
   if (!Number.isInteger(input.year) || input.year < 1980 || input.year > 2100) {
     throw new Error("Spain HJ inventory year is invalid.");
@@ -1096,7 +1098,11 @@ export async function discoverSpainTcInventory(input: {
     throw new Error("Spain HJ inventory maxPages is invalid.");
   }
   const diagnostics = input.diagnostics ?? createDiagnosticsCollector(SPAIN_TC_SOURCE_KEY);
-  const hooks: CrawlerExecutionHooks = { signal: input.signal, checkpoint: input.checkpoint };
+  const hooks: CrawlerExecutionHooks = {
+    signal: input.signal,
+    checkpoint: input.checkpoint,
+    requestGovernor: input.requestGovernor,
+  };
   const from = `${input.year}-01-01`;
   const to = `${input.year}-12-31`;
   const session = await createSearchSession(diagnostics, hooks);
@@ -1266,6 +1272,7 @@ async function discoverBySearch(options: CrawleeSpiderOptions, diagnostics: Craw
             htmlTitleDate: parseTitleDate(listItem.title, year),
             signal: options.signal,
             checkpoint: options.checkpoint,
+            requestGovernor: options.requestGovernor,
           });
           const decisionDate = typeof raw.metadata?.decisionDate === "string" ? raw.metadata.decisionDate : normalizeSpainDecisionDate(raw.publishedAt);
           if (decisionDate && compareDateOnly(decisionDate, from) >= 0) allKnownDatesWereOld = false;
@@ -1370,6 +1377,7 @@ async function discoverDetailUrls(options: CrawleeSpiderOptions, diagnostics: Cr
       diagnostics,
       signal: options.signal,
       checkpoint: options.checkpoint,
+      requestGovernor: options.requestGovernor,
     });
     items.push({ item: itemFromRaw(raw), raw });
   }

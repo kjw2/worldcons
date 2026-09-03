@@ -1,6 +1,6 @@
 # 헌법판례 백필 Gate 1 운영 런북
 
-상태: 구현 완료, 기본 비활성, 운영 마이그레이션·정책 등록·실데이터 실행 전
+상태: 구현 완료, 기본 비활성, source request governor 운영 마이그레이션·정책 등록·실데이터 실행 전
 
 ## 범위와 금지선
 
@@ -39,7 +39,9 @@ pnpm test:p1
 BACKFILL_TEST_DATABASE_URL=<disposable-postgres-url> pnpm test:backfill
 ```
 
-PostgreSQL 테스트의 skip은 승인 증거가 아니다. 깨끗한 스키마에 migration을 적용하고 service-role grant, anon/authenticated 접근 거부, 닫힌 manifest 수정 거부, stale fencing 거부, item lease 상한, attempt 실패 시 claim 회수, append-only artifact 변경 거부를 확인한다.
+PostgreSQL 테스트의 skip은 승인 증거가 아니다. 깨끗한 스키마에 migration을 적용하고 service-role grant, anon/authenticated 접근 거부, 닫힌 manifest 수정 거부, stale fencing 거부, item lease 상한, attempt 실패 시 claim·source request permit 회수, append-only artifact 변경 거부를 확인한다.
+
+`20260903181000_constitutional_case_source_request_governor.sql`은 discover/fetch의 모든 실제 HTTP 요청을 snapshot에 고정된 source policy와 P1 attempt fence에 결속한다. 분산 worker가 동시에 요청해도 source별 advisory lock 아래 `max_concurrency`와 `min_request_delay_ms`를 원자적으로 적용하고 permit lease는 P1 lease를 넘지 않는다. robots 요청과 내부 재시도도 각각 permit을 받아야 하며, governor가 활성화된 경로의 자동 redirect는 금지한다. 요청 대상은 policy의 `authority_hosts` 또는 `redirect_hosts`에 적힌 HTTPS origin만 허용한다. 이 계약을 지원하지 않는 source phase는 run 생성 전에 fail-closed한다.
 
 미국 후보의 `verified` 검토는 구 `us_conan_candidate_review_v1`로 실행하지 않는다. `us_conan_candidate_review_v2`에 현재 authority artifact ID, 같은 candidate에 속한 essay evidence ID 배열, GovInfo details 또는 PDF URL에 결속된 holding locator와 constitutional question을 전달한다. resolver 성공은 authority 관측만 기록하며 검토 revision을 만들지 않는다. 오래된 authority artifact나 다른 후보의 essay evidence가 하나라도 섞이면 검토를 중단한다.
 
@@ -75,6 +77,8 @@ ADMIN_QUEUE_V3_WORKER_COHORTS=catalog-backfill
 - `processingCompletion`과 `corpusCoverage`를 혼동하지 않고 coverage assurance 근거가 보존된다.
 - normalize pass 중 공식 사이트로 나가는 네트워크 호출이 없다.
 - 모든 item lease가 소유 P1 attempt lease 이하이고 stale attempt의 쓰기가 거부된다.
+- 모든 discover/fetch HTTP 요청이 DB permit을 사용하고, 동시 획득 경쟁에서 policy 한도를 넘지 않으며 요청 시작 간격이 보존된다.
+- robots·재시도·허용 host 검증이 governor를 우회하지 않고, P1 종료 시 남은 permit이 즉시 회수된다.
 - published item 재처리에서 resolution은 `published`로 유지되고 work state만 변한다.
 - parser 출력 hash가 같은 no-op verify는 새 공개 revision 없이 artifact pointer만 정렬한다.
 - reconcile 결과에 설명되지 않은 terminal failure, retry wait, claim, conformance 차이가 없다.

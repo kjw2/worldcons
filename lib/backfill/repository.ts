@@ -127,6 +127,21 @@ export interface RecordNormalizationArtifactInput {
   validationErrors: unknown[];
 }
 
+export interface AcquireSourceRequestPermitInput {
+  snapshotId: string;
+  phase: "discover" | "fetch";
+  authority: CaseBackfillAttemptAuthority;
+  requestOrigin: string;
+  requestedLeaseSeconds: number;
+}
+
+export interface SourceRequestPermitResult {
+  granted: boolean;
+  permitId: string | null;
+  retryAfterMs: number;
+  permitLeaseExpiresAt: string | null;
+}
+
 export interface CaseBackfillRepository {
   openSnapshot(input: OpenCaseBackfillSnapshotInput): Promise<string>;
   upsertInventoryItem(input: InventoryItemInput): Promise<string>;
@@ -140,6 +155,11 @@ export interface CaseBackfillRepository {
   getSnapshot(snapshotId: string): Promise<CaseBackfillSnapshot>;
   getSourcePolicy(sourceKey: string, policyVersion: string): Promise<CaseBackfillSourcePolicy>;
   getSnapshotStatus(snapshotId: string): Promise<CaseBackfillSnapshotStatus>;
+  acquireSourceRequestPermit(input: AcquireSourceRequestPermitInput): Promise<SourceRequestPermitResult>;
+  releaseSourceRequestPermit(input: {
+    permitId: string;
+    authority: CaseBackfillAttemptAuthority;
+  }): Promise<void>;
   beginRun(input: CaseBackfillPassInput, authority: CaseBackfillAttemptAuthority): Promise<string>;
   allocatePass(snapshotId: string, phase: CaseBackfillPassInput["phase"]): Promise<number>;
   finishRun(input: {
@@ -261,7 +281,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   async getSourcePolicy(sourceKey, policyVersion) {
     const { data, error } = await requiredClient()
       .from("source_corpus_policies")
-      .select("source_key, policy_version, normalize_replay_policy, bounded_replay_fields, review_due_at")
+      .select("source_key, policy_version, normalize_replay_policy, bounded_replay_fields, min_request_delay_ms, max_concurrency, review_due_at")
       .eq("source_key", sourceKey)
       .eq("policy_version", policyVersion)
       .single();
@@ -278,8 +298,42 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       boundedReplayFields: Array.isArray(data.bounded_replay_fields)
         ? data.bounded_replay_fields.filter((entry): entry is string => typeof entry === "string")
         : [],
+      minRequestDelayMs: numberValue(data, "min_request_delay_ms"),
+      maxConcurrency: numberValue(data, "max_concurrency"),
       reviewDueAt: text(data, "review_due_at"),
     };
+  },
+
+  async acquireSourceRequestPermit(input) {
+    const { data, error } = await requiredClient().rpc("source_backfill_request_permit_acquire_v1", {
+      p_snapshot_id: input.snapshotId,
+      p_phase: input.phase,
+      p_p1_attempt_id: input.authority.attemptId,
+      p_p1_fencing_token: input.authority.fencingToken,
+      p_request_origin: input.requestOrigin,
+      p_requested_lease_seconds: input.requestedLeaseSeconds,
+    });
+    databaseError(error);
+    const row = firstRow(data);
+    if (!row || typeof row.granted !== "boolean") {
+      throw new Error("case_backfill.request_permit_invalid");
+    }
+    return {
+      granted: row.granted,
+      permitId: nullableText(row, "permit_id"),
+      retryAfterMs: numberValue(row, "retry_after_ms"),
+      permitLeaseExpiresAt: nullableText(row, "permit_lease_expires_at"),
+    };
+  },
+
+  async releaseSourceRequestPermit(input) {
+    const { data, error } = await requiredClient().rpc("source_backfill_request_permit_release_v1", {
+      p_permit_id: input.permitId,
+      p_p1_attempt_id: input.authority.attemptId,
+      p_p1_fencing_token: input.authority.fencingToken,
+    });
+    databaseError(error);
+    if (data !== true) throw new Error("case_backfill.request_permit_release_failed");
   },
 
   async getSnapshotStatus(snapshotId) {

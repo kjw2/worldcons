@@ -17,6 +17,8 @@ import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } fro
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inventory";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
+import { createCaseBackfillRequestGovernor } from "@/lib/backfill/source-request-governor";
+import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
 import {
   loadCaseBackfillSourceStrategy,
   type CaseBackfillSourceStrategy,
@@ -27,6 +29,7 @@ export interface CaseBackfillExecutionContext {
   authority: CaseBackfillAttemptAuthority;
   checkpoint: () => Promise<void>;
   signal: AbortSignal;
+  requestGovernor?: CrawlerRequestGovernor;
 }
 
 interface CaseBackfillDependencies {
@@ -169,6 +172,7 @@ async function processFetch(
   const raw = await adapter.fetchItem(discoveredItem(item, snapshot.sourceKey), {
     signal: context.signal,
     checkpoint: context.checkpoint,
+    requestGovernor: context.requestGovernor,
   });
   const replayPayload = buildBoundedReplayPayload(raw, policy.boundedReplayFields);
   replayRawArticle(replayPayload);
@@ -296,6 +300,18 @@ export async function runCaseBackfillPass(
       currentYear: dependencies.now().getUTCFullYear(),
     });
     strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
+    if (!strategy.governedNetworkPhases.includes("discover")) {
+      throw new Error("case_backfill.source_request_governor_not_supported");
+    }
+    await repository.getSourcePolicy(snapshot.sourceKey, snapshot.sourcePolicyVersion);
+    const requestGovernor = createCaseBackfillRequestGovernor({
+      repository,
+      snapshotId: snapshot.id,
+      phase: "discover",
+      authority: context.authority,
+      checkpoint: context.checkpoint,
+      signal: context.signal,
+    });
     const runId = await repository.beginRun(input, context.authority);
     let written = 0;
     try {
@@ -303,6 +319,7 @@ export async function runCaseBackfillPass(
         environment: dependencies.environment ?? process.env,
         signal: context.signal,
         checkpoint: context.checkpoint,
+        requestGovernor,
       });
       for (const item of inventory.items) {
         await context.checkpoint();
@@ -369,6 +386,9 @@ export async function runCaseBackfillPass(
     discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
     currentYear: dependencies.now().getUTCFullYear(),
   });
+  if (input.phase === "fetch" && !strategy.governedNetworkPhases.includes("fetch")) {
+    throw new Error("case_backfill.source_request_governor_not_supported");
+  }
 
   const runId = await repository.beginRun(input, context.authority);
 
@@ -401,6 +421,19 @@ export async function runCaseBackfillPass(
     dependencies.loadAdapter(snapshot.sourceKey),
   ]);
   if (!adapter) throw new Error("case_backfill.source_adapter_unavailable");
+  const passContext: CaseBackfillExecutionContext = input.phase === "fetch"
+    ? {
+      ...context,
+      requestGovernor: createCaseBackfillRequestGovernor({
+        repository,
+        snapshotId: snapshot.id,
+        phase: "fetch",
+        authority: context.authority,
+        checkpoint: context.checkpoint,
+        signal: context.signal,
+      }),
+    }
+    : context;
   let claimed = 0;
   let succeeded = 0;
   let retryableFailed = 0;
@@ -413,7 +446,7 @@ export async function runCaseBackfillPass(
     claimed += 1;
     let itemLeaseExtendedAt = 0;
     const itemContext: CaseBackfillExecutionContext = {
-      ...context,
+      ...passContext,
       checkpoint: async () => {
         await context.checkpoint();
         const now = dependencies.now().getTime();

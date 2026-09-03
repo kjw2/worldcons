@@ -69,6 +69,7 @@ export const tribunalConstitucionalAdapter: SourceAdapter = {
       diagnostics: options?.diagnostics,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: options?.requestGovernor,
     });
     for (const entry of result.items) remember(entry.raw);
     return result.items.map((entry) => entry.raw ?? entry.item);
@@ -87,6 +88,7 @@ export const tribunalConstitucionalAdapter: SourceAdapter = {
       detailOnly: true,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: options?.requestGovernor,
     });
     const raw = result.items[0]?.raw;
     remember(raw);

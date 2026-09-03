@@ -211,6 +211,7 @@ async function fetchRobotsDocument(
     timeoutMs: Math.min(Number(process.env.CRAWLER_TIMEOUT_MS ?? 30_000), 10_000),
     signal: hooks?.signal,
     checkpoint: hooks?.checkpoint,
+    requestGovernor: hooks?.requestGovernor,
   });
   await checkpointCrawlerExecution(hooks);
   if (response.status >= 400 || !response.text) {

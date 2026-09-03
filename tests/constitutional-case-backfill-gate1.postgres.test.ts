@@ -8,6 +8,7 @@ const databaseUrl = process.env.BACKFILL_TEST_DATABASE_URL;
 const p0Migration = path.join(process.cwd(), "supabase/migrations/20260712090000_admin_command_control_plane.sql");
 const p1Migration = path.join(process.cwd(), "supabase/migrations/20260712130000_admin_command_worker_p1.sql");
 const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
+const requestGovernorMigration = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
@@ -49,6 +50,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(p1Migration, "utf8"));
     await client.query("create table articles(id uuid primary key default gen_random_uuid())");
     await client.query(fs.readFileSync(gate1Migration, "utf8"));
+    await client.query(fs.readFileSync(requestGovernorMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
@@ -481,6 +483,74 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         /CASE_BACKFILL_STALE_FENCE/,
       );
 
+      const firstPermit = await pool.query<{
+        granted: boolean;
+        permit_id: string | null;
+        retry_after_ms: number;
+        permit_lease_expires_at: string | null;
+      }>("select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)", [
+        snapshotId, "fetch", attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+        "https://hj.tribunalconstitucional.es", 10,
+      ]);
+      assert.equal(firstPermit.rows[0].granted, true);
+      assert(firstPermit.rows[0].permit_id);
+      assert(Date.parse(firstPermit.rows[0].permit_lease_expires_at as string) <= Date.parse(attempt.rows[0].lease_expires_at));
+
+      const concurrentPermit = await pool.query<{ granted: boolean; retry_after_ms: number }>(
+        "select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)",
+        [snapshotId, "fetch", attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+          "https://hj.tribunalconstitucional.es", 10],
+      );
+      assert.equal(concurrentPermit.rows[0].granted, false);
+      assert(concurrentPermit.rows[0].retry_after_ms > 0);
+      await assert.rejects(
+        pool.query("select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)", [
+          snapshotId, "fetch", attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+          "https://example.com", 10,
+        ]),
+        /CASE_BACKFILL_REQUEST_HOST_NOT_ALLOWED/,
+      );
+      await pool.query("select source_backfill_request_permit_release_v1($1,$2,$3)", [
+        firstPermit.rows[0].permit_id, attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+      ]);
+
+      const rateLimitedPermit = await pool.query<{ granted: boolean; retry_after_ms: number }>(
+        "select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)",
+        [snapshotId, "fetch", attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+          "https://hj.tribunalconstitucional.es", 10],
+      );
+      assert.equal(rateLimitedPermit.rows[0].granted, false);
+      assert(rateLimitedPermit.rows[0].retry_after_ms > 0);
+      await pool.query("select pg_sleep(1.05)");
+      const racingPermits = await Promise.all([1, 2].map(() => pool.query<{ granted: boolean; permit_id: string | null }>(
+        "select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)",
+        [snapshotId, "fetch", attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+          "https://hj.tribunalconstitucional.es", 10],
+      )));
+      const grantedPermits = racingPermits.flatMap((result) => result.rows).filter((row) => row.granted);
+      assert.equal(grantedPermits.length, 1);
+      assert(grantedPermits[0].permit_id);
+      await pool.query("select source_backfill_request_permit_release_v1($1,$2,$3)", [
+        grantedPermits[0].permit_id, attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+      ]);
+      const governorSecurity = await pool.query<{
+        states_rls: boolean;
+        permits_rls: boolean;
+        public_select: boolean;
+        public_execute: boolean;
+      }>(`select
+        (select relrowsecurity from pg_class where oid='source_request_governor_states'::regclass) states_rls,
+        (select relrowsecurity from pg_class where oid='source_request_permits'::regclass) permits_rls,
+        has_table_privilege('public','source_request_permits','select') public_select,
+        has_function_privilege(
+          'public',
+          'source_backfill_request_permit_acquire_v1(uuid,text,uuid,bigint,text,integer)',
+          'execute'
+        ) public_execute`);
+      assert.deepEqual(governorSecurity.rows[0], {
+        states_rls: true, permits_rls: true, public_select: false, public_execute: false,
+      });
+
       const payload = {
         sourceKey: "es-tribunal-constitucional",
         url: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/12345",
@@ -552,6 +622,13 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         ]),
         /CASE_BACKFILL_ACTIVE_ITEM_CLAIMS/,
       );
+      await pool.query("select pg_sleep(1.05)");
+      const permit = await pool.query<{ permit_id: string }>(
+        "select permit_id from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6) where granted",
+        [snapshotId, "fetch", attempt.rows[0].attempt_id, attempt.rows[0].fencing_token,
+          "https://hj.tribunalconstitucional.es", 10],
+      );
+      assert.equal(permit.rowCount, 1);
       await pool.query("select * from admin_fail_command_attempt_v3($1,$2,$3,$4,$5,$6)", [
         attempt.rows[0].attempt_id, attempt.rows[0].fencing_token, "retryable", "worker_stopping", "test", {},
       ]);
@@ -559,6 +636,11 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         "select status, retry_phase, claimed_attempt_id from source_backfill_items where id = $1", [claimed.rows[0].item_id],
       );
       assert.deepEqual(released.rows[0], { status: "retry_wait", retry_phase: "fetch", claimed_attempt_id: null });
+      const releasedPermit = await pool.query<{ released_at: string | null }>(
+        "select released_at from source_request_permits where id = $1",
+        [permit.rows[0].permit_id],
+      );
+      assert(releasedPermit.rows[0].released_at);
       const failedRun = await pool.query<{ status: string }>("select status from source_backfill_runs where id = $1", [
         sourceRun.rows[0].source_backfill_run_begin_v1,
       ]);

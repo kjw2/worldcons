@@ -3,6 +3,7 @@ import { assertCrawlerExecution, checkpointCrawlerExecution } from "@/lib/crawle
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { respectRateLimit } from "@/lib/crawler/rate-limit";
 import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/crawler/robots";
+import { governedBufferedFetch } from "@/lib/crawler/request-governor";
 import type { CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import {
@@ -169,14 +170,14 @@ async function fetchInventoryPage(
   const timeout = setTimeout(() => controller.abort(), envNumber("FRANCE_TIMEOUT_MS", 90_000));
   try {
     const signals = [hooks.signal, controller.signal].filter((signal): signal is AbortSignal => Boolean(signal));
-    const response = await fetch(url, {
+    const response = await governedBufferedFetch(url, {
       headers: {
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr,en;q=0.8,ko;q=0.5",
         "User-Agent": crawlerUserAgent(),
       },
       signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals),
-    });
+    }, hooks);
     const html = await response.text();
     await checkpointCrawlerExecution(hooks);
     addDiagnosticAttempt(diagnostics, {
@@ -206,6 +207,7 @@ export async function discoverFranceConseilInventory(input: {
   diagnostics?: CrawlerDiagnosticsCollector;
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
+  requestGovernor?: CrawlerExecutionHooks["requestGovernor"];
 }): Promise<FranceConseilInventoryResult> {
   const scope = franceConseilScope(input.year, input.documentType, input.currentYear);
   const documentType = franceConseilDocumentType(scope.documentType);
@@ -215,7 +217,11 @@ export async function discoverFranceConseilInventory(input: {
     throw new Error("France Conseil inventory maxPages is invalid.");
   }
   const diagnostics = input.diagnostics ?? createDiagnosticsCollector("fr-conseil-constitutionnel");
-  const hooks: CrawlerExecutionHooks = { signal: input.signal, checkpoint: input.checkpoint };
+  const hooks: CrawlerExecutionHooks = {
+    signal: input.signal,
+    checkpoint: input.checkpoint,
+    requestGovernor: input.requestGovernor,
+  };
   const items = new Map<string, FranceConseilInventoryItem>();
   let expectedCount: number | null = null;
   let pageCount = 0;

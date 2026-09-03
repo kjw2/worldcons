@@ -1,4 +1,5 @@
 import { crawlerHeaders } from "@/lib/crawler/user-agents";
+import { governedBufferedFetch } from "@/lib/crawler/request-governor";
 import { respectRateLimit } from "@/lib/crawler/rate-limit";
 import { retryCount, retryDelayMs, withRetry } from "@/lib/crawler/retry";
 import type { CrawlRequest, CrawlResponse } from "@/lib/crawler/types";
@@ -36,14 +37,14 @@ async function fetchOnce(request: CrawlRequest): Promise<CrawlResponse> {
   await respectRateLimit(request.url, request.rateLimitDelayMs, request.signal);
   await request.checkpoint?.();
 
-  const response = await fetch(request.url, {
+  const response = await governedBufferedFetch(request.url, {
     method: request.method ?? "GET",
     headers: crawlerHeaders(request.headers),
     redirect: "follow",
     signal: request.signal
       ? AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs(request))])
       : AbortSignal.timeout(timeoutMs(request)),
-  });
+  }, request);
   await request.checkpoint?.();
   const contentType = response.headers.get("content-type") ?? undefined;
   const headers = headersToRecord(response.headers);

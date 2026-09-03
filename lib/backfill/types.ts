@@ -62,6 +62,8 @@ export interface CaseBackfillSourcePolicy {
   policyVersion: string;
   normalizeReplayPolicy: "full_snapshot" | "bounded_evidence" | "non_replayable";
   boundedReplayFields: string[];
+  minRequestDelayMs: number;
+  maxConcurrency: number;
   reviewDueAt: string;
 }
 

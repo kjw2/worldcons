@@ -33,8 +33,13 @@ Spain 2024 `SENTENCIA` vertical slice의 코드·schema·비공개 실행 계획
 | 이용조건 | `GET https://www.tribunalconstitucional.es/es/Paginas/aviso-legal.aspx` → HTTP 403 | 적용 조건과 자동수집 허용 범위 미확인 |
 | 원문 재공개 | 저작권법 제13조 근거는 확인 | HJ 서비스 조건·개인정보·정정 반영 계약은 별도 승인 필요 |
 | 요청 제한 | HJ가 공개한 명시적 crawl delay 또는 동시성 한도를 찾지 못함 | 보수값 제안은 가능하나 운영자 승인 필요 |
-| 런타임 강제 | DB 정책에는 지연·동시성 필드가 있으나 worker가 아직 이를 네트워크 호출에 강제하지 않음 | 코드 보완 전 실행 금지 |
 | 공식 모집단 수 | exhaustive inventory를 실행하지 않음 | 정책 승인 뒤 manifest와 공식 페이지네이션으로 증명 |
+
+## 런타임 강제 구현 상태
+
+검토 중 발견한 실행 계층 공백은 코드에서 보완했다. `20260903181000_constitutional_case_source_request_governor.sql`과 worker가 snapshot의 immutable policy, P1 attempt/fencing token, HTTPS host allowlist, `min_request_delay_ms`, `max_concurrency`를 실제 요청마다 강제한다. robots 요청과 재시도도 같은 permit 경로를 사용하고, permit lease는 P1 lease 이하이며 attempt 종료 시 회수된다. disposable PostgreSQL에서 동시 세션 경쟁·지연·host 거부·종료 회수 테스트를 통과했다.
+
+이 구현은 법적·운영 정책 승인을 대신하지 않는다. 운영 migration 반영 전에는 미완료이고, 반영 뒤에도 robots 404 해석과 이용조건·텍스트 egress 승인이 남으므로 본 문서의 `BLOCKED` 판정은 유지한다.
 
 ## 승인 후 사용할 보수적 초안
 
@@ -61,7 +66,7 @@ bounded replay 후보는 `sourceKey`, `url`, `canonicalUrl`, `title`, `published
 
 1. Tribunal Constitucional 또는 책임 운영자가 HJ 판결 데이터의 자동수집·저장·재공개 조건을 확인한다.
 2. robots 404를 허용으로 해석할지 명시적으로 승인하고 그 근거를 evidence에 보존한다.
-3. source 요청 지연과 동시성 제한을 분산 worker에서도 실제 강제하도록 구현하고 PostgreSQL 경쟁 테스트를 통과한다.
+3. 검증된 source request governor migration을 운영 DB에 적용하고 배포 후 DB 계약을 다시 확인한다.
 4. 그 뒤에만 새 immutable policy version을 INSERT한다. migration seed 또는 기존 row UPDATE는 금지한다.
 5. policy version을 지정해 Spain 2024 discover를 한 번 실행하고, 닫힌 manifest·건수·digest를 저장한 뒤 fetch로 진행한다.
 

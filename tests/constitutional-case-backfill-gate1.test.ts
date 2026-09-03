@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { buildBoundedReplayPayload, runCaseBackfillPass, validateNormalizedCase } from "../lib/backfill/service";
+import { createCaseBackfillRequestGovernor } from "../lib/backfill/source-request-governor";
 import type { CaseBackfillRepository } from "../lib/backfill/repository";
 import type {
   CaseBackfillAttemptAuthority,
@@ -27,6 +28,8 @@ import {
 } from "../lib/backfill/spain-scope";
 
 const migrationPath = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
+const requestGovernorMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
+const crawlerHttpClientPath = path.join(process.cwd(), "lib/crawler/http-client.ts");
 
 const authority: CaseBackfillAttemptAuthority = {
   attemptId: "11111111-1111-4111-8111-111111111111",
@@ -76,9 +79,13 @@ function fakeRepository(overrides: Partial<CaseBackfillRepository> = {}): CaseBa
       policyVersion: snapshot.sourcePolicyVersion,
       normalizeReplayPolicy: "bounded_evidence",
       boundedReplayFields: ["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"],
+      minRequestDelayMs: 1000,
+      maxConcurrency: 1,
       reviewDueAt: "2027-09-03T00:00:00.000Z",
     }),
     getSnapshotStatus: unavailable,
+    acquireSourceRequestPermit: unavailable,
+    releaseSourceRequestPermit: unavailable,
     allocatePass: unavailable,
     beginRun: async () => "55555555-5555-4555-8555-555555555555",
     finishRun: async () => undefined,
@@ -270,6 +277,44 @@ test("authority verification is fail-closed for source, type, date, and HJ ident
   ]);
 });
 
+test("distributed request governor waits for a database permit, normalizes the origin, and releases once", async () => {
+  const waits: number[] = [];
+  const origins: string[] = [];
+  let acquireCount = 0;
+  let releaseCount = 0;
+  const repository = fakeRepository({
+    acquireSourceRequestPermit: async (input) => {
+      origins.push(input.requestOrigin);
+      acquireCount += 1;
+      return acquireCount === 1
+        ? { granted: false, permitId: null, retryAfterMs: 125, permitLeaseExpiresAt: null }
+        : {
+          granted: true,
+          permitId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          retryAfterMs: 0,
+          permitLeaseExpiresAt: "2026-09-03T12:00:00.000Z",
+        };
+    },
+    releaseSourceRequestPermit: async () => { releaseCount += 1; },
+  });
+  const governor = createCaseBackfillRequestGovernor({
+    repository,
+    snapshotId: snapshot.id,
+    phase: "fetch",
+    authority,
+    checkpoint: async () => undefined,
+    signal: new AbortController().signal,
+    sleep: async (milliseconds) => { waits.push(milliseconds); },
+  });
+  const permit = await governor.acquire(`${claimedItem.discoveredUrl}?ignored=1`);
+  await permit.release();
+  await permit.release();
+  assert.deepEqual(waits, [125]);
+  assert.deepEqual(origins, ["https://hj.tribunalconstitucional.es", "https://hj.tribunalconstitucional.es"]);
+  assert.equal(releaseCount, 1);
+  await assert.rejects(governor.acquire("http://hj.tribunalconstitucional.es/insecure"), /request_https_required/);
+});
+
 test("fetch pass records a bounded artifact and preserves a published terminal outcome during maintenance", async () => {
   let artifactPayload: Record<string, unknown> = {};
   let completion: { nextStatus: string; artifactId: unknown } | null = null;
@@ -440,6 +485,8 @@ test("enabled publish pass delegates the fenced item to the atomic Catalog publi
 
 test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invariants in the database", () => {
   const sql = fs.readFileSync(migrationPath, "utf8");
+  const requestGovernorSql = fs.readFileSync(requestGovernorMigrationPath, "utf8");
+  const crawlerHttpClient = fs.readFileSync(crawlerHttpClientPath, "utf8");
   for (const table of [
     "source_corpus_policies",
     "source_inventory_snapshots",
@@ -469,4 +516,14 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   assert.match(sql, /p_target_version/);
   assert.doesNotMatch(sql, /grant\s+(?:select|insert|update|delete|all)[^;]+\s+to\s+(?:anon|authenticated)/i);
   assert.doesNotMatch(sql, /cloudflare|workers\.dev|d1\b/i);
+  assert.match(requestGovernorSql, /source_backfill_request_permit_acquire_v1/);
+  assert.match(requestGovernorSql, /pg_advisory_xact_lock/);
+  assert.match(requestGovernorSql, /v_policy\.min_request_delay_ms/);
+  assert.match(requestGovernorSql, /v_effective_limit/);
+  assert.match(requestGovernorSql, /CASE_BACKFILL_REQUEST_HOST_NOT_ALLOWED/);
+  assert.match(requestGovernorSql, /least\(\s*v_attempt_lease/);
+  assert.match(requestGovernorSql, /source_backfill_release_request_permits_on_attempt_terminal_v1\(\)[\s\S]*security definer/i);
+  assert.doesNotMatch(requestGovernorSql, /grant\s+(?:select|insert|update|delete|all)[^;]+\s+to\s+(?:anon|authenticated)/i);
+  assert.match(crawlerHttpClient, /governedBufferedFetch\(request\.url/);
+  assert.match(crawlerHttpClient, /}, request\);/);
 });
