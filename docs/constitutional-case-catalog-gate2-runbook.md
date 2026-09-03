@@ -1,6 +1,6 @@
 # 헌법판례 Catalog Gate 2 운영 런북
 
-상태: 로컬 구현·production-shaped PostgreSQL 계약 검증 완료, 운영 migration·source policy 승인·Spain canary 전
+상태: 운영 schema-only migration·Vercel 배포 완료, source policy 승인·Spain canary 전
 
 ## 범위와 안전선
 
@@ -31,10 +31,13 @@ PostgreSQL 테스트 skip은 승인 증거가 아니다. 다음 항목을 실제
 - Catalog correction은 publication pointer 전환, stale marker, outbox 생성을 한 transaction에서 수행한다.
 - withdraw는 기존 P3 publication version을 보존한다.
 - fenced publish는 verified normalization만 받아 article, immutable revision, metadata, identifier, publication, item 상태를 원자 갱신한다.
-- `anon`과 `authenticated`는 공개 view만 읽을 수 있고 내부 ledger·authority 함수에는 접근하지 못한다.
+- `anon`과 `authenticated`는 Catalog view와 내부 ledger·authority 함수에 직접 접근하지 못하고, 공개 HTTP 요청은 Vercel의 bounded service-role 경계를 통한다.
+- Catalog 공개 view는 `security_invoker=true`이며 service-role의 원본 테이블 권한은 투영에 필요한 열로 제한된다.
 - 기존 mutable article은 Catalog shadow publication 때문에 덮어쓰지 않는다.
 
-## 2. 운영 migration 전 점검
+## 2. 운영 migration 점검
+
+2026-09-03 schema-only 이행은 `20260903120000`~`20260903175000`까지 적용했고, 증거는 `docs/constitutional-case-catalog-production-rollout-20260903.md`에 기록했다. 아래 source policy와 실데이터 조건은 아직 완료되지 않았다.
 
 1. production DB 백업과 migration dry run 결과를 보존한다.
 2. `source_corpus_policies`에 검토자가 승인한 immutable Spain policy가 있는지 확인한다.
