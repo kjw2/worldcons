@@ -47,6 +47,8 @@ import type {
   UsConanCatalogRepository,
   UsConanCatalogSourcePolicy,
 } from "../lib/backfill/us-conan-catalog-repository";
+import { verifyUsConanCatalogCanary } from "../lib/backfill/us-conan-canary-service";
+import type { UsConanCatalogCanaryRepository } from "../lib/backfill/us-conan-canary-repository";
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/us-conan-table-contract.html"),
@@ -58,6 +60,10 @@ const govInfoFixture = fs.readFileSync(
 );
 const usCatalogMigration = fs.readFileSync(
   path.join(process.cwd(), "supabase/migrations/20260903173000_constitutional_case_us_catalog_gate5.sql"),
+  "utf8",
+);
+const usCanaryMigration = fs.readFileSync(
+  path.join(process.cwd(), "supabase/migrations/20260903174000_constitutional_case_us_catalog_canary_gate5.sql"),
   "utf8",
 );
 
@@ -159,6 +165,19 @@ test("US Catalog bridge revalidates current evidence and remains metadata-only",
   assert.match(usCatalogMigration, /enable row level security/u);
   assert.match(usCatalogMigration, /revoke all on function us_conan_candidate_publish_catalog_v1/u);
   assert.doesNotMatch(usCatalogMigration, /gemini|summary_json\s*=/iu);
+});
+
+test("US Catalog canary is read-only, service-role-only, bounded, and checks the public source projection", () => {
+  assert.match(usCanaryMigration, /us_conan_candidate_catalog_canary_v1/u);
+  assert.match(usCanaryMigration, /language sql/u);
+  assert.match(usCanaryMigration, /stable/u);
+  assert.match(usCanaryMigration, /security definer/u);
+  assert.match(usCanaryMigration, /statement_timeout = '5s'/u);
+  assert.match(usCanaryMigration, /public_article_detail_v4/u);
+  assert.match(usCanaryMigration, /sourceAnchorSummaryPresent/u);
+  assert.match(usCanaryMigration, /sourceAnchorEmbeddingPresent/u);
+  assert.match(usCanaryMigration, /revoke all on function us_conan_candidate_catalog_canary_v1/u);
+  assert.doesNotMatch(usCanaryMigration, /\binsert\b|\bupdate\b|\bdelete\b/iu);
 });
 
 function importInput(execute: boolean) {
@@ -839,4 +858,119 @@ test("enabled US Catalog publication performs one metadata-only bridge write", a
   assert.equal(result.reviewWritten, false);
   assert.equal(result.p3PublicationWritten, false);
   assert.equal(result.geminiCalls, 0);
+});
+
+const validCanaryEvidence = {
+  candidateFound: true as const,
+  candidateId: storedCandidate.id,
+  citation: storedCandidate.citation,
+  candidateSnapshotStatus: "closed",
+  candidateManifestHash: "c".repeat(64),
+  candidatePolicyVersion: "us-conan-gate5-v1",
+  candidatePolicyReviewDueAt: "2027-09-03T00:00:00.000Z",
+  currentReviewId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  currentReviewRevision: 2,
+  currentReviewStatus: "verified",
+  currentReviewAuthorityArtifactId: "88888888-8888-4888-8888-888888888888",
+  currentAuthorityArtifactId: "88888888-8888-4888-8888-888888888888",
+  currentAuthorityStatus: "verified",
+  currentAuthorityPayloadHash: "f".repeat(64),
+  eventId: "11111111-1111-4111-8111-111111111111",
+  eventReviewId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  eventReviewRevision: 2,
+  eventAuthorityArtifactId: "88888888-8888-4888-8888-888888888888",
+  eventCandidateManifestHash: "c".repeat(64),
+  eventSourcePolicyVersion: "us-scotus-gate5-v1",
+  eventCreatedAt: "2026-09-03T10:00:00.000Z",
+  articleId: "22222222-2222-4222-8222-222222222222",
+  articleSlug: "us-scotus-369-us-186",
+  articleSourceKey: "us-scotus",
+  catalogPublicationId: "44444444-4444-4444-8444-444444444444",
+  catalogPublicationState: "published",
+  catalogPublicationRevision: 1,
+  catalogSourceAnchorVersionId: "33333333-3333-4333-8333-333333333333",
+  catalogSourcePolicyVersion: "us-scotus-gate5-v1",
+  publicationPolicyReviewDueAt: "2027-09-03T00:00:00.000Z",
+  sourceAnchorVersionId: "33333333-3333-4333-8333-333333333333",
+  sourceAnchorRevision: 1,
+  sourceAnchorRole: "authoritative_source",
+  sourceAnchorSelfId: "33333333-3333-4333-8333-333333333333",
+  sourceAnchorContentHash: "f".repeat(64),
+  sourceAnchorSnapshotHash: "c".repeat(64),
+  sourceAnchorSummaryPresent: false,
+  sourceAnchorEmbeddingPresent: false,
+  caseAuthorityStatus: "verified",
+  caseConstitutionalStatus: "verified",
+  caseEnrichmentStatus: "source_only",
+  caseTextAccessPolicy: "metadata_only",
+  caseSourcePolicyVersion: "us-scotus-gate5-v1",
+  publicDetailArticleId: "22222222-2222-4222-8222-222222222222",
+  publicDetailVersionId: "33333333-3333-4333-8333-333333333333",
+  publicDetailVersionRole: "authoritative_source",
+  publicDetailEnrichmentStatus: "source_only",
+  publicDetailSummaryAvailable: false,
+  publicDetailSummaryPresent: false,
+  p3PublicationState: null,
+  p3PublicationVersionId: null,
+};
+
+test("US Catalog canary passes only a current metadata-only evidence chain", async () => {
+  const repository: UsConanCatalogCanaryRepository = {
+    getEvidence: async () => validCanaryEvidence,
+  };
+  const result = await verifyUsConanCatalogCanary(storedCandidate.id, {
+    repository,
+    now: () => new Date("2026-09-03T10:00:00.000Z"),
+  });
+  assert.equal(result.status, "pass");
+  assert.deepEqual(result.blocking, []);
+  assert.equal(result.readOnly, true);
+  assert.equal(result.sourcePolicyApprovedByThisCheck, false);
+  assert.equal(result.productionMigrationAppliedByThisCheck, false);
+  assert.equal(result.geminiCalls, 0);
+});
+
+test("US Catalog canary reports stale review, policy, anchor, AI payload, and public projection drift", async () => {
+  const repository: UsConanCatalogCanaryRepository = {
+    getEvidence: async () => ({
+      ...validCanaryEvidence,
+      candidatePolicyReviewDueAt: "2026-09-03T09:59:59.000Z",
+      currentReviewRevision: 3,
+      currentAuthorityArtifactId: "55555555-5555-4555-8555-555555555555",
+      catalogSourceAnchorVersionId: "66666666-6666-4666-8666-666666666666",
+      sourceAnchorSummaryPresent: true,
+      publicationPolicyReviewDueAt: "2026-09-03T09:59:59.000Z",
+      publicDetailSummaryAvailable: true,
+      publicDetailSummaryPresent: true,
+    }),
+  };
+  const result = await verifyUsConanCatalogCanary(storedCandidate.id, {
+    repository,
+    now: () => new Date("2026-09-03T10:00:00.000Z"),
+  });
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(result.blocking, [
+    "candidate_policy_review_overdue",
+    "catalog_bridge_review_stale",
+    "catalog_bridge_authority_stale",
+    "authoritative_source_anchor_invalid",
+    "source_anchor_ai_payload_present",
+    "publication_policy_invalid_or_overdue",
+    "public_source_only_projection_invalid",
+  ]);
+});
+
+test("US Catalog canary distinguishes a missing candidate from malformed evidence", async () => {
+  await assert.rejects(
+    verifyUsConanCatalogCanary(storedCandidate.id, {
+      repository: { getEvidence: async () => ({ candidateFound: false, candidateId: storedCandidate.id }) },
+    }),
+    /us_canary\.candidate_not_found/,
+  );
+  await assert.rejects(
+    verifyUsConanCatalogCanary(storedCandidate.id, {
+      repository: { getEvidence: async () => ({ candidateFound: true, candidateId: storedCandidate.id }) },
+    }),
+    /us_canary\.evidence_invalid/,
+  );
 });

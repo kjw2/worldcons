@@ -132,3 +132,22 @@ CASE_CATALOG_WRITE_ENABLED=true CASE_CATALOG_US_CONAN_PUBLISH_ENABLED=true pnpm 
 실행 직전 DB 함수가 닫힌 candidate manifest, discovery/publication policy 만료, 최신 verified review, 같은 최신 GovInfo authority artifact, essay/holding evidence, source identity와 Catalog revision을 다시 검사한다. 성공 시 공식 metadata만 담은 `authoritative_source` revision과 Catalog source anchor 및 불변 bridge event를 만든다. mutable article의 기존 원문이나 요약을 유출하지 않으며 SummaryJson, embedding, P3 candidate/publication pointer를 만들거나 이동하지 않는다. 같은 idempotency key의 동일 재실행은 기존 결과를 반환하고, 다른 입력에 key를 재사용하면 실패한다.
 
 Catalog 공개는 이 쓰기와 별도 rollout이다. `CASE_CATALOG_PUBLIC_ENABLED`를 켜지 않은 상태에서도 private shadow 발행 검증이 가능하며, public/search/plugin flag는 Catalog Gate 2~4 런북의 precedence와 canary 승인을 따른다. 이 미국 경로의 모든 단계는 `geminiCalls=0`이다.
+
+## 발행 후 read-only canary
+
+발행 직후 동일 candidate ID로 service-role 전용 증거 검사를 실행한다.
+
+```text
+pnpm verify:us-conan-catalog-canary --candidate-id=<uuid>
+```
+
+이 명령은 하나의 stable·statement-bounded DB RPC에서 현재 candidate manifest/policy, 최신 review와 authority, 불변 bridge event, Catalog publication/source anchor, case metadata, 실제 `public_article_detail_v4` 대표 row와 P3 pointer를 같은 snapshot으로 읽는다. 다음 조건을 모두 만족해야 `status=pass`다.
+
+- 최신 review와 authority ID/revision이 bridge event와 동일하다.
+- candidate manifest hash가 event와 source anchor에 동일하게 결속된다.
+- `us-scotus` Catalog publication이 `published`이고 event의 authoritative self-anchor를 가리킨다.
+- source anchor hash가 최신 GovInfo payload hash와 같고 summary/embedding이 없다.
+- case metadata와 public detail이 verified `source_only`, metadata/index-only이며 summary를 내보내지 않는다.
+- discovery/publication policy가 모두 미만료이고 P3가 authoritative source row를 가리키지 않는다.
+
+검사는 source policy를 승인하거나 migration을 적용하거나 어떤 DB row도 쓰지 않는다. `status=blocked`면 `blocking`을 해결한 뒤 새 계획/CAS부터 다시 시작한다. canary PASS도 공개 flag 활성화 승인을 대신하지 않으며, 실제 운영 migration 적용 여부와 API/페이지 노출은 별도 배포 체크리스트에서 확인한다.

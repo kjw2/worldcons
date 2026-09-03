@@ -29,6 +29,7 @@
     "resolve:us-conan-authority": "tsx scripts/resolve-us-conan-authority.ts",
     "review:us-conan-candidate": "tsx scripts/review-us-conan-candidate.ts",
     "publish:us-conan-candidate": "tsx scripts/publish-us-conan-candidate.ts",
+    "verify:us-conan-catalog-canary": "tsx scripts/verify-us-conan-catalog-canary.ts",
     "backfill:embeddings": "tsx scripts/backfill-embeddings.ts",
     "canonicalize:terms": "tsx scripts/canonicalize-source-terminology.ts",
     "canonicalize:french-terms": "tsx scripts/canonicalize-source-terminology.ts --source=fr-conseil-constitutionnel",

@@ -24,6 +24,7 @@ const usCandidates = migration("20260903170000_constitutional_case_us_candidates
 const usAuthority = migration("20260903171000_constitutional_case_us_authority_gate5.sql");
 const usReview = migration("20260903172000_constitutional_case_us_review_gate5.sql");
 const usCatalog = migration("20260903173000_constitutional_case_us_catalog_gate5.sql");
+const usCanary = migration("20260903174000_constitutional_case_us_catalog_canary_gate5.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -231,6 +232,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(usAuthority);
     await setup.query(usReview);
     await setup.query(usCatalog);
+    await setup.query(usCanary);
     await setup.query(usPolicySql);
     await setup.query(gate3);
     await setup.query(gate4);
@@ -552,6 +554,19 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       });
       assert.equal((await pool.query("select count(*)::integer count from article_version_heads_p3 where article_id=$1", [published.rows[0].article_id])).rows[0].count, 0);
       assert.equal((await pool.query("select count(*)::integer count from article_publications_p3 where article_id=$1", [published.rows[0].article_id])).rows[0].count, 0);
+      const canary = await pool.query<{ payload: Record<string, unknown> }>(
+        "select us_conan_candidate_catalog_canary_v1($1) payload", [candidateId],
+      );
+      assert.equal(canary.rows[0].payload.candidateFound, true);
+      assert.equal(canary.rows[0].payload.currentReviewId, review.rows[0].review_id);
+      assert.equal(canary.rows[0].payload.currentAuthorityArtifactId, authority.rows[0].us_conan_candidate_authority_record_v1);
+      assert.equal(canary.rows[0].payload.eventId, published.rows[0].event_id);
+      assert.equal(canary.rows[0].payload.catalogSourceAnchorVersionId, published.rows[0].version_id);
+      assert.equal(canary.rows[0].payload.sourceAnchorSelfId, published.rows[0].version_id);
+      assert.equal(canary.rows[0].payload.sourceAnchorSummaryPresent, false);
+      assert.equal(canary.rows[0].payload.sourceAnchorEmbeddingPresent, false);
+      assert.equal(canary.rows[0].payload.publicDetailVersionRole, "authoritative_source");
+      assert.equal(canary.rows[0].payload.publicDetailSummaryAvailable, false);
       const exact = await pool.query<{ payload: { entries: Array<{ id: string }>; retrievalMode: string } }>(
         "select worldcons_case_search_page_v2($1,10,null) payload", ["369 U.S. 186 (1962)"],
       );
@@ -617,10 +632,10 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         where n.nspname='public' and p.proname in (
           'article_version_capture_v4','article_p3_candidate_select_v4',
           'case_catalog_publication_transition_v1','case_catalog_publish_backfill_item_v1',
-          'us_conan_candidate_publish_catalog_v1'
+          'us_conan_candidate_publish_catalog_v1','us_conan_candidate_catalog_canary_v1'
         )
       `);
-      assert.equal(functions.rowCount, 5);
+      assert.equal(functions.rowCount, 6);
       for (const row of functions.rows) {
         assert.equal(row.prosecdef, true);
         assert.ok(row.proconfig?.some((value) => value === "search_path=public, extensions, pg_temp"));
