@@ -10,6 +10,7 @@ const p1Migration = path.join(process.cwd(), "supabase/migrations/20260712130000
 const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
+const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
 
 const policyInsert = `
 insert into source_corpus_policies(
@@ -49,6 +50,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(gate1Migration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
+    await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
   } finally {
     await client.end();
   }
@@ -138,6 +140,75 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
       );
       assert.equal(closed.rows[0].candidate_count, 2);
       assert.match(closed.rows[0].manifest_hash, /^[0-9a-f]{64}$/);
+
+      const authorityArtifact = await pool.query<{ us_conan_candidate_authority_record_v1: string }>(
+        "select us_conan_candidate_authority_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [
+          bakerId, "govinfo-usreports-v1", "verified", "369 U.S. 186 (1962)",
+          "Baker et al. v. Carr et al.",
+          "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+          "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+          "f".repeat(64), [], "2026-09-03T09:00:00.000Z",
+        ],
+      );
+      const authorityArtifactId = authorityArtifact.rows[0].us_conan_candidate_authority_record_v1;
+      const authorityDuplicate = await pool.query<{ us_conan_candidate_authority_record_v1: string }>(
+        "select us_conan_candidate_authority_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [
+          bakerId, "govinfo-usreports-v1", "verified", "369 U.S. 186 (1962)",
+          "Baker et al. v. Carr et al.",
+          "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+          "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+          "f".repeat(64), [], "2026-09-03T09:00:00.000Z",
+        ],
+      );
+      assert.equal(authorityDuplicate.rows[0].us_conan_candidate_authority_record_v1, authorityArtifactId);
+      const authorityFresh = await pool.query<{ us_conan_candidate_authority_record_v1: string }>(
+        "select us_conan_candidate_authority_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [
+          bakerId, "govinfo-usreports-v1", "verified", "369 U.S. 186 (1962)",
+          "Baker et al. v. Carr et al.",
+          "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+          "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+          "f".repeat(64), [], "2026-09-03T09:01:00.000Z",
+        ],
+      );
+      assert.notEqual(authorityFresh.rows[0].us_conan_candidate_authority_record_v1, authorityArtifactId);
+      const authorityCurrent = await pool.query<{ status: string; citation: string; observed_at: Date }>(
+        "select status,citation,observed_at from us_conan_candidate_authority_current_v1 where candidate_id=$1", [bakerId],
+      );
+      assert.equal(authorityCurrent.rows[0].status, "verified");
+      assert.equal(authorityCurrent.rows[0].citation, "369 U.S. 186 (1962)");
+      assert.equal(authorityCurrent.rows[0].observed_at.toISOString(), "2026-09-03T09:01:00.000Z");
+      await assert.rejects(
+        pool.query(
+          "select us_conan_candidate_authority_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+          [
+            districtId, "govinfo-usreports-v1", "verified", "103 F. Supp. 569 (D.D.C. 1952)",
+            "Example District Case", "https://www.govinfo.gov/app/details/USREPORTS-103/USREPORTS-103-569",
+            "https://www.govinfo.gov/content/pkg/USREPORTS-103/pdf/USREPORTS-103-569.pdf",
+            "f".repeat(64), [], "2026-09-03T09:00:00.000Z",
+          ],
+        ),
+        /US_CONAN_AUTHORITY_CITATION_INVALID/,
+      );
+      await assert.rejects(
+        pool.query(
+          "select us_conan_candidate_authority_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+          [
+            bakerId, "govinfo-usreports-v1", "verified", "369 U.S. 186 (1962)",
+            "Baker et al. v. Carr et al.",
+            "https://www.govinfo.gov/app/details/USREPORTS-370/USREPORTS-370-186",
+            "https://www.govinfo.gov/content/pkg/USREPORTS-370/pdf/USREPORTS-370-186.pdf",
+            "f".repeat(64), [], "2026-09-03T09:00:00.000Z",
+          ],
+        ),
+        /US_CONAN_AUTHORITY_URL_MISMATCH/,
+      );
+      await assert.rejects(
+        pool.query("update us_conan_candidate_authority_artifacts_v1 set status='blocked' where id=$1", [authorityArtifactId]),
+        /CASE_BACKFILL_IMMUTABLE/,
+      );
 
       await assert.rejects(
         pool.query("update us_conan_case_candidates_v1 set priority=99 where id=$1", [bakerId]),

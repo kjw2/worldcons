@@ -78,3 +78,7 @@ pnpm verify:us-reports-authority --citation=<U.S. Reports citation> --case-name=
 셸 quoting이 불편한 환경에서는 `{"citation":"...","caseName":"..."}` 형식의 검토 파일을 `--input=<probe.json>`으로 전달한다.
 
 이 명령은 read-only다. 성공은 SCOTUS identity와 공식 authority granule을 확인했다는 뜻일 뿐 헌법 관련성 `verified`가 아니다. DB review를 쓰지 않고 `constitutionalRelevanceStatus=candidate`, `reviewWritten=false`, `geminiCalls=0`을 명시한다. Constitution Annotated essay 문맥과 헌법적 holding은 별도 리뷰 gate로 남는다. 404, robots 차단, redirect host/path 변경, citation/name/PDF 불일치는 fail-closed다.
+
+resolver 결과를 저장할 때는 human/legal review row를 자동 생성하지 않는다. `us_conan_candidate_authority_artifacts_v1`에 resolver version, 정확한 citation, GovInfo details/PDF URL, payload hash, 관측 시각과 blocking reason을 append-only로 남긴다. 동일 결과의 재저장은 멱등이며, source candidate의 citation과 예측 가능한 granule URL이 어긋나면 DB RPC도 거부한다.
+
+초기 선거구획정 priority set은 Baker, Wesberry, Reynolds, Shaw, Vieth 5건이다. 2026-09-03 GovInfo U.S. Reports granule로 citation과 authority URL을 확인했지만 모두 `priorityOnly=true`, `constitutionalRelevanceStatus=candidate`다. 이 목록은 완전한 선거구획정 판례 목록이 아니며, Rucho처럼 현재 resolver의 GovInfo bound-volume 범위 밖에 있는 사건은 별도 official-source resolver가 준비될 때 추가한다.

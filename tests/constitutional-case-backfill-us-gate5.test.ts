@@ -19,6 +19,10 @@ import {
   parseUsReportsCitation,
   resolveGovInfoUsReportsAuthority,
 } from "../lib/crawlee/us-govinfo-reports-resolver";
+import {
+  REVIEWED_US_REDISTRICTING_LANDMARKS,
+  REVIEWED_US_REDISTRICTING_PRIORITY_CITATIONS,
+} from "../lib/backfill/us-redistricting-landmarks";
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/us-conan-table-contract.html"),
@@ -92,6 +96,19 @@ test("landmark priority changes scheduling only and never changes candidate stat
   assert.equal(prioritized.constitutionalRelevanceStatus, "candidate");
 });
 
+test("reviewed redistricting seeds have official granule provenance but remain priority-only candidates", () => {
+  assert.equal(REVIEWED_US_REDISTRICTING_LANDMARKS.length, 5);
+  for (const landmark of REVIEWED_US_REDISTRICTING_LANDMARKS) {
+    assert.equal(REVIEWED_US_REDISTRICTING_PRIORITY_CITATIONS.has(landmark.citation), true);
+    assert.equal(landmark.priority, 100);
+    assert.equal(landmark.priorityOnly, true);
+    assert.equal(landmark.constitutionalRelevanceStatus, "candidate");
+    const citation = parseUsReportsCitation(landmark.citation);
+    assert.ok(citation);
+    assert.equal(landmark.officialAuthorityUrl, govInfoUsReportsUrls(citation).detailsUrl);
+  }
+});
+
 test("Cloudflare challenge is an unavailable source, not an empty inventory", () => {
   const challenge = "<html><head><title>Just a moment...</title></head><body><div id=cf-chl-widget></div></body></html>";
   assert.equal(isConstitutionAnnotatedChallengePage(challenge), true);
@@ -131,6 +148,15 @@ test("candidate import plans without database writes or an enabled operational f
   assert.equal(result.prioritizedCount, 1);
   assert.equal(result.snapshot, null);
   assert.equal(calls, 0);
+});
+
+test("built-in reviewed landmark set raises priority without an external seed file", async () => {
+  const input = importInput(false);
+  input.priorityCitations = new Set();
+  const result = await importUsConanCandidateGraph(input, { environment: {} });
+  const baker = result.candidates.find((candidate) => candidate.citation === "369 U.S. 186 (1962)");
+  assert.equal(baker?.priority, 100);
+  assert.equal(baker?.constitutionalRelevanceStatus, "candidate");
 });
 
 test("candidate import requires both execute and the explicit operational flag", async () => {

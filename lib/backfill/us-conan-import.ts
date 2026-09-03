@@ -9,6 +9,7 @@ import {
   type ClosedUsConanSnapshot,
   type UsConanCandidateRepository,
 } from "@/lib/backfill/us-conan-repository";
+import { REVIEWED_US_REDISTRICTING_PRIORITY_CITATIONS } from "@/lib/backfill/us-redistricting-landmarks";
 
 export interface UsConanCandidateImportInput {
   html: string;
@@ -53,7 +54,10 @@ export async function importUsConanCandidateGraph(
   assertHash(input.payloadHash);
   assertObservedAt(input.observedAt);
   if (!input.parserVersion.trim() || input.parserVersion.length > 120) throw new Error("us_conan.invalid_parser_version");
-  const priorityCitations = input.priorityCitations ?? new Set<string>();
+  const priorityCitations = new Set([
+    ...REVIEWED_US_REDISTRICTING_PRIORITY_CITATIONS,
+    ...(input.priorityCitations ?? []),
+  ]);
   const candidates = parseConstitutionAnnotatedCasesHtml(input.html)
     .map((candidate) => applyConstitutionAnnotatedPriority(candidate, priorityCitations));
   const classifications: UsConanCandidateImportResult["classifications"] = {
