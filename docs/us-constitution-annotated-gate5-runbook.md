@@ -49,4 +49,20 @@ Table citation
 
 리뷰는 optimistic revision을 요구한다. DB trigger와 RPC 모두 `verified` 전환 전에 SCOTUS candidate classification, essay evidence, 공식 identity, 헌법 essay 문맥, 공식 authority URL, 헌법적 holding 네 gate를 검사한다. 현재 view는 리뷰가 없는 후보를 `candidate`로 계산한다.
 
-후속 단계는 parser 결과를 이 DB 원장에 연결하는 비공개 import service와 CLI를 만들고, 별도 `us-scotus` authority resolver가 공식 U.S. Reports/SCOTUS 원문에 결속한 뒤에만 기존 Catalog backfill pipeline으로 넘기는 것이다.
+parser 결과를 이 DB 원장에 연결하는 비공개 import service와 CLI까지 구현됐다. 후속 단계는 별도 `us-scotus` authority resolver가 공식 U.S. Reports/SCOTUS 원문에 결속한 뒤에만 기존 Catalog backfill pipeline으로 넘기는 것이다.
+
+## 비공개 import CLI
+
+기본 실행은 DB를 변경하지 않는 plan이다.
+
+```text
+pnpm import:us-conan-candidates --input=<reviewed-official-fixture.html> --observed-at=<ISO8601>
+```
+
+출력의 candidate 수, court classification, challenge 여부와 payload hash를 검토한다. 실제 import는 검토된 source policy와 두 잠금을 모두 요구한다.
+
+```text
+CASE_CATALOG_US_CONAN_ENABLED=true pnpm import:us-conan-candidates --input=<reviewed-official-fixture.html> --observed-at=<ISO8601> --policy-version=<reviewed-policy> --execute
+```
+
+`--priority-citations-file=<json-array>`는 검토된 citation의 scheduling priority만 높인다. 해당 파일은 상태나 verification evidence를 만들지 않는다. 동일 payload/parser/policy 재실행에서 snapshot이 이미 닫혀 있고 candidate count/hash가 유효하면 manifest 쓰기 없이 멱등 성공한다. 중간 실패로 snapshot이 열려 있으면 동일 candidate/evidence만 재사용하여 close를 다시 시도한다.

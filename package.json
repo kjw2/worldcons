@@ -24,6 +24,7 @@
     "backfill:case-numbers": "tsx scripts/backfill-case-numbers.ts",
     "backfill:corpus": "tsx scripts/backfill-corpus.ts",
     "verify:france-inventory": "tsx scripts/verify-france-conseil-inventory.ts",
+    "import:us-conan-candidates": "tsx scripts/import-us-conan-candidates.ts",
     "backfill:embeddings": "tsx scripts/backfill-embeddings.ts",
     "canonicalize:terms": "tsx scripts/canonicalize-source-terminology.ts",
     "canonicalize:french-terms": "tsx scripts/canonicalize-source-terminology.ts --source=fr-conseil-constitutionnel",
