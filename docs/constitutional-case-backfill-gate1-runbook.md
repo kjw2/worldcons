@@ -1,6 +1,6 @@
 # 헌법판례 백필 Gate 1 운영 런북
 
-상태: 구현 완료, 기본 비활성, source request governor 운영 마이그레이션·정책 등록·실데이터 실행 전
+상태: 구현·source request governor 운영 마이그레이션 완료, 기본 비활성, 정책 등록·실데이터 실행 전
 
 ## 범위와 금지선
 

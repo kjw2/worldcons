@@ -12,7 +12,7 @@ Gate 1~5와 Catalog 보안 보정 migration을 운영 Supabase에 적용하고, 
 - Vercel deployment: `dpl_GNviMjQxjDm4idfF5o3dPbfvqnp6`
 - Deployment URL: `https://worldcons-ltl2pojvo-jwkms-projects.vercel.app`
 - Canonical alias: `https://worldcons.vercel.app`
-- Supabase migrations: `20260903120000`~`20260903180000`
+- Supabase migrations: `20260903120000`~`20260903181000`
 
 ## 백업과 migration
 
@@ -76,8 +76,22 @@ CASE_CATALOG_* = unset/false
 country execution flags = unset/false
 ```
 
-Spain HJ의 첫 검토 결과는 `docs/spain-hj-source-policy-review-20260903.md`에 기록했다. 공식 scope와 판결문 제공은 확인됐지만 robots가 404이고 법적 고지 경로가 403이다. 요청 지연·동시성의 분산 런타임 강제 구현과 PostgreSQL 경쟁 검증은 완료했지만 `20260903181000` 운영 migration은 아직 적용 전이다. 판정은 `BLOCKED`이며 source policy row와 실데이터는 0건을 유지한다.
+Spain HJ의 첫 검토 결과는 `docs/spain-hj-source-policy-review-20260903.md`에 기록했다. 공식 scope와 판결문 제공은 확인됐지만 robots가 404이고 법적 고지 경로가 403이다. 요청 지연·동시성의 분산 런타임 강제 구현과 PostgreSQL 경쟁 검증을 완료하고 `20260903181000`도 운영에 적용했다. 판정은 `BLOCKED`이며 source policy row와 실데이터는 0건을 유지한다.
 
-다음 단계는 source request governor 운영 migration·배포와 운영자·법적 검토다. robots 관측, 공식 scope, 이용조건·원문 egress, replay field, 보존기간, 요청 지연·동시성, `review_due_at`을 실제 근거로 검토한 immutable policy version이 승인되기 전에는 어떠한 실데이터 실행 flag도 켜지 않는다.
+다음 단계는 운영자·법적 검토다. robots 관측, 공식 scope, 이용조건·원문 egress, replay field, 보존기간, 요청 지연·동시성, `review_due_at`을 실제 근거로 검토한 immutable policy version이 승인되기 전에는 어떠한 실데이터 실행 flag도 켜지 않는다.
 
 첫 승인 후 실행 순서는 Spain 2024 `SENTENCIA` inventory canary → fetch → normalize → verify → reconcile → private shadow publication이다. public/search/plugin cutover와 Gemini 작업은 별도 승인으로 유지한다.
+
+## Source request governor 후속 운영 이행
+
+2026-09-03에 commit `2578ecc828f9`의 source request governor를 후속 적용했다.
+
+- Supabase migration `20260903181000`: local/remote 일치, public schema error-level DB lint 0건
+- Vercel deployment: `dpl_ASbdbBEmZB6x5m3Moqy18se3MYmU`, production `Ready`
+- canonical health/MCP version: `2578ecc828f9`, MCP database/search `ok`
+- MCP initialize/tools/search smoke: 5개 read-only 도구, 검색 10건
+- 익명 경계: `/admin/login` 404, `POST /api/admin/login` 404, token 없는 `/api/auth/masterdash` 401
+- 배포 후 error log: 0건
+- 운영 원장: `source_corpus_policies=0`, `source_request_permits=0`, `source_request_governor_states=0`
+
+전체 릴리스 게이트는 실제 disposable PostgreSQL을 연결해 backfill 60/60, Catalog 27/27, ChatGPT plugin 11/11과 production build까지 통과했다. 배포 smoke 중 watchdog heartbeat가 선언된 15분 주기와 달리 약 1시간 갱신되지 않아 top-level health가 `degraded`인 별도 운영 결함을 발견했다. 새 request governor와 database/MCP 기능은 정상이며, watchdog 스케줄·route heartbeat 정합성은 다음 교정 단계에서 다룬다.
