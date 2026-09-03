@@ -71,7 +71,7 @@
     "test:plugin": "tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts",
     "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts tests/bverfg-workflow-contract.test.ts",
     "test:masterdash": "tsx --test tests/masterdash-integration.test.ts",
-    "test:backfill": "tsx --test tests/constitutional-case-backfill-gate1.test.ts tests/constitutional-case-backfill-gate1.postgres.test.ts tests/constitutional-case-backfill-france-gate5.test.ts tests/constitutional-case-backfill-us-gate5.test.ts",
+    "test:backfill": "tsx --test tests/constitutional-case-backfill-gate1.test.ts tests/constitutional-case-backfill-gate1.postgres.test.ts tests/constitutional-case-backfill-france-gate5.test.ts tests/constitutional-case-backfill-germany-gate5.test.ts tests/constitutional-case-backfill-us-gate5.test.ts",
     "test:catalog": "tsx --test tests/constitutional-case-catalog-gate2.test.ts tests/constitutional-case-catalog-gate2.postgres.test.ts tests/constitutional-case-search-gate3.test.ts tests/constitutional-case-search-gate4.test.ts",
     "check": "tsx scripts/check.ts"
   },

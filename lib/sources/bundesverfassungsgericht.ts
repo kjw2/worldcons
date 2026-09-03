@@ -96,6 +96,7 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
       diagnostics: options?.diagnostics,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: options?.requestGovernor,
     });
     for (const entry of result.items) remember(entry.raw);
     if (result.items.length === 0 && !options?.rangeDays) {
@@ -149,6 +150,7 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
       detailOnly: true,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: options?.requestGovernor,
     });
     const raws = result.items.map((entry) => entry.raw).filter((raw): raw is RawArticle => Boolean(raw));
     for (const raw of raws) remember(raw);

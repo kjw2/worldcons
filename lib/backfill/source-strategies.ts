@@ -20,7 +20,13 @@ import {
   assertFranceConseilScopeEnabled,
   franceConseilDocumentType,
 } from "@/lib/backfill/france-scope";
+import { assertGermanyBverfgYearEnabled } from "@/lib/backfill/germany-scope";
+import {
+  discoverBverfgInventory,
+  type BverfgInventoryResult,
+} from "@/lib/crawlee/bverfg-inventory";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
+import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 
 export interface CaseBackfillInventoryItem {
   stableItemKey: string;
@@ -70,6 +76,7 @@ export interface CaseBackfillSourceStrategyDependencies {
   discoverSpainTcInventory?: typeof discoverSpainTcInventory;
   discoverFranceConseilInventory?: typeof discoverFranceConseilInventory;
   discoverFranceDilaConstitInventory?: typeof discoverFranceDilaConstitInventory;
+  discoverBverfgInventory?: typeof discoverBverfgInventory;
   currentYear?: number;
 }
 
@@ -247,12 +254,103 @@ function franceStrategy(
   };
 }
 
+function officialBverfgUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && (url.hostname === "www.bundesverfassungsgericht.de" || url.hostname === "www.bverfg.de")
+      && /^\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}\d{8}_[a-z0-9]+\.html$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function normalizedDocketKey(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function stringArrayAt(value: unknown, path: string) {
+  const found = isRecord(value) ? pathValue(value, path) : undefined;
+  return Array.isArray(found)
+    ? found.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+}
+
+function germanyStrategy(
+  dependencies: CaseBackfillSourceStrategyDependencies,
+): CaseBackfillSourceStrategy {
+  return {
+    sourceKey: "de-bverfg",
+    defaultFetchContractVersion: "bverfg-official-fetch-v1",
+    defaultParserVersion: "bverfg-official-normalize-v1",
+    governedNetworkPhases: ["discover", "fetch"],
+    assertDiscoveryScope(snapshot, environment) {
+      assertAnnualScope(snapshot);
+      if (snapshot.documentType.toUpperCase() !== "DECISION") {
+        throw new Error("case_backfill.discovery_scope_not_enabled");
+      }
+      assertGermanyBverfgYearEnabled(
+        Number(snapshot.scopeFrom?.slice(0, 4)),
+        environment,
+        dependencies.currentYear,
+      );
+    },
+    async discover(snapshot, context) {
+      const inventory: BverfgInventoryResult = await (
+        dependencies.discoverBverfgInventory ?? discoverBverfgInventory
+      )({
+        year: Number(snapshot.scopeFrom?.slice(0, 4)),
+        currentYear: dependencies.currentYear,
+        signal: context.signal,
+        checkpoint: context.checkpoint,
+        requestGovernor: context.requestGovernor,
+      });
+      return inventory;
+    },
+    validate(normalized, item, snapshot) {
+      const errors: string[] = [];
+      if (normalized.sourceKey !== snapshot.sourceKey) errors.push("source_key_mismatch");
+      if (!officialBverfgUrl(normalized.canonicalUrl) || !officialBverfgUrl(normalized.originalUrl)) {
+        errors.push("authority_url_invalid");
+      }
+      const officialCandidates = stringArrayAt(item.inventoryMetadata, "officialUrlCandidates")
+        .map((url) => canonicalizeUrl(url));
+      if (
+        officialCandidates.length === 0
+        || !officialCandidates.includes(canonicalizeUrl(normalized.canonicalUrl))
+      ) {
+        errors.push("official_url_candidate_mismatch");
+      }
+      if (normalized.contentType !== "decision") errors.push("document_type_mismatch");
+      const decisionDate = stringAt(normalized.metadata, "decisionDate")
+        ?? normalized.originalPublishedAt?.slice(0, 10)
+        ?? null;
+      validateScopeDate(decisionDate, snapshot, errors);
+      const inventoryDocket = stringAt(item.inventoryMetadata, "docket");
+      const normalizedDocket = stringAt(normalized.metadata, "caseNumber");
+      if (
+        !inventoryDocket
+        || !normalizedDocket
+        || !normalizedDocketKey(normalizedDocket).includes(normalizedDocketKey(inventoryDocket))
+      ) {
+        errors.push("docket_mismatch");
+      }
+      if (pathValue(normalized.metadata ?? {}, "collection.sourceUrlVerified") !== true) {
+        errors.push("official_source_not_verified");
+      }
+      if (!normalized.originalTitle?.trim()) errors.push("official_title_missing");
+      return errors;
+    },
+  };
+}
+
 export function loadCaseBackfillSourceStrategy(
   sourceKey: string,
   dependencies: CaseBackfillSourceStrategyDependencies = {},
 ) {
   if (sourceKey === "es-tribunal-constitucional") return spainStrategy(dependencies);
   if (sourceKey === "fr-conseil-constitutionnel") return franceStrategy(dependencies);
+  if (sourceKey === "de-bverfg") return germanyStrategy(dependencies);
   throw new Error("case_backfill.source_not_enabled");
 }
 

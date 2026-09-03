@@ -20,6 +20,14 @@ import {
   franceConseilScopeEnabled,
 } from "@/lib/backfill/france-scope";
 import {
+  assertGermanyBverfgYearEnabled,
+  CASE_CATALOG_GERMANY_HISTORY_FLAG,
+  GERMANY_BVERFG_HISTORY_START_YEAR,
+  germanyBverfgExpansionPlan,
+  germanyBverfgYearEnabled,
+  germanyBverfgYearScope,
+} from "@/lib/backfill/germany-scope";
+import {
   adminQueueP1CommandAuthorized,
   resolveAdminQueueP1Authority,
   type AdminQueueP1CommandType,
@@ -30,7 +38,7 @@ import { tryRecordWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
 const GATE1_PHASES = ["discover", "fetch", "normalize", "verify", "reconcile"] as const;
 type Gate1Command = "plan" | "status" | (typeof GATE1_PHASES)[number];
-type BackfillSource = "spain" | "france";
+type BackfillSource = "spain" | "france" | "germany";
 
 function argumentValue(name: string) {
   return process.argv.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -77,6 +85,7 @@ function selectedSource(): BackfillSource {
   const value = (argumentValue("source") ?? "spain").trim().toLowerCase();
   if (value === "spain" || value === "es-tribunal-constitucional") return "spain";
   if (value === "france" || value === "fr-conseil-constitutionnel") return "france";
+  if (value === "germany" || value === "de-bverfg") return "germany";
   throw new Error("invalid_source");
 }
 
@@ -85,6 +94,34 @@ function currentYear() {
 }
 
 function backfillPlan(source: BackfillSource) {
+  if (source === "germany") {
+    const year = integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, currentYear());
+    const scope = germanyBverfgYearScope(year, currentYear());
+    return {
+      gate: 5,
+      mode: "private-shadow",
+      sourceKey: "de-bverfg",
+      ...scope,
+      executionEnabled: germanyBverfgYearEnabled(year),
+      requiredHistoryFlag: CASE_CATALOG_GERMANY_HISTORY_FLAG,
+      expansionPlan: germanyBverfgExpansionPlan(),
+      primaryDiscovery: "external_index_dejure_paged_listing",
+      authorityVerification: "official_bverfg_detail_only",
+      coverageAssurance: "external_index_assisted",
+      officialCorpusCoverageClaimed: false,
+      phases: [...GATE1_PHASES],
+      publicCatalogEnabled: false,
+      geminiCalls: 0,
+      invariants: [
+        "external_index_requests_are_discover_only",
+        "official_detail_requests_are_fetch_only",
+        "docket_is_not_a_decision_unique_identifier",
+        "stable_identity_includes_decision_date_and_docket",
+        "first_page_probe_detects_index_mutation",
+        "external_inventory_never_claims_official_corpus_completeness",
+      ],
+    };
+  }
   if (source === "france") {
     const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
     const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
@@ -137,6 +174,36 @@ function backfillPlan(source: BackfillSource) {
 async function snapshotForDiscovery(source: BackfillSource) {
   const existing = optionalUuid("snapshot");
   if (existing) return existing;
+  if (source === "germany") {
+    const year = integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, currentYear());
+    const scope = germanyBverfgYearScope(year, currentYear());
+    assertGermanyBverfgYearEnabled(year, process.env, currentYear());
+    const policyVersion = requiredArgument("policy-version");
+    await postgresCaseBackfillRepository.getSourcePolicy("de-bverfg", policyVersion);
+    return postgresCaseBackfillRepository.openSnapshot({
+      sourceKey: "de-bverfg",
+      scopeFrom: scope.scopeFrom,
+      scopeTo: scope.scopeTo,
+      documentType: scope.documentType,
+      discoveryMethod: "external_index_dejure_to_official_detail",
+      parserVersion: argumentValue("parser-version")?.trim() || "bverfg-official-normalize-v1",
+      sourcePolicyVersion: policyVersion,
+      coverageAssurance: "external_index_assisted",
+      expectedCount: null,
+      expectedCountBasis: null,
+      coverageEvidence: {
+        method: "external_index_dejure_paged_listing",
+        externalIndexUrl: "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG",
+        officialAuthorityUrl: "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html",
+        officialCorpusCoverageClaimed: false,
+        pending: true,
+      },
+      exclusions: [
+        { kind: "coverage_limit", value: "official decisions absent from the external index cannot be discovered by this snapshot" },
+      ],
+      createdBy: argumentValue("requested-by")?.trim() || "backfill-corpus-cli",
+    });
+  }
   if (source === "france") {
     const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
     const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
@@ -195,6 +262,8 @@ async function submitPhase(phase: (typeof GATE1_PHASES)[number], snapshotId: str
   const snapshot = await postgresCaseBackfillRepository.getSnapshot(snapshotId);
   const fetchContractVersion = snapshot.sourceKey === "fr-conseil-constitutionnel"
     ? "france-conseil-fetch-v1"
+    : snapshot.sourceKey === "de-bverfg"
+      ? "bverfg-official-fetch-v1"
     : "spain-hj-fetch-v1";
   const passNumber = await postgresCaseBackfillRepository.allocatePass(snapshotId, phase);
   const payloadRef = {

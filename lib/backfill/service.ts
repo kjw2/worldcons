@@ -17,6 +17,7 @@ import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } fro
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inventory";
 import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
+import { discoverBverfgInventory } from "@/lib/crawlee/bverfg-inventory";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
 import { createCaseBackfillRequestGovernor } from "@/lib/backfill/source-request-governor";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
@@ -40,6 +41,7 @@ interface CaseBackfillDependencies {
   discoverSpainTcInventory?: typeof discoverSpainTcInventory;
   discoverFranceConseilInventory?: typeof discoverFranceConseilInventory;
   discoverFranceDilaConstitInventory?: typeof discoverFranceDilaConstitInventory;
+  discoverBverfgInventory?: typeof discoverBverfgInventory;
   environment?: Record<string, string | undefined>;
 }
 
@@ -315,6 +317,7 @@ export async function runCaseBackfillPass(
       discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
       discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
       discoverFranceDilaConstitInventory: dependencies.discoverFranceDilaConstitInventory,
+      discoverBverfgInventory: dependencies.discoverBverfgInventory,
       currentYear: dependencies.now().getUTCFullYear(),
     });
     strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
@@ -404,6 +407,7 @@ export async function runCaseBackfillPass(
     discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
     discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
     discoverFranceDilaConstitInventory: dependencies.discoverFranceDilaConstitInventory,
+    discoverBverfgInventory: dependencies.discoverBverfgInventory,
     currentYear: dependencies.now().getUTCFullYear(),
   });
   if (input.phase === "fetch" && !strategy.governedNetworkPhases.includes("fetch")) {
