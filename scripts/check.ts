@@ -1816,6 +1816,30 @@ async function assertAdminRouteSecurityControls() {
       "admin job claim fix migration must not qualify PL/pgSQL parameters as SQL table aliases",
     );
 
+    const adminJobEventFixMigration = fs.readFileSync(
+      path.join(process.cwd(), "supabase/migrations/20260903180000_fix_append_admin_job_event_parameter_references.sql"),
+      "utf8",
+    );
+    for (const requiredSql of [
+      "v_job_id alias for $1",
+      "v_event_type alias for $2",
+      "v_message alias for $3",
+      "v_error_class alias for $4",
+      "v_metadata alias for $5",
+      "set search_path = public, pg_temp",
+      "revoke all on function append_admin_job_event(uuid,text,text,text,jsonb) from public",
+      "grant execute on function append_admin_job_event(uuid,text,text,text,jsonb) to service_role",
+    ]) {
+      assert(
+        adminJobEventFixMigration.toLowerCase().includes(requiredSql),
+        `admin job event fix migration must include ${requiredSql}`,
+      );
+    }
+    assert(
+      !adminJobEventFixMigration.includes("fn."),
+      "admin job event fix migration must not qualify PL/pgSQL parameters as SQL table aliases",
+    );
+
     const adminJobsHelperSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-jobs.ts"), "utf8");
     for (const requiredExport of [
       "export const ADMIN_JOB_TYPES",
