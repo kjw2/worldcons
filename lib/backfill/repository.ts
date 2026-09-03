@@ -6,6 +6,7 @@ import type {
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
   CaseBackfillPassInput,
+  CaseBackfillPublicationResult,
   CaseBackfillSnapshot,
   CaseBackfillSnapshotStatus,
   CaseBackfillSourcePolicy,
@@ -154,6 +155,11 @@ export interface CaseBackfillRepository {
   getFetchArtifact(artifactId: string): Promise<CaseBackfillFetchArtifact>;
   getNormalizationArtifact(artifactId: string, itemId?: string): Promise<CaseBackfillNormalizationArtifact>;
   recordNormalizationArtifact(input: RecordNormalizationArtifactInput): Promise<string>;
+  publishItem(input: {
+    itemId: string;
+    authority: CaseBackfillAttemptAuthority;
+    actorId?: string;
+  }): Promise<CaseBackfillPublicationResult>;
   completeItem(input: {
     itemId: string;
     phase: CaseBackfillItemPhase;
@@ -472,6 +478,25 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     databaseError(error);
     if (typeof data !== "string") throw new Error("case_backfill.normalization_artifact_failed");
     return data;
+  },
+
+  async publishItem(input) {
+    const { data, error } = await requiredClient().rpc("case_catalog_publish_backfill_item_v1", {
+      p_item_id: input.itemId,
+      p_p1_attempt_id: input.authority.attemptId,
+      p_p1_fencing_token: input.authority.fencingToken,
+      p_actor_id: input.actorId ?? "case-backfill-worker",
+    });
+    databaseError(error);
+    const row = firstRow(data);
+    if (!row) throw new Error("case_backfill.catalog_publish_failed");
+    return {
+      articleId: text(row, "article_id"),
+      versionId: text(row, "version_id"),
+      versionRevision: numberValue(row, "version_revision"),
+      publicationRevision: numberValue(row, "publication_revision"),
+      articleSlug: text(row, "article_slug"),
+    };
   },
 
   async completeItem(input) {

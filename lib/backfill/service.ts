@@ -15,6 +15,7 @@ import type {
 import { loadSourceAdapter } from "@/lib/sources/lazy";
 import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
+import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
 
 export interface CaseBackfillExecutionContext {
   authority: CaseBackfillAttemptAuthority;
@@ -26,12 +27,14 @@ interface CaseBackfillDependencies {
   repository: CaseBackfillRepository;
   loadAdapter: typeof loadSourceAdapter;
   now: () => Date;
+  environment?: Record<string, string | undefined>;
 }
 
 const defaultDependencies: CaseBackfillDependencies = {
   repository: postgresCaseBackfillRepository,
   loadAdapter: loadSourceAdapter,
   now: () => new Date(),
+  environment: process.env,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -285,7 +288,8 @@ async function processItem(
   if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository);
   else if (phase === "normalize") await processNormalize(item, adapter, input, context, repository);
   else if (phase === "verify") await processVerify(item, snapshot, context, repository);
-  else throw new Error("case_backfill.publish_gate_closed");
+  else if (phase === "publish") await repository.publishItem({ itemId: item.itemId, authority: context.authority });
+  else throw new Error("case_backfill.invalid_item_phase");
 }
 
 export async function runCaseBackfillPass(
@@ -369,7 +373,9 @@ export async function runCaseBackfillPass(
   }
 
   if (snapshot.status !== "closed") throw new Error("case_backfill.snapshot_not_closed");
-  if (input.phase === "publish") throw new Error("case_backfill.publish_gate_closed");
+  if (input.phase === "publish" && !caseCatalogWriteEnabled(dependencies.environment ?? process.env)) {
+    throw new Error("case_backfill.catalog_write_disabled");
+  }
 
   const runId = await repository.beginRun(input, context.authority);
 

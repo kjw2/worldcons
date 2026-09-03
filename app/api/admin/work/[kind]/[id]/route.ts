@@ -96,7 +96,7 @@ async function publicationAction(
     expectedPublicationRevision: Number(publication.revision),
     idempotencyKey: `p4:${createHash(`publication:${id}:${action}:${idempotencyKey}`, 64)}`,
     targetState: action === "publish" ? "published" : "withdrawn",
-    versionId: String(head.current_version_id),
+    versionId: action === "withdraw" ? String(publication.version_id) : String(head.current_version_id),
     actorType: "human",
     actorId: operatorIdentity,
     reason,

@@ -23,6 +23,10 @@ export type ArticleStatus =
   | "failed_summary"
   | "needs_review";
 
+export type CaseEnrichmentStatus = "source_only" | "light" | "full";
+export type CaseEnrichmentFreshness = "current" | "stale";
+export type CaseSummaryStatus = "available" | "pending" | "reprocessing";
+
 export type TagType =
   | "court"
   | "country"
@@ -111,6 +115,10 @@ export interface ArticleListItem {
   tags: TagSummary[];
   oneLineSummary: string;
   viewCount?: number;
+  enrichmentStatus?: CaseEnrichmentStatus | null;
+  enrichmentFreshness?: CaseEnrichmentFreshness | null;
+  summaryStatus?: CaseSummaryStatus | null;
+  summaryAvailable?: boolean;
 }
 
 export interface ArticleDetail extends ArticleListItem {

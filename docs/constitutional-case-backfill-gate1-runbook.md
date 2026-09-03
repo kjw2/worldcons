@@ -4,7 +4,7 @@
 
 ## 범위와 금지선
 
-Gate 1은 스페인 헌법재판소 HJ의 2024년 `SENTENCIA`를 대상으로 불변 inventory와 비공개 fetch/normalize/verify 원장을 증명한다. 공개 Catalog, 기존 기사 publication pointer, ChatGPT 플러그인 검색 결과는 바꾸지 않으며 Gemini 호출은 0회다. `publish`는 CLI에서 제공하지 않고 P1 handler도 실패 폐쇄한다.
+Gate 1은 스페인 헌법재판소 HJ의 2024년 `SENTENCIA`를 대상으로 불변 inventory와 비공개 fetch/normalize/verify 원장을 증명한다. Gate 1 단독 검증에서는 공개 Catalog, 기존 기사 publication pointer, ChatGPT 플러그인 검색 결과를 바꾸지 않으며 Gemini 호출은 0회다. Gate 2 migration과 `CASE_CATALOG_WRITE_ENABLED=true`가 함께 승인되기 전에는 `publish`를 실행하지 않는다.
 
 공식 HJ는 1980년 이후 헌법재판소 doctrine 검색과 `Sentencia`, `Auto`, `Declaración` 유형을 제공한다. 이 설명은 수집 범위의 출발점일 뿐, robots·이용조건·텍스트 보관 허용을 자동 승인하지 않는다. 운영자는 실행 당일 근거를 다시 확인하고 immutable policy row로 별도 승인해야 한다.
 
@@ -74,7 +74,7 @@ ADMIN_QUEUE_V3_WORKER_COHORTS=catalog-backfill
 - reconcile 결과에 설명되지 않은 terminal failure, retry wait, claim, conformance 차이가 없다.
 - 공개 surface와 Gemini 호출 수에 변화가 없다.
 
-한 항목이라도 실패하면 다음 phase로 진행하지 않는다. Gate 2 publication과 source-anchor/P3 freshness 구현은 별도 승인 대상이다.
+한 항목이라도 실패하면 다음 phase로 진행하지 않는다. Gate 2 publication과 source-anchor/P3 freshness는 구현됐지만 운영 migration·source policy·canary 승인은 여전히 별도다. 공개 전환 절차는 Gate 2 런북을 따른다.
 
 ## 5. 롤백
 

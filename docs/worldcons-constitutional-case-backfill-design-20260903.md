@@ -3,7 +3,7 @@
 - 최초 작성: 2026-09-03
 - 심층 검토·개정: 2026-09-03
 - 대상 프로젝트: `worldcons`
-- 상태: Gate 1 로컬 구현·production-shaped PostgreSQL 검증 완료, 운영 migration·source policy 승인·Spain canary 전
+- 상태: Gate 1·2 로컬 구현과 production-shaped PostgreSQL 검증 완료, 운영 migration·source policy 승인·Spain canary 전
 - 운영 스택: Vercel + Supabase/PostgreSQL
 - AI·임베딩 공급자: Gemini 전용
 
@@ -56,6 +56,17 @@ v2.2 최종 검토에서 구현 DDL 전에 필요한 두 계약을 추가로 고
 |---|---|
 | AI artifact의 source version과 Catalog display version 의미가 혼재 | Catalog publication은 authoritative source anchor만 가리키고 AI/P3 version은 그 anchor를 참조 |
 | published item 재-normalize 시 terminal outcome과 진행 상태가 충돌 | `published`를 유지하고 artifact pointer 차이에서 `needs_reverify`·`needs_republish`를 계산 |
+
+구현 검증에서 추가로 확인한 안전 계약도 설계의 일부로 고정한다.
+
+| 구현 검증 항목 | 확정 계약 |
+|---|---|
+| Catalog source correction 뒤 feature flag rollback이 legacy `articles`의 stale AI를 되살릴 수 있음 | `articles.catalog_ai_stale_v4`를 기능 플래그와 독립된 fail-closed 불변식으로 유지하고 모든 legacy 공개 읽기에서 제외 |
+| source-only revision capture를 위해 mutable `articles`를 덮어쓰면 기존 P3 콘텐츠가 손상될 수 있음 | 기존 article은 변경하지 않고 normalization snapshot을 immutable `authoritative_source` revision에 직접 capture |
+| Catalog와 P3가 서로 다른 역할의 version을 공유할 위험 | DB trigger로 Catalog는 self-anchored `authoritative_source`, P3는 현재 anchor/hash와 일치하는 `enrichment_full`만 허용 |
+| P3 withdraw가 global head로 version pointer까지 이동할 수 있음 | withdraw는 현재 publication version을 보존하고 state만 전환하며 다른 version 지정은 DB에서 거부 |
+
+Gate 2 구현 증거는 `20260903130000_constitutional_case_catalog_gate2.sql`과 PostgreSQL 계약 테스트에 고정한다. 로컬 검증 완료는 운영 활성화를 뜻하지 않는다. 운영 migration, immutable source policy 승인, Spain canary reconciliation을 각각 별도 승인 gate로 유지한다.
 
 이 문서에서 “전수”는 전 세계 모든 헌법판례를 뜻하지 않는다.
 

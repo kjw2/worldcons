@@ -119,3 +119,11 @@ export interface CaseBackfillPassResult {
   terminalFailed: number;
   backlogRemaining: boolean;
 }
+
+export interface CaseBackfillPublicationResult {
+  articleId: string;
+  versionId: string;
+  versionRevision: number;
+  publicationRevision: number;
+  articleSlug: string;
+}

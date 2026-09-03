@@ -24,6 +24,7 @@ import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
+import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
 
 interface SupabaseTagRow {
   id?: string;
@@ -68,6 +69,10 @@ interface SupabaseArticleRow {
   case_number?: string | null;
   error_metadata?: Record<string, unknown> | null;
   article_tags?: SupabaseArticleTagRow[] | null;
+  enrichment_status?: string | null;
+  enrichment_freshness?: string | null;
+  summary_status?: string | null;
+  summary_available?: boolean | null;
 }
 
 interface SupabaseJurisdictionCountRow {
@@ -126,6 +131,10 @@ const ARTICLE_P3_LIST_SELECT = [
 ].join(",");
 const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
 const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text`;
+const ARTICLE_V4_STATE_SELECT = "enrichment_status,enrichment_freshness,summary_status,summary_available";
+const ARTICLE_V4_LIST_SELECT = `${ARTICLE_P3_LIST_SELECT},${ARTICLE_V4_STATE_SELECT}`;
+const ARTICLE_V4_PAGE_SELECT = `${ARTICLE_P3_PAGE_SELECT},${ARTICLE_V4_STATE_SELECT}`;
+const ARTICLE_V4_DETAIL_SELECT = `${ARTICLE_P3_DETAIL_SELECT},${ARTICLE_V4_STATE_SELECT}`;
 
 function publicationProjectionEnabled(includeUnpublished?: boolean) {
   return publicProjectionReadsEnabled(Boolean(includeUnpublished));
@@ -139,11 +148,25 @@ function articleRelation(includeUnpublished?: boolean) {
   return publicArticleRelation(Boolean(includeUnpublished));
 }
 
+function articleDetailRelation(includeUnpublished?: boolean) {
+  if (!includeUnpublished && caseCatalogPublicReadsEnabled()) return "public_article_detail_v4";
+  return articleRelation(includeUnpublished);
+}
+
 function projectionSelect(select: string, includeUnpublished?: boolean) {
   if (!publicationProjectionEnabled(includeUnpublished)) return select;
   if (select === ARTICLE_DETAIL_SELECT) return ARTICLE_P3_DETAIL_SELECT;
   if (select === ARTICLE_PAGE_SELECT) return ARTICLE_P3_PAGE_SELECT;
   return ARTICLE_P3_LIST_SELECT;
+}
+
+function detailProjectionSelect(select: string, includeUnpublished?: boolean) {
+  if (!includeUnpublished && caseCatalogPublicReadsEnabled()) {
+    if (select === ARTICLE_DETAIL_SELECT) return ARTICLE_V4_DETAIL_SELECT;
+    if (select === ARTICLE_PAGE_SELECT) return ARTICLE_V4_PAGE_SELECT;
+    return ARTICLE_V4_LIST_SELECT;
+  }
+  return projectionSelect(select, includeUnpublished);
 }
 
 function minimalSourceMetadata(row: SupabaseArticleRow) {
@@ -219,6 +242,10 @@ function articleRowToItem(
     sourceMetadata: row.source_metadata ?? minimalSourceMetadata(row),
     oneLineSummary: row.one_line_summary || summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
     viewCount: 0,
+    enrichmentStatus: row.enrichment_status as ArticleDetail["enrichmentStatus"],
+    enrichmentFreshness: row.enrichment_freshness as ArticleDetail["enrichmentFreshness"],
+    summaryStatus: row.summary_status as ArticleDetail["summaryStatus"],
+    summaryAvailable: row.summary_available ?? Boolean(summary),
   };
 
   if (includeDetailFields) {
@@ -428,7 +455,7 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
     .limit(fallbackCandidateLimit);
 
   if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
   }
   if (filters.ids) query = query.in("id", filters.ids);
   if (filters.source) query = query.eq("source_key", filters.source);
@@ -521,7 +548,7 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
     .order("id", { ascending: true });
 
   if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
   }
   if (filters.ids) query = query.in("id", filters.ids);
   if (filters.source) query = query.eq("source_key", filters.source);
@@ -579,7 +606,7 @@ export async function listPublicSitemapArticles() {
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
     if (!publicationProjectionEnabled()) {
-      query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+      query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
     }
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -610,12 +637,12 @@ async function getArticleBySlugWithSelect(slug: string, select: string, options:
   }
 
   let query = supabase
-    .from(articleRelation(options.includeUnpublished))
-    .select(projectionSelect(select, options.includeUnpublished))
+    .from(articleDetailRelation(options.includeUnpublished))
+    .select(detailProjectionSelect(select, options.includeUnpublished))
     .eq("slug", slug);
 
   if (!options.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
   }
 
   const { data, error } = await query.maybeSingle();
@@ -655,9 +682,9 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
     return { slug: article.slug, cleanedText: article.cleanedText ?? null };
   }
 
-  let query = supabase.from(articleRelation(options.includeUnpublished)).select("slug,status,source_metadata,cleaned_text").eq("slug", slug);
+  let query = supabase.from(articleDetailRelation(options.includeUnpublished)).select("slug,status,source_metadata,cleaned_text").eq("slug", slug);
   if (!options.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").filter("source_metadata->collection->>publishable", "eq", "true");
+    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
   }
 
   const { data, error } = await query.maybeSingle();
@@ -761,7 +788,7 @@ export async function listTopViewedArticles(
     .eq("status", "summarized");
 
   if (!publicationProjectionEnabled()) {
-    query = query.filter("source_metadata->collection->>publishable", "eq", "true");
+    query = query.eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
   }
 
   if (filters.source) query = query.eq("source_key", filters.source);
@@ -829,7 +856,7 @@ export async function listJurisdictionArticleCounts(
         .select("id", { count: "exact", head: true })
         .eq("status", "summarized")
         .eq("jurisdiction", jurisdiction);
-      if (!publicationProjectionEnabled()) query = query.filter("source_metadata->collection->>publishable", "eq", "true");
+      if (!publicationProjectionEnabled()) query = query.eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
       if (startIso) query = query.gte("original_published_at", startIso);
 
       const { count, error } = await query;

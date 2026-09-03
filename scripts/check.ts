@@ -84,6 +84,7 @@ import {
   JUDICIAL_COMPLAINT_TAG_NAME,
 } from "@/lib/tags/judicial-complaint";
 import type { NormalizedArticle } from "@/lib/sources/types";
+import { caseCatalogFlagErrors } from "@/lib/case-catalog/flags";
 
 function assert(condition: unknown, message: string) {
   if (!condition) {
@@ -114,6 +115,7 @@ function pacificDayForCheck() {
 }
 
 const canonical = canonicalizeUrl("HTTPS://Example.COM/path/?utm_source=x&a=1#frag");
+assert(caseCatalogFlagErrors().length === 0, `Invalid constitutional case Catalog flags: ${caseCatalogFlagErrors().join("; ")}`);
 assert(canonical === "https://example.com/path?a=1", "canonical URL normalization failed");
 const qpcCanonical = canonicalizeUrl("https://qpc360.conseil-constitutionnel.fr/2026-04-17/decision-2026-1194-qpc-17-avril-2026?searchParams=abc");
 assert(

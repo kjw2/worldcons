@@ -98,6 +98,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const missingOriginalUrl = !originalHref;
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
+  const summaryReprocessing = article.summaryStatus === "reprocessing";
+  const sourceOnly = article.enrichmentStatus === "source_only";
   const caseNumber = articleCaseNumber(article);
   const title = articleTitleForDisplay(article);
 
@@ -153,6 +155,13 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
               <p className="text-sm leading-6 text-ink-muted">현재 보존된 원문 URL이 없어 기관 사이트에서 직접 자료를 확인해야 할 수 있습니다.</p>
             </DisclosureCard>
           ) : null}
+          {summaryReprocessing ? (
+            <DisclosureCard title="공식 원문이 갱신되어 한국어 요약을 재처리하고 있습니다">
+              <p className="text-sm leading-6 text-ink-muted">
+                현재 화면에는 검증된 최신 공식 정보만 표시합니다. 이전 원문을 바탕으로 만든 제목·요약·분류는 재처리가 끝날 때까지 제공하지 않습니다.
+              </p>
+            </DisclosureCard>
+          ) : null}
           {summary ? (
             <>
               <SummarySection title="핵심 요약" variant="primary">
@@ -182,8 +191,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             </>
           ) : (
             <EmptyState
-              title="AI 요약이 아직 준비되지 않았습니다"
-              description="원문 본문 확보 또는 요약 생성이 완료되면 핵심 쟁점과 배경, 시사점이 이 영역에 정리됩니다."
+              title={sourceOnly ? "검증된 공식 판례가 먼저 공개되었습니다" : "AI 요약이 아직 준비되지 않았습니다"}
+              description={summaryReprocessing
+                ? "최신 공식 원문을 기준으로 한국어 요약을 다시 생성하고 있습니다. 그동안에는 공식 원문과 사건 정보를 확인해 주세요."
+                : "한국어 요약이 준비되면 핵심 쟁점과 배경, 시사점이 이 영역에 추가됩니다."}
             />
           )}
           {sourceTextAvailable ? <ArticleSourceSnapshot slug={article.slug} /> : null}

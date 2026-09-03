@@ -236,6 +236,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       assert.equal((await pool.query("select count(*)::integer count from article_version_heads_p3 where article_id=$1", [articleId])).rows[0].count, 0);
 
       await catalogTransition(pool, { articleId, anchor: sourceAVersion, expected: 0, key: "catalog-a" });
+      assert.equal((await pool.query("select catalog_ai_stale_v4 from articles where id=$1", [articleId])).rows[0].catalog_ai_stale_v4, false);
       await pool.query(`update articles set korean_title='헌법재판소 판결',status='summarized',
         summary_json='{"koreanTitle":"헌법재판소 판결","summary":{"coreSummary":["기본권 판단"]}}',summarized_at=now()
         where id=$1`, [articleId]);
@@ -265,6 +266,11 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       const sourceB = await capture(pool, { articleId, expected: 2, role: "authoritative_source", sourceHash: "2".repeat(64) });
       const sourceBVersion = sourceB.rows[0].version_id;
       await catalogTransition(pool, { articleId, anchor: sourceBVersion, expected: 1, key: "catalog-b" });
+      assert.equal((await pool.query("select catalog_ai_stale_v4 from articles where id=$1", [articleId])).rows[0].catalog_ai_stale_v4, true);
+      await assert.rejects(
+        pool.query("update articles set catalog_ai_stale_v4=false where id=$1", [articleId]),
+        /ARTICLE_CATALOG_STALE_DIRECT_WRITE_FORBIDDEN/,
+      );
       assert.equal((await pool.query("select count(*)::integer count from public_article_projection_p3 where id=$1", [articleId])).rows[0].count, 0);
       const fallback = await pool.query("select summary_json,raw_text,error_metadata,enrichment_status,summary_status,summary_available from public_article_detail_v4 where id=$1", [articleId]);
       assert.deepEqual(fallback.rows[0], {
@@ -292,6 +298,98 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       assert.equal(withdrawn.rows[0].publication_state, "withdrawn");
       const kept = await pool.query("select version_id from article_publications_p3 where article_id=$1", [articleId]);
       assert.equal(kept.rows[0].version_id, fullAVersion);
+    });
+
+    await t.test("fenced publish pass atomically creates a Gemini-free source-only public article", async () => {
+      const opened = await pool.query<{ source_inventory_snapshot_open_v1: string }>(
+        "select source_inventory_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+        [
+          "es-tribunal-constitucional","2024-01-01","2024-12-31","SENTENCIA",
+          "official_hj_search_pagination","spain-hj-normalize-v1","spain-hj-gate2-v1",
+          "authoritative_enumerated",1,"official-result-count",{ official: true },JSON.stringify([]),"catalog-test",
+        ],
+      );
+      const snapshotId = opened.rows[0].source_inventory_snapshot_open_v1;
+      const item = await pool.query<{ source_inventory_item_upsert_v1: string }>(
+        "select source_inventory_item_upsert_v1($1,$2,$3,$4,$5,$6)",
+        [
+          snapshotId,"hj:77777","77777",
+          "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/77777","SENTENCIA","2024-06-20",
+        ],
+      );
+      const itemId = item.rows[0].source_inventory_item_upsert_v1;
+      await pool.query("select * from source_inventory_snapshot_close_v1($1)", [snapshotId]);
+      const fetch = await pool.query<{ id: string }>(`insert into source_fetch_artifacts(
+        item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,
+        payload_size,replayability,bounded_replay_payload,fetch_contract_version
+      ) values($1,'spain-hj-gate2-v1',$2,200,'{}',repeat('4',64),100,'bounded_evidence','{"bounded":true}','spain-hj-fetch-v1') returning id`, [
+        itemId,"https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/77777",
+      ]);
+      const normalizedOutput = {
+        sourceKey: "es-tribunal-constitucional",
+        jurisdiction: "Spain",
+        institutionName: "Tribunal Constitucional de España",
+        contentType: "decision",
+        originalUrl: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/77777",
+        canonicalUrl: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/77777",
+        originalLanguage: "es",
+        originalTitle: "SENTENCIA 77/2024",
+        originalPublishedAt: "2024-06-20T00:00:00.000Z",
+        cleanedText: "texto constitucional ".repeat(80),
+        metadata: { resolutionType: "SENTENCIA", decisionDate: "2024-06-20", caseNumber: "77/2024" },
+      };
+      const normalization = await pool.query<{ id: string }>(`insert into source_normalization_artifacts(
+        item_id,fetch_artifact_id,parser_version,normalization_contract_version,normalized_output,
+        normalized_output_hash,validation_status,validation_errors
+      ) values($1,$2,'spain-hj-normalize-v1','case-normalized-v1',$3,repeat('5',64),'valid','[]') returning id`, [
+        itemId,fetch.rows[0].id,normalizedOutput,
+      ]);
+      await pool.query(`update source_backfill_items set status='verified',current_fetch_artifact_id=$2,
+        current_normalization_artifact_id=$3,verified_normalization_artifact_id=$3 where id=$1`, [
+        itemId,fetch.rows[0].id,normalization.rows[0].id,
+      ]);
+      await pool.query("select * from admin_submit_command_v3($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", [
+        "p1.case-backfill.publish",{ cohort: "catalog-backfill",snapshotId,passNumber: 1,batchLimit: 1 },
+        `catalog-publish:${snapshotId}`,`catalog-publish-active:${snapshotId}`,"catalog-test",0,3,1,4,false,
+      ]);
+      const attempt = await pool.query<{ attempt_id: string; fencing_token: string }>(
+        "select * from admin_claim_command_attempt_p1($1,$2,$3,$4)",
+        ["catalog-worker",["p1.case-backfill.publish"],["catalog-backfill"],60],
+      );
+      const run = await pool.query<{ source_backfill_run_begin_v1: string }>(
+        "select source_backfill_run_begin_v1($1,'publish',1,$2,$3)",
+        [snapshotId,attempt.rows[0].attempt_id,attempt.rows[0].fencing_token],
+      );
+      const claimed = await pool.query(
+        "select * from source_backfill_items_claim_v1($1,'publish',1,$2,$3,60,null)",
+        [snapshotId,attempt.rows[0].attempt_id,attempt.rows[0].fencing_token],
+      );
+      assert.equal(claimed.rowCount, 1);
+      const published = await pool.query<{ article_id: string; version_id: string; article_slug: string }>(
+        "select * from case_catalog_publish_backfill_item_v1($1,$2,$3,'catalog-test')",
+        [itemId,attempt.rows[0].attempt_id,attempt.rows[0].fencing_token],
+      );
+      assert.equal(published.rows[0].article_slug, "es-tc-77777");
+      const detail = await pool.query(`select slug,korean_title,summary_json,raw_text,error_metadata,
+        enrichment_status,summary_status,summary_available,source_metadata
+        from public_article_detail_v4 where id=$1`, [published.rows[0].article_id]);
+      assert.equal(detail.rowCount, 1);
+      assert.equal(detail.rows[0].korean_title, null);
+      assert.equal(detail.rows[0].summary_json, null);
+      assert.equal(detail.rows[0].raw_text, null);
+      assert.equal(detail.rows[0].error_metadata, null);
+      assert.equal(detail.rows[0].enrichment_status, "source_only");
+      assert.equal(detail.rows[0].summary_status, "pending");
+      assert.equal(detail.rows[0].summary_available, false);
+      assert.equal(detail.rows[0].source_metadata.collection.publishable, true);
+      assert.equal((await pool.query("select count(*)::integer count from article_version_heads_p3 where article_id=$1", [published.rows[0].article_id])).rows[0].count, 0);
+      assert.equal((await pool.query("select count(*)::integer count from article_publications_p3 where article_id=$1", [published.rows[0].article_id])).rows[0].count, 0);
+      await pool.query("select source_backfill_run_finish_v1($1,$2,$3,'succeeded',1,1,0,0)", [
+        run.rows[0].source_backfill_run_begin_v1,attempt.rows[0].attempt_id,attempt.rows[0].fencing_token,
+      ]);
+      await pool.query("select * from admin_complete_command_attempt_v3($1,$2,'{}')", [
+        attempt.rows[0].attempt_id,attempt.rows[0].fencing_token,
+      ]);
     });
 
     await t.test("expired source policy stops Catalog publication", async () => {

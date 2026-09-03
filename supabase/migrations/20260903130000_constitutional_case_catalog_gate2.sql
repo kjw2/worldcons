@@ -4,6 +4,25 @@ begin;
 -- untouched and are identified by a null role; every new v4 row is explicitly
 -- typed and anchored to an authoritative source revision from the same article.
 alter table articles add constraint articles_id_source_key_v4_key unique (id, source_key);
+alter table articles add column if not exists catalog_ai_stale_v4 boolean not null default false;
+
+create or replace function article_catalog_stale_guard_v4()
+returns trigger
+language plpgsql
+set search_path = public, extensions, pg_temp
+as $function$
+begin
+  if new.catalog_ai_stale_v4 is distinct from old.catalog_ai_stale_v4
+    and coalesce(current_setting('app.catalog_freshness_v4',true),'')<>'on'
+  then raise exception using errcode='42501',message='ARTICLE_CATALOG_STALE_DIRECT_WRITE_FORBIDDEN'; end if;
+  return new;
+end;
+$function$;
+
+drop trigger if exists articles_catalog_stale_guard_v4_trigger on articles;
+create trigger articles_catalog_stale_guard_v4_trigger
+before update of catalog_ai_stale_v4 on articles
+for each row execute function article_catalog_stale_guard_v4();
 
 alter table article_content_versions_p3
   add column if not exists version_document_schema text not null default 'p3.article.v1',
@@ -339,6 +358,12 @@ create table if not exists case_catalog_cache_outbox_v1 (
   constraint case_catalog_cache_outbox_v1_revision_key unique (publication_id, publication_revision)
 );
 
+alter table source_backfill_item_events drop constraint source_backfill_item_events_type_check;
+alter table source_backfill_item_events add constraint source_backfill_item_events_type_check check (event_type in (
+  'item_discovered','item_claimed','item_lease_extended','fetch_recorded','normalization_recorded',
+  'item_completed','item_failed','claim_released','verification_noop','catalog_published'
+));
+
 create or replace function case_catalog_immutable_v1()
 returns trigger language plpgsql as $function$
 begin
@@ -370,7 +395,8 @@ create or replace function article_version_capture_v4(
   p_provenance_actor_type text,
   p_provenance_actor_id text,
   p_model_ref text default null,
-  p_prompt_ref text default null
+  p_prompt_ref text default null,
+  p_content_snapshot jsonb default null
 )
 returns table(version_id uuid, version_revision bigint, version_created boolean)
 language plpgsql
@@ -391,6 +417,8 @@ begin
     or p_case_metadata_snapshot is null or jsonb_typeof(p_case_metadata_snapshot) <> 'object'
     or p_case_identifiers_snapshot is null or jsonb_typeof(p_case_identifiers_snapshot) <> 'array'
     or p_provenance_actor_type not in ('human','llm','import')
+    or (p_content_snapshot is not null and jsonb_typeof(p_content_snapshot)<>'object')
+    or (p_version_role<>'authoritative_source' and p_content_snapshot is not null)
   then raise exception using errcode = '22023', message = 'ARTICLE_VERSION_V4_INVALID_INPUT'; end if;
   select a.* into v_article from articles a where a.id = p_article_id for update;
   if not found then raise exception using errcode = 'P0001', message = 'ARTICLE_NOT_FOUND'; end if;
@@ -409,12 +437,17 @@ begin
     'schema','v4.article-case.v1','articleId',p_article_id,'role',p_version_role,
     'sourceAnchorVersionId',case when p_version_role = 'authoritative_source' then 'SELF' else p_source_anchor_version_id::text end,
     'sourceContentHash',p_source_content_hash,'enrichmentSourceContentHash',p_enrichment_source_content_hash,
-    'slug',v_article.slug,'sourceKey',v_article.source_key,'jurisdiction',v_article.jurisdiction,
-    'institutionName',v_article.institution_name,'contentType',v_article.content_type,
-    'originalUrl',v_article.original_url,'canonicalUrl',v_article.canonical_url,
-    'originalLanguage',v_article.original_language,'originalTitle',v_article.original_title,
+    'slug',v_article.slug,'sourceKey',v_article.source_key,
+    'jurisdiction',coalesce(p_content_snapshot->>'jurisdiction',v_article.jurisdiction),
+    'institutionName',coalesce(p_content_snapshot->>'institutionName',v_article.institution_name),
+    'contentType',coalesce(p_content_snapshot->>'contentType',v_article.content_type),
+    'originalUrl',coalesce(p_content_snapshot->>'originalUrl',v_article.original_url),
+    'canonicalUrl',coalesce(p_content_snapshot->>'canonicalUrl',v_article.canonical_url),
+    'originalLanguage',coalesce(p_content_snapshot->>'originalLanguage',v_article.original_language),
+    'originalTitle',coalesce(p_content_snapshot->>'originalTitle',v_article.original_title),
     'koreanTitle',case when p_version_role = 'authoritative_source' then null else v_article.korean_title end,
-    'originalPublishedAt',v_article.original_published_at,'cleanedText',v_article.cleaned_text,
+    'originalPublishedAt',coalesce(nullif(p_content_snapshot->>'originalPublishedAt','')::timestamptz,v_article.original_published_at),
+    'cleanedText',coalesce(p_content_snapshot->>'cleanedText',v_article.cleaned_text),
     'summary',case when p_version_role = 'authoritative_source' then null else v_article.summary_json end,
     'caseMetadata',p_case_metadata_snapshot,'caseIdentifiers',p_case_identifiers_snapshot,
     'authorityEvidenceHash',p_authority_evidence_hash,'sourceSnapshotId',p_source_snapshot_id,
@@ -439,16 +472,24 @@ begin
   ) values (
     v_version_id,p_article_id,coalesce(v_head.current_revision,0)+1,v_head.current_version_id,v_content_hash,
     p_provenance_actor_type,left(nullif(trim(p_provenance_actor_id),''),160),left(nullif(trim(p_model_ref),''),200),
-    left(nullif(trim(p_prompt_ref),''),200),v_article.slug,v_article.source_key,v_article.jurisdiction,
-    v_article.institution_name,v_article.content_type,v_article.original_url,v_article.canonical_url,
-    v_article.original_language,v_article.original_title,
+    left(nullif(trim(p_prompt_ref),''),200),v_article.slug,v_article.source_key,
+    coalesce(p_content_snapshot->>'jurisdiction',v_article.jurisdiction),
+    coalesce(p_content_snapshot->>'institutionName',v_article.institution_name),
+    coalesce(p_content_snapshot->>'contentType',v_article.content_type),
+    coalesce(p_content_snapshot->>'originalUrl',v_article.original_url),
+    coalesce(p_content_snapshot->>'canonicalUrl',v_article.canonical_url),
+    coalesce(p_content_snapshot->>'originalLanguage',v_article.original_language),
+    coalesce(p_content_snapshot->>'originalTitle',v_article.original_title),
     case when p_version_role='authoritative_source' then null else v_article.korean_title end,
-    v_article.original_published_at,v_article.discovered_at,v_article.fetched_at,
+    coalesce(nullif(p_content_snapshot->>'originalPublishedAt','')::timestamptz,v_article.original_published_at),
+    v_article.discovered_at,v_article.fetched_at,
     case when p_version_role='authoritative_source' then null else v_article.summarized_at end,
-    null,v_article.cleaned_text,case when p_version_role='authoritative_source' then null else v_article.summary_json end,
-    article_publication_safe_source_metadata_p3(v_article.source_metadata),null,
-    setweight(to_tsvector('simple',coalesce(v_article.original_title,'')),'A') ||
-      setweight(to_tsvector('simple',coalesce(v_article.cleaned_text,'')),'B'),
+    null,coalesce(p_content_snapshot->>'cleanedText',v_article.cleaned_text),
+    case when p_version_role='authoritative_source' then null else v_article.summary_json end,
+    article_publication_safe_source_metadata_p3(case when p_version_role='authoritative_source'
+      then coalesce(p_content_snapshot->'metadata','{}'::jsonb) else v_article.source_metadata end),null,
+    setweight(to_tsvector('simple',coalesce(p_content_snapshot->>'originalTitle',v_article.original_title,'')),'A') ||
+      setweight(to_tsvector('simple',coalesce(p_content_snapshot->>'cleanedText',v_article.cleaned_text,'')),'B'),
     case when p_version_role='authoritative_source' then null else v_article.embedding end,
     'v4.article-case.v1',p_version_role,p_case_metadata_snapshot,p_case_identifiers_snapshot,
     p_authority_evidence_hash,p_source_snapshot_id,p_source_snapshot_hash,p_source_content_hash,
@@ -560,6 +601,20 @@ begin
       v_publication.id,v_publication.revision,p_source_anchor_version_id,v_version.slug
     ) on conflict on constraint case_catalog_cache_outbox_v1_revision_key do nothing;
   end if;
+  if p_target_state='published' then
+    perform set_config('app.catalog_freshness_v4','on',true);
+    update articles a set catalog_ai_stale_v4=(
+      a.summary_json is not null
+      or exists(select 1 from article_publications_p3 p where p.article_id=a.id and p.state='published')
+    ) and not exists(
+      select 1 from article_publications_p3 p
+      join article_content_versions_p3 full_version on full_version.id=p.version_id
+      where p.article_id=a.id and p.state='published'
+        and full_version.version_role='enrichment_full'
+        and full_version.source_anchor_version_id=v_publication.source_anchor_version_id
+        and full_version.enrichment_source_content_hash=v_version.source_content_hash
+    ) where a.id=p_article_id;
+  end if;
   return query select v_publication.id,v_publication.revision,v_publication.state,
     v_publication.source_anchor_version_id,v_applied,false;
 end;
@@ -634,10 +689,38 @@ begin
 end;
 $function$;
 
+create or replace function article_p3_publication_freshness_v4()
+returns trigger
+language plpgsql
+set search_path = public, extensions, pg_temp
+as $function$
+declare
+  v_current boolean;
+begin
+  if exists(select 1 from case_catalog_publications_v1 c where c.article_id=new.article_id and c.state='published') then
+    v_current:=new.state='published' and exists(
+      select 1 from article_content_versions_p3 full_version
+      join case_catalog_publications_v1 c on c.article_id=new.article_id and c.state='published'
+      join article_content_versions_p3 anchor on anchor.id=c.source_anchor_version_id
+      where full_version.id=new.version_id and full_version.version_role='enrichment_full'
+        and full_version.source_anchor_version_id=c.source_anchor_version_id
+        and full_version.enrichment_source_content_hash=anchor.source_content_hash
+    );
+    perform set_config('app.catalog_freshness_v4','on',true);
+    update articles set catalog_ai_stale_v4=not v_current where id=new.article_id;
+  end if;
+  return new;
+end;
+$function$;
+
 drop trigger if exists article_publications_p3_guard_v4_trigger on article_publications_p3;
 create trigger article_publications_p3_guard_v4_trigger
 before insert or update on article_publications_p3
 for each row execute function article_p3_publication_guard_v4();
+drop trigger if exists article_publications_p3_freshness_v4_trigger on article_publications_p3;
+create trigger article_publications_p3_freshness_v4_trigger
+after insert or update on article_publications_p3
+for each row execute function article_p3_publication_freshness_v4();
 
 -- Existing legacy rows remain visible only while classified current and while no
 -- Catalog anchor has superseded them. New full rows must match both anchor ID and hash.
@@ -685,18 +768,30 @@ select
   null::text as raw_text,
   case m.text_access_policy when 'full' then v.cleaned_text when 'excerpt' then left(v.cleaned_text,2000) else null end as cleaned_text,
   null::jsonb as summary_json,
-  v.case_metadata_snapshot as source_metadata,
+  coalesce(v.case_metadata_snapshot->'sourceMetadata','{}'::jsonb) || jsonb_build_object(
+    'collection',jsonb_build_object(
+      'publishable',true,
+      'sourceTextAvailable',m.text_access_policy in ('excerpt','full') and length(coalesce(v.cleaned_text,''))>0,
+      'sourceUrlVerified',true,
+      'robotsDisallowed',false,
+      'strategy','catalog'
+    ),
+    'catalog',jsonb_build_object(
+      'sourceOnly',true,'authorityVerified',true,'sourceAnchorVersionId',c.source_anchor_version_id
+    )
+  ) as source_metadata,
   null::jsonb as error_metadata,v.content_hash,v.search_vector,null::extensions.vector(1536) as embedding,
   c.id as publication_id,c.revision as publication_revision,v.id as article_version_id,
   v.revision as article_version_revision,'[]'::jsonb as article_tags,c.source_anchor_version_id,
   'authoritative_source'::text as version_role,'source_only'::text as enrichment_status,
   null::text as enrichment_freshness,
-  case when exists(select 1 from article_publications_p3 p where p.article_id=v.article_id and p.state='published')
+  case when a.catalog_ai_stale_v4 or exists(select 1 from article_publications_p3 p where p.article_id=v.article_id and p.state='published')
     then 'reprocessing'::text else 'pending'::text end as summary_status,
   false as summary_available
 from case_catalog_publications_v1 c
 join article_content_versions_p3 v on v.id=c.source_anchor_version_id and v.article_id=c.article_id
 join case_metadata_v1 m on m.article_id=c.article_id
+join articles a on a.id=c.article_id
 where c.state='published' and v.version_role='authoritative_source'
   and v.source_anchor_version_id=v.id and m.authority_status='verified'
   and m.constitutional_relevance_status='verified';
@@ -791,20 +886,14 @@ begin
     ) returning * into v_article;
   else
     if v_article.source_key<>v_snapshot.source_key then raise exception using errcode='23505',message='CASE_CATALOG_IDENTITY_CONFLICT'; end if;
-    update articles set
-      jurisdiction=v_output->>'jurisdiction',institution_name=v_output->>'institutionName',
-      content_type=coalesce(v_output->>'contentType','decision'),original_url=v_output->>'originalUrl',
-      canonical_url=v_output->>'canonicalUrl',original_language=v_output->>'originalLanguage',
-      original_title=v_output->>'originalTitle',original_published_at=nullif(v_output->>'originalPublishedAt','')::timestamptz,
-      fetched_at=now(),status=case when coalesce(v_output->>'cleanedText','')='' then 'metadata_only' else 'cleaned' end,
-      raw_text=null,cleaned_text=nullif(v_output->>'cleanedText',''),summary_json=null,korean_title=null,embedding=null,
-      source_metadata=jsonb_build_object('catalog',jsonb_build_object('sourceOnly',true),'case',coalesce(v_output->'metadata','{}'::jsonb)),
-      error_metadata=null,updated_at=now()
-    where id=v_article.id returning * into v_article;
   end if;
   insert into case_identifiers_v1(
     article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value,is_primary,provenance_url
-  ) values (v_article.id,v_snapshot.source_key,'source_record_id','decision',v_record_id,v_normalized_id,true,v_output->>'canonicalUrl')
+  ) values (
+    v_article.id,v_snapshot.source_key,'source_record_id','decision',v_record_id,v_normalized_id,
+    not exists(select 1 from case_identifiers_v1 existing where existing.article_id=v_article.id and existing.is_primary),
+    v_output->>'canonicalUrl'
+  )
   on conflict (source_key,identifier_type,normalized_value) where identifier_type in ('source_record_id','ecli','hj_id','reporter_citation')
   do nothing;
   if not exists(select 1 from case_identifiers_v1 ci where ci.article_id=v_article.id and ci.identifier_type='source_record_id' and ci.normalized_value=v_normalized_id) then
@@ -823,7 +912,7 @@ begin
     v_article.id,v_snapshot.source_key,'verified',v_authority_evidence,'verified','source_only',null,null,
     v_policy.default_text_access_policy,v_snapshot.source_policy_version,v_snapshot.discovery_method,
     v_output->>'canonicalUrl',v_item.source_last_modified_at,v_item.source_etag,v_snapshot.manifest_hash
-  ) on conflict (article_id) do update set
+  ) on conflict on constraint case_metadata_v1_pkey do update set
     authority_status='verified',authority_evidence=excluded.authority_evidence,
     constitutional_relevance_status='verified',enrichment_status='source_only',
     enrichment_freshness=null,freshness_basis=null,text_access_policy=excluded.text_access_policy,
@@ -845,7 +934,7 @@ begin
   select * into v_version from article_version_capture_v4(
     v_article.id,v_global_revision,'authoritative_source',null,v_normalization.normalized_output_hash,null,
     v_case_snapshot,v_identifier_snapshot,v_authority_hash,v_snapshot.id,v_snapshot.manifest_hash,
-    'import',p_actor_id,null,null
+    'import',p_actor_id,null,null,v_output
   );
   select coalesce(c.revision,0) into v_catalog_revision from case_catalog_publications_v1 c where c.article_id=v_article.id;
   select * into v_publication from case_catalog_publication_transition_v1(
@@ -879,7 +968,7 @@ revoke all on table article_revision_heads_v4,case_metadata_v1,case_identifiers_
   legacy_version_freshness_classifications_v4,case_catalog_publications_v1,
   case_catalog_publication_events_v1,case_catalog_cache_outbox_v1 from public;
 revoke all on public_case_catalog_projection_v1,public_article_detail_v4 from public;
-revoke all on function article_version_capture_v4(uuid,bigint,text,uuid,text,text,jsonb,jsonb,text,uuid,text,text,text,text,text) from public;
+revoke all on function article_version_capture_v4(uuid,bigint,text,uuid,text,text,jsonb,jsonb,text,uuid,text,text,text,text,text,jsonb) from public;
 revoke all on function case_catalog_publication_transition_v1(uuid,uuid,bigint,text,text,text,text,text) from public;
 revoke all on function article_p3_candidate_select_v4(uuid,uuid,bigint) from public;
 revoke all on function case_catalog_publish_backfill_item_v1(uuid,uuid,bigint,text) from public;
@@ -897,7 +986,7 @@ begin
       legacy_version_freshness_classifications_v4,case_catalog_publications_v1,
       case_catalog_publication_events_v1,case_catalog_cache_outbox_v1 to service_role;
     grant select on public_case_catalog_projection_v1,public_article_detail_v4 to service_role;
-    grant execute on function article_version_capture_v4(uuid,bigint,text,uuid,text,text,jsonb,jsonb,text,uuid,text,text,text,text,text) to service_role;
+    grant execute on function article_version_capture_v4(uuid,bigint,text,uuid,text,text,jsonb,jsonb,text,uuid,text,text,text,text,text,jsonb) to service_role;
     grant execute on function case_catalog_publication_transition_v1(uuid,uuid,bigint,text,text,text,text,text) to service_role;
     grant execute on function article_p3_candidate_select_v4(uuid,uuid,bigint) to service_role;
     grant execute on function case_catalog_publish_backfill_item_v1(uuid,uuid,bigint,text) to service_role;

@@ -88,6 +88,7 @@ function fakeRepository(overrides: Partial<CaseBackfillRepository> = {}): CaseBa
     getFetchArtifact: unavailable,
     getNormalizationArtifact: unavailable,
     recordNormalizationArtifact: unavailable,
+    publishItem: unavailable,
     completeItem: async () => undefined,
     failItem: async () => undefined,
     ...overrides,
@@ -252,10 +253,10 @@ test("P1 authority and handler carry the exact attempt fence into a bounded back
   assert.deepEqual(observed, { phase: "normalize", authority });
 });
 
-test("invalid snapshot phases and the closed publication gate never create a running backfill run", async () => {
+test("invalid snapshot phases and disabled Catalog writes never create a running backfill run", async () => {
   for (const [input, status, expected] of [
     [pass("fetch"), "open", /snapshot_not_closed/],
-    [pass("publish"), "closed", /publish_gate_closed/],
+    [pass("publish"), "closed", /catalog_write_disabled/],
   ] as const) {
     let began = false;
     const repository = fakeRepository({
@@ -270,11 +271,64 @@ test("invalid snapshot phases and the closed publication gate never create a run
         authority,
         checkpoint: async () => undefined,
         signal: new AbortController().signal,
-      }, { repository, loadAdapter: async () => null, now: () => new Date("2026-09-03T00:00:00.000Z") }),
+      }, {
+        repository,
+        loadAdapter: async () => null,
+        now: () => new Date("2026-09-03T00:00:00.000Z"),
+        environment: {},
+      }),
       expected,
     );
     assert.equal(began, false);
   }
+});
+
+test("enabled publish pass delegates the fenced item to the atomic Catalog publisher", async () => {
+  let published: { itemId: string; authority: CaseBackfillAttemptAuthority } | null = null;
+  const item = {
+    ...claimedItem,
+    resolutionStatus: "verified",
+    verifiedNormalizationArtifactId: "77777777-7777-4777-8777-777777777777",
+  };
+  let served = false;
+  const repository = fakeRepository({
+    claimItems: async () => {
+      if (served) return [];
+      served = true;
+      return [item];
+    },
+    publishItem: async (input) => {
+      published = { itemId: input.itemId, authority: input.authority };
+      return {
+        articleId: "88888888-8888-4888-8888-888888888888",
+        versionId: "99999999-9999-4999-8999-999999999999",
+        versionRevision: 1,
+        publicationRevision: 1,
+        articleSlug: "es-tc-12345",
+      };
+    },
+  });
+  const result = await runCaseBackfillPass(pass("publish"), {
+    authority,
+    checkpoint: async () => undefined,
+    signal: new AbortController().signal,
+  }, {
+    repository,
+    loadAdapter: async () => ({
+      sourceKey: snapshot.sourceKey,
+      displayName: "Spain",
+      jurisdiction: "Spain",
+      baseUrl: "https://hj.tribunalconstitucional.es",
+      defaultLanguage: "es",
+      discover: async () => [],
+      fetchItem: async () => { throw new Error("unused"); },
+      normalize: async () => { throw new Error("unused"); },
+    }),
+    now: () => new Date("2026-09-03T00:00:00.000Z"),
+    environment: { CASE_CATALOG_WRITE_ENABLED: "true" },
+  });
+  assert.equal(result.succeeded, 1);
+  assert.deepEqual(published, { itemId: item.itemId, authority });
 });
 
 test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invariants in the database", () => {
