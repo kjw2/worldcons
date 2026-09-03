@@ -739,7 +739,7 @@ select
       'id',t.id,'slug',t.slug,'name',t.name,'normalized_name',t.normalized_name,
       'type',t.type,'description',t.description,'article_count',t.article_count,'latest_article_at',t.latest_article_at
     )) order by t.slug) from article_tags at join tags t on t.id=at.tag_id where at.article_id=v.article_id),'[]'::jsonb) as article_tags,
-  v.source_anchor_version_id,v.version_role,'full'::text as enrichment_status,
+  v.case_key,v.source_anchor_version_id,v.version_role,'full'::text as enrichment_status,
   'current'::text as enrichment_freshness,'available'::text as summary_status,true as summary_available
 from article_publications_p3 p
 join article_content_versions_p3 v on v.id=p.version_id and v.article_id=p.article_id
@@ -782,7 +782,7 @@ select
   ) as source_metadata,
   null::jsonb as error_metadata,v.content_hash,v.search_vector,null::extensions.vector(1536) as embedding,
   c.id as publication_id,c.revision as publication_revision,v.id as article_version_id,
-  v.revision as article_version_revision,'[]'::jsonb as article_tags,c.source_anchor_version_id,
+  v.revision as article_version_revision,'[]'::jsonb as article_tags,v.case_key,c.source_anchor_version_id,
   'authoritative_source'::text as version_role,'source_only'::text as enrichment_status,
   null::text as enrichment_freshness,
   case when a.catalog_ai_stale_v4 or exists(select 1 from article_publications_p3 p where p.article_id=v.article_id and p.state='published')

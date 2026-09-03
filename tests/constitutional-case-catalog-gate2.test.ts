@@ -23,6 +23,7 @@ test("Gate 2 migration fixes identity, source-anchor, head, and stale-enrichment
   assert.match(sql, /SOURCE_POLICY_REVIEW_OVERDUE/);
   assert.match(sql, /ARTICLE_CATALOG_STALE_DIRECT_WRITE_FORBIDDEN/);
   assert.match(sql, /public_case_catalog_projection_v1/);
+  assert.match(sql, /as article_tags,\s*v\.case_key,v\.source_anchor_version_id/);
   assert.match(sql, /public_article_detail_v4/);
   assert.match(sql, /null::text as raw_text/);
   assert.match(sql, /null::jsonb as error_metadata/);

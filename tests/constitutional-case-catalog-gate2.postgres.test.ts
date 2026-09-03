@@ -15,6 +15,7 @@ const p0 = migration("20260712090000_admin_command_control_plane.sql");
 const p1 = migration("20260712130000_admin_command_worker_p1.sql");
 const p2 = migration("20260712170000_article_lifecycle_p2.sql");
 const p3 = vectorFallback(migration("20260712200000_article_publication_p3.sql"));
+const caseKeys = vectorFallback(migration("20260826400000_case_keys_and_ranked_pagination.sql"));
 const gate1 = migration("20260903120000_constitutional_case_backfill_gate1.sql");
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
 
@@ -168,6 +169,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     `);
     await setup.query(p2);
     await setup.query(p3);
+    await setup.query(caseKeys);
     await setup.query(gate1);
     await setup.query(policySql);
 
