@@ -12,6 +12,14 @@ import {
   spainSentenciaYearScope,
 } from "@/lib/backfill/spain-scope";
 import {
+  assertFranceConseilScopeEnabled,
+  CASE_CATALOG_FRANCE_HISTORY_FLAG,
+  FRANCE_CONSEIL_HISTORY_START_YEAR,
+  franceConseilExpansionPlan,
+  franceConseilScope,
+  franceConseilScopeEnabled,
+} from "@/lib/backfill/france-scope";
+import {
   adminQueueP1CommandAuthorized,
   resolveAdminQueueP1Authority,
   type AdminQueueP1CommandType,
@@ -22,6 +30,7 @@ import { tryRecordWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
 const GATE1_PHASES = ["discover", "fetch", "normalize", "verify", "reconcile"] as const;
 type Gate1Command = "plan" | "status" | (typeof GATE1_PHASES)[number];
+type BackfillSource = "spain" | "france";
 
 function argumentValue(name: string) {
   return process.argv.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -64,7 +73,42 @@ function output(value: Record<string, unknown>) {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
-function gate1Plan() {
+function selectedSource(): BackfillSource {
+  const value = (argumentValue("source") ?? "spain").trim().toLowerCase();
+  if (value === "spain" || value === "es-tribunal-constitucional") return "spain";
+  if (value === "france" || value === "fr-conseil-constitutionnel") return "france";
+  throw new Error("invalid_source");
+}
+
+function currentYear() {
+  return new Date().getUTCFullYear();
+}
+
+function backfillPlan(source: BackfillSource) {
+  if (source === "france") {
+    const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
+    const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
+    return {
+      gate: 5,
+      mode: "private-shadow",
+      sourceKey: "fr-conseil-constitutionnel",
+      ...scope,
+      executionEnabled: franceConseilScopeEnabled(year, scope.documentType),
+      requiredHistoryFlag: CASE_CATALOG_FRANCE_HISTORY_FLAG,
+      expansionPlan: franceConseilExpansionPlan(),
+      primaryDiscovery: "official_conseil_annual_type_pagination",
+      qpc360Crosscheck: "not_in_primary_manifest",
+      phases: [...GATE1_PHASES],
+      publicCatalogEnabled: false,
+      geminiCalls: 0,
+      invariants: [
+        "official_type_count_equals_closed_manifest",
+        "sitemap_lastmod_is_not_decision_date",
+        "qpc_and_dc_use_separate_snapshots",
+        "p1_attempt_fenced_item_claims",
+      ],
+    };
+  }
   const year = integerArgument("year", SPAIN_SENTENCIA_BASELINE_YEAR, SPAIN_SENTENCIA_HISTORY_START_YEAR, SPAIN_SENTENCIA_BASELINE_YEAR);
   const scope = spainSentenciaYearScope(year);
   return {
@@ -88,9 +132,35 @@ function gate1Plan() {
   };
 }
 
-async function snapshotForDiscovery() {
+async function snapshotForDiscovery(source: BackfillSource) {
   const existing = optionalUuid("snapshot");
   if (existing) return existing;
+  if (source === "france") {
+    const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
+    const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
+    assertFranceConseilScopeEnabled(year, scope.documentType);
+    const policyVersion = requiredArgument("policy-version");
+    await postgresCaseBackfillRepository.getSourcePolicy("fr-conseil-constitutionnel", policyVersion);
+    return postgresCaseBackfillRepository.openSnapshot({
+      sourceKey: "fr-conseil-constitutionnel",
+      scopeFrom: scope.scopeFrom,
+      scopeTo: scope.scopeTo,
+      documentType: scope.documentType,
+      discoveryMethod: "official_conseil_annual_type_pagination",
+      parserVersion: argumentValue("parser-version")?.trim() || "france-conseil-normalize-v1",
+      sourcePolicyVersion: policyVersion,
+      coverageAssurance: "authoritative_counted",
+      expectedCount: null,
+      expectedCountBasis: null,
+      coverageEvidence: {
+        method: "official_conseil_annual_type_pagination",
+        officialUrl: `https://www.conseil-constitutionnel.fr/les-decisions/annee/${year}/type/${scope.documentType.toLowerCase()}`,
+        pending: true,
+      },
+      exclusions: [{ kind: "jurisdiction", value: "non-Conseil QPC360 decisions" }],
+      createdBy: argumentValue("requested-by")?.trim() || "backfill-corpus-cli",
+    });
+  }
   const year = integerArgument("year", SPAIN_SENTENCIA_BASELINE_YEAR, SPAIN_SENTENCIA_HISTORY_START_YEAR, SPAIN_SENTENCIA_BASELINE_YEAR);
   assertSpainSentenciaYearEnabled(year);
   const scope = spainSentenciaYearScope(year);
@@ -118,15 +188,19 @@ async function snapshotForDiscovery() {
 }
 
 async function submitPhase(phase: (typeof GATE1_PHASES)[number], snapshotId: string) {
+  const snapshot = await postgresCaseBackfillRepository.getSnapshot(snapshotId);
+  const fetchContractVersion = snapshot.sourceKey === "fr-conseil-constitutionnel"
+    ? "france-conseil-fetch-v1"
+    : "spain-hj-fetch-v1";
   const passNumber = await postgresCaseBackfillRepository.allocatePass(snapshotId, phase);
   const payloadRef = {
     cohort: "catalog-backfill" as const,
     snapshotId,
     passNumber,
     batchLimit: integerArgument("batch-limit", 50, 1, 100),
-    parserVersion: argumentValue("parser-version")?.trim() || "spain-hj-normalize-v1",
+    parserVersion: argumentValue("parser-version")?.trim() || snapshot.parserVersion,
     normalizationContractVersion: argumentValue("normalization-contract")?.trim() || "case-normalized-v1",
-    fetchContractVersion: argumentValue("fetch-contract")?.trim() || "spain-hj-fetch-v1",
+    fetchContractVersion: argumentValue("fetch-contract")?.trim() || fetchContractVersion,
   };
   const commandType = `p1.case-backfill.${phase}` as AdminQueueP1CommandType;
   const submitted = await adminCommandService.submit({
@@ -171,8 +245,9 @@ async function submitPhase(phase: (typeof GATE1_PHASES)[number], snapshotId: str
 
 async function main() {
   const selected = command();
+  const source = selectedSource();
   if (selected === "plan") {
-    output(gate1Plan());
+    output(backfillPlan(source));
     return 0;
   }
   if (selected === "status") {
@@ -180,7 +255,7 @@ async function main() {
     output({ event: "case_backfill_status", ...(await postgresCaseBackfillRepository.getSnapshotStatus(snapshotId)) });
     return 0;
   }
-  const snapshotId = selected === "discover" ? await snapshotForDiscovery() : requiredArgument("snapshot");
+  const snapshotId = selected === "discover" ? await snapshotForDiscovery(source) : requiredArgument("snapshot");
   return submitPhase(selected as CaseBackfillPhase & (typeof GATE1_PHASES)[number], snapshotId);
 }
 

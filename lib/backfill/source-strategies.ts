@@ -8,6 +8,15 @@ import {
 } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { assertSpainSentenciaYearEnabled } from "@/lib/backfill/spain-scope";
 import type { NormalizedArticle } from "@/lib/sources/types";
+import {
+  discoverFranceConseilInventory,
+  parseFranceConseilDecisionDate,
+  type FranceConseilInventoryResult,
+} from "@/lib/crawlee/france-conseil-inventory";
+import {
+  assertFranceConseilScopeEnabled,
+  franceConseilDocumentType,
+} from "@/lib/backfill/france-scope";
 
 export interface CaseBackfillInventoryItem {
   stableItemKey: string;
@@ -21,6 +30,8 @@ export interface CaseBackfillInventoryItem {
 export interface CaseBackfillInventoryResult {
   items: CaseBackfillInventoryItem[];
   coverageEvidence: Record<string, unknown>;
+  expectedCount?: number | null;
+  expectedCountBasis?: string | null;
 }
 
 export interface CaseBackfillDiscoveryContext {
@@ -31,6 +42,8 @@ export interface CaseBackfillDiscoveryContext {
 
 export interface CaseBackfillSourceStrategy {
   sourceKey: string;
+  defaultFetchContractVersion: string;
+  defaultParserVersion: string;
   assertDiscoveryScope(
     snapshot: CaseBackfillSnapshot,
     environment: Record<string, string | undefined>,
@@ -48,6 +61,8 @@ export interface CaseBackfillSourceStrategy {
 
 export interface CaseBackfillSourceStrategyDependencies {
   discoverSpainTcInventory?: typeof discoverSpainTcInventory;
+  discoverFranceConseilInventory?: typeof discoverFranceConseilInventory;
+  currentYear?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,13 +94,10 @@ function officialSpainUrl(value: string) {
 }
 
 function validateScopeDate(
-  normalized: NormalizedArticle,
+  decisionDate: string | null,
   snapshot: CaseBackfillSnapshot,
   errors: string[],
 ) {
-  const decisionDate = stringAt(normalized.metadata, "decisionDate")
-    ?? normalized.originalPublishedAt?.slice(0, 10)
-    ?? null;
   if (!decisionDate || !/^\d{4}-\d{2}-\d{2}$/.test(decisionDate)) errors.push("decision_date_missing");
   if (decisionDate && snapshot.scopeFrom && decisionDate < snapshot.scopeFrom) errors.push("decision_date_before_scope");
   if (decisionDate && snapshot.scopeTo && decisionDate > snapshot.scopeTo) errors.push("decision_date_after_scope");
@@ -108,6 +120,8 @@ function spainStrategy(
 ): CaseBackfillSourceStrategy {
   return {
     sourceKey: "es-tribunal-constitucional",
+    defaultFetchContractVersion: "spain-hj-fetch-v1",
+    defaultParserVersion: "spain-hj-normalize-v1",
     assertDiscoveryScope(snapshot, environment) {
       assertAnnualScope(snapshot);
       if (snapshot.documentType.toUpperCase() !== "SENTENCIA") {
@@ -137,7 +151,10 @@ function spainStrategy(
       if (snapshot.documentType.toUpperCase() === "SENTENCIA" && resolutionType !== "SENTENCIA") {
         errors.push("resolution_type_mismatch");
       }
-      validateScopeDate(normalized, snapshot, errors);
+      const decisionDate = stringAt(normalized.metadata, "decisionDate")
+        ?? normalized.originalPublishedAt?.slice(0, 10)
+        ?? null;
+      validateScopeDate(decisionDate, snapshot, errors);
       const hjId = item.sourceRecordId;
       if (hjId && !normalized.canonicalUrl.match(new RegExp(`/Show/${hjId}(?:$|[/?#])`, "i"))) {
         errors.push("source_record_id_mismatch");
@@ -148,11 +165,84 @@ function spainStrategy(
   };
 }
 
+function officialFranceUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && url.hostname === "www.conseil-constitutionnel.fr"
+      && /^\/decision\/\d{4}\/[^/]+\.(?:html?|htm)$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function franceStrategy(
+  dependencies: CaseBackfillSourceStrategyDependencies,
+): CaseBackfillSourceStrategy {
+  return {
+    sourceKey: "fr-conseil-constitutionnel",
+    defaultFetchContractVersion: "france-conseil-fetch-v1",
+    defaultParserVersion: "france-conseil-normalize-v1",
+    assertDiscoveryScope(snapshot, environment) {
+      assertAnnualScope(snapshot);
+      const documentType = franceConseilDocumentType(snapshot.documentType);
+      if (!documentType) throw new Error("case_backfill.discovery_scope_not_enabled");
+      assertFranceConseilScopeEnabled(
+        Number(snapshot.scopeFrom?.slice(0, 4)),
+        documentType,
+        environment,
+        dependencies.currentYear,
+      );
+    },
+    async discover(snapshot, context) {
+      const documentType = franceConseilDocumentType(snapshot.documentType);
+      if (!documentType) throw new Error("case_backfill.discovery_scope_not_enabled");
+      const inventory: FranceConseilInventoryResult = await (
+        dependencies.discoverFranceConseilInventory ?? discoverFranceConseilInventory
+      )({
+        year: Number(snapshot.scopeFrom?.slice(0, 4)),
+        documentType,
+        currentYear: dependencies.currentYear,
+        signal: context.signal,
+        checkpoint: context.checkpoint,
+      });
+      return {
+        ...inventory,
+        expectedCountBasis: "official_active_type_facet",
+      };
+    },
+    validate(normalized, item, snapshot) {
+      const errors: string[] = [];
+      if (normalized.sourceKey !== snapshot.sourceKey) errors.push("source_key_mismatch");
+      if (!officialFranceUrl(normalized.canonicalUrl) || !officialFranceUrl(normalized.originalUrl)) {
+        errors.push("authority_url_invalid");
+      }
+      if (normalized.contentType !== "decision") errors.push("document_type_mismatch");
+      const title = normalized.originalTitle?.trim() ?? "";
+      const requestedType = franceConseilDocumentType(snapshot.documentType);
+      if (!requestedType || (requestedType === "QPC" ? !/\bQPC\b/i.test(title) : !/\bDC\b/i.test(title))) {
+        errors.push("resolution_type_mismatch");
+      }
+      const decisionDate = normalized.originalPublishedAt?.slice(0, 10)
+        ?? parseFranceConseilDecisionDate(title);
+      validateScopeDate(decisionDate, snapshot, errors);
+      const sourceRecordId = item.sourceRecordId;
+      const escaped = sourceRecordId?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (escaped && !new RegExp(`/decision/\\d{4}/${escaped}\\.(?:html?|htm)$`, "i").test(normalized.canonicalUrl)) {
+        errors.push("source_record_id_mismatch");
+      }
+      if (!title) errors.push("official_title_missing");
+      return errors;
+    },
+  };
+}
+
 export function loadCaseBackfillSourceStrategy(
   sourceKey: string,
   dependencies: CaseBackfillSourceStrategyDependencies = {},
 ) {
   if (sourceKey === "es-tribunal-constitucional") return spainStrategy(dependencies);
+  if (sourceKey === "fr-conseil-constitutionnel") return franceStrategy(dependencies);
   throw new Error("case_backfill.source_not_enabled");
 }
 

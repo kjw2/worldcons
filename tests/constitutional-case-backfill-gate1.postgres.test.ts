@@ -8,6 +8,7 @@ const databaseUrl = process.env.BACKFILL_TEST_DATABASE_URL;
 const p0Migration = path.join(process.cwd(), "supabase/migrations/20260712090000_admin_command_control_plane.sql");
 const p1Migration = path.join(process.cwd(), "supabase/migrations/20260712130000_admin_command_worker_p1.sql");
 const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
+const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 
 const policyInsert = `
 insert into source_corpus_policies(
@@ -45,6 +46,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(p1Migration, "utf8"));
     await client.query("create table articles(id uuid primary key default gen_random_uuid())");
     await client.query(fs.readFileSync(gate1Migration, "utf8"));
+    await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
   } finally {
     await client.end();
   }
@@ -94,6 +96,12 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
       ],
     );
     const snapshotId = opened.rows[0].source_inventory_snapshot_open_v1;
+    await pool.query("select source_inventory_snapshot_evidence_v2($1,$2,$3,$4)", [
+      snapshotId,
+      { method: "official_hj_search_pagination", exhausted: true, discoveredCount: 2 },
+      2,
+      "official_search_result_count",
+    ]);
     for (const id of ["12345", "12346"]) {
       await pool.query("select source_inventory_item_upsert_v1($1,$2,$3,$4,$5,$6)", [
         snapshotId,
@@ -109,6 +117,14 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     );
     assert.equal(closed.rows[0].discovered_count, 2);
     assert.match(closed.rows[0].manifest_hash, /^[0-9a-f]{64}$/);
+    const fixedCount = await pool.query<{ expected_count: number; expected_count_basis: string }>(
+      "select expected_count, expected_count_basis from source_inventory_snapshots where id = $1",
+      [snapshotId],
+    );
+    assert.deepEqual(fixedCount.rows[0], {
+      expected_count: 2,
+      expected_count_basis: "official_search_result_count",
+    });
 
     await t.test("closed manifest rejects discovery mutation and insertion", async () => {
       await assert.rejects(

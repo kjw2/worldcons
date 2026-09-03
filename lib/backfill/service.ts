@@ -15,9 +15,11 @@ import type {
 import { loadSourceAdapter } from "@/lib/sources/lazy";
 import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
+import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inventory";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
 import {
   loadCaseBackfillSourceStrategy,
+  type CaseBackfillSourceStrategy,
   validateCaseWithSourceStrategy,
 } from "@/lib/backfill/source-strategies";
 
@@ -32,6 +34,7 @@ interface CaseBackfillDependencies {
   loadAdapter: typeof loadSourceAdapter;
   now: () => Date;
   discoverSpainTcInventory?: typeof discoverSpainTcInventory;
+  discoverFranceConseilInventory?: typeof discoverFranceConseilInventory;
   environment?: Record<string, string | undefined>;
 }
 
@@ -158,6 +161,7 @@ async function processFetch(
   input: CaseBackfillPassInput,
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
+  strategy: CaseBackfillSourceStrategy,
 ) {
   if (policy.normalizeReplayPolicy !== "bounded_evidence") {
     throw new Error(`case_backfill.${policy.normalizeReplayPolicy}_storage_not_configured`);
@@ -183,7 +187,7 @@ async function processFetch(
     replayability: "bounded_evidence",
     immutableStorageRef: null,
     boundedReplayPayload: replayPayload,
-    fetchContractVersion: input.fetchContractVersion ?? "spain-hj-fetch-v1",
+    fetchContractVersion: input.fetchContractVersion ?? strategy.defaultFetchContractVersion,
   });
   await repository.completeItem({
     itemId: item.itemId,
@@ -200,6 +204,7 @@ async function processNormalize(
   input: CaseBackfillPassInput,
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
+  strategy: CaseBackfillSourceStrategy,
 ) {
   if (!item.currentFetchArtifactId) throw new Error("case_backfill.fetch_artifact_missing");
   const fetchArtifact = await repository.getFetchArtifact(item.currentFetchArtifactId);
@@ -215,7 +220,7 @@ async function processNormalize(
     itemId: item.itemId,
     authority: context.authority,
     fetchArtifactId: fetchArtifact.id,
-    parserVersion: input.parserVersion ?? "spain-hj-normalize-v1",
+    parserVersion: input.parserVersion ?? strategy.defaultParserVersion,
     normalizationContractVersion: input.normalizationContractVersion ?? "case-normalized-v1",
     normalizedOutput,
     normalizedOutputHash: sha256(canonicalJson(normalizedOutput)),
@@ -237,11 +242,12 @@ async function processVerify(
   snapshot: CaseBackfillSnapshot,
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
+  strategy: CaseBackfillSourceStrategy,
 ) {
   if (!item.currentNormalizationArtifactId) throw new Error("case_backfill.normalization_artifact_missing");
   const normalizedArtifact = await repository.getNormalizationArtifact(item.currentNormalizationArtifactId, item.itemId);
   const normalized = normalizedArtifact.normalizedOutput;
-  const errors = validateNormalizedCase(normalized, item, snapshot);
+  const errors = strategy.validate(normalized, item, snapshot);
   if (errors.length > 0) throw new Error(`case_backfill.verification_${errors[0]}`);
   const noop = item.resolutionStatus === "published"
     && item.publishedNormalizationArtifactId !== null
@@ -263,12 +269,13 @@ async function processItem(
   input: CaseBackfillPassInput,
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
+  strategy: CaseBackfillSourceStrategy,
 ) {
   const phase = input.phase as CaseBackfillItemPhase;
   await context.checkpoint();
-  if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository);
-  else if (phase === "normalize") await processNormalize(item, adapter, input, context, repository);
-  else if (phase === "verify") await processVerify(item, snapshot, context, repository);
+  if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository, strategy);
+  else if (phase === "normalize") await processNormalize(item, adapter, input, context, repository, strategy);
+  else if (phase === "verify") await processVerify(item, snapshot, context, repository, strategy);
   else if (phase === "publish") await repository.publishItem({ itemId: item.itemId, authority: context.authority });
   else throw new Error("case_backfill.invalid_item_phase");
 }
@@ -285,6 +292,8 @@ export async function runCaseBackfillPass(
     if (snapshot.status !== "open") throw new Error("case_backfill.snapshot_not_open");
     const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {
       discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
+      discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
+      currentYear: dependencies.now().getUTCFullYear(),
     });
     strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
     const runId = await repository.beginRun(input, context.authority);
@@ -307,7 +316,12 @@ export async function runCaseBackfillPass(
         });
         written += 1;
       }
-      await repository.updateSnapshotEvidence(snapshot.id, inventory.coverageEvidence);
+      await repository.updateSnapshotEvidence(
+        snapshot.id,
+        inventory.coverageEvidence,
+        inventory.expectedCount ?? null,
+        inventory.expectedCountBasis ?? null,
+      );
       await repository.closeSnapshot(snapshot.id);
       await repository.finishRun({
         runId,
@@ -350,6 +364,11 @@ export async function runCaseBackfillPass(
   if (input.phase === "publish" && !caseCatalogWriteEnabled(dependencies.environment ?? process.env)) {
     throw new Error("case_backfill.catalog_write_disabled");
   }
+  const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {
+    discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
+    discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
+    currentYear: dependencies.now().getUTCFullYear(),
+  });
 
   const runId = await repository.beginRun(input, context.authority);
 
@@ -405,7 +424,7 @@ export async function runCaseBackfillPass(
       },
     };
     try {
-      await processItem(item, snapshot, policy, adapter, input, itemContext, repository);
+      await processItem(item, snapshot, policy, adapter, input, itemContext, repository, strategy);
       succeeded += 1;
     } catch (error) {
       if (context.signal.aborted) throw error;

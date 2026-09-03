@@ -130,7 +130,12 @@ export interface RecordNormalizationArtifactInput {
 export interface CaseBackfillRepository {
   openSnapshot(input: OpenCaseBackfillSnapshotInput): Promise<string>;
   upsertInventoryItem(input: InventoryItemInput): Promise<string>;
-  updateSnapshotEvidence(snapshotId: string, coverageEvidence: Record<string, unknown>): Promise<void>;
+  updateSnapshotEvidence(
+    snapshotId: string,
+    coverageEvidence: Record<string, unknown>,
+    expectedCount?: number | null,
+    expectedCountBasis?: string | null,
+  ): Promise<void>;
   closeSnapshot(snapshotId: string): Promise<CaseBackfillSnapshotStatus>;
   getSnapshot(snapshotId: string): Promise<CaseBackfillSnapshot>;
   getSourcePolicy(sourceKey: string, policyVersion: string): Promise<CaseBackfillSourcePolicy>;
@@ -214,10 +219,12 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     return data;
   },
 
-  async updateSnapshotEvidence(snapshotId, coverageEvidence) {
-    const { data, error } = await requiredClient().rpc("source_inventory_snapshot_evidence_v1", {
+  async updateSnapshotEvidence(snapshotId, coverageEvidence, expectedCount = null, expectedCountBasis = null) {
+    const { data, error } = await requiredClient().rpc("source_inventory_snapshot_evidence_v2", {
       p_snapshot_id: snapshotId,
       p_coverage_evidence: coverageEvidence,
+      p_expected_count: expectedCount,
+      p_expected_count_basis: expectedCountBasis,
     });
     databaseError(error);
     if (data !== true) throw new Error("case_backfill.snapshot_evidence_write_failed");
