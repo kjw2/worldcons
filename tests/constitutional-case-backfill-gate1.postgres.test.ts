@@ -9,6 +9,7 @@ const p0Migration = path.join(process.cwd(), "supabase/migrations/20260712090000
 const p1Migration = path.join(process.cwd(), "supabase/migrations/20260712130000_admin_command_worker_p1.sql");
 const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const requestGovernorMigration = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
+const phaseAwareHostsMigration = path.join(process.cwd(), "supabase/migrations/20260903184000_constitutional_case_phase_aware_source_hosts.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
@@ -57,6 +58,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query("create table articles(id uuid primary key default gen_random_uuid())");
     await client.query(fs.readFileSync(gate1Migration, "utf8"));
     await client.query(fs.readFileSync(requestGovernorMigration, "utf8"));
+    await client.query(fs.readFileSync(phaseAwareHostsMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
@@ -106,6 +108,122 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         3650, 3000, 1, 'postgres-test', now(), now() + interval '1 year'
       )
     `);
+
+    await pool.query(`
+      insert into source_corpus_policies(
+        source_key, policy_version, scope_definition, official_scope_url, discovery_methods,
+        authority_hosts, redirect_hosts, robots_url, robots_observed_at, robots_rules_hash,
+        terms_url, terms_observed_at, license_basis, default_text_access_policy,
+        allow_raw_snapshot, normalize_replay_policy, bounded_replay_fields, retention_days,
+        min_request_delay_ms, max_concurrency, external_index_hosts, external_index_usage,
+        reviewed_by, reviewed_at, review_due_at
+      ) values (
+        'de-bverfg', 'bverfg-phase-host-test-v1', '{"scope":"2024 official website publications"}',
+        'https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html',
+        array['external_index_dejure_paged_listing'],
+        array['www.bundesverfassungsgericht.de'], array['www.bverfg.de'],
+        'https://www.bundesverfassungsgericht.de/robots.txt', now(), repeat('f', 64),
+        'https://www.bundesverfassungsgericht.de/DE/Service/Impressum/impressum_node.html', now(),
+        'official-work-with-source-and-integrity-requirements', 'metadata_only', false,
+        'bounded_evidence', array['sourceKey','url','canonicalUrl','title','publishedAt','contentType','text','metadata'],
+        3650, 0, 1, array['dejure.org','testphase.rechtsinformationen.bund.de'],
+        'discovery identity only', 'postgres-test', now(), now() + interval '1 year'
+      )
+    `);
+
+    await t.test("source request permits allow external indexes only during discovery", async () => {
+      await assert.rejects(
+        pool.query(`
+          insert into source_corpus_policies(
+            source_key, policy_version, scope_definition, official_scope_url, discovery_methods,
+            authority_hosts, redirect_hosts, robots_url, robots_observed_at, robots_rules_hash,
+            license_basis, default_text_access_policy, allow_raw_snapshot, normalize_replay_policy,
+            bounded_replay_fields, retention_days, min_request_delay_ms, max_concurrency,
+            external_index_hosts, external_index_usage, reviewed_by, reviewed_at, review_due_at
+          ) values (
+            'de-overlap-test', 'invalid-v1', '{}', 'https://example.com', array['test'],
+            array['example.com'], '{}', 'https://example.com/robots.txt', now(), repeat('0',64),
+            'test', 'metadata_only', false, 'bounded_evidence', array['title'], 1, 0, 1,
+            array['example.com'], 'invalid overlap', 'postgres-test', now(), now() + interval '1 day'
+          )
+        `),
+        /source_corpus_policies_host_classification_check/,
+      );
+
+      const snapshot = await pool.query<{ source_inventory_snapshot_open_v1: string }>(
+        "select source_inventory_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+        [
+          "de-bverfg", "2024-01-01", "2024-12-31", "DECISION",
+          "external_index_union_to_official_detail", "bverfg-normalize-v1",
+          "bverfg-phase-host-test-v1", "external_index_assisted", null, null,
+          { externalIndexes: ["dejure.org"] }, JSON.stringify([]), "postgres-test",
+        ],
+      );
+      const snapshotId = snapshot.rows[0].source_inventory_snapshot_open_v1;
+
+      const claimAttempt = async (phase: "discover" | "fetch", passNumber: number) => {
+        await pool.query(
+          "select * from admin_submit_command_v3($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+          [
+            `p1.case-backfill.${phase}`,
+            { cohort: "catalog-backfill", snapshotId, passNumber, batchLimit: 1 },
+            `backfill-pass:germany-host:${phase}:${passNumber}`,
+            `backfill-active:germany-host:${phase}:${passNumber}`,
+            "postgres-test", 0, 1, 1, 1, false,
+          ],
+        );
+        const attempt = await pool.query<{ attempt_id: string; fencing_token: string }>(
+          "select * from admin_claim_command_attempt_p1($1,$2,$3,$4)",
+          [`germany-host-${phase}`, [`p1.case-backfill.${phase}`], ["catalog-backfill"], 30],
+        );
+        assert.equal(attempt.rowCount, 1);
+        return attempt.rows[0];
+      };
+
+      const discoveryAttempt = await claimAttempt("discover", 1);
+      const externalPermit = await pool.query<{ granted: boolean; permit_id: string }>(
+        "select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)",
+        [snapshotId, "discover", discoveryAttempt.attempt_id, discoveryAttempt.fencing_token, "https://dejure.org", 10],
+      );
+      assert.equal(externalPermit.rows[0].granted, true);
+      await pool.query("select source_backfill_request_permit_release_v1($1,$2,$3)", [
+        externalPermit.rows[0].permit_id, discoveryAttempt.attempt_id, discoveryAttempt.fencing_token,
+      ]);
+      await pool.query("select * from admin_fail_command_attempt_v3($1,$2,$3,$4,$5,$6)", [
+        discoveryAttempt.attempt_id, discoveryAttempt.fencing_token, "terminal", "test.complete", "test", {},
+      ]);
+
+      const fetchAttempt = await claimAttempt("fetch", 1);
+      await assert.rejects(
+        pool.query("select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)", [
+          snapshotId, "fetch", fetchAttempt.attempt_id, fetchAttempt.fencing_token, "https://dejure.org", 10,
+        ]),
+        /CASE_BACKFILL_REQUEST_HOST_NOT_ALLOWED/,
+      );
+      const officialPermit = await pool.query<{ granted: boolean; permit_id: string }>(
+        "select * from source_backfill_request_permit_acquire_v1($1,$2,$3,$4,$5,$6)",
+        [
+          snapshotId, "fetch", fetchAttempt.attempt_id, fetchAttempt.fencing_token,
+          "https://www.bundesverfassungsgericht.de", 10,
+        ],
+      );
+      assert.equal(officialPermit.rows[0].granted, true);
+      await pool.query("select source_backfill_request_permit_release_v1($1,$2,$3)", [
+        officialPermit.rows[0].permit_id, fetchAttempt.attempt_id, fetchAttempt.fencing_token,
+      ]);
+      await pool.query("select * from admin_fail_command_attempt_v3($1,$2,$3,$4,$5,$6)", [
+        fetchAttempt.attempt_id, fetchAttempt.fencing_token, "terminal", "test.complete", "test", {},
+      ]);
+
+      const privileges = await pool.query<{ public_helper: boolean; public_acquire: boolean }>(`select
+        has_function_privilege(
+          'public','source_policy_request_host_allowed_v1(text[],text[],text[],text,text)','execute'
+        ) public_helper,
+        has_function_privilege(
+          'public','source_backfill_request_permit_acquire_v1(uuid,text,uuid,bigint,text,integer)','execute'
+        ) public_acquire`);
+      assert.deepEqual(privileges.rows[0], { public_helper: false, public_acquire: false });
+    });
 
     await t.test("France DILA provenance is validated, secret-free, immutable, and part of the manifest hash", async () => {
       const metadata = (sha256: string) => ({
