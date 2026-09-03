@@ -16,7 +16,10 @@ import { loadSourceAdapter } from "@/lib/sources/lazy";
 import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
-import { assertSpainSentenciaYearEnabled } from "@/lib/backfill/spain-scope";
+import {
+  loadCaseBackfillSourceStrategy,
+  validateCaseWithSourceStrategy,
+} from "@/lib/backfill/source-strategies";
 
 export interface CaseBackfillExecutionContext {
   authority: CaseBackfillAttemptAuthority;
@@ -120,37 +123,12 @@ function discoveredItem(item: CaseBackfillClaimedItem, sourceKey: string): Disco
   };
 }
 
-function officialSpainUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "tribunalconstitucional.es" || url.hostname.endsWith(".tribunalconstitucional.es"));
-  } catch {
-    return false;
-  }
-}
-
 export function validateNormalizedCase(
   normalized: NormalizedArticle,
   item: CaseBackfillClaimedItem,
   snapshot: CaseBackfillSnapshot,
 ) {
-  const errors: string[] = [];
-  if (normalized.sourceKey !== snapshot.sourceKey) errors.push("source_key_mismatch");
-  if (snapshot.sourceKey !== "es-tribunal-constitucional") errors.push("source_not_enabled_for_gate1");
-  if (!officialSpainUrl(normalized.canonicalUrl) || !officialSpainUrl(normalized.originalUrl)) errors.push("authority_url_invalid");
-  if (normalized.contentType !== "decision") errors.push("document_type_mismatch");
-  const resolutionType = stringAt(normalized.metadata, "resolutionType")?.toUpperCase();
-  if (snapshot.documentType.toUpperCase() === "SENTENCIA" && resolutionType !== "SENTENCIA") {
-    errors.push("resolution_type_mismatch");
-  }
-  const decisionDate = stringAt(normalized.metadata, "decisionDate") ?? normalized.originalPublishedAt?.slice(0, 10) ?? null;
-  if (!decisionDate || !/^\d{4}-\d{2}-\d{2}$/.test(decisionDate)) errors.push("decision_date_missing");
-  if (decisionDate && snapshot.scopeFrom && decisionDate < snapshot.scopeFrom) errors.push("decision_date_before_scope");
-  if (decisionDate && snapshot.scopeTo && decisionDate > snapshot.scopeTo) errors.push("decision_date_after_scope");
-  const hjId = item.sourceRecordId;
-  if (hjId && !normalized.canonicalUrl.match(new RegExp(`/Show/${hjId}(?:$|[/?#])`, "i"))) errors.push("source_record_id_mismatch");
-  if (!normalized.originalTitle?.trim()) errors.push("official_title_missing");
-  return errors;
+  return validateCaseWithSourceStrategy(normalized, item, snapshot);
 }
 
 function retryableError(error: unknown) {
@@ -305,23 +283,15 @@ export async function runCaseBackfillPass(
 
   if (input.phase === "discover") {
     if (snapshot.status !== "open") throw new Error("case_backfill.snapshot_not_open");
-    if (
-      snapshot.sourceKey !== "es-tribunal-constitucional"
-      || snapshot.documentType.toUpperCase() !== "SENTENCIA"
-      || !snapshot.scopeFrom
-      || !snapshot.scopeTo
-      || snapshot.scopeFrom.slice(0, 4) !== snapshot.scopeTo.slice(0, 4)
-    ) {
-      throw new Error("case_backfill.discovery_scope_not_enabled");
-    }
-    const year = Number(snapshot.scopeFrom.slice(0, 4));
-    assertSpainSentenciaYearEnabled(year, dependencies.environment ?? process.env);
+    const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {
+      discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
+    });
+    strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
     const runId = await repository.beginRun(input, context.authority);
     let written = 0;
     try {
-      const inventory = await (dependencies.discoverSpainTcInventory ?? discoverSpainTcInventory)({
-        year,
-        documentType: "SENTENCIA",
+      const inventory = await strategy.discover(snapshot, {
+        environment: dependencies.environment ?? process.env,
         signal: context.signal,
         checkpoint: context.checkpoint,
       });
