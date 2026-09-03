@@ -45,4 +45,8 @@ Table citation
 - P3 summary 생성
 - Gemini 또는 embedding 호출
 
-후속 단계는 후보와 essay evidence를 append-only DB에 저장하고, 별도 `us-scotus` authority resolver가 공식 U.S. Reports/SCOTUS 원문에 결속한 뒤에만 기존 Catalog backfill pipeline으로 넘긴다.
+후보와 essay evidence를 저장하는 `us_conan_*_v1` DB 계층은 구현됐다. snapshot은 payload hash·parser·source policy에 결속되고 close 뒤 manifest가 불변이며, 후보·essay evidence·review는 append-only다. 같은 citation/essay의 불일치 재입력은 멱등 성공으로 숨기지 않고 충돌로 중단한다. `anon`, `authenticated`, `public`은 내부 테이블과 전환 RPC에 접근할 수 없다.
+
+리뷰는 optimistic revision을 요구한다. DB trigger와 RPC 모두 `verified` 전환 전에 SCOTUS candidate classification, essay evidence, 공식 identity, 헌법 essay 문맥, 공식 authority URL, 헌법적 holding 네 gate를 검사한다. 현재 view는 리뷰가 없는 후보를 `candidate`로 계산한다.
+
+후속 단계는 parser 결과를 이 DB 원장에 연결하는 비공개 import service와 CLI를 만들고, 별도 `us-scotus` authority resolver가 공식 U.S. Reports/SCOTUS 원문에 결속한 뒤에만 기존 Catalog backfill pipeline으로 넘기는 것이다.

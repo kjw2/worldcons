@@ -9,6 +9,7 @@ const p0Migration = path.join(process.cwd(), "supabase/migrations/20260712090000
 const p1Migration = path.join(process.cwd(), "supabase/migrations/20260712130000_admin_command_worker_p1.sql");
 const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
+const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 
 const policyInsert = `
 insert into source_corpus_policies(
@@ -47,6 +48,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query("create table articles(id uuid primary key default gen_random_uuid())");
     await client.query(fs.readFileSync(gate1Migration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
+    await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
   } finally {
     await client.end();
   }
@@ -56,6 +58,166 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     let fetchedItemId = "";
     let fetchedArtifactId = "";
     await pool.query(policyInsert);
+    await pool.query(`
+      insert into source_corpus_policies(
+        source_key, policy_version, scope_definition, official_scope_url, discovery_methods,
+        authority_hosts, redirect_hosts, robots_url, robots_observed_at, robots_rules_hash,
+        license_basis, default_text_access_policy, allow_raw_snapshot, normalize_replay_policy,
+        bounded_replay_fields, retention_days, min_request_delay_ms, max_concurrency,
+        reviewed_by, reviewed_at, review_due_at
+      ) values (
+        'us-constitution-annotated', 'us-conan-test-v1', '{"scope":"Table of Cases candidates only"}',
+        'https://constitution.congress.gov/resources/cases-cited/', array['reviewed_fixture'],
+        array['constitution.congress.gov'], '{}', 'https://constitution.congress.gov/robots.txt',
+        now(), repeat('d', 64), 'official-public-record', 'metadata_only', false,
+        'bounded_evidence', array['caseName','citation','essayReferences'], 3650, 1000, 1,
+        'postgres-test', now(), now() + interval '1 year'
+      )
+    `);
+
+    await t.test("US candidate graph is immutable and requires explicit authority review", async () => {
+      const opened = await pool.query<{ us_conan_candidate_snapshot_open_v1: string }>(
+        "select us_conan_candidate_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7)",
+        [
+          "us-conan-test-v1", "e".repeat(64), "us-conan-table-v1", "reviewed_fixture",
+          "best_effort", "2026-09-03T08:00:00.000Z", "postgres-test",
+        ],
+      );
+      const candidateSnapshotId = opened.rows[0].us_conan_candidate_snapshot_open_v1;
+      const bakerEvidence = [{
+        essayId: "ALDE_00001001",
+        title: "Congressional Districting",
+        url: "https://constitution.congress.gov/browse/essay/artI-S2-C1-1/ALDE_00001001/",
+      }];
+      const baker = await pool.query<{ us_conan_candidate_upsert_v1: string }>(
+        "select us_conan_candidate_upsert_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        [
+          candidateSnapshotId, "conan:baker", "Baker v. Carr", "369 U.S. 186 (1962)",
+          "369 U.S. 186 (1962)", "scotus_candidate", 100,
+          ["reviewed_redistricting_landmark_seed"], JSON.stringify(bakerEvidence),
+        ],
+      );
+      const bakerId = baker.rows[0].us_conan_candidate_upsert_v1;
+      const duplicate = await pool.query<{ us_conan_candidate_upsert_v1: string }>(
+        "select us_conan_candidate_upsert_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        [
+          candidateSnapshotId, "conan:baker", "Baker v. Carr", "369 U.S. 186 (1962)",
+          "369 U.S. 186 (1962)", "scotus_candidate", 100,
+          ["reviewed_redistricting_landmark_seed"], JSON.stringify(bakerEvidence),
+        ],
+      );
+      assert.equal(duplicate.rows[0].us_conan_candidate_upsert_v1, bakerId);
+      await assert.rejects(
+        pool.query(
+          "select us_conan_candidate_upsert_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          [
+            candidateSnapshotId, "conan:baker", "Baker v. Carr", "369 U.S. 186 (1962)",
+            "369 U.S. 186 (1962)", "scotus_candidate", 100,
+            ["reviewed_redistricting_landmark_seed"],
+            JSON.stringify([{ ...bakerEvidence[0], title: "Conflicting title" }]),
+          ],
+        ),
+        /US_CONAN_ESSAY_EVIDENCE_CONFLICT/,
+      );
+
+      const district = await pool.query<{ us_conan_candidate_upsert_v1: string }>(
+        "select us_conan_candidate_upsert_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        [
+          candidateSnapshotId, "conan:district", "Example District Case", "103 F. Supp. 569 (D.D.C. 1952)",
+          "103 F. Supp. 569 (D.D.C. 1952)", "lower_federal", 0, [],
+          JSON.stringify([{
+            essayId: "ALDE_00000069",
+            title: "Methodologies for the Tables",
+            url: "https://constitution.congress.gov/browse/essay/appx.1/ALDE_00000069/",
+          }]),
+        ],
+      );
+      const districtId = district.rows[0].us_conan_candidate_upsert_v1;
+      const closed = await pool.query<{ candidate_count: number; manifest_hash: string }>(
+        "select * from us_conan_candidate_snapshot_close_v1($1)", [candidateSnapshotId],
+      );
+      assert.equal(closed.rows[0].candidate_count, 2);
+      assert.match(closed.rows[0].manifest_hash, /^[0-9a-f]{64}$/);
+
+      await assert.rejects(
+        pool.query("update us_conan_case_candidates_v1 set priority=99 where id=$1", [bakerId]),
+        /CASE_BACKFILL_IMMUTABLE/,
+      );
+      await assert.rejects(
+        pool.query(
+          "select us_conan_candidate_upsert_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          [
+            candidateSnapshotId, "conan:late", "Late Case", "1 U.S. 1", "1 U.S. 1",
+            "scotus_candidate", 0, [], JSON.stringify(bakerEvidence),
+          ],
+        ),
+        /US_CONAN_MANIFEST_CLOSED/,
+      );
+      await assert.rejects(
+        pool.query(`insert into us_conan_candidate_reviews_v1(
+          candidate_id,revision,status,official_scotus_identity_verified,
+          constitutional_essay_context_verified,official_authority_verified,
+          constitutional_holding_verified,official_authority_url,reviewed_by,review_reason
+        ) values($1,1,'verified',true,true,true,true,'https://www.supremecourt.gov/opinions/test.pdf','postgres-test','invalid')`, [districtId]),
+        /US_CONAN_VERIFICATION_GATE_FAILED/,
+      );
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_review_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+          [
+            bakerId, 0, "verified", true, false, true, true,
+            "https://www.supremecourt.gov/opinions/test.pdf", {}, "postgres-test", "missing context",
+          ],
+        ),
+        /us_conan_candidate_reviews_verified_shape_check/,
+      );
+      const uncertain = await pool.query<{ review_revision: number; review_status: string }>(
+        "select * from us_conan_candidate_review_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+        [bakerId, 0, "uncertain", true, false, true, false, null, {}, "postgres-test", "Essay context pending."],
+      );
+      assert.deepEqual(
+        { revision: uncertain.rows[0].review_revision, status: uncertain.rows[0].review_status },
+        { revision: 1, status: "uncertain" },
+      );
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_review_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+          [bakerId, 0, "rejected", false, false, false, false, null, {}, "postgres-test", "stale reviewer"],
+        ),
+        /US_CONAN_REVIEW_STALE_REVISION/,
+      );
+      const verified = await pool.query<{ review_revision: number; review_status: string }>(
+        "select * from us_conan_candidate_review_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+        [
+          bakerId, 1, "verified", true, true, true, true,
+          "https://www.supremecourt.gov/opinions/boundvolumes/369us1.pdf",
+          { identity: "369 U.S. 186", essayId: "ALDE_00001001" }, "postgres-test", "All four gates reviewed.",
+        ],
+      );
+      assert.deepEqual(
+        { revision: verified.rows[0].review_revision, status: verified.rows[0].review_status },
+        { revision: 2, status: "verified" },
+      );
+      const current = await pool.query<{ constitutional_relevance_status: string; review_revision: number }>(
+        "select constitutional_relevance_status,review_revision from us_conan_candidate_current_v1 where id=$1", [bakerId],
+      );
+      assert.deepEqual(current.rows[0], { constitutional_relevance_status: "verified", review_revision: 2 });
+      const security = await pool.query<{ rls: boolean; public_select: boolean; public_execute: boolean }>(`
+        select
+          (select relrowsecurity from pg_class where oid='us_conan_case_candidates_v1'::regclass) rls,
+          has_table_privilege('public','us_conan_case_candidates_v1','select') public_select,
+          has_function_privilege(
+            'public',
+            'us_conan_candidate_review_v1(uuid,integer,text,boolean,boolean,boolean,boolean,text,jsonb,text,text)',
+            'execute'
+          ) public_execute
+      `);
+      assert.deepEqual(security.rows[0], { rls: true, public_select: false, public_execute: false });
+      await assert.rejects(
+        pool.query("update us_conan_candidate_reviews_v1 set review_reason='tampered' where candidate_id=$1", [bakerId]),
+        /CASE_BACKFILL_IMMUTABLE/,
+      );
+    });
     await pool.query(`
       insert into source_corpus_policies(
         source_key, policy_version, scope_definition, official_scope_url, discovery_methods,
