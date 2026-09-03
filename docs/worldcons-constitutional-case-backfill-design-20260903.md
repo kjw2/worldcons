@@ -70,6 +70,8 @@ Gate 2 구현 증거는 `20260903130000_constitutional_case_catalog_gate2.sql`�
 
 Gate 3 구현은 `public_article_detail_v4`를 유일한 대표 문서 입력으로 사용한다. exact identity가 있으면 lexical보다 우선하고, 없으면 original lexical FTS로 전환한다. `gate3-exact-lexical-v1` cursor는 질의·filter fingerprint와 마지막 score/date/article ID를 묶으며 offset pagination을 사용하지 않는다. alias, RRF, 국가 다양화, Catalog semantic embedding은 Gate 4 이후로 남겨 범위를 섞지 않는다.
 
+Gate 4 로컬 구현은 reviewed alias set을 immutable ranking input으로 고정하고 5개 언어 bounded OR expansion, weighted RRF, 관할별 제한적 감점, ranking-version cursor 만료를 추가한다. 운영 별칭은 migration에 seed하지 않으며 별도 법률 검토 후 등록한다. PostgreSQL 계약 검증은 완료됐지만 운영 migration·별칭 검토·실데이터 p95 canary 전이므로 운영 Gate 4 완료로 간주하지 않는다. semantic/Gemini retrieval은 여전히 Gate 6 범위다.
+
 이 문서에서 “전수”는 전 세계 모든 헌법판례를 뜻하지 않는다.
 
 > **특정 시점에 선언된 공식 원천·기간·문서 유형의 inventory snapshot 안에서 누락 없이 처리되었음을 증명하는 것**을 뜻한다.
@@ -1926,6 +1928,8 @@ Spain, 한 연도, Sentencia, 공개 flag OFF
 - 기존 plugin smoke test와 공개 URL 회귀 없음
 
 ### Gate 4 — 다국어 recall
+
+상태: 로컬 DB·앱·플러그인 접합 구현 및 격리 PostgreSQL 검증 완료. 운영 alias review, migration, precision/recall 표본과 p95 canary는 미완료.
 
 작업:
 

@@ -11,7 +11,7 @@ import type {
   SourceRecord,
 } from "@/lib/db/types";
 import { hybridSearch } from "@/lib/search/vector";
-import { catalogCaseSearch } from "@/lib/search/case-catalog";
+import { catalogCaseSearch, isCatalogSearchCursorError } from "@/lib/search/case-catalog";
 import { caseCatalogPluginEnabled } from "@/lib/case-catalog/flags";
 import { WorldconsToolError } from "@/lib/chatgpt-plugin/errors";
 
@@ -73,16 +73,27 @@ export class WorldconsCaseService {
 
   async searchPage(filters: SearchFilters) {
     const limit = boundedInteger(filters.limit, 10, 1, 10);
-    const result = await this.repository.search({
-      q: filters.query?.trim() || undefined,
-      jurisdiction: filters.jurisdiction,
-      source: filters.source,
-      range: filters.range ?? "latest",
-      page: 1,
-      pageSize: limit,
-      cursor: filters.cursor,
-      count: "none",
-    });
+    let result: ArticleListResult;
+    try {
+      result = await this.repository.search({
+        q: filters.query?.trim() || undefined,
+        jurisdiction: filters.jurisdiction,
+        source: filters.source,
+        range: filters.range ?? "latest",
+        page: 1,
+        pageSize: limit,
+        cursor: filters.cursor,
+        count: "none",
+      });
+    } catch (error) {
+      if (isCatalogSearchCursorError(error)) {
+        throw new WorldconsToolError(
+          error.reason === "expired" ? "CURSOR_EXPIRED" : "INVALID_CURSOR",
+          "검색 순위 기준 또는 조건이 변경되었습니다. cursor를 빼고 첫 페이지부터 다시 검색해 주세요.",
+        );
+      }
+      throw error;
+    }
     return {
       results: result.items.slice(0, limit).map((article) => this.mapSearchItem(article)),
       nextCursor: result.pageInfo.nextCursor ?? null,

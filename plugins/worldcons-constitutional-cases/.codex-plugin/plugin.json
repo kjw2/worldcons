@@ -1,6 +1,6 @@
 {
   "name": "worldcons-constitutional-cases",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "헌법판례요약시스템의 공개 판례와 공식 사건 정보를 ChatGPT 대화에서 검색하고 공식 원문과 함께 확인합니다.",
   "author": {
     "name": "헌법판례요약시스템 운영팀",
@@ -18,8 +18,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "헌법판례요약시스템",
-    "shortDescription": "세계 헌법판례의 공식 정보와 제공 가능한 한국어 요약을 검색합니다.",
-    "longDescription": "독일·미국·프랑스·스페인의 공개 헌법판례를 대화에서 검색하고, 공식 사건 정보를 먼저 확인합니다. 한국어 AI 요약은 준비되어 있고 최신 공식 원문과 일치하는 판례에만 제공하며, 회원가입이나 API 키는 필요하지 않습니다.",
+    "shortDescription": "다국어 법률개념으로 세계 헌법판례의 공식 정보와 한국어 요약을 검색합니다.",
+    "longDescription": "한국어·영어·독일어·프랑스어·스페인어의 검토된 법률개념 별칭으로 독일·미국·프랑스·스페인의 공개 헌법판례를 검색하고, 공식 사건 정보를 먼저 확인합니다. 한국어 AI 요약은 준비되어 있고 최신 공식 원문과 일치하는 판례에만 제공하며, 회원가입이나 API 키는 필요하지 않습니다.",
     "developerName": "헌법판례요약시스템 운영팀",
     "category": "Research",
     "capabilities": [
@@ -30,7 +30,7 @@
     "websiteURL": "https://worldcons.vercel.app/guide/chatgpt-plugin",
     "defaultPrompt": [
       "최근 독일 연방헌법재판소 판례를 핵심 쟁점별로 찾아줘.",
-      "표현의 자유와 관련된 프랑스 헌법판례를 비교해줘.",
+      "게리맨더링 관련 판례를 여러 나라 법률용어까지 포함해 비교해줘.",
       "이 판례의 한국어 요약과 법원 공식 원문 링크를 보여줘."
     ],
     "brandColor": "#173F5F",

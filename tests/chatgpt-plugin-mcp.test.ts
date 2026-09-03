@@ -7,6 +7,7 @@ import {
   type WorldconsCaseRepository,
 } from "../lib/chatgpt-plugin/case-service";
 import { handleWorldconsMcpRequest } from "../lib/chatgpt-plugin/http-handler";
+import { CatalogSearchCursorError } from "../lib/search/case-catalog";
 
 const fixtureArticle = {
   id: "article-1",
@@ -64,8 +65,8 @@ function fixtureRepository(calls: string[]): WorldconsCaseRepository {
         pageInfo: {
           page: 1,pageSize: filters.pageSize ?? 10,total: 2,hasMore: true,nextCursor: "next-cursor",
         },
-        retrievalMode: "lexical",
-        rankingVersion: "gate3-exact-lexical-v1",
+        retrievalMode: "rrf",
+        rankingVersion: "gate4-multilingual-rrf-v1:fixture:123456789abc",
       };
     },
     async getArticle(slug) {
@@ -122,6 +123,25 @@ test("Vercel-integrated case service exposes bounded public evidence and canonic
     "article:germany-neubauer",
     "source-text:germany-neubauer",
   ]);
+});
+
+test("expired Gate 4 ranking cursors tell ChatGPT to restart without mutating the cursor", async () => {
+  const repository: WorldconsCaseRepository = {
+    async search() {
+      throw new CatalogSearchCursorError("expired");
+    },
+    async getArticle() { return null; },
+    async getSourceText() { return null; },
+    async getSources() { return []; },
+  };
+  const api = new WorldconsCaseService({ repository,siteBaseUrl: "https://worldcons.vercel.app" });
+  await assert.rejects(
+    api.searchPage({ query: "게리맨더링",cursor: "opaque-cursor" }),
+    (error: unknown) => error instanceof Error
+      && "code" in error
+      && error.code === "CURSOR_EXPIRED"
+      && /첫 페이지/u.test(error.message),
+  );
 });
 
 test("ChatGPT can initialize the Vercel MCP endpoint, scan tools, and call search", async () => {

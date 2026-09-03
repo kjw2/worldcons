@@ -7,6 +7,7 @@ import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { mapSearchApiArticle, WORLDCONS_SEARCH_SCHEMA_VERSION } from "@/lib/search/api-contract";
 import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
+import { isCatalogSearchCursorError } from "@/lib/search/case-catalog";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -68,6 +69,11 @@ export async function GET(request: Request) {
       },
     );
   } catch (error) {
+    if (isCatalogSearchCursorError(error)) {
+      return publicApiValidationErrorResponse(error.reason === "expired"
+        ? "cursor: 검색 순위 기준이 변경되었습니다. 첫 페이지부터 다시 검색해 주세요"
+        : "cursor: 현재 검색 조건과 일치하지 않습니다. 첫 페이지부터 다시 검색해 주세요");
+    }
     console.error("[search-api] search unavailable", error instanceof Error ? error.name : "UnknownError");
     return NextResponse.json(
       {

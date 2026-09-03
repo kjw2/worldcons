@@ -37,3 +37,16 @@ test("Gate 4 keeps identity absolute and does not introduce semantic or Gemini w
   assert.match(migration, /where \(select mode from strategy\)='exact-identity'/);
   assert.doesNotMatch(migration, /query_embedding|semantic_similarity|createTextEmbedding|Gemini/i);
 });
+
+test("Gate 4 app and plugin preserve ranking metadata and restart expired cursors", () => {
+  const root = process.cwd();
+  const search = fs.readFileSync(path.join(root, "lib/search/case-catalog.ts"), "utf8");
+  const api = fs.readFileSync(path.join(root, "app/api/search/route.ts"), "utf8");
+  const plugin = fs.readFileSync(path.join(root, "lib/chatgpt-plugin/case-service.ts"), "utf8");
+  assert.match(search, /parseRetrievalMode/);
+  assert.match(search, /parseRankingVersion/);
+  assert.match(search, /search_entry_duplicate/);
+  assert.match(search, /CURSOR_RANKING_VERSION_EXPIRED/);
+  assert.match(api, /첫 페이지부터 다시 검색/u);
+  assert.match(plugin, /CURSOR_EXPIRED/);
+});

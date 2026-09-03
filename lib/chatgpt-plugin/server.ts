@@ -16,14 +16,14 @@ const cursorSchema = z.string().trim().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/
 export function createWorldconsMcpServer(service: WorldconsCaseService) {
   const server = new McpServer({
     name: "worldcons-constitutional-cases",
-    version: "0.3.0",
+    version: "0.4.0",
   });
 
   server.registerTool(
     "search",
     {
       title: "헌법판례 검색",
-      description: "Use this when the user wants to discover public constitutional cases by a natural-language query or legal identifier. Results may contain official metadata before a Korean AI summary exists; call fetch for selected results.",
+      description: "Use this when the user wants to discover public constitutional cases by a Korean, English, German, French, or Spanish legal-concept query or identifier. Reviewed aliases expand recall; results may contain official metadata before a Korean AI summary exists.",
       inputSchema: z.object({
         query: z.string().trim().min(1).max(200).describe("Natural-language case, docket, court, or constitutional-issue query"),
         cursor: cursorSchema.optional().describe("Opaque nextCursor returned by the previous search page"),

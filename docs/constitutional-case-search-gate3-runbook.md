@@ -100,4 +100,4 @@ Gate 2 Spain canary와 source-only 상세 검증을 먼저 완료한다.
 - 기존 P3 및 공개 URL 회귀 테스트
 - Gemini 호출 0회 증거
 
-운영 증거가 모두 모이기 전에는 Gate 4 alias/RRF나 국가 확대를 시작하지 않는다.
+운영 증거가 모두 모이기 전에는 Gate 4 alias/RRF를 운영 활성화하거나 국가 corpus를 확대하지 않는다. Gate 4 코드와 격리 PostgreSQL 계약 테스트는 운영 상태와 분리해 선행할 수 있다.

@@ -15,6 +15,8 @@ Use the WorldCons tools to retrieve public constitutional cases while keeping th
 4. Call `fetch_source_text` only when the user asks to verify source-language wording or when a specific passage is necessary. Fetch additional pages only as needed.
 5. Use `list_sources` when the user asks about coverage or when an exact source key is needed.
 6. When a search page has `hasMore=true`, pass its opaque `nextCursor` unchanged if another page is needed.
+7. Korean, English, German, French, and Spanish legal-concept queries may use a reviewed multilingual alias set. Keep the user's original wording in the answer; do not present an expanded alias as the user's quote.
+8. If a cursor expires because the reviewed ranking input changed, restart the same query without a cursor. Never edit or reconstruct a cursor.
 
 Read [citation-policy.md](references/citation-policy.md) before composing an answer that relies on case content. Read [source-coverage.md](references/source-coverage.md) when the user asks what jurisdictions or material the plugin covers.
 

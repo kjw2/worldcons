@@ -15,7 +15,7 @@ test("ChatGPT plugin package keeps the canonical identity and no-auth endpoint",
   const mcp = json("plugins/worldcons-constitutional-cases/.mcp.json");
 
   assert.equal(manifest.name, "worldcons-constitutional-cases");
-  assert.equal(manifest.version, "0.3.0");
+  assert.equal(manifest.version, "0.4.0");
   assert.equal(manifest.interface.displayName, "헌법판례요약시스템");
   assert.equal(manifest.homepage, "https://worldcons.vercel.app/guide/chatgpt-plugin");
   assert.deepEqual(mcp, {
