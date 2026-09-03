@@ -45,7 +45,12 @@ async function readSitemap(
 ): Promise<string[]> {
   await checkpointCrawlerExecution(hooks);
   if (depth > 2) return [];
-  const response = await crawlUrl({ url, signal: hooks?.signal, checkpoint: hooks?.checkpoint });
+  const response = await crawlUrl({
+    url,
+    signal: hooks?.signal,
+    checkpoint: hooks?.checkpoint,
+    requestGovernor: hooks?.requestGovernor,
+  });
   await checkpointCrawlerExecution(hooks);
   const locs = response.text ? await locsFromXml(response.text, hooks) : [];
   const optionalIndex = /\/sitemap_index\.xml$/i.test(url);

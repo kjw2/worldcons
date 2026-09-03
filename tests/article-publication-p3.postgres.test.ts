@@ -8,7 +8,12 @@ const databaseUrl = process.env.P3_TEST_DATABASE_URL;
 const vectorFallback = process.env.P3_TEST_VECTOR_FALLBACK === "true";
 const p2Sql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712170000_article_lifecycle_p2.sql"), "utf8");
 const rawP3Sql = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712200000_article_publication_p3.sql"), "utf8");
-const p3Sql = vectorFallback ? rawP3Sql.replaceAll("vector(1536)", "double precision[]") : rawP3Sql;
+const replaceVectorForPostgresTest = (sql: string) => sql
+  .replaceAll("extensions.vector(1536)", "double precision[]")
+  .replaceAll("extensions.vector", "double precision[]")
+  .replaceAll("vector(1536)", "double precision[]")
+  .replaceAll("OPERATOR(extensions.<=>)", "OPERATOR(public.<=>)");
+const p3Sql = vectorFallback ? replaceVectorForPostgresTest(rawP3Sql) : rawP3Sql;
 const p3Indexes = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712201000_article_publication_p3_indexes.sql"), "utf8");
 const p3Reconciliation = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712202000_article_publication_p3_reconciliation.sql"), "utf8");
 const rawP3AuthorityCorrection = fs.readFileSync(
@@ -16,7 +21,7 @@ const rawP3AuthorityCorrection = fs.readFileSync(
   "utf8",
 );
 const p3AuthorityCorrection = vectorFallback
-  ? rawP3AuthorityCorrection.replaceAll("vector(1536)", "double precision[]")
+  ? replaceVectorForPostgresTest(rawP3AuthorityCorrection)
   : rawP3AuthorityCorrection;
 
 interface BackfillRow {

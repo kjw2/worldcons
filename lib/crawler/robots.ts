@@ -240,7 +240,7 @@ export async function checkRobotsAllowed(url: string, hooks?: CrawlerExecutionHo
   const parsedUrl = new URL(url);
   const robotsUrl = `${parsedUrl.origin}/robots.txt`;
   let robots: RobotsDocument;
-  if (hooks?.signal || hooks?.checkpoint) {
+  if (hooks?.signal || hooks?.checkpoint || hooks?.requestGovernor) {
     robots = await fetchRobotsDocument(robotsUrl, url, userAgent, hooks);
   } else {
     const cached = robotsCache.get(robotsUrl) ?? fetchRobotsDocument(robotsUrl, url, userAgent);

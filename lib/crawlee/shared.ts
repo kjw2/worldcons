@@ -5,6 +5,7 @@ import { extractLinks } from "@/lib/crawler/extract-links";
 import { extractHtmlMetadata } from "@/lib/crawler/extract-metadata";
 import { extractReadableText } from "@/lib/crawler/extract-readable-text";
 import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
+import { createCrawlerNavigationPermitController } from "@/lib/crawler/request-governor";
 import { discoverSitemapUrls } from "@/lib/crawler/sitemap";
 import { crawlerHeaders, crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
@@ -467,6 +468,10 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
   );
   await runCrawleeExecutionBoundary(state.options, () => enqueueStartRequests(requestQueue, requests, settings, state.options));
 
+  const navigationPermits = createCrawlerNavigationPermitController(
+    state.options.requestGovernor,
+  );
+
   const crawler = new CheerioCrawler({
     requestQueue,
     maxConcurrency: settings.maxConcurrency,
@@ -474,7 +479,14 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
     sameDomainDelaySecs: settings.sameDomainDelaySecs,
     requestHandlerTimeoutSecs: settings.requestHandlerTimeoutSecs,
     navigationTimeoutSecs: settings.requestHandlerTimeoutSecs,
+    preNavigationHooks: [async ({ request }, gotOptions) => {
+      await navigationPermits.beforeNavigation(request, request.url, gotOptions);
+    }],
     async requestHandler({ request, $, response }) {
+      await navigationPermits.afterNavigation(
+        request,
+        Number(response.statusCode ?? 0),
+      );
       await checkSpiderExecution(state);
       const userData = request.userData as CrawleeStartRequest;
       const finalUrl = request.loadedUrl ?? request.url;
@@ -553,7 +565,11 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
       await checkSpiderExecution(state);
       remember(state, item, raw);
     },
-    failedRequestHandler({ request }, error) {
+    async errorHandler({ request }) {
+      await navigationPermits.release(request);
+    },
+    async failedRequestHandler({ request }, error) {
+      await navigationPermits.release(request);
       const userData = request.userData as CrawleeStartRequest;
       addAttempt(state.diagnostics, failedAttempt(error, {
         url: request.url,
@@ -563,20 +579,33 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
     },
   });
 
-  await runCrawlerWithCancellation(state, crawler).catch((error) => {
-    if (state.options.signal?.aborted) throw state.options.signal.reason;
-    addAttempt(state.diagnostics, {
-      strategy: "cheerio",
-      errorCode: errorName(error),
-      errorMessage: errorMessage(error),
+  try {
+    await runCrawlerWithCancellation(state, crawler).catch((error) => {
+      if (state.options.signal?.aborted) throw state.options.signal.reason;
+      addAttempt(state.diagnostics, {
+        strategy: "cheerio",
+        errorCode: errorName(error),
+        errorMessage: errorMessage(error),
+      });
     });
-  });
+  } finally {
+    await navigationPermits.releaseAll();
+  }
   await checkSpiderExecution(state);
 }
 
 async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRequest[], name: string) {
   await checkSpiderExecution(state);
   if (requests.length === 0) return;
+  if (state.options.requestGovernor) {
+    addAttempt(state.diagnostics, {
+      strategy: "playwright",
+      fallback: true,
+      errorCode: "REQUEST_GOVERNOR_PLAYWRIGHT_UNSUPPORTED",
+      errorMessage: "Governed source requests cannot use browser navigation because redirects cannot be authorized before they are followed.",
+    });
+    return;
+  }
   configureStorage();
   state.strategySequence.push("playwright");
   let settings = crawlerSettings();

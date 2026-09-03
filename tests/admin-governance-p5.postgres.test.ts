@@ -104,6 +104,14 @@ function migration(name: string) {
   return fs.readFileSync(path.join(process.cwd(), "supabase", "migrations", name), "utf8");
 }
 
+function replaceVectorForPostgresTest(sql: string) {
+  return sql
+    .replaceAll("extensions.vector(1536)", "double precision[]")
+    .replaceAll("extensions.vector", "double precision[]")
+    .replaceAll("vector(1536)", "double precision[]")
+    .replaceAll("OPERATOR(extensions.<=>)", "OPERATOR(public.<=>)");
+}
+
 async function applyTwice(client: Client, migrationSql: string) {
   await client.query(migrationSql);
   await client.query(migrationSql);
@@ -133,10 +141,10 @@ test("P5 PostgreSQL full migration chain, ACL, approvals, and fail-closed govern
     await applyTwice(client, migration("20260712170000_article_lifecycle_p2.sql"));
     await applyStatementsTwice(client, migration("20260712171000_article_lifecycle_p2_indexes.sql"));
     await applyTwice(client, migration("20260712172000_article_lifecycle_p2_evidence_reconciliation.sql"));
-    await applyTwice(client, migration("20260712200000_article_publication_p3.sql").replaceAll("vector(1536)", "double precision[]"));
+    await applyTwice(client, replaceVectorForPostgresTest(migration("20260712200000_article_publication_p3.sql")));
     await applyStatementsTwice(client, migration("20260712201000_article_publication_p3_indexes.sql"), (statement) => statement.includes("vector_cosine_ops"));
     await applyTwice(client, migration("20260712202000_article_publication_p3_reconciliation.sql"));
-    await applyTwice(client, migration("20260712203000_article_publication_p3_authority_correction.sql").replaceAll("vector(1536)", "double precision[]"));
+    await applyTwice(client, replaceVectorForPostgresTest(migration("20260712203000_article_publication_p3_authority_correction.sql")));
     await applyTwice(client, sql);
     await applyStatementsTwice(client, indexSql);
     await applyTwice(client, correctiveSql);

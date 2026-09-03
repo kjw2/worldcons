@@ -8,6 +8,15 @@ import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 
 const rawCache = new Map<string, RawArticle>();
 
+export function franceSpiderTransportOptions(options?: SourceDiscoveryOptions) {
+  const governed = Boolean(options?.requestGovernor);
+  return {
+    strategy: governed ? "cheerio" as const : options?.strategy ?? "auto",
+    usePlaywright: governed ? false : options?.usePlaywright,
+    requestGovernor: options?.requestGovernor,
+  };
+}
+
 function remember(raw?: RawArticle) {
   if (!raw) return;
   rawCache.set(raw.canonicalUrl, raw);
@@ -56,15 +65,17 @@ export const conseilConstitutionnelAdapter: SourceAdapter = {
   defaultLanguage: "fr",
 
   async discover(options) {
+    const transport = franceSpiderTransportOptions(options);
     const result = await runFranceSpider({
       limit: discoveryLimit(options),
       rangeDays: options?.rangeDays,
       dryRun: options?.dryRun,
-      strategy: options?.strategy ?? "auto",
-      usePlaywright: options?.usePlaywright,
+      strategy: transport.strategy,
+      usePlaywright: transport.usePlaywright,
       diagnostics: options?.diagnostics,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: transport.requestGovernor,
     });
     for (const entry of result.items) remember(entry.raw);
     if (result.items.length === 0 && !options?.rangeDays) {
@@ -103,20 +114,30 @@ export const conseilConstitutionnelAdapter: SourceAdapter = {
   },
 
   async fetchItem(item: DiscoveredItem, options?: SourceDiscoveryOptions): Promise<RawArticle> {
-    const cached = rawCache.get(item.canonicalUrl) ?? rawCache.get(canonicalizeUrl(item.url));
+    const cached = options?.requestGovernor
+      ? undefined
+      : rawCache.get(item.canonicalUrl) ?? rawCache.get(canonicalizeUrl(item.url));
     if (cached) return cached;
 
+    const transport = franceSpiderTransportOptions(options);
     const result = await runFranceSpider({
       limit: 1,
-      strategy: options?.strategy ?? "auto",
-      usePlaywright: options?.usePlaywright,
+      strategy: transport.strategy,
+      usePlaywright: transport.usePlaywright,
       diagnostics: options?.diagnostics,
       detailUrls: [item.url],
       detailOnly: true,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: transport.requestGovernor,
     });
     const raw = result.items[0]?.raw;
+    if (options?.requestGovernor && raw?.metadata?.collection?.sourceUrlVerified !== true) {
+      throw new Error("case_backfill.france_authority_fetch_unverified");
+    }
+    if (options?.requestGovernor && !raw) {
+      throw new Error("case_backfill.france_authority_fetch_failed");
+    }
     remember(raw);
     return raw ?? metadataOnlyRaw(item, options);
   },

@@ -188,7 +188,7 @@ function franceStrategy(
     sourceKey: "fr-conseil-constitutionnel",
     defaultFetchContractVersion: "france-conseil-fetch-v1",
     defaultParserVersion: "france-conseil-normalize-v1",
-    governedNetworkPhases: ["discover"],
+    governedNetworkPhases: ["discover", "fetch"],
     assertDiscoveryScope(snapshot, environment) {
       assertAnnualScope(snapshot);
       const documentType = franceConseilDocumentType(snapshot.documentType);

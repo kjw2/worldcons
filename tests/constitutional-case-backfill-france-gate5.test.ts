@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import test from "node:test";
 import {
   CASE_CATALOG_FRANCE_HISTORY_FLAG,
@@ -10,6 +11,10 @@ import {
   parseFranceConseilDecisionDate,
   parseFranceConseilInventoryPage,
 } from "../lib/crawlee/france-conseil-inventory";
+import { createCrawlerNavigationPermitController } from "../lib/crawler/request-governor";
+import { franceSpiderTransportOptions } from "../lib/sources/conseilconstitutionnel";
+import { loadCaseBackfillSourceStrategy } from "../lib/backfill/source-strategies";
+import { runOfficialSpider } from "../lib/crawlee/shared";
 import { runCaseBackfillPass, validateNormalizedCase } from "../lib/backfill/service";
 import type { CaseBackfillRepository } from "../lib/backfill/repository";
 import type {
@@ -75,6 +80,118 @@ test("France decision date parser handles accents and premier-day notation witho
   assert.equal(parseFranceConseilDecisionDate("Décision n° 2010-1 QPC du 1er mars 2010"), "2010-03-01");
   assert.equal(parseFranceConseilDecisionDate("Décision n° 2024-1 DC du 31 février 2024"), null);
   assert.equal(parseFranceConseilDecisionDate("lastmod 2024-12-31"), null);
+});
+
+test("France governed fetch is Cheerio-only and declares both network phases", () => {
+  const governor = { acquire: async () => ({ release: async () => undefined }) };
+  assert.deepEqual(franceSpiderTransportOptions({
+    strategy: "playwright",
+    usePlaywright: true,
+    requestGovernor: governor,
+  }), {
+    strategy: "cheerio",
+    usePlaywright: false,
+    requestGovernor: governor,
+  });
+  assert.deepEqual(
+    loadCaseBackfillSourceStrategy("fr-conseil-constitutionnel").governedNetworkPhases,
+    ["discover", "fetch"],
+  );
+});
+
+test("Crawlee navigation permits cover retries, block redirects, and drain on teardown", async () => {
+  const acquired: string[] = [];
+  const released: string[] = [];
+  const controller = createCrawlerNavigationPermitController({
+    async acquire(url) {
+      acquired.push(url);
+      return { async release() { released.push(url); } };
+    },
+  });
+  const first = {};
+  const second = {};
+  const navigationOptions = { followRedirect: true, maxRedirects: 10 };
+  await controller.beforeNavigation(first, "https://www.conseil-constitutionnel.fr/decision/2024/a.htm", navigationOptions);
+  assert.deepEqual(navigationOptions, { followRedirect: false, maxRedirects: 0 });
+  await controller.release(first);
+  await controller.beforeNavigation(first, "https://www.conseil-constitutionnel.fr/decision/2024/a.htm", navigationOptions);
+  await assert.rejects(
+    controller.afterNavigation(first, 302),
+    /crawler\.request_governor_redirect_blocked/,
+  );
+  await controller.beforeNavigation(second, "https://www.conseil-constitutionnel.fr/decision/2024/b.htm");
+  await controller.releaseAll();
+  assert.deepEqual(acquired, [
+    "https://www.conseil-constitutionnel.fr/decision/2024/a.htm",
+    "https://www.conseil-constitutionnel.fr/decision/2024/a.htm",
+    "https://www.conseil-constitutionnel.fr/decision/2024/b.htm",
+  ]);
+  assert.deepEqual(released, acquired);
+});
+
+test("governed Crawlee acquires separate permits for robots and the full response body", async () => {
+  const previousRobotsSetting = process.env.CRAWLER_ROBOTS_ENABLED;
+  process.env.CRAWLER_ROBOTS_ENABLED = "true";
+  const server = createServer((request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    if (request.url === "/robots.txt") {
+      response.end("User-agent: *\nAllow: /\n");
+      return;
+    }
+    response.end(`<html><body><article>${"Décision constitutionnelle. ".repeat(80)}</article></body></html>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const detailUrl = `${baseUrl}/decision/2024/test.htm`;
+  const acquired: string[] = [];
+  const released: string[] = [];
+
+  try {
+    const result = await runOfficialSpider({
+      sourceKey: `governed-france-test-${address.port}`,
+      baseUrl,
+      sitemapBaseUrls: [],
+      listUrls: [],
+      listSelectors: [],
+      bodySelectors: ["article"],
+      sitemapKeywords: [],
+      seedItems: [],
+      isCandidateUrl: () => true,
+      itemFromUrl: (url) => ({
+        sourceKey: "fr-conseil-constitutionnel",
+        url,
+        canonicalUrl: url,
+        title: "Décision de test",
+        contentType: "decision",
+      }),
+    }, {
+      limit: 1,
+      detailUrls: [detailUrl],
+      detailOnly: true,
+      strategy: "cheerio",
+      usePlaywright: false,
+      requestGovernor: {
+        async acquire(url) {
+          acquired.push(url);
+          return { async release() { released.push(url); } };
+        },
+      },
+    });
+    assert.equal(result.items.length, 1);
+    assert.ok(acquired.some((url) => url.endsWith("/robots.txt")));
+    assert.ok(acquired.includes(detailUrl));
+    assert.equal(released.length, acquired.length);
+    assert.deepEqual([...released].sort(), [...acquired].sort());
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    if (previousRobotsSetting === undefined) delete process.env.CRAWLER_ROBOTS_ENABLED;
+    else process.env.CRAWLER_ROBOTS_ENABLED = previousRobotsSetting;
+  }
 });
 
 const franceSnapshot: CaseBackfillSnapshot = {

@@ -68,6 +68,21 @@ pnpm backfill:corpus status --snapshot=<uuid>
 
 Publication is a separate, explicitly enabled Gate 2 operation and is not performed by this Gate 5 expansion.
 
+## Governed transport contract
+
+Both `discover` and `fetch` are governed network phases. The P1 attempt-scoped request governor applies the immutable policy host allowlist, minimum delay, maximum concurrency, lease, and fencing token to every robots, inventory, sitemap, retry, and detail request.
+
+For governed France detail fetches:
+
+- Crawlee uses the HTTP/Cheerio transport only. Playwright is fail-closed because a browser can follow a redirect before the destination receives a separate policy permit.
+- redirect following is disabled. A 3xx response releases the current permit and fails the attempt; the worker never authorizes an unknown destination implicitly.
+- one permit remains held until the complete response body is available to the Cheerio handler. Every Crawlee retry obtains a new permit and the error/finalization paths release outstanding permits.
+- the legacy process-local raw cache is bypassed, so an authoritative backfill fetch cannot be mistaken for a previously cached discovery result.
+- missing or unverified official response bodies fail the fetch phase. They do not become metadata-only fetch artifacts.
+- nested sitemap requests and governor-only robots checks preserve the same governor instead of falling into the legacy ungoverned cache path.
+
+These controls only make a future approved run enforceable. They do not approve Conseil constitutionnel collection, create a source policy, enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, or write source data.
+
 ## Verification evidence
 
 For each snapshot retain:
