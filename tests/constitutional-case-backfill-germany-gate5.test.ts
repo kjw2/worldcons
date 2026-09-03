@@ -14,6 +14,10 @@ import {
 } from "../lib/crawlee/bverfg-inventory";
 import { loadCaseBackfillSourceStrategy } from "../lib/backfill/source-strategies";
 import { runCaseBackfillPass } from "../lib/backfill/service";
+import {
+  validateBverfgInventoryResult,
+  verifyBverfgInventoryReadOnly,
+} from "../lib/backfill/germany-inventory-verification";
 import type { CaseBackfillRepository } from "../lib/backfill/repository";
 import type {
   CaseBackfillAttemptAuthority,
@@ -154,6 +158,45 @@ test("external-index inventory fails closed when the listing changes during pagi
     }),
     /changed during pagination/,
   );
+});
+
+test("read-only verifier seals a bounded report and never authorizes writes or Gemini", async () => {
+  const fixtures = new Map<number, string>([
+    [1, dejurePage([
+      { date: "10.01.2025", docket: "1 BvR 10/25" },
+      { date: "31.12.2024", docket: "1 BvR 20/24" },
+    ], [2, 3])],
+    [2, dejurePage([{ date: "02.01.2024", docket: "2 BvR 547/21" }], [1, 3])],
+    [3, dejurePage([{ date: "31.12.2023", docket: "1 BvR 30/23" }], [1, 2])],
+  ]);
+  const inventory = await discoverBverfgInventory({
+    year: 2024,
+    currentYear: 2026,
+    maxPages: 3,
+    fetchPage: async (_url, page) => {
+      const fixture = fixtures.get(page);
+      if (!fixture) throw new Error("unexpected page");
+      return fixture;
+    },
+  });
+  const report = await verifyBverfgInventoryReadOnly({ year: 2024, maxPages: 3 }, {
+    discover: async () => inventory,
+  });
+  assert.equal(report.inventoryContractVerified, true);
+  assert.equal(report.productionWriteAuthorized, false);
+  assert.equal(report.geminiCalls, 0);
+  assert.equal(report.coverageAssurance, "external_index_assisted");
+  assert.equal(report.officialCorpusCoverageClaimed, false);
+  assert.equal(report.enumerationArtifactCount, 4);
+  assert.match(report.enumerationArtifactManifestHash, /^[0-9a-f]{64}$/);
+
+  assert.throws(() => validateBverfgInventoryResult({
+    ...inventory,
+    enumerationArtifacts: inventory.enumerationArtifacts.map((artifact, index) => index === 0 ? {
+      ...artifact,
+      safeDetails: { ...artifact.safeDetails, externalText: "must not be stored" },
+    } : artifact),
+  }), /artifact_contract_invalid/);
 });
 
 test("Germany discovery persists enumeration evidence before items and closes one manifest", async () => {
