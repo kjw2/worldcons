@@ -15,6 +15,7 @@ import {
 import { loadCaseBackfillSourceStrategy } from "../lib/backfill/source-strategies";
 import type { CaseBackfillClaimedItem, CaseBackfillSnapshot } from "../lib/backfill/types";
 import type { NormalizedArticle } from "../lib/sources/types";
+import { bverfgOfficialUrlCandidatesForItem } from "../lib/sources/bundesverfassungsgericht";
 
 interface FixtureRow {
   date: string;
@@ -183,10 +184,11 @@ function normalized(overrides: Partial<NormalizedArticle> = {}): NormalizedArtic
     originalLanguage: "de",
     originalTitle: "Beschluss vom 26. März 2024",
     originalPublishedAt: "2024-03-26T00:00:00.000Z",
+    cleanedText: "Amtlicher Entscheidungstext ".repeat(100),
     metadata: {
       decisionDate: "2024-03-26",
       caseNumber: "2 BvR 547/21",
-      collection: { sourceUrlVerified: true },
+      collection: { sourceUrlVerified: true, sourceTextAvailable: true, publishable: true },
     },
     ...overrides,
   };
@@ -203,9 +205,50 @@ test("Germany strategy requires the flag and verifies official authority identit
     canonicalUrl: "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG",
   }), item, snapshot).includes("authority_url_invalid"));
   assert.ok(strategy.validate(normalized({
-    metadata: { decisionDate: "2024-03-26", caseNumber: "2 BvR 547/21", collection: { sourceUrlVerified: false } },
+    metadata: {
+      decisionDate: "2024-03-26",
+      caseNumber: "2 BvR 547/21",
+      collection: { sourceUrlVerified: false, sourceTextAvailable: true, publishable: true },
+    },
   }), item, snapshot).includes("official_source_not_verified"));
   assert.ok(strategy.validate(normalized({
-    metadata: { decisionDate: "2024-03-26", caseNumber: "1 BvR 1/24", collection: { sourceUrlVerified: true } },
+    metadata: {
+      decisionDate: "2024-03-26",
+      caseNumber: "1 BvR 1/24",
+      collection: { sourceUrlVerified: true, sourceTextAvailable: true, publishable: true },
+    },
   }), item, snapshot).includes("docket_mismatch"));
+  assert.ok(strategy.validate(normalized({
+    cleanedText: "",
+    metadata: {
+      decisionDate: "2024-03-26",
+      caseNumber: "2 BvR 547/21",
+      collection: { sourceUrlVerified: true, sourceTextAvailable: false, publishable: false },
+    },
+  }), item, snapshot).includes("official_source_text_missing"));
+});
+
+test("BVerfG fetch candidates come from sealed inventory and reject non-official URLs", () => {
+  const candidates = bverfgOfficialUrlCandidatesForItem({
+    sourceKey: "de-bverfg",
+    url: item.discoveredUrl,
+    canonicalUrl: item.discoveredUrl,
+    contentType: "decision",
+    metadata: {
+      sourceInventory: {
+        officialUrlCandidates: [
+          "https://attacker.example/SharedDocs/Entscheidungen/DE/2024/03/rk20240326_2bvr054721.html",
+          ...(item.inventoryMetadata.officialUrlCandidates as string[]),
+        ],
+      },
+    },
+  });
+  assert.deepEqual(candidates, item.inventoryMetadata.officialUrlCandidates);
+  assert.deepEqual(bverfgOfficialUrlCandidatesForItem({
+    sourceKey: "de-bverfg",
+    url: "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html",
+    canonicalUrl: "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html",
+    contentType: "decision",
+    metadata: { sourceInventory: { officialUrlCandidates: [] } },
+  }), []);
 });

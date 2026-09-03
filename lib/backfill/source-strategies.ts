@@ -25,6 +25,7 @@ import {
   discoverBverfgInventory,
   type BverfgInventoryResult,
 } from "@/lib/crawlee/bverfg-inventory";
+import { isBverfgOfficialDecisionUrl } from "@/lib/crawlee/bverfg-spider";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 
@@ -254,17 +255,6 @@ function franceStrategy(
   };
 }
 
-function officialBverfgUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:"
-      && (url.hostname === "www.bundesverfassungsgericht.de" || url.hostname === "www.bverfg.de")
-      && /^\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}\d{8}_[a-z0-9]+\.html$/i.test(url.pathname);
-  } catch {
-    return false;
-  }
-}
-
 function normalizedDocketKey(value: string) {
   return value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -310,7 +300,7 @@ function germanyStrategy(
     validate(normalized, item, snapshot) {
       const errors: string[] = [];
       if (normalized.sourceKey !== snapshot.sourceKey) errors.push("source_key_mismatch");
-      if (!officialBverfgUrl(normalized.canonicalUrl) || !officialBverfgUrl(normalized.originalUrl)) {
+      if (!isBverfgOfficialDecisionUrl(normalized.canonicalUrl) || !isBverfgOfficialDecisionUrl(normalized.originalUrl)) {
         errors.push("authority_url_invalid");
       }
       const officialCandidates = stringArrayAt(item.inventoryMetadata, "officialUrlCandidates")
@@ -337,6 +327,13 @@ function germanyStrategy(
       }
       if (pathValue(normalized.metadata ?? {}, "collection.sourceUrlVerified") !== true) {
         errors.push("official_source_not_verified");
+      }
+      if (
+        pathValue(normalized.metadata ?? {}, "collection.sourceTextAvailable") !== true
+        || pathValue(normalized.metadata ?? {}, "collection.publishable") !== true
+        || !normalized.cleanedText?.trim()
+      ) {
+        errors.push("official_source_text_missing");
       }
       if (!normalized.originalTitle?.trim()) errors.push("official_title_missing");
       return errors;

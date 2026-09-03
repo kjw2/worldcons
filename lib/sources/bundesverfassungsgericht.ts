@@ -1,7 +1,10 @@
 import { addDiagnosticAttempt } from "@/lib/crawler/diagnostics";
 import type { SourceDiscoveryOptions } from "@/lib/crawler/types";
 import { BVERFG_BASE_URL, BVERFG_SEED_DECISIONS, runBverfgSpider } from "@/lib/crawlee";
-import { bverfgOfficialUrlCandidatesFromUrl } from "@/lib/crawlee/bverfg-spider";
+import {
+  bverfgOfficialUrlCandidatesFromUrl,
+  isBverfgOfficialDecisionUrl,
+} from "@/lib/crawlee/bverfg-spider";
 import { upsertSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { normalizeRawArticle } from "@/lib/ingest/normalize";
 import type { DiscoveredItem, RawArticle, SourceAdapter } from "@/lib/sources/types";
@@ -20,10 +23,23 @@ function stringArray(value: unknown) {
   return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 }
 
-function officialUrlCandidates(item: DiscoveredItem) {
+function recordValue(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function bverfgOfficialUrlCandidatesForItem(item: DiscoveredItem) {
   const configured = stringArray(item.metadata?.officialUrlCandidates);
-  const candidates = configured.length > 0 ? configured : bverfgOfficialUrlCandidatesFromUrl(item.canonicalUrl || item.url);
-  return [...new Set(candidates.map((url) => canonicalizeUrl(url)))];
+  const inventory = recordValue(item.metadata?.sourceInventory);
+  const inventoryCandidates = stringArray(inventory?.officialUrlCandidates);
+  const declared = configured.length > 0 ? configured : inventoryCandidates;
+  const candidates = declared.length > 0
+    ? declared
+    : bverfgOfficialUrlCandidatesFromUrl(item.canonicalUrl || item.url);
+  return [...new Set(candidates
+    .map((url) => canonicalizeUrl(url))
+    .filter(isBverfgOfficialDecisionUrl))];
 }
 
 function detailItemForUrl(item: DiscoveredItem, url: string, candidates: string[]): DiscoveredItem {
@@ -135,7 +151,7 @@ export const bundesverfassungsgerichtAdapter: SourceAdapter = {
   },
 
   async fetchItem(item: DiscoveredItem, options?: SourceDiscoveryOptions): Promise<RawArticle> {
-    const candidates = officialUrlCandidates(item);
+    const candidates = bverfgOfficialUrlCandidatesForItem(item);
     const cached = candidates.map((url) => rawCache.get(url)).find(verifiedRaw)
       ?? rawCache.get(item.canonicalUrl)
       ?? rawCache.get(canonicalizeUrl(item.url));

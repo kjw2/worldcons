@@ -219,7 +219,7 @@ function germanDisplayDate(date?: string | null) {
   return `${String(parsed.getUTCDate()).padStart(2, "0")}.${String(parsed.getUTCMonth() + 1).padStart(2, "0")}.${parsed.getUTCFullYear()}`;
 }
 
-function isCandidateUrl(url: string) {
+export function isBverfgOfficialDecisionUrl(url: string) {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -523,7 +523,7 @@ const config: OfficialSpiderConfig = {
   preferSitemap: false,
   disableSeedArticleFallback: true,
   itemFromUrl,
-  isCandidateUrl,
+  isCandidateUrl: isBverfgOfficialDecisionUrl,
   sortItems,
   publishedAtForHtml: bverfgPublishedAtForHtml,
 };
