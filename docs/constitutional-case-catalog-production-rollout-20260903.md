@@ -95,3 +95,25 @@ Spain HJ의 첫 검토 결과는 `docs/spain-hj-source-policy-review-20260903.md
 - 운영 원장: `source_corpus_policies=0`, `source_request_permits=0`, `source_request_governor_states=0`
 
 전체 릴리스 게이트는 실제 disposable PostgreSQL을 연결해 backfill 60/60, Catalog 27/27, ChatGPT plugin 11/11과 production build까지 통과했다. 배포 smoke 중 watchdog heartbeat가 선언된 15분 주기와 달리 약 1시간 갱신되지 않아 top-level health가 `degraded`인 별도 운영 결함을 발견했다. 새 request governor와 database/MCP 기능은 정상이며, watchdog 스케줄·route heartbeat 정합성은 다음 교정 단계에서 다룬다.
+
+## Watchdog heartbeat 교정
+
+배포 smoke에서 발견한 별도 운영 결함은 commit `61709558f2cf5342ef350deb94b4fd32c92e51a0`으로 교정했다. GitHub Actions의 `*/15` schedule은 실제 최근 실행 간격이 2~5시간으로 불규칙했고, Vercel의 03:00/15:00 UTC 보조 cron route는 watchdog 평가만 하고 workflow heartbeat를 기록하지 않았다.
+
+- Vercel Hobby에서 보장 가능한 두 daily cron의 12시간 간격을 watchdog health 기준으로 사용하고, 2.5배인 30시간을 stale 경계로 둔다.
+- GitHub의 15분 schedule은 더 빠른 관측을 위한 best-effort 실행으로 계속 유지한다.
+- 인증된 `/api/ops/watchdog` route는 평가 전에 `running`, 정상 완료 후 `success`, 예외 시 `failed` heartbeat를 필수 기록한다.
+- 인증 확인이 heartbeat보다 먼저 실행되는 순서와 성공/실패 lifecycle을 회귀 테스트로 고정했다.
+
+운영 검증 결과:
+
+- Vercel deployment: `dpl_DaGQqCpCmiWMLfCHEfQwKzbgguH9`, production `Ready`
+- GitHub manual run: `33754715915`, commit `6170955`, success
+- `vercel cron run /api/ops/watchdog`: 2026-09-03T12:23:48.974Z 호출 성공
+- durable watchdog heartbeat: 2026-09-03T12:23:50.891Z, `success`
+- `/api/masterdash/health`: `healthy`, `stalledWorkflows=[]`, version `61709558f2cf`
+- `/api/mcp/health`: `ready`, database/search `ok`, full commit SHA 일치
+- MCP 실제 검색 smoke와 SSO-only 직접 로그인 404 경계: 통과
+- 배포 후 error-level runtime log: 0건
+
+교정 커밋도 실제 disposable PostgreSQL을 연결한 전체 `pnpm verify:release`를 통과했다. 국가별 Catalog 실행 flag와 source policy 상태는 변경하지 않았다.
