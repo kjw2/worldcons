@@ -29,4 +29,4 @@ Set `SEMANTIC_SEARCH_ENABLED=false` and redeploy the Vercel application. This re
 - Store `GEMINI_API_KEY` only as a Vercel encrypted environment variable. Never put it in tracked configuration, logs, health payloads, or test fixtures used outside local tests.
 - `article_embedding_write_v1` is executable only by `service_role`; it updates the legacy article and a derived artifact for the matching immutable P3 version.
 - `pendingItems` remains the compatibility total. Diagnose it using `pendingAdminJobs`, `openCandidateCount`, `retryableCandidateCount`, `exhaustedCandidateCount`, and `oldestOpenCandidateAt`.
-- Collection, summary, embedding, and watchdog jobs write durable heartbeat rows. Missing, failed, or older-than-2.5x heartbeat intervals can degrade health independently of collection freshness.
+- Collection, summary, embedding, and watchdog jobs write durable heartbeat rows. Missing, failed, or older-than-2.5x heartbeat intervals can degrade health independently of collection freshness. Watchdog health uses the reliable twice-daily Vercel fallback interval; the 15-minute GitHub schedule is a best-effort early refresh, not the availability baseline.

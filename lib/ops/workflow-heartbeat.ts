@@ -67,6 +67,26 @@ export async function runWithWorkflowHeartbeats(keys: readonly WorkflowKey[], op
   }
 }
 
+export async function runWithRequiredWorkflowHeartbeat<T>(
+  key: WorkflowKey,
+  operation: () => Promise<T>,
+  recorder: typeof recordWorkflowHeartbeat = recordWorkflowHeartbeat,
+) {
+  await recorder(key, "running");
+  try {
+    const result = await operation();
+    await recorder(key, "success");
+    return result;
+  } catch (error) {
+    try {
+      await recorder(key, "failed");
+    } catch {
+      // Preserve the operation or completion-heartbeat error as the primary failure.
+    }
+    throw error;
+  }
+}
+
 export async function getWorkflowHeartbeats(): Promise<WorkflowHeartbeatRecord[] | null> {
   const supabase = getSupabaseServiceRoleAdmin();
   if (!supabase) return null;
@@ -93,7 +113,8 @@ export const WORKFLOW_EXPECTED_INTERVAL_SECONDS: Record<WorkflowKey, number> = {
   collection: 86_400,
   summary: 21_600,
   embedding: 21_600,
-  watchdog: 900,
+  // GitHub requests a 15-minute cadence, but the durable Vercel Hobby fallback runs twice daily.
+  watchdog: 43_200,
   catalog_backfill: 86_400,
 };
 

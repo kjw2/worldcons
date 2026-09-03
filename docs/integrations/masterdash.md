@@ -46,8 +46,11 @@ the durable state cannot be read.
 Before deploying the expanded health payload, apply
 `supabase/migrations/20260831130000_gemini_embedding_provenance.sql` and
 `supabase/migrations/20260831140000_workflow_heartbeats.sql` in that order. After deployment, run
-the collection and summary workflows once so their first durable heartbeats exist. The watchdog
-records its own heartbeat every 15 minutes.
+the collection and summary workflows once so their first durable heartbeats exist. GitHub requests
+the watchdog every 15 minutes, but scheduled Actions are best-effort. The Vercel Hobby fallback runs
+at 03:00 and 15:00 UTC and the authorized route records the same durable heartbeat. Health therefore
+uses the reliable 12-hour fallback interval and degrades after 2.5 missed intervals (30 hours), while
+successful GitHub runs continue to refresh the heartbeat sooner.
 
 Configure these Vercel production secrets without committing their values:
 

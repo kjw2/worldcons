@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { evaluateWatchdog, recordWatchdogEvents } from "@/lib/ops/watchdog";
+import { runWithRequiredWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,8 +11,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const evaluation = await evaluateWatchdog();
-  await recordWatchdogEvents(evaluation);
+  const evaluation = await runWithRequiredWorkflowHeartbeat("watchdog", async () => {
+    const result = await evaluateWatchdog();
+    await recordWatchdogEvents(result);
+    return result;
+  });
 
   return NextResponse.json({
     ok: evaluation.ok,
