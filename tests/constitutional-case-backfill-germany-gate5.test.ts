@@ -13,7 +13,14 @@ import {
   parseBverfgDejureInventoryPage,
 } from "../lib/crawlee/bverfg-inventory";
 import { loadCaseBackfillSourceStrategy } from "../lib/backfill/source-strategies";
-import type { CaseBackfillClaimedItem, CaseBackfillSnapshot } from "../lib/backfill/types";
+import { runCaseBackfillPass } from "../lib/backfill/service";
+import type { CaseBackfillRepository } from "../lib/backfill/repository";
+import type {
+  CaseBackfillAttemptAuthority,
+  CaseBackfillClaimedItem,
+  CaseBackfillPassInput,
+  CaseBackfillSnapshot,
+} from "../lib/backfill/types";
 import type { NormalizedArticle } from "../lib/sources/types";
 import { bverfgOfficialUrlCandidatesForItem } from "../lib/sources/bundesverfassungsgericht";
 
@@ -112,6 +119,16 @@ test("external-index inventory crosses the annual boundary and verifies a stable
   assert.equal(inventory.items.length, 2);
   assert.equal(inventory.expectedCount, null);
   assert.equal(inventory.expectedCountBasis, null);
+  assert.equal(inventory.enumerationArtifacts.length, 4);
+  assert.deepEqual(
+    inventory.enumerationArtifacts.map((artifact) => [artifact.artifactKind, artifact.sequenceNumber]),
+    [["page", 1], ["page", 2], ["page", 3], ["boundary_probe", 1]],
+  );
+  assert.equal(inventory.enumerationArtifacts.every((artifact) => (
+    /^[0-9a-f]{64}$/.test(artifact.responseHash)
+    && /^[0-9a-f]{64}$/.test(artifact.recordManifestHash)
+    && artifact.safeDetails.storesExternalText === false
+  )), true);
   assert.equal(inventory.coverageEvidence.coverageAssurance, "external_index_assisted");
   assert.equal(inventory.coverageEvidence.officialCorpusCoverageClaimed, false);
   assert.equal(inventory.coverageEvidence.crossedOlderBoundary, true);
@@ -137,6 +154,143 @@ test("external-index inventory fails closed when the listing changes during pagi
     }),
     /changed during pagination/,
   );
+});
+
+test("Germany discovery persists enumeration evidence before items and closes one manifest", async () => {
+  const openSnapshot: CaseBackfillSnapshot = {
+    id: "00000000-0000-4000-8000-000000000311",
+    sourceKey: "de-bverfg",
+    scopeFrom: "2024-01-01",
+    scopeTo: "2024-12-31",
+    documentType: "DECISION",
+    parserVersion: "bverfg-official-normalize-v1",
+    sourcePolicyVersion: "bverfg-policy-v1",
+    status: "open",
+  };
+  const authority: CaseBackfillAttemptAuthority = {
+    attemptId: "00000000-0000-4000-8000-000000000312",
+    runId: "00000000-0000-4000-8000-000000000313",
+    fencingToken: "23",
+    leaseExpiresAt: "2026-09-04T12:00:00.000Z",
+  };
+  const pass: CaseBackfillPassInput = {
+    cohort: "catalog-backfill",
+    snapshotId: openSnapshot.id,
+    phase: "discover",
+    passNumber: 1,
+    batchLimit: 50,
+  };
+  const artifact = {
+    providerKey: "dejure.org",
+    artifactKind: "page" as const,
+    sequenceNumber: 1,
+    requestUrl: "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG",
+    responseHash: "a".repeat(64),
+    recordManifestHash: "b".repeat(64),
+    recordCount: 1,
+    newestDecisionDate: "2024-03-26",
+    oldestDecisionDate: "2024-03-26",
+    observedLastPage: 425,
+    safeDetails: { storesExternalText: false },
+  };
+  const inventoryItem = {
+    stableItemKey: "dejure:2024-03-26:2bvr54721",
+    sourceRecordId: null,
+    discoveredUrl: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/03/rk20240326_2bvr054721.html",
+    documentType: "DECISION" as const,
+    decisionDateHint: "2024-03-26",
+    title: "Beschluss",
+    inventoryMetadata: { docket: "2 BvR 547/21", officialUrlCandidates: [] },
+  };
+  const calls: string[] = [];
+  const unavailable = async () => { throw new Error("unused"); };
+  const repository = {
+    openSnapshot: unavailable,
+    upsertInventoryItem: async () => { calls.push("item"); return "00000000-0000-4000-8000-000000000315"; },
+    recordEnumerationArtifact: async (input: { artifact: { responseHash: string } }) => {
+      assert.equal(input.artifact.responseHash, artifact.responseHash);
+      calls.push("artifact");
+      return "00000000-0000-4000-8000-000000000314";
+    },
+    updateSnapshotEvidence: async () => { calls.push("evidence"); },
+    closeSnapshot: async () => {
+      calls.push("close");
+      return {
+        snapshotId: openSnapshot.id,
+        sourceKey: openSnapshot.sourceKey,
+        snapshotStatus: "closed",
+        discoveredTotal: 1,
+        terminalTotal: 0,
+        processingCompletion: 0,
+        expectedCount: null,
+        coverageAssurance: "external_index_assisted" as const,
+        corpusCoverage: null,
+        claimed: 0,
+        retryWait: 0,
+        needsNormalize: 0,
+        needsReverify: 0,
+        needsRepublish: 0,
+        failed: 0,
+        currentConformant: 0,
+        currentConformance: 0,
+        manifestHash: "c".repeat(64),
+      };
+    },
+    getSnapshot: async () => openSnapshot,
+    getSourcePolicy: async () => ({
+      sourceKey: openSnapshot.sourceKey,
+      policyVersion: openSnapshot.sourcePolicyVersion,
+      normalizeReplayPolicy: "bounded_evidence" as const,
+      boundedReplayFields: ["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"],
+      minRequestDelayMs: 30_000,
+      maxConcurrency: 1,
+      reviewDueAt: "2027-09-04T00:00:00.000Z",
+    }),
+    getSnapshotStatus: unavailable,
+    acquireSourceRequestPermit: unavailable,
+    releaseSourceRequestPermit: unavailable,
+    beginRun: async () => "00000000-0000-4000-8000-000000000316",
+    allocatePass: unavailable,
+    finishRun: async () => { calls.push("finish"); },
+    countBacklog: unavailable,
+    claimItems: unavailable,
+    extendItems: unavailable,
+    recordFetchArtifact: unavailable,
+    getFetchArtifact: unavailable,
+    getNormalizationArtifact: unavailable,
+    recordNormalizationArtifact: unavailable,
+    publishItem: unavailable,
+    completeItem: unavailable,
+    failItem: unavailable,
+  } as CaseBackfillRepository;
+
+  const result = await runCaseBackfillPass(pass, {
+    authority,
+    checkpoint: async () => undefined,
+    signal: new AbortController().signal,
+  }, {
+    repository,
+    loadAdapter: async () => null,
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+    discoverBverfgInventory: async () => ({
+      sourceKey: "de-bverfg",
+      year: 2024,
+      documentType: "DECISION",
+      items: [inventoryItem],
+      pageCount: 1,
+      requestCount: 2,
+      expectedCount: null,
+      expectedCountBasis: null,
+      enumerationArtifacts: [artifact],
+      coverageEvidence: {
+        coverageAssurance: "external_index_assisted",
+        officialCorpusCoverageClaimed: false,
+      },
+    }),
+  });
+  assert.deepEqual(calls, ["artifact", "item", "evidence", "close", "finish"]);
+  assert.equal(result.succeeded, 1);
 });
 
 const snapshot: CaseBackfillSnapshot = {

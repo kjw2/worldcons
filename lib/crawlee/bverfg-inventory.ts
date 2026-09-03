@@ -12,6 +12,7 @@ import {
   bverfgOfficialUrlCandidatesFromDocket,
 } from "@/lib/crawlee/bverfg-spider";
 import { createHash } from "@/lib/utils/hash";
+import type { CaseBackfillEnumerationArtifact } from "@/lib/backfill/types";
 
 export const BVERFG_DEJURE_INDEX_URL = "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG";
 const BVERFG_DECISIONS_URL = `${BVERFG_BASE_URL}/DE/Entscheidungen/entscheidungen_node.html`;
@@ -45,6 +46,7 @@ export interface BverfgInventoryResult {
   requestCount: number;
   expectedCount: null;
   expectedCountBasis: null;
+  enumerationArtifacts: CaseBackfillEnumerationArtifact[];
   coverageEvidence: Record<string, unknown>;
 }
 
@@ -79,6 +81,40 @@ function indexPageUrl(page: number) {
   const url = new URL(BVERFG_DEJURE_INDEX_URL);
   url.searchParams.set("seite", String(page));
   return url.toString();
+}
+
+function enumerationArtifact(
+  html: string,
+  parsed: BverfgInventoryPage,
+  page: number,
+  artifactKind: CaseBackfillEnumerationArtifact["artifactKind"],
+  scopeFrom: string,
+  scopeTo: string,
+): CaseBackfillEnumerationArtifact {
+  const scopedItems = parsed.items.filter(
+    (item) => item.decisionDateHint >= scopeFrom && item.decisionDateHint <= scopeTo,
+  );
+  return {
+    providerKey: "dejure.org",
+    artifactKind,
+    sequenceNumber: page,
+    requestUrl: indexPageUrl(page),
+    responseHash: createHash(html, 64),
+    recordManifestHash: parsed.listingFingerprint,
+    recordCount: parsed.items.length,
+    newestDecisionDate: parsed.newestDecisionDate,
+    oldestDecisionDate: parsed.oldestDecisionDate,
+    observedLastPage: parsed.observedLastPage,
+    safeDetails: {
+      page,
+      scopedRecordCount: scopedItems.length,
+      resolvedOfficialUrlCount: parsed.items.filter((item) => (
+        Array.isArray(item.inventoryMetadata.officialUrlCandidates)
+        && item.inventoryMetadata.officialUrlCandidates.length > 0
+      )).length,
+      storesExternalText: false,
+    },
+  };
 }
 
 function observedLastPage($: ReturnType<typeof load>) {
@@ -236,7 +272,9 @@ export async function discoverBverfgInventory(input: {
   };
 
   const inventory = new Map<string, BverfgInventoryItem>();
-  const firstPage = parseBverfgDejureInventoryPage(await loadPage(1), 1);
+  const enumerationArtifacts: CaseBackfillEnumerationArtifact[] = [];
+  const firstPageHtml = await loadPage(1);
+  const firstPage = parseBverfgDejureInventoryPage(firstPageHtml, 1);
   if (firstPage.items.length === 0) throw new Error("BVerfG external index first page is empty.");
   let pageCount = 0;
   let requestCount = 1;
@@ -248,10 +286,17 @@ export async function discoverBverfgInventory(input: {
 
   for (let page = 1; page <= maxPages; page += 1) {
     assertCrawlerExecution(hooks);
-    const parsed = page === 1
-      ? firstPage
-      : parseBverfgDejureInventoryPage(await loadPage(page), page);
+    const html = page === 1 ? firstPageHtml : await loadPage(page);
+    const parsed = page === 1 ? firstPage : parseBverfgDejureInventoryPage(html, page);
     if (page > 1) requestCount += 1;
+    enumerationArtifacts.push(enumerationArtifact(
+      html,
+      parsed,
+      page,
+      "page",
+      scope.scopeFrom,
+      scope.scopeTo,
+    ));
     pageCount = page;
     if (parsed.items.length === 0) {
       throw new Error(`BVerfG external index page ${page} is empty before the annual boundary.`);
@@ -281,7 +326,8 @@ export async function discoverBverfgInventory(input: {
     throw new Error("BVerfG external index crossed the annual boundary without a scoped decision.");
   }
 
-  const firstPageProbe = parseBverfgDejureInventoryPage(await loadPage(1), 1);
+  const firstPageProbeHtml = await loadPage(1);
+  const firstPageProbe = parseBverfgDejureInventoryPage(firstPageProbeHtml, 1);
   requestCount += 1;
   if (
     firstPageProbe.listingFingerprint !== firstPage.listingFingerprint
@@ -289,6 +335,14 @@ export async function discoverBverfgInventory(input: {
   ) {
     throw new Error("BVerfG external index changed during pagination.");
   }
+  enumerationArtifacts.push(enumerationArtifact(
+    firstPageProbeHtml,
+    firstPageProbe,
+    1,
+    "boundary_probe",
+    scope.scopeFrom,
+    scope.scopeTo,
+  ));
 
   const items = [...inventory.values()].sort((left, right) => left.stableItemKey.localeCompare(right.stableItemKey));
   const unresolvedOfficialUrlCount = items.filter((item) => {
@@ -304,6 +358,7 @@ export async function discoverBverfgInventory(input: {
     requestCount,
     expectedCount: null,
     expectedCountBasis: null,
+    enumerationArtifacts,
     coverageEvidence: {
       method: "external_index_dejure_paged_listing",
       externalIndexUrl: BVERFG_DEJURE_INDEX_URL,

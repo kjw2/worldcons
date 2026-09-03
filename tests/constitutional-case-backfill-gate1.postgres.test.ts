@@ -10,6 +10,7 @@ const p1Migration = path.join(process.cwd(), "supabase/migrations/20260712130000
 const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const requestGovernorMigration = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
 const phaseAwareHostsMigration = path.join(process.cwd(), "supabase/migrations/20260903184000_constitutional_case_phase_aware_source_hosts.sql");
+const enumerationArtifactsMigration = path.join(process.cwd(), "supabase/migrations/20260903185000_constitutional_case_enumeration_artifacts.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
@@ -58,12 +59,13 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query("create table articles(id uuid primary key default gen_random_uuid())");
     await client.query(fs.readFileSync(gate1Migration, "utf8"));
     await client.query(fs.readFileSync(requestGovernorMigration, "utf8"));
+    await client.query(fs.readFileSync(inventoryProvenanceMigration, "utf8"));
     await client.query(fs.readFileSync(phaseAwareHostsMigration, "utf8"));
+    await client.query(fs.readFileSync(enumerationArtifactsMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usReviewGate5Migration, "utf8"));
-    await client.query(fs.readFileSync(inventoryProvenanceMigration, "utf8"));
   } finally {
     await client.end();
   }
@@ -189,6 +191,62 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
       await pool.query("select source_backfill_request_permit_release_v1($1,$2,$3)", [
         externalPermit.rows[0].permit_id, discoveryAttempt.attempt_id, discoveryAttempt.fencing_token,
       ]);
+
+      const enumerationInput = [
+        snapshotId,
+        discoveryAttempt.attempt_id,
+        discoveryAttempt.fencing_token,
+        "dejure.org",
+        "page",
+        1,
+        "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG",
+        "a".repeat(64),
+        "b".repeat(64),
+        50,
+        "2026-08-14",
+        "2026-05-12",
+        426,
+        { page: 1, storesExternalText: false },
+      ];
+      const firstArtifact = await pool.query<{ source_inventory_enumeration_artifact_record_v1: string }>(
+        "select source_inventory_enumeration_artifact_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+        enumerationInput,
+      );
+      const replayedArtifact = await pool.query<{ source_inventory_enumeration_artifact_record_v1: string }>(
+        "select source_inventory_enumeration_artifact_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+        enumerationInput,
+      );
+      assert.equal(
+        replayedArtifact.rows[0].source_inventory_enumeration_artifact_record_v1,
+        firstArtifact.rows[0].source_inventory_enumeration_artifact_record_v1,
+      );
+      await assert.rejects(
+        pool.query(
+          "select source_inventory_enumeration_artifact_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+          enumerationInput.map((value, index) => index === 7 ? "c".repeat(64) : value),
+        ),
+        /CASE_BACKFILL_ENUMERATION_ARTIFACT_CONFLICT/,
+      );
+      await assert.rejects(
+        pool.query("update source_inventory_enumeration_artifacts set record_count=49 where id=$1", [
+          firstArtifact.rows[0].source_inventory_enumeration_artifact_record_v1,
+        ]),
+        /CASE_BACKFILL_ENUMERATION_ARTIFACT_IMMUTABLE/,
+      );
+      const closed = await pool.query<{ manifest_hash: string; enumeration_manifest_hash: string }>(
+        "select manifest_hash, enumeration_manifest_hash from source_inventory_snapshot_close_v3($1)",
+        [snapshotId],
+      );
+      assert.match(closed.rows[0].manifest_hash, /^[0-9a-f]{64}$/);
+      assert.match(closed.rows[0].enumeration_manifest_hash, /^[0-9a-f]{64}$/);
+      assert.notEqual(closed.rows[0].manifest_hash, closed.rows[0].enumeration_manifest_hash);
+      await assert.rejects(
+        pool.query(
+          "select source_inventory_enumeration_artifact_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+          enumerationInput.map((value, index) => index === 4 ? "boundary_probe" : value),
+        ),
+        /CASE_BACKFILL_MANIFEST_CLOSED/,
+      );
       await pool.query("select * from admin_fail_command_attempt_v3($1,$2,$3,$4,$5,$6)", [
         discoveryAttempt.attempt_id, discoveryAttempt.fencing_token, "terminal", "test.complete", "test", {},
       ]);
@@ -215,14 +273,28 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         fetchAttempt.attempt_id, fetchAttempt.fencing_token, "terminal", "test.complete", "test", {},
       ]);
 
-      const privileges = await pool.query<{ public_helper: boolean; public_acquire: boolean }>(`select
+      const privileges = await pool.query<{
+        public_helper: boolean;
+        public_acquire: boolean;
+        public_artifact: boolean;
+        public_artifact_table: boolean;
+      }>(`select
         has_function_privilege(
           'public','source_policy_request_host_allowed_v1(text[],text[],text[],text,text)','execute'
         ) public_helper,
         has_function_privilege(
           'public','source_backfill_request_permit_acquire_v1(uuid,text,uuid,bigint,text,integer)','execute'
-        ) public_acquire`);
-      assert.deepEqual(privileges.rows[0], { public_helper: false, public_acquire: false });
+        ) public_acquire,
+        has_function_privilege(
+          'public','source_inventory_enumeration_artifact_record_v1(uuid,uuid,bigint,text,text,integer,text,text,text,integer,date,date,integer,jsonb)','execute'
+        ) public_artifact,
+        has_table_privilege('public','source_inventory_enumeration_artifacts','select') public_artifact_table`);
+      assert.deepEqual(privileges.rows[0], {
+        public_helper: false,
+        public_acquire: false,
+        public_artifact: false,
+        public_artifact_table: false,
+      });
     });
 
     await t.test("France DILA provenance is validated, secret-free, immutable, and part of the manifest hash", async () => {
@@ -283,7 +355,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         ],
       );
       const firstClose = await pool.query<{ manifest_hash: string }>(
-        "select * from source_inventory_snapshot_close_v2($1)", [firstSnapshot],
+        "select * from source_inventory_snapshot_close_v3($1)", [firstSnapshot],
       );
       await assert.rejects(
         pool.query("update source_backfill_items set inventory_metadata = '{}' where id = $1", [item.rows[0].source_inventory_item_upsert_v2]),
@@ -297,12 +369,12 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         metadata("7".repeat(64)),
       ]);
       const secondClose = await pool.query<{ manifest_hash: string }>(
-        "select * from source_inventory_snapshot_close_v2($1)", [secondSnapshot],
+        "select * from source_inventory_snapshot_close_v3($1)", [secondSnapshot],
       );
       assert.notEqual(firstClose.rows[0].manifest_hash, secondClose.rows[0].manifest_hash);
       const publicExecute = await pool.query<{ upsert: boolean; close: boolean; claim: boolean }>(`select
         has_function_privilege('public','source_inventory_item_upsert_v2(uuid,text,text,text,text,date,jsonb)','execute') upsert,
-        has_function_privilege('public','source_inventory_snapshot_close_v2(uuid)','execute') close,
+        has_function_privilege('public','source_inventory_snapshot_close_v3(uuid)','execute') close,
         has_function_privilege('public','source_backfill_items_claim_v2(uuid,text,integer,uuid,bigint,integer,text)','execute') claim`);
       assert.deepEqual(publicExecute.rows[0], { upsert: false, close: false, claim: false });
       const serviceExecute = await pool.query<{
@@ -310,6 +382,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         old_close: boolean;
         old_claim: boolean;
         new_upsert: boolean;
+        prior_close: boolean;
         new_close: boolean;
         new_claim: boolean;
       }>(`select
@@ -317,11 +390,12 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         has_function_privilege('service_role','source_inventory_snapshot_close_v1(uuid)','execute') old_close,
         has_function_privilege('service_role','source_backfill_items_claim_v1(uuid,text,integer,uuid,bigint,integer,text)','execute') old_claim,
         has_function_privilege('service_role','source_inventory_item_upsert_v2(uuid,text,text,text,text,date,jsonb)','execute') new_upsert,
-        has_function_privilege('service_role','source_inventory_snapshot_close_v2(uuid)','execute') new_close,
+        has_function_privilege('service_role','source_inventory_snapshot_close_v2(uuid)','execute') prior_close,
+        has_function_privilege('service_role','source_inventory_snapshot_close_v3(uuid)','execute') new_close,
         has_function_privilege('service_role','source_backfill_items_claim_v2(uuid,text,integer,uuid,bigint,integer,text)','execute') new_claim`);
       assert.deepEqual(serviceExecute.rows[0], {
         old_upsert: false, old_close: false, old_claim: false,
-        new_upsert: true, new_close: true, new_claim: true,
+        new_upsert: true, prior_close: false, new_close: true, new_claim: true,
       });
     });
 

@@ -1,5 +1,6 @@
 import type {
   CaseBackfillClaimedItem,
+  CaseBackfillEnumerationArtifact,
   CaseBackfillSnapshot,
 } from "@/lib/backfill/types";
 import {
@@ -41,6 +42,7 @@ export interface CaseBackfillInventoryItem {
 
 export interface CaseBackfillInventoryResult {
   items: CaseBackfillInventoryItem[];
+  enumerationArtifacts?: CaseBackfillEnumerationArtifact[];
   coverageEvidence: Record<string, unknown>;
   expectedCount?: number | null;
   expectedCountBasis?: string | null;

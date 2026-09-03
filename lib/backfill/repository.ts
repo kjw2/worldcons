@@ -2,6 +2,7 @@ import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import type {
   CaseBackfillAttemptAuthority,
   CaseBackfillClaimedItem,
+  CaseBackfillEnumerationArtifact,
   CaseBackfillFetchArtifact,
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
@@ -147,6 +148,11 @@ export interface SourceRequestPermitResult {
 export interface CaseBackfillRepository {
   openSnapshot(input: OpenCaseBackfillSnapshotInput): Promise<string>;
   upsertInventoryItem(input: InventoryItemInput): Promise<string>;
+  recordEnumerationArtifact(input: {
+    snapshotId: string;
+    authority: CaseBackfillAttemptAuthority;
+    artifact: CaseBackfillEnumerationArtifact;
+  }): Promise<string>;
   updateSnapshotEvidence(
     snapshotId: string,
     coverageEvidence: Record<string, unknown>,
@@ -242,6 +248,29 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     return data;
   },
 
+  async recordEnumerationArtifact(input) {
+    const artifact = input.artifact;
+    const { data, error } = await requiredClient().rpc("source_inventory_enumeration_artifact_record_v1", {
+      p_snapshot_id: input.snapshotId,
+      p_p1_attempt_id: input.authority.attemptId,
+      p_p1_fencing_token: input.authority.fencingToken,
+      p_provider_key: artifact.providerKey,
+      p_artifact_kind: artifact.artifactKind,
+      p_sequence_no: artifact.sequenceNumber,
+      p_request_url: artifact.requestUrl,
+      p_response_hash: artifact.responseHash,
+      p_record_manifest_hash: artifact.recordManifestHash,
+      p_record_count: artifact.recordCount,
+      p_newest_decision_date: artifact.newestDecisionDate,
+      p_oldest_decision_date: artifact.oldestDecisionDate,
+      p_observed_last_page: artifact.observedLastPage,
+      p_safe_details: artifact.safeDetails,
+    });
+    databaseError(error);
+    if (typeof data !== "string") throw new Error("case_backfill.enumeration_artifact_write_failed");
+    return data;
+  },
+
   async updateSnapshotEvidence(snapshotId, coverageEvidence, expectedCount = null, expectedCountBasis = null) {
     const { data, error } = await requiredClient().rpc("source_inventory_snapshot_evidence_v2", {
       p_snapshot_id: snapshotId,
@@ -254,7 +283,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async closeSnapshot(snapshotId) {
-    const { data, error } = await requiredClient().rpc("source_inventory_snapshot_close_v2", { p_snapshot_id: snapshotId });
+    const { data, error } = await requiredClient().rpc("source_inventory_snapshot_close_v3", { p_snapshot_id: snapshotId });
     databaseError(error);
     const status = firstRow(data);
     if (!status) throw new Error("case_backfill.snapshot_close_failed");

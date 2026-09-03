@@ -123,6 +123,20 @@ export interface CaseBackfillPassResult {
   backlogRemaining: boolean;
 }
 
+export interface CaseBackfillEnumerationArtifact {
+  providerKey: string;
+  artifactKind: "page" | "boundary_probe" | "crosscheck";
+  sequenceNumber: number;
+  requestUrl: string;
+  responseHash: string;
+  recordManifestHash: string;
+  recordCount: number;
+  newestDecisionDate: string | null;
+  oldestDecisionDate: string | null;
+  observedLastPage: number | null;
+  safeDetails: Record<string, unknown>;
+}
+
 export interface CaseBackfillPublicationResult {
   articleId: string;
   versionId: string;

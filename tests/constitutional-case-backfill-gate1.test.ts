@@ -30,6 +30,7 @@ import {
 const migrationPath = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const requestGovernorMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
 const inventoryProvenanceMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903182000_constitutional_case_inventory_provenance.sql");
+const enumerationArtifactsMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903185000_constitutional_case_enumeration_artifacts.sql");
 const crawlerHttpClientPath = path.join(process.cwd(), "lib/crawler/http-client.ts");
 const repositoryPath = path.join(process.cwd(), "lib/backfill/repository.ts");
 
@@ -557,6 +558,7 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   const sql = fs.readFileSync(migrationPath, "utf8");
   const requestGovernorSql = fs.readFileSync(requestGovernorMigrationPath, "utf8");
   const inventoryProvenanceSql = fs.readFileSync(inventoryProvenanceMigrationPath, "utf8");
+  const enumerationArtifactsSql = fs.readFileSync(enumerationArtifactsMigrationPath, "utf8");
   const crawlerHttpClient = fs.readFileSync(crawlerHttpClientPath, "utf8");
   const repository = fs.readFileSync(repositoryPath, "utf8");
   for (const table of [
@@ -607,7 +609,13 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   assert.match(inventoryProvenanceSql, /revoke execute on function source_inventory_snapshot_close_v1[\s\S]*from service_role/);
   assert.match(inventoryProvenanceSql, /revoke execute on function source_backfill_items_claim_v1[\s\S]*from service_role/);
   assert.doesNotMatch(inventoryProvenanceSql, /grant execute on function source_inventory_item_upsert_v1[\s\S]*to service_role/);
+  assert.match(enumerationArtifactsSql, /create table if not exists source_inventory_enumeration_artifacts/);
+  assert.match(enumerationArtifactsSql, /CASE_BACKFILL_ENUMERATION_ARTIFACT_IMMUTABLE/);
+  assert.match(enumerationArtifactsSql, /CASE_BACKFILL_ENUMERATION_EVIDENCE_REQUIRED/);
+  assert.match(enumerationArtifactsSql, /enumeration_manifest_hash/);
+  assert.doesNotMatch(enumerationArtifactsSql, /grant\s+(?:select|insert|update|delete|all)[^;]+\s+to\s+(?:anon|authenticated)/i);
   assert.match(repository, /rpc\("source_inventory_item_upsert_v2"/);
-  assert.match(repository, /rpc\("source_inventory_snapshot_close_v2"/);
+  assert.match(repository, /rpc\("source_inventory_enumeration_artifact_record_v1"/);
+  assert.match(repository, /rpc\("source_inventory_snapshot_close_v3"/);
   assert.match(repository, /rpc\("source_backfill_items_claim_v2"/);
 });

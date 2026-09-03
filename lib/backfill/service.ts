@@ -342,6 +342,14 @@ export async function runCaseBackfillPass(
         checkpoint: context.checkpoint,
         requestGovernor,
       });
+      for (const artifact of inventory.enumerationArtifacts ?? []) {
+        await context.checkpoint();
+        await repository.recordEnumerationArtifact({
+          snapshotId: snapshot.id,
+          authority: context.authority,
+          artifact,
+        });
+      }
       for (const item of inventory.items) {
         await context.checkpoint();
         await repository.upsertInventoryItem({
