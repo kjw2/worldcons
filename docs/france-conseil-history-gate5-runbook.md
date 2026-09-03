@@ -40,13 +40,15 @@ pnpm backfill:corpus plan --source=france --year=2024 --document-type=DC
 
 Both plans report `executionEnabled: false` under the default environment.
 
-The existing Conseil count probe can be checked without database writes:
+The combined DILA stock and Conseil identity-set contract can be checked without database writes:
 
 ```bash
 pnpm verify:france-inventory --year=2024 --document-type=QPC
 ```
 
-This read-only probe still obeys robots policy, request delay, timeout, bounded pagination, and count reconciliation. The DILA stock parser and three-way reconciliation probe are required by the next implementation stage before this runbook may be used for production execution.
+This read-only probe obeys robots policy, request delay, timeout, bounded response and archive limits, exact `NATURE` filtering, bounded pagination, and identity-set reconciliation. On 2026-09-03 it verified the 12,511,366-byte stock (`SHA-256 67270556060b481ec139f21436244af913cccd3eb6e074c65d6600f48596f627`, 7,112 XML members) against the Conseil pages: QPC 42/42 and DC 12/12 with exact identity-set matches.
+
+The parser rejects malformed timestamps, cross-origin or redirecting stock URLs, oversized compressed/expanded/member data, path traversal, duplicate paths or identities, links and other non-regular tar members, invalid tar checksums/terminators, non-UTF-8 XML, DTD/entity declarations, wrong origin/jurisdiction, invalid dates, and non-Conseil authority URLs.
 
 ## Private-shadow execution prerequisites
 

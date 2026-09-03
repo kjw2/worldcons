@@ -11,8 +11,11 @@ import type { NormalizedArticle } from "@/lib/sources/types";
 import {
   discoverFranceConseilInventory,
   parseFranceConseilDecisionDate,
-  type FranceConseilInventoryResult,
 } from "@/lib/crawlee/france-conseil-inventory";
+import {
+  discoverFranceDilaConstitInventory,
+  type FranceDilaInventoryResult,
+} from "@/lib/crawlee/france-dila-constit";
 import {
   assertFranceConseilScopeEnabled,
   franceConseilDocumentType,
@@ -65,6 +68,7 @@ export interface CaseBackfillSourceStrategy {
 export interface CaseBackfillSourceStrategyDependencies {
   discoverSpainTcInventory?: typeof discoverSpainTcInventory;
   discoverFranceConseilInventory?: typeof discoverFranceConseilInventory;
+  discoverFranceDilaConstitInventory?: typeof discoverFranceDilaConstitInventory;
   currentYear?: number;
 }
 
@@ -203,8 +207,8 @@ function franceStrategy(
     async discover(snapshot, context) {
       const documentType = franceConseilDocumentType(snapshot.documentType);
       if (!documentType) throw new Error("case_backfill.discovery_scope_not_enabled");
-      const inventory: FranceConseilInventoryResult = await (
-        dependencies.discoverFranceConseilInventory ?? discoverFranceConseilInventory
+      const inventory: FranceDilaInventoryResult = await (
+        dependencies.discoverFranceDilaConstitInventory ?? discoverFranceDilaConstitInventory
       )({
         year: Number(snapshot.scopeFrom?.slice(0, 4)),
         documentType,
@@ -212,11 +216,9 @@ function franceStrategy(
         signal: context.signal,
         checkpoint: context.checkpoint,
         requestGovernor: context.requestGovernor,
+        discoverConseilInventory: dependencies.discoverFranceConseilInventory,
       });
-      return {
-        ...inventory,
-        expectedCountBasis: "official_active_type_facet",
-      };
+      return inventory;
     },
     validate(normalized, item, snapshot) {
       const errors: string[] = [];

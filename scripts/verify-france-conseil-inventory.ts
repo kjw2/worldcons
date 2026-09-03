@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inventory";
+import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
 import { franceConseilDocumentType } from "@/lib/backfill/france-scope";
 
 function argumentValue(name: string) {
@@ -11,9 +11,9 @@ async function main() {
   const documentType = franceConseilDocumentType(argumentValue("document-type") ?? "QPC");
   if (!Number.isInteger(year)) throw new Error("invalid_year");
   if (!documentType) throw new Error("invalid_document_type");
-  const result = await discoverFranceConseilInventory({ year, documentType });
+  const result = await discoverFranceDilaConstitInventory({ year, documentType });
   process.stdout.write(`${JSON.stringify({
-    event: "france_conseil_inventory_verified",
+    event: "france_dila_conseil_inventory_verified",
     sourceKey: result.sourceKey,
     year: result.year,
     documentType: result.documentType,
@@ -26,7 +26,7 @@ async function main() {
 
 main().catch((error) => {
   process.stderr.write(`${JSON.stringify({
-    event: "france_conseil_inventory_verification_failed",
+    event: "france_dila_conseil_inventory_verification_failed",
     error: error instanceof Error ? error.message : String(error),
   })}\n`);
   process.exitCode = 1;

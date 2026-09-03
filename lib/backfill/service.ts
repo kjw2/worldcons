@@ -16,6 +16,7 @@ import { loadSourceAdapter } from "@/lib/sources/lazy";
 import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inventory";
+import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
 import { createCaseBackfillRequestGovernor } from "@/lib/backfill/source-request-governor";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
@@ -38,6 +39,7 @@ interface CaseBackfillDependencies {
   now: () => Date;
   discoverSpainTcInventory?: typeof discoverSpainTcInventory;
   discoverFranceConseilInventory?: typeof discoverFranceConseilInventory;
+  discoverFranceDilaConstitInventory?: typeof discoverFranceDilaConstitInventory;
   environment?: Record<string, string | undefined>;
 }
 
@@ -46,6 +48,7 @@ const defaultDependencies: CaseBackfillDependencies = {
   loadAdapter: loadSourceAdapter,
   now: () => new Date(),
   discoverSpainTcInventory,
+  discoverFranceDilaConstitInventory,
   environment: process.env,
 };
 
@@ -297,6 +300,7 @@ export async function runCaseBackfillPass(
     const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {
       discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
       discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
+      discoverFranceDilaConstitInventory: dependencies.discoverFranceDilaConstitInventory,
       currentYear: dependencies.now().getUTCFullYear(),
     });
     strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
@@ -384,6 +388,7 @@ export async function runCaseBackfillPass(
   const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {
     discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
     discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
+    discoverFranceDilaConstitInventory: dependencies.discoverFranceDilaConstitInventory,
     currentYear: dependencies.now().getUTCFullYear(),
   });
   if (input.phase === "fetch" && !strategy.governedNetworkPhases.includes("fetch")) {

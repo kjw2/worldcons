@@ -98,3 +98,57 @@ export async function governedBufferedFetch(
     return bufferedResponse(response, body);
   });
 }
+
+async function boundedResponseBody(response: Response, maxResponseBytes: number) {
+  if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) {
+    throw new Error("crawler.response_limit_invalid");
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxResponseBytes) {
+    await response.body?.cancel();
+    throw new Error("crawler.response_too_large");
+  }
+  if (!response.body) return new ArrayBuffer(0);
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      received += chunk.value.byteLength;
+      if (received > maxResponseBytes) {
+        await reader.cancel();
+        throw new Error("crawler.response_too_large");
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body.buffer;
+}
+
+export async function governedBoundedFetch(
+  url: string,
+  init: RequestInit,
+  maxResponseBytes: number,
+  hooks?: CrawlerExecutionHooks,
+) {
+  return withCrawlerRequestPermit(url, hooks, async () => {
+    const response = await fetch(url, {
+      ...init,
+      redirect: hooks?.requestGovernor ? "error" : init.redirect,
+    });
+    const body = await boundedResponseBody(response, maxResponseBytes);
+    return bufferedResponse(response, body);
+  });
+}
