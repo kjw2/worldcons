@@ -6,6 +6,8 @@
 
 Gate 1은 스페인 헌법재판소 HJ의 2024년 `SENTENCIA`를 대상으로 불변 inventory와 비공개 fetch/normalize/verify 원장을 증명한다. Gate 1 단독 검증에서는 공개 Catalog, 기존 기사 publication pointer, ChatGPT 플러그인 검색 결과를 바꾸지 않으며 Gemini 호출은 0회다. Gate 2 migration과 `CASE_CATALOG_WRITE_ENABLED=true`가 함께 승인되기 전에는 `publish`를 실행하지 않는다.
 
+Gate 5의 2020~2023 역사 범위 adapter는 같은 연도별 snapshot 계약으로 로컬 구현돼 있지만 기본 비활성이다. `CASE_CATALOG_SPAIN_HISTORY_ENABLED=true`가 없으면 CLI뿐 아니라 P1 worker가 직접 받은 historical snapshot도 run 생성 전에 거부한다. 2024 canary의 운영 완료 증거가 모이기 전에는 이 flag를 켜지 않는다.
+
 공식 HJ는 1980년 이후 헌법재판소 doctrine 검색과 `Sentencia`, `Auto`, `Declaración` 유형을 제공한다. 이 설명은 수집 범위의 출발점일 뿐, robots·이용조건·텍스트 보관 허용을 자동 승인하지 않는다. 운영자는 실행 당일 근거를 다시 확인하고 immutable policy row로 별도 승인해야 한다.
 
 ## 1. 사전 검토

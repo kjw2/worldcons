@@ -20,6 +20,11 @@ import {
 } from "../lib/admin/command-control-plane/p1-handlers";
 import { parseSpainTcListPage } from "../lib/crawlee/spain-tribunal-constitucional-spider";
 import type { SourceAdapter } from "../lib/sources/types";
+import {
+  CASE_CATALOG_SPAIN_HISTORY_FLAG,
+  spainSentenciaExpansionPlan,
+  spainSentenciaYearScope,
+} from "../lib/backfill/spain-scope";
 
 const migrationPath = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 
@@ -118,6 +123,108 @@ test("Spain inventory parser extracts bare HJ IDs once without fetching detail c
     { id: "12345", title: "SENTENCIA 53/2024, de 8 de mayo de 2024" },
     { id: "12346", title: "SENTENCIA 54/2024" },
   ]);
+});
+
+test("Spain Gate 5 history uses one immutable annual scope and an explicit expansion flag", () => {
+  assert.deepEqual(spainSentenciaYearScope(2020), {
+    year: 2020,scopeFrom: "2020-01-01",scopeTo: "2020-12-31",documentType: "SENTENCIA",
+  });
+  assert.throws(() => spainSentenciaYearScope(2019), /spain_year_not_supported/);
+  const disabled = spainSentenciaExpansionPlan({});
+  assert.deepEqual(disabled.map((entry) => [entry.year,entry.enabled]), [
+    [2020,false],[2021,false],[2022,false],[2023,false],[2024,true],
+  ]);
+  const enabled = spainSentenciaExpansionPlan({ [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" });
+  assert.ok(enabled.every((entry) => entry.enabled));
+  const cli = fs.readFileSync(path.join(process.cwd(), "scripts/backfill-corpus.ts"), "utf8");
+  assert.match(cli, /assertSpainSentenciaYearEnabled/);
+  assert.match(cli, /spainSentenciaExpansionPlan/);
+});
+
+test("Spain Gate 5 historical discovery is blocked before run creation unless explicitly enabled", async () => {
+  const historical = { ...snapshot,scopeFrom: "2020-01-01",scopeTo: "2020-12-31",status: "open" as const };
+  let began = false;
+  const repository = fakeRepository({
+    getSnapshot: async () => historical,
+    beginRun: async () => {
+      began = true;
+      return "55555555-5555-4555-8555-555555555555";
+    },
+  });
+  await assert.rejects(
+    runCaseBackfillPass(pass("discover"), {
+      authority,checkpoint: async () => undefined,signal: new AbortController().signal,
+    }, {
+      repository,loadAdapter: async () => null,now: () => new Date("2026-09-03T00:00:00.000Z"),environment: {},
+    }),
+    /case_backfill\.spain_history_disabled/,
+  );
+  assert.equal(began, false);
+});
+
+test("Spain Gate 5 enabled historical discovery writes and closes only its annual inventory", async () => {
+  const historical = { ...snapshot,scopeFrom: "2020-01-01",scopeTo: "2020-12-31",status: "open" as const };
+  const written: Array<{ stableItemKey: string; decisionDateHint?: string | null }> = [];
+  let evidence: Record<string, unknown> | null = null;
+  let closed = false;
+  let finished = false;
+  const repository = fakeRepository({
+    getSnapshot: async () => historical,
+    beginRun: async () => "55555555-5555-4555-8555-555555555555",
+    upsertInventoryItem: async (input) => {
+      written.push(input);
+      return "66666666-6666-4666-8666-666666666666";
+    },
+    updateSnapshotEvidence: async (_id, value) => { evidence = value; },
+    closeSnapshot: async () => {
+      closed = true;
+      return {
+        snapshotId: historical.id,sourceKey: historical.sourceKey,snapshotStatus: "closed",
+        discoveredTotal: 1,terminalTotal: 0,processingCompletion: 0,expectedCount: null,
+        coverageAssurance: "authoritative_enumerated",corpusCoverage: null,claimed: 0,retryWait: 0,
+        needsNormalize: 0,needsReverify: 0,needsRepublish: 0,failed: 0,currentConformant: 0,
+        currentConformance: 0,manifestHash: "a".repeat(64),
+      };
+    },
+    finishRun: async (input) => { finished = input.status === "succeeded"; },
+  });
+  const result = await runCaseBackfillPass(pass("discover"), {
+    authority,checkpoint: async () => undefined,signal: new AbortController().signal,
+  }, {
+    repository,
+    loadAdapter: async () => null,
+    now: () => new Date("2026-09-03T00:00:00.000Z"),
+    environment: { [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" },
+    discoverSpainTcInventory: async (input) => {
+      assert.equal(input.year, 2020);
+      return {
+        sourceKey: "es-tribunal-constitucional",
+        year: 2020,
+        documentType: "SENTENCIA",
+        items: [{
+          stableItemKey: "hj:202001",sourceRecordId: "202001",
+          discoveredUrl: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/202001",
+          documentType: "SENTENCIA",decisionDateHint: "2020-02-03",title: "SENTENCIA 1/2020",
+        }],
+        pageCount: 1,
+        coverageEvidence: {
+          method: "official_hj_search_pagination",scopeFrom: "2020-01-01",scopeTo: "2020-12-31",
+          exhausted: true,discoveredCount: 1,
+        },
+      };
+    },
+  });
+  assert.deepEqual(written.map((item) => [item.stableItemKey,item.decisionDateHint]), [["hj:202001","2020-02-03"]]);
+  assert.deepEqual(evidence, {
+    method: "official_hj_search_pagination",scopeFrom: "2020-01-01",scopeTo: "2020-12-31",
+    exhausted: true,discoveredCount: 1,
+  });
+  assert.equal(closed, true);
+  assert.equal(finished, true);
+  assert.deepEqual(result, {
+    phase: "discover",snapshotId: snapshot.id,passNumber: 1,claimed: 1,succeeded: 1,
+    retryableFailed: 0,terminalFailed: 0,backlogRemaining: false,
+  });
 });
 
 test("bounded replay projection retains only reviewed fields and remains independently normalizable", () => {

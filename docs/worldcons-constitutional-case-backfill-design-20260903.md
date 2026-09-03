@@ -1948,6 +1948,8 @@ Spain, 한 연도, Sentencia, 공개 flag OFF
 
 ### Gate 5 — 국가별 확대
 
+상태: 첫 확대 범위인 Spain 2020~2023 Sentencia의 연도별 scope와 P1 이중 잠금은 로컬 구현·테스트 완료. 2024 운영 canary 승인 전이므로 history flag 기본값은 false이며 실데이터 실행은 미완료.
+
 권장 순서:
 
 ```text

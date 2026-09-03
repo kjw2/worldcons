@@ -16,6 +16,7 @@ import { loadSourceAdapter } from "@/lib/sources/lazy";
 import type { DiscoveredItem, NormalizedArticle, RawArticle, SourceAdapter } from "@/lib/sources/types";
 import { discoverSpainTcInventory } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
+import { assertSpainSentenciaYearEnabled } from "@/lib/backfill/spain-scope";
 
 export interface CaseBackfillExecutionContext {
   authority: CaseBackfillAttemptAuthority;
@@ -27,6 +28,7 @@ interface CaseBackfillDependencies {
   repository: CaseBackfillRepository;
   loadAdapter: typeof loadSourceAdapter;
   now: () => Date;
+  discoverSpainTcInventory?: typeof discoverSpainTcInventory;
   environment?: Record<string, string | undefined>;
 }
 
@@ -34,6 +36,7 @@ const defaultDependencies: CaseBackfillDependencies = {
   repository: postgresCaseBackfillRepository,
   loadAdapter: loadSourceAdapter,
   now: () => new Date(),
+  discoverSpainTcInventory,
   environment: process.env,
 };
 
@@ -311,11 +314,12 @@ export async function runCaseBackfillPass(
     ) {
       throw new Error("case_backfill.discovery_scope_not_enabled");
     }
-    const runId = await repository.beginRun(input, context.authority);
     const year = Number(snapshot.scopeFrom.slice(0, 4));
+    assertSpainSentenciaYearEnabled(year, dependencies.environment ?? process.env);
+    const runId = await repository.beginRun(input, context.authority);
     let written = 0;
     try {
-      const inventory = await discoverSpainTcInventory({
+      const inventory = await (dependencies.discoverSpainTcInventory ?? discoverSpainTcInventory)({
         year,
         documentType: "SENTENCIA",
         signal: context.signal,

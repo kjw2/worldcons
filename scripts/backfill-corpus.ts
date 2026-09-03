@@ -3,6 +3,15 @@ import { randomUUID } from "node:crypto";
 import { postgresCaseBackfillRepository } from "@/lib/backfill/repository";
 import type { CaseBackfillPhase } from "@/lib/backfill/types";
 import {
+  assertSpainSentenciaYearEnabled,
+  CASE_CATALOG_SPAIN_HISTORY_FLAG,
+  SPAIN_SENTENCIA_BASELINE_YEAR,
+  SPAIN_SENTENCIA_HISTORY_START_YEAR,
+  spainSentenciaExpansionPlan,
+  spainSentenciaYearEnabled,
+  spainSentenciaYearScope,
+} from "@/lib/backfill/spain-scope";
+import {
   adminQueueP1CommandAuthorized,
   resolveAdminQueueP1Authority,
   type AdminQueueP1CommandType,
@@ -56,13 +65,16 @@ function output(value: Record<string, unknown>) {
 }
 
 function gate1Plan() {
-  const year = integerArgument("year", 2024, 2024, 2024);
+  const year = integerArgument("year", SPAIN_SENTENCIA_BASELINE_YEAR, SPAIN_SENTENCIA_HISTORY_START_YEAR, SPAIN_SENTENCIA_BASELINE_YEAR);
+  const scope = spainSentenciaYearScope(year);
   return {
-    gate: 1,
+    gate: year === SPAIN_SENTENCIA_BASELINE_YEAR ? 1 : 5,
     mode: "private-shadow",
     sourceKey: "es-tribunal-constitucional",
-    year,
-    documentType: "SENTENCIA",
+    ...scope,
+    executionEnabled: spainSentenciaYearEnabled(year),
+    requiredHistoryFlag: year < SPAIN_SENTENCIA_BASELINE_YEAR ? CASE_CATALOG_SPAIN_HISTORY_FLAG : null,
+    expansionPlan: spainSentenciaExpansionPlan(),
     phases: [...GATE1_PHASES],
     publicCatalogEnabled: false,
     geminiCalls: 0,
@@ -79,13 +91,15 @@ function gate1Plan() {
 async function snapshotForDiscovery() {
   const existing = optionalUuid("snapshot");
   if (existing) return existing;
-  const year = integerArgument("year", 2024, 2024, 2024);
+  const year = integerArgument("year", SPAIN_SENTENCIA_BASELINE_YEAR, SPAIN_SENTENCIA_HISTORY_START_YEAR, SPAIN_SENTENCIA_BASELINE_YEAR);
+  assertSpainSentenciaYearEnabled(year);
+  const scope = spainSentenciaYearScope(year);
   const policyVersion = requiredArgument("policy-version");
   await postgresCaseBackfillRepository.getSourcePolicy("es-tribunal-constitucional", policyVersion);
   return postgresCaseBackfillRepository.openSnapshot({
     sourceKey: "es-tribunal-constitucional",
-    scopeFrom: `${year}-01-01`,
-    scopeTo: `${year}-12-31`,
+    scopeFrom: scope.scopeFrom,
+    scopeTo: scope.scopeTo,
     documentType: "SENTENCIA",
     discoveryMethod: "official_hj_search_pagination",
     parserVersion: argumentValue("parser-version")?.trim() || "spain-hj-normalize-v1",
