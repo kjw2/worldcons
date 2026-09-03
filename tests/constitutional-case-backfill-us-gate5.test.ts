@@ -37,6 +37,16 @@ import type {
   StoredUsConanReviewContext,
   UsConanReviewRepository,
 } from "../lib/backfill/us-conan-review-repository";
+import {
+  US_CONAN_CATALOG_PUBLISH_FLAG,
+  planUsConanCatalogPublication,
+  publishUsConanCatalogCandidate,
+} from "../lib/backfill/us-conan-catalog-service";
+import type {
+  UsConanCatalogPublicationContext,
+  UsConanCatalogRepository,
+  UsConanCatalogSourcePolicy,
+} from "../lib/backfill/us-conan-catalog-repository";
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/us-conan-table-contract.html"),
@@ -608,5 +618,225 @@ test("enabled human review appends exactly one v2 review and does not publish", 
   assert.equal(result.mode, "reviewed");
   assert.equal(result.review?.revision, 2);
   assert.equal(result.publicCatalogEnabled, false);
+  assert.equal(result.geminiCalls, 0);
+});
+
+const catalogContext: UsConanCatalogPublicationContext = {
+  candidateId: storedCandidate.id,
+  citation: storedCandidate.citation,
+  reviewId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  reviewRevision: 2,
+  reviewStatus: "verified",
+  reviewAuthorityArtifactId: reviewContext.currentAuthority?.id ?? null,
+  currentAuthorityArtifactId: reviewContext.currentAuthority?.id ?? null,
+  currentAuthorityStatus: "verified",
+  candidateSourceKey: "us-constitution-annotated",
+  candidatePolicyVersion: "us-conan-gate5-v1",
+  candidatePolicyReviewDueAt: "2027-09-03T00:00:00.000Z",
+  candidateSnapshotStatus: "closed",
+  candidateManifestHash: "c".repeat(64),
+  articleId: null,
+  catalogRevision: 0,
+  catalogState: null,
+};
+
+const catalogPolicy: UsConanCatalogSourcePolicy = {
+  sourceKey: "us-scotus",
+  policyVersion: "us-scotus-gate5-v1",
+  reviewDueAt: "2027-09-03T00:00:00.000Z",
+  textAccessPolicy: "metadata_only",
+  authorityHosts: ["www.govinfo.gov"],
+};
+
+function usCatalogRepository(overrides: Partial<UsConanCatalogRepository> = {}): UsConanCatalogRepository {
+  return {
+    getPublicationContext: async () => catalogContext,
+    getSourcePolicy: async () => catalogPolicy,
+    publish: async () => ({
+      eventId: "11111111-1111-4111-8111-111111111111",
+      articleId: "22222222-2222-4222-8222-222222222222",
+      versionId: "33333333-3333-4333-8333-333333333333",
+      versionRevision: 1,
+      publicationRevision: 1,
+      articleSlug: "us-scotus-369-us-186",
+      applied: true,
+      idempotent: false,
+    }),
+    ...overrides,
+  };
+}
+
+test("US Catalog publication plan is read-only and exposes exact review and Catalog CAS values", async () => {
+  let writes = 0;
+  const repository = usCatalogRepository({
+    publish: async () => {
+      writes += 1;
+      throw new Error("must not write");
+    },
+  });
+  const result = await planUsConanCatalogPublication(storedCandidate.id, catalogPolicy.policyVersion, {
+    repository,
+    environment: {},
+    now: () => new Date("2026-09-03T10:00:00.000Z"),
+  });
+  assert.equal(result.mode, "plan");
+  assert.equal(result.eligible, true);
+  assert.deepEqual(result.blocking, []);
+  assert.equal(result.expectedReviewRevision, 2);
+  assert.equal(result.expectedCatalogRevision, 0);
+  assert.equal(
+    result.idempotencyKey,
+    `us-conan:${storedCandidate.id}:review-2:policy-${catalogPolicy.policyVersion}`,
+  );
+  assert.equal(result.writeEnabled, false);
+  assert.equal(result.publicCatalogEnabled, false);
+  assert.equal(result.geminiCalls, 0);
+  assert.equal(writes, 0);
+});
+
+test("US Catalog publication requires both write flags before database access", async () => {
+  let reads = 0;
+  const repository = usCatalogRepository({
+    getPublicationContext: async () => {
+      reads += 1;
+      return catalogContext;
+    },
+    getSourcePolicy: async () => {
+      reads += 1;
+      return catalogPolicy;
+    },
+  });
+  const input = {
+    candidateId: storedCandidate.id,
+    sourcePolicyVersion: catalogPolicy.policyVersion,
+    expectedReviewRevision: 2,
+    expectedCatalogRevision: 0,
+    idempotencyKey: `us-conan:${storedCandidate.id}:review-2:policy-${catalogPolicy.policyVersion}`,
+    actorId: "unit-test-publisher",
+  };
+  await assert.rejects(
+    publishUsConanCatalogCandidate(input, { repository, environment: {} }),
+    /case_backfill\.catalog_write_disabled/,
+  );
+  await assert.rejects(
+    publishUsConanCatalogCandidate(input, {
+      repository,
+      environment: { CASE_CATALOG_WRITE_ENABLED: "true" },
+    }),
+    /case_backfill\.us_conan_publish_disabled/,
+  );
+  assert.equal(reads, 0);
+});
+
+test("US Catalog publication plan blocks stale evidence, source mismatch, and overdue policy", async () => {
+  const repository = usCatalogRepository({
+    getPublicationContext: async () => ({
+      ...catalogContext,
+      candidateSourceKey: "unexpected-source",
+      reviewAuthorityArtifactId: "44444444-4444-4444-8444-444444444444",
+      candidatePolicyReviewDueAt: "2026-09-03T09:59:59.000Z",
+    }),
+    getSourcePolicy: async () => ({
+      ...catalogPolicy,
+      reviewDueAt: "2026-09-03T09:59:59.000Z",
+      authorityHosts: [],
+      textAccessPolicy: "full_text_allowed",
+    }),
+  });
+  const result = await planUsConanCatalogPublication(storedCandidate.id, catalogPolicy.policyVersion, {
+    repository,
+    now: () => new Date("2026-09-03T10:00:00.000Z"),
+  });
+  assert.equal(result.eligible, false);
+  assert.deepEqual(result.blocking, [
+    "candidate_discovery_source_mismatch",
+    "current_reviewed_authority_required",
+    "candidate_policy_review_overdue",
+    "publication_policy_review_overdue",
+    "govinfo_authority_host_required",
+    "metadata_only_policy_required",
+  ]);
+});
+
+test("US Catalog publication rejects stale CAS and a substituted idempotency key", async () => {
+  let writes = 0;
+  const repository = usCatalogRepository({
+    publish: async () => {
+      writes += 1;
+      throw new Error("must not write");
+    },
+  });
+  const environment = {
+    CASE_CATALOG_WRITE_ENABLED: "true",
+    [US_CONAN_CATALOG_PUBLISH_FLAG]: "true",
+  };
+  const baseInput = {
+    candidateId: storedCandidate.id,
+    sourcePolicyVersion: catalogPolicy.policyVersion,
+    expectedReviewRevision: 2,
+    expectedCatalogRevision: 0,
+    idempotencyKey: `us-conan:${storedCandidate.id}:review-2:policy-${catalogPolicy.policyVersion}`,
+    actorId: "unit-test-publisher",
+  };
+  await assert.rejects(
+    publishUsConanCatalogCandidate({ ...baseInput, expectedReviewRevision: 1 }, {
+      repository,
+      environment,
+      now: () => new Date("2026-09-03T10:00:00.000Z"),
+    }),
+    /us_catalog\.stale_plan/,
+  );
+  await assert.rejects(
+    publishUsConanCatalogCandidate({ ...baseInput, idempotencyKey: "substituted-key" }, {
+      repository,
+      environment,
+      now: () => new Date("2026-09-03T10:00:00.000Z"),
+    }),
+    /us_catalog\.idempotency_key_mismatch/,
+  );
+  assert.equal(writes, 0);
+});
+
+test("enabled US Catalog publication performs one metadata-only bridge write", async () => {
+  let writes = 0;
+  const repository = usCatalogRepository({
+    publish: async (input) => {
+      writes += 1;
+      assert.equal(input.expectedReviewRevision, 2);
+      assert.equal(input.expectedCatalogRevision, 0);
+      assert.equal(input.sourcePolicyVersion, catalogPolicy.policyVersion);
+      return {
+        eventId: "11111111-1111-4111-8111-111111111111",
+        articleId: "22222222-2222-4222-8222-222222222222",
+        versionId: "33333333-3333-4333-8333-333333333333",
+        versionRevision: 1,
+        publicationRevision: 1,
+        articleSlug: "us-scotus-369-us-186",
+        applied: true,
+        idempotent: false,
+      };
+    },
+  });
+  const idempotencyKey = `us-conan:${storedCandidate.id}:review-2:policy-${catalogPolicy.policyVersion}`;
+  const result = await publishUsConanCatalogCandidate({
+    candidateId: storedCandidate.id,
+    sourcePolicyVersion: catalogPolicy.policyVersion,
+    expectedReviewRevision: 2,
+    expectedCatalogRevision: 0,
+    idempotencyKey,
+    actorId: "unit-test-publisher",
+  }, {
+    repository,
+    environment: {
+      CASE_CATALOG_WRITE_ENABLED: "true",
+      [US_CONAN_CATALOG_PUBLISH_FLAG]: "true",
+    },
+    now: () => new Date("2026-09-03T10:00:00.000Z"),
+  });
+  assert.equal(writes, 1);
+  assert.equal(result.mode, "published");
+  assert.equal(result.publication.articleSlug, "us-scotus-369-us-186");
+  assert.equal(result.reviewWritten, false);
+  assert.equal(result.p3PublicationWritten, false);
   assert.equal(result.geminiCalls, 0);
 });

@@ -90,3 +90,45 @@ pnpm resolve:us-conan-authority --candidate-id=<uuid>
 ```
 
 기본 실행은 DB candidate를 읽고 공식 네트워크를 검증하지만 artifact를 쓰지 않는다. `CASE_CATALOG_US_CONAN_ENABLED=true`와 `--execute`를 함께 주면 resolver 결과만 append한다. 성공·불일치·404·robots 차단을 모두 관측 artifact로 남길 수 있지만, 어떤 경우에도 `us_conan_candidate_reviews_v1`, Catalog version/publication, Gemini artifact를 만들지 않는다.
+
+## 근거 결속 human/legal review
+
+검토자는 먼저 현재 candidate, optimistic review revision, 최신 authority artifact와 essay evidence ID를 읽는다.
+
+```text
+pnpm review:us-conan-candidate --candidate-id=<uuid>
+```
+
+이 조회는 read-only다. 검토 입력은 `candidateId`, `expectedRevision`, 요청 상태, 네 법률 검증 boolean, 현재 `authorityArtifactId`와 공식 URL, 같은 candidate의 `essayEvidenceIds`, 공식 details/PDF에 결속된 `holdingEvidence`, 검토자와 사유를 JSON 파일로 보존한다. 기본 실행은 evidence binding과 계산된 상태가 요청 상태와 일치하는지만 검증한다.
+
+```text
+pnpm review:us-conan-candidate --input=<review.json>
+```
+
+실제 append는 전용 잠금까지 요구한다.
+
+```text
+CASE_CATALOG_US_CONAN_REVIEW_ENABLED=true pnpm review:us-conan-candidate --input=<review.json> --execute
+```
+
+`verified`는 최신 `verified` GovInfo artifact, 동일 candidate의 공식 essay evidence, 공식 details/PDF URL의 constitutional question·holding locator가 모두 있을 때만 허용된다. 리뷰 append는 Catalog/P3를 발행하지 않고 Gemini를 호출하지 않는다. revision 충돌이나 authority 교체가 감지되면 새 context를 읽고 재검토해야 하며 기존 입력의 revision이나 ID를 임의로 바꾸어 재시도하지 않는다.
+
+## 검토 완료 candidate의 Catalog 발행
+
+Constitution Annotated discovery policy와 Catalog publication authority policy는 분리한다. candidate snapshot은 승인된 `us-constitution-annotated` policy에 결속되어 있어야 하고, 발행 시에는 별도로 승인·미만료된 `us-scotus` policy version을 지정해야 한다. `us-scotus` policy는 `www.govinfo.gov`를 authority host로 포함하고 `metadata_only` 또는 `index_only` text policy를 사용해야 한다.
+
+먼저 현재 review/Catalog revision과 결정적 idempotency key를 계획 모드로 조회한다.
+
+```text
+pnpm publish:us-conan-candidate --candidate-id=<uuid> --policy-version=<approved-us-scotus-policy>
+```
+
+`eligible=true`, 빈 `blocking`, `expectedReviewRevision`, `expectedCatalogRevision`, `idempotencyKey`를 함께 검토한다. 계획 모드는 DB를 변경하지 않으며 write/public flag 상태를 보고할 뿐이다. 실제 발행은 계획에서 받은 CAS와 idempotency key를 그대로 전달하고 두 write 잠금을 모두 명시적으로 켠다.
+
+```text
+CASE_CATALOG_WRITE_ENABLED=true CASE_CATALOG_US_CONAN_PUBLISH_ENABLED=true pnpm publish:us-conan-candidate --candidate-id=<uuid> --policy-version=<approved-us-scotus-policy> --expected-review-revision=<n> --expected-catalog-revision=<n> --idempotency-key=<plan-value> --requested-by=<operator> --execute
+```
+
+실행 직전 DB 함수가 닫힌 candidate manifest, discovery/publication policy 만료, 최신 verified review, 같은 최신 GovInfo authority artifact, essay/holding evidence, source identity와 Catalog revision을 다시 검사한다. 성공 시 공식 metadata만 담은 `authoritative_source` revision과 Catalog source anchor 및 불변 bridge event를 만든다. mutable article의 기존 원문이나 요약을 유출하지 않으며 SummaryJson, embedding, P3 candidate/publication pointer를 만들거나 이동하지 않는다. 같은 idempotency key의 동일 재실행은 기존 결과를 반환하고, 다른 입력에 key를 재사용하면 실패한다.
+
+Catalog 공개는 이 쓰기와 별도 rollout이다. `CASE_CATALOG_PUBLIC_ENABLED`를 켜지 않은 상태에서도 private shadow 발행 검증이 가능하며, public/search/plugin flag는 Catalog Gate 2~4 런북의 precedence와 canary 승인을 따른다. 이 미국 경로의 모든 단계는 `geminiCalls=0`이다.
