@@ -66,3 +66,15 @@ CASE_CATALOG_US_CONAN_ENABLED=true pnpm import:us-conan-candidates --input=<revi
 ```
 
 `--priority-citations-file=<json-array>`는 검토된 citation의 scheduling priority만 높인다. 해당 파일은 상태나 verification evidence를 만들지 않는다. 동일 payload/parser/policy 재실행에서 snapshot이 이미 닫혀 있고 candidate count/hash가 유효하면 manifest 쓰기 없이 멱등 성공한다. 중간 실패로 snapshot이 열려 있으면 동일 candidate/evidence만 재사용하여 close를 다시 시도한다.
+
+## 공식 U.S. Reports authority probe
+
+GovInfo의 U.S. Reports는 `USREPORTS-{volume}-{initial page}` granule URL을 제공한다. resolver는 `U.S.` reporter citation을 이 예측 가능한 공식 details URL에 매핑한 뒤 robots 정책을 확인하고, GovInfo의 `dc.title`, 정확한 citation, 양 당사자 anchor, 같은 granule의 공식 PDF 링크를 모두 대조한다.
+
+```text
+pnpm verify:us-reports-authority --citation=<U.S. Reports citation> --case-name=<case name>
+```
+
+셸 quoting이 불편한 환경에서는 `{"citation":"...","caseName":"..."}` 형식의 검토 파일을 `--input=<probe.json>`으로 전달한다.
+
+이 명령은 read-only다. 성공은 SCOTUS identity와 공식 authority granule을 확인했다는 뜻일 뿐 헌법 관련성 `verified`가 아니다. DB review를 쓰지 않고 `constitutionalRelevanceStatus=candidate`, `reviewWritten=false`, `geminiCalls=0`을 명시한다. Constitution Annotated essay 문맥과 헌법적 holding은 별도 리뷰 gate로 남는다. 404, robots 차단, redirect host/path 변경, citation/name/PDF 불일치는 fail-closed다.

@@ -1948,7 +1948,7 @@ Spain, 한 연도, Sentencia, 공개 flag OFF
 
 ### Gate 5 — 국가별 확대
 
-상태: Spain 2020~2023 Sentencia와 France 2010~현재 Conseil QPC/DC의 연도·유형별 scope, 공식 count reconciliation, P1 이중 잠금은 로컬 구현·테스트 완료. 미국 Constitution Annotated는 Table citation을 `candidate`로만 정규화하고 하급법원 인용·공식 페이지 challenge·landmark priority 우회를 차단하는 parser 계약, 불변 snapshot·essay provenance·append-only CAS review를 갖춘 비공개 durable graph, source policy·flag·payload hash 이중 잠금 import CLI까지 구현했다. 공식 SCOTUS authority resolver 접합은 다음 단계다. 운영 source policy와 canary 승인 전이므로 국가별 history flag 기본값은 false이며 실데이터 실행은 미완료.
+상태: Spain 2020~2023 Sentencia와 France 2010~현재 Conseil QPC/DC의 연도·유형별 scope, 공식 count reconciliation, P1 이중 잠금은 로컬 구현·테스트 완료. 미국 Constitution Annotated는 Table citation을 `candidate`로만 정규화하고 하급법원 인용·공식 페이지 challenge·landmark priority 우회를 차단하는 parser 계약, 불변 snapshot·essay provenance·append-only CAS review를 갖춘 비공개 durable graph, source policy·flag·payload hash 잠금 import CLI까지 구현했다. `U.S.` reporter 후보를 GovInfo U.S. Reports의 예측 가능한 granule에 결속하는 robots fail-closed read-only resolver도 구현·라이브 검증했지만 essay 문맥·헌법적 holding review와 Catalog 이관은 아직 하지 않는다. 운영 source policy와 canary 승인 전이므로 국가별 history flag 기본값은 false이며 실데이터 실행은 미완료.
 
 권장 순서:
 
