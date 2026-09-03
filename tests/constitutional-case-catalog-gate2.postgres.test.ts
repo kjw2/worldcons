@@ -18,6 +18,7 @@ const p3 = vectorFallback(migration("20260712200000_article_publication_p3.sql")
 const caseKeys = vectorFallback(migration("20260826400000_case_keys_and_ranked_pagination.sql"));
 const gate1 = migration("20260903120000_constitutional_case_backfill_gate1.sql");
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
+const gate3 = migration("20260903140000_constitutional_case_search_gate3.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -193,6 +194,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       null,null,'import','catalog-test',null,null,'{}',null
     )`, [legacyArticle.rows[0].id]);
     await setup.query(gate2);
+    await setup.query(gate3);
   } finally {
     await setup.end();
   }
@@ -433,6 +435,96 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         pool.query("update legacy_version_freshness_classifications_v4 set classified_by='changed'"),
         /CASE_CATALOG_IMMUTABLE_RECORD/,
       );
+    });
+
+    await t.test("Gate 3 searches a source-only Catalog case by exact identity and lexical text once", async () => {
+      const articleId = await insertArticle(pool, "88");
+      await pool.query(`update articles set
+        search_vector=to_tsvector('simple','SENTENCIA 88/2024 libertad de expresion'),
+        cleaned_text='La libertad de expresion constitucional',original_published_at='2024-06-01T00:00:00Z'
+        where id=$1`, [articleId]);
+      await seedCaseMetadata(pool, articleId);
+      await pool.query(`insert into case_identifiers_v1(
+        article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value,is_primary
+      ) values($1,'es-tribunal-constitucional','decision_number','decision','88/2024','882024',true)`, [articleId]);
+      const source = await capture(pool, {
+        articleId,expected: 0,role: "authoritative_source",sourceHash: "4".repeat(64),
+      });
+      await catalogTransition(pool, { articleId,anchor: source.rows[0].version_id,expected: 0,key: "search-88" });
+
+      const exact = await pool.query<{ payload: {
+        entries: Array<{ id: string; matchType: string; enrichmentStatus: string; summaryAvailable: boolean }>;
+        retrievalMode: string;
+      } }>("select worldcons_case_search_page_v2($1,10,null) payload", ["88/2024"]);
+      assert.equal(exact.rows[0].payload.retrievalMode, "exact-identity");
+      assert.deepEqual(exact.rows[0].payload.entries, [{
+        id: articleId,score: 997,matchType: "exact-identity",enrichmentStatus: "source_only",
+        enrichmentFreshness: null,summaryStatus: "pending",summaryAvailable: false,
+      }]);
+
+      const lexical = await pool.query<{ payload: { entries: Array<{ id: string }>; retrievalMode: string } }>(
+        "select worldcons_case_search_page_v2($1,10,null) payload", ["libertad"],
+      );
+      assert.equal(lexical.rows[0].payload.retrievalMode, "lexical");
+      assert.deepEqual(lexical.rows[0].payload.entries.map((entry) => entry.id), [articleId]);
+      assert.equal((await pool.query("select count(*)::integer count from public_case_search_documents_v1 where id=$1", [articleId])).rows[0].count, 1);
+    });
+
+    await t.test("Gate 3 keyset cursor is deterministic, bounded, and query-bound", async () => {
+      const ids: string[] = [];
+      for (const [suffix, date] of [["201","2024-03-03"],["202","2024-03-02"],["203","2024-03-01"]]) {
+        const articleId = await insertArticle(pool, suffix);
+        ids.push(articleId);
+        await pool.query(`update articles set search_vector=to_tsvector('simple','control constitucional comun'),
+          cleaned_text='control constitucional comun',original_published_at=$2 where id=$1`, [articleId, date]);
+        await seedCaseMetadata(pool, articleId);
+        const source = await capture(pool, {
+          articleId,expected: 0,role: "authoritative_source",sourceHash: suffix[2].repeat(64),
+        });
+        await catalogTransition(pool, { articleId,anchor: source.rows[0].version_id,expected: 0,key: `search-${suffix}` });
+      }
+
+      const first = await pool.query<{ payload: {
+        entries: Array<{ id: string }>;
+        nextCursor: string;
+        hasMore: boolean;
+        rankingVersion: string;
+      } }>("select worldcons_case_search_page_v2($1,2,null) payload", ["control"]);
+      assert.equal(first.rows[0].payload.entries.length, 2);
+      assert.equal(first.rows[0].payload.hasMore, true);
+      assert.equal(first.rows[0].payload.rankingVersion, "gate3-exact-lexical-v1");
+      assert.match(first.rows[0].payload.nextCursor, /^[A-Za-z0-9_-]+$/u);
+
+      const second = await pool.query<{ payload: { entries: Array<{ id: string }>; hasMore: boolean } }>(
+        "select worldcons_case_search_page_v2($1,2,$2) payload",
+        ["control",first.rows[0].payload.nextCursor],
+      );
+      assert.equal(second.rows[0].payload.entries.length, 1);
+      assert.equal(second.rows[0].payload.hasMore, false);
+      assert.equal(new Set([...first.rows[0].payload.entries,...second.rows[0].payload.entries].map((entry) => entry.id)).size, 3);
+      assert.deepEqual(new Set([...first.rows[0].payload.entries,...second.rows[0].payload.entries].map((entry) => entry.id)), new Set(ids));
+      await assert.rejects(
+        pool.query("select worldcons_case_search_page_v2($1,2,$2)", ["otro",first.rows[0].payload.nextCursor]),
+        /WORLDCONS_CASE_SEARCH_CURSOR_MISMATCH/,
+      );
+      await assert.rejects(
+        pool.query("select worldcons_case_search_page_v2($1,2,$2)", ["control","not-a-valid-cursor!"]),
+        /WORLDCONS_CASE_SEARCH_INVALID_CURSOR/,
+      );
+    });
+
+    await t.test("Gate 3 search authority is private, fixed-path, and statement-bounded", async () => {
+      const authority = await pool.query<{ prosecdef: boolean; proconfig: string[]; public_execute: boolean }>(`
+        select p.prosecdef,p.proconfig,has_function_privilege('public',p.oid,'execute') public_execute
+        from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.proname='worldcons_case_search_page_v2'
+      `);
+      assert.equal(authority.rowCount, 1);
+      assert.equal(authority.rows[0].prosecdef, true);
+      assert.ok(authority.rows[0].proconfig.includes("search_path=public, extensions, pg_temp"));
+      assert.ok(authority.rows[0].proconfig.some((value) => value.startsWith("statement_timeout=")));
+      assert.equal(authority.rows[0].public_execute, false);
+      assert.equal((await pool.query("select has_table_privilege('public','public_case_search_documents_v1','select') allowed")).rows[0].allowed, false);
     });
   } finally {
     await pool.end();
