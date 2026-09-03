@@ -117,3 +117,32 @@ Spain HJ의 첫 검토 결과는 `docs/spain-hj-source-policy-review-20260903.md
 - 배포 후 error-level runtime log: 0건
 
 교정 커밋도 실제 disposable PostgreSQL을 연결한 전체 `pnpm verify:release`를 통과했다. 국가별 Catalog 실행 flag와 source policy 상태는 변경하지 않았다.
+
+## France governed fetch transport 이행
+
+France Gate 5의 상세 fetch를 commit `cc3aa267919f`에서 분산 source request governor에 접합했다. 이 단계는 실행 기반만 완성했으며 source 정책 승인, 국가별 flag 활성화, inventory 생성, fetch 실행 또는 공개 전환은 하지 않았다.
+
+- `discover`와 `fetch`를 모두 governed network phase로 선언했다.
+- robots, inventory, sitemap, 상세 요청과 Crawlee retry가 각각 독립 permit을 획득한다.
+- Cheerio navigation permit은 응답 body가 handler에 완전히 전달된 뒤 해제되며, retry/error/teardown에서도 잔여 permit을 회수한다.
+- governed fetch는 redirect를 따르지 않고 3xx를 실패 처리한다.
+- 브라우저가 redirect 목적지를 먼저 방문할 수 있는 Playwright fallback은 governed run에서 fail-closed다.
+- process-local raw cache와 metadata-only fallback은 authoritative fetch 성공으로 사용할 수 없다.
+- governor만 있고 signal/checkpoint가 없는 robots 호출과 재귀 sitemap도 governor를 보존한다.
+
+로컬 검증 중 기존 PostgreSQL vector fallback 테스트가 `extensions.vector`를 잘못 치환하는 문제를 발견해 P3/P5 검증 하네스도 교정했다. 실제 disposable PostgreSQL을 연결한 전체 `pnpm verify:release` 결과는 backfill 63/63, Catalog 27/27, plugin 11/11이며 typecheck, repository check, lint, P0~P5, 보안, 운영, 임베딩, MasterDash, 공개 회귀, plugin validation과 production build가 모두 통과했다.
+
+첫 production CLI 배포는 로컬 disposable PostgreSQL 디렉터리까지 업로드하여 155.2MB/5,289 files가 전송되는 패키징 결함을 드러냈다. 로컬 검증 자료는 삭제하지 않고 commit `5912e771809e`에서 `.tmp-*`를 `.vercelignore`에 추가했다. 최종 배포 업로드는 165B/555 files로 줄었다.
+
+최종 운영 증거:
+
+- Git commit: `5912e771809efa365d67cc0e055efa9e4338b1c0`
+- Vercel deployment: `dpl_32epHi89EhnVJvQkFAqGLZLDwR7N`, production `Ready`
+- canonical alias: `https://worldcons.vercel.app`
+- `/api/masterdash/health`: `healthy`, version `5912e771809e`, `stalledWorkflows=[]`
+- `/api/mcp/health`: `ready`, database/search `ok`, full commit SHA 일치
+- MCP initialize/tools/search: 5개 read-only 도구, 검색 10건
+- 익명 경계: `/admin/login` 404, `POST /api/admin/login` 404, token 없는 `/api/auth/masterdash` 401
+- 배포 error-level log 조회: 오류 없음
+
+이번 단계에는 migration이 없고 운영 backfill 명령도 제출하지 않았다. 따라서 승인 전 invariant인 `source_corpus_policies=0`, 모든 `CASE_CATALOG_*`/국가 실행 flag 비활성, 신규 Catalog source data 0 상태를 유지한다.
