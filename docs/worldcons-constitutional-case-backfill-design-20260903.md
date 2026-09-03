@@ -3,7 +3,7 @@
 - 최초 작성: 2026-09-03
 - 심층 검토·개정: 2026-09-03
 - 대상 프로젝트: `worldcons`
-- 상태: Gate 0 설계 보정 완료, source별 운영 정책 확정 후 Spain vertical slice 구현
+- 상태: Gate 0 아키텍처 승인, source별 운영 정책 확정 후 Spain vertical slice 구현
 - 운영 스택: Vercel + Supabase/PostgreSQL
 - AI·임베딩 공급자: Gemini 전용
 
@@ -50,6 +50,13 @@ v2.2는 기존 P3 관리자 전환 코드까지 대조하여 다음 마지막 �
 | normalize item phase는 있으나 P1 command/CLI가 없음 | `p1.case-backfill.normalize`와 `backfill:corpus normalize`를 독립 재실행 단계로 추가 |
 | source policy 만료를 언급하지만 schema에 기한이 없음 | immutable policy row에 `review_due_at`을 추가하고 기한 경과 시 신규 publish를 fail-closed |
 
+v2.2 최종 검토에서 구현 DDL 전에 필요한 두 계약을 추가로 고정한다.
+
+| 최종 보정 | v2.2 확정 계약 |
+|---|---|
+| AI artifact의 source version과 Catalog display version 의미가 혼재 | Catalog publication은 authoritative source anchor만 가리키고 AI/P3 version은 그 anchor를 참조 |
+| published item 재-normalize 시 terminal outcome과 진행 상태가 충돌 | `published`를 유지하고 artifact pointer 차이에서 `needs_reverify`·`needs_republish`를 계산 |
+
 이 문서에서 “전수”는 전 세계 모든 헌법판례를 뜻하지 않는다.
 
 > **특정 시점에 선언된 공식 원천·기간·문서 유형의 inventory snapshot 안에서 누락 없이 처리되었음을 증명하는 것**을 뜻한다.
@@ -85,8 +92,9 @@ v2.2는 기존 P3 관리자 전환 코드까지 대조하여 다음 마지막 �
 - 처리 완료율과 `coverage_assurance`가 별도 표시되어 낮은 assurance의 100% 처리율을 공식 corpus 100%로 오인하지 않는다.
 - Catalog에 AI 미처리 판례가 실제 검색되고 `/articles/{slug}`에서 공식 정보로 표시된다.
 - 기존 P3 결과의 URL, 검색, publication 적격성, Gemini 임베딩이 회귀하지 않는다.
-- 같은 판례가 Catalog와 P3에 동시에 존재해도 검색 결과는 하나만 나오며, 현재 공식 원문 hash와 일치하는 P3 표현만 우선한다.
+- 같은 판례가 Catalog와 P3에 동시에 존재해도 검색 결과는 하나만 나오며, 현재 Catalog source anchor ID/hash와 일치하는 P3 표현만 우선한다.
 - 공식 원문이 바뀌면 최신 Catalog 정보는 계속 공개하되 stale AI 요약·태그·embedding은 공개 대표 표현과 검색 랭킹에서 제외된다.
+- parser 재실행은 기존 terminal publication outcome을 지우지 않으며 새 normalization의 검증·재발행 필요 상태를 별도로 드러낸다.
 - 플러그인은 AI 요약이 없는 판례를 AI 요약이 있는 것처럼 표시하지 않는다.
 - 기능 플래그를 끄는 것만으로 current P3-only 동작으로 즉시 롤백할 수 있으며 stale AI freshness guard는 롤백 후에도 유지된다.
 
@@ -207,7 +215,7 @@ Catalog 원문 기반 retrieval input은 P3 summary 기반 input과 의미가 �
 10. **AI는 근거를 소비하는 파생 작업**: 원천 텍스트를 명령으로 취급하지 않으며 결과는 provenance와 evidence를 가진다.
 11. **Gemini 전용**: 번역·요약·임베딩에서 다른 공급자로 자동 전환하지 않는다.
 12. **기존 P3 보존**: 새 Catalog 장애가 기존 공개 판례를 가리지 않는다.
-13. **version chain과 head 분리**: 공용 revision 순서, Catalog 최신 version, P3 후보, P3 publication은 서로 다른 pointer다.
+13. **version chain과 head 분리**: 공용 revision 순서, Catalog authoritative source anchor, P3 후보, P3 publication은 서로 다른 pointer다.
 14. **AI 최신성 fail-closed**: 공식 source hash와 다른 AI artifact는 존재하더라도 공개 current 요약으로 사용하지 않는다.
 
 ---
@@ -230,7 +238,7 @@ Catalog 원문 기반 retrieval input은 P3 summary 기반 input과 의미가 �
                   ┌───────────────┴────────────────┐
                   ▼                                ▼
           Catalog publication              Gemini enrichment
-                  │                         source hash binding
+                  │                       source anchor binding
                   │                                │
           lexical/alias search                     ▼
                   │                         light/full artifact
@@ -293,8 +301,9 @@ source_only | light | full
 
 ```text
 enrichment_freshness
-  current  artifact.source_content_hash = 현재 published Catalog source_content_hash
-  stale    두 hash가 다르거나 artifact가 참조한 source version이 현재 Catalog version이 아님
+  current  artifact.source_anchor_version_id = 현재 Catalog source_anchor_version_id
+           AND artifact.source_content_hash = source anchor의 source_content_hash
+  stale    anchor ID 또는 source content hash가 다르거나 비교 근거를 증명할 수 없음
 
 freshness_basis
   source_hash_match | legacy_same_version | source_hash_mismatch | unknown_fail_closed
@@ -302,7 +311,7 @@ freshness_basis
 
 `source_only`에는 비교할 AI artifact가 없으므로 `enrichment_freshness`는 `null`이다. `light | full`인데 freshness가 `null`인 상태와 `source_only`인데 freshness가 채워진 상태는 DB constraint로 거부한다.
 
-`case_index_metadata.enrichment_status`와 `enrichment_freshness`는 조회 최적화를 위한 projection 값이다. artifact, Catalog publication, P3 publication의 version/hash에서 transition RPC가 같은 transaction 안에서 계산하며 일반 application code가 임의로 갱신하지 않는다. 정합성 검사는 저장된 projection과 재계산값을 주기적으로 대조한다.
+`case_index_metadata.enrichment_status`와 `enrichment_freshness`는 조회 최적화를 위한 projection 값이다. artifact, Catalog source anchor, P3 publication의 anchor/version/hash에서 transition RPC가 같은 transaction 안에서 계산하며 일반 application code가 임의로 갱신하지 않는다. 정합성 검사는 저장된 projection과 재계산값을 주기적으로 대조한다.
 
 공식 원문이 변경되면 가공 수준은 `full`에서 `source_only`로 되돌리지 않는다. 이력상 artifact가 존재한다는 뜻의 `full + stale`로 보존하고, 공개 가능성은 freshness gate로 별도 통제한다.
 
@@ -561,6 +570,10 @@ create table source_backfill_items (
   source_last_modified_at timestamptz,
   payload_hash text,
   parser_version text,
+  current_fetch_artifact_id uuid,
+  current_normalization_artifact_id uuid,
+  verified_normalization_artifact_id uuid,
+  published_normalization_artifact_id uuid,
   article_id uuid references articles(id) on delete restrict,
   duplicate_of_item_id uuid references source_backfill_items(id) on delete restrict,
   exclusion_code text,
@@ -654,9 +667,54 @@ source_normalization_artifacts
   unique(fetch_artifact_id, parser_version, normalization_contract_version)
 ```
 
-`source_backfill_items`에는 `current_fetch_artifact_id`와 `current_normalization_artifact_id`를 processing pointer로 추가한다. FK는 artifact 테이블 생성 뒤 적용한다. fetch/normalize complete RPC만 fencing 검증 후 pointer를 바꿀 수 있고, 과거 artifact를 수정하거나 삭제하지 않는다.
+`source_backfill_items`에는 다음 processing pointer를 둔다. FK는 artifact 테이블 생성 뒤 적용한다.
+
+```text
+current_fetch_artifact_id
+current_normalization_artifact_id
+verified_normalization_artifact_id
+published_normalization_artifact_id
+```
+
+fetch/normalize/verify/publish complete RPC만 fencing 검증 후 각 pointer를 바꿀 수 있고 과거 artifact를 수정하거나 삭제하지 않는다. `status=published`는 terminal publication outcome이므로 유지보수 fetch/normalize/verify 중에 이전 단계로 되돌리지 않는다.
+
+재처리 projection은 pointer 차이에서 계산한다.
+
+```text
+needs_renormalize = current_fetch_artifact_id != current normalization의 fetch_artifact_id
+needs_reverify    = current_normalization_artifact_id IS NOT NULL
+                    AND current_normalization_artifact_id != verified_normalization_artifact_id
+needs_republish   = status = published
+                    AND verified_normalization_artifact_id IS NOT NULL
+                    AND verified_normalization_artifact_id != published_normalization_artifact_id
+```
+
+`work_state`는 저장된 terminal outcome을 덮지 않는 projection이다. 우선순위는 `claimed → retry_wait → needs_normalize → needs_reverify → needs_republish → failed → idle`이다. 따라서 published item도 `resolution=published, work_state=needs_reverify`처럼 표현할 수 있다. phase별 오류와 retry 시각은 최신 phase attempt에 연결하고 publication 상태를 실패 상태로 바꾸지 않는다.
 
 `full_snapshot`은 정책상 허용된 원문 snapshot, `bounded_evidence`는 parser 재현에 충분하다고 source policy가 명시한 최소 입력이다. `non_replayable` source는 독립 normalize 성공을 기록할 수 없으며 fetch+normalize 결합 예외로 표시한다. 운영 대시보드는 replayable 비율을 source별로 표시한다. storage ref에는 서명 URL·credential·임시 query token을 저장하지 않고 immutable object key와 checksum만 저장한다.
+
+### 6.5.2 Phase별 허용 전이
+
+초기 처리와 published 유지보수 전이를 구분한다.
+
+| 현재 상태/조건 | phase | 성공 후 상태·pointer | 자동 실행 |
+|---|---|---|---|
+| `discovered`, `queued`, `retry_wait` | fetch | `fetched`, current fetch 전환 | 허용 |
+| `fetched` | normalize | `normalized`, current normalization 전환 | 허용 |
+| `normalized` | verify | `verified`, verified normalization 전환 | 허용 |
+| `verified` | publish | `published`, published normalization과 Catalog source anchor 전환 | 허용 |
+| `published` + 새 fetch | fetch refresh | `published` 유지, current fetch만 전환, `needs_renormalize=true` | 허용 |
+| `published` + `needs_renormalize` | normalize | `published` 유지, current normalization 전환, `needs_reverify=true` | 허용 |
+| `published` + `needs_reverify` | verify | `published` 유지, verified normalization 전환, 변경 시 `needs_republish=true` | 허용 |
+| `published` + `needs_republish` | publish correction | `published` 유지, 새 source anchor/version과 published normalization 전환 | 허용 |
+| `terminal_failure` | fetch/manual retry | `fetched`, 오류 해제 | 명시적 operator 승인만 |
+| `waived_failure` | 모든 자동 phase | 변화 없음 | 금지; waiver 취소 또는 새 snapshot 필요 |
+| `excluded`, `duplicate` | 모든 자동 phase | 변화 없음 | 금지; 판정 취소의 감사 transition 필요 |
+| `withdrawn` | 모든 자동 phase | 변화 없음 | 금지; 새 snapshot 검증과 명시적 republish 승인 필요 |
+
+초기 item만 fetch claim 중 `status=fetching`을 사용할 수 있다. terminal outcome이 있는 item은 `claimed_phase`와 `work_state=claimed`로 실행 중임을 표시하고 `published` 등을 `fetching/normalized`로 낮추지 않는다. parser 결과가 validation에 실패하면 normalization artifact는 실패 이력으로 append하되 current normalization pointer는 전환하지 않는다.
+
+published item의 verify 결과가 기존 published normalization과 동일한 authoritative output hash라면 새 source revision을 만들지 않는다. `verification.noop` event를 남기고 verified/published normalization pointer를 새 artifact로 함께 정렬하여 `needs_republish=false`로 닫는다. public payload에 영향을 주는 hash가 달라진 경우에만 published pointer는 이전 artifact에 남겨 `needs_republish=true`가 되게 한다.
 
 ### 6.6 닫힌 inventory 불변성
 
@@ -674,6 +732,7 @@ first_seen_at, last_seen_at
 
 - open snapshot에서만 item INSERT/DELETE와 discovery 필드 수정이 가능하다.
 - closed/superseded snapshot에서는 processing 필드만 수정할 수 있다.
+- claim/error/artifact pointer와 derived work projection은 processing 필드이며 published maintenance 중에도 수정할 수 있지만 manifest 필드는 바꾸지 않는다.
 - close RPC가 stable item key로 정렬한 canonical manifest의 SHA-256을 계산해 `manifest_hash`에 저장한다.
 - close 전에 `expected_count`, discovered 실제 count, duplicate stable key, parser/source policy version을 검증한다.
 - close 후 발견된 항목이나 URL 변경은 기존 snapshot을 수정하지 않고 새 snapshot에 기록한다.
@@ -685,11 +744,12 @@ first_seen_at, last_seen_at
 ```text
 article_content_versions_p3                 기존 공용 불변 revision chain
   + version_document_schema                 기존/확장 snapshot schema 구분
+  + version_role                            authoritative_source | enrichment_light | enrichment_full
   + case_metadata_snapshot jsonb            공개 가능 공식 metadata snapshot
   + case_identifiers_snapshot jsonb         해당 revision의 식별자 snapshot
   + authority_evidence_hash
   + source_snapshot_id / source_snapshot_hash / source_content_hash
-  + enrichment_source_version_id            AI artifact가 근거로 삼은 source version
+  + source_anchor_version_id                 이 revision이 근거로 삼은 authoritative source revision
   + enrichment_source_content_hash           AI artifact 생성 시점의 공식 원문 hash
   + text_access_policy / source_policy_version
 
@@ -701,13 +761,13 @@ article_version_heads_p3                     기존 이름과 관리자 호환�
 
 case_catalog_publications_v1
   article_id
-  version_id -> article_content_versions_p3(id)
+  source_anchor_version_id -> article_content_versions_p3(id)
   state: private | published | withdrawn
   revision
   updated_at
 
 case_catalog_publication_events_v1
-  publication_id, previous_version_id, next_version_id
+  publication_id, previous_source_anchor_version_id, next_source_anchor_version_id
   previous_state, next_state, reason, actor, occurred_at
   append-only
 
@@ -718,37 +778,45 @@ article_publications_p3
 v2의 별도 `case_catalog_versions_v1` 제안은 채택하지 않는다. 기존 `article_content_versions_p3`는 `summary_json`이 nullable이고 이미 parent revision, immutable trigger, audit ledger를 제공하므로 source-only와 full version이 하나의 계보를 공유할 수 있다. 테이블명의 `p3`는 역사적 이름으로 유지하고 즉시 rename하지 않는다.
 
 ```text
-v1 source-only
-  -> v2 공식 원문 교정
-  -> v3 Gemini light metadata 갱신
-  -> v4 Gemini full SummaryJson
+v1 authoritative_source (source anchor v1)
+  -> v2 authoritative_source 공식 원문 교정 (source anchor v2)
+  -> v3 enrichment_light  (source anchor v2 참조)
+  -> v4 enrichment_full   (source anchor v2 참조)
 ```
+
+Catalog publication은 display version과 AI version을 선택하지 않는다. 항상 `version_role=authoritative_source`인 `source_anchor_version_id`만 가리킨다. authoritative source revision은 자신의 ID를 `source_anchor_version_id`로 가지며, light/full revision과 AI artifact는 생성 당시의 authoritative source anchor를 참조한다. AI-only revision 생성, global head 전진, P3 candidate/publication 전환은 Catalog source anchor를 바꾸지 않는다. 공식 source의 검증된 metadata/text/hash가 변경될 때만 새 authoritative source revision을 만들고 Catalog source anchor를 전환한다.
+
+교차 article anchor를 막기 위해 version에 `(id, article_id)` unique를 두고 Catalog publication, AI version, enrichment artifact는 `(source_anchor_version_id, article_id)` 복합 FK로 같은 article의 anchor만 참조한다. constraint/transition trigger는 `authoritative_source → self anchor`, `enrichment_light/full → authoritative_source anchor`를 강제한다.
 
 공용 chain과 공용 head는 같은 뜻이 아니다. 기존 `article_version_heads_p3`는 관리자 publish/withdraw 경로가 P3 대상 version을 찾는 데 사용하므로 Catalog capture가 이 head를 전진시키면 안 된다. 모든 revision의 순서와 parent를 관리하는 `article_revision_heads_v4`를 새로 만들고, 기존 P3 head는 **P3 candidate head**로 의미를 보존한다.
 
 마이그레이션은 article별 가장 높은 기존 revision을 `article_revision_heads_v4`에 넣고 기존 `article_version_heads_p3`는 그대로 둔다. 두 head의 version이 같은 article에 속하는지, global head revision이 P3 head revision보다 작지 않은지 검증한다. 이후 revision 번호는 global head에서만 발급한다.
 
-기존 `p3.article.v1`에는 별도 enrichment source hash가 없을 수 있다. freshness guard를 활성화하기 전에 공개 P3 전량을 다음처럼 분류한다.
+기존 `p3.article.v1`은 공식 source와 AI summary가 한 immutable row에 결합되어 있고 별도 anchor/hash가 없을 수 있다. 과거 row를 UPDATE하지 않고 `legacy_version_freshness_classifications_v4` sidecar와 새 v4 revision으로 이행한다.
 
-1. 같은 version에 함께 capture된 source text와 AI 입력 provenance로 `source_content_hash_v1`을 재현할 수 있으면 source/enrichment hash를 backfill한다.
-2. AI 입력 hash까지 재현되지 않지만 source와 summary가 같은 legacy transaction에서 capture된 것이 증명되면 `freshness_basis=legacy_same_version`으로 격리 표시한다. 새 Catalog source version이 생기는 즉시 실제 hash 비교 상태로 전환한다.
-3. 둘 다 증명할 수 없으면 `freshness_basis=unknown_fail_closed`, `enrichment_freshness=stale`로 두고 공개 AI를 숨긴다.
-4. 공개 P3 전체가 `source_hash_match | legacy_same_version | source_hash_mismatch | unknown_fail_closed` 중 하나로 분류되고 건수·digest reconciliation이 통과하기 전에는 freshness guard와 Catalog public flag를 활성화하지 않는다.
+1. 같은 legacy version의 source text와 AI 입력 provenance로 `source_content_hash_v1`을 재현할 수 있으면 `source_hash_match`로 분류한다.
+2. AI 입력 hash까지 재현되지 않지만 source와 summary가 같은 legacy transaction에서 capture된 것이 증명되면 `legacy_same_version`으로 분류한다.
+3. 두 분류 모두 legacy source 필드로 새 `authoritative_source` revision을 capture하고, 기존 summary를 동일하게 담은 새 `enrichment_full` revision을 그 source anchor에 연결한 뒤 P3 publication pointer를 idempotent compatibility transition으로 새 full version에 옮긴다. Catalog source anchor는 public gate 전까지 private로 둔다.
+4. 결합 관계를 증명할 수 없으면 `unknown_fail_closed`로 분류하고 P3 공개 AI를 숨긴다. 임의 source anchor를 만들어 current로 가장하지 않는다.
+5. 기존 `p3.article.v1` row는 `version_role/source_anchor_version_id`가 null인 유효한 legacy 상태로 남고 새 `v4.article-case.v1` row만 role/anchor를 필수로 가진다.
+6. 공개 P3 전량이 `source_hash_match | legacy_same_version | source_hash_mismatch | unknown_fail_closed` 중 하나로 분류되고, 새 pointer 대상의 payload 동등성·건수·digest reconciliation이 통과하기 전에는 freshness guard와 Catalog public flag를 활성화하지 않는다.
 
 publication과 분리된 `article_version_capture_v4()`는 다음 계약을 따른다.
 
 1. `articles`, `case_index_metadata`, 현재 identifiers를 같은 transaction에서 읽는다.
 2. 공개 가능한 case snapshot을 allowlist schema로 만든다.
-3. article payload와 case snapshot을 포함한 canonical version document hash를 계산한다.
+3. article payload, case snapshot, `version_role`, `source_anchor_version_id`를 포함한 canonical version document hash를 계산한다.
 4. `article_revision_heads_v4`를 잠그고 global revision을 하나 증가시킨다.
 5. `article_content_versions_p3`와 audit ledger를 append하고 global head만 전환한다.
 6. `article_version_heads_p3`, Catalog pointer, P3 publication pointer는 자동 변경하지 않는다.
 
-Catalog transition은 명시적인 captured version을 받아 Catalog 적격성만 검사하고 Catalog pointer만 전환한다. source-only Catalog capture는 기존 P3 head와 P3 publication pointer를 절대 바꾸지 않는다.
+`authoritative_source` capture는 미리 생성한 자신의 version ID를 self anchor로 저장한다. `enrichment_light | enrichment_full` capture는 같은 article의 published Catalog source anchor를 요구하고, 전달된 source content hash가 anchor row와 다르면 거부한다. parent version은 global chain 순서를 나타낼 뿐 source provenance를 대신하지 않는다.
+
+Catalog transition은 명시적인 authoritative source anchor를 받아 Catalog 적격성·`version_role`·self-anchor를 검사하고 Catalog pointer만 전환한다. source-only Catalog capture는 기존 P3 head와 P3 publication pointer를 절대 바꾸지 않는다.
 
 P3 전환은 다음처럼 고친다.
 
-- `publish`/`republish`: 호출자가 `p_version_id`를 명시하고, 그 version이 `full`, P3 적격, 현재 공식 source hash와 일치하는지 검사한 뒤 P3 candidate head와 publication pointer를 전환한다.
+- `publish`/`republish`: 호출자가 `p_version_id`를 명시하고, 그 version이 `enrichment_full`, P3 적격이며 version의 source anchor ID/hash가 현재 Catalog source anchor ID/hash와 일치하는지 검사한 뒤 P3 candidate head와 publication pointer를 전환한다.
 - `withdraw`: 새 version을 선택하지 않는다. 현재 `article_publications_p3.version_id`를 그대로 유지하고 state만 `withdrawn`으로 전환한다. 다른 `p_version_id`를 보내면 거부한다.
 - `draft`/`in_review`: 명시적 version 선택이 필요하면 P3 적격 후보만 허용하고 global head를 암묵적으로 사용하지 않는다.
 - optimistic concurrency는 global revision, P3 candidate revision, P3 publication revision을 혼용하지 않고 RPC 목적에 필요한 revision을 별도 인자로 받는다.
@@ -759,19 +827,21 @@ P3 전환은 다음처럼 고친다.
 
 기존 `article_publication_content_hash_p3()`는 과거 version 검증용으로 보존하고, v4 capture는 schema marker와 case snapshot을 포함하는 새 hash 함수를 사용한다. capture를 수행하는 모든 production call site가 v4 함수로 전환됐는지 정적 검사하며, 기존 row의 새 snapshot 컬럼이 null인 것은 유효한 `p3.article.v1` 상태로 해석한다.
 
-Catalog와 P3는 서로 다른 publication pointer를 같은 version에 둘 수 있지만 head와 pointer의 의미를 합치지 않는다.
+Catalog와 P3는 같은 article의 공용 chain을 사용하지만 서로 다른 역할의 version을 가리킨다. Catalog pointer와 P3 pointer가 같은 version을 가리키는 상태는 금지한다.
 
 ```text
 article_content_versions_p3
   ├─ article_revision_heads_v4     모든 revision 중 global latest
   ├─ article_version_heads_p3      명시 선택된 P3 full candidate
-  ├─ case_catalog_publications_v1  현재 공식 Catalog version
-  └─ article_publications_p3       실제 P3 publication version
+  ├─ case_catalog_publications_v1  authoritative_source anchor만
+  └─ article_publications_p3       enrichment_full version만
 ```
 
-Catalog publication RPC는 P3 적격 함수를 호출하지 않고 Catalog 적격 함수만 적용한다. 반대로 P3 publication은 기존 엄격한 `article_publication_eligible_p3()`와 source freshness 검사를 모두 적용한다. lock 순서는 `articles → global head → P3 head → Catalog publication → P3 publication`으로 고정하여 교착을 방지한다.
+Catalog publication RPC는 P3 적격 함수를 호출하지 않고 Catalog 적격 함수만 적용하며 AI-only version을 거부한다. 반대로 P3 publication은 authoritative source version을 거부하고 기존 엄격한 `article_publication_eligible_p3()`와 source anchor freshness 검사를 모두 적용한다. lock 순서는 `articles → global head → P3 head → Catalog publication → P3 publication`으로 고정하여 교착을 방지한다.
 
 `public_case_catalog_v1`은 `security_barrier=true` view로 published version의 허용 필드만 노출한다.
+
+여기서 `published version`은 `case_catalog_publications_v1.source_anchor_version_id`가 가리키는 authoritative source revision이다. 한국어 AI display 필드는 이 view의 source row를 바꾸지 않고 unified read model에서 current P3/light artifact로만 결합한다.
 
 ```text
 id, slug, source_key, jurisdiction, institution_name
@@ -792,7 +862,7 @@ catalog_revision
 ```text
 case_enrichment_artifacts
   id, article_id, target_level
-  source_version_id, source_content_hash
+  source_anchor_version_id, source_content_hash
   provider='gemini', model
   prompt_version, schema_version
   evidence_pack_hash, input_hash, output_hash
@@ -887,6 +957,7 @@ article/version content hash
 - retryable 오류는 `next_attempt_at`과 지수 backoff + jitter를 사용한다.
 - `Retry-After`가 있으면 이를 하한으로 사용한다.
 - validation, authority mismatch, robots 금지는 terminal 또는 excluded로 분류한다.
+- phase claim은 `status='published'`를 제외하는 단순 조건이 아니라 6.5.2의 허용 전이와 `needs_renormalize/needs_reverify/needs_republish` projection을 사용한다.
 - 한 pass 종료 시 item 상태에서 집계를 다시 계산하고, backlog가 남았을 때만 다음 pass를 제출한다.
 
 오류 분류:
@@ -932,6 +1003,7 @@ pnpm backfill:corpus status --snapshot=<SNAPSHOT_ID>
 - fetch 중 새 항목을 암묵적으로 추가하지 않는다. 새 발견은 새 snapshot에 기록한다.
 - `fetch`는 정책이 허용한 raw snapshot 또는 재현 가능한 source evidence와 content hash를 저장하고 parser 결과를 확정하지 않는다.
 - `normalize`는 저장된 fetch artifact만 읽어 네트워크 요청 없이 parser를 재실행한다. parser bug 수정 시 새 parser version과 output hash를 append하고 기존 결과를 덮어쓰지 않는다.
+- published item 재처리는 `normalize --refresh-published --parser-version=<VERSION>`처럼 명시적으로 요청하고 대상 snapshot·source·기존/목표 parser version과 예상 건수를 plan 단계에서 출력한다.
 - raw snapshot 보존이 금지된 source는 정책에 허용된 최소 evidence/extracted input으로 normalize 재현 가능성을 입증하지 못하면 fetch와 normalize를 결합했다는 사실과 한계를 run metadata에 기록하며, 별도 normalize 완료로 가장하지 않는다.
 - 재개는 로컬 cursor가 아니라 DB item status로 결정한다.
 - 동일 snapshot을 병렬 실행해도 `skip locked`/claim RPC와 fencing으로 중복 쓰기를 막는다.
@@ -1163,9 +1235,9 @@ withdrawal/retraction 아님
 1. metadata와 identifiers 검증
 2. 공개 whitelist payload 생성
 3. canonical JSON으로 content hash 계산
-4. `article_version_capture_v4()`로 공용 immutable article version 생성 또는 재사용
+4. `article_version_capture_v4()`로 `authoritative_source` self-anchor version 생성 또는 재사용
 5. transition RPC에서 적격성 재검사
-6. publication pointer 전환과 event append
+6. Catalog `source_anchor_version_id` 전환과 event append
 7. 이전 P3/light artifact의 source hash와 비교해 enrichment freshness 재계산
 8. stale 전환·재처리 command·검색 cache/tag 무효화를 같은 outbox 경계에 기록
 
@@ -1181,15 +1253,15 @@ service-role만 version 생성과 transition 실행 권한을 가진다. `anon`�
 
 ### 10.4 공식 원문 변경과 stale AI 처리
 
-공식 원문 교정은 새 Catalog version을 만든다. 현재 Catalog publication의 `source_content_hash`와 공개 P3/light artifact의 `source_content_hash`가 다르면 `full + stale` 또는 `light + stale`로 판정한다.
+공식 원문 교정은 새 `authoritative_source` revision을 만들고 Catalog `source_anchor_version_id`를 전환한다. 공개 P3/light artifact의 source anchor ID와 hash 중 하나라도 현재 Catalog anchor와 다르면 `full + stale` 또는 `light + stale`로 판정한다.
 
 ```text
-Catalog v10 / source hash A
-  + P3 full artifact / source hash A  -> full + current
+Catalog source anchor v10 / source hash A
+  + P3 full v11 / source anchor v10 / source hash A -> full + current
 
 공식 교정 수집
-Catalog v11 / source hash B
-  + 기존 P3 artifact / source hash A -> full + stale
+Catalog source anchor v12 / source hash B
+  + 기존 P3 full v11 / source anchor v10 / source hash A -> full + stale
 ```
 
 stale 판정 시 정책은 fail-closed다.
@@ -1199,9 +1271,9 @@ stale 판정 시 정책은 fail-closed다.
 3. stale P3 lexical/semantic branch와 summary embedding을 대표 검색 후보·랭킹에서 제외하고 현재 Catalog lexical/embedding만 사용한다.
 4. 사용자에게 `공식 원문이 갱신되어 한국어 요약 재처리 중` 상태를 표시한다. 과거 AI 본문은 service/admin 감사 화면에서만 접근한다.
 5. `p1.case-enrichment.full` 또는 `light`를 높은 우선순위로 멱등 제출한다. idempotency에는 article ID와 새 source content hash를 포함한다.
-6. 새 artifact가 같은 source hash, schema, evidence gate를 통과해야만 `current`로 전환하고 P3 candidate/publication 대상이 될 수 있다.
+6. 새 artifact가 현재 source anchor ID/hash, schema, evidence gate를 통과해야만 `current`로 전환하고 P3 candidate/publication 대상이 될 수 있다.
 
-Catalog pointer 전환, stale projection 기록, outbox 생성은 한 transaction에서 처리하여 최신 공식 정보와 오래된 AI가 함께 current로 보이는 구간을 만들지 않는다. 기존 `public_article_projection_p3`도 published Catalog가 있는 article에 대해서는 current hash를 통과한 P3 version만 노출하도록 갱신한다. Catalog 기능을 롤백하더라도 stale AI가 다시 공개되는 것보다 해당 P3 표현을 숨기는 fail-closed 동작을 우선한다.
+Catalog source anchor 전환, stale projection 기록, outbox 생성은 한 transaction에서 처리하여 최신 공식 정보와 오래된 AI가 함께 current로 보이는 구간을 만들지 않는다. 기존 `public_article_projection_p3`도 published Catalog가 있는 article에 대해서는 current anchor ID/hash를 모두 통과한 P3 version만 노출하도록 갱신한다. Catalog 기능을 롤백하더라도 stale AI가 다시 공개되는 것보다 해당 P3 표현을 숨기는 fail-closed 동작을 우선한다.
 
 ---
 
@@ -1244,7 +1316,7 @@ UNION
 public_case_catalog_v1
 ```
 
-동일 `article_id`는 하나로 dedupe한다. P3 branch는 publication version의 `enrichment_source_content_hash`가 현재 Catalog publication의 `source_content_hash`와 일치할 때만 우선한다. 불일치하면 P3 요약·AI 태그·summary embedding을 후보에서 제거하고 Catalog branch를 대표 결과로 사용한다. 두 projection의 원본 행을 앱에서 단순 이어 붙이지 않는다.
+동일 `article_id`는 하나로 dedupe한다. P3 branch는 publication version의 `source_anchor_version_id`와 `enrichment_source_content_hash`가 현재 Catalog publication의 source anchor ID/hash와 모두 일치할 때만 우선한다. 불일치하면 P3 요약·AI 태그·summary embedding을 후보에서 제거하고 Catalog anchor branch를 대표 결과로 사용한다. 두 projection의 원본 행을 앱에서 단순 이어 붙이지 않는다.
 
 ### 12.2 검색 순서
 
@@ -1401,7 +1473,7 @@ practicalNotes, referencedProvisions
 entities, tags, categories, riskFlags
 ```
 
-schema·근거·금칙어를 검증하고 artifact의 `source_content_hash`가 현재 Catalog hash와 일치한 경우에만 기존 P3 version/publication 절차를 사용한다.
+schema·근거·금칙어를 검증하고 artifact의 source anchor ID/hash가 현재 Catalog source anchor와 모두 일치한 경우에만 기존 P3 version/publication 절차를 사용한다.
 
 ### 14.4 Evidence pack
 
@@ -1464,6 +1536,7 @@ model='gemini-embedding-001'
 dimensions=1536
 task_type='RETRIEVAL_DOCUMENT'
 input_contract_version
+source_anchor_version_id
 source_content_hash
 input_hash
 generated_at
@@ -1621,6 +1694,20 @@ discovered_total
 
 이 식은 **발견된 inventory의 처리 완료율**만 증명한다. 공식 모집단 coverage는 별도로 다음 조건을 만족해야 한다.
 
+published item의 maintenance가 시작돼도 위 terminal 처리 완료율은 되돌리지 않는다. 대신 현재 parser/policy에 대한 별도 적합률을 계산한다.
+
+```text
+current_conformance
+= (terminal outcome item 중
+   needs_renormalize = false
+   AND needs_reverify = false
+   AND needs_republish = false
+   AND verified parser/source policy가 현재 target과 일치하는 item 수)
+  / terminal outcome item 수
+```
+
+따라서 `processing_completion=100%`, `current_conformance<100%`가 동시에 가능하다. parser v2 rollout 완료나 correction publication 완료를 주장하려면 current conformance도 100%여야 한다.
+
 ```text
 coverage_assurance in (
   authoritative_enumerated,
@@ -1684,6 +1771,7 @@ heartbeat detail에는 민감 정보 없이 다음 집계만 허용한다.
 ```text
 snapshotId, sourceKey, phase
 claimed, succeeded, retryableFailed, terminalFailed
+needsNormalize, needsReverify, needsRepublish
 oldestPendingAt
 ```
 
@@ -1693,6 +1781,7 @@ oldestPendingAt
 expected / discovered / fetched / normalized / verified / published
 excluded / duplicate / retry_wait / terminal_failure / waived_failure
 processing completion ratio
+current conformance ratio + needs_normalize/reverify/republish
 coverage_assurance + corpus coverage status
 source_only / light / full
 enrichment current / stale, oldest stale age
@@ -1732,8 +1821,10 @@ parser/source policy version
 6. 공용 article version chain과 global/P3/Catalog head·pointer 분리 ADR 확정
 7. source hash 기반 AI freshness와 stale 공개 precedence 확정
 8. normalize 독립 재실행 계약과 source policy `review_due_at` 확정
-9. feature flag precedence와 rollback 절차 확정
-10. DDL과 RPC threat review
+9. authoritative source anchor와 AI/P3 anchor reference 계약 확정
+10. published re-normalize pointer·phase 전이 계약 확정
+11. feature flag precedence와 rollback 절차 확정
+12. DDL과 RPC threat review
 
 완료 조건:
 
@@ -1751,8 +1842,9 @@ parser/source policy version
 4. P1 attempt와 item claim/extend/complete/fail RPC 연결
 5. `collect-range.ts`에서 adapter/parser 추출
 6. fetch artifact와 append-only normalized artifact 계약
-7. `plan/discover/fetch/normalize/verify/reconcile/status` CLI
-8. `catalog_backfill` heartbeat
+7. current/verified/published normalization pointer와 phase 전이 RPC
+8. `plan/discover/fetch/normalize/verify/reconcile/status` CLI
+9. `catalog_backfill` heartbeat
 
 canary:
 
@@ -1768,6 +1860,7 @@ Spain, 한 연도, Sentencia, 공개 flag OFF
 - 공식 분모와 manifest 일치 및 coverage assurance 증거 존재
 - closed manifest hash와 discovery field 불변성 검증
 - 저장된 fetch artifact로 네트워크 없이 normalize 재실행 및 parser version 비교 가능
+- published 재-normalize 중 terminal outcome 유지 + `needs_reverify/needs_republish`와 current conformance 하락 확인
 - item 100% 종결 또는 승인된 waiver
 
 ### Gate 2 — 공용 article version과 Catalog publication
@@ -1778,16 +1871,18 @@ Spain, 한 연도, Sentencia, 공개 flag OFF
 2. `article_revision_heads_v4` backfill + `article_version_capture_v4`
 3. 기존 P3 candidate head와 Catalog/P3 publication pointer 분리
 4. 명시적 P3 version 선택 및 version을 유지하는 withdraw RPC
-5. Catalog publication/event와 source hash freshness transition
-6. `review_due_at` publication gate
-7. public view와 progressive article detail
-8. source-only/source-correction/stale-full fixture
+5. authoritative source anchor 전용 Catalog publication/event
+6. AI/P3 source anchor FK와 ID/hash freshness transition
+7. `review_due_at` publication gate
+8. public view와 progressive article detail
+9. source-only/source-correction/stale-full fixture
 
 완료 조건:
 
 - Gemini를 호출하지 않은 verified case가 `/articles/{slug}`에서 공개
 - raw/error/internal metadata가 공개되지 않음
 - Catalog source-only capture가 기존 P3 candidate/publication pointer를 바꾸지 않음
+- AI-only revision과 P3 publication이 Catalog source anchor를 바꾸지 않음
 - P3 withdraw가 publication version_id를 바꾸지 않음
 - 원문 hash 변경 직후 stale AI가 모든 public projection에서 제외됨
 - P3 URL과 충돌 없음
@@ -1858,7 +1953,7 @@ Spain, 한 연도, Sentencia, 공개 flag OFF
 
 - quota 소진 중에도 Catalog 수집·검색 정상
 - provenance 없는 AI/embedding artifact 0건
-- source hash가 바뀐 stale artifact 식별, 공개 제외, 재처리 우선순위 상승
+- source anchor ID/hash가 바뀐 stale artifact 식별, 공개 제외, 재처리 우선순위 상승
 - Gemini 외 provider 사용 0건
 
 ---
@@ -1898,7 +1993,7 @@ CASE_CATALOG_PUBLIC_ENABLED -> ADMIN_PUBLICATION_V4_READ_ENABLED
 
 서버 시작·readiness·`scripts/check.ts`가 이 matrix를 검증한다. invalid 조합을 암묵적으로 legacy나 Catalog-only로 해석하지 않는다.
 
-AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건이다. `ADMIN_PUBLICATION_V4_READ_ENABLED`와 Catalog flag가 꺼져도 legacy/P3 service가 stale marker와 source hash를 검사한다. 필요한 schema가 불완전하거나 freshness를 판정할 수 없으면 AI 요약을 숨기는 `unknown-as-stale` 정책을 사용한다.
+AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건이다. `ADMIN_PUBLICATION_V4_READ_ENABLED`와 Catalog flag가 꺼져도 legacy/P3 service가 stale marker와 source anchor ID/hash를 검사한다. 필요한 schema가 불완전하거나 freshness를 판정할 수 없으면 AI 요약을 숨기는 `unknown-as-stale` 정책을 사용한다.
 
 순서:
 
@@ -1915,7 +2010,7 @@ AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건
 
 - public/search/plugin/semantic flag를 역순으로 끈다.
 - 기존 P3 read path는 유지한다.
-- Catalog flag를 끄더라도 source hash가 불일치한 stale P3 summary를 다시 노출하지 않는다. 안전한 current P3가 없으면 해당 P3 표현은 숨긴다.
+- Catalog flag를 끄더라도 source anchor ID/hash가 불일치한 stale P3 summary를 다시 노출하지 않는다. 안전한 current P3가 없으면 해당 P3 표현은 숨긴다.
 - migration과 수집 데이터는 삭제하지 않는다.
 - 잘못 공개된 version은 withdrawal event로 닫고 감사 이력을 보존한다.
 - schema rollback이 필요한 경우에도 먼저 app compatibility release를 배포한다.
@@ -1936,6 +2031,8 @@ AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건
 - global head/P3 candidate head가 서로 다른 version을 안전하게 가리킴
 - 기존 공개 P3 전량이 freshness basis로 분류되고 count/digest reconciliation 전 guard 활성화가 거부됨
 - hash 재현 불가 legacy P3가 `unknown_fail_closed + stale`로 격리되고 공개 AI가 숨겨짐
+- 기존 immutable `p3.article.v1`을 수정하지 않고 authoritative/full v4 쌍을 생성해 P3 pointer를 payload 동등 version으로 이행
+- legacy 이행 전후 public payload digest가 같고 source anchor와 P3 version role이 분리됨
 - `review_due_at <= reviewed_at` policy row 거부
 - `review_due_at` 경과 policy로 신규 Catalog publish 거부
 
@@ -1961,6 +2058,10 @@ AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건
 - 같은 command idempotency 재실행
 - 한 batch pass가 최대 item 수만 처리하고 backlog에 다음 pass 제출
 - fetch와 normalize가 별도 command/pass/idempotency key로 재개됨
+- published item의 refresh/normalize/verify 중 `status=published` 유지
+- current normalization 전환 후 `needs_reverify=true`, 검증 후 변경이 있으면 `needs_republish=true`
+- 같은 normalized output 재검증은 no-op event와 pointer 정렬만 수행하고 새 Catalog version을 만들지 않음
+- `waived_failure`, `excluded`, `duplicate`, `withdrawn`의 자동 reopen 거부
 - 429/5xx/timeout/parser/robots 오류별 상태
 - abort 후 새 항목 claim 중지
 
@@ -1988,12 +2089,15 @@ AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건
 - text policy별 egress
 - 새 version 전환과 이전 version 불변
 - source-only → source correction → full이 하나의 `article_content_versions_p3` parent chain을 형성
-- Catalog pointer와 P3 pointer가 같은 version 또는 서로 다른 적격 version을 안전하게 참조
+- authoritative source version은 self anchor, light/full version은 published Catalog source anchor를 참조
+- Catalog pointer가 AI-only version을 거부하고 P3 pointer가 authoritative source version을 거부
+- AI/P3 version 생성·전환 후에도 Catalog source anchor가 불변
 - Catalog source-only capture가 `article_version_heads_p3`와 `article_publications_p3.version_id`를 전진시키지 않음
 - P3 withdraw 전후 `article_publications_p3.version_id`가 동일함
 - P3 publish/republish가 명시된 full·eligible·current version 외 global head를 선택하지 않음
 - global/P3/publication optimistic revision을 바꾸어 전달했을 때 stale write 거부
 - source hash A→B 교정 시 `full + stale`, `summaryAvailable=false`, `summaryStatus=reprocessing`
+- source hash가 같아도 source anchor ID가 바뀌면 기존 AI를 stale로 판정
 - 새 hash B 기반 full artifact 승격 후에만 `full + current` 복구
 - freshness join/schema가 불완전한 unknown 상태에서 AI 요약을 숨김
 - withdrawal과 redirect
@@ -2070,7 +2174,9 @@ AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건
 | 원문 재배포 제한 | 법적·정책 위험 | text_access_policy, source policy review |
 | mutable article 직접 공개 | 감사·철회 불가 | 공용 immutable article version + Catalog publication |
 | global head와 P3 head 혼용 | withdraw pointer 오염·republish 실패 | global revision head, P3 candidate head, publication pointer 분리 |
+| Catalog anchor와 AI display version 혼용 | 정상 AI가 stale 처리되거나 공식 pointer가 AI version으로 이동 | Catalog는 authoritative self-anchor만, AI/P3는 anchor FK 사용 |
 | 원문 교정 후 stale AI 노출 | 최신 공식 원문과 한국어 요약 불일치 | source hash binding, stale 공개 제외, 우선 재처리 |
+| published item 상태 demotion | 완료율 왜곡·재처리 상태 은폐 | terminal status 유지, artifact pointer 기반 current conformance |
 | 공개 endpoint 남용 | 비용·랭킹 조작 | rate limit, bot filter, demand cap |
 | Gemini quota | AI backlog | Catalog와 분리, deferred retry |
 | 모델/input 변경 | vector space 혼합 | artifact namespace, provenance, canary |
@@ -2086,7 +2192,7 @@ AI freshness guard는 rollout flag가 아니라 데이터 정합성 불변조건
 - authority URL host 또는 redirect 정책 위반
 - 식별자 충돌 급증
 - source policy version 미설정/만료
-- P3/light artifact source hash와 현재 Catalog source hash 불일치를 current로 노출
+- P3/light artifact source anchor ID/hash와 현재 Catalog source anchor 불일치를 current로 노출
 - 원문 hash가 광범위하게 비결정적으로 변경
 - 공개 projection에서 금지 필드가 탐지됨
 - 오래된 fencing token의 write 수락
@@ -2155,14 +2261,14 @@ Spain 2024 Sentencia
 
 WorldCons의 확장 원칙은 다음 한 문장으로 정리한다.
 
-> **공식 원천의 선언된 범위를 불변 inventory와 항목별 원장으로 증명하고, 검증된 최신 판례를 단일 URL의 Catalog로 먼저 공개한 뒤, 같은 source hash에 결속된 Gemini light/full enrichment와 retrieval embedding만 current 표현으로 점진 적용한다.**
+> **공식 원천의 선언된 범위를 불변 inventory와 항목별 원장으로 증명하고, 검증된 최신 판례를 단일 URL의 Catalog source anchor로 먼저 공개한 뒤, 같은 anchor ID/hash에 결속된 Gemini light/full enrichment와 retrieval embedding만 current 표현으로 점진 적용한다.**
 
 우선순위는 다음과 같다.
 
 ```text
 완료 증명 가능한 ledger
 → authority/identity/text policy
-→ global revision/P3 candidate/Catalog·P3 publication pointer 분리
+→ global revision/P3 candidate/Catalog source anchor·P3 publication pointer 분리
 → immutable Catalog publication
 → source hash freshness와 stale fail-closed
 → 단일 URL과 통합 검색·플러그인
