@@ -15,6 +15,7 @@ test("ChatGPT plugin package keeps the canonical identity and no-auth endpoint",
   const mcp = json("plugins/worldcons-constitutional-cases/.mcp.json");
 
   assert.equal(manifest.name, "worldcons-constitutional-cases");
+  assert.equal(manifest.version, "0.3.0");
   assert.equal(manifest.interface.displayName, "헌법판례요약시스템");
   assert.equal(manifest.homepage, "https://worldcons.vercel.app/guide/chatgpt-plugin");
   assert.deepEqual(mcp, {
@@ -50,4 +51,13 @@ test("plugin assets, research skill, and repo marketplace entry are complete", (
   ]) {
     assert.equal(fs.statSync(path.join(pluginRoot, relativePath)).isFile(), true, relativePath);
   }
+});
+
+test("plugin research policy is cursor-aware and fail-closed for unavailable or stale summaries", () => {
+  const skill = fs.readFileSync(path.join(pluginRoot, "skills/constitutional-case-research/SKILL.md"), "utf8");
+  const citation = fs.readFileSync(path.join(pluginRoot, "skills/constitutional-case-research/references/citation-policy.md"), "utf8");
+  assert.match(skill, /nextCursor/u);
+  assert.match(skill, /summaryAvailable/u);
+  assert.match(citation, /summaryAvailable=false/u);
+  assert.match(citation, /summaryStatus=reprocessing/u);
 });

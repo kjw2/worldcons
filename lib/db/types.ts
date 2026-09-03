@@ -25,7 +25,7 @@ export type ArticleStatus =
 
 export type CaseEnrichmentStatus = "source_only" | "light" | "full";
 export type CaseEnrichmentFreshness = "current" | "stale";
-export type CaseSummaryStatus = "available" | "pending" | "reprocessing";
+export type CaseSummaryStatus = "available" | "pending" | "reprocessing" | "unavailable";
 
 export type TagType =
   | "court"
@@ -141,6 +141,7 @@ export interface ArticleListFilters {
   includeViewCounts?: boolean;
   page?: number;
   pageSize?: number;
+  cursor?: string;
   count?: "exact" | "planned" | "estimated" | "none";
 }
 
@@ -150,11 +151,14 @@ export interface PageInfo {
   total: number;
   hasMore?: boolean;
   totalIsExact?: boolean;
+  nextCursor?: string | null;
 }
 
 export interface ArticleListResult {
   items: ArticleListItem[];
   pageInfo: PageInfo;
+  retrievalMode?: string;
+  rankingVersion?: string;
 }
 
 export interface SourceRecord {

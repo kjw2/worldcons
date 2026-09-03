@@ -14,4 +14,6 @@ For every case used in an answer:
 
 Use wording such as “헌법판례요약시스템의 한국어 AI 요약에 따르면” when relying on generated summary fields. Use wording such as “법원 공식 원문은” only for the official source URL or preserved source-language text.
 
+If `summaryAvailable=false`, do not describe bibliographic metadata or a source excerpt as an AI summary. If `summaryStatus=reprocessing`, state only that the official source was updated and the Korean summary is being regenerated; do not reconstruct or quote the stale summary.
+
 The material is public legal information, not legal advice. For litigation, scholarship, or formal citation, direct the user to verify the official document and jurisdiction-specific citation rules.

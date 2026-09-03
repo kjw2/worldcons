@@ -11,6 +11,8 @@ import type {
   SourceRecord,
 } from "@/lib/db/types";
 import { hybridSearch } from "@/lib/search/vector";
+import { catalogCaseSearch } from "@/lib/search/case-catalog";
+import { caseCatalogPluginEnabled } from "@/lib/case-catalog/flags";
 import { WorldconsToolError } from "@/lib/chatgpt-plugin/errors";
 
 const CANONICAL_SITE_URL = "https://worldcons.vercel.app";
@@ -22,6 +24,7 @@ export type SearchFilters = {
   source?: string;
   range?: "latest" | "today" | "week" | "month";
   limit?: number;
+  cursor?: string;
 };
 
 export type WorldconsCaseRepository = {
@@ -36,14 +39,19 @@ export type WorldconsCaseServiceOptions = {
   siteBaseUrl?: string;
   detailTextLimit?: number;
   sourceTextPageLimit?: number;
+  environment?: Record<string, string | undefined>;
 };
 
-const productionRepository: WorldconsCaseRepository = {
-  search: hybridSearch,
-  getArticle: (slug) => getArticleBySlug(slug),
-  getSourceText: (slug) => getArticleSourceTextBySlug(slug),
-  getSources: listSources,
-};
+function productionRepository(environment: Record<string, string | undefined>): WorldconsCaseRepository {
+  return {
+    search: (filters) => caseCatalogPluginEnabled(environment)
+      ? catalogCaseSearch(filters, { environment })
+      : hybridSearch(filters, { useCatalog: false }),
+    getArticle: (slug) => getArticleBySlug(slug),
+    getSourceText: (slug) => getArticleSourceTextBySlug(slug),
+    getSources: listSources,
+  };
+}
 
 export class WorldconsCaseService {
   private readonly repository: WorldconsCaseRepository;
@@ -52,13 +60,18 @@ export class WorldconsCaseService {
   readonly sourceTextPageLimit: number;
 
   constructor(options: WorldconsCaseServiceOptions = {}) {
-    this.repository = options.repository ?? productionRepository;
+    const environment = options.environment ?? process.env;
+    this.repository = options.repository ?? productionRepository(environment);
     this.siteBaseUrl = normalizedHttpsBaseUrl(options.siteBaseUrl ?? CANONICAL_SITE_URL);
     this.detailTextLimit = boundedInteger(options.detailTextLimit, 16_000, 1, 350_000);
     this.sourceTextPageLimit = boundedInteger(options.sourceTextPageLimit, 12_000, 1, 50_000);
   }
 
   async search(filters: SearchFilters) {
+    return (await this.searchPage(filters)).results;
+  }
+
+  async searchPage(filters: SearchFilters) {
     const limit = boundedInteger(filters.limit, 10, 1, 10);
     const result = await this.repository.search({
       q: filters.query?.trim() || undefined,
@@ -67,9 +80,16 @@ export class WorldconsCaseService {
       range: filters.range ?? "latest",
       page: 1,
       pageSize: limit,
+      cursor: filters.cursor,
       count: "none",
     });
-    return result.items.slice(0, limit).map((article) => this.mapSearchItem(article));
+    return {
+      results: result.items.slice(0, limit).map((article) => this.mapSearchItem(article)),
+      nextCursor: result.pageInfo.nextCursor ?? null,
+      hasMore: result.pageInfo.hasMore ?? false,
+      retrievalMode: result.retrievalMode ?? null,
+      rankingVersion: result.rankingVersion ?? null,
+    };
   }
 
   async fetchArticle(slug: string) {
@@ -81,18 +101,27 @@ export class WorldconsCaseService {
 
     const item = this.mapSearchItem(article);
     const summary = article.summaryJson?.summary;
+    const enrichmentStatus = article.enrichmentStatus ?? (summary ? "full" : "source_only");
+    const enrichmentFreshness = article.enrichmentFreshness ?? (summary ? "current" : null);
+    const summaryStatus = article.summaryStatus ?? (summary ? "available" : "pending");
+    const summaryAvailable = (article.summaryAvailable ?? Boolean(summary)) && enrichmentFreshness !== "stale";
     const sourceText = article.cleanedText?.trim() || article.rawText?.trim() || "";
     const returnedChars = Math.min(sourceText.length, this.detailTextLimit);
     return {
       ...item,
-      koreanSummary: {
+      koreanSummary: summaryAvailable && summary ? {
         coreSummary: summary?.coreSummary ?? [],
         background: normalizedOptionalString(summary?.background),
         caseStructure: normalizedOptionalString(summary?.caseStructure),
         implications: normalizedOptionalString(summary?.implications),
         practicalNotes: normalizedOptionalString(summary?.practicalNotes),
         referencedProvisions: (summary?.referencedProvisions ?? []).map(formatProvision),
-      },
+      } : null,
+      enrichmentStatus,
+      enrichmentFreshness,
+      summaryStatus,
+      summaryAvailable,
+      officialMetadataAvailable: true,
       sourceExcerpt: sourceText.slice(0, this.detailTextLimit) || null,
       originalLanguage: normalizedOptionalString(article.originalLanguage),
       contentType: article.contentType,
@@ -150,13 +179,15 @@ export class WorldconsCaseService {
   private mapSearchItem(article: ArticleListItem) {
     assertSlug(article.slug);
     const officialUrl = article.originalUrl || article.canonicalUrl;
+    const summaryAvailable = article.summaryAvailable ?? Boolean(article.summaryJson);
+    const enrichmentStatus = article.enrichmentStatus ?? (summaryAvailable ? "full" : "source_only");
     return {
       id: article.slug,
       title: article.koreanTitle || article.originalTitle || "제목 미상",
       url: this.articleUrl(article.slug),
       originalTitle: normalizedOptionalString(article.originalTitle),
-      summary: normalizedOptionalString(article.oneLineSummary),
-      snippet: normalizedOptionalString(article.oneLineSummary),
+      summary: summaryAvailable ? normalizedOptionalString(article.oneLineSummary) : null,
+      snippet: summaryAvailable ? normalizedOptionalString(article.oneLineSummary) : null,
       sourceKey: article.sourceKey,
       jurisdiction: article.jurisdiction,
       court: article.institutionName,
@@ -164,6 +195,11 @@ export class WorldconsCaseService {
       decisionDate: normalizedOptionalString(article.originalPublishedAt),
       officialUrl: requiredHttpsUrl(officialUrl, "official URL"),
       tags: article.tags.map((tag) => tag.name).filter(Boolean).slice(0, 20),
+      enrichmentStatus,
+      enrichmentFreshness: article.enrichmentFreshness ?? (summaryAvailable ? "current" : null),
+      summaryStatus: article.summaryStatus ?? (summaryAvailable ? "available" : "pending"),
+      summaryAvailable,
+      officialMetadataAvailable: true,
     };
   }
 

@@ -24,7 +24,7 @@ import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
-import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
+import { caseCatalogPublicReadsEnabled, caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 
 interface SupabaseTagRow {
   id?: string;
@@ -411,13 +411,22 @@ async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds
   const supabase = getSupabaseAdmin();
   const tsQuery = toFullTextQuery(filters.q);
 
-  if (!supabase || !tsQuery) {
+  if (!supabase) {
     const items = filterMockArticles(filters);
     const start = (page - 1) * pageSize;
     return {
       items: await attachArticleViewCountsIfNeeded(items.slice(start, start + pageSize), filters),
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
+  }
+
+  if (!filters.includeUnpublished && caseCatalogSearchEnabled()) {
+    const { catalogCaseSearch } = await import("@/lib/search/case-catalog");
+    return catalogCaseSearch(filters);
+  }
+
+  if (!tsQuery) {
+    return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
   }
 
   const { exactCaseSearch } = await import("@/lib/search/exact-case");
@@ -539,9 +548,9 @@ export async function listArticles(filters: ArticleListFilters = {}): Promise<Ar
   const countMode = filters.count ?? "exact";
   const useLegacyTagJoin = Boolean(tagIds?.length && !publicationProjectionEnabled(filters.includeUnpublished));
   let query = supabase
-    .from(articleRelation(filters.includeUnpublished))
+    .from(articleDetailRelation(filters.includeUnpublished))
     .select(
-      projectionSelect(useLegacyTagJoin ? ARTICLE_LIST_WITH_TAG_FILTER_SELECT : ARTICLE_LIST_SELECT, filters.includeUnpublished),
+      detailProjectionSelect(useLegacyTagJoin ? ARTICLE_LIST_WITH_TAG_FILTER_SELECT : ARTICLE_LIST_SELECT, filters.includeUnpublished),
       countMode === "none" ? undefined : { count: countMode },
     )
     .order("original_published_at", { ascending: false, nullsFirst: false })

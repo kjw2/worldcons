@@ -61,7 +61,11 @@ function fixtureRepository(calls: string[]): WorldconsCaseRepository {
       calls.push(`search:${filters.q ?? ""}:${filters.pageSize ?? ""}`);
       return {
         items: [fixtureArticle],
-        pageInfo: { page: 1, pageSize: filters.pageSize ?? 10, total: 1 },
+        pageInfo: {
+          page: 1,pageSize: filters.pageSize ?? 10,total: 2,hasMore: true,nextCursor: "next-cursor",
+        },
+        retrievalMode: "lexical",
+        rankingVersion: "gate3-exact-lexical-v1",
       };
     },
     async getArticle(slug) {
@@ -109,7 +113,7 @@ test("Vercel-integrated case service exposes bounded public evidence and canonic
 
   assert.equal(results[0].url, "https://worldcons.vercel.app/articles/germany-neubauer");
   assert.equal(results[0].officialUrl, "https://www.bundesverfassungsgericht.de/example");
-  assert.equal(article.koreanSummary.coreSummary.length, 1);
+  assert.equal(article.koreanSummary?.coreSummary.length, 1);
   assert.equal(article.sourceExcerpt?.length, 24);
   assert.equal(sourceText.text.length, 12);
   assert.equal(sourceText.url, "https://worldcons.vercel.app/articles/germany-neubauer");
@@ -165,13 +169,126 @@ test("ChatGPT can initialize the Vercel MCP endpoint, scan tools, and call searc
     params: { name: "search", arguments: { query: "기후 자유" } },
   });
   const called = await call.json() as {
-    result: { isError?: boolean; structuredContent: { results: Array<{ id: string; url: string }> } };
+    result: { isError?: boolean; structuredContent: {
+      results: Array<{ id: string; url: string; enrichmentStatus: string }>;
+      nextCursor: string | null;
+    } };
   };
   assert.equal(call.status, 200);
   assert.notEqual(called.result.isError, true);
   assert.equal(called.result.structuredContent.results[0].id, "germany-neubauer");
   assert.equal(called.result.structuredContent.results[0].url, "https://worldcons.vercel.app/articles/germany-neubauer");
+  assert.equal(called.result.structuredContent.results[0].enrichmentStatus, "full");
+  assert.equal(called.result.structuredContent.nextCursor, "next-cursor");
   assert.equal(call.headers.get("access-control-allow-origin"), "*");
+});
+
+test("source-only and stale fetches disclose status without emitting an AI-summary heading or body", async () => {
+  const sourceOnlyArticle = {
+    ...fixtureArticle,
+    slug: "spain-source-only",
+    koreanTitle: null,
+    summaryJson: null,
+    enrichmentStatus: "source_only" as const,
+    enrichmentFreshness: null,
+    summaryStatus: "pending" as const,
+    summaryAvailable: false,
+  };
+  const staleArticle = {
+    ...fixtureArticle,
+    slug: "spain-source-correction",
+    koreanTitle: null,
+    enrichmentStatus: "full" as const,
+    enrichmentFreshness: "stale" as const,
+    summaryStatus: "reprocessing" as const,
+    summaryAvailable: false,
+  };
+  const repository: WorldconsCaseRepository = {
+    async search(filters) {
+      return { items: [staleArticle],pageInfo: { page: 1,pageSize: filters.pageSize ?? 10,total: 1 } };
+    },
+    async getArticle(slug) {
+      if (slug === sourceOnlyArticle.slug) return sourceOnlyArticle;
+      return slug === staleArticle.slug ? staleArticle : null;
+    },
+    async getSourceText(slug) {
+      return slug === staleArticle.slug ? { slug,cleanedText: staleArticle.cleanedText,contentHash: staleArticle.contentHash } : null;
+    },
+    async getSources() {
+      return [];
+    },
+  };
+  const api = new WorldconsCaseService({ repository,siteBaseUrl: "https://worldcons.vercel.app" });
+  const sourceOnly = await api.fetchArticle(sourceOnlyArticle.slug);
+  const article = await api.fetchArticle(staleArticle.slug);
+  assert.equal(sourceOnly.koreanSummary, null);
+  assert.equal(sourceOnly.enrichmentStatus, "source_only");
+  assert.equal(sourceOnly.summaryStatus, "pending");
+  assert.equal(article.koreanSummary, null);
+  assert.equal(article.summaryAvailable, false);
+
+  const response = await handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",id: 4,method: "tools/call",params: { name: "fetch",arguments: { id: staleArticle.slug } },
+    }),
+  }), api);
+  const payload = await response.json() as {
+    result: { structuredContent: { text: string; metadata: { summaryStatus: string; summaryAvailable: boolean } } };
+  };
+  assert.doesNotMatch(payload.result.structuredContent.text, /## 한국어 AI 요약/u);
+  assert.doesNotMatch(payload.result.structuredContent.text, /기후보호 부담의 세대 간 배분/u);
+  assert.match(payload.result.structuredContent.text, /한국어 요약을 재처리/u);
+  assert.equal(payload.result.structuredContent.metadata.summaryStatus, "reprocessing");
+  assert.equal(payload.result.structuredContent.metadata.summaryAvailable, false);
+});
+
+test("light enrichment is labeled as metadata-based guidance rather than a full case summary", async () => {
+  const lightArticle = {
+    ...fixtureArticle,
+    slug: "france-light-guidance",
+    enrichmentStatus: "light" as const,
+    enrichmentFreshness: "current" as const,
+    summaryStatus: "available" as const,
+    summaryAvailable: true,
+  };
+  const repository: WorldconsCaseRepository = {
+    async search(filters) {
+      return { items: [lightArticle],pageInfo: { page: 1,pageSize: filters.pageSize ?? 10,total: 1 } };
+    },
+    async getArticle(slug) {
+      return slug === lightArticle.slug ? lightArticle : null;
+    },
+    async getSourceText() {
+      return null;
+    },
+    async getSources() {
+      return [];
+    },
+  };
+  const api = new WorldconsCaseService({ repository,siteBaseUrl: "https://worldcons.vercel.app" });
+  const response = await handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",id: 5,method: "tools/call",params: { name: "fetch",arguments: { id: lightArticle.slug } },
+    }),
+  }), api);
+  const payload = await response.json() as {
+    result: { structuredContent: { text: string; metadata: { summaryNotice: string } } };
+  };
+  assert.match(payload.result.structuredContent.text, /한국어 안내\(공식 메타데이터 기반·AI 생성\)/u);
+  assert.doesNotMatch(payload.result.structuredContent.text, /## 한국어 AI 요약/u);
+  assert.match(payload.result.structuredContent.metadata.summaryNotice, /판결문 전체 요약이 아닙니다/u);
 });
 
 test("plugin MCP is a Vercel route with five public read-only tools and no separate edge runtime", () => {

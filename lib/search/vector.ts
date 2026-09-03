@@ -11,6 +11,8 @@ import {
 } from "@/lib/article-publication";
 import { exactCaseSearch } from "@/lib/search/exact-case";
 import { rankedSearchPage, type RankedSearchPage } from "@/lib/search/ranked-page";
+import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
+import { catalogCaseSearch } from "@/lib/search/case-catalog";
 
 interface MatchArticleRow {
   article_id: string;
@@ -291,7 +293,13 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
   return reorderAndPage(filters, ids);
 }
 
-export async function hybridSearch(filters: ArticleListFilters): Promise<ArticleListResult> {
+export async function hybridSearch(
+  filters: ArticleListFilters,
+  options: { useCatalog?: boolean } = {},
+): Promise<ArticleListResult> {
+  if (options.useCatalog !== false && caseCatalogSearchEnabled()) {
+    return catalogCaseSearch(filters);
+  }
   if (!filters.q) {
     return listArticles(filters);
   }

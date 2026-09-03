@@ -31,6 +31,8 @@ test("guide explains direct no-auth installation without claiming OpenAI listing
   assert.match(guide, /CopyToClipboardButton value=\{PLUGIN_ENDPOINT\}/u);
   assert.match(guide, /회원가입, 비밀번호, API 키, OAuth 연결은 필요하지 않습니다/u);
   assert.match(guide, /한국어 번역·요약·태그는 AI가 만든 참고 자료/u);
+  assert.match(guide, /최신 원문과 일치할 때만/u);
+  assert.match(guide, /원문 갱신으로 재처리 중/u);
   assert.match(guide, /법원 공식 원문/u);
   assert.doesNotMatch(guide, /Settings → Apps → Create|Scan tools/u);
   assert.doesNotMatch(guide, /WORLD CONS/iu);

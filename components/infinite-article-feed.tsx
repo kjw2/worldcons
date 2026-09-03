@@ -6,7 +6,8 @@ import { ArticleGrid } from "@/components/article-grid";
 import { ARTICLE_VIEWED_STORAGE_PREFIX } from "@/components/analytics-event-client";
 import type { ArticleListItem, ArticleListResult, PageInfo } from "@/lib/db/types";
 
-const FEED_PENDING_KEY = "worldcons:list-scroll:pending-feed";
+const FEED_STORAGE_VERSION = "v2";
+const FEED_PENDING_KEY = `worldcons:list-scroll:${FEED_STORAGE_VERSION}:pending-feed`;
 const FEED_TTL_MS = 30 * 60 * 1000;
 const AUTO_LOAD_SCROLL_DELTA_PX = 48;
 
@@ -68,7 +69,7 @@ function currentScrollY() {
 }
 
 function storageKeyFor(feedKey: string) {
-  return `worldcons:list-scroll:feed:${feedKey}`;
+  return `worldcons:list-scroll:${FEED_STORAGE_VERSION}:feed:${feedKey}`;
 }
 
 function findArticleElement(slug: string) {
@@ -79,15 +80,14 @@ function findArticleElement(slug: string) {
 function readFeedSnapshot(feedKey: string) {
   if (typeof window === "undefined") return null;
 
-  const storageKey = storageKeyFor(feedKey);
-  if (window.sessionStorage.getItem(FEED_PENDING_KEY) !== storageKey) {
-    return null;
-  }
-
-  const raw = window.sessionStorage.getItem(storageKey);
-  if (!raw) return null;
-
   try {
+    const storageKey = storageKeyFor(feedKey);
+    if (window.sessionStorage.getItem(FEED_PENDING_KEY) !== storageKey) {
+      return null;
+    }
+
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return null;
     const snapshot = JSON.parse(raw) as Partial<FeedSnapshot>;
     if (
       snapshot.feedKey !== feedKey ||
@@ -98,6 +98,7 @@ function readFeedSnapshot(feedKey: string) {
       typeof snapshot.pageInfo.total !== "number" ||
       (snapshot.pageInfo.hasMore !== undefined && typeof snapshot.pageInfo.hasMore !== "boolean") ||
       (snapshot.pageInfo.totalIsExact !== undefined && typeof snapshot.pageInfo.totalIsExact !== "boolean") ||
+      (snapshot.pageInfo.nextCursor !== undefined && snapshot.pageInfo.nextCursor !== null && typeof snapshot.pageInfo.nextCursor !== "string") ||
       typeof snapshot.clickedSlug !== "string" ||
       typeof snapshot.scrollY !== "number" ||
       typeof snapshot.targetTop !== "number" ||
@@ -115,10 +116,13 @@ function readFeedSnapshot(feedKey: string) {
 
 function articleViewedAfterSnapshot(slug: string, savedAt: number) {
   if (typeof window === "undefined") return false;
-
-  const raw = window.sessionStorage.getItem(`${ARTICLE_VIEWED_STORAGE_PREFIX}${slug}`);
-  const viewedAt = raw ? Number(raw) : 0;
-  return Number.isFinite(viewedAt) && viewedAt >= savedAt;
+  try {
+    const raw = window.sessionStorage.getItem(`${ARTICLE_VIEWED_STORAGE_PREFIX}${slug}`);
+    const viewedAt = raw ? Number(raw) : 0;
+    return Number.isFinite(viewedAt) && viewedAt >= savedAt;
+  } catch {
+    return false;
+  }
 }
 
 function articlesWithRestoredView(articles: ArticleListItem[], snapshot: FeedSnapshot) {
@@ -205,10 +209,12 @@ export function InfiniteArticleFeed({
   const lastLoadScrollYRef = useRef<number | null>(null);
 
   const pageUrl = useCallback(
-    (page: number) => {
+    (page: number, cursor?: string | null) => {
       const params = new URLSearchParams(queryString);
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
+      if (cursor) params.set("cursor", cursor);
+      else params.delete("cursor");
       if (!params.has("count")) {
         params.set("count", "none");
       }
@@ -219,8 +225,8 @@ export function InfiniteArticleFeed({
   );
 
   const fetchPage = useCallback(
-    async (page: number) => {
-      const response = await fetch(pageUrl(page), {
+    async (page: number, cursor?: string | null) => {
+      const response = await fetch(pageUrl(page, cursor), {
         headers: { accept: "application/json" },
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -256,11 +262,13 @@ export function InfiniteArticleFeed({
         try {
           let merged = initialArticles;
           let restoredPageInfo = pageInfoFor(initialResult.pageInfo, pageSize);
+          let nextCursor = initialResult.pageInfo.nextCursor;
           for (let page = initialResult.pageInfo.page + 1; page <= restoreSnapshotData.pageInfo.page; page += 1) {
-            const result = await fetchPage(page);
+            const result = await fetchPage(page, nextCursor);
             if (cancelled) return;
             merged = mergeArticles(merged, result.items ?? []);
             restoredPageInfo = pageInfoFor(result.pageInfo, pageSize);
+            nextCursor = result.pageInfo.nextCursor;
           }
 
           if (cancelled) return;
@@ -315,7 +323,11 @@ export function InfiniteArticleFeed({
 
     pendingRestoreRef.current = null;
     if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(FEED_PENDING_KEY);
+      try {
+        window.sessionStorage.removeItem(FEED_PENDING_KEY);
+      } catch {
+        // Storage can be disabled in private browsing; scroll restoration simply falls back.
+      }
     }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => restoreFeedScroll(snapshot));
@@ -328,8 +340,8 @@ export function InfiniteArticleFeed({
   const totalPrefix = pageInfo.totalIsExact === false ? "약 " : "";
 
   const nextUrl = useMemo(() => {
-    return pageUrl(pageInfo.page + 1);
-  }, [pageInfo.page, pageUrl]);
+    return pageUrl(pageInfo.page + 1, pageInfo.nextCursor);
+  }, [pageInfo.nextCursor, pageInfo.page, pageUrl]);
 
   const loadNext = useCallback(async (trigger: "auto" | "manual" = "manual") => {
     if (!hasMore || loadingRef.current) return;

@@ -3,7 +3,7 @@
 - 최초 작성: 2026-09-03
 - 심층 검토·개정: 2026-09-03
 - 대상 프로젝트: `worldcons`
-- 상태: Gate 1·2 로컬 구현과 production-shaped PostgreSQL 검증 완료, 운영 migration·source policy 승인·Spain canary 전
+- 상태: Gate 1~3 로컬 구현과 production-shaped PostgreSQL 검증 완료, 운영 migration·source policy 승인·Spain canary 전
 - 운영 스택: Vercel + Supabase/PostgreSQL
 - AI·임베딩 공급자: Gemini 전용
 
@@ -67,6 +67,8 @@ v2.2 최종 검토에서 구현 DDL 전에 필요한 두 계약을 추가로 고
 | P3 withdraw가 global head로 version pointer까지 이동할 수 있음 | withdraw는 현재 publication version을 보존하고 state만 전환하며 다른 version 지정은 DB에서 거부 |
 
 Gate 2 구현 증거는 `20260903130000_constitutional_case_catalog_gate2.sql`과 PostgreSQL 계약 테스트에 고정한다. 로컬 검증 완료는 운영 활성화를 뜻하지 않는다. 운영 migration, immutable source policy 승인, Spain canary reconciliation을 각각 별도 승인 gate로 유지한다.
+
+Gate 3 구현은 `public_article_detail_v4`를 유일한 대표 문서 입력으로 사용한다. exact identity가 있으면 lexical보다 우선하고, 없으면 original lexical FTS로 전환한다. `gate3-exact-lexical-v1` cursor는 질의·filter fingerprint와 마지막 score/date/article ID를 묶으며 offset pagination을 사용하지 않는다. alias, RRF, 국가 다양화, Catalog semantic embedding은 Gate 4 이후로 남겨 범위를 섞지 않는다.
 
 이 문서에서 “전수”는 전 세계 모든 헌법판례를 뜻하지 않는다.
 

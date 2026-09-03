@@ -31,3 +31,15 @@ export function caseCatalogFlagErrors(environment: Record<string, string | undef
 export function caseCatalogPublicReadsEnabled(environment: Record<string, string | undefined> = process.env) {
   return explicitTrue(environment[CASE_CATALOG_PUBLIC_FLAG]) && caseCatalogFlagErrors(environment).length === 0;
 }
+
+export function caseCatalogSearchEnabled(environment: Record<string, string | undefined> = process.env) {
+  return explicitTrue(environment[CASE_CATALOG_SEARCH_FLAG]) && caseCatalogFlagErrors(environment).length === 0;
+}
+
+export function caseCatalogPluginEnabled(environment: Record<string, string | undefined> = process.env) {
+  return explicitTrue(environment[CASE_CATALOG_PLUGIN_FLAG]) && caseCatalogFlagErrors(environment).length === 0;
+}
+
+export function caseCatalogSemanticEnabled(environment: Record<string, string | undefined> = process.env) {
+  return explicitTrue(environment[CASE_CATALOG_SEMANTIC_FLAG]) && caseCatalogFlagErrors(environment).length === 0;
+}

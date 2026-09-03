@@ -18,6 +18,7 @@ const controlCharacterPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const sourceKeyPattern = /^[a-z]{2}(?:-[a-z0-9]+)+$/;
 const languagePattern = /^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/i;
+const cursorPattern = /^[A-Za-z0-9_-]+$/;
 const safeFilterPattern = /^[\p{L}\p{M}\p{N} _./:·°§#-]+$/u;
 const analyticsMetadataKeyPattern = /^[A-Za-z0-9_.:-]{1,80}$/;
 
@@ -46,6 +47,7 @@ const articleListSchema = z.object({
   language: optionalPatternText(32, languagePattern, "language"),
   page: z.coerce.number().int().min(1).max(10_000).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
+  cursor: optionalPatternText(2048, cursorPattern, "cursor"),
   count: z.enum(COUNT_MODE_VALUES).optional(),
 });
 
@@ -53,7 +55,7 @@ const searchSchema = articleListSchema.extend({
   mode: z.enum(SEARCH_MODE_VALUES).optional().default("hybrid"),
   count: z.enum(COUNT_MODE_VALUES).optional().default("none"),
 }).superRefine((value, ctx) => {
-  if ((value.page - 1) * value.pageSize > 10_000) {
+  if (!value.cursor && (value.page - 1) * value.pageSize > 10_000) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["page"],

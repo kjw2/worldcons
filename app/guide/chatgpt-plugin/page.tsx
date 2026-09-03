@@ -28,7 +28,7 @@ export default function ChatGptPluginGuidePage() {
       <div className="border-b border-archive-line-strong pb-8">
         <h1 className="text-3xl font-extrabold tracking-[-0.02em] text-archive-ink sm:text-4xl">{SITE_NAME} ChatGPT 플러그인</h1>
         <p className="mt-4 max-w-3xl text-base leading-8 text-archive-text">
-          공개된 세계 헌법판례를 ChatGPT 대화에서 검색하고, 한국어 AI 요약과 보존 원문 발췌를 확인한 뒤 법원 공식 원문으로 이어서 검증할 수 있습니다.
+          공개된 세계 헌법판례를 ChatGPT 대화에서 검색하고, 공식 사건 정보와 허용된 원문 발췌를 확인한 뒤 법원 공식 원문으로 이어서 검증할 수 있습니다. 한국어 AI 요약은 준비되어 있고 최신 원문과 일치할 때만 함께 제공합니다.
         </p>
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-archive-heading">
           <span>인증 불필요</span>
@@ -45,7 +45,7 @@ export default function ChatGptPluginGuidePage() {
         <dl id="plugin-capabilities" className="border-y border-archive-line-strong bg-white">
           {[
             ["대화형 검색", "사건명, 사건번호, 국가, 재판기관, 헌법 쟁점을 자연어로 검색합니다."],
-            ["판례 요약 확인", "사건 정보와 한국어 AI 요약을 읽고 비교할 판례를 빠르게 좁힙니다."],
+            ["판례 상태 확인", "공식 사건 정보를 먼저 제공하고, 한국어 AI 요약이 준비됐는지 또는 원문 갱신으로 재처리 중인지 구분해 표시합니다."],
             ["공식 자료 검증", "각 판례의 헌법판례요약시스템 주소와 법원 공식 원문 주소를 함께 제공합니다."],
           ].map(([title, description]) => (
             <div key={title} className="grid gap-2 border-b border-archive-line px-1 py-4 last:border-b-0 sm:grid-cols-[180px_minmax(0,1fr)] sm:px-4">

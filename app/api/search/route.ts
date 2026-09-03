@@ -6,6 +6,7 @@ import { parseSearchApiParams, publicApiValidationErrorResponse } from "@/lib/se
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { mapSearchApiArticle, WORLDCONS_SEARCH_SCHEMA_VERSION } from "@/lib/search/api-contract";
+import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,6 +22,13 @@ export async function GET(request: Request) {
   if (!parsed.ok) return publicApiValidationErrorResponse(parsed.error);
 
   const { filters, mode } = parsed.data;
+  const catalogSearch = caseCatalogSearchEnabled();
+  if (filters.cursor && (!catalogSearch || mode === "semantic")) {
+    return publicApiValidationErrorResponse("cursor: cursor pagination is available only for Catalog lexical or hybrid search");
+  }
+  if (catalogSearch && mode !== "semantic" && (filters.page ?? 1) > 1 && !filters.cursor) {
+    return publicApiValidationErrorResponse("cursor: a nextCursor from the previous Catalog search page is required");
+  }
   try {
     const result =
       mode === "semantic"
@@ -41,6 +49,7 @@ export async function GET(request: Request) {
         language: filters.language,
         type: filters.type,
         page: filters.page,
+        cursor: Boolean(filters.cursor),
       },
     });
 
