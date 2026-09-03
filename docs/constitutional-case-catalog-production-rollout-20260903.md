@@ -76,6 +76,8 @@ CASE_CATALOG_* = unset/false
 country execution flags = unset/false
 ```
 
-다음 단계는 코드 작성이나 migration이 아니라 source별 운영 정책 검토다. robots 관측, 공식 scope, 이용조건·원문 egress, replay field, 보존기간, 요청 지연·동시성, `review_due_at`을 실제 근거로 검토한 immutable policy version이 승인되기 전에는 어떠한 실데이터 실행 flag도 켜지 않는다.
+Spain HJ의 첫 검토 결과는 `docs/spain-hj-source-policy-review-20260903.md`에 기록했다. 공식 scope와 판결문 제공은 확인됐지만 robots가 404이고 법적 고지 경로가 403이며, DB 정책의 요청 지연·동시성 값도 아직 worker 네트워크 호출에 강제되지 않는다. 판정은 `BLOCKED`이며 source policy row와 실데이터는 0건을 유지한다.
+
+다음 단계는 source 요청 제한의 런타임 강제 구현과 운영자·법적 검토다. robots 관측, 공식 scope, 이용조건·원문 egress, replay field, 보존기간, 요청 지연·동시성, `review_due_at`을 실제 근거로 검토한 immutable policy version이 승인되기 전에는 어떠한 실데이터 실행 flag도 켜지 않는다.
 
 첫 승인 후 실행 순서는 Spain 2024 `SENTENCIA` inventory canary → fetch → normalize → verify → reconcile → private shadow publication이다. public/search/plugin cutover와 Gemini 작업은 별도 승인으로 유지한다.
