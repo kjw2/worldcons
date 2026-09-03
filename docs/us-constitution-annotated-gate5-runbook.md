@@ -1,0 +1,48 @@
+# 미국 Constitution Annotated 후보 그래프 Gate 5 실행 계약
+
+## 범위
+
+이 단계는 Congress.gov Constitution Annotated의 Table of Cases 인용을 비공개 후보 그래프로 정규화한다. Table of Cases는 Constitution Annotated에서 인용된 사건 목록이며, 그 자체가 연방대법원 헌법판례 확정 목록은 아니다. 하급 연방법원과 주 법원 판례도 포함될 수 있으므로 모든 최초 상태는 `candidate`다.
+
+후보 하나는 다음 근거를 보존한다.
+
+- 사건 표시명과 인용
+- 인용이 나타난 Constitution Annotated essay ID, 제목, 공식 URL
+- reporter 형식에서 계산한 court classification hint
+- 후보 생성 근거와 검토 우선순위
+
+`U.S.` reporter 형식도 연방대법원 identity 후보라는 힌트일 뿐 자동 `verified` 근거가 아니다. 공개 적격 판정에는 공식 SCOTUS identity, 해당 Constitution Annotated essay의 헌법 문맥, U.S. Reports 또는 Supreme Court 공식 authority, 헌법적 holding 확인이 모두 필요하다.
+
+## 네트워크와 입력 계약
+
+공식 URL은 `https://constitution.congress.gov/resources/cases-cited/`다. 현재 자동 요청이 Cloudflare JavaScript challenge를 반환할 수 있다. challenge, 인식할 수 없는 HTML, 비어 있는 파싱 결과는 모두 source unavailable 오류로 처리하며 빈 inventory snapshot을 닫지 않는다. 방어를 우회하거나 비공식 mirror를 authority로 사용하지 않는다.
+
+라이브 수집이 가능해지기 전에는 검토자가 공식 페이지에서 보존한 fixture/export만 parser 회귀 입력으로 사용할 수 있다. fixture에는 수집 시각, 공식 URL, payload hash, parser version을 함께 기록해야 한다. 실제 DOM 구조를 확인하지 않은 합성 fixture만으로 production snapshot을 생성해서는 안 된다.
+
+## 상태와 승격 경계
+
+```text
+Table citation
+  -> candidate
+  -> official SCOTUS identity verified
+  -> constitutional essay context verified
+  -> official authority verified
+  -> constitutional holding verified
+  -> verified
+```
+
+하급 연방법원 또는 주 법원 identity가 확인되면 Track A SCOTUS 후보에서는 `rejected`로 닫고 원래 provenance는 보존한다. identity나 문맥이 불충분하면 `uncertain`이다. 선거구획정 landmark seed는 scheduling priority만 높이며 상태나 검증 필드를 바꾸지 않는다.
+
+## 운영 안전장치
+
+`CASE_CATALOG_US_CONAN_ENABLED=false`가 기본값이다. source policy, 실제 공식 fixture, durable candidate schema, authority resolution 경로가 별도 검토되기 전에는 이 값을 켜지 않는다.
+
+이 단계에서는 다음 작업을 하지 않는다.
+
+- `source_backfill_items`의 publish phase 실행
+- Catalog authoritative source revision 생성
+- `/articles` 공개
+- P3 summary 생성
+- Gemini 또는 embedding 호출
+
+후속 단계는 후보와 essay evidence를 append-only DB에 저장하고, 별도 `us-scotus` authority resolver가 공식 U.S. Reports/SCOTUS 원문에 결속한 뒤에만 기존 Catalog backfill pipeline으로 넘긴다.
