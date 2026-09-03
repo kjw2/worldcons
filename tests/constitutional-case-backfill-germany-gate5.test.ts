@@ -19,6 +19,8 @@ import {
   verifyBverfgInventoryReadOnly,
 } from "../lib/backfill/germany-inventory-verification";
 import { verifyBverfgPrivateShadowReadiness } from "../lib/backfill/germany-shadow-readiness";
+import { verifyBverfgPrivateShadowCanary } from "../lib/backfill/germany-shadow-canary";
+import type { BverfgShadowCanaryRepository } from "../lib/backfill/germany-shadow-canary-repository";
 import type {
   BverfgShadowPolicyEvidence,
   BverfgShadowReadinessRepository,
@@ -305,6 +307,79 @@ test("private-shadow readiness resumes one open snapshot and recognizes only ful
   });
   assert.equal(complete.status, "complete");
   assert.equal(complete.nextAction, "inspect_private_shadow_reconciliation");
+});
+
+const shadowCanaryEvidence = {
+  snapshotFound: true as const,
+  snapshotId: "00000000-0000-4000-8000-000000000323",
+  sourceKey: "de-bverfg",
+  scopeFrom: "2024-01-01",
+  scopeTo: "2024-12-31",
+  documentType: "DECISION",
+  snapshotStatus: "closed",
+  coverageAssurance: "external_index_assisted",
+  coverageEvidence: {
+    officialCorpusCoverageClaimed: false,
+    crossedOlderBoundary: true,
+    firstPageProbeStable: true,
+  },
+  discoveredCount: 2,
+  manifestHash: "a".repeat(64),
+  enumerationManifestHash: "b".repeat(64),
+  recomputedEnumerationManifestHash: "b".repeat(64),
+  sourcePolicyFound: true,
+  sourcePolicyVersion: reviewedGermanyPolicy.policyVersion,
+  sourcePolicyReviewDueAt: "2027-09-03T00:00:00.000Z",
+  enumerationArtifactCount: 4,
+  pageArtifactCount: 3,
+  boundaryProbeCount: 1,
+  pageSequenceContiguous: true,
+  externalTextEvidenceCount: 0,
+  itemCount: 2,
+  resolvedOfficialUrlCount: 1,
+  unresolvedActionableCount: 0,
+  invalidInventoryCount: 0,
+  verifiedCount: 1,
+  invalidVerifiedAuthorityCount: 0,
+  excludedCount: 1,
+  terminalFailureCount: 0,
+  retryWaitCount: 0,
+  activeClaimCount: 0,
+  publishedItemCount: 0,
+  articleLinkedCount: 0,
+  catalogPublicationCount: 0,
+  aiPayloadCount: 0,
+};
+
+function shadowCanaryRepository(evidence: unknown): BverfgShadowCanaryRepository {
+  return { async getEvidence() { return evidence; } };
+}
+
+test("private-shadow canary proves reconciliation without publishing or AI leakage", async () => {
+  const pass = await verifyBverfgPrivateShadowCanary(shadowCanaryEvidence.snapshotId, {
+    repository: shadowCanaryRepository(shadowCanaryEvidence),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+  });
+  assert.equal(pass.status, "pass");
+  assert.deepEqual(pass.blocking, []);
+  assert.equal(pass.readOnly, true);
+  assert.equal(pass.publicCatalogEnabledByThisCheck, false);
+  assert.equal(pass.productionWriteAuthorizedByThisCheck, false);
+  assert.equal(pass.geminiCalls, 0);
+
+  const blocked = await verifyBverfgPrivateShadowCanary(shadowCanaryEvidence.snapshotId, {
+    repository: shadowCanaryRepository({
+      ...shadowCanaryEvidence,
+      recomputedEnumerationManifestHash: "c".repeat(64),
+      catalogPublicationCount: 1,
+      aiPayloadCount: 1,
+    }),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+  });
+  assert.equal(blocked.status, "blocked");
+  assert.ok(blocked.blocking.includes("enumeration_manifest_mismatch"));
+  assert.ok(blocked.blocking.includes("public_catalog_leakage"));
+  assert.ok(blocked.blocking.includes("ai_payload_leakage"));
 });
 
 test("Germany discovery persists enumeration evidence before items and closes one manifest", async () => {

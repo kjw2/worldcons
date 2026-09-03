@@ -113,6 +113,8 @@ The public-attribution guard required by step 6 is also implemented in advance. 
 
 After the owner creates the immutable policy row, run `pnpm verify:bverfg-shadow-readiness -- --year=2024 --policy-version=<version>` before any write command. The read-only result is `ready` only when the history flag and every reviewed policy constraint match, `complete` only for a closed snapshot with both item and enumeration manifest hashes, and otherwise `blocked` with machine-readable reasons. The check never inserts a policy, opens a snapshot, enables public Catalog data, or authorizes a production write.
 
+After fetch, normalize, verify, and reconciliation passes finish, run `pnpm verify:bverfg-shadow-canary -- --snapshot=<uuid>`. A pass requires the recomputed enumeration digest, contiguous page evidence, one stable boundary probe, every item either officially verified or explicitly excluded, no pending claims/retries/failures, no linked or published Catalog article, and zero AI payloads. This canary is also read-only and cannot convert the private shadow into a public release.
+
 1. Make the durable request governor phase-aware: external index hosts are discover-only, while fetch remains restricted to authority/redirect hosts.
 2. Add a bounded, resumable Germany annual scope and P1 strategy without changing the daily crawler's operational limit.
 3. Build an append-only external enumeration artifact with provider page/count/hash evidence and no external full text.

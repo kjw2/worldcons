@@ -32,6 +32,7 @@ const usCanary = migration("20260903174000_constitutional_case_us_catalog_canary
 const viewSecurity = migration("20260903175000_constitutional_case_catalog_view_security.sql");
 const francePublicAttribution = migration("20260903183000_constitutional_case_france_public_attribution.sql");
 const germanyPublicAttribution = migration("20260903186000_constitutional_case_germany_public_attribution.sql");
+const germanyShadowCanary = migration("20260903187000_constitutional_case_germany_shadow_canary.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -317,6 +318,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(viewSecurity);
     await setup.query(francePublicAttribution);
     await setup.query(germanyPublicAttribution);
+    await setup.query(germanyShadowCanary);
   } finally {
     await setup.end();
   }
@@ -533,8 +535,16 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       );
       const privileges = await pool.query(`select
         has_function_privilege('public','case_catalog_germany_inventory_attribution_valid_v1(jsonb,text)','execute') inventory_public,
-        has_function_privilege('public','case_catalog_germany_public_attribution_guard_v1()','execute') guard_public`);
-      assert.deepEqual(privileges.rows[0], { inventory_public: false,guard_public: false });
+        has_function_privilege('public','case_catalog_germany_public_attribution_guard_v1()','execute') guard_public,
+        has_function_privilege('public','case_backfill_bverfg_shadow_canary_v1(uuid)','execute') canary_public`);
+      assert.deepEqual(privileges.rows[0], { inventory_public: false,guard_public: false,canary_public: false });
+      const canary = await pool.query<{ evidence: Record<string, unknown> }>(
+        "select case_backfill_bverfg_shadow_canary_v1($1) evidence", [snapshotId],
+      );
+      assert.equal(canary.rows[0].evidence.snapshotFound, true);
+      assert.equal(Number(canary.rows[0].evidence.pageArtifactCount), 1);
+      assert.equal(Number(canary.rows[0].evidence.boundaryProbeCount), 1);
+      assert.equal(Number(canary.rows[0].evidence.catalogPublicationCount), 1);
     });
 
     await t.test("authoritative self-anchor and current full P3 use separate heads and pointers", async () => {
