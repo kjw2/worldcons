@@ -23,6 +23,11 @@ import {
   REVIEWED_US_REDISTRICTING_LANDMARKS,
   REVIEWED_US_REDISTRICTING_PRIORITY_CITATIONS,
 } from "../lib/backfill/us-redistricting-landmarks";
+import {
+  GOVINFO_US_REPORTS_RESOLVER_VERSION,
+  resolveUsConanCandidateAuthority,
+} from "../lib/backfill/us-conan-authority-service";
+import type { UsConanAuthorityRepository } from "../lib/backfill/us-conan-authority-repository";
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/us-conan-table-contract.html"),
@@ -344,4 +349,73 @@ test("non-SCOTUS reporter candidates never enter the official resolver", async (
     }),
     /us_authority\.scotus_candidate_required/,
   );
+});
+
+const storedCandidate = {
+  id: "77777777-7777-4777-8777-777777777777",
+  caseName: "Baker v. Carr",
+  citation: "369 U.S. 186 (1962)",
+  courtClassification: "scotus_candidate" as const,
+};
+
+const verifiedResolution = {
+  status: "verified" as const,
+  citation: storedCandidate.citation,
+  officialCaseName: "Baker et al. v. Carr et al.",
+  detailsUrl: "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+  pdfUrl: "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+  payloadHash: "f".repeat(64),
+  observedAt: "2026-09-03T09:00:00.000Z",
+  blocking: [],
+};
+
+test("candidate authority service probes without writing an artifact or review", async () => {
+  let writes = 0;
+  const repository: UsConanAuthorityRepository = {
+    getCandidate: async () => storedCandidate,
+    recordAuthority: async () => { writes += 1; return "artifact"; },
+  };
+  const result = await resolveUsConanCandidateAuthority({
+    candidateId: storedCandidate.id,
+    record: false,
+  }, {}, {
+    repository,
+    resolver: async () => verifiedResolution,
+    environment: {},
+  });
+  assert.equal(result.artifactId, null);
+  assert.equal(result.reviewWritten, false);
+  assert.equal(result.publicCatalogEnabled, false);
+  assert.equal(result.geminiCalls, 0);
+  assert.equal(writes, 0);
+});
+
+test("recording authority requires the explicit flag and writes only the resolver artifact", async () => {
+  let reads = 0;
+  let recordedVersion = "";
+  const repository: UsConanAuthorityRepository = {
+    getCandidate: async () => { reads += 1; return storedCandidate; },
+    recordAuthority: async (_candidateId, resolverVersion, resolution) => {
+      recordedVersion = resolverVersion;
+      assert.deepEqual(resolution, verifiedResolution);
+      return "88888888-8888-4888-8888-888888888888";
+    },
+  };
+  await assert.rejects(
+    resolveUsConanCandidateAuthority({ candidateId: storedCandidate.id, record: true }, {}, {
+      repository,
+      resolver: async () => verifiedResolution,
+      environment: {},
+    }),
+    /case_backfill\.us_conan_disabled/,
+  );
+  assert.equal(reads, 0);
+  const result = await resolveUsConanCandidateAuthority({ candidateId: storedCandidate.id, record: true }, {}, {
+    repository,
+    resolver: async () => verifiedResolution,
+    environment: { [US_CONSTITUTION_ANNOTATED_FLAG]: "true" },
+  });
+  assert.equal(result.artifactId, "88888888-8888-4888-8888-888888888888");
+  assert.equal(recordedVersion, GOVINFO_US_REPORTS_RESOLVER_VERSION);
+  assert.equal(result.reviewWritten, false);
 });

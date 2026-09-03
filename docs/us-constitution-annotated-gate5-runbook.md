@@ -82,3 +82,11 @@ pnpm verify:us-reports-authority --citation=<U.S. Reports citation> --case-name=
 resolver 결과를 저장할 때는 human/legal review row를 자동 생성하지 않는다. `us_conan_candidate_authority_artifacts_v1`에 resolver version, 정확한 citation, GovInfo details/PDF URL, payload hash, 관측 시각과 blocking reason을 append-only로 남긴다. 동일 결과의 재저장은 멱등이며, source candidate의 citation과 예측 가능한 granule URL이 어긋나면 DB RPC도 거부한다.
 
 초기 선거구획정 priority set은 Baker, Wesberry, Reynolds, Shaw, Vieth 5건이다. 2026-09-03 GovInfo U.S. Reports granule로 citation과 authority URL을 확인했지만 모두 `priorityOnly=true`, `constitutionalRelevanceStatus=candidate`다. 이 목록은 완전한 선거구획정 판례 목록이 아니며, Rucho처럼 현재 resolver의 GovInfo bound-volume 범위 밖에 있는 사건은 별도 official-source resolver가 준비될 때 추가한다.
+
+닫힌 candidate snapshot의 항목은 다음 명령으로 조회·검증한다.
+
+```text
+pnpm resolve:us-conan-authority --candidate-id=<uuid>
+```
+
+기본 실행은 DB candidate를 읽고 공식 네트워크를 검증하지만 artifact를 쓰지 않는다. `CASE_CATALOG_US_CONAN_ENABLED=true`와 `--execute`를 함께 주면 resolver 결과만 append한다. 성공·불일치·404·robots 차단을 모두 관측 artifact로 남길 수 있지만, 어떤 경우에도 `us_conan_candidate_reviews_v1`, Catalog version/publication, Gemini artifact를 만들지 않는다.
