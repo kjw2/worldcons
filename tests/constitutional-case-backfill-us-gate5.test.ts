@@ -28,6 +28,15 @@ import {
   resolveUsConanCandidateAuthority,
 } from "../lib/backfill/us-conan-authority-service";
 import type { UsConanAuthorityRepository } from "../lib/backfill/us-conan-authority-repository";
+import {
+  US_CONAN_REVIEW_FLAG,
+  inspectUsConanCandidateReview,
+  reviewUsConanCandidate,
+} from "../lib/backfill/us-conan-review-service";
+import type {
+  StoredUsConanReviewContext,
+  UsConanReviewRepository,
+} from "../lib/backfill/us-conan-review-repository";
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/us-conan-table-contract.html"),
@@ -418,4 +427,165 @@ test("recording authority requires the explicit flag and writes only the resolve
   assert.equal(result.artifactId, "88888888-8888-4888-8888-888888888888");
   assert.equal(recordedVersion, GOVINFO_US_REPORTS_RESOLVER_VERSION);
   assert.equal(result.reviewWritten, false);
+});
+
+const reviewContext: StoredUsConanReviewContext = {
+  id: storedCandidate.id,
+  stableCandidateKey: "conan:baker",
+  caseName: storedCandidate.caseName,
+  citation: storedCandidate.citation,
+  normalizedCitation: storedCandidate.citation,
+  courtClassification: "scotus_candidate",
+  reviewRevision: 1,
+  currentStatus: "uncertain",
+  essays: [{
+    id: "99999999-9999-4999-8999-999999999999",
+    essayId: "ALDE_00001001",
+    title: "Political Question Doctrine",
+    url: "https://constitution.congress.gov/browse/essay/artIII-S2-C1-9-1/ALDE_00001001/",
+  }],
+  currentAuthority: {
+    id: "88888888-8888-4888-8888-888888888888",
+    status: "verified",
+    detailsUrl: verifiedResolution.detailsUrl,
+    pdfUrl: verifiedResolution.pdfUrl,
+    observedAt: verifiedResolution.observedAt,
+  },
+};
+
+function verifiedReviewInput() {
+  return {
+    candidateId: storedCandidate.id,
+    expectedRevision: 1,
+    status: "verified",
+    officialScotusIdentityVerified: true,
+    constitutionalEssayContextVerified: true,
+    officialAuthorityVerified: true,
+    constitutionalHoldingVerified: true,
+    identityRejected: false,
+    authorityArtifactId: reviewContext.currentAuthority?.id ?? null,
+    officialAuthorityUrl: verifiedResolution.detailsUrl,
+    essayEvidenceIds: [reviewContext.essays[0].id],
+    holdingEvidence: [{
+      sourceUrl: verifiedResolution.pdfUrl,
+      locator: "pp. 208-237",
+      constitutionalQuestion: "Whether legislative apportionment claims present a justiciable federal constitutional question.",
+    }],
+    safeEvidence: { essayId: reviewContext.essays[0].essayId },
+    reviewedBy: "unit-test-reviewer",
+    reviewReason: "All four legal review gates were checked against the bound official evidence.",
+  };
+}
+
+test("review context inspection is read-only and exposes the exact CAS and evidence identifiers", async () => {
+  let writes = 0;
+  const repository: UsConanReviewRepository = {
+    getReviewContext: async () => reviewContext,
+    appendReview: async () => { writes += 1; throw new Error("must not write"); },
+  };
+  const result = await inspectUsConanCandidateReview(storedCandidate.id, { repository });
+  assert.equal(result.expectedRevision, 1);
+  assert.equal(result.currentAuthority?.id, reviewContext.currentAuthority?.id);
+  assert.deepEqual(result.essayEvidence.map((evidence) => evidence.id), [reviewContext.essays[0].id]);
+  assert.equal(result.readOnly, true);
+  assert.equal(result.publicCatalogEnabled, false);
+  assert.equal(result.geminiCalls, 0);
+  assert.equal(writes, 0);
+});
+
+test("human review defaults to a read-only evidence-bound plan", async () => {
+  let writes = 0;
+  const repository: UsConanReviewRepository = {
+    getReviewContext: async () => reviewContext,
+    appendReview: async () => { writes += 1; throw new Error("must not write"); },
+  };
+  const result = await reviewUsConanCandidate(verifiedReviewInput(), false, { repository, environment: {} });
+  assert.equal(result.mode, "plan");
+  assert.equal(result.review, null);
+  assert.equal(result.verification.status, "verified");
+  assert.equal(result.boundEvidence.essayEvidenceCount, 1);
+  assert.equal(result.humanLegalReviewRequired, true);
+  assert.equal(result.publicCatalogEnabled, false);
+  assert.equal(result.geminiCalls, 0);
+  assert.equal(writes, 0);
+});
+
+test("human review execution requires its dedicated flag before database access", async () => {
+  let reads = 0;
+  const repository: UsConanReviewRepository = {
+    getReviewContext: async () => { reads += 1; return reviewContext; },
+    appendReview: async () => { throw new Error("must not write"); },
+  };
+  await assert.rejects(
+    reviewUsConanCandidate(verifiedReviewInput(), true, { repository, environment: {} }),
+    /case_backfill\.us_conan_review_disabled/,
+  );
+  assert.equal(reads, 0);
+});
+
+test("verified review rejects stale authority, foreign essay, and unbound holding evidence", async () => {
+  const repository: UsConanReviewRepository = {
+    getReviewContext: async () => reviewContext,
+    appendReview: async () => { throw new Error("must not write"); },
+  };
+  await assert.rejects(
+    reviewUsConanCandidate({ ...verifiedReviewInput(), authorityArtifactId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, false, { repository }),
+    /us_review\.current_authority_required/,
+  );
+  await assert.rejects(
+    reviewUsConanCandidate({ ...verifiedReviewInput(), essayEvidenceIds: ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"] }, false, { repository }),
+    /us_review\.essay_evidence_mismatch/,
+  );
+  await assert.rejects(
+    reviewUsConanCandidate({
+      ...verifiedReviewInput(),
+      holdingEvidence: [{
+        sourceUrl: "https://example.com/not-official",
+        locator: "p. 1",
+        constitutionalQuestion: "Question",
+      }],
+    }, false, { repository }),
+    /us_review\.holding_authority_mismatch/,
+  );
+});
+
+test("verified review status cannot disagree with the four legal evidence gates", async () => {
+  const repository: UsConanReviewRepository = {
+    getReviewContext: async () => reviewContext,
+    appendReview: async () => { throw new Error("must not write"); },
+  };
+  await assert.rejects(
+    reviewUsConanCandidate({
+      ...verifiedReviewInput(),
+      constitutionalHoldingVerified: false,
+    }, false, { repository }),
+    /us_review\.status_evidence_mismatch/,
+  );
+});
+
+test("enabled human review appends exactly one v2 review and does not publish", async () => {
+  let appended = 0;
+  const repository: UsConanReviewRepository = {
+    getReviewContext: async () => reviewContext,
+    appendReview: async (input) => {
+      appended += 1;
+      assert.equal(input.authorityArtifactId, reviewContext.currentAuthority?.id);
+      assert.deepEqual(input.essayEvidenceIds, [reviewContext.essays[0].id]);
+      assert.equal(input.holdingEvidence[0].sourceUrl, verifiedResolution.pdfUrl);
+      return {
+        reviewId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        revision: 2,
+        status: "verified",
+      };
+    },
+  };
+  const result = await reviewUsConanCandidate(verifiedReviewInput(), true, {
+    repository,
+    environment: { [US_CONAN_REVIEW_FLAG]: "true" },
+  });
+  assert.equal(appended, 1);
+  assert.equal(result.mode, "reviewed");
+  assert.equal(result.review?.revision, 2);
+  assert.equal(result.publicCatalogEnabled, false);
+  assert.equal(result.geminiCalls, 0);
 });

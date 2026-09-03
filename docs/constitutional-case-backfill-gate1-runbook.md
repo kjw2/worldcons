@@ -43,6 +43,8 @@ PostgreSQL 테스트의 skip은 승인 증거가 아니다. 깨끗한 스키마�
 
 미국 후보의 `verified` 검토는 구 `us_conan_candidate_review_v1`로 실행하지 않는다. `us_conan_candidate_review_v2`에 현재 authority artifact ID, 같은 candidate에 속한 essay evidence ID 배열, GovInfo details 또는 PDF URL에 결속된 holding locator와 constitutional question을 전달한다. resolver 성공은 authority 관측만 기록하며 검토 revision을 만들지 않는다. 오래된 authority artifact나 다른 후보의 essay evidence가 하나라도 섞이면 검토를 중단한다.
 
+먼저 `pnpm review:us-conan-candidate --candidate-id=<uuid>`로 현재 revision, 최신 authority artifact, essay evidence ID를 read-only 조회한다. 검토 입력은 별도 JSON 파일로 만들고 `pnpm review:us-conan-candidate --input=<review.json>` 계획을 확인한다. 실제 append는 `CASE_CATALOG_US_CONAN_REVIEW_ENABLED=true`와 `--execute`가 모두 있을 때만 가능하다. JSON에는 현재 `candidateId`, `expectedRevision`, 요청 상태, 네 검토 boolean, `identityRejected`, 현재 authority artifact와 details URL, essay evidence ID, 공식 details/PDF에 연결된 holding locator·constitutional question, 검토자와 사유를 명시한다. inspect 모드에는 `--execute`를 사용할 수 없으며, review 명령은 revision만 추가하고 Catalog publication과 Gemini를 실행하지 않는다.
+
 ## 3. 비공개 실행
 
 계획 출력은 데이터베이스 없이 확인할 수 있다.
