@@ -25,6 +25,7 @@ const usAuthority = migration("20260903171000_constitutional_case_us_authority_g
 const usReview = migration("20260903172000_constitutional_case_us_review_gate5.sql");
 const usCatalog = migration("20260903173000_constitutional_case_us_catalog_gate5.sql");
 const usCanary = migration("20260903174000_constitutional_case_us_catalog_canary_gate5.sql");
+const viewSecurity = migration("20260903175000_constitutional_case_catalog_view_security.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -156,6 +157,23 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query("drop schema public cascade; create schema public; drop schema if exists extensions cascade; create schema extensions");
     await setup.query("create extension if not exists pgcrypto with schema extensions");
     await setup.query(`
+      do $roles$
+      begin
+        if not exists(select 1 from pg_roles where rolname='anon') then
+          create role anon nologin;
+        end if;
+        if not exists(select 1 from pg_roles where rolname='authenticated') then
+          create role authenticated nologin;
+        end if;
+        if not exists(select 1 from pg_roles where rolname='service_role') then
+          create role service_role nologin bypassrls;
+        else
+          alter role service_role bypassrls;
+        end if;
+      end;
+      $roles$;
+    `);
+    await setup.query(`
       create function extensions.test_array_distance(double precision[],double precision[])
       returns double precision language sql immutable as 'select 0::double precision';
       create operator extensions.<=> (
@@ -236,6 +254,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(usPolicySql);
     await setup.query(gate3);
     await setup.query(gate4);
+    await setup.query(viewSecurity);
   } finally {
     await setup.end();
   }
@@ -648,6 +667,45 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       assert.equal((await pool.query(
         "select has_table_privilege('public','us_conan_candidate_catalog_events_v1','select') allowed",
       )).rows[0].allowed, false);
+    });
+
+    await t.test("Catalog views use invoker permissions and expose no direct anon database surface", async () => {
+      const views = await pool.query<{ relname: string; reloptions: string[] | null }>(`
+        select c.relname,c.reloptions
+        from pg_class c join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and c.relname in (
+          'public_case_catalog_projection_v1','public_article_detail_v4','public_case_search_documents_v1'
+        ) order by c.relname
+      `);
+      assert.equal(views.rowCount, 3);
+      for (const view of views.rows) {
+        assert.ok(view.reloptions?.includes("security_invoker=true"), `${view.relname} must use invoker rights`);
+        assert.equal((await pool.query("select has_table_privilege('anon',$1,'select') allowed", [view.relname])).rows[0].allowed, false);
+        assert.equal((await pool.query("select has_table_privilege('authenticated',$1,'select') allowed", [view.relname])).rows[0].allowed, false);
+        assert.equal((await pool.query("select has_table_privilege('service_role',$1,'select') allowed", [view.relname])).rows[0].allowed, true);
+      }
+
+      const serviceClient = await pool.connect();
+      try {
+        await serviceClient.query("set role service_role");
+        assert.ok((await serviceClient.query("select id from public.public_article_detail_v4 limit 1")).rowCount);
+        assert.ok((await serviceClient.query("select id from public.public_case_search_documents_v1 limit 1")).rowCount);
+        await assert.rejects(
+          serviceClient.query("select raw_text from public.article_content_versions_p3 limit 1"),
+          /permission denied/,
+        );
+        await serviceClient.query("reset role");
+
+        await serviceClient.query("set role anon");
+        await assert.rejects(
+          serviceClient.query("select id from public.public_article_detail_v4 limit 1"),
+          /permission denied/,
+        );
+        await serviceClient.query("reset role");
+      } finally {
+        await serviceClient.query("reset role").catch(() => undefined);
+        serviceClient.release();
+      }
     });
 
     await t.test("Gate 4 preserves Gate 3 source-only identity and lexical search", async () => {

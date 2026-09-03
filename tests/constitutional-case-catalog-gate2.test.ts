@@ -9,6 +9,13 @@ const migrationPath = path.join(
   "supabase/migrations/20260903130000_constitutional_case_catalog_gate2.sql",
 );
 const sql = fs.readFileSync(migrationPath, "utf8");
+const viewSecuritySql = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase/migrations/20260903175000_constitutional_case_catalog_view_security.sql",
+  ),
+  "utf8",
+);
 
 test("Gate 2 migration fixes identity, source-anchor, head, and stale-enrichment contracts", () => {
   assert.match(sql, /case_identifiers_v1_decision_unique_idx/);
@@ -64,4 +71,16 @@ test("public detail renders source-only and stale-reprocessing states while admi
   assert.match(adminRoute, /action === "withdraw" \? String\(publication\.version_id\) : String\(head\.current_version_id\)/);
   assert.match(queries, /public_article_detail_v4/);
   assert.match(queries, /summaryAvailable/);
+});
+
+test("Catalog views use invoker rights and remain private behind the Vercel service role", () => {
+  assert.match(viewSecuritySql, /alter view public_case_catalog_projection_v1\s+set \(security_invoker = true\)/);
+  assert.match(viewSecuritySql, /alter view public_article_detail_v4\s+set \(security_invoker = true\)/);
+  assert.match(viewSecuritySql, /alter view public_case_search_documents_v1\s+set \(security_invoker = true\)/);
+  assert.match(viewSecuritySql, /revoke all on public_case_catalog_projection_v1,public_article_detail_v4,\s+public_case_search_documents_v1 from anon/);
+  assert.match(viewSecuritySql, /revoke all on public_case_catalog_projection_v1,public_article_detail_v4,\s+public_case_search_documents_v1 from authenticated/);
+  assert.match(viewSecuritySql, /grant select\(id,catalog_ai_stale_v4\) on articles to service_role/);
+  assert.doesNotMatch(viewSecuritySql, /grant select\([^)]*raw_text[^)]*\) on article_content_versions_p3/);
+  assert.doesNotMatch(viewSecuritySql, /grant select\([^)]*summary_json[^)]*\) on article_content_versions_p3/);
+  assert.doesNotMatch(viewSecuritySql, /grant select\([^)]*embedding[^)]*\) on article_content_versions_p3/);
 });
