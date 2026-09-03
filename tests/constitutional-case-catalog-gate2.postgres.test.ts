@@ -17,6 +17,7 @@ const p2 = migration("20260712170000_article_lifecycle_p2.sql");
 const p3 = vectorFallback(migration("20260712200000_article_publication_p3.sql"));
 const caseKeys = vectorFallback(migration("20260826400000_case_keys_and_ranked_pagination.sql"));
 const gate1 = migration("20260903120000_constitutional_case_backfill_gate1.sql");
+const inventoryProvenance = migration("20260903182000_constitutional_case_inventory_provenance.sql");
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
 const gate3 = migration("20260903140000_constitutional_case_search_gate3.sql");
 const gate4 = migration("20260903150000_constitutional_case_multilingual_search_gate4.sql");
@@ -26,6 +27,7 @@ const usReview = migration("20260903172000_constitutional_case_us_review_gate5.s
 const usCatalog = migration("20260903173000_constitutional_case_us_catalog_gate5.sql");
 const usCanary = migration("20260903174000_constitutional_case_us_catalog_canary_gate5.sql");
 const viewSecurity = migration("20260903175000_constitutional_case_catalog_view_security.sql");
+const francePublicAttribution = migration("20260903183000_constitutional_case_france_public_attribution.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -67,6 +69,31 @@ insert into source_corpus_policies(
   array[]::text[],3650,1000,1,
   'catalog-test',now(),now()+interval '1 year'
 );`;
+
+const franceInventoryMetadata = {
+  dila: {
+    id: "CONSTEXT000050783534",
+    nature: "QPC",
+    ecli: "ECLI:FR:CC:2024:2024.1115.QPC",
+    decisionNumber: "2024-1115",
+    qualifiedNature: "QPC",
+    archiveMemberPath: "constit/global/CONS/TEXT/00/00/50/78/35/CONSTEXT000050783534.xml",
+  },
+  stock: {
+    filename: "Freemium_constit_global_20250713-140000.tar.gz",
+    url: "https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/Freemium_constit_global_20250713-140000.tar.gz",
+    extractedAt: "2025-07-13T14:00:00.000Z",
+    lastModified: "Sun, 13 Jul 2025 14:00:00 GMT",
+    etag: null,
+    contentLength: 12_511_366,
+    sha256: "6".repeat(64),
+  },
+  license: {
+    id: "licence-ouverte-2.0",
+    url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
+    attribution: "DILA",
+  },
+};
 
 async function insertArticle(pool: Pool, suffix: string, status = "cleaned") {
   const result = await pool.query<{ id: string }>(`
@@ -197,6 +224,9 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         'es-tribunal-constitucional','Tribunal Constitucional de España','Spain',
         'https://hj.tribunalconstitucional.es','es'
       ),(
+        'fr-conseil-constitutionnel','Conseil constitutionnel','France',
+        'https://www.conseil-constitutionnel.fr','fr'
+      ),(
         'us-scotus','Supreme Court of the United States','United States',
         'https://www.supremecourt.gov','en'
       );
@@ -224,6 +254,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(p3);
     await setup.query(caseKeys);
     await setup.query(gate1);
+    await setup.query(inventoryProvenance);
     await setup.query(policySql);
 
     const legacyArticle = await setup.query<{ id: string }>(`
@@ -255,6 +286,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(gate3);
     await setup.query(gate4);
     await setup.query(viewSecurity);
+    await setup.query(francePublicAttribution);
   } finally {
     await setup.end();
   }
@@ -285,6 +317,101 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         pool.query(`insert into case_identifiers_v1(article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value)
           values($1,'es-tribunal-constitucional','source_record_id','decision','HJ-1','hj1')`, [second]),
         /case_identifiers_v1_decision_unique_idx/,
+      );
+    });
+
+    await t.test("France Catalog publication requires the exact sealed DILA attribution provenance", async () => {
+      await pool.query(`insert into source_corpus_policies(
+        source_key,policy_version,scope_definition,official_scope_url,discovery_methods,
+        authority_hosts,redirect_hosts,robots_url,robots_observed_at,robots_rules_hash,
+        license_basis,default_text_access_policy,allow_raw_snapshot,normalize_replay_policy,
+        bounded_replay_fields,retention_days,min_request_delay_ms,max_concurrency,
+        reviewed_by,reviewed_at,review_due_at
+      ) values (
+        'fr-conseil-constitutionnel','fr-dila-attribution-test-v1','{"scope":"2024 QPC"}',
+        'https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/',array['official_dila_stock'],
+        array['echanges.dila.gouv.fr','www.conseil-constitutionnel.fr'],array[]::text[],
+        'https://echanges.dila.gouv.fr/robots.txt',now(),repeat('f',64),
+        'licence-ouverte-2.0','full',false,'bounded_evidence',array['metadata'],3650,1000,1,
+        'catalog-test',now(),now()+interval '1 year'
+      )`);
+      const snapshot = await pool.query<{ id: string }>(`select source_inventory_snapshot_open_v1(
+        'fr-conseil-constitutionnel','2024-01-01','2024-12-31','QPC','official_dila_stock',
+        'fr-dila-parser-v1','fr-dila-attribution-test-v1','authoritative_crosschecked',1,
+        'official_dila_stock_and_conseil_facet_exact_identity_set','{"crosschecked":true}'::jsonb,
+        '[]'::jsonb,'catalog-test'
+      ) id`);
+      const snapshotId = snapshot.rows[0].id;
+      await pool.query(`select source_inventory_item_upsert_v2(
+        $1,'constit:constext000050783534','20241115QPC',
+        'https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm',
+        'QPC','2024-12-13',$2::jsonb
+      )`, [snapshotId, JSON.stringify(franceInventoryMetadata)]);
+      const closed = await pool.query<{ manifest_hash: string }>(
+        "select manifest_hash from source_inventory_snapshot_close_v2($1)", [snapshotId],
+      );
+
+      const createFranceArticle = async (suffix: string) => {
+        const created = await pool.query<{ id: string }>(`
+          insert into articles(
+            source_id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,
+            original_language,original_title,original_published_at,status,slug,cleaned_text,source_metadata
+          ) values (
+            (select id from sources where source_key='fr-conseil-constitutionnel'),
+            'fr-conseil-constitutionnel','France','Conseil constitutionnel','decision',
+            'https://www.conseil-constitutionnel.fr/decision/2024/'||$1||'.htm',
+            'https://www.conseil-constitutionnel.fr/decision/2024/'||$1||'.htm',
+            'fr','Décision n° 2024-1115 QPC','2024-12-13T00:00:00Z','cleaned','fr-conseil-'||lower($1),
+            repeat('texte ',120),jsonb_build_object('sourceInventory',$2::jsonb)
+          ) returning id
+        `, [suffix, JSON.stringify(franceInventoryMetadata)]);
+        const articleId = created.rows[0].id;
+        await pool.query(`insert into case_identifiers_v1(
+          article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value,is_primary
+        ) values ($1,'fr-conseil-constitutionnel','source_record_id','decision',$2,
+          lower(regexp_replace($2,'[^[:alnum:]]','','g')),true)`, [articleId, suffix]);
+        return articleId;
+      };
+      const captureFrance = async (articleId: string, inventory: Record<string, unknown>) => {
+        await pool.query(`insert into case_metadata_v1(
+          article_id,source_key,authority_status,authority_evidence,constitutional_relevance_status,
+          enrichment_status,text_access_policy,source_policy_version,discovery_source,authority_source
+        ) values ($1,'fr-conseil-constitutionnel','verified','{}','verified','source_only','full',
+          'fr-dila-attribution-test-v1','official_dila_stock','https://www.conseil-constitutionnel.fr')`, [articleId]);
+        return pool.query<{ version_id: string }>(`select version_id from article_version_capture_v4(
+          $1,0,'authoritative_source',null,repeat('7',64),null,
+          jsonb_build_object(
+            'authorityStatus','verified','textAccessPolicy','full','sourcePolicyVersion','fr-dila-attribution-test-v1',
+            'sourceMetadata',jsonb_build_object('sourceInventory',$2::jsonb)
+          ),'[]'::jsonb,repeat('8',64),$3,$4,'import','catalog-test',null,null,null
+        )`, [articleId, JSON.stringify(inventory), snapshotId, closed.rows[0].manifest_hash]);
+      };
+
+      const validArticleId = await createFranceArticle("20241115QPC");
+      const validVersion = await captureFrance(validArticleId, franceInventoryMetadata);
+      await catalogTransition(pool, {
+        articleId: validArticleId,anchor: validVersion.rows[0].version_id,expected: 0,key: "france-attribution-valid",
+      });
+      const publicRow = await pool.query<{ source_metadata: { sourceInventory: unknown } }>(
+        "select source_metadata from public_case_catalog_projection_v1 where id=$1", [validArticleId],
+      );
+      assert.deepEqual(publicRow.rows[0].source_metadata.sourceInventory, franceInventoryMetadata);
+
+      const invalidArticleId = await createFranceArticle("20241116QPC");
+      const invalidInventory = {
+        ...franceInventoryMetadata,
+        license: { ...franceInventoryMetadata.license,attribution: "Conseil" },
+      };
+      assert.equal((await pool.query<{ valid: boolean }>(
+        "select case_catalog_france_inventory_attribution_valid_v1($1::jsonb) valid",
+        [JSON.stringify(invalidInventory)],
+      )).rows[0].valid, false);
+      const invalidVersion = await captureFrance(invalidArticleId, franceInventoryMetadata);
+      await assert.rejects(
+        catalogTransition(pool, {
+          articleId: invalidArticleId,anchor: invalidVersion.rows[0].version_id,expected: 0,key: "france-attribution-invalid",
+        }),
+        /CASE_CATALOG_FRANCE_PUBLIC_ATTRIBUTION_UNSEALED/,
       );
     });
 

@@ -6,6 +6,7 @@ import {
   WorldconsCaseService,
   type WorldconsCaseRepository,
 } from "../lib/chatgpt-plugin/case-service";
+import { publicSourceAttribution } from "../lib/case-catalog/source-attribution";
 import { handleWorldconsMcpRequest } from "../lib/chatgpt-plugin/http-handler";
 import { CatalogSearchCursorError } from "../lib/search/case-catalog";
 
@@ -54,6 +55,32 @@ const fixtureArticle = {
   },
   cleanedText: "공식 독일어 결정문 발췌와 다음 공식 원문 구간",
   contentHash: "abc123",
+  sourceMetadata: null,
+};
+
+const franceInventoryMetadata = {
+  dila: {
+    id: "CONSTEXT000050783534",
+    nature: "QPC",
+    ecli: "ECLI:FR:CC:2024:2024.1115.QPC",
+    decisionNumber: "2024-1115",
+    qualifiedNature: "QPC",
+    archiveMemberPath: "constit/global/CONS/TEXT/00/00/50/78/35/CONSTEXT000050783534.xml",
+  },
+  stock: {
+    filename: "Freemium_constit_global_20250713-140000.tar.gz",
+    url: "https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/Freemium_constit_global_20250713-140000.tar.gz",
+    extractedAt: "2025-07-13T14:00:00.000Z",
+    lastModified: "Sun, 13 Jul 2025 14:00:00 GMT",
+    etag: null,
+    contentLength: 12_511_366,
+    sha256: "6".repeat(64),
+  },
+  license: {
+    id: "licence-ouverte-2.0",
+    url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
+    attribution: "DILA",
+  },
 };
 
 function fixtureRepository(calls: string[]): WorldconsCaseRepository {
@@ -77,6 +104,9 @@ function fixtureRepository(calls: string[]): WorldconsCaseRepository {
       calls.push(`source-text:${slug}`);
       return slug === fixtureArticle.slug ? {
         slug,
+        sourceKey: fixtureArticle.sourceKey,
+        sourceMetadata: fixtureArticle.sourceMetadata,
+        officialUrl: fixtureArticle.originalUrl,
         cleanedText: fixtureArticle.cleanedText,
         contentHash: fixtureArticle.contentHash,
       } : null;
@@ -123,6 +153,102 @@ test("Vercel-integrated case service exposes bounded public evidence and canonic
     "article:germany-neubauer",
     "source-text:germany-neubauer",
   ]);
+});
+
+test("France search, fetch, and source-text responses expose one sealed Korean DILA attribution contract", async () => {
+  const franceArticle = {
+    ...fixtureArticle,
+    slug: "fr-conseil-2024-1115-qpc",
+    sourceKey: "fr-conseil-constitutionnel",
+    jurisdiction: "France",
+    institutionName: "Conseil constitutionnel",
+    originalUrl: "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm",
+    canonicalUrl: "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm",
+    originalLanguage: "fr",
+    originalTitle: "Décision n° 2024-1115 QPC du 13 décembre 2024",
+    koreanTitle: null,
+    caseNumber: "2024-1115 QPC",
+    summaryJson: null,
+    summaryAvailable: false,
+    enrichmentStatus: "source_only" as const,
+    summaryStatus: "pending" as const,
+    sourceMetadata: { sourceInventory: franceInventoryMetadata },
+  };
+  const repository: WorldconsCaseRepository = {
+    async search(filters) {
+      return { items: [franceArticle],pageInfo: { page: 1,pageSize: filters.pageSize ?? 10,total: 1 } };
+    },
+    async getArticle(slug) {
+      return slug === franceArticle.slug ? franceArticle : null;
+    },
+    async getSourceText(slug) {
+      return slug === franceArticle.slug ? {
+        slug,
+        sourceKey: franceArticle.sourceKey,
+        sourceMetadata: franceArticle.sourceMetadata,
+        officialUrl: franceArticle.originalUrl,
+        cleanedText: franceArticle.cleanedText,
+        contentHash: franceArticle.contentHash,
+      } : null;
+    },
+    async getSources() { return []; },
+  };
+  const api = new WorldconsCaseService({ repository,siteBaseUrl: "https://worldcons.vercel.app" });
+  const searchResult = (await api.search({ query: "2024-1115 QPC" }))[0];
+  const sourceText = await api.fetchSourceText(franceArticle.slug, 0, 10);
+  assert.equal(searchResult.sourceAttribution?.provider, "DILA");
+  assert.equal(sourceText.sourceAttribution?.stockTimestamp, "2025-07-13T14:00:00.000Z");
+  assert.equal(sourceText.officialUrl, franceArticle.originalUrl);
+
+  const response = await handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",id: 31,method: "tools/call",params: { name: "fetch",arguments: { id: franceArticle.slug } },
+    }),
+  }), api);
+  const payload = await response.json() as {
+    result: { structuredContent: {
+      text: string;
+      metadata: { sourceAttribution: { dilaId: string; licenseUrl: string; notice: string } };
+    } };
+  };
+  assert.match(payload.result.structuredContent.text, /공식 데이터 출처와 이용조건/u);
+  assert.match(payload.result.structuredContent.text, /프랑스 법률·행정정보국\(DILA\)/u);
+  assert.match(payload.result.structuredContent.text, /Freemium_constit_global_20250713-140000[.]tar[.]gz/u);
+  assert.match(payload.result.structuredContent.text, /공식 원문은 AI 생성물이 아닙니다/u);
+  assert.match(payload.result.structuredContent.text, /보증을 의미하지 않습니다/u);
+  assert.equal(payload.result.structuredContent.metadata.sourceAttribution.dilaId, "CONSTEXT000050783534");
+  assert.equal(payload.result.structuredContent.metadata.sourceAttribution.licenseUrl, franceInventoryMetadata.license.url);
+
+  const sourceResponse = await handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",id: 32,method: "tools/call",
+      params: { name: "fetch_source_text",arguments: { id: franceArticle.slug,offset: 0,limit: 10 } },
+    }),
+  }), api);
+  const sourcePayload = await sourceResponse.json() as {
+    result: { structuredContent: { officialUrl: string; sourceAttribution: { stockFilename: string } } };
+  };
+  assert.equal(sourcePayload.result.structuredContent.officialUrl, franceArticle.originalUrl);
+  assert.equal(sourcePayload.result.structuredContent.sourceAttribution.stockFilename, franceInventoryMetadata.stock.filename);
+
+  assert.equal(publicSourceAttribution("fr-conseil-constitutionnel", {
+    case: { sourceInventory: franceInventoryMetadata },
+  })?.stockSha256, "6".repeat(64));
+  assert.equal(publicSourceAttribution("fr-conseil-constitutionnel", {
+    sourceInventory: { ...franceInventoryMetadata,license: { ...franceInventoryMetadata.license,attribution: "Conseil" } },
+  }), null);
 });
 
 test("expired Gate 4 ranking cursors tell ChatGPT to restart without mutating the cursor", async () => {

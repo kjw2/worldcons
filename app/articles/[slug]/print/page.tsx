@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { ArticlePrintActions } from "@/components/article-print-actions";
+import { publicSourceAttribution } from "@/lib/case-catalog/source-attribution";
 import { getArticleBySlug } from "@/lib/db/queries";
 import type { ArticleDetail, ReferencedProvision } from "@/lib/db/types";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
@@ -76,6 +77,7 @@ export default async function ArticlePrintPage({
   const caseNumber = articleCaseNumber(article);
   const provisions = summary?.summary.referencedProvisions.filter((provision) => provisionLabel(provision)) ?? [];
   const originalHref = safeExternalUrl(article.originalUrl);
+  const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata);
 
   return (
     <main className="print-page mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -114,6 +116,26 @@ export default async function ArticlePrintPage({
             </p>
           ) : null}
         </PrintSection>
+
+        {sourceAttribution ? (
+          <PrintSection title="공식 데이터 출처와 이용조건">
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <InfoItem label="제공기관" value={sourceAttribution.providerLabel} />
+              <InfoItem label="공식 생산기관" value={sourceAttribution.authorityLabel} />
+              <InfoItem label="DILA 자료 ID" value={sourceAttribution.dilaId} />
+              <InfoItem label="결정번호" value={sourceAttribution.decisionNumber} />
+              <InfoItem label="ECLI" value={sourceAttribution.ecli} />
+              <InfoItem label="자료 파일 기준시각" value={sourceAttribution.stockTimestamp} />
+            </dl>
+            <p className="mt-5 break-all text-sm leading-6">
+              자료 파일: <a href={sourceAttribution.stockUrl}>{sourceAttribution.stockFilename}</a>
+            </p>
+            <p className="mt-2 text-sm leading-6">
+              라이선스: <a href={sourceAttribution.licenseUrl}>{sourceAttribution.licenseLabel}</a>
+            </p>
+            <p className="mt-4 text-sm leading-6">{sourceAttribution.notice}</p>
+          </PrintSection>
+        ) : null}
 
         {summary ? (
           <>

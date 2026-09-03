@@ -688,10 +688,19 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
   if (!supabase) {
     const article = mockArticles.find((item) => item.slug === slug) ?? null;
     if (!article || (!options.includeUnpublished && article.status !== "summarized")) return null;
-    return { slug: article.slug, cleanedText: article.cleanedText ?? null };
+    return {
+      slug: article.slug,
+      sourceKey: article.sourceKey,
+      sourceMetadata: article.sourceMetadata ?? null,
+      officialUrl: article.originalUrl,
+      cleanedText: article.cleanedText ?? null,
+      contentHash: article.contentHash ?? null,
+    };
   }
 
-  let query = supabase.from(articleDetailRelation(options.includeUnpublished)).select("slug,status,source_metadata,cleaned_text").eq("slug", slug);
+  let query = supabase.from(articleDetailRelation(options.includeUnpublished))
+    .select("slug,status,source_key,source_metadata,original_url,cleaned_text,content_hash")
+    .eq("slug", slug);
   if (!options.includeUnpublished && !publicationProjectionEnabled()) {
     query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
   }
@@ -700,10 +709,21 @@ export async function getArticleSourceTextBySlug(slug: string, options: { includ
   if (error) throw new Error(error.message);
   if (!data || (!options.includeUnpublished && !isPublishableListItem(data as unknown as SupabaseArticleRow))) return null;
 
-  const row = data as { slug?: string | null; cleaned_text?: string | null };
+  const row = data as {
+    slug?: string | null;
+    source_key?: string | null;
+    source_metadata?: Record<string, unknown> | null;
+    original_url?: string | null;
+    cleaned_text?: string | null;
+    content_hash?: string | null;
+  };
   return {
     slug: row.slug ?? slug,
+    sourceKey: row.source_key ?? null,
+    sourceMetadata: row.source_metadata ?? null,
+    officialUrl: row.original_url ?? null,
     cleanedText: row.cleaned_text ?? null,
+    contentHash: row.content_hash ?? null,
   };
 }
 

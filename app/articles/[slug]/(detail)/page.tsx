@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight, ExternalLink, FileText, Languages, Scale } from "lucide-react";
 import { ArticleReturnLink } from "@/components/article-detail-navigation";
 import { ArticlePrintButton } from "@/components/article-print-button";
+import { ArticleSourceAttribution } from "@/components/article-source-attribution";
 import { ArticleSourceSnapshot } from "@/components/article-source-snapshot";
 import { IntentPrefetchLink } from "@/components/intent-prefetch-link";
 import { PageViewTracker } from "@/components/page-view-tracker";
@@ -16,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { MetaRow } from "@/components/ui/meta-row";
 import { PageShell } from "@/components/ui/page-shell";
 import type { ArticleDetail } from "@/lib/db/types";
+import { publicSourceAttribution } from "@/lib/case-catalog/source-attribution";
 import { getCachedArticleDetailPageData } from "@/lib/public-article-detail-cache";
 import { articleBreadcrumbJsonLd, articleJsonLd, jsonLdScriptValue } from "@/lib/seo/jsonld";
 import { articleCaseNumber } from "@/lib/ui/article-case-number";
@@ -100,6 +102,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
   const summaryReprocessing = article.summaryStatus === "reprocessing";
   const sourceOnly = article.enrichmentStatus === "source_only";
+  const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata);
   const caseNumber = articleCaseNumber(article);
   const title = articleTitleForDisplay(article);
 
@@ -162,6 +165,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
               </p>
             </DisclosureCard>
           ) : null}
+          {sourceAttribution ? <ArticleSourceAttribution attribution={sourceAttribution} /> : null}
           {summary ? (
             <>
               <SummarySection title="핵심 요약" variant="primary">

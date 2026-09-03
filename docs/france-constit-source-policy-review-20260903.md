@@ -164,8 +164,10 @@ Completed in the first two post-review implementation stages:
 - v2 inventory upsert/close/claim RPCs, manifest hashing of provenance, and `service_role` revocation from the bypassable v1 RPCs;
 - fetch replay and normalization propagation under `metadata.sourceInventory`;
 - live PostgreSQL tests proving France shape rejection, secret rejection, closed-manifest immutability, hash sensitivity, and v2 claim compatibility.
+- one shared Korean public-attribution projection for article detail, print, standard MCP `search`/`fetch`, and paged source-text responses;
+- a fail-closed Catalog publication trigger proving that a France source anchor carries the exact DILA provenance sealed into its closed inventory snapshot;
+- public notices that distinguish official source data from optional AI summaries and prohibit any implication of DILA or Conseil constitutionnel endorsement.
 
 Still required before owner approval and any production inventory write:
 
-- expose and verify required DILA attribution on public article/plugin representations;
 - record the owner decisions listed above and insert the immutable policy row only after those checks pass.

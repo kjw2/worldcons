@@ -13,6 +13,7 @@ import type {
 import { hybridSearch } from "@/lib/search/vector";
 import { catalogCaseSearch, isCatalogSearchCursorError } from "@/lib/search/case-catalog";
 import { caseCatalogPluginEnabled } from "@/lib/case-catalog/flags";
+import { publicSourceAttribution } from "@/lib/case-catalog/source-attribution";
 import { WorldconsToolError } from "@/lib/chatgpt-plugin/errors";
 
 const CANONICAL_SITE_URL = "https://worldcons.vercel.app";
@@ -30,7 +31,14 @@ export type SearchFilters = {
 export type WorldconsCaseRepository = {
   search(filters: ArticleListFilters): Promise<ArticleListResult>;
   getArticle(slug: string): Promise<ArticleDetail | null>;
-  getSourceText(slug: string): Promise<{ slug: string; cleanedText?: string | null; contentHash?: string | null } | null>;
+  getSourceText(slug: string): Promise<{
+    slug: string;
+    sourceKey?: string | null;
+    sourceMetadata?: Record<string, unknown> | null;
+    officialUrl?: string | null;
+    cleanedText?: string | null;
+    contentHash?: string | null;
+  } | null>;
   getSources(): Promise<SourceRecord[]>;
 };
 
@@ -180,6 +188,10 @@ export class WorldconsCaseService {
       hasMore: nextOffset < fullText.length,
       nextOffset: nextOffset < fullText.length ? nextOffset : null,
       url: this.articleUrl(slug),
+      officialUrl: snapshot.officialUrl ? requiredHttpsUrl(snapshot.officialUrl, "official URL") : null,
+      sourceAttribution: snapshot.sourceKey
+        ? publicSourceAttribution(snapshot.sourceKey, snapshot.sourceMetadata)
+        : null,
     };
   }
 
@@ -211,6 +223,7 @@ export class WorldconsCaseService {
       summaryStatus: article.summaryStatus ?? (summaryAvailable ? "available" : "pending"),
       summaryAvailable,
       officialMetadataAvailable: true,
+      sourceAttribution: publicSourceAttribution(article.sourceKey, article.sourceMetadata),
     };
   }
 

@@ -101,6 +101,12 @@ For governed France detail fetches:
 
 These controls only make a future approved run enforceable. They do not approve Conseil constitutionnel collection, create a source policy, enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, or write source data.
 
+## Public attribution invariant
+
+Every published France Catalog source anchor must carry the exact immutable `sourceInventory` object sealed into its closed snapshot. PostgreSQL rejects publication when the DILA identity, stock filename and long URL, stock timestamp, archive hash, or Open Licence attribution is missing, malformed, or not byte-for-byte equal to an inventory item in that snapshot.
+
+The public article detail, print document, standard ChatGPT plugin `search`/`fetch` results, and paged source-text result all derive their Korean attribution from that same object. They identify DILA as provider, link the downloaded stock and Licence Ouverte 2.0, state the source-file timestamp, distinguish official source material from any optional AI summary, and state that reuse does not imply endorsement by DILA or the Conseil constitutionnel. Invalid legacy-shaped metadata is not rendered as attribution and cannot enter the France Catalog through the guarded publication transition.
+
 ## Verification evidence
 
 For each snapshot retain:
