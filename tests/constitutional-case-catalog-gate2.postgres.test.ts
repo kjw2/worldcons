@@ -20,6 +20,10 @@ const gate1 = migration("20260903120000_constitutional_case_backfill_gate1.sql")
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
 const gate3 = migration("20260903140000_constitutional_case_search_gate3.sql");
 const gate4 = migration("20260903150000_constitutional_case_multilingual_search_gate4.sql");
+const usCandidates = migration("20260903170000_constitutional_case_us_candidates_gate5.sql");
+const usAuthority = migration("20260903171000_constitutional_case_us_authority_gate5.sql");
+const usReview = migration("20260903172000_constitutional_case_us_review_gate5.sql");
+const usCatalog = migration("20260903173000_constitutional_case_us_catalog_gate5.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -34,6 +38,31 @@ insert into source_corpus_policies(
   array['hj.tribunalconstitucional.es'],array[]::text[],
   'https://hj.tribunalconstitucional.es/robots.txt',now(),repeat('a',64),
   'official-public-record','full',false,'bounded_evidence',array['text','metadata'],3650,1000,1,
+  'catalog-test',now(),now()+interval '1 year'
+);`;
+
+const usPolicySql = `
+insert into source_corpus_policies(
+  source_key,policy_version,scope_definition,official_scope_url,discovery_methods,
+  authority_hosts,redirect_hosts,robots_url,robots_observed_at,robots_rules_hash,
+  license_basis,default_text_access_policy,allow_raw_snapshot,normalize_replay_policy,
+  bounded_replay_fields,retention_days,min_request_delay_ms,max_concurrency,
+  reviewed_by,reviewed_at,review_due_at
+) values (
+  'us-constitution-annotated','us-conan-gate5-v1','{"scope":"Table of Cases candidates only"}',
+  'https://constitution.congress.gov/resources/cases-cited/',array['reviewed_fixture'],
+  array['constitution.congress.gov'],array[]::text[],
+  'https://constitution.congress.gov/robots.txt',now(),repeat('d',64),
+  'official-public-record','metadata_only',false,'bounded_evidence',
+  array['caseName','citation','essayReferences'],3650,1000,1,
+  'catalog-test',now(),now()+interval '1 year'
+),(
+  'us-scotus','us-scotus-gate5-v1','{"scope":"GovInfo U.S. Reports metadata authority"}',
+  'https://www.govinfo.gov/help/usreports',array['constitution_annotated_candidate_review'],
+  array['www.govinfo.gov'],array[]::text[],
+  'https://www.govinfo.gov/robots.txt',now(),repeat('e',64),
+  'official-public-record','metadata_only',false,'non_replayable',
+  array[]::text[],3650,1000,1,
   'catalog-test',now(),now()+interval '1 year'
 );`;
 
@@ -148,6 +177,9 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       insert into sources(source_key,name,jurisdiction,base_url,language) values(
         'es-tribunal-constitucional','Tribunal Constitucional de España','Spain',
         'https://hj.tribunalconstitucional.es','es'
+      ),(
+        'us-scotus','Supreme Court of the United States','United States',
+        'https://www.supremecourt.gov','en'
       );
       create table articles(
         id uuid primary key default gen_random_uuid(),source_id uuid references sources(id),source_key text not null,
@@ -195,6 +227,11 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       null,null,'import','catalog-test',null,null,'{}',null
     )`, [legacyArticle.rows[0].id]);
     await setup.query(gate2);
+    await setup.query(usCandidates);
+    await setup.query(usAuthority);
+    await setup.query(usReview);
+    await setup.query(usCatalog);
+    await setup.query(usPolicySql);
     await setup.query(gate3);
     await setup.query(gate4);
   } finally {
@@ -398,6 +435,161 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       ]);
     });
 
+    await t.test("evidence-bound US review publishes one metadata-only authoritative Catalog anchor", async () => {
+      const opened = await pool.query<{ us_conan_candidate_snapshot_open_v1: string }>(
+        "select us_conan_candidate_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7)",
+        [
+          "us-conan-gate5-v1","a".repeat(64),"us-conan-table-v1","reviewed_fixture",
+          "best_effort","2026-09-03T08:00:00.000Z","catalog-test",
+        ],
+      );
+      const candidateSnapshotId = opened.rows[0].us_conan_candidate_snapshot_open_v1;
+      const candidate = await pool.query<{ us_conan_candidate_upsert_v1: string }>(
+        "select us_conan_candidate_upsert_v1($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        [
+          candidateSnapshotId,"conan:baker","Baker v. Carr","369 U.S. 186 (1962)",
+          "369 U.S. 186 (1962)","scotus_candidate",100,["reviewed_redistricting_landmark_seed"],
+          JSON.stringify([{
+            essayId: "ALDE_00001001",
+            title: "Congressional Districting",
+            url: "https://constitution.congress.gov/browse/essay/artI-S2-C1-1/ALDE_00001001/",
+          }]),
+        ],
+      );
+      const candidateId = candidate.rows[0].us_conan_candidate_upsert_v1;
+      const closed = await pool.query<{ manifest_hash: string }>(
+        "select * from us_conan_candidate_snapshot_close_v1($1)", [candidateSnapshotId],
+      );
+      const authority = await pool.query<{ us_conan_candidate_authority_record_v1: string }>(
+        "select us_conan_candidate_authority_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [
+          candidateId,"govinfo-usreports-v1","verified","369 U.S. 186 (1962)",
+          "Baker et al. v. Carr et al.",
+          "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+          "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+          "f".repeat(64),[],"2026-09-03T09:00:00.000Z",
+        ],
+      );
+      const essay = await pool.query<{ id: string }>(
+        "select id from us_conan_candidate_essay_evidence_v1 where candidate_id=$1", [candidateId],
+      );
+      const review = await pool.query<{ review_id: string; review_revision: number }>(
+        "select * from us_conan_candidate_review_v2($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+        [
+          candidateId,0,"verified",true,true,true,true,
+          authority.rows[0].us_conan_candidate_authority_record_v1,
+          "https://www.govinfo.gov/app/details/USREPORTS-369/USREPORTS-369-186",
+          [essay.rows[0].id],JSON.stringify([{
+            sourceUrl: "https://www.govinfo.gov/content/pkg/USREPORTS-369/pdf/USREPORTS-369-186.pdf",
+            locator: "pp. 208-237",
+            constitutionalQuestion: "Whether legislative apportionment claims present a justiciable federal constitutional question.",
+          }]),{ essayId: "ALDE_00001001" },"catalog-test","All four evidence gates were reviewed.",
+        ],
+      );
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_publish_catalog_v1($1,$2,$3,$4,$5,$6)",
+          [candidateId,2,"us-scotus-gate5-v1",0,"us-conan:baker:stale-review","catalog-test"],
+        ),
+        /US_CONAN_CATALOG_REVIEW_STALE/,
+      );
+      const published = await pool.query<{
+        event_id: string;
+        article_id: string;
+        version_id: string;
+        version_revision: string;
+        publication_revision: string;
+        article_slug: string;
+        applied: boolean;
+        idempotent: boolean;
+      }>(
+        "select * from us_conan_candidate_publish_catalog_v1($1,$2,$3,$4,$5,$6)",
+        [candidateId,1,"us-scotus-gate5-v1",0,"us-conan:baker:review-1","catalog-test"],
+      );
+      assert.equal(published.rows[0].article_slug, "us-scotus-369-us-186");
+      assert.equal(published.rows[0].applied, true);
+      assert.equal(published.rows[0].idempotent, false);
+      const detail = await pool.query(`select source_key,original_title,original_published_at,
+        cleaned_text,summary_json,enrichment_status,summary_status,summary_available,source_metadata
+        from public_article_detail_v4 where id=$1`, [published.rows[0].article_id]);
+      assert.equal(detail.rowCount, 1);
+      assert.equal(detail.rows[0].source_key, "us-scotus");
+      assert.equal(detail.rows[0].original_title, "Baker et al. v. Carr et al.");
+      assert.equal(detail.rows[0].original_published_at, null);
+      assert.equal(detail.rows[0].cleaned_text, null);
+      assert.equal(detail.rows[0].summary_json, null);
+      assert.equal(detail.rows[0].enrichment_status, "source_only");
+      assert.equal(detail.rows[0].summary_status, "pending");
+      assert.equal(detail.rows[0].summary_available, false);
+      assert.equal(detail.rows[0].source_metadata.reporterCitation, "369 U.S. 186 (1962)");
+      assert.equal(detail.rows[0].source_metadata.decisionDate.status, "unknown");
+      assert.deepEqual(detail.rows[0].source_metadata.constitutionAnnotated.essays.map(
+        (item: { essayId: string }) => item.essayId,
+      ), ["ALDE_00001001"]);
+      const version = await pool.query(`select version_role,source_anchor_version_id,source_snapshot_id,
+        source_snapshot_hash,source_content_hash,summary_json,embedding
+        from article_content_versions_p3 where id=$1`, [published.rows[0].version_id]);
+      assert.equal(version.rows[0].version_role, "authoritative_source");
+      assert.equal(version.rows[0].source_anchor_version_id, published.rows[0].version_id);
+      assert.equal(version.rows[0].source_snapshot_id, null);
+      assert.equal(version.rows[0].source_snapshot_hash, closed.rows[0].manifest_hash);
+      assert.equal(version.rows[0].source_content_hash, "f".repeat(64));
+      assert.equal(version.rows[0].summary_json, null);
+      assert.equal(version.rows[0].embedding, null);
+      const identifiers = await pool.query<{ identifier_type: string; normalized_value: string; is_primary: boolean }>(
+        "select identifier_type,normalized_value,is_primary from case_identifiers_v1 where article_id=$1 order by identifier_type",
+        [published.rows[0].article_id],
+      );
+      assert.deepEqual(identifiers.rows, [
+        { identifier_type: "reporter_citation", normalized_value: "369us1861962", is_primary: true },
+        { identifier_type: "source_record_id", normalized_value: "usreports369186", is_primary: false },
+      ]);
+      const bridge = await pool.query("select review_id,authority_artifact_id,candidate_snapshot_id from us_conan_candidate_catalog_events_v1 where id=$1", [published.rows[0].event_id]);
+      assert.deepEqual(bridge.rows[0], {
+        review_id: review.rows[0].review_id,
+        authority_artifact_id: authority.rows[0].us_conan_candidate_authority_record_v1,
+        candidate_snapshot_id: candidateSnapshotId,
+      });
+      assert.equal((await pool.query("select count(*)::integer count from article_version_heads_p3 where article_id=$1", [published.rows[0].article_id])).rows[0].count, 0);
+      assert.equal((await pool.query("select count(*)::integer count from article_publications_p3 where article_id=$1", [published.rows[0].article_id])).rows[0].count, 0);
+      const exact = await pool.query<{ payload: { entries: Array<{ id: string }>; retrievalMode: string } }>(
+        "select worldcons_case_search_page_v2($1,10,null) payload", ["369 U.S. 186 (1962)"],
+      );
+      assert.equal(exact.rows[0].payload.retrievalMode, "exact-identity");
+      assert.deepEqual(exact.rows[0].payload.entries.map((entry) => entry.id), [published.rows[0].article_id]);
+
+      const retry = await pool.query(
+        "select * from us_conan_candidate_publish_catalog_v1($1,$2,$3,$4,$5,$6)",
+        [candidateId,1,"us-scotus-gate5-v1",0,"us-conan:baker:review-1","catalog-test"],
+      );
+      assert.equal(retry.rows[0].event_id, published.rows[0].event_id);
+      assert.equal(retry.rows[0].applied, false);
+      assert.equal(retry.rows[0].idempotent, true);
+      assert.equal((await pool.query("select count(*)::integer count from us_conan_candidate_catalog_events_v1 where candidate_id=$1", [candidateId])).rows[0].count, 1);
+      await assert.rejects(
+        pool.query("update us_conan_candidate_catalog_events_v1 set actor_id='tampered' where id=$1", [published.rows[0].event_id]),
+        /CASE_CATALOG_IMMUTABLE_RECORD/,
+      );
+
+      await pool.query(`insert into source_corpus_policies(
+        source_key,policy_version,scope_definition,official_scope_url,discovery_methods,authority_hosts,
+        redirect_hosts,robots_url,robots_observed_at,robots_rules_hash,license_basis,default_text_access_policy,
+        allow_raw_snapshot,normalize_replay_policy,bounded_replay_fields,retention_days,min_request_delay_ms,
+        max_concurrency,reviewed_by,reviewed_at,review_due_at
+      ) select source_key,'us-scotus-expired-v1',scope_definition,official_scope_url,discovery_methods,authority_hosts,
+        redirect_hosts,robots_url,now()-interval '2 years',robots_rules_hash,license_basis,default_text_access_policy,
+        allow_raw_snapshot,normalize_replay_policy,bounded_replay_fields,retention_days,min_request_delay_ms,
+        max_concurrency,'catalog-test',now()-interval '2 years',now()-interval '1 year'
+      from source_corpus_policies where source_key='us-scotus' and policy_version='us-scotus-gate5-v1'`);
+      await assert.rejects(
+        pool.query(
+          "select * from us_conan_candidate_publish_catalog_v1($1,$2,$3,$4,$5,$6)",
+          [candidateId,1,"us-scotus-expired-v1",1,"us-conan:baker:expired-policy","catalog-test"],
+        ),
+        /SOURCE_POLICY_REVIEW_OVERDUE/,
+      );
+    });
+
     await t.test("expired source policy stops Catalog publication", async () => {
       await pool.query(`insert into source_corpus_policies(
         source_key,policy_version,scope_definition,official_scope_url,discovery_methods,authority_hosts,
@@ -424,10 +616,11 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public' and p.proname in (
           'article_version_capture_v4','article_p3_candidate_select_v4',
-          'case_catalog_publication_transition_v1','case_catalog_publish_backfill_item_v1'
+          'case_catalog_publication_transition_v1','case_catalog_publish_backfill_item_v1',
+          'us_conan_candidate_publish_catalog_v1'
         )
       `);
-      assert.equal(functions.rowCount, 4);
+      assert.equal(functions.rowCount, 5);
       for (const row of functions.rows) {
         assert.equal(row.prosecdef, true);
         assert.ok(row.proconfig?.some((value) => value === "search_path=public, extensions, pg_temp"));
@@ -437,6 +630,9 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         pool.query("update legacy_version_freshness_classifications_v4 set classified_by='changed'"),
         /CASE_CATALOG_IMMUTABLE_RECORD/,
       );
+      assert.equal((await pool.query(
+        "select has_table_privilege('public','us_conan_candidate_catalog_events_v1','select') allowed",
+      )).rows[0].allowed, false);
     });
 
     await t.test("Gate 4 preserves Gate 3 source-only identity and lexical search", async () => {

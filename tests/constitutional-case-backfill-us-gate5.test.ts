@@ -46,6 +46,10 @@ const govInfoFixture = fs.readFileSync(
   path.join(process.cwd(), "tests/fixtures/us-govinfo-baker-details-contract.html"),
   "utf8",
 );
+const usCatalogMigration = fs.readFileSync(
+  path.join(process.cwd(), "supabase/migrations/20260903173000_constitutional_case_us_catalog_gate5.sql"),
+  "utf8",
+);
 
 test("Constitution Annotated discovery is disabled unless explicitly enabled", () => {
   assert.equal(constitutionAnnotatedDiscoveryEnabled({}), false);
@@ -128,6 +132,23 @@ test("Cloudflare challenge is an unavailable source, not an empty inventory", ()
   assert.equal(isConstitutionAnnotatedChallengePage(challenge), true);
   assert.throws(() => parseConstitutionAnnotatedCasesHtml(challenge), /us_conan\.source_challenge/);
   assert.throws(() => parseConstitutionAnnotatedCasesHtml("<html><body>maintenance</body></html>"), /inventory_empty_or_unrecognized/);
+});
+
+test("US Catalog bridge revalidates current evidence and remains metadata-only", () => {
+  assert.match(usCatalogMigration, /us_conan_candidate_publish_catalog_v1/u);
+  assert.match(usCatalogMigration, /US_CONAN_CATALOG_REVIEW_STALE/u);
+  assert.match(usCatalogMigration, /US_CONAN_CATALOG_CURRENT_AUTHORITY_REQUIRED/u);
+  assert.match(usCatalogMigration, /us_conan_candidate_authority_current_v1/u);
+  assert.match(usCatalogMigration, /source_key = 'us-scotus'/u);
+  assert.match(usCatalogMigration, /source_key = v_candidate_snapshot\.source_key/u);
+  assert.match(usCatalogMigration, /default_text_access_policy not in \('metadata_only', 'index_only'\)/u);
+  assert.match(usCatalogMigration, /article_version_capture_v4/u);
+  assert.match(usCatalogMigration, /'authoritative_source'/u);
+  assert.match(usCatalogMigration, /'cleanedText',''/u);
+  assert.match(usCatalogMigration, /case_catalog_publication_events_v1\(publication_id, publication_revision\)/u);
+  assert.match(usCatalogMigration, /enable row level security/u);
+  assert.match(usCatalogMigration, /revoke all on function us_conan_candidate_publish_catalog_v1/u);
+  assert.doesNotMatch(usCatalogMigration, /gemini|summary_json\s*=/iu);
 });
 
 function importInput(execute: boolean) {
