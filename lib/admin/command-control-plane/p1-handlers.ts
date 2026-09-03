@@ -9,6 +9,8 @@ import {
 } from "@/lib/ingest/summary-batch";
 import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
 import { runIngest } from "@/lib/ingest/run";
+import { runCaseBackfillPass } from "@/lib/backfill/service";
+import type { CaseBackfillAttemptAuthority, CaseBackfillPhase } from "@/lib/backfill/types";
 
 const cohortSchema = z.enum(["daily", "candidate-retry", "manual"]);
 const sourceKeySchema = z.enum([
@@ -37,6 +39,15 @@ const summarizeSchema = z.object({
 
 const candidateSchema = z.object({ cohort: cohortSchema, candidateId: z.string().uuid() }).strict();
 const scopeSchema = z.object({ cohort: cohortSchema, scope: z.literal("all").default("all") }).strict();
+const caseBackfillSchema = z.object({
+  cohort: z.literal("catalog-backfill"),
+  snapshotId: z.string().uuid(),
+  passNumber: z.number().int().min(1).max(2_147_483_647),
+  batchLimit: z.number().int().min(1).max(100).default(50),
+  parserVersion: z.string().min(1).max(120).optional(),
+  normalizationContractVersion: z.string().min(1).max(120).optional(),
+  fetchContractVersion: z.string().min(1).max(120).optional(),
+}).strict();
 
 export class AdminP1HandlerError extends Error {
   constructor(
@@ -51,6 +62,7 @@ export class AdminP1HandlerError extends Error {
 export interface AdminP1HandlerContext {
   checkpoint: () => Promise<void>;
   signal: AbortSignal;
+  authority?: CaseBackfillAttemptAuthority;
 }
 
 export type AdminP1CommandHandler = (
@@ -64,6 +76,7 @@ export interface AdminP1HandlerDependencies {
   runRefreshTagCounts: typeof runRefreshTagCounts;
   executeExactCandidateRetry: typeof executeExactCandidateRetry;
   revalidatePublicCaches: (signal: AbortSignal) => Promise<{ revalidated: boolean; statusCode: number }>;
+  runCaseBackfillPass: typeof runCaseBackfillPass;
 }
 
 async function revalidatePublicCaches(signal: AbortSignal) {
@@ -96,6 +109,7 @@ const defaultDependencies: AdminP1HandlerDependencies = {
   runRefreshTagCounts,
   executeExactCandidateRetry,
   revalidatePublicCaches,
+  runCaseBackfillPass,
 };
 
 function invalidPayload(): never {
@@ -110,6 +124,27 @@ function parsePayload<Schema extends z.ZodTypeAny>(schema: Schema, payloadRef: R
 export function createAdminP1CommandHandlers(
   dependencies: AdminP1HandlerDependencies = defaultDependencies,
 ): Record<AdminQueueP1CommandType, AdminP1CommandHandler> {
+  const caseBackfillHandler = (phase: CaseBackfillPhase): AdminP1CommandHandler => async (payloadRef, context) => {
+    const payload = parsePayload(caseBackfillSchema, payloadRef);
+    if (!context.authority) throw new AdminP1HandlerError("case_backfill.attempt_authority_missing", "terminal");
+    await context.checkpoint();
+    try {
+      const result = await dependencies.runCaseBackfillPass({ ...payload, phase }, {
+        authority: context.authority,
+        checkpoint: context.checkpoint,
+        signal: context.signal,
+      });
+      await context.checkpoint();
+      return { ...result };
+    } catch (error) {
+      const code = error instanceof Error && /^[a-z][a-z0-9._-]{0,159}$/.test(error.message)
+        ? error.message
+        : "case_backfill.pass_failed";
+      const retryable = /network|timeout|rate|429|502|503|504/.test(code);
+      throw new AdminP1HandlerError(code, retryable ? "retryable" : "terminal");
+    }
+  };
+
   return {
     "p1.collect": async (payloadRef, context) => {
       const payload = parsePayload(collectSchema, payloadRef);
@@ -196,5 +231,12 @@ export function createAdminP1CommandHandlers(
       if (!result.revalidated) throw new AdminP1HandlerError("cache.revalidation_failed", "retryable");
       return { revalidated: true, statusCode: result.statusCode };
     },
+
+    "p1.case-backfill.discover": caseBackfillHandler("discover"),
+    "p1.case-backfill.fetch": caseBackfillHandler("fetch"),
+    "p1.case-backfill.normalize": caseBackfillHandler("normalize"),
+    "p1.case-backfill.verify": caseBackfillHandler("verify"),
+    "p1.case-backfill.publish": caseBackfillHandler("publish"),
+    "p1.case-backfill.reconcile": caseBackfillHandler("reconcile"),
   };
 }

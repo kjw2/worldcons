@@ -147,6 +147,46 @@ test("claimed work heartbeats and completes with its fencing token", async () =>
   assert.equal(completed, true);
 });
 
+test("constitutional backfill handler receives the exact claimed attempt authority", async () => {
+  const leaseExpiresAt = new Date(Date.now() + 60_000).toISOString();
+  const catalogAuthority = resolveAdminQueueP1Authority({
+    ADMIN_QUEUE_V3_WORKER_ENABLED: "true",
+    ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES: "p1.case-backfill.fetch",
+    ADMIN_QUEUE_V3_WORKER_COHORTS: "catalog-backfill",
+  });
+  let observed: { attemptId: string; runId: string; fencingToken: string; leaseExpiresAt: string } | undefined;
+  const result = await runAdminCommandWorkerP1({
+    authority: catalogAuthority,
+    service: fakeService({
+      nextClaim: claim({
+        commandType: "p1.case-backfill.fetch",
+        payloadRef: {
+          cohort: "catalog-backfill",
+          snapshotId: "33333333-3333-4333-8333-333333333333",
+          passNumber: 1,
+          batchLimit: 50,
+        },
+        fencingToken: "29",
+        leaseExpiresAt,
+      }),
+    }),
+    maxCommands: 1,
+    handlers: {
+      "p1.case-backfill.fetch": async (_payload, context) => {
+        observed = context.authority;
+        return { claimed: 0 };
+      },
+    },
+  });
+  assert.equal(result.succeeded, 1);
+  assert.deepEqual(observed, {
+    attemptId: "attempt-1",
+    runId: "run-1",
+    fencingToken: "29",
+    leaseExpiresAt,
+  });
+});
+
 test("abort observed between bounded handler steps stops execution without a stale failure commit", async () => {
   let heartbeatCount = 0;
   let failed = false;

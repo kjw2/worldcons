@@ -22,6 +22,7 @@
     "refresh-tag-counts": "tsx scripts/refresh-tag-counts.ts",
     "analytics:retention": "tsx scripts/purge-site-analytics.ts",
     "backfill:case-numbers": "tsx scripts/backfill-case-numbers.ts",
+    "backfill:corpus": "tsx scripts/backfill-corpus.ts",
     "backfill:embeddings": "tsx scripts/backfill-embeddings.ts",
     "canonicalize:terms": "tsx scripts/canonicalize-source-terminology.ts",
     "canonicalize:french-terms": "tsx scripts/canonicalize-source-terminology.ts --source=fr-conseil-constitutionnel",
@@ -57,12 +58,13 @@
     "test:embeddings": "tsx --test tests/embedding-provider.test.ts tests/embedding-vector.test.ts",
     "test:public-regression": "tsx --test tests/homepage-regression.test.ts tests/public-design-slop.test.ts tests/seo-public-surface.test.ts",
     "typecheck": "tsc --noEmit",
-    "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:masterdash && pnpm test:public-regression && pnpm test:plugin && pnpm plugin:validate && pnpm build",
+    "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:masterdash && pnpm test:backfill && pnpm test:public-regression && pnpm test:plugin && pnpm plugin:validate && pnpm build",
     "plugin:validate": "tsx scripts/validate-chatgpt-plugin.ts",
     "plugin:smoke": "tsx scripts/smoke-chatgpt-plugin.ts",
     "test:plugin": "tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts",
     "test:ingest-workflow": "tsx --test tests/ingest-workflow-hardening.test.ts tests/bverfg-workflow-contract.test.ts",
     "test:masterdash": "tsx --test tests/masterdash-integration.test.ts",
+    "test:backfill": "tsx --test tests/constitutional-case-backfill-gate1.test.ts tests/constitutional-case-backfill-gate1.postgres.test.ts",
     "check": "tsx scripts/check.ts"
   },
   "dependencies": {

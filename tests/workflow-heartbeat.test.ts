@@ -26,6 +26,16 @@ test("workflow heartbeat uses each workflow's 2.5x processing interval", () => {
     lastStartedAt: "2026-08-29T00:00:00.000Z",
     lastCompletedAt: "2026-08-29T00:30:00.000Z",
   }), NOW), false);
+  assert.equal(workflowHeartbeatIsStale(heartbeat({
+    workflowKey: "catalog_backfill",
+    lastStartedAt: "2026-08-29T12:00:00.000Z",
+    lastCompletedAt: "2026-08-29T12:01:00.000Z",
+  }), NOW), false);
+  assert.equal(workflowHeartbeatIsStale(heartbeat({
+    workflowKey: "catalog_backfill",
+    lastStartedAt: "2026-08-28T00:00:00.000Z",
+    lastCompletedAt: "2026-08-28T00:01:00.000Z",
+  }), NOW), true);
 });
 
 test("missing, failed, or invalid heartbeat is stale", () => {

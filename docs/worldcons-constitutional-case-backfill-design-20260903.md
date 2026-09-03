@@ -3,7 +3,7 @@
 - 최초 작성: 2026-09-03
 - 심층 검토·개정: 2026-09-03
 - 대상 프로젝트: `worldcons`
-- 상태: Gate 0 아키텍처 승인, source별 운영 정책 확정 후 Spain vertical slice 구현
+- 상태: Gate 1 로컬 구현·production-shaped PostgreSQL 검증 완료, 운영 migration·source policy 승인·Spain canary 전
 - 운영 스택: Vercel + Supabase/PostgreSQL
 - AI·임베딩 공급자: Gemini 전용
 
@@ -1845,6 +1845,13 @@ parser/source policy version
 7. current/verified/published normalization pointer와 phase 전이 RPC
 8. `plan/discover/fetch/normalize/verify/reconcile/status` CLI
 9. `catalog_backfill` heartbeat
+
+구현 보정:
+
+- P1 pass의 `batchLimit`은 한 command가 처리할 총 item 상한이다. DB claim RPC는 그 상한 이하만 허용하고 worker는 item을 하나씩 claim한다. 아직 처리하지 않은 항목의 lease가 순차 처리 대기 중 만료되는 일을 피하고, 현재 item은 checkpoint마다 lease를 갱신한다.
+- `source_backfill_runs`는 현재 P1 attempt ID와 fencing token을 보존한다. matching run이 `running`이 아니면 item claim을 거부하고, source run이 종결되지 않은 P1 attempt의 성공도 거부한다. P1 failure/abort/lease expiry는 item claim과 source run을 함께 종결한다.
+- 유효기간이 지난 source policy로 snapshot을 열거나 새 fetch artifact를 기록할 수 없다. migration은 법적·운영 판단값을 임의 seed하지 않는다.
+- Gate 1 release 검증은 PostgreSQL URL이 없는 skip을 승인 증거로 인정하지 않는다. disposable PostgreSQL에서 실제 migration·RPC·trigger를 실행한다.
 
 canary:
 

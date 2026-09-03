@@ -1,6 +1,6 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 
-export const WORKFLOW_KEYS = ["collection", "summary", "embedding", "watchdog"] as const;
+export const WORKFLOW_KEYS = ["collection", "summary", "embedding", "watchdog", "catalog_backfill"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 export type WorkflowHeartbeatStatus = "running" | "success" | "failed" | "deferred";
 
@@ -94,6 +94,7 @@ export const WORKFLOW_EXPECTED_INTERVAL_SECONDS: Record<WorkflowKey, number> = {
   summary: 21_600,
   embedding: 21_600,
   watchdog: 900,
+  catalog_backfill: 86_400,
 };
 
 export function workflowHeartbeatIsStale(record: WorkflowHeartbeatRecord | null | undefined, now = Date.now()) {

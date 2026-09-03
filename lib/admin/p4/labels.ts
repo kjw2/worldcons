@@ -151,7 +151,7 @@ export function commandStage(commandType: string): AdminWorkStage {
   const value = commandType.toLowerCase();
   if (/publish|cache|outbox/.test(value)) return "publish";
   if (/review|article|glossary/.test(value)) return "review";
-  if (/summar|derived|tag|llm/.test(value)) return "process";
+  if (/summar|derived|tag|llm|normaliz|verify/.test(value)) return "process";
   return "collect";
 }
 

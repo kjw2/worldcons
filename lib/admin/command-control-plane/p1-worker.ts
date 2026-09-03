@@ -178,7 +178,16 @@ async function executeClaimedAttempt(
       throw new AdminP1HandlerError("authority_mismatch", "terminal");
     }
     await checkpoint();
-    const handlerPromise = Promise.resolve().then(() => handler(claim.payloadRef, { checkpoint, signal: abortController.signal }));
+    const handlerPromise = Promise.resolve().then(() => handler(claim.payloadRef, {
+      checkpoint,
+      signal: abortController.signal,
+      authority: {
+        attemptId: claim.attemptId,
+        runId: claim.runId,
+        fencingToken: claim.fencingToken,
+        leaseExpiresAt: claim.leaseExpiresAt,
+      },
+    }));
     const resultSummary = await awaitWithAbort(handlerPromise);
     await checkpoint();
     handlerActive = false;

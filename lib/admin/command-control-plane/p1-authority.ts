@@ -8,9 +8,15 @@ export const ADMIN_QUEUE_P1_COMMAND_TYPES = [
   "p1.candidate.retry",
   "p1.refresh-derived",
   "p1.public-cache.revalidate",
+  "p1.case-backfill.discover",
+  "p1.case-backfill.fetch",
+  "p1.case-backfill.normalize",
+  "p1.case-backfill.verify",
+  "p1.case-backfill.publish",
+  "p1.case-backfill.reconcile",
 ] as const;
 
-export const ADMIN_QUEUE_P1_COHORTS = ["daily", "candidate-retry", "manual"] as const;
+export const ADMIN_QUEUE_P1_COHORTS = ["daily", "candidate-retry", "manual", "catalog-backfill", "catalog-enrichment"] as const;
 
 export type AdminQueueP1CommandType = (typeof ADMIN_QUEUE_P1_COMMAND_TYPES)[number];
 export type AdminQueueP1Cohort = (typeof ADMIN_QUEUE_P1_COHORTS)[number];

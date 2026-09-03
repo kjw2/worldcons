@@ -30,7 +30,25 @@ const LIST_PATHS = ["/HJ/es/Resolucion/List", "/es/Resolucion/List"];
 const RESOLUTION_TYPES = ["SENTENCIA", "AUTO", "DECLARACION"] as const;
 const spainRobotsByOrigin = new Map<string, RobotsResult>();
 
-type SpainResolutionType = (typeof RESOLUTION_TYPES)[number];
+export type SpainResolutionType = (typeof RESOLUTION_TYPES)[number];
+
+export interface SpainTcInventoryItem {
+  stableItemKey: string;
+  sourceRecordId: string;
+  discoveredUrl: string;
+  documentType: SpainResolutionType;
+  decisionDateHint: string | null;
+  title: string | null;
+}
+
+export interface SpainTcInventoryResult {
+  sourceKey: typeof SPAIN_TC_SOURCE_KEY;
+  year: number;
+  documentType: SpainResolutionType;
+  items: SpainTcInventoryItem[];
+  pageCount: number;
+  coverageEvidence: Record<string, unknown>;
+}
 
 interface SearchSession {
   indexUrl: string;
@@ -1016,30 +1034,20 @@ async function fetchListPage(
       mergeSetCookies(session.cookies, getSetCookies(response.headers));
       const html = await response.text();
       await checkpointCrawlerExecution(hooks);
-      const $ = load(html);
-      const items = new Map<string, string | undefined>();
-      $("a[href*='/Resolucion/Show/']").each((_, anchor) => {
-        assertCrawlerExecution(hooks);
-        const href = $(anchor).attr("href") ?? "";
-        const id = href.match(/\/Resolucion\/Show\/(\d+)/i)?.[1];
-        if (!id || id === "0") return;
-        if (items.has(id)) return;
-        const title = $(anchor).text().replace(/\s+/g, " ").trim() || undefined;
-        items.set(id, title);
-      });
+      const items = parseSpainTcListPage(html, hooks);
       addAttempt(diagnostics, {
         url,
         finalUrl: response.url,
         strategy: "api",
         status: response.status,
         contentType: response.headers.get("content-type") ?? undefined,
-        discoveredCount: items.size,
+        discoveredCount: items.length,
         htmlLength: html.length,
         result: response.ok ? "success" : "failed",
       });
-      if (response.ok && items.size > 0) return [...items.entries()].map(([id, title]) => ({ id, title }));
+      if (response.ok && items.length > 0) return items;
       if (response.ok && page > 1) return [];
-      lastError = `Spain HJ List page ${page} returned ${items.size} items from ${url}`;
+      lastError = `Spain HJ List page ${page} returned ${items.length} items from ${url}`;
     } catch (error) {
       if (hooks?.signal?.aborted) throw hooks.signal.reason;
       lastError = errorMessage(error);
@@ -1055,6 +1063,106 @@ async function fetchListPage(
 
   if (page > 1) return [];
   throw new Error(lastError ?? `Spain HJ List page ${page} failed.`);
+}
+
+export function parseSpainTcListPage(html: string, hooks?: CrawlerExecutionHooks) {
+  const $ = load(html);
+  const items = new Map<string, string | undefined>();
+  $("a[href*='/Resolucion/Show/']").each((_, anchor) => {
+    assertCrawlerExecution(hooks);
+    const href = $(anchor).attr("href") ?? "";
+    const id = href.match(/\/Resolucion\/Show\/(\d+)/i)?.[1];
+    if (!id || id === "0" || items.has(id)) return;
+    const title = $(anchor).text().replace(/\s+/g, " ").trim() || undefined;
+    items.set(id, title);
+  });
+  return [...items.entries()].map(([id, title]) => ({ id, title }));
+}
+
+export async function discoverSpainTcInventory(input: {
+  year: number;
+  documentType?: SpainResolutionType;
+  maxPages?: number;
+  diagnostics?: CrawlerDiagnosticsCollector;
+  signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
+}): Promise<SpainTcInventoryResult> {
+  if (!Number.isInteger(input.year) || input.year < 1980 || input.year > 2100) {
+    throw new Error("Spain HJ inventory year is invalid.");
+  }
+  const documentType = input.documentType ?? "SENTENCIA";
+  const maxPages = input.maxPages ?? envNumber("SPAIN_BACKFILL_MAX_PAGES", SPAIN_TC_DEFAULT_BACKFILL_MAX_PAGES);
+  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 2000) {
+    throw new Error("Spain HJ inventory maxPages is invalid.");
+  }
+  const diagnostics = input.diagnostics ?? createDiagnosticsCollector(SPAIN_TC_SOURCE_KEY);
+  const hooks: CrawlerExecutionHooks = { signal: input.signal, checkpoint: input.checkpoint };
+  const from = `${input.year}-01-01`;
+  const to = `${input.year}-12-31`;
+  const session = await createSearchSession(diagnostics, hooks);
+  const hasResults = await submitSearch(session, { type: documentType, year: input.year, from, to }, diagnostics, hooks);
+  if (!hasResults) {
+    return {
+      sourceKey: SPAIN_TC_SOURCE_KEY,
+      year: input.year,
+      documentType,
+      items: [],
+      pageCount: 0,
+      coverageEvidence: {
+        method: "official_hj_search_pagination",
+        searchUrl: session.indexUrl,
+        scopeFrom: from,
+        scopeTo: to,
+        documentType,
+        exhausted: true,
+        pageCount: 0,
+      },
+    };
+  }
+
+  const items = new Map<string, SpainTcInventoryItem>();
+  let pageCount = 0;
+  let exhausted = false;
+  for (let page = 1; page <= maxPages; page += 1) {
+    await checkpointCrawlerExecution(hooks);
+    const pageItems = await fetchListPage(session, page, diagnostics, hooks);
+    if (pageItems.length === 0) {
+      exhausted = true;
+      break;
+    }
+    pageCount = page;
+    for (const item of pageItems) {
+      if (items.has(item.id)) continue;
+      const decisionDateHint = parseTitleDate(item.title, input.year) ?? null;
+      items.set(item.id, {
+        stableItemKey: `hj:${item.id}`,
+        sourceRecordId: item.id,
+        discoveredUrl: canonicalSpainTcUrl(item.id),
+        documentType,
+        decisionDateHint,
+        title: item.title ?? null,
+      });
+    }
+  }
+  if (!exhausted) throw new Error("Spain HJ inventory pagination did not exhaust within maxPages.");
+
+  return {
+    sourceKey: SPAIN_TC_SOURCE_KEY,
+    year: input.year,
+    documentType,
+    items: [...items.values()].sort((left, right) => Number(left.sourceRecordId) - Number(right.sourceRecordId)),
+    pageCount,
+    coverageEvidence: {
+      method: "official_hj_search_pagination",
+      searchUrl: session.indexUrl,
+      scopeFrom: from,
+      scopeTo: to,
+      documentType,
+      exhausted,
+      pageCount,
+      discoveredCount: items.size,
+    },
+  };
 }
 
 function boundedLimit(options: CrawleeSpiderOptions) {
