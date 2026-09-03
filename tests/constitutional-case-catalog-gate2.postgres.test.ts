@@ -17,7 +17,10 @@ const p2 = migration("20260712170000_article_lifecycle_p2.sql");
 const p3 = vectorFallback(migration("20260712200000_article_publication_p3.sql"));
 const caseKeys = vectorFallback(migration("20260826400000_case_keys_and_ranked_pagination.sql"));
 const gate1 = migration("20260903120000_constitutional_case_backfill_gate1.sql");
+const requestGovernor = migration("20260903181000_constitutional_case_source_request_governor.sql");
 const inventoryProvenance = migration("20260903182000_constitutional_case_inventory_provenance.sql");
+const phaseAwareSourceHosts = migration("20260903184000_constitutional_case_phase_aware_source_hosts.sql");
+const enumerationArtifacts = migration("20260903185000_constitutional_case_enumeration_artifacts.sql");
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
 const gate3 = migration("20260903140000_constitutional_case_search_gate3.sql");
 const gate4 = migration("20260903150000_constitutional_case_multilingual_search_gate4.sql");
@@ -28,6 +31,7 @@ const usCatalog = migration("20260903173000_constitutional_case_us_catalog_gate5
 const usCanary = migration("20260903174000_constitutional_case_us_catalog_canary_gate5.sql");
 const viewSecurity = migration("20260903175000_constitutional_case_catalog_view_security.sql");
 const francePublicAttribution = migration("20260903183000_constitutional_case_france_public_attribution.sql");
+const germanyPublicAttribution = migration("20260903186000_constitutional_case_germany_public_attribution.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -93,6 +97,25 @@ const franceInventoryMetadata = {
     url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
     attribution: "DILA",
   },
+};
+
+const germanyOfficialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/03/rk20240326_2bvr054721.html";
+const germanyInventoryMetadata = {
+  discoveryIndex: "dejure.org",
+  discoveryIndexPage: 1,
+  discoveryIndexUrl: "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG",
+  discoveryRecordUrl: "https://dejure.org/dienste/vernetzung/rechtsprechung?Gericht=BVerfG&Datum=26.03.2024&Aktenzeichen=2+BvR+547%2F21",
+  decisionDate: "2024-03-26",
+  docket: "2 BvR 547/21",
+  docketKey: "2bvr54721",
+  officialUrlCandidates: [
+    germanyOfficialUrl,
+    "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/03/rs20240326_2bvr054721.html",
+  ],
+  officialUrlResolverVersion: 2,
+  officialUrlResolved: true,
+  sourceUrlVerified: false,
+  authorityVerificationRequired: true,
 };
 
 async function insertArticle(pool: Pool, suffix: string, status = "cleaned") {
@@ -227,6 +250,9 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         'fr-conseil-constitutionnel','Conseil constitutionnel','France',
         'https://www.conseil-constitutionnel.fr','fr'
       ),(
+        'de-bverfg','Bundesverfassungsgericht','Germany',
+        'https://www.bundesverfassungsgericht.de','de'
+      ),(
         'us-scotus','Supreme Court of the United States','United States',
         'https://www.supremecourt.gov','en'
       );
@@ -254,7 +280,10 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(p3);
     await setup.query(caseKeys);
     await setup.query(gate1);
+    await setup.query(requestGovernor);
     await setup.query(inventoryProvenance);
+    await setup.query(phaseAwareSourceHosts);
+    await setup.query(enumerationArtifacts);
     await setup.query(policySql);
 
     const legacyArticle = await setup.query<{ id: string }>(`
@@ -287,6 +316,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(gate4);
     await setup.query(viewSecurity);
     await setup.query(francePublicAttribution);
+    await setup.query(germanyPublicAttribution);
   } finally {
     await setup.end();
   }
@@ -413,6 +443,98 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         }),
         /CASE_CATALOG_FRANCE_PUBLIC_ATTRIBUTION_UNSEALED/,
       );
+    });
+
+    await t.test("Germany Catalog publication requires sealed BVerfG authority and discover-only index evidence", async () => {
+      await pool.query(`insert into source_corpus_policies(
+        source_key,policy_version,scope_definition,official_scope_url,discovery_methods,
+        authority_hosts,redirect_hosts,external_index_hosts,robots_url,robots_observed_at,robots_rules_hash,
+        license_basis,default_text_access_policy,allow_raw_snapshot,normalize_replay_policy,
+        bounded_replay_fields,retention_days,min_request_delay_ms,max_concurrency,
+        reviewed_by,reviewed_at,review_due_at
+      ) values (
+        'de-bverfg','bverfg-attribution-test-v1','{"scope":"2024 website publications"}',
+        'https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html',
+        array['external_index_dejure_paged_listing'],array['www.bundesverfassungsgericht.de'],
+        array['www.bverfg.de'],array['dejure.org'],'https://www.bundesverfassungsgericht.de/robots.txt',
+        now(),repeat('1',64),'official-public-record','metadata_only',false,'bounded_evidence',
+        array['metadata'],3650,30000,1,'catalog-test',now(),now()+interval '1 year'
+      )`);
+      const snapshot = await pool.query<{ id: string }>(`select source_inventory_snapshot_open_v1(
+        'de-bverfg','2024-01-01','2024-12-31','DECISION','external_index_dejure_paged_listing',
+        'bverfg-official-normalize-v1','bverfg-attribution-test-v1','external_index_assisted',null,null,
+        '{"officialCorpusCoverageClaimed":false,"crossedOlderBoundary":true,"firstPageProbeStable":true}'::jsonb,
+        '[]'::jsonb,'catalog-test'
+      ) id`);
+      const snapshotId = snapshot.rows[0].id;
+      const stableItemKey = "dejure:2024-03-26:2bvr54721";
+      await pool.query(`select source_inventory_item_upsert_v2(
+        $1,$2,null,$3,'DECISION','2024-03-26',$4::jsonb
+      )`, [snapshotId, stableItemKey, germanyOfficialUrl, JSON.stringify(germanyInventoryMetadata)]);
+      for (const [kind, sequence] of [["page", 1], ["boundary_probe", 1]] as const) {
+        await pool.query(`insert into source_inventory_enumeration_artifacts(
+          snapshot_id,source_key,provider_key,artifact_kind,sequence_no,request_url,
+          response_hash,record_manifest_hash,record_count,newest_decision_date,oldest_decision_date,
+          observed_last_page,safe_details
+        ) values($1,'de-bverfg','dejure.org',$2,$3,
+          'https://dejure.org/dienste/rechtsprechung?gericht=BVerfG',repeat($4,64),repeat($5,64),1,
+          '2024-03-26','2024-03-26',425,'{"storesExternalText":false}'::jsonb
+        )`, [snapshotId, kind, sequence, kind === "page" ? "2" : "3", kind === "page" ? "4" : "5"]);
+      }
+      const closed = await pool.query<{ manifest_hash: string }>(
+        "select manifest_hash from source_inventory_snapshot_close_v3($1)", [snapshotId],
+      );
+      const article = await pool.query<{ id: string }>(`insert into articles(
+        source_id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,
+        original_language,original_title,original_published_at,status,slug,source_metadata
+      ) values(
+        (select id from sources where source_key='de-bverfg'),'de-bverfg','Germany','Bundesverfassungsgericht',
+        'decision',$1,$1,'de','Beschluss vom 26. März 2024','2024-03-26','metadata_only',
+        'de-bverfg-attribution-test','{}'::jsonb
+      ) returning id`, [germanyOfficialUrl]);
+      const articleId = article.rows[0].id;
+      await pool.query(`insert into case_metadata_v1(
+        article_id,source_key,authority_status,authority_evidence,constitutional_relevance_status,
+        enrichment_status,text_access_policy,source_policy_version,discovery_source,authority_source
+      ) values($1,'de-bverfg','verified','{}','verified','source_only','metadata_only',
+        'bverfg-attribution-test-v1','external_index_dejure_paged_listing',$2)`, [articleId, germanyOfficialUrl]);
+      await pool.query(`insert into case_identifiers_v1(
+        article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value,is_primary,provenance_url
+      ) values($1,'de-bverfg','source_record_id','decision',$2,$3,true,$4)`, [
+        articleId,stableItemKey,stableItemKey.replace(/[^a-z0-9]/gu, ""),germanyOfficialUrl,
+      ]);
+      const capture = async (expected: number, inventory: Record<string, unknown>, sourceHash: string) => pool.query<{ version_id: string }>(`
+        select version_id from article_version_capture_v4(
+          $1,$2,'authoritative_source',null,$3,null,
+          jsonb_build_object(
+            'authorityStatus','verified','textAccessPolicy','metadata_only','sourcePolicyVersion','bverfg-attribution-test-v1',
+            'sourceMetadata',jsonb_build_object('sourceInventory',$4::jsonb)
+          ),'[]'::jsonb,repeat('6',64),$5,$6,'import','catalog-test',null,null,null
+        )`, [articleId,expected,sourceHash,JSON.stringify(inventory),snapshotId,closed.rows[0].manifest_hash]);
+
+      const validVersion = await capture(0, germanyInventoryMetadata, "7".repeat(64));
+      await catalogTransition(pool, {
+        articleId,anchor: validVersion.rows[0].version_id,expected: 0,key: "germany-attribution-valid",
+      });
+      const publicRow = await pool.query<{ source_metadata: { sourceInventory: unknown } }>(
+        "select source_metadata from public_case_catalog_projection_v1 where id=$1", [articleId],
+      );
+      assert.deepEqual(publicRow.rows[0].source_metadata.sourceInventory, germanyInventoryMetadata);
+
+      const invalidVersion = await capture(1, {
+        ...germanyInventoryMetadata,
+        discoveryIndex: "authority.invalid",
+      }, "8".repeat(64));
+      await assert.rejects(
+        catalogTransition(pool, {
+          articleId,anchor: invalidVersion.rows[0].version_id,expected: 1,key: "germany-attribution-invalid",
+        }),
+        /CASE_CATALOG_GERMANY_PUBLIC_ATTRIBUTION_UNSEALED/,
+      );
+      const privileges = await pool.query(`select
+        has_function_privilege('public','case_catalog_germany_inventory_attribution_valid_v1(jsonb,text)','execute') inventory_public,
+        has_function_privilege('public','case_catalog_germany_public_attribution_guard_v1()','execute') guard_public`);
+      assert.deepEqual(privileges.rows[0], { inventory_public: false,guard_public: false });
     });
 
     await t.test("authoritative self-anchor and current full P3 use separate heads and pointers", async () => {

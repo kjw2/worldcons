@@ -77,7 +77,7 @@ export default async function ArticlePrintPage({
   const caseNumber = articleCaseNumber(article);
   const provisions = summary?.summary.referencedProvisions.filter((provision) => provisionLabel(provision)) ?? [];
   const originalHref = safeExternalUrl(article.originalUrl);
-  const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata);
+  const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata, article.originalUrl);
 
   return (
     <main className="print-page mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -119,21 +119,44 @@ export default async function ArticlePrintPage({
 
         {sourceAttribution ? (
           <PrintSection title="공식 데이터 출처와 이용조건">
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <InfoItem label="제공기관" value={sourceAttribution.providerLabel} />
-              <InfoItem label="공식 생산기관" value={sourceAttribution.authorityLabel} />
-              <InfoItem label="DILA 자료 ID" value={sourceAttribution.dilaId} />
-              <InfoItem label="결정번호" value={sourceAttribution.decisionNumber} />
-              <InfoItem label="ECLI" value={sourceAttribution.ecli} />
-              <InfoItem label="자료 파일 기준시각" value={sourceAttribution.stockTimestamp} />
-            </dl>
-            <p className="mt-5 break-all text-sm leading-6">
-              자료 파일: <a href={sourceAttribution.stockUrl}>{sourceAttribution.stockFilename}</a>
-            </p>
-            <p className="mt-2 text-sm leading-6">
-              라이선스: <a href={sourceAttribution.licenseUrl}>{sourceAttribution.licenseLabel}</a>
-            </p>
-            <p className="mt-4 text-sm leading-6">{sourceAttribution.notice}</p>
+            {sourceAttribution.kind === "germany-bverfg" ? (
+              <>
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <InfoItem label="공식 제공기관" value={sourceAttribution.providerLabel} />
+                  <InfoItem label="공식 생산기관" value={sourceAttribution.authorityLabel} />
+                  <InfoItem label="사건번호" value={sourceAttribution.docket} />
+                  <InfoItem label="결정일" value={sourceAttribution.decisionDate} />
+                  <InfoItem label="발견 보조 자료" value={sourceAttribution.discoveryProviderLabel} />
+                  <InfoItem label="수집 범위" value={sourceAttribution.coverageLabel} />
+                </dl>
+                <p className="mt-5 break-all text-sm leading-6">
+                  공식 원문: <a href={sourceAttribution.officialUrl}>독일 연방헌법재판소 결정문</a>
+                </p>
+                <p className="mt-2 break-all text-sm leading-6">
+                  발견 기록: <a href={sourceAttribution.discoveryUrl}>dejure.org 판례 목록</a>
+                </p>
+                <p className="mt-4 text-sm leading-6">{sourceAttribution.integrityNotice}</p>
+                <p className="mt-2 text-sm leading-6">{sourceAttribution.notice}</p>
+              </>
+            ) : (
+              <>
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <InfoItem label="제공기관" value={sourceAttribution.providerLabel} />
+                  <InfoItem label="공식 생산기관" value={sourceAttribution.authorityLabel} />
+                  <InfoItem label="DILA 자료 ID" value={sourceAttribution.dilaId} />
+                  <InfoItem label="결정번호" value={sourceAttribution.decisionNumber} />
+                  <InfoItem label="ECLI" value={sourceAttribution.ecli} />
+                  <InfoItem label="자료 파일 기준시각" value={sourceAttribution.stockTimestamp} />
+                </dl>
+                <p className="mt-5 break-all text-sm leading-6">
+                  자료 파일: <a href={sourceAttribution.stockUrl}>{sourceAttribution.stockFilename}</a>
+                </p>
+                <p className="mt-2 text-sm leading-6">
+                  라이선스: <a href={sourceAttribution.licenseUrl}>{sourceAttribution.licenseLabel}</a>
+                </p>
+                <p className="mt-4 text-sm leading-6">{sourceAttribution.notice}</p>
+              </>
+            )}
           </PrintSection>
         ) : null}
 

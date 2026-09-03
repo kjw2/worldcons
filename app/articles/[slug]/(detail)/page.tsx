@@ -102,7 +102,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
   const summaryReprocessing = article.summaryStatus === "reprocessing";
   const sourceOnly = article.enrichmentStatus === "source_only";
-  const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata);
+  const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata, article.originalUrl);
   const caseNumber = articleCaseNumber(article);
   const title = articleTitleForDisplay(article);
 

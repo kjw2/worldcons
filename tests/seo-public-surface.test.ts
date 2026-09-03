@@ -106,12 +106,16 @@ test("France article and print surfaces render the shared Korean DILA attributio
   const attribution = fs.readFileSync(path.join(root, "components/article-source-attribution.tsx"), "utf8");
   const parser = fs.readFileSync(path.join(root, "lib/case-catalog/source-attribution.ts"), "utf8");
 
-  assert.match(detailPage, /publicSourceAttribution\(article[.]sourceKey, article[.]sourceMetadata\)/u);
+  assert.match(detailPage, /publicSourceAttribution\(article[.]sourceKey, article[.]sourceMetadata, article[.]originalUrl\)/u);
   assert.match(detailPage, /<ArticleSourceAttribution attribution=\{sourceAttribution\}/u);
   assert.match(printPage, /공식 데이터 출처와 이용조건/u);
   assert.match(attribution, /자료 파일 기준시각/u);
   assert.match(attribution, /라이선스/u);
   assert.match(parser, /프랑스 법률·행정정보국/u);
   assert.match(parser, /공식 원문은 AI 생성물이 아닙니다/u);
+  assert.match(attribution, /발견 보조 자료/u);
+  assert.match(parser, /독일 연방헌법재판소/u);
+  assert.match(parser, /외부 인덱스 보조 수집/u);
+  assert.match(parser, /독일어 공식 원문만 권위 있는 자료/u);
   assert.match(parser, /보증을 의미하지 않습니다/u);
 });

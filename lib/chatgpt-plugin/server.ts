@@ -171,20 +171,33 @@ function articleText(article: ArticleForText) {
     "## 보존된 공식 원문 발췌",
     article.sourceExcerpt,
   ] : [];
-  const attributionLines = article.sourceAttribution ? [
-    "",
-    "## 공식 데이터 출처와 이용조건",
-    `제공기관: ${article.sourceAttribution.providerLabel}`,
-    `공식 생산기관: ${article.sourceAttribution.authorityLabel}`,
-    `DILA 자료 ID: ${article.sourceAttribution.dilaId}`,
-    `결정번호: ${article.sourceAttribution.decisionNumber}`,
-    article.sourceAttribution.ecli ? `ECLI: ${article.sourceAttribution.ecli}` : null,
-    `자료 파일: ${article.sourceAttribution.stockFilename}`,
-    `자료 파일 기준시각: ${article.sourceAttribution.stockTimestamp}`,
-    `DILA 배포 원본: ${article.sourceAttribution.stockUrl}`,
-    `라이선스: ${article.sourceAttribution.licenseLabel} · ${article.sourceAttribution.licenseUrl}`,
-    article.sourceAttribution.notice,
-  ] : [];
+  const attributionLines = !article.sourceAttribution ? []
+    : article.sourceAttribution.kind === "germany-bverfg" ? [
+      "",
+      "## 공식 데이터 출처와 이용조건",
+      `공식 제공기관: ${article.sourceAttribution.providerLabel}`,
+      `사건번호: ${article.sourceAttribution.docket}`,
+      `결정일: ${article.sourceAttribution.decisionDate}`,
+      `공식 원문: ${article.sourceAttribution.officialUrl}`,
+      `발견 보조 자료: ${article.sourceAttribution.discoveryProviderLabel}`,
+      `발견 기록: ${article.sourceAttribution.discoveryUrl}`,
+      `수집 범위: ${article.sourceAttribution.coverageLabel}`,
+      article.sourceAttribution.integrityNotice,
+      article.sourceAttribution.notice,
+    ] : [
+      "",
+      "## 공식 데이터 출처와 이용조건",
+      `제공기관: ${article.sourceAttribution.providerLabel}`,
+      `공식 생산기관: ${article.sourceAttribution.authorityLabel}`,
+      `DILA 자료 ID: ${article.sourceAttribution.dilaId}`,
+      `결정번호: ${article.sourceAttribution.decisionNumber}`,
+      article.sourceAttribution.ecli ? `ECLI: ${article.sourceAttribution.ecli}` : null,
+      `자료 파일: ${article.sourceAttribution.stockFilename}`,
+      `자료 파일 기준시각: ${article.sourceAttribution.stockTimestamp}`,
+      `DILA 배포 원본: ${article.sourceAttribution.stockUrl}`,
+      `라이선스: ${article.sourceAttribution.licenseLabel} · ${article.sourceAttribution.licenseUrl}`,
+      article.sourceAttribution.notice,
+    ];
   const lines = [
     `# ${article.title}`,
     article.originalTitle ? `원문 제목: ${article.originalTitle}` : null,

@@ -11,6 +11,32 @@ function AttributionItem({ label, children }: { label: string; children: ReactNo
 }
 
 export function ArticleSourceAttribution({ attribution }: { attribution: PublicSourceAttribution }) {
+  if (attribution.kind === "germany-bverfg") {
+    return (
+      <section className="border-y border-archive-line-strong bg-archive-surface-soft px-1 py-5 sm:px-4" aria-labelledby="official-data-attribution-heading">
+        <h2 id="official-data-attribution-heading" className="archive-rule-title text-base font-semibold text-archive-heading">
+          공식 데이터 출처와 이용조건
+        </h2>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          <AttributionItem label="공식 제공기관">{attribution.providerLabel}</AttributionItem>
+          <AttributionItem label="공식 생산기관">{attribution.authorityLabel}</AttributionItem>
+          <AttributionItem label="사건번호">{attribution.docket}</AttributionItem>
+          <AttributionItem label="결정일">{attribution.decisionDate}</AttributionItem>
+          <AttributionItem label="발견 보조 자료">{attribution.discoveryProviderLabel}</AttributionItem>
+          <AttributionItem label="수집 범위">{attribution.coverageLabel}</AttributionItem>
+        </dl>
+        <p className="mt-4 break-all text-sm leading-6 text-archive-text">
+          공식 원문: <a href={attribution.officialUrl} target="_blank" rel="noreferrer" className="focus-ring rounded-sm font-semibold text-archive-accent underline decoration-archive-line-strong underline-offset-4">독일 연방헌법재판소 결정문</a>
+        </p>
+        <p className="mt-2 break-all text-sm leading-6 text-archive-text">
+          발견 기록: <a href={attribution.discoveryUrl} target="_blank" rel="noreferrer" className="focus-ring rounded-sm font-semibold text-archive-accent underline decoration-archive-line-strong underline-offset-4">dejure.org 판례 목록</a>
+        </p>
+        <p className="mt-4 text-sm leading-6 text-archive-muted">{attribution.integrityNotice}</p>
+        <p className="mt-2 text-sm leading-6 text-archive-muted">{attribution.notice}</p>
+      </section>
+    );
+  }
+
   return (
     <section className="border-y border-archive-line-strong bg-archive-surface-soft px-1 py-5 sm:px-4" aria-labelledby="official-data-attribution-heading">
       <h2 id="official-data-attribution-heading" className="archive-rule-title text-base font-semibold text-archive-heading">

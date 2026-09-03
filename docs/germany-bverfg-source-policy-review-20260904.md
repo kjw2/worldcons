@@ -107,6 +107,10 @@ The first canary stays `metadata_only` because the official notice's non-alterat
 
 ## Required implementation order
 
+Implementation status as of 2026-09-04: steps 1–4 are implemented and covered by database and fixture tests. A read-only `pnpm verify:bverfg-inventory -- --year=2024` command validates the annual boundary, page sequence, evidence hashes, official URL candidates, and the explicit `external_index_assisted` limitation without opening a snapshot or calling Gemini. The append-only enumeration ledger is part of the closed snapshot manifest.
+
+The public-attribution guard required by step 6 is also implemented in advance. It fail-closes Germany Catalog publication unless the authoritative BVerfG URL, exact sealed inventory item, dejure page and boundary-probe evidence, and source identifier all match. The website, print page, and ChatGPT response identify dejure only as a discovery aid and state that German official text is authoritative. This code does not authorize steps 5 or 6 in production; the owner decisions below remain mandatory.
+
 1. Make the durable request governor phase-aware: external index hosts are discover-only, while fetch remains restricted to authority/redirect hosts.
 2. Add a bounded, resumable Germany annual scope and P1 strategy without changing the daily crawler's operational limit.
 3. Build an append-only external enumeration artifact with provider page/count/hash evidence and no external full text.

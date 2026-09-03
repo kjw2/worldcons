@@ -10,6 +10,22 @@ import { publicSourceAttribution } from "../lib/case-catalog/source-attribution"
 import { handleWorldconsMcpRequest } from "../lib/chatgpt-plugin/http-handler";
 import { CatalogSearchCursorError } from "../lib/search/case-catalog";
 
+const germanyOfficialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2021/03/rs20210324_1bvr265618.html";
+const germanyInventoryMetadata = {
+  discoveryIndex: "dejure.org",
+  discoveryIndexPage: 1,
+  discoveryIndexUrl: "https://dejure.org/dienste/rechtsprechung?gericht=BVerfG",
+  discoveryRecordUrl: "https://dejure.org/dienste/vernetzung/rechtsprechung?Gericht=BVerfG&Datum=24.03.2021&Aktenzeichen=1+BvR+2656%2F18",
+  decisionDate: "2021-03-24",
+  docket: "1 BvR 2656/18",
+  docketKey: "1bvr265618",
+  officialUrlCandidates: [germanyOfficialUrl],
+  officialUrlResolverVersion: 2,
+  officialUrlResolved: true,
+  sourceUrlVerified: false,
+  authorityVerificationRequired: true,
+};
+
 const fixtureArticle = {
   id: "article-1",
   slug: "germany-neubauer",
@@ -17,8 +33,8 @@ const fixtureArticle = {
   jurisdiction: "Germany",
   institutionName: "Bundesverfassungsgericht",
   contentType: "decision" as const,
-  originalUrl: "https://www.bundesverfassungsgericht.de/example",
-  canonicalUrl: "https://www.bundesverfassungsgericht.de/example",
+  originalUrl: germanyOfficialUrl,
+  canonicalUrl: germanyOfficialUrl,
   originalLanguage: "de",
   originalTitle: "Klimabeschluss",
   koreanTitle: "독일 연방헌법재판소 기후보호법 결정",
@@ -55,7 +71,7 @@ const fixtureArticle = {
   },
   cleanedText: "공식 독일어 결정문 발췌와 다음 공식 원문 구간",
   contentHash: "abc123",
-  sourceMetadata: null,
+  sourceMetadata: { sourceInventory: germanyInventoryMetadata },
 };
 
 const franceInventoryMetadata = {
@@ -143,8 +159,10 @@ test("Vercel-integrated case service exposes bounded public evidence and canonic
   const sourceText = await api.fetchSourceText("germany-neubauer", 12, 50_000);
 
   assert.equal(results[0].url, "https://worldcons.vercel.app/articles/germany-neubauer");
-  assert.equal(results[0].officialUrl, "https://www.bundesverfassungsgericht.de/example");
+  assert.equal(results[0].officialUrl, germanyOfficialUrl);
   assert.equal(article.koreanSummary?.coreSummary.length, 1);
+  assert.equal(article.sourceAttribution?.provider, "BVerfG");
+  assert.equal(article.sourceAttribution?.kind, "germany-bverfg");
   assert.equal(article.sourceExcerpt?.length, 24);
   assert.equal(sourceText.text.length, 12);
   assert.equal(sourceText.url, "https://worldcons.vercel.app/articles/germany-neubauer");
@@ -153,6 +171,28 @@ test("Vercel-integrated case service exposes bounded public evidence and canonic
     "article:germany-neubauer",
     "source-text:germany-neubauer",
   ]);
+  assert.equal(publicSourceAttribution("de-bverfg", {
+    sourceInventory: { ...germanyInventoryMetadata,officialUrlCandidates: ["https://attacker.example/case.html"] },
+  }, germanyOfficialUrl), null);
+
+  const response = await handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",id: 30,method: "tools/call",params: { name: "fetch",arguments: { id: fixtureArticle.slug } },
+    }),
+  }), api);
+  const payload = await response.json() as {
+    result: { structuredContent: { text: string; metadata: { sourceAttribution: { provider: string } } } };
+  };
+  assert.match(payload.result.structuredContent.text, /외부 인덱스 보조 수집/u);
+  assert.match(payload.result.structuredContent.text, /독일어 공식 원문만 권위 있는 자료/u);
+  assert.match(payload.result.structuredContent.text, /dejure[.]org는 판례의 발견에만 사용/u);
+  assert.equal(payload.result.structuredContent.metadata.sourceAttribution.provider, "BVerfG");
 });
 
 test("France search, fetch, and source-text responses expose one sealed Korean DILA attribution contract", async () => {
@@ -197,7 +237,8 @@ test("France search, fetch, and source-text responses expose one sealed Korean D
   const searchResult = (await api.search({ query: "2024-1115 QPC" }))[0];
   const sourceText = await api.fetchSourceText(franceArticle.slug, 0, 10);
   assert.equal(searchResult.sourceAttribution?.provider, "DILA");
-  assert.equal(sourceText.sourceAttribution?.stockTimestamp, "2025-07-13T14:00:00.000Z");
+  assert.ok(sourceText.sourceAttribution?.kind === "france-dila");
+  assert.equal(sourceText.sourceAttribution.stockTimestamp, "2025-07-13T14:00:00.000Z");
   assert.equal(sourceText.officialUrl, franceArticle.originalUrl);
 
   const response = await handleWorldconsMcpRequest(new Request("https://worldcons.vercel.app/api/mcp", {
@@ -243,9 +284,11 @@ test("France search, fetch, and source-text responses expose one sealed Korean D
   assert.equal(sourcePayload.result.structuredContent.officialUrl, franceArticle.originalUrl);
   assert.equal(sourcePayload.result.structuredContent.sourceAttribution.stockFilename, franceInventoryMetadata.stock.filename);
 
-  assert.equal(publicSourceAttribution("fr-conseil-constitutionnel", {
+  const nestedAttribution = publicSourceAttribution("fr-conseil-constitutionnel", {
     case: { sourceInventory: franceInventoryMetadata },
-  })?.stockSha256, "6".repeat(64));
+  });
+  assert.ok(nestedAttribution?.kind === "france-dila");
+  assert.equal(nestedAttribution.stockSha256, "6".repeat(64));
   assert.equal(publicSourceAttribution("fr-conseil-constitutionnel", {
     sourceInventory: { ...franceInventoryMetadata,license: { ...franceInventoryMetadata.license,attribution: "Conseil" } },
   }), null);

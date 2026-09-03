@@ -190,7 +190,7 @@ export class WorldconsCaseService {
       url: this.articleUrl(slug),
       officialUrl: snapshot.officialUrl ? requiredHttpsUrl(snapshot.officialUrl, "official URL") : null,
       sourceAttribution: snapshot.sourceKey
-        ? publicSourceAttribution(snapshot.sourceKey, snapshot.sourceMetadata)
+        ? publicSourceAttribution(snapshot.sourceKey, snapshot.sourceMetadata, snapshot.officialUrl)
         : null,
     };
   }
@@ -223,7 +223,7 @@ export class WorldconsCaseService {
       summaryStatus: article.summaryStatus ?? (summaryAvailable ? "available" : "pending"),
       summaryAvailable,
       officialMetadataAvailable: true,
-      sourceAttribution: publicSourceAttribution(article.sourceKey, article.sourceMetadata),
+      sourceAttribution: publicSourceAttribution(article.sourceKey, article.sourceMetadata, article.originalUrl),
     };
   }
 
