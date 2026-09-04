@@ -126,6 +126,8 @@ Production timing also showed that a generic default batch of 50 is too broad fo
 
 Long-running private fetch uses `pnpm backfill:bverfg-fetch-drain`. It is read-only by default, delegates only bounded `p1.case-backfill.fetch` passes after `--execute`, rechecks the durable due backlog and snapshot failure state between passes, waits for retry windows, and stops on terminal failure, repeated pass failure, idle-wait limit, or an explicit maximum pass count. Every delegated pass retains its own command/run/attempt audit records. The drain neither enables Catalog writes nor invokes Gemini.
 
+The production execution-path canary on 2026-09-04 delegated one bounded pass with `batchLimit=2`. P1 command `2018328e-44eb-4390-a6e1-6acd1a7ec6e3`, run `d7244281-da44-44ae-bb59-bb0e87838ea9`, and attempt `e95e5e51-0de1-415d-8ad3-4a8784802a1d` all succeeded. Snapshot status then reported `discoveredTotal=287`, `needsNormalize=2`, `retryWait=0`, `failed=0`, and the drain reported `remainingDueBacklog=278`. The bounded-stop exit code was intentionally non-zero because work remained; its audit output again recorded zero public Catalog writes and zero Gemini calls.
+
 ## Implementation gaps found by this review
 
 1. `scripts/backfill-corpus.ts` accepts only Spain and France. Germany has no durable annual scope or history flag.
