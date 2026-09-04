@@ -100,6 +100,30 @@ test("dejure parser ignores popular links and keeps same-docket decisions on dif
   assert.match(parsed.listingFingerprint, /^[0-9a-f]{64}$/);
 });
 
+test("dejure parser strips a duplicated date only before a resolvable BVerfG docket", () => {
+  const parsed = parseBverfgDejureInventoryPage(dejurePage([
+    { date: "02.07.2024", docket: "2.07.2024 - 1 BvR 2231/23" },
+    { date: "03.07.2024", docket: "3.07.2024 - unresolved reference" },
+  ], [1, 2]), 14);
+
+  assert.equal(parsed.items.length, 2);
+  assert.equal(parsed.items[0].decisionDateHint, "2024-07-03");
+  assert.equal(parsed.items[0].inventoryMetadata.docket, "3.07.2024 - unresolved reference");
+  assert.equal(parsed.items[0].inventoryMetadata.officialUrlResolved, false);
+
+  const corrected = parsed.items[1];
+  assert.equal(corrected.decisionDateHint, "2024-07-02");
+  assert.equal(corrected.stableItemKey, "dejure:2024-07-02:1bvr223123");
+  assert.equal(corrected.title, "BVerfG, 02.07.2024 - 1 BvR 2231/23");
+  assert.equal(corrected.inventoryMetadata.docket, "1 BvR 2231/23");
+  assert.equal(corrected.inventoryMetadata.rawDocket, "2.07.2024 - 1 BvR 2231/23");
+  assert.equal(corrected.inventoryMetadata.docketNormalization, "strip_redundant_date_prefix_v1");
+  assert.deepEqual(
+    (corrected.inventoryMetadata.officialUrlCandidates as string[]).map((url) => url.split("/").at(-1)),
+    ["rk20240702_1bvr223123.html", "rs20240702_1bvr223123.html"],
+  );
+});
+
 test("external-index inventory crosses the annual boundary and verifies a stable first-page probe", async () => {
   const fixtures = new Map<number, string>([
     [1, dejurePage([

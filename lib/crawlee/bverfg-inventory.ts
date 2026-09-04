@@ -72,6 +72,23 @@ function cleanText(value: string) {
   return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizeDejureDocket(decisionDate: string, value: string) {
+  const rawDocket = cleanText(value);
+  const redundantDate = rawDocket.match(/^\d{1,2}\.\d{1,2}\.\d{4}\s*-\s*(.+)$/);
+  if (!redundantDate) return { docket: rawDocket, rawDocket, normalization: null };
+
+  const candidate = cleanText(redundantDate[1]);
+  if (bverfgOfficialUrlCandidatesFromDocket(decisionDate, candidate).length === 0) {
+    return { docket: rawDocket, rawDocket, normalization: null };
+  }
+
+  return {
+    docket: candidate,
+    rawDocket,
+    normalization: "strip_redundant_date_prefix_v1",
+  };
+}
+
 function normalizedDocketKey(value: string) {
   return value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -140,7 +157,8 @@ export function parseBverfgDejureInventoryPage(html: string, page: number): Bver
     const match = label.match(/^BVerfG,\s*(\d{2}\.\d{2}\.\d{4})\s*-\s*(.+)$/i);
     if (!match) return;
     const decisionDate = isoDateFromGerman(match[1]);
-    const docket = cleanText(match[2]);
+    const docketNormalization = normalizeDejureDocket(match[1], match[2]);
+    const { docket } = docketNormalization;
     const docketKey = normalizedDocketKey(docket);
     if (!decisionDate || !docketKey) return;
 
@@ -157,7 +175,9 @@ export function parseBverfgDejureInventoryPage(html: string, page: number): Bver
       discoveredUrl,
       documentType: "DECISION",
       decisionDateHint: decisionDate,
-      title: descriptiveTitle || label,
+      title: descriptiveTitle || (docketNormalization.normalization
+        ? `BVerfG, ${match[1]} - ${docket}`
+        : label),
       inventoryMetadata: {
         discoveryIndex: "dejure.org",
         discoveryIndexPage: page,
@@ -165,6 +185,10 @@ export function parseBverfgDejureInventoryPage(html: string, page: number): Bver
         discoveryRecordUrl: externalIndexUrl,
         decisionDate,
         docket,
+        ...(docketNormalization.normalization ? {
+          rawDocket: docketNormalization.rawDocket,
+          docketNormalization: docketNormalization.normalization,
+        } : {}),
         docketKey,
         officialUrlCandidates,
         officialUrlResolverVersion: 2,
