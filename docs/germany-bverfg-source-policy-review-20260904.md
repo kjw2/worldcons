@@ -124,6 +124,8 @@ The next bounded fetch pass preserved four additional artifacts but its P1 attem
 
 Production timing also showed that a generic default batch of 50 is too broad for this source: the approved 30-second interval and up to two official URL candidates make a BVerfG fetch pass materially longer than normalize or verify. The CLI therefore defaults only `de-bverfg` fetch to two items per P1 pass; every other source/phase keeps the generic default of 50, and an explicit `--batch-limit` remains an audited operator override. This bounds failure recovery and lease exposure without weakening the immutable source policy or increasing concurrency.
 
+Long-running private fetch uses `pnpm backfill:bverfg-fetch-drain`. It is read-only by default, delegates only bounded `p1.case-backfill.fetch` passes after `--execute`, rechecks the durable due backlog and snapshot failure state between passes, waits for retry windows, and stops on terminal failure, repeated pass failure, idle-wait limit, or an explicit maximum pass count. Every delegated pass retains its own command/run/attempt audit records. The drain neither enables Catalog writes nor invokes Gemini.
+
 ## Implementation gaps found by this review
 
 1. `scripts/backfill-corpus.ts` accepts only Spain and France. Germany has no durable annual scope or history flag.

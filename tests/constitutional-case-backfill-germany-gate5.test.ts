@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
   assertGermanyBverfgYearEnabled,
@@ -87,6 +89,20 @@ test("Germany official fetch defaults to a bounded P1 batch without changing oth
   assert.equal(defaultCaseBackfillBatchLimit("de-bverfg", "fetch"), 2);
   assert.equal(defaultCaseBackfillBatchLimit("de-bverfg", "normalize"), DEFAULT_CASE_BACKFILL_BATCH_LIMIT);
   assert.equal(defaultCaseBackfillBatchLimit("es-tribunal-constitucional", "fetch"), DEFAULT_CASE_BACKFILL_BATCH_LIMIT);
+});
+
+test("Germany fetch drain is read-only by default and delegates only bounded fenced fetch passes", () => {
+  const script = fs.readFileSync(path.join(process.cwd(), "scripts/drain-bverfg-fetch.ts"), "utf8");
+  assert.match(script, /if \(!flag\("execute"\)\) return 0/);
+  assert.match(script, /"--source=germany"/);
+  assert.match(script, /`--batch-limit=\$\{input\.batchLimit\}`/);
+  assert.match(script, /postgresCaseBackfillRepository\.countBacklog/);
+  assert.match(script, /maxConsecutiveFailures/);
+  assert.match(script, /remainingRetryWait: finalStatus\.retryWait/);
+  assert.match(script, /finalStatus\.retryWait === 0 && finalStatus\.failed === 0/);
+  assert.match(script, /publicCatalogWrites: 0/);
+  assert.match(script, /geminiCalls: 0/);
+  assert.doesNotMatch(script, /CASE_CATALOG_WRITE_ENABLED\s*=\s*["']true/);
 });
 
 test("dejure parser ignores popular links and keeps same-docket decisions on different dates", () => {

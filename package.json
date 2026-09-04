@@ -23,6 +23,7 @@
     "analytics:retention": "tsx scripts/purge-site-analytics.ts",
     "backfill:case-numbers": "tsx scripts/backfill-case-numbers.ts",
     "backfill:corpus": "tsx scripts/backfill-corpus.ts",
+    "backfill:bverfg-fetch-drain": "tsx scripts/drain-bverfg-fetch.ts",
     "verify:france-inventory": "tsx scripts/verify-france-conseil-inventory.ts",
     "verify:bverfg-inventory": "tsx scripts/verify-bverfg-inventory.ts",
     "verify:bverfg-shadow-readiness": "tsx scripts/verify-bverfg-shadow-readiness.ts",
