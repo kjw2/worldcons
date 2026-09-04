@@ -265,6 +265,25 @@ test("Vercel provider translates a jurisdiction code into the source-owned searc
   assert.equal(rpcBody?.p_query, "");
 });
 
+test("Vercel provider infers a source boundary from a short Korean jurisdiction name", async () => {
+  let rpcBody: Record<string, unknown> | undefined;
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/search?q=%EB%8F%85%EC%9D%BC&mode=fulltext"),
+    env,
+    {
+      fetcher: async (_input, init) => {
+        rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ items: [neubauerRow()], retrievalMode: "latest" });
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(rpcBody?.p_source, "de-bverfg");
+  assert.equal(rpcBody?.p_jurisdiction, null);
+  assert.equal(rpcBody?.p_query, "");
+});
+
 test("Vercel provider semantic mode creates an embedding and passes it to V4 vector retrieval", async () => {
   const rpcCalls: Array<Record<string, unknown>> = [];
   let embeddingCalls = 0;

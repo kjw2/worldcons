@@ -286,7 +286,7 @@ function inferredSourceKey(query: string) {
 
   const weak = new Set<string>();
   for (const [jurisdiction, sourceKey] of Object.entries(JURISDICTION_SOURCE_KEYS)) {
-    if (jurisdiction.length <= 2) continue;
+    if (/^[a-z]{2,3}$/u.test(jurisdiction)) continue;
     if (query.normalize("NFKC").toLowerCase().includes(jurisdiction)) weak.add(sourceKey);
   }
   return weak.size === 1 ? [...weak][0] : null;
