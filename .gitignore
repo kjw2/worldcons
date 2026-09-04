@@ -14,3 +14,5 @@ logs
 artifacts/admin-redesign/gate0/
 supabase/.temp/
 nul
+.omo/
+.tmp-gate2-pg/
