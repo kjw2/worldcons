@@ -114,6 +114,10 @@ The first production discovery sealed snapshot `63d50ccb-9824-4460-bb06-049e410b
 
 Because the unresolved item changes immutable discovery identity, the sealed snapshot is not edited in place. Migration `20260903190000_constitutional_case_snapshot_supersession.sql` provides a CAS-protected `closed -> superseded` transition and an append-only audit ledger. It permits replacement only while the snapshot is still discovery-only: any processing run, artifact, article link, active claim, or active request permit blocks the transition. The replacement snapshot uses parser version `bverfg-official-normalize-v2`, preserves the raw malformed docket in inventory metadata, and records the conservative normalization rule. Replaying the exact supersession request is a no-op; changing its digest, count, actor, reason, or parser version is a conflict.
 
+Production applied that migration and superseded snapshot `63d50ccb-9824-4460-bb06-049e410b3015` at `2026-09-04T06:29:20.466653+00:00`. The immutable audit row records prior parser `bverfg-official-normalize-v1`, replacement parser `bverfg-official-normalize-v2`, reason `duplicate-date-docket-parser`, actor `worldcons-unattended-operations`, the exact prior manifests, and count `288`. The replacement discovery sealed snapshot `d6c7b404-2252-4369-a719-8e17d2dfaba2` with `287` items, 17 listing-page artifacts, one boundary probe, item manifest `7971b3b988a338896bfc156f56ca9bbb81fe113e9db0eafd8f4cab4e36df3446`, and enumeration manifest `f353a780f426bc2acd750fefeb9a233fab5a6fa32e0b9d66c33c4e160c9a2cd3`. It has zero unresolved or invalid inventory rows and zero Catalog, public, or AI writes.
+
+The `288 -> 287` change is a proven identity merge, not an unexplained loss. The superseded snapshot contained both `dejure:2024-07-02:1bvr223123` and malformed `dejure:2024-07-02:20720241bvr223123` for the same decision. The replacement contains one `dejure:2024-07-02:1bvr223123` item whose immutable metadata preserves raw docket `2.07.2024 - 1 BvR 2231/23`, normalization rule `strip_redundant_date_prefix_v1`, and the resolved official BVerfG URL. Fetch may proceed only against this replacement snapshot.
+
 ## Implementation gaps found by this review
 
 1. `scripts/backfill-corpus.ts` accepts only Spain and France. Germany has no durable annual scope or history flag.
@@ -156,4 +160,4 @@ The owner resolved the production policy decisions under the unattended automati
 - coverage: `external_index_assisted`, with no complete-corpus claim;
 - Gemini: denied throughout the private shadow.
 
-The remaining gate is operational, not policy ownership: apply the migration, enable the private history flag, pass `verify:bverfg-shadow-readiness`, run and reconcile the private snapshot, then pass `verify:bverfg-shadow-canary`. Catalog writes, public flags, and AI egress remain disabled until their later gates pass.
+The migration, private discovery, audited supersession, and corrected rediscovery are complete. The remaining operational gate is to run fetch, normalize, verify, and reconciliation against replacement snapshot `d6c7b404-2252-4369-a719-8e17d2dfaba2`, then pass `verify:bverfg-shadow-canary`. Catalog writes, public flags, and AI egress remain disabled until their later gates pass.
