@@ -110,6 +110,8 @@ geminiEgress: denied
 
 The migration is intentionally conflict-detecting. Reapplying the exact policy is a no-op; finding the same `(source_key, policy_version)` with any different approval value raises `BVERFG_UNATTENDED_POLICY_APPROVAL_CONFLICT`. Any later review must create a new immutable policy version through `supersedes_policy_version`.
 
+The first production discovery sealed snapshot `63d50ccb-9824-4460-bb06-049e410b3015` with 288 items, 17 listing-page artifacts, one boundary probe, item manifest `24fd78271c88f77dc4420e8f44336aa1318140eca6ea6b1116310506ea64b8ba`, and enumeration manifest `a71a4c9569bc728d376831cf5a51264a0872cf37b7e8c75c82558266f68902ce`. The first canary correctly stopped before fetch because the public-attribution validator accepted only `rk/rs` filenames and rejected 88 valid candidates using the reviewed `qk/qs/cs/ls/es/fs/bs` procedure prefixes. Migration `20260903189000_constitutional_case_germany_official_url_prefixes.sql` aligns the database allowlist with the existing resolver without accepting arbitrary prefixes. One unresolved candidate remains subject to explicit resolution or exclusion; it is not silently dropped.
+
 ## Implementation gaps found by this review
 
 1. `scripts/backfill-corpus.ts` accepts only Spain and France. Germany has no durable annual scope or history flag.

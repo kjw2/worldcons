@@ -34,6 +34,7 @@ const francePublicAttribution = migration("20260903183000_constitutional_case_fr
 const germanyPublicAttribution = migration("20260903186000_constitutional_case_germany_public_attribution.sql");
 const germanyShadowCanary = migration("20260903187000_constitutional_case_germany_shadow_canary.sql");
 const germanyPolicyApproval = migration("20260903188000_constitutional_case_germany_policy_approval.sql");
+const germanyOfficialUrlPrefixes = migration("20260903189000_constitutional_case_germany_official_url_prefixes.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -321,6 +322,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(germanyPublicAttribution);
     await setup.query(germanyShadowCanary);
     await setup.query(germanyPolicyApproval);
+    await setup.query(germanyOfficialUrlPrefixes);
   } finally {
     await setup.end();
   }
@@ -387,6 +389,28 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       } finally {
         await conflictClient.query("rollback").catch(() => undefined);
         conflictClient.release();
+      }
+    });
+
+    await t.test("Germany attribution accepts every reviewed BVerfG procedure prefix and rejects unknown filenames", async () => {
+      const prefixes = ["rk", "rs", "qk", "qs", "cs", "ls", "es", "fs", "bs"];
+      for (const prefix of prefixes) {
+        const result = await pool.query<{ valid: boolean }>(
+          "select case_catalog_bverfg_official_url_valid_v1($1,'2024-01-22') valid",
+          [`https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/01/${prefix}20240122_2bvc001422.html`],
+        );
+        assert.equal(result.rows[0].valid, true, `${prefix} must be accepted`);
+      }
+      for (const invalid of [
+        "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/01/zz20240122_2bvc001422.html",
+        "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/02/cs20240122_2bvc001422.html",
+        "https://attacker.example/SharedDocs/Entscheidungen/DE/2024/01/cs20240122_2bvc001422.html",
+      ]) {
+        const result = await pool.query<{ valid: boolean }>(
+          "select case_catalog_bverfg_official_url_valid_v1($1,'2024-01-22') valid",
+          [invalid],
+        );
+        assert.equal(result.rows[0].valid, false, `${invalid} must be rejected`);
       }
     });
 
