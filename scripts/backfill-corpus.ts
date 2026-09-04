@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { postgresCaseBackfillRepository } from "@/lib/backfill/repository";
+import {
+  postgresCaseBackfillRepository,
+  supersedeCaseBackfillSnapshot,
+} from "@/lib/backfill/repository";
 import type { CaseBackfillPhase } from "@/lib/backfill/types";
 import {
   assertSpainSentenciaYearEnabled,
@@ -42,7 +45,7 @@ import { ADMIN_P1_WORKER_EXIT, runAdminCommandWorkerP1 } from "@/lib/admin/comma
 import { tryRecordWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
 const GATE1_PHASES = ["discover", "fetch", "normalize", "verify", "reconcile"] as const;
-type Gate1Command = "plan" | "status" | (typeof GATE1_PHASES)[number];
+type Gate1Command = "plan" | "status" | "supersede" | (typeof GATE1_PHASES)[number];
 type BackfillSource = "spain" | "france" | "germany";
 
 function argumentValue(name: string) {
@@ -55,7 +58,7 @@ function flag(name: string) {
 
 function command(): Gate1Command {
   const value = process.argv[2] ?? "plan";
-  if (!["plan", "status", ...GATE1_PHASES].includes(value as Gate1Command)) throw new Error("invalid_command");
+  if (!["plan", "status", "supersede", ...GATE1_PHASES].includes(value as Gate1Command)) throw new Error("invalid_command");
   return value as Gate1Command;
 }
 
@@ -70,6 +73,18 @@ function integerArgument(name: string, fallback: number, min: number, max: numbe
 function requiredArgument(name: string) {
   const value = argumentValue(name)?.trim();
   if (!value) throw new Error(`missing_${name}`);
+  return value;
+}
+
+function requiredSha256(name: string) {
+  const value = requiredArgument(name).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(value)) throw new Error(`invalid_${name}`);
+  return value;
+}
+
+function requiredIntegerArgument(name: string, min: number, max: number) {
+  const value = Number(requiredArgument(name));
+  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`invalid_${name}`);
   return value;
 }
 
@@ -219,7 +234,7 @@ async function snapshotForDiscovery(source: BackfillSource) {
       scopeTo: scope.scopeTo,
       documentType: scope.documentType,
       discoveryMethod: "external_index_dejure_to_official_detail",
-      parserVersion: argumentValue("parser-version")?.trim() || "bverfg-official-normalize-v1",
+      parserVersion: argumentValue("parser-version")?.trim() || "bverfg-official-normalize-v2",
       sourcePolicyVersion: policyVersion,
       coverageAssurance: "external_index_assisted",
       expectedCount: null,
@@ -321,6 +336,60 @@ async function assertGermanySnapshotReadyForWrite(snapshotId: string) {
   });
 }
 
+async function supersedeGermanySnapshot() {
+  const snapshotId = optionalUuid("snapshot") ?? requiredArgument("snapshot");
+  const snapshot = await postgresCaseBackfillRepository.getSnapshot(snapshotId);
+  if (snapshot.sourceKey !== "de-bverfg") {
+    throw new Error("bverfg_shadow_operation.snapshot_source_mismatch");
+  }
+  if (snapshot.status !== "closed" && snapshot.status !== "superseded") {
+    throw new Error("bverfg_shadow_operation.snapshot_not_supersedable");
+  }
+  const year = Number(snapshot.scopeFrom?.slice(0, 4));
+  if (!Number.isInteger(year)) throw new Error("bverfg_shadow_operation.snapshot_scope_invalid");
+  assertGermanyBverfgYearEnabled(year, process.env, currentYear());
+  const readiness = await verifyBverfgPrivateShadowReadiness({
+    year,
+    policyVersion: snapshot.sourcePolicyVersion,
+  });
+  output(readiness);
+  if (readiness.status === "blocked" || !readiness.ownerApprovalRecorded) {
+    throw new Error(`bverfg_shadow_operation.blocked:${readiness.blocking.join(",")}`);
+  }
+  if (snapshot.status === "closed" && readiness.completedSnapshotId !== snapshot.id) {
+    throw new Error("bverfg_shadow_operation.snapshot_mismatch");
+  }
+
+  const input = {
+    snapshotId,
+    expectedManifestHash: requiredSha256("expected-manifest-hash"),
+    expectedEnumerationManifestHash: requiredSha256("expected-enumeration-manifest-hash"),
+    expectedDiscoveredCount: requiredIntegerArgument("expected-discovered-count", 0, 100_000_000),
+    replacementParserVersion: requiredArgument("replacement-parser-version"),
+    reasonCode: requiredArgument("reason-code"),
+    requestedBy: argumentValue("requested-by")?.trim() || "backfill-corpus-cli",
+  };
+  output({
+    event: "case_backfill_snapshot_supersession_planned",
+    ...input,
+    sourceKey: snapshot.sourceKey,
+    priorParserVersion: snapshot.parserVersion,
+    execute: flag("execute"),
+    publicCatalogWrites: 0,
+    geminiCalls: 0,
+  });
+  if (!flag("execute")) return 0;
+
+  const result = await supersedeCaseBackfillSnapshot(input);
+  output({
+    event: "case_backfill_snapshot_superseded",
+    ...result,
+    publicCatalogWrites: 0,
+    geminiCalls: 0,
+  });
+  return 0;
+}
+
 function preflightExecutionAuthority(phase: (typeof GATE1_PHASES)[number]) {
   if (!flag("execute")) return null;
   const authority = resolveAdminQueueP1Authority();
@@ -405,6 +474,10 @@ async function main() {
     const snapshotId = requiredArgument("snapshot");
     output({ event: "case_backfill_status", ...(await postgresCaseBackfillRepository.getSnapshotStatus(snapshotId)) });
     return 0;
+  }
+  if (selected === "supersede") {
+    if (source !== "germany") throw new Error("snapshot_supersession_source_not_enabled");
+    return supersedeGermanySnapshot();
   }
   const phase = selected as CaseBackfillPhase & (typeof GATE1_PHASES)[number];
   const executionAuthority = preflightExecutionAuthority(phase);

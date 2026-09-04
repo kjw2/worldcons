@@ -274,7 +274,7 @@ function germanyStrategy(
   return {
     sourceKey: "de-bverfg",
     defaultFetchContractVersion: "bverfg-official-fetch-v1",
-    defaultParserVersion: "bverfg-official-normalize-v1",
+    defaultParserVersion: "bverfg-official-normalize-v2",
     governedNetworkPhases: ["discover", "fetch"],
     assertDiscoveryScope(snapshot, environment) {
       assertAnnualScope(snapshot);

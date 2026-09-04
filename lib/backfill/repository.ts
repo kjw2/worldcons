@@ -91,6 +91,58 @@ export interface OpenCaseBackfillSnapshotInput {
   createdBy: string;
 }
 
+export interface SupersedeCaseBackfillSnapshotInput {
+  snapshotId: string;
+  expectedManifestHash: string;
+  expectedEnumerationManifestHash: string;
+  expectedDiscoveredCount: number;
+  replacementParserVersion: string;
+  reasonCode: string;
+  requestedBy: string;
+}
+
+export interface CaseBackfillSnapshotSupersession {
+  snapshotId: string;
+  sourceKey: string;
+  priorParserVersion: string;
+  replacementParserVersion: string;
+  manifestHash: string;
+  enumerationManifestHash: string;
+  discoveredCount: number;
+  reasonCode: string;
+  requestedBy: string;
+  supersededAt: string;
+}
+
+export async function supersedeCaseBackfillSnapshot(
+  input: SupersedeCaseBackfillSnapshotInput,
+): Promise<CaseBackfillSnapshotSupersession> {
+  const { data, error } = await requiredClient().rpc("source_inventory_snapshot_supersede_v1", {
+    p_snapshot_id: input.snapshotId,
+    p_expected_manifest_hash: input.expectedManifestHash,
+    p_expected_enumeration_manifest_hash: input.expectedEnumerationManifestHash,
+    p_expected_discovered_count: input.expectedDiscoveredCount,
+    p_replacement_parser_version: input.replacementParserVersion,
+    p_reason_code: input.reasonCode,
+    p_requested_by: input.requestedBy,
+  });
+  databaseError(error);
+  const row = firstRow(data);
+  if (!row) throw new Error("case_backfill.snapshot_supersession_failed");
+  return {
+    snapshotId: text(row, "snapshot_id"),
+    sourceKey: text(row, "source_key"),
+    priorParserVersion: text(row, "prior_parser_version"),
+    replacementParserVersion: text(row, "replacement_parser_version"),
+    manifestHash: text(row, "manifest_hash"),
+    enumerationManifestHash: text(row, "enumeration_manifest_hash"),
+    discoveredCount: numberValue(row, "discovered_count"),
+    reasonCode: text(row, "reason_code"),
+    requestedBy: text(row, "requested_by"),
+    supersededAt: text(row, "superseded_at"),
+  };
+}
+
 export interface InventoryItemInput {
   snapshotId: string;
   stableItemKey: string;

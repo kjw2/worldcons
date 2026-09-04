@@ -12,6 +12,7 @@ const requestGovernorMigration = path.join(process.cwd(), "supabase/migrations/2
 const phaseAwareHostsMigration = path.join(process.cwd(), "supabase/migrations/20260903184000_constitutional_case_phase_aware_source_hosts.sql");
 const enumerationArtifactsMigration = path.join(process.cwd(), "supabase/migrations/20260903185000_constitutional_case_enumeration_artifacts.sql");
 const germanyPolicyApprovalMigration = path.join(process.cwd(), "supabase/migrations/20260903188000_constitutional_case_germany_policy_approval.sql");
+const snapshotSupersessionMigration = path.join(process.cwd(), "supabase/migrations/20260903190000_constitutional_case_snapshot_supersession.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
@@ -64,6 +65,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(phaseAwareHostsMigration, "utf8"));
     await client.query(fs.readFileSync(enumerationArtifactsMigration, "utf8"));
     await client.query(fs.readFileSync(germanyPolicyApprovalMigration, "utf8"));
+    await client.query(fs.readFileSync(snapshotSupersessionMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
@@ -134,6 +136,118 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         'discovery identity only', 'postgres-test', now(), now() + interval '1 year'
       )
     `);
+
+    await t.test("sealed discovery-only inventory supersession is CAS-protected, audited, and idempotent", async () => {
+      const openSnapshot = async (parserVersion: string) => {
+        const opened = await pool.query<{ source_inventory_snapshot_open_v1: string }>(
+          "select source_inventory_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+          [
+            "de-bverfg", "2024-01-01", "2024-12-31", "DECISION",
+            "external_index_dejure_to_official_detail", parserVersion,
+            "bverfg-unattended-canary-v1", "external_index_assisted", null, null,
+            { method: "test-external-index" }, JSON.stringify([]), "postgres-test",
+          ],
+        );
+        const snapshotId = opened.rows[0].source_inventory_snapshot_open_v1;
+        await pool.query(
+          "select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)",
+          [
+            snapshotId, "dejure:2024-07-02:1bvr223123", null,
+            "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/07/rk20240702_1bvr223123.html",
+            "DECISION", "2024-07-02",
+            { discoveryIndex: "dejure.org", docket: "1 BvR 2231/23", officialUrlResolved: true },
+          ],
+        );
+        await pool.query(`
+          insert into source_inventory_enumeration_artifacts(
+            snapshot_id,source_key,provider_key,artifact_kind,sequence_no,request_url,
+            response_hash,record_manifest_hash,record_count,newest_decision_date,
+            oldest_decision_date,observed_last_page,safe_details
+          ) values ($1,'de-bverfg','dejure.org','page',1,
+            'https://dejure.org/dienste/rechtsprechung?gericht=BVerfG',
+            repeat('a',64),repeat('b',64),1,'2024-07-02','2024-07-02',1,
+            '{"storesExternalText":false}'::jsonb)
+        `, [snapshotId]);
+        const closed = await pool.query<{ manifest_hash: string; enumeration_manifest_hash: string; discovered_count: number }>(
+          "select manifest_hash,enumeration_manifest_hash,discovered_count from source_inventory_snapshot_close_v3($1)",
+          [snapshotId],
+        );
+        return { snapshotId, ...closed.rows[0] };
+      };
+
+      const clean = await openSnapshot("bverfg-official-normalize-v1");
+      const supersessionArgs = [
+        clean.snapshotId, clean.manifest_hash, clean.enumeration_manifest_hash, clean.discovered_count,
+        "bverfg-official-normalize-v2", "duplicate-date-docket-parser", "postgres-unattended-test",
+      ];
+      await assert.rejects(
+        pool.query(
+          "select * from source_inventory_snapshot_supersede_v1($1,$2,$3,$4,$5,$6,$7)",
+          supersessionArgs.map((value, index) => index === 1 ? "0".repeat(64) : value),
+        ),
+        /CASE_BACKFILL_SUPERSESSION_CAS_MISMATCH/,
+      );
+      const first = await pool.query<{
+        snapshot_id: string; source_key: string; prior_parser_version: string;
+        replacement_parser_version: string; manifest_hash: string;
+        enumeration_manifest_hash: string; discovered_count: number;
+        reason_code: string; requested_by: string; superseded_at: Date;
+      }>("select * from source_inventory_snapshot_supersede_v1($1,$2,$3,$4,$5,$6,$7)", supersessionArgs);
+      const replay = await pool.query(
+        "select * from source_inventory_snapshot_supersede_v1($1,$2,$3,$4,$5,$6,$7)",
+        supersessionArgs,
+      );
+      assert.deepEqual(replay.rows, first.rows);
+      assert.deepEqual(first.rows[0], {
+        snapshot_id: clean.snapshotId,
+        source_key: "de-bverfg",
+        prior_parser_version: "bverfg-official-normalize-v1",
+        replacement_parser_version: "bverfg-official-normalize-v2",
+        manifest_hash: clean.manifest_hash,
+        enumeration_manifest_hash: clean.enumeration_manifest_hash,
+        discovered_count: 1,
+        reason_code: "duplicate-date-docket-parser",
+        requested_by: "postgres-unattended-test",
+        superseded_at: first.rows[0].superseded_at,
+      });
+      const state = await pool.query<{ status: string; audit_count: string }>(`
+        select s.status,(select count(*) from source_inventory_snapshot_supersessions a where a.snapshot_id=s.id) audit_count
+        from source_inventory_snapshots s where s.id=$1
+      `, [clean.snapshotId]);
+      assert.deepEqual(state.rows[0], { status: "superseded", audit_count: "1" });
+      await assert.rejects(
+        pool.query(
+          "select * from source_inventory_snapshot_supersede_v1($1,$2,$3,$4,$5,$6,$7)",
+          supersessionArgs.map((value, index) => index === 5 ? "different-parser-defect" : value),
+        ),
+        /CASE_BACKFILL_SUPERSESSION_CONFLICT/,
+      );
+      await assert.rejects(
+        pool.query("update source_inventory_snapshot_supersessions set requested_by='tampered' where snapshot_id=$1", [clean.snapshotId]),
+        /CASE_BACKFILL_IMMUTABLE/,
+      );
+
+      const processed = await openSnapshot("bverfg-official-normalize-v1");
+      await pool.query("update source_backfill_items set status='fetched' where snapshot_id=$1", [processed.snapshotId]);
+      await assert.rejects(
+        pool.query(
+          "select * from source_inventory_snapshot_supersede_v1($1,$2,$3,$4,$5,$6,$7)",
+          [
+            processed.snapshotId, processed.manifest_hash, processed.enumeration_manifest_hash,
+            processed.discovered_count, "bverfg-official-normalize-v2",
+            "duplicate-date-docket-parser", "postgres-unattended-test",
+          ],
+        ),
+        /CASE_BACKFILL_SUPERSESSION_PROCESSING_STARTED/,
+      );
+
+      const privileges = await pool.query<{ public_table: boolean; public_function: boolean }>(`select
+        has_table_privilege('public','source_inventory_snapshot_supersessions','select') public_table,
+        has_function_privilege(
+          'public','source_inventory_snapshot_supersede_v1(uuid,text,text,integer,text,text,text)','execute'
+        ) public_function`);
+      assert.deepEqual(privileges.rows[0], { public_table: false, public_function: false });
+    });
 
     await t.test("source request permits allow external indexes only during discovery", async () => {
       await assert.rejects(

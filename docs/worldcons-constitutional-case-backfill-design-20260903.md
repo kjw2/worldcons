@@ -751,6 +751,9 @@ first_seen_at, last_seen_at
 - close RPC가 stable item key로 정렬한 canonical manifest의 SHA-256을 계산해 `manifest_hash`에 저장한다.
 - close 전에 `expected_count`, discovered 실제 count, duplicate stable key, parser/source policy version을 검증한다.
 - close 후 발견된 항목이나 URL 변경은 기존 snapshot을 수정하지 않고 새 snapshot에 기록한다.
+- 봉인 후 discovery parser 결함이 확인되면 기존 manifest를 다시 열거나 item을 수정하지 않는다. 원본 manifest hash, enumeration manifest hash, discovered count를 CAS로 대조한 뒤 `closed -> superseded` 단방향 전이만 허용하고 새 snapshot을 생성한다.
+- supersession은 발견 이후 fetch/normalize/verify/publish/reconcile 실행, artifact, article 연결, active claim/run/request permit이 하나라도 있으면 fail-closed한다. 요청자, 사유 코드, 이전·대체 parser version과 원본 digest는 별도 append-only 감사 원장에 보존한다.
+- 동일 CAS와 감사 입력의 supersession 재실행은 멱등이어야 하며, 같은 snapshot에 다른 입력을 제출하면 conflict로 거부한다.
 - discovery에서 알 수 없던 authoritative identifier와 검증된 decision date는 닫힌 manifest를 수정하지 않고 `case_identifiers`, `articles`, 공용 article version에 기록한다.
 - manifest hash 재검증 실패는 해당 snapshot의 모든 publication을 중단하는 stop-the-line 오류다.
 
