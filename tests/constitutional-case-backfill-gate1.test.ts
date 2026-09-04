@@ -476,6 +476,14 @@ test("P1 authority and handler carry the exact attempt fence into a bounded back
   assert.deepEqual(observed, { phase: "normalize", authority });
 });
 
+test("backfill CLI preflights execute authority before opening a snapshot or submitting a command", () => {
+  const cli = fs.readFileSync(path.join(process.cwd(), "scripts/backfill-corpus.ts"), "utf8");
+  const preflight = cli.indexOf("const executionAuthority = preflightExecutionAuthority(phase)");
+  const snapshot = cli.indexOf("const snapshotId = selected === \"discover\"");
+  const submit = cli.indexOf("return submitPhase(phase, snapshotId, executionAuthority)");
+  assert.ok(preflight >= 0 && snapshot > preflight && submit > snapshot);
+});
+
 test("invalid snapshot phases and disabled Catalog writes never create a running backfill run", async () => {
   for (const [input, status, expected] of [
     [pass("fetch"), "open", /snapshot_not_closed/],

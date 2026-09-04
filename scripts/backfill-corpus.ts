@@ -34,6 +34,7 @@ import {
 import {
   adminQueueP1CommandAuthorized,
   resolveAdminQueueP1Authority,
+  type AdminQueueP1Authority,
   type AdminQueueP1CommandType,
 } from "@/lib/admin/command-control-plane/p1-authority";
 import { adminCommandService } from "@/lib/admin/command-control-plane/service";
@@ -320,7 +321,23 @@ async function assertGermanySnapshotReadyForWrite(snapshotId: string) {
   });
 }
 
-async function submitPhase(phase: (typeof GATE1_PHASES)[number], snapshotId: string) {
+function preflightExecutionAuthority(phase: (typeof GATE1_PHASES)[number]) {
+  if (!flag("execute")) return null;
+  const authority = resolveAdminQueueP1Authority();
+  const commandType = `p1.case-backfill.${phase}` as AdminQueueP1CommandType;
+  if (!authority.enabled || !adminQueueP1CommandAuthorized(authority, commandType, {
+    cohort: "catalog-backfill",
+  })) {
+    throw new Error("case_backfill_worker_authority_not_enabled");
+  }
+  return authority;
+}
+
+async function submitPhase(
+  phase: (typeof GATE1_PHASES)[number],
+  snapshotId: string,
+  executionAuthority: AdminQueueP1Authority | null,
+) {
   const snapshot = await postgresCaseBackfillRepository.getSnapshot(snapshotId);
   const fetchContractVersion = snapshot.sourceKey === "fr-conseil-constitutionnel"
     ? "france-conseil-fetch-v1"
@@ -354,13 +371,12 @@ async function submitPhase(phase: (typeof GATE1_PHASES)[number], snapshotId: str
   output({ event: "case_backfill_submitted", phase, snapshotId, passNumber, ...submitted.data });
 
   if (!flag("execute")) return 0;
-  const authority = resolveAdminQueueP1Authority();
-  if (!authority.enabled || !adminQueueP1CommandAuthorized(authority, commandType, payloadRef)) {
+  if (!executionAuthority?.enabled || !adminQueueP1CommandAuthorized(executionAuthority, commandType, payloadRef)) {
     throw new Error("case_backfill_worker_authority_not_enabled");
   }
   await tryRecordWorkflowHeartbeat("catalog_backfill", "running", { snapshotId, phase, passNumber });
   const worker = await runAdminCommandWorkerP1({
-    authority,
+    authority: executionAuthority,
     maxCommands: 1,
     attemptTimeoutSeconds: 2400,
     workerId: `local-catalog-backfill:${randomUUID()}`,
@@ -390,11 +406,13 @@ async function main() {
     output({ event: "case_backfill_status", ...(await postgresCaseBackfillRepository.getSnapshotStatus(snapshotId)) });
     return 0;
   }
+  const phase = selected as CaseBackfillPhase & (typeof GATE1_PHASES)[number];
+  const executionAuthority = preflightExecutionAuthority(phase);
   const snapshotId = selected === "discover" ? await snapshotForDiscovery(source) : requiredArgument("snapshot");
   if (source === "germany" && selected !== "discover") {
     await assertGermanySnapshotReadyForWrite(snapshotId);
   }
-  return submitPhase(selected as CaseBackfillPhase & (typeof GATE1_PHASES)[number], snapshotId);
+  return submitPhase(phase, snapshotId, executionAuthority);
 }
 
 main().then((exitCode) => {
