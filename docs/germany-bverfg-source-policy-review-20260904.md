@@ -118,6 +118,8 @@ Production applied that migration and superseded snapshot `63d50ccb-9824-4460-bb
 
 The `288 -> 287` change is a proven identity merge, not an unexplained loss. The superseded snapshot contained both `dejure:2024-07-02:1bvr223123` and malformed `dejure:2024-07-02:20720241bvr223123` for the same decision. The replacement contains one `dejure:2024-07-02:1bvr223123` item whose immutable metadata preserves raw docket `2.07.2024 - 1 BvR 2231/23`, normalization rule `strip_redundant_date_prefix_v1`, and the resolved official BVerfG URL. Fetch may proceed only against this replacement snapshot.
 
+The first production fetch canary processed one replacement-snapshot item under command `c0b189c8-4d31-46b2-9b50-934b24fce865`, run `376a8acd-3a68-41a4-8343-032efb640932`, and fenced attempt `bd1cc48b-5da9-493b-809d-1a1ef4c4da5e`. Both bounded official URL candidates completed after one transient pre-TLS retry, the worker exited successfully with `claimed=1`, `succeeded=1`, and `failed=0`, and status reported `needsNormalize=1` with no active claim or retry wait. The post-run private-shadow check still reported zero article links, zero Catalog publications, zero AI payloads, and `geminiCalls=0`; its only blocker remained the expected `private_shadow_items_incomplete` until the remaining private phases finish.
+
 ## Implementation gaps found by this review
 
 1. `scripts/backfill-corpus.ts` accepts only Spain and France. Germany has no durable annual scope or history flag.
