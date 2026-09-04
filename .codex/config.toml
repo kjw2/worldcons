@@ -1,0 +1,11 @@
+[mcp_servers.codex-coordinator]
+command = "node"
+args = ["F:\\dev\\codex-coordinator\\dist\\mcp-server.mjs"]
+cwd = "F:\\dev\\codex-coordinator"
+startup_timeout_sec = 20
+tool_timeout_sec = 70
+default_tools_approval_mode = "approve"
+
+[mcp_servers.codex-coordinator.env]
+CODEX_COORDINATOR_PROJECT = "worldcons"
+CODEX_COORDINATOR_SESSION = "worldcons:codex:main"
