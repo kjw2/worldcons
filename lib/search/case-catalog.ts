@@ -2,6 +2,7 @@ import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
+import { normalizeLegalSearchQuery, rerankLegalSearchItems } from "@/lib/search/legal-relevance";
 
 type CatalogSearchEntry = {
   id?: unknown;
@@ -97,8 +98,9 @@ export async function catalogCaseSearch(
 
   const supabase = getSupabaseAdmin();
   if (!supabase) throw new Error("case_catalog.search_database_unavailable");
+  const effectiveQuery = normalizeLegalSearchQuery(filters.q ?? "");
   const { data, error } = await supabase.rpc("worldcons_case_search_page_v2", {
-    p_query: filters.q ?? "",
+    p_query: effectiveQuery,
     p_limit: pageSize,
     p_cursor: filters.cursor ?? null,
     p_source: filters.source ?? null,
@@ -132,8 +134,9 @@ export async function catalogCaseSearch(
         count: "none",
       });
   const byId = new Map(result.items.map((item) => [item.id ?? "", item]));
-  const items = ids.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item));
-  if (items.length !== ids.length) throw new Error("case_catalog.search_materialization_mismatch");
+  const materializedItems = ids.map((id) => byId.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (materializedItems.length !== ids.length) throw new Error("case_catalog.search_materialization_mismatch");
+  const items = rerankLegalSearchItems(effectiveQuery, materializedItems);
 
   if (typeof payload.hasMore !== "boolean" || typeof payload.totalIsExact !== "boolean") {
     throw new Error("case_catalog.search_page_info_invalid");

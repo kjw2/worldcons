@@ -6,6 +6,7 @@ import type { ArticleListItem } from "../lib/db/types";
 import { mapSearchApiArticle, mapSearchApiSource } from "../lib/search/api-contract";
 import { extractExactCaseReferences } from "../lib/search/exact-case";
 import { caseNumberKey, normalizeCaseNumber } from "../lib/search/case-number";
+import { normalizeLegalSearchQuery, rerankLegalSearchItems } from "../lib/search/legal-relevance";
 import { parseSearchApiParams } from "../lib/security/public-api-validation";
 import {
   fuseHybridArticleItems,
@@ -135,6 +136,23 @@ test("hybrid candidate windows grow with the requested page without exceeding bo
   assert.equal(rankedSearchWindow({ page: 8, pageSize: 20 }, 50), 100);
 });
 
+test("legal search normalization removes only generic research-intent noise", () => {
+  assert.equal(normalizeLegalSearchQuery("게리맨더링 관련 판례 찾아줘"), "게리맨더링");
+  assert.equal(normalizeLegalSearchQuery("1 BvR 2656/18 관련 판례"), "1 BvR 2656/18");
+});
+
+test("catalog page reranking promotes exact case identity without changing the candidate set", () => {
+  const target = article({
+    id: "exact-docket",
+    slug: "exact-docket",
+    caseNumber: "1 BvR 2656/18",
+    koreanTitle: "기후보호법 관련 세대 간 자유 보장 결정",
+  });
+  const generic = article({ id: "generic", slug: "generic", caseNumber: "2 BvR 1/20" });
+  const reranked = rerankLegalSearchItems("1 BvR 2656/18 관련 판례", [generic, target]);
+  assert.deepEqual(reranked.map((item) => item.id), ["exact-docket", "generic"]);
+});
+
 test("hybrid RRF rewards agreement between lexical and semantic rankings", () => {
   const lexicalFirst = article({ id: "rrf-lexical-first", slug: "rrf-lexical-first", originalPublishedAt: "2026-08-20T00:00:00Z" });
   const shared = article({ id: "rrf-shared", slug: "rrf-shared", originalPublishedAt: "2024-01-01T00:00:00Z" });
@@ -189,7 +207,24 @@ test("Korean concept queries can surface semantically retrieved foreign decision
   assert.ok(fused.findIndex((item) => item.id === "climate-neubauer-semantic") < fused.findIndex((item) => item.id === "climate-lex-2"));
 });
 
-test("recency is only a tie-breaker when RRF scores are equal", () => {
+test("legal relevance breaks equal RRF ties before recency", () => {
+  const olderRelevant = article({
+    id: "tie-relevant",
+    slug: "tie-relevant",
+    koreanTitle: "부분공개와 분리 가능성 판단",
+    originalPublishedAt: "2020-01-01T00:00:00Z",
+  });
+  const newerGeneric = article({
+    id: "tie-generic",
+    slug: "tie-generic",
+    koreanTitle: "정보공개 일반 결정",
+    originalPublishedAt: "2026-01-01T00:00:00Z",
+  });
+  const fused = fuseHybridArticleItems("부분공개 분리 가능성", [olderRelevant], [newerGeneric]);
+  assert.deepEqual(fused.map((item) => item.id), ["tie-relevant", "tie-generic"]);
+});
+
+test("recency remains the tie-breaker when RRF and legal relevance are equal", () => {
   const olderLexical = article({ id: "tie-older", slug: "tie-older", originalPublishedAt: "2020-01-01T00:00:00Z" });
   const newerSemantic = article({ id: "tie-newer", slug: "tie-newer", originalPublishedAt: "2026-01-01T00:00:00Z" });
   const fused = fuseHybridArticleItems("평등권", [olderLexical], [newerSemantic]);

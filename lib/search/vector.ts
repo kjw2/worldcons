@@ -13,6 +13,7 @@ import { exactCaseSearch } from "@/lib/search/exact-case";
 import { rankedSearchPage, type RankedSearchPage } from "@/lib/search/ranked-page";
 import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 import { catalogCaseSearch } from "@/lib/search/case-catalog";
+import { legalSearchRelevanceScore } from "@/lib/search/legal-relevance";
 
 interface MatchArticleRow {
   article_id: string;
@@ -351,6 +352,7 @@ export function fuseHybridArticleItems(
     item: ArticleListResult["items"][number];
     score: number;
     exactTitle: boolean;
+    legalRelevance: number;
   }>();
 
   for (const group of [fulltext, semantic]) {
@@ -363,6 +365,7 @@ export function fuseHybridArticleItems(
         item,
         score: 0,
         exactTitle: isExactTitleMatch(query, item),
+        legalRelevance: legalSearchRelevanceScore(query, item),
       };
       current.score += 1 / (RECIPROCAL_RANK_FUSION_K + index + 1);
       current.exactTitle = current.exactTitle || isExactTitleMatch(query, item);
@@ -375,6 +378,8 @@ export function fuseHybridArticleItems(
       if (left.exactTitle !== right.exactTitle) return left.exactTitle ? -1 : 1;
       const scoreDelta = right.score - left.score;
       if (Math.abs(scoreDelta) > Number.EPSILON) return scoreDelta;
+      const relevanceDelta = right.legalRelevance - left.legalRelevance;
+      if (relevanceDelta !== 0) return relevanceDelta;
       const dateDelta = publishedTimestamp(right.item) - publishedTimestamp(left.item);
       if (dateDelta !== 0) return dateDelta;
       return (left.item.id ?? left.item.slug).localeCompare(right.item.id ?? right.item.slug);
