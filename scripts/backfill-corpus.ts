@@ -5,6 +5,7 @@ import {
   supersedeCaseBackfillSnapshot,
 } from "@/lib/backfill/repository";
 import type { CaseBackfillPhase } from "@/lib/backfill/types";
+import { defaultCaseBackfillBatchLimit } from "@/lib/backfill/operation-policy";
 import {
   assertSpainSentenciaYearEnabled,
   CASE_CATALOG_SPAIN_HISTORY_FLAG,
@@ -418,7 +419,12 @@ async function submitPhase(
     cohort: "catalog-backfill" as const,
     snapshotId,
     passNumber,
-    batchLimit: integerArgument("batch-limit", 50, 1, 100),
+    batchLimit: integerArgument(
+      "batch-limit",
+      defaultCaseBackfillBatchLimit(snapshot.sourceKey, phase),
+      1,
+      100,
+    ),
     parserVersion: argumentValue("parser-version")?.trim() || snapshot.parserVersion,
     normalizationContractVersion: argumentValue("normalization-contract")?.trim() || "case-normalized-v1",
     fetchContractVersion: argumentValue("fetch-contract")?.trim() || fetchContractVersion,

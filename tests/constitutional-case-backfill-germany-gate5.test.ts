@@ -15,6 +15,11 @@ import {
 import { loadCaseBackfillSourceStrategy } from "../lib/backfill/source-strategies";
 import { runCaseBackfillPass } from "../lib/backfill/service";
 import {
+  BVERFG_FETCH_BATCH_LIMIT,
+  DEFAULT_CASE_BACKFILL_BATCH_LIMIT,
+  defaultCaseBackfillBatchLimit,
+} from "../lib/backfill/operation-policy";
+import {
   validateBverfgInventoryResult,
   verifyBverfgInventoryReadOnly,
 } from "../lib/backfill/germany-inventory-verification";
@@ -75,6 +80,13 @@ test("Germany BVerfG scope is annual, 1998-bounded, and disabled by default", ()
   assert.equal(plan[0].year, 2026);
   assert.equal(plan.at(-1)?.year, 1998);
   assert.equal(plan.every((entry) => !entry.enabled), true);
+});
+
+test("Germany official fetch defaults to a bounded P1 batch without changing other phases", () => {
+  assert.equal(BVERFG_FETCH_BATCH_LIMIT, 2);
+  assert.equal(defaultCaseBackfillBatchLimit("de-bverfg", "fetch"), 2);
+  assert.equal(defaultCaseBackfillBatchLimit("de-bverfg", "normalize"), DEFAULT_CASE_BACKFILL_BATCH_LIMIT);
+  assert.equal(defaultCaseBackfillBatchLimit("es-tribunal-constitucional", "fetch"), DEFAULT_CASE_BACKFILL_BATCH_LIMIT);
 });
 
 test("dejure parser ignores popular links and keeps same-docket decisions on different dates", () => {
