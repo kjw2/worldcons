@@ -11,6 +11,7 @@ const gate1Migration = path.join(process.cwd(), "supabase/migrations/20260903120
 const requestGovernorMigration = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
 const phaseAwareHostsMigration = path.join(process.cwd(), "supabase/migrations/20260903184000_constitutional_case_phase_aware_source_hosts.sql");
 const enumerationArtifactsMigration = path.join(process.cwd(), "supabase/migrations/20260903185000_constitutional_case_enumeration_artifacts.sql");
+const germanyPolicyApprovalMigration = path.join(process.cwd(), "supabase/migrations/20260903188000_constitutional_case_germany_policy_approval.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
@@ -62,6 +63,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(inventoryProvenanceMigration, "utf8"));
     await client.query(fs.readFileSync(phaseAwareHostsMigration, "utf8"));
     await client.query(fs.readFileSync(enumerationArtifactsMigration, "utf8"));
+    await client.query(fs.readFileSync(germanyPolicyApprovalMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));

@@ -33,6 +33,7 @@ const viewSecurity = migration("20260903175000_constitutional_case_catalog_view_
 const francePublicAttribution = migration("20260903183000_constitutional_case_france_public_attribution.sql");
 const germanyPublicAttribution = migration("20260903186000_constitutional_case_germany_public_attribution.sql");
 const germanyShadowCanary = migration("20260903187000_constitutional_case_germany_shadow_canary.sql");
+const germanyPolicyApproval = migration("20260903188000_constitutional_case_germany_policy_approval.sql");
 
 const policySql = `
 insert into source_corpus_policies(
@@ -319,12 +320,76 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(francePublicAttribution);
     await setup.query(germanyPublicAttribution);
     await setup.query(germanyShadowCanary);
+    await setup.query(germanyPolicyApproval);
   } finally {
     await setup.end();
   }
 
   const pool = new Pool({ connectionString: databaseUrl, max: 6 });
   try {
+    await t.test("Germany unattended approval is exact, immutable, and conflict-detecting", async () => {
+      const result = await pool.query<{
+        policy_version: string;
+        scope_definition: { approval: Record<string, unknown> };
+        retention_days: number;
+        reviewed_by: string;
+        reviewed_at: string;
+        review_due_at: string;
+        robots_rules_hash: string;
+      }>(`select policy_version,scope_definition,retention_days,reviewed_by,
+        to_char(reviewed_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') reviewed_at,
+        to_char(review_due_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') review_due_at,
+        robots_rules_hash
+        from source_corpus_policies
+        where source_key='de-bverfg' and policy_version='bverfg-unattended-canary-v1'`);
+      assert.equal(result.rowCount, 1);
+      const policy = result.rows[0];
+      assert.equal(policy.retention_days, 90);
+      assert.equal(policy.reviewed_by, "WorldCons owner via unattended automatic approval");
+      assert.equal(policy.reviewed_at, "2026-09-04T00:00:00Z");
+      assert.equal(policy.review_due_at, "2027-03-03T00:00:00Z");
+      assert.equal(policy.robots_rules_hash, "7565360aa0562e6f2a86d90f58566885b8bf9106e6e493453f1fc9079837e17f");
+      assert.deepEqual(policy.scope_definition.approval, {
+        approvalId: "bverfg-unattended-approval-2026-09-04",
+        mode: "unattended_automatic",
+        authority: "worldcons_owner",
+        directiveDate: "2026-09-04",
+        boundedEvidenceRetentionDays: 90,
+        policyReviewIntervalDays: 180,
+        externalIndexAccess: "dejure_listing_discovery_only",
+        openLegalDataUse: "excluded_from_first_canary",
+        publicTextPosture: "metadata_only",
+        publicIntegrityNotice: "bverfg-korean-integrity-v1",
+        coverageLabel: "external_index_assisted_no_complete_corpus_claim",
+        canaryVisibility: "private_shadow",
+        geminiEgress: "denied",
+      });
+
+      await pool.query(germanyPolicyApproval);
+      await assert.rejects(
+        pool.query(`update source_corpus_policies set retention_days=91
+          where source_key='de-bverfg' and policy_version='bverfg-unattended-canary-v1'`),
+        /CASE_BACKFILL_IMMUTABLE/,
+      );
+      const approvalBlock = germanyPolicyApproval.match(/do \$approval\$[\s\S]*?\$approval\$;/u)?.[0];
+      assert.ok(approvalBlock, "approval migration must contain its conflict-detecting block");
+      const conflictClient = await pool.connect();
+      try {
+        await conflictClient.query("begin");
+        await conflictClient.query("alter table source_corpus_policies disable trigger source_corpus_policies_immutable_trigger");
+        await conflictClient.query(`update source_corpus_policies set retention_days=91
+          where source_key='de-bverfg' and policy_version='bverfg-unattended-canary-v1'`);
+        await conflictClient.query("alter table source_corpus_policies enable trigger source_corpus_policies_immutable_trigger");
+        await assert.rejects(
+          conflictClient.query(approvalBlock),
+          /BVERFG_UNATTENDED_POLICY_APPROVAL_CONFLICT/,
+        );
+      } finally {
+        await conflictClient.query("rollback").catch(() => undefined);
+        conflictClient.release();
+      }
+    });
+
     await t.test("global head backfill and legacy sidecar preserve existing public P3", async () => {
       const row = await pool.query(`select h.current_revision,l.freshness,l.freshness_basis
         from article_revision_heads_v4 h
