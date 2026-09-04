@@ -24,6 +24,9 @@ const enumerationArtifacts = migration("20260903185000_constitutional_case_enume
 const gate2 = vectorFallback(migration("20260903130000_constitutional_case_catalog_gate2.sql"));
 const gate3 = migration("20260903140000_constitutional_case_search_gate3.sql");
 const gate4 = migration("20260903150000_constitutional_case_multilingual_search_gate4.sql");
+const providerSearchResilience = vectorFallback(
+  migration("20260904100000_cclrag2_provider_search_resilience.sql"),
+);
 const usCandidates = migration("20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthority = migration("20260903171000_constitutional_case_us_authority_gate5.sql");
 const usReview = migration("20260903172000_constitutional_case_us_review_gate5.sql");
@@ -323,12 +326,28 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(germanyShadowCanary);
     await setup.query(germanyPolicyApproval);
     await setup.query(germanyOfficialUrlPrefixes);
+    await setup.query(providerSearchResilience);
   } finally {
     await setup.end();
   }
 
   const pool = new Pool({ connectionString: databaseUrl, max: 6 });
   try {
+    await t.test("provider search materializes a bounded P3 payload without raw text or vectors", async () => {
+      const result = await pool.query<{ payload: { items: Array<Record<string, unknown>> } }>(`
+        select worldcons_provider_search_v4(
+          '', 'fulltext', null::double precision[], 10, 0,
+          'es-tribunal-constitucional', null, 'latest', 'none'
+        ) payload
+      `);
+      const item = result.rows[0].payload.items.find((entry) => entry.slug === "legacy-case");
+      assert.ok(item);
+      assert.equal(item.body_excerpt, "x".repeat(600));
+      assert.equal("raw_text" in item, false);
+      assert.equal("cleaned_text" in item, false);
+      assert.equal("embedding" in item, false);
+    });
+
     await t.test("Germany unattended approval is exact, immutable, and conflict-detecting", async () => {
       const result = await pool.query<{
         policy_version: string;

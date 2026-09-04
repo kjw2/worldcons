@@ -52,6 +52,8 @@ GET /search
 
 The Vercel provider delegates pagination to the DB-native ranked-page contract. The database keeps only the requested page plus one lookahead row; hybrid candidate oversampling grows with the requested offset instead of using the former fixed 100-row preload.
 
+Two-letter jurisdiction codes (`DE`, `ES`, `FR`, `US`) and their Korean or English names are translated to the corresponding source boundary when no explicit source is supplied. When semantic search is unavailable, a generic jurisdiction/court comparison query is reduced to its substantive terms inside that source. If no substantive term remains, the provider returns the latest bounded authority page for that source. A query that explicitly names more than one constitutional court is not guessed; it retains its original cross-source query unless the caller supplies `source` or `jurisdiction`.
+
 ## Contract V2 evidence
 
 Search items expose native Provider Contract V2 evidence:
@@ -176,6 +178,7 @@ GET /articles/{slug}/source-text?offset=<0..10000000>&limit=<1..350000>
 - Search cache directive: `s-maxage=60, stale-while-revalidate=300`
 - Detail/source cache directive: `s-maxage=300, stale-while-revalidate=900`
 - Vercel-to-Supabase timeout: 8 seconds
+- Ranked IDs are materialized into a search response from bounded scalar fields only. Full raw text and embeddings are never carried through the provider result row; search exposes at most a 4,000-character source excerpt and detail hydration remains a separate request.
 - Semantic/hybrid embedding timeout: 5 seconds
 - Semantic/hybrid mode requires the Vercel environment variable `GEMINI_API_KEY`. Both the document pipeline and query provider are pinned to `gemini-embedding-001`, 1536 dimensions, complementary `RETRIEVAL_DOCUMENT`/`RETRIEVAL_QUERY` task types, and L2 normalization. Mixed-provider vectors are rejected.
 - `SEMANTIC_SEARCH_ENABLED` defaults to `false`. Keep it false while the Gemini corpus backfill is incomplete; requests explicitly fall back to full text instead of comparing Gemini queries with legacy vectors.

@@ -62,6 +62,55 @@ const SOURCE_TYPE = "foreign_constitutional";
 const AUTHORITY_LEVEL = "persuasive";
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/u;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
+const JURISDICTION_SOURCE_KEYS: Record<string, string> = {
+  de: "de-bverfg",
+  deutschland: "de-bverfg",
+  germany: "de-bverfg",
+  독일: "de-bverfg",
+  es: "es-tribunal-constitucional",
+  espana: "es-tribunal-constitucional",
+  spain: "es-tribunal-constitucional",
+  스페인: "es-tribunal-constitucional",
+  fr: "fr-conseil-constitutionnel",
+  france: "fr-conseil-constitutionnel",
+  프랑스: "fr-conseil-constitutionnel",
+  us: "us-scotus",
+  usa: "us-scotus",
+  "united states": "us-scotus",
+  미국: "us-scotus",
+};
+const STRONG_SOURCE_HINTS: Array<{ sourceKey: string; patterns: RegExp[] }> = [
+  {
+    sourceKey: "de-bverfg",
+    patterns: [
+      /bundesverfassungsgericht|\bbverfg\b/iu,
+      /독일.{0,20}(?:연방)?헌법재판|(?:연방)?헌법재판.{0,20}독일/iu,
+    ],
+  },
+  {
+    sourceKey: "es-tribunal-constitucional",
+    patterns: [
+      /tribunal constitucional/iu,
+      /스페인.{0,20}헌법재판|헌법재판.{0,20}스페인/iu,
+    ],
+  },
+  {
+    sourceKey: "fr-conseil-constitutionnel",
+    patterns: [
+      /conseil constitutionnel/iu,
+      /프랑스.{0,20}헌법위원회|헌법위원회.{0,20}프랑스/iu,
+    ],
+  },
+  {
+    sourceKey: "us-scotus",
+    patterns: [
+      /supreme court|\bscotus\b/iu,
+      /미국.{0,20}(?:연방)?대법원|(?:연방)?대법원.{0,20}미국/iu,
+    ],
+  },
+];
+const SOURCE_QUERY_NOISE = /(?:bundesverfassungsgericht|bverfg|tribunal constitucional|conseil constitutionnel|supreme court|scotus|연방헌법재판소|헌법재판소|헌법위원회|연방대법원|대법원|독일|스페인|프랑스|미국|united states|germany|deutschland|spain|espana|france|usa)/giu;
+const GENERIC_COMPARISON_NOISE = /(?:헌법재판|헌재|판례|결정|재판|비교법상|비교법|비교|설득적|권위|각각|근거|구분|제시|정리|찾아|알려|해주세요|해 주세요|해서|하여|하고)/gu;
 const SOURCE_CONTEXT: Record<string, {
   jurisdictionCode: string;
   jurisdictionName: string;
@@ -150,14 +199,15 @@ export async function handleWorldconsSearchRequest(
 async function searchResponse(url: URL, env: Cclrag2ProviderEnv, fetcher: Fetcher, requestId: string) {
   const input = parseSearchInput(url.searchParams);
   const retrieval = await resolveRetrievalPlan(input.query, input.mode, env, fetcher, requestId);
+  const providerSearch = providerSearchInput(input, retrieval.effectiveMode);
   const rpcPayload = await callRpc(env, "worldcons_provider_search_v4", {
-    p_query: input.query,
+    p_query: providerSearch.query,
     p_mode: retrieval.effectiveMode,
     p_query_embedding: retrieval.embedding,
     p_limit: input.pageSize,
     p_offset: (input.page - 1) * input.pageSize,
-    p_source: input.source,
-    p_jurisdiction: input.jurisdiction,
+    p_source: providerSearch.source,
+    p_jurisdiction: providerSearch.jurisdiction,
     p_range: input.range,
     p_count: input.count,
   }, fetcher, requestId);
@@ -204,6 +254,56 @@ async function searchResponse(url: URL, env: Cclrag2ProviderEnv, fetcher: Fetche
 }
 
 type SearchMode = "fulltext" | "semantic" | "hybrid";
+
+type ParsedSearchInput = ReturnType<typeof parseSearchInput>;
+
+function providerSearchInput(input: ParsedSearchInput, effectiveMode: SearchMode) {
+  const jurisdictionSource = sourceKeyForJurisdiction(input.jurisdiction);
+  const source = input.source ?? jurisdictionSource ?? inferredSourceKey(input.query);
+  const jurisdiction = jurisdictionSource && !input.source ? null : input.jurisdiction;
+  if (effectiveMode !== "fulltext" || !source || isExactCasePreflightQuery(input.query)) {
+    return { query: input.query, source, jurisdiction };
+  }
+  return {
+    query: reducedSourceQuery(input.query),
+    source,
+    jurisdiction,
+  };
+}
+
+function sourceKeyForJurisdiction(value: string | null) {
+  if (!value) return null;
+  const normalized = value.normalize("NFKC").trim().toLowerCase().replace(/\s+/gu, " ");
+  return JURISDICTION_SOURCE_KEYS[normalized] ?? null;
+}
+
+function inferredSourceKey(query: string) {
+  const strong = STRONG_SOURCE_HINTS
+    .filter((hint) => hint.patterns.some((pattern) => pattern.test(query)))
+    .map((hint) => hint.sourceKey);
+  if (strong.length === 1) return strong[0];
+  if (strong.length > 1) return null;
+
+  const weak = new Set<string>();
+  for (const [jurisdiction, sourceKey] of Object.entries(JURISDICTION_SOURCE_KEYS)) {
+    if (jurisdiction.length <= 2) continue;
+    if (query.normalize("NFKC").toLowerCase().includes(jurisdiction)) weak.add(sourceKey);
+  }
+  return weak.size === 1 ? [...weak][0] : null;
+}
+
+function reducedSourceQuery(query: string) {
+  return query
+    .normalize("NFKC")
+    .replace(SOURCE_QUERY_NOISE, " ")
+    .replace(GENERIC_COMPARISON_NOISE, " ")
+    .replace(/[^\p{L}\p{M}\p{N}§#./:-]+/gu, " ")
+    .split(/\s+/gu)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1)
+    .slice(0, 12)
+    .join(" ");
+}
 
 type RetrievalPlan = {
   requestedMode: SearchMode;

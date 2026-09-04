@@ -23,6 +23,10 @@ const v4SearchMigrationPath = path.join(
   process.cwd(),
   "supabase/migrations/20260826400000_case_keys_and_ranked_pagination.sql",
 );
+const providerResilienceMigrationPath = path.join(
+  process.cwd(),
+  "supabase/migrations/20260904100000_cclrag2_provider_search_resilience.sql",
+);
 const providerRoutePath = path.join(
   process.cwd(),
   "app/api/cclrag2/[...path]/route.ts",
@@ -215,6 +219,50 @@ test("Vercel provider reports an explicit fulltext fallback when semantic capabi
   assert.equal(payload.effectiveMode, "fulltext");
   assert.equal(payload.degraded, true);
   assert.equal(payload.degradationReason, "embedding_not_configured");
+});
+
+test("Vercel provider narrows a generic US-versus-Germany comparison to German constitutional authority", async () => {
+  let rpcBody: Record<string, unknown> | undefined;
+  const query = "미국 판례와 독일 헌법재판 결정을 비교해 주세요. 각각의 판례 근거를 구분해서 제시해 주세요.";
+  const url = new URL("https://provider.example/api/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("mode", "hybrid");
+  url.searchParams.set("pageSize", "5");
+  const response = await handleWorldconsSearchRequest(new Request(url), env, {
+    fetcher: async (_input, init) => {
+      rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({ items: [neubauerRow()], retrievalMode: "latest" });
+    },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.query, query);
+  assert.equal(payload.requestedMode, "hybrid");
+  assert.equal(payload.effectiveMode, "fulltext");
+  assert.equal(payload.databaseRetrievalMode, "latest");
+  assert.equal(rpcBody?.p_source, "de-bverfg");
+  assert.equal(rpcBody?.p_jurisdiction, null);
+  assert.equal(rpcBody?.p_query, "");
+});
+
+test("Vercel provider translates a jurisdiction code into the source-owned search boundary", async () => {
+  let rpcBody: Record<string, unknown> | undefined;
+  const response = await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/search?q=%EB%8F%85%EC%9D%BC&mode=fulltext&jurisdiction=DE"),
+    env,
+    {
+      fetcher: async (_input, init) => {
+        rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ items: [neubauerRow()], retrievalMode: "latest" });
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(rpcBody?.p_source, "de-bverfg");
+  assert.equal(rpcBody?.p_jurisdiction, null);
+  assert.equal(rpcBody?.p_query, "");
 });
 
 test("Vercel provider semantic mode creates an embedding and passes it to V4 vector retrieval", async () => {
@@ -582,6 +630,18 @@ test("Search V4 migration adds indexed four-country case keys and DB-native deep
   assert.match(sql, /v_candidate_limit integer := least\(greatest\(\(coalesce\(p_offset, 0\) \+ coalesce\(p_limit, 20\) \+ 1\) \* 3, 100\), 30063\)/iu);
   assert.match(sql, /create or replace function worldcons_provider_search_v4/iu);
   assert.match(sql, /'totalIsExact', coalesce\(\(v_page ->> 'totalIsExact'\)::boolean, false\)/iu);
+  assert.match(sql, /grant execute on function worldcons_provider_search_v4[\s\S]*to service_role/iu);
+});
+
+test("provider resilience migration materializes only bounded scalar search fields", () => {
+  const sql = fs.readFileSync(providerResilienceMigrationPath, "utf8");
+
+  assert.match(sql, /create or replace function worldcons_provider_search_v4/iu);
+  assert.match(sql, /join article_publications_p3 publication/iu);
+  assert.match(sql, /join article_content_versions_p3 version/iu);
+  assert.match(sql, /'body_excerpt', left\(version\.cleaned_text, 4000\)/iu);
+  assert.doesNotMatch(sql, /provider_search_v3_item\(/iu);
+  assert.doesNotMatch(sql, /select\s+article\.\*/iu);
   assert.match(sql, /grant execute on function worldcons_provider_search_v4[\s\S]*to service_role/iu);
 });
 
