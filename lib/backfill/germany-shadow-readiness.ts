@@ -107,6 +107,7 @@ export async function verifyBverfgPrivateShadowReadiness(input: {
   if (malformedClosed) blocking.push("closed_snapshot_evidence_invalid");
 
   const status = blocking.length > 0 ? "blocked" as const
+    : matchingOpen.length > 0 ? "ready" as const
     : completed ? "complete" as const
     : "ready" as const;
   const resumeSnapshotId = matchingOpen[0]?.id ?? null;
@@ -130,5 +131,78 @@ export async function verifyBverfgPrivateShadowReadiness(input: {
     publicCatalogEnabledByThisCheck: false as const,
     sourcePolicyApprovedByThisCheck: false as const,
     geminiCalls: 0 as const,
+  };
+}
+
+export interface BverfgPrivateShadowWritePlan {
+  snapshotId: string | null;
+  openNewSnapshot: boolean;
+  resumedExistingSnapshot: boolean;
+  sealedInventory: boolean;
+}
+
+export function planBverfgPrivateShadowWrite(input: {
+  readiness: Awaited<ReturnType<typeof verifyBverfgPrivateShadowReadiness>>;
+  requestedSnapshotId?: string | null;
+  allowOpenSnapshot: boolean;
+  allowSealedSnapshot?: boolean;
+}): BverfgPrivateShadowWritePlan {
+  const { readiness } = input;
+  const requestedSnapshotId = input.requestedSnapshotId ?? null;
+  if (readiness.status === "blocked") {
+    throw new Error(`bverfg_shadow_operation.blocked:${readiness.blocking.join(",")}`);
+  }
+  if (!readiness.ownerApprovalRecorded) {
+    throw new Error("bverfg_shadow_operation.owner_approval_missing");
+  }
+  if (readiness.status === "complete") {
+    if (!input.allowSealedSnapshot) {
+      throw new Error("bverfg_shadow_operation.inventory_already_sealed");
+    }
+    if (!readiness.completedSnapshotId) {
+      throw new Error("bverfg_shadow_operation.sealed_snapshot_missing");
+    }
+    if (requestedSnapshotId && requestedSnapshotId !== readiness.completedSnapshotId) {
+      throw new Error("bverfg_shadow_operation.snapshot_mismatch");
+    }
+    return {
+      snapshotId: readiness.completedSnapshotId,
+      openNewSnapshot: false,
+      resumedExistingSnapshot: false,
+      sealedInventory: true,
+    };
+  }
+
+  if (requestedSnapshotId) {
+    if (!readiness.resumeSnapshotId) {
+      throw new Error("bverfg_shadow_operation.requested_snapshot_not_open");
+    }
+    if (readiness.resumeSnapshotId !== requestedSnapshotId) {
+      throw new Error("bverfg_shadow_operation.snapshot_mismatch");
+    }
+    return {
+      snapshotId: requestedSnapshotId,
+      openNewSnapshot: false,
+      resumedExistingSnapshot: true,
+      sealedInventory: false,
+    };
+  }
+
+  if (readiness.resumeSnapshotId) {
+    return {
+      snapshotId: readiness.resumeSnapshotId,
+      openNewSnapshot: false,
+      resumedExistingSnapshot: true,
+      sealedInventory: false,
+    };
+  }
+  if (!input.allowOpenSnapshot) {
+    throw new Error("bverfg_shadow_operation.open_snapshot_missing");
+  }
+  return {
+    snapshotId: null,
+    openNewSnapshot: true,
+    resumedExistingSnapshot: false,
+    sealedInventory: false,
   };
 }

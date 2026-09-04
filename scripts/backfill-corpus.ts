@@ -28,6 +28,10 @@ import {
   germanyBverfgYearScope,
 } from "@/lib/backfill/germany-scope";
 import {
+  planBverfgPrivateShadowWrite,
+  verifyBverfgPrivateShadowReadiness,
+} from "@/lib/backfill/germany-shadow-readiness";
+import {
   adminQueueP1CommandAuthorized,
   resolveAdminQueueP1Authority,
   type AdminQueueP1CommandType,
@@ -173,13 +177,41 @@ function backfillPlan(source: BackfillSource) {
 
 async function snapshotForDiscovery(source: BackfillSource) {
   const existing = optionalUuid("snapshot");
-  if (existing) return existing;
   if (source === "germany") {
-    const year = integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, currentYear());
+    const existingSnapshot = existing
+      ? await postgresCaseBackfillRepository.getSnapshot(existing)
+      : null;
+    if (existingSnapshot && existingSnapshot.sourceKey !== "de-bverfg") {
+      throw new Error("bverfg_shadow_operation.snapshot_source_mismatch");
+    }
+    const existingYear = existingSnapshot?.scopeFrom
+      ? Number(existingSnapshot.scopeFrom.slice(0, 4))
+      : null;
+    const year = existingYear ?? integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, currentYear());
     const scope = germanyBverfgYearScope(year, currentYear());
     assertGermanyBverfgYearEnabled(year, process.env, currentYear());
-    const policyVersion = requiredArgument("policy-version");
-    await postgresCaseBackfillRepository.getSourcePolicy("de-bverfg", policyVersion);
+    const requestedPolicyVersion = argumentValue("policy-version")?.trim() || null;
+    const policyVersion = existingSnapshot?.sourcePolicyVersion ?? requestedPolicyVersion ?? requiredArgument("policy-version");
+    if (requestedPolicyVersion && requestedPolicyVersion !== policyVersion) {
+      throw new Error("bverfg_shadow_operation.policy_version_mismatch");
+    }
+    const readiness = await verifyBverfgPrivateShadowReadiness({ year, policyVersion });
+    output(readiness);
+    const operation = planBverfgPrivateShadowWrite({
+      readiness,
+      requestedSnapshotId: existing,
+      allowOpenSnapshot: true,
+    });
+    if (!operation.openNewSnapshot && operation.snapshotId) {
+      output({
+        event: "bverfg_private_shadow_snapshot_resumed",
+        snapshotId: operation.snapshotId,
+        policyVersion,
+        ownerApprovalRecorded: true,
+        geminiCalls: 0,
+      });
+      return operation.snapshotId;
+    }
     return postgresCaseBackfillRepository.openSnapshot({
       sourceKey: "de-bverfg",
       scopeFrom: scope.scopeFrom,
@@ -204,6 +236,7 @@ async function snapshotForDiscovery(source: BackfillSource) {
       createdBy: argumentValue("requested-by")?.trim() || "backfill-corpus-cli",
     });
   }
+  if (existing) return existing;
   if (source === "france") {
     const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
     const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
@@ -255,6 +288,35 @@ async function snapshotForDiscovery(source: BackfillSource) {
     },
     exclusions: [],
     createdBy: argumentValue("requested-by")?.trim() || "backfill-corpus-cli",
+  });
+}
+
+async function assertGermanySnapshotReadyForWrite(snapshotId: string) {
+  const snapshot = await postgresCaseBackfillRepository.getSnapshot(snapshotId);
+  if (snapshot.sourceKey !== "de-bverfg") {
+    throw new Error("bverfg_shadow_operation.snapshot_source_mismatch");
+  }
+  const year = Number(snapshot.scopeFrom?.slice(0, 4));
+  if (!Number.isInteger(year)) throw new Error("bverfg_shadow_operation.snapshot_scope_invalid");
+  assertGermanyBverfgYearEnabled(year, process.env, currentYear());
+  const readiness = await verifyBverfgPrivateShadowReadiness({
+    year,
+    policyVersion: snapshot.sourcePolicyVersion,
+  });
+  output(readiness);
+  const operation = planBverfgPrivateShadowWrite({
+    readiness,
+    requestedSnapshotId: snapshotId,
+    allowOpenSnapshot: false,
+    allowSealedSnapshot: true,
+  });
+  output({
+    event: "bverfg_private_shadow_write_gate_passed",
+    snapshotId: operation.snapshotId,
+    policyVersion: snapshot.sourcePolicyVersion,
+    ownerApprovalRecorded: true,
+    sealedInventory: operation.sealedInventory,
+    geminiCalls: 0,
   });
 }
 
@@ -329,6 +391,9 @@ async function main() {
     return 0;
   }
   const snapshotId = selected === "discover" ? await snapshotForDiscovery(source) : requiredArgument("snapshot");
+  if (source === "germany" && selected !== "discover") {
+    await assertGermanySnapshotReadyForWrite(snapshotId);
+  }
   return submitPhase(selected as CaseBackfillPhase & (typeof GATE1_PHASES)[number], snapshotId);
 }
 

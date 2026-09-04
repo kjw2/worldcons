@@ -18,7 +18,10 @@ import {
   validateBverfgInventoryResult,
   verifyBverfgInventoryReadOnly,
 } from "../lib/backfill/germany-inventory-verification";
-import { verifyBverfgPrivateShadowReadiness } from "../lib/backfill/germany-shadow-readiness";
+import {
+  planBverfgPrivateShadowWrite,
+  verifyBverfgPrivateShadowReadiness,
+} from "../lib/backfill/germany-shadow-readiness";
 import { verifyBverfgPrivateShadowCanary } from "../lib/backfill/germany-shadow-canary";
 import type { BverfgShadowCanaryRepository } from "../lib/backfill/germany-shadow-canary-repository";
 import type {
@@ -307,6 +310,90 @@ test("private-shadow readiness resumes one open snapshot and recognizes only ful
   });
   assert.equal(complete.status, "complete");
   assert.equal(complete.nextAction, "inspect_private_shadow_reconciliation");
+});
+
+test("private-shadow write planning cannot bypass approval, readiness, or the one-open-snapshot rule", async () => {
+  const ready = await verifyBverfgPrivateShadowReadiness({
+    year: 2024,
+    policyVersion: reviewedGermanyPolicy.policyVersion,
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  }, {
+    repository: shadowRepository(),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    currentYear: 2026,
+  });
+  assert.deepEqual(planBverfgPrivateShadowWrite({
+    readiness: ready,
+    allowOpenSnapshot: true,
+  }), {
+    snapshotId: null,
+    openNewSnapshot: true,
+    resumedExistingSnapshot: false,
+    sealedInventory: false,
+  });
+  assert.throws(() => planBverfgPrivateShadowWrite({
+    readiness: ready,
+    allowOpenSnapshot: false,
+  }), /open_snapshot_missing/);
+
+  const snapshotId = "00000000-0000-4000-8000-000000000321";
+  const resumable = await verifyBverfgPrivateShadowReadiness({
+    year: 2024,
+    policyVersion: reviewedGermanyPolicy.policyVersion,
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  }, {
+    repository: shadowRepository({ snapshots: [{
+      id: snapshotId,
+      sourcePolicyVersion: reviewedGermanyPolicy.policyVersion,
+      status: "open",
+      openedAt: "2026-09-04T00:00:00.000Z",
+      closedAt: null,
+      manifestHash: null,
+      enumerationManifestHash: null,
+    }] }),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    currentYear: 2026,
+  });
+  assert.deepEqual(planBverfgPrivateShadowWrite({
+    readiness: resumable,
+    allowOpenSnapshot: true,
+  }), {
+    snapshotId,
+    openNewSnapshot: false,
+    resumedExistingSnapshot: true,
+    sealedInventory: false,
+  });
+  assert.throws(() => planBverfgPrivateShadowWrite({
+    readiness: resumable,
+    requestedSnapshotId: "00000000-0000-4000-8000-000000000322",
+    allowOpenSnapshot: false,
+  }), /snapshot_mismatch/);
+
+  const blocked = { ...ready, status: "blocked" as const, blocking: ["germany_history_flag_disabled"] };
+  assert.throws(() => planBverfgPrivateShadowWrite({
+    readiness: blocked,
+    allowOpenSnapshot: true,
+  }), /blocked:germany_history_flag_disabled/);
+  const complete = {
+    ...ready,
+    status: "complete" as const,
+    completedSnapshotId: snapshotId,
+  };
+  assert.throws(() => planBverfgPrivateShadowWrite({
+    readiness: complete,
+    allowOpenSnapshot: true,
+  }), /inventory_already_sealed/);
+  assert.deepEqual(planBverfgPrivateShadowWrite({
+    readiness: complete,
+    requestedSnapshotId: snapshotId,
+    allowOpenSnapshot: false,
+    allowSealedSnapshot: true,
+  }), {
+    snapshotId,
+    openNewSnapshot: false,
+    resumedExistingSnapshot: false,
+    sealedInventory: true,
+  });
 });
 
 const shadowCanaryEvidence = {
