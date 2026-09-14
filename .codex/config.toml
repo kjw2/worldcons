@@ -1,11 +1,10 @@
 [mcp_servers.codex-coordinator]
-command = "node"
-args = ["F:\\dev\\codex-coordinator\\dist\\mcp-server.mjs"]
-cwd = "F:\\dev\\codex-coordinator"
-startup_timeout_sec = 20
-tool_timeout_sec = 70
+url = "https://codex-coordinator.cclib.workers.dev/mcp"
+auth = "oauth"
+required = true
+tool_timeout_sec = 75
 default_tools_approval_mode = "approve"
+http_headers = { "X-Codex-Coordinator-Project" = "worldcons" }
 
-[mcp_servers.codex-coordinator.env]
-CODEX_COORDINATOR_PROJECT = "worldcons"
-CODEX_COORDINATOR_SESSION = "worldcons:codex:main"
+# register_session returns a unique <project>:<role-or-agent>:<instance> value.
+# Include that exact session_id in every later mutation tool call from this task.
