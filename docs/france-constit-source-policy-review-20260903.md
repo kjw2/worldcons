@@ -2,11 +2,13 @@
 
 ## Decision
 
-Status: **READY FOR OWNER APPROVAL; NO POLICY ROW OR SOURCE DATA WRITTEN**.
+Status: **POLICY APPROVED FOR THE FRANCE 2010-2024 QPC/DC TRANCHE; NO SOURCE DATA WRITTEN**.
 
 The official DILA `CONSTIT` open-data stock is the preferred primary inventory for the France constitutional-case backfill. The Conseil constitutionnel annual/type HTML pages remain an independent count and canonical-detail cross-check; they are no longer the sole evidence of corpus completeness.
 
-This review authorizes implementation and read-only fixtures. It does not identify a human `reviewed_by`, choose the first `review_due_at`, insert an immutable `source_corpus_policies` row, enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, run a production backfill, publish Catalog rows, or send source text to Gemini.
+On 2026-09-16 the WorldCons owner explicitly approved this source policy, scoped only to the France 2010-2024 `QPC`/`DC` tranches. Spain and the Germany 1998-2023 expansion are **not** covered by this approval. Migration `20260916090000_constitutional_case_france_policy_approval.sql` inserts the immutable `source_corpus_policies` row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v1`.
+
+This review and approval authorize the implementation and read-only fixtures, and the code now recognizes the approved policy. They do **not** insert a production `source_corpus_policies` row by themselves (the migration must still be applied), enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, run a production backfill, publish Catalog rows, or send source text to Gemini.
 
 ## Official evidence
 
@@ -72,9 +74,9 @@ ECLI: ECLI:FR:CC:2024:2024.1115.QPC
 
 `URL_CC` is normalized to HTTPS and must match the allowlisted Conseil host and `/decision/{year}/{record}.htm` path before it can become an item `discovered_url`. The DILA `ID` is retained in `stable_item_key` and provenance; the Conseil path record remains available for authority-path verification.
 
-## Proposed immutable policy row
+## Approved immutable policy row
 
-The following is a proposal, not an executable migration or approved insert:
+The following is the executable migration and approved insert. The immutable row is the durable audit record; re-running the migration observes the exact same decision or raises `FRANCE_CONSTIT_POLICY_APPROVAL_CONFLICT`.
 
 ```yaml
 source_key: fr-conseil-constitutionnel
@@ -107,13 +109,14 @@ min_request_delay_ms: 3000
 max_concurrency: 1
 external_index_hosts: []
 external_index_usage: null
-retention_days: OWNER_DECISION_REQUIRED
-reviewed_by: OWNER_DECISION_REQUIRED
-reviewed_at: OWNER_DECISION_REQUIRED
-review_due_at: OWNER_DECISION_REQUIRED
+retention_days: 90
+reviewed_by: WorldCons owner via explicit approval
+reviewed_at: 2026-09-16T00:00:00Z
+review_due_at: 2027-03-15T00:00:00Z
+supersedes_policy_version: null
 ```
 
-The policy `scope_definition` must additionally freeze:
+The policy `scope_definition` additionally freezes:
 
 - exact `NATURE in {QPC, DC}` and `DATE_DEC` scope semantics;
 - latest-stock selection and ordered increment application rules;
@@ -127,7 +130,7 @@ Changing `aiEgress` later requires a new immutable policy version and an indepen
 
 ## Implementation contract
 
-The next implementation stage must satisfy all of these requirements before a policy row is approved:
+The approved policy is conditional on these implementation invariants continuing to hold. They were required before approval and remain mandatory for every execution under this policy version:
 
 1. Discover the current directory and select exactly one latest `Freemium_constit_global_*.tar.gz` stock; reject duplicate, malformed, redirecting, oversized, or non-HTTPS candidates.
 2. Fetch the directory and stock through the distributed source request governor. Hold the stock permit until the body is completely available and fail on redirects.
@@ -139,15 +142,17 @@ The next implementation stage must satisfy all of these requirements before a po
 8. Preserve the source-only rule: no Gemini summary or embedding calls in inventory, fetch, normalize, verify, or Catalog publication.
 9. Before public publication, prove that the article detail and plugin responses expose required DILA attribution and update provenance without suggesting Conseil/DILA endorsement.
 
-## Approval checklist
+## Approval record
 
-An owner can approve the first immutable policy only after the implementation tests pass and these three human decisions are recorded:
+The owner approved the first immutable policy after the implementation tests passed and recorded the three human decisions:
 
-- the named reviewer (`reviewed_by`);
-- the policy review deadline (`review_due_at`);
-- the per-case bounded replay retention period (`retention_days`).
+- reviewer (`reviewed_by`): `WorldCons owner via explicit approval`;
+- policy review deadline (`review_due_at`): `2027-03-15T00:00:00Z` (180 days after approval);
+- per-case bounded replay retention (`retention_days`): 90 days.
 
-Until then, the correct operational state is: code and read-only verification allowed; production source policy, inventory writes, Catalog writes, public flags, and AI egress disabled.
+The approved scope is exactly the France 2010-2024 `QPC`/`DC` tranches. Spain and the Germany 1998-2023 expansion are not approved by this decision, and every other Conseil `NATURE` (`L`/`LP`/`OTHER_CONSEIL_NATURE`) stays deferred to a later policy version.
+
+The operational state is: code and read-only verification allowed; the approved policy is recognized by the France guard and M5 readiness, but production source policy insertion (migration application), inventory writes, Catalog writes, public flags, and AI egress remain disabled until their own gates run.
 
 ## Implementation progress
 
@@ -168,6 +173,6 @@ Completed in the first two post-review implementation stages:
 - a fail-closed Catalog publication trigger proving that a France source anchor carries the exact DILA provenance sealed into its closed inventory snapshot;
 - public notices that distinguish official source data from optional AI summaries and prohibit any implication of DILA or Conseil constitutionnel endorsement.
 
-Still required before owner approval and any production inventory write:
+Still required before any production inventory write:
 
-- record the owner decisions listed above and insert the immutable policy row only after those checks pass.
+- apply the approved immutable policy migration in the target environment and then run the read-only France readiness/preflight evidence commands. The migration is intentionally **not** applied by this task and no historical backfill is run.

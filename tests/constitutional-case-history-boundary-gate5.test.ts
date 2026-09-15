@@ -48,7 +48,7 @@ test("country expansion order is machine-readable and readiness-ordered", () => 
     COUNTRY_HISTORY_EXPANSION_ORDER.map((stage) => [stage.order, stage.country, stage.status]),
     [
       [1, "Germany", "approved_private_shadow"],
-      [2, "France", "pending_owner_approval"],
+      [2, "France", "approved_source_policy"],
       [3, "France", "pending_owner_approval"],
       [4, "Spain", "blocked_source_policy"],
       [5, "Spain", "blocked_source_policy"],
@@ -58,6 +58,11 @@ test("country expansion order is machine-readable and readiness-ordered", () => 
   );
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyVersion, "bverfg-unattended-canary-v1");
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyReviewDueAt, "2027-03-03");
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyVersion, "france-dila-constit-2026-09-v1");
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyReviewDueAt, "2027-03-15");
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].approvedYearFrom, 2010);
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].approvedYearTo, 2024);
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[2].policyVersion, null);
   assert.deepEqual(countryHistoryStage("fr-conseil-constitutionnel").map((stage) => stage.documentTypes), [
     ["QPC", "DC"],
     ["L", "LP", "OTHER_CONSEIL_NATURE"],

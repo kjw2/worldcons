@@ -22,7 +22,7 @@ import type { SourceAdapter } from "../lib/sources/types";
 
 const NOW = () => new Date("2026-09-16T00:00:00.000Z");
 
-test("M5 readiness authorizes only the existing Germany 2024 canary and reports the exact blocker", () => {
+test("M5 readiness reports the approved Germany canary and the owner-approved France QPC/DC policy", () => {
   const report = caseBackfillRolloutReadiness({ environment: {}, currentYear: 2026, now: NOW });
 
   assert.equal(report.event, "case_backfill_rollout_readiness");
@@ -39,7 +39,7 @@ test("M5 readiness authorizes only the existing Germany 2024 canary and reports 
     report.tranches.map((tranche) => [tranche.order, tranche.country, tranche.status]),
     [
       [1, "Germany", "approved_private_shadow"],
-      [2, "France", "pending_owner_approval"],
+      [2, "France", "approved_source_policy"],
       [3, "France", "pending_owner_approval"],
       [4, "Spain", "blocked_source_policy"],
       [5, "Spain", "blocked_source_policy"],
@@ -52,21 +52,55 @@ test("M5 readiness authorizes only the existing Germany 2024 canary and reports 
   assert.deepEqual(germany.approvedYears, [2024]);
   assert.equal(germany.policyAuthorized, true);
   assert.equal(germany.executionEnabled, false);
-  assert.equal(report.approvedSelectionCount, 1);
-  assert.deepEqual(
-    report.approvedSelections.map((entry) => [entry.sourceKey, entry.year, entry.documentType]),
-    [["de-bverfg", 2024, "DECISION"]],
-  );
-  assert.equal(report.newlyAuthorizedSelectionCount, 0);
+
+  const approvedYears: number[] = [];
+  for (let year = 2010; year <= 2024; year += 1) approvedYears.push(year);
+  const franceQpcDc = report.tranches[1];
+  assert.deepEqual(franceQpcDc.approvedYears, approvedYears);
+  assert.equal(franceQpcDc.policyAuthorized, true);
+  assert.equal(franceQpcDc.executionEnabled, false);
+  assert.equal(franceQpcDc.policyVersion, "france-dila-constit-2026-09-v1");
+  assert.equal(franceQpcDc.policyReviewDueAt, "2027-03-15");
+  assert.deepEqual(franceQpcDc.blocking, []);
+
+  const franceOther = report.tranches[2];
+  assert.equal(franceOther.policyAuthorized, false);
+  assert.equal(franceOther.executionEnabled, false);
+  assert.equal(franceOther.policyVersion, null);
+  assert.deepEqual(franceOther.blocking, ["owner_source_policy_not_approved", "deferred_after_qpc_dc"]);
+
+  assert.equal(report.approvedSelectionCount, 31);
+  assert.deepEqual(report.approvedSelections[0], {
+    sourceKey: "de-bverfg",
+    country: "Germany",
+    year: 2024,
+    documentType: "DECISION",
+    policyVersion: "bverfg-unattended-canary-v1",
+    policyReviewDueAt: "2027-03-03",
+  });
+  const franceSelections = report.approvedSelections.filter((entry) => entry.sourceKey === "fr-conseil-constitutionnel");
+  assert.equal(franceSelections.length, 30);
+  assert.deepEqual(franceSelections[0], {
+    sourceKey: "fr-conseil-constitutionnel",
+    country: "France",
+    year: 2010,
+    documentType: "QPC",
+    policyVersion: "france-dila-constit-2026-09-v1",
+    policyReviewDueAt: "2027-03-15",
+  });
+  assert.equal(franceSelections.some((entry) => entry.year === 2024 && entry.documentType === "DC"), true);
+  assert.equal(franceSelections.every((entry) => entry.documentType === "QPC" || entry.documentType === "DC"), true);
+
+  assert.equal(report.newlyAuthorizedSelectionCount, 30);
   assert.equal(report.m5ExpansionExecutionReady, false);
-  assert.equal(report.tranches.filter((tranche) => !tranche.policyAuthorized).length, 6);
+  assert.equal(report.tranches.filter((tranche) => !tranche.policyAuthorized).length, 5);
   assert.deepEqual(report.nextApprovalRequired, {
-    trancheOrder: 2,
+    trancheOrder: 3,
     country: "France",
     sourceKey: "fr-conseil-constitutionnel",
-    documentTypes: ["QPC", "DC"],
+    documentTypes: ["L", "LP", "OTHER_CONSEIL_NATURE"],
     status: "pending_owner_approval",
-    blocking: ["owner_source_policy_not_approved"],
+    blocking: ["owner_source_policy_not_approved", "deferred_after_qpc_dc"],
   });
 });
 
@@ -115,25 +149,46 @@ test("Germany 1998-2023 expansion stays unapproved even with the history flag on
   ));
 });
 
-test("France QPC/DC stays pending owner approval and the history flag alone cannot open it", () => {
-  const flag = { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" };
-  const qpc = selectCaseBackfillRollout(
+test("France QPC/DC is policyAuthorized but blocked until the exact history flag is on", () => {
+  const qpcNoFlag = selectCaseBackfillRollout(
     { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "QPC" },
-    { environment: flag, currentYear: 2026 },
+    { environment: {}, currentYear: 2026 },
   );
-  assert.equal(qpc.trancheOrder, 2);
-  assert.equal(qpc.policyAuthorized, false);
-  assert.equal(qpc.allowed, false);
-  assert.equal(qpc.errorCode, "case_backfill.france_history_source_policy_not_approved");
-  assert.deepEqual(qpc.blocking, ["owner_source_policy_not_approved"]);
+  assert.equal(qpcNoFlag.trancheOrder, 2);
+  assert.equal(qpcNoFlag.policyAuthorized, true);
+  assert.equal(qpcNoFlag.executionEnabled, false);
+  assert.equal(qpcNoFlag.allowed, false);
+  assert.equal(qpcNoFlag.errorCode, "case_backfill.france_history_disabled");
+  assert.deepEqual(qpcNoFlag.blocking, ["france_history_disabled"]);
 
-  const otherNature = selectCaseBackfillRollout(
-    { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "L" },
-    { environment: flag, currentYear: 2026 },
-  );
-  assert.equal(otherNature.trancheOrder, 3);
-  assert.equal(otherNature.allowed, false);
-  assert.equal(otherNature.errorCode, "case_backfill.france_history_source_policy_not_approved");
+  for (const year of [2010, 2020, 2024]) {
+    for (const documentType of ["QPC", "DC"]) {
+      const enabled = selectCaseBackfillRollout(
+        { sourceKey: "fr-conseil-constitutionnel", year, documentType },
+        { environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, currentYear: 2026 },
+      );
+      assert.equal(enabled.trancheOrder, 2, `${year} ${documentType}`);
+      assert.equal(enabled.policyAuthorized, true);
+      assert.equal(enabled.executionEnabled, true);
+      assert.equal(enabled.allowed, true);
+      assert.equal(enabled.errorCode, null);
+    }
+  }
+});
+
+test("other France Conseil natures stay deferred even with the history flag on", () => {
+  const flag = { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" };
+  for (const documentType of ["L", "LP", "OTHER_CONSEIL_NATURE"]) {
+    const result = selectCaseBackfillRollout(
+      { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType },
+      { environment: flag, currentYear: 2026 },
+    );
+    assert.equal(result.trancheOrder, 3);
+    assert.equal(result.policyAuthorized, false);
+    assert.equal(result.allowed, false);
+    assert.equal(result.errorCode, "case_backfill.france_history_source_policy_not_approved");
+    assert.deepEqual(result.blocking, ["owner_source_policy_not_approved", "deferred_after_qpc_dc"]);
+  }
 
   const unknownType = selectCaseBackfillRollout(
     { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "XYZ" },
@@ -150,18 +205,31 @@ test("France QPC/DC stays pending owner approval and the history flag alone cann
   );
 });
 
-test("France selection can open only when an owner policy is explicitly injected", () => {
-  const enabled = selectCaseBackfillRollout(
+test("France approval is never an env-only bypass and an explicit unapproved injection still blocks", () => {
+  const disabled = selectCaseBackfillRollout(
     { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "QPC" },
     {
       environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
       currentYear: 2026,
-      franceHistorySourcePolicyApproved: true,
+      franceHistorySourcePolicyApproved: false,
     },
   );
-  assert.equal(enabled.policyAuthorized, true);
-  assert.equal(enabled.executionEnabled, true);
-  assert.equal(enabled.allowed, true);
+  assert.equal(disabled.policyAuthorized, false);
+  assert.equal(disabled.executionEnabled, false);
+  assert.equal(disabled.allowed, false);
+  assert.equal(disabled.errorCode, "case_backfill.france_history_source_policy_not_approved");
+
+  assert.throws(
+    () => assertCaseBackfillRolloutPreflight(
+      { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "QPC" },
+      {
+        environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
+        currentYear: 2026,
+        franceHistorySourcePolicyApproved: false,
+      },
+    ),
+    /case_backfill\.france_history_source_policy_not_approved/,
+  );
 });
 
 test("Spain historical scope is blocked and 2024 baseline is fail-closed without policy approval", () => {
@@ -218,7 +286,7 @@ test("2025+ selections are rejected before any source-specific policy path", () 
 test("fail-closed preflight rejects every unapproved selection and proves zero public/AI effects", () => {
   const cases: Array<[Parameters<typeof selectCaseBackfillRollout>[0], string]> = [
     [{ sourceKey: "de-bverfg", year: 2023, documentType: "DECISION" }, "case_backfill.germany_expansion_not_approved"],
-    [{ sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "QPC" }, "case_backfill.france_history_source_policy_not_approved"],
+    [{ sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "L" }, "case_backfill.france_history_source_policy_not_approved"],
     [{ sourceKey: "es-tribunal-constitucional", year: 2024, documentType: "SENTENCIA" }, "case_backfill.spain_history_source_blocked"],
     [{ sourceKey: "us-constitution-annotated", year: 2024, documentType: "CONSTITUTION_ANNOTATED_TABLE_CITATION" }, "us_conan.candidate_graph_not_verified_corpus"],
   ];
@@ -243,6 +311,43 @@ test("readiness stays catalog-write aware without enabling publication or AI", (
   assert.equal(report.publicCatalogEnabled, false);
   assert.equal(report.geminiCalls, 0);
   assert.equal(report.m5ExpansionExecutionReady, false);
+});
+
+test("M5 expansion execution readiness requires an executionEnabled newly approved tranche", () => {
+  const off = caseBackfillRolloutReadiness({ environment: {}, currentYear: 2026, now: NOW });
+  assert.equal(off.newlyAuthorizedSelectionCount, 30);
+  assert.equal(off.m5ExpansionExecutionReady, false);
+
+  const franceOn = caseBackfillRolloutReadiness({
+    environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
+    currentYear: 2026,
+    now: NOW,
+  });
+  assert.equal(franceOn.newlyAuthorizedSelectionCount, 30);
+  assert.equal(franceOn.m5ExpansionExecutionReady, true);
+  const franceQpcDc = franceOn.tranches[1];
+  assert.equal(franceQpcDc.policyAuthorized, true);
+  assert.equal(franceQpcDc.executionEnabled, true);
+  const franceOther = franceOn.tranches[2];
+  assert.equal(franceOther.policyAuthorized, false);
+  assert.equal(franceOther.executionEnabled, false);
+  assert.equal(
+    selectCaseBackfillRollout(
+      { sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "L" },
+      { environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, currentYear: 2026 },
+    ).allowed,
+    false,
+  );
+
+  // The Germany 2024 canary is the baseline and cannot make M5 expansion ready,
+  // even when its own history flag is on.
+  const germanyOn = caseBackfillRolloutReadiness({
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+    currentYear: 2026,
+    now: NOW,
+  });
+  assert.equal(germanyOn.newlyAuthorizedSelectionCount, 30);
+  assert.equal(germanyOn.m5ExpansionExecutionReady, false);
 });
 
 test("CLI preflight gates snapshot and pass creation, and the evidence CLI is wired", () => {
@@ -334,6 +439,7 @@ async function expectNoRun(
   phase: "discover" | "fetch" | "normalize" | "verify" | "reconcile",
   environment: Record<string, string | undefined>,
   pattern: RegExp,
+  policyDependencies: { franceHistorySourcePolicyApproved?: boolean; spainHistorySourcePolicyApproved?: boolean } = {},
 ) {
   let began = false;
   await assert.rejects(
@@ -352,6 +458,7 @@ async function expectNoRun(
       loadAdapter: async () => null,
       now: () => new Date("2026-09-16T00:00:00.000Z"),
       environment,
+      ...policyDependencies,
     }),
     pattern,
   );
@@ -370,6 +477,7 @@ test("service defense blocks unapproved tranches in non-discover phases before b
     "fetch",
     { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
     /case_backfill\.france_history_source_policy_not_approved/,
+    { franceHistorySourcePolicyApproved: false },
   );
   await expectNoRun(
     defenseSnapshot({ sourceKey: "es-tribunal-constitucional", scopeFrom: "2024-01-01", scopeTo: "2024-12-31", documentType: "SENTENCIA", sourcePolicyVersion: "spain-policy-v1" }),
@@ -397,6 +505,7 @@ test("service defense blocks unapproved tranches in discover phases before begin
     "discover",
     { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
     /case_backfill\.france_history_source_policy_not_approved/,
+    { franceHistorySourcePolicyApproved: false },
   );
   await expectNoRun(
     defenseSnapshot({ sourceKey: "es-tribunal-constitucional", scopeFrom: "2024-01-01", scopeTo: "2024-12-31", documentType: "SENTENCIA", sourcePolicyVersion: "spain-policy-v1", status: "open" }),

@@ -28,6 +28,7 @@ export const CASE_HISTORY_BOUNDARY: CaseHistoryBoundary = Object.freeze({
 
 export type CountryHistoryStageStatus =
   | "approved_private_shadow"
+  | "approved_source_policy"
   | "blocked_source_policy"
   | "pending_owner_approval"
   | "candidate_graph_only";
@@ -76,12 +77,12 @@ export const COUNTRY_HISTORY_EXPANSION_ORDER: readonly CountryHistoryStage[] = O
     documentTypes: ["QPC", "DC"],
     yearFrom: 2010,
     yearTo: 2024,
-    approvedYearFrom: null,
-    approvedYearTo: null,
-    status: "pending_owner_approval",
-    blocking: ["owner_source_policy_not_approved"],
-    policyVersion: null,
-    policyReviewDueAt: null,
+    approvedYearFrom: 2010,
+    approvedYearTo: 2024,
+    status: "approved_source_policy",
+    blocking: [],
+    policyVersion: "france-dila-constit-2026-09-v1",
+    policyReviewDueAt: "2027-03-15",
   }),
   Object.freeze({
     order: 3,

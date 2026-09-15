@@ -5,14 +5,21 @@ import {
 
 export const CASE_CATALOG_FRANCE_HISTORY_FLAG = "CASE_CATALOG_FRANCE_HISTORY_ENABLED";
 export const FRANCE_CONSEIL_HISTORY_START_YEAR = 2010;
+export const FRANCE_CONSEIL_HISTORY_END_YEAR = 2024;
 export const FRANCE_CONSEIL_DOCUMENT_TYPES = ["QPC", "DC"] as const;
-export const FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS = "pending_owner_approval" as const;
+export const FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS = "approved_source_policy" as const;
+export const FRANCE_CONSEIL_APPROVED_POLICY_VERSION = "france-dila-constit-2026-09-v1";
+export const FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT = "2027-03-15";
 /**
- * The France DILA/Conseil source policy review identified no human
- * `reviewed_by`, `review_due_at`, or retention decision, so no immutable policy
- * row is approved. The env flag must never be sufficient on its own.
+ * The WorldCons owner explicitly approved the France DILA/Conseil QPC/DC source
+ * policy on 2026-09-16, scoped only to the 2010-2024 QPC/DC tranches. The
+ * immutable row is inserted by migration
+ * `20260916090000_constitutional_case_france_policy_approval.sql`. The approval
+ * is recorded here as reviewed policy metadata only; execution still requires
+ * the exact `CASE_CATALOG_FRANCE_HISTORY_ENABLED` flag, so the env flag is never
+ * sufficient on its own and no runtime env-only bypass is introduced.
  */
-export const FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED = false;
+export const FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED = true;
 
 export type FranceConseilDocumentType = (typeof FRANCE_CONSEIL_DOCUMENT_TYPES)[number];
 
@@ -26,6 +33,35 @@ function explicitTrue(value?: string) {
 
 export function franceConseilHistorySourcePolicyApproved() {
   return FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED;
+}
+
+/**
+ * Read-only descriptor of the owner-approved France policy. It exposes the exact
+ * approved document types and year bounds without widening the approved scope to
+ * `L`/`LP`/`OTHER_CONSEIL_NATURE`, which stay deferred to a later policy version.
+ */
+export function franceConseilApprovedPolicyDescriptor() {
+  return {
+    policyVersion: FRANCE_CONSEIL_APPROVED_POLICY_VERSION,
+    reviewDueAt: FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT,
+    documentTypes: [...FRANCE_CONSEIL_DOCUMENT_TYPES],
+    approvedYearFrom: FRANCE_CONSEIL_HISTORY_START_YEAR,
+    approvedYearTo: FRANCE_CONSEIL_HISTORY_END_YEAR,
+    historyStartYear: FRANCE_CONSEIL_HISTORY_START_YEAR,
+    historicalMaxYear: HISTORICAL_GATE_MAX_YEAR,
+  };
+}
+
+/**
+ * The owner approval covers exactly the 2010-2024 QPC/DC selections. Other
+ * Conseil natures remain deferred, and any year outside the Gate 5 boundary is
+ * never authorized by this policy.
+ */
+export function franceConseilApprovedSelection(year: number, documentType: string) {
+  const normalizedType = franceConseilDocumentType(documentType);
+  if (!normalizedType) return false;
+  if (year < FRANCE_CONSEIL_HISTORY_START_YEAR || year > FRANCE_CONSEIL_HISTORY_END_YEAR) return false;
+  return year <= HISTORICAL_GATE_MAX_YEAR;
 }
 
 export function franceConseilYearSupported(year: number, currentYear = new Date().getUTCFullYear()) {

@@ -4,7 +4,11 @@ import test from "node:test";
 import zlib from "node:zlib";
 import {
   CASE_CATALOG_FRANCE_HISTORY_FLAG,
+  FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT,
+  FRANCE_CONSEIL_APPROVED_POLICY_VERSION,
   FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS,
+  franceConseilApprovedPolicyDescriptor,
+  franceConseilApprovedSelection,
   franceConseilExpansionPlan,
   franceConseilHistorySourcePolicyApproved,
   franceConseilScope,
@@ -120,7 +124,7 @@ const franceInventoryMetadata = {
   },
 };
 
-test("France scope is annual, QPC/DC-only, pre-2025, and gated on owner policy approval", () => {
+test("France scope is annual, QPC/DC-only, pre-2025, and owner-approved while the flag stays required", () => {
   assert.deepEqual(franceConseilScope(2010, "qpc", 2026), {
     year: 2010, scopeFrom: "2010-01-01", scopeTo: "2010-12-31", documentType: "QPC",
   });
@@ -129,20 +133,58 @@ test("France scope is annual, QPC/DC-only, pre-2025, and gated on owner policy a
   assert.throws(() => franceConseilScope(2025, "QPC", 2026), /france_year_not_supported/);
   assert.throws(() => franceConseilScope(2027, "QPC", 2026), /france_year_not_supported/);
   assert.throws(() => franceConseilScope(2024, "L", 2026), /france_document_type_not_supported/);
-  assert.equal(FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS, "pending_owner_approval");
-  assert.equal(franceConseilHistorySourcePolicyApproved(), false);
+  assert.equal(FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS, "approved_source_policy");
+  assert.equal(franceConseilHistorySourcePolicyApproved(), true);
+  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v1");
+  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT, "2027-03-15");
+  assert.deepEqual(franceConseilApprovedPolicyDescriptor(), {
+    policyVersion: "france-dila-constit-2026-09-v1",
+    reviewDueAt: "2027-03-15",
+    documentTypes: ["QPC", "DC"],
+    approvedYearFrom: 2010,
+    approvedYearTo: 2024,
+    historyStartYear: 2010,
+    historicalMaxYear: 2024,
+  });
+  // Policy approval is recognized, but the exact env flag is still required and
+  // an explicit unapproved injection always wins.
   assert.equal(franceConseilScopeEnabled(2024, "QPC", {}, 2026), false);
-  assert.equal(franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026), false);
   assert.equal(
-    franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026, { policyApproved: true }),
+    franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026),
     true,
   );
+  assert.equal(
+    franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026, { policyApproved: false }),
+    false,
+  );
+  assert.equal(franceConseilScopeEnabled(2024, "QPC", {}, 2026, { policyApproved: true }), false);
   const plan = franceConseilExpansionPlan({}, 2011);
   assert.deepEqual(plan.map((entry) => [entry.year, entry.documentType, entry.enabled]), [
     [2010, "QPC", false], [2010, "DC", false], [2011, "QPC", false], [2011, "DC", false],
   ]);
   const gated = franceConseilExpansionPlan({ [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2011);
-  assert.equal(gated.every((entry) => !entry.enabled), true);
+  assert.equal(gated.every((entry) => entry.enabled), true);
+});
+
+test("France owner approval authorizes exactly the 2010-2024 QPC/DC selections", () => {
+  const years: number[] = [];
+  for (let year = 2010; year <= 2024; year += 1) years.push(year);
+  assert.equal(years.length, 15);
+  for (const year of years) {
+    for (const documentType of ["QPC", "DC"] as const) {
+      assert.equal(franceConseilApprovedSelection(year, documentType), true, `${year} ${documentType}`);
+      assert.doesNotThrow(() => franceConseilScope(year, documentType, 2026));
+      assert.equal(
+        franceConseilScopeEnabled(year, documentType, { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026),
+        true,
+      );
+    }
+  }
+  for (const documentType of ["L", "LP", "OTHER_CONSEIL_NATURE", "XYZ"]) {
+    assert.equal(franceConseilApprovedSelection(2024, documentType), false, documentType);
+  }
+  assert.equal(franceConseilApprovedSelection(2009, "QPC"), false);
+  assert.equal(franceConseilApprovedSelection(2025, "QPC"), false);
 });
 
 test("France official list parser keeps only the requested decision facet and ignores lastmod-like noise", () => {
@@ -483,7 +525,7 @@ test("France discovery guard rejects execution before creating a run", async () 
   assert.equal(began, false);
 });
 
-test("France history flag alone cannot enable execution without owner policy approval", async () => {
+test("France history flag alone cannot enable execution without the owner policy", async () => {
   let began = false;
   let inventoryCalls = 0;
   const repository = discoveryRepository({
@@ -500,6 +542,7 @@ test("France history flag alone cannot enable execution without owner policy app
       loadAdapter: async () => null,
       now: () => new Date("2026-09-03T00:00:00.000Z"),
       environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
+      franceHistorySourcePolicyApproved: false,
       discoverFranceDilaConstitInventory: async () => {
         inventoryCalls += 1;
         throw new Error("must not discover");
@@ -509,6 +552,28 @@ test("France history flag alone cannot enable execution without owner policy app
   );
   assert.equal(began, false);
   assert.equal(inventoryCalls, 0);
+});
+
+test("France owner approval still requires the exact history flag before a run", async () => {
+  let began = false;
+  const repository = discoveryRepository({
+    beginRun: async () => {
+      began = true;
+      return "55555555-5555-4555-8555-555555555557";
+    },
+  });
+  await assert.rejects(
+    runCaseBackfillPass(discoveryPass(), {
+      authority, checkpoint: async () => undefined, signal: new AbortController().signal,
+    }, {
+      repository,
+      loadAdapter: async () => null,
+      now: () => new Date("2026-09-03T00:00:00.000Z"),
+      environment: {},
+    }),
+    /case_backfill\.france_history_disabled/,
+  );
+  assert.equal(began, false);
 });
 
 test("France discovery fixes official count evidence before closing its manifest", async () => {

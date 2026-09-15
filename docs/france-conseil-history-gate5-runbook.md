@@ -14,16 +14,16 @@ This stage supports one immutable snapshot per calendar year and decision facet 
 
 QPC and DC use separate snapshots. QPC360 results from Conseil d'État, Cour de cassation, and other courts are outside this first France scope. QPC360 is not part of the primary manifest until its export terms and stable automated contract are reviewed in a versioned source policy.
 
-The source-policy evidence and proposed immutable row are in [france-constit-source-policy-review-20260903.md](./france-constit-source-policy-review-20260903.md). That review is ready for owner approval but is not itself an approved policy row.
+The source-policy evidence and proposed immutable row are in [france-constit-source-policy-review-20260903.md](./france-constit-source-policy-review-20260903.md). On 2026-09-16 the WorldCons owner approved that policy for the 2010-2024 `QPC`/`DC` tranches only. Migration `20260916090000_constitutional_case_france_policy_approval.sql` inserts the immutable policy row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v1` (review due `2027-03-15`). Spain and the Germany 1998-2023 expansion are not approved by this decision.
 
 ## Fail-closed rules
 
 Discovery stops without closing the manifest when any of these conditions occurs:
 
 1. `CASE_CATALOG_FRANCE_HISTORY_ENABLED` is not exactly `true`.
-2. The owner/source policy is not approved. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS` is `pending_owner_approval` and `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED` is `false`, so the history flag alone fails with `case_backfill.france_history_source_policy_not_approved` before any run row is created. The CLI `plan` report exposes `sourcePolicyStatus` and `sourcePolicyApproved`.
+2. The exact approved policy must be present and current. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS` is `approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED` is `true`, and the approved policy is `france-dila-constit-2026-09-v1`. The history flag is still required, so flag-off fails with `case_backfill.france_history_disabled` before any run row is created. An explicitly unapproved policy state still fails with `case_backfill.france_history_source_policy_not_approved`. The CLI `plan` report exposes `sourcePolicyStatus` and `sourcePolicyApproved`.
 3. The year is before 2010 or after 2024. Gate 5 historical scope is limited to pre-2025; 2025 and later are owned by the incremental ingestion workflow.
-4. The document type is not QPC or DC.
+4. The document type is not QPC or DC. `L`/`LP`/`OTHER_CONSEIL_NATURE` remain deferred to a later policy version and fail with `case_backfill.france_history_source_policy_not_approved` even when the history flag is on.
 5. the DILA directory or stock request violates the reviewed host, redirect, byte, archive, lease, or fencing contract.
 6. latest-stock selection is ambiguous or the stock/XML structure is malformed.
 7. the active official facet count is missing or changes during pagination.
@@ -65,7 +65,7 @@ The worker uses the v2 upsert, close, and claim RPCs. Production `service_role` 
 
 ## Private-shadow execution prerequisites
 
-Do not enable the flag from this runbook alone. Before execution, an owner must approve the review document, choose its explicit reviewer/retention/review deadline, and create the resulting immutable `source_corpus_policies` row. The policy must cover the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields (including `metadata`), request delay, concurrency, retention, and `review_due_at`.
+The owner approved the review document on 2026-09-16, chose the reviewer `WorldCons owner via explicit approval`, a 90-day bounded retention, and a `review_due_at` of `2027-03-15`, and recorded the resulting immutable `source_corpus_policies` row in migration `20260916090000_constitutional_case_france_policy_approval.sql`. Applying that migration and running the read-only readiness commands is still required before execution; the migration is intentionally not applied by the approval task. The policy covers the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields (including `metadata`), request delay, concurrency, retention, and `review_due_at`.
 
 After that approval, use a scoped environment:
 
@@ -100,7 +100,7 @@ For governed France detail fetches:
 - missing or unverified official response bodies fail the fetch phase. They do not become metadata-only fetch artifacts.
 - nested sitemap requests and governor-only robots checks preserve the same governor instead of falling into the legacy ungoverned cache path.
 
-These controls only make a future approved run enforceable. They do not approve Conseil constitutionnel collection, create a source policy, enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, or write source data.
+These controls only make the approved run enforceable. The source policy is approved and recognized by the guard; they do not by themselves apply the migration, enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, publish Catalog rows, or write source data.
 
 ## Public attribution invariant
 

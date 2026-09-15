@@ -2335,16 +2335,16 @@ M4는 Gate 5 역사 백필의 연도 경계, source policy 승인, 국가별 확
 
 - 공통 경계: `lib/backfill/country-history-policy.ts`의 `CASE_HISTORY_BOUNDARY`가 `historicalMaxYear=2024`, `incrementalOwnedFromYear=2025`, `rule=pre_2025_gate5_historical`을 선언한다. Gate 5 역사 ledger는 2024년 이하만 열거나 재개할 수 있고, 2025년 이후는 증분 수집(`p1.collect`/`runIngest`)이 소유한다.
 - 공통 guard: `assertHistoricalSnapshotBoundary`가 `runCaseBackfillPass`의 discover와 비-discover 경로 모두에서 `beginRun` 이전에 호출된다. CLI `plan`/`discover`도 같은 모듈을 사용한다.
-- 확대 순서: `COUNTRY_HISTORY_EXPANSION_ORDER`가 국가·연도·유형·상태·차단 사유를 고정한다. Germany(승인된 2024 canary) → France(owner 승인 대기) → Spain(법률·robots 정책 차단) → U.S.(candidate graph, 검증 corpus 아님) 순서다.
+- 확대 순서: `COUNTRY_HISTORY_EXPANSION_ORDER`가 국가·연도·유형·상태·차단 사유를 고정한다. Germany(승인된 2024 canary) → France(owner 승인된 2010~2024 QPC/DC) → France L/LP/OTHER(deferred) → Spain(법률·robots 정책 차단) → U.S.(candidate graph, 검증 corpus 아님) 순서다.
 
 국가별 실행 guard는 env flag만으로는 열리지 않는다.
 
-- France: `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=false`(owner/source policy 미승인)이므로 flag가 true여도 `case_backfill.france_history_source_policy_not_approved`로 run 생성 전에 종료한다.
+- France: 2026-09-16 owner가 2010~2024 QPC/DC source policy(`france-dila-constit-2026-09-v1`, review due 2027-03-15, migration `20260916090000`)를 승인했다. QPC/DC는 `policyAuthorized=true`지만 history flag가 없으면 `case_backfill.france_history_disabled`로 run 생성 전에 종료하고, `L`/`LP`/`OTHER_CONSEIL_NATURE`는 `case_backfill.france_history_source_policy_not_approved`로 deferred된다. env flag만으로는 승인을 우회할 수 없다.
 - Spain: `SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS=blocked_pending_legal_robots_review`이므로 2020~2023은 history flag가 true여도 `case_backfill.spain_history_source_blocked`로 종료한다. 2024는 Gate 1 baseline이라는 개념을 유지하되 source policy 승인 없이는 discover가 열리지 않는다. 2024는 history flag 대신 `policyApproved`를 요구하며, 기본값에서는 `case_backfill.spain_history_source_blocked`로 run 생성 전에 종료한다. `policyApproved`가 명시적으로 기록된 경우에만 history flag 없이 2024 discover가 열린다.
 - Germany: `bverfg-unattended-canary-v1`(review due 2027-03-03)은 2024 canary 한 해만 승인한다. `germanyBverfgExpansionGuard`가 2024 이외 연도를 `case_backfill.germany_expansion_not_approved`로 막아 M5 확대를 자동 활성화하지 않는다.
 - U.S.: Constitution Annotated Table of Cases는 `US_CONAN_CORPUS_STATUS=candidate_graph_only`다. `US_CONAN_VERIFICATION_PIPELINE`은 `candidate_citation → official_scotus_identity → constitutional_essay_context → govinfo_authority → constitutional_holding → verified`이며, `assertCandidateGraphNotVerifiedCorpus`가 candidate graph를 검증 corpus로 취급하는 경로를 fail-closed로 막는다.
 
-PostgreSQL schema 변경은 없다. 연도 경계와 source policy 승인은 application guard이므로 새 migration을 추가하지 않았다. 2025년 이후 증분 ingest 경로는 `country-history-policy`에 의존하지 않는다.
+PostgreSQL schema 변경은 없다. 연도 경계와 source policy 승인은 application guard이므로 이 M4 작업에서는 새 migration을 추가하지 않았다. 2025년 이후 증분 ingest 경로는 `country-history-policy`에 의존하지 않는다.
 
 ---
 
@@ -2355,6 +2355,18 @@ M5는 M4의 국가별 경계·정책·guard 위에 하나의 machine-readable or
 - `lib/backfill/rollout-readiness.ts`가 `caseBackfillRolloutReadiness()`로 7개 tranche의 `approvedYears`, `policyAuthorized`, `executionEnabled`, `blocking`을 계산하고, `selectCaseBackfillRollout()`/`preflightCaseBackfillRollout()`/`assertCaseBackfillRolloutPreflight()`로 국가·연도·유형 선택을 판정한다.
 - `scripts/backfill-corpus.ts`는 `openSnapshot()` 이전(discover)과 `submitPhase()`의 run/command 생성 이전에 preflight를 실행한다. 또한 `lib/backfill/service.ts`의 `runCaseBackfillPass()`가 discover와 non-discover 양쪽 경로 모두에서 `repository.beginRun()` 이전에 `assertRolloutAuthorized()`를 실행한다. CLI만 막고 P1 command가 다른 승인 경로로 worker handler에 도달하는 경우를 막는 worker-level defense-in-depth이며, non-discover 경로에서 M4가 국가 정책을 재검사하지 않던 지점을 닫는다. 기존 M4 `assertDiscoveryScope`/`assertHistoricalSnapshotBoundary`와 phase 오류 우선순위는 그대로 유지된다.
 - `pnpm rollout:readiness`는 read-only 증거 CLI다. `--require-authorized`는 승인되지 않은 선택을 exit 2로 fail-closed 처리한다.
-- 현재 정책 승인은 기존 `de-bverfg 2024 DECISION` canary 1건뿐이다. `newlyAuthorizedSelectionCount=0`, `m5ExpansionExecutionReady=false`이며, France QPC/DC(`owner_source_policy_not_approved`), Spain SENTENCIA(`spain_hj_legal_robots_policy_blocked`), U.S. candidate graph(`us_conan.candidate_graph_not_verified_corpus`), Germany 1998~2023(`germany_expansion_not_approved`)는 승인 전까지 열리지 않는다.
+- 현재 정책 승인은 기존 `de-bverfg 2024 DECISION` canary 1건과 France 2010~2024 QPC/DC 30건이다. `approvedSelectionCount=31`, `newlyAuthorizedSelectionCount=30`이며, flag off에서는 France QPC/DC가 `executionEnabled=false`이므로 `m5ExpansionExecutionReady=false`다(정책 승인 기록과 M5 확대 실행 준비를 분리). `CASE_CATALOG_FRANCE_HISTORY_ENABLED=true`일 때만 France QPC/DC가 `executionEnabled=true`가 되어 `m5ExpansionExecutionReady=true`가 된다. 다음 승인 blocker는 France L/LP/OTHER다. Spain SENTENCIA(`spain_hj_legal_robots_policy_blocked`), U.S. candidate graph(`us_conan.candidate_graph_not_verified_corpus`), Germany 1998~2023(`germany_expansion_not_approved`)는 승인 전까지 열리지 않는다.
 - M5는 Catalog publication rollout과 분리한다. readiness의 `catalogWriteEnabled`/`publicCatalogEnabled`는 상태 보고일 뿐이며 두 flag를 켜지 않는다.
 - 상세 운영 절차와 승인 blocker는 `docs/worldcons-m5-rollout-readiness-runbook.md`에 있다.
+
+---
+
+## 31. France 2010~2024 QPC/DC owner source-policy 승인 (2026-09-16)
+
+WorldCons owner가 [france-constit-source-policy-review-20260903.md](./france-constit-source-policy-review-20260903.md)의 France DILA/Conseil source policy를 승인했다. 범위는 오직 France 2010~2024 `QPC`/`DC`이며, Spain과 Germany 1998~2023은 포함하지 않는다.
+
+- immutable policy row: `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v1`. `reviewed_by=WorldCons owner via explicit approval`, `reviewed_at=2026-09-16T00:00:00Z`, `review_due_at=2027-03-15T00:00:00Z`, `retention_days=90`, `min_request_delay_ms=3000`, `max_concurrency=1`, `default_text_access_policy=full`, `aiEgress=denied`.
+- migration `20260916090000_constitutional_case_france_policy_approval.sql`이 Germany `20260903188000`과 같은 conflict-detecting·멱등 패턴으로 row를 삽입한다. 기존 migration은 수정하지 않았다.
+- `lib/backfill/france-scope.ts`가 `approved_source_policy` 상태, policy version/review due, descriptor, `franceConseilApprovedSelection()`을 노출한다. env flag(`CASE_CATALOG_FRANCE_HISTORY_ENABLED`)는 여전히 실행에 필요하며 env-only bypass는 없다.
+- M5 readiness는 France QPC/DC를 `policyAuthorized=true`, `executionEnabled=false`(flag off)로 보고하고, `newlyAuthorizedSelectionCount=30`으로 L/LP/OTHER가 아닌 정확한 QPC/DC 선택만 센다. flag off에서는 신규 non-baseline tranche가 실행 가능하지 않으므로 `m5ExpansionExecutionReady=false`다.
+- 이 승인은 policy row와 코드/문서/테스트만 갱신한다. migration은 production에 적용하지 않았고, historical backfill도 실행하지 않았으며, Catalog/public/AI/Gemini는 계속 비활성이다.

@@ -161,6 +161,15 @@ function normalizeDocumentType(value: string) {
   return value.trim().toUpperCase();
 }
 
+/**
+ * The pre-existing Germany 2024 canary is the baseline approval, not a new M5
+ * expansion. It never counts toward `newlyAuthorizedSelectionCount` and never
+ * makes `m5ExpansionExecutionReady` true by itself.
+ */
+function isPreExistingBaselineApproval(sourceKey: string, year: number) {
+  return sourceKey === "de-bverfg" && year === GERMANY_BVERFG_APPROVED_CANARY_YEAR;
+}
+
 function matchTranche(sourceKey: string, year: number, documentType: string) {
   return COUNTRY_HISTORY_EXPANSION_ORDER.find((stage) => (
     stage.sourceKey === sourceKey
@@ -290,7 +299,18 @@ export function selectCaseBackfillRollout(
     }
     const approved = dependencies.franceHistorySourcePolicyApproved
       ?? franceConseilHistorySourcePolicyApproved();
-    const flagOn = explicitTrue(environment[CASE_CATALOG_FRANCE_HISTORY_FLAG]);
+    const concreteType = franceConseilDocumentType(documentType);
+    if (tranche.order !== 2 || !concreteType) {
+      // Only the owner-approved 2010-2024 QPC/DC tranche is authorized. Every
+      // other France nature (L/LP/OTHER_CONSEIL_NATURE) stays deferred to a
+      // later policy version and cannot open from the env flag alone.
+      return selection(input, tranche, {
+        policyAuthorized: false,
+        executionEnabled: false,
+        errorCode: "case_backfill.france_history_source_policy_not_approved",
+        blocking: ["owner_source_policy_not_approved", "deferred_after_qpc_dc"],
+      });
+    }
     if (!approved) {
       return selection(input, tranche, {
         policyAuthorized: false,
@@ -299,15 +319,7 @@ export function selectCaseBackfillRollout(
         blocking: ["owner_source_policy_not_approved"],
       });
     }
-    const concreteType = franceConseilDocumentType(documentType);
-    if (!concreteType) {
-      return selection(input, tranche, {
-        policyAuthorized: true,
-        executionEnabled: false,
-        errorCode: "case_backfill.discovery_scope_not_enabled",
-        blocking: ["france_document_type_not_supported"],
-      });
-    }
+    const flagOn = explicitTrue(environment[CASE_CATALOG_FRANCE_HISTORY_FLAG]);
     return selection(input, tranche, {
       policyAuthorized: true,
       executionEnabled: flagOn,
@@ -372,15 +384,22 @@ function approvedYearsForTranche(
   stage: CountryHistoryStage,
   dependencies: CaseBackfillRolloutSelectionDependencies,
 ): number[] {
-  if (stage.sourceKey !== "de-bverfg") return [];
   const newest = Math.min(
     dependencies.currentYear ?? new Date().getUTCFullYear(),
     HISTORICAL_GATE_MAX_YEAR,
   );
-  const years: number[] = [];
-  for (let year = stage.yearFrom; year <= Math.min(stage.yearTo, newest); year += 1) {
-    if (germanyBverfgExpansionGuard(year).allowed) years.push(year);
+  if (stage.sourceKey === "de-bverfg") {
+    const years: number[] = [];
+    for (let year = stage.yearFrom; year <= Math.min(stage.yearTo, newest); year += 1) {
+      if (germanyBverfgExpansionGuard(year).allowed) years.push(year);
+    }
+    return years;
   }
+  if (stage.approvedYearFrom === null || stage.approvedYearTo === null) return [];
+  const years: number[] = [];
+  const from = Math.max(stage.yearFrom, stage.approvedYearFrom);
+  const to = Math.min(stage.yearTo, stage.approvedYearTo, newest);
+  for (let year = from; year <= to; year += 1) years.push(year);
   return years;
 }
 
@@ -401,7 +420,9 @@ export function caseBackfillRolloutReadiness(
     const policyAuthorized = approvedYears.length > 0;
     const flagOn = stage.sourceKey === "de-bverfg"
       ? explicitTrue(environment[CASE_CATALOG_GERMANY_HISTORY_FLAG])
-      : false;
+      : stage.sourceKey === "fr-conseil-constitutionnel"
+        ? explicitTrue(environment[CASE_CATALOG_FRANCE_HISTORY_FLAG])
+        : false;
     return {
       order: stage.order,
       country: stage.country,
@@ -422,22 +443,31 @@ export function caseBackfillRolloutReadiness(
   });
 
   const approvedSelections: CaseBackfillRolloutApprovedSelection[] = tranches.flatMap((tranche) => (
-    tranche.approvedYears.map((year) => ({
+    tranche.approvedYears.flatMap((year) => tranche.documentTypes.map((documentType) => ({
       sourceKey: tranche.sourceKey,
       country: tranche.country,
       year,
-      documentType: tranche.documentTypes[0],
+      documentType,
       policyVersion: tranche.policyVersion,
       policyReviewDueAt: tranche.policyReviewDueAt,
-    }))
+    })))
   ));
   const newlyAuthorizedSelectionCount = approvedSelections.filter((entry) => !(
-    entry.sourceKey === "de-bverfg" && entry.year === GERMANY_BVERFG_APPROVED_CANARY_YEAR
+    isPreExistingBaselineApproval(entry.sourceKey, entry.year)
   )).length;
 
+  // Recorded policy approval and actual expansion execution readiness are
+  // distinct. A newly authorized, non-baseline selection counts as M5-expansion
+  // execution-ready only when its tranche is also executionEnabled, i.e. the
+  // exact history flag is on. A recorded France approval alone is not readiness.
+  const m5ExpansionExecutionReady = tranches.some((tranche) => (
+    tranche.executionEnabled
+    && tranche.approvedYears.some((year) => !isPreExistingBaselineApproval(tranche.sourceKey, year))
+  ));
+
   const nextApprovalRequired = tranches.find((tranche) => (
-    tranche.status === "pending_owner_approval" && tranche.order === 2
-  )) ?? tranches.find((tranche) => tranche.status !== "approved_private_shadow") ?? null;
+    !tranche.policyAuthorized && tranche.status === "pending_owner_approval"
+  )) ?? tranches.find((tranche) => !tranche.policyAuthorized) ?? null;
 
   return {
     event: "case_backfill_rollout_readiness",
@@ -454,7 +484,7 @@ export function caseBackfillRolloutReadiness(
     approvedSelectionCount: approvedSelections.length,
     newlyAuthorizedSelectionCount,
     approvedSelections,
-    m5ExpansionExecutionReady: newlyAuthorizedSelectionCount > 0,
+    m5ExpansionExecutionReady,
     nextApprovalRequired: nextApprovalRequired
       ? {
         trancheOrder: nextApprovalRequired.order,

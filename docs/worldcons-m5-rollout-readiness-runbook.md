@@ -38,8 +38,9 @@ Gate 5 historical scope
 `lib/backfill/rollout-readiness.ts`:
 
 - `caseBackfillRolloutReadiness()`가 `COUNTRY_HISTORY_EXPANSION_ORDER` 7개 tranche 각각에 대해 `approvedYears`, `policyAuthorized`, `executionEnabled`, `blocking`을 계산한다.
-- `approvedSelections`는 정확한 (sourceKey, year, documentType) 단위로 정책이 승인한 선택만 담는다. 현재는 `de-bverfg 2024 DECISION` 1건뿐이다.
-- `newlyAuthorizedSelectionCount = 0`, `m5ExpansionExecutionReady = false`, `nextApprovalRequired = France QPC/DC`.
+- `approvedSelections`는 정확한 (sourceKey, year, documentType) 단위로 정책이 승인한 선택만 담는다. Germany 2024 DECISION 1건과 France 2010~2024 QPC/DC 30건이다.
+- `newlyAuthorizedSelectionCount = 30`, `approvedSelectionCount = 31`, `nextApprovalRequired = France L/LP/OTHER`(order 3).
+- France QPC/DC는 `policyAuthorized=true`이지만 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 꺼져 있으면 `executionEnabled=false`다. `m5ExpansionExecutionReady`는 **기록된 정책 승인과 실행 준비를 분리**한다: 새로 승인된 non-baseline tranche가 실제로 `executionEnabled=true`일 때만 true다. 따라서 France flag가 꺼져 있으면 Germany 2024 baseline을 제외한 신규 tranche 중 실행 가능한 것이 없으므로 `m5ExpansionExecutionReady=false`다. France flag를 켠 테스트에서만 France QPC/DC가 `executionEnabled=true`가 되고 `m5ExpansionExecutionReady=true`가 된다.
 - `geminiCalls: 0`, `publicCatalogEnabled: false`, `catalogWriteEnabled`는 env 실제값을 보고한다(기본 false).
 
 ## 4. 국가/연도/유형 rollout 선택과 fail-closed preflight
@@ -52,7 +53,8 @@ Gate 5 historical scope
 | Germany 2024 DECISION, flag off | blocked | `case_backfill.germany_history_disabled` |
 | Germany 1998~2023 DECISION | blocked | `case_backfill.germany_expansion_not_approved` |
 | Germany <1998 | blocked | `case_backfill.germany_year_not_supported` |
-| France 2010~2024 QPC/DC | blocked | `case_backfill.france_history_source_policy_not_approved` |
+| France 2010~2024 QPC/DC, flag off | blocked | `case_backfill.france_history_disabled` |
+| France 2010~2024 QPC/DC, flag on | allowed | - |
 | France L/LP/OTHER | blocked | `case_backfill.france_history_source_policy_not_approved` |
 | France unknown type | blocked | `case_backfill.discovery_scope_not_enabled` |
 | Spain 2020~2024 SENTENCIA | blocked | `case_backfill.spain_history_source_blocked` |
@@ -87,36 +89,38 @@ pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require
 
 ## 6. 현재 승인 상태와 정확한 승인 blocker
 
-**새로 승인된 tranche는 없다.** M5 실행은 여전히 차단되어 있다.
+**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인으로 추가됐다.** France QPC/DC는 이제 `policyAuthorized=true`이지만 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 꺼져 있어 실행은 차단되어 있다(flag를 켜는 것은 별도 단계).
 
 ```text
-approvedSelectionCount         = 1   (Germany 2024 DECISION, 기존 canary)
-newlyAuthorizedSelectionCount  = 0
-m5ExpansionExecutionReady      = false
-nextApprovalRequired           = France QPC/DC (order 2)
+approvedSelectionCount         = 31  (Germany 2024 DECISION 1 + France QPC/DC 2010~2024 30)
+newlyAuthorizedSelectionCount  = 30  (France QPC/DC, L/LP/OTHER 아님)
+m5ExpansionExecutionReady      = false  (flag off: 신규 non-baseline tranche가 executionEnabled 아님)
+nextApprovalRequired           = France L/LP/OTHER (order 3)
 ```
+
+`CASE_CATALOG_FRANCE_HISTORY_ENABLED=true`인 테스트에서는 France QPC/DC가 `executionEnabled=true`가 되어 `m5ExpansionExecutionReady=true`가 되고, `L`/`LP`/`OTHER_CONSEIL_NATURE`는 여전히 차단된다. 즉 정책 승인 기록과 실제 M5 확대 실행 준비는 분리된다.
 
 국가별 blocker:
 
 - **Germany 1998~2023**: `germany_expansion_not_approved`. 기존 `bverfg-unattended-canary-v1`(review due 2027-03-03)은 2024 한 해만 승인한다. 새 연도는 새 owner-approved policy version이 필요하다.
-- **France QPC/DC(2010~2024)**: `owner_source_policy_not_approved`. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=false`이며, owner가 [france-constit-source-policy-review-20260903.md](./france-constit-source-policy-review-20260903.md)를 승인하고 named reviewer·retention·`review_due_at`·DILA/Conseil identity-set 계약·AI egress 거부를 포함한 immutable `source_corpus_policies` row를 만든 뒤에만 guard가 열린다. env flag만으로는 절대 열리지 않는다.
-- **France L/LP/OTHER**: 위 승인 + QPC/DC 이후 순서(`deferred_after_qpc_dc`).
+- **France QPC/DC(2010~2024)**: 승인됨. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS=approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=true`, immutable row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v1`(review due 2027-03-15, migration `20260916090000`). history flag off이면 `case_backfill.france_history_disabled`로 fail-closed다. env flag만으로는 열리지 않으며, 코드에 기록된 승인 metadata와 정확한 flag가 모두 필요하다.
+- **France L/LP/OTHER**: `owner_source_policy_not_approved` + `deferred_after_qpc_dc`. 위 QPC/DC 승인에 포함되지 않으며 새 policy version이 필요하다.
 - **Spain SENTENCIA(2020~2024)**: `spain_hj_legal_robots_policy_blocked`. `robots.txt` 404, 법적 고지 403에 대한 법률·robots 검토와 명시적 policy 승인 전에는 2024 baseline조차 fail-closed다.
 - **Spain 1980~2019 SENTENCIA/DECLARACION, AUTO**: 위 승인 + 단계 순서(`deferred_after_*`).
 - **U.S. Constitution Annotated**: `us_conan.candidate_graph_not_verified_corpus`. Table of Cases는 검증 corpus가 아니며, 전체 검증 pipeline과 별도 `us-scotus` authority policy가 필요하다. rollout tranche가 아니다.
 
 승인 없이 다음을 해서는 안 된다.
 
-- `*-scope.ts`의 `*_SOURCE_POLICY_APPROVED` 상수를 true로 바꾸기
-- owner review 없는 `source_corpus_policies` row 생성
+- owner 승인 없는 `source_corpus_policies` row 생성 또는 `*-scope.ts` 승인 metadata 임의 변경
+- 승인된 immutable policy version과 다른 값으로 guard/readiness를 넓히기
 - M5 preflight를 우회하거나 snapshot/run을 직접 생성
 
 ## 7. 새 tranche 승인 절차 (M5 이후)
 
 1. 해당 국가 source policy review 문서를 owner가 검토·승인하고 named reviewer/retention/review deadline을 확정한다.
-2. immutable `source_corpus_policies` row를 만든다.
-3. scope guard가 상수가 아니라 승인된 policy row를 읽도록 변경한다(별도 코드 변경 + migration 없음).
-4. `pnpm rollout:readiness --source=... --year=... --document-type=... --require-authorized`가 exit 0이 되는지 확인한다.
+2. immutable `source_corpus_policies` row를 삽입하는 새 timestamp migration을 추가한다(Germany `20260903188000`, France `20260916090000` 패턴: conflict-detecting, 재실행 멱등).
+3. scope module의 승인 metadata(policy version, review due, approved 범위)를 그 immutable row와 일치하도록 갱신한다. env flag는 계속 별도로 요구한다.
+4. `pnpm rollout:readiness --source=... --year=... --document-type=... --require-authorized`가 승인 후 flag를 켰을 때만 exit 0이 되는지 확인한다.
 5. 그 뒤에만 `backfill:corpus discover`로 한 tranche씩 진행한다. Catalog 공개는 별도 단계다.
 
 ## 8. 검증
@@ -125,22 +129,22 @@ nextApprovalRequired           = France QPC/DC (order 2)
 pnpm typecheck                          통과
 pnpm lint                               통과
 pnpm check                              All checks passed.
-pnpm test:backfill                      114 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
+pnpm test:backfill                      117 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
 pnpm test:p1                            22 pass / 0 fail / 1 skip
 pnpm test:ingest-workflow               18 pass / 0 fail
 pnpm test:postgres:release:static       7 pass / 0 fail / 0 skip
 git diff --check                        공백 오류 없음
-pnpm rollout:readiness                  newlyAuthorizedSelectionCount=0, m5ExpansionExecutionReady=false
-pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require-authorized  exit 2
+pnpm rollout:readiness                  France QPC/DC policyAuthorized=true executionEnabled=false, newlyAuthorizedSelectionCount=30, m5ExpansionExecutionReady=false
+pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require-authorized  exit 2 (france_history_disabled)
 ```
 
 service defense 회귀 테스트(`constitutional-case-rollout-readiness-gate5.test.ts`)는 직접 `runCaseBackfillPass`를 호출해 다음을 증명한다.
 
-- non-discover 및 discover 양쪽에서 Germany 2023(flag on), France 2024 QPC(owner 미승인), Spain 2024(source policy 미승인), 2025+는 `beginRun` 호출 전에 거부된다.
+- non-discover 및 discover 양쪽에서 Germany 2023(flag on), France 2024 QPC를 명시적으로 미승인 주입한 경우, Spain 2024(source policy 미승인), 2025+는 `beginRun` 호출 전에 거부된다.
 - Germany 2024는 기존 policy + history flag 조건이 성립할 때만 fetch가 진행된다.
 - `lib/backfill/service.ts`가 discover/non-discover 두 경로 모두에서 `beginRun` 이전에 gate를 호출한다.
 
-PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip이며, M1 CI release gate가 skip 0을 강제한다. 기존 migration을 수정하지 않았고 새 migration도 없다.
+PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip이며, M1 CI release gate가 skip 0을 강제한다. 기존 migration은 수정하지 않았고, France policy approval만 새 timestamp migration(`20260916090000`)으로 추가했다.
 
 ## 9. Catalog publication rollout과의 분리
 
@@ -148,7 +152,7 @@ M5는 역사 corpus ledger의 orchestration만 다룬다. `/articles` 노출, Ca
 
 ## 10. 변경 파일
 
-코드·테스트:
+M5 초기 구현(커밋 `7b9788b`):
 
 - `lib/backfill/rollout-readiness.ts` (신규)
 - `lib/backfill/service.ts` (discover/non-discover 양쪽 `beginRun` 이전 worker-level rollout gate)
@@ -158,7 +162,16 @@ M5는 역사 corpus ledger의 orchestration만 다룬다. `/articles` 노출, Ca
 - `tests/constitutional-case-backfill-gate1.test.ts` (Spain non-discover 테스트에 `spainHistorySourcePolicyApproved: true` 주입)
 - `package.json` (`rollout:readiness` script, `test:backfill`에 신규 테스트 포함)
 
+France owner 승인 반영(2026-09-16):
+
+- `supabase/migrations/20260916090000_constitutional_case_france_policy_approval.sql` (신규 immutable policy row)
+- `lib/backfill/france-scope.ts` (approved policy metadata/descriptor)
+- `lib/backfill/country-history-policy.ts` (France QPC/DC tranche `approved_source_policy`)
+- `lib/backfill/rollout-readiness.ts` (France approved years/selections, 다음 blocker)
+- `tests/constitutional-case-rollout-readiness-gate5.test.ts`, `tests/constitutional-case-backfill-france-gate5.test.ts`, `tests/constitutional-case-history-boundary-gate5.test.ts`, `tests/constitutional-case-catalog-gate2.postgres.test.ts`
+
 문서:
 
 - `docs/worldcons-m5-rollout-readiness-runbook.md` (이 문서)
 - `docs/worldcons-constitutional-case-backfill-design-20260903.md` (M5 섹션 추가)
+- `docs/france-constit-source-policy-review-20260903.md`, `docs/france-conseil-history-gate5-runbook.md`, `docs/worldcons-m4-country-history-boundary-20260916.md` (France 승인 반영)

@@ -37,6 +37,7 @@ const francePublicAttribution = migration("20260903183000_constitutional_case_fr
 const germanyPublicAttribution = migration("20260903186000_constitutional_case_germany_public_attribution.sql");
 const germanyShadowCanary = migration("20260903187000_constitutional_case_germany_shadow_canary.sql");
 const germanyPolicyApproval = migration("20260903188000_constitutional_case_germany_policy_approval.sql");
+const francePolicyApproval = migration("20260916090000_constitutional_case_france_policy_approval.sql");
 const germanyOfficialUrlPrefixes = migration("20260903189000_constitutional_case_germany_official_url_prefixes.sql");
 
 const policySql = `
@@ -325,6 +326,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(germanyPublicAttribution);
     await setup.query(germanyShadowCanary);
     await setup.query(germanyPolicyApproval);
+    await setup.query(francePolicyApproval);
     await setup.query(germanyOfficialUrlPrefixes);
     await setup.query(providerSearchResilience);
   } finally {
@@ -404,6 +406,76 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
         await assert.rejects(
           conflictClient.query(approvalBlock),
           /BVERFG_UNATTENDED_POLICY_APPROVAL_CONFLICT/,
+        );
+      } finally {
+        await conflictClient.query("rollback").catch(() => undefined);
+        conflictClient.release();
+      }
+    });
+
+    await t.test("France owner approval is exact, QPC/DC-scoped, immutable, and conflict-detecting", async () => {
+      const result = await pool.query<{
+        policy_version: string;
+        scope_definition: { approval: Record<string, unknown> };
+        retention_days: number;
+        reviewed_by: string;
+        reviewed_at: string;
+        review_due_at: string;
+        robots_rules_hash: string;
+        default_text_access_policy: string;
+        authority_hosts: string[];
+        discovery_methods: string[];
+      }>(`select policy_version,scope_definition,retention_days,reviewed_by,
+        to_char(reviewed_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') reviewed_at,
+        to_char(review_due_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') review_due_at,
+        robots_rules_hash,default_text_access_policy,authority_hosts,discovery_methods
+        from source_corpus_policies
+        where source_key='fr-conseil-constitutionnel' and policy_version='france-dila-constit-2026-09-v1'`);
+      assert.equal(result.rowCount, 1);
+      const policy = result.rows[0];
+      assert.equal(policy.policy_version, "france-dila-constit-2026-09-v1");
+      assert.equal(policy.retention_days, 90);
+      assert.equal(policy.reviewed_by, "WorldCons owner via explicit approval");
+      assert.equal(policy.reviewed_at, "2026-09-16T00:00:00Z");
+      assert.equal(policy.review_due_at, "2027-03-15T00:00:00Z");
+      assert.equal(policy.robots_rules_hash, "80c3fe2ae1062abf56456f52518bd670f9ec3917b7f85e152b347ac6b6faf880");
+      assert.equal(policy.default_text_access_policy, "full");
+      assert.deepEqual(policy.authority_hosts, ["echanges.dila.gouv.fr", "www.conseil-constitutionnel.fr"]);
+      assert.deepEqual(policy.discovery_methods, [
+        "official_dila_constit_latest_stock",
+        "official_conseil_annual_type_crosscheck",
+      ]);
+      assert.deepEqual(policy.scope_definition.approval, {
+        approvalId: "france-dila-constit-approval-2026-09-16",
+        mode: "explicit_owner_approval",
+        authority: "worldcons_owner",
+        directiveDate: "2026-09-16",
+        approvedScope: "france_conseil_2010_2024_qpc_dc",
+        boundedEvidenceRetentionDays: 90,
+        policyReviewIntervalDays: 180,
+        publicTextPosture: "full_after_separate_catalog_gate",
+        canaryVisibility: "private_shadow",
+        aiEgress: "denied",
+      });
+
+      await pool.query(francePolicyApproval);
+      await assert.rejects(
+        pool.query(`update source_corpus_policies set retention_days=91
+          where source_key='fr-conseil-constitutionnel' and policy_version='france-dila-constit-2026-09-v1'`),
+        /CASE_BACKFILL_IMMUTABLE/,
+      );
+      const approvalBlock = francePolicyApproval.match(/do \$approval\$[\s\S]*?\$approval\$;/u)?.[0];
+      assert.ok(approvalBlock, "approval migration must contain its conflict-detecting block");
+      const conflictClient = await pool.connect();
+      try {
+        await conflictClient.query("begin");
+        await conflictClient.query("alter table source_corpus_policies disable trigger source_corpus_policies_immutable_trigger");
+        await conflictClient.query(`update source_corpus_policies set retention_days=91
+          where source_key='fr-conseil-constitutionnel' and policy_version='france-dila-constit-2026-09-v1'`);
+        await conflictClient.query("alter table source_corpus_policies enable trigger source_corpus_policies_immutable_trigger");
+        await assert.rejects(
+          conflictClient.query(approvalBlock),
+          /FRANCE_CONSTIT_POLICY_APPROVAL_CONFLICT/,
         );
       } finally {
         await conflictClient.query("rollback").catch(() => undefined);

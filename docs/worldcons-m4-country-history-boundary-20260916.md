@@ -24,8 +24,8 @@ CASE_HISTORY_BOUNDARY =
   rule: pre_2025_gate5_historical
 
 COUNTRY_HISTORY_EXPANSION_ORDER:
-  1 Germany  de-bverfg                  DECISION                              1998-2024  approved_private_shadow   bverfg-unattended-canary-v1  due 2027-03-03
-  2 France   fr-conseil-constitutionnel QPC,DC                               2010-2024  pending_owner_approval
+  1 Germany  de-bverfg                  DECISION                              1998-2024  approved_private_shadow   bverfg-unattended-canary-v1     due 2027-03-03
+  2 France   fr-conseil-constitutionnel QPC,DC                               2010-2024  approved_source_policy    france-dila-constit-2026-09-v1  due 2027-03-15
   3 France   fr-conseil-constitutionnel L,LP,OTHER_CONSEIL_NATURE            2010-2024  pending_owner_approval
   4 Spain    es-tribunal-constitucional SENTENCIA                            2020-2024  blocked_source_policy
   5 Spain    es-tribunal-constitucional SENTENCIA,DECLARACION                1980-2019  blocked_source_policy
@@ -49,8 +49,8 @@ COUNTRY_HISTORY_EXPANSION_ORDER:
 ### France
 
 - 2010~2024, `QPC`/`DC` 우선, 기타 `NATURE`는 후속 단계(`COUNTRY_HISTORY_EXPANSION_ORDER` 2·3번).
-- `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS=pending_owner_approval`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=false`.
-- history flag가 true여도 `case_backfill.france_history_source_policy_not_approved`로 run 생성 전에 종료한다. owner/source policy 승인 전에는 env flag만으로 실행되지 않는다.
+- 2026-09-16 owner가 QPC/DC source policy를 승인했다: `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS=approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=true`, policy `france-dila-constit-2026-09-v1`(review due 2027-03-15, migration `20260916090000`).
+- QPC/DC는 `policyAuthorized=true`지만 history flag가 없으면 `case_backfill.france_history_disabled`로 run 생성 전에 종료한다. flag를 켜도 `L`/`LP`/`OTHER_CONSEIL_NATURE`는 `case_backfill.france_history_source_policy_not_approved`로 deferred된다. env flag만으로는 승인을 우회할 수 없다.
 
 ### Spain
 
@@ -113,6 +113,6 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 
 ## 7. 실행하지 않은 것 / 남은 단계
 
-- M5 독일 다연도 확대, France/Spain historical 실행, source policy row 생성은 별도 승인 gate다.
-- source policy·migration·공개 flag·AI egress 변경은 없다.
+- M5 독일 다연도 확대와 France/Spain historical 실행은 별도 승인 gate다.
+- France QPC/DC source policy row는 이 M4 작업 이후인 2026-09-16 owner 승인으로 migration `20260916090000_constitutional_case_france_policy_approval.sql`에서 추가됐다. 이 M4 변경 자체는 source policy·migration·공개 flag·AI egress 변경을 포함하지 않았다.
 - M4 변경은 검증 후 별도 로컬 커밋으로 고정한다. push/deploy는 하지 않는다.
