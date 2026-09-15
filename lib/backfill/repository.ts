@@ -265,6 +265,12 @@ export interface CaseBackfillRepository {
     nextStatus: string;
     resultMetadata: Record<string, unknown>;
   }): Promise<void>;
+  excludeItem(input: {
+    itemId: string;
+    phase: CaseBackfillItemPhase;
+    authority: CaseBackfillAttemptAuthority;
+    exclusionCode: string;
+  }): Promise<void>;
   failItem(input: {
     itemId: string;
     phase: CaseBackfillItemPhase;
@@ -727,6 +733,17 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       p_error_code: input.errorCode,
       p_error_summary: input.errorSummary,
       p_retry_at: input.retryAt,
+    });
+    databaseError(error);
+  },
+
+  async excludeItem(input) {
+    const { error } = await requiredClient().rpc("source_backfill_item_exclude_v1", {
+      p_item_id: input.itemId,
+      p_phase: input.phase,
+      p_p1_attempt_id: input.authority.attemptId,
+      p_p1_fencing_token: input.authority.fencingToken,
+      p_exclusion_code: input.exclusionCode,
     });
     databaseError(error);
   },

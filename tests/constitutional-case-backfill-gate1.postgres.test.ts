@@ -13,6 +13,7 @@ const phaseAwareHostsMigration = path.join(process.cwd(), "supabase/migrations/2
 const enumerationArtifactsMigration = path.join(process.cwd(), "supabase/migrations/20260903185000_constitutional_case_enumeration_artifacts.sql");
 const germanyPolicyApprovalMigration = path.join(process.cwd(), "supabase/migrations/20260903188000_constitutional_case_germany_policy_approval.sql");
 const snapshotSupersessionMigration = path.join(process.cwd(), "supabase/migrations/20260903190000_constitutional_case_snapshot_supersession.sql");
+const itemExclusionMigration = path.join(process.cwd(), "supabase/migrations/20260915000000_constitutional_case_item_exclusion.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
@@ -66,6 +67,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(enumerationArtifactsMigration, "utf8"));
     await client.query(fs.readFileSync(germanyPolicyApprovalMigration, "utf8"));
     await client.query(fs.readFileSync(snapshotSupersessionMigration, "utf8"));
+    await client.query(fs.readFileSync(itemExclusionMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
@@ -1257,6 +1259,185 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         pool.query("update source_normalization_artifacts set parser_version = 'tampered' where id = $1", [normalizationV2Id]),
         /CASE_BACKFILL_IMMUTABLE/,
       );
+    });
+
+    await t.test("fenced exclusion closes an unrecoverable official source and is rejected for out-of-scope states", async () => {
+      const opened = await pool.query<{ source_inventory_snapshot_open_v1: string }>(
+        "select source_inventory_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+        [
+          "de-bverfg", "2024-01-01", "2024-12-31", "DECISION",
+          "external_index_dejure_to_official_detail", "bverfg-official-normalize-v2",
+          "bverfg-phase-host-test-v1", "external_index_assisted", null, null,
+          { method: "postgres-exclusion-test" }, JSON.stringify([]), "postgres-test",
+        ],
+      );
+      const exclusionSnapshotId = opened.rows[0].source_inventory_snapshot_open_v1;
+      const item = await pool.query<{ source_inventory_item_upsert_v2: string }>(
+        "select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)",
+        [
+          exclusionSnapshotId, "dejure:2024-04-09:1bvr91823", null,
+          "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/04/rk20240409_1bvr091823.html",
+          "DECISION", "2024-04-09",
+          {
+            docket: "1 BvR 918/23",
+            officialUrlResolved: true,
+            officialUrlCandidates: [
+              "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/04/rk20240409_1bvr091823.html",
+              "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/04/rs20240409_1bvr091823.html",
+            ],
+          },
+        ],
+      );
+      const exclusionItemId = item.rows[0].source_inventory_item_upsert_v2;
+      await pool.query(`
+        insert into source_inventory_enumeration_artifacts(
+          snapshot_id,source_key,provider_key,artifact_kind,sequence_no,request_url,
+          response_hash,record_manifest_hash,record_count,newest_decision_date,
+          oldest_decision_date,observed_last_page,safe_details
+        ) values ($1,'de-bverfg','dejure.org','page',1,
+          'https://dejure.org/dienste/rechtsprechung?gericht=BVerfG',
+          repeat('a',64),repeat('b',64),1,'2024-04-09','2024-04-09',1,
+          '{"storesExternalText":false}'::jsonb)
+      `, [exclusionSnapshotId]);
+      await pool.query("select * from source_inventory_snapshot_close_v3($1)", [exclusionSnapshotId]);
+
+      const submitFetch = await pool.query(
+        "select * from admin_submit_command_v3($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [
+          "p1.case-backfill.fetch",
+          { cohort: "catalog-backfill", snapshotId: exclusionSnapshotId, passNumber: 1, batchLimit: 1, fetchContractVersion: "bverfg-official-fetch-v1" },
+          "backfill-pass:exclusion:fetch:1", "backfill-active:exclusion:fetch:1", "postgres-test", 0, 3, 1, 4, false,
+        ],
+      );
+      const fetchAttempt = await pool.query<{ attempt_id: string; fencing_token: string }>(
+        "select * from admin_claim_command_attempt_p1($1,$2,$3,$4)",
+        ["exclusion-fetch", ["p1.case-backfill.fetch"], ["catalog-backfill"], 30],
+      );
+      const fetchRun = await pool.query<{ source_backfill_run_begin_v1: string }>(
+        "select source_backfill_run_begin_v1($1,$2,$3,$4,$5)",
+        [exclusionSnapshotId, "fetch", 1, fetchAttempt.rows[0].attempt_id, fetchAttempt.rows[0].fencing_token],
+      );
+      const claimed = await pool.query<{ item_id: string }>(
+        "select * from source_backfill_items_claim_v2($1,$2,$3,$4,$5,$6,$7)",
+        [exclusionSnapshotId, "fetch", 1, fetchAttempt.rows[0].attempt_id, fetchAttempt.rows[0].fencing_token, 600, "bverfg-official-fetch-v1"],
+      );
+      assert.equal(claimed.rows[0].item_id, exclusionItemId);
+      const replayPayload = {
+        sourceKey: "de-bverfg",
+        url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/04/rk20240409_1bvr091823.html",
+        canonicalUrl: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/04/rk20240409_1bvr091823.html",
+        title: "HTTP Status 404",
+        publishedAt: "09.04.2024",
+        contentType: "decision",
+        text: "official text",
+        metadata: { collection: { sourceUrlVerified: false, sourceTextAvailable: true, publishable: false } },
+      };
+      const artifact = await pool.query<{ source_backfill_fetch_artifact_record_v1: string }>(
+        "select source_backfill_fetch_artifact_record_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+        [
+          exclusionItemId, fetchAttempt.rows[0].attempt_id, fetchAttempt.rows[0].fencing_token,
+          "bverfg-phase-host-test-v1", replayPayload.canonicalUrl, 200, {}, null, null, "d".repeat(64),
+          JSON.stringify(replayPayload).length, "bounded_evidence", null, replayPayload, "bverfg-official-fetch-v1",
+        ],
+      );
+      const exclusionArtifactId = artifact.rows[0].source_backfill_fetch_artifact_record_v1;
+      await pool.query("select * from source_backfill_item_complete_v1($1,$2,$3,$4,$5,$6)", [
+        exclusionItemId, "fetch", fetchAttempt.rows[0].attempt_id, fetchAttempt.rows[0].fencing_token,
+        "fetched", { artifactId: exclusionArtifactId },
+      ]);
+      await pool.query("select source_backfill_run_finish_v1($1,$2,$3,$4,$5,$6,$7,$8)", [
+        fetchRun.rows[0].source_backfill_run_begin_v1, fetchAttempt.rows[0].attempt_id,
+        fetchAttempt.rows[0].fencing_token, "succeeded", 1, 1, 0, 0,
+      ]);
+      await pool.query("select * from admin_complete_command_attempt_v3($1,$2,$3)", [
+        fetchAttempt.rows[0].attempt_id, fetchAttempt.rows[0].fencing_token, {},
+      ]);
+
+      const submitNormalize = await pool.query(
+        "select * from admin_submit_command_v3($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        [
+          "p1.case-backfill.normalize",
+          {
+            cohort: "catalog-backfill", snapshotId: exclusionSnapshotId, passNumber: 1, batchLimit: 1,
+            parserVersion: "bverfg-official-normalize-v2", normalizationContractVersion: "case-normalized-v1",
+          },
+          "backfill-pass:exclusion:normalize:1", "backfill-active:exclusion:normalize:1", "postgres-test", 0, 3, 1, 4, false,
+        ],
+      );
+      const normalizeAttempt = await pool.query<{ attempt_id: string; fencing_token: string }>(
+        "select * from admin_claim_command_attempt_p1($1,$2,$3,$4)",
+        ["exclusion-normalize", ["p1.case-backfill.normalize"], ["catalog-backfill"], 30],
+      );
+      const normalizeRun = await pool.query<{ source_backfill_run_begin_v1: string }>(
+        "select source_backfill_run_begin_v1($1,$2,$3,$4,$5)",
+        [exclusionSnapshotId, "normalize", 1, normalizeAttempt.rows[0].attempt_id, normalizeAttempt.rows[0].fencing_token],
+      );
+      const normalizeClaim = await pool.query<{ item_id: string }>(
+        "select * from source_backfill_items_claim_v2($1,$2,$3,$4,$5,$6,$7)",
+        [
+          exclusionSnapshotId, "normalize", 1, normalizeAttempt.rows[0].attempt_id,
+          normalizeAttempt.rows[0].fencing_token, 600, "bverfg-official-normalize-v2:case-normalized-v1",
+        ],
+      );
+      assert.equal(normalizeClaim.rows[0].item_id, exclusionItemId);
+      await assert.rejects(
+        pool.query("select * from source_backfill_item_exclude_v1($1,$2,$3,$4,$5)", [
+          exclusionItemId, "normalize", normalizeAttempt.rows[0].attempt_id, "999999", "official_source_unavailable",
+        ]),
+        /CASE_BACKFILL_STALE_FENCE/,
+      );
+      await assert.rejects(
+        pool.query("select * from source_backfill_item_exclude_v1($1,$2,$3,$4,$5)", [
+          exclusionItemId, "normalize", normalizeAttempt.rows[0].attempt_id, normalizeAttempt.rows[0].fencing_token,
+          "Not A Code",
+        ]),
+        /CASE_BACKFILL_INVALID_EXCLUSION_CODE/,
+      );
+      const excluded = await pool.query<{ resolution_status: string; exclusion_code: string }>(
+        "select * from source_backfill_item_exclude_v1($1,$2,$3,$4,$5)",
+        [
+          exclusionItemId, "normalize", normalizeAttempt.rows[0].attempt_id,
+          normalizeAttempt.rows[0].fencing_token, "official_source_unavailable",
+        ],
+      );
+      assert.deepEqual(excluded.rows[0], { resolution_status: "excluded", exclusion_code: "official_source_unavailable" });
+      const state = await pool.query<{ status: string; exclusion_code: string; claimed_attempt_id: string | null; event_count: string }>(`
+        select i.status, i.exclusion_code, i.claimed_attempt_id,
+          (select count(*) from source_backfill_item_events e where e.item_id = i.id and e.event_type = 'item_excluded') event_count
+        from source_backfill_items i where i.id = $1
+      `, [exclusionItemId]);
+      assert.deepEqual(state.rows[0], {
+        status: "excluded",
+        exclusion_code: "official_source_unavailable",
+        claimed_attempt_id: null,
+        event_count: "1",
+      });
+      await assert.rejects(
+        pool.query("select * from source_backfill_item_exclude_v1($1,$2,$3,$4,$5)", [
+          exclusionItemId, "normalize", normalizeAttempt.rows[0].attempt_id,
+          normalizeAttempt.rows[0].fencing_token, "official_source_unavailable",
+        ]),
+        /CASE_BACKFILL_ITEM_LEASE_LOST/,
+      );
+      await pool.query("select source_backfill_run_finish_v1($1,$2,$3,$4,$5,$6,$7,$8)", [
+        normalizeRun.rows[0].source_backfill_run_begin_v1, normalizeAttempt.rows[0].attempt_id,
+        normalizeAttempt.rows[0].fencing_token, "succeeded", 1, 1, 0, 0,
+      ]);
+      await pool.query("select * from admin_complete_command_attempt_v3($1,$2,$3)", [
+        normalizeAttempt.rows[0].attempt_id, normalizeAttempt.rows[0].fencing_token, {},
+      ]);
+      const excludedRun = await pool.query<{ status: string }>(
+        "select status from admin_command_runs where id = $1", [submitNormalize.rows[0].run_id],
+      );
+      assert.equal(excludedRun.rows[0].status, "succeeded");
+      const privileges = await pool.query<{ public_execute: boolean; service_execute: boolean }>(`select
+        has_function_privilege(
+          'public','source_backfill_item_exclude_v1(uuid,text,uuid,bigint,text)','execute'
+        ) public_execute,
+        has_function_privilege(
+          'service_role','source_backfill_item_exclude_v1(uuid,text,uuid,bigint,text)','execute'
+        ) service_execute`);
+      assert.deepEqual(privileges.rows[0], { public_execute: false, service_execute: true });
     });
   } finally {
     await pool.end();

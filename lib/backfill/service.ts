@@ -216,6 +216,7 @@ async function processFetch(
 
 async function processNormalize(
   item: CaseBackfillClaimedItem,
+  snapshot: CaseBackfillSnapshot,
   adapter: SourceAdapter,
   input: CaseBackfillPassInput,
   context: CaseBackfillExecutionContext,
@@ -227,7 +228,18 @@ async function processNormalize(
   if (fetchArtifact.replayability !== "bounded_evidence" || !fetchArtifact.boundedReplayPayload) {
     throw new Error("case_backfill.fetch_artifact_not_replayable");
   }
-  const normalized = await adapter.normalize(replayRawArticle(fetchArtifact.boundedReplayPayload));
+  const replay = replayRawArticle(fetchArtifact.boundedReplayPayload);
+  const exclusionCode = strategy.exclusionCode?.(replay, item, snapshot) ?? null;
+  if (exclusionCode) {
+    await repository.excludeItem({
+      itemId: item.itemId,
+      phase: "normalize",
+      authority: context.authority,
+      exclusionCode,
+    });
+    return;
+  }
+  const normalized = await adapter.normalize(replay);
   const normalizedWithProvenance: NormalizedArticle = {
     ...normalized,
     metadata: {
@@ -297,7 +309,7 @@ async function processItem(
   const phase = input.phase as CaseBackfillItemPhase;
   await context.checkpoint();
   if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository, strategy);
-  else if (phase === "normalize") await processNormalize(item, adapter, input, context, repository, strategy);
+  else if (phase === "normalize") await processNormalize(item, snapshot, adapter, input, context, repository, strategy);
   else if (phase === "verify") await processVerify(item, snapshot, context, repository, strategy);
   else if (phase === "publish") await repository.publishItem({ itemId: item.itemId, authority: context.authority });
   else throw new Error("case_backfill.invalid_item_phase");

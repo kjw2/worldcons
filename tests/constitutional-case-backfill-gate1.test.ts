@@ -107,6 +107,7 @@ function fakeRepository(overrides: Partial<CaseBackfillRepository> = {}): CaseBa
     recordNormalizationArtifact: unavailable,
     publishItem: unavailable,
     completeItem: async () => undefined,
+    excludeItem: async () => undefined,
     failItem: async () => undefined,
     ...overrides,
   } as CaseBackfillRepository;

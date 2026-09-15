@@ -73,6 +73,16 @@ export interface CaseBackfillSourceStrategy {
     item: CaseBackfillClaimedItem,
     snapshot: CaseBackfillSnapshot,
   ): string[];
+  /**
+   * Optional source policy hook that returns a stable exclusion code when a
+   * fetched item can never become an authoritative verified decision, so the
+   * item is closed as an explicit exclusion instead of a terminal failure.
+   */
+  exclusionCode?(
+    raw: import("@/lib/sources/types").RawArticle,
+    item: CaseBackfillClaimedItem,
+    snapshot: CaseBackfillSnapshot,
+  ): string | null;
 }
 
 export interface CaseBackfillSourceStrategyDependencies {
@@ -339,6 +349,11 @@ function germanyStrategy(
       }
       if (!normalized.originalTitle?.trim()) errors.push("official_title_missing");
       return errors;
+    },
+    exclusionCode(raw) {
+      if (pathValue(raw.metadata ?? {}, "collection.sourceUrlVerified") !== true) return "official_source_unavailable";
+      if (pathValue(raw.metadata ?? {}, "collection.publishable") !== true) return "official_source_not_publishable";
+      return null;
     },
   };
 }

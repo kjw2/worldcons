@@ -42,7 +42,7 @@ import type {
   CaseBackfillPassInput,
   CaseBackfillSnapshot,
 } from "../lib/backfill/types";
-import type { NormalizedArticle } from "../lib/sources/types";
+import type { NormalizedArticle, RawArticle } from "../lib/sources/types";
 import { bverfgOfficialUrlCandidatesForItem } from "../lib/sources/bundesverfassungsgericht";
 
 interface FixtureRow {
@@ -629,6 +629,7 @@ test("Germany discovery persists enumeration evidence before items and closes on
     recordNormalizationArtifact: unavailable,
     publishItem: unavailable,
     completeItem: unavailable,
+    excludeItem: unavailable,
     failItem: unavailable,
   } as CaseBackfillRepository;
 
@@ -773,4 +774,129 @@ test("BVerfG fetch candidates come from sealed inventory and reject non-official
     contentType: "decision",
     metadata: { sourceInventory: { officialUrlCandidates: [] } },
   }), []);
+});
+
+function rawReplay(collection: Record<string, unknown>): RawArticle {
+  return {
+    sourceKey: "de-bverfg",
+    url: item.discoveredUrl,
+    canonicalUrl: item.discoveredUrl,
+    title: "Beschluss vom 26. März 2024",
+    publishedAt: "2024-03-26",
+    contentType: "decision",
+    text: "Amtlicher Entscheidungstext ".repeat(100),
+    metadata: { collection: collection as unknown as NonNullable<RawArticle["metadata"]>["collection"] },
+  };
+}
+
+test("BVerfG strategy classifies unrecoverable official sources as explicit exclusions", () => {
+  const strategy = loadCaseBackfillSourceStrategy("de-bverfg", { currentYear: 2026 });
+  assert.equal(strategy.exclusionCode?.(rawReplay({
+    sourceUrlVerified: false,
+    sourceTextAvailable: true,
+    publishable: false,
+  }), item, snapshot), "official_source_unavailable");
+  assert.equal(strategy.exclusionCode?.(rawReplay({
+    sourceUrlVerified: true,
+    sourceTextAvailable: true,
+    publishable: false,
+  }), item, snapshot), "official_source_not_publishable");
+  assert.equal(strategy.exclusionCode?.(rawReplay({
+    sourceUrlVerified: true,
+    sourceTextAvailable: true,
+    publishable: true,
+  }), item, snapshot), null);
+});
+
+test("Germany normalize excludes an unrecoverable official source instead of failing verification", async () => {
+  const exclusionCodes: string[] = [];
+  let normalizeCalls = 0;
+  let completedStatuses: string[] = [];
+  const normalizeAuthority: CaseBackfillAttemptAuthority = {
+    attemptId: "00000000-0000-4000-8000-000000000411",
+    runId: "00000000-0000-4000-8000-000000000412",
+    fencingToken: "31",
+    leaseExpiresAt: "2026-09-04T02:00:00.000Z",
+  };
+  const fetchedItem: CaseBackfillClaimedItem = {
+    ...item,
+    resolutionStatus: "fetched",
+    currentFetchArtifactId: "00000000-0000-4000-8000-000000000401",
+  };
+  let served = false;
+  const unavailable = async () => { throw new Error("unused"); };
+  const repository = {
+    getSnapshot: async () => snapshot,
+    getSourcePolicy: async () => ({
+      sourceKey: snapshot.sourceKey,
+      policyVersion: snapshot.sourcePolicyVersion,
+      normalizeReplayPolicy: "bounded_evidence" as const,
+      boundedReplayFields: ["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"],
+      minRequestDelayMs: 30_000,
+      maxConcurrency: 1,
+      reviewDueAt: "2027-09-04T00:00:00.000Z",
+    }),
+    beginRun: async () => "00000000-0000-4000-8000-000000000402",
+    claimItems: async () => {
+      if (served) return [];
+      served = true;
+      return [fetchedItem];
+    },
+    extendItems: async (ids: string[]) => ids.length,
+    getFetchArtifact: async () => ({
+      id: "00000000-0000-4000-8000-000000000401",
+      itemId: fetchedItem.itemId,
+      sourcePolicyVersion: snapshot.sourcePolicyVersion,
+      authorityUrl: item.discoveredUrl,
+      payloadHash: "a".repeat(64),
+      replayability: "bounded_evidence" as const,
+      immutableStorageRef: null,
+      boundedReplayPayload: rawReplay({
+        sourceUrlVerified: false,
+        sourceTextAvailable: true,
+        publishable: false,
+      }) as unknown as Record<string, unknown>,
+      fetchContractVersion: "bverfg-official-fetch-v1",
+    }),
+    recordNormalizationArtifact: async () => { normalizeCalls += 1; return "00000000-0000-4000-8000-000000000403"; },
+    completeItem: async (input: { nextStatus: string }) => { completedStatuses.push(input.nextStatus); },
+    excludeItem: async (input: { exclusionCode: string }) => { exclusionCodes.push(input.exclusionCode); },
+    finishRun: async () => undefined,
+    countBacklog: async () => 0,
+  } as unknown as CaseBackfillRepository;
+
+  const result = await runCaseBackfillPass({
+    cohort: "catalog-backfill",
+    snapshotId: snapshot.id,
+    phase: "normalize",
+    passNumber: 1,
+    batchLimit: 50,
+    parserVersion: "bverfg-official-normalize-v2",
+    normalizationContractVersion: "case-normalized-v1",
+  }, {
+    authority: normalizeAuthority,
+    checkpoint: async () => undefined,
+    signal: new AbortController().signal,
+  }, {
+    repository,
+    loadAdapter: async () => ({
+      sourceKey: "de-bverfg",
+      displayName: "Bundesverfassungsgericht",
+      jurisdiction: "Germany",
+      baseUrl: "https://www.bundesverfassungsgericht.de",
+      defaultLanguage: "de",
+      discover: async () => [],
+      fetchItem: async () => { throw new Error("unused"); },
+      normalize: async () => { normalizeCalls += 1; return normalized(); },
+    }),
+    now: () => new Date("2026-09-04T00:00:00.000Z"),
+    environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
+  });
+
+  assert.deepEqual(exclusionCodes, ["official_source_unavailable"]);
+  assert.equal(normalizeCalls, 0);
+  assert.deepEqual(completedStatuses, []);
+  assert.equal(result.succeeded, 1);
+  assert.equal(result.terminalFailed, 0);
+  assert.equal(result.retryableFailed, 0);
 });

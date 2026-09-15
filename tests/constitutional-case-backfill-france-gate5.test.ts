@@ -444,6 +444,7 @@ function discoveryRepository(overrides: Partial<CaseBackfillRepository>): CaseBa
     recordNormalizationArtifact: unavailable,
     publishItem: unavailable,
     completeItem: unavailable,
+    excludeItem: unavailable,
     failItem: unavailable,
     ...overrides,
   } as CaseBackfillRepository;
