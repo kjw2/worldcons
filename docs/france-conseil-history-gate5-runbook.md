@@ -63,11 +63,15 @@ The payload is a bounded JSON object, recursively screened for credential-like k
 
 The worker uses the v2 upsert, close, and claim RPCs. Production `service_role` execution is revoked from the corresponding v1 RPCs, preventing an application path from omitting the new provenance field or closing a legacy hash. The provenance is copied into `metadata.sourceInventory` for bounded fetch replay and normalization, so the Catalog source revision receives the same immutable evidence. Direct table writes remain unavailable to the worker.
 
-## Private-shadow execution prerequisites
+## Private-shadow execution prerequisites and 2024 canary status
 
-The owner approved the review document on 2026-09-16, chose the reviewer `WorldCons owner via explicit approval`, a 90-day bounded retention, and a `review_due_at` of `2027-03-15`, and recorded the resulting immutable `source_corpus_policies` row in migration `20260916090000_constitutional_case_france_policy_approval.sql`. Applying that migration and running the read-only readiness commands is still required before execution; the migration is intentionally not applied by the approval task. The policy covers the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields (including `metadata`), request delay, concurrency, retention, and `review_due_at`.
+The owner approved the review document on 2026-09-16, chose the reviewer `WorldCons owner via explicit approval`, a 90-day bounded retention, and a `review_due_at` of `2027-03-15`, and recorded the resulting immutable `source_corpus_policies` row in migration `20260916090000_constitutional_case_france_policy_approval.sql`. That migration is now applied to the production `worldcons` Supabase project. The policy covers the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields (including `metadata`), request delay, concurrency, retention, and `review_due_at`.
 
-After that approval, use a scoped environment:
+The 2024 QPC/DC private-shadow canary completed successfully on 2026-09-16. QPC snapshot `473522ae-2b03-4581-8ba7-7632a8e41048` sealed 42/42 items and DC snapshot `bc1ebccd-8cbc-4821-babe-5fe850925875` sealed 12/12 items. All 54 items reached fetched + normalized + verified state, with zero item errors, zero active claims, and zero Catalog publications. See [worldcons-m5b2-france-2024-private-shadow-canary-20260916.md](./worldcons-m5b2-france-2024-private-shadow-canary-20260916.md).
+
+The canary also exposed and repaired a pre-write schema mismatch: authoritative crosschecked snapshots need to learn the official expected count during discovery. Migration `20260916093000_constitutional_case_open_authoritative_count.sql` now permits a null count only while such a snapshot is `open`/`failed`; successful `closed`/`superseded` snapshots still require a sealed count.
+
+For a newly approved historical tranche, use a scoped environment:
 
 ```bash
 CASE_CATALOG_FRANCE_HISTORY_ENABLED=true pnpm backfill:corpus discover --source=france --year=2024 --document-type=QPC --policy-version=<reviewed-policy>

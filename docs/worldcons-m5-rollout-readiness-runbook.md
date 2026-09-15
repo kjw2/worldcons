@@ -89,7 +89,7 @@ pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require
 
 ## 6. 현재 승인 상태와 정확한 승인 blocker
 
-**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인으로 추가됐다.** France QPC/DC는 이제 `policyAuthorized=true`이지만 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 꺼져 있어 실행은 차단되어 있다(flag를 켜는 것은 별도 단계).
+**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인됐고, production policy 적용과 2024 QPC/DC private-shadow canary까지 완료됐다.** 기본 환경에서는 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 계속 꺼져 있어 후속 historical 실행은 fail-closed다. 2024 canary는 명령 프로세스 범위에서만 flag를 켰으며 종료 후 readiness가 다시 `france_history_disabled`를 반환하는 것을 확인했다.
 
 ```text
 approvedSelectionCount         = 31  (Germany 2024 DECISION 1 + France QPC/DC 2010~2024 30)
@@ -144,7 +144,18 @@ service defense 회귀 테스트(`constitutional-case-rollout-readiness-gate5.te
 - Germany 2024는 기존 policy + history flag 조건이 성립할 때만 fetch가 진행된다.
 - `lib/backfill/service.ts`가 discover/non-discover 두 경로 모두에서 `beginRun` 이전에 gate를 호출한다.
 
-PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip이며, M1 CI release gate가 skip 0을 강제한다. 기존 migration은 수정하지 않았고, France policy approval만 새 timestamp migration(`20260916090000`)으로 추가했다.
+PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip이며, M1 CI release gate가 skip 0을 강제한다. 기존 migration은 수정하지 않았다. France owner approval은 새 timestamp migration `20260916090000`으로, 2024 canary에서 발견된 open authoritative-count 제약 보정은 별도 새 migration `20260916093000`으로 추가했다.
+
+### M5-B1/B2 production evidence (2026-09-16)
+
+- `20260916090000_constitutional_case_france_policy_approval.sql`: production 적용 완료.
+- 최초 QPC discover에서 기존 authoritative-count constraint가 open snapshot의 미확정 count를 막는 결함을 발견했다. 기존 migration을 수정하지 않고 `20260916093000_constitutional_case_open_authoritative_count.sql`을 추가해 open/failed에서만 count 미확정을 허용하고 closed/superseded에서는 count를 계속 강제했다 (`33c7e97`).
+- 2024 QPC snapshot `473522ae-2b03-4581-8ba7-7632a8e41048`: 42/42 discovered/fetched/normalized/verified, errors 0, published 0, manifest `9e61bcc34d61d99a8f6216b287cfd13ab9290a687368f5e304e7ca58abea4523`.
+- 2024 DC snapshot `bc1ebccd-8cbc-4821-babe-5fe850925875`: 12/12 discovered/fetched/normalized/verified, errors 0, published 0, manifest `b88b4a0d1d0a28a22a9e5304663db18cb3daf5918340167bd253bb477baadd5f`.
+- 두 snapshot의 discover/fetch/normalize/verify/reconcile run은 전부 `succeeded`, retryable/terminal failure 0, completion 후 active claim 0.
+- France policy의 `case_catalog_publications_v1` row 0, `p1.case-backfill.publish` command 0, Gemini/AI 0.
+- QPC 42-item fetch 중 Crawlee `AsyncEventEmitter` migrating-listener warning이 1회 관측됐다. canary 정합성에는 영향이 없었지만 2010~2024 bulk expansion 전 RequestQueue/listener lifecycle을 hardening하고 >50-item batch에서 재검증한다.
+- 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
 
 ## 9. Catalog publication rollout과의 분리
 

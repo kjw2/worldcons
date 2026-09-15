@@ -8,7 +8,7 @@ The official DILA `CONSTIT` open-data stock is the preferred primary inventory f
 
 On 2026-09-16 the WorldCons owner explicitly approved this source policy, scoped only to the France 2010-2024 `QPC`/`DC` tranches. Spain and the Germany 1998-2023 expansion are **not** covered by this approval. Migration `20260916090000_constitutional_case_france_policy_approval.sql` inserts the immutable `source_corpus_policies` row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v1`.
 
-This review and approval authorize the implementation and read-only fixtures, and the code now recognizes the approved policy. They do **not** insert a production `source_corpus_policies` row by themselves (the migration must still be applied), enable `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, run a production backfill, publish Catalog rows, or send source text to Gemini.
+This review and approval authorized the implementation and read-only fixtures, and the code recognizes the approved policy. The later M5-B1 operation applied the immutable policy migration to the production `worldcons` Supabase project, and M5-B2 subsequently completed the bounded 2024 QPC/DC private-shadow canary. Neither stage persistently enabled `CASE_CATALOG_FRANCE_HISTORY_ENABLED`, published Catalog rows, or sent source text to Gemini.
 
 ## Official evidence
 
@@ -173,6 +173,8 @@ Completed in the first two post-review implementation stages:
 - a fail-closed Catalog publication trigger proving that a France source anchor carries the exact DILA provenance sealed into its closed inventory snapshot;
 - public notices that distinguish official source data from optional AI summaries and prohibit any implication of DILA or Conseil constitutionnel endorsement.
 
-Still required before any production inventory write:
+Subsequent operational record:
 
-- apply the approved immutable policy migration in the target environment and then run the read-only France readiness/preflight evidence commands. The migration is intentionally **not** applied by this task and no historical backfill is run.
+- M5-B1 applied `20260916090000_constitutional_case_france_policy_approval.sql` to production after a one-migration dry run and verified the immutable row.
+- M5-B2 fixed the pre-write authoritative-count constraint with new migration `20260916093000_constitutional_case_open_authoritative_count.sql`, then completed the 2024 QPC/DC private-shadow canary: QPC 42/42 and DC 12/12 fetched, normalized, and verified with zero publication. See `worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
+- The default France history execution flag remains off after those scoped commands. Multi-year expansion remains a separate explicitly controlled stage.
