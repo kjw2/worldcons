@@ -63,13 +63,19 @@ The payload is a bounded JSON object, recursively screened for credential-like k
 
 The worker uses the v2 upsert, close, and claim RPCs. Production `service_role` execution is revoked from the corresponding v1 RPCs, preventing an application path from omitting the new provenance field or closing a legacy hash. The provenance is copied into `metadata.sourceInventory` for bounded fetch replay and normalization, so the Catalog source revision receives the same immutable evidence. Direct table writes remain unavailable to the worker.
 
-## Private-shadow execution prerequisites and 2024 canary status
+## Private-shadow execution prerequisites and rollout status
 
 The owner approved the review document on 2026-09-16, chose the reviewer `WorldCons owner via explicit approval`, a 90-day bounded retention, and a `review_due_at` of `2027-03-15`, and recorded the resulting immutable `source_corpus_policies` row in migration `20260916090000_constitutional_case_france_policy_approval.sql`. That migration is now applied to the production `worldcons` Supabase project. The policy covers the DILA directory/stock, Conseil count/detail cross-checks, robots observations, attribution, AI egress denial for the source-only canary, bounded replay fields (including `metadata`), request delay, concurrency, retention, and `review_due_at`.
 
 The 2024 QPC/DC private-shadow canary completed successfully on 2026-09-16. QPC snapshot `473522ae-2b03-4581-8ba7-7632a8e41048` sealed 42/42 items and DC snapshot `bc1ebccd-8cbc-4821-babe-5fe850925875` sealed 12/12 items. All 54 items reached fetched + normalized + verified state, with zero item errors, zero active claims, and zero Catalog publications. See [worldcons-m5b2-france-2024-private-shadow-canary-20260916.md](./worldcons-m5b2-france-2024-private-shadow-canary-20260916.md).
 
 The canary also exposed and repaired a pre-write schema mismatch: authoritative crosschecked snapshots need to learn the official expected count during discovery. Migration `20260916093000_constitutional_case_open_authoritative_count.sql` now permits a null count only while such a snapshot is `open`/`failed`; successful `closed`/`superseded` snapshots still require a sealed count.
+
+M5-B2.1 then removed the Crawlee global-listener growth observed during the 2024 QPC fetch by using `RequestList` for fixed detail-only request sets while retaining `RequestQueue` for dynamic list discovery. The 60-request regression completed without a retained `migrating`/`aborting` listener delta.
+
+M5-B3.1 completed the next 2023 expansion wave on 2026-09-16. QPC snapshot `f7356ffa-e45e-453d-a6e3-bfffe92ea688` sealed and verified 45/45 items; DC snapshot `8c1a5ea8-b221-4b78-8df1-e74ef51e6da1` sealed and verified 15/15 items. Across both snapshots all ten P1 runs succeeded, retryable/terminal failures were zero, active claims were zero after completion, Catalog publications remained zero, and the listener warning did not recur during the 45-item QPC production fetch. See [worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md](./worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md).
+
+The next bounded rollout wave is 2022 QPC followed by 2022 DC. Do not skip ahead or combine year/type manifests.
 
 For a newly approved historical tranche, use a scoped environment:
 

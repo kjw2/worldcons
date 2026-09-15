@@ -89,7 +89,7 @@ pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require
 
 ## 6. 현재 승인 상태와 정확한 승인 blocker
 
-**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인됐고, production policy 적용, 2024 QPC/DC private-shadow canary, Crawlee listener/RequestQueue hardening(M5-B2.1)까지 완료됐다.** 기본 환경에서는 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 계속 꺼져 있어 후속 historical 실행은 fail-closed다. 2024 canary는 명령 프로세스 범위에서만 flag를 켰으며 종료 후 readiness가 다시 `france_history_disabled`를 반환하는 것을 확인했다.
+**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인됐고, production policy 적용, 2024 QPC/DC private-shadow canary, Crawlee listener/RequestQueue hardening(M5-B2.1), 2023 QPC/DC expansion wave(M5-B3.1)까지 완료됐다.** 기본 환경에서는 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 계속 꺼져 있어 후속 historical 실행은 fail-closed다. 실행 flag는 각 bounded CLI 프로세스에서만 켰으며 종료 후 readiness가 다시 `france_history_disabled`를 반환하는 것을 확인했다.
 
 ```text
 approvedSelectionCount         = 31  (Germany 2024 DECISION 1 + France QPC/DC 2010~2024 30)
@@ -156,9 +156,14 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 - France policy의 `case_catalog_publications_v1` row 0, `p1.case-backfill.publish` command 0, Gemini/AI 0.
 - QPC 42-item fetch 중 Crawlee `AsyncEventEmitter` migrating-listener warning이 1회 관측됐다. 원인은 fixed detail-only crawl에도 `RequestQueue`를 생성해 global listener가 누적되던 구조였다.
 - M5-B2.1에서 fixed `DETAIL` 요청은 `RequestList`, 동적 `LIST` discovery는 기존 `RequestQueue`를 사용하도록 분리했다. 60개 detail URL 실회귀에서 60/60 성공했고 `migrating`/`aborting` listener 수가 실행 전후 동일했다.
-- 따라서 France 2010~2023 QPC/DC 확대의 선행 listener lifecycle blocker는 해소됐다. 다음 production tranche는 2023 QPC, 이어서 2023 DC다.
+- 따라서 France 2010~2023 QPC/DC 확대의 선행 listener lifecycle blocker는 해소됐다.
+- M5-B3.1 2023 QPC snapshot `f7356ffa-e45e-453d-a6e3-bfffe92ea688`: 45/45 discovered/fetched/normalized/verified, error 0, active claim 0, published 0, manifest `71e2aecebd5a55882ce576e6bbcfbd497d1352d8036536c216b9fe645a64e03b`.
+- M5-B3.1 2023 DC snapshot `8c1a5ea8-b221-4b78-8df1-e74ef51e6da1`: 15/15 discovered/fetched/normalized/verified, error 0, active claim 0, published 0, manifest `0c65b361ac6b460dcf147c70f0f031b84b6b394e2c30a2de8ba9bb694135d400`.
+- 2023 wave의 10개 discover/fetch/normalize/verify/reconcile run은 모두 `succeeded`, retryable/terminal failure 0이었다. 45-item QPC production fetch에서도 listener warning은 재발하지 않았다.
+- 다음 production wave는 2022 QPC, 이어서 2022 DC다.
 - 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
 - hardening 증적: `docs/worldcons-m5b21-france-crawlee-listener-hardening-20260916.md`.
+- 2023 expansion 증적: `docs/worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md`.
 
 ## 9. Catalog publication rollout과의 분리
 
