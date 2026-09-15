@@ -403,6 +403,26 @@ function preflightExecutionAuthority(phase: (typeof GATE1_PHASES)[number]) {
   return authority;
 }
 
+async function resolvePassNumber(snapshotId: string, phase: (typeof GATE1_PHASES)[number]) {
+  const openRuns = await postgresCaseBackfillRepository.listNonTerminalRuns(snapshotId, phase);
+  const reusable = openRuns.find((run) => run.status === "queued" && !run.p1AttemptId)
+    ?? openRuns.find((run) => run.status === "running")
+    ?? openRuns[0];
+  if (reusable) {
+    output({
+      event: "case_backfill_pass_reused",
+      snapshotId,
+      phase,
+      passNumber: reusable.passNumber,
+      status: reusable.status,
+      publicCatalogWrites: 0,
+      geminiCalls: 0,
+    });
+    return reusable.passNumber;
+  }
+  return postgresCaseBackfillRepository.allocatePass(snapshotId, phase);
+}
+
 async function submitPhase(
   phase: (typeof GATE1_PHASES)[number],
   snapshotId: string,
@@ -414,7 +434,7 @@ async function submitPhase(
     : snapshot.sourceKey === "de-bverfg"
       ? "bverfg-official-fetch-v1"
     : "spain-hj-fetch-v1";
-  const passNumber = await postgresCaseBackfillRepository.allocatePass(snapshotId, phase);
+  const passNumber = await resolvePassNumber(snapshotId, phase);
   const payloadRef = {
     cohort: "catalog-backfill" as const,
     snapshotId,

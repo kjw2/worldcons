@@ -98,8 +98,9 @@ test("Germany fetch drain is read-only by default and delegates only bounded fen
   assert.match(script, /`--batch-limit=\$\{input\.batchLimit\}`/);
   assert.match(script, /postgresCaseBackfillRepository\.countBacklog/);
   assert.match(script, /maxConsecutiveFailures/);
-  assert.match(script, /remainingRetryWait: finalStatus\.retryWait/);
-  assert.match(script, /finalStatus\.retryWait === 0 && finalStatus\.failed === 0/);
+  assert.match(script, /decideBverfgFetchDrain\(decisionInput\(state\)\)/);
+  assert.match(script, /finalState\.residualClaimCount === 0/);
+  assert.match(script, /finalState\.openRuns\.length === 0/);
   assert.match(script, /publicCatalogWrites: 0/);
   assert.match(script, /geminiCalls: 0/);
   assert.doesNotMatch(script, /CASE_CATALOG_WRITE_ENABLED\s*=\s*["']true/);
@@ -618,6 +619,8 @@ test("Germany discovery persists enumeration evidence before items and closes on
     allocatePass: unavailable,
     finishRun: async () => { calls.push("finish"); },
     countBacklog: unavailable,
+    countResidualClaims: unavailable,
+    listNonTerminalRuns: unavailable,
     claimItems: unavailable,
     extendItems: unavailable,
     recordFetchArtifact: unavailable,

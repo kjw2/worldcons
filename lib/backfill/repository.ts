@@ -197,6 +197,17 @@ export interface SourceRequestPermitResult {
   permitLeaseExpiresAt: string | null;
 }
 
+export interface CaseBackfillOpenRun {
+  runId: string;
+  passNumber: number;
+  status: string;
+  p1AttemptId: string | null;
+  p1FencingToken: string | null;
+  commandRunId: string | null;
+  attemptStatus: string | null;
+  attemptLeaseExpiresAt: string | null;
+}
+
 export interface CaseBackfillRepository {
   openSnapshot(input: OpenCaseBackfillSnapshotInput): Promise<string>;
   upsertInventoryItem(input: InventoryItemInput): Promise<string>;
@@ -234,6 +245,8 @@ export interface CaseBackfillRepository {
     lastErrorSummary?: string | null;
   }): Promise<void>;
   countBacklog(input: CaseBackfillPassInput): Promise<number>;
+  countResidualClaims(snapshotId: string): Promise<number>;
+  listNonTerminalRuns(snapshotId: string, phase: CaseBackfillPassInput["phase"]): Promise<CaseBackfillOpenRun[]>;
   claimItems(input: CaseBackfillPassInput, authority: CaseBackfillAttemptAuthority): Promise<CaseBackfillClaimedItem[]>;
   extendItems(itemIds: string[], phase: CaseBackfillItemPhase, authority: CaseBackfillAttemptAuthority): Promise<number>;
   recordFetchArtifact(input: RecordFetchArtifactInput): Promise<string>;
@@ -503,6 +516,54 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     const count = typeof data === "number" ? data : Number(data ?? 0);
     if (!Number.isFinite(count) || count < 0) throw new Error("case_backfill.backlog_count_invalid");
     return count;
+  },
+
+  async countResidualClaims(snapshotId) {
+    const { count, error } = await requiredClient()
+      .from("source_backfill_items")
+      .select("id", { count: "exact", head: true })
+      .eq("snapshot_id", snapshotId)
+      .not("claimed_attempt_id", "is", null);
+    databaseError(error);
+    return count ?? 0;
+  },
+
+  async listNonTerminalRuns(snapshotId, phase) {
+    const client = requiredClient();
+    const runResult = await client
+      .from("source_backfill_runs")
+      .select("id, phase, pass_number, status, p1_attempt_id, p1_fencing_token, command_run_id")
+      .eq("snapshot_id", snapshotId)
+      .eq("phase", phase)
+      .in("status", ["queued", "running", "deferred"])
+      .order("pass_number", { ascending: true });
+    databaseError(runResult.error);
+    const runRows = (runResult.data ?? []).filter(isRecord);
+    const attemptIds = runRows.map((row) => nullableText(row, "p1_attempt_id")).filter((id): id is string => Boolean(id));
+    const attemptById = new Map<string, Row>();
+    if (attemptIds.length > 0) {
+      const attemptResult = await client
+        .from("admin_command_attempts")
+        .select("id, status, lease_expires_at")
+        .in("id", attemptIds);
+      databaseError(attemptResult.error);
+      for (const row of (attemptResult.data ?? []).filter(isRecord)) {
+        attemptById.set(text(row, "id"), row);
+      }
+    }
+    return runRows.map((row) => {
+      const attempt = attemptById.get(nullableText(row, "p1_attempt_id") ?? "");
+      return {
+        runId: text(row, "id"),
+        passNumber: numberValue(row, "pass_number"),
+        status: text(row, "status"),
+        p1AttemptId: nullableText(row, "p1_attempt_id"),
+        p1FencingToken: nullableText(row, "p1_fencing_token"),
+        commandRunId: nullableText(row, "command_run_id"),
+        attemptStatus: attempt ? text(attempt, "status") : null,
+        attemptLeaseExpiresAt: attempt ? nullableText(attempt, "lease_expires_at") : null,
+      };
+    });
   },
 
   async claimItems(input, authority) {
