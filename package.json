@@ -28,6 +28,7 @@
     "verify:bverfg-inventory": "tsx scripts/verify-bverfg-inventory.ts",
     "verify:bverfg-shadow-readiness": "tsx scripts/verify-bverfg-shadow-readiness.ts",
     "verify:bverfg-shadow-canary": "tsx scripts/verify-bverfg-shadow-canary.ts",
+    "diagnose:backfill-recovery": "tsx scripts/backfill-recovery-diagnose.ts",
     "import:us-conan-candidates": "tsx scripts/import-us-conan-candidates.ts",
     "verify:us-reports-authority": "tsx scripts/verify-us-reports-authority.ts",
     "resolve:us-conan-authority": "tsx scripts/resolve-us-conan-authority.ts",
