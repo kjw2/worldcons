@@ -1,4 +1,4 @@
-import { CheerioCrawler, PlaywrightCrawler, RequestQueue } from "crawlee";
+import { CheerioCrawler, PlaywrightCrawler, RequestList, RequestQueue } from "crawlee";
 import { checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { extractLinks } from "@/lib/crawler/extract-links";
@@ -463,17 +463,27 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
   requests = prepared.requests;
   settings = prepared.settings;
   if (requests.length === 0) return;
-  const requestQueue = await runCrawleeExecutionBoundary(state.options, () =>
-    RequestQueue.open(`${state.config.sourceKey}-${name}-cheerio-${Date.now()}-${Math.random().toString(36).slice(2)}`),
-  );
-  await runCrawleeExecutionBoundary(state.options, () => enqueueStartRequests(requestQueue, requests, settings, state.options));
+  const fixedDetailOnly = requests.every((request) => request.label === "DETAIL");
+  const requestList = fixedDetailOnly
+    ? await runCrawleeExecutionBoundary(state.options, () =>
+      RequestList.open(null, requests.map((request) => buildRequest(request, settings))),
+    )
+    : undefined;
+  const requestQueue = fixedDetailOnly
+    ? undefined
+    : await runCrawleeExecutionBoundary(state.options, () =>
+      RequestQueue.open(`${state.config.sourceKey}-${name}-cheerio-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+    );
+  if (requestQueue) {
+    await runCrawleeExecutionBoundary(state.options, () => enqueueStartRequests(requestQueue, requests, settings, state.options));
+  }
 
   const navigationPermits = createCrawlerNavigationPermitController(
     state.options.requestGovernor,
   );
 
   const crawler = new CheerioCrawler({
-    requestQueue,
+    ...(requestList ? { requestList } : { requestQueue }),
     maxConcurrency: settings.maxConcurrency,
     maxRequestRetries: settings.maxRequestRetries,
     sameDomainDelaySecs: settings.sameDomainDelaySecs,
@@ -495,6 +505,7 @@ async function runCheerioPass(state: SpiderRunState, requests: CrawleeStartReque
       const contentType = headerValue(response.headers as Record<string, unknown>, "content-type");
 
       if (userData.label === "LIST") {
+        if (!requestQueue) throw new Error("crawler.request_queue_required_for_list");
         const parsed = extractLinks(html, finalUrl, state.config.listSelectors);
         const links = parsed.links
           .filter((link) => state.config.isCandidateUrl(link.url, link.title))

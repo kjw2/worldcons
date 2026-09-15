@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
 import zlib from "node:zlib";
+import { Configuration } from "crawlee";
 import {
   CASE_CATALOG_FRANCE_HISTORY_FLAG,
   FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT,
@@ -448,6 +449,68 @@ test("governed Crawlee acquires separate permits for robots and the full respons
     });
     if (previousRobotsSetting === undefined) delete process.env.CRAWLER_ROBOTS_ENABLED;
     else process.env.CRAWLER_ROBOTS_ENABLED = previousRobotsSetting;
+  }
+});
+
+test("France detail-only Crawlee handles more than 50 fetches without retaining global migration listeners", async () => {
+  const previousRobotsSetting = process.env.CRAWLER_ROBOTS_ENABLED;
+  const previousDelay = process.env.CRAWLEE_SAME_DOMAIN_DELAY_SECS;
+  process.env.CRAWLER_ROBOTS_ENABLED = "false";
+  process.env.CRAWLEE_SAME_DOMAIN_DELAY_SECS = "0";
+  const server = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "text/html; charset=utf-8");
+    response.end(`<html><body><article>${"Décision constitutionnelle. ".repeat(80)}</article></body></html>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const eventManager = Configuration.getGlobalConfig().getEventManager();
+  const migratingBefore = eventManager.listenerCount("migrating");
+  const abortingBefore = eventManager.listenerCount("aborting");
+
+  try {
+    const detailUrls = Array.from(
+      { length: 60 },
+      (_, index) => `${baseUrl}/decision/2024/test-${index}.htm`,
+    );
+    const result = await runOfficialSpider({
+      sourceKey: "france-detail-listener-test",
+      baseUrl,
+      sitemapBaseUrls: [],
+      listUrls: [],
+      listSelectors: [],
+      bodySelectors: ["article"],
+      sitemapKeywords: [],
+      seedItems: [],
+      isCandidateUrl: () => true,
+      itemFromUrl: (url) => ({
+        sourceKey: "fr-conseil-constitutionnel",
+        url,
+        canonicalUrl: url,
+        title: `Décision de test ${url.split("test-").at(-1)?.replace(".htm", "") ?? "unknown"}`,
+        contentType: "decision",
+      }),
+    }, {
+      limit: 60,
+      detailUrls,
+      detailOnly: true,
+      strategy: "cheerio",
+      usePlaywright: false,
+    });
+    assert.equal(result.items.length, 60);
+
+    assert.equal(eventManager.listenerCount("migrating"), migratingBefore);
+    assert.equal(eventManager.listenerCount("aborting"), abortingBefore);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    if (previousRobotsSetting === undefined) delete process.env.CRAWLER_ROBOTS_ENABLED;
+    else process.env.CRAWLER_ROBOTS_ENABLED = previousRobotsSetting;
+    if (previousDelay === undefined) delete process.env.CRAWLEE_SAME_DOMAIN_DELAY_SECS;
+    else process.env.CRAWLEE_SAME_DOMAIN_DELAY_SECS = previousDelay;
   }
 });
 

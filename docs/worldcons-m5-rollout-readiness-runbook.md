@@ -89,7 +89,7 @@ pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require
 
 ## 6. 현재 승인 상태와 정확한 승인 blocker
 
-**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인됐고, production policy 적용과 2024 QPC/DC private-shadow canary까지 완료됐다.** 기본 환경에서는 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 계속 꺼져 있어 후속 historical 실행은 fail-closed다. 2024 canary는 명령 프로세스 범위에서만 flag를 켰으며 종료 후 readiness가 다시 `france_history_disabled`를 반환하는 것을 확인했다.
+**2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인됐고, production policy 적용, 2024 QPC/DC private-shadow canary, Crawlee listener/RequestQueue hardening(M5-B2.1)까지 완료됐다.** 기본 환경에서는 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 계속 꺼져 있어 후속 historical 실행은 fail-closed다. 2024 canary는 명령 프로세스 범위에서만 flag를 켰으며 종료 후 readiness가 다시 `france_history_disabled`를 반환하는 것을 확인했다.
 
 ```text
 approvedSelectionCount         = 31  (Germany 2024 DECISION 1 + France QPC/DC 2010~2024 30)
@@ -129,7 +129,7 @@ nextApprovalRequired           = France L/LP/OTHER (order 3)
 pnpm typecheck                          통과
 pnpm lint                               통과
 pnpm check                              All checks passed.
-pnpm test:backfill                      117 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
+pnpm test:backfill                      120 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
 pnpm test:p1                            22 pass / 0 fail / 1 skip
 pnpm test:ingest-workflow               18 pass / 0 fail
 pnpm test:postgres:release:static       7 pass / 0 fail / 0 skip
@@ -154,8 +154,11 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 - 2024 DC snapshot `bc1ebccd-8cbc-4821-babe-5fe850925875`: 12/12 discovered/fetched/normalized/verified, errors 0, published 0, manifest `b88b4a0d1d0a28a22a9e5304663db18cb3daf5918340167bd253bb477baadd5f`.
 - 두 snapshot의 discover/fetch/normalize/verify/reconcile run은 전부 `succeeded`, retryable/terminal failure 0, completion 후 active claim 0.
 - France policy의 `case_catalog_publications_v1` row 0, `p1.case-backfill.publish` command 0, Gemini/AI 0.
-- QPC 42-item fetch 중 Crawlee `AsyncEventEmitter` migrating-listener warning이 1회 관측됐다. canary 정합성에는 영향이 없었지만 2010~2024 bulk expansion 전 RequestQueue/listener lifecycle을 hardening하고 >50-item batch에서 재검증한다.
+- QPC 42-item fetch 중 Crawlee `AsyncEventEmitter` migrating-listener warning이 1회 관측됐다. 원인은 fixed detail-only crawl에도 `RequestQueue`를 생성해 global listener가 누적되던 구조였다.
+- M5-B2.1에서 fixed `DETAIL` 요청은 `RequestList`, 동적 `LIST` discovery는 기존 `RequestQueue`를 사용하도록 분리했다. 60개 detail URL 실회귀에서 60/60 성공했고 `migrating`/`aborting` listener 수가 실행 전후 동일했다.
+- 따라서 France 2010~2023 QPC/DC 확대의 선행 listener lifecycle blocker는 해소됐다. 다음 production tranche는 2023 QPC, 이어서 2023 DC다.
 - 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
+- hardening 증적: `docs/worldcons-m5b21-france-crawlee-listener-hardening-20260916.md`.
 
 ## 9. Catalog publication rollout과의 분리
 

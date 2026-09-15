@@ -186,7 +186,7 @@ Possible AsyncEventEmitter memory leak detected. 51 migrating listeners added to
 
 It did **not** cause a failed request, retry, stale claim, worker failure, or data-integrity mismatch. The QPC canary still completed 42/42 and the 12-item DC run did not reproduce the warning.
 
-Inspection shows the warning is consistent with Crawlee `RequestQueue` instances registering global `migrating`/`aborting` listeners while the backfill fetch path creates many short-lived queues in one worker process. This is an operational scalability warning, not a canary correctness failure. Before starting the 2010-2024 multi-year expansion, M5-B3 should first harden or bound this listener/queue lifecycle and prove a >50-item fetch batch without listener growth.
+Inspection showed that fixed detail-only crawls were creating Crawlee `RequestQueue` instances that retain global `migrating` listeners after queue disposal. M5-B2.1 resolved this by routing fixed `DETAIL` request sets through `RequestList` while preserving `RequestQueue` for dynamic `LIST` discovery. A 60-detail local regression completed 60/60 with zero retained `migrating` or `aborting` listener delta. See [worldcons-m5b21-france-crawlee-listener-hardening-20260916.md](./worldcons-m5b21-france-crawlee-listener-hardening-20260916.md).
 
 ## Stage decision
 
@@ -203,4 +203,4 @@ M5-B2 is complete:
 - history flag after completion: OFF
 - Gemini/AI work: 0
 
-The next execution stage is M5-B3 historical expansion, preceded by the bounded Crawlee listener/queue lifecycle hardening noted above.
+The bounded Crawlee listener/queue lifecycle hardening is now complete. The next execution stage is M5-B3 historical expansion, beginning with France 2023 QPC and then France 2023 DC.
