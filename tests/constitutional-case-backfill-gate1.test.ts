@@ -477,7 +477,12 @@ test("fetch pass records a bounded artifact and preserves a published terminal o
     authority,
     checkpoint: async () => undefined,
     signal: new AbortController().signal,
-  }, { repository, loadAdapter: async () => adapter, now: () => new Date("2026-09-03T00:00:00.000Z") });
+  }, {
+    repository,
+    loadAdapter: async () => adapter,
+    now: () => new Date("2026-09-03T00:00:00.000Z"),
+    spainHistorySourcePolicyApproved: true,
+  });
   assert.equal(result.succeeded, 1);
   assert.equal((artifactPayload.metadata as Record<string, unknown>).resolutionType, "SENTENCIA");
   assert.deepEqual((artifactPayload.metadata as Record<string, unknown>).sourceInventory, claimedItem.inventoryMetadata);
@@ -546,7 +551,12 @@ test("normalize pass carries immutable inventory provenance into the publication
     authority,
     checkpoint: async () => undefined,
     signal: new AbortController().signal,
-  }, { repository, loadAdapter: async () => adapter, now: () => new Date("2026-09-03T00:00:00.000Z") });
+  }, {
+    repository,
+    loadAdapter: async () => adapter,
+    now: () => new Date("2026-09-03T00:00:00.000Z"),
+    spainHistorySourcePolicyApproved: true,
+  });
   assert.equal(result.succeeded, 1);
   const output = recordedOutput as Record<string, unknown> | null;
   assert(output);
@@ -666,6 +676,7 @@ test("enabled publish pass delegates the fenced item to the atomic Catalog publi
     }),
     now: () => new Date("2026-09-03T00:00:00.000Z"),
     environment: { CASE_CATALOG_WRITE_ENABLED: "true" },
+    spainHistorySourcePolicyApproved: true,
   });
   assert.equal(result.succeeded, 1);
   assert.deepEqual(published, { itemId: item.itemId, authority });

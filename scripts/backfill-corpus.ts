@@ -42,6 +42,11 @@ import {
   HISTORICAL_GATE_MAX_YEAR,
 } from "@/lib/backfill/country-history-policy";
 import {
+  assertCaseBackfillRolloutPreflight,
+  preflightCaseBackfillRollout,
+  selectCaseBackfillRollout,
+} from "@/lib/backfill/rollout-readiness";
+import {
   planBverfgPrivateShadowWrite,
   verifyBverfgPrivateShadowReadiness,
 } from "@/lib/backfill/germany-shadow-readiness";
@@ -112,6 +117,19 @@ function output(value: Record<string, unknown>) {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
+function preflightRolloutOrThrow(input: { sourceKey: string; year: number; documentType: string }) {
+  const preflight = preflightCaseBackfillRollout(input);
+  output(preflight as unknown as Record<string, unknown>);
+  if (!preflight.allowed) {
+    throw new Error(preflight.errorCode ?? "case_backfill.rollout_not_authorized");
+  }
+  return preflight;
+}
+
+function rolloutSelection(input: { sourceKey: string; year: number; documentType: string }) {
+  return selectCaseBackfillRollout(input);
+}
+
 function selectedSource(): BackfillSource {
   const value = (argumentValue("source") ?? "spain").trim().toLowerCase();
   if (value === "spain" || value === "es-tribunal-constitucional") return "spain";
@@ -133,6 +151,7 @@ function backfillPlan(source: BackfillSource) {
       mode: "private-shadow",
       sourceKey: "de-bverfg",
       ...scope,
+      rolloutSelection: rolloutSelection({ sourceKey: "de-bverfg", year, documentType: scope.documentType }),
       boundary: CASE_HISTORY_BOUNDARY,
       expansionOrder: COUNTRY_HISTORY_EXPANSION_ORDER,
       approvedPolicy: germanyBverfgApprovedPolicyDescriptor(),
@@ -165,6 +184,7 @@ function backfillPlan(source: BackfillSource) {
       mode: "private-shadow",
       sourceKey: "fr-conseil-constitutionnel",
       ...scope,
+      rolloutSelection: rolloutSelection({ sourceKey: "fr-conseil-constitutionnel", year, documentType: scope.documentType }),
       boundary: CASE_HISTORY_BOUNDARY,
       expansionOrder: COUNTRY_HISTORY_EXPANSION_ORDER,
       sourcePolicyStatus: FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS,
@@ -194,6 +214,7 @@ function backfillPlan(source: BackfillSource) {
     mode: "private-shadow",
     sourceKey: "es-tribunal-constitucional",
     ...scope,
+    rolloutSelection: rolloutSelection({ sourceKey: "es-tribunal-constitucional", year, documentType: scope.documentType }),
     boundary: CASE_HISTORY_BOUNDARY,
     expansionOrder: COUNTRY_HISTORY_EXPANSION_ORDER,
     sourcePolicyStatus: SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS,
@@ -229,6 +250,7 @@ async function snapshotForDiscovery(source: BackfillSource) {
     const year = existingYear ?? integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, HISTORICAL_GATE_MAX_YEAR);
     const scope = germanyBverfgYearScope(year, currentYear());
     assertGermanyBverfgYearEnabled(year, process.env, currentYear());
+    preflightRolloutOrThrow({ sourceKey: "de-bverfg", year, documentType: scope.documentType });
     const requestedPolicyVersion = argumentValue("policy-version")?.trim() || null;
     const policyVersion = existingSnapshot?.sourcePolicyVersion ?? requestedPolicyVersion ?? requiredArgument("policy-version");
     if (requestedPolicyVersion && requestedPolicyVersion !== policyVersion) {
@@ -281,6 +303,7 @@ async function snapshotForDiscovery(source: BackfillSource) {
     const year = integerArgument("year", newestYear, FRANCE_CONSEIL_HISTORY_START_YEAR, newestYear);
     const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
     assertFranceConseilScopeEnabled(year, scope.documentType);
+    preflightRolloutOrThrow({ sourceKey: "fr-conseil-constitutionnel", year, documentType: scope.documentType });
     const policyVersion = requiredArgument("policy-version");
     await postgresCaseBackfillRepository.getSourcePolicy("fr-conseil-constitutionnel", policyVersion);
     return postgresCaseBackfillRepository.openSnapshot({
@@ -308,6 +331,7 @@ async function snapshotForDiscovery(source: BackfillSource) {
   const year = integerArgument("year", SPAIN_SENTENCIA_BASELINE_YEAR, SPAIN_SENTENCIA_HISTORY_START_YEAR, SPAIN_SENTENCIA_BASELINE_YEAR);
   assertSpainSentenciaYearEnabled(year);
   const scope = spainSentenciaYearScope(year);
+  preflightRolloutOrThrow({ sourceKey: "es-tribunal-constitucional", year, documentType: scope.documentType });
   const policyVersion = requiredArgument("policy-version");
   await postgresCaseBackfillRepository.getSourcePolicy("es-tribunal-constitucional", policyVersion);
   return postgresCaseBackfillRepository.openSnapshot({
@@ -452,6 +476,22 @@ async function submitPhase(
   executionAuthority: AdminQueueP1Authority | null,
 ) {
   const snapshot = await postgresCaseBackfillRepository.getSnapshot(snapshotId);
+  const snapshotYear = Number(snapshot.scopeFrom?.slice(0, 4));
+  const rollout = assertCaseBackfillRolloutPreflight({
+    sourceKey: snapshot.sourceKey,
+    year: snapshotYear,
+    documentType: snapshot.documentType,
+  });
+  output({
+    event: "case_backfill_rollout_preflight",
+    phase,
+    snapshotId,
+    allowed: rollout.allowed,
+    policyAuthorized: rollout.selection.policyAuthorized,
+    executionEnabled: rollout.selection.executionEnabled,
+    publicCatalogWrites: 0,
+    geminiCalls: 0,
+  });
   const fetchContractVersion = snapshot.sourceKey === "fr-conseil-constitutionnel"
     ? "france-conseil-fetch-v1"
     : snapshot.sourceKey === "de-bverfg"

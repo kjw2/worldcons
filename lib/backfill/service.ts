@@ -27,6 +27,7 @@ import {
   validateCaseWithSourceStrategy,
 } from "@/lib/backfill/source-strategies";
 import { assertHistoricalSnapshotBoundary } from "@/lib/backfill/country-history-policy";
+import { assertCaseBackfillRolloutPreflight } from "@/lib/backfill/rollout-readiness";
 
 export interface CaseBackfillExecutionContext {
   authority: CaseBackfillAttemptAuthority;
@@ -318,6 +319,26 @@ async function processItem(
   else throw new Error("case_backfill.invalid_item_phase");
 }
 
+/**
+ * M5 defense-in-depth: the same machine-readable tranche contract enforced by
+ * the CLI must also gate the service entry point, so a P1 command that reaches
+ * `runCaseBackfillPass` through another submission path cannot open a run for an
+ * unapproved country/year/document type. It reads only the existing M4 policy
+ * guards and the injected test authorities; it creates no new approval path.
+ */
+function assertRolloutAuthorized(snapshot: CaseBackfillSnapshot, dependencies: CaseBackfillDependencies) {
+  return assertCaseBackfillRolloutPreflight({
+    sourceKey: snapshot.sourceKey,
+    year: Number(snapshot.scopeFrom?.slice(0, 4)),
+    documentType: snapshot.documentType,
+  }, {
+    environment: dependencies.environment ?? process.env,
+    currentYear: dependencies.now().getUTCFullYear(),
+    franceHistorySourcePolicyApproved: dependencies.franceHistorySourcePolicyApproved,
+    spainHistorySourcePolicyApproved: dependencies.spainHistorySourcePolicyApproved,
+  });
+}
+
 export async function runCaseBackfillPass(
   input: CaseBackfillPassInput,
   context: CaseBackfillExecutionContext,
@@ -342,6 +363,7 @@ export async function runCaseBackfillPass(
     if (!strategy.governedNetworkPhases.includes("discover")) {
       throw new Error("case_backfill.source_request_governor_not_supported");
     }
+    assertRolloutAuthorized(snapshot, dependencies);
     await repository.getSourcePolicy(snapshot.sourceKey, snapshot.sourcePolicyVersion);
     const requestGovernor = createCaseBackfillRequestGovernor({
       repository,
@@ -442,6 +464,7 @@ export async function runCaseBackfillPass(
   if (input.phase === "fetch" && !strategy.governedNetworkPhases.includes("fetch")) {
     throw new Error("case_backfill.source_request_governor_not_supported");
   }
+  assertRolloutAuthorized(snapshot, dependencies);
 
   const runId = await repository.beginRun(input, context.authority);
 

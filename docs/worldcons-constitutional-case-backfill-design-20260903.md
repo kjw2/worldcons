@@ -2345,3 +2345,16 @@ M4는 Gate 5 역사 백필의 연도 경계, source policy 승인, 국가별 확
 - U.S.: Constitution Annotated Table of Cases는 `US_CONAN_CORPUS_STATUS=candidate_graph_only`다. `US_CONAN_VERIFICATION_PIPELINE`은 `candidate_citation → official_scotus_identity → constitutional_essay_context → govinfo_authority → constitutional_holding → verified`이며, `assertCandidateGraphNotVerifiedCorpus`가 candidate graph를 검증 corpus로 취급하는 경로를 fail-closed로 막는다.
 
 PostgreSQL schema 변경은 없다. 연도 경계와 source policy 승인은 application guard이므로 새 migration을 추가하지 않았다. 2025년 이후 증분 ingest 경로는 `country-history-policy`에 의존하지 않는다.
+
+---
+
+## 30. M5 rollout readiness·orchestration (2026-09-16)
+
+M5는 M4의 국가별 경계·정책·guard 위에 하나의 machine-readable orchestration 계층을 추가한다. 새 승인 경로를 만들지 않고, 이미 존재하는 immutable source policy와 M4 guard만 읽는다.
+
+- `lib/backfill/rollout-readiness.ts`가 `caseBackfillRolloutReadiness()`로 7개 tranche의 `approvedYears`, `policyAuthorized`, `executionEnabled`, `blocking`을 계산하고, `selectCaseBackfillRollout()`/`preflightCaseBackfillRollout()`/`assertCaseBackfillRolloutPreflight()`로 국가·연도·유형 선택을 판정한다.
+- `scripts/backfill-corpus.ts`는 `openSnapshot()` 이전(discover)과 `submitPhase()`의 run/command 생성 이전에 preflight를 실행한다. 또한 `lib/backfill/service.ts`의 `runCaseBackfillPass()`가 discover와 non-discover 양쪽 경로 모두에서 `repository.beginRun()` 이전에 `assertRolloutAuthorized()`를 실행한다. CLI만 막고 P1 command가 다른 승인 경로로 worker handler에 도달하는 경우를 막는 worker-level defense-in-depth이며, non-discover 경로에서 M4가 국가 정책을 재검사하지 않던 지점을 닫는다. 기존 M4 `assertDiscoveryScope`/`assertHistoricalSnapshotBoundary`와 phase 오류 우선순위는 그대로 유지된다.
+- `pnpm rollout:readiness`는 read-only 증거 CLI다. `--require-authorized`는 승인되지 않은 선택을 exit 2로 fail-closed 처리한다.
+- 현재 정책 승인은 기존 `de-bverfg 2024 DECISION` canary 1건뿐이다. `newlyAuthorizedSelectionCount=0`, `m5ExpansionExecutionReady=false`이며, France QPC/DC(`owner_source_policy_not_approved`), Spain SENTENCIA(`spain_hj_legal_robots_policy_blocked`), U.S. candidate graph(`us_conan.candidate_graph_not_verified_corpus`), Germany 1998~2023(`germany_expansion_not_approved`)는 승인 전까지 열리지 않는다.
+- M5는 Catalog publication rollout과 분리한다. readiness의 `catalogWriteEnabled`/`publicCatalogEnabled`는 상태 보고일 뿐이며 두 flag를 켜지 않는다.
+- 상세 운영 절차와 승인 blocker는 `docs/worldcons-m5-rollout-readiness-runbook.md`에 있다.
