@@ -4,8 +4,11 @@ import path from "node:path";
 import test from "node:test";
 import {
   US_CONSTITUTION_ANNOTATED_FLAG,
+  US_CONAN_CORPUS_STATUS,
   applyConstitutionAnnotatedPriority,
+  assertCandidateGraphNotVerifiedCorpus,
   classifyUsCaseCitation,
+  constitutionAnnotatedCorpusDescriptor,
   constitutionAnnotatedDiscoveryEnabled,
   isConstitutionAnnotatedChallengePage,
   parseConstitutionAnnotatedCasesHtml,
@@ -71,6 +74,29 @@ test("Constitution Annotated discovery is disabled unless explicitly enabled", (
   assert.equal(constitutionAnnotatedDiscoveryEnabled({}), false);
   assert.equal(constitutionAnnotatedDiscoveryEnabled({ [US_CONSTITUTION_ANNOTATED_FLAG]: "true" }), true);
   assert.equal(constitutionAnnotatedDiscoveryEnabled({ [US_CONSTITUTION_ANNOTATED_FLAG]: "1" }), false);
+});
+
+test("Constitution Annotated is a candidate graph, never a verified SCOTUS corpus", () => {
+  const descriptor = constitutionAnnotatedCorpusDescriptor();
+  assert.equal(descriptor.corpusStatus, "candidate_graph_only");
+  assert.equal(descriptor.verifiedCorpus, false);
+  assert.equal(descriptor.authoritySource, "govinfo_us_reports");
+  assert.deepEqual(descriptor.verificationPipeline, [
+    "candidate_citation",
+    "official_scotus_identity",
+    "constitutional_essay_context",
+    "govinfo_authority",
+    "constitutional_holding",
+    "verified",
+  ]);
+  assert.deepEqual(assertCandidateGraphNotVerifiedCorpus(), {
+    corpusStatus: "candidate_graph_only",
+    verifiedCorpus: false,
+  });
+  assert.throws(
+    () => assertCandidateGraphNotVerifiedCorpus("verified_corpus"),
+    /us_conan\.candidate_graph_not_verified_corpus/,
+  );
 });
 
 test("Table parser deduplicates citations, preserves essay provenance, and never auto-verifies", () => {
@@ -211,6 +237,8 @@ test("candidate import plans without database writes or an enabled operational f
   });
   assert.equal(result.prioritizedCount, 1);
   assert.equal(result.snapshot, null);
+  assert.equal(result.corpusStatus, "candidate_graph_only");
+  assert.equal(result.verifiedCorpus, false);
   assert.equal(calls, 0);
 });
 

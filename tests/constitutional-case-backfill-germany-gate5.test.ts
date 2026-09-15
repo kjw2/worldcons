@@ -5,7 +5,9 @@ import test from "node:test";
 import {
   assertGermanyBverfgYearEnabled,
   CASE_CATALOG_GERMANY_HISTORY_FLAG,
+  GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION,
   GERMANY_BVERFG_HISTORY_START_YEAR,
+  germanyBverfgExpansionGuard,
   germanyBverfgExpansionPlan,
   germanyBverfgYearEnabled,
   germanyBverfgYearScope,
@@ -65,7 +67,7 @@ function dejurePage(rows: FixtureRow[], pages: number[], popular?: FixtureRow) {
   return `<html><body>${popularHtml}<ol>${rowHtml}</ol><nav>${pagination}</nav></body></html>`;
 }
 
-test("Germany BVerfG scope is annual, 1998-bounded, and disabled by default", () => {
+test("Germany BVerfG scope is annual, 1998-bounded, pre-2025, and disabled by default", () => {
   assert.equal(GERMANY_BVERFG_HISTORY_START_YEAR, 1998);
   assert.deepEqual(germanyBverfgYearScope(2024, 2026), {
     year: 2024,
@@ -74,14 +76,31 @@ test("Germany BVerfG scope is annual, 1998-bounded, and disabled by default", ()
     documentType: "DECISION",
   });
   assert.throws(() => germanyBverfgYearScope(1997, 2026), /germany_year_not_supported/);
+  assert.throws(() => germanyBverfgYearScope(2025, 2026), /germany_year_not_supported/);
   assert.throws(() => germanyBverfgYearScope(2027, 2026), /germany_year_not_supported/);
   assert.equal(germanyBverfgYearEnabled(2024, {}, 2026), false);
   assert.equal(germanyBverfgYearEnabled(2024, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026), true);
   assert.throws(() => assertGermanyBverfgYearEnabled(2024, {}, 2026), /germany_history_disabled/);
   const plan = germanyBverfgExpansionPlan({}, 2026);
-  assert.equal(plan[0].year, 2026);
+  assert.equal(plan[0].year, 2024);
   assert.equal(plan.at(-1)?.year, 1998);
   assert.equal(plan.every((entry) => !entry.enabled), true);
+});
+
+test("Germany expansion guard authorizes only the approved 2024 canary policy", () => {
+  assert.equal(GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION, "bverfg-unattended-canary-v1");
+  assert.deepEqual(germanyBverfgExpansionGuard(2024), { allowed: true, reason: null });
+  assert.deepEqual(germanyBverfgExpansionGuard(2023), {
+    allowed: false,
+    reason: "case_backfill.germany_expansion_not_approved",
+  });
+  assert.equal(germanyBverfgExpansionGuard(2025).allowed, false);
+  assert.throws(
+    () => assertGermanyBverfgYearEnabled(2023, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026),
+    /germany_expansion_not_approved/,
+  );
+  const plan = germanyBverfgExpansionPlan({ [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026);
+  assert.deepEqual(plan.filter((entry) => entry.enabled).map((entry) => entry.year), [2024]);
 });
 
 test("Germany official fetch defaults to a bounded P1 batch without changing other phases", () => {

@@ -91,6 +91,8 @@ export interface CaseBackfillSourceStrategyDependencies {
   discoverFranceDilaConstitInventory?: typeof discoverFranceDilaConstitInventory;
   discoverBverfgInventory?: typeof discoverBverfgInventory;
   currentYear?: number;
+  spainHistorySourcePolicyApproved?: boolean;
+  franceHistorySourcePolicyApproved?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -156,7 +158,9 @@ function spainStrategy(
       if (snapshot.documentType.toUpperCase() !== "SENTENCIA") {
         throw new Error("case_backfill.discovery_scope_not_enabled");
       }
-      assertSpainSentenciaYearEnabled(Number(snapshot.scopeFrom?.slice(0, 4)), environment);
+      assertSpainSentenciaYearEnabled(Number(snapshot.scopeFrom?.slice(0, 4)), environment, {
+        policyApproved: dependencies.spainHistorySourcePolicyApproved,
+      });
     },
     async discover(snapshot, context) {
       const inventory: SpainTcInventoryResult = await (
@@ -223,6 +227,7 @@ function franceStrategy(
         documentType,
         environment,
         dependencies.currentYear,
+        { policyApproved: dependencies.franceHistorySourcePolicyApproved },
       );
     },
     async discover(snapshot, context) {

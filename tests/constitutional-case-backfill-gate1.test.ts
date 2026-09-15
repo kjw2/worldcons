@@ -23,7 +23,9 @@ import { parseSpainTcListPage } from "../lib/crawlee/spain-tribunal-constitucion
 import type { SourceAdapter } from "../lib/sources/types";
 import {
   CASE_CATALOG_SPAIN_HISTORY_FLAG,
+  SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS,
   spainSentenciaExpansionPlan,
+  spainSentenciaHistorySourcePolicyApproved,
   spainSentenciaYearScope,
 } from "../lib/backfill/spain-scope";
 
@@ -145,13 +147,23 @@ test("Spain Gate 5 history uses one immutable annual scope and an explicit expan
   assert.throws(() => spainSentenciaYearScope(2019), /spain_year_not_supported/);
   const disabled = spainSentenciaExpansionPlan({});
   assert.deepEqual(disabled.map((entry) => [entry.year,entry.enabled]), [
-    [2020,false],[2021,false],[2022,false],[2023,false],[2024,true],
+    [2020,false],[2021,false],[2022,false],[2023,false],[2024,false],
   ]);
-  const enabled = spainSentenciaExpansionPlan({ [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" });
-  assert.ok(enabled.every((entry) => entry.enabled));
+  const flagOnly = spainSentenciaExpansionPlan({ [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" });
+  assert.equal(flagOnly.every((entry) => !entry.enabled), true);
+  const approvedBaseline = spainSentenciaExpansionPlan({}, { policyApproved: true });
+  assert.deepEqual(approvedBaseline.filter((entry) => entry.enabled).map((entry) => entry.year), [2024]);
+  const approvedHistory = spainSentenciaExpansionPlan(
+    { [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" },
+    { policyApproved: true },
+  );
+  assert.deepEqual(approvedHistory.filter((entry) => entry.enabled).map((entry) => entry.year), [2020,2021,2022,2023,2024]);
+  assert.equal(SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS, "blocked_pending_legal_robots_review");
+  assert.equal(spainSentenciaHistorySourcePolicyApproved(), false);
   const cli = fs.readFileSync(path.join(process.cwd(), "scripts/backfill-corpus.ts"), "utf8");
   assert.match(cli, /assertSpainSentenciaYearEnabled/);
   assert.match(cli, /spainSentenciaExpansionPlan/);
+  assert.match(cli, /sourcePolicyStatus/);
 });
 
 test("Spain Gate 5 historical discovery is blocked before run creation unless explicitly enabled", async () => {
@@ -173,6 +185,100 @@ test("Spain Gate 5 historical discovery is blocked before run creation unless ex
     /case_backfill\.spain_history_disabled/,
   );
   assert.equal(began, false);
+});
+
+test("Spain history flag alone stays fail-closed while the legal/robots source policy is blocked", async () => {
+  const historical = { ...snapshot,scopeFrom: "2020-01-01",scopeTo: "2020-12-31",status: "open" as const };
+  let began = false;
+  let discovered = false;
+  const repository = fakeRepository({
+    getSnapshot: async () => historical,
+    beginRun: async () => {
+      began = true;
+      return "55555555-5555-4555-8555-555555555555";
+    },
+  });
+  await assert.rejects(
+    runCaseBackfillPass(pass("discover"), {
+      authority,checkpoint: async () => undefined,signal: new AbortController().signal,
+    }, {
+      repository,loadAdapter: async () => null,now: () => new Date("2026-09-03T00:00:00.000Z"),
+      environment: { [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" },
+      discoverSpainTcInventory: async () => {
+        discovered = true;
+        throw new Error("must not discover");
+      },
+    }),
+    /case_backfill\.spain_history_source_blocked/,
+  );
+  assert.equal(began, false);
+  assert.equal(discovered, false);
+});
+
+test("Spain 2024 baseline is fail-closed until the source policy is approved", async () => {
+  const baseline = { ...snapshot, status: "open" as const };
+  let began = false;
+  let discovered = false;
+  const repository = fakeRepository({
+    getSnapshot: async () => baseline,
+    beginRun: async () => {
+      began = true;
+      return "55555555-5555-4555-8555-555555555555";
+    },
+  });
+  await assert.rejects(
+    runCaseBackfillPass(pass("discover"), {
+      authority,checkpoint: async () => undefined,signal: new AbortController().signal,
+    }, {
+      repository,loadAdapter: async () => null,now: () => new Date("2026-09-03T00:00:00.000Z"),
+      environment: {},
+      discoverSpainTcInventory: async () => {
+        discovered = true;
+        throw new Error("must not discover");
+      },
+    }),
+    /case_backfill\.spain_history_source_blocked/,
+  );
+  assert.equal(began, false);
+  assert.equal(discovered, false);
+});
+
+test("Spain 2024 baseline discovers once source policy approval is injected without the history flag", async () => {
+  const baseline = { ...snapshot, status: "open" as const };
+  const repository = fakeRepository({
+    getSnapshot: async () => baseline,
+    beginRun: async () => "55555555-5555-4555-8555-555555555555",
+    upsertInventoryItem: async () => "66666666-6666-4666-8666-666666666666",
+    updateSnapshotEvidence: async () => undefined,
+    closeSnapshot: async () => ({
+      snapshotId: baseline.id,sourceKey: baseline.sourceKey,snapshotStatus: "closed",
+      discoveredTotal: 1,terminalTotal: 0,processingCompletion: 0,expectedCount: null,
+      coverageAssurance: "authoritative_enumerated",corpusCoverage: null,claimed: 0,retryWait: 0,
+      needsNormalize: 0,needsReverify: 0,needsRepublish: 0,failed: 0,currentConformant: 0,
+      currentConformance: 0,manifestHash: "a".repeat(64),
+    }),
+    finishRun: async () => undefined,
+  });
+  const result = await runCaseBackfillPass(pass("discover"), {
+    authority,checkpoint: async () => undefined,signal: new AbortController().signal,
+  }, {
+    repository,loadAdapter: async () => null,now: () => new Date("2026-09-03T00:00:00.000Z"),
+    environment: {},
+    spainHistorySourcePolicyApproved: true,
+    discoverSpainTcInventory: async () => ({
+      sourceKey: "es-tribunal-constitucional",
+      year: 2024,
+      documentType: "SENTENCIA",
+      items: [{
+        stableItemKey: "hj:202401",sourceRecordId: "202401",
+        discoveredUrl: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/202401",
+        documentType: "SENTENCIA",decisionDateHint: "2024-02-03",title: "SENTENCIA 1/2024",
+      }],
+      pageCount: 1,
+      coverageEvidence: { method: "official_hj_search_pagination" },
+    }),
+  });
+  assert.equal(result.succeeded, 1);
 });
 
 test("Spain Gate 5 enabled historical discovery writes and closes only its annual inventory", async () => {
@@ -208,6 +314,7 @@ test("Spain Gate 5 enabled historical discovery writes and closes only its annua
     loadAdapter: async () => null,
     now: () => new Date("2026-09-03T00:00:00.000Z"),
     environment: { [CASE_CATALOG_SPAIN_HISTORY_FLAG]: "true" },
+    spainHistorySourcePolicyApproved: true,
     discoverSpainTcInventory: async (input) => {
       assert.equal(input.year, 2020);
       return {

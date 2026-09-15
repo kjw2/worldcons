@@ -2,7 +2,7 @@
 
 ## Scope and safety state
 
-This stage supports one immutable snapshot per calendar year and decision facet for Conseil constitutionnel decisions from 2010 through the current UTC year.
+This stage supports one immutable snapshot per calendar year and decision facet for Conseil constitutionnel decisions from 2010 through 2024. Gate 5 owns only pre-2025 years; 2025 and later are handled by the incremental ingestion workflow, not this historical ledger.
 
 - source: `fr-conseil-constitutionnel`
 - document types: `QPC` and `DC` only
@@ -21,13 +21,14 @@ The source-policy evidence and proposed immutable row are in [france-constit-sou
 Discovery stops without closing the manifest when any of these conditions occurs:
 
 1. `CASE_CATALOG_FRANCE_HISTORY_ENABLED` is not exactly `true`.
-2. The year is before 2010 or after the current UTC year.
-3. The document type is not QPC or DC.
-4. the DILA directory or stock request violates the reviewed host, redirect, byte, archive, lease, or fencing contract.
-5. latest-stock selection is ambiguous or the stock/XML structure is malformed.
-6. the active official facet count is missing or changes during pagination.
-7. pagination does not exhaust within the configured bound.
-8. the exact DILA `NATURE` count, unique manifest count, and official Conseil facet count differ.
+2. The owner/source policy is not approved. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS` is `pending_owner_approval` and `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED` is `false`, so the history flag alone fails with `case_backfill.france_history_source_policy_not_approved` before any run row is created. The CLI `plan` report exposes `sourcePolicyStatus` and `sourcePolicyApproved`.
+3. The year is before 2010 or after 2024. Gate 5 historical scope is limited to pre-2025; 2025 and later are owned by the incremental ingestion workflow.
+4. The document type is not QPC or DC.
+5. the DILA directory or stock request violates the reviewed host, redirect, byte, archive, lease, or fencing contract.
+6. latest-stock selection is ambiguous or the stock/XML structure is malformed.
+7. the active official facet count is missing or changes during pagination.
+8. pagination does not exhaust within the configured bound.
+9. the exact DILA `NATURE` count, unique manifest count, and official Conseil facet count differ.
 
 Sitemap `lastmod` values are update metadata and never become decision dates. Dates come from the official decision title/detail and must remain within the snapshot year.
 

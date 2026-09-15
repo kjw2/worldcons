@@ -26,6 +26,7 @@ import {
   type CaseBackfillSourceStrategy,
   validateCaseWithSourceStrategy,
 } from "@/lib/backfill/source-strategies";
+import { assertHistoricalSnapshotBoundary } from "@/lib/backfill/country-history-policy";
 
 export interface CaseBackfillExecutionContext {
   authority: CaseBackfillAttemptAuthority;
@@ -43,6 +44,8 @@ interface CaseBackfillDependencies {
   discoverFranceDilaConstitInventory?: typeof discoverFranceDilaConstitInventory;
   discoverBverfgInventory?: typeof discoverBverfgInventory;
   environment?: Record<string, string | undefined>;
+  spainHistorySourcePolicyApproved?: boolean;
+  franceHistorySourcePolicyApproved?: boolean;
 }
 
 const defaultDependencies: CaseBackfillDependencies = {
@@ -325,12 +328,15 @@ export async function runCaseBackfillPass(
 
   if (input.phase === "discover") {
     if (snapshot.status !== "open") throw new Error("case_backfill.snapshot_not_open");
+    assertHistoricalSnapshotBoundary(snapshot);
     const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {
       discoverSpainTcInventory: dependencies.discoverSpainTcInventory,
       discoverFranceConseilInventory: dependencies.discoverFranceConseilInventory,
       discoverFranceDilaConstitInventory: dependencies.discoverFranceDilaConstitInventory,
       discoverBverfgInventory: dependencies.discoverBverfgInventory,
       currentYear: dependencies.now().getUTCFullYear(),
+      spainHistorySourcePolicyApproved: dependencies.spainHistorySourcePolicyApproved,
+      franceHistorySourcePolicyApproved: dependencies.franceHistorySourcePolicyApproved,
     });
     strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
     if (!strategy.governedNetworkPhases.includes("discover")) {
@@ -420,6 +426,7 @@ export async function runCaseBackfillPass(
   }
 
   if (snapshot.status !== "closed") throw new Error("case_backfill.snapshot_not_closed");
+  assertHistoricalSnapshotBoundary(snapshot);
   if (input.phase === "publish" && !caseCatalogWriteEnabled(dependencies.environment ?? process.env)) {
     throw new Error("case_backfill.catalog_write_disabled");
   }
@@ -429,6 +436,8 @@ export async function runCaseBackfillPass(
     discoverFranceDilaConstitInventory: dependencies.discoverFranceDilaConstitInventory,
     discoverBverfgInventory: dependencies.discoverBverfgInventory,
     currentYear: dependencies.now().getUTCFullYear(),
+    spainHistorySourcePolicyApproved: dependencies.spainHistorySourcePolicyApproved,
+    franceHistorySourcePolicyApproved: dependencies.franceHistorySourcePolicyApproved,
   });
   if (input.phase === "fetch" && !strategy.governedNetworkPhases.includes("fetch")) {
     throw new Error("case_backfill.source_request_governor_not_supported");

@@ -171,3 +171,7 @@ The owner resolved the production policy decisions under the unattended automati
 - Gemini: denied throughout the private shadow.
 
 The migration, private discovery, audited supersession, and corrected rediscovery are complete. The remaining operational gate is to run fetch, normalize, verify, and reconciliation against replacement snapshot `d6c7b404-2252-4369-a719-8e17d2dfaba2`, then pass `verify:bverfg-shadow-canary`. Catalog writes, public flags, and AI egress remain disabled until their later gates pass.
+
+## M4 expansion guard (2026-09-16)
+
+The approved `bverfg-unattended-canary-v1` policy (review due 2027-03-03) authorizes the 2024 private-shadow canary only. M4 encodes this as `germanyBverfgExpansionGuard`: year 2024 is allowed, every other supported year (1998-2023) returns `case_backfill.germany_expansion_not_approved`, and 2025+ is outside the Gate 5 boundary entirely. The history flag cannot widen the approved scope, so the M5 multi-year expansion stays closed until a new owner-approved policy version is recorded. `germanyBverfgApprovedPolicyDescriptor()` and `COUNTRY_HISTORY_EXPANSION_ORDER` expose the approved policy version, review due date, and expansion state, and the CLI `plan` output includes them.

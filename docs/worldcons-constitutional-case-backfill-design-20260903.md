@@ -2326,3 +2326,22 @@ WorldCons의 확장 원칙은 다음 한 문장으로 정리한다.
 - U.S. Reports와 공식 판례집 설명: <https://www.supremecourt.gov/opinions/usreports.aspx>
 
 공식 사이트의 구조·robots·이용 조건은 구현 시점에 다시 확인하고 `source_policy_version`에 검토 시각과 근거를 고정한다.
+
+---
+
+## 29. M4 국가별 역사 경계·source policy·실행 guard (2026-09-16)
+
+M4는 Gate 5 역사 백필의 연도 경계, source policy 승인, 국가별 확대 순서를 하나의 machine-readable 계약으로 고정한다.
+
+- 공통 경계: `lib/backfill/country-history-policy.ts`의 `CASE_HISTORY_BOUNDARY`가 `historicalMaxYear=2024`, `incrementalOwnedFromYear=2025`, `rule=pre_2025_gate5_historical`을 선언한다. Gate 5 역사 ledger는 2024년 이하만 열거나 재개할 수 있고, 2025년 이후는 증분 수집(`p1.collect`/`runIngest`)이 소유한다.
+- 공통 guard: `assertHistoricalSnapshotBoundary`가 `runCaseBackfillPass`의 discover와 비-discover 경로 모두에서 `beginRun` 이전에 호출된다. CLI `plan`/`discover`도 같은 모듈을 사용한다.
+- 확대 순서: `COUNTRY_HISTORY_EXPANSION_ORDER`가 국가·연도·유형·상태·차단 사유를 고정한다. Germany(승인된 2024 canary) → France(owner 승인 대기) → Spain(법률·robots 정책 차단) → U.S.(candidate graph, 검증 corpus 아님) 순서다.
+
+국가별 실행 guard는 env flag만으로는 열리지 않는다.
+
+- France: `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=false`(owner/source policy 미승인)이므로 flag가 true여도 `case_backfill.france_history_source_policy_not_approved`로 run 생성 전에 종료한다.
+- Spain: `SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS=blocked_pending_legal_robots_review`이므로 2020~2023은 history flag가 true여도 `case_backfill.spain_history_source_blocked`로 종료한다. 2024는 Gate 1 baseline이라는 개념을 유지하되 source policy 승인 없이는 discover가 열리지 않는다. 2024는 history flag 대신 `policyApproved`를 요구하며, 기본값에서는 `case_backfill.spain_history_source_blocked`로 run 생성 전에 종료한다. `policyApproved`가 명시적으로 기록된 경우에만 history flag 없이 2024 discover가 열린다.
+- Germany: `bverfg-unattended-canary-v1`(review due 2027-03-03)은 2024 canary 한 해만 승인한다. `germanyBverfgExpansionGuard`가 2024 이외 연도를 `case_backfill.germany_expansion_not_approved`로 막아 M5 확대를 자동 활성화하지 않는다.
+- U.S.: Constitution Annotated Table of Cases는 `US_CONAN_CORPUS_STATUS=candidate_graph_only`다. `US_CONAN_VERIFICATION_PIPELINE`은 `candidate_citation → official_scotus_identity → constitutional_essay_context → govinfo_authority → constitutional_holding → verified`이며, `assertCandidateGraphNotVerifiedCorpus`가 candidate graph를 검증 corpus로 취급하는 경로를 fail-closed로 막는다.
+
+PostgreSQL schema 변경은 없다. 연도 경계와 source policy 승인은 application guard이므로 새 migration을 추가하지 않았다. 2025년 이후 증분 ingest 경로는 `country-history-policy`에 의존하지 않는다.

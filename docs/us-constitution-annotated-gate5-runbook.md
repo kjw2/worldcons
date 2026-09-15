@@ -33,6 +33,21 @@ Table citation
 
 하급 연방법원 또는 주 법원 identity가 확인되면 Track A SCOTUS 후보에서는 `rejected`로 닫고 원래 provenance는 보존한다. identity나 문맥이 불충분하면 `uncertain`이다. 선거구획정 landmark seed는 scheduling priority만 높이며 상태나 검증 필드를 바꾸지 않는다.
 
+## candidate graph와 verified corpus의 기계 판독 경계 (M4)
+
+Constitution Annotated Table of Cases는 `US_CONAN_CORPUS_STATUS=candidate_graph_only`인 후보 그래프이며 검증된 SCOTUS corpus가 아니다. `US_CONAN_VERIFICATION_PIPELINE`이 다음 순서를 고정한다.
+
+```text
+candidate_citation
+  -> official_scotus_identity
+  -> constitutional_essay_context
+  -> govinfo_authority
+  -> constitutional_holding
+  -> verified
+```
+
+`constitutionAnnotatedCorpusDescriptor()`는 `verifiedCorpus=false`, 후보 출처 `constitution_annotated_table_of_cases`, authority 출처 `govinfo_us_reports`를 반환한다. `assertCandidateGraphNotVerifiedCorpus()`는 후보 그래프를 `verified_corpus`로 취급하는 입력을 `us_conan.candidate_graph_not_verified_corpus`로 fail-closed 처리한다. 비공개 import 결과도 `corpusStatus="candidate_graph_only"`, `verifiedCorpus=false`를 명시하며, 이는 후보 수집이 검증 corpus 확보를 뜻하지 않음을 보장한다.
+
 ## 운영 안전장치
 
 `CASE_CATALOG_US_CONAN_ENABLED=false`가 기본값이다. source policy, 실제 공식 fixture, durable candidate schema, authority resolution 경로가 별도 검토되기 전에는 이 값을 켜지 않는다.

@@ -10,16 +10,20 @@ import {
   assertSpainSentenciaYearEnabled,
   CASE_CATALOG_SPAIN_HISTORY_FLAG,
   SPAIN_SENTENCIA_BASELINE_YEAR,
+  SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS,
   SPAIN_SENTENCIA_HISTORY_START_YEAR,
   spainSentenciaExpansionPlan,
+  spainSentenciaHistorySourcePolicyApproved,
   spainSentenciaYearEnabled,
   spainSentenciaYearScope,
 } from "@/lib/backfill/spain-scope";
 import {
   assertFranceConseilScopeEnabled,
   CASE_CATALOG_FRANCE_HISTORY_FLAG,
+  FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS,
   FRANCE_CONSEIL_HISTORY_START_YEAR,
   franceConseilExpansionPlan,
+  franceConseilHistorySourcePolicyApproved,
   franceConseilScope,
   franceConseilScopeEnabled,
 } from "@/lib/backfill/france-scope";
@@ -27,10 +31,16 @@ import {
   assertGermanyBverfgYearEnabled,
   CASE_CATALOG_GERMANY_HISTORY_FLAG,
   GERMANY_BVERFG_HISTORY_START_YEAR,
+  germanyBverfgApprovedPolicyDescriptor,
   germanyBverfgExpansionPlan,
   germanyBverfgYearEnabled,
   germanyBverfgYearScope,
 } from "@/lib/backfill/germany-scope";
+import {
+  CASE_HISTORY_BOUNDARY,
+  COUNTRY_HISTORY_EXPANSION_ORDER,
+  HISTORICAL_GATE_MAX_YEAR,
+} from "@/lib/backfill/country-history-policy";
 import {
   planBverfgPrivateShadowWrite,
   verifyBverfgPrivateShadowReadiness,
@@ -116,13 +126,16 @@ function currentYear() {
 
 function backfillPlan(source: BackfillSource) {
   if (source === "germany") {
-    const year = integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, currentYear());
+    const year = integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, HISTORICAL_GATE_MAX_YEAR);
     const scope = germanyBverfgYearScope(year, currentYear());
     return {
       gate: 5,
       mode: "private-shadow",
       sourceKey: "de-bverfg",
       ...scope,
+      boundary: CASE_HISTORY_BOUNDARY,
+      expansionOrder: COUNTRY_HISTORY_EXPANSION_ORDER,
+      approvedPolicy: germanyBverfgApprovedPolicyDescriptor(),
       executionEnabled: germanyBverfgYearEnabled(year),
       requiredHistoryFlag: CASE_CATALOG_GERMANY_HISTORY_FLAG,
       expansionPlan: germanyBverfgExpansionPlan(),
@@ -144,13 +157,18 @@ function backfillPlan(source: BackfillSource) {
     };
   }
   if (source === "france") {
-    const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
+    const newestYear = Math.min(currentYear(), HISTORICAL_GATE_MAX_YEAR);
+    const year = integerArgument("year", newestYear, FRANCE_CONSEIL_HISTORY_START_YEAR, newestYear);
     const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
     return {
       gate: 5,
       mode: "private-shadow",
       sourceKey: "fr-conseil-constitutionnel",
       ...scope,
+      boundary: CASE_HISTORY_BOUNDARY,
+      expansionOrder: COUNTRY_HISTORY_EXPANSION_ORDER,
+      sourcePolicyStatus: FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS,
+      sourcePolicyApproved: franceConseilHistorySourcePolicyApproved(),
       executionEnabled: franceConseilScopeEnabled(year, scope.documentType),
       requiredHistoryFlag: CASE_CATALOG_FRANCE_HISTORY_FLAG,
       expansionPlan: franceConseilExpansionPlan(),
@@ -176,6 +194,10 @@ function backfillPlan(source: BackfillSource) {
     mode: "private-shadow",
     sourceKey: "es-tribunal-constitucional",
     ...scope,
+    boundary: CASE_HISTORY_BOUNDARY,
+    expansionOrder: COUNTRY_HISTORY_EXPANSION_ORDER,
+    sourcePolicyStatus: SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS,
+    sourcePolicyApproved: spainSentenciaHistorySourcePolicyApproved(),
     executionEnabled: spainSentenciaYearEnabled(year),
     requiredHistoryFlag: year < SPAIN_SENTENCIA_BASELINE_YEAR ? CASE_CATALOG_SPAIN_HISTORY_FLAG : null,
     expansionPlan: spainSentenciaExpansionPlan(),
@@ -204,7 +226,7 @@ async function snapshotForDiscovery(source: BackfillSource) {
     const existingYear = existingSnapshot?.scopeFrom
       ? Number(existingSnapshot.scopeFrom.slice(0, 4))
       : null;
-    const year = existingYear ?? integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, currentYear());
+    const year = existingYear ?? integerArgument("year", 2024, GERMANY_BVERFG_HISTORY_START_YEAR, HISTORICAL_GATE_MAX_YEAR);
     const scope = germanyBverfgYearScope(year, currentYear());
     assertGermanyBverfgYearEnabled(year, process.env, currentYear());
     const requestedPolicyVersion = argumentValue("policy-version")?.trim() || null;
@@ -255,7 +277,8 @@ async function snapshotForDiscovery(source: BackfillSource) {
   }
   if (existing) return existing;
   if (source === "france") {
-    const year = integerArgument("year", currentYear(), FRANCE_CONSEIL_HISTORY_START_YEAR, currentYear());
+    const newestYear = Math.min(currentYear(), HISTORICAL_GATE_MAX_YEAR);
+    const year = integerArgument("year", newestYear, FRANCE_CONSEIL_HISTORY_START_YEAR, newestYear);
     const scope = franceConseilScope(year, argumentValue("document-type") ?? "QPC", currentYear());
     assertFranceConseilScopeEnabled(year, scope.documentType);
     const policyVersion = requiredArgument("policy-version");

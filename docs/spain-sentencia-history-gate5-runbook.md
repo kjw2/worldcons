@@ -26,13 +26,15 @@ CASE_CATALOG_SPAIN_HISTORY_ENABLED=false
 
 2020~2023 discover는 CLI에서 한 번, P1 worker의 `runCaseBackfillPass`에서 다시 한 번 검사한다. flag가 없으면 `case_backfill.spain_history_disabled`로 run 생성 전에 종료한다. 2019 이하와 2025 이상은 flag와 무관하게 `case_backfill.spain_year_not_supported`로 거부한다.
 
-2024 baseline은 이 history flag가 없어도 계획할 수 있지만 기존 P1 authority, immutable source policy, phase별 command allowlist와 Catalog write flag는 그대로 적용된다.
+M4부터 이 단계는 **source policy 차단 상태를 코드에 고정**한다. `SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_STATUS=blocked_pending_legal_robots_review`이고 `SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_APPROVED=false`이므로, history flag가 true여도 2020~2023 discover는 `case_backfill.spain_history_source_blocked`로 run 생성 전에 종료한다. `robots.txt` 404와 법적 고지 403에 대한 명시적 승인 근거가 source policy version에 기록되기 전에는 이 상태를 바꾸지 않는다. 연도·유형 확대 순서는 `COUNTRY_HISTORY_EXPANSION_ORDER`에 고정된다: 2020~2024 `SENTENCIA` → 1980~2019 `SENTENCIA`+`DECLARACION` → `AUTO`.
+
+2024 baseline이라는 개념은 유지하지만, **source policy 승인 없이는 2024 discover도 fail-closed**다. 2024는 history flag를 요구하지 않는 대신 `policyApproved`가 반드시 필요하며, 기본값(`SPAIN_SENTENCIA_HISTORY_SOURCE_POLICY_APPROVED=false`)에서는 `case_backfill.spain_history_source_blocked`로 run 생성 전에 종료한다. `policyApproved`가 명시적으로 주입·기록된 경우에만 history flag 없이 2024 discover가 열린다. 2020~2023은 history flag와 `policyApproved`를 모두 요구한다. 기존 P1 authority, immutable source policy, phase별 command allowlist와 Catalog write flag는 그대로 적용된다.
 
 ## 2. 실행 전 필수 조건
 
 1. Gate 1의 2024 inventory→fetch→normalize→verify→reconcile 운영 증거가 모두 통과한다.
 2. 2024 Catalog canary를 공개했다면 source-only 상세·검색·플러그인과 rollback을 검증한다.
-3. source policy의 `review_due_at`이 유효하고 2020~2023 보관·공개 범위를 포함하는지 법률 검토한다.
+3. source policy의 `review_due_at`이 유효하고 2024 baseline과 2020~2023 보관·공개 범위를 포함하는지 법률 검토한다.
 4. 공식 HJ 검색에서 연도별 결과 count 또는 exhaustive pagination 근거를 다시 수집한다.
 5. 요청 지연·동시성·재시도 예산을 2024 실측에 맞춘다.
 6. `CASE_CATALOG_SPAIN_HISTORY_ENABLED=true`는 위 승인 뒤에만 실행 환경에 설정한다.
@@ -43,9 +45,10 @@ CASE_CATALOG_SPAIN_HISTORY_ENABLED=false
 
 ```text
 pnpm backfill:corpus plan --year=2020
+pnpm backfill:corpus plan --year=2024
 ```
 
-flag가 꺼져 있으면 `executionEnabled=false`와 필요한 flag 이름이 출력돼야 한다. 승인 후 한 연도씩 다음 순서를 수행한다.
+source policy 차단 상태에서는 2020~2023은 물론 **2024도 `executionEnabled=false`, `sourcePolicyStatus=blocked_pending_legal_robots_review`, `sourcePolicyApproved=false`**를 출력한다. history flag를 켜도 2020~2023은 `executionEnabled=false`다. `policyApproved`가 기록된 뒤에만 승인 순서대로 한 연도씩 다음을 수행한다.
 
 ```text
 pnpm backfill:corpus discover --year=2020 --policy-version=<approved-version>

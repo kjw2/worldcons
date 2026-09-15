@@ -4,7 +4,9 @@ import test from "node:test";
 import zlib from "node:zlib";
 import {
   CASE_CATALOG_FRANCE_HISTORY_FLAG,
+  FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS,
   franceConseilExpansionPlan,
+  franceConseilHistorySourcePolicyApproved,
   franceConseilScope,
   franceConseilScopeEnabled,
 } from "../lib/backfill/france-scope";
@@ -118,20 +120,29 @@ const franceInventoryMetadata = {
   },
 };
 
-test("France scope is annual, QPC/DC-only, current-year bounded, and disabled by default", () => {
+test("France scope is annual, QPC/DC-only, pre-2025, and gated on owner policy approval", () => {
   assert.deepEqual(franceConseilScope(2010, "qpc", 2026), {
     year: 2010, scopeFrom: "2010-01-01", scopeTo: "2010-12-31", documentType: "QPC",
   });
-  assert.deepEqual(franceConseilScope(2026, "DC", 2026).documentType, "DC");
+  assert.deepEqual(franceConseilScope(2024, "DC", 2026).documentType, "DC");
   assert.throws(() => franceConseilScope(2009, "QPC", 2026), /france_year_not_supported/);
+  assert.throws(() => franceConseilScope(2025, "QPC", 2026), /france_year_not_supported/);
   assert.throws(() => franceConseilScope(2027, "QPC", 2026), /france_year_not_supported/);
   assert.throws(() => franceConseilScope(2024, "L", 2026), /france_document_type_not_supported/);
+  assert.equal(FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS, "pending_owner_approval");
+  assert.equal(franceConseilHistorySourcePolicyApproved(), false);
   assert.equal(franceConseilScopeEnabled(2024, "QPC", {}, 2026), false);
-  assert.equal(franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026), true);
+  assert.equal(franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026), false);
+  assert.equal(
+    franceConseilScopeEnabled(2024, "QPC", { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2026, { policyApproved: true }),
+    true,
+  );
   const plan = franceConseilExpansionPlan({}, 2011);
   assert.deepEqual(plan.map((entry) => [entry.year, entry.documentType, entry.enabled]), [
     [2010, "QPC", false], [2010, "DC", false], [2011, "QPC", false], [2011, "DC", false],
   ]);
+  const gated = franceConseilExpansionPlan({ [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" }, 2011);
+  assert.equal(gated.every((entry) => !entry.enabled), true);
 });
 
 test("France official list parser keeps only the requested decision facet and ignores lastmod-like noise", () => {
@@ -472,6 +483,34 @@ test("France discovery guard rejects execution before creating a run", async () 
   assert.equal(began, false);
 });
 
+test("France history flag alone cannot enable execution without owner policy approval", async () => {
+  let began = false;
+  let inventoryCalls = 0;
+  const repository = discoveryRepository({
+    beginRun: async () => {
+      began = true;
+      return "55555555-5555-4555-8555-555555555557";
+    },
+  });
+  await assert.rejects(
+    runCaseBackfillPass(discoveryPass(), {
+      authority, checkpoint: async () => undefined, signal: new AbortController().signal,
+    }, {
+      repository,
+      loadAdapter: async () => null,
+      now: () => new Date("2026-09-03T00:00:00.000Z"),
+      environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
+      discoverFranceDilaConstitInventory: async () => {
+        inventoryCalls += 1;
+        throw new Error("must not discover");
+      },
+    }),
+    /case_backfill\.france_history_source_policy_not_approved/,
+  );
+  assert.equal(began, false);
+  assert.equal(inventoryCalls, 0);
+});
+
 test("France discovery fixes official count evidence before closing its manifest", async () => {
   const written: Array<{ stableItemKey: string; inventoryMetadata: Record<string, unknown> }> = [];
   let evidenceCall: unknown[] = [];
@@ -515,6 +554,7 @@ test("France discovery fixes official count evidence before closing its manifest
       loadAdapter: async () => null,
       now: () => new Date("2026-09-03T00:00:00.000Z"),
       environment: { [CASE_CATALOG_FRANCE_HISTORY_FLAG]: "true" },
+      franceHistorySourcePolicyApproved: true,
       discoverFranceDilaConstitInventory: async (input) => {
         assert.deepEqual([input.year, input.documentType, input.currentYear], [2024, "QPC", 2026]);
         return {

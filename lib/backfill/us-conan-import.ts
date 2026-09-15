@@ -1,5 +1,6 @@
 import {
   applyConstitutionAnnotatedPriority,
+  assertCandidateGraphNotVerifiedCorpus,
   assertConstitutionAnnotatedDiscoveryEnabled,
   parseConstitutionAnnotatedCasesHtml,
   type ConstitutionAnnotatedCandidate,
@@ -29,6 +30,8 @@ export interface UsConanCandidateImportResult {
   prioritizedCount: number;
   snapshot: ClosedUsConanSnapshot | null;
   candidates: ConstitutionAnnotatedCandidate[];
+  corpusStatus: "candidate_graph_only";
+  verifiedCorpus: false;
 }
 
 export interface UsConanCandidateImportDependencies {
@@ -72,6 +75,7 @@ export async function importUsConanCandidateGraph(
     classifications,
     prioritizedCount: candidates.filter((candidate) => candidate.priority > 0).length,
     candidates,
+    ...assertCandidateGraphNotVerifiedCorpus(),
   };
   if (!input.execute) return { mode: "plan", snapshot: null, ...base };
 

@@ -1,13 +1,15 @@
 import "dotenv/config";
 import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
 import { franceConseilDocumentType } from "@/lib/backfill/france-scope";
+import { HISTORICAL_GATE_MAX_YEAR } from "@/lib/backfill/country-history-policy";
 
 function argumentValue(name: string) {
   return process.argv.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3);
 }
 
 async function main() {
-  const year = Number(argumentValue("year") ?? new Date().getUTCFullYear());
+  const defaultYear = Math.min(new Date().getUTCFullYear(), HISTORICAL_GATE_MAX_YEAR);
+  const year = Number(argumentValue("year") ?? defaultYear);
   const documentType = franceConseilDocumentType(argumentValue("document-type") ?? "QPC");
   if (!Number.isInteger(year)) throw new Error("invalid_year");
   if (!documentType) throw new Error("invalid_document_type");

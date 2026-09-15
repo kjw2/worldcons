@@ -4,6 +4,52 @@ import { load } from "cheerio";
 export const US_CONSTITUTION_ANNOTATED_FLAG = "CASE_CATALOG_US_CONAN_ENABLED";
 export const US_CONSTITUTION_ANNOTATED_TABLE_URL =
   "https://constitution.congress.gov/resources/cases-cited/";
+export const US_CONAN_CORPUS_STATUS = "candidate_graph_only" as const;
+export const US_CONAN_CANDIDATE_SOURCE = "constitution_annotated_table_of_cases" as const;
+export const US_CONAN_AUTHORITY_SOURCE = "govinfo_us_reports" as const;
+/**
+ * The Constitution Annotated Table of Cases is a candidate graph, not a
+ * verified SCOTUS corpus. A citation becomes verified only after every stage
+ * below is satisfied in order.
+ */
+export const US_CONAN_VERIFICATION_PIPELINE = [
+  "candidate_citation",
+  "official_scotus_identity",
+  "constitutional_essay_context",
+  "govinfo_authority",
+  "constitutional_holding",
+  "verified",
+] as const;
+
+export type UsConanVerificationStage = (typeof US_CONAN_VERIFICATION_PIPELINE)[number];
+export type UsConanCorpusStatus = typeof US_CONAN_CORPUS_STATUS | "verified_corpus";
+
+export function constitutionAnnotatedCorpusDescriptor() {
+  return {
+    corpusStatus: US_CONAN_CORPUS_STATUS,
+    verifiedCorpus: false,
+    candidateSource: US_CONAN_CANDIDATE_SOURCE,
+    authoritySource: US_CONAN_AUTHORITY_SOURCE,
+    verificationPipeline: [...US_CONAN_VERIFICATION_PIPELINE],
+  };
+}
+
+/**
+ * Fails closed when any caller tries to treat the candidate graph as an
+ * already-verified corpus. Only the human review service may promote a single
+ * candidate through the full pipeline into a `verified_corpus` member.
+ */
+export function assertCandidateGraphNotVerifiedCorpus(
+  corpusStatus: string = US_CONAN_CORPUS_STATUS,
+) {
+  if (corpusStatus === "verified_corpus") {
+    throw new Error("us_conan.candidate_graph_not_verified_corpus");
+  }
+  if (corpusStatus !== US_CONAN_CORPUS_STATUS) {
+    throw new Error("us_conan.invalid_corpus_status");
+  }
+  return { corpusStatus: US_CONAN_CORPUS_STATUS, verifiedCorpus: false as const };
+}
 
 export type UsCourtClassification = "scotus_candidate" | "lower_federal" | "state_or_other" | "unknown";
 export type ConstitutionalRelevanceStatus = "candidate" | "verified" | "uncertain" | "rejected";
