@@ -1,0 +1,57 @@
+name: Release gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-release-gate:
+    name: PostgreSQL + pgvector release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: worldcons
+          POSTGRES_PASSWORD: worldcons_test
+          POSTGRES_DB: worldcons_gate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U worldcons -d worldcons_gate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 24
+    env:
+      POSTGRES_RELEASE_ADMIN_URL: postgresql://worldcons:worldcons_test@localhost:5432/worldcons_gate
+      P3_TEST_VECTOR_FALLBACK: "false"
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Static checks
+        run: pnpm check
+      - name: Lint
+        run: pnpm lint
+      - name: Disposable PostgreSQL + pgvector gate (skip must be 0)
+        run: pnpm test:postgres:release
