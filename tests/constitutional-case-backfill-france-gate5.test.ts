@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createServer } from "node:http";
+import path from "node:path";
 import test from "node:test";
 import zlib from "node:zlib";
 import {
@@ -37,6 +39,18 @@ import type {
   CaseBackfillPassInput,
   CaseBackfillSnapshot,
 } from "../lib/backfill/types";
+
+test("France authoritative-count fix permits unknown counts only before a successful seal", () => {
+  const migration = fs.readFileSync(
+    path.join(process.cwd(), "supabase/migrations/20260916093000_constitutional_case_open_authoritative_count.sql"),
+    "utf8",
+  );
+  assert.match(migration, /drop constraint if exists source_inventory_snapshots_authoritative_count_check/i);
+  assert.match(migration, /coverage_assurance not in \('authoritative_counted', 'authoritative_crosschecked'\)/i);
+  assert.match(migration, /or expected_count is not null/i);
+  assert.match(migration, /or status in \('open', 'failed'\)/i);
+  assert.doesNotMatch(migration, /CASE_CATALOG|Gemini|public Catalog/i);
+});
 
 const fixture = `<!doctype html><html><body>
   <div data-drupal-facet-id="page_les_decisions_type">

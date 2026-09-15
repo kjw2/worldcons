@@ -15,6 +15,7 @@ const germanyPolicyApprovalMigration = path.join(process.cwd(), "supabase/migrat
 const snapshotSupersessionMigration = path.join(process.cwd(), "supabase/migrations/20260903190000_constitutional_case_snapshot_supersession.sql");
 const itemExclusionMigration = path.join(process.cwd(), "supabase/migrations/20260915000000_constitutional_case_item_exclusion.sql");
 const franceGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903160000_constitutional_case_france_gate5.sql");
+const authoritativeOpenCountMigration = path.join(process.cwd(), "supabase/migrations/20260916093000_constitutional_case_open_authoritative_count.sql");
 const usCandidateGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903170000_constitutional_case_us_candidates_gate5.sql");
 const usAuthorityGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903171000_constitutional_case_us_authority_gate5.sql");
 const usReviewGate5Migration = path.join(process.cwd(), "supabase/migrations/20260903172000_constitutional_case_us_review_gate5.sql");
@@ -69,6 +70,7 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
     await client.query(fs.readFileSync(snapshotSupersessionMigration, "utf8"));
     await client.query(fs.readFileSync(itemExclusionMigration, "utf8"));
     await client.query(fs.readFileSync(franceGate5Migration, "utf8"));
+    await client.query(fs.readFileSync(authoritativeOpenCountMigration, "utf8"));
     await client.query(fs.readFileSync(usCandidateGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usAuthorityGate5Migration, "utf8"));
     await client.query(fs.readFileSync(usReviewGate5Migration, "utf8"));
@@ -138,6 +140,92 @@ test("Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and clai
         'discovery identity only', 'postgres-test', now(), now() + interval '1 year'
       )
     `);
+
+    await t.test("authoritative counted/crosschecked snapshots may learn the count while open but must seal it before close/supersede", async () => {
+      const openCrosschecked = async () => {
+        const opened = await pool.query<{ source_inventory_snapshot_open_v1: string }>(
+          "select source_inventory_snapshot_open_v1($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+          [
+            "fr-conseil-constitutionnel", "2024-01-01", "2024-12-31", "QPC",
+            "official_dila_constit_stock_with_conseil_identity_crosscheck", "france-conseil-normalize-v1",
+            "fr-dila-test-v1", "authoritative_crosschecked", null, null,
+            { method: "official_dila_constit_stock_with_conseil_identity_crosscheck", pending: true },
+            JSON.stringify([]), "postgres-test",
+          ],
+        );
+        return opened.rows[0].source_inventory_snapshot_open_v1;
+      };
+
+      const closable = await openCrosschecked();
+      const beforeEvidence = await pool.query<{ status: string; expected_count: number | null }>(
+        "select status, expected_count from source_inventory_snapshots where id=$1",
+        [closable],
+      );
+      assert.deepEqual(beforeEvidence.rows[0], { status: "open", expected_count: null });
+      await pool.query("select source_inventory_snapshot_evidence_v2($1,$2,$3,$4)", [
+        closable,
+        { method: "official_dila_constit_stock_with_conseil_identity_crosscheck", exactIdentitySetMatch: true },
+        1,
+        "official_dila_stock_and_conseil_facet_exact_identity_set",
+      ]);
+      const franceMetadata = {
+        dila: {
+          id: "CONSTEXT000050783534", nature: "QPC", ecli: "ECLI:FR:CC:2024:2024.1115.QPC",
+          decisionNumber: "2024-1115", qualifiedNature: "QPC",
+          archiveMemberPath: "constit/global/CONS/TEXT/00/00/50/78/35/CONSTEXT000050783534.xml",
+        },
+        stock: {
+          filename: "Freemium_constit_global_20250713-140000.tar.gz",
+          url: "https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/Freemium_constit_global_20250713-140000.tar.gz",
+          extractedAt: "2025-07-13T14:00:00.000Z", lastModified: null, etag: null,
+          contentLength: 12_511_366, sha256: "6".repeat(64),
+        },
+        license: {
+          id: "licence-ouverte-2.0",
+          url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
+          attribution: "DILA",
+        },
+      };
+      await pool.query("select source_inventory_item_upsert_v2($1,$2,$3,$4,$5,$6,$7)", [
+        closable, "constit:constext000050783534", "20241115QPC",
+        "https://www.conseil-constitutionnel.fr/decision/2024/20241115QPC.htm",
+        "QPC", "2024-12-13", franceMetadata,
+      ]);
+      const closed = await pool.query<{ expected_count: number; discovered_count: number }>(
+        "select expected_count, discovered_count from source_inventory_snapshot_close_v3($1)",
+        [closable],
+      );
+      assert.deepEqual(closed.rows[0], { expected_count: 1, discovered_count: 1 });
+
+      const closeWithoutCount = await openCrosschecked();
+      await assert.rejects(
+        pool.query(
+          "update source_inventory_snapshots set status='closed', manifest_hash=$2, closed_at=now() where id=$1",
+          [closeWithoutCount, "a".repeat(64)],
+        ),
+        /source_inventory_snapshots_authoritative_count_check/,
+      );
+
+      const supersedeWithoutCount = await openCrosschecked();
+      await assert.rejects(
+        pool.query(
+          "update source_inventory_snapshots set status='superseded', manifest_hash=$2, closed_at=now() where id=$1",
+          [supersedeWithoutCount, "b".repeat(64)],
+        ),
+        /source_inventory_snapshots_authoritative_count_check/,
+      );
+
+      const failedWithoutCount = await openCrosschecked();
+      await pool.query(
+        "update source_inventory_snapshots set status='failed', closed_at=now() where id=$1",
+        [failedWithoutCount],
+      );
+      const failed = await pool.query<{ status: string; expected_count: number | null }>(
+        "select status, expected_count from source_inventory_snapshots where id=$1",
+        [failedWithoutCount],
+      );
+      assert.deepEqual(failed.rows[0], { status: "failed", expected_count: null });
+    });
 
     await t.test("sealed discovery-only inventory supersession is CAS-protected, audited, and idempotent", async () => {
       const openSnapshot = async (parserVersion: string) => {
