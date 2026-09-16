@@ -40,9 +40,9 @@ Gate 5 historical scope
 `lib/backfill/rollout-readiness.ts`:
 
 - `caseBackfillRolloutReadiness()`가 `COUNTRY_HISTORY_EXPANSION_ORDER` 7개 tranche 각각에 대해 `approvedYears`, `policyAuthorized`, `executionEnabled`, `blocking`을 계산한다.
-- `approvedSelections`는 정확한 (sourceKey, year, documentType) 단위로 정책이 승인한 선택만 담는다. Germany 2024 DECISION 1건과 France 2010~2024 QPC/DC 30건이다.
-- `newlyAuthorizedSelectionCount = 30`, `approvedSelectionCount = 31`, `nextApprovalRequired = France L/LP/OTHER`(order 3).
-- France QPC/DC는 `policyAuthorized=true`이지만 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 꺼져 있으면 `executionEnabled=false`다. `m5ExpansionExecutionReady`는 **기록된 정책 승인과 실행 준비를 분리**한다: 새로 승인된 non-baseline tranche가 실제로 `executionEnabled=true`일 때만 true다. 따라서 France flag가 꺼져 있으면 Germany 2024 baseline을 제외한 신규 tranche 중 실행 가능한 것이 없으므로 `m5ExpansionExecutionReady=false`다. France flag를 켠 테스트에서만 France QPC/DC가 `executionEnabled=true`가 되고 `m5ExpansionExecutionReady=true`가 된다.
+- `approvedSelections`는 정확한 (sourceKey, year, documentType) 단위로 정책이 승인한 선택만 담는다. Germany 2023·2024 DECISION 2건과 France 2010~2024 QPC/DC 30건이다.
+- `newlyAuthorizedSelectionCount = 31`, `approvedSelectionCount = 32`, `nextApprovalRequired = France L/LP/OTHER`(order 3).
+- France QPC/DC는 `policyAuthorized=true`이지만 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 꺼져 있으면 `executionEnabled=false`다. `m5ExpansionExecutionReady`는 **기록된 정책 승인과 실행 준비를 분리**한다: 새로 승인된 non-baseline tranche가 실제로 `executionEnabled=true`일 때만 true다. Germany 2024 baseline은 새로 승인된 tranche가 아니지만, 2026-09-16 owner 승인으로 추가된 Germany 2023 successor는 non-baseline이므로 Germany flag가 켜지면 `executionEnabled=true`가 되어 `m5ExpansionExecutionReady=true`가 된다. France flag를 켠 테스트에서도 France QPC/DC가 `executionEnabled=true`가 되고 `m5ExpansionExecutionReady=true`가 된다.
 - `geminiCalls: 0`, `publicCatalogEnabled: false`, `catalogWriteEnabled`는 env 실제값을 보고한다(기본 false).
 
 ## 4. 국가/연도/유형 rollout 선택과 fail-closed preflight
@@ -53,7 +53,8 @@ Gate 5 historical scope
 | --- | --- | --- |
 | Germany 2024 DECISION, flag on | allowed | - |
 | Germany 2024 DECISION, flag off | blocked | `case_backfill.germany_history_disabled` |
-| Germany 1998~2023 DECISION | blocked | `case_backfill.germany_expansion_not_approved` |
+| Germany 1998~2022 DECISION | blocked | `case_backfill.germany_expansion_not_approved` |
+| Germany 2023 DECISION, flag on | allowed | - (owner-approved successor `bverfg-unattended-canary-v2`) |
 | Germany <1998 | blocked | `case_backfill.germany_year_not_supported` |
 | France 2010~2024 QPC/DC, flag off | blocked | `case_backfill.france_history_disabled` |
 | France 2010~2024 QPC/DC, flag on | allowed | - |
@@ -94,17 +95,19 @@ pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require
 **2026-09-16 France 2010~2024 QPC/DC tranche가 owner 승인됐고, production policy 적용, 2024 QPC/DC private-shadow canary, Crawlee listener/RequestQueue hardening(M5-B2.1), 2023 QPC/DC expansion wave(M5-B3.1)까지 완료됐다.** 기본 환경에서는 `CASE_CATALOG_FRANCE_HISTORY_ENABLED`가 계속 꺼져 있어 후속 historical 실행은 fail-closed다. 실행 flag는 각 bounded CLI 프로세스에서만 켰으며 종료 후 readiness가 다시 `france_history_disabled`를 반환하는 것을 확인했다.
 
 ```text
-approvedSelectionCount         = 31  (Germany 2024 DECISION 1 + France QPC/DC 2010~2024 30)
-newlyAuthorizedSelectionCount  = 30  (France QPC/DC, L/LP/OTHER 아님)
+approvedSelectionCount         = 32  (Germany 2023·2024 DECISION 2 + France QPC/DC 2010~2024 30)
+newlyAuthorizedSelectionCount  = 31  (Germany 2023 successor + France QPC/DC, L/LP/OTHER 아님)
 m5ExpansionExecutionReady      = false  (flag off: 신규 non-baseline tranche가 executionEnabled 아님)
 nextApprovalRequired           = France L/LP/OTHER (order 3)
 ```
+
+2026-09-16 owner 지시로 Germany 2023이 additive successor `bverfg-unattended-canary-v2`(migration `20260916110000`, supersedes `bverfg-unattended-canary-v1`, review due 2027-03-15)로 승인됐다. 2024 baseline은 계속 v1 row에 bind되어 immutable하며, 2022 이하는 여전히 `germany_expansion_not_approved`다.
 
 `CASE_CATALOG_FRANCE_HISTORY_ENABLED=true`인 테스트에서는 France QPC/DC가 `executionEnabled=true`가 되어 `m5ExpansionExecutionReady=true`가 되고, `L`/`LP`/`OTHER_CONSEIL_NATURE`는 여전히 차단된다. 즉 정책 승인 기록과 실제 M5 확대 실행 준비는 분리된다.
 
 국가별 blocker:
 
-- **Germany 1998~2023**: `germany_expansion_not_approved`. 기존 `bverfg-unattended-canary-v1`(review due 2027-03-03)은 2024 한 해만 승인한다. 새 연도는 새 owner-approved policy version이 필요하다.
+- **Germany 1998~2022**: `germany_expansion_not_approved`. 기존 `bverfg-unattended-canary-v1`(review due 2027-03-03)은 2024 한 해를, successor `bverfg-unattended-canary-v2`(review due 2027-03-15)는 2023 한 해를 추가 승인한다. 2022 이하는 새 owner-approved policy version이 필요하다.
 - **France QPC/DC(2010~2024)**: 승인됨. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS=approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=true`, 현재 successor immutable row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v2`(review due 2027-03-15, migration `20260916100000`). v1 row `france-dila-constit-2026-09-v1`(migration `20260916090000`)은 immutable하며 closed 2024/2023 snapshot을 계속 bind한다. v2는 owner가 승인한 E1/E2 exact tuple만 추가하고 year/type scope는 넓히지 않는다. history flag off이면 `case_backfill.france_history_disabled`로 fail-closed다. env flag만으로는 열리지 않으며, 코드에 기록된 승인 metadata와 정확한 flag가 모두 필요하다. **v2 migration은 아직 production에 적용되지 않았고, 2022 production backfill/snapshot은 실행되지 않았다.**
 - **France L/LP/OTHER**: `owner_source_policy_not_approved` + `deferred_after_qpc_dc`. 위 QPC/DC 승인에 포함되지 않으며 새 policy version이 필요하다.
 - **Spain SENTENCIA(2020~2024)**: `spain_hj_legal_robots_policy_blocked`. `robots.txt` 404, 법적 고지 403에 대한 법률·robots 검토와 명시적 policy 승인 전에는 2024 baseline조차 fail-closed다.
@@ -136,7 +139,7 @@ pnpm test:p1                            22 pass / 0 fail / 1 skip
 pnpm test:ingest-workflow               18 pass / 0 fail
 pnpm test:postgres:release:static       7 pass / 0 fail / 0 skip
 git diff --check                        공백 오류 없음
-pnpm rollout:readiness                  France QPC/DC policyAuthorized=true executionEnabled=false, newlyAuthorizedSelectionCount=30, m5ExpansionExecutionReady=false
+pnpm rollout:readiness                  Germany 2023·2024 + France QPC/DC policyAuthorized=true executionEnabled=false, newlyAuthorizedSelectionCount=31, m5ExpansionExecutionReady=false
 pnpm rollout:readiness --source=france --year=2024 --document-type=QPC --require-authorized  exit 2 (france_history_disabled)
 ```
 
@@ -170,6 +173,7 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 - M5-B2.3은 owner가 **E1과 E2 모두 승인**했고 로컬 구현·controller hardening·live read-only 검증까지 완료됐다. E1은 exact one-case Conseil fallback `2022847DC`에 한정되며 매 discover마다 전체 DILA raw XML chain에서 sourceRecordId/NOR를 재검색하고 공식 Conseil detail ECLI/JORF를 corroborate한다. E2는 exact pair `CONSTEXT000047955984`/`CONSTEXT000046216504`만 허용하며 frozen Conseil title/ECLI와 현재 공식 detail이 일치할 때만 canonicalization한다. live v2 verifier는 **2022 QPC 67/67**, **2022 DC 13/13** exact match를 확인했다. v2 migrations는 아직 production에 적용되지 않았고 2022 snapshot/backfill도 실행하지 않았으므로 France 진행도는 계속 **4/30 production-complete**다. history flag 기본값은 `france_history_disabled`, Catalog/Gemini는 off, 2024/2023 snapshot은 immutable, 2021 진행도 계속 금지한다.
 - M5-B3.2 production rollout preflight는 read-only로 완료했다. linked Supabase dry-run은 pending migration이 정확히 `20260916100000`/`101000`/`102000` 세 개뿐임을 확인했다. `101000`이 `service_role`의 inventory-upsert 권한을 v2에서 v3로 교체하므로 production 적용 시에는 모든 case-backfill worker/command를 idle로 고정하고, migration 직후부터 HEAD `95505c7` 호환 v3 worker만 사용해야 한다. 실제 production migration/2022 snapshot/backfill은 아직 실행하지 않았다. 상세 절차와 stop condition은 `docs/worldcons-m5b32-france-2022-production-rollout-preflight-20260916.md`를 따른다.
 - M5-B3.2 production execution도 완료했다. v2 migration 3개를 production에 적용하고 v3 privilege cutover를 확인한 뒤 2022 QPC `1273e11d-e754-4fcc-809a-e23d7de2a231`을 67/67, DC `de5e7ff3-75ff-4458-b2d7-44c1268618a3`을 13/13 verified로 완료했다. QPC에는 E2가 정확히 1건, DC에는 E1이 정확히 1건 적용됐다. 10개 P1 run이 모두 `succeeded`, item error/retryable/terminal/active claim은 모두 0, Catalog publication/publish command/Gemini는 0이며 기존 2024/2023 manifest도 변하지 않았다. France QPC/DC 진행도는 **6/30 production-complete**이고 다음 bounded wave는 2021 QPC/DC다. 상세 증적은 `docs/worldcons-m5b32-france-2022-private-shadow-completion-20260916.md`에 기록했다.
+- M5-B4.1 Germany 2023: owner가 2026-09-16 reviewed 2024 가정을 그대로 유지한 채 2023 한 해만 추가 승인했다. 새 immutable successor `bverfg-unattended-canary-v2`(migration `20260916110000`, supersedes v1, review due 2027-03-15)를 production에 적용했고, discover가 snapshot `57948d51-1300-4ff1-86db-be00a6572bc9`(354 item, manifest `d93af2b195b2ec0b667f8c56f46c20e4b7a6ea74dc9bd9431d4bf3439c745c76`)로 봉인됐다. fetch는 reviewed 30초 request floor 때문에 tranche 전체가 약 20시간이 걸려 한 bounded run에서 완료되지 못했고, drain을 실행한 상태로 남겼다. 2024 snapshot/hash는 불변, 2022 이하는 계속 차단. 상세 증적: `docs/worldcons-m5b41-germany-2023-production-blocker-20260916.md`.
 - 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
 - hardening 증적: `docs/worldcons-m5b21-france-crawlee-listener-hardening-20260916.md`.
 - 2023 expansion 증적: `docs/worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md`.

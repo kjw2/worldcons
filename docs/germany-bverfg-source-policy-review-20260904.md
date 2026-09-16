@@ -174,6 +174,24 @@ The owner resolved the production policy decisions under the unattended automati
 
 The migration, private discovery, audited supersession, and corrected rediscovery are complete. The remaining operational gate is to run fetch, normalize, verify, and reconciliation against replacement snapshot `d6c7b404-2252-4369-a719-8e17d2dfaba2`, then pass `verify:bverfg-shadow-canary`. Catalog writes, public flags, and AI egress remain disabled until their later gates pass.
 
+## M5-B4.1 additive 2023 successor (2026-09-16)
+
+The WorldCons owner explicitly instructed continuing the Germany historical backfill under the existing reviewed 2024 source-policy assumptions. The authorization is bounded to the **next single year, 2023 only**, and is valid only because independent live read-only re-verification on 2026-09-16 confirmed every reviewed assumption is unchanged:
+
+- robots.txt still hashes to `7565360aa0562e6f2a86d90f58566885b8bf9106e6e493453f1fc9079837e17f` and still advertises `Crawl-delay: 30`; `/SiteGlobals/` remains disallowed;
+- the official scope URL, authority host, redirect host, terms URL, and `dejure.org` external-index host are unchanged;
+- `Sitemap_Index.xml` still points only to `Sitemap_Basepage.xml` and still cannot prove exhaustive decision enumeration;
+- the dejure `User-agent: *` rules still allow `/dienste/rechtsprechung?gericht=BVerfG` and still disallow the `31.12.2222` pending-case sentinel;
+- the external-index-assisted inventory method, the derived-official-URL-candidate resolver, the fetch/verify semantics, and the `metadata_only` private-shadow posture are unchanged.
+
+No new legal, robots, or source-policy decision was required, so no new exception is recorded.
+
+The successor is sealed by migration `20260916110000_constitutional_case_germany_2023_policy_approval.sql`, which inserts the immutable policy row `de-bverfg` / `bverfg-unattended-canary-v2` with `supersedes_policy_version = bverfg-unattended-canary-v1`. It is additive and conflict-detecting: the v1 row is never updated or deleted, the exact v1 host/robots/terms/replay/delay/concurrency values are preserved, and the only scope change is `approvedYears: [2024, 2023]`. The review due date is 2027-03-15 (180 days after the 2026-09-16 directive), `reviewed_by` is `WorldCons owner via explicit approval`, public text posture stays `metadata_only`, the canary stays `private_shadow`, and Gemini egress stays denied.
+
+The code guard `germanyBverfgExpansionGuard` now authorizes exactly `2024` (baseline v1) and `2023` (successor v2); every supported year 1998-2022 still returns `case_backfill.germany_expansion_not_approved` and 2025+ remains outside the Gate 5 boundary. `germanyBverfgApprovedPolicyDescriptor()` exposes `approvedYears: [2024, 2023]` and the per-year policy version map. The 2024 replacement snapshot `d6c7b404-2252-4369-a719-8e17d2dfaba2` remains bound to `bverfg-unattended-canary-v1` and is not modified.
+
+The 2023 production private-shadow status is recorded in `docs/worldcons-m5b41-germany-2023-production-blocker-20260916.md`: discovery is sealed (snapshot `57948d51-1300-4ff1-86db-be00a6572bc9`, 354 items, manifest `d93af2b195b2ec0b667f8c56f46c20e4b7a6ea74dc9bd9431d4bf3439c745c76`), while fetch/normalize/verify/reconcile remain in progress because the reviewed 30-second request floor makes the full tranche roughly 20 wall-clock hours.
+
 ## M4 expansion guard (2026-09-16)
 
 The approved `bverfg-unattended-canary-v1` policy (review due 2027-03-03) authorizes the 2024 private-shadow canary only. M4 encodes this as `germanyBverfgExpansionGuard`: year 2024 is allowed, every other supported year (1998-2023) returns `case_backfill.germany_expansion_not_approved`, and 2025+ is outside the Gate 5 boundary entirely. The history flag cannot widen the approved scope, so the M5 multi-year expansion stays closed until a new owner-approved policy version is recorded. `germanyBverfgApprovedPolicyDescriptor()` and `COUNTRY_HISTORY_EXPANSION_ORDER` expose the approved policy version, review due date, and expansion state, and the CLI `plan` output includes them.

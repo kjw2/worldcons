@@ -7,6 +7,7 @@ import {
   CASE_CATALOG_GERMANY_HISTORY_FLAG,
   GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION,
   GERMANY_BVERFG_HISTORY_START_YEAR,
+  germanyBverfgApprovedPolicyDescriptor,
   germanyBverfgExpansionGuard,
   germanyBverfgExpansionPlan,
   germanyBverfgYearEnabled,
@@ -87,20 +88,30 @@ test("Germany BVerfG scope is annual, 1998-bounded, pre-2025, and disabled by de
   assert.equal(plan.every((entry) => !entry.enabled), true);
 });
 
-test("Germany expansion guard authorizes only the approved 2024 canary policy", () => {
-  assert.equal(GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION, "bverfg-unattended-canary-v1");
+test("Germany expansion guard authorizes 2024 and the additive 2023 successor, and blocks 2022", () => {
+  assert.equal(GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION, "bverfg-unattended-canary-v2");
   assert.deepEqual(germanyBverfgExpansionGuard(2024), { allowed: true, reason: null });
-  assert.deepEqual(germanyBverfgExpansionGuard(2023), {
+  assert.deepEqual(germanyBverfgExpansionGuard(2023), { allowed: true, reason: null });
+  assert.deepEqual(germanyBverfgExpansionGuard(2022), {
     allowed: false,
     reason: "case_backfill.germany_expansion_not_approved",
   });
   assert.equal(germanyBverfgExpansionGuard(2025).allowed, false);
-  assert.throws(
+  assert.doesNotThrow(
     () => assertGermanyBverfgYearEnabled(2023, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026),
+  );
+  assert.throws(
+    () => assertGermanyBverfgYearEnabled(2022, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026),
     /germany_expansion_not_approved/,
   );
   const plan = germanyBverfgExpansionPlan({ [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026);
-  assert.deepEqual(plan.filter((entry) => entry.enabled).map((entry) => entry.year), [2024]);
+  assert.deepEqual(plan.filter((entry) => entry.enabled).map((entry) => entry.year), [2024, 2023]);
+  const descriptor = germanyBverfgApprovedPolicyDescriptor();
+  assert.deepEqual(descriptor.approvedYears, [2024, 2023]);
+  assert.deepEqual(descriptor.approvedPolicyVersions, {
+    2024: "bverfg-unattended-canary-v1",
+    2023: "bverfg-unattended-canary-v2",
+  });
 });
 
 test("Germany official fetch defaults to a bounded P1 batch without changing other phases", () => {
