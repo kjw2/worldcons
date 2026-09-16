@@ -21,10 +21,21 @@ import {
   parseFranceConseilDecisionDate,
   parseFranceConseilInventoryPage,
 } from "../lib/crawlee/france-conseil-inventory";
+import type { FranceConseilInventoryResult } from "../lib/crawlee/france-conseil-inventory";
 import {
+  DILA_CONSTIT_DIRECTORY_URL,
+  discoverFranceDilaConstitInventory,
+  overlayDilaConstitRecords,
   parseDilaConstitArchive,
+  parseDilaConstitArchiveListing,
   parseDilaConstitDirectory,
   parseDilaConstitXml,
+  reconcileFranceDilaConseilIdentity,
+} from "../lib/crawlee/france-dila-constit";
+import type {
+  DilaConstitArchiveProvenance,
+  DilaConstitRecord,
+  FranceDilaInventoryItem,
 } from "../lib/crawlee/france-dila-constit";
 import {
   createCrawlerNavigationPermitController,
@@ -720,6 +731,7 @@ test("France discovery fixes official count evidence before closing its manifest
           expectedCount: 1,
           expectedCountBasis: "official_dila_stock_and_conseil_facet_exact_identity_set",
           coverageEvidence: { method: "official_dila_constit_stock_with_conseil_identity_crosscheck", expectedCount: 1 },
+          enumerationArtifacts: [],
         };
       },
     });
@@ -778,4 +790,290 @@ test("France authority verification binds host, type, date, and official path id
     "decision_date_after_scope",
     "source_record_id_mismatch",
   ]);
+});
+
+function dilaOverlayProvenance(
+  kind: "stock" | "increment",
+  order: number,
+  filename: string,
+): DilaConstitArchiveProvenance {
+  return {
+    kind,
+    order,
+    filename,
+    url: `https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/${filename}`,
+    extractedAt: order === 0
+      ? "2025-07-13T14:00:00.000Z"
+      : `2025-07-${String(14 + order).padStart(2, "0")}T21:19:07.000Z`,
+    lastModified: null,
+    etag: null,
+    contentLength: 1024,
+    sha256: "a".repeat(64),
+  };
+}
+
+function dilaOverlayRecord(input: {
+  id: string;
+  record: string;
+  nature?: string;
+  date?: string;
+  number?: string;
+  title?: string;
+}): DilaConstitRecord {
+  const nature = input.nature ?? "QPC";
+  const date = input.date ?? "2022-01-07";
+  const number = input.number ?? "2022-1001";
+  return {
+    dilaId: input.id,
+    nature,
+    qualifiedNature: nature,
+    title: input.title ?? `Décision ${number}`,
+    decisionDate: date,
+    decisionNumber: number,
+    ecli: `ECLI:FR:CC:${date.slice(0, 4)}:${number}.${nature}`,
+    canonicalUrl: `https://www.conseil-constitutionnel.fr/decision/${date.slice(0, 4)}/${input.record}.htm`,
+    conseilRecordId: input.record,
+    archiveMemberPath: `constit/global/CONS/TEXT/00/00/${input.id.slice(-2)}/${input.id}.xml`,
+  };
+}
+
+test("DILA directory listing orders post-stock increments and rejects malformed candidates", () => {
+  const listing = parseDilaConstitArchiveListing(`<a href="Freemium_constit_global_20250713-140000.tar.gz">stock</a>
+    <a href="CONSTIT_20250724-212607.tar.gz">later</a>
+    <a href="CONSTIT_20250716-211907.tar.gz">earlier</a>
+    <a href="CONSTIT_20250712-000000.tar.gz">pre-stock</a>
+    <a href="DILA_CONSTIT_Presentation_20170824.pdf">pdf</a>`);
+  assert.equal(listing.stock.filename, "Freemium_constit_global_20250713-140000.tar.gz");
+  assert.deepEqual(listing.increments.map((increment) => increment.filename), [
+    "CONSTIT_20250716-211907.tar.gz",
+    "CONSTIT_20250724-212607.tar.gz",
+  ]);
+  assert.throws(
+    () => parseDilaConstitArchiveListing(`<a href="https://evil.example/CONSTIT_20250716-211907.tar.gz">x</a>
+      <a href="Freemium_constit_global_20250713-140000.tar.gz">stock</a>`),
+    /increment_url_invalid/,
+  );
+  assert.throws(
+    () => parseDilaConstitArchiveListing(`<a href="CONSTIT_bad.tar.gz">x</a>
+      <a href="Freemium_constit_global_20250713-140000.tar.gz">stock</a>`),
+    /increment_name_invalid/,
+  );
+});
+
+test("France ordered increment overlay applies deterministic last-write-by-DILA-ID semantics", () => {
+  const stock = dilaOverlayProvenance("stock", 0, "Freemium_constit_global_20250713-140000.tar.gz");
+  const firstIncrement = dilaOverlayProvenance("increment", 1, "CONSTIT_20250716-211907.tar.gz");
+  const secondIncrement = dilaOverlayProvenance("increment", 2, "CONSTIT_20250724-212607.tar.gz");
+  const base = dilaOverlayRecord({ id: "CONSTEXT000000000001", record: "20221001QPC", title: "original" });
+  const mid = { ...base, title: "mid" };
+  const latest = { ...base, title: "latest" };
+  const added = dilaOverlayRecord({ id: "CONSTEXT000000000002", record: "20221002QPC", number: "2022-1002" });
+  const result = overlayDilaConstitRecords({
+    stock: { provenance: stock, records: [base] },
+    increments: [
+      { provenance: firstIncrement, records: [mid] },
+      { provenance: secondIncrement, records: [latest, added] },
+    ],
+    scope: { year: 2022, documentType: "QPC" },
+  });
+  assert.equal(result.records.length, 2);
+  const updated = result.records.find((entry) => entry.record.dilaId === "CONSTEXT000000000001");
+  assert.equal(updated?.record.title, "latest");
+  assert.equal(updated?.provenance.order, 2);
+  assert.equal(updated?.provenance.kind, "increment");
+});
+
+test("France ordered overlay removes an older in-scope DILA ID when a later increment moves it out of scope", () => {
+  const stock = dilaOverlayProvenance("stock", 0, "Freemium_constit_global_20250713-140000.tar.gz");
+  const increment = dilaOverlayProvenance("increment", 1, "CONSTIT_20250716-211907.tar.gz");
+  const base = dilaOverlayRecord({ id: "CONSTEXT000000000001", record: "20221001QPC" });
+  const result = overlayDilaConstitRecords({
+    stock: { provenance: stock, records: [base] },
+    increments: [{
+      provenance: increment,
+      records: [],
+      seenDilaIds: ["CONSTEXT000000000001"],
+    }],
+    scope: { year: 2022, documentType: "QPC" },
+  });
+  assert.equal(result.records.length, 0);
+  assert.equal(result.totalRecords, 0);
+});
+
+test("France overlay fails closed when two DILA IDs point to the same Conseil identity", () => {
+  const stock = dilaOverlayProvenance("stock", 0, "Freemium_constit_global_20250713-140000.tar.gz");
+  const original = dilaOverlayRecord({ id: "CONSTEXT000000000001", record: "20225813AN_QPC", number: "2022-5813 AN /" });
+  const duplicate = dilaOverlayRecord({ id: "CONSTEXT000000000002", record: "20225813AN_QPC", number: "2022-5813 AN /" });
+  assert.throws(
+    () => overlayDilaConstitRecords({
+      stock: { provenance: stock, records: [duplicate, original] },
+      increments: [],
+      scope: { year: 2022, documentType: "QPC" },
+    }),
+    /france_dila_conseil_identity_duplicate:20225813an_qpc:dila=CONSTEXT000000000001,CONSTEXT000000000002/,
+  );
+});
+
+test("France overlay does not let a later increment invent a winner between distinct DILA IDs", () => {
+  const stock = dilaOverlayProvenance("stock", 0, "Freemium_constit_global_20250713-140000.tar.gz");
+  const increment = dilaOverlayProvenance("increment", 1, "CONSTIT_20250716-211907.tar.gz");
+  const original = dilaOverlayRecord({ id: "CONSTEXT000000000001", record: "20221001QPC", number: "2022-1001" });
+  const replacement = dilaOverlayRecord({ id: "CONSTEXT000000000002", record: "20221001QPC", number: "2022-1001" });
+  assert.throws(
+    () => overlayDilaConstitRecords({
+      stock: { provenance: stock, records: [original] },
+      increments: [{ provenance: increment, records: [replacement] }],
+      scope: { year: 2022, documentType: "QPC" },
+    }),
+    /france_dila_conseil_identity_duplicate:20221001qpc/,
+  );
+});
+
+test("France reconciliation names a missing official Conseil identity instead of degrading", () => {
+  const item = (sourceRecordId: string): FranceDilaInventoryItem => ({
+    stableItemKey: `constit:${sourceRecordId.toLowerCase()}`,
+    sourceRecordId,
+    discoveredUrl: `https://www.conseil-constitutionnel.fr/decision/2022/${sourceRecordId}.htm`,
+    documentType: "QPC",
+    decisionDateHint: "2022-01-07",
+    title: sourceRecordId,
+    dilaId: "CONSTEXT000000000001",
+    ecli: null,
+    decisionNumber: "2022-1001",
+    archiveMemberPath: "constit/global/CONS/TEXT/00/00/01/CONSTEXT000000000001.xml",
+    inventoryMetadata: {},
+  });
+  const conseil: Pick<FranceConseilInventoryResult, "items" | "expectedCount"> = {
+    expectedCount: 2,
+    items: [
+      {
+        stableItemKey: "conseil:20221001qpc",
+        sourceRecordId: "20221001QPC",
+        discoveredUrl: "https://www.conseil-constitutionnel.fr/decision/2022/20221001QPC.htm",
+        documentType: "QPC",
+        decisionDateHint: "2022-01-07",
+        title: "Décision n° 2022-1001 QPC",
+      },
+      {
+        stableItemKey: "conseil:2022847dc",
+        sourceRecordId: "2022847DC",
+        discoveredUrl: "https://www.conseil-constitutionnel.fr/decision/2022/2022847DC.htm",
+        documentType: "QPC",
+        decisionDateHint: "2022-12-29",
+        title: "Décision n° 2022-847 DC",
+      },
+    ],
+  };
+  assert.throws(
+    () => reconcileFranceDilaConseilIdentity([item("20221001QPC")], conseil),
+    /france_inventory_identity_mismatch:.*web=2022847dc/,
+  );
+});
+
+test("France discovery seals base stock plus applied increment provenance and stays fail-closed on reconciliation", async () => {
+  const previousRobots = process.env.CRAWLER_ROBOTS_ENABLED;
+  const previousDelay = process.env.FRANCE_REQUEST_DELAY_MS;
+  process.env.CRAWLER_ROBOTS_ENABLED = "false";
+  process.env.FRANCE_REQUEST_DELAY_MS = "0";
+  const stockName = "Freemium_constit_global_20250713-140000.tar.gz";
+  const incrementName = "CONSTIT_20250716-211907.tar.gz";
+  const stockRoot = "constit/global/CONS/TEXT/00/00/";
+  const incrementPrefix = "20250716-211907";
+  const incrementRoot = `${incrementPrefix}/constit/global/CONS/TEXT/00/00/`;
+  const stockArchive = dilaArchive([
+    {
+      name: `${stockRoot}CONSTEXT000000000001.xml`,
+      xml: dilaXml({ id: "CONSTEXT000000000001", nature: "QPC", date: "2022-01-07", number: "2022-1001", record: "20221001QPC", title: "Original" }),
+    },
+    {
+      name: `${stockRoot}CONSTEXT000000000003.xml`,
+      xml: dilaXml({ id: "CONSTEXT000000000003", nature: "QPC", date: "2022-02-01", number: "2022-1002", record: "20221002QPC" }),
+    },
+  ]);
+  const incrementArchive = dilaArchive([
+    {
+      name: `${incrementRoot}CONSTEXT000000000001.xml`,
+      xml: dilaXml({ id: "CONSTEXT000000000001", nature: "QPC", date: "2022-01-07", number: "2022-1001", record: "20221001QPC", title: "Updated by increment" }),
+    },
+    {
+      name: `${incrementRoot}CONSTEXT000000000004.xml`,
+      xml: dilaXml({ id: "CONSTEXT000000000004", nature: "QPC", date: "2022-03-01", number: "2022-1003", record: "20221003QPC" }),
+    },
+  ]);
+  const conseilInventory = (recordIds: string[]): FranceConseilInventoryResult => ({
+    sourceKey: "fr-conseil-constitutionnel",
+    year: 2022,
+    documentType: "QPC",
+    items: recordIds.map((sourceRecordId) => ({
+      stableItemKey: `conseil:${sourceRecordId.toLowerCase()}`,
+      sourceRecordId,
+      discoveredUrl: `https://www.conseil-constitutionnel.fr/decision/2022/${sourceRecordId}.htm`,
+      documentType: "QPC",
+      decisionDateHint: "2022-01-07",
+      title: `Décision ${sourceRecordId}`,
+    })),
+    pageCount: 1,
+    expectedCount: recordIds.length,
+    coverageEvidence: { method: "official_conseil_annual_type_pagination" },
+  });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const respond = (body: Uint8Array | string, contentType: string) => {
+      const response = new Response(body as BodyInit, { status: 200, headers: { "content-type": contentType } });
+      Object.defineProperty(response, "url", { value: url });
+      return response;
+    };
+    if (url === DILA_CONSTIT_DIRECTORY_URL) {
+      return respond(`<a href="${stockName}">stock</a><a href="${incrementName}">increment</a>`, "text/html");
+    }
+    if (url.endsWith(stockName)) return respond(stockArchive, "application/gzip");
+    if (url.endsWith(incrementName)) return respond(incrementArchive, "application/gzip");
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  try {
+    const result = await discoverFranceDilaConstitInventory({
+      year: 2022,
+      documentType: "QPC",
+      currentYear: 2026,
+      discoverConseilInventory: async () => conseilInventory(["20221001QPC", "20221002QPC", "20221003QPC"]),
+    });
+    assert.equal(result.items.length, 3);
+    const updated = result.items.find((item) => item.dilaId === "CONSTEXT000000000001");
+    assert.ok(updated);
+    assert.equal(updated.title, "Updated by increment");
+    assert.equal((updated.inventoryMetadata.stock as Record<string, unknown>).filename, stockName);
+    assert.equal((updated.inventoryMetadata.increment as Record<string, unknown>).filename, incrementName);
+    const stockOnly = result.items.find((item) => item.dilaId === "CONSTEXT000000000003");
+    assert.ok(stockOnly);
+    assert.equal("increment" in stockOnly.inventoryMetadata, false);
+    const dilaEvidence = result.coverageEvidence.dila as Record<string, any>;
+    assert.equal(dilaEvidence.stockFilename, stockName);
+    assert.equal("increments" in dilaEvidence, false);
+    assert.equal(dilaEvidence.overlay.enumerationArtifactCount, 2);
+    assert.match(dilaEvidence.overlay.incrementChainHash, /^[0-9a-f]{64}$/);
+    assert.equal(dilaEvidence.overlay.firstIncrementFilename, incrementName);
+    assert.equal(dilaEvidence.overlay.lastIncrementFilename, incrementName);
+    assert.equal(result.enumerationArtifacts.length, 2);
+    assert.equal(result.enumerationArtifacts[0].requestUrl.endsWith(stockName), true);
+    assert.equal(result.enumerationArtifacts[1].requestUrl.endsWith(incrementName), true);
+    assert.match(result.enumerationArtifacts[1].responseHash, /^[0-9a-f]{64}$/);
+    assert.ok(Buffer.byteLength(JSON.stringify(result.coverageEvidence), "utf8") < 4096);
+
+    await assert.rejects(
+      discoverFranceDilaConstitInventory({
+        year: 2022,
+        documentType: "QPC",
+        currentYear: 2026,
+        discoverConseilInventory: async () => conseilInventory(["20221001QPC", "20221002QPC", "20221003QPC", "20221004QPC"]),
+      }),
+      /france_inventory_identity_mismatch:.*web=20221004qpc/,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    if (previousRobots === undefined) delete process.env.CRAWLER_ROBOTS_ENABLED;
+    else process.env.CRAWLER_ROBOTS_ENABLED = previousRobots;
+    if (previousDelay === undefined) delete process.env.FRANCE_REQUEST_DELAY_MS;
+    else process.env.FRANCE_REQUEST_DELAY_MS = previousDelay;
+  }
 });

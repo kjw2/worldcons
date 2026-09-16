@@ -9,6 +9,7 @@ import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/craw
 import type { CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { franceConseilScope, type FranceConseilDocumentType } from "@/lib/backfill/france-scope";
+import type { CaseBackfillEnumerationArtifact } from "@/lib/backfill/types";
 import {
   discoverFranceConseilInventory,
   type FranceConseilInventoryResult,
@@ -20,16 +21,32 @@ export const DILA_CONSTIT_MAX_COMPRESSED_BYTES = 33_554_432;
 export const DILA_CONSTIT_MAX_EXPANDED_BYTES = 268_435_456;
 export const DILA_CONSTIT_MAX_XML_MEMBERS = 20_000;
 export const DILA_CONSTIT_MAX_MEMBER_BYTES = 8_388_608;
+export const DILA_CONSTIT_MAX_INCREMENTS = 512;
 
 const STOCK_PATTERN = /^Freemium_constit_global_(\d{8})-(\d{6})\.tar\.gz$/;
-const MEMBER_ROOT = "constit/global/CONS/TEXT/";
+const INCREMENT_PATTERN = /^CONSTIT_(\d{8})-(\d{6})\.tar\.gz$/;
+const LOOKS_LIKE_STOCK_PATTERN = /^Freemium_constit_.*\.tar\.gz$/;
+const LOOKS_LIKE_INCREMENT_PATTERN = /^CONSTIT_.*\.tar\.gz$/;
+const STOCK_MEMBER_ROOT = "constit/global/CONS/TEXT/";
 const DILA_ID_PATTERN = /^CONSTEXT\d{12}$/;
+const TARGET_NATURES = new Set(["QPC", "DC"]);
 const robotsByOrigin = new Map<string, RobotsResult>();
 
 export interface DilaConstitStock {
   filename: string;
   url: string;
   extractedAt: string;
+}
+
+export interface DilaConstitIncrement {
+  filename: string;
+  url: string;
+  extractedAt: string;
+}
+
+export interface DilaConstitArchiveListing {
+  stock: DilaConstitStock;
+  increments: DilaConstitIncrement[];
 }
 
 export interface DilaConstitRecord {
@@ -43,6 +60,23 @@ export interface DilaConstitRecord {
   canonicalUrl: string;
   conseilRecordId: string;
   archiveMemberPath: string;
+}
+
+export interface DilaConstitArchiveProvenance {
+  kind: "stock" | "increment";
+  filename: string;
+  url: string;
+  extractedAt: string;
+  lastModified: string | null;
+  etag: string | null;
+  contentLength: number;
+  sha256: string;
+  order: number;
+}
+
+export interface DilaConstitScopedRecord {
+  record: DilaConstitRecord;
+  provenance: DilaConstitArchiveProvenance;
 }
 
 export interface FranceDilaInventoryItem {
@@ -68,6 +102,7 @@ export interface FranceDilaInventoryResult {
   expectedCount: number;
   expectedCountBasis: string;
   coverageEvidence: Record<string, unknown>;
+  enumerationArtifacts: CaseBackfillEnumerationArtifact[];
 }
 
 function envNumber(name: string, fallback: number) {
@@ -95,44 +130,101 @@ function validExtractionTimestamp(date: string, time: string) {
   return parsed.toISOString();
 }
 
-export function parseDilaConstitDirectory(html: string, directoryUrl = DILA_CONSTIT_DIRECTORY_URL) {
+function resolveConstitArchiveHref(href: string, directory: URL) {
+  let url: URL;
+  try {
+    url = new URL(href, directory);
+  } catch {
+    return null;
+  }
+  const filename = url.pathname.split("/").pop() ?? "";
+  const isStock = STOCK_PATTERN.test(filename);
+  const isIncrement = INCREMENT_PATTERN.test(filename);
+  const looksLikeStock = LOOKS_LIKE_STOCK_PATTERN.test(filename);
+  const looksLikeIncrement = LOOKS_LIKE_INCREMENT_PATTERN.test(filename);
+  if (!isStock && !isIncrement && !looksLikeStock && !looksLikeIncrement) return null;
+  if (
+    url.protocol !== "https:"
+    || url.origin !== directory.origin
+    || url.pathname !== `${directory.pathname}${filename}`
+    || url.search
+    || url.hash
+  ) {
+    throw new Error(
+      isIncrement || looksLikeIncrement
+        ? "case_backfill.france_dila_increment_url_invalid"
+        : "case_backfill.france_dila_stock_url_invalid",
+    );
+  }
+  if (looksLikeStock && !isStock) throw new Error("case_backfill.france_dila_stock_name_invalid");
+  if (looksLikeIncrement && !isIncrement) throw new Error("case_backfill.france_dila_increment_name_invalid");
+  return { filename, url };
+}
+
+/**
+ * Parses the DILA CONSTIT directory into exactly one latest global stock plus
+ * every same-origin increment archive that was produced after that stock. The
+ * approved immutable policy requires the ordered increment overlay, so the
+ * increments are sorted ascending by their official extraction timestamp and
+ * bounded. Non-HTTPS, cross-origin, redirecting, duplicate, or malformed
+ * candidates fail closed instead of being dropped silently.
+ */
+export function parseDilaConstitArchiveListing(
+  html: string,
+  directoryUrl = DILA_CONSTIT_DIRECTORY_URL,
+): DilaConstitArchiveListing {
   const directory = new URL(directoryUrl);
   const $ = load(html);
   const stocks = new Map<string, DilaConstitStock>();
+  const increments = new Map<string, DilaConstitIncrement>();
   $("a[href]").each((_, anchor) => {
     const href = $(anchor).attr("href")?.trim();
     if (!href) return;
-    let url: URL;
-    try {
-      url = new URL(href, directory);
-    } catch {
+    const resolved = resolveConstitArchiveHref(href, directory);
+    if (!resolved) return;
+    const { filename, url } = resolved;
+    const stockMatch = filename.match(STOCK_PATTERN);
+    const incrementMatch = filename.match(INCREMENT_PATTERN);
+    if (stockMatch) {
+      const candidate = {
+        filename,
+        url: url.toString(),
+        extractedAt: validExtractionTimestamp(stockMatch[1], stockMatch[2]),
+      };
+      const existing = stocks.get(filename);
+      if (existing && existing.url !== candidate.url) {
+        throw new Error("case_backfill.france_dila_stock_ambiguous");
+      }
+      stocks.set(filename, candidate);
       return;
     }
-    const filename = url.pathname.split("/").pop() ?? "";
-    const match = filename.match(STOCK_PATTERN);
-    if (!match) return;
-    if (
-      url.protocol !== "https:"
-      || url.origin !== directory.origin
-      || url.pathname !== `${directory.pathname}${filename}`
-      || url.search
-      || url.hash
-    ) {
-      throw new Error("case_backfill.france_dila_stock_url_invalid");
+    if (incrementMatch) {
+      const candidate = {
+        filename,
+        url: url.toString(),
+        extractedAt: validExtractionTimestamp(incrementMatch[1], incrementMatch[2]),
+      };
+      const existing = increments.get(filename);
+      if (existing && existing.url !== candidate.url) {
+        throw new Error("case_backfill.france_dila_increment_ambiguous");
+      }
+      increments.set(filename, candidate);
     }
-    const candidate = {
-      filename,
-      url: url.toString(),
-      extractedAt: validExtractionTimestamp(match[1], match[2]),
-    };
-    const existing = stocks.get(filename);
-    if (existing && existing.url !== candidate.url) {
-      throw new Error("case_backfill.france_dila_stock_ambiguous");
-    }
-    stocks.set(filename, candidate);
   });
   if (stocks.size === 0) throw new Error("case_backfill.france_dila_stock_missing");
-  return [...stocks.values()].sort((left, right) => right.filename.localeCompare(left.filename))[0];
+  const stock = [...stocks.values()].sort((left, right) => right.filename.localeCompare(left.filename))[0];
+  const orderedIncrements = [...increments.values()]
+    .filter((increment) => increment.extractedAt > stock.extractedAt)
+    .sort((left, right) =>
+      left.extractedAt.localeCompare(right.extractedAt) || left.filename.localeCompare(right.filename));
+  if (orderedIncrements.length > DILA_CONSTIT_MAX_INCREMENTS) {
+    throw new Error("case_backfill.france_dila_increment_limit");
+  }
+  return { stock, increments: orderedIncrements };
+}
+
+export function parseDilaConstitDirectory(html: string, directoryUrl = DILA_CONSTIT_DIRECTORY_URL) {
+  return parseDilaConstitArchiveListing(html, directoryUrl).stock;
 }
 
 function tarText(block: Buffer, start: number, length: number) {
@@ -179,6 +271,18 @@ function requiredXmlText($: ReturnType<typeof load>, selector: string, errorCode
   return value;
 }
 
+function parseDilaConstitOverlayIdentity(xml: string) {
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error("case_backfill.france_dila_xml_entity_forbidden");
+  const $ = load(xml, { xmlMode: true });
+  if ($("TEXTE_JURI_CONSTIT").length !== 1) throw new Error("case_backfill.france_dila_xml_root_invalid");
+  const dilaId = requiredXmlText($, "META_COMMUN > ID", "case_backfill.france_dila_id_missing");
+  const origin = requiredXmlText($, "META_COMMUN > ORIGINE", "case_backfill.france_dila_origin_missing");
+  if (!DILA_ID_PATTERN.test(dilaId) || origin !== "CONSTIT") {
+    throw new Error("case_backfill.france_dila_identity_invalid");
+  }
+  return dilaId;
+}
+
 function canonicalConseilUrl(value: string, decisionDate: string, documentType: FranceConseilDocumentType) {
   let url: URL;
   try {
@@ -207,7 +311,7 @@ function canonicalConseilUrl(value: string, decisionDate: string, documentType: 
 export function parseDilaConstitXml(
   xml: string,
   archiveMemberPath: string,
-  scope: { year: number; documentType: FranceConseilDocumentType },
+  scope?: { year: number; documentType: FranceConseilDocumentType },
 ): DilaConstitRecord | null {
   if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error("case_backfill.france_dila_xml_entity_forbidden");
   const $ = load(xml, { xmlMode: true });
@@ -219,7 +323,11 @@ export function parseDilaConstitXml(
   if (!DILA_ID_PATTERN.test(dilaId) || origin !== "CONSTIT") {
     throw new Error("case_backfill.france_dila_identity_invalid");
   }
-  if (nature !== scope.documentType || !decisionDate.startsWith(`${scope.year}-`)) return null;
+  if (scope) {
+    if (nature !== scope.documentType || !decisionDate.startsWith(`${scope.year}-`)) return null;
+  } else if (!TARGET_NATURES.has(nature)) {
+    return null;
+  }
   if (!validDateOnly(decisionDate)) throw new Error("case_backfill.france_dila_decision_date_invalid");
   if (requiredXmlText($, "META_JURI > JURIDICTION", "case_backfill.france_dila_jurisdiction_missing") !== "Conseil constitutionnel") {
     throw new Error("case_backfill.france_dila_jurisdiction_invalid");
@@ -229,7 +337,7 @@ export function parseDilaConstitXml(
   const authority = canonicalConseilUrl(
     requiredXmlText($, "META_JURI_CONSTIT > URL_CC", "case_backfill.france_dila_authority_url_missing"),
     decisionDate,
-    scope.documentType,
+    nature as FranceConseilDocumentType,
   );
   const ecli = cleanText($("META_JURI_CONSTIT > ECLI").first().text()) || null;
   if (ecli && !/^ECLI:FR:CC:/i.test(ecli)) throw new Error("case_backfill.france_dila_ecli_invalid");
@@ -246,9 +354,23 @@ export function parseDilaConstitXml(
   };
 }
 
-export function parseDilaConstitArchive(
+interface DilaConstitArchiveRoot {
+  kind: "stock" | "increment";
+  prefix?: string;
+}
+
+function canonicalMemberPath(path: string, root: DilaConstitArchiveRoot) {
+  if (root.kind === "stock") return path.startsWith(STOCK_MEMBER_ROOT) ? path : null;
+  const prefix = `${root.prefix}/`;
+  if (!path.startsWith(prefix)) return null;
+  const canonical = path.slice(prefix.length);
+  return canonical.startsWith(STOCK_MEMBER_ROOT) ? canonical : null;
+}
+
+function parseDilaConstitTar(
   compressed: Uint8Array,
-  scope: { year: number; documentType: FranceConseilDocumentType },
+  root: DilaConstitArchiveRoot,
+  scope?: { year: number; documentType: FranceConseilDocumentType },
 ) {
   if (compressed.byteLength < 1 || compressed.byteLength > DILA_CONSTIT_MAX_COMPRESSED_BYTES) {
     throw new Error("case_backfill.france_dila_archive_size_invalid");
@@ -260,7 +382,7 @@ export function parseDilaConstitArchive(
     throw new Error("case_backfill.france_dila_archive_decompress_failed");
   }
   const records = new Map<string, DilaConstitRecord>();
-  const conseilIds = new Set<string>();
+  const seenDilaIds = new Set<string>();
   const memberPaths = new Set<string>();
   let xmlMemberCount = 0;
   let offset = 0;
@@ -289,7 +411,8 @@ export function parseDilaConstitArchive(
     if (type === "5") {
       if (!path.endsWith("/")) throw new Error("case_backfill.france_dila_tar_directory_invalid");
     } else if (type === "0") {
-      if (!path.startsWith(MEMBER_ROOT) || !path.endsWith(".xml")) {
+      const canonicalPath = canonicalMemberPath(path, root);
+      if (!canonicalPath || !path.endsWith(".xml")) {
         throw new Error("case_backfill.france_dila_tar_member_invalid");
       }
       if (size < 1 || size > DILA_CONSTIT_MAX_MEMBER_BYTES) {
@@ -305,15 +428,16 @@ export function parseDilaConstitArchive(
       } catch {
         throw new Error("case_backfill.france_dila_xml_encoding_invalid");
       }
-      const record = parseDilaConstitXml(xml, path, scope);
+      if (root.kind === "increment" && !scope) {
+        const overlayKey = parseDilaConstitOverlayIdentity(xml).toLowerCase();
+        if (seenDilaIds.has(overlayKey)) throw new Error("case_backfill.france_dila_record_duplicate");
+        seenDilaIds.add(overlayKey);
+      }
+      const record = parseDilaConstitXml(xml, canonicalPath, scope);
       if (record) {
         const key = record.dilaId.toLowerCase();
-        const conseilKey = record.conseilRecordId.toLowerCase();
-        if (records.has(key) || conseilIds.has(conseilKey)) {
-          throw new Error("case_backfill.france_dila_record_duplicate");
-        }
+        if (records.has(key)) throw new Error("case_backfill.france_dila_record_duplicate");
         records.set(key, record);
-        conseilIds.add(conseilKey);
       }
     } else {
       throw new Error("case_backfill.france_dila_tar_entry_type_forbidden");
@@ -325,7 +449,78 @@ export function parseDilaConstitArchive(
     expandedBytes: expanded.byteLength,
     xmlMemberCount,
     records: [...records.values()].sort((left, right) => left.dilaId.localeCompare(right.dilaId)),
+    seenDilaIds: [...seenDilaIds].sort(),
   };
+}
+
+export function parseDilaConstitArchive(
+  compressed: Uint8Array,
+  scope: { year: number; documentType: FranceConseilDocumentType },
+) {
+  const parsed = parseDilaConstitTar(compressed, { kind: "stock" }, scope);
+  return {
+    expandedBytes: parsed.expandedBytes,
+    xmlMemberCount: parsed.xmlMemberCount,
+    records: parsed.records,
+  };
+}
+
+/**
+ * Applies the global stock followed by every ordered increment archive with
+ * deterministic last-write-by-DILA-ID semantics, then filters to the requested
+ * year/nature scope. The approved policy defines the DILA ID itself as the
+ * stable inventory identity. Therefore two effective DILA IDs pointing at the
+ * same Conseil decision are ambiguous and fail closed; this layer must not
+ * invent a winner or silently collapse one official DILA identity into another.
+ */
+export function overlayDilaConstitRecords(input: {
+  stock: { provenance: DilaConstitArchiveProvenance; records: DilaConstitRecord[] };
+  increments: Array<{
+    provenance: DilaConstitArchiveProvenance;
+    records: DilaConstitRecord[];
+    seenDilaIds?: string[];
+  }>;
+  scope: { year: number; documentType: FranceConseilDocumentType };
+}): {
+  records: DilaConstitScopedRecord[];
+  totalRecords: number;
+} {
+  const effective = new Map<string, { record: DilaConstitRecord; provenance: DilaConstitArchiveProvenance }>();
+  for (const record of input.stock.records) {
+    effective.set(record.dilaId.toLowerCase(), { record, provenance: input.stock.provenance });
+  }
+  for (const increment of input.increments) {
+    for (const dilaId of increment.seenDilaIds ?? []) effective.delete(dilaId.toLowerCase());
+    for (const record of increment.records) {
+      effective.set(record.dilaId.toLowerCase(), { record, provenance: increment.provenance });
+    }
+  }
+
+  const scoped = [...effective.values()].filter(({ record }) =>
+    record.nature === input.scope.documentType && record.decisionDate.startsWith(`${input.scope.year}-`));
+
+  const groups = new Map<string, Array<{ record: DilaConstitRecord; provenance: DilaConstitArchiveProvenance }>>();
+  for (const entry of scoped) {
+    const key = entry.record.conseilRecordId.toLowerCase();
+    const list = groups.get(key) ?? [];
+    list.push(entry);
+    groups.set(key, list);
+  }
+
+  const records: DilaConstitScopedRecord[] = [];
+  for (const [conseilKey, entries] of groups) {
+    if (entries.length === 1) {
+      records.push(entries[0]);
+      continue;
+    }
+    const dilaIds = entries.map((entry) => entry.record.dilaId).sort();
+    throw new Error(
+      `case_backfill.france_dila_conseil_identity_duplicate:${conseilKey}:dila=${dilaIds.join(",")}`,
+    );
+  }
+
+  records.sort((left, right) => left.record.dilaId.localeCompare(right.record.dilaId));
+  return { records, totalRecords: effective.size };
 }
 
 async function fetchDila(
@@ -369,9 +564,110 @@ async function fetchDila(
   return response;
 }
 
-function sameConseilIdentitySet(
+function archiveProvenance(
+  archive: { filename: string; url: string; extractedAt: string },
+  response: Response,
+  compressed: Uint8Array,
+  order: number,
+  kind: "stock" | "increment",
+): DilaConstitArchiveProvenance {
+  const contentLength = Number(response.headers.get("content-length"));
+  return {
+    kind,
+    filename: archive.filename,
+    url: archive.url,
+    extractedAt: archive.extractedAt,
+    lastModified: response.headers.get("last-modified"),
+    etag: response.headers.get("etag"),
+    contentLength: Number.isFinite(contentLength) ? contentLength : compressed.byteLength,
+    sha256: createHash("sha256").update(compressed).digest("hex"),
+    order,
+  };
+}
+
+function provenanceJson(provenance: DilaConstitArchiveProvenance) {
+  return {
+    kind: provenance.kind,
+    filename: provenance.filename,
+    url: provenance.url,
+    extractedAt: provenance.extractedAt,
+    lastModified: provenance.lastModified,
+    etag: provenance.etag,
+    contentLength: provenance.contentLength,
+    sha256: provenance.sha256,
+    appliedOrder: provenance.order,
+  };
+}
+
+function archiveRecordManifestHash(records: DilaConstitRecord[]) {
+  const manifest = [...records]
+    .sort((left, right) => left.dilaId.localeCompare(right.dilaId))
+    .map((record) => JSON.stringify([
+      record.dilaId,
+      record.nature,
+      record.decisionDate,
+      record.decisionNumber,
+      record.conseilRecordId,
+    ]))
+    .join("\n");
+  return createHash("sha256").update(manifest).digest("hex");
+}
+
+function archiveDecisionDateBounds(records: DilaConstitRecord[]) {
+  const dates = records.map((record) => record.decisionDate).filter(Boolean).sort();
+  return {
+    newestDecisionDate: dates.at(-1) ?? null,
+    oldestDecisionDate: dates[0] ?? null,
+  };
+}
+
+function archiveEnumerationArtifact(input: {
+  provenance: DilaConstitArchiveProvenance;
+  records: DilaConstitRecord[];
+  expandedBytes: number;
+  xmlMemberCount: number;
+}): CaseBackfillEnumerationArtifact {
+  const bounds = archiveDecisionDateBounds(input.records);
+  return {
+    providerKey: "echanges.dila.gouv.fr",
+    artifactKind: "crosscheck",
+    sequenceNumber: input.provenance.order + 1,
+    requestUrl: input.provenance.url,
+    responseHash: input.provenance.sha256,
+    recordManifestHash: archiveRecordManifestHash(input.records),
+    recordCount: input.records.length,
+    newestDecisionDate: bounds.newestDecisionDate,
+    oldestDecisionDate: bounds.oldestDecisionDate,
+    observedLastPage: null,
+    safeDetails: {
+      archiveKind: input.provenance.kind,
+      filename: input.provenance.filename,
+      extractedAt: input.provenance.extractedAt,
+      lastModified: input.provenance.lastModified,
+      etag: input.provenance.etag,
+      contentLength: input.provenance.contentLength,
+      expandedBytes: input.expandedBytes,
+      xmlMemberCount: input.xmlMemberCount,
+      appliedOrder: input.provenance.order,
+    },
+  };
+}
+
+function incrementMemberPrefix(filename: string) {
+  const match = filename.match(INCREMENT_PATTERN);
+  if (!match) throw new Error("case_backfill.france_dila_increment_name_invalid");
+  return `${match[1]}-${match[2]}`;
+}
+
+/**
+ * Fail-closed reconciliation of the DILA decision identity set against the
+ * official Conseil annual/type facet. A mismatch names the exact missing or
+ * surplus Conseil identities instead of degrading to a single source, and the
+ * count is re-checked as defense in depth.
+ */
+export function reconcileFranceDilaConseilIdentity(
   dilaItems: FranceDilaInventoryItem[],
-  conseil: FranceConseilInventoryResult,
+  conseil: Pick<FranceConseilInventoryResult, "items" | "expectedCount">,
 ) {
   const dila = new Set(dilaItems.map((item) => item.sourceRecordId.toLowerCase()));
   const web = new Set(conseil.items.map((item) => item.sourceRecordId.toLowerCase()));
@@ -379,6 +675,9 @@ function sameConseilIdentitySet(
   const webOnly = [...web].filter((id) => !dila.has(id)).sort();
   if (dilaOnly.length || webOnly.length) {
     throw new Error(`case_backfill.france_inventory_identity_mismatch:dila=${dilaOnly.slice(0, 5).join(",")};web=${webOnly.slice(0, 5).join(",")}`);
+  }
+  if (conseil.expectedCount !== dilaItems.length) {
+    throw new Error("case_backfill.france_inventory_count_mismatch");
   }
 }
 
@@ -400,51 +699,113 @@ export async function discoverFranceDilaConstitInventory(input: {
     requestGovernor: input.requestGovernor,
   };
   assertCrawlerExecution(hooks);
+
   const directoryResponse = await fetchDila(DILA_CONSTIT_DIRECTORY_URL, DILA_CONSTIT_MAX_DIRECTORY_BYTES, diagnostics, hooks);
-  const stock = parseDilaConstitDirectory(await directoryResponse.text());
-  const stockResponse = await fetchDila(stock.url, DILA_CONSTIT_MAX_COMPRESSED_BYTES, diagnostics, hooks);
-  const compressed = new Uint8Array(await stockResponse.arrayBuffer());
-  const archiveSha256 = createHash("sha256").update(compressed).digest("hex");
-  const parsed = parseDilaConstitArchive(compressed, { year: scope.year, documentType: scope.documentType });
-  const stockContentLength = Number(stockResponse.headers.get("content-length"));
-  const stockProvenance = {
-    filename: stock.filename,
-    url: stock.url,
-    extractedAt: stock.extractedAt,
-    lastModified: stockResponse.headers.get("last-modified"),
-    etag: stockResponse.headers.get("etag"),
-    contentLength: Number.isFinite(stockContentLength) ? stockContentLength : compressed.byteLength,
-    sha256: archiveSha256,
-  };
+  const listing = parseDilaConstitArchiveListing(await directoryResponse.text());
+
+  const stockResponse = await fetchDila(listing.stock.url, DILA_CONSTIT_MAX_COMPRESSED_BYTES, diagnostics, hooks);
+  const stockCompressed = new Uint8Array(await stockResponse.arrayBuffer());
+  const stockProvenance = archiveProvenance(listing.stock, stockResponse, stockCompressed, 0, "stock");
+  const parsedStock = parseDilaConstitTar(stockCompressed, { kind: "stock" });
+  let cumulativeXmlMembers = parsedStock.xmlMemberCount;
+
+  const appliedIncrements: Array<{
+    provenance: DilaConstitArchiveProvenance;
+    records: DilaConstitRecord[];
+    seenDilaIds: string[];
+    expandedBytes: number;
+    xmlMemberCount: number;
+  }> = [];
+  for (const increment of listing.increments) {
+    const response = await fetchDila(increment.url, DILA_CONSTIT_MAX_COMPRESSED_BYTES, diagnostics, hooks);
+    const compressed = new Uint8Array(await response.arrayBuffer());
+    const provenance = archiveProvenance(increment, response, compressed, appliedIncrements.length + 1, "increment");
+    const parsed = parseDilaConstitTar(
+      compressed,
+      { kind: "increment", prefix: incrementMemberPrefix(increment.filename) },
+    );
+    cumulativeXmlMembers += parsed.xmlMemberCount;
+    if (cumulativeXmlMembers > DILA_CONSTIT_MAX_XML_MEMBERS) {
+      throw new Error("case_backfill.france_dila_tar_member_limit");
+    }
+    appliedIncrements.push({
+      provenance,
+      records: parsed.records,
+      seenDilaIds: parsed.seenDilaIds,
+      expandedBytes: parsed.expandedBytes,
+      xmlMemberCount: parsed.xmlMemberCount,
+    });
+  }
+
+  const overlay = overlayDilaConstitRecords({
+    stock: { provenance: stockProvenance, records: parsedStock.records },
+    increments: appliedIncrements.map((increment) => ({
+      provenance: increment.provenance,
+      records: increment.records,
+      seenDilaIds: increment.seenDilaIds,
+    })),
+    scope: { year: scope.year, documentType: scope.documentType },
+  });
+  const enumerationArtifacts: CaseBackfillEnumerationArtifact[] = [
+    archiveEnumerationArtifact({
+      provenance: stockProvenance,
+      records: parsedStock.records,
+      expandedBytes: parsedStock.expandedBytes,
+      xmlMemberCount: parsedStock.xmlMemberCount,
+    }),
+    ...appliedIncrements.map((increment) => archiveEnumerationArtifact({
+      provenance: increment.provenance,
+      records: increment.records,
+      expandedBytes: increment.expandedBytes,
+      xmlMemberCount: increment.xmlMemberCount,
+    })),
+  ];
+  const incrementChainHash = createHash("sha256").update(JSON.stringify(
+    appliedIncrements.map((increment) => provenanceJson(increment.provenance)),
+  )).digest("hex");
+
   const license = {
     id: "licence-ouverte-2.0",
     url: "https://www.data.gouv.fr/pages/legal/licences/etalab-2.0",
     attribution: "DILA",
   };
-  const items: FranceDilaInventoryItem[] = parsed.records.map((record) => ({
-    stableItemKey: `constit:${record.dilaId.toLowerCase()}`,
-    sourceRecordId: record.conseilRecordId,
-    discoveredUrl: record.canonicalUrl,
-    documentType: scope.documentType,
-    decisionDateHint: record.decisionDate,
-    title: record.title,
-    dilaId: record.dilaId,
-    ecli: record.ecli,
-    decisionNumber: record.decisionNumber,
-    archiveMemberPath: record.archiveMemberPath,
-    inventoryMetadata: {
-      dila: {
-        id: record.dilaId,
-        nature: record.nature,
-        ecli: record.ecli,
-        decisionNumber: record.decisionNumber,
-        qualifiedNature: record.qualifiedNature,
-        archiveMemberPath: record.archiveMemberPath,
+  const items: FranceDilaInventoryItem[] = overlay.records.map(({ record, provenance }) => {
+    const incremented = provenance.kind === "increment";
+    return {
+      stableItemKey: `constit:${record.dilaId.toLowerCase()}`,
+      sourceRecordId: record.conseilRecordId,
+      discoveredUrl: record.canonicalUrl,
+      documentType: scope.documentType,
+      decisionDateHint: record.decisionDate,
+      title: record.title,
+      dilaId: record.dilaId,
+      ecli: record.ecli,
+      decisionNumber: record.decisionNumber,
+      archiveMemberPath: record.archiveMemberPath,
+      inventoryMetadata: {
+        dila: {
+          id: record.dilaId,
+          nature: record.nature,
+          ecli: record.ecli,
+          decisionNumber: record.decisionNumber,
+          qualifiedNature: record.qualifiedNature,
+          archiveMemberPath: record.archiveMemberPath,
+        },
+        stock: {
+          filename: stockProvenance.filename,
+          url: stockProvenance.url,
+          extractedAt: stockProvenance.extractedAt,
+          lastModified: stockProvenance.lastModified,
+          etag: stockProvenance.etag,
+          contentLength: stockProvenance.contentLength,
+          sha256: stockProvenance.sha256,
+        },
+        ...(incremented ? { increment: provenanceJson(provenance) } : {}),
+        license,
       },
-      stock: stockProvenance,
-      license,
-    },
-  }));
+    };
+  });
+
   const conseil = await (input.discoverConseilInventory ?? discoverFranceConseilInventory)({
     year: scope.year,
     documentType: scope.documentType,
@@ -454,8 +815,50 @@ export async function discoverFranceDilaConstitInventory(input: {
     checkpoint: input.checkpoint,
     requestGovernor: input.requestGovernor,
   });
-  if (conseil.expectedCount !== items.length) throw new Error("case_backfill.france_inventory_count_mismatch");
-  sameConseilIdentitySet(items, conseil);
+  reconcileFranceDilaConseilIdentity(items, conseil);
+
+  const coverageEvidence = {
+    method: "official_dila_constit_stock_with_conseil_identity_crosscheck",
+    scopeFrom: scope.scopeFrom,
+    scopeTo: scope.scopeTo,
+    documentType: scope.documentType,
+    expectedCount: items.length,
+    expectedCountBasis: "official_dila_stock_and_conseil_facet_exact_identity_set",
+    dila: {
+      directoryUrl: DILA_CONSTIT_DIRECTORY_URL,
+      stockFilename: stockProvenance.filename,
+      stockUrl: stockProvenance.url,
+      stockExtractedAt: stockProvenance.extractedAt,
+      lastModified: stockProvenance.lastModified,
+      etag: stockProvenance.etag,
+      contentLength: stockProvenance.contentLength,
+      compressedBytes: stockCompressed.byteLength,
+      expandedBytes: parsedStock.expandedBytes,
+      archiveSha256: stockProvenance.sha256,
+      xmlMemberCount: parsedStock.xmlMemberCount,
+      scopeCount: items.length,
+      overlay: {
+        appliedIncrementCount: appliedIncrements.length,
+        cumulativeXmlMembers,
+        targetRecordCount: overlay.totalRecords,
+        enumerationArtifactCount: enumerationArtifacts.length,
+        incrementChainHash,
+        firstIncrementFilename: appliedIncrements[0]?.provenance.filename ?? null,
+        lastIncrementFilename: appliedIncrements.at(-1)?.provenance.filename ?? null,
+      },
+    },
+    conseil: {
+      expectedCount: conseil.expectedCount,
+      pageCount: conseil.pageCount,
+      exactIdentitySetMatch: true,
+      evidence: conseil.coverageEvidence,
+    },
+    qpc360Crosscheck: "not_in_primary_manifest",
+  };
+  if (Buffer.byteLength(JSON.stringify(coverageEvidence), "utf8") > 16384) {
+    throw new Error("case_backfill.france_dila_coverage_evidence_too_large");
+  }
+
   return {
     sourceKey: "fr-conseil-constitutionnel",
     year: scope.year,
@@ -464,34 +867,7 @@ export async function discoverFranceDilaConstitInventory(input: {
     pageCount: conseil.pageCount,
     expectedCount: items.length,
     expectedCountBasis: "official_dila_stock_and_conseil_facet_exact_identity_set",
-    coverageEvidence: {
-      method: "official_dila_constit_stock_with_conseil_identity_crosscheck",
-      scopeFrom: scope.scopeFrom,
-      scopeTo: scope.scopeTo,
-      documentType: scope.documentType,
-      expectedCount: items.length,
-      expectedCountBasis: "official_dila_stock_and_conseil_facet_exact_identity_set",
-      dila: {
-        directoryUrl: DILA_CONSTIT_DIRECTORY_URL,
-        stockFilename: stock.filename,
-        stockUrl: stock.url,
-        stockExtractedAt: stock.extractedAt,
-        lastModified: stockResponse.headers.get("last-modified"),
-        etag: stockResponse.headers.get("etag"),
-        contentLength: Number.isFinite(stockContentLength) ? stockContentLength : compressed.byteLength,
-        compressedBytes: compressed.byteLength,
-        expandedBytes: parsed.expandedBytes,
-        archiveSha256,
-        xmlMemberCount: parsed.xmlMemberCount,
-        scopeCount: items.length,
-      },
-      conseil: {
-        expectedCount: conseil.expectedCount,
-        pageCount: conseil.pageCount,
-        exactIdentitySetMatch: true,
-        evidence: conseil.coverageEvidence,
-      },
-      qpc360Crosscheck: "not_in_primary_manifest",
-    },
+    coverageEvidence,
+    enumerationArtifacts,
   };
 }
