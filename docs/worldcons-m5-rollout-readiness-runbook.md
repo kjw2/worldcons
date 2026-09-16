@@ -1,5 +1,7 @@
 # WorldCons M5 rollout readiness·orchestration runbook (2026-09-16)
 
+> **Canonical backfill operating principle:** historical corpus acquisition and Gemini/publication are independent pipelines. Inventory/fetch/normalize/verify/reconcile must continue independently of Gemini quota; AI enrichment and public release may trail as a separately measured backlog. See `docs/worldcons-historical-backfill-operating-principles-20260916.md`. In this runbook, `production-complete` for a historical tranche means corpus acquisition/verification complete unless public completion is explicitly stated.
+
 작성: 2026-09-16. M5 시작 기준(base) 커밋: `e3337a6` (M0~M4 완료).
 범위: Gate 5 역사 백필의 국가·연도·유형 rollout 선택, tranche readiness, snapshot/run 생성 전 fail-closed preflight, 증거·보고를 구현한다. 실제 역사 corpus 쓰기, 공개, AI 호출, migration 변경은 포함하지 않는다.
 

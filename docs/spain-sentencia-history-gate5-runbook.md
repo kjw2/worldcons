@@ -1,5 +1,7 @@
 # Spain 2020~2024 Sentencia Gate 5 운영 런북
 
+> **백필 불변 원칙:** 스페인의 법률/robots source-policy 차단은 반드시 지키되, 그 차단이 해소된 뒤의 historical inventory/fetch/normalize/verify/reconcile은 Gemini 한도나 기존 공개 대기분 때문에 지연시키지 않는다. AI 번역·요약·공개는 별도 후행 backlog로 관리한다. 공통 정책은 `docs/worldcons-historical-backfill-operating-principles-20260916.md`를 따른다.
+
 상태: 연도별 scope·P1 이중 잠금·주입형 discovery 검증 완료, 운영 2024 canary 및 historical 실행 전
 
 ## 범위

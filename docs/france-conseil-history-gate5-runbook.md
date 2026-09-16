@@ -1,5 +1,7 @@
 # France Conseil constitutionnel QPC/DC Gate 5 runbook
 
+> **Backfill invariant:** France historical acquisition is not gated by Gemini quota or by completion of earlier public enrichment. A closed, fetched, normalized, verified, reconciled QPC/DC tranche is a corpus-backfill completion; Gemini translation/summary and public Catalog/P3 release are tracked separately and may proceed gradually. Canonical policy: `docs/worldcons-historical-backfill-operating-principles-20260916.md`.
+
 ## Scope and safety state
 
 This stage supports one immutable snapshot per calendar year and decision facet for Conseil constitutionnel decisions from 2010 through 2024. Gate 5 owns only pre-2025 years; 2025 and later are handled by the incremental ingestion workflow, not this historical ledger.

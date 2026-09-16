@@ -1,5 +1,7 @@
 # 미국 Constitution Annotated 후보 그래프 Gate 5 실행 계약
 
+> **백필 불변 원칙:** 미국 공식 판례 corpus 확보와 Gemini 기반 번역·요약/공개를 분리한다. Constitution Annotated 후보 수집과 GovInfo/공식 authority 검증은 Gemini 한도와 무관하게 진행하며, 검증된 SCOTUS corpus의 AI 후처리·공개는 별도 backlog로 관리한다. 공통 정책은 `docs/worldcons-historical-backfill-operating-principles-20260916.md`를 따른다.
+
 ## 범위
 
 이 단계는 Congress.gov Constitution Annotated의 Table of Cases 인용을 비공개 후보 그래프로 정규화한다. Table of Cases는 Constitution Annotated에서 인용된 사건 목록이며, 그 자체가 연방대법원 헌법판례 확정 목록은 아니다. 하급 연방법원과 주 법원 판례도 포함될 수 있으므로 모든 최초 상태는 `candidate`다.

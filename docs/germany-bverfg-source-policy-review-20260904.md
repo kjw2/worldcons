@@ -1,5 +1,7 @@
 # Germany BVerfG source-policy review — 2026-09-04
 
+> **Backfill invariant:** Germany historical corpus acquisition must not wait for Gemini quota or prior public-enrichment completion. Official-source inventory/fetch/normalize/verify/reconcile is the corpus-backfill pipeline; AI enrichment/publication is a downstream independently paced backlog. Canonical policy: `docs/worldcons-historical-backfill-operating-principles-20260916.md`.
+
 ## Decision
 
 Status: **POLICY APPROVED FOR UNATTENDED PRIVATE-SHADOW OPERATION; PUBLICATION REMAINS GATED**.
