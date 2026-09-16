@@ -3,6 +3,8 @@
 Date: 2026-09-16
 Status: canonical operating policy for historical constitutional-case backfill
 
+> **Target-count plan:** `docs/worldcons-historical-backfill-target-plan-20260917.md` is the canonical record of per-country target denominations and the acquisition frontier. Only France's total target is numerically fixed (1,280); the Germany, United States, and Spain targets are explicitly NULL because audited, and a NULL target is never a guessed zero.
+
 ## 1. Core principle: acquisition first, AI/publication later
 
 Historical backfill and Gemini-powered enrichment/publication are two different pipelines and must never be conflated.
@@ -69,7 +71,7 @@ The absence of public publication does not invalidate an acquired corpus, but it
 
 All four constitutional-case programs continue under this same rule. Current operational priority is based on source readiness, not on Gemini capacity.
 
-1. **France** — current leading historical program. Continue newest-to-oldest QPC/DC acquisition from the current 2022 frontier to 2021 and earlier, one bounded tranche at a time.
+1. **France** — current leading historical program (exact class-A target 1,280 = 1,005 QPC + 275 DC). 2020-2024 QPC/DC are corpus-complete (352 items / 10 tranches); continue newest-to-oldest QPC/DC acquisition from the current 2020 frontier to **2019 and earlier** (928 items / 20 tranches remaining), one bounded tranche at a time.
 2. **Germany** — preserve the completed 2024 replacement canary, then expand to 2023 and earlier only after the required multi-year source-policy approval is recorded.
 3. **United States** — the Constitution Annotated candidate graph is only a discovery aid, not the verified SCOTUS corpus. Build the official-source candidate/authority corpus independently of Gemini, then enrich/publicize verified cases downstream.
 4. **Spain** — do not bypass the existing legal/robots source-policy block. Once approved, acquire the 2024 baseline then historical SENTENCIA tranches; Gemini/publication remains downstream.
