@@ -6,10 +6,10 @@ This stage supports one immutable snapshot per calendar year and decision facet 
 
 - source: `fr-conseil-constitutionnel`
 - document types: `QPC` and `DC` only
-- primary inventory: the latest official DILA `CONSTIT` global stock, filtered by exact `NATURE` and decision year
+- primary inventory: the latest official DILA `CONSTIT` global stock plus every later official ordered `CONSTIT_*.tar.gz` increment, overlaid by DILA ID and then filtered by exact `NATURE` and decision year
 - independent count cross-check: the official Conseil annual/type result pages
 - authority detail: `https://www.conseil-constitutionnel.fr/decision/{year}/{record}.htm`
-- coverage: `authoritative_crosschecked` only when the DILA stock scope count, official active-type facet count, and unique manifest count all match
+- coverage: `authoritative_crosschecked` only when the final DILA stock+ordered-increment identity set/count, official active-type facet identity set/count, and unique manifest count all match
 - public Catalog and Gemini: not enabled by this stage
 
 QPC and DC use separate snapshots. QPC360 results from Conseil d'État, Cour de cassation, and other courts are outside this first France scope. QPC360 is not part of the primary manifest until its export terms and stable automated contract are reviewed in a versioned source policy.
@@ -24,11 +24,12 @@ Discovery stops without closing the manifest when any of these conditions occurs
 2. The exact approved policy must be present and current. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS` is `approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED` is `true`, and the approved policy is `france-dila-constit-2026-09-v1`. The history flag is still required, so flag-off fails with `case_backfill.france_history_disabled` before any run row is created. An explicitly unapproved policy state still fails with `case_backfill.france_history_source_policy_not_approved`. The CLI `plan` report exposes `sourcePolicyStatus` and `sourcePolicyApproved`.
 3. The year is before 2010 or after 2024. Gate 5 historical scope is limited to pre-2025; 2025 and later are owned by the incremental ingestion workflow.
 4. The document type is not QPC or DC. `L`/`LP`/`OTHER_CONSEIL_NATURE` remain deferred to a later policy version and fail with `case_backfill.france_history_source_policy_not_approved` even when the history flag is on.
-5. the DILA directory or stock request violates the reviewed host, redirect, byte, archive, lease, or fencing contract.
-6. latest-stock selection is ambiguous or the stock/XML structure is malformed.
+5. the DILA directory, stock, or increment request violates the reviewed host, redirect, byte, archive, lease, or fencing contract.
+6. latest-stock selection or ordered increment selection is ambiguous, an archive/XML structure is malformed, or the bounded increment limit is exceeded.
 7. the active official facet count is missing or changes during pagination.
 8. pagination does not exhaust within the configured bound.
-9. the exact DILA `NATURE` count, unique manifest count, and official Conseil facet count differ.
+9. two distinct effective DILA IDs map to the same Conseil decision identity. DILA ID is the approved stable inventory identity, so discovery must not choose a winner automatically.
+10. the exact overlaid DILA identity set/count, unique manifest count, and official Conseil facet identity set/count differ.
 
 Sitemap `lastmod` values are update metadata and never become decision dates. Dates come from the official decision title/detail and must remain within the snapshot year.
 
@@ -47,7 +48,7 @@ The combined DILA stock and Conseil identity-set contract can be checked without
 pnpm verify:france-inventory --year=2024 --document-type=QPC
 ```
 
-This read-only probe obeys robots policy, request delay, timeout, bounded response and archive limits, exact `NATURE` filtering, bounded pagination, and identity-set reconciliation. On 2026-09-03 it verified the 12,511,366-byte stock (`SHA-256 67270556060b481ec139f21436244af913cccd3eb6e074c65d6600f48596f627`, 7,112 XML members) against the Conseil pages: QPC 42/42 and DC 12/12 with exact identity-set matches.
+This read-only probe obeys robots policy, request delay, timeout, bounded response and archive limits, exact `NATURE` filtering, bounded pagination, and identity-set reconciliation. M5-B2.2 now applies the approved ordered increment overlay after the base stock. On 2026-09-16 the directory exposed 21 post-stock increments after `Freemium_constit_global_20250713-140000.tar.gz`; read-only revalidation still produced exact 2024 QPC 42/42, 2024 DC 12/12, 2023 QPC 45/45, and 2023 DC 15/15 identity sets.
 
 The parser rejects malformed timestamps, cross-origin or redirecting stock URLs, oversized compressed/expanded/member data, path traversal, duplicate paths or identities, links and other non-regular tar members, invalid tar checksums/terminators, non-UTF-8 XML, DTD/entity declarations, wrong origin/jurisdiction, invalid dates, and non-Conseil authority URLs.
 
@@ -56,7 +57,9 @@ The parser rejects malformed timestamps, cross-origin or redirecting stock URLs,
 Migration `20260903182000_constitutional_case_inventory_provenance.sql` makes the official evidence part of each inventory item and of the closed manifest hash. France items must carry:
 
 - DILA ID, exact `NATURE`, ECLI (including an explicit null), decision number, qualified nature, and the bound XML member path;
-- stock filename, long DILA URL, extraction timestamp, `Last-Modified`, ETag, compressed content length, and SHA-256;
+- base-stock filename, long DILA URL, extraction timestamp, `Last-Modified`, ETag, compressed content length, and SHA-256;
+- when the effective representation was supplied by a later increment, that increment's filename, URL, timestamp, response provenance, SHA-256, and ordered application position;
+- full base-stock/increment archive provenance is stored as append-only enumeration artifacts and sealed through `enumeration_manifest_hash`; the 16 KiB snapshot `coverage_evidence` remains a compact count/first/last/chain-hash summary rather than duplicating the complete archive list;
 - Open Licence 2.0 identifier/URL and `DILA` attribution.
 
 The payload is a bounded JSON object, recursively screened for credential-like keys and common secret values. France-specific identity, URL, archive path, stock, hash, and licence shapes are checked in the database. Once the snapshot closes, item provenance cannot be updated, and changing only the stock hash changes the manifest hash.
@@ -75,7 +78,9 @@ M5-B2.1 then removed the Crawlee global-listener growth observed during the 2024
 
 M5-B3.1 completed the next 2023 expansion wave on 2026-09-16. QPC snapshot `f7356ffa-e45e-453d-a6e3-bfffe92ea688` sealed and verified 45/45 items; DC snapshot `8c1a5ea8-b221-4b78-8df1-e74ef51e6da1` sealed and verified 15/15 items. Across both snapshots all ten P1 runs succeeded, retryable/terminal failures were zero, active claims were zero after completion, Catalog publications remained zero, and the listener warning did not recur during the 45-item QPC production fetch. See [worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md](./worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md).
 
-The next bounded rollout wave is 2022 QPC followed by 2022 DC. Do not skip ahead or combine year/type manifests.
+M5-B2.2 then implemented the already-approved global-stock + ordered-increment rule before the 2022 wave could write anything. Live read-only verification found that 2022 QPC has two DILA IDs (`CONSTEXT000046216504`, `CONSTEXT000047955984`) for Conseil identity `20225813AN_QPC`, while 2022 DC is missing Conseil identity `2022847DC` from the complete DILA stock+increment overlay. Both conditions are fail-closed under policy v1. No 2022 production snapshot was opened. See [worldcons-m5b22-france-dila-ordered-increment-overlay-20260916.md](./worldcons-m5b22-france-dila-ordered-increment-overlay-20260916.md).
+
+The staged rollout is therefore stopped at 2022. Do not skip to 2021. Continuing requires an explicit reviewed source-policy decision for the duplicate QPC DILA identities and the Conseil-only DC identity; neither may be silently normalized or sourced from an unapproved fallback.
 
 For a newly approved historical tranche, use a scoped environment:
 
@@ -122,7 +127,7 @@ The public article detail, print document, standard ChatGPT plugin `search`/`fet
 
 For each snapshot retain:
 
-- DILA stock filename, long URL, file timestamp, ETag, compressed size, SHA-256, and exact in-scope count;
+- DILA base stock filename, long URL, file timestamp, ETag, compressed size, SHA-256, plus append-only ordered post-stock increment enumeration artifacts, compact chain summary, and exact final in-scope count;
 - official annual/type URL and independently observed facet count;
 - page count and pagination exhaustion marker;
 - unique manifest count and hash;

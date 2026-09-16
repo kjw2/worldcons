@@ -129,7 +129,7 @@ nextApprovalRequired           = France L/LP/OTHER (order 3)
 pnpm typecheck                          통과
 pnpm lint                               통과
 pnpm check                              All checks passed.
-pnpm test:backfill                      120 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
+pnpm test:backfill                      127 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
 pnpm test:p1                            22 pass / 0 fail / 1 skip
 pnpm test:ingest-workflow               18 pass / 0 fail
 pnpm test:postgres:release:static       7 pass / 0 fail / 0 skip
@@ -160,10 +160,15 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 - M5-B3.1 2023 QPC snapshot `f7356ffa-e45e-453d-a6e3-bfffe92ea688`: 45/45 discovered/fetched/normalized/verified, error 0, active claim 0, published 0, manifest `71e2aecebd5a55882ce576e6bbcfbd497d1352d8036536c216b9fe645a64e03b`.
 - M5-B3.1 2023 DC snapshot `8c1a5ea8-b221-4b78-8df1-e74ef51e6da1`: 15/15 discovered/fetched/normalized/verified, error 0, active claim 0, published 0, manifest `0c65b361ac6b460dcf147c70f0f031b84b6b394e2c30a2de8ba9bb694135d400`.
 - 2023 wave의 10개 discover/fetch/normalize/verify/reconcile run은 모두 `succeeded`, retryable/terminal failure 0이었다. 45-item QPC production fetch에서도 listener warning은 재발하지 않았다.
-- 다음 production wave는 2022 QPC, 이어서 2022 DC다.
+- M5-B2.2에서 승인 policy v1에 이미 명시된 `latest global stock + ordered increment archives` 규칙이 실제 구현에서 빠져 있음을 발견하고 보완했다. 2026-09-16 live directory 기준 base stock 이후 increment 21개를 순서대로 적용하며, 같은 DILA ID만 last-write overlay하고 서로 다른 DILA ID가 같은 Conseil identity를 가리키면 fail-closed한다. 전체 archive provenance는 기존 append-only enumeration artifact ledger에 저장·봉인하고, `coverage_evidence`는 16 KiB 한도를 넘지 않도록 count/first/last/chain-hash 요약만 보관한다.
+- ordered overlay read-only 재검증은 2024 QPC 42/42, 2024 DC 12/12, 2023 QPC 45/45, 2023 DC 15/15 exact identity-set을 유지했다. 기존 closed production snapshot은 수정하지 않았다.
+- 2022 QPC는 `20225813AN_QPC`에 DILA ID `CONSTEXT000046216504`와 `CONSTEXT000047955984`가 동시에 존재해 `france_dila_conseil_identity_duplicate`로 차단된다.
+- 2022 DC는 complete stock+21 increments에도 Conseil identity `2022847DC`가 없어 `france_inventory_identity_mismatch:dila=;web=2022847dc`로 차단된다.
+- 따라서 M5-B3.2는 **production write 0인 blocked 상태**이며, staged newest-to-oldest 규칙에 따라 2021로 건너뛰지 않는다. 두 anomaly에 대한 새 reviewed source-policy 결정 전에는 진행하지 않는다.
 - 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
 - hardening 증적: `docs/worldcons-m5b21-france-crawlee-listener-hardening-20260916.md`.
 - 2023 expansion 증적: `docs/worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md`.
+- ordered-increment/2022 blocker 증적: `docs/worldcons-m5b22-france-dila-ordered-increment-overlay-20260916.md`.
 
 ## 9. Catalog publication rollout과의 분리
 
