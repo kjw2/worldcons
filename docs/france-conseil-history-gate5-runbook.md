@@ -82,6 +82,8 @@ M5-B2.2 then implemented the already-approved global-stock + ordered-increment r
 
 The staged rollout is therefore stopped at 2022. Do not skip to 2021. Continuing requires an explicit reviewed source-policy decision for the duplicate QPC DILA identities and the Conseil-only DC identity; neither may be silently normalized or sourced from an unapproved fallback.
 
+M5-B2.3 drafted a **documentation-only** proposal for that decision: [worldcons-m5b23-france-2022-source-policy-v2-proposal-20260916.md](./worldcons-m5b23-france-2022-source-policy-v2-proposal-20260916.md). It separates the 2022 DC official-source omission (E1, exact one-case Conseil fallback `2022847DC`, stable key `constit:conseil-omission:2022847dc`, reason code `dila_omission_verified_absent`) from the 2022 QPC DILA canonicalization pair (E2, canonical `CONSTEXT000047955984`, retired `CONSTEXT000046216504`, basis `matches_current_conseil_title_and_ecli`), and explains that DILA itself carries no supersession signal so both require external corroboration and owner approval. **The proposal is NOT owner-approved.** The v1 policy `france-dila-constit-2026-09-v1` remains immutable, no migration or code was changed, the default flag still yields `case_backfill.france_history_disabled`, Catalog/Gemini stay off, 2024/2023 snapshots stay immutable, and the rollout remains stopped at 2022 with France QPC/DC still 4/30 production-complete.
+
 For a newly approved historical tranche, use a scoped environment:
 
 ```bash

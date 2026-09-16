@@ -165,6 +165,7 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 - 2022 QPC는 `20225813AN_QPC`에 DILA ID `CONSTEXT000046216504`와 `CONSTEXT000047955984`가 동시에 존재해 `france_dila_conseil_identity_duplicate`로 차단된다.
 - 2022 DC는 complete stock+21 increments에도 Conseil identity `2022847DC`가 없어 `france_inventory_identity_mismatch:dila=;web=2022847dc`로 차단된다.
 - 따라서 M5-B3.2는 **production write 0인 blocked 상태**이며, staged newest-to-oldest 규칙에 따라 2021로 건너뛰지 않는다. 두 anomaly에 대한 새 reviewed source-policy 결정 전에는 진행하지 않는다.
+- M5-B2.3에서 위 결정을 위한 **문서 전용 제안**을 작성했다: `docs/worldcons-m5b23-france-2022-source-policy-v2-proposal-20260916.md`. 2022 DC의 DILA 누락을 E1(정확히 1건, Conseil provider fallback `2022847DC`, stable key `constit:conseil-omission:2022847dc`, reasonCode `dila_omission_verified_absent`)으로, 2022 QPC의 DILA 중복을 E2(canonical `CONSTEXT000047955984`, retired `CONSTEXT000046216504`, basis `matches_current_conseil_title_and_ecli`)로 분리한다. **제안은 NOT owner-approved**이며, v1 정책은 immutable로 유지되고 migration/코드 변경은 없다. history flag 기본값은 여전히 꺼져 있어 `france_history_disabled`, Catalog/Gemini는 off, 2024/2023 snapshot은 immutable, rollout은 2022에서 정지하며 France QPC/DC 진행도는 계속 **4/30 production-complete**다.
 - 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
 - hardening 증적: `docs/worldcons-m5b21-france-crawlee-listener-hardening-20260916.md`.
 - 2023 expansion 증적: `docs/worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md`.
