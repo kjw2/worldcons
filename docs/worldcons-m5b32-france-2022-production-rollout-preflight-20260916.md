@@ -1,6 +1,8 @@
 # WorldCons M5-B3.2 — France 2022 production rollout preflight (2026-09-16)
 
-Status: **READ-ONLY PREFLIGHT COMPLETE — PRODUCTION MIGRATIONS/BACKFILL NOT EXECUTED**
+Status: **PREFLIGHT COMPLETE — SUBSEQUENT PRODUCTION EXECUTION COMPLETED**
+
+The preflight below records the state immediately before production execution. The authorized execution subsequently completed successfully on 2026-09-16. See `worldcons-m5b32-france-2022-private-shadow-completion-20260916.md` for the applied migrations, snapshot IDs, manifest hashes, E1/E2 evidence, and final 6/30 progress state.
 
 This document records the controller-reviewed operational preflight for the France 2022 QPC/DC private-shadow wave after owner approval and implementation of `france-dila-constit-2026-09-v2`.
 
@@ -220,7 +222,7 @@ Stop immediately and do not continue to the next phase/tranche if any of the fol
 
 ## 11. Progress accounting
 
-This preflight does **not** change production completion counts.
+At the time of this preflight, production completion remained 4/30. The later authorized execution completed both 2022 tranches and advanced the production-complete count to **6/30**; the historical checklist below is retained as pre-execution evidence.
 
 - 2024 QPC/DC: complete
 - 2023 QPC/DC: complete
