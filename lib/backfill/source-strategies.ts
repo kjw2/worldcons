@@ -238,6 +238,7 @@ function franceStrategy(
       )({
         year: Number(snapshot.scopeFrom?.slice(0, 4)),
         documentType,
+        policyVersion: snapshot.sourcePolicyVersion,
         currentYear: dependencies.currentYear,
         signal: context.signal,
         checkpoint: context.checkpoint,

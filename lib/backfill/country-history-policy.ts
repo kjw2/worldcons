@@ -81,7 +81,7 @@ export const COUNTRY_HISTORY_EXPANSION_ORDER: readonly CountryHistoryStage[] = O
     approvedYearTo: 2024,
     status: "approved_source_policy",
     blocking: [],
-    policyVersion: "france-dila-constit-2026-09-v1",
+    policyVersion: "france-dila-constit-2026-09-v2",
     policyReviewDueAt: "2027-03-15",
   }),
   Object.freeze({

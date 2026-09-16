@@ -1,16 +1,23 @@
 # WorldCons M5-B2.3 — France 2022 source-policy-v2 proposal (2026-09-16)
 
-> **Status: PROPOSAL ONLY — NOT OWNER-APPROVED.**
-> This document is a design proposal for owner review. It is not an approval, not a policy row,
-> not a migration, and not an execution plan that may be run. No `source_corpus_policies` row
-> is inserted or changed by this stage, and the existing immutable policy
-> `france-dila-constit-2026-09-v1` remains frozen and untouched.
+> **Status: OWNER-APPROVED (E1 AND E2) AND IMPLEMENTED — MIGRATIONS NOT APPLIED TO PRODUCTION.**
+> On 2026-09-16 the WorldCons owner explicitly approved BOTH exceptions E1 and E2 in this
+> conversation. The additive successor `france-dila-constit-2026-09-v2` was then implemented as
+> new timestamp migrations `20260916100000_constitutional_case_france_policy_v2_approval.sql`,
+> `20260916101000_constitutional_case_france_inventory_provenance_v3.sql`, and
+> `20260916102000_constitutional_case_france_public_attribution_v2.sql`. The existing immutable
+> policy `france-dila-constit-2026-09-v1` remains frozen and untouched; v2 records lineage only.
+> **These migrations are NOT applied to production, and no 2022 production backfill or snapshot
+> has been run.** Public Catalog/article publication and Gemini/AI egress remain disabled, and
+> France production-complete remains **4/30** until an actual 2022 private-shadow succeeds.
 
 ## 1. Scope and safety state of this stage
 
-This stage produced documentation only. While preparing it:
+The proposal stage produced documentation only. After owner approval of E1 and E2 on 2026-09-16, the
+implementation stage added the three new additive timestamp migrations named in the status banner
+above plus the code/tests described in sections 8-10. While doing so:
 
-- no code and no migration was modified;
+- the existing v1 migration `20260916090000` was not edited; new timestamp migrations only were added;
 - no production database was read or written for policy mutation, and no snapshot, backfill item,
   claim, or run was created or changed;
 - no 2022 backfill or snapshot was opened; no Catalog publication was created;
@@ -221,10 +228,10 @@ the approved one; year outside 2010–2024; non-QPC/DC nature; any transport/arc
 violation; ambiguous stock/increment selection; facet count missing or changing during pagination;
 pagination not exhausted.
 
-## 8. Additive new-timestamp migration design (design only — do not implement)
+## 8. Additive new-timestamp migrations (implemented; not applied to production)
 
-No migration is created in this stage. When and only when the owner approves v2, the change is an
-**additive** new migration that preserves v1 byte-for-byte:
+After owner approval of E1 and E2, the change was made as **additive** new timestamp migrations that
+preserve v1 byte-for-byte (not applied to production):
 
 - **New file only**, e.g. `supabase/migrations/<new-timestamp>_constitutional_case_france_policy_v2_approval.sql`.
   The existing `20260916090000_constitutional_case_france_policy_approval.sql` is never edited.
@@ -253,7 +260,7 @@ No migration is created in this stage. When and only when the owner approves v2,
   approved tuple, while the existing v1/v2 DILA paths remain strict.
 
 ```yaml
-# Illustrative exceptions block (design only; not an executable migration)
+# Exceptions block inserted by the v2 migration (exact literals)
 exceptions:
   e1ConseilProviderFallback:
     - sourceKey: fr-conseil-constitutionnel
@@ -271,7 +278,7 @@ exceptions:
       basis: matches_current_conseil_title_and_ecli
 ```
 
-## 9. Public attribution design (design only)
+## 9. Public attribution design (implemented additively; publication still disabled)
 
 Catalog publication stays disabled; this section defines behavior if a later, separately gated
 publication stage is approved.
@@ -285,17 +292,16 @@ publication stage is approved.
   the official `authorityUrl`, and the Conseil decision identity. It must **not** claim DILA stock
   provenance it does not have, and it must accurately state that the case was absent from the DILA
   corpus. Non-endorsement language for both DILA and the Conseil constitutionnel is preserved.
-- The existing publication trigger, which requires exact DILA provenance for France anchors, must
-  be extended additively (new migration, design only) with a v2 validator such as
+- The existing publication trigger, which requires exact DILA provenance for France anchors, was
+  extended additively by migration `20260916102000` with
   `case_catalog_france_inventory_attribution_valid_v2` and a corresponding publication guard that
   accepts the Conseil-provider provenance shape only for the exact approved E1 tuple and v2 policy
   version, while still accepting the existing strict DILA shape and rejecting every other non-DILA
-  shape. Until that separately gated change exists, an E1 item cannot pass the current trigger —
-  which is the correct fail-closed default today.
+  shape. This does **not** enable publication; the Catalog/public/plugin flags remain off.
 
-## 10. Tests (design only)
+## 10. Tests (implemented)
 
-Proposed coverage, all to be authored only after approval:
+Implemented coverage includes:
 
 - **E1 positive:** exact tuple yields exactly one Conseil-provider item with stable key
   `constit:conseil-omission:2022847dc`, correct provider, authority URL, and omission evidence.
@@ -304,11 +310,15 @@ Proposed coverage, all to be authored only after approval:
 - **E1 stale fail-closed:** if `2022847DC` appears in DILA later, or disappears from the official
   Conseil facet/authority evidence, discovery fails instead of silently choosing a source.
 - **E1 absence replay:** each discovery re-scans the selected stock + all ordered increments for
-  identity and NOR; cached absence evidence cannot satisfy the exception.
+  identity and NOR across every raw XML member, including non-QPC/DC members; cached absence
+  evidence cannot satisfy the exception.
 - **E2 positive:** exact pair yields one effective item `CONSTEXT000047955984`, excludes
   `CONSTEXT000046216504` from the effective set, and records the retirement block.
 - **E2 near-miss fail-closed:** reversed direction, different canonical ID, or a different Conseil
   record must still raise `france_dila_conseil_identity_duplicate`.
+- **E2 external corroboration:** the exact canonical DILA record must match the frozen owner-reviewed
+  Conseil title `A.N., Français établis hors de France (2ème circ.), M. Christian RODRIGUEZ [ ]`
+  and ECLI `ECLI:FR:CC:2022:2022.5813.AN.QPC`; missing or drifting live detail evidence fails closed.
 - **No widening:** any third duplicate or mismatch beyond E1/E2 still fails with the v1 codes.
 - **No wildcard fallback:** regex/prefix/range/general "DILA missing => Conseil" behavior is rejected.
 - **DILA surplus:** any DILA-only Conseil identity remains an unconditional mismatch.
@@ -323,6 +333,34 @@ Proposed coverage, all to be authored only after approval:
 - **Runner checks:** `pnpm typecheck`, `pnpm lint`, `pnpm check`, `pnpm test:backfill`,
   `pnpm test:p1`, `pnpm test:catalog`, `pnpm test:postgres:release:static`, `git diff --check`.
 
+### 10.1 Controller verification after implementation
+
+Controller-independent verification on 2026-09-16 completed after the DeepSeek implementation:
+
+- `pnpm typecheck` — pass;
+- focused France v2 tests — **15/15 pass**;
+- `pnpm lint` — pass;
+- `pnpm check` — `All checks passed.`;
+- `pnpm test:backfill` — **142 pass / 0 fail / 1 skip** (the skip is the existing disposable-PostgreSQL integration case);
+- `pnpm test:catalog` — **13 pass / 0 fail / 1 skip**;
+- `pnpm test:postgres:release:static` — **7/7 pass**;
+- `git diff --check` — pass.
+
+The controller also re-ran the official live inventory verifier with the exact v2 policy and no DB
+writes:
+
+- **2022 QPC: 67/67 exact identity-set match**, applying only
+  `e2_dila_canonicalization` once;
+- **2022 DC: 13/13 exact identity-set match**, applying only
+  `e1_conseil_provider_fallback` once;
+- both runs used base stock `Freemium_constit_global_20250713-140000.tar.gz`, SHA-256
+  `67270556060b481ec139f21436244af913cccd3eb6e074c65d6600f48596f627`, plus 21 ordered
+  increments with chain hash `556e75db2021b0396125bb880555f831c79da554a1a31ed8ba2201114529562d`;
+- E1 recomputed the `2022847DC` / `CSCL2237744S` absence scan across the complete raw XML chain and
+  corroborated the current Conseil detail page ECLI/JORF before admitting the one fallback;
+- E2 corroborated the current Conseil detail title/ECLI against the frozen reviewed values before
+  collapsing the exact two-DILA-ID pair.
+
 ## 11. Immutability, rollout stop, and flags
 
 - **2024 and 2023 snapshots remain immutable.** v2 affects future discovery only; no closed
@@ -334,16 +372,19 @@ Proposed coverage, all to be authored only after approval:
 - **Staged rollout stops at 2022.** Rollout stays newest-to-oldest; 2021 must not start while the
   2022 tranche is unresolved. No 2022 production snapshot is opened under this proposal stage.
 
-## 12. Decision requested (not yet granted)
+## 12. Decision granted and implementation status
 
-Owner review is requested for exactly two decisions:
+On 2026-09-16 the WorldCons owner explicitly granted exactly two decisions:
 
-1. Approve or reject **E1** — the single Conseil-provider fallback for `2022847DC` (2022 DC).
-2. Approve or reject **E2** — the single DILA canonicalization pair for `20225813AN_QPC`
-   (2022 QPC).
+1. **E1 approved** — the single Conseil-provider fallback for `2022847DC` (2022 DC).
+2. **E2 approved** — the single DILA canonicalization pair for `20225813AN_QPC` (2022 QPC).
 
-No action may be taken on the basis of this proposal. It confers no authorization, inserts no
-policy row, widens no scope, and does not change the 4/30 production-complete progress.
+Implementation is complete in the repository as new additive timestamp migrations and code/tests.
+The migrations are **not applied to production**, no 2022 production backfill or snapshot has been
+run, no publication or AI egress is enabled, and the France QPC/DC production-complete progress
+remains **4/30** until an actual 2022 private-shadow succeeds. Either exception may be withdrawn
+only by a newly reviewed policy version; the v1 row and the closed 2024/2023 snapshots stay
+immutable.
 
 ## References
 
@@ -352,6 +393,10 @@ policy row, widens no scope, and does not change the 4/30 production-complete pr
 - `docs/france-conseil-history-gate5-runbook.md`
 - `docs/worldcons-m5-rollout-readiness-runbook.md`
 - `supabase/migrations/20260916090000_constitutional_case_france_policy_approval.sql`
+- `supabase/migrations/20260916100000_constitutional_case_france_policy_v2_approval.sql` (v2 successor, E1+E2)
+- `supabase/migrations/20260916101000_constitutional_case_france_inventory_provenance_v3.sql` (strict E1 branch)
+- `supabase/migrations/20260916102000_constitutional_case_france_public_attribution_v2.sql` (attribution v2)
+- `tests/constitutional-case-backfill-france-policy-v2.test.ts`
 - Prior analysis `e3bbdbf5-f51e-4cf7-998b-9662421f5758`
 - <https://www.conseil-constitutionnel.fr/decision/2022/2022847DC.htm>
 - <https://echanges.dila.gouv.fr/OPENDATA/CONSTIT/>

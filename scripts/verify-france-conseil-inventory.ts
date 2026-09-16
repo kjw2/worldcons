@@ -11,14 +11,16 @@ async function main() {
   const defaultYear = Math.min(new Date().getUTCFullYear(), HISTORICAL_GATE_MAX_YEAR);
   const year = Number(argumentValue("year") ?? defaultYear);
   const documentType = franceConseilDocumentType(argumentValue("document-type") ?? "QPC");
+  const policyVersion = argumentValue("policy-version") ?? null;
   if (!Number.isInteger(year)) throw new Error("invalid_year");
   if (!documentType) throw new Error("invalid_document_type");
-  const result = await discoverFranceDilaConstitInventory({ year, documentType });
+  const result = await discoverFranceDilaConstitInventory({ year, documentType, policyVersion });
   process.stdout.write(`${JSON.stringify({
     event: "france_dila_conseil_inventory_verified",
     sourceKey: result.sourceKey,
     year: result.year,
     documentType: result.documentType,
+    policyVersion,
     expectedCount: result.expectedCount,
     discoveredCount: result.items.length,
     pageCount: result.pageCount,

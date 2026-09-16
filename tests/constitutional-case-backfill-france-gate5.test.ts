@@ -161,10 +161,12 @@ test("France scope is annual, QPC/DC-only, pre-2025, and owner-approved while th
   assert.throws(() => franceConseilScope(2024, "L", 2026), /france_document_type_not_supported/);
   assert.equal(FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS, "approved_source_policy");
   assert.equal(franceConseilHistorySourcePolicyApproved(), true);
-  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v1");
+  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v2");
   assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT, "2027-03-15");
   assert.deepEqual(franceConseilApprovedPolicyDescriptor(), {
-    policyVersion: "france-dila-constit-2026-09-v1",
+    policyVersion: "france-dila-constit-2026-09-v2",
+    supersedesPolicyVersion: "france-dila-constit-2026-09-v1",
+    priorPolicyVersions: ["france-dila-constit-2026-09-v1"],
     reviewDueAt: "2027-03-15",
     documentTypes: ["QPC", "DC"],
     approvedYearFrom: 2010,

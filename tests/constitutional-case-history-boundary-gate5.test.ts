@@ -58,7 +58,7 @@ test("country expansion order is machine-readable and readiness-ordered", () => 
   );
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyVersion, "bverfg-unattended-canary-v1");
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyReviewDueAt, "2027-03-03");
-  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyVersion, "france-dila-constit-2026-09-v1");
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyVersion, "france-dila-constit-2026-09-v2");
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyReviewDueAt, "2027-03-15");
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].approvedYearFrom, 2010);
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].approvedYearTo, 2024);

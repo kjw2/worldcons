@@ -305,7 +305,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async upsertInventoryItem(input) {
-    const { data, error } = await requiredClient().rpc("source_inventory_item_upsert_v2", {
+    const { data, error } = await requiredClient().rpc("source_inventory_item_upsert_v3", {
       p_snapshot_id: input.snapshotId,
       p_stable_item_key: input.stableItemKey,
       p_source_record_id: input.sourceRecordId,

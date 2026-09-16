@@ -32,6 +32,7 @@ import {
 const migrationPath = path.join(process.cwd(), "supabase/migrations/20260903120000_constitutional_case_backfill_gate1.sql");
 const requestGovernorMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903181000_constitutional_case_source_request_governor.sql");
 const inventoryProvenanceMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903182000_constitutional_case_inventory_provenance.sql");
+const franceInventoryProvenanceV3MigrationPath = path.join(process.cwd(), "supabase/migrations/20260916101000_constitutional_case_france_inventory_provenance_v3.sql");
 const enumerationArtifactsMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903185000_constitutional_case_enumeration_artifacts.sql");
 const snapshotSupersessionMigrationPath = path.join(process.cwd(), "supabase/migrations/20260903190000_constitutional_case_snapshot_supersession.sql");
 const crawlerHttpClientPath = path.join(process.cwd(), "lib/crawler/http-client.ts");
@@ -686,6 +687,7 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   const sql = fs.readFileSync(migrationPath, "utf8");
   const requestGovernorSql = fs.readFileSync(requestGovernorMigrationPath, "utf8");
   const inventoryProvenanceSql = fs.readFileSync(inventoryProvenanceMigrationPath, "utf8");
+  const franceInventoryProvenanceV3Sql = fs.readFileSync(franceInventoryProvenanceV3MigrationPath, "utf8");
   const enumerationArtifactsSql = fs.readFileSync(enumerationArtifactsMigrationPath, "utf8");
   const snapshotSupersessionSql = fs.readFileSync(snapshotSupersessionMigrationPath, "utf8");
   const crawlerHttpClient = fs.readFileSync(crawlerHttpClientPath, "utf8");
@@ -738,6 +740,15 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   assert.match(inventoryProvenanceSql, /revoke execute on function source_inventory_snapshot_close_v1[\s\S]*from service_role/);
   assert.match(inventoryProvenanceSql, /revoke execute on function source_backfill_items_claim_v1[\s\S]*from service_role/);
   assert.doesNotMatch(inventoryProvenanceSql, /grant execute on function source_inventory_item_upsert_v1[\s\S]*to service_role/);
+  assert.match(franceInventoryProvenanceV3Sql, /create or replace function source_inventory_item_upsert_v3/);
+  assert.match(franceInventoryProvenanceV3Sql, /case_backfill_inventory_json_has_secret_v1/);
+  assert.match(franceInventoryProvenanceV3Sql, /CASE_BACKFILL_FRANCE_DILA_PROVENANCE_INVALID/);
+  assert.match(franceInventoryProvenanceV3Sql, /CASE_BACKFILL_FRANCE_CONSEIL_OMISSION_POLICY_MISMATCH/);
+  assert.match(franceInventoryProvenanceV3Sql, /france-dila-constit-2026-09-v2/);
+  assert.match(franceInventoryProvenanceV3Sql, /source_inventory_item_upsert_v2\(/);
+  assert.match(franceInventoryProvenanceV3Sql, /revoke execute on function source_inventory_item_upsert_v2[\s\S]*from service_role/);
+  assert.match(franceInventoryProvenanceV3Sql, /grant execute on function source_inventory_item_upsert_v3[\s\S]*to service_role/);
+  assert.doesNotMatch(franceInventoryProvenanceV3Sql, /grant execute on function source_inventory_item_upsert_v2[\s\S]*to service_role/);
   assert.match(enumerationArtifactsSql, /create table if not exists source_inventory_enumeration_artifacts/);
   assert.match(enumerationArtifactsSql, /CASE_BACKFILL_ENUMERATION_ARTIFACT_IMMUTABLE/);
   assert.match(enumerationArtifactsSql, /CASE_BACKFILL_ENUMERATION_EVIDENCE_REQUIRED/);
@@ -748,7 +759,7 @@ test("Gate 1 migration fixes manifest, lease, artifact, and maintenance invarian
   assert.match(snapshotSupersessionSql, /CASE_BACKFILL_SUPERSESSION_PROCESSING_STARTED/);
   assert.match(snapshotSupersessionSql, /before update or delete on source_inventory_snapshot_supersessions/);
   assert.doesNotMatch(snapshotSupersessionSql, /grant\s+(?:select|insert|update|delete|all)[^;]+\s+to\s+(?:anon|authenticated)/i);
-  assert.match(repository, /rpc\("source_inventory_item_upsert_v2"/);
+  assert.match(repository, /rpc\("source_inventory_item_upsert_v3"/);
   assert.match(repository, /rpc\("source_inventory_enumeration_artifact_record_v1"/);
   assert.match(repository, /rpc\("source_inventory_snapshot_close_v3"/);
   assert.match(repository, /rpc\("source_backfill_items_claim_v2"/);

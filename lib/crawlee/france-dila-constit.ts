@@ -8,7 +8,13 @@ import { governedBoundedFetch } from "@/lib/crawler/request-governor";
 import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/crawler/robots";
 import type { CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
-import { franceConseilScope, type FranceConseilDocumentType } from "@/lib/backfill/france-scope";
+import {
+  franceConseilDilaCanonicalizationsFor,
+  franceConseilOmissionExceptionFor,
+  franceConseilScope,
+  type FranceConseilDilaCanonicalizationException,
+  type FranceConseilDocumentType,
+} from "@/lib/backfill/france-scope";
 import type { CaseBackfillEnumerationArtifact } from "@/lib/backfill/types";
 import {
   discoverFranceConseilInventory,
@@ -22,6 +28,7 @@ export const DILA_CONSTIT_MAX_EXPANDED_BYTES = 268_435_456;
 export const DILA_CONSTIT_MAX_XML_MEMBERS = 20_000;
 export const DILA_CONSTIT_MAX_MEMBER_BYTES = 8_388_608;
 export const DILA_CONSTIT_MAX_INCREMENTS = 512;
+export const FRANCE_CONSEIL_AUTHORITY_MAX_BYTES = 8_388_608;
 
 const STOCK_PATTERN = /^Freemium_constit_global_(\d{8})-(\d{6})\.tar\.gz$/;
 const INCREMENT_PATTERN = /^CONSTIT_(\d{8})-(\d{6})\.tar\.gz$/;
@@ -60,6 +67,7 @@ export interface DilaConstitRecord {
   canonicalUrl: string;
   conseilRecordId: string;
   archiveMemberPath: string;
+  nor?: string | null;
 }
 
 export interface DilaConstitArchiveProvenance {
@@ -86,11 +94,45 @@ export interface FranceDilaInventoryItem {
   documentType: FranceConseilDocumentType;
   decisionDateHint: string;
   title: string;
-  dilaId: string;
+  /**
+   * Absent for the single owner-approved E1 Conseil-provider omission fallback;
+   * the fallback must not carry a fabricated DILA ID or archive member path.
+   */
+  dilaId?: string;
   ecli: string | null;
   decisionNumber: string;
-  archiveMemberPath: string;
+  archiveMemberPath?: string;
   inventoryMetadata: Record<string, unknown>;
+}
+
+/**
+ * E2 retirement evidence retained on the surviving canonical item. The retired
+ * DILA ID never becomes a second inventory item.
+ */
+export interface FranceDilaRetirementEvidence {
+  retiredDilaId: string;
+  canonicalDilaId: string;
+  conseilRecordId: string;
+  basis: FranceConseilDilaCanonicalizationException["basis"];
+  corroborationRef: "matches_current_conseil_title_and_ecli";
+}
+
+export interface FranceConseilAuthorityEvidence {
+  canonicalUrl: string;
+  pageTitle: string;
+  description: string;
+  ecli: string;
+  jorf: string | null;
+}
+
+interface DilaConstitAbsenceProbe {
+  sourceRecordId: string;
+  nor: string;
+}
+
+interface DilaConstitAbsenceScan {
+  identityHits: number;
+  norHits: number;
 }
 
 export interface FranceDilaInventoryResult {
@@ -341,6 +383,7 @@ export function parseDilaConstitXml(
   );
   const ecli = cleanText($("META_JURI_CONSTIT > ECLI").first().text()) || null;
   if (ecli && !/^ECLI:FR:CC:/i.test(ecli)) throw new Error("case_backfill.france_dila_ecli_invalid");
+  const nor = cleanText($("META_JURI > NOR").first().text()) || null;
   return {
     dilaId,
     nature,
@@ -351,6 +394,7 @@ export function parseDilaConstitXml(
     ecli,
     ...authority,
     archiveMemberPath,
+    ...(nor ? { nor } : {}),
   };
 }
 
@@ -371,6 +415,7 @@ function parseDilaConstitTar(
   compressed: Uint8Array,
   root: DilaConstitArchiveRoot,
   scope?: { year: number; documentType: FranceConseilDocumentType },
+  absenceProbe?: DilaConstitAbsenceProbe,
 ) {
   if (compressed.byteLength < 1 || compressed.byteLength > DILA_CONSTIT_MAX_COMPRESSED_BYTES) {
     throw new Error("case_backfill.france_dila_archive_size_invalid");
@@ -385,6 +430,8 @@ function parseDilaConstitTar(
   const seenDilaIds = new Set<string>();
   const memberPaths = new Set<string>();
   let xmlMemberCount = 0;
+  let absenceIdentityHits = 0;
+  let absenceNorHits = 0;
   let offset = 0;
   let terminated = false;
 
@@ -428,6 +475,11 @@ function parseDilaConstitTar(
       } catch {
         throw new Error("case_backfill.france_dila_xml_encoding_invalid");
       }
+      if (absenceProbe) {
+        const upperXml = xml.toUpperCase();
+        if (upperXml.includes(absenceProbe.sourceRecordId.toUpperCase())) absenceIdentityHits += 1;
+        if (upperXml.includes(absenceProbe.nor.toUpperCase())) absenceNorHits += 1;
+      }
       if (root.kind === "increment" && !scope) {
         const overlayKey = parseDilaConstitOverlayIdentity(xml).toLowerCase();
         if (seenDilaIds.has(overlayKey)) throw new Error("case_backfill.france_dila_record_duplicate");
@@ -450,6 +502,10 @@ function parseDilaConstitTar(
     xmlMemberCount,
     records: [...records.values()].sort((left, right) => left.dilaId.localeCompare(right.dilaId)),
     seenDilaIds: [...seenDilaIds].sort(),
+    absenceScan: {
+      identityHits: absenceIdentityHits,
+      norHits: absenceNorHits,
+    } satisfies DilaConstitAbsenceScan,
   };
 }
 
@@ -481,9 +537,17 @@ export function overlayDilaConstitRecords(input: {
     seenDilaIds?: string[];
   }>;
   scope: { year: number; documentType: FranceConseilDocumentType };
+  /**
+   * Exact owner-approved E2 canonicalizations. Empty (v1 behavior) means every
+   * duplicate Conseil identity still fails closed.
+   */
+  canonicalizations?: readonly FranceConseilDilaCanonicalizationException[];
+  /** Current official Conseil detail evidence keyed by lower-case sourceRecordId. */
+  canonicalizationAuthorityEvidence?: ReadonlyMap<string, FranceConseilAuthorityEvidence>;
 }): {
   records: DilaConstitScopedRecord[];
   totalRecords: number;
+  retirements: FranceDilaRetirementEvidence[];
 } {
   const effective = new Map<string, { record: DilaConstitRecord; provenance: DilaConstitArchiveProvenance }>();
   for (const record of input.stock.records) {
@@ -507,20 +571,65 @@ export function overlayDilaConstitRecords(input: {
     groups.set(key, list);
   }
 
+  const canonicalizations = input.canonicalizations ?? [];
   const records: DilaConstitScopedRecord[] = [];
+  const retirements: FranceDilaRetirementEvidence[] = [];
   for (const [conseilKey, entries] of groups) {
     if (entries.length === 1) {
       records.push(entries[0]);
       continue;
     }
     const dilaIds = entries.map((entry) => entry.record.dilaId).sort();
+    // E2 applies only to the exact frozen ordered pair. A reversal, a different
+    // canonical ID, an extra DILA ID, or a different Conseil record must not be
+    // canonicalized and keeps failing closed.
+    const canonicalization = canonicalizations.find((candidate) => (
+      candidate.conseilRecordId.toLowerCase() === conseilKey
+      && entries.length === 2
+      && dilaIds[0] === candidate.retiredDilaId
+      && dilaIds[1] === candidate.canonicalDilaId
+    ));
+    if (canonicalization) {
+      const survivor = entries.find((entry) => entry.record.dilaId === canonicalization.canonicalDilaId);
+      if (!survivor) {
+        throw new Error(
+          `case_backfill.france_dila_conseil_identity_duplicate:${conseilKey}:dila=${dilaIds.join(",")}`,
+        );
+      }
+      const authorityEvidence = input.canonicalizationAuthorityEvidence?.get(conseilKey);
+      if (!authorityEvidence) {
+        throw new Error("case_backfill.france_dila_canonicalization_corroboration_missing");
+      }
+      if (authorityEvidence.canonicalUrl !== survivor.record.canonicalUrl) {
+        throw new Error("case_backfill.france_dila_canonicalization_corroboration_drift:authority_url");
+      }
+      if (cleanText(authorityEvidence.description) !== canonicalization.expectedConseilTitle
+        || cleanText(survivor.record.title) !== canonicalization.expectedConseilTitle
+      ) {
+        throw new Error("case_backfill.france_dila_canonicalization_corroboration_drift:title");
+      }
+      if (canonicalFranceConseilEcli(authorityEvidence.ecli) !== canonicalization.expectedConseilEcli
+        || canonicalFranceConseilEcli(survivor.record.ecli ?? "") !== canonicalization.expectedConseilEcli
+      ) {
+        throw new Error("case_backfill.france_dila_canonicalization_corroboration_drift:ecli");
+      }
+      records.push(survivor);
+      retirements.push({
+        retiredDilaId: canonicalization.retiredDilaId,
+        canonicalDilaId: canonicalization.canonicalDilaId,
+        conseilRecordId: canonicalization.conseilRecordId,
+        basis: canonicalization.basis,
+        corroborationRef: "matches_current_conseil_title_and_ecli",
+      });
+      continue;
+    }
     throw new Error(
       `case_backfill.france_dila_conseil_identity_duplicate:${conseilKey}:dila=${dilaIds.join(",")}`,
     );
   }
 
   records.sort((left, right) => left.record.dilaId.localeCompare(right.record.dilaId));
-  return { records, totalRecords: effective.size };
+  return { records, totalRecords: effective.size, retirements };
 }
 
 async function fetchDila(
@@ -562,6 +671,117 @@ async function fetchDila(
   });
   if (!response.ok || response.url !== url) throw new Error("case_backfill.france_dila_fetch_invalid");
   return response;
+}
+
+function canonicalFranceConseilEcli(value: string) {
+  const cleaned = cleanText(value).toUpperCase();
+  const marker = cleaned.indexOf("ECLI");
+  const raw = marker >= 0 ? cleaned.slice(marker) : cleaned;
+  const withoutPrefix = raw.replace(/^ECLI\s*:\s*/, "");
+  const normalized = withoutPrefix
+    .replace(/\s*:\s*/g, ":")
+    .replace(/\s*\.\s*/g, ".")
+    .replace(/\s+/g, ".")
+    .replace(/\.{2,}/g, ".")
+    .replace(/\.$/, "");
+  return `ECLI:${normalized}`;
+}
+
+export function parseFranceConseilAuthorityEvidence(
+  html: string,
+  expectedUrl: string,
+): FranceConseilAuthorityEvidence {
+  const $ = load(html);
+  const canonicalHref = $("link[rel='canonical']").first().attr("href")?.trim() ?? "";
+  let canonicalUrl: string;
+  try {
+    canonicalUrl = new URL(canonicalHref, expectedUrl).toString();
+  } catch {
+    throw new Error("case_backfill.france_conseil_authority_canonical_invalid");
+  }
+  if (canonicalUrl !== expectedUrl) {
+    throw new Error("case_backfill.france_conseil_authority_canonical_drift");
+  }
+  const pageTitle = cleanText(
+    $("meta[property='og:title']").first().attr("content")
+      ?? $("h1.title").first().text(),
+  );
+  const description = cleanText(
+    $("meta[name='description']").first().attr("content")
+      ?? $(".field--name-field-sous-titre, .field--name-field-description").first().text(),
+  );
+  const paragraphs = $("p").toArray().map((element) => cleanText($(element).text())).filter(Boolean);
+  // Cheerio concatenates text separated by <br> without inserting whitespace,
+  // so the official "... texte n° 2<br>ECLI : ..." shape becomes "...2ECLI".
+  // Do not require a word boundary before ECLI.
+  const ecliText = paragraphs.find((text) => /ECLI\s*:/i.test(text));
+  if (!pageTitle || !description || !ecliText) {
+    throw new Error("case_backfill.france_conseil_authority_identity_missing");
+  }
+  const ecli = canonicalFranceConseilEcli(ecliText);
+  if (!/^ECLI:FR:CC:/i.test(ecli)) {
+    throw new Error("case_backfill.france_conseil_authority_ecli_invalid");
+  }
+  const jorfText = paragraphs.find((text) => /\bJORF\b/i.test(text)) ?? null;
+  const jorf = jorfText
+    ? cleanText(jorfText.replace(/\s*ECLI\s*:[\s\S]*$/i, "")) || null
+    : null;
+  return { canonicalUrl, pageTitle, description, ecli, jorf };
+}
+
+async function fetchFranceConseilAuthorityEvidence(
+  url: string,
+  diagnostics: CrawlerDiagnosticsCollector,
+  hooks: CrawlerExecutionHooks,
+) {
+  const parsedUrl = new URL(url);
+  if (
+    parsedUrl.protocol !== "https:"
+    || parsedUrl.hostname !== "www.conseil-constitutionnel.fr"
+    || !/^\/decision\/\d{4}\/[^/]+\.htm$/i.test(parsedUrl.pathname)
+    || parsedUrl.search
+    || parsedUrl.hash
+  ) {
+    throw new Error("case_backfill.france_conseil_authority_url_invalid");
+  }
+  await checkpointCrawlerExecution(hooks);
+  const origin = parsedUrl.origin;
+  let robots = robotsByOrigin.get(origin);
+  if (!robots) {
+    robots = await checkRobotsAllowed(url, hooks);
+    robotsByOrigin.set(origin, robots);
+  }
+  if (!robots.allowed) throw new Error("case_backfill.france_conseil_authority_robots_disallowed");
+  await respectRateLimit(url, robotsDelayMs(robots, envNumber("FRANCE_REQUEST_DELAY_MS", 3000)), hooks.signal);
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(() => timeoutController.abort(), envNumber("FRANCE_TIMEOUT_MS", 90_000));
+  const signals = [hooks.signal, timeoutController.signal].filter((signal): signal is AbortSignal => Boolean(signal));
+  try {
+    const response = await governedBoundedFetch(url, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+        "Accept-Language": "fr,en;q=0.8,ko;q=0.5",
+        "User-Agent": crawlerUserAgent(),
+      },
+      redirect: "error",
+      signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals),
+    }, FRANCE_CONSEIL_AUTHORITY_MAX_BYTES, hooks);
+    addDiagnosticAttempt(diagnostics, {
+      sourceKey: "fr-conseil-constitutionnel",
+      url,
+      finalUrl: response.url,
+      strategy: "cheerio",
+      status: response.status,
+      contentType: response.headers.get("content-type") ?? undefined,
+      result: response.ok ? "success" : "failed",
+    });
+    if (!response.ok || response.url !== url) {
+      throw new Error("case_backfill.france_conseil_authority_fetch_invalid");
+    }
+    return parseFranceConseilAuthorityEvidence(await response.text(), url);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function archiveProvenance(
@@ -681,17 +901,158 @@ export function reconcileFranceDilaConseilIdentity(
   }
 }
 
+function normalizedDecisionText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Builds the single owner-approved E1 Conseil-provider omission item for
+ * 2022 DC `2022847DC`. Every discovery recomputes the absence proof from the
+ * then-current selected stock plus all later ordered increments using both an
+ * exact identity and NOR scan; cached evidence cannot authorize the fallback.
+ *
+ * Fail-closed conditions:
+ * - the exception does not match the exact policy/year/type tuple;
+ * - the identity or NOR appears anywhere in the scanned DILA corpus (stale);
+ * - the Conseil facet no longer carries the exact corroborating authority item
+ *   (missing, authority-URL drift, decision-date drift, or title drift).
+ *
+ * The item never carries a fabricated DILA id, archive member path, or claim
+ * that a DILA XML member represented the decision.
+ */
+export function buildFranceConseilOmissionItem(input: {
+  year: number;
+  documentType: FranceConseilDocumentType;
+  policyVersion?: string | null;
+  dilaAbsenceScan: DilaConstitAbsenceScan;
+  conseil: Pick<FranceConseilInventoryResult, "items" | "expectedCount">;
+  authorityEvidence: FranceConseilAuthorityEvidence;
+  stockProvenance: Pick<DilaConstitArchiveProvenance, "filename" | "sha256">;
+  incrementCount: number;
+  memberScanCount: number;
+  observedAt: string;
+}): FranceDilaInventoryItem {
+  const exception = franceConseilOmissionExceptionFor(input.year, input.documentType, input.policyVersion);
+  if (!exception) throw new Error("case_backfill.france_conseil_omission_not_enabled");
+  const identity = exception.sourceRecordId.toLowerCase();
+  if (input.dilaAbsenceScan.identityHits > 0 || input.dilaAbsenceScan.norHits > 0) {
+    throw new Error("case_backfill.france_conseil_omission_stale:identity_present_in_dila");
+  }
+
+  const corroborating = input.conseil.items.find(
+    (item) => item.sourceRecordId.toLowerCase() === identity,
+  );
+  if (!corroborating) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_missing");
+  }
+  if (corroborating.discoveredUrl !== exception.authorityUrl) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:authority_url");
+  }
+  if (corroborating.decisionDateHint !== exception.conseil.decisionDate) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:decision_date");
+  }
+  if (!corroborating.title
+    || !normalizedDecisionText(corroborating.title).includes(normalizedDecisionText(exception.conseil.decisionNumber))
+  ) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:decision_number");
+  }
+  if (input.authorityEvidence.canonicalUrl !== exception.authorityUrl) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:detail_url");
+  }
+  if (!normalizedDecisionText(input.authorityEvidence.pageTitle).includes(normalizedDecisionText(exception.conseil.decisionNumber))) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:detail_title");
+  }
+  if (cleanText(input.authorityEvidence.description) !== "Loi de finances pour 2023") {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:description");
+  }
+  if (canonicalFranceConseilEcli(input.authorityEvidence.ecli) !== exception.conseil.ecli) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:ecli");
+  }
+  if (input.authorityEvidence.jorf !== exception.conseil.jorf) {
+    throw new Error("case_backfill.france_conseil_omission_corroboration_drift:jorf");
+  }
+
+  return {
+    stableItemKey: exception.stableItemKey,
+    sourceRecordId: exception.sourceRecordId,
+    discoveredUrl: exception.authorityUrl,
+    documentType: exception.documentType,
+    decisionDateHint: exception.conseil.decisionDate,
+    title: corroborating.title,
+    ecli: exception.conseil.ecli,
+    decisionNumber: exception.conseil.decisionNumber,
+    inventoryMetadata: {
+      provider: exception.provider,
+      reasonCode: exception.reasonCode,
+      authorityUrl: exception.authorityUrl,
+      conseil: {
+        sourceRecordId: exception.sourceRecordId,
+        canonicalUrl: exception.authorityUrl,
+        ecli: exception.conseil.ecli,
+        decisionNumber: exception.conseil.decisionNumber,
+        decisionDate: exception.conseil.decisionDate,
+        jorf: exception.conseil.jorf,
+        nor: exception.conseil.nor,
+        authorityObservedAt: input.observedAt,
+        authorityTitle: input.authorityEvidence.pageTitle,
+        authorityDescription: input.authorityEvidence.description,
+      },
+      dilaLookup: {
+        stockFilename: input.stockProvenance.filename,
+        stockSha256: input.stockProvenance.sha256,
+        incrementsApplied: input.incrementCount,
+        memberScanCount: input.memberScanCount,
+        sourceRecordIdSearched: exception.sourceRecordId,
+        norSearched: exception.conseil.nor,
+        identityHits: input.dilaAbsenceScan.identityHits,
+        norHits: input.dilaAbsenceScan.norHits,
+        result: "absent",
+        observedAt: input.observedAt,
+      },
+      license: {
+        id: "conseil-official-decision",
+        url: exception.authorityUrl,
+        attribution: "Conseil constitutionnel",
+      },
+    },
+  };
+}
+
 export async function discoverFranceDilaConstitInventory(input: {
   year: number;
   documentType: FranceConseilDocumentType;
+  /**
+   * Exact snapshot source policy version. Only the owner-approved v2 version can
+   * apply the E1/E2 exceptions; undefined or v1 stays fail-closed.
+   */
+  policyVersion?: string | null;
   currentYear?: number;
   diagnostics?: CrawlerDiagnosticsCollector;
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
   requestGovernor?: CrawlerExecutionHooks["requestGovernor"];
   discoverConseilInventory?: typeof discoverFranceConseilInventory;
+  now?: () => Date;
 }): Promise<FranceDilaInventoryResult> {
   const scope = franceConseilScope(input.year, input.documentType, input.currentYear);
+  const observedAt = (input.now ?? (() => new Date()))().toISOString();
+  const omissionException = franceConseilOmissionExceptionFor(
+    scope.year,
+    scope.documentType,
+    input.policyVersion,
+  );
+  const absenceProbe: DilaConstitAbsenceProbe | undefined = omissionException
+    ? { sourceRecordId: omissionException.sourceRecordId, nor: omissionException.conseil.nor }
+    : undefined;
+  const canonicalizations = franceConseilDilaCanonicalizationsFor(
+    scope.year,
+    scope.documentType,
+    input.policyVersion,
+  );
   const diagnostics = input.diagnostics ?? createDiagnosticsCollector("fr-conseil-constitutionnel");
   const hooks: CrawlerExecutionHooks = {
     signal: input.signal,
@@ -706,8 +1067,9 @@ export async function discoverFranceDilaConstitInventory(input: {
   const stockResponse = await fetchDila(listing.stock.url, DILA_CONSTIT_MAX_COMPRESSED_BYTES, diagnostics, hooks);
   const stockCompressed = new Uint8Array(await stockResponse.arrayBuffer());
   const stockProvenance = archiveProvenance(listing.stock, stockResponse, stockCompressed, 0, "stock");
-  const parsedStock = parseDilaConstitTar(stockCompressed, { kind: "stock" });
+  const parsedStock = parseDilaConstitTar(stockCompressed, { kind: "stock" }, undefined, absenceProbe);
   let cumulativeXmlMembers = parsedStock.xmlMemberCount;
+  const dilaAbsenceScan: DilaConstitAbsenceScan = { ...parsedStock.absenceScan };
 
   const appliedIncrements: Array<{
     provenance: DilaConstitArchiveProvenance;
@@ -715,6 +1077,7 @@ export async function discoverFranceDilaConstitInventory(input: {
     seenDilaIds: string[];
     expandedBytes: number;
     xmlMemberCount: number;
+    absenceScan: DilaConstitAbsenceScan;
   }> = [];
   for (const increment of listing.increments) {
     const response = await fetchDila(increment.url, DILA_CONSTIT_MAX_COMPRESSED_BYTES, diagnostics, hooks);
@@ -723,8 +1086,12 @@ export async function discoverFranceDilaConstitInventory(input: {
     const parsed = parseDilaConstitTar(
       compressed,
       { kind: "increment", prefix: incrementMemberPrefix(increment.filename) },
+      undefined,
+      absenceProbe,
     );
     cumulativeXmlMembers += parsed.xmlMemberCount;
+    dilaAbsenceScan.identityHits += parsed.absenceScan.identityHits;
+    dilaAbsenceScan.norHits += parsed.absenceScan.norHits;
     if (cumulativeXmlMembers > DILA_CONSTIT_MAX_XML_MEMBERS) {
       throw new Error("case_backfill.france_dila_tar_member_limit");
     }
@@ -734,9 +1101,18 @@ export async function discoverFranceDilaConstitInventory(input: {
       seenDilaIds: parsed.seenDilaIds,
       expandedBytes: parsed.expandedBytes,
       xmlMemberCount: parsed.xmlMemberCount,
+      absenceScan: parsed.absenceScan,
     });
   }
 
+  const canonicalizationAuthorityEvidence = new Map<string, FranceConseilAuthorityEvidence>();
+  for (const canonicalization of canonicalizations) {
+    const authorityUrl = `https://www.conseil-constitutionnel.fr/decision/${scope.year}/${canonicalization.conseilRecordId}.htm`;
+    canonicalizationAuthorityEvidence.set(
+      canonicalization.conseilRecordId.toLowerCase(),
+      await fetchFranceConseilAuthorityEvidence(authorityUrl, diagnostics, hooks),
+    );
+  }
   const overlay = overlayDilaConstitRecords({
     stock: { provenance: stockProvenance, records: parsedStock.records },
     increments: appliedIncrements.map((increment) => ({
@@ -745,7 +1121,12 @@ export async function discoverFranceDilaConstitInventory(input: {
       seenDilaIds: increment.seenDilaIds,
     })),
     scope: { year: scope.year, documentType: scope.documentType },
+    canonicalizations,
+    canonicalizationAuthorityEvidence,
   });
+  const retirementByCanonicalDilaId = new Map(
+    overlay.retirements.map((retirement) => [retirement.canonicalDilaId, retirement]),
+  );
   const enumerationArtifacts: CaseBackfillEnumerationArtifact[] = [
     archiveEnumerationArtifact({
       provenance: stockProvenance,
@@ -771,6 +1152,7 @@ export async function discoverFranceDilaConstitInventory(input: {
   };
   const items: FranceDilaInventoryItem[] = overlay.records.map(({ record, provenance }) => {
     const incremented = provenance.kind === "increment";
+    const retirement = retirementByCanonicalDilaId.get(record.dilaId);
     return {
       stableItemKey: `constit:${record.dilaId.toLowerCase()}`,
       sourceRecordId: record.conseilRecordId,
@@ -790,6 +1172,16 @@ export async function discoverFranceDilaConstitInventory(input: {
           decisionNumber: record.decisionNumber,
           qualifiedNature: record.qualifiedNature,
           archiveMemberPath: record.archiveMemberPath,
+          ...(retirement ? {
+            retirement: {
+              retiredDilaId: retirement.retiredDilaId,
+              canonicalDilaId: retirement.canonicalDilaId,
+              conseilRecordId: retirement.conseilRecordId,
+              basis: retirement.basis,
+              verifiedAt: observedAt,
+              corroborationRef: retirement.corroborationRef,
+            },
+          } : {}),
         },
         stock: {
           filename: stockProvenance.filename,
@@ -815,6 +1207,30 @@ export async function discoverFranceDilaConstitInventory(input: {
     checkpoint: input.checkpoint,
     requestGovernor: input.requestGovernor,
   });
+
+  // E1: recompute the absence proof from this discovery's complete stock plus
+  // every ordered increment, on every attempt. Only the exact v2 2022 DC tuple
+  // can authorize the fallback; the identity/NOR scan and Conseil corroboration
+  // both fail closed.
+  if (omissionException) {
+    const authorityEvidence = await fetchFranceConseilAuthorityEvidence(
+      omissionException.authorityUrl,
+      diagnostics,
+      hooks,
+    );
+    items.push(buildFranceConseilOmissionItem({
+      year: scope.year,
+      documentType: scope.documentType,
+      policyVersion: input.policyVersion,
+      dilaAbsenceScan,
+      conseil,
+      authorityEvidence,
+      stockProvenance,
+      incrementCount: appliedIncrements.length,
+      memberScanCount: cumulativeXmlMembers,
+      observedAt,
+    }));
+  }
   reconcileFranceDilaConseilIdentity(items, conseil);
 
   const coverageEvidence = {
@@ -852,6 +1268,15 @@ export async function discoverFranceDilaConstitInventory(input: {
       pageCount: conseil.pageCount,
       exactIdentitySetMatch: true,
       evidence: conseil.coverageEvidence,
+    },
+    exceptions: {
+      policyVersion: input.policyVersion ?? null,
+      appliedExceptionIds: [
+        ...(omissionException ? ["e1_conseil_provider_fallback"] : []),
+        ...(overlay.retirements.length ? ["e2_dila_canonicalization"] : []),
+      ],
+      omissionFallbackItemCount: omissionException ? 1 : 0,
+      canonicalizationCount: overlay.retirements.length,
     },
     qpc360Crosscheck: "not_in_primary_manifest",
   };

@@ -59,7 +59,7 @@ test("M5 readiness reports the approved Germany canary and the owner-approved Fr
   assert.deepEqual(franceQpcDc.approvedYears, approvedYears);
   assert.equal(franceQpcDc.policyAuthorized, true);
   assert.equal(franceQpcDc.executionEnabled, false);
-  assert.equal(franceQpcDc.policyVersion, "france-dila-constit-2026-09-v1");
+  assert.equal(franceQpcDc.policyVersion, "france-dila-constit-2026-09-v2");
   assert.equal(franceQpcDc.policyReviewDueAt, "2027-03-15");
   assert.deepEqual(franceQpcDc.blocking, []);
 
@@ -85,7 +85,7 @@ test("M5 readiness reports the approved Germany canary and the owner-approved Fr
     country: "France",
     year: 2010,
     documentType: "QPC",
-    policyVersion: "france-dila-constit-2026-09-v1",
+    policyVersion: "france-dila-constit-2026-09-v2",
     policyReviewDueAt: "2027-03-15",
   });
   assert.equal(franceSelections.some((entry) => entry.year === 2024 && entry.documentType === "DC"), true);

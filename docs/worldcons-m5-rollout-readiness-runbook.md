@@ -103,7 +103,7 @@ nextApprovalRequired           = France L/LP/OTHER (order 3)
 국가별 blocker:
 
 - **Germany 1998~2023**: `germany_expansion_not_approved`. 기존 `bverfg-unattended-canary-v1`(review due 2027-03-03)은 2024 한 해만 승인한다. 새 연도는 새 owner-approved policy version이 필요하다.
-- **France QPC/DC(2010~2024)**: 승인됨. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS=approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=true`, immutable row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v1`(review due 2027-03-15, migration `20260916090000`). history flag off이면 `case_backfill.france_history_disabled`로 fail-closed다. env flag만으로는 열리지 않으며, 코드에 기록된 승인 metadata와 정확한 flag가 모두 필요하다.
+- **France QPC/DC(2010~2024)**: 승인됨. `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS=approved_source_policy`, `FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_APPROVED=true`, 현재 successor immutable row `fr-conseil-constitutionnel` / `france-dila-constit-2026-09-v2`(review due 2027-03-15, migration `20260916100000`). v1 row `france-dila-constit-2026-09-v1`(migration `20260916090000`)은 immutable하며 closed 2024/2023 snapshot을 계속 bind한다. v2는 owner가 승인한 E1/E2 exact tuple만 추가하고 year/type scope는 넓히지 않는다. history flag off이면 `case_backfill.france_history_disabled`로 fail-closed다. env flag만으로는 열리지 않으며, 코드에 기록된 승인 metadata와 정확한 flag가 모두 필요하다. **v2 migration은 아직 production에 적용되지 않았고, 2022 production backfill/snapshot은 실행되지 않았다.**
 - **France L/LP/OTHER**: `owner_source_policy_not_approved` + `deferred_after_qpc_dc`. 위 QPC/DC 승인에 포함되지 않으며 새 policy version이 필요하다.
 - **Spain SENTENCIA(2020~2024)**: `spain_hj_legal_robots_policy_blocked`. `robots.txt` 404, 법적 고지 403에 대한 법률·robots 검토와 명시적 policy 승인 전에는 2024 baseline조차 fail-closed다.
 - **Spain 1980~2019 SENTENCIA/DECLARACION, AUTO**: 위 승인 + 단계 순서(`deferred_after_*`).
@@ -118,7 +118,7 @@ nextApprovalRequired           = France L/LP/OTHER (order 3)
 ## 7. 새 tranche 승인 절차 (M5 이후)
 
 1. 해당 국가 source policy review 문서를 owner가 검토·승인하고 named reviewer/retention/review deadline을 확정한다.
-2. immutable `source_corpus_policies` row를 삽입하는 새 timestamp migration을 추가한다(Germany `20260903188000`, France `20260916090000` 패턴: conflict-detecting, 재실행 멱등).
+2. immutable `source_corpus_policies` row를 삽입하는 새 timestamp migration을 추가한다(Germany `20260903188000`, France `20260916090000`/v2 successor `20260916100000` 패턴: conflict-detecting, 재실행 멱등). successor는 `supersedes_policy_version`으로 lineage만 기록하고 이전 row를 수정·삭제하지 않는다.
 3. scope module의 승인 metadata(policy version, review due, approved 범위)를 그 immutable row와 일치하도록 갱신한다. env flag는 계속 별도로 요구한다.
 4. `pnpm rollout:readiness --source=... --year=... --document-type=... --require-authorized`가 승인 후 flag를 켰을 때만 exit 0이 되는지 확인한다.
 5. 그 뒤에만 `backfill:corpus discover`로 한 tranche씩 진행한다. Catalog 공개는 별도 단계다.
@@ -129,7 +129,7 @@ nextApprovalRequired           = France L/LP/OTHER (order 3)
 pnpm typecheck                          통과
 pnpm lint                               통과
 pnpm check                              All checks passed.
-pnpm test:backfill                      127 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
+pnpm test:backfill                      142 pass / 0 fail / 1 skip (disposable PostgreSQL 부재)
 pnpm test:p1                            22 pass / 0 fail / 1 skip
 pnpm test:ingest-workflow               18 pass / 0 fail
 pnpm test:postgres:release:static       7 pass / 0 fail / 0 skip
@@ -144,7 +144,7 @@ service defense 회귀 테스트(`constitutional-case-rollout-readiness-gate5.te
 - Germany 2024는 기존 policy + history flag 조건이 성립할 때만 fetch가 진행된다.
 - `lib/backfill/service.ts`가 discover/non-discover 두 경로 모두에서 `beginRun` 이전에 gate를 호출한다.
 
-PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip이며, M1 CI release gate가 skip 0을 강제한다. 기존 migration은 수정하지 않았다. France owner approval은 새 timestamp migration `20260916090000`으로, 2024 canary에서 발견된 open authoritative-count 제약 보정은 별도 새 migration `20260916093000`으로 추가했다.
+PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip이며, M1 CI release gate가 skip 0을 강제한다. 기존 migration은 수정하지 않았다. France owner approval은 새 timestamp migration `20260916090000`으로, 2024 canary에서 발견된 open authoritative-count 제약 보정은 별도 새 migration `20260916093000`으로 추가했다. 2026-09-16 owner의 E1/E2 승인 이후 v2 successor는 새 timestamp migration `20260916100000`(policy row), `20260916101000`(strict `source_inventory_item_upsert_v3` E1 branch), `20260916102000`(attribution v2)으로 추가했으며, production에는 아직 적용하지 않았다.
 
 ### M5-B1/B2 production evidence (2026-09-16)
 
@@ -165,7 +165,7 @@ PostgreSQL 통합 테스트 1건은 이 환경에 disposable DB가 없어 skip�
 - 2022 QPC는 `20225813AN_QPC`에 DILA ID `CONSTEXT000046216504`와 `CONSTEXT000047955984`가 동시에 존재해 `france_dila_conseil_identity_duplicate`로 차단된다.
 - 2022 DC는 complete stock+21 increments에도 Conseil identity `2022847DC`가 없어 `france_inventory_identity_mismatch:dila=;web=2022847dc`로 차단된다.
 - 따라서 M5-B3.2는 **production write 0인 blocked 상태**이며, staged newest-to-oldest 규칙에 따라 2021로 건너뛰지 않는다. 두 anomaly에 대한 새 reviewed source-policy 결정 전에는 진행하지 않는다.
-- M5-B2.3에서 위 결정을 위한 **문서 전용 제안**을 작성했다: `docs/worldcons-m5b23-france-2022-source-policy-v2-proposal-20260916.md`. 2022 DC의 DILA 누락을 E1(정확히 1건, Conseil provider fallback `2022847DC`, stable key `constit:conseil-omission:2022847dc`, reasonCode `dila_omission_verified_absent`)으로, 2022 QPC의 DILA 중복을 E2(canonical `CONSTEXT000047955984`, retired `CONSTEXT000046216504`, basis `matches_current_conseil_title_and_ecli`)로 분리한다. **제안은 NOT owner-approved**이며, v1 정책은 immutable로 유지되고 migration/코드 변경은 없다. history flag 기본값은 여전히 꺼져 있어 `france_history_disabled`, Catalog/Gemini는 off, 2024/2023 snapshot은 immutable, rollout은 2022에서 정지하며 France QPC/DC 진행도는 계속 **4/30 production-complete**다.
+- M5-B2.3은 owner가 **E1과 E2 모두 승인**했고 로컬 구현·controller hardening·live read-only 검증까지 완료됐다. E1은 exact one-case Conseil fallback `2022847DC`에 한정되며 매 discover마다 전체 DILA raw XML chain에서 sourceRecordId/NOR를 재검색하고 공식 Conseil detail ECLI/JORF를 corroborate한다. E2는 exact pair `CONSTEXT000047955984`/`CONSTEXT000046216504`만 허용하며 frozen Conseil title/ECLI와 현재 공식 detail이 일치할 때만 canonicalization한다. live v2 verifier는 **2022 QPC 67/67**, **2022 DC 13/13** exact match를 확인했다. v2 migrations는 아직 production에 적용되지 않았고 2022 snapshot/backfill도 실행하지 않았으므로 France 진행도는 계속 **4/30 production-complete**다. history flag 기본값은 `france_history_disabled`, Catalog/Gemini는 off, 2024/2023 snapshot은 immutable, 2021 진행도 계속 금지한다.
 - 상세 증적: `docs/worldcons-m5b2-france-2024-private-shadow-canary-20260916.md`.
 - hardening 증적: `docs/worldcons-m5b21-france-crawlee-listener-hardening-20260916.md`.
 - 2023 expansion 증적: `docs/worldcons-m5b31-france-2023-private-shadow-expansion-20260916.md`.
