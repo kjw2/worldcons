@@ -95,9 +95,23 @@ function decisionPathIdentity(href: string) {
   return match ? { pathYear: Number(match[1]), sourceRecordId: match[2] } : null;
 }
 
-function titleMatchesType(title: string, documentType: FranceConseilDocumentType) {
-  const normalized = normalizedFrenchText(title).toUpperCase();
-  return documentType === "QPC" ? /\bQPC\b/.test(normalized) : /\bDC\b/.test(normalized);
+/**
+ * Recognizes the requested QPC/DC type marker in an official Conseil title.
+ *
+ * Standard titles separate the marker with a space ("... QPC du ..."), but the
+ * official pages intermittently render the marker glued to the following
+ * lowercase French word ("... QPCdu 16 avril 2021"), which removes the word
+ * boundary and would otherwise drop a real decision. Accept the exact marker
+ * when it is bounded as before OR directly followed by a lowercase letter; a
+ * following digit, uppercase letter, or any other glued token still fails
+ * closed. This helper is shared by discovery and the verify strategy so both
+ * stages apply the same exact rule.
+ */
+export function franceConseilTitleMatchesType(title: string, documentType: FranceConseilDocumentType) {
+  const marker = documentType === "QPC" ? "QPC" : "DC";
+  const normalized = normalizedFrenchText(title);
+  if (new RegExp(`\\b${marker}\\b`).test(normalized.toUpperCase())) return true;
+  return new RegExp(`(?:^|[^A-Za-z0-9])${marker}(?=[a-z])`).test(normalized);
 }
 
 function expectedCountFromPage(html: string) {
@@ -123,7 +137,7 @@ export function parseFranceConseilInventoryPage(
     const identity = decisionPathIdentity(href);
     if (!identity || identity.pathYear !== input.year) return;
     const title = cleanFrenchText($(anchor).attr("title") ?? $(anchor).text());
-    if (!title || !titleMatchesType(title, input.documentType)) return;
+    if (!title || !franceConseilTitleMatchesType(title, input.documentType)) return;
     const discoveredUrl = new URL(href, CONSEIL_BASE_URL).toString();
     const stableItemKey = `conseil:${identity.sourceRecordId.toLowerCase()}`;
     if (items.has(stableItemKey)) return;

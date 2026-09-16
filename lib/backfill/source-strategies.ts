@@ -11,6 +11,7 @@ import { assertSpainSentenciaYearEnabled } from "@/lib/backfill/spain-scope";
 import type { NormalizedArticle } from "@/lib/sources/types";
 import {
   discoverFranceConseilInventory,
+  franceConseilTitleMatchesType,
   parseFranceConseilDecisionDate,
 } from "@/lib/crawlee/france-conseil-inventory";
 import {
@@ -256,7 +257,7 @@ function franceStrategy(
       if (normalized.contentType !== "decision") errors.push("document_type_mismatch");
       const title = normalized.originalTitle?.trim() ?? "";
       const requestedType = franceConseilDocumentType(snapshot.documentType);
-      if (!requestedType || (requestedType === "QPC" ? !/\bQPC\b/i.test(title) : !/\bDC\b/i.test(title))) {
+      if (!requestedType || !franceConseilTitleMatchesType(title, requestedType)) {
         errors.push("resolution_type_mismatch");
       }
       const decisionDate = normalized.originalPublishedAt?.slice(0, 10)

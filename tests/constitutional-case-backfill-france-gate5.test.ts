@@ -245,6 +245,69 @@ test("France decision date parser handles accents and premier-day notation witho
   assert.equal(parseFranceConseilDecisionDate("lastmod 2024-12-31"), null);
 });
 
+test("France official list parser accepts the official glued QPCdu/DCdu titles and still rejects unrelated typed tokens", () => {
+  const gluedFixture = `<!doctype html><html><body>
+    <div class="view-recherche">
+      <a href="/decision/2021/2021897QPC.htm" title="Décision n° 2021-897 QPCdu 16 avril 2021">QPC</a>
+      <a href="/decision/2021/2021911_919QPC.htm" title="Décision n° 2021-911/919 QPCdu 4 juin 2021">QPC groupée</a>
+      <a href="/decision/2021/2021873DC.htm" title="Décision n° 2021-873 DCdu 2 décembre 2021">DC</a>
+      <a href="/decision/2021/2021900QPC.htm" title="Décision n° 2021-900 QPC360 du 1 janvier 2021">QPC360</a>
+      <a href="/decision/2021/2021901QPC.htm" title="Décision n° 2021-901 QPCDU du 1 janvier 2021">glued uppercase</a>
+      <a href="/decision/2021/2021902QPC.htm" title="Décision n° 2021-902 LP du 1 janvier 2021">LP</a>
+    </div>
+  </body></html>`;
+  const qpc = parseFranceConseilInventoryPage(gluedFixture, { year: 2021, documentType: "QPC" });
+  assert.deepEqual(qpc.items.map((entry) => entry.sourceRecordId).sort(), ["2021897QPC", "2021911_919QPC"]);
+  const dc = parseFranceConseilInventoryPage(gluedFixture, { year: 2021, documentType: "DC" });
+  assert.deepEqual(dc.items.map((entry) => entry.sourceRecordId), ["2021873DC"]);
+});
+
+test("France verify strategy applies the same glued-title acceptance to 2021 QPC and rejects unrelated tokens", () => {
+  const snapshot2021: CaseBackfillSnapshot = {
+    ...franceSnapshot,
+    scopeFrom: "2021-01-01",
+    scopeTo: "2021-12-31",
+    documentType: "QPC",
+  };
+  const item = {
+    itemId: "55555555-5555-4555-8555-555555555555",
+    stableItemKey: "constit:constext000043000001",
+    sourceRecordId: "2021897QPC",
+    discoveredUrl: "https://www.conseil-constitutionnel.fr/decision/2021/2021897QPC.htm",
+    authorityUrl: null,
+    documentType: "QPC",
+    decisionDateHint: "2021-04-16",
+    inventoryMetadata: franceInventoryMetadata,
+    resolutionStatus: "normalized",
+    currentFetchArtifactId: null,
+    currentNormalizationArtifactId: null,
+    verifiedNormalizationArtifactId: null,
+    publishedNormalizationArtifactId: null,
+    itemLeaseExpiresAt: "2026-09-03T12:00:00.000Z",
+  };
+  const valid = {
+    sourceKey: snapshot2021.sourceKey,
+    jurisdiction: "France",
+    institutionName: "Conseil constitutionnel",
+    contentType: "decision" as const,
+    originalUrl: item.discoveredUrl,
+    canonicalUrl: item.discoveredUrl,
+    originalLanguage: "fr",
+    originalTitle: "Décision n° 2021-897 QPCdu 16 avril 2021",
+    originalPublishedAt: "2021-04-16T00:00:00.000Z",
+    metadata: { caseNumber: "2021-897 QPC" },
+  };
+  assert.deepEqual(validateNormalizedCase(valid, item, snapshot2021), []);
+  assert.deepEqual(validateNormalizedCase({
+    ...valid,
+    originalTitle: "Décision n° 2021-873 DCdu 2 décembre 2021",
+  }, item, snapshot2021), ["resolution_type_mismatch"]);
+  assert.deepEqual(validateNormalizedCase({
+    ...valid,
+    originalTitle: "Décision n° 2021-900 QPC360 du 1 janvier 2021",
+  }, item, snapshot2021), ["resolution_type_mismatch"]);
+});
+
 test("DILA directory parser selects one latest same-origin global stock", () => {
   const stock = parseDilaConstitDirectory(`<a href="Freemium_constit_global_20240101-010203.tar.gz">old</a>
     <a href="/OPENDATA/CONSTIT/Freemium_constit_global_20250713-140000.tar.gz">latest</a>
