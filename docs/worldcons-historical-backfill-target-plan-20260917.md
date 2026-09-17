@@ -36,7 +36,7 @@ Rules:
 - source: `fr-conseil-constitutionnel`
 - document types: `QPC`, `DC`
 - scope: 2010-2024 (Gate 5)
-- approved policy: `france-dila-constit-2026-09-v1`, additive successor `france-dila-constit-2026-09-v2`, and additive successor `france-dila-constit-2026-09-v3` (adds exactly six 2017 QPC DILA-omission tuples)
+- approved policy: `france-dila-constit-2026-09-v1`, additive successor `france-dila-constit-2026-09-v2`, additive successor `france-dila-constit-2026-09-v3` (adds exactly six 2017 QPC DILA-omission tuples), and additive successor `france-dila-constit-2026-09-v4` (adds exactly one 2013 QPC authority-URL case canonicalization, `CONSTEXT000027147071`/`2012293_294_295_296QPC` → `2012293_294_295_296qpc`)
 - coverage assurance: `authoritative_crosschecked` only when the DILA stock+ordered-increment identity set, the official Conseil active-type facet identity set, and the unique manifest count all match
 
 **Exact target: 1,280 documents = 1,005 QPC + 275 DC.**
@@ -68,7 +68,7 @@ Production corpus completion:
 - **remaining: 928 / 1,280 (20 tranches, 2010-2019)**;
 - **next frontier: 2019**, then newest-to-oldest.
 
-The two approved 2022 source-policy exceptions are inside this exact target and do not change it: one E2 DILA canonicalization (retired `CONSTEXT000046216504` → canonical `CONSTEXT000047955984`) and one E1 Conseil-only DC fallback (`2022847DC`). The 2017 QPC frontier additionally required six exact E1 Conseil-only QPC fallbacks (`2016613QPC`, `2017663QPC`, `2017664QPC`, `2017665QPC`, `2017666QPC`, `2017670QPC`), authorized by `france-dila-constit-2026-09-v3`; they are inside the same exact 75-count target and do not change it. A read-only 2016-2010 characterization found no further omissions or duplicate identities.
+The two approved 2022 source-policy exceptions are inside this exact target and do not change it: one E2 DILA canonicalization (retired `CONSTEXT000046216504` → canonical `CONSTEXT000047955984`) and one E1 Conseil-only DC fallback (`2022847DC`). The 2017 QPC frontier additionally required six exact E1 Conseil-only QPC fallbacks (`2016613QPC`, `2017663QPC`, `2017664QPC`, `2017665QPC`, `2017666QPC`, `2017670QPC`), authorized by `france-dila-constit-2026-09-v3`; they are inside the same exact 75-count target and do not change it. A read-only 2016-2010 characterization found no further omissions or duplicate identities; 2013 QPC requires one E3 authority-URL case canonicalization (`CONSTEXT000027147071`, uppercase DILA URL → official lowercase facet URL), authorized by `france-dila-constit-2026-09-v4`.
 
 All of the above is `corpus_backfill_complete`; `public_enrichment_complete` is false (Catalog and Gemini remain off).
 

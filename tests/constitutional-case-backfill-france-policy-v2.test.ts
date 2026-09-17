@@ -116,18 +116,23 @@ function conseilInventory(
   };
 }
 
-test("France policy metadata recognizes exactly v1/v2/v3 and keeps the approved scope", () => {
-  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v3");
+test("France policy metadata recognizes exactly v1/v2/v3/v4 and keeps the approved scope", () => {
+  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v4");
   assert.equal(FRANCE_CONSEIL_POLICY_VERSION_V1, "france-dila-constit-2026-09-v1");
   assert.equal(FRANCE_CONSEIL_POLICY_VERSION_V2, "france-dila-constit-2026-09-v2");
   assert.equal(franceConseilPolicyVersionRecognized(FRANCE_CONSEIL_POLICY_VERSION_V1), true);
   assert.equal(franceConseilPolicyVersionRecognized(FRANCE_CONSEIL_POLICY_VERSION_V2), true);
   assert.equal(franceConseilPolicyVersionRecognized("france-dila-constit-2026-09-v3"), true);
+  assert.equal(franceConseilPolicyVersionRecognized("france-dila-constit-2026-09-v4"), true);
   assert.equal(franceConseilPolicyVersionRecognized(null), false);
   assert.deepEqual(franceConseilApprovedPolicyDescriptor(), {
-    policyVersion: "france-dila-constit-2026-09-v3",
-    supersedesPolicyVersion: FRANCE_CONSEIL_POLICY_VERSION_V2,
-    priorPolicyVersions: [FRANCE_CONSEIL_POLICY_VERSION_V1, FRANCE_CONSEIL_POLICY_VERSION_V2],
+    policyVersion: "france-dila-constit-2026-09-v4",
+    supersedesPolicyVersion: "france-dila-constit-2026-09-v3",
+    priorPolicyVersions: [
+      FRANCE_CONSEIL_POLICY_VERSION_V1,
+      FRANCE_CONSEIL_POLICY_VERSION_V2,
+      "france-dila-constit-2026-09-v3",
+    ],
     reviewDueAt: "2027-03-15",
     documentTypes: ["QPC", "DC"],
     approvedYearFrom: 2010,
@@ -682,6 +687,7 @@ test("France v2 discovery applies E2 and keeps v1 fail-closed for the same corpu
       appliedExceptionIds: ["e2_dila_canonicalization"],
       omissionFallbackItemCount: 0,
       canonicalizationCount: 1,
+      authorityUrlCanonicalizationCount: 0,
     });
 
     await assert.rejects(
@@ -746,6 +752,7 @@ test("France v2 discovery synthesizes E1 for 2022 DC and fails stale when DILA l
       appliedExceptionIds: ["e1_conseil_provider_fallback"],
       omissionFallbackItemCount: 1,
       canonicalizationCount: 0,
+      authorityUrlCanonicalizationCount: 0,
     });
 
     await assert.rejects(

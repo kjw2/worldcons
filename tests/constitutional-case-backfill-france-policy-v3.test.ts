@@ -77,7 +77,7 @@ function buildInput(exception: FranceConseilOmissionException) {
 }
 
 test("France v3 exposes exactly the six 2017 QPC omission tuples and nothing else", () => {
-  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, FRANCE_CONSEIL_POLICY_VERSION_V3);
+  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v4");
   assert.equal(FRANCE_CONSEIL_V3_OMISSION_EXCEPTIONS.length, 6);
   const ids = [...FRANCE_CONSEIL_V3_OMISSION_EXCEPTIONS].map((e) => e.sourceRecordId).sort();
   assert.deepEqual(ids, [

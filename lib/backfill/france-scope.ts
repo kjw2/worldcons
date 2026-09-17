@@ -11,22 +11,23 @@ export const FRANCE_CONSEIL_HISTORY_SOURCE_POLICY_STATUS = "approved_source_poli
 export const FRANCE_CONSEIL_POLICY_VERSION_V1 = "france-dila-constit-2026-09-v1";
 export const FRANCE_CONSEIL_POLICY_VERSION_V2 = "france-dila-constit-2026-09-v2";
 export const FRANCE_CONSEIL_POLICY_VERSION_V3 = "france-dila-constit-2026-09-v3";
+export const FRANCE_CONSEIL_POLICY_VERSION_V4 = "france-dila-constit-2026-09-v4";
 /**
- * `france-dila-constit-2026-09-v3` is the current reviewed successor for future
- * discovery. It keeps the exact v1/v2 scope (2010-2024 QPC/DC, DILA-ID stable
- * identity) and adds only the owner-approved exact-tuple exceptions that the
- * official sources require:
- *   - the v2 2022 DC E1 omission fallback and 2022 QPC E2 canonicalization stay
- *     recognized through v2;
- *   - v3 adds exactly six 2017 QPC E1 omission fallbacks.
- * `france-dila-constit-2026-09-v1` and `...-v2` stay immutable and continue to
- * bind the already-closed snapshots.
+ * `france-dila-constit-2026-09-v4` is the current reviewed successor for future
+ * discovery. It keeps the exact v1/v2/v3 scope (2010-2024 QPC/DC, DILA-ID
+ * stable identity), recognizes the v2 2022 E1/E2 and v3 2017 QPC E1 exceptions,
+ * and adds exactly one owner-approved E3 authority-URL canonicalization:
+ * DILA `CONSTEXT000027147071` (`2012293_294_295_296QPC`) is published by the
+ * official Conseil facet only as the lowercase canonical
+ * `2012293_294_295_296qpc`, and the uppercase DILA URL_CC form 301-redirects.
+ * `france-dila-constit-2026-09-v1`/`-v2`/`-v3` stay immutable.
  */
-export const FRANCE_CONSEIL_APPROVED_POLICY_VERSION = FRANCE_CONSEIL_POLICY_VERSION_V3;
+export const FRANCE_CONSEIL_APPROVED_POLICY_VERSION = FRANCE_CONSEIL_POLICY_VERSION_V4;
 export const FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT = "2027-03-15";
 export const FRANCE_CONSEIL_PRIOR_POLICY_VERSIONS = [
   FRANCE_CONSEIL_POLICY_VERSION_V1,
   FRANCE_CONSEIL_POLICY_VERSION_V2,
+  FRANCE_CONSEIL_POLICY_VERSION_V3,
 ] as const;
 /**
  * The WorldCons owner explicitly approved the France DILA/Conseil QPC/DC source
@@ -233,6 +234,54 @@ export const FRANCE_CONSEIL_V3_OMISSION_EXCEPTIONS: readonly FranceConseilOmissi
 ]);
 
 /**
+ * E3 — the single owner-approved exact authority-URL case canonicalization.
+ *
+ * DILA `CONSTEXT000027147071` carries the uppercase Conseil record id
+ * `2012293_294_295_296QPC` in `URL_CC`, but the official Conseil site and the
+ * official 2013 QPC annual/type facet publish the decision only under the
+ * lowercase canonical `2012293_294_295_296qpc`; the uppercase form returns a
+ * 301 redirect, which the fail-closed governed France fetch refuses to follow.
+ * For this exact DILA id the discovery adopts the official facet record id and
+ * URL. There is no wildcard, case-wide, or general redirect-tolerance rule.
+ */
+export interface FranceConseilAuthorityUrlCanonicalizationException {
+  readonly exceptionId: "e3_authority_url_canonicalization";
+  readonly year: number;
+  readonly documentType: FranceConseilDocumentType;
+  readonly dilaId: string;
+  readonly dilaRecordId: string;
+  readonly officialRecordId: string;
+  readonly officialUrl: string;
+}
+
+export const FRANCE_CONSEIL_V4_E3_CANONICALIZATION: FranceConseilAuthorityUrlCanonicalizationException = Object.freeze({
+  exceptionId: "e3_authority_url_canonicalization",
+  year: 2013,
+  documentType: "QPC",
+  dilaId: "CONSTEXT000027147071",
+  dilaRecordId: "2012293_294_295_296QPC",
+  officialRecordId: "2012293_294_295_296qpc",
+  officialUrl: "https://www.conseil-constitutionnel.fr/decision/2013/2012293_294_295_296qpc.htm",
+});
+
+export const FRANCE_CONSEIL_V4_E3_CANONICALIZATIONS: readonly FranceConseilAuthorityUrlCanonicalizationException[] = Object.freeze([
+  FRANCE_CONSEIL_V4_E3_CANONICALIZATION,
+]);
+
+export function franceConseilAuthorityUrlCanonicalizationsFor(
+  year: number,
+  documentType: string,
+  policyVersion: string | null | undefined,
+): readonly FranceConseilAuthorityUrlCanonicalizationException[] {
+  if (policyVersion !== FRANCE_CONSEIL_POLICY_VERSION_V4) return [];
+  const normalizedType = franceConseilDocumentType(documentType);
+  if (!normalizedType) return [];
+  return FRANCE_CONSEIL_V4_E3_CANONICALIZATIONS.filter((exception) => (
+    exception.year === year && exception.documentType === normalizedType
+  ));
+}
+
+/**
  * E2 — the single owner-approved DILA canonicalization pair (2022 QPC
  * `20225813AN_QPC`). Direction is frozen and the retired DILA ID is provenance
  * evidence only; it never becomes a second inventory item.
@@ -277,7 +326,7 @@ export function franceConseilHistorySourcePolicyApproved() {
 export function franceConseilApprovedPolicyDescriptor() {
   return {
     policyVersion: FRANCE_CONSEIL_APPROVED_POLICY_VERSION,
-    supersedesPolicyVersion: FRANCE_CONSEIL_POLICY_VERSION_V2,
+    supersedesPolicyVersion: FRANCE_CONSEIL_POLICY_VERSION_V3,
     priorPolicyVersions: [...FRANCE_CONSEIL_PRIOR_POLICY_VERSIONS],
     reviewDueAt: FRANCE_CONSEIL_APPROVED_POLICY_REVIEW_DUE_AT,
     documentTypes: [...FRANCE_CONSEIL_DOCUMENT_TYPES],
@@ -298,7 +347,8 @@ export function franceConseilPolicyVersionRecognized(
 ): value is FranceConseilPolicyVersion {
   return value === FRANCE_CONSEIL_POLICY_VERSION_V1
     || value === FRANCE_CONSEIL_POLICY_VERSION_V2
-    || value === FRANCE_CONSEIL_POLICY_VERSION_V3;
+    || value === FRANCE_CONSEIL_POLICY_VERSION_V3
+    || value === FRANCE_CONSEIL_POLICY_VERSION_V4;
 }
 
 /**
@@ -327,6 +377,17 @@ export function franceConseilOmissionExceptionsFor(
       exception.year === year && exception.documentType === normalizedType
     ));
   }
+  if (policyVersion === FRANCE_CONSEIL_POLICY_VERSION_V4) {
+    const exceptions: FranceConseilOmissionException[] = [];
+    if (year === FRANCE_CONSEIL_V2_E1_EXCEPTION.year
+      && normalizedType === FRANCE_CONSEIL_V2_E1_EXCEPTION.documentType) {
+      exceptions.push(FRANCE_CONSEIL_V2_E1_EXCEPTION);
+    }
+    exceptions.push(...FRANCE_CONSEIL_V3_OMISSION_EXCEPTIONS.filter((exception) => (
+      exception.year === year && exception.documentType === normalizedType
+    )));
+    return exceptions;
+  }
   return [];
 }
 
@@ -354,7 +415,8 @@ export function franceConseilDilaCanonicalizationsFor(
   policyVersion: string | null | undefined,
 ): readonly FranceConseilDilaCanonicalizationException[] {
   if (policyVersion !== FRANCE_CONSEIL_POLICY_VERSION_V2
-    && policyVersion !== FRANCE_CONSEIL_POLICY_VERSION_V3) return [];
+    && policyVersion !== FRANCE_CONSEIL_POLICY_VERSION_V3
+    && policyVersion !== FRANCE_CONSEIL_POLICY_VERSION_V4) return [];
   if (year !== 2022) return [];
   if (franceConseilDocumentType(documentType) !== "QPC") return [];
   return [FRANCE_CONSEIL_V2_E2_EXCEPTION];

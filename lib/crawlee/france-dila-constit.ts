@@ -9,6 +9,7 @@ import { checkRobotsAllowed, robotsDelayMs, type RobotsResult } from "@/lib/craw
 import type { CrawlerDiagnosticsCollector, CrawlerExecutionHooks } from "@/lib/crawler/types";
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import {
+  franceConseilAuthorityUrlCanonicalizationsFor,
   franceConseilDilaCanonicalizationsFor,
   franceConseilOmissionExceptionFor,
   franceConseilOmissionExceptionsFor,
@@ -1247,6 +1248,32 @@ export async function discoverFranceDilaConstitInventory(input: {
     requestGovernor: input.requestGovernor,
   });
 
+  // E3: apply only the exact owner-approved authority-URL case canonicalizations,
+  // corroborated by the official Conseil facet, before the identity reconcile.
+  const authorityUrlCanonicalizations = franceConseilAuthorityUrlCanonicalizationsFor(
+    scope.year,
+    scope.documentType,
+    input.policyVersion,
+  );
+  for (const canonicalization of authorityUrlCanonicalizations) {
+    const item = items.find((candidate) => candidate.dilaId === canonicalization.dilaId);
+    if (!item) {
+      throw new Error("case_backfill.france_dila_authority_url_canonicalization_drift:item_missing");
+    }
+    if (item.sourceRecordId !== canonicalization.dilaRecordId
+      || item.discoveredUrl !== `https://www.conseil-constitutionnel.fr/decision/${canonicalization.year}/${canonicalization.dilaRecordId}.htm`) {
+      throw new Error("case_backfill.france_dila_authority_url_canonicalization_drift:dila_record");
+    }
+    const facet = conseil.items.find(
+      (candidate) => candidate.sourceRecordId.toLowerCase() === canonicalization.officialRecordId.toLowerCase(),
+    );
+    if (!facet || facet.discoveredUrl !== canonicalization.officialUrl) {
+      throw new Error("case_backfill.france_dila_authority_url_canonicalization_drift:facet_corroboration");
+    }
+    item.sourceRecordId = canonicalization.officialRecordId;
+    item.discoveredUrl = canonicalization.officialUrl;
+  }
+
   // E1: recompute the absence proof from this discovery's complete stock plus
   // every ordered increment, on every attempt. Only the exact owner-approved
   // tuples (v2 2022 DC; v3 2017 QPC) can authorize a fallback; the
@@ -1314,9 +1341,11 @@ export async function discoverFranceDilaConstitInventory(input: {
       appliedExceptionIds: [
         ...(omissionExceptions.length > 0 ? ["e1_conseil_provider_fallback"] : []),
         ...(overlay.retirements.length ? ["e2_dila_canonicalization"] : []),
+        ...(authorityUrlCanonicalizations.length > 0 ? ["e3_authority_url_canonicalization"] : []),
       ],
       omissionFallbackItemCount: omissionExceptions.length,
       canonicalizationCount: overlay.retirements.length,
+      authorityUrlCanonicalizationCount: authorityUrlCanonicalizations.length,
     },
     qpc360Crosscheck: "not_in_primary_manifest",
   };
