@@ -151,7 +151,7 @@ export function validateNormalizedCase(
 
 function retryableError(error: unknown) {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return /timeout|timed out|network|fetch failed|econn|enotfound|429|502|503|504|rate.limit/.test(message);
+  return /timeout|timed out|network|fetch failed|econn|enotfound|429|502|503|504|rate.limit|france_authority_fetch_unverified|france_authority_fetch_failed/.test(message);
 }
 
 function errorCode(error: unknown, phase: CaseBackfillItemPhase) {
