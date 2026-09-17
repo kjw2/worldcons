@@ -45,16 +45,16 @@ Basis: the official Conseil annual/type facet (the year facet on a type-filtered
 
 | Year | QPC | DC | Total | Corpus status |
 | ---: | ---: | ---: | ---: | --- |
-| 2010 | 64 | 24 | 88 | pending |
-| 2011 | 110 | 23 | 133 | pending |
-| 2012 | 74 | 17 | 91 | pending |
-| 2013 | 66 | 22 | 88 | pending |
-| 2014 | 67 | 24 | 91 | pending |
-| 2015 | 68 | 18 | 86 | pending |
-| 2016 | 81 | 18 | 99 | pending |
-| 2017 | 75 | 14 | 89 | pending |
-| 2018 | 64 | 19 | 83 | pending |
-| 2019 | 61 | 19 | 80 | pending (next frontier) |
+| 2010 | 64 | 24 | 88 | complete |
+| 2011 | 110 | 23 | 133 | complete |
+| 2012 | 74 | 17 | 91 | complete |
+| 2013 | 66 | 22 | 88 | complete |
+| 2014 | 67 | 24 | 91 | complete |
+| 2015 | 68 | 18 | 86 | complete |
+| 2016 | 81 | 18 | 99 | complete |
+| 2017 | 75 | 14 | 89 | complete |
+| 2018 | 64 | 19 | 83 | complete |
+| 2019 | 61 | 19 | 80 | complete |
 | 2020 | 46 | 16 | 62 | complete |
 | 2021 | 75 | 21 | 96 | complete |
 | 2022 | 67 | 13 | 80 | complete |
@@ -64,9 +64,9 @@ Basis: the official Conseil annual/type facet (the year facet on a type-filtered
 
 Production corpus completion:
 
-- **complete: 352 / 1,280 (10 tranches, 2020-2024)**;
-- **remaining: 928 / 1,280 (20 tranches, 2010-2019)**;
-- **next frontier: 2019**, then newest-to-oldest.
+- **complete: 1,280 / 1,280 (30 tranches, 2010-2024)**;
+- **remaining: 0 / 1,280 (0 tranches)**;
+- **next frontier: none — the France Gate 5 QPC/DC historical tranche set is complete.**
 
 The two approved 2022 source-policy exceptions are inside this exact target and do not change it: one E2 DILA canonicalization (retired `CONSTEXT000046216504` → canonical `CONSTEXT000047955984`) and one E1 Conseil-only DC fallback (`2022847DC`). The 2017 QPC frontier additionally required six exact E1 Conseil-only QPC fallbacks (`2016613QPC`, `2017663QPC`, `2017664QPC`, `2017665QPC`, `2017666QPC`, `2017670QPC`), authorized by `france-dila-constit-2026-09-v3`; they are inside the same exact 75-count target and do not change it. A read-only 2016-2010 characterization found no further omissions or duplicate identities; 2013 QPC requires one E3 authority-URL case canonicalization (`CONSTEXT000027147071`, uppercase DILA URL → official lowercase facet URL), authorized by `france-dila-constit-2026-09-v4`.
 
@@ -180,25 +180,25 @@ Cross-cutting constraints for M1/M2: no Orca; no direct production DML (P1 RPCs 
       "targetClass": "A",
       "target": { "total": 1280, "qpc": 1005, "dc": 275 },
       "perYear": {
-        "2010": { "qpc": 64, "dc": 24, "total": 88, "corpusComplete": false },
-        "2011": { "qpc": 110, "dc": 23, "total": 133, "corpusComplete": false },
-        "2012": { "qpc": 74, "dc": 17, "total": 91, "corpusComplete": false },
-        "2013": { "qpc": 66, "dc": 22, "total": 88, "corpusComplete": false },
-        "2014": { "qpc": 67, "dc": 24, "total": 91, "corpusComplete": false },
-        "2015": { "qpc": 68, "dc": 18, "total": 86, "corpusComplete": false },
-        "2016": { "qpc": 81, "dc": 18, "total": 99, "corpusComplete": false },
-        "2017": { "qpc": 75, "dc": 14, "total": 89, "corpusComplete": false },
-        "2018": { "qpc": 64, "dc": 19, "total": 83, "corpusComplete": false },
-        "2019": { "qpc": 61, "dc": 19, "total": 80, "corpusComplete": false },
+        "2010": { "qpc": 64, "dc": 24, "total": 88, "corpusComplete": true },
+        "2011": { "qpc": 110, "dc": 23, "total": 133, "corpusComplete": true },
+        "2012": { "qpc": 74, "dc": 17, "total": 91, "corpusComplete": true },
+        "2013": { "qpc": 66, "dc": 22, "total": 88, "corpusComplete": true },
+        "2014": { "qpc": 67, "dc": 24, "total": 91, "corpusComplete": true },
+        "2015": { "qpc": 68, "dc": 18, "total": 86, "corpusComplete": true },
+        "2016": { "qpc": 81, "dc": 18, "total": 99, "corpusComplete": true },
+        "2017": { "qpc": 75, "dc": 14, "total": 89, "corpusComplete": true },
+        "2018": { "qpc": 64, "dc": 19, "total": 83, "corpusComplete": true },
+        "2019": { "qpc": 61, "dc": 19, "total": 80, "corpusComplete": true },
         "2020": { "qpc": 46, "dc": 16, "total": 62, "corpusComplete": true },
         "2021": { "qpc": 75, "dc": 21, "total": 96, "corpusComplete": true },
         "2022": { "qpc": 67, "dc": 13, "total": 80, "corpusComplete": true },
         "2023": { "qpc": 45, "dc": 15, "total": 60, "corpusComplete": true },
         "2024": { "qpc": 42, "dc": 12, "total": 54, "corpusComplete": true }
       },
-      "corpusComplete": { "items": 352, "tranches": 10, "years": "2020-2024" },
-      "remaining": { "items": 928, "tranches": 20, "years": "2010-2019" },
-      "nextFrontier": 2019,
+      "corpusComplete": { "items": 1280, "tranches": 30, "years": "2010-2024" },
+      "remaining": { "items": 0, "tranches": 0, "years": "none" },
+      "nextFrontier": null,
       "publicEnrichmentComplete": false
     },
     "germany": {
