@@ -116,18 +116,18 @@ function conseilInventory(
   };
 }
 
-test("France v2 policy metadata recognizes exactly v1 and v2 and keeps the approved scope", () => {
-  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v2");
+test("France policy metadata recognizes exactly v1/v2/v3 and keeps the approved scope", () => {
+  assert.equal(FRANCE_CONSEIL_APPROVED_POLICY_VERSION, "france-dila-constit-2026-09-v3");
   assert.equal(FRANCE_CONSEIL_POLICY_VERSION_V1, "france-dila-constit-2026-09-v1");
   assert.equal(FRANCE_CONSEIL_POLICY_VERSION_V2, "france-dila-constit-2026-09-v2");
   assert.equal(franceConseilPolicyVersionRecognized(FRANCE_CONSEIL_POLICY_VERSION_V1), true);
   assert.equal(franceConseilPolicyVersionRecognized(FRANCE_CONSEIL_POLICY_VERSION_V2), true);
-  assert.equal(franceConseilPolicyVersionRecognized("france-dila-constit-2026-09-v3"), false);
+  assert.equal(franceConseilPolicyVersionRecognized("france-dila-constit-2026-09-v3"), true);
   assert.equal(franceConseilPolicyVersionRecognized(null), false);
   assert.deepEqual(franceConseilApprovedPolicyDescriptor(), {
-    policyVersion: FRANCE_CONSEIL_POLICY_VERSION_V2,
-    supersedesPolicyVersion: FRANCE_CONSEIL_POLICY_VERSION_V1,
-    priorPolicyVersions: [FRANCE_CONSEIL_POLICY_VERSION_V1],
+    policyVersion: "france-dila-constit-2026-09-v3",
+    supersedesPolicyVersion: FRANCE_CONSEIL_POLICY_VERSION_V2,
+    priorPolicyVersions: [FRANCE_CONSEIL_POLICY_VERSION_V1, FRANCE_CONSEIL_POLICY_VERSION_V2],
     reviewDueAt: "2027-03-15",
     documentTypes: ["QPC", "DC"],
     approvedYearFrom: 2010,
@@ -351,7 +351,7 @@ test("France v2 E1 builds the exact Conseil-provider omission item with per-disc
     year: 2022,
     documentType: "DC",
     policyVersion: FRANCE_CONSEIL_POLICY_VERSION_V2,
-    dilaAbsenceScan: { identityHits: 0, norHits: 0 },
+    dilaAbsenceScan: { identityHits: 0, norHits: 0, ecliHits: 0 },
     conseil: conseilInventory([{
       id: "2022847DC",
       date: "2022-12-29",
@@ -393,8 +393,10 @@ test("France v2 E1 builds the exact Conseil-provider omission item with per-disc
       memberScanCount: 1234,
       sourceRecordIdSearched: "2022847DC",
       norSearched: "CSCL2237744S",
+      ecliSearched: "ECLI:FR:CC:2022:2022.847.DC",
       identityHits: 0,
       norHits: 0,
+      ecliHits: 0,
       result: "absent",
       observedAt: "2026-09-16T12:00:00.000Z",
     },
@@ -423,7 +425,7 @@ test("France v2 E1 fails closed on stale DILA presence, corroboration drift, and
     incrementCount: 21,
     memberScanCount: 10,
     observedAt: "2026-09-16T12:00:00.000Z",
-    dilaAbsenceScan: { identityHits: 0, norHits: 0 },
+    dilaAbsenceScan: { identityHits: 0, norHits: 0, ecliHits: 0 },
     authorityEvidence: detail,
     conseil: conseilInventory([{
       id: "2022847DC",
@@ -435,7 +437,7 @@ test("France v2 E1 fails closed on stale DILA presence, corroboration drift, and
   assert.throws(
     () => buildFranceConseilOmissionItem({
       ...base,
-      dilaAbsenceScan: { identityHits: 1, norHits: 0 },
+      dilaAbsenceScan: { identityHits: 1, norHits: 0, ecliHits: 0 },
     }),
     /france_conseil_omission_stale:identity_present_in_dila/,
   );
@@ -443,7 +445,7 @@ test("France v2 E1 fails closed on stale DILA presence, corroboration drift, and
   assert.throws(
     () => buildFranceConseilOmissionItem({
       ...base,
-      dilaAbsenceScan: { identityHits: 0, norHits: 1 },
+      dilaAbsenceScan: { identityHits: 0, norHits: 1, ecliHits: 0 },
     }),
     /france_conseil_omission_stale:identity_present_in_dila/,
   );
@@ -788,7 +790,7 @@ test("France v2 E1 raw absence scan catches the approved NOR even inside a non-Q
         date: "2022-11-01",
         number: "2022-999 L",
         record: "2022999L",
-        nor: FRANCE_CONSEIL_V2_E1_EXCEPTION.conseil.nor,
+        nor: FRANCE_CONSEIL_V2_E1_EXCEPTION.conseil.nor ?? undefined,
       }),
     },
   ]);
