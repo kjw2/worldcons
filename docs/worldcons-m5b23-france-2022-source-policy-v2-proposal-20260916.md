@@ -22,7 +22,7 @@ above plus the code/tests described in sections 8-10. While doing so:
   claim, or run was created or changed;
 - no 2022 backfill or snapshot was opened; no Catalog publication was created;
 - no Gemini/AI call was enabled or made; no push, deploy, or commit was performed;
-- Orca was not used and the coordinator SQLite database was not modified;
+- Orca was not used;
 - the untracked `artifacts/` tree and `docs/worldcons-recovery-and-improvement-plan-20260905.md`
   were not touched;
 - the France history execution flag default remains off, so readiness still returns
@@ -51,7 +51,7 @@ This proposal is grounded in the following evidence and does not invent new obse
   (migration `20260916090000_constitutional_case_france_policy_approval.sql`), whose DILA-ID-as-
   stable-identity rule and exact-identity-set reconciliation are the source of the fail-closed behavior.
 
-No coordinator approval or owner approval for this proposal has been recorded. The proposal has
+No owner approval for this proposal has been recorded. The proposal has
 **not** been submitted to the owner and must not be treated as decided.
 
 ## 3. Exact anomalies and why v1 cannot resolve them

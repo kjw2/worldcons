@@ -10,7 +10,7 @@
 - production DB에 쓰지 않았다. snapshot 생성·변경, 항목 claim, backfill run 생성, bulk historical backfill을 실행하지 않았다.
 - Catalog/article 공개와 AI/Gemini 호출을 하지 않았다. `CASE_CATALOG_WRITE_ENABLED`, `CASE_CATALOG_PUBLIC_ENABLED`, `CASE_CATALOG_PLUGIN_ENABLED`는 건드리지 않았다.
 - 기존 migration을 수정하지 않았고 새 migration도 추가하지 않았다. rollout readiness/preflight는 application guard이므로 schema 변경이 필요 없다.
-- Orca를 사용하지 않았고 coordinator SQLite DB를 수정하지 않았다.
+- Orca를 사용하지 않았다.
 - untracked `artifacts/`, `docs/worldcons-recovery-and-improvement-plan-20260905.md`를 건드리지 않았다.
 - push/deploy를 하지 않았다.
 

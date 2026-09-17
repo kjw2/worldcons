@@ -8,7 +8,7 @@
 
 - 새 discovery, 새 snapshot, supersession을 실행하지 않았다. 기존 `closed` snapshot 하나만 재개했다.
 - 운영 DB에 직접 update/delete/insert/upsert를 하지 않았다. 항목 claim/reclaim/종결은 기존 P1 RPC(`admin_*`, `source_backfill_*`)와 기존 bounded fetch drain만 사용했다.
-- coordinator SQLite DB를 수정하지 않았다. Orca를 사용하지 않았다.
+- Orca를 사용하지 않았다.
 - `CASE_CATALOG_WRITE_ENABLED`, `CASE_CATALOG_PUBLIC_ENABLED`, `CASE_CATALOG_PLUGIN_ENABLED`는 false로 유지했고, private-shadow Gemini 호출은 0이었다.
 - 기존 untracked `artifacts/`, `docs/worldcons-recovery-and-improvement-plan-20260905.md`, `scripts/.tmp-wc-inspect.ts`는 건드리지 않았다.
 - push/deploy를 하지 않았다.
@@ -109,7 +109,7 @@ publishedItemCount=0 articleLinkedCount=0 catalogPublicationCount=0 aiPayloadCou
 
 - normalize → verify → reconcile(R3)은 실행하지 않았다. `needsNormalize=280`은 다음 단계 입력이다.
 - canary PASS, article/Catalog publication, AI payload 생성은 범위 밖이다.
-- push/deploy, migration 적용, coordinator DB 수정은 하지 않았다.
+- push/deploy, migration 적용은 하지 않았다.
 - 이 환경에서는 disposable PostgreSQL 기반 통합 테스트를 실행하지 않았고, M1 CI release gate가 이를 skip 0으로 검증한다.
 
 ## 8. 근거

@@ -128,7 +128,6 @@ runFindings:
 ## 6. 금지 사항 (이 단계와 M2 모두 적용)
 
 - 운영 DB에 **직접 쓰기**(update/delete/insert) 금지. claim/lease/run 종결은 반드시 기존 P1 RPC(`source_backfill_*`, `admin_*`)로만 처리한다.
-- coordinator SQLite DB 직접 수정 금지.
 - **Orca 사용 금지**.
 - 운영 secrets/운영 DB를 CI release gate에 노출 금지(M1). CI는 disposable PostgreSQL+pgvector만 사용한다.
 - public/Catalog/AI 경계 확대 금지: `CASE_CATALOG_WRITE_ENABLED`, `CASE_CATALOG_PUBLIC_ENABLED`, `CASE_CATALOG_PLUGIN_ENABLED` false 유지, Gemini egress 금지.
@@ -142,7 +141,7 @@ M2(중단 복구 실행 및 private-shadow 완료)는 아래를 모두 만족할
 
 1. **진단 도구**: `tests/backfill-recovery-diagnostics.test.ts` 통과(정상/만료/manifest/카운트/fencing/queued 케이스 포함)와 위 실제 snapshot 진단 결과가 재현된다.
 2. **release gate (M1)**: PR/push에서 disposable PostgreSQL+pgvector gate가 실행되고, P0/P1/P2/P3/P5/BACKFILL/CATALOG PostgreSQL 테스트 **skip 0**으로 통과한다.
-3. **소유권**: snapshot/phase에 대해 살아 있는 다른 worker가 없음을 확인한다(pass 118 attempt lease 만료, `now > lease`). 실행 소유권·coordinator task를 확인한다.
+3. **소유권**: snapshot/phase에 대해 살아 있는 다른 worker가 없음을 확인한다(pass 118 attempt lease 만료, `now > lease`). 실행 소유권을 확인한다.
 4. **정리 계획 합의**: pass 118 `running`과 pass 28 `queued` 고아의 처리를 기존 P1 RPC로 어떻게 종결할지 결정한다(직접 UPDATE 금지). 만료 claim `53f3a217-...`은 기존 reclaim 경로로만 회수한다.
 5. **정책 유효성**: `bverfg-unattended-canary-v1` review_due_at(2027-03-03) 이내, 공개·AI flag false, 운영 재개 승인 범위 유지.
 6. **기대 종료식**: fetch 미완료 57건 → 0, 활성·고아 claim 0, retry/terminal 0, 그 후 normalize→verify→reconcile로 `verified + 명시적 excluded = 287`, article link/Catalog publication/AI payload 0.
