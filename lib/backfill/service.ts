@@ -19,6 +19,8 @@ import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inv
 import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
 import { discoverBverfgInventory } from "@/lib/crawlee/bverfg-inventory";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
+import { caseBackfillArtifactBlobWriteReady } from "@/lib/backfill/flags";
+import { createArtifactBlobStore, type ArtifactBlobStore } from "@/lib/storage/blob";
 import { createCaseBackfillRequestGovernor } from "@/lib/backfill/source-request-governor";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
 import {
@@ -47,6 +49,68 @@ interface CaseBackfillDependencies {
   environment?: Record<string, string | undefined>;
   spainHistorySourcePolicyApproved?: boolean;
   franceHistorySourcePolicyApproved?: boolean;
+  artifactBlobStore?: ArtifactBlobStore;
+}
+
+interface CaseBackfillArtifactBlobContext {
+  writeEnabled: boolean;
+  store: ArtifactBlobStore | null;
+}
+
+function resolveArtifactBlobContext(dependencies: CaseBackfillDependencies): CaseBackfillArtifactBlobContext {
+  const environment = dependencies.environment ?? process.env;
+  if (!caseBackfillArtifactBlobWriteReady(environment)) return { writeEnabled: false, store: null };
+  return {
+    writeEnabled: true,
+    store: dependencies.artifactBlobStore ?? createArtifactBlobStore(),
+  };
+}
+
+function requireArtifactBlobStore(artifactBlob: CaseBackfillArtifactBlobContext): ArtifactBlobStore {
+  if (!artifactBlob.store) throw new Error("case_backfill.artifact_blob_store_unavailable");
+  return artifactBlob.store;
+}
+
+async function uploadFetchReplayPayload(
+  artifactBlob: CaseBackfillArtifactBlobContext,
+  sourceKey: string,
+  payloadDocument: string,
+  payloadHash: string,
+  payloadSize: number,
+) {
+  const uploaded = await requireArtifactBlobStore(artifactBlob).put({
+    kind: "fetch",
+    sourceKey,
+    bytes: Buffer.from(payloadDocument, "utf8"),
+  });
+  if (uploaded.sha256 !== payloadHash || uploaded.size !== payloadSize) {
+    throw new Error("case_backfill.artifact_blob_integrity_mismatch");
+  }
+  return {
+    boundedReplayStorageRef: uploaded.storageRef,
+    externalizationContractVersion: uploaded.contractVersion,
+  };
+}
+
+async function uploadNormalizedOutput(
+  artifactBlob: CaseBackfillArtifactBlobContext,
+  sourceKey: string,
+  normalizedDocument: string,
+  normalizedOutputHash: string,
+) {
+  const uploaded = await requireArtifactBlobStore(artifactBlob).put({
+    kind: "normalization",
+    sourceKey,
+    bytes: Buffer.from(normalizedDocument, "utf8"),
+  });
+  if (uploaded.sha256 !== normalizedOutputHash) {
+    throw new Error("case_backfill.artifact_blob_integrity_mismatch");
+  }
+  return {
+    normalizedOutputStorageRef: uploaded.storageRef,
+    normalizedOutputSize: uploaded.size,
+    externalizationContractVersion: uploaded.contractVersion,
+  };
 }
 
 const defaultDependencies: CaseBackfillDependencies = {
@@ -177,6 +241,7 @@ async function processFetch(
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
   strategy: CaseBackfillSourceStrategy,
+  artifactBlob: CaseBackfillArtifactBlobContext,
 ) {
   if (policy.normalizeReplayPolicy !== "bounded_evidence") {
     throw new Error(`case_backfill.${policy.normalizeReplayPolicy}_storage_not_configured`);
@@ -193,7 +258,9 @@ async function processFetch(
   assignPath(replayPayload, "metadata.sourceInventory", item.inventoryMetadata);
   replayRawArticle(replayPayload);
   const payloadDocument = canonicalJson(replayPayload);
-  const artifactId = await repository.recordFetchArtifact({
+  const payloadHash = sha256(payloadDocument);
+  const payloadSize = Buffer.byteLength(payloadDocument);
+  const artifactFields = {
     itemId: item.itemId,
     authority: context.authority,
     sourcePolicyVersion: snapshot.sourcePolicyVersion,
@@ -202,13 +269,22 @@ async function processFetch(
     responseHeaders: {},
     sourceEtag: stringAt(raw.metadata, "sourceEtag"),
     sourceLastModifiedAt: stringAt(raw.metadata, "sourceLastModifiedAt"),
-    payloadHash: sha256(payloadDocument),
-    payloadSize: Buffer.byteLength(payloadDocument),
-    replayability: "bounded_evidence",
+    payloadHash,
+    payloadSize,
+    replayability: "bounded_evidence" as const,
     immutableStorageRef: null,
-    boundedReplayPayload: replayPayload,
     fetchContractVersion: input.fetchContractVersion ?? strategy.defaultFetchContractVersion,
-  });
+  };
+  const artifactId = artifactBlob.writeEnabled
+    ? await repository.recordFetchArtifact({
+      ...artifactFields,
+      boundedReplayPayload: null,
+      ...(await uploadFetchReplayPayload(artifactBlob, snapshot.sourceKey, payloadDocument, payloadHash, payloadSize)),
+    })
+    : await repository.recordFetchArtifact({
+      ...artifactFields,
+      boundedReplayPayload: replayPayload,
+    });
   await repository.completeItem({
     itemId: item.itemId,
     phase: "fetch",
@@ -226,6 +302,7 @@ async function processNormalize(
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
   strategy: CaseBackfillSourceStrategy,
+  artifactBlob: CaseBackfillArtifactBlobContext,
 ) {
   if (!item.currentFetchArtifactId) throw new Error("case_backfill.fetch_artifact_missing");
   const fetchArtifact = await repository.getFetchArtifact(item.currentFetchArtifactId);
@@ -252,20 +329,31 @@ async function processNormalize(
     },
   };
   const normalizedOutput = jsonSafe(normalizedWithProvenance) as unknown as Record<string, unknown>;
+  const normalizedDocument = canonicalJson(normalizedOutput);
+  const normalizedOutputHash = sha256(normalizedDocument);
   const validationErrors = typeof normalizedWithProvenance.canonicalUrl === "string" && typeof normalizedWithProvenance.sourceKey === "string"
     ? []
     : ["normalized_shape_invalid"];
-  const artifactId = await repository.recordNormalizationArtifact({
+  const artifactFields = {
     itemId: item.itemId,
     authority: context.authority,
     fetchArtifactId: fetchArtifact.id,
     parserVersion: input.parserVersion ?? strategy.defaultParserVersion,
     normalizationContractVersion: input.normalizationContractVersion ?? "case-normalized-v1",
-    normalizedOutput,
-    normalizedOutputHash: sha256(canonicalJson(normalizedOutput)),
-    validationStatus: validationErrors.length === 0 ? "valid" : "invalid",
+    normalizedOutputHash,
+    validationStatus: validationErrors.length === 0 ? "valid" as const : "invalid" as const,
     validationErrors,
-  });
+  };
+  const artifactId = artifactBlob.writeEnabled
+    ? await repository.recordNormalizationArtifact({
+      ...artifactFields,
+      normalizedOutput: null,
+      ...(await uploadNormalizedOutput(artifactBlob, snapshot.sourceKey, normalizedDocument, normalizedOutputHash)),
+    })
+    : await repository.recordNormalizationArtifact({
+      ...artifactFields,
+      normalizedOutput,
+    });
   if (validationErrors.length > 0) throw new Error("case_backfill.normalized_shape_invalid");
   await repository.completeItem({
     itemId: item.itemId,
@@ -309,11 +397,12 @@ async function processItem(
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
   strategy: CaseBackfillSourceStrategy,
+  artifactBlob: CaseBackfillArtifactBlobContext,
 ) {
   const phase = input.phase as CaseBackfillItemPhase;
   await context.checkpoint();
-  if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository, strategy);
-  else if (phase === "normalize") await processNormalize(item, snapshot, adapter, input, context, repository, strategy);
+  if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository, strategy, artifactBlob);
+  else if (phase === "normalize") await processNormalize(item, snapshot, adapter, input, context, repository, strategy, artifactBlob);
   else if (phase === "verify") await processVerify(item, snapshot, context, repository, strategy);
   else if (phase === "publish") await repository.publishItem({ itemId: item.itemId, authority: context.authority });
   else throw new Error("case_backfill.invalid_item_phase");
@@ -510,6 +599,7 @@ export async function runCaseBackfillPass(
       }),
     }
     : context;
+  const artifactBlob = resolveArtifactBlobContext(dependencies);
   let claimed = 0;
   let succeeded = 0;
   let retryableFailed = 0;
@@ -533,7 +623,7 @@ export async function runCaseBackfillPass(
       },
     };
     try {
-      await processItem(item, snapshot, policy, adapter, input, itemContext, repository, strategy);
+      await processItem(item, snapshot, policy, adapter, input, itemContext, repository, strategy, artifactBlob);
       succeeded += 1;
     } catch (error) {
       if (context.signal.aborted) throw error;

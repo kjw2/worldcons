@@ -178,7 +178,7 @@ export interface RecordNormalizationArtifactInput {
   fetchArtifactId: string;
   parserVersion: string;
   normalizationContractVersion: string;
-  normalizedOutput: Record<string, unknown>;
+  normalizedOutput: Record<string, unknown> | null;
   normalizedOutputHash: string;
   normalizedOutputStorageRef?: string | null;
   normalizedOutputSize?: number | null;
@@ -609,23 +609,44 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async recordFetchArtifact(input) {
-    const { data, error } = await requiredClient().rpc("source_backfill_fetch_artifact_record_v1", {
-      p_item_id: input.itemId,
-      p_p1_attempt_id: input.authority.attemptId,
-      p_p1_fencing_token: input.authority.fencingToken,
-      p_source_policy_version: input.sourcePolicyVersion,
-      p_authority_url: input.authorityUrl,
-      p_http_status: input.httpStatus,
-      p_response_headers: input.responseHeaders,
-      p_source_etag: input.sourceEtag,
-      p_source_last_modified_at: input.sourceLastModifiedAt,
-      p_payload_hash: input.payloadHash,
-      p_payload_size: input.payloadSize,
-      p_replayability: input.replayability,
-      p_immutable_storage_ref: input.immutableStorageRef,
-      p_bounded_replay_payload: input.boundedReplayPayload,
-      p_fetch_contract_version: input.fetchContractVersion,
-    });
+    const boundedReplayStorageRef = input.boundedReplayStorageRef?.trim() || null;
+    const { data, error } = boundedReplayStorageRef
+      ? await requiredClient().rpc("source_backfill_fetch_artifact_record_v2", {
+        p_item_id: input.itemId,
+        p_p1_attempt_id: input.authority.attemptId,
+        p_p1_fencing_token: input.authority.fencingToken,
+        p_source_policy_version: input.sourcePolicyVersion,
+        p_authority_url: input.authorityUrl,
+        p_http_status: input.httpStatus,
+        p_response_headers: input.responseHeaders,
+        p_source_etag: input.sourceEtag,
+        p_source_last_modified_at: input.sourceLastModifiedAt,
+        p_payload_hash: input.payloadHash,
+        p_payload_size: input.payloadSize,
+        p_replayability: input.replayability,
+        p_immutable_storage_ref: input.immutableStorageRef,
+        p_bounded_replay_payload: input.boundedReplayPayload,
+        p_bounded_replay_storage_ref: boundedReplayStorageRef,
+        p_fetch_contract_version: input.fetchContractVersion,
+        p_externalization_contract_version: input.externalizationContractVersion ?? null,
+      })
+      : await requiredClient().rpc("source_backfill_fetch_artifact_record_v1", {
+        p_item_id: input.itemId,
+        p_p1_attempt_id: input.authority.attemptId,
+        p_p1_fencing_token: input.authority.fencingToken,
+        p_source_policy_version: input.sourcePolicyVersion,
+        p_authority_url: input.authorityUrl,
+        p_http_status: input.httpStatus,
+        p_response_headers: input.responseHeaders,
+        p_source_etag: input.sourceEtag,
+        p_source_last_modified_at: input.sourceLastModifiedAt,
+        p_payload_hash: input.payloadHash,
+        p_payload_size: input.payloadSize,
+        p_replayability: input.replayability,
+        p_immutable_storage_ref: input.immutableStorageRef,
+        p_bounded_replay_payload: input.boundedReplayPayload,
+        p_fetch_contract_version: input.fetchContractVersion,
+      });
     databaseError(error);
     if (typeof data !== "string") throw new Error("case_backfill.fetch_artifact_failed");
     return data;
@@ -685,18 +706,35 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async recordNormalizationArtifact(input) {
-    const { data, error } = await requiredClient().rpc("source_backfill_normalization_artifact_record_v1", {
-      p_item_id: input.itemId,
-      p_p1_attempt_id: input.authority.attemptId,
-      p_p1_fencing_token: input.authority.fencingToken,
-      p_fetch_artifact_id: input.fetchArtifactId,
-      p_parser_version: input.parserVersion,
-      p_normalization_contract_version: input.normalizationContractVersion,
-      p_normalized_output: input.normalizedOutput,
-      p_normalized_output_hash: input.normalizedOutputHash,
-      p_validation_status: input.validationStatus,
-      p_validation_errors: input.validationErrors,
-    });
+    const normalizedOutputStorageRef = input.normalizedOutputStorageRef?.trim() || null;
+    const { data, error } = normalizedOutputStorageRef
+      ? await requiredClient().rpc("source_backfill_normalization_artifact_record_v2", {
+        p_item_id: input.itemId,
+        p_p1_attempt_id: input.authority.attemptId,
+        p_p1_fencing_token: input.authority.fencingToken,
+        p_fetch_artifact_id: input.fetchArtifactId,
+        p_parser_version: input.parserVersion,
+        p_normalization_contract_version: input.normalizationContractVersion,
+        p_normalized_output: input.normalizedOutput,
+        p_normalized_output_hash: input.normalizedOutputHash,
+        p_normalized_output_storage_ref: normalizedOutputStorageRef,
+        p_normalized_output_size: input.normalizedOutputSize ?? null,
+        p_validation_status: input.validationStatus,
+        p_validation_errors: input.validationErrors,
+        p_externalization_contract_version: input.externalizationContractVersion ?? null,
+      })
+      : await requiredClient().rpc("source_backfill_normalization_artifact_record_v1", {
+        p_item_id: input.itemId,
+        p_p1_attempt_id: input.authority.attemptId,
+        p_p1_fencing_token: input.authority.fencingToken,
+        p_fetch_artifact_id: input.fetchArtifactId,
+        p_parser_version: input.parserVersion,
+        p_normalization_contract_version: input.normalizationContractVersion,
+        p_normalized_output: input.normalizedOutput,
+        p_normalized_output_hash: input.normalizedOutputHash,
+        p_validation_status: input.validationStatus,
+        p_validation_errors: input.validationErrors,
+      });
     databaseError(error);
     if (typeof data !== "string") throw new Error("case_backfill.normalization_artifact_failed");
     return data;
