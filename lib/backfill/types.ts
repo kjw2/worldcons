@@ -77,6 +77,8 @@ export interface CaseBackfillFetchArtifact {
   replayability: "full_snapshot" | "bounded_evidence" | "non_replayable";
   immutableStorageRef: string | null;
   boundedReplayPayload: Record<string, unknown> | null;
+  boundedReplayStorageRef?: string | null;
+  externalizationContractVersion?: string | null;
   fetchContractVersion: string;
 }
 
@@ -88,6 +90,9 @@ export interface CaseBackfillNormalizationArtifact {
   normalizationContractVersion: string;
   normalizedOutput: import("@/lib/sources/types").NormalizedArticle;
   normalizedOutputHash: string;
+  normalizedOutputStorageRef?: string | null;
+  normalizedOutputSize?: number | null;
+  externalizationContractVersion?: string | null;
   validationStatus: "valid" | "invalid";
 }
 

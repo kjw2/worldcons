@@ -167,6 +167,8 @@ export interface RecordFetchArtifactInput {
   replayability: "full_snapshot" | "bounded_evidence" | "non_replayable";
   immutableStorageRef: string | null;
   boundedReplayPayload: Record<string, unknown> | null;
+  boundedReplayStorageRef?: string | null;
+  externalizationContractVersion?: string | null;
   fetchContractVersion: string;
 }
 
@@ -178,6 +180,9 @@ export interface RecordNormalizationArtifactInput {
   normalizationContractVersion: string;
   normalizedOutput: Record<string, unknown>;
   normalizedOutputHash: string;
+  normalizedOutputStorageRef?: string | null;
+  normalizedOutputSize?: number | null;
+  externalizationContractVersion?: string | null;
   validationStatus: "valid" | "invalid";
   validationErrors: unknown[];
 }
@@ -629,7 +634,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   async getFetchArtifact(artifactId) {
     const { data, error } = await requiredClient()
       .from("source_fetch_artifacts")
-      .select("id, item_id, source_policy_version, authority_url, payload_hash, replayability, immutable_storage_ref, bounded_replay_payload, fetch_contract_version")
+      .select("id, item_id, source_policy_version, authority_url, payload_hash, replayability, immutable_storage_ref, bounded_replay_payload, bounded_replay_storage_ref, externalization_contract_version, fetch_contract_version")
       .eq("id", artifactId)
       .single();
     databaseError(error);
@@ -647,6 +652,8 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       replayability: replayability as CaseBackfillFetchArtifact["replayability"],
       immutableStorageRef: nullableText(data, "immutable_storage_ref"),
       boundedReplayPayload: recordValue(data, "bounded_replay_payload"),
+      boundedReplayStorageRef: nullableText(data, "bounded_replay_storage_ref"),
+      externalizationContractVersion: nullableText(data, "externalization_contract_version"),
       fetchContractVersion: text(data, "fetch_contract_version"),
     };
   },
@@ -654,7 +661,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   async getNormalizationArtifact(artifactId, itemId) {
     let query = requiredClient()
       .from("source_normalization_artifacts")
-      .select("id, item_id, fetch_artifact_id, parser_version, normalization_contract_version, normalized_output, normalized_output_hash, validation_status")
+      .select("id, item_id, fetch_artifact_id, parser_version, normalization_contract_version, normalized_output, normalized_output_hash, normalized_output_storage_ref, normalized_output_size, externalization_contract_version, validation_status")
       .eq("id", artifactId);
     if (itemId) query = query.eq("item_id", itemId);
     const { data, error } = await query.single();
@@ -670,6 +677,9 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       normalizationContractVersion: text(data, "normalization_contract_version"),
       normalizedOutput: data.normalized_output as unknown as CaseBackfillNormalizationArtifact["normalizedOutput"],
       normalizedOutputHash: text(data, "normalized_output_hash"),
+      normalizedOutputStorageRef: nullableText(data, "normalized_output_storage_ref"),
+      normalizedOutputSize: nullableNumber(data, "normalized_output_size"),
+      externalizationContractVersion: nullableText(data, "externalization_contract_version"),
       validationStatus: validationStatus as CaseBackfillNormalizationArtifact["validationStatus"],
     };
   },
