@@ -74,6 +74,7 @@ export interface CaseBackfillFetchArtifact {
   sourcePolicyVersion: string;
   authorityUrl: string;
   payloadHash: string;
+  payloadSize?: number | null;
   replayability: "full_snapshot" | "bounded_evidence" | "non_replayable";
   immutableStorageRef: string | null;
   boundedReplayPayload: Record<string, unknown> | null;
@@ -88,7 +89,7 @@ export interface CaseBackfillNormalizationArtifact {
   fetchArtifactId: string;
   parserVersion: string;
   normalizationContractVersion: string;
-  normalizedOutput: import("@/lib/sources/types").NormalizedArticle;
+  normalizedOutput: import("@/lib/sources/types").NormalizedArticle | null;
   normalizedOutputHash: string;
   normalizedOutputStorageRef?: string | null;
   normalizedOutputSize?: number | null;

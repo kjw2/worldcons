@@ -655,7 +655,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
   async getFetchArtifact(artifactId) {
     const { data, error } = await requiredClient()
       .from("source_fetch_artifacts")
-      .select("id, item_id, source_policy_version, authority_url, payload_hash, replayability, immutable_storage_ref, bounded_replay_payload, bounded_replay_storage_ref, externalization_contract_version, fetch_contract_version")
+      .select("id, item_id, source_policy_version, authority_url, payload_hash, payload_size, replayability, immutable_storage_ref, bounded_replay_payload, bounded_replay_storage_ref, externalization_contract_version, fetch_contract_version")
       .eq("id", artifactId)
       .single();
     databaseError(error);
@@ -670,6 +670,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       sourcePolicyVersion: text(data, "source_policy_version"),
       authorityUrl: text(data, "authority_url"),
       payloadHash: text(data, "payload_hash"),
+      payloadSize: nullableNumber(data, "payload_size"),
       replayability: replayability as CaseBackfillFetchArtifact["replayability"],
       immutableStorageRef: nullableText(data, "immutable_storage_ref"),
       boundedReplayPayload: recordValue(data, "bounded_replay_payload"),
@@ -687,7 +688,12 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     if (itemId) query = query.eq("item_id", itemId);
     const { data, error } = await query.single();
     databaseError(error);
-    if (!isRecord(data) || !isRecord(data.normalized_output)) throw new Error("case_backfill.normalization_artifact_not_found");
+    if (!isRecord(data)) throw new Error("case_backfill.normalization_artifact_not_found");
+    const normalizedOutput = recordValue(data, "normalized_output");
+    const normalizedOutputStorageRef = nullableText(data, "normalized_output_storage_ref");
+    if (!normalizedOutput && !normalizedOutputStorageRef) {
+      throw new Error("case_backfill.normalization_artifact_not_found");
+    }
     const validationStatus = text(data, "validation_status");
     if (!["valid", "invalid"].includes(validationStatus)) throw new Error("case_backfill.normalization_artifact_invalid");
     return {
@@ -696,7 +702,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       fetchArtifactId: text(data, "fetch_artifact_id"),
       parserVersion: text(data, "parser_version"),
       normalizationContractVersion: text(data, "normalization_contract_version"),
-      normalizedOutput: data.normalized_output as unknown as CaseBackfillNormalizationArtifact["normalizedOutput"],
+      normalizedOutput: normalizedOutput as unknown as CaseBackfillNormalizationArtifact["normalizedOutput"],
       normalizedOutputHash: text(data, "normalized_output_hash"),
       normalizedOutputStorageRef: nullableText(data, "normalized_output_storage_ref"),
       normalizedOutputSize: nullableNumber(data, "normalized_output_size"),

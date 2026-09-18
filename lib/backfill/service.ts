@@ -6,7 +6,9 @@ import {
 import type {
   CaseBackfillAttemptAuthority,
   CaseBackfillClaimedItem,
+  CaseBackfillFetchArtifact,
   CaseBackfillItemPhase,
+  CaseBackfillNormalizationArtifact,
   CaseBackfillPassInput,
   CaseBackfillPassResult,
   CaseBackfillSnapshot,
@@ -19,8 +21,13 @@ import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inv
 import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
 import { discoverBverfgInventory } from "@/lib/crawlee/bverfg-inventory";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
-import { caseBackfillArtifactBlobWriteReady } from "@/lib/backfill/flags";
-import { createArtifactBlobStore, type ArtifactBlobStore } from "@/lib/storage/blob";
+import { caseBackfillArtifactBlobReadReady, caseBackfillArtifactBlobWriteReady } from "@/lib/backfill/flags";
+import {
+  ARTIFACT_BLOB_CONTRACT_VERSION,
+  createArtifactBlobStore,
+  sha256Hex,
+  type ArtifactBlobStore,
+} from "@/lib/storage/blob";
 import { createCaseBackfillRequestGovernor } from "@/lib/backfill/source-request-governor";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
 import {
@@ -54,14 +61,18 @@ interface CaseBackfillDependencies {
 
 interface CaseBackfillArtifactBlobContext {
   writeEnabled: boolean;
+  readEnabled: boolean;
   store: ArtifactBlobStore | null;
 }
 
 function resolveArtifactBlobContext(dependencies: CaseBackfillDependencies): CaseBackfillArtifactBlobContext {
   const environment = dependencies.environment ?? process.env;
-  if (!caseBackfillArtifactBlobWriteReady(environment)) return { writeEnabled: false, store: null };
+  const writeEnabled = caseBackfillArtifactBlobWriteReady(environment);
+  const readEnabled = caseBackfillArtifactBlobReadReady(environment);
+  if (!writeEnabled && !readEnabled) return { writeEnabled: false, readEnabled: false, store: null };
   return {
-    writeEnabled: true,
+    writeEnabled,
+    readEnabled,
     store: dependencies.artifactBlobStore ?? createArtifactBlobStore(),
   };
 }
@@ -69,6 +80,81 @@ function resolveArtifactBlobContext(dependencies: CaseBackfillDependencies): Cas
 function requireArtifactBlobStore(artifactBlob: CaseBackfillArtifactBlobContext): ArtifactBlobStore {
   if (!artifactBlob.store) throw new Error("case_backfill.artifact_blob_store_unavailable");
   return artifactBlob.store;
+}
+
+function parseArtifactBlobDocument(bytes: Buffer): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new Error("case_backfill.artifact_blob_invalid_document");
+  }
+  if (!isRecord(parsed)) throw new Error("case_backfill.artifact_blob_invalid_document");
+  return parsed;
+}
+
+/**
+ * M3 dual-read: resolve an externalized artifact document from private Blob
+ * storage only when the read flag is ready, then fail closed on any contract,
+ * size, or SHA-256 mismatch before the bytes are parsed.
+ */
+async function readArtifactBlobDocument(
+  artifactBlob: CaseBackfillArtifactBlobContext,
+  input: {
+    storageRef: string;
+    expectedHash: string;
+    expectedSize: number | null;
+    contractVersion: string | null;
+  },
+): Promise<Record<string, unknown>> {
+  if (!artifactBlob.readEnabled) throw new Error("case_backfill.artifact_blob_read_disabled");
+  if (input.contractVersion !== ARTIFACT_BLOB_CONTRACT_VERSION) {
+    throw new Error("case_backfill.artifact_blob_contract_unsupported");
+  }
+  const bytes = await requireArtifactBlobStore(artifactBlob).get(input.storageRef);
+  if (input.expectedSize !== null && bytes.byteLength !== input.expectedSize) {
+    throw new Error("case_backfill.artifact_blob_integrity_mismatch");
+  }
+  if (sha256Hex(bytes) !== input.expectedHash) {
+    throw new Error("case_backfill.artifact_blob_integrity_mismatch");
+  }
+  return parseArtifactBlobDocument(bytes);
+}
+
+async function resolveFetchReplayPayload(
+  fetchArtifact: CaseBackfillFetchArtifact,
+  artifactBlob: CaseBackfillArtifactBlobContext,
+): Promise<Record<string, unknown>> {
+  if (fetchArtifact.replayability !== "bounded_evidence") {
+    throw new Error("case_backfill.fetch_artifact_not_replayable");
+  }
+  if (fetchArtifact.boundedReplayPayload) return fetchArtifact.boundedReplayPayload;
+  if (fetchArtifact.boundedReplayStorageRef) {
+    return readArtifactBlobDocument(artifactBlob, {
+      storageRef: fetchArtifact.boundedReplayStorageRef,
+      expectedHash: fetchArtifact.payloadHash,
+      expectedSize: fetchArtifact.payloadSize ?? null,
+      contractVersion: fetchArtifact.externalizationContractVersion ?? null,
+    });
+  }
+  throw new Error("case_backfill.fetch_artifact_not_replayable");
+}
+
+async function resolveNormalizedOutput(
+  normalizedArtifact: CaseBackfillNormalizationArtifact,
+  artifactBlob: CaseBackfillArtifactBlobContext,
+): Promise<NormalizedArticle> {
+  if (normalizedArtifact.normalizedOutput) return normalizedArtifact.normalizedOutput;
+  if (normalizedArtifact.normalizedOutputStorageRef) {
+    const document = await readArtifactBlobDocument(artifactBlob, {
+      storageRef: normalizedArtifact.normalizedOutputStorageRef,
+      expectedHash: normalizedArtifact.normalizedOutputHash,
+      expectedSize: normalizedArtifact.normalizedOutputSize ?? null,
+      contractVersion: normalizedArtifact.externalizationContractVersion ?? null,
+    });
+    return document as unknown as NormalizedArticle;
+  }
+  throw new Error("case_backfill.normalization_artifact_not_found");
 }
 
 async function uploadFetchReplayPayload(
@@ -306,10 +392,7 @@ async function processNormalize(
 ) {
   if (!item.currentFetchArtifactId) throw new Error("case_backfill.fetch_artifact_missing");
   const fetchArtifact = await repository.getFetchArtifact(item.currentFetchArtifactId);
-  if (fetchArtifact.replayability !== "bounded_evidence" || !fetchArtifact.boundedReplayPayload) {
-    throw new Error("case_backfill.fetch_artifact_not_replayable");
-  }
-  const replay = replayRawArticle(fetchArtifact.boundedReplayPayload);
+  const replay = replayRawArticle(await resolveFetchReplayPayload(fetchArtifact, artifactBlob));
   const exclusionCode = strategy.exclusionCode?.(replay, item, snapshot) ?? null;
   if (exclusionCode) {
     await repository.excludeItem({
@@ -370,10 +453,11 @@ async function processVerify(
   context: CaseBackfillExecutionContext,
   repository: CaseBackfillRepository,
   strategy: CaseBackfillSourceStrategy,
+  artifactBlob: CaseBackfillArtifactBlobContext,
 ) {
   if (!item.currentNormalizationArtifactId) throw new Error("case_backfill.normalization_artifact_missing");
   const normalizedArtifact = await repository.getNormalizationArtifact(item.currentNormalizationArtifactId, item.itemId);
-  const normalized = normalizedArtifact.normalizedOutput;
+  const normalized = await resolveNormalizedOutput(normalizedArtifact, artifactBlob);
   const errors = strategy.validate(normalized, item, snapshot);
   if (errors.length > 0) throw new Error(`case_backfill.verification_${errors[0]}`);
   const noop = item.resolutionStatus === "published"
@@ -403,7 +487,7 @@ async function processItem(
   await context.checkpoint();
   if (phase === "fetch") await processFetch(item, snapshot, policy, adapter, input, context, repository, strategy, artifactBlob);
   else if (phase === "normalize") await processNormalize(item, snapshot, adapter, input, context, repository, strategy, artifactBlob);
-  else if (phase === "verify") await processVerify(item, snapshot, context, repository, strategy);
+  else if (phase === "verify") await processVerify(item, snapshot, context, repository, strategy, artifactBlob);
   else if (phase === "publish") await repository.publishItem({ itemId: item.itemId, authority: context.authority });
   else throw new Error("case_backfill.invalid_item_phase");
 }
