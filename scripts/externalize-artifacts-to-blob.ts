@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { postgresCaseBackfillRepository } from "@/lib/backfill/repository";
-import { runArtifactExternalizationBatch } from "@/lib/backfill/externalization";
+import {
+  runArtifactExternalizationBatch,
+  safeArtifactExternalizationOutcomeProjection as safeProjection,
+} from "@/lib/backfill/externalization";
 import type { CaseBackfillArtifactExternalizationKind } from "@/lib/backfill/types";
 import { createArtifactBlobStore } from "@/lib/storage/blob";
 
@@ -105,7 +108,7 @@ async function main() {
       externalized: result.externalized,
       idempotent: result.idempotent,
       failed: result.failed,
-      outcomes: result.outcomes,
+      outcomes: result.outcomes.map(safeProjection),
       execute,
       inlineContentPreserved: true,
       publicCatalogWrites: 0,

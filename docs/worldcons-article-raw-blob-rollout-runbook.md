@@ -52,10 +52,13 @@ before migrations and the DB-authority/readiness check to run after migrations
 - Inline clear is reversible **only** through the **M6E restore path**
   (`pnpm restore:article-raw-inline`). The M6C guard blocks direct re-population, and
   the M6E restore RPC is the single permit-guarded transition. Do not attempt to
-  re-populate inline raw_text with a direct SQL update. Restore is **DRY-RUN BY
-  DEFAULT** (zero Blob reads, zero restore RPC calls) and execute requires
-  `--acknowledge-inline-restore` plus `ARTICLE_RAW_BLOB_READ_ENABLED=true`; `WRITE` is
-  never required.
+  re-populate inline raw_text with a direct SQL update. The readiness report's
+  `inlineRestore: "dedicated_restore_available"` field is a truthful stable marker
+  that this restore path exists: readiness stays **read-only** and never restores —
+  restore is a separate operation performed by `pnpm restore:article-raw-inline`.
+  Restore is **DRY-RUN BY DEFAULT** (zero Blob reads, zero restore RPC calls) and
+  execute requires `--acknowledge-inline-restore` plus
+  `ARTICLE_RAW_BLOB_READ_ENABLED=true`; `WRITE` is never required.
 - The M6E restore module never writes or deletes a Blob object (it never calls
   `put`/`delete`), never repoints externalization metadata, and never touches
   `cleaned_text` or `search_vector`.

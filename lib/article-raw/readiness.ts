@@ -55,8 +55,10 @@ import { sha256Hex, type ArtifactBlobStore } from "@/lib/storage/blob";
  * Both article raw Blob flags default to OFF. EXTERNALIZATION_READY,
  * APPLICATION_WRITE_READY, NEW_WRITE_READY (an alias of APPLICATION_WRITE_READY), and
  * INLINE_CLEAR_READY are purely derived decision gates; this module never flips a
- * flag and never clears inline raw_text. A real inline clear can only be rolled back
- * through a separately designed restore path, which is intentionally not implemented.
+ * flag and never clears inline raw_text. A real inline clear is rolled back only
+ * through the dedicated M6E restore path (`pnpm restore:article-raw-inline`): the
+ * `inlineRestore: "dedicated_restore_available"` marker records that restore exists,
+ * while readiness itself stays read-only and never restores.
  */
 
 export const ARTICLE_RAW_READINESS_TABLES = ["articles", "article_content_versions_p3"] as const;
@@ -64,7 +66,7 @@ export type ArticleRawReadinessTable = (typeof ARTICLE_RAW_READINESS_TABLES)[num
 export const ARTICLE_RAW_READINESS_MAX_BATCH_SIZE = 100;
 export const ARTICLE_RAW_READINESS_MAX_BATCHES = 1000;
 export const ARTICLE_RAW_READINESS_MAX_VERIFICATION_SAMPLE = 100;
-export const ARTICLE_RAW_READINESS_INLINE_RESTORE = "requires_separate_restore_design";
+export const ARTICLE_RAW_READINESS_INLINE_RESTORE = "dedicated_restore_available";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 

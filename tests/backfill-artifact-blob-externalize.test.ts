@@ -6,6 +6,7 @@ import { canonicalJson } from "../lib/backfill/canonical-json";
 import {
   planArtifactExternalization,
   runArtifactExternalizationBatch,
+  safeArtifactExternalizationOutcomeProjection,
   type CaseBackfillExternalizationDependencies,
 } from "../lib/backfill/externalization";
 import type { CaseBackfillRepository } from "../lib/backfill/repository";
@@ -331,6 +332,48 @@ test("an identical rerun is reported as idempotent", async () => {
   assert.equal(result.externalized, 0);
   assert.equal(result.outcomes[0].status, "idempotent");
   assert.equal(attachCalls.length, 1);
+});
+
+test("safe projection exposes only status, artifactId, and contentSize", async () => {
+  const candidate = fetchCandidate();
+  const { repository } = fakeRepository([candidate]);
+  const deps = dependencies(repository);
+  const result = await runArtifactExternalizationBatch(
+    { kind: "fetch", batchSize: 10, actorId: "operator", execute: true },
+    deps,
+  );
+  const outcome = result.outcomes[0];
+  const projected = safeArtifactExternalizationOutcomeProjection(outcome);
+  assert.deepEqual(Object.keys(projected).sort(), ["artifactId", "contentSize", "status"]);
+  assert.equal(projected.status, "externalized");
+  assert.equal(projected.artifactId, candidate.artifactId);
+  assert.equal(projected.contentSize, candidate.storedSize);
+  const serialized = JSON.parse(JSON.stringify(projected)) as Record<string, unknown>;
+  for (const forbidden of ["sourceKey", "storageRef", "contentHash", "artifactTable", "kind"]) {
+    assert.equal(forbidden in serialized, false, `${forbidden} must not be projected`);
+  }
+});
+
+test("safe projection drops the same internal keys for planned outcomes", async () => {
+  const { repository } = fakeRepository([fetchCandidate()]);
+  const deps = dependencies(repository);
+  const result = await runArtifactExternalizationBatch(
+    { kind: "fetch", batchSize: 10, actorId: "operator", execute: false },
+    deps,
+  );
+  const projected = safeArtifactExternalizationOutcomeProjection(result.outcomes[0]);
+  assert.deepEqual(Object.keys(projected).sort(), ["artifactId", "contentSize", "status"]);
+  assert.equal(projected.status, "planned");
+});
+
+test("batch script emits projected outcomes and never raw ones", () => {
+  const source = fs.readFileSync(scriptPath, "utf8");
+  assert.match(source, /outcomes: result\.outcomes\.map\(safeProjection\)/);
+  assert.doesNotMatch(source, /outcomes: result\.outcomes,/);
+  assert.match(
+    source,
+    /safeArtifactExternalizationOutcomeProjection as safeProjection/,
+  );
 });
 
 test("batches stay bounded and advance with a keyset cursor", async () => {

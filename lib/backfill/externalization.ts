@@ -54,6 +54,26 @@ export interface CaseBackfillExternalizationBatchResult {
   lastArtifactId: string | null;
 }
 
+export interface CaseBackfillExternalizationOutcomeProjection {
+  status: CaseBackfillExternalizationOutcome["status"];
+  artifactId: string;
+  contentSize: number;
+}
+
+/**
+ * Project an outcome down to the only fields safe to emit in batch output.
+ * sourceKey, storageRef, contentHash, artifactTable, and kind stay internal.
+ */
+export function safeArtifactExternalizationOutcomeProjection(
+  outcome: CaseBackfillExternalizationOutcome,
+): CaseBackfillExternalizationOutcomeProjection {
+  return {
+    status: outcome.status,
+    artifactId: outcome.artifactId,
+    contentSize: outcome.contentSize,
+  };
+}
+
 function externalizationErrorCode(error: unknown) {
   const value = error instanceof Error ? error.message : String(error);
   return /^[a-z][a-z0-9._-]{0,159}$/.test(value) ? value : "artifact_externalization.failed";

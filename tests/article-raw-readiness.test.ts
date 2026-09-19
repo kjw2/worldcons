@@ -940,7 +940,7 @@ test("the module is aggregate-only, verifies coherent dual-copy candidates, and 
   assert.match(source, /const ledgerCoverageReady = combined\.ledgerMissingOrConflictingRows === 0/);
   assert.match(source, /verificationTableCoverageReady = uncoveredClearableTables\.length === 0/);
   assert.match(source, /verification_clearable_table_unsampled_\$\{table\}/);
-  assert.match(source, /ARTICLE_RAW_READINESS_INLINE_RESTORE = "requires_separate_restore_design"/);
+  assert.match(source, /ARTICLE_RAW_READINESS_INLINE_RESTORE = "dedicated_restore_available"/);
   assert.match(source, /storageRefsEmitted: 0/);
   assert.equal(source.includes(".from("), false);
   assert.equal(source.includes(".select("), false);
