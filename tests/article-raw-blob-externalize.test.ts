@@ -471,28 +471,18 @@ test("batches stay bounded and advance with a keyset cursor", async () => {
   assert.deepEqual(listCalls.map((call) => call.limit), [2, 2]);
   assert.equal(listCalls[1].afterArticleRowId, entries[1].articleRowId);
 });
-test("repository selects every raw blob metadata column plus raw_text and does not filter to ref-null", () => {
+test("repository lists candidates through the operator read RPC and never queries raw tables directly", () => {
   const source = fs.readFileSync(repositoryPath, "utf8");
+  assert.match(source, /article_raw_operator_candidates_v1/);
   assert.match(source, /article_raw_externalize_v1/);
+  assert.equal(source.includes(".from("), false);
+  assert.equal(source.includes(".select("), false);
   assert.equal(source.includes('.is("raw_text_storage_ref", null)'), false);
-  assert.match(source, /\.not\("raw_text", "is", null\)/);
-  assert.match(source, /\.eq\("source_key", input\.sourceKey\)/);
-  assert.match(source, /\.order\("id", \{ ascending: true \}\)/);
-  assert.match(source, /\.gt\("id", input\.afterArticleRowId\)/);
-  assert.equal(
-    source.includes(
-      '"raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version"',
-    ),
-    true,
-  );
-  assert.match(source, /const ARTICLE_RAW_BLOB_ROW_SELECT = `id,source_key,raw_text,\$\{ARTICLE_RAW_BLOB_METADATA_SELECT\}`/);
-  assert.match(
-    source,
-    /const ARTICLE_RAW_VERSION_ROW_SELECT = `id,article_id,source_key,raw_text,\$\{ARTICLE_RAW_BLOB_METADATA_SELECT\}`/,
-  );
-  assert.equal(source.includes(".select(ARTICLE_RAW_BLOB_ROW_SELECT)"), true);
-  assert.equal(source.includes(".select(ARTICLE_RAW_VERSION_ROW_SELECT)"), true);
   assert.equal(source.includes("store.put("), false);
+  assert.match(source, /p_article_table: input\.articleTable/);
+  assert.match(source, /p_source_key: input\.sourceKey \?\? null/);
+  assert.match(source, /p_after_row_id: input\.afterArticleRowId \?\? null/);
+  assert.match(source, /p_limit: input\.limit/);
 });
 
 test("externalization lib verifies via head and get before calling the repository", () => {

@@ -87,6 +87,7 @@
     "test:article-raw-blob": "tsx --test tests/article-raw-blob.test.ts",
     "test:article-raw-externalize": "tsx --test tests/article-raw-blob-externalize.test.ts",
     "test:article-raw-inline-clear": "tsx --test tests/article-raw-blob-inline-clear.test.ts",
+    "test:article-raw-operator-read": "tsx --test tests/article-raw-operator-read-authority.test.ts",
     "test:catalog": "tsx --test tests/constitutional-case-catalog-gate2.test.ts tests/constitutional-case-catalog-gate2.postgres.test.ts tests/constitutional-case-search-gate3.test.ts tests/constitutional-case-search-gate4.test.ts",
     "test:postgres:release": "tsx scripts/run-postgres-release-gate.ts",
     "test:postgres:release:static": "tsx --test tests/postgres-release-gate.test.ts",

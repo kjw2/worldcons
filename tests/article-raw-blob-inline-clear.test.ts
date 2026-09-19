@@ -490,31 +490,30 @@ test("the CLI-safe outcome projection drops the ref, hash, and inline text", () 
 
 // --- repository -------------------------------------------------------------
 
-test("repository selects every raw blob metadata column plus raw_text and never filters to externalized rows", () => {
+test("repository lists candidates through the operator read RPC and never queries raw tables directly", () => {
   const source = fs.readFileSync(repositoryPath, "utf8");
+  assert.match(source, /article_raw_operator_candidates_v1/);
   assert.match(source, /article_raw_inline_clear_v1/);
   assert.match(source, /p_dry_run: false/);
+  assert.equal(source.includes(".from("), false);
+  assert.equal(source.includes(".select("), false);
   assert.equal(source.includes('.is("raw_text_storage_ref", null)'), false);
-  assert.equal(source.includes('.not("raw_text_storage_ref"'), false);
-  assert.match(source, /\.not\("raw_text", "is", null\)/);
-  assert.match(source, /\.eq\("source_key", input\.sourceKey\)/);
-  assert.match(source, /\.order\("id", \{ ascending: true \}\)/);
-  assert.match(source, /\.gt\("id", input\.afterArticleRowId\)/);
-  assert.equal(
-    source.includes(
-      '"raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version"',
-    ),
-    true,
-  );
-  assert.match(source, /const ARTICLE_RAW_BLOB_ROW_SELECT = `id,source_key,raw_text,\$\{ARTICLE_RAW_BLOB_METADATA_SELECT\}`/);
+  assert.equal(source.includes('.not("raw_text", "is", null)'), false);
   assert.equal(source.includes("store.put("), false);
+  assert.match(source, /p_article_table: input\.articleTable/);
+  assert.match(source, /p_source_key: input\.sourceKey \?\? null/);
+  assert.match(source, /p_after_row_id: input\.afterArticleRowId \?\? null/);
+  assert.match(source, /p_limit: input\.limit/);
 });
 
-test("repository maps candidate rows and drops rows without inline raw_text", async () => {
+test("repository maps operator RPC candidate rows and drops rows without inline raw_text", async () => {
   const encoded = encodeArticleRawText(RAW_TEXT);
-  const rows = [
+  const client = new FakeListRpcClient();
+  client.rows = [
     {
-      id: VERSION_ROW_ID,
+      article_table: "article_content_versions_p3",
+      article_row_id: VERSION_ROW_ID,
+      article_id: ARTICLE_ROW_ID,
       source_key: SOURCE_KEY,
       raw_text: RAW_TEXT,
       raw_text_storage_ref: articleRawBlobStorageRef(SOURCE_KEY, encoded.sha256),
@@ -523,9 +522,14 @@ test("repository maps candidate rows and drops rows without inline raw_text", as
       raw_text_externalized_at: EXTERNALIZED_AT,
       raw_text_blob_contract_version: ARTICLE_RAW_BLOB_CONTRACT_VERSION,
     },
-    { id: ARTICLE_ROW_ID, source_key: SOURCE_KEY, raw_text: null },
+    {
+      article_table: "article_content_versions_p3",
+      article_row_id: ARTICLE_ROW_ID,
+      article_id: ARTICLE_ROW_ID,
+      source_key: SOURCE_KEY,
+      raw_text: null,
+    },
   ];
-  const { calls, client } = fakeListClient(rows);
   const repository = createPostgresArticleRawInlineClearRepository({
     client: () => client as unknown as SupabaseClient,
   });
@@ -535,12 +539,15 @@ test("repository maps candidate rows and drops rows without inline raw_text", as
     limit: 5,
     afterArticleRowId: CURSOR_ROW_ID,
   });
-  assert.deepEqual(calls.tables, ["article_content_versions_p3"]);
-  assert.deepEqual(calls.not, [["raw_text", "is", null]]);
-  assert.deepEqual(calls.order, [["id", { ascending: true }]]);
-  assert.deepEqual(calls.limit, [5]);
-  assert.deepEqual(calls.gt, [["id", CURSOR_ROW_ID]]);
-  assert.deepEqual(calls.eq, [["source_key", SOURCE_KEY]]);
+  assert.deepEqual(client.rpcCalls, [{
+    name: "article_raw_operator_candidates_v1",
+    args: {
+      p_article_table: "article_content_versions_p3",
+      p_source_key: SOURCE_KEY,
+      p_after_row_id: CURSOR_ROW_ID,
+      p_limit: 5,
+    },
+  }]);
   assert.equal(result.length, 1);
   assert.deepEqual(result[0], {
     articleTable: "article_content_versions_p3",
@@ -743,50 +750,14 @@ class FakeRpcClient {
   }
 }
 
-function fakeListClient(rows: Record<string, unknown>[]) {
-  const calls = {
-    tables: [] as string[],
-    selects: [] as string[],
-    not: [] as unknown[][],
-    order: [] as unknown[][],
-    limit: [] as number[],
-    gt: [] as unknown[][],
-    eq: [] as unknown[][],
-  };
-  const builder = {
-    select(columns: string) {
-      calls.selects.push(columns);
-      return builder;
-    },
-    not(...args: unknown[]) {
-      calls.not.push(args);
-      return builder;
-    },
-    order(...args: unknown[]) {
-      calls.order.push(args);
-      return builder;
-    },
-    limit(value: number) {
-      calls.limit.push(value);
-      return builder;
-    },
-    gt(...args: unknown[]) {
-      calls.gt.push(args);
-      return builder;
-    },
-    eq(...args: unknown[]) {
-      calls.eq.push(args);
-      return builder;
-    },
-    then(resolve: (value: { data: unknown; error: null }) => unknown) {
-      return Promise.resolve(resolve({ data: rows, error: null }));
-    },
-  };
-  const client = {
-    from(table: string) {
-      calls.tables.push(table);
-      return builder;
-    },
-  };
-  return { calls, client };
+class FakeListRpcClient {
+  readonly rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  rows: Record<string, unknown>[] = [];
+  rpcError: unknown = null;
+
+  async rpc(name: string, args: Record<string, unknown>) {
+    this.rpcCalls.push({ name, args });
+    if (this.rpcError) return { data: null, error: this.rpcError };
+    return { data: this.rows, error: null };
+  }
 }
