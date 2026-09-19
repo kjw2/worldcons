@@ -139,9 +139,20 @@ gates turn off, and there is no fallback path.
 - `migrationSafe`: both flags are **OFF** (`READ=false`, `WRITE=false`), there are no
   `flagErrors`, and every allowlisted M6A..M6E migration file **plus the M6G
   corrective artifact Blob hardening migration**
-  (`20260919190000_artifact_blob_contract_hardening.sql`) is present on disk. The
-  hardening migration is a mandatory shared prerequisite of the rollout, so
-  `migrationSafe` fails closed if it is missing.
+  (`20260919190000_artifact_blob_contract_hardening.sql`) **plus the M6I/GUARD-FIX
+  generated-column guard corrective**
+  (`20260919200000_article_raw_externalization_guard_generated_columns.sql`) is
+  present on disk. Both correctives are mandatory shared prerequisites of the rollout,
+  so `migrationSafe` fails closed (all 8 files required) if either is missing.
+- The M6I/GUARD-FIX corrective is required **before any version attach, inline clear,
+  or inline restore**. It `CREATE OR REPLACE`s only
+  `article_raw_externalization_guard_v1`, derives the generated columns dynamically
+  from `pg_attribute` for the trigger's own relation, and excludes them from all three
+  whole-row identity checks. Without it, the M6E guard compares generated columns
+  (for example the `GENERATED ALWAYS STORED` `article_content_versions_p3.case_key`)
+  as `OLD`/`NEW` identity operands and raises false
+  `ARTICLE_RAW_EXTERNALIZATION_IMMUTABLE` failures on otherwise valid version
+  transitions.
 - `readEnableSafe`: every DB probe/aggregate succeeded and the combined
   `metadataInconsistentRows` is `0`.
 - `writeEnableSafe`: everything `readEnableSafe` needs **plus** READ ready (the READ
@@ -178,9 +189,12 @@ Follow this order exactly. Do not skip a step or reorder it.
 
 1. **Preflight (static/env check).** Before applying any migration, run the
    read-only preflight with both flags **OFF**. Exit `2` unless `migrationSafe`
-   (both flags OFF, no `flagErrors`, and every allowlisted M6A..M6E migration file
-   plus the M6G corrective artifact Blob hardening migration
-   `20260919190000_artifact_blob_contract_hardening.sql` present on disk).
+   (both flags OFF, no `flagErrors`, and all 8 allowlisted files — every M6A..M6E
+   migration plus the M6G corrective artifact Blob hardening migration
+   `20260919190000_artifact_blob_contract_hardening.sql` and the M6I/GUARD-FIX
+   generated-column guard corrective
+   `20260919200000_article_raw_externalization_guard_generated_columns.sql` — present
+   on disk).
    ```text
    pnpm preflight:article-raw --require=migration
    ```
@@ -193,7 +207,15 @@ Follow this order exactly. Do not skip a step or reorder it.
    which makes `source_normalization_artifacts.normalized_output` nullable and
    restores the 4 MiB `source_fetch_artifacts.bounded_replay_payload` inline bound.
    It only alters those two artifact tables, performs no DML, Blob/network access,
-   maintenance, or grant, and never touches the article raw carriers.
+   maintenance, or grant, and never touches the article raw carriers. The set also
+   carries the **mandatory** M6I/GUARD-FIX generated-column guard corrective
+   (`supabase/migrations/20260919200000_article_raw_externalization_guard_generated_columns.sql`),
+   which `CREATE OR REPLACE`s only `article_raw_externalization_guard_v1` to exclude
+   generated columns from the M6E guard's whole-row identity checks. Apply it before
+   any version attach, inline clear, or inline restore, or those transitions fail
+   closed with a false `ARTICLE_RAW_EXTERNALIZATION_IMMUTABLE`; it edits no earlier
+   migration, recreates no trigger, changes no grant/ACL, performs no DML, and does no
+   table rewrite or compaction.
 3. **Preflight (DB authority/readiness check).** After the migrations are applied and
    while both flags are still **OFF**, run the preflight again. Exit `2` unless
    `readEnableSafe` (every DB probe/aggregate succeeded and the combined
@@ -407,9 +429,10 @@ inconsistency reporting; the `migrationSafe` / `readEnableSafe` / `writeEnableSa
 `restoreCanarySafe` / `clearCanarySafe` gates (including `writeEnableSafe` and
 `restoreCanarySafe` requiring READ ready); `clearCanarySafe` always false with
 `runtime_readiness_sample_required`; sanitized error codes and fail-closed probe
-failures; the hardcoded M6A..M6E migration filename allowlist plus the M6G
-corrective artifact Blob hardening migration `migrationSafe` prerequisite, with only
-missing names reported; report redaction (no refs, hashes, raw text, source keys, or
-row ids); and static assertions that the module and CLI never direct-query the raw
-tables, never construct a Blob store, never call `put`/`delete`, and take no
-`--execute`/`--acknowledge-*` flag.
+failures; the hardcoded 8-file M6A..M6E migration filename allowlist plus the M6G
+corrective artifact Blob hardening migration and the M6I/GUARD-FIX generated-column
+guard corrective `migrationSafe` prerequisites, with only missing names reported;
+report redaction (no refs, hashes, raw text, source keys, or row ids); and static
+assertions that the module and CLI never direct-query the raw tables, never construct
+a Blob store, never call `put`/`delete`, and take no `--execute`/`--acknowledge-*`
+flag.

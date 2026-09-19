@@ -379,12 +379,12 @@ test("unsanitized provider errors collapse to the generic probe code", async () 
 
 // --- migration filenames ----------------------------------------------------
 
-test("the hardcoded M6A..M6E + M6G migration allowlist resolves against the repository", async () => {
+test("the hardcoded M6A..M6E + M6G + M6I/GUARD-FIX migration allowlist resolves against the repository", async () => {
   const report = await runArticleRawRolloutPreflight({}, dependencies());
-  assert.equal(report.migrations.checked, 7);
-  assert.equal(report.migrations.present, 7);
+  assert.equal(report.migrations.checked, 8);
+  assert.equal(report.migrations.present, 8);
   assert.deepEqual(report.migrations.missing, []);
-  assert.deepEqual(report.migrations.phases, ["M6A", "M6B", "M6C", "M6D-A", "M6D-B", "M6E", "M6G"]);
+  assert.deepEqual(report.migrations.phases, ["M6A", "M6B", "M6C", "M6D-A", "M6D-B", "M6E", "M6G", "M6I/GUARD-FIX"]);
   assert.equal(report.gates.migrationFilesPresent, true);
   assert.equal(report.gates.migrationSafe, true);
 
@@ -401,7 +401,7 @@ test("the migration check reports only the missing allowlisted names", async () 
     fs.writeFileSync(path.join(root, "not-in-allowlist.sql"), "");
 
     const report = await runArticleRawRolloutPreflight({ migrationRoot: root }, dependencies());
-    assert.equal(report.migrations.checked, 7);
+    assert.equal(report.migrations.checked, 8);
     assert.equal(report.migrations.present, 2);
     assert.deepEqual(report.migrations.missing, [
       "20260919140000_article_raw_blob_externalization_backfill.sql",
@@ -409,6 +409,7 @@ test("the migration check reports only the missing allowlisted names", async () 
       "20260919160000_article_raw_operator_read_authority.sql",
       "20260919170000_article_raw_readiness_observability.sql",
       "20260919190000_artifact_blob_contract_hardening.sql",
+      "20260919200000_article_raw_externalization_guard_generated_columns.sql",
     ]);
     assert.equal(report.gates.migrationFilesPresent, false);
     assert.equal(report.gates.migrationSafe, false);
