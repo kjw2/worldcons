@@ -14,7 +14,8 @@ import type { ArticleRawRestoreRepository } from "@/lib/article-raw/restore";
  * M6F read-only article raw-text Blob rollout preflight.
  *
  * This module is the single static/env authority consulted before and after the M6A
- * through M6E migrations are applied. It is read-only and fail-closed: it performs
+ * through M6E migrations and the M6G corrective artifact Blob hardening migration
+ * are applied. It is read-only and fail-closed: it performs
  * exactly three bounded reads per carrier table and never mutates anything.
  *
  *   - the M6D-A operator candidate read (limit 1) through the externalization
@@ -34,7 +35,7 @@ import type { ArticleRawRestoreRepository } from "@/lib/article-raw/restore";
  * Env gates (all fail closed):
  *
  *   migrationSafe     both flags OFF, no flag errors, and every allowlisted
- *                     M6A..M6E migration file present on disk
+ *                     M6A..M6E + M6G migration file present on disk
  *   readEnableSafe    every DB probe/aggregate succeeded and no metadata
  *                     inconsistent rows are reported
  *   writeEnableSafe   readEnableSafe plus READ ready (the READ flag is on with no
@@ -51,7 +52,7 @@ export type ArticleRawPreflightTable = (typeof ARTICLE_RAW_PREFLIGHT_TABLES)[num
 /** Candidate probes are bounded to a single row per table. */
 export const ARTICLE_RAW_PREFLIGHT_PROBE_LIMIT = 1;
 
-/** Hardcoded M6A..M6E migration allowlist; only missing names are reported. */
+/** Hardcoded M6A..M6E + M6G migration allowlist; only missing names are reported. */
 export const ARTICLE_RAW_PREFLIGHT_MIGRATIONS = [
   { phase: "M6A", file: "20260919130000_article_raw_blob_contract.sql" },
   { phase: "M6B", file: "20260919140000_article_raw_blob_externalization_backfill.sql" },
@@ -59,6 +60,7 @@ export const ARTICLE_RAW_PREFLIGHT_MIGRATIONS = [
   { phase: "M6D-A", file: "20260919160000_article_raw_operator_read_authority.sql" },
   { phase: "M6D-B", file: "20260919170000_article_raw_readiness_observability.sql" },
   { phase: "M6E", file: "20260919180000_article_raw_blob_restore.sql" },
+  { phase: "M6G", file: "20260919190000_artifact_blob_contract_hardening.sql" },
 ] as const;
 
 export const ARTICLE_RAW_PREFLIGHT_CLEAR_CANARY_REASON = "runtime_readiness_sample_required";

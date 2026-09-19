@@ -137,7 +137,11 @@ gates turn off, and there is no fallback path.
 ### Preflight gates
 
 - `migrationSafe`: both flags are **OFF** (`READ=false`, `WRITE=false`), there are no
-  `flagErrors`, and every allowlisted M6A..M6E migration file is present on disk.
+  `flagErrors`, and every allowlisted M6A..M6E migration file **plus the M6G
+  corrective artifact Blob hardening migration**
+  (`20260919190000_artifact_blob_contract_hardening.sql`) is present on disk. The
+  hardening migration is a mandatory shared prerequisite of the rollout, so
+  `migrationSafe` fails closed if it is missing.
 - `readEnableSafe`: every DB probe/aggregate succeeded and the combined
   `metadataInconsistentRows` is `0`.
 - `writeEnableSafe`: everything `readEnableSafe` needs **plus** READ ready (the READ
@@ -175,7 +179,8 @@ Follow this order exactly. Do not skip a step or reorder it.
 1. **Preflight (static/env check).** Before applying any migration, run the
    read-only preflight with both flags **OFF**. Exit `2` unless `migrationSafe`
    (both flags OFF, no `flagErrors`, and every allowlisted M6A..M6E migration file
-   present on disk).
+   plus the M6G corrective artifact Blob hardening migration
+   `20260919190000_artifact_blob_contract_hardening.sql` present on disk).
    ```text
    pnpm preflight:article-raw --require=migration
    ```
@@ -402,8 +407,9 @@ inconsistency reporting; the `migrationSafe` / `readEnableSafe` / `writeEnableSa
 `restoreCanarySafe` / `clearCanarySafe` gates (including `writeEnableSafe` and
 `restoreCanarySafe` requiring READ ready); `clearCanarySafe` always false with
 `runtime_readiness_sample_required`; sanitized error codes and fail-closed probe
-failures; the hardcoded M6A..M6E migration filename allowlist with only missing
-names reported; report redaction (no refs, hashes, raw text, source keys, or row
-ids); and static assertions that the module and CLI never direct-query the raw
+failures; the hardcoded M6A..M6E migration filename allowlist plus the M6G
+corrective artifact Blob hardening migration `migrationSafe` prerequisite, with only
+missing names reported; report redaction (no refs, hashes, raw text, source keys, or
+row ids); and static assertions that the module and CLI never direct-query the raw
 tables, never construct a Blob store, never call `put`/`delete`, and take no
 `--execute`/`--acknowledge-*` flag.
