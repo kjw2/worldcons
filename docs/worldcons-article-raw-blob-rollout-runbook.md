@@ -2,15 +2,21 @@
 
 Scope: operational rollout of the private article raw-text Blob lifecycle — M6A
 contract and flag-on capture, M6B externalization, M6C inline clear, M6D-A operator
-read authority, and M6D-B read-only aggregate readiness (`article_raw_readiness_v1`)
-with optional bounded Blob verification.
+read authority, M6D-B read-only aggregate readiness (`article_raw_readiness_v1`)
+with optional bounded Blob verification, and M6E inline restore
+(`article_raw_restore_inline_v1` / `article_raw_restore_candidates_v1`).
 
-This runbook is read-only guidance. The readiness module
-(`lib/article-raw/readiness.ts`), repository
+The readiness module (`lib/article-raw/readiness.ts`), repository
 (`lib/article-raw/readiness-repository.ts`), and CLI
-(`scripts/article-raw-readiness.ts`, `pnpm readiness:article-raw`) apply no
-migration, deploy nothing, externalize nothing, clear no inline raw_text, and run no
-maintenance. It introduces no new write authority.
+(`scripts/article-raw-readiness.ts`, `pnpm readiness:article-raw`) are read-only:
+they apply no migration, deploy nothing, externalize nothing, clear no inline
+raw_text, and run no maintenance. The M6E restore module (`lib/article-raw/restore.ts`),
+repository (`lib/article-raw/restore-repository.ts`), and CLI
+(`scripts/restore-article-raw-inline.ts`, `pnpm restore:article-raw-inline`) are the
+one supported way to put a cleared inline raw_text back; they restore the redundant
+inline copy in place, never write or delete a Blob object, and require an explicit
+`--execute --acknowledge-inline-restore` together with
+`ARTICLE_RAW_BLOB_READ_ENABLED=true`.
 
 ## 1. Invariants
 
@@ -34,10 +40,16 @@ maintenance. It introduces no new write authority.
   (`article_raw_operator_candidates_v1`) through the externalization candidate
   repository, pages candidates with the same bounded `--batch-size`/`--max-batches`,
   and selects only **coherent, metadata-complete dual-copy** candidates.
-- Inline clear is irreversible at the database layer. After any real inline clear,
-  restoring the inline copy requires a **separately designed restore path** that is
-  intentionally **not implemented** in this milestone. Do not attempt to re-populate
-  inline raw_text directly; the M6C guard blocks it.
+- Inline clear is reversible **only** through the **M6E restore path**
+  (`pnpm restore:article-raw-inline`). The M6C guard blocks direct re-population, and
+  the M6E restore RPC is the single permit-guarded transition. Do not attempt to
+  re-populate inline raw_text with a direct SQL update. Restore is **DRY-RUN BY
+  DEFAULT** (zero Blob reads, zero restore RPC calls) and execute requires
+  `--acknowledge-inline-restore` plus `ARTICLE_RAW_BLOB_READ_ENABLED=true`; `WRITE` is
+  never required.
+- The M6E restore module never writes or deletes a Blob object (it never calls
+  `put`/`delete`), never repoints externalization metadata, and never touches
+  `cleaned_text` or `search_vector`.
 
 ## 2. What the readiness report contains
 
@@ -154,26 +166,74 @@ Follow this order exactly. Do not skip a step or reorder it.
 10. **Recheck readiness after the canary.** Confirm the clear moves rows from
     `dualCopyRows` to `blobOnlyRows`; readiness must stay non-critical and
     `INLINE_CLEAR_READY` must remain true before any further clear.
+11. **M6E restore dry-run, then a tiny restore canary.** Before any *large-scale* M6C
+    inline clear, deploy and test M6E and rehearse restore. Plan first (zero Blob
+    reads, zero restore RPC), then restore a single tiny canary batch (see section 4).
+    ```text
+    pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=25
+    pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=1 --execute --acknowledge-inline-restore
+    ```
+    Do not run a large-scale M6C inline clear until M6E has been deployed and this
+    canary has passed.
 
-## 4. Maintenance and `updated_at`
+## 4. M6E restore (the rollback path)
 
-- **No `VACUUM FULL`.** Do not run `VACUUM FULL` as part of this migration. Bloated
-  inline columns are only reclaimed by a later, separately approved
-  Supabase-supported maintenance decision.
+M6E is the only supported way to put a cleared inline `raw_text` back. It reuses the
+M6A codec and the M6A read flag, reads the Blob object, and restores the redundant
+inline copy through the single permit-guarded `article_raw_restore_inline_v1` RPC.
+The M6A/M6B/M6C/M6E article raw migrations include the M6E restore RPCs
+(`article_raw_restore_inline_v1`, `article_raw_restore_candidates_v1`); apply the
+pending M6E migration with the others in step 1 before rehearsing restore.
+
+- **Dry run is the default** and performs **zero Blob reads and zero restore RPC
+  calls**. It lists blob-only candidates through `article_raw_restore_candidates_v1`
+  (bounded `--batch-size` `1..100`, `--max-batches`, UUID `--after` cursor) and
+  classifies each row's metadata only as `planned`, `conflict`, or `not_ready`.
+- **Execute** additionally requires `--acknowledge-inline-restore` and
+  `ARTICLE_RAW_BLOB_READ_ENABLED=true`, checked **before** the Blob store is created
+  or any RPC runs. `WRITE` is never required.
+- For each executable blob-only coherent candidate it validates the exact
+  contract/ref/hash/size/`externalized_at` and the content-addressed ref, then heads
+  the exact recorded size, gets the exact byte length and SHA-256, and decodes the
+  stored JSON string. The decoded text and the exact metadata are passed to the RPC
+  with `p_dry_run = false`; the database recomputes the JSON-string document size and
+  SHA-256 and requires them to equal the recorded Blob size/hash, so a mismatched,
+  truncated, or repointed copy fails closed.
+- It **never writes or deletes a Blob object** and never repoints externalization
+  metadata (`blobObjectsWritten: 0`, `blobObjectsDeleted: 0`). An identical rerun is
+  idempotent.
+- Restoring an `articles` row advances its existing `updated_at` (see section 5).
+
+### Ordering rule
+
+Do a **tiny restore canary first**, and only run a **large-scale M6C inline clear
+after M6E has been deployed and tested**. The sequence is: deploy M6E, dry-run
+restore, then a bounded canary restore on one small source/table.
+
+```text
+pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=25
+pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=1 --execute --acknowledge-inline-restore
+```
+
+## 5. Maintenance and `updated_at`
+
+- **No `VACUUM FULL`.** Do not run `VACUUM FULL` as part of this migration, before or
+  after an M6E restore. Bloated inline columns are only reclaimed by a later,
+  separately approved Supabase-supported maintenance decision.
 - **No `pg_repack`.** Do not run `pg_repack` (or any other table rewrite/compaction
-  tool) against `articles` or `article_content_versions_p3` for this migration. The
-  M6B/M6C guards forbid rewrites, and a rewrite would break the one-way
-  externalization/clear contract.
+  tool) against `articles` or `article_content_versions_p3` for this migration or for
+  an M6E restore. The M6B/M6C/M6E guards forbid rewrites, and a rewrite would break
+  the one-way externalization/clear/restore contract.
 - **`updated_at` warning.** `public.articles` carries an
   `articles_updated_at_trigger` that sets `updated_at = now()` on every update, so
-  both the M6B externalization attach and the M6C inline clear bump
-  `articles.updated_at`. Do **not** use `articles.updated_at` as an externalization or
-  clear marker, and expect recency-ordered admin views and the stale-summarizing
-  heuristics (which key off `updated_at`) to see these rows as recently touched.
-  Readiness must be read from `article_raw_readiness_v1`, never inferred from
-  `updated_at`.
+  the M6B externalization attach, the M6C inline clear, and the M6E restore all bump
+  `articles.updated_at`. Do **not** use `articles.updated_at` as an externalization,
+  clear, or restore marker, and expect recency-ordered admin views and the
+  stale-summarizing heuristics (which key off `updated_at`) to see these rows as
+  recently touched. Readiness must be read from `article_raw_readiness_v1`, never
+  inferred from `updated_at`.
 
-## 5. Rollout decision gates as evidence
+## 6. Rollout decision gates as evidence
 
 Use the `--require-*` flags so a failed gate fails closed with exit code `2` instead
 of being read by eye. These are read-only assertions; they change no state.
@@ -195,27 +255,30 @@ pnpm readiness:article-raw --source=<source-key> --verify-sample=10 --require-in
 Exit codes: `0` success, `1` unexpected error or `critical`, `2` a required gate was
 not ready.
 
-## 6. Rollback
+## 7. Rollback
 
 - To stop new Blob writes, set `ARTICLE_RAW_BLOB_WRITE_ENABLED=false`. Reads may
   stay on while inline raw_text still exists (dual-copy rows read inline first).
 - M6B externalization preserves inline raw_text, so it is reversible by disabling
   the write flag; do not re-point or delete externalization metadata.
-- **Inline clear is not reversible in this milestone.** Once inline raw_text is
-  cleared, the only copy is the private Blob object plus the append-only ledger row.
-  Restoring inline storage requires a **separately designed restore path** that is
-  intentionally not implemented. Do not implement or improvise restore mutation as
-  part of this runbook; the M6C guard blocks direct re-population.
-- Never delete Blob objects. M6C and the readiness CLI never delete Blob objects
+- **Inline clear is reversed by the M6E restore path** (`pnpm
+  restore:article-raw-inline`, dry-run by default). Once inline raw_text is cleared,
+  the private Blob object plus the append-only ledger row are the only copies, and
+  M6E is the single permit-guarded way to restore the inline copy. Do not improvise
+  restore with a direct SQL update; the M6C guard blocks direct re-population. Do a
+  tiny restore canary first, and never run a large-scale M6C clear before M6E has
+  been deployed and tested.
+- Never delete Blob objects. M6C, M6E, and the readiness CLI never delete Blob objects
   (`blobObjectsDeleted: 0`).
 
-## 7. Verification
+## 8. Verification
 
 ```text
 pnpm typecheck
 pnpm lint
 pnpm check
 pnpm test:article-raw-readiness
+pnpm test:article-raw-restore
 ```
 
 The fakes-only readiness suite (`tests/article-raw-readiness.test.ts`) proves:
@@ -227,3 +290,16 @@ Blob read error ⇒ verification gate not-ready (not critical); flags/defaults; 
 per-clearable-table sampling with explicit unsampled-table blocking; and the
 `EXTERNALIZATION_READY` / `APPLICATION_WRITE_READY` / `NEW_WRITE_READY` (alias) /
 `INLINE_CLEAR_READY` decision gates.
+
+The fakes-only restore suite (`tests/article-raw-blob-restore.test.ts`) proves:
+metadata-only `planned`/`conflict`/`not_ready` classification before any Blob
+access; dry-run with zero Blob reads and zero restore RPC calls; execute gating on
+`--acknowledge-inline-restore` plus `ARTICLE_RAW_BLOB_READ_ENABLED=true` before the
+Blob store or any RPC; head/get size/SHA-256/decode failures blocking the restore RPC;
+the success path head → get → RPC with no `put`/`delete`; partial and conflicting
+metadata blocked; bounded UUID-keyset paging; exact repository RPC names and
+arguments; idempotent result mapping; metadata preservation; redaction; and static
+assertions over `20260919180000_article_raw_blob_restore.sql` for database-side
+JSON-string document size/SHA-256 verification, the exact ledger checks, the
+trigger-free `articles` carrier, the combined attach/clear/restore guard, and
+service_role-only authority.
