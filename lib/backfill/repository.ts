@@ -4,6 +4,7 @@ import type {
   AttachArtifactExternalizationInput,
   AttachArtifactExternalizationResult,
   CaseBackfillArtifactExternalizationKind,
+  CaseBackfillArtifactReadinessRow,
   CaseBackfillAttemptAuthority,
   CaseBackfillClaimedItem,
   CaseBackfillEnumerationArtifact,
@@ -80,6 +81,25 @@ function mapClaim(row: Row): CaseBackfillClaimedItem {
     verifiedNormalizationArtifactId: nullableText(row, "verified_normalization_artifact_id"),
     publishedNormalizationArtifactId: nullableText(row, "published_normalization_artifact_id"),
     itemLeaseExpiresAt: text(row, "item_lease_expires_at"),
+  };
+}
+
+function mapArtifactReadinessRow(row: Row): CaseBackfillArtifactReadinessRow {
+  const kind = text(row, "kind") === "normalization" ? "normalization" : "fetch";
+  return {
+    artifactTable: kind === "normalization" ? "source_normalization_artifacts" : "source_fetch_artifacts",
+    artifactId: text(row, "artifact_id"),
+    itemId: text(row, "item_id"),
+    sourceKey: text(row, "source_key"),
+    kind,
+    replayability: nullableText(row, "replayability"),
+    inlinePresent: row.inline_present === true,
+    storageRef: nullableText(row, "storage_ref"),
+    storedHash: text(row, "stored_hash"),
+    storedSize: nullableNumber(row, "stored_size"),
+    externalizationContractVersion: nullableText(row, "externalization_contract_version"),
+    externalizedAtPresent: row.externalized_at_present === true,
+    ledgerCovered: row.ledger_covered === true,
   };
 }
 
@@ -309,6 +329,12 @@ export interface CaseBackfillRepository {
     afterArtifactId?: string | null;
   }): Promise<CaseBackfillInlineClearCandidate[]>;
   clearArtifactInline(input: ClearArtifactInlineInput): Promise<ClearArtifactInlineResult>;
+  listArtifactReadinessRows(input: {
+    kind: CaseBackfillArtifactExternalizationKind;
+    sourceKey?: string | null;
+    limit: number;
+    afterArtifactId?: string | null;
+  }): Promise<CaseBackfillArtifactReadinessRow[]>;
 }
 
 export const postgresCaseBackfillRepository: CaseBackfillRepository = {
@@ -1007,5 +1033,21 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       artifactId: text(row, "artifactId"),
       idempotent: row.idempotent === true,
     };
+  },
+
+  /**
+   * M5 read-only readiness rows. The read function returns presence booleans plus
+   * externalization and ledger metadata only, never payload content, with keyset
+   * pagination on the artifact id and an optional source filter.
+   */
+  async listArtifactReadinessRows(input) {
+    const { data, error } = await requiredClient().rpc("source_backfill_artifact_readiness_rows_v1", {
+      p_kind: input.kind,
+      p_source_key: input.sourceKey ?? null,
+      p_limit: input.limit,
+      p_after_artifact_id: input.afterArtifactId ?? null,
+    });
+    databaseError(error);
+    return (Array.isArray(data) ? data : []).filter(isRecord).map(mapArtifactReadinessRow);
   },
 };

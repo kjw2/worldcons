@@ -208,3 +208,25 @@ export interface ClearArtifactInlineResult {
   artifactId: string;
   idempotent: boolean;
 }
+
+/**
+ * M5 read-only readiness row: one fetch/normalization artifact reduced to
+ * presence and externalization/ledger metadata only. It never carries payload
+ * content, and the storage ref/hash/size it exposes is consumed in-memory by the
+ * readiness module for optional bounded Blob verification; it is never reported.
+ */
+export interface CaseBackfillArtifactReadinessRow {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  itemId: string;
+  sourceKey: string;
+  kind: CaseBackfillArtifactExternalizationKind;
+  replayability: string | null;
+  inlinePresent: boolean;
+  storageRef: string | null;
+  storedHash: string;
+  storedSize: number | null;
+  externalizationContractVersion: string | null;
+  externalizedAtPresent: boolean;
+  ledgerCovered: boolean;
+}

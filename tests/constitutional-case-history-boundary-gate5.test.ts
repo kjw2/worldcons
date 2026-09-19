@@ -154,6 +154,7 @@ function fakeRepository(snapshot: CaseBackfillSnapshot, onBeginRun: () => void):
     attachArtifactExternalization: unavailable,
     listArtifactInlineClearCandidates: unavailable,
     clearArtifactInline: unavailable,
+    listArtifactReadinessRows: unavailable,
   } as CaseBackfillRepository;
 }
 

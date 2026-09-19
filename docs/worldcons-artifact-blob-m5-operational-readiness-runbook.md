@@ -1,0 +1,187 @@
+# WorldCons artifact Blob M5 operational readiness runbook
+
+Scope: M5 operational readiness/observability for the private Blob artifact
+migration (M1 contract, M3 dual-read, M4A externalization, M4B inline clear).
+
+This runbook adds one read-only readiness module (`lib/backfill/artifact-readiness.ts`),
+one read-only CLI (`scripts/artifact-readiness.ts`, `pnpm readiness:artifact-blob`),
+and one additive read-only SQL function
+(`supabase/migrations/20260919120000_artifact_blob_readiness_observability.sql`).
+It does not apply migrations, deploy, externalize, clear inline data, run VACUUM,
+or modify production. It introduces no M6 work.
+
+## 1. Invariants
+
+- Both Blob flags stay **default OFF**: `CASE_BACKFILL_ARTIFACT_BLOB_READ_ENABLED=false`,
+  `CASE_BACKFILL_ARTIFACT_BLOB_WRITE_ENABLED=false`. `WRITE` requires `READ`.
+- The readiness module and CLI are **read-only**. There is no `--execute`, no
+  `--acknowledge-irreversible`, and no mutation path. The CLI never calls
+  `put`/`delete` and never calls an externalize/clear RPC.
+- The readiness report is **aggregate-only**. It never emits storage refs, raw
+  content, hashes, tokens, signed URLs, or per-row payloads, and it reports
+  `storageRefsEmitted: 0` and `perRowPayloadsEmitted: 0`.
+- Blob verification is **off by default**. A bare readiness run issues zero
+  `head`/`get` calls. Even when requested, verification requires the Blob read
+  flag to be ready, so a bare run and a read-flag-off run never touch Blob.
+- Inline clear is irreversible at the database layer. After any real inline clear,
+  restoring the inline copy requires a **separately designed restore path** that
+  is intentionally **not implemented** in this milestone. Do not attempt to
+  re-populate inline columns directly; the M4B guard blocks it.
+
+## 2. What the readiness report contains
+
+Per kind (`fetch`, `normalization`) and combined, from bounded keyset pagination
+with an optional `--source` filter:
+
+- `totalRows`, `inlinePresentRows`, `externalizedRows`
+- `dualCopyRows` (inline + Blob), `blobOnlyRows`, `inlineOnlyRows`
+- `metadataInconsistentRows` (partial/contradictory externalization metadata, or
+  content states that violate the replay contract)
+- `contractMismatchRows` (externalized rows whose contract version is not
+  `worldcons-artifact-blob-v1`)
+- `ledgerCoveredRows`, `clearableRows`, `clearableLedgerCoveredRows`
+- `inlineBytesEstimated` (sum of recorded sizes where safely available) and
+  `inlineSizeUnavailableRows`
+- `batches`, `truncated`
+
+Optional Blob verification (`--verify-sample=N`, `N` in `0..100`, default `0`)
+head/get verifies at most `N` externalized rows and reports aggregate counts
+only: `sampled`, `verifiedOk`, `readErrors`, `sizeMismatches`, `hashMismatches`,
+`invalidDocuments`, plus the per-kind sample counts `sampledByKind.fetch` and
+`sampledByKind.normalization`. Sampling is bounded globally by `N` and filled in
+kind order, so a small `N` can cover one kind and miss another.
+
+### Gates
+
+- `newWriteReady` (`NEW_WRITE_READY`): read flag ready **and** write flag ready
+  **and** no metadata criticals (`metadataInconsistentRows == 0` and
+  `contractMismatchRows == 0`) **and** a complete scan.
+- `inlineClearReady` (`INLINE_CLEAR_READY`): everything `NEW_WRITE_READY` needs,
+  plus zero verification read/size/hash/document errors for the requested verified
+  sample (a non-empty sample), plus **per-kind sample coverage** — every selected
+  kind with `clearableRows > 0` must have `sampledByKind[kind] > 0`, plus full M4A
+  ledger coverage for every row considered clearable
+  (`clearableLedgerCoveredRows == clearableRows`).
+  If `--verify-sample` is too small to reach every selected clearable kind, the
+  gate stays **not ready** with an explicit blocking reason
+  (`verification_clearable_kind_unsampled_fetch` /
+  `verification_clearable_kind_unsampled_normalization`); `verificationKindCoverageReady`
+  is the corresponding gate flag. A single selected kind (`--kind=...`) only
+  requires its own coverage.
+- `critical` is true on any metadata critical or any verification size/hash/
+  invalid-document error. **Any hash mismatch makes readiness critical/not-ready.**
+- Blob **read errors** do not raise `critical`; they make the verification gate
+  **not ready** and block `INLINE_CLEAR_READY`.
+
+## 3. Safe rollout order
+
+Follow this order exactly. Do not skip a step or reorder it.
+
+1. **Apply migrations.** Apply the pending artifact migrations (M1 contract, M4A
+   externalization, M4B inline clear, and this M5 read-only readiness function) to
+   the target database. Keep both Blob flags **OFF**.
+2. **Read-only readiness.** Run the readiness CLI with verification off and both
+   flags off. Confirm the report is coherent (`totalRows`, `metadataInconsistentRows`,
+   `contractMismatchRows`, ledger coverage) and that zero Blob reads happened.
+   ```text
+   pnpm readiness:artifact-blob
+   pnpm readiness:artifact-blob --source=<source-key>
+   pnpm readiness:artifact-blob --kind=fetch --source=<source-key>
+   ```
+   If the report shows `truncated: true`, the scan did not cover every row: raise
+   `--max-batches` (and/or narrow `--source`) until every selected kind is
+   `truncated: false`. The gates treat an incomplete scan as not-ready.
+3. **Enable READ.** Set `CASE_BACKFILL_ARTIFACT_BLOB_READ_ENABLED=true` in a
+   bounded process/session only. `WRITE` stays OFF.
+4. **Canary reads.** Run the readiness CLI with a small verification sample and
+   confirm `readErrors`, `sizeMismatches`, `hashMismatches`, and `invalidDocuments`
+   are all zero for the sampled rows. The sample must be large enough to reach
+   every selected clearable kind (check `sampledByKind.fetch` and
+   `sampledByKind.normalization`); if it is not, `INLINE_CLEAR_READY` stays false
+   with a `verification_clearable_kind_unsampled_<kind>` reason. Raise
+   `--verify-sample` (and/or narrow `--kind`) until both clearable kinds are
+   covered.
+   ```text
+   pnpm readiness:artifact-blob --source=<source-key> --verify-sample=10
+   ```
+5. **Enable WRITE.** Set `CASE_BACKFILL_ARTIFACT_BLOB_WRITE_ENABLED=true`
+   (requires READ on). Re-run readiness and require `NEW_WRITE_READY = true` with
+   no metadata criticals before proceeding.
+6. **M4A dry-run, then execute small batches.** Plan first, then externalize a
+   small bounded batch while preserving inline content.
+   ```text
+   pnpm externalize:artifacts --kind=fetch --source=<source-key> --batch-size=25
+   pnpm externalize:artifacts --kind=fetch --source=<source-key> --batch-size=25 --execute
+   ```
+7. **Recheck readiness.** Re-run the readiness report. Confirm `dualCopyRows`
+   increased, `metadataInconsistentRows`/`contractMismatchRows` stayed zero, and
+   ledger coverage is complete for clearable rows.
+8. **M4B dry-run.** Plan the inline clear without mutating anything.
+   ```text
+   pnpm clear:inline-artifacts --kind=fetch --source=<source-key> --batch-size=25
+   ```
+9. **Optional tiny clear canary (only now).** Only if readiness reports
+   `INLINE_CLEAR_READY = true`, run a single tiny clear canary on one small
+   source/kind with an explicit acknowledgement.
+   ```text
+   pnpm clear:inline-artifacts --kind=fetch --source=<source-key> --batch-size=1 --execute --acknowledge-irreversible
+   ```
+10. **Recheck readiness after the canary.** Confirmed clear moves rows from
+    `dualCopyRows` to `blobOnlyRows`; readiness must stay non-critical and
+    `INLINE_CLEAR_READY` must remain true before any further clear.
+
+### Maintenance
+
+- **No `VACUUM FULL`** as part of this migration. Bloated inline columns are only
+  reclaimed by a later, separately approved Supabase-supported maintenance
+  decision.
+
+## 4. Rollout decision gates as evidence
+
+Use the `--require-*` flags so a failed gate fails closed with exit code `2`
+instead of being read by eye. `--require-new-write-ready` and
+`--require-inline-clear-ready` are read-only assertions; they change no state.
+
+```text
+# Exit 2 unless read+write flags are ready and no metadata criticals exist.
+pnpm readiness:artifact-blob --require-new-write-ready
+
+# Exit 2 unless the requested verified sample is clean, covers every selected
+# clearable kind, and clearable ledger coverage is complete.
+pnpm readiness:artifact-blob --source=<source-key> --verify-sample=10 --require-inline-clear-ready
+```
+
+Exit codes: `0` success, `1` unexpected error or `critical`, `2` a required gate
+was not ready.
+
+## 5. Rollback
+
+- To stop new Blob writes, set `CASE_BACKFILL_ARTIFACT_BLOB_WRITE_ENABLED=false`.
+  Reads may stay on while inline content still exists (dual-copy rows read inline
+  first).
+- M4A externalization preserves inline content, so it is reversible by disabling
+  the write flag; do not re-point or delete externalization metadata.
+- **Inline clear is not reversible in this milestone.** Once inline content is
+  cleared, the only copy is the private Blob object plus the append-only ledger
+  row. Restoring inline storage requires a separately designed restore path.
+  Do not implement or improvise restore mutation as part of this runbook.
+- Never delete Blob objects. M4B and the readiness CLI never delete Blob objects
+  (`blobObjectsDeleted: 0`).
+
+## 6. Verification
+
+```text
+pnpm typecheck
+pnpm lint
+pnpm check
+pnpm test:artifact-blob
+```
+
+The fakes-only readiness suite (`tests/backfill-artifact-blob-readiness.test.ts`)
+proves: aggregate classification; default no Blob reads (verification off); no
+refs/hashes/raw content/tokens/per-row payloads in the report; hash mismatch ⇒
+critical/not-ready; size and invalid-document mismatches ⇒ critical; Blob read
+error ⇒ verification gate not-ready (not critical); flags/defaults; and the
+`NEW_WRITE_READY` / `INLINE_CLEAR_READY` decision gates (including full ledger
+coverage, a clean verified sample, per-kind sample coverage, and single-kind
+runs).
