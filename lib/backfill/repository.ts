@@ -1,4 +1,5 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
+import { ARTIFACT_BLOB_CONTRACT_VERSION } from "@/lib/storage/blob";
 import type {
   AttachArtifactExternalizationInput,
   AttachArtifactExternalizationResult,
@@ -8,6 +9,7 @@ import type {
   CaseBackfillEnumerationArtifact,
   CaseBackfillExternalizationCandidate,
   CaseBackfillFetchArtifact,
+  CaseBackfillInlineClearCandidate,
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
   CaseBackfillPassInput,
@@ -15,6 +17,8 @@ import type {
   CaseBackfillSnapshot,
   CaseBackfillSnapshotStatus,
   CaseBackfillSourcePolicy,
+  ClearArtifactInlineInput,
+  ClearArtifactInlineResult,
 } from "@/lib/backfill/types";
 
 type Row = Record<string, unknown>;
@@ -298,6 +302,13 @@ export interface CaseBackfillRepository {
   attachArtifactExternalization(
     input: AttachArtifactExternalizationInput,
   ): Promise<AttachArtifactExternalizationResult>;
+  listArtifactInlineClearCandidates(input: {
+    kind: CaseBackfillArtifactExternalizationKind;
+    sourceKey?: string | null;
+    limit: number;
+    afterArtifactId?: string | null;
+  }): Promise<CaseBackfillInlineClearCandidate[]>;
+  clearArtifactInline(input: ClearArtifactInlineInput): Promise<ClearArtifactInlineResult>;
 }
 
 export const postgresCaseBackfillRepository: CaseBackfillRepository = {
@@ -896,6 +907,102 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     databaseError(error);
     const row = firstRow(data);
     if (!row) throw new Error("case_backfill.artifact_externalization_failed");
+    return {
+      artifactId: text(row, "artifactId"),
+      idempotent: row.idempotent === true,
+    };
+  },
+
+  /**
+   * M4B candidates: already externalized artifacts that still carry their inline
+   * payload. Only rows matching the exact supported contract version are selected,
+   * and keyset pagination on the artifact id keeps every batch bounded and stable
+   * across reruns, which cleared rows drop out of.
+   */
+  async listArtifactInlineClearCandidates(input) {
+    const client = requiredClient();
+    if (input.kind === "fetch") {
+      let query = client
+        .from("source_fetch_artifacts")
+        .select("id, item_id, payload_hash, payload_size, bounded_replay_storage_ref, externalization_contract_version, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+        .eq("replayability", "bounded_evidence")
+        .eq("externalization_contract_version", ARTIFACT_BLOB_CONTRACT_VERSION)
+        .not("bounded_replay_storage_ref", "is", null)
+        .not("bounded_replay_payload", "is", null)
+        .order("id", { ascending: true })
+        .limit(input.limit);
+      if (input.afterArtifactId) query = query.gt("id", input.afterArtifactId);
+      if (input.sourceKey) query = query.eq("source_backfill_items.source_inventory_snapshots.source_key", input.sourceKey);
+      const { data, error } = await query;
+      databaseError(error);
+      return (Array.isArray(data) ? data : []).filter(isRecord).flatMap((row) => {
+        const item = firstRow(row.source_backfill_items);
+        const snapshot = item ? firstRow(item.source_inventory_snapshots) : null;
+        const storageRef = nullableText(row, "bounded_replay_storage_ref");
+        const contractVersion = nullableText(row, "externalization_contract_version");
+        const storedSize = nullableNumber(row, "payload_size");
+        const sourceKey = snapshot ? text(snapshot, "source_key") : "";
+        if (!item || !snapshot || !storageRef || !contractVersion || storedSize === null || !sourceKey) return [];
+        return [{
+          artifactTable: "source_fetch_artifacts" as const,
+          artifactId: text(row, "id"),
+          itemId: text(row, "item_id"),
+          sourceKey,
+          kind: "fetch" as const,
+          storageRef,
+          storedHash: text(row, "payload_hash"),
+          storedSize,
+          externalizationContractVersion: contractVersion,
+        }];
+      });
+    }
+    let query = client
+      .from("source_normalization_artifacts")
+      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output_storage_ref, externalization_contract_version, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+      .eq("externalization_contract_version", ARTIFACT_BLOB_CONTRACT_VERSION)
+      .not("normalized_output_storage_ref", "is", null)
+      .not("normalized_output", "is", null)
+      .order("id", { ascending: true })
+      .limit(input.limit);
+    if (input.afterArtifactId) query = query.gt("id", input.afterArtifactId);
+    if (input.sourceKey) query = query.eq("source_backfill_items.source_inventory_snapshots.source_key", input.sourceKey);
+    const { data, error } = await query;
+    databaseError(error);
+    return (Array.isArray(data) ? data : []).filter(isRecord).flatMap((row) => {
+      const item = firstRow(row.source_backfill_items);
+      const snapshot = item ? firstRow(item.source_inventory_snapshots) : null;
+      const storageRef = nullableText(row, "normalized_output_storage_ref");
+      const contractVersion = nullableText(row, "externalization_contract_version");
+      const storedSize = nullableNumber(row, "normalized_output_size");
+      const sourceKey = snapshot ? text(snapshot, "source_key") : "";
+      if (!item || !snapshot || !storageRef || !contractVersion || storedSize === null || !sourceKey) return [];
+      return [{
+        artifactTable: "source_normalization_artifacts" as const,
+        artifactId: text(row, "id"),
+        itemId: text(row, "item_id"),
+        sourceKey,
+        kind: "normalization" as const,
+        storageRef,
+        storedHash: text(row, "normalized_output_hash"),
+        storedSize,
+        externalizationContractVersion: contractVersion,
+      }];
+    });
+  },
+
+  async clearArtifactInline(input) {
+    const { data, error } = await requiredClient().rpc("source_backfill_artifact_inline_clear_v1", {
+      p_artifact_table: input.artifactTable,
+      p_artifact_id: input.artifactId,
+      p_expected_storage_ref: input.expectedStorageRef,
+      p_expected_content_hash: input.expectedContentHash,
+      p_expected_content_size: input.expectedContentSize,
+      p_externalization_contract_version: input.externalizationContractVersion,
+      p_actor_id: input.actorId,
+    });
+    databaseError(error);
+    const row = firstRow(data);
+    if (!row) throw new Error("case_backfill.artifact_inline_clear_failed");
     return {
       artifactId: text(row, "artifactId"),
       idempotent: row.idempotent === true,

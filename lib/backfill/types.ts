@@ -181,3 +181,30 @@ export interface AttachArtifactExternalizationResult {
   artifactId: string;
   idempotent: boolean;
 }
+
+export interface CaseBackfillInlineClearCandidate {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  itemId: string;
+  sourceKey: string;
+  kind: CaseBackfillArtifactExternalizationKind;
+  storageRef: string;
+  storedHash: string;
+  storedSize: number;
+  externalizationContractVersion: string;
+}
+
+export interface ClearArtifactInlineInput {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  expectedStorageRef: string;
+  expectedContentHash: string;
+  expectedContentSize: number;
+  externalizationContractVersion: string;
+  actorId: string | null;
+}
+
+export interface ClearArtifactInlineResult {
+  artifactId: string;
+  idempotent: boolean;
+}
