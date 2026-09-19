@@ -328,6 +328,84 @@ test("an aggregate RPC failure fails readiness closed instead of reading per-row
   assert.equal(deps.transport.heads.length, 0);
 });
 
+test("an empty selected carrier fails aggregateComplete closed instead of silently under-counting", async () => {
+  // articles has rows; article_content_versions_p3 returns an all-zero aggregate
+  // (no rows for this table/source). The combined externalized total must not be
+  // presented as complete just because the empty carrier contributes nothing.
+  const repository = new FakeAggregateReadinessRepository({
+    articles: aggregate({
+      totalRows: 4,
+      inlinePresent: 4,
+      metadataComplete: 3,
+      dualCopy: 2,
+      blobOnly: 1,
+      exactLedgerCovered: 3,
+      clearableRows: 2,
+    }),
+    article_content_versions_p3: aggregate(),
+  });
+  const deps = dependencies(repository, new FakeCandidateRepository([]), new FakeTransport(), READ_ON);
+
+  const report = await runArticleRawReadiness({ batchSize: 10, maxBatches: 10 }, deps);
+
+  // Counts stay truthful: the empty carrier contributes nothing.
+  assert.equal(report.combined.externalizedRows, 3);
+  assert.equal(report.articles.externalizedRows, 3);
+  assert.equal(report.article_content_versions_p3.externalizedRows, 0);
+  assert.equal(report.article_content_versions_p3.totalRows, 0);
+
+  // ...but readiness fails closed instead of treating the empty carrier as complete.
+  assert.deepEqual(report.gates.aggregateFailures, []);
+  assert.deepEqual(report.gates.aggregateEmpty, ["article_content_versions_p3"]);
+  assert.equal(report.gates.aggregateComplete, false);
+  assert.equal(report.gates.externalizationReady, false);
+  assert.equal(report.gates.applicationWriteReady, false);
+  assert.equal(report.gates.newWriteReady, false);
+  assert.ok(report.gates.blocking.includes("aggregate_empty_article_content_versions_p3"));
+  assert.equal(report.gates.blocking.includes("aggregate_read_failed"), false);
+  assert.equal(report.gates.critical, false);
+});
+
+test("a fully empty selection fails aggregateComplete closed for every selected table", async () => {
+  const repository = new FakeAggregateReadinessRepository();
+  const report = await runArticleRawReadiness(
+    { tables: ["articles", "article_content_versions_p3"], batchSize: 10, maxBatches: 10 },
+    dependencies(repository, new FakeCandidateRepository([]), new FakeTransport(), READ_ON),
+  );
+
+  assert.deepEqual(report.gates.aggregateEmpty, ["articles", "article_content_versions_p3"]);
+  assert.equal(report.gates.aggregateComplete, false);
+  assert.equal(report.gates.externalizationReady, false);
+  assert.ok(report.gates.blocking.includes("aggregate_empty_articles"));
+  assert.ok(report.gates.blocking.includes("aggregate_empty_article_content_versions_p3"));
+});
+
+test("an unselected empty carrier does not block readiness", async () => {
+  // Only articles is selected; the empty article_content_versions_p3 aggregate is
+  // not part of the request and therefore cannot make readiness incomplete.
+  const repository = new FakeAggregateReadinessRepository({
+    articles: aggregate({
+      totalRows: 2,
+      inlinePresent: 2,
+      metadataComplete: 2,
+      dualCopy: 2,
+      exactLedgerCovered: 2,
+      clearableRows: 2,
+    }),
+    article_content_versions_p3: aggregate(),
+  });
+  const report = await runArticleRawReadiness(
+    { tables: ["articles"], batchSize: 10, maxBatches: 10 },
+    dependencies(repository, new FakeCandidateRepository([]), new FakeTransport(), READ_ON),
+  );
+
+  assert.deepEqual(report.gates.aggregateEmpty, []);
+  assert.equal(report.gates.aggregateComplete, true);
+  assert.equal(report.gates.externalizationReady, true);
+  assert.equal(report.gates.blocking.includes("aggregate_empty_articles"), false);
+  assert.equal(report.gates.blocking.includes("aggregate_empty_article_content_versions_p3"), false);
+});
+
 test("a single selected table is aggregated alone", async () => {
   const repository = new FakeAggregateReadinessRepository({
     article_content_versions_p3: aggregate({
@@ -350,9 +428,17 @@ test("a single selected table is aggregated alone", async () => {
 // --- gates ------------------------------------------------------------------
 
 test("EXTERNALIZATION_READY needs the read flag; APPLICATION_WRITE_READY adds write", async () => {
+  // Both selected carriers must be non-empty: an empty carrier is missing evidence
+  // and fails aggregateComplete closed, so this flag-gating test populates both.
   const repository = () =>
     new FakeAggregateReadinessRepository({
       articles: aggregate({ totalRows: 2, inlinePresent: 2, metadataAbsent: 2, ledgerMissingOrConflicting: 2 }),
+      article_content_versions_p3: aggregate({
+        totalRows: 1,
+        inlinePresent: 1,
+        metadataAbsent: 1,
+        ledgerMissingOrConflicting: 1,
+      }),
     });
 
   const flagsOff = await runArticleRawReadiness({ batchSize: 10, maxBatches: 10 }, dependencies(repository()));
@@ -936,6 +1022,9 @@ test("the module is aggregate-only, verifies coherent dual-copy candidates, and 
   assert.match(source, /externalizationReady = readFlagReady && aggregateComplete && !metadataCritical/);
   assert.match(source, /applicationWriteReady = externalizationReady && writeFlagReady/);
   assert.match(source, /const newWriteReady = applicationWriteReady/);
+  assert.match(source, /aggregateComplete = aggregateFailures\.length === 0 && aggregateEmpty\.length === 0/);
+  assert.match(source, /aggregateEmpty: \[\.\.\.aggregateEmpty\]/);
+  assert.match(source, /aggregate_empty_\$\{table\}/);
   assert.match(source, /inlineClearReady = applicationWriteReady && ledgerCoverageReady && verificationReady/);
   assert.match(source, /const ledgerCoverageReady = combined\.ledgerMissingOrConflictingRows === 0/);
   assert.match(source, /verificationTableCoverageReady = uncoveredClearableTables\.length === 0/);

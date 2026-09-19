@@ -75,8 +75,12 @@ Optional Blob verification (`--verify-sample=N`, `N` in `0..100`, default `0`)
 head/get verifies at most `N` externalized rows and reports aggregate counts
 only: `sampled`, `verifiedOk`, `readErrors`, `sizeMismatches`, `hashMismatches`,
 `invalidDocuments`, plus the per-kind sample counts `sampledByKind.fetch` and
-`sampledByKind.normalization`. Sampling is bounded globally by `N` and filled in
-kind order, so a small `N` can cover one kind and miss another.
+`sampledByKind.normalization`. Candidates are pooled per kind (each pool bounded
+by `N`) and the sample is allocated with a guaranteed first pass — one attempt per
+selected clearable kind, so a small `N` can never starve a later kind — followed
+by a fair round-robin across every selected kind. A sample that is genuinely
+smaller than the number of clearable kinds leaves at least one kind unsampled and
+keeps the gate not-ready instead of passing on a partial sample.
 
 ### Gates
 
@@ -229,8 +233,9 @@ refs/hashes/raw content/tokens/per-row payloads in the report; hash mismatch ⇒
 critical/not-ready; size and invalid-document mismatches ⇒ critical; Blob read
 error ⇒ verification gate not-ready (not critical); flags/defaults; and the
 `NEW_WRITE_READY` / `INLINE_CLEAR_READY` decision gates (including full ledger
-coverage, a clean verified sample, per-kind sample coverage, and single-kind
-runs).
+coverage, a clean verified sample, fair per-kind sample allocation — a large kind
+pool cannot starve another clearable kind — fail-closed coverage when the sample
+is genuinely too small, and single-kind runs).
 
 The fakes-only restore suite (`tests/backfill-artifact-blob-restore.test.ts`)
 proves: metadata planning before any Blob read; dry-run with no store; execute

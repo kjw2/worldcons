@@ -52,6 +52,14 @@ import { sha256Hex, type ArtifactBlobStore } from "@/lib/storage/blob";
  * stays not-ready with an explicit unsampled-table blocking reason rather than
  * passing on a partial, order-dependent sample.
  *
+ * Every selected table must return a usable, non-empty aggregate. A failed aggregate
+ * read and an empty carrier (an all-zero aggregate, for example a source with no
+ * article_content_versions_p3 rows) are both missing evidence: they are recorded in
+ * `aggregateFailures` / `aggregateEmpty` and force `aggregateComplete` (and every
+ * downstream readiness gate) closed with an explicit blocking reason, so a
+ * `--table=all` run can never silently under-count a selected table that returned no
+ * rows or reads.
+ *
  * Both article raw Blob flags default to OFF. EXTERNALIZATION_READY,
  * APPLICATION_WRITE_READY, NEW_WRITE_READY (an alias of APPLICATION_WRITE_READY), and
  * INLINE_CLEAR_READY are purely derived decision gates; this module never flips a
@@ -136,6 +144,7 @@ export interface ArticleRawReadinessGates {
   flagErrors: string[];
   aggregateComplete: boolean;
   aggregateFailures: ArticleRawReadinessTable[];
+  aggregateEmpty: ArticleRawReadinessTable[];
   metadataCritical: boolean;
   externalizationReady: boolean;
   applicationWriteReady: boolean;
@@ -478,6 +487,7 @@ function buildArticleRawReadinessGates(
   verification: ArticleRawReadinessVerification,
   environment: Record<string, string | undefined>,
   aggregateFailures: readonly ArticleRawReadinessTable[],
+  aggregateEmpty: readonly ArticleRawReadinessTable[],
   uncoveredClearableTables: readonly ArticleRawReadinessTable[],
 ): ArticleRawReadinessGates {
   const readEnabled = articleRawBlobReadEnabled(environment);
@@ -486,7 +496,11 @@ function buildArticleRawReadinessGates(
   const readFlagReady = articleRawBlobReadReady(environment);
   const writeFlagReady = articleRawBlobWriteReady(environment);
 
-  const aggregateComplete = aggregateFailures.length === 0;
+  // A selected table is only complete with a usable, non-empty aggregate. A failed
+  // read and an empty carrier (all-zero aggregate, for example a source with no
+  // article_content_versions_p3 rows) are both missing evidence: without this the
+  // combined report silently under-counts the dropped table and still looks ready.
+  const aggregateComplete = aggregateFailures.length === 0 && aggregateEmpty.length === 0;
   const metadataCritical = combined.metadataInconsistentRows > 0;
 
   const externalizationReady = readFlagReady && aggregateComplete && !metadataCritical;
@@ -520,7 +534,8 @@ function buildArticleRawReadinessGates(
   if (!readEnabled) blocking.push("read_flag_disabled");
   if (!writeEnabled) blocking.push("write_flag_disabled");
   for (const error of flagErrors) blocking.push(error);
-  if (!aggregateComplete) blocking.push("aggregate_read_failed");
+  if (aggregateFailures.length > 0) blocking.push("aggregate_read_failed");
+  for (const table of aggregateEmpty) blocking.push(`aggregate_empty_${table}`);
   if (combined.metadataInconsistentRows > 0) blocking.push("metadata_inconsistent_rows");
   if (!verification.requested) blocking.push("verification_not_requested");
   else if (verification.sampled === 0) blocking.push("verification_sample_empty");
@@ -543,6 +558,7 @@ function buildArticleRawReadinessGates(
     flagErrors,
     aggregateComplete,
     aggregateFailures: [...aggregateFailures],
+    aggregateEmpty: [...aggregateEmpty],
     metadataCritical,
     externalizationReady,
     applicationWriteReady,
@@ -613,6 +629,12 @@ export async function runArticleRawReadiness(
   const articles = totalsByTable.articles;
   const versions = totalsByTable.article_content_versions_p3;
   const combined = sumArticleRawReadinessTotals(articles, versions);
+  // A selected table whose aggregate succeeded but returned zero rows is an empty
+  // carrier: it is tracked explicitly (never silently folded into the combined
+  // totals as "complete") so readiness fails closed on missing evidence.
+  const aggregateEmpty = tables.filter(
+    (table) => !aggregateFailures.includes(table) && totalsByTable[table].totalRows === 0,
+  );
   const uncoveredClearableTables = verification.requested
     ? tables.filter((table) => totalsByTable[table].clearableRows > 0 && verification.sampledByTable[table] === 0)
     : [];
@@ -621,6 +643,7 @@ export async function runArticleRawReadiness(
     verification,
     environment,
     aggregateFailures,
+    aggregateEmpty,
     uncoveredClearableTables,
   );
 

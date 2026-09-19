@@ -93,8 +93,14 @@ later table), then the remaining slots fill round-robin across tables.
 ### Gates
 
 - `externalizationReady` (`EXTERNALIZATION_READY`): the read flag is ready **and**
-  every selected aggregate RPC succeeded (`aggregateComplete`) **and** there are no
-  metadata inconsistencies (`metadataInconsistentRows == 0`).
+  every selected aggregate RPC succeeded **and returned a non-empty aggregate**
+  (`aggregateComplete`) **and** there are no metadata inconsistencies
+  (`metadataInconsistentRows == 0`). A selected table whose aggregate read failed
+  (`aggregateFailures`) or came back empty (`aggregateEmpty` — an all-zero aggregate,
+  for example a source with no `article_content_versions_p3` rows) is missing
+  evidence: `aggregateComplete` stays false with an explicit `aggregate_read_failed` /
+  `aggregate_empty_<table>` blocking reason, so a `--table=all` run never silently
+  under-counts a table that returned no rows.
 - `applicationWriteReady` (`APPLICATION_WRITE_READY`): everything
   `EXTERNALIZATION_READY` needs **plus** the write flag ready. `newWriteReady`
   (`NEW_WRITE_READY`) is an **alias** of this gate.
@@ -238,10 +244,10 @@ Follow this order exactly. Do not skip a step or reorder it.
    ```
    `--table` accepts `articles`, `versions` (alias for
    `article_content_versions_p3`), or `all` (the default). If the report shows
-   `gates.aggregateComplete === false` (with the failing tables in
-   `gates.aggregateFailures`), the aggregate RPC did not return a usable row for one
-   or more selected tables; treat the gates as not-ready and investigate before
-   proceeding.
+   `gates.aggregateComplete === false` (with the failed tables in
+   `gates.aggregateFailures` and the empty carriers in `gates.aggregateEmpty`), the
+   aggregate RPC did not return a usable, non-empty row for one or more selected
+   tables; treat the gates as not-ready and investigate before proceeding.
 5. **Enable READ.** Set `ARTICLE_RAW_BLOB_READ_ENABLED=true` in a bounded
    process/session only. `WRITE` stays OFF. Confirm
    `EXTERNALIZATION_READY = true`. Now that READ is ready, confirm the preflight

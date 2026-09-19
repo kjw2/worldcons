@@ -36,9 +36,13 @@ import {
  *
  * Verification samples are counted per artifact kind, and `INLINE_CLEAR_READY`
  * additionally requires every selected kind with `clearableRows > 0` to have at
- * least one attempted sample. If `verificationSampleSize` is too small to cover
- * all such kinds, the gate stays not-ready with an explicit blocking reason
- * rather than passing on a partial, order-dependent sample.
+ * least one attempted sample. Candidates are pooled per kind (each pool bounded
+ * by `verificationSampleSize`) and allocated with a guaranteed first pass — one
+ * attempt per selected clearable kind, so a small sample can never starve a later
+ * kind — followed by a fair round-robin across every selected kind. If
+ * `verificationSampleSize` is genuinely smaller than the number of clearable
+ * kinds, the gate stays not-ready with an explicit blocking reason rather than
+ * passing on a partial sample.
  */
 
 export const ARTIFACT_READINESS_KINDS: readonly CaseBackfillArtifactExternalizationKind[] = [
@@ -259,7 +263,7 @@ export function classifyArtifactReadinessRow(
 function accumulateTotals(
   totals: ArtifactReadinessTotals,
   row: CaseBackfillArtifactReadinessRow,
-  candidates: ArtifactVerificationCandidate[],
+  candidatePool: ArtifactVerificationCandidate[],
   verificationSampleSize: number,
 ) {
   const classification = classifyArtifactReadinessRow(row);
@@ -282,12 +286,12 @@ function accumulateTotals(
   }
   if (
     verificationSampleSize > 0
-    && candidates.length < verificationSampleSize
+    && candidatePool.length < verificationSampleSize
     && classification.externalized
   ) {
     const storageRef = nonEmptyText(row.storageRef);
     if (storageRef) {
-      candidates.push({
+      candidatePool.push({
         kind: row.kind,
         storageRef,
         expectedHash: row.storedHash,
@@ -335,6 +339,46 @@ function emptyVerification(requested: boolean, sampleSize: number): ArtifactRead
   };
 }
 
+/**
+ * Allocate the bounded verification sample across kinds. Each selected kind owns a
+ * pool bounded by the sample size, and the sample is drawn with a guaranteed first
+ * pass (one attempt per selected clearable kind, so a small cap can never starve a
+ * later kind) followed by a fair round-robin across every selected kind. This
+ * replaces a single global FIFO that filled in kind order and could spend the whole
+ * budget on the first kind.
+ */
+function selectArtifactVerificationCandidates(
+  kinds: readonly CaseBackfillArtifactExternalizationKind[],
+  clearableKinds: readonly CaseBackfillArtifactExternalizationKind[],
+  pools: Record<CaseBackfillArtifactExternalizationKind, ArtifactVerificationCandidate[]>,
+  limit: number,
+): ArtifactVerificationCandidate[] {
+  const attempts: ArtifactVerificationCandidate[] = [];
+  const cursor: Record<CaseBackfillArtifactExternalizationKind, number> = { fetch: 0, normalization: 0 };
+  for (const kind of clearableKinds) {
+    if (attempts.length >= limit) break;
+    const candidate = pools[kind][cursor[kind]];
+    if (candidate) {
+      cursor[kind] += 1;
+      attempts.push(candidate);
+    }
+  }
+  let progressed = true;
+  while (attempts.length < limit && progressed) {
+    progressed = false;
+    for (const kind of kinds) {
+      if (attempts.length >= limit) break;
+      const candidate = pools[kind][cursor[kind]];
+      if (candidate) {
+        cursor[kind] += 1;
+        attempts.push(candidate);
+        progressed = true;
+      }
+    }
+  }
+  return attempts;
+}
+
 function isJsonObject(bytes: Buffer) {
   try {
     const parsed: unknown = JSON.parse(bytes.toString("utf8"));
@@ -345,14 +389,11 @@ function isJsonObject(bytes: Buffer) {
 }
 
 async function verifyArtifactReadinessSample(
-  candidates: readonly ArtifactVerificationCandidate[],
+  attempts: readonly ArtifactVerificationCandidate[],
   store: ArtifactBlobStore,
-  limit: number,
+  verification: ArtifactReadinessVerification,
 ): Promise<ArtifactReadinessVerification> {
-  const verification = emptyVerification(true, limit);
-  verification.candidatesConsidered = candidates.length;
-  for (const candidate of candidates) {
-    if (verification.sampled >= limit) break;
+  for (const candidate of attempts) {
     verification.sampled += 1;
     verification.sampledByKind[candidate.kind] += 1;
     let headSize: number;
@@ -491,7 +532,10 @@ export async function runArtifactReadiness(
     fetch: emptyArtifactReadinessTotals(),
     normalization: emptyArtifactReadinessTotals(),
   };
-  const candidates: ArtifactVerificationCandidate[] = [];
+  const candidatesByKind: Record<CaseBackfillArtifactExternalizationKind, ArtifactVerificationCandidate[]> = {
+    fetch: [],
+    normalization: [],
+  };
 
   for (const kind of kinds) {
     const totals = totalsByKind[kind];
@@ -509,7 +553,9 @@ export async function runArtifactReadiness(
       });
       if (rows.length === 0) break;
       totals.batches += 1;
-      for (const row of rows) accumulateTotals(totals, row, candidates, verificationSampleSize);
+      for (const row of rows) {
+        accumulateTotals(totals, row, candidatesByKind[kind], verificationSampleSize);
+      }
       cursor = rows[rows.length - 1].artifactId;
       if (rows.length < batchSize) break;
     }
@@ -518,7 +564,16 @@ export async function runArtifactReadiness(
   let verification: ArtifactReadinessVerification;
   if (verificationSampleSize > 0) {
     if (!dependencies.store) throw new Error("artifact_readiness.store_required");
-    verification = await verifyArtifactReadinessSample(candidates, dependencies.store, verificationSampleSize);
+    const clearableKinds = kinds.filter((kind) => totalsByKind[kind].clearableRows > 0);
+    verification = emptyVerification(true, verificationSampleSize);
+    for (const kind of kinds) verification.candidatesConsidered += candidatesByKind[kind].length;
+    const attempts = selectArtifactVerificationCandidates(
+      kinds,
+      clearableKinds,
+      candidatesByKind,
+      verificationSampleSize,
+    );
+    verification = await verifyArtifactReadinessSample(attempts, dependencies.store, verification);
   } else {
     verification = emptyVerification(false, 0);
   }

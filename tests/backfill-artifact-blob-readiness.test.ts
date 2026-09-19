@@ -434,8 +434,10 @@ test("INLINE_CLEAR_READY blocks when the verified sample misses a clearable kind
   seedFetchDocument(deps.transport, fetchRow.storageRef as string);
   seedNormalizedDocument(deps.transport, normalizationRow.storageRef as string);
 
-  // Sample size 1 fills from kind iteration order (fetch first), so the
-  // normalization kind is never sampled even though it has a clearable row.
+  // Sample size 1 is genuinely smaller than the two clearable kinds. The
+  // guaranteed first pass seeds only the first kind (fetch), so normalization
+  // stays unsampled and the gate fails closed rather than passing on a partial
+  // sample.
   const report = await runArtifactReadiness(
     { batchSize: 10, maxBatches: 10, verificationSampleSize: 1 },
     deps,
@@ -483,6 +485,114 @@ test("INLINE_CLEAR_READY allows both clearable kinds when the sample covers both
   assert.equal(report.gates.critical, false);
   assert.equal(deps.transport.heads.length, 2);
   assert.equal(deps.transport.gets.length, 2);
+});
+
+test("a large fetch pool cannot starve the normalization kind (fair per-kind allocation)", async () => {
+  // Regression: the old global FIFO budget filled in kind order, so five fetch
+  // candidates consumed a sample of 2 and normalization was never sampled even
+  // though it had a clearable row. The bounded per-kind pools give normalization
+  // a guaranteed first-pass attempt.
+  const fetchRows = Array.from({ length: 5 }, (_, index) => externalizedFetchRow({
+    artifactId: `70000000-0000-4000-8000-00000000000${index}`,
+    inlinePresent: true,
+    ledgerCovered: true,
+  }));
+  const normalizationRow = externalizedNormalizationRow({ inlinePresent: true, ledgerCovered: true });
+  const repository = new FakeReadinessRepository([...fetchRows, normalizationRow]);
+  const deps = dependencies(repository, new FakeTransport(), BOTH_ON);
+  for (const row of fetchRows) seedFetchDocument(deps.transport, row.storageRef as string);
+  seedNormalizedDocument(deps.transport, normalizationRow.storageRef as string);
+
+  const report = await runArtifactReadiness(
+    { batchSize: 50, maxBatches: 10, verificationSampleSize: 2 },
+    deps,
+  );
+
+  assert.equal(report.fetch.clearableRows, 5);
+  assert.equal(report.normalization.clearableRows, 1);
+  assert.equal(report.verification.sampled, 2);
+  assert.equal(report.verification.sampledByKind.fetch, 1);
+  assert.equal(report.verification.sampledByKind.normalization, 1);
+  assert.equal(report.verification.verifiedOk, 2);
+  assert.equal(report.gates.verificationKindCoverageReady, true);
+  assert.equal(report.gates.inlineClearReady, true);
+  assert.equal(report.gates.critical, false);
+});
+
+test("the sample fills by round-robin across kinds after the guaranteed first pass", async () => {
+  const fetchRows = Array.from({ length: 5 }, (_, index) => externalizedFetchRow({
+    artifactId: `71000000-0000-4000-8000-00000000000${index}`,
+    inlinePresent: true,
+    ledgerCovered: true,
+  }));
+  const normalizationRow = externalizedNormalizationRow({ inlinePresent: true, ledgerCovered: true });
+  const repository = new FakeReadinessRepository([...fetchRows, normalizationRow]);
+  const deps = dependencies(repository, new FakeTransport(), BOTH_ON);
+  for (const row of fetchRows) seedFetchDocument(deps.transport, row.storageRef as string);
+  seedNormalizedDocument(deps.transport, normalizationRow.storageRef as string);
+
+  const report = await runArtifactReadiness(
+    { batchSize: 50, maxBatches: 10, verificationSampleSize: 4 },
+    deps,
+  );
+
+  // First pass: one attempt each. Then round-robin drains the remaining fetch
+  // candidates because the normalization pool holds only one candidate.
+  assert.equal(report.verification.sampled, 4);
+  assert.equal(report.verification.sampledByKind.fetch, 3);
+  assert.equal(report.verification.sampledByKind.normalization, 1);
+  // Each per-kind pool is bounded by the sample size: fetch holds 4 of its 5.
+  assert.equal(report.verification.candidatesConsidered, 5);
+  assert.equal(report.gates.verificationKindCoverageReady, true);
+  assert.equal(report.gates.inlineClearReady, true);
+});
+
+test("sampling stays order-independent when the requested kind order is reversed", async () => {
+  const fetchRow = externalizedFetchRow({ inlinePresent: true, ledgerCovered: true });
+  const normalizationRow = externalizedNormalizationRow({ inlinePresent: true, ledgerCovered: true });
+  const repository = new FakeReadinessRepository([fetchRow, normalizationRow]);
+  const deps = dependencies(repository, new FakeTransport(), BOTH_ON);
+  seedFetchDocument(deps.transport, fetchRow.storageRef as string);
+  seedNormalizedDocument(deps.transport, normalizationRow.storageRef as string);
+
+  const report = await runArtifactReadiness(
+    { kinds: ["normalization", "fetch"], batchSize: 10, maxBatches: 10, verificationSampleSize: 2 },
+    deps,
+  );
+
+  // Kinds are canonicalized, and the guaranteed first pass covers both regardless
+  // of the requested order.
+  assert.deepEqual(report.kinds, ["fetch", "normalization"]);
+  assert.equal(report.verification.sampled, 2);
+  assert.equal(report.verification.sampledByKind.fetch, 1);
+  assert.equal(report.verification.sampledByKind.normalization, 1);
+  assert.equal(report.gates.inlineClearReady, true);
+});
+
+test("a sample genuinely smaller than the clearable kinds still fails closed", async () => {
+  // The fairness fix must not weaken fail-closed behavior: with one slot and two
+  // clearable kinds, exactly one kind is covered and the gate stays not-ready.
+  const fetchRow = externalizedFetchRow({ inlinePresent: true, ledgerCovered: true });
+  const normalizationRow = externalizedNormalizationRow({ inlinePresent: true, ledgerCovered: true });
+  const repository = new FakeReadinessRepository([fetchRow, normalizationRow]);
+  const deps = dependencies(repository, new FakeTransport(), BOTH_ON);
+  seedFetchDocument(deps.transport, fetchRow.storageRef as string);
+  seedNormalizedDocument(deps.transport, normalizationRow.storageRef as string);
+
+  const report = await runArtifactReadiness(
+    { batchSize: 10, maxBatches: 10, verificationSampleSize: 1 },
+    deps,
+  );
+
+  assert.equal(report.verification.sampled, 1);
+  assert.equal(report.verification.sampledByKind.fetch, 1);
+  assert.equal(report.verification.sampledByKind.normalization, 0);
+  assert.equal(report.verification.verifiedOk, 1);
+  assert.equal(report.gates.verificationKindCoverageReady, false);
+  assert.equal(report.gates.verificationReady, false);
+  assert.equal(report.gates.inlineClearReady, false);
+  assert.ok(report.gates.blocking.includes("verification_clearable_kind_unsampled_normalization"));
+  assert.equal(report.gates.blocking.includes("verification_clearable_kind_unsampled_fetch"), false);
 });
 
 test("a single selected kind only requires its own verified sample", async () => {
@@ -717,6 +827,14 @@ test("the module keeps verification default off, deletes nothing, and derives th
   assert.match(source, /inlineClearReady = newWriteReady && ledgerCoverageReady && verificationReady/);
   assert.match(source, /verificationKindCoverageReady = uncoveredClearableKinds\.length === 0/);
   assert.match(source, /verification\.sampledByKind\[candidate\.kind\] \+= 1/);
+  // The verification sample is pooled per kind and allocated fairly (guaranteed
+  // first pass per clearable kind, then round-robin), never a single global FIFO.
+  assert.match(source, /candidatesByKind: Record<CaseBackfillArtifactExternalizationKind, ArtifactVerificationCandidate\[\]>/);
+  assert.match(source, /candidatePool\.length < verificationSampleSize/);
+  assert.match(source, /selectArtifactVerificationCandidates\(/);
+  assert.match(source, /const clearableKinds = kinds\.filter\(\(kind\) => totalsByKind\[kind\]\.clearableRows > 0\)/);
+  assert.match(source, /verification\.candidatesConsidered \+= candidatesByKind\[kind\]\.length/);
+  assert.doesNotMatch(source, /const candidates: ArtifactVerificationCandidate\[\] = \[\]/);
   assert.match(source, /verification_clearable_kind_unsampled_\$\{kind\}/);
   assert.match(source, /ARTIFACT_READINESS_INLINE_RESTORE = "dedicated_restore_available"/);
   assert.match(source, /storageRefsEmitted: 0/);
