@@ -454,6 +454,8 @@ function defenseRepository(snapshot: CaseBackfillSnapshot, onBeginRun: () => voi
     completeItem: unavailable,
     excludeItem: unavailable,
     failItem: unavailable,
+    listArtifactExternalizationCandidates: unavailable,
+    attachArtifactExternalization: unavailable,
   } as CaseBackfillRepository;
 }
 

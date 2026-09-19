@@ -661,6 +661,8 @@ test("Germany discovery persists enumeration evidence before items and closes on
     completeItem: unavailable,
     excludeItem: unavailable,
     failItem: unavailable,
+    listArtifactExternalizationCandidates: unavailable,
+    attachArtifactExternalization: unavailable,
   } as CaseBackfillRepository;
 
   const result = await runCaseBackfillPass(pass, {

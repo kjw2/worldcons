@@ -1,8 +1,12 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import type {
+  AttachArtifactExternalizationInput,
+  AttachArtifactExternalizationResult,
+  CaseBackfillArtifactExternalizationKind,
   CaseBackfillAttemptAuthority,
   CaseBackfillClaimedItem,
   CaseBackfillEnumerationArtifact,
+  CaseBackfillExternalizationCandidate,
   CaseBackfillFetchArtifact,
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
@@ -285,6 +289,15 @@ export interface CaseBackfillRepository {
     errorSummary: string;
     retryAt: string | null;
   }): Promise<void>;
+  listArtifactExternalizationCandidates(input: {
+    kind: CaseBackfillArtifactExternalizationKind;
+    sourceKey?: string | null;
+    limit: number;
+    afterArtifactId?: string | null;
+  }): Promise<CaseBackfillExternalizationCandidate[]>;
+  attachArtifactExternalization(
+    input: AttachArtifactExternalizationInput,
+  ): Promise<AttachArtifactExternalizationResult>;
 }
 
 export const postgresCaseBackfillRepository: CaseBackfillRepository = {
@@ -800,5 +813,92 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
       p_exclusion_code: input.exclusionCode,
     });
     databaseError(error);
+  },
+
+  /**
+   * M4A candidates: existing inline artifacts that carry no externalization ref.
+   * Keyset pagination on the artifact id keeps every batch bounded and stable
+   * across reruns, which already externalized rows drop out of.
+   */
+  async listArtifactExternalizationCandidates(input) {
+    const client = requiredClient();
+    if (input.kind === "fetch") {
+      let query = client
+        .from("source_fetch_artifacts")
+        .select("id, item_id, payload_hash, payload_size, bounded_replay_payload, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+        .eq("replayability", "bounded_evidence")
+        .is("bounded_replay_storage_ref", null)
+        .not("bounded_replay_payload", "is", null)
+        .order("id", { ascending: true })
+        .limit(input.limit);
+      if (input.afterArtifactId) query = query.gt("id", input.afterArtifactId);
+      if (input.sourceKey) query = query.eq("source_backfill_items.source_inventory_snapshots.source_key", input.sourceKey);
+      const { data, error } = await query;
+      databaseError(error);
+      return (Array.isArray(data) ? data : []).filter(isRecord).flatMap((row) => {
+        const item = firstRow(row.source_backfill_items);
+        const snapshot = item ? firstRow(item.source_inventory_snapshots) : null;
+        const payload = recordValue(row, "bounded_replay_payload");
+        const sourceKey = snapshot ? text(snapshot, "source_key") : "";
+        if (!item || !snapshot || !payload || !sourceKey) return [];
+        return [{
+          artifactTable: "source_fetch_artifacts" as const,
+          artifactId: text(row, "id"),
+          itemId: text(row, "item_id"),
+          sourceKey,
+          kind: "fetch" as const,
+          inlinePayload: payload,
+          storedHash: text(row, "payload_hash"),
+          storedSize: nullableNumber(row, "payload_size"),
+        }];
+      });
+    }
+    let query = client
+      .from("source_normalization_artifacts")
+      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+      .is("normalized_output_storage_ref", null)
+      .not("normalized_output", "is", null)
+      .order("id", { ascending: true })
+      .limit(input.limit);
+    if (input.afterArtifactId) query = query.gt("id", input.afterArtifactId);
+    if (input.sourceKey) query = query.eq("source_backfill_items.source_inventory_snapshots.source_key", input.sourceKey);
+    const { data, error } = await query;
+    databaseError(error);
+    return (Array.isArray(data) ? data : []).filter(isRecord).flatMap((row) => {
+      const item = firstRow(row.source_backfill_items);
+      const snapshot = item ? firstRow(item.source_inventory_snapshots) : null;
+      const payload = recordValue(row, "normalized_output");
+      const sourceKey = snapshot ? text(snapshot, "source_key") : "";
+      if (!item || !snapshot || !payload || !sourceKey) return [];
+      return [{
+        artifactTable: "source_normalization_artifacts" as const,
+        artifactId: text(row, "id"),
+        itemId: text(row, "item_id"),
+        sourceKey,
+        kind: "normalization" as const,
+        inlinePayload: payload,
+        storedHash: text(row, "normalized_output_hash"),
+        storedSize: nullableNumber(row, "normalized_output_size"),
+      }];
+    });
+  },
+
+  async attachArtifactExternalization(input) {
+    const { data, error } = await requiredClient().rpc("source_backfill_artifact_externalize_v1", {
+      p_artifact_table: input.artifactTable,
+      p_artifact_id: input.artifactId,
+      p_storage_ref: input.storageRef,
+      p_content_hash: input.contentHash,
+      p_content_size: input.contentSize,
+      p_externalization_contract_version: input.externalizationContractVersion,
+      p_actor_id: input.actorId,
+    });
+    databaseError(error);
+    const row = firstRow(data);
+    if (!row) throw new Error("case_backfill.artifact_externalization_failed");
+    return {
+      artifactId: text(row, "artifactId"),
+      idempotent: row.idempotent === true,
+    };
   },
 };

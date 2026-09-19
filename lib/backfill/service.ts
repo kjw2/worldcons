@@ -21,6 +21,7 @@ import { discoverFranceConseilInventory } from "@/lib/crawlee/france-conseil-inv
 import { discoverFranceDilaConstitInventory } from "@/lib/crawlee/france-dila-constit";
 import { discoverBverfgInventory } from "@/lib/crawlee/bverfg-inventory";
 import { caseCatalogWriteEnabled } from "@/lib/case-catalog/flags";
+import { canonicalJson } from "@/lib/backfill/canonical-json";
 import { caseBackfillArtifactBlobReadReady, caseBackfillArtifactBlobWriteReady } from "@/lib/backfill/flags";
 import {
   ARTIFACT_BLOB_CONTRACT_VERSION,
@@ -210,15 +211,6 @@ const defaultDependencies: CaseBackfillDependencies = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (isRecord(value)) {
-    return `{${Object.keys(value).sort().filter((key) => value[key] !== undefined)
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
 }
 
 function sha256(value: string) {

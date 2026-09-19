@@ -150,3 +150,34 @@ export interface CaseBackfillPublicationResult {
   publicationRevision: number;
   articleSlug: string;
 }
+
+export type CaseBackfillArtifactExternalizationKind = "fetch" | "normalization";
+export type CaseBackfillArtifactExternalizationTable =
+  | "source_fetch_artifacts"
+  | "source_normalization_artifacts";
+
+export interface CaseBackfillExternalizationCandidate {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  itemId: string;
+  sourceKey: string;
+  kind: CaseBackfillArtifactExternalizationKind;
+  inlinePayload: Record<string, unknown>;
+  storedHash: string;
+  storedSize: number | null;
+}
+
+export interface AttachArtifactExternalizationInput {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  storageRef: string;
+  contentHash: string;
+  contentSize: number;
+  externalizationContractVersion: string;
+  actorId: string | null;
+}
+
+export interface AttachArtifactExternalizationResult {
+  artifactId: string;
+  idempotent: boolean;
+}
