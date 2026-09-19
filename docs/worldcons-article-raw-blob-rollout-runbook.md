@@ -3,8 +3,9 @@
 Scope: operational rollout of the private article raw-text Blob lifecycle — M6A
 contract and flag-on capture, M6B externalization, M6C inline clear, M6D-A operator
 read authority, M6D-B read-only aggregate readiness (`article_raw_readiness_v1`)
-with optional bounded Blob verification, and M6E inline restore
-(`article_raw_restore_inline_v1` / `article_raw_restore_candidates_v1`).
+with optional bounded Blob verification, M6E inline restore
+(`article_raw_restore_inline_v1` / `article_raw_restore_candidates_v1`), and the M6F
+read-only rollout preflight (`pnpm preflight:article-raw`).
 
 The readiness module (`lib/article-raw/readiness.ts`), repository
 (`lib/article-raw/readiness-repository.ts`), and CLI
@@ -17,6 +18,14 @@ one supported way to put a cleared inline raw_text back; they restore the redund
 inline copy in place, never write or delete a Blob object, and require an explicit
 `--execute --acknowledge-inline-restore` together with
 `ARTICLE_RAW_BLOB_READ_ENABLED=true`.
+
+The preflight module (`lib/article-raw/rollout-preflight.ts`) and CLI
+(`scripts/article-raw-rollout-preflight.ts`, `pnpm preflight:article-raw`) are
+read-only: they apply no migration, deploy nothing, never construct a Blob store,
+never read/write/delete a Blob object, and mutate nothing. They probe the existing
+M6D-A, M6D-B, and M6E read authorities only, and are the static/env check to run
+before migrations and the DB-authority/readiness check to run after migrations
+(both flags OFF) before enabling READ.
 
 ## 1. Invariants
 
@@ -104,15 +113,85 @@ later table), then the remaining slots fill round-robin across tables.
 - Blob **read errors** do not raise `critical`; they make the verification gate
   **not ready** and block `INLINE_CLEAR_READY`.
 
-## 3. Safe rollout order
+## 3. Rollout preflight (M6F)
+
+`pnpm preflight:article-raw` is the read-only preflight. It performs exactly three
+bounded reads per carrier table (`articles`, `article_content_versions_p3`) and
+nothing else:
+
+- **M6D-A operator candidate read** (`article_raw_operator_candidates_v1`) through the
+  externalization candidate repository, **limit 1** per table.
+- **M6D-B aggregate readiness read** (`article_raw_readiness_v1`) through the
+  readiness repository.
+- **M6E restore candidate read** (`article_raw_restore_candidates_v1`) through the
+  restore repository, **limit 1** per table.
+
+Every probe goes through the existing repository authority; the preflight never
+direct-queries `articles` / `article_content_versions_p3`, never calls an attach,
+clear, or restore RPC, never calls `put`/`delete`, and never touches Blob storage. It
+reports only booleans, counts, and sanitized error codes — never a storage ref, hash,
+size, source key, row id, raw payload, token, or URL. A database outage **fails
+closed**: the affected probes are recorded as sanitized error codes, the dependent
+gates turn off, and there is no fallback path.
+
+### Preflight gates
+
+- `migrationSafe`: both flags are **OFF** (`READ=false`, `WRITE=false`), there are no
+  `flagErrors`, and every allowlisted M6A..M6E migration file is present on disk.
+- `readEnableSafe`: every DB probe/aggregate succeeded and the combined
+  `metadataInconsistentRows` is `0`.
+- `writeEnableSafe`: everything `readEnableSafe` needs **plus** READ ready (the READ
+  flag is on with no flag errors). Enable READ first, then re-run the preflight.
+- `restoreCanarySafe`: every M6E restore probe succeeded **plus** READ ready.
+- `clearCanarySafe`: **always false**, with reason
+  `runtime_readiness_sample_required`. The M6D-B verified Blob sample and the full
+  ledger are still required before any inline clear canary — the preflight never
+  substitutes for `INLINE_CLEAR_READY`.
+
+### Preflight CLI and exit codes
+
+```text
+# Static/env check before applying migrations. Exit 2 unless migrationSafe.
+pnpm preflight:article-raw --require=migration
+
+# DB-authority/readiness check after migrations with both flags OFF. Exit 2 unless
+# every probe succeeded and there are no metadata inconsistent rows.
+pnpm preflight:article-raw --require=read
+
+# After enabling READ (WRITE still OFF). Exit 2 unless writeEnableSafe / restoreCanarySafe.
+pnpm preflight:article-raw --require=write
+pnpm preflight:article-raw --require=restore
+```
+
+`--require` is optional and repeatable. Exit codes: `0` success, `2` a required gate
+was not ready, `1` an unexpected error. A bare run only reports. There is no
+`--execute` and no `--acknowledge-*` flag, and the CLI never constructs an
+`ArtifactBlobStore`.
+
+## 4. Safe rollout order
 
 Follow this order exactly. Do not skip a step or reorder it.
 
-1. **Apply migrations.** Apply the pending article raw migrations (M6A contract,
-   M6B externalization, M6C inline clear, M6D-A operator read authority, and the
-   M6D-B read-only aggregate readiness function) to the target database. Keep both
-   article raw Blob flags **OFF**.
-2. **Read-only readiness.** Run the readiness CLI with verification off and both
+1. **Preflight (static/env check).** Before applying any migration, run the
+   read-only preflight with both flags **OFF**. Exit `2` unless `migrationSafe`
+   (both flags OFF, no `flagErrors`, and every allowlisted M6A..M6E migration file
+   present on disk).
+   ```text
+   pnpm preflight:article-raw --require=migration
+   ```
+2. **Apply migrations.** Apply the pending article raw migrations (M6A contract,
+   M6B externalization, M6C inline clear, M6D-A operator read authority, M6D-B
+   read-only aggregate readiness function, and M6E inline restore) to the target
+   database. Keep both article raw Blob flags **OFF**.
+3. **Preflight (DB authority/readiness check).** After the migrations are applied and
+   while both flags are still **OFF**, run the preflight again. Exit `2` unless
+   `readEnableSafe` (every DB probe/aggregate succeeded and the combined
+   `metadataInconsistentRows` is `0`). This proves the M6D-A, M6D-B, and M6E read
+   authorities resolve before READ is enabled.
+   ```text
+   pnpm preflight:article-raw --require=read
+   ```
+4. **Read-only readiness.** Run the readiness CLI with verification off and both
    flags off. Confirm the report is coherent (`totalRows`,
    `metadataInconsistentRows`, ledger coverage) and that zero Blob reads happened.
    ```text
@@ -127,10 +206,15 @@ Follow this order exactly. Do not skip a step or reorder it.
    `gates.aggregateFailures`), the aggregate RPC did not return a usable row for one
    or more selected tables; treat the gates as not-ready and investigate before
    proceeding.
-3. **Enable READ.** Set `ARTICLE_RAW_BLOB_READ_ENABLED=true` in a bounded
+5. **Enable READ.** Set `ARTICLE_RAW_BLOB_READ_ENABLED=true` in a bounded
    process/session only. `WRITE` stays OFF. Confirm
-   `EXTERNALIZATION_READY = true`.
-4. **Canary reads.** Run the readiness CLI with a small verification sample and
+   `EXTERNALIZATION_READY = true`. Now that READ is ready, confirm the preflight
+   write/restore gates before touching them.
+   ```text
+   pnpm preflight:article-raw --require=write
+   pnpm preflight:article-raw --require=restore
+   ```
+6. **Canary reads.** Run the readiness CLI with a small verification sample and
    confirm `readErrors`, `sizeMismatches`, `hashMismatches`, `invalidDocuments`, and
    `textMismatches` are all zero for the sampled candidates. The sample must be large
    enough to reach every selected clearable table (check `sampledByTable.articles` and
@@ -141,34 +225,34 @@ Follow this order exactly. Do not skip a step or reorder it.
    ```text
    pnpm readiness:article-raw --source=<source-key> --verify-sample=10
    ```
-5. **Enable WRITE.** Set `ARTICLE_RAW_BLOB_WRITE_ENABLED=true` (requires READ on).
+7. **Enable WRITE.** Set `ARTICLE_RAW_BLOB_WRITE_ENABLED=true` (requires READ on).
    Re-run readiness and require `APPLICATION_WRITE_READY = true` (and the
    `NEW_WRITE_READY` alias) with no metadata inconsistencies before proceeding.
-6. **M6B dry-run, then execute small batches.** Plan first, then externalize a
+8. **M6B dry-run, then execute small batches.** Plan first, then externalize a
    small bounded batch while preserving inline raw_text.
    ```text
    pnpm externalize:article-raw --table=articles --source=<source-key> --batch-size=25
    pnpm externalize:article-raw --table=articles --source=<source-key> --batch-size=25 --execute --acknowledge-externalization
    ```
-7. **Recheck readiness.** Re-run the readiness report. Confirm `dualCopyRows`
+9. **Recheck readiness.** Re-run the readiness report. Confirm `dualCopyRows`
    increased, `metadataInconsistentRows` stayed zero, and ledger coverage is complete
    for externalized rows.
-8. **M6C dry-run.** Plan the inline clear without mutating anything.
+10. **M6C dry-run.** Plan the inline clear without mutating anything.
    ```text
    pnpm clear:article-raw-inline --table=articles --source=<source-key> --batch-size=25
    ```
-9. **Optional tiny clear canary (only now).** Only if readiness reports
+11. **Optional tiny clear canary (only now).** Only if readiness reports
    `INLINE_CLEAR_READY = true`, run a single tiny clear canary on one small
    source/table with an explicit acknowledgement.
    ```text
    pnpm clear:article-raw-inline --table=articles --source=<source-key> --batch-size=1 --execute --acknowledge-inline-clear
    ```
-10. **Recheck readiness after the canary.** Confirm the clear moves rows from
+12. **Recheck readiness after the canary.** Confirm the clear moves rows from
     `dualCopyRows` to `blobOnlyRows`; readiness must stay non-critical and
     `INLINE_CLEAR_READY` must remain true before any further clear.
-11. **M6E restore dry-run, then a tiny restore canary.** Before any *large-scale* M6C
+13. **M6E restore dry-run, then a tiny restore canary.** Before any *large-scale* M6C
     inline clear, deploy and test M6E and rehearse restore. Plan first (zero Blob
-    reads, zero restore RPC), then restore a single tiny canary batch (see section 4).
+    reads, zero restore RPC), then restore a single tiny canary batch (see section 5).
     ```text
     pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=25
     pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=1 --execute --acknowledge-inline-restore
@@ -176,14 +260,14 @@ Follow this order exactly. Do not skip a step or reorder it.
     Do not run a large-scale M6C inline clear until M6E has been deployed and this
     canary has passed.
 
-## 4. M6E restore (the rollback path)
+## 5. M6E restore (the rollback path)
 
 M6E is the only supported way to put a cleared inline `raw_text` back. It reuses the
 M6A codec and the M6A read flag, reads the Blob object, and restores the redundant
 inline copy through the single permit-guarded `article_raw_restore_inline_v1` RPC.
 The M6A/M6B/M6C/M6E article raw migrations include the M6E restore RPCs
 (`article_raw_restore_inline_v1`, `article_raw_restore_candidates_v1`); apply the
-pending M6E migration with the others in step 1 before rehearsing restore.
+pending M6E migration with the others in step 2 before rehearsing restore.
 
 - **Dry run is the default** and performs **zero Blob reads and zero restore RPC
   calls**. It lists blob-only candidates through `article_raw_restore_candidates_v1`
@@ -202,7 +286,7 @@ pending M6E migration with the others in step 1 before rehearsing restore.
 - It **never writes or deletes a Blob object** and never repoints externalization
   metadata (`blobObjectsWritten: 0`, `blobObjectsDeleted: 0`). An identical rerun is
   idempotent.
-- Restoring an `articles` row advances its existing `updated_at` (see section 5).
+- Restoring an `articles` row advances its existing `updated_at` (see section 6).
 
 ### Ordering rule
 
@@ -215,7 +299,7 @@ pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-s
 pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-size=1 --execute --acknowledge-inline-restore
 ```
 
-## 5. Maintenance and `updated_at`
+## 6. Maintenance and `updated_at`
 
 - **No `VACUUM FULL`.** Do not run `VACUUM FULL` as part of this migration, before or
   after an M6E restore. Bloated inline columns are only reclaimed by a later,
@@ -233,7 +317,7 @@ pnpm restore:article-raw-inline --table=articles --source=<source-key> --batch-s
   recently touched. Readiness must be read from `article_raw_readiness_v1`, never
   inferred from `updated_at`.
 
-## 6. Rollout decision gates as evidence
+## 7. Rollout decision gates as evidence
 
 Use the `--require-*` flags so a failed gate fails closed with exit code `2` instead
 of being read by eye. These are read-only assertions; they change no state.
@@ -255,7 +339,7 @@ pnpm readiness:article-raw --source=<source-key> --verify-sample=10 --require-in
 Exit codes: `0` success, `1` unexpected error or `critical`, `2` a required gate was
 not ready.
 
-## 7. Rollback
+## 8. Rollback
 
 - To stop new Blob writes, set `ARTICLE_RAW_BLOB_WRITE_ENABLED=false`. Reads may
   stay on while inline raw_text still exists (dual-copy rows read inline first).
@@ -271,7 +355,7 @@ not ready.
 - Never delete Blob objects. M6C, M6E, and the readiness CLI never delete Blob objects
   (`blobObjectsDeleted: 0`).
 
-## 8. Verification
+## 9. Verification
 
 ```text
 pnpm typecheck
@@ -279,6 +363,7 @@ pnpm lint
 pnpm check
 pnpm test:article-raw-readiness
 pnpm test:article-raw-restore
+pnpm test:article-raw-preflight
 ```
 
 The fakes-only readiness suite (`tests/article-raw-readiness.test.ts`) proves:
@@ -303,3 +388,16 @@ assertions over `20260919180000_article_raw_blob_restore.sql` for database-side
 JSON-string document size/SHA-256 verification, the exact ledger checks, the
 trigger-free `articles` carrier, the combined attach/clear/restore guard, and
 service_role-only authority.
+
+The fakes-only preflight suite (`tests/article-raw-rollout-preflight.test.ts`)
+proves: both tables probed through the M6D-A / M6D-B / M6E repository authorities
+with the candidate limit 1 and the exact RPC arguments; count and metadata
+inconsistency reporting; the `migrationSafe` / `readEnableSafe` / `writeEnableSafe` /
+`restoreCanarySafe` / `clearCanarySafe` gates (including `writeEnableSafe` and
+`restoreCanarySafe` requiring READ ready); `clearCanarySafe` always false with
+`runtime_readiness_sample_required`; sanitized error codes and fail-closed probe
+failures; the hardcoded M6A..M6E migration filename allowlist with only missing
+names reported; report redaction (no refs, hashes, raw text, source keys, or row
+ids); and static assertions that the module and CLI never direct-query the raw
+tables, never construct a Blob store, never call `put`/`delete`, and take no
+`--execute`/`--acknowledge-*` flag.
