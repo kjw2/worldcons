@@ -210,6 +210,42 @@ export interface ClearArtifactInlineResult {
 }
 
 /**
+ * Blob-only restore candidate: an artifact whose inline payload is absent. Every
+ * externalization metadata field is nullable so an incomplete or contradictory row
+ * is visible to the service and classified (conflict/not_ready) before any Blob
+ * read, rather than being silently dropped from the listing.
+ */
+export interface CaseBackfillInlineRestoreCandidate {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  itemId: string;
+  sourceKey: string;
+  kind: CaseBackfillArtifactExternalizationKind;
+  storageRef: string | null;
+  storedHash: string | null;
+  storedSize: number | null;
+  externalizedAt: string | null;
+  externalizationContractVersion: string | null;
+}
+
+export interface RestoreArtifactInlineInput {
+  artifactTable: CaseBackfillArtifactExternalizationTable;
+  artifactId: string;
+  inlinePayload: Record<string, unknown>;
+  document: string;
+  storageRef: string;
+  contentHash: string;
+  contentSize: number;
+  externalizationContractVersion: string;
+  actorId: string | null;
+}
+
+export interface RestoreArtifactInlineResult {
+  artifactId: string;
+  idempotent: boolean;
+}
+
+/**
  * M5 read-only readiness row: one fetch/normalization artifact reduced to
  * presence and externalization/ledger metadata only. It never carries payload
  * content, and the storage ref/hash/size it exposes is consumed in-memory by the

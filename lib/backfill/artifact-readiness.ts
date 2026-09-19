@@ -29,9 +29,10 @@ import {
  *
  * Both Blob feature flags default to OFF. `NEW_WRITE_READY` and
  * `INLINE_CLEAR_READY` are purely derived decision gates; this module never
- * flips a flag and never clears inline content. A real inline clear can only be
- * rolled back by a separately designed restore path, which is intentionally not
- * implemented here.
+ * flips a flag and never clears inline content. This module is read-only and
+ * never restores either. A real inline clear can be rolled back only through the
+ * dedicated forward-only restore path (`pnpm restore:inline-artifacts`), which is
+ * a separate operation reported here as `dedicated_restore_available`.
  *
  * Verification samples are counted per artifact kind, and `INLINE_CLEAR_READY`
  * additionally requires every selected kind with `clearableRows > 0` to have at
@@ -47,7 +48,7 @@ export const ARTIFACT_READINESS_KINDS: readonly CaseBackfillArtifactExternalizat
 export const ARTIFACT_READINESS_MAX_BATCH_SIZE = 100;
 export const ARTIFACT_READINESS_MAX_BATCHES = 1000;
 export const ARTIFACT_READINESS_MAX_VERIFICATION_SAMPLE = 100;
-export const ARTIFACT_READINESS_INLINE_RESTORE = "requires_separate_restore_design";
+export const ARTIFACT_READINESS_INLINE_RESTORE = "dedicated_restore_available";
 
 export interface CaseBackfillArtifactReadinessDependencies {
   repository: Pick<CaseBackfillRepository, "listArtifactReadinessRows">;

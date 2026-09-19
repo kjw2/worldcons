@@ -458,6 +458,8 @@ function defenseRepository(snapshot: CaseBackfillSnapshot, onBeginRun: () => voi
     attachArtifactExternalization: unavailable,
     listArtifactInlineClearCandidates: unavailable,
     clearArtifactInline: unavailable,
+    listArtifactInlineRestoreCandidates: unavailable,
+    restoreArtifactInline: unavailable,
     listArtifactReadinessRows: unavailable,
   } as CaseBackfillRepository;
 }

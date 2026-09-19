@@ -718,7 +718,7 @@ test("the module keeps verification default off, deletes nothing, and derives th
   assert.match(source, /verificationKindCoverageReady = uncoveredClearableKinds\.length === 0/);
   assert.match(source, /verification\.sampledByKind\[candidate\.kind\] \+= 1/);
   assert.match(source, /verification_clearable_kind_unsampled_\$\{kind\}/);
-  assert.match(source, /ARTIFACT_READINESS_INLINE_RESTORE = "requires_separate_restore_design"/);
+  assert.match(source, /ARTIFACT_READINESS_INLINE_RESTORE = "dedicated_restore_available"/);
   assert.match(source, /storageRefsEmitted: 0/);
   assert.doesNotMatch(source, /store\.delete\(/);
   assert.doesNotMatch(source, /console\.log/);

@@ -10,6 +10,14 @@ and one additive read-only SQL function
 It does not apply migrations, deploy, externalize, clear inline data, run VACUUM,
 or modify production. It introduces no M6 work.
 
+The forward-only inline restore path
+(`supabase/migrations/20260919210000_artifact_blob_inline_restore.sql`,
+`lib/backfill/inline-restore.ts`, `scripts/restore-inline-artifacts.ts`,
+`pnpm restore:inline-artifacts`) is the rollback for M4B. It re-populates the
+redundant inline payload from the already verified Blob object through the single
+permit-guarded restore transition, is dry-run by default, and never writes or
+deletes a Blob object.
+
 The pre-production corrective hardening migration
 (`supabase/migrations/20260919190000_artifact_blob_contract_hardening.sql`) is a
 schema-only prerequisite for this rollout. It edits no earlier migration and only
@@ -33,10 +41,13 @@ no grant. Apply it with the other pending artifact migrations in step 1.
 - Blob verification is **off by default**. A bare readiness run issues zero
   `head`/`get` calls. Even when requested, verification requires the Blob read
   flag to be ready, so a bare run and a read-flag-off run never touch Blob.
-- Inline clear is irreversible at the database layer. After any real inline clear,
-  restoring the inline copy requires a **separately designed restore path** that
-  is intentionally **not implemented** in this milestone. Do not attempt to
-  re-populate inline columns directly; the M4B guard blocks it.
+- Inline clear is not reversible by any direct update. Restoring the inline copy
+  is possible **only** through the dedicated `pnpm restore:inline-artifacts` path
+  (dry-run by default; add `--execute --acknowledge-inline-restore` to run), and
+  the guard blocks every other write. The readiness report's
+  `inlineRestore: "dedicated_restore_available"` field is a truthful stable marker
+  that the restore path exists: readiness remains read-only and never restores;
+  restore is a separate operation performed by `pnpm restore:inline-artifacts`.
 - The corrective hardening migration (step 1) is schema-only: it drops NOT NULL on
   `source_normalization_artifacts.normalized_output` and re-adds the 4 MiB
   `bounded_replay_payload` inline CHECK. It writes no row, reads/writes no Blob,
@@ -178,10 +189,16 @@ was not ready.
   first).
 - M4A externalization preserves inline content, so it is reversible by disabling
   the write flag; do not re-point or delete externalization metadata.
-- **Inline clear is not reversible in this milestone.** Once inline content is
-  cleared, the only copy is the private Blob object plus the append-only ledger
-  row. Restoring inline storage requires a separately designed restore path.
-  Do not implement or improvise restore mutation as part of this runbook.
+- **Inline clear is reversible only through the dedicated restore path.** Once
+  inline content is cleared, the private Blob object plus the append-only ledger
+  row are the only copies. To put the verified inline copy back, use the
+  forward-only restore CLI (dry-run by default). Do not improvise a restore with
+  a direct update; the guard blocks it. Restore requires the Blob read flag ready
+  (`CASE_BACKFILL_ARTIFACT_BLOB_READ_ENABLED=true`); `WRITE` is never required.
+  ```text
+  pnpm restore:inline-artifacts --kind=fetch --source=<source-key> --batch-size=25
+  pnpm restore:inline-artifacts --kind=fetch --source=<source-key> --batch-size=25 --execute --acknowledge-inline-restore
+  ```
 - Never delete Blob objects. M4B and the readiness CLI never delete Blob objects
   (`blobObjectsDeleted: 0`).
 
@@ -192,6 +209,7 @@ pnpm typecheck
 pnpm lint
 pnpm check
 pnpm test:artifact-blob
+pnpm test:artifact-blob-restore
 pnpm test:artifact-blob-hardening
 ```
 
@@ -213,3 +231,12 @@ error ⇒ verification gate not-ready (not critical); flags/defaults; and the
 `NEW_WRITE_READY` / `INLINE_CLEAR_READY` decision gates (including full ledger
 coverage, a clean verified sample, per-kind sample coverage, and single-kind
 runs).
+
+The fakes-only restore suite (`tests/backfill-artifact-blob-restore.test.ts`)
+proves: metadata planning before any Blob read; dry-run with no store; execute
+gating on the read flag and a store; head/get size and SHA-256 verification,
+canonical-document validation, and the object requirement before the restore RPC;
+idempotent reruns; fail-closed Blob and metadata mismatches; bounded keyset
+pagination; and that the new migration is additive, extends the guard with the
+inline-null -> present restore transition, verifies the document byte length and
+SHA-256 in the RPC, and stays service_role-only with no table UPDATE/DELETE grant.

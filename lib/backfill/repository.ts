@@ -11,6 +11,7 @@ import type {
   CaseBackfillExternalizationCandidate,
   CaseBackfillFetchArtifact,
   CaseBackfillInlineClearCandidate,
+  CaseBackfillInlineRestoreCandidate,
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
   CaseBackfillPassInput,
@@ -20,6 +21,8 @@ import type {
   CaseBackfillSourcePolicy,
   ClearArtifactInlineInput,
   ClearArtifactInlineResult,
+  RestoreArtifactInlineInput,
+  RestoreArtifactInlineResult,
 } from "@/lib/backfill/types";
 
 type Row = Record<string, unknown>;
@@ -329,6 +332,13 @@ export interface CaseBackfillRepository {
     afterArtifactId?: string | null;
   }): Promise<CaseBackfillInlineClearCandidate[]>;
   clearArtifactInline(input: ClearArtifactInlineInput): Promise<ClearArtifactInlineResult>;
+  listArtifactInlineRestoreCandidates(input: {
+    kind: CaseBackfillArtifactExternalizationKind;
+    sourceKey?: string | null;
+    limit: number;
+    afterArtifactId?: string | null;
+  }): Promise<CaseBackfillInlineRestoreCandidate[]>;
+  restoreArtifactInline(input: RestoreArtifactInlineInput): Promise<RestoreArtifactInlineResult>;
   listArtifactReadinessRows(input: {
     kind: CaseBackfillArtifactExternalizationKind;
     sourceKey?: string | null;
@@ -1029,6 +1039,105 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     databaseError(error);
     const row = firstRow(data);
     if (!row) throw new Error("case_backfill.artifact_inline_clear_failed");
+    return {
+      artifactId: text(row, "artifactId"),
+      idempotent: row.idempotent === true,
+    };
+  },
+
+  /**
+   * Restore candidates: blob-only artifacts that no longer carry their inline
+   * payload. Every externalization metadata field is returned as-is (possibly null)
+   * so the service classifies an incomplete or contradictory row as conflict/
+   * not_ready before any Blob read instead of silently skipping it. Keyset
+   * pagination on the artifact id keeps every batch bounded and stable across
+   * reruns, which restored rows drop out of.
+   */
+  async listArtifactInlineRestoreCandidates(input) {
+    const client = requiredClient();
+    if (input.kind === "fetch") {
+      let query = client
+        .from("source_fetch_artifacts")
+        .select("id, item_id, payload_hash, payload_size, bounded_replay_storage_ref, externalization_contract_version, externalized_at, source_backfill_items!source_fetch_artifacts_item_id_fkey!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+        .eq("replayability", "bounded_evidence")
+        .is("bounded_replay_payload", null)
+        .order("id", { ascending: true })
+        .limit(input.limit);
+      if (input.afterArtifactId) query = query.gt("id", input.afterArtifactId);
+      if (input.sourceKey) query = query.eq("source_backfill_items.source_inventory_snapshots.source_key", input.sourceKey);
+      const { data, error } = await query;
+      databaseError(error);
+      return (Array.isArray(data) ? data : []).filter(isRecord).flatMap((row) => {
+        const item = firstRow(row.source_backfill_items);
+        const snapshot = item ? firstRow(item.source_inventory_snapshots) : null;
+        const sourceKey = snapshot ? text(snapshot, "source_key") : "";
+        if (!item || !snapshot || !sourceKey) return [];
+        return [{
+          artifactTable: "source_fetch_artifacts" as const,
+          artifactId: text(row, "id"),
+          itemId: text(row, "item_id"),
+          sourceKey,
+          kind: "fetch" as const,
+          storageRef: nullableText(row, "bounded_replay_storage_ref"),
+          storedHash: nullableText(row, "payload_hash"),
+          storedSize: nullableNumber(row, "payload_size"),
+          externalizedAt: nullableText(row, "externalized_at"),
+          externalizationContractVersion: nullableText(row, "externalization_contract_version"),
+        }];
+      });
+    }
+    let query = client
+      .from("source_normalization_artifacts")
+      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output_storage_ref, externalization_contract_version, externalized_at, source_backfill_items!source_normalization_artifacts_item_id_fkey!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+      .is("normalized_output", null)
+      .order("id", { ascending: true })
+      .limit(input.limit);
+    if (input.afterArtifactId) query = query.gt("id", input.afterArtifactId);
+    if (input.sourceKey) query = query.eq("source_backfill_items.source_inventory_snapshots.source_key", input.sourceKey);
+    const { data, error } = await query;
+    databaseError(error);
+    return (Array.isArray(data) ? data : []).filter(isRecord).flatMap((row) => {
+      const item = firstRow(row.source_backfill_items);
+      const snapshot = item ? firstRow(item.source_inventory_snapshots) : null;
+      const sourceKey = snapshot ? text(snapshot, "source_key") : "";
+      if (!item || !snapshot || !sourceKey) return [];
+      return [{
+        artifactTable: "source_normalization_artifacts" as const,
+        artifactId: text(row, "id"),
+        itemId: text(row, "item_id"),
+        sourceKey,
+        kind: "normalization" as const,
+        storageRef: nullableText(row, "normalized_output_storage_ref"),
+        storedHash: nullableText(row, "normalized_output_hash"),
+        storedSize: nullableNumber(row, "normalized_output_size"),
+        externalizedAt: nullableText(row, "externalized_at"),
+        externalizationContractVersion: nullableText(row, "externalization_contract_version"),
+      }];
+    });
+  },
+
+  /**
+   * The single permit-guarded restore, always explicit `p_dry_run = false` with the
+   * parsed inline payload plus the canonical JSON document and the exact
+   * ref/hash/size/contract/actor. An already restored row returns `idempotent: true`
+   * and performs no second update.
+   */
+  async restoreArtifactInline(input) {
+    const { data, error } = await requiredClient().rpc("source_backfill_artifact_inline_restore_v1", {
+      p_artifact_table: input.artifactTable,
+      p_artifact_id: input.artifactId,
+      p_inline_payload: input.inlinePayload,
+      p_document: input.document,
+      p_storage_ref: input.storageRef,
+      p_content_hash: input.contentHash,
+      p_content_size: input.contentSize,
+      p_externalization_contract_version: input.externalizationContractVersion,
+      p_actor_id: input.actorId,
+      p_dry_run: false,
+    });
+    databaseError(error);
+    const row = firstRow(data);
+    if (!row) throw new Error("case_backfill.artifact_inline_restore_failed");
     return {
       artifactId: text(row, "artifactId"),
       idempotent: row.idempotent === true,

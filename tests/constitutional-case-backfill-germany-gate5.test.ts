@@ -665,6 +665,8 @@ test("Germany discovery persists enumeration evidence before items and closes on
     attachArtifactExternalization: unavailable,
     listArtifactInlineClearCandidates: unavailable,
     clearArtifactInline: unavailable,
+    listArtifactInlineRestoreCandidates: unavailable,
+    restoreArtifactInline: unavailable,
     listArtifactReadinessRows: unavailable,
   } as CaseBackfillRepository;
 
