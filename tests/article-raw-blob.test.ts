@@ -690,7 +690,7 @@ test("M6A migration adds an additive blob capture RPC and leaves the immutable t
   );
 
   assert.match(m6a, /create or replace function article_publication_transition_p3_blob\(/);
-  assert.match(m6a, /security definer\nset search_path = public, pg_temp/);
+  assert.match(m6a, /security definer\r?\nset search_path = public, pg_temp/);
   assert.match(m6a, /ARTICLE_RAW_BLOB_REF_INVALID/);
   assert.match(m6a, /ARTICLE_RAW_BLOB_INLINE_REQUIRED/);
   assert.match(m6a, /article\.version\.capture_noop/);
