@@ -182,7 +182,13 @@ Follow this order exactly. Do not skip a step or reorder it.
 2. **Apply migrations.** Apply the pending article raw migrations (M6A contract,
    M6B externalization, M6C inline clear, M6D-A operator read authority, M6D-B
    read-only aggregate readiness function, and M6E inline restore) to the target
-   database. Keep both article raw Blob flags **OFF**.
+   database. Keep both article raw Blob flags **OFF**. The same pre-production
+   migration set also carries the artifact Blob corrective hardening migration
+   (`supabase/migrations/20260919190000_artifact_blob_contract_hardening.sql`),
+   which makes `source_normalization_artifacts.normalized_output` nullable and
+   restores the 4 MiB `source_fetch_artifacts.bounded_replay_payload` inline bound.
+   It only alters those two artifact tables, performs no DML, Blob/network access,
+   maintenance, or grant, and never touches the article raw carriers.
 3. **Preflight (DB authority/readiness check).** After the migrations are applied and
    while both flags are still **OFF**, run the preflight again. Exit `2` unless
    `readEnableSafe` (every DB probe/aggregate succeeded and the combined

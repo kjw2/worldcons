@@ -10,6 +10,16 @@ and one additive read-only SQL function
 It does not apply migrations, deploy, externalize, clear inline data, run VACUUM,
 or modify production. It introduces no M6 work.
 
+The pre-production corrective hardening migration
+(`supabase/migrations/20260919190000_artifact_blob_contract_hardening.sql`) is a
+schema-only prerequisite for this rollout. It edits no earlier migration and only
+(1) drops NOT NULL on `source_normalization_artifacts.normalized_output` so the M4B
+inline clear and the externalized-only steady state are representable, and (2)
+restores the 4 MiB inline bound on `source_fetch_artifacts.bounded_replay_payload`
+that the M1 replay check dropped, as a separate `NOT VALID` check validated
+afterwards. It performs no DML, no Blob/network access, no maintenance, and changes
+no grant. Apply it with the other pending artifact migrations in step 1.
+
 ## 1. Invariants
 
 - Both Blob flags stay **default OFF**: `CASE_BACKFILL_ARTIFACT_BLOB_READ_ENABLED=false`,
@@ -27,6 +37,12 @@ or modify production. It introduces no M6 work.
   restoring the inline copy requires a **separately designed restore path** that
   is intentionally **not implemented** in this milestone. Do not attempt to
   re-populate inline columns directly; the M4B guard blocks it.
+- The corrective hardening migration (step 1) is schema-only: it drops NOT NULL on
+  `source_normalization_artifacts.normalized_output` and re-adds the 4 MiB
+  `bounded_replay_payload` inline CHECK. It writes no row, reads/writes no Blob,
+  runs no maintenance, and changes no grant. A NULL `normalized_output` stays valid
+  only while `normalized_output_storage_ref` and the full externalization metadata
+  are present, which the existing storage/json coherence check already enforces.
 
 ## 2. What the readiness report contains
 
@@ -77,7 +93,8 @@ kind order, so a small `N` can cover one kind and miss another.
 
 Follow this order exactly. Do not skip a step or reorder it.
 
-1. **Apply migrations.** Apply the pending artifact migrations (M1 contract, M4A
+1. **Apply migrations.** Apply the pending artifact migrations (the corrective
+   hardening `20260919190000_artifact_blob_contract_hardening.sql`, M1 contract, M4A
    externalization, M4B inline clear, and this M5 read-only readiness function) to
    the target database. Keep both Blob flags **OFF**.
 2. **Read-only readiness.** Run the readiness CLI with verification off and both
@@ -175,7 +192,18 @@ pnpm typecheck
 pnpm lint
 pnpm check
 pnpm test:artifact-blob
+pnpm test:artifact-blob-hardening
 ```
+
+The fakes-only hardening suite
+(`tests/backfill-artifact-blob-hardening.test.ts`) statically proves that the
+corrective migration is additive and transactional, that `DROP NOT NULL` on
+`normalized_output` exists only in it (the Gate 1 `NOT NULL` declaration is left
+intact and the M4B clear still relies on the nullable column), that the 4 MiB
+`bounded_replay_payload` inline bound is restored as a separate `NOT VALID` check
+that still allows NULL and that the M1 replay check omitted it, and that the
+migration performs no DML, grants, network, or maintenance and drops no unrelated
+check.
 
 The fakes-only readiness suite (`tests/backfill-artifact-blob-readiness.test.ts`)
 proves: aggregate classification; default no Blob reads (verification off); no
