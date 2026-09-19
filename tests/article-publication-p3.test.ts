@@ -210,11 +210,15 @@ test("outbox failure retries every claimed logical event without leaking the han
   assert.equal(result.deadLetterCount, 1);
 });
 
+function readMigrationText(relativePath: string): string {
+  return fs.readFileSync(path.join(process.cwd(), relativePath), "utf8").replace(/\r\n/g, "\n");
+}
+
 test("migration and application contracts cover immutable authority, projection, and every public surface", () => {
-  const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712200000_article_publication_p3.sql"), "utf8");
-  const reconciliation = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712202000_article_publication_p3_reconciliation.sql"), "utf8");
-  const correction = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712203000_article_publication_p3_authority_correction.sql"), "utf8");
-  const reviewEligibility = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260713090000_article_publication_p3_review_eligibility.sql"), "utf8");
+  const migration = readMigrationText("supabase/migrations/20260712200000_article_publication_p3.sql");
+  const reconciliation = readMigrationText("supabase/migrations/20260712202000_article_publication_p3_reconciliation.sql");
+  const correction = readMigrationText("supabase/migrations/20260712203000_article_publication_p3_authority_correction.sql");
+  const reviewEligibility = readMigrationText("supabase/migrations/20260713090000_article_publication_p3_review_eligibility.sql");
   const queries = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
   const vector = fs.readFileSync(path.join(process.cwd(), "lib/search/vector.ts"), "utf8");
   const publicReadAuthoritySource = fs.readFileSync(path.join(process.cwd(), "lib/article-publication/public-read-authority.ts"), "utf8");

@@ -12,6 +12,7 @@ import type {
   ArticleListFilters,
   ArticleListItem,
   ArticleListResult,
+  ArticleRawBlobMetadata,
   GlossaryTerm,
   IngestionRunRecord,
   SourceRecord,
@@ -23,6 +24,8 @@ import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
+import { hydrateArticleRawText } from "@/lib/article-raw/detail-read";
+import { createArtifactBlobStore, type ArtifactBlobStore } from "@/lib/storage/blob";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
 import { caseCatalogPublicReadsEnabled, caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 
@@ -60,6 +63,11 @@ interface SupabaseArticleRow {
   summarized_at?: string | null;
   status: string;
   raw_text?: string | null;
+  raw_text_storage_ref?: string | null;
+  raw_text_blob_hash?: string | null;
+  raw_text_blob_size?: number | null;
+  raw_text_externalized_at?: string | null;
+  raw_text_blob_contract_version?: string | null;
   cleaned_text?: string | null;
   summary_json?: SummaryJson | null;
   one_line_summary?: string | null;
@@ -106,7 +114,8 @@ const ARTICLE_LIST_SELECT = [
 ].join(",");
 const ARTICLE_LIST_WITH_TAG_FILTER_SELECT = `${ARTICLE_LIST_SELECT},article_tag_filter:article_tags!inner(tag_id)`;
 const ARTICLE_PAGE_SELECT = `${ARTICLE_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
-const ARTICLE_DETAIL_SELECT = `${ARTICLE_PAGE_SELECT},raw_text,cleaned_text`;
+const ARTICLE_RAW_BLOB_METADATA_SELECT = "raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version";
+const ARTICLE_DETAIL_SELECT = `${ARTICLE_PAGE_SELECT},raw_text,cleaned_text,${ARTICLE_RAW_BLOB_METADATA_SELECT}`;
 const ARTICLE_P3_LIST_SELECT = [
   "id",
   "slug",
@@ -130,7 +139,7 @@ const ARTICLE_P3_LIST_SELECT = [
   "article_tags",
 ].join(",");
 const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
-const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text`;
+const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text,${ARTICLE_RAW_BLOB_METADATA_SELECT}`;
 const ARTICLE_V4_STATE_SELECT = "enrichment_status,enrichment_freshness,summary_status,summary_available";
 const ARTICLE_V4_LIST_SELECT = `${ARTICLE_P3_LIST_SELECT},${ARTICLE_V4_STATE_SELECT}`;
 const ARTICLE_V4_PAGE_SELECT = `${ARTICLE_P3_PAGE_SELECT},${ARTICLE_V4_STATE_SELECT}`;
@@ -174,6 +183,17 @@ function minimalSourceMetadata(row: SupabaseArticleRow) {
   if (row.resolution_type) metadata.resolutionType = row.resolution_type;
   if (row.case_number) metadata.caseNumber = row.case_number;
   return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
+function articleRawBlobMetadataFromRow(row: SupabaseArticleRow): ArticleRawBlobMetadata | null {
+  const storageRef = row.raw_text_storage_ref?.trim();
+  if (!storageRef) return null;
+  const blobHash = row.raw_text_blob_hash;
+  const blobSize = row.raw_text_blob_size;
+  const externalizedAt = row.raw_text_externalized_at;
+  const contractVersion = row.raw_text_blob_contract_version;
+  if (!blobHash || typeof blobSize !== "number" || !externalizedAt || !contractVersion) return null;
+  return { storageRef, blobHash, blobSize, externalizedAt, contractVersion };
 }
 
 export function normalizePagination(page?: number, pageSize?: number) {
@@ -253,6 +273,7 @@ function articleRowToItem(
     item.cleanedText = row.cleaned_text;
     item.contentHash = row.content_hash;
     item.errorMetadata = row.error_metadata;
+    item.rawTextBlob = articleRawBlobMetadataFromRow(row);
   }
 
   return item;
@@ -671,9 +692,22 @@ async function getArticleBySlugWithSelect(slug: string, select: string, options:
   });
 }
 
-export async function getArticleBySlug(slug: string, options: { includeUnpublished?: boolean; includeSourceText?: boolean } = {}): Promise<ArticleDetail | null> {
+export interface ArticleDetailReadOptions {
+  includeUnpublished?: boolean;
+  includeSourceText?: boolean;
+  blobStore?: ArtifactBlobStore;
+  environment?: Record<string, string | undefined>;
+}
+
+export async function getArticleBySlug(slug: string, options: ArticleDetailReadOptions = {}): Promise<ArticleDetail | null> {
   observePublicProjectionRead(options.includeUnpublished);
-  return getArticleBySlugWithSelect(slug, options.includeSourceText === false ? ARTICLE_PAGE_SELECT : ARTICLE_DETAIL_SELECT, options);
+  const select = options.includeSourceText === false ? ARTICLE_PAGE_SELECT : ARTICLE_DETAIL_SELECT;
+  const article = await getArticleBySlugWithSelect(slug, select, options);
+  if (!article || select !== ARTICLE_DETAIL_SELECT || !article.rawTextBlob) return article;
+  return hydrateArticleRawText(article, {
+    store: options.blobStore ?? createArtifactBlobStore(),
+    environment: options.environment,
+  });
 }
 
 export async function getArticlePreviewBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {

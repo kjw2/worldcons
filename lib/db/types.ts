@@ -121,11 +121,20 @@ export interface ArticleListItem {
   summaryAvailable?: boolean;
 }
 
+export interface ArticleRawBlobMetadata {
+  storageRef: string;
+  blobHash: string;
+  blobSize: number;
+  externalizedAt: string;
+  contractVersion: string;
+}
+
 export interface ArticleDetail extends ArticleListItem {
   rawText?: string | null;
   cleanedText?: string | null;
   contentHash?: string | null;
   errorMetadata?: Record<string, unknown> | null;
+  rawTextBlob?: ArticleRawBlobMetadata | null;
 }
 
 export interface ArticleListFilters {
