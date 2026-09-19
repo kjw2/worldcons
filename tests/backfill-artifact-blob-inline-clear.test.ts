@@ -430,6 +430,10 @@ test("repository selects externalized inline candidates and routes to the clear 
   assert.match(source, /\.order\("id", \{ ascending: true \}\)/);
   assert.match(source, /\.gt\("id", input\.afterArtifactId\)/);
   assert.match(source, /\.eq\("source_backfill_items\.source_inventory_snapshots\.source_key", input\.sourceKey\)/);
+  assert.match(source, /source_inventory_snapshots!inner\(source_key\)/);
+  assert.match(source, /source_backfill_items!source_fetch_artifacts_item_id_fkey!inner\(snapshot_id, source_inventory_snapshots!inner\(source_key\)\)/);
+  assert.match(source, /source_backfill_items!source_normalization_artifacts_item_id_fkey!inner\(snapshot_id, source_inventory_snapshots!inner\(source_key\)\)/);
+  assert.doesNotMatch(source, /source_backfill_items!inner\(/);
 });
 
 test("script defaults to dry run and requires execute plus an irreversible acknowledgement", () => {

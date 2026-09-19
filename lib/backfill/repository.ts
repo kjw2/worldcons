@@ -862,7 +862,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     if (input.kind === "fetch") {
       let query = client
         .from("source_fetch_artifacts")
-        .select("id, item_id, payload_hash, payload_size, bounded_replay_payload, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+        .select("id, item_id, payload_hash, payload_size, bounded_replay_payload, source_backfill_items!source_fetch_artifacts_item_id_fkey!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
         .eq("replayability", "bounded_evidence")
         .is("bounded_replay_storage_ref", null)
         .not("bounded_replay_payload", "is", null)
@@ -892,7 +892,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     }
     let query = client
       .from("source_normalization_artifacts")
-      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output, source_backfill_items!source_normalization_artifacts_item_id_fkey!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
       .is("normalized_output_storage_ref", null)
       .not("normalized_output", "is", null)
       .order("id", { ascending: true })
@@ -950,7 +950,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     if (input.kind === "fetch") {
       let query = client
         .from("source_fetch_artifacts")
-        .select("id, item_id, payload_hash, payload_size, bounded_replay_storage_ref, externalization_contract_version, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+        .select("id, item_id, payload_hash, payload_size, bounded_replay_storage_ref, externalization_contract_version, source_backfill_items!source_fetch_artifacts_item_id_fkey!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
         .eq("replayability", "bounded_evidence")
         .eq("externalization_contract_version", ARTIFACT_BLOB_CONTRACT_VERSION)
         .not("bounded_replay_storage_ref", "is", null)
@@ -984,7 +984,7 @@ export const postgresCaseBackfillRepository: CaseBackfillRepository = {
     }
     let query = client
       .from("source_normalization_artifacts")
-      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output_storage_ref, externalization_contract_version, source_backfill_items!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
+      .select("id, item_id, normalized_output_hash, normalized_output_size, normalized_output_storage_ref, externalization_contract_version, source_backfill_items!source_normalization_artifacts_item_id_fkey!inner(snapshot_id, source_inventory_snapshots!inner(source_key))")
       .eq("externalization_contract_version", ARTIFACT_BLOB_CONTRACT_VERSION)
       .not("normalized_output_storage_ref", "is", null)
       .not("normalized_output", "is", null)
