@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { access } from "node:fs/promises";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +16,7 @@ import {
 
 export const ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT_ENV = "ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT";
 export const ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT_WRANGLER = "wrangler";
+export const WORLDCONS_WRANGLER_BIN_ENV = "WORLDCONS_WRANGLER_BIN";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,16 +29,35 @@ export interface WranglerR2TransportOptions {
   runner?: WranglerR2Runner;
 }
 
+async function resolveWranglerBinary(
+  environment: Record<string, string | undefined> = process.env,
+) {
+  const explicit = environment[WORLDCONS_WRANGLER_BIN_ENV]?.trim();
+  if (explicit) {
+    await access(explicit);
+    return explicit;
+  }
+  if (process.platform === "win32") {
+    const appData = environment.APPDATA?.trim();
+    if (!appData) throw new Error("artifact_blob.r2_wrangler_not_configured");
+    const globalShim = path.join(appData, "npm", "wrangler.cmd");
+    await access(globalShim);
+    return globalShim;
+  }
+  return "wrangler";
+}
+
 async function runWrangler(args: string[]) {
   try {
+    const binary = await resolveWranglerBinary();
     if (process.platform === "win32") {
-      await execFileAsync("cmd.exe", ["/d", "/c", "wrangler", ...args], {
+      await execFileAsync("cmd.exe", ["/d", "/c", binary, ...args], {
         cwd: process.cwd(),
         windowsHide: true,
         maxBuffer: 8 * 1024 * 1024,
       });
     } else {
-      await execFileAsync("wrangler", args, {
+      await execFileAsync(binary, args, {
         cwd: process.cwd(),
         windowsHide: true,
         maxBuffer: 8 * 1024 * 1024,
@@ -46,6 +67,8 @@ async function runWrangler(args: string[]) {
     throw new Error("artifact_blob.r2_wrangler_command_failed");
   }
 }
+
+export { resolveWranglerBinary };
 
 async function withTempFile<T>(name: string, fn: (file: string) => Promise<T>) {
   const dir = await mkdtemp(path.join(tmpdir(), "worldcons-r2-"));

@@ -3,8 +3,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 import {
   ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT_ENV,
+  WORLDCONS_WRANGLER_BIN_ENV,
   createOperatorArtifactBlobStore,
   createWranglerR2ArtifactBlobTransport,
+  resolveWranglerBinary,
   type WranglerR2Runner,
 } from "../lib/storage/operator-blob";
 import {
@@ -111,4 +113,12 @@ test("operator store uses Wrangler only for explicit R2 operator mode", () => {
     [ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT_ENV]: "wrangler",
   });
   assert.ok(store instanceof ArtifactBlobStore);
+});
+
+test("explicit Wrangler binary override is used without PATH lookup", async () => {
+  const candidate = process.execPath;
+  assert.equal(
+    await resolveWranglerBinary({ [WORLDCONS_WRANGLER_BIN_ENV]: candidate }),
+    candidate,
+  );
 });
