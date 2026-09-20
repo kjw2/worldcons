@@ -281,6 +281,11 @@ it needs no migration.
 - Node/CLI R2 access uses `R2_ENDPOINT` or `R2_ACCOUNT_ID`,
   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and optional `R2_REGION=auto`.
   Workers may inject a private `R2Bucket` binding instead of S3 credentials.
+- During the staged migration only, operator CLIs may set
+  `ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT=wrangler` together with
+  `ARTIFACT_BLOB_PROVIDER=r2`. This uses the local authenticated Wrangler OAuth
+  session for remote R2 object operations and is intentionally isolated from the
+  application runtime. It does not enable Vercel/runtime R2 writes.
 - `ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS` — optional ordered CSV, for example
   `vercel` while old refs are still Vercel-only. The primary may not be repeated
   and unknown/duplicate entries fail closed.
@@ -328,3 +333,8 @@ The first production R2 canary is deliberately non-destructive:
    must never fall through to legacy storage.
 
 No `clear:inline-artifacts` command is permitted in this first M1 canary.
+
+After M1, M2 may expand externalization in bounded batches using the Wrangler
+operator transport while keeping production runtime write flags unchanged. Every
+batch must preserve inline content and be followed by full aggregate readiness plus
+bounded R2 verification before increasing the batch size.

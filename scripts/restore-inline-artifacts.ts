@@ -5,7 +5,7 @@ import {
   toSafeArtifactInlineRestoreOutcome,
 } from "@/lib/backfill/inline-restore";
 import type { CaseBackfillArtifactExternalizationKind } from "@/lib/backfill/types";
-import { createArtifactBlobStore } from "@/lib/storage/blob";
+import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 import { caseBackfillArtifactBlobReadReady } from "@/lib/backfill/flags";
 
 const KINDS: readonly CaseBackfillArtifactExternalizationKind[] = ["fetch", "normalization"];
@@ -81,7 +81,7 @@ async function main() {
 
   // Dry run reads no Blob at all, so it needs only the repository and no Blob store
   // (and therefore no Blob token).
-  const store = execute ? createArtifactBlobStore() : null;
+  const store = execute ? createOperatorArtifactBlobStore() : null;
 
   output({
     event: "artifact_inline_restore_planned",

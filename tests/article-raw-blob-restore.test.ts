@@ -699,7 +699,7 @@ test("CLI execute gates on --acknowledge-inline-restore and the read flag before
   const gateIndex = source.indexOf("if (execute)");
   const ackIndex = source.indexOf('flag("acknowledge-inline-restore")');
   const readIndex = source.indexOf("articleRawBlobReadEnabled()");
-  const storeIndex = source.indexOf("createArtifactBlobStore()");
+  const storeIndex = source.indexOf("createOperatorArtifactBlobStore()");
   const batchIndex = source.indexOf("runArticleRawRestoreBatch(");
   assert.ok(executeIndex >= 0 && gateIndex > executeIndex, "the execute flag is read before the gate");
   assert.ok(ackIndex > gateIndex && readIndex > gateIndex, "the gates live inside the execute branch");
@@ -714,16 +714,16 @@ test("CLI execute gates on --acknowledge-inline-restore and the read flag before
 
 test("CLI creates the Blob store only under --execute after the gates; dry run passes null", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
-  assert.match(source, /const store = execute \? createArtifactBlobStore\(\) : null;/);
+  assert.match(source, /const store = execute \? createOperatorArtifactBlobStore\(\) : null;/);
   assert.equal(
-    source.includes("const store = createArtifactBlobStore();"),
+    source.includes("const store = createOperatorArtifactBlobStore();"),
     false,
     "the store must never be created unconditionally",
   );
   const gateIndex = source.indexOf("if (execute)");
   const ackIndex = source.indexOf('flag("acknowledge-inline-restore")');
   const readIndex = source.indexOf("articleRawBlobReadEnabled()");
-  const storeIndex = source.indexOf("createArtifactBlobStore()");
+  const storeIndex = source.indexOf("createOperatorArtifactBlobStore()");
   const batchIndex = source.indexOf("runArticleRawRestoreBatch(");
   assert.ok(gateIndex >= 0 && ackIndex > gateIndex && readIndex > gateIndex);
   assert.ok(storeIndex > ackIndex && storeIndex > readIndex, "the store call follows the execute gates");
@@ -748,7 +748,7 @@ test("script defaults to dry run with a bounded batch, cursor, and explicit tabl
   assert.match(source, /integerArgument\("max-batches", 20, 1, 1000\)/);
   assert.match(source, /optionalUuid\("after"\)/);
   assert.match(source, /ARTICLE_RAW_RESTORE_TABLES/);
-  assert.match(source, /createArtifactBlobStore\(\)/);
+  assert.match(source, /createOperatorArtifactBlobStore\(\)/);
   assert.match(source, /runArticleRawRestoreBatch\(/);
   assert.equal(source.includes("store.put("), false);
   assert.equal(source.includes("store.delete("), false);

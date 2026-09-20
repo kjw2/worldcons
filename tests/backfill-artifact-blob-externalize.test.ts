@@ -445,7 +445,7 @@ test("script defaults to dry run and requires an explicit execute flag", () => {
   assert.match(source, /integerArgument\("batch-size", 25, 1, 100\)/);
   assert.match(source, /integerArgument\("max-batches", 20, 1, 1000\)/);
   assert.match(source, /optionalSourceKey\(\)/);
-  assert.match(source, /createArtifactBlobStore\(\)/);
+  assert.match(source, /createOperatorArtifactBlobStore\(\)/);
   assert.match(source, /runArtifactExternalizationBatch\(/);
   assert.doesNotMatch(source, /store\.put\(/);
 });

@@ -520,7 +520,7 @@ test("CLI execute gates on --acknowledge-externalization and the read flag befor
   const gateIndex = source.indexOf("if (execute)");
   const ackIndex = source.indexOf('flag("acknowledge-externalization")');
   const readIndex = source.indexOf("articleRawBlobReadEnabled()");
-  const storeIndex = source.indexOf("createArtifactBlobStore()");
+  const storeIndex = source.indexOf("createOperatorArtifactBlobStore()");
   const batchIndex = source.indexOf("runArticleRawExternalizationBatch(");
   assert.ok(executeIndex >= 0 && gateIndex > executeIndex, "the execute flag is read before the gate");
   assert.ok(ackIndex > gateIndex && readIndex > gateIndex, "the gates live inside the execute branch");
@@ -545,7 +545,7 @@ test("script defaults to dry run and requires an explicit --table and --execute"
   assert.match(source, /const articleTable = tableArgument\(\)/);
   assert.match(source, /integerArgument\("batch-size", 25, 1, 100\)/);
   assert.match(source, /integerArgument\("max-batches", 20, 1, 1000\)/);
-  assert.match(source, /createArtifactBlobStore\(\)/);
+  assert.match(source, /createOperatorArtifactBlobStore\(\)/);
   assert.match(source, /runArticleRawExternalizationBatch\(/);
   assert.match(source, /ARTICLE_RAW_EXTERNALIZATION_TABLES/);
   assert.equal(source.includes("store.put("), false);

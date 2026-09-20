@@ -5,7 +5,7 @@ import {
   safeArtifactExternalizationOutcomeProjection as safeProjection,
 } from "@/lib/backfill/externalization";
 import type { CaseBackfillArtifactExternalizationKind } from "@/lib/backfill/types";
-import { createArtifactBlobStore } from "@/lib/storage/blob";
+import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 
 const KINDS: readonly CaseBackfillArtifactExternalizationKind[] = ["fetch", "normalization"];
 const SOURCE_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
@@ -66,7 +66,7 @@ async function main() {
   const afterArtifactId = optionalUuid("after");
   const actorId = safeActor();
   const execute = flag("execute");
-  const store = createArtifactBlobStore();
+  const store = createOperatorArtifactBlobStore();
 
   output({
     event: "artifact_externalization_planned",

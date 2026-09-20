@@ -640,8 +640,8 @@ test("CLI defaults to dry run and requires execute plus an acknowledgement and t
   assert.match(source, /integerArgument\("batch-size", 25, 1, 100\)/);
   assert.match(source, /integerArgument\("max-batches", 20, 1, 1000\)/);
   assert.match(source, /optionalSourceKey\(\)/);
-  assert.match(source, /const store = execute \? createArtifactBlobStore\(\) : null;/);
-  assert.equal(source.includes("const store = createArtifactBlobStore();"), false);
+  assert.match(source, /const store = execute \? createOperatorArtifactBlobStore\(\) : null;/);
+  assert.equal(source.includes("const store = createOperatorArtifactBlobStore();"), false);
   assert.match(source, /runArtifactInlineRestoreBatch\(/);
   assert.doesNotMatch(source, /store\.put\(/);
   assert.doesNotMatch(source, /store\.delete\(/);
@@ -655,7 +655,7 @@ test("CLI reads its flags and gates before creating the Blob store or running a 
   const ackIndex = source.indexOf('const acknowledgedRestore = flag("acknowledge-inline-restore")');
   const readIndex = source.indexOf("const blobReadReady = caseBackfillArtifactBlobReadReady(process.env)");
   const gateIndex = source.indexOf("if (execute && !acknowledgedRestore)");
-  const storeIndex = source.indexOf("const store = execute ? createArtifactBlobStore() : null;");
+  const storeIndex = source.indexOf("const store = execute ? createOperatorArtifactBlobStore() : null;");
   const batchIndex = source.indexOf("runArtifactInlineRestoreBatch(");
   assert.ok(executeIndex >= 0 && ackIndex > executeIndex, "the execute flag is read before its acknowledgement");
   assert.ok(readIndex > ackIndex, "the read flag is evaluated after the flags are read");

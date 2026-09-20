@@ -7,7 +7,7 @@ import {
   type ArticleRawInlineClearTable,
 } from "@/lib/article-raw/inline-clear";
 import { articleRawBlobReadEnabled } from "@/lib/article-raw/flags";
-import { createArtifactBlobStore } from "@/lib/storage/blob";
+import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 
 const SOURCE_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
 
@@ -81,7 +81,7 @@ async function main() {
       throw new Error("article_raw_inline_clear.read_disabled");
     }
   }
-  const store = createArtifactBlobStore();
+  const store = createOperatorArtifactBlobStore();
 
   output({
     event: "article_raw_inline_clear_planned",

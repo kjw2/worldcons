@@ -804,7 +804,7 @@ test("the CLI is read-only and takes no write flags", () => {
   const source = fs.readFileSync(scriptPath, "utf8");
   assert.match(source, /runArtifactReadiness\(/);
   assert.match(source, /integerArgument\("verify-sample", 0, 0, 100\)/);
-  assert.match(source, /verificationSampleSize > 0 \? createArtifactBlobStore\(\) : null/);
+  assert.match(source, /verificationSampleSize > 0 \? createOperatorArtifactBlobStore\(\) : null/);
   assert.match(source, /artifact_blob_read_not_ready/);
   assert.match(source, /after_requires_kind/);
   assert.match(source, /require-new-write-ready/);

@@ -6,7 +6,7 @@ import {
   type ArticleRawReadinessTable,
 } from "@/lib/article-raw/readiness";
 import { articleRawBlobReadReady } from "@/lib/article-raw/flags";
-import { createArtifactBlobStore } from "@/lib/storage/blob";
+import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 
 const SOURCE_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
 
@@ -74,7 +74,7 @@ async function main() {
     throw new Error("article_raw_blob_read_not_ready");
   }
 
-  const store = verificationSampleSize > 0 ? createArtifactBlobStore() : null;
+  const store = verificationSampleSize > 0 ? createOperatorArtifactBlobStore() : null;
   const report = await runArticleRawReadiness(
     {
       tables,

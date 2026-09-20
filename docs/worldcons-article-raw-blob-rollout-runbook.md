@@ -480,6 +480,10 @@ no migration.
 - Node/CLI R2 access uses `R2_ENDPOINT` or `R2_ACCOUNT_ID` plus
   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and optional `R2_REGION=auto`.
   Workers may inject an `R2Bucket` binding.
+- Staged operator migrations can instead set
+  `ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT=wrangler` with
+  `ARTIFACT_BLOB_PROVIDER=r2`. This is a Node maintenance-CLI bridge using the
+  local Wrangler OAuth session; it is not an application-runtime credential path.
 - `ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS` — ordered read-only fallback list such as
   `vercel`. Unknown, duplicate, or primary-equal entries are rejected.
 - `ARTIFACT_BLOB_READ_FALLBACK_ENABLED` — default `false`. When the primary provider

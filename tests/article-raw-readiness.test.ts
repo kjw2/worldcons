@@ -987,7 +987,7 @@ test("the CLI is aggregate-only, uses the M6D-A candidate path, and takes no wri
   const source = fs.readFileSync(scriptPath, "utf8");
   assert.match(source, /runArticleRawReadiness\(/);
   assert.match(source, /integerArgument\("verify-sample", 0, 0, 100\)/);
-  assert.match(source, /verificationSampleSize > 0 \? createArtifactBlobStore\(\) : null/);
+  assert.match(source, /verificationSampleSize > 0 \? createOperatorArtifactBlobStore\(\) : null/);
   assert.match(source, /article_raw_blob_read_not_ready/);
   assert.match(source, /require-externalization-ready/);
   assert.match(source, /require-application-write-ready/);
@@ -998,7 +998,7 @@ test("the CLI is aggregate-only, uses the M6D-A candidate path, and takes no wri
   assert.match(source, /postgresArticleRawExternalizationRepository/);
   // The READ flag is checked before the Blob store is constructed.
   assert.ok(
-    source.indexOf("article_raw_blob_read_not_ready") < source.indexOf("createArtifactBlobStore()"),
+    source.indexOf("article_raw_blob_read_not_ready") < source.indexOf("createOperatorArtifactBlobStore()"),
     "verify must require READ before any Blob store is created",
   );
   assert.doesNotMatch(source, /flag\("execute"\)/);

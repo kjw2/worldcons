@@ -2,7 +2,7 @@ import "dotenv/config";
 import { postgresCaseBackfillRepository } from "@/lib/backfill/repository";
 import { runArtifactInlineClearBatch } from "@/lib/backfill/inline-clear";
 import type { CaseBackfillArtifactExternalizationKind } from "@/lib/backfill/types";
-import { createArtifactBlobStore } from "@/lib/storage/blob";
+import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 import { caseBackfillArtifactBlobReadReady } from "@/lib/backfill/flags";
 
 const KINDS: readonly CaseBackfillArtifactExternalizationKind[] = ["fetch", "normalization"];
@@ -74,7 +74,7 @@ async function main() {
   if (execute && !acknowledgedIrreversible) throw new Error("execute_requires_acknowledge_irreversible");
   if (execute && !blobReadReady) throw new Error("artifact_blob_read_not_ready");
 
-  const store = createArtifactBlobStore();
+  const store = createOperatorArtifactBlobStore();
 
   output({
     event: "artifact_inline_clear_planned",

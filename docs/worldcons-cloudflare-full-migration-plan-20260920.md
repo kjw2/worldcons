@@ -638,6 +638,13 @@ Objective:
 - make R2 authoritative for new fetch/normalization/article raw externalization
 - migrate only inline data that can be verified on R2
 
+Transition detail:
+- Operator/backfill CLIs may use an explicit Wrangler-OAuth R2 transport during M2,
+  so bounded migration batches do not require long-lived S3 credentials.
+- Vercel/runtime write flags remain unchanged until the runtime moves to a supported
+  R2 credential path or, preferably, a Workers `R2Bucket` binding during M3.
+- Operator mode must never be silently selected by application runtime code.
+
 Acceptance:
 - repeated bounded batches clean
 - global readiness no metadata/hash errors

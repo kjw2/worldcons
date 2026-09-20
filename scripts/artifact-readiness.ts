@@ -3,7 +3,7 @@ import { postgresCaseBackfillRepository } from "@/lib/backfill/repository";
 import { runArtifactReadiness } from "@/lib/backfill/artifact-readiness";
 import { caseBackfillArtifactBlobReadReady } from "@/lib/backfill/flags";
 import type { CaseBackfillArtifactExternalizationKind } from "@/lib/backfill/types";
-import { createArtifactBlobStore } from "@/lib/storage/blob";
+import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 
 const KINDS: readonly CaseBackfillArtifactExternalizationKind[] = ["fetch", "normalization"];
 const SOURCE_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
@@ -69,7 +69,7 @@ async function main() {
     throw new Error("artifact_blob_read_not_ready");
   }
 
-  const store = verificationSampleSize > 0 ? createArtifactBlobStore() : null;
+  const store = verificationSampleSize > 0 ? createOperatorArtifactBlobStore() : null;
   const report = await runArtifactReadiness(
     {
       kinds: kind ? [kind] : undefined,

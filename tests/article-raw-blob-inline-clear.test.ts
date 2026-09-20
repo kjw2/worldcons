@@ -650,7 +650,7 @@ test("CLI execute gates on --acknowledge-inline-clear and the read flag before t
   const gateIndex = source.indexOf("if (execute)");
   const ackIndex = source.indexOf('flag("acknowledge-inline-clear")');
   const readIndex = source.indexOf("articleRawBlobReadEnabled()");
-  const storeIndex = source.indexOf("createArtifactBlobStore()");
+  const storeIndex = source.indexOf("createOperatorArtifactBlobStore()");
   const batchIndex = source.indexOf("runArticleRawInlineClearBatch(");
   assert.ok(executeIndex >= 0 && gateIndex > executeIndex, "the execute flag is read before the gate");
   assert.ok(ackIndex > gateIndex && readIndex > gateIndex, "the gates live inside the execute branch");
@@ -680,7 +680,7 @@ test("script defaults to dry run with a bounded batch, cursor, and explicit tabl
   assert.match(source, /integerArgument\("max-batches", 20, 1, 1000\)/);
   assert.match(source, /optionalUuid\("after"\)/);
   assert.match(source, /ARTICLE_RAW_INLINE_CLEAR_TABLES/);
-  assert.match(source, /createArtifactBlobStore\(\)/);
+  assert.match(source, /createOperatorArtifactBlobStore\(\)/);
   assert.match(source, /runArticleRawInlineClearBatch\(/);
   assert.equal(source.includes("store.put("), false);
   assert.equal(source.includes("store.delete("), false);
