@@ -7,6 +7,7 @@ import {
   type ArticleRawExternalizationTable,
 } from "@/lib/article-raw/externalization";
 import { articleRawBlobReadEnabled } from "@/lib/article-raw/flags";
+import { acquireOperatorLock } from "@/lib/ops/operator-lock";
 import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 
 const SOURCE_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
@@ -80,6 +81,10 @@ async function main() {
       throw new Error("article_raw_externalization.read_disabled");
     }
   }
+  const lock = execute
+    ? await acquireOperatorLock("article-raw-externalize-" + articleTable + "-" + (sourceKey ?? "all"))
+    : null;
+  try {
   const store = createOperatorArtifactBlobStore();
 
   output({
@@ -148,6 +153,9 @@ async function main() {
     geminiCalls: 0,
   });
   return failed > 0 ? 1 : 0;
+  } finally {
+    await lock?.release();
+  }
 }
 
 main().then((exitCode) => {

@@ -5,6 +5,7 @@ import {
   safeArtifactExternalizationOutcomeProjection as safeProjection,
 } from "@/lib/backfill/externalization";
 import type { CaseBackfillArtifactExternalizationKind } from "@/lib/backfill/types";
+import { acquireOperatorLock } from "@/lib/ops/operator-lock";
 import { createOperatorArtifactBlobStore } from "@/lib/storage/operator-blob";
 
 const KINDS: readonly CaseBackfillArtifactExternalizationKind[] = ["fetch", "normalization"];
@@ -67,6 +68,10 @@ async function main() {
   const afterArtifactId = optionalUuid("after");
   const actorId = safeActor();
   const execute = flag("execute");
+  const lock = execute
+    ? await acquireOperatorLock("artifact-externalize-" + kind + "-" + (sourceKey ?? "all"))
+    : null;
+  try {
   const store = createOperatorArtifactBlobStore();
 
   output({
@@ -136,6 +141,9 @@ async function main() {
     geminiCalls: 0,
   });
   return failed > 0 ? 1 : 0;
+  } finally {
+    await lock?.release();
+  }
 }
 
 main().then((exitCode) => {
