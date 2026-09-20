@@ -29,12 +29,19 @@ export interface WranglerR2TransportOptions {
 
 async function runWrangler(args: string[]) {
   try {
-    await execFileAsync("wrangler", args, {
-      cwd: process.cwd(),
-      windowsHide: true,
-      shell: process.platform === "win32",
-      maxBuffer: 8 * 1024 * 1024,
-    });
+    if (process.platform === "win32") {
+      await execFileAsync("cmd.exe", ["/d", "/c", "wrangler", ...args], {
+        cwd: process.cwd(),
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+      });
+    } else {
+      await execFileAsync("wrangler", args, {
+        cwd: process.cwd(),
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+      });
+    }
   } catch {
     throw new Error("artifact_blob.r2_wrangler_command_failed");
   }
