@@ -62,6 +62,11 @@ before migrations and the DB-authority/readiness check to run after migrations
 - The M6E restore module never writes or deletes a Blob object (it never calls
   `put`/`delete`), never repoints externalization metadata, and never touches
   `cleaned_text` or `search_vector`.
+- The article raw transport is **provider-selectable but defaults to Vercel**, so
+  existing behavior is unchanged. See section 10 for `ARTIFACT_BLOB_PROVIDER`,
+  `ARTIFACT_BLOB_BUCKET`, the explicit not-found-only read fallback, and the Vercel
+  Hobby Advanced Operations cap warning. Switching providers rewrites no
+  `storageRef` value and needs no migration.
 
 ## 2. What the readiness report contains
 
@@ -396,6 +401,11 @@ not ready.
   been deployed and tested.
 - Never delete Blob objects. M6C, M6E, and the readiness CLI never delete Blob objects
   (`blobObjectsDeleted: 0`).
+- To change the article raw transport, set `ARTIFACT_BLOB_PROVIDER` (and
+  `ARTIFACT_BLOB_BUCKET` when using Supabase) and redeploy; there is no data change
+  and no object migration. `ARTIFACT_BLOB_PROVIDER=vercel` returns to the previous
+  behavior and `ARTIFACT_BLOB_READ_FALLBACK_ENABLED=false` disables the
+  not-found-only read fallback. Never repoint or delete existing `storageRef` values.
 
 ## 9. Verification
 
@@ -406,6 +416,7 @@ pnpm check
 pnpm test:article-raw-readiness
 pnpm test:article-raw-restore
 pnpm test:article-raw-preflight
+pnpm test:artifact-blob-provider
 ```
 
 The fakes-only readiness suite (`tests/article-raw-readiness.test.ts`) proves:
@@ -445,3 +456,68 @@ report redaction (no refs, hashes, raw text, source keys, or row ids); and stati
 assertions that the module and CLI never direct-query the raw tables, never construct
 a Blob store, never call `put`/`delete`, and take no `--execute`/`--acknowledge-*`
 flag.
+
+The fakes-only provider suites (`tests/artifact-blob-provider-fallback.test.ts` and
+`tests/artifact-blob-r2-transport.test.ts`) prove the Vercel default, explicit R2
+provider, compatibility Supabase provider, R2 S3/Worker-binding transports, strict
+object-not-found-only fallback, ordered read fallbacks, primary-only writes, stable
+non-secret errors, and the unchanged content-addressed `storageRef` contract. The
+same transport applies to artifact and `article_raw` prefixes.
+
+## 10. Artifact Blob provider selection (Vercel / R2 / Supabase compatibility)
+
+The article raw transport shares the artifact `ArtifactBlobStore` and is
+provider-selectable and defaults to the current Vercel private Blob store, so an
+existing deployment is unchanged until an operator opts in. Provider selection never
+changes the `ArtifactBlobStore` contract, the content-addressed `storageRef` contract
+(`artifacts/article_raw/{source}/{sha256}.json`), or any existing row, and it needs
+no migration.
+
+- `ARTIFACT_BLOB_PROVIDER` — `vercel` (default), `r2`, or compatibility
+  `supabase`. New M1 externalization targets R2 only after canary approval.
+- `ARTIFACT_BLOB_BUCKET` — private provider bucket, default
+  `worldcons-artifacts`; it must already exist.
+- Node/CLI R2 access uses `R2_ENDPOINT` or `R2_ACCOUNT_ID` plus
+  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and optional `R2_REGION=auto`.
+  Workers may inject an `R2Bucket` binding.
+- `ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS` — ordered read-only fallback list such as
+  `vercel`. Unknown, duplicate, or primary-equal entries are rejected.
+- `ARTIFACT_BLOB_READ_FALLBACK_ENABLED` — default `false`. When the primary provider
+  is non-Vercel and no explicit list exists, legacy `true` means Vercel fallback.
+
+```text
+provider=vercel (default)         -> reads and writes use Vercel only
+provider=r2                        -> reads and writes use R2 only
+provider=r2 + fallbacks=vercel     -> writes:     R2 only
+                                      reads/head: R2 first, Vercel on object-not-found only
+provider=supabase                  -> compatibility path only
+```
+
+No `storageRef` value is rewritten, no object is copied by this change, and no
+secret, signed URL, or token is ever placed in a ref or a log line.
+
+### Vercel Hobby Advanced Operations cap
+
+**Warning.** Vercel Blob Hobby "Advanced Operations" are capped at 2,000/month.
+Exceeding the cap can suspend the entire private store so that **reads and writes
+both fail**, with no overage billing and no self-serve recovery. That is why this
+M1 therefore moves new article raw externalization writes to R2 only after a bounded
+canary. A suspended Vercel store is an operational failure and must never be treated
+as not-found. Never repoint existing `storageRef` values.
+
+### M1 R2 article-raw canary
+
+The first R2 article-raw canary must preserve every inline `raw_text` value:
+
+1. Configure the private R2 bucket/credentials or Worker binding without exposing
+   values in logs.
+2. Set `ARTIFACT_BLOB_PROVIDER=r2` and choose a single small source/table candidate.
+3. Dry-run, then externalize only 1–5 rows. M6B attaches verified refs and keeps
+   inline text.
+4. Run bounded readiness verification and require R2 GET, exact size/SHA-256 and
+   successful JSON-string decode.
+5. Run M6E restore in dry-run/rehearsal mode only. Since inline text still exists,
+   the first canary does **not** execute clear or restore.
+6. Stop on any R2 auth/bucket/signature/network/rate/provider failure.
+
+Do not execute `clear:article-raw-inline` during the first M1 R2 canary.

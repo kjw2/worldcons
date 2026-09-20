@@ -54,6 +54,11 @@ no grant. Apply it with the other pending artifact migrations in step 1.
   runs no maintenance, and changes no grant. A NULL `normalized_output` stays valid
   only while `normalized_output_storage_ref` and the full externalization metadata
   are present, which the existing storage/json coherence check already enforces.
+- The artifact transport is **provider-selectable but defaults to Vercel**, so existing
+  behavior is unchanged. See section 7 for `ARTIFACT_BLOB_PROVIDER`,
+  `ARTIFACT_BLOB_BUCKET`, the explicit not-found-only read fallback, and the Vercel
+  Hobby Advanced Operations cap warning. Switching providers rewrites no
+  `storageRef` value and needs no migration.
 
 ## 2. What the readiness report contains
 
@@ -205,6 +210,11 @@ was not ready.
   ```
 - Never delete Blob objects. M4B and the readiness CLI never delete Blob objects
   (`blobObjectsDeleted: 0`).
+- To change the artifact transport, set `ARTIFACT_BLOB_PROVIDER` (and
+  `ARTIFACT_BLOB_BUCKET` when using Supabase) and redeploy; there is no data change
+  and no object migration. Setting `ARTIFACT_BLOB_PROVIDER=vercel` returns to the
+  previous behavior, and `ARTIFACT_BLOB_READ_FALLBACK_ENABLED=false` disables the
+  not-found-only read fallback. Never repoint or delete existing `storageRef` values.
 
 ## 6. Verification
 
@@ -215,6 +225,7 @@ pnpm check
 pnpm test:artifact-blob
 pnpm test:artifact-blob-restore
 pnpm test:artifact-blob-hardening
+pnpm test:artifact-blob-provider
 ```
 
 The fakes-only hardening suite
@@ -245,3 +256,75 @@ idempotent reruns; fail-closed Blob and metadata mismatches; bounded keyset
 pagination; and that the new migration is additive, extends the guard with the
 inline-null -> present restore transition, verifies the document byte length and
 SHA-256 in the RPC, and stays service_role-only with no table UPDATE/DELETE grant.
+
+The fakes-only provider suites (`tests/artifact-blob-provider-fallback.test.ts` and
+`tests/artifact-blob-r2-transport.test.ts`) prove: Vercel remains the default,
+Supabase remains a compatibility provider, and R2 is an explicit provider; Node S3
+and Worker `R2Bucket` transports preserve content type/size and the content-addressed
+`storageRef`; only unambiguous object-level not-found signals may enter a fallback;
+bucket/auth/signature/network/rate/5xx failures fail closed; ordered fallbacks stop at
+the first hit; and writes always go to the primary only.
+
+## 7. Artifact Blob provider selection (Vercel / R2 / Supabase compatibility)
+
+The artifact transport is provider-selectable and defaults to the current Vercel
+private Blob store, so an existing deployment is unchanged until an operator opts in.
+Provider selection never changes the `ArtifactBlobStore` contract, the
+content-addressed `storageRef` contract
+(`artifacts/{fetch|normalization}/{source}/{sha256}.json`), or any existing row, and
+it needs no migration.
+
+- `ARTIFACT_BLOB_PROVIDER` — `vercel` (default), `r2`, or compatibility
+  `supabase`. M1 uses `r2` for new externalization after canary approval.
+- `ARTIFACT_BLOB_BUCKET` — private provider bucket, default
+  `worldcons-artifacts`. It must already exist. M1 never auto-creates a bucket.
+- Node/CLI R2 access uses `R2_ENDPOINT` or `R2_ACCOUNT_ID`,
+  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and optional `R2_REGION=auto`.
+  Workers may inject a private `R2Bucket` binding instead of S3 credentials.
+- `ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS` — optional ordered CSV, for example
+  `vercel` while old refs are still Vercel-only. The primary may not be repeated
+  and unknown/duplicate entries fail closed.
+- `ARTIFACT_BLOB_READ_FALLBACK_ENABLED` — default `false`. When the primary provider
+  is not Vercel and no explicit list is supplied, legacy `true` means Vercel
+  fallback. It remains for compatibility.
+
+```text
+provider=vercel (default)         -> reads and writes use Vercel only
+provider=r2                        -> reads and writes use R2 only
+provider=r2 + fallbacks=vercel     -> writes:     R2 only
+                                      reads/head: R2 first, Vercel on object-not-found only
+provider=supabase                  -> compatibility path only
+```
+
+No `storageRef` value is rewritten, no object is copied by this change, and no
+secret, signed URL, or token is ever placed in a ref or a log line.
+
+### Vercel Hobby Advanced Operations cap
+
+**Warning.** Vercel Blob Hobby "Advanced Operations" are capped at 2,000/month.
+Exceeding the cap can suspend the entire private store so that **reads and writes
+both fail**, with no overage billing and no self-serve recovery. That is why this
+M1 therefore moves new externalization writes to R2 with
+`ARTIFACT_BLOB_PROVIDER=r2` only after a bounded canary. Treat the exhausted
+Vercel store as a legacy fallback, and remember that a suspended store is an
+operational failure, not not-found. Never repoint existing `storageRef` values.
+
+### M1 R2 first canary (no inline clear)
+
+The first production R2 canary is deliberately non-destructive:
+
+1. Create/configure the private R2 bucket outside this code change and inject
+   credentials or a Worker binding without printing values.
+2. Set `ARTIFACT_BLOB_PROVIDER=r2` and keep the existing artifact read/write flags
+   enabled only for the bounded operator process.
+3. Dry-run one tiny source/kind batch, then execute at most 1–5 externalizations.
+   The externalizer preserves inline payloads.
+4. Run readiness with `--verify-sample` covering those candidates. Require successful
+   R2 GET, exact byte size, SHA-256, and valid document checks.
+5. Run the restore command/tests in dry-run/rehearsal mode to prove the restore path
+   is deployable. Because inline content is intentionally still present, **do not**
+   execute an inline restore or clear in this first canary.
+6. Stop on any auth, bucket, signature, network, 429, or 5xx error. Such failures
+   must never fall through to legacy storage.
+
+No `clear:inline-artifacts` command is permitted in this first M1 canary.
