@@ -188,6 +188,44 @@ test("dry run plans the content-addressed ref without uploading or attaching", a
   assert.equal(deps.transport.gets.length, 0);
   assert.equal(attachCalls.length, 0);
 });
+
+test("execute concurrency is bounded and preserves candidate outcome order", async () => {
+  const candidates = Array.from({ length: 4 }, (_, index) => candidate({
+    articleRowId: `3000000${index}-0000-4000-8000-00000000000${index}`,
+    articleId: `4000000${index}-0000-4000-8000-00000000000${index}`,
+    rawText: `${RAW_TEXT}-${index}`,
+  }));
+  let active = 0;
+  let maxActive = 0;
+  const { repository } = fakeRepository(candidates, {
+    attach: async (input) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      active -= 1;
+      return { articleRowId: input.articleRowId, idempotent: false };
+    },
+  });
+  const deps = dependencies(repository);
+  const result = await runArticleRawExternalizationBatch(
+    {
+      articleTable: "articles",
+      batchSize: 4,
+      actorId: "operator",
+      execute: true,
+      concurrency: 2,
+    },
+    deps,
+  );
+
+  assert.equal(result.externalized, 4);
+  assert.equal(result.failed.length, 0);
+  assert.equal(maxActive, 2);
+  assert.deepEqual(
+    result.outcomes.map((outcome) => outcome.articleRowId),
+    candidates.map((entry) => entry.articleRowId),
+  );
+});
 test("execute uploads, verifies size and SHA-256, then attaches while preserving inline text", async () => {
   const entry = candidate();
   const { repository, attachCalls } = fakeRepository([entry]);
@@ -547,6 +585,7 @@ test("script defaults to dry run and requires an explicit --table and --execute"
   assert.match(source, /integerArgument\("max-batches", 20, 1, 1000\)/);
   assert.match(source, /createOperatorArtifactBlobStore\(\)/);
   assert.match(source, /runArticleRawExternalizationBatch\(/);
+  assert.match(source, /integerArgument\("concurrency", 1, 1, 8\)/);
   assert.match(source, /ARTICLE_RAW_EXTERNALIZATION_TABLES/);
   assert.equal(source.includes("store.put("), false);
 });

@@ -65,6 +65,7 @@ async function main() {
   const sourceKey = optionalSourceKey();
   const batchSize = integerArgument("batch-size", 25, 1, 100);
   const maxBatches = integerArgument("max-batches", 20, 1, 1000);
+  const concurrency = integerArgument("concurrency", 1, 1, 8);
   const afterArticleRowId = optionalUuid("after");
   const actorId = safeActor();
   const execute = flag("execute");
@@ -87,6 +88,7 @@ async function main() {
     sourceKey,
     batchSize,
     maxBatches,
+    concurrency,
     afterArticleRowId,
     execute,
     actorId,
@@ -104,7 +106,7 @@ async function main() {
 
   while (batches < maxBatches) {
     const result = await runArticleRawExternalizationBatch(
-      { articleTable, sourceKey, batchSize, afterArticleRowId: cursor, actorId, execute },
+      { articleTable, sourceKey, batchSize, afterArticleRowId: cursor, actorId, execute, concurrency },
       { repository: postgresArticleRawExternalizationRepository, store },
     );
     batches += 1;
@@ -117,6 +119,7 @@ async function main() {
       articleTable,
       sourceKey,
       batchNumber: batches,
+      concurrency,
       scanned: result.scanned,
       externalized: result.externalized,
       idempotent: result.idempotent,

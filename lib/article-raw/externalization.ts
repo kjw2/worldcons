@@ -87,6 +87,7 @@ export interface ArticleRawExternalizationInput {
   afterArticleRowId?: string | null;
   actorId: string;
   execute: boolean;
+  concurrency?: number;
 }
 
 export interface ArticleRawExternalizationPlan {
@@ -265,48 +266,86 @@ export async function runArticleRawExternalizationBatch(
   });
   const outcomes: ArticleRawExternalizationOutcome[] = [];
   const failed: { articleRowId: string; errorCode: string }[] = [];
+  const concurrency = Math.max(1, Math.min(input.concurrency ?? 1, 8));
+  const settled = new Array<
+    | { ok: true; outcome: ArticleRawExternalizationOutcome }
+    | { ok: false; articleRowId: string; errorCode: string }
+  >(candidates.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= candidates.length) return;
+      const candidate = candidates[index];
+      try {
+        const plan = planArticleRawExternalization(candidate);
+        const classification = classifyArticleRawExternalization(candidate, plan);
+        if (classification === "metadata_conflict") {
+          throw new Error("article_raw_externalization.metadata_conflict");
+        }
+        const storageRef = articleRawBlobStorageRef(candidate.sourceKey, plan.contentHash);
+        if (classification === "idempotent") {
+          settled[index] = {
+            ok: true,
+            outcome: {
+              articleTable: candidate.articleTable,
+              articleRowId: candidate.articleRowId,
+              sourceKey: candidate.sourceKey,
+              status: "idempotent",
+              storageRef,
+              contentHash: plan.contentHash,
+              contentSize: plan.contentSize,
+            },
+          };
+          continue;
+        }
+        if (!input.execute) {
+          settled[index] = {
+            ok: true,
+            outcome: {
+              articleTable: candidate.articleTable,
+              articleRowId: candidate.articleRowId,
+              sourceKey: candidate.sourceKey,
+              status: "planned",
+              storageRef,
+              contentHash: plan.contentHash,
+              contentSize: plan.contentSize,
+            },
+          };
+          continue;
+        }
+        settled[index] = {
+          ok: true,
+          outcome: await externalizeArticleRawPlan(plan, dependencies, input.actorId),
+        };
+      } catch (error) {
+        settled[index] = {
+          ok: false,
+          articleRowId: candidate.articleRowId,
+          errorCode: externalizationErrorCode(error),
+        };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, () => worker()),
+  );
+
   let externalized = 0;
   let idempotent = 0;
-  for (const candidate of candidates) {
-    try {
-      const plan = planArticleRawExternalization(candidate);
-      const classification = classifyArticleRawExternalization(candidate, plan);
-      if (classification === "metadata_conflict") {
-        throw new Error("article_raw_externalization.metadata_conflict");
-      }
-      const storageRef = articleRawBlobStorageRef(candidate.sourceKey, plan.contentHash);
-      if (classification === "idempotent") {
-        idempotent += 1;
-        outcomes.push({
-          articleTable: candidate.articleTable,
-          articleRowId: candidate.articleRowId,
-          sourceKey: candidate.sourceKey,
-          status: "idempotent",
-          storageRef,
-          contentHash: plan.contentHash,
-          contentSize: plan.contentSize,
-        });
-        continue;
-      }
-      if (!input.execute) {
-        outcomes.push({
-          articleTable: candidate.articleTable,
-          articleRowId: candidate.articleRowId,
-          sourceKey: candidate.sourceKey,
-          status: "planned",
-          storageRef,
-          contentHash: plan.contentHash,
-          contentSize: plan.contentSize,
-        });
-        continue;
-      }
-      const outcome = await externalizeArticleRawPlan(plan, dependencies, input.actorId);
-      if (outcome.status === "idempotent") idempotent += 1;
-      else externalized += 1;
-      outcomes.push(outcome);
-    } catch (error) {
-      failed.push({ articleRowId: candidate.articleRowId, errorCode: externalizationErrorCode(error) });
+  for (const result of settled) {
+    if (!result) continue;
+    if (!result.ok) {
+      failed.push({ articleRowId: result.articleRowId, errorCode: result.errorCode });
+      continue;
     }
+    const outcome = result.outcome;
+    outcomes.push(outcome);
+    if (outcome.status === "idempotent") idempotent += 1;
+    else if (outcome.status === "externalized") externalized += 1;
   }
   return {
     scanned: candidates.length,
