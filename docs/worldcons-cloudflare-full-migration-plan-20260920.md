@@ -644,6 +644,15 @@ Transition detail:
 - Vercel/runtime write flags remain unchanged until the runtime moves to a supported
   R2 credential path or, preferably, a Workers `R2Bucket` binding during M3.
 - Operator mode must never be silently selected by application runtime code.
+- On the current Windows/DevSpace operator host, Wrangler-backed externalization is
+  capped at 5 rows per invocation. A caller timeout is not permission to start a
+  replacement run; process/ledger state must be checked first.
+
+Progress (2026-09-20):
+- France `fr-conseil-constitutionnel` fetch inline-only migration is complete:
+  1,417/1,417 rows externalized, including 132 verified R2 dual copies and the
+  existing 1,285 legacy Blob-only rows; inline-only=0, metadata errors=0, ledger
+  coverage=1,417/1,417. Inline clearing remains intentionally unexecuted.
 
 Acceptance:
 - repeated bounded batches clean

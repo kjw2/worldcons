@@ -1,7 +1,7 @@
 # WorldCons Cloudflare M2 R2 Operator Canary Report
 
 Date: 2026-09-20
-Status: bounded M2 operator canary passed; inline clear remains prohibited
+Status: France fetch R2 dual-copy rollout complete; inline clear remains prohibited
 
 ## Scope
 
@@ -81,4 +81,58 @@ rollout continues by creating verified R2 dual copies in bounded batches.
 
 No Vercel Blob object was deleted, no R2 corpus object was deleted, and no corpus row
 was deleted.
+
+## France fetch completion
+
+The bounded rollout was continued until no inline-only France fetch candidate
+remained. Every successful externalization preserved the inline payload and used the
+same production externalization flow: upload to R2, read back, verify size/SHA-256,
+then attach metadata through the existing permit/ledger path.
+
+Final full-scan state:
+
+- total rows: 1,417
+- externalized rows: 1,417
+- existing legacy Blob-only rows: 1,285
+- R2 dual-copy rows: 132
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- contract-mismatch rows: 0
+- ledger-covered rows: 1,417
+- clearable rows: 132
+- clearable ledger-covered rows: 132
+- scan truncated: false
+
+Final bounded verification returned:
+
+- sampled: 10
+- verified OK: 10
+- read errors: 0
+- size mismatches: 0
+- hash mismatches: 0
+- invalid documents: 0
+- new-write ready: true
+- inline-clear ready: true
+- blocking reasons: none
+
+A final externalization dry run scanned zero candidates, confirming the France fetch
+inline-only queue is empty.
+
+### Operator batch-size finding
+
+On this Windows/DevSpace host, a 10-row Wrangler-backed batch can approach or exceed
+the command wall-time boundary because each row performs multiple remote R2
+operations. A timed-out invocation continued after the caller stopped waiting, which
+made the nominal 10-row operator window unsuitable as a hard operational bound.
+
+The safe operating rule for the remainder of M2 is therefore:
+
+- Wrangler operator externalization batch size: at most 5 rows per invocation;
+- never start a replacement invocation merely because the caller timed out;
+- inspect the live process and ledger first;
+- after bounded waves, run full aggregate readiness and a clean verification sample;
+- inline clear remains a separate, explicitly authorized operation and was not run.
+
+The temporary `_canary/` R2 objects created during transport debugging were removed
+after the corpus rollout passed. No database-referenced R2 object was deleted.
 
