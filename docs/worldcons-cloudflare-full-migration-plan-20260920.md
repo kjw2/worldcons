@@ -653,6 +653,22 @@ Progress (2026-09-20):
   1,417/1,417 rows externalized, including 132 verified R2 dual copies and the
   existing 1,285 legacy Blob-only rows; inline-only=0, metadata errors=0, ledger
   coverage=1,417/1,417. Inline clearing remains intentionally unexecuted.
+- France normalization inline-only migration is complete: 1,417/1,417 rows are
+  externalized, including 1,373 R2 dual copies and 44 existing legacy Blob-only
+  rows; inline-only=0, metadata errors=0, ledger coverage=1,417/1,417.
+- Operator externalization now supports explicit bounded concurrency and a
+  cross-process source partition lock. The stable supervisor shape on the current
+  Windows/DevSpace host is 40 rows at concurrency 8.
+- Article raw R2 migration has started with a France articles canary. New R2 rows
+  verify cleanly, while aggregate inline-clear readiness intentionally remains
+  blocked by older dual-copy rows whose objects are in the suspended legacy store.
+- France articles article-raw migration is complete: 382/382 rows are externalized,
+  dual-copy=382, inline-only=0, metadata errors=0, ledger coverage=382/382. Inline
+  raw_text remains present on every row.
+- France article_content_versions_p3 migration is complete: 808/808 rows are
+  externalized, dual-copy=808, inline-only=0, metadata errors=0, ledger
+  coverage=808/808. Combined France article raw is 1,190/1,190 externalized with
+  no inline raw_text deletion.
 
 Acceptance:
 - repeated bounded batches clean

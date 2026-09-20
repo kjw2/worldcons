@@ -136,3 +136,107 @@ The safe operating rule for the remainder of M2 is therefore:
 The temporary `_canary/` R2 objects created during transport debugging were removed
 after the corpus rollout passed. No database-referenced R2 object was deleted.
 
+## France normalization completion
+
+The France normalization rollout is complete.
+
+- total rows: 1,417
+- externalized rows: 1,417
+- existing legacy Blob-only rows: 44
+- R2 dual-copy rows: 1,373
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- contract-mismatch rows: 0
+- ledger-covered rows: 1,417
+- clearable rows: 1,373
+- clearable ledger-covered rows: 1,373
+- scan truncated: false
+
+The final verification sample returned 20/20 verified, with zero read, size, hash,
+or document errors. A final externalization dry run returned zero candidates.
+
+The Wrangler operator transport was optimized without weakening verification: the
+real remote GET used for the head/size check is reused only for the immediately
+following SHA/document verification of the same object. Bounded execution
+concurrency remains explicit and defaults to one.
+
+The stable high-throughput operating point on the current host is 40 rows with
+concurrency 8 under a single supervisor process.
+
+## Duplicate-run protection
+
+The operator CLIs now acquire a source/kind or source/table cross-process lock before
+an execute run. A live concurrent claimant fails closed with operator_lock.busy.
+Stale lock directories are reclaimed only when the recorded PID is no longer alive.
+
+## Article raw R2 canary
+
+The first article raw R2 canary targeted articles / fr-conseil-constitutionnel.
+
+- dry-run candidates inspected: 20
+- already exact-idempotent legacy rows: 16
+- newly externalized to R2: 4
+- failed: 0
+- inline raw_text preserved: yes
+
+The four rows created by the canary actor were separately re-read from R2 and
+verified against the append-only article raw externalization ledger and the still
+inline database value: 4/4 verified, with zero read, size, SHA-256, decode, or text
+mismatch errors.
+
+Aggregate article raw readiness still reports read errors for older dual-copy rows
+whose object lives only in the suspended legacy store. This warning is preserved:
+INLINE_CLEAR_READY remains closed for the mixed legacy/R2 set. New R2
+externalization may continue, but no inline clear is authorized until legacy-object
+recovery/provider reconciliation is complete.
+
+### France articles completion
+
+The France articles carrier is now fully externalized while retaining inline
+raw_text:
+
+- total rows: 382
+- externalized rows: 382
+- dual-copy rows: 382
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 382
+- ledger gaps/conflicts: 0
+
+The supervised R2 rollout attached 360 new rows. Two additional rows failed closed
+during remote R2 head verification with artifact_blob.r2_wrangler_head_failed; they
+were not attached, were retried after the supervisor stopped, and then externalized
+successfully. The retry ended with 2 externalized, 380 exact-idempotent, and zero
+failures.
+
+The earlier four-row R2 canary remained fully verified. Legacy dual-copy rows are
+still treated as a separate provider-recovery concern, so no inline clear follows
+from the carrier reaching inline-only=0.
+
+### France article content versions completion
+
+The France article_content_versions_p3 carrier is also complete:
+
+- total rows: 808
+- externalized rows: 808
+- dual-copy rows: 808
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 808
+- ledger gaps/conflicts: 0
+
+The versions canary created 5 new R2 rows and verified all 5/5 with zero read,
+size, SHA-256, decode, or text mismatch errors. The supervised rollout then
+externalized the remaining 788 rows with zero failed batches/markers.
+
+France article raw is therefore complete across both carriers:
+
+- articles: 382/382 externalized
+- article_content_versions_p3: 808/808 externalized
+- combined: 1,190/1,190 externalized
+- combined inline-only: 0
+- inline raw_text deletion: 0
+
+INLINE_CLEAR_READY remains intentionally closed for the mixed legacy/provider
+history until the legacy store recovery/reconciliation step is completed.
+
