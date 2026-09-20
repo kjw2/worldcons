@@ -276,3 +276,38 @@ both carriers.
 As with France, completion of dual copies is not authorization to clear inline
 raw_text. Legacy/provider reconciliation remains a separate M2/M13 gate.
 
+## Spain article raw completion
+
+The es-tribunal-constitucional article raw rollout is complete across both carriers.
+
+Articles:
+
+- total rows: 424
+- externalized rows: 424
+- dual-copy rows: 424
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 424
+
+Article content versions:
+
+- total rows: 1,340
+- externalized rows: 1,340
+- dual-copy rows: 1,340
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 1,340
+
+Combined Spain article raw:
+
+- total/externalized: 1,764/1,764
+- inline-only: 0
+- inline raw_text deletion: 0
+
+The Spain canaries completed with zero failures. The supervised rollout then
+externalized the remaining 404 article rows and 1,310 version rows with no failed
+batch marker. Final readiness reported complete metadata and ledger coverage for
+both carriers.
+
+Inline clear remains intentionally unexecuted.
+

@@ -673,6 +673,10 @@ Progress (2026-09-20):
   article_content_versions_p3 827/827 are externalized, combined 1,155/1,155,
   inline-only=0, metadata errors=0, and ledger coverage is complete. Inline raw_text
   remains preserved.
+- Spain es-tribunal-constitucional article raw migration is complete: articles
+  424/424 and article_content_versions_p3 1,340/1,340 are externalized, combined
+  1,764/1,764, inline-only=0, metadata errors=0, and ledger coverage is complete.
+  Inline raw_text remains preserved.
 
 Acceptance:
 - repeated bounded batches clean
