@@ -240,3 +240,39 @@ France article raw is therefore complete across both carriers:
 INLINE_CLEAR_READY remains intentionally closed for the mixed legacy/provider
 history until the legacy store recovery/reconciliation step is completed.
 
+## Germany article raw completion
+
+The de-bverfg article raw rollout is complete across both carriers.
+
+Articles:
+
+- total rows: 328
+- externalized rows: 328
+- dual-copy rows: 328
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 328
+
+Article content versions:
+
+- total rows: 827
+- externalized rows: 827
+- dual-copy rows: 827
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 827
+
+Combined Germany article raw:
+
+- total/externalized: 1,155/1,155
+- inline-only: 0
+- inline raw_text deletion: 0
+
+The Germany canaries completed with zero failures. The supervised rollout then
+externalized the remaining 308 article rows and 807 version rows with no failed
+batch marker. Final readiness reported complete metadata and ledger coverage for
+both carriers.
+
+As with France, completion of dual copies is not authorization to clear inline
+raw_text. Legacy/provider reconciliation remains a separate M2/M13 gate.
+

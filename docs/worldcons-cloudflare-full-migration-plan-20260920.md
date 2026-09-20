@@ -669,6 +669,10 @@ Progress (2026-09-20):
   externalized, dual-copy=808, inline-only=0, metadata errors=0, ledger
   coverage=808/808. Combined France article raw is 1,190/1,190 externalized with
   no inline raw_text deletion.
+- Germany de-bverfg article raw migration is complete: articles 328/328 and
+  article_content_versions_p3 827/827 are externalized, combined 1,155/1,155,
+  inline-only=0, metadata errors=0, and ledger coverage is complete. Inline raw_text
+  remains preserved.
 
 Acceptance:
 - repeated bounded batches clean
