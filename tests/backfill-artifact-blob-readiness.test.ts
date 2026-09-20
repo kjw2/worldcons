@@ -426,6 +426,37 @@ test("INLINE_CLEAR_READY requires a clean verified sample and full ledger covera
   assert.equal(ledgerMissing.gates.critical, false);
 });
 
+test("verification samples clearable dual-copy rows, not earlier blob-only rows", async () => {
+  const blobOnlyRows = Array.from({ length: 5 }, (_, index) => externalizedFetchRow({
+    artifactId: `39000000-0000-4000-8000-00000000000${index}`,
+    inlinePresent: false,
+    ledgerCovered: true,
+  }));
+  const clearable = externalizedFetchRow({
+    artifactId: "39000000-0000-4000-8000-000000000099",
+    inlinePresent: true,
+    ledgerCovered: true,
+  });
+  const repository = new FakeReadinessRepository([...blobOnlyRows, clearable]);
+  const deps = dependencies(repository, new FakeTransport(), BOTH_ON);
+  seedFetchDocument(deps.transport, clearable.storageRef as string);
+
+  const report = await runArtifactReadiness(
+    { batchSize: 10, maxBatches: 10, verificationSampleSize: 5 },
+    deps,
+  );
+
+  assert.equal(report.fetch.blobOnlyRows, 5);
+  assert.equal(report.fetch.clearableRows, 1);
+  assert.equal(report.verification.candidatesConsidered, 1);
+  assert.equal(report.verification.sampled, 1);
+  assert.equal(report.verification.verifiedOk, 1);
+  assert.equal(report.verification.readErrors, 0);
+  assert.equal(report.gates.verificationReady, true);
+  assert.equal(report.gates.inlineClearReady, true);
+  assert.deepEqual(deps.transport.gets, [clearable.storageRef]);
+});
+
 test("INLINE_CLEAR_READY blocks when the verified sample misses a clearable kind", async () => {
   const fetchRow = externalizedFetchRow({ inlinePresent: true, ledgerCovered: true });
   const normalizationRow = externalizedNormalizationRow({ inlinePresent: true, ledgerCovered: true });
@@ -831,6 +862,7 @@ test("the module keeps verification default off, deletes nothing, and derives th
   // first pass per clearable kind, then round-robin), never a single global FIFO.
   assert.match(source, /candidatesByKind: Record<CaseBackfillArtifactExternalizationKind, ArtifactVerificationCandidate\[\]>/);
   assert.match(source, /candidatePool\.length < verificationSampleSize/);
+  assert.match(source, /&& classification\.clearable/);
   assert.match(source, /selectArtifactVerificationCandidates\(/);
   assert.match(source, /const clearableKinds = kinds\.filter\(\(kind\) => totalsByKind\[kind\]\.clearableRows > 0\)/);
   assert.match(source, /verification\.candidatesConsidered \+= candidatesByKind\[kind\]\.length/);

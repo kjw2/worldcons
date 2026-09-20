@@ -287,7 +287,7 @@ function accumulateTotals(
   if (
     verificationSampleSize > 0
     && candidatePool.length < verificationSampleSize
-    && classification.externalized
+    && classification.clearable
   ) {
     const storageRef = nonEmptyText(row.storageRef);
     if (storageRef) {
