@@ -1,7 +1,7 @@
 # WorldCons Full Cloudflare Migration Plan
 
-Date: 2026-09-20  
-Status: Verified planning baseline; no production cutover authorized by this document  
+Date: 2026-09-20
+Status: Verified planning baseline; no production cutover authorized by this document
 Owner direction: Evaluate and implement a full Cloudflare target for frontend, backend, database, object storage, search/vector, async jobs, crawler execution, security and observability.
 
 ## 1. Executive decision
@@ -946,4 +946,3 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] credential rotation
 - [ ] DR rehearsal
 - [ ] explicit retirement approval
-
