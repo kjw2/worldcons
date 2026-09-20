@@ -311,3 +311,71 @@ both carriers.
 
 Inline clear remains intentionally unexecuted.
 
+## United States article raw completion
+
+The us-scotus article raw rollout is complete across both carriers.
+
+Articles:
+
+- total rows: 134
+- externalized rows: 134
+- dual-copy rows: 134
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 134
+
+Article content versions:
+
+- total rows: 281
+- externalized rows: 281
+- dual-copy rows: 281
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 281
+
+Combined United States article raw:
+
+- total/externalized: 415/415
+- inline-only: 0
+- inline raw_text deletion: 0
+
+The versions supervisor had one fail-closed row. No metadata attach occurred for that
+row. A low-concurrency retry then externalized exactly one row, reported the other
+280 rows as exact-idempotent, and completed with zero failures.
+
+## M2 corpus externalization checkpoint
+
+The bounded operator/backfill portion of M2 is complete for the currently present
+corpus.
+
+Artifact fetch + normalization:
+
+- total rows: 3,543
+- externalized rows: 3,543
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- contract-mismatch rows: 0
+- ledger-covered rows: 3,543
+- dual-copy rows: 1,505
+- legacy Blob-only rows: 2,038
+
+Article raw:
+
+- total rows: 4,524
+- externalized rows: 4,524
+- dual-copy rows: 4,524
+- inline-only rows: 0
+- metadata-inconsistent rows: 0
+- ledger-covered rows: 4,524
+- inline raw_text deletion: 0
+
+This checkpoint does not claim that every historical object is resident in R2.
+In particular, 2,038 artifact rows remain externalized only to the suspended legacy
+Blob provider, and some older article-raw refs also predate the R2 authority change.
+Those rows remain protected by retained inline content where available and by the
+legacy-provider recovery gate. No legacy object is deleted in M2.
+
+Application-runtime R2 write authority is intentionally deferred to the Workers
+R2Bucket binding path in M3. The operator/backfill path is now ready and verified;
+runtime authority is not switched on Vercel with long-lived S3 credentials.
+

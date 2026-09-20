@@ -677,6 +677,15 @@ Progress (2026-09-20):
   424/424 and article_content_versions_p3 1,340/1,340 are externalized, combined
   1,764/1,764, inline-only=0, metadata errors=0, and ledger coverage is complete.
   Inline raw_text remains preserved.
+- United States us-scotus article raw migration is complete: articles 134/134 and
+  article_content_versions_p3 281/281 are externalized, combined 415/415,
+  inline-only=0, metadata errors=0, and ledger coverage is complete.
+- Current-corpus M2 operator/backfill externalization is complete: artifact
+  fetch+normalization 3,543/3,543 and article raw 4,524/4,524 are externalized with
+  inline-only=0 and complete ledgers. This does not migrate the 2,038 historical
+  artifact objects that remain legacy-Blob-only; legacy-provider recovery remains a
+  later gate. Application-runtime R2 write authority is deferred to the M3 Workers
+  R2Bucket binding path rather than adding long-lived S3 credentials to Vercel.
 
 Acceptance:
 - repeated bounded batches clean
