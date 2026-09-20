@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -91,10 +91,25 @@ export function createWranglerR2ArtifactBlobTransport(
   const bucket = options.bucket.trim();
   if (!/^[a-z0-9][a-z0-9._-]{0,62}$/.test(bucket)) throw new Error("artifact_blob.invalid_bucket");
   const runner = options.runner ?? runWrangler;
+  const verifiedReads = new Map<string, Buffer>();
+
+  function resultFromBytes(body: Buffer) {
+    return {
+      statusCode: 200,
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(body));
+          controller.close();
+        },
+      }),
+      size: body.byteLength,
+    };
+  }
 
   return {
     async put(pathname, body, putOptions) {
       try {
+        verifiedReads.delete(pathname);
         await withTempFile("put.json", async (file) => {
           await writeFile(file, body);
           await runner([
@@ -111,22 +126,18 @@ export function createWranglerR2ArtifactBlobTransport(
     },
     async get(pathname) {
       try {
+        const cached = verifiedReads.get(pathname);
+        if (cached) {
+          verifiedReads.delete(pathname);
+          return resultFromBytes(cached);
+        }
         return await withTempFile("get.json", async (file) => {
           await runner([
             "r2", "object", "get", objectPath(bucket, pathname),
             "--remote", "--file", file,
           ]);
           const body = await readFile(file);
-          return {
-            statusCode: 200,
-            stream: new ReadableStream<Uint8Array>({
-              start(controller) {
-                controller.enqueue(new Uint8Array(body));
-                controller.close();
-              },
-            }),
-            size: body.byteLength,
-          };
+          return resultFromBytes(body);
         });
       } catch {
         throw new Error("artifact_blob.r2_wrangler_get_failed");
@@ -139,8 +150,9 @@ export function createWranglerR2ArtifactBlobTransport(
             "r2", "object", "get", objectPath(bucket, pathname),
             "--remote", "--file", file,
           ]);
-          const info = await stat(file);
-          return { pathname, size: info.size };
+          const body = await readFile(file);
+          verifiedReads.set(pathname, body);
+          return { pathname, size: body.byteLength };
         });
       } catch {
         throw new Error("artifact_blob.r2_wrangler_head_failed");

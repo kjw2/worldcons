@@ -63,6 +63,7 @@ async function main() {
   const sourceKey = optionalSourceKey();
   const batchSize = integerArgument("batch-size", 25, 1, 100);
   const maxBatches = integerArgument("max-batches", 20, 1, 1000);
+  const concurrency = integerArgument("concurrency", 1, 1, 8);
   const afterArtifactId = optionalUuid("after");
   const actorId = safeActor();
   const execute = flag("execute");
@@ -74,6 +75,7 @@ async function main() {
     sourceKey,
     batchSize,
     maxBatches,
+    concurrency,
     afterArtifactId,
     execute,
     actorId,
@@ -91,7 +93,7 @@ async function main() {
 
   while (batches < maxBatches) {
     const result = await runArtifactExternalizationBatch(
-      { kind, sourceKey, batchSize, afterArtifactId: cursor, actorId, execute },
+      { kind, sourceKey, batchSize, afterArtifactId: cursor, actorId, execute, concurrency },
       { repository: postgresCaseBackfillRepository, store },
     );
     batches += 1;
@@ -104,6 +106,7 @@ async function main() {
       kind,
       sourceKey,
       batchNumber: batches,
+      concurrency,
       scanned: result.scanned,
       externalized: result.externalized,
       idempotent: result.idempotent,

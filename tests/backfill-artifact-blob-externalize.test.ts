@@ -398,6 +398,36 @@ test("batches stay bounded and advance with a keyset cursor", async () => {
   assert.equal(listCalls[1].afterArtifactId, candidates[1].artifactId);
 });
 
+test("execute concurrency is bounded and preserves candidate outcome order", async () => {
+  const candidates = Array.from({ length: 4 }, (_, index) => fetchCandidate({
+    artifactId: `1000000${index}-0000-4000-8000-00000000000${index}`,
+  }));
+  let active = 0;
+  let maxActive = 0;
+  const { repository } = fakeRepository(candidates, {
+    attach: async (input) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      active -= 1;
+      return { artifactId: input.artifactId, idempotent: false };
+    },
+  });
+  const deps = dependencies(repository);
+  const result = await runArtifactExternalizationBatch(
+    { kind: "fetch", batchSize: 4, actorId: "operator", execute: true, concurrency: 2 },
+    deps,
+  );
+
+  assert.equal(result.externalized, 4);
+  assert.equal(result.failed.length, 0);
+  assert.equal(maxActive, 2);
+  assert.deepEqual(
+    result.outcomes.map((outcome) => outcome.artifactId),
+    candidates.map((candidate) => candidate.artifactId),
+  );
+});
+
 test("repository selects inline ref-less candidates and routes to the externalize RPC", () => {
   const source = fs.readFileSync(repositoryPath, "utf8");
   assert.match(source, /source_backfill_artifact_externalize_v1/);
@@ -447,6 +477,7 @@ test("script defaults to dry run and requires an explicit execute flag", () => {
   assert.match(source, /optionalSourceKey\(\)/);
   assert.match(source, /createOperatorArtifactBlobStore\(\)/);
   assert.match(source, /runArtifactExternalizationBatch\(/);
+  assert.match(source, /integerArgument\("concurrency", 1, 1, 8\)/);
   assert.doesNotMatch(source, /store\.put\(/);
 });
 

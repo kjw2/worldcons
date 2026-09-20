@@ -25,6 +25,7 @@ export interface CaseBackfillExternalizationInput {
   afterArtifactId?: string | null;
   actorId: string;
   execute: boolean;
+  concurrency?: number;
 }
 
 export interface CaseBackfillExternalizationPlan {
@@ -164,31 +165,67 @@ export async function runArtifactExternalizationBatch(
   });
   const outcomes: CaseBackfillExternalizationOutcome[] = [];
   const failed: { artifactId: string; errorCode: string }[] = [];
+  const concurrency = Math.max(1, Math.min(input.concurrency ?? 1, 8));
+  const settled = new Array<
+    | { ok: true; outcome: CaseBackfillExternalizationOutcome }
+    | { ok: false; artifactId: string; errorCode: string }
+  >(candidates.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= candidates.length) return;
+      const candidate = candidates[index];
+      try {
+        const plan = planArtifactExternalization(candidate);
+        if (!input.execute) {
+          settled[index] = {
+            ok: true,
+            outcome: {
+              artifactId: candidate.artifactId,
+              artifactTable: candidate.artifactTable,
+              kind: candidate.kind,
+              sourceKey: candidate.sourceKey,
+              status: "planned",
+              storageRef: buildArtifactStorageRef(candidate.kind, candidate.sourceKey, plan.contentHash),
+              contentHash: plan.contentHash,
+              contentSize: plan.contentSize,
+            },
+          };
+          continue;
+        }
+        settled[index] = {
+          ok: true,
+          outcome: await externalizeArtifactPlan(plan, dependencies, input.actorId),
+        };
+      } catch (error) {
+        settled[index] = {
+          ok: false,
+          artifactId: candidate.artifactId,
+          errorCode: externalizationErrorCode(error),
+        };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, () => worker()),
+  );
+
   let externalized = 0;
   let idempotent = 0;
-  for (const candidate of candidates) {
-    try {
-      const plan = planArtifactExternalization(candidate);
-      if (!input.execute) {
-        outcomes.push({
-          artifactId: candidate.artifactId,
-          artifactTable: candidate.artifactTable,
-          kind: candidate.kind,
-          sourceKey: candidate.sourceKey,
-          status: "planned",
-          storageRef: buildArtifactStorageRef(candidate.kind, candidate.sourceKey, plan.contentHash),
-          contentHash: plan.contentHash,
-          contentSize: plan.contentSize,
-        });
-        continue;
-      }
-      const outcome = await externalizeArtifactPlan(plan, dependencies, input.actorId);
-      if (outcome.status === "idempotent") idempotent += 1;
-      else externalized += 1;
-      outcomes.push(outcome);
-    } catch (error) {
-      failed.push({ artifactId: candidate.artifactId, errorCode: externalizationErrorCode(error) });
+  for (const result of settled) {
+    if (!result) continue;
+    if (!result.ok) {
+      failed.push({ artifactId: result.artifactId, errorCode: result.errorCode });
+      continue;
     }
+    const outcome = result.outcome;
+    outcomes.push(outcome);
+    if (outcome.status === "idempotent") idempotent += 1;
+    else if (outcome.status === "externalized") externalized += 1;
   }
   return {
     scanned: candidates.length,

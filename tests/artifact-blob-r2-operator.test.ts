@@ -57,6 +57,24 @@ test("Wrangler R2 operator transport round-trips private artifact bytes", async 
   assert.deepEqual(objects.get(`worldcons-artifacts/${REF}`), BODY);
 });
 
+test("head caches the verified remote bytes for the immediately following get", async () => {
+  const objects = new Map<string, Buffer>();
+  const calls: string[] = [];
+  const runner = fakeWranglerRunner(objects);
+  const transport = createWranglerR2ArtifactBlobTransport({
+    bucket: "worldcons-artifacts",
+    runner: async (args) => {
+      calls.push(args[2]);
+      await runner(args);
+    },
+  });
+  const store = new ArtifactBlobStore(transport);
+  await store.put({ kind: "fetch", sourceKey: SOURCE, bytes: BODY });
+  assert.equal((await store.head(REF)).size, BODY.byteLength);
+  assert.deepEqual(await store.get(REF), BODY);
+  assert.deepEqual(calls, ["put", "get"]);
+});
+
 test("Wrangler R2 operator transport returns stable errors without runner details", async () => {
   const secret = "must-not-leak";
   const runner: WranglerR2Runner = async () => {
