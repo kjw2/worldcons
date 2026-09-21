@@ -44,6 +44,8 @@ test("Worker-facing admin routes keep Node executors behind runtime seams", () =
   assert.match(source("app/api/admin/ingest/route.ts"), /inlineAdminExecutionAllowed/);
   assert.match(source("app/api/admin/review/route.ts"), /retry-source-ingest[\s\S]*isCloudflareWorkerRuntime/);
   assert.match(source("worker/index.ts"), /setRuntimePlatform\("cloudflare-worker"\)/);
+  assert.match(source("app/api/mcp/health/route.ts"), /isCloudflareWorkerRuntime/);
+  assert.match(source("app/api/mcp/health/route.ts"), /cloudflare-workers/);
 });
 
 test("Worker-facing code stays free of Node filesystem state and Node-only ingest", () => {
