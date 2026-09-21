@@ -18,5 +18,5 @@ export { ingestTables } from "./worldcons-ingest";
 export { opsTables } from "./worldcons-ops";
 export { searchTables } from "./worldcons-search";
 export { ownership } from "./ownership";
-export { buildTable, uniqueIndex } from "./shared";
+export { buildTable, index, uniqueIndex } from "./shared";
 export type { ColumnSpec, TableSpec } from "./shared";

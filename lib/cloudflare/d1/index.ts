@@ -15,6 +15,7 @@ export {
   searchTables,
   ownership,
   buildTable,
+  index,
   uniqueIndex,
 } from "./schema";
 export type { ColumnSpec, TableSpec } from "./schema";

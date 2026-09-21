@@ -782,6 +782,17 @@ Acceptance:
 - JSON/date/UUID conversion tests
 - representative RPC parity
 
+Progress (2026-09-21, M5.1 / M5.1b / M5.1c):
+- four D1 schemas and the Postgres -> canonical transform foundation exist as local-only,
+  hand-authored D1 schema code plus a read-only Supabase-migration scanner and a
+  schema/ownership/parity validator (`pnpm d1:schema`, `pnpm test:d1-schema`);
+- M5.1 covered `articles`, `sources`, `tags`, `article_tags`, `glossary_terms` plus the
+  ingest/ops/search foundation tables; M5.1b completed `worldcons_core` (30 covered tables);
+- M5.1c completed `worldcons_ingest` and `worldcons_ops`: all four D1 databases are now fully
+  modeled (77 tables, 0 `planned`), so the M5.1 D1 schema foundation is complete;
+- the Postgres -> canonical -> D1 converter/data copy remains M5.2+ work;
+- no D1 database was created remotely and no authority changed.
+
 ### M6 — D1 shadow-read parity
 
 Objective:
@@ -1022,7 +1033,7 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] vinext compatibility report
 - [ ] Worker staging deployment
 - [x] Supabase coupling/RPC ledger (M4.6: `pnpm rpc:ledger`, 80 functions / 74 call sites, 0 unbounded dynamic families)
-- [ ] four D1 schemas
+- [x] four D1 schemas
 - [ ] Postgres -> canonical -> D1 converter
 - [ ] data count/hash/FK invariants
 - [ ] D1 shadow reads

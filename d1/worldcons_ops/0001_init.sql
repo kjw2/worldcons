@@ -8,7 +8,7 @@ create table if not exists admin_article_edit_history (
   article_slug text,
   edited_at text not null,
   actor_id text,
-  changed_fields text not null default '{}',
+  changed_fields text not null default '[]',
   previous_summary_hash text,
   next_summary_hash text,
   diff_redacted text not null default '{}',
@@ -32,6 +32,109 @@ create table if not exists admin_audit_logs (
   redacted_metadata text not null default '{}',
   request_ip_hash text,
   user_agent_family text,
+  primary key (id)
+);
+
+create table if not exists admin_command_attempts (
+  id text not null,
+  run_id text not null,
+  attempt_number integer not null,
+  status text not null check (status in ('running', 'succeeded', 'failed', 'aborted', 'lease_expired')),
+  worker_id text not null,
+  fencing_token text not null,
+  lease_expires_at text not null,
+  heartbeat_at text not null,
+  started_at text not null,
+  finished_at text,
+  failure_disposition text,
+  error_code text,
+  error_message text,
+  result_summary text not null default '{}',
+  created_at text not null,
+  updated_at text not null,
+  primary key (id)
+);
+create index if not exists admin_command_attempts_active_lease_idx on admin_command_attempts (lease_expires_at, run_id);
+create index if not exists admin_command_attempts_run_created_idx on admin_command_attempts (run_id, attempt_number);
+
+create table if not exists admin_command_events (
+  id text not null,
+  command_id text not null,
+  run_id text,
+  attempt_id text,
+  event_type text not null check (event_type in ('command_accepted', 'command_deduplicated', 'run_queued', 'compatibility_shadowed', 'attempt_claimed', 'lease_reclaimed', 'heartbeat', 'attempt_succeeded', 'retry_scheduled', 'run_failed', 'abort_requested', 'run_aborted', 'manual_retry_queued')),
+  actor_type text not null check (actor_type in ('admin', 'cron', 'worker', 'system', 'compatibility')),
+  actor_id text,
+  safe_details text not null default '{}',
+  occurred_at text not null,
+  primary key (id)
+);
+create index if not exists admin_command_events_command_occurred_idx on admin_command_events (command_id, occurred_at, id);
+create index if not exists admin_command_events_run_occurred_idx on admin_command_events (run_id, occurred_at, id);
+
+create table if not exists admin_command_runs (
+  id text not null,
+  command_id text not null,
+  run_number integer not null,
+  status text not null default 'queued' check (status in ('queued', 'running', 'retry_wait', 'succeeded', 'failed', 'aborted', 'shadowed')),
+  dedupe_key text not null,
+  priority integer not null default 0,
+  available_at text not null,
+  max_attempts integer not null default 3,
+  retry_backoff_base_seconds integer not null default 15,
+  retry_backoff_cap_seconds integer not null default 900,
+  retry_count integer not null default 0,
+  current_attempt_id text,
+  abort_requested_at text,
+  abort_requested_by text,
+  abort_reason text,
+  started_at text,
+  finished_at text,
+  terminal_error_code text,
+  terminal_error_message text,
+  result_summary text not null default '{}',
+  created_at text not null,
+  updated_at text not null,
+  primary key (id)
+);
+create unique index if not exists admin_command_runs_active_dedupe_key_uidx on admin_command_runs (dedupe_key);
+create index if not exists admin_command_runs_claim_idx on admin_command_runs (status, available_at, priority, created_at);
+
+create table if not exists admin_commands (
+  id text not null,
+  command_type text not null,
+  payload_ref text not null default '{}',
+  idempotency_key text not null,
+  requested_by text,
+  priority integer not null default 0,
+  created_at text not null,
+  primary key (id)
+);
+
+create table if not exists admin_compatibility_observations_p5 (
+  bucket_started_at text not null,
+  surface text not null check (surface in ('admin_command', 'article_lifecycle', 'article_publication', 'public_query', 'vector_search', 'admin_dashboard', 'admin_analytics')),
+  domain text not null check (domain in ('queue', 'lifecycle', 'publication', 'projection', 'operations')),
+  direction text not null check (direction in ('read', 'write')),
+  authority text not null check (authority in ('legacy', 'new', 'fallback')),
+  outcome text not null check (outcome in ('selected', 'succeeded', 'failed', 'fallback', 'skipped', 'disabled', 'unavailable')),
+  observation_count text not null default 0,
+  unexplained_count text not null default 0,
+  first_observed_at text not null,
+  last_observed_at text not null,
+  primary key (bucket_started_at, surface, domain, direction, authority, outcome)
+);
+
+create table if not exists admin_governance_evidence_p5 (
+  id text not null,
+  evidence_type text not null check (evidence_type in ('owner_approval', 'backup_restore', 'acknowledgement')),
+  role_key text,
+  outcome text not null check (outcome in ('approved', 'successful', 'acknowledged')),
+  actor_hash text not null,
+  evidence_at text not null,
+  expires_at text not null,
+  evidence_digest text not null,
+  note_code text,
   primary key (id)
 );
 
@@ -77,6 +180,31 @@ create table if not exists admin_jobs (
 );
 create unique index if not exists admin_jobs_idempotency_key_key on admin_jobs (idempotency_key);
 
+create table if not exists admin_ops_events (
+  id text not null,
+  event_type text not null,
+  severity text not null,
+  source_key text,
+  summary text not null,
+  detail text not null default '{}',
+  created_at text not null,
+  primary key (id)
+);
+create index if not exists admin_ops_events_created_at_idx on admin_ops_events (created_at);
+create index if not exists admin_ops_events_severity_idx on admin_ops_events (severity);
+create index if not exists admin_ops_events_type_idx on admin_ops_events (event_type);
+
+create table if not exists admin_retention_holds_p5 (
+  id text not null,
+  domain text not null check (domain in ('all', 'commands', 'lifecycle', 'publication', 'observations', 'outbox')),
+  reason_code text not null,
+  starts_at text not null,
+  expires_at text,
+  released_at text,
+  evidence_digest text not null,
+  primary key (id)
+);
+
 create table if not exists llm_settings (
   id text not null,
   settings text not null default '{}',
@@ -84,6 +212,59 @@ create table if not exists llm_settings (
   updated_at text not null,
   primary key (id)
 );
+
+create table if not exists masterdash_collection_control (
+  system_id text not null,
+  paused integer not null default 0,
+  updated_at text not null,
+  last_request_id text,
+  primary key (system_id)
+);
+
+create table if not exists masterdash_control_requests (
+  request_id text not null,
+  system_id text not null,
+  action text not null,
+  requested_at text not null,
+  body_sha256 text not null,
+  status text not null,
+  response_status integer,
+  response_message text,
+  created_at text not null,
+  completed_at text,
+  primary key (request_id)
+);
+create index if not exists masterdash_control_requests_created_at_idx on masterdash_control_requests (created_at);
+
+create table if not exists masterdash_sso_jtis (
+  jti_hash text not null,
+  system_id text not null,
+  expires_at text not null,
+  created_at text not null,
+  primary key (jti_hash)
+);
+create index if not exists masterdash_sso_jtis_expires_at_idx on masterdash_sso_jtis (expires_at);
+
+create table if not exists ops_workflow_heartbeats (
+  workflow_key text not null,
+  last_started_at text not null,
+  last_completed_at text,
+  last_status text not null check (last_status in ('running', 'success', 'failed', 'deferred')),
+  run_id text,
+  detail text not null default '{}',
+  updated_at text not null,
+  primary key (workflow_key)
+);
+
+create table if not exists security_rate_limit_buckets_v1 (
+  profile text not null,
+  identifier_hash text not null,
+  request_count integer not null default 0,
+  reset_at text not null,
+  updated_at text not null,
+  primary key (profile, identifier_hash)
+);
+create index if not exists security_rate_limit_buckets_v1_reset_idx on security_rate_limit_buckets_v1 (reset_at);
 
 create table if not exists site_events (
   id text not null,

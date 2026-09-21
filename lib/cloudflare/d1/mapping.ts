@@ -53,6 +53,14 @@ const INTEGER_TYPES = new Set(["smallint", "int2", "integer", "int", "int4", "se
 const BIGINT_TYPES = new Set(["bigint", "int8", "bigserial", "serial8"]);
 const REAL_TYPES = new Set(["numeric", "decimal", "double precision", "real", "float4", "float8", "float", "money"]);
 const BLOB_TYPES = new Set(["bytea"]);
+/**
+ * Matches a pgvector column type, optionally schema-qualified. The live
+ * migrations declare `vector(1536)` in one place and `extensions.vector(1536)`
+ * (pgvector installed in the `extensions` schema) in another; both are the same
+ * type and both relocate to Vectorize (plan 6.1 / 11.2).
+ */
+const VECTOR_TYPE = /^(?:[a-z_][a-z0-9_]*\.)?vector(\(\s*\d+\s*\))?$/;
+
 /** Normalizes a raw Postgres type name for comparison and mapping. */
 export function normalizePostgresType(rawType: string): string {
   return rawType.trim().toLowerCase().replace(/\s+/g, " ");
@@ -71,7 +79,7 @@ export function mapPostgresType(
   if (type === "tsvector") {
     return { relocated: "fts5", note: "tsvector -> FTS5 projection (plan 6.1 / 11.1)" };
   }
-  if (/^vector(\(\s*\d+\s*\))?$/.test(type)) {
+  if (VECTOR_TYPE.test(type)) {
     return { relocated: "vectorize", note: "vector(1536) -> Vectorize (plan 6.1 / 11.2)" };
   }
   if (type.endsWith("[]")) {
@@ -115,7 +123,7 @@ export function postgresTypeCanonicalKind(
   const type = normalizePostgresType(rawType);
   if (!type) return null;
   if (type === "tsvector") return "fts5";
-  if (/^vector(\(\s*\d+\s*\))?$/.test(type)) return "vectorize";
+  if (VECTOR_TYPE.test(type)) return "vectorize";
   if (type.endsWith("[]")) return "array";
   if (enumNames.has(type)) return "text";
   if (type === "uuid") return "uuid";

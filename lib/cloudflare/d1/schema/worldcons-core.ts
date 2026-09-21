@@ -1,5 +1,5 @@
 import type { D1TableDefinition } from "../types";
-import { buildTable, uniqueIndex, type TableSpec } from "./shared";
+import { buildTable, index, uniqueIndex, type TableSpec } from "./shared";
 
 /** Postgres `articles_status_check` values. */
 export const ARTICLE_STATUS_VALUES = [
@@ -153,4 +153,664 @@ const glossaryTerms: TableSpec = {
   ],
 };
 
-export const coreTables: D1TableDefinition[] = [sources, articles, tags, articleTags, glossaryTerms].map(buildTable);
+const PUBLICATION_STATE_VALUES = ["draft", "in_review", "published", "withdrawn"] as const;
+const PUBLICATION_ACTOR_TYPE_VALUES = ["human", "compatibility", "backfill", "system"] as const;
+const LEDGER_ACTOR_TYPE_VALUES = ["human", "llm", "import", "compatibility", "backfill", "system"] as const;
+const VERSION_ACTOR_TYPE_VALUES = ["human", "llm", "import"] as const;
+const VERSION_DOCUMENT_SCHEMA_VALUES = ["p3.article.v1", "v4.article-case.v1"] as const;
+const LIFECYCLE_ACTOR_TYPE_VALUES = [
+  "ingestion",
+  "summary_worker",
+  "admin",
+  "candidate",
+  "backfill",
+  "system",
+  "compatibility",
+] as const;
+const OUTBOX_STATUS_VALUES = ["pending", "processing", "delivered", "dead_letter"] as const;
+const CATALOG_STATE_VALUES = ["published", "withdrawn"] as const;
+const CATALOG_ACTOR_TYPE_VALUES = ["human", "backfill", "system"] as const;
+const CASE_AUTHORITY_STATUS_VALUES = ["candidate", "verified", "rejected", "withdrawn"] as const;
+const CASE_ENRICHMENT_STATUS_VALUES = ["source_only", "light", "full"] as const;
+const TEXT_ACCESS_POLICY_VALUES = ["metadata_only", "index_only", "excerpt", "full"] as const;
+const CASE_IDENTIFIER_TYPE_VALUES = [
+  "source_record_id",
+  "ecli",
+  "docket",
+  "decision_number",
+  "reporter_citation",
+  "hj_id",
+  "case_key",
+] as const;
+const CASE_IDENTIFIER_SCOPE_VALUES = ["decision", "proceeding", "lookup"] as const;
+const FRESHNESS_VALUES = ["current", "stale"] as const;
+const FRESHNESS_BASIS_VALUES = [
+  "source_hash_match",
+  "legacy_same_version",
+  "source_hash_mismatch",
+  "unknown_fail_closed",
+] as const;
+const ALIAS_SET_STATUS_VALUES = ["draft", "reviewed"] as const;
+const ALIAS_LANGUAGE_VALUES = ["ko", "en", "de", "fr", "es"] as const;
+const ALIAS_TYPE_VALUES = ["preferred", "synonym", "translated", "acronym", "historical"] as const;
+const ALIAS_REVIEW_STATUS_VALUES = ["pending", "approved", "rejected"] as const;
+const LEGAL_CONCEPT_STATUS_VALUES = ["active", "retired"] as const;
+const GLOSSARY_CANDIDATE_STATUS_VALUES = ["pending", "approved", "ignored"] as const;
+const REPLAY_POLICY_VALUES = ["full_snapshot", "bounded_evidence", "non_replayable"] as const;
+const articleAuditLedgerP3: TableSpec = {
+  name: "article_audit_ledger_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "immutable publication audit ledger; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [
+    uniqueIndex("article_audit_ledger_p3_article_revision_key", ["article_id", "ledger_revision"]),
+    uniqueIndex("article_audit_ledger_p3_entry_hash_key", ["entry_hash"]),
+    index("article_audit_ledger_p3_event_occurred_idx", ["event_type", "occurred_at"]),
+  ],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "ledger_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "event_type", type: "text", nn: true },
+    { name: "article_version_id", type: "uuid" },
+    { name: "publication_id", type: "uuid" },
+    { name: "publication_revision", type: "bigint", note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "actor_type", type: "text", nn: true, enum: LEDGER_ACTOR_TYPE_VALUES },
+    { name: "actor_id", type: "text" },
+    { name: "reason", type: "text", nn: true },
+    { name: "request_id", type: "text" },
+    { name: "correlation_id", type: "text" },
+    { name: "safe_metadata", type: "jsonb", nn: true, def: "'{}'", note: "secrets redacted before storage" },
+    { name: "previous_entry_hash", type: "text" },
+    { name: "entry_hash", type: "text", nn: true },
+    { name: "occurred_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articleCacheOutboxP3: TableSpec = {
+  name: "article_cache_outbox_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "publication cache outbox; delivery is idempotent via Queue/outbox projection (plan 5.4 / 10.1)",
+  indexes: [
+    uniqueIndex("article_cache_outbox_p3_event_key_key", ["event_key"]),
+    uniqueIndex("article_cache_outbox_p3_publication_revision_key", ["publication_id", "publication_revision"]),
+    index("article_cache_outbox_p3_claim_idx", ["available_at", "created_at", "id"]),
+    index("article_cache_outbox_p3_lease_idx", ["lease_expires_at", "id"]),
+    index("article_cache_outbox_p3_dead_letter_idx", ["dead_lettered_at", "id"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "event_key", type: "text", nn: true },
+    { name: "event_type", type: "text", nn: true },
+    { name: "article_id", type: "uuid", nn: true },
+    { name: "publication_id", type: "uuid", nn: true },
+    { name: "publication_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "version_id", type: "uuid", nn: true },
+    { name: "publication_state", type: "text", nn: true, enum: PUBLICATION_STATE_VALUES },
+    { name: "article_slug", type: "text", nn: true },
+    { name: "status", type: "text", nn: true, def: "'pending'", enum: OUTBOX_STATUS_VALUES },
+    { name: "attempt_count", type: "integer", nn: true, def: "0" },
+    { name: "max_attempts", type: "integer", nn: true, def: "12" },
+    { name: "available_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "lease_owner", type: "text" },
+    { name: "lease_token", type: "uuid" },
+    { name: "lease_expires_at", type: "timestamptz" },
+    { name: "last_error_code", type: "text" },
+    { name: "delivered_at", type: "timestamptz" },
+    { name: "dead_lettered_at", type: "timestamptz" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articleContentVersionsP3: TableSpec = {
+  name: "article_content_versions_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "immutable article version snapshots; search_vector relocates to worldcons_search FTS5 and embedding to Vectorize",
+  indexes: [
+    uniqueIndex("article_content_versions_p3_article_revision_key", ["article_id", "revision"]),
+    uniqueIndex("article_content_versions_p3_article_hash_key", ["article_id", "content_hash"]),
+    index("article_content_versions_p3_article_created_idx", ["article_id", "created_at"]),
+    index("article_content_versions_p3_public_order_idx", ["original_published_at", "article_id"]),
+    index("article_content_versions_p3_source_order_idx", ["source_key", "original_published_at", "article_id"]),
+    index("article_content_versions_p3_jurisdiction_order_idx", ["jurisdiction", "original_published_at", "article_id"]),
+    index("article_content_versions_p3_source_case_key_idx", ["source_key", "case_key"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "parent_version_id", type: "uuid" },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "provenance_actor_type", type: "text", nn: true, enum: VERSION_ACTOR_TYPE_VALUES },
+    { name: "provenance_actor_id", type: "text" },
+    { name: "model_ref", type: "text" },
+    { name: "prompt_ref", type: "text" },
+    { name: "slug", type: "text", nn: true },
+    { name: "source_key", type: "text", nn: true },
+    { name: "jurisdiction", type: "text", nn: true },
+    { name: "institution_name", type: "text", nn: true },
+    { name: "content_type", type: "text", nn: true, enum: ARTICLE_CONTENT_TYPE_VALUES },
+    { name: "original_url", type: "text", nn: true },
+    { name: "canonical_url", type: "text", nn: true },
+    { name: "original_language", type: "text", nn: true },
+    { name: "original_title", type: "text" },
+    { name: "korean_title", type: "text" },
+    { name: "original_published_at", type: "timestamptz" },
+    { name: "discovered_at", type: "timestamptz" },
+    { name: "fetched_at", type: "timestamptz" },
+    { name: "summarized_at", type: "timestamptz" },
+    { name: "raw_text", type: "text", note: "inline cleared to R2 only after verified externalization (plan 7.3)" },
+    { name: "cleaned_text", type: "text", note: "inline cleared to R2 only after verified externalization (plan 7.3)" },
+    { name: "summary_json", type: "jsonb" },
+    { name: "source_metadata", type: "jsonb" },
+    { name: "error_metadata", type: "jsonb" },
+    { name: "search_vector", type: "tsvector", note: "relocated to the worldcons_search FTS5 projection" },
+    { name: "embedding", type: "extensions.vector", note: "relocated to the Vectorize index" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "case_key", type: "text" },
+    { name: "version_document_schema", type: "text", nn: true, def: "'p3.article.v1'", enum: VERSION_DOCUMENT_SCHEMA_VALUES },
+    { name: "version_role", type: "text" },
+    { name: "case_metadata_snapshot", type: "jsonb" },
+    { name: "case_identifiers_snapshot", type: "jsonb" },
+    { name: "authority_evidence_hash", type: "text" },
+    { name: "source_snapshot_id", type: "uuid" },
+    { name: "source_snapshot_hash", type: "text" },
+    { name: "source_content_hash", type: "text" },
+    { name: "source_anchor_version_id", type: "uuid" },
+    { name: "enrichment_source_content_hash", type: "text" },
+    { name: "raw_text_storage_ref", type: "text" },
+    { name: "raw_text_blob_hash", type: "text" },
+    { name: "raw_text_blob_size", type: "bigint", note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "raw_text_externalized_at", type: "timestamptz" },
+    { name: "raw_text_blob_contract_version", type: "text" },
+  ],
+};
+const articleEmbeddingArtifacts: TableSpec = {
+  name: "article_embedding_artifacts",
+  database: "worldcons_core",
+  primaryKey: ["article_version_id"],
+  note: "embedding provenance; the embedding vector relocates to the Vectorize index (plan 11.2)",
+  indexes: [
+    uniqueIndex("article_embedding_artifacts_article_version_key", ["article_id", "article_version_id"]),
+    index("article_embedding_artifacts_article_idx", ["article_id", "generated_at"]),
+  ],
+  columns: [
+    { name: "article_version_id", type: "uuid", nn: true, note: "logical FK to article_content_versions_p3.id" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "provider", type: "text", nn: true },
+    { name: "model", type: "text", nn: true },
+    { name: "dimensions", type: "integer", nn: true },
+    { name: "input_hash", type: "text", nn: true },
+    { name: "embedding", type: "extensions.vector", nn: true, note: "relocated to the Vectorize index" },
+    { name: "generated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const articleLifecycleAnomaliesP2: TableSpec = {
+  name: "article_lifecycle_anomalies_p2",
+  database: "worldcons_core",
+  primaryKey: ["article_id"],
+  columns: [
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "legacy_status", type: "text", nn: true },
+    { name: "anomaly_code", type: "text", nn: true },
+    { name: "first_seen_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "last_seen_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "occurrence_count", type: "integer", nn: true, def: "1" },
+    { name: "resolved_at", type: "timestamptz" },
+  ],
+};
+const articleLifecycleEventsP2: TableSpec = {
+  name: "article_lifecycle_events_p2",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "append-only lifecycle transition log; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [uniqueIndex("article_lifecycle_events_p2_article_key_key", ["article_id", "idempotency_key"])],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "idempotency_key", type: "text", nn: true },
+    { name: "from_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "to_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "actor_type", type: "text", nn: true, enum: LIFECYCLE_ACTOR_TYPE_VALUES },
+    { name: "actor_id", type: "text" },
+    { name: "transition_source", type: "text", nn: true },
+    { name: "reason_code", type: "text", nn: true },
+    { name: "applied", type: "boolean", nn: true },
+    { name: "collection_state", type: "text" },
+    { name: "processing_state", type: "text" },
+    { name: "review_state", type: "text" },
+    { name: "attention_state", type: "text" },
+    { name: "attention_code", type: "text" },
+    { name: "attention_retryable", type: "boolean" },
+    { name: "attention_severity", type: "text" },
+    { name: "attention_source", type: "text" },
+    { name: "occurred_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const articlePublicationQuarantineResolutionsP3: TableSpec = {
+  name: "article_publication_quarantine_resolutions_p3",
+  database: "worldcons_core",
+  primaryKey: ["article_id", "anomaly_code"],
+  columns: [
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to article_publication_quarantine_p3.article_id" },
+    { name: "anomaly_code", type: "text", nn: true },
+    { name: "resolution_code", type: "text", nn: true },
+    { name: "resolved_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articlePublicationHistoryP3: TableSpec = {
+  name: "article_publication_history_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "append-only publication state history; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [
+    uniqueIndex("article_publication_history_p3_revision_key", ["publication_id", "publication_revision"]),
+    uniqueIndex("article_publication_history_p3_article_key", ["article_id", "idempotency_key"]),
+    index("article_publication_history_p3_article_occurred_idx", ["article_id", "occurred_at"]),
+  ],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "publication_id", type: "uuid", nn: true, note: "logical FK to article_publications_p3.id" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "publication_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "from_state", type: "text" },
+    { name: "to_state", type: "text", nn: true },
+    { name: "from_version_id", type: "uuid" },
+    { name: "to_version_id", type: "uuid", nn: true },
+    { name: "idempotency_key", type: "text", nn: true },
+    { name: "actor_type", type: "text", nn: true, enum: PUBLICATION_ACTOR_TYPE_VALUES },
+    { name: "actor_id", type: "text" },
+    { name: "reason", type: "text", nn: true },
+    { name: "request_id", type: "text" },
+    { name: "correlation_id", type: "text" },
+    { name: "occurred_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articlePublicationQuarantineP3: TableSpec = {
+  name: "article_publication_quarantine_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "publication quarantine register; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [uniqueIndex("article_publication_quarantine_p3_article_code_key", ["article_id", "anomaly_code"])],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "anomaly_code", type: "text", nn: true },
+    { name: "legacy_public", type: "boolean", nn: true },
+    { name: "detected_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const articleRevisionHeadsV4: TableSpec = {
+  name: "article_revision_heads_v4",
+  database: "worldcons_core",
+  primaryKey: ["article_id"],
+  note: "current article version head; the global revision allocator lives in the service layer, not a D1 trigger",
+  columns: [
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "current_version_id", type: "uuid", nn: true },
+    { name: "current_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const articleVersionHeadsP3: TableSpec = {
+  name: "article_version_heads_p3",
+  database: "worldcons_core",
+  primaryKey: ["article_id"],
+  columns: [
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "current_version_id", type: "uuid", nn: true },
+    { name: "current_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articlePublicationRequestsP3: TableSpec = {
+  name: "article_publication_requests_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "publication request idempotency ledger; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [uniqueIndex("article_publication_requests_p3_article_key", ["article_id", "idempotency_key"])],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "idempotency_key", type: "text", nn: true },
+    { name: "publication_id", type: "uuid", nn: true, note: "logical FK to article_publications_p3.id" },
+    { name: "publication_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "version_id", type: "uuid", nn: true, note: "logical FK to article_content_versions_p3.id" },
+    { name: "version_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "state", type: "text", nn: true, enum: PUBLICATION_STATE_VALUES },
+    { name: "version_created", type: "boolean", nn: true },
+    { name: "publication_applied", type: "boolean", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const articleViewCounts: TableSpec = {
+  name: "article_view_counts",
+  database: "worldcons_core",
+  primaryKey: ["article_slug"],
+  note: "view counter; the increment trigger becomes a service-side upsert in D1",
+  indexes: [index("article_view_counts_view_count_idx", ["view_count"])],
+  columns: [
+    { name: "article_slug", type: "text", nn: true },
+    { name: "article_id", type: "uuid" },
+    { name: "view_count", type: "bigint", nn: true, def: "0", note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articlePublicationsP3: TableSpec = {
+  name: "article_publications_p3",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [
+    uniqueIndex("article_publications_p3_article_id_key", ["article_id"]),
+    index("article_publications_p3_state_version_idx", ["state", "version_id", "article_id"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id (one publication per article)" },
+    { name: "state", type: "text", nn: true, enum: PUBLICATION_STATE_VALUES },
+    { name: "version_id", type: "uuid", nn: true, note: "logical FK to article_content_versions_p3.id" },
+    { name: "revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "decided_by_type", type: "text", nn: true, enum: PUBLICATION_ACTOR_TYPE_VALUES },
+    { name: "decided_by_id", type: "text" },
+    { name: "reason", type: "text", nn: true },
+    { name: "published_at", type: "timestamptz" },
+    { name: "withdrawn_at", type: "timestamptz" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const caseCatalogCacheOutboxV1: TableSpec = {
+  name: "case_catalog_cache_outbox_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [
+    uniqueIndex("case_catalog_cache_outbox_v1_event_key_key", ["event_key"]),
+    uniqueIndex("case_catalog_cache_outbox_v1_revision_key", ["publication_id", "publication_revision"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "event_key", type: "text", nn: true },
+    { name: "article_id", type: "uuid", nn: true },
+    { name: "publication_id", type: "uuid", nn: true, note: "logical FK to case_catalog_publications_v1.id" },
+    { name: "publication_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "source_anchor_version_id", type: "uuid", nn: true },
+    { name: "article_slug", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const caseCatalogPublicationEventsV1: TableSpec = {
+  name: "case_catalog_publication_events_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "append-only catalog publication events; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [
+    uniqueIndex("case_catalog_publication_events_v1_revision_key", ["publication_id", "publication_revision"]),
+    uniqueIndex("case_catalog_publication_events_v1_article_key", ["article_id", "idempotency_key"]),
+  ],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "publication_id", type: "uuid", nn: true },
+    { name: "article_id", type: "uuid", nn: true },
+    { name: "publication_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "from_state", type: "text" },
+    { name: "to_state", type: "text", nn: true },
+    { name: "previous_source_anchor_version_id", type: "uuid" },
+    { name: "next_source_anchor_version_id", type: "uuid", nn: true },
+    { name: "idempotency_key", type: "text", nn: true },
+    { name: "actor_type", type: "text", nn: true },
+    { name: "actor_id", type: "text" },
+    { name: "reason", type: "text", nn: true },
+    { name: "occurred_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const caseCatalogPublicationsV1: TableSpec = {
+  name: "case_catalog_publications_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [uniqueIndex("case_catalog_publications_v1_article_id_key", ["article_id"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "state", type: "text", nn: true, enum: CATALOG_STATE_VALUES },
+    { name: "source_anchor_version_id", type: "uuid", nn: true },
+    { name: "revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "decided_by_type", type: "text", nn: true, enum: CATALOG_ACTOR_TYPE_VALUES },
+    { name: "decided_by_id", type: "text" },
+    { name: "reason", type: "text", nn: true },
+    { name: "published_at", type: "timestamptz" },
+    { name: "withdrawn_at", type: "timestamptz" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const caseMetadataV1: TableSpec = {
+  name: "case_metadata_v1",
+  database: "worldcons_core",
+  primaryKey: ["article_id"],
+  note: "constitutional authority/enrichment state; conditional freshness checks stay in the service layer",
+  columns: [
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "authority_status", type: "text", nn: true, enum: CASE_AUTHORITY_STATUS_VALUES },
+    { name: "authority_evidence", type: "jsonb", nn: true, def: "'{}'", note: "secrets redacted before storage" },
+    { name: "constitutional_relevance_status", type: "text" },
+    { name: "enrichment_status", type: "text", nn: true, def: "'source_only'", enum: CASE_ENRICHMENT_STATUS_VALUES },
+    { name: "enrichment_freshness", type: "text" },
+    { name: "freshness_basis", type: "text" },
+    { name: "text_access_policy", type: "text", nn: true, def: "'metadata_only'", enum: TEXT_ACCESS_POLICY_VALUES },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "discovery_source", type: "text", nn: true },
+    { name: "authority_source", type: "text", nn: true },
+    { name: "source_last_modified_at", type: "timestamptz" },
+    { name: "source_etag", type: "text" },
+    { name: "source_snapshot_hash", type: "text" },
+    { name: "ai_priority", type: "integer", nn: true, def: "0" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const caseIdentifiersV1: TableSpec = {
+  name: "case_identifiers_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  note: "the two Postgres unique indexes are partial (identifier_type in (...), is_primary); D1 keeps the lookups and leaves the partial uniqueness to the service layer",
+  indexes: [
+    index("case_identifiers_v1_proceeding_lookup_idx", ["source_key", "identifier_type", "normalized_value"]),
+    index("case_identifiers_v1_normalized_search_idx", ["normalized_value", "identifier_type", "article_id"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "identifier_type", type: "text", nn: true, enum: CASE_IDENTIFIER_TYPE_VALUES },
+    { name: "identifier_scope", type: "text", nn: true, enum: CASE_IDENTIFIER_SCOPE_VALUES },
+    { name: "raw_value", type: "text", nn: true },
+    { name: "normalized_value", type: "text", nn: true },
+    { name: "normalization_version", type: "integer", nn: true, def: "1" },
+    { name: "is_primary", type: "boolean", nn: true, def: "0" },
+    { name: "provenance_url", type: "text" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const glossaryCandidates: TableSpec = {
+  name: "glossary_candidates",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [
+    uniqueIndex("glossary_candidates_tag_slug_key", ["tag_slug"]),
+    index("glossary_candidates_status_count_idx", ["status", "article_count"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "tag_slug", type: "text", nn: true },
+    { name: "tag_name", type: "text", nn: true },
+    { name: "tag_type", type: "text", nn: true },
+    { name: "article_count", type: "integer", nn: true, def: "0" },
+    { name: "suggested_slug", type: "text", nn: true },
+    { name: "source_languages", type: "text[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "status", type: "text", nn: true, def: "'pending'", enum: GLOSSARY_CANDIDATE_STATUS_VALUES },
+    { name: "generated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "reviewed_at", type: "timestamptz" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const legacyVersionFreshnessClassificationsV4: TableSpec = {
+  name: "legacy_version_freshness_classifications_v4",
+  database: "worldcons_core",
+  primaryKey: ["version_id"],
+  columns: [
+    { name: "version_id", type: "uuid", nn: true, note: "logical FK to article_content_versions_p3.id" },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "freshness", type: "text", nn: true, enum: FRESHNESS_VALUES },
+    { name: "freshness_basis", type: "text", nn: true, enum: FRESHNESS_BASIS_VALUES },
+    { name: "source_anchor_version_id", type: "uuid" },
+    { name: "source_content_hash", type: "text" },
+    { name: "evidence", type: "jsonb", nn: true, def: "'{}'", note: "secrets redacted before storage" },
+    { name: "classified_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "classified_by", type: "text", nn: true },
+  ],
+};
+const legalConceptAliasSetsV1: TableSpec = {
+  name: "legal_concept_alias_sets_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [
+    uniqueIndex("legal_concept_alias_sets_v1_set_version_key", ["set_version"]),
+    index("legal_concept_alias_sets_v1_reviewed_idx", ["reviewed_at", "id"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "set_version", type: "text", nn: true },
+    { name: "status", type: "text", nn: true, def: "'draft'", enum: ALIAS_SET_STATUS_VALUES },
+    { name: "provenance", type: "text", nn: true },
+    { name: "content_hash", type: "text" },
+    { name: "reviewed_by", type: "text" },
+    { name: "reviewed_at", type: "timestamptz" },
+    { name: "supersedes_alias_set_id", type: "uuid" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+const legalConceptsV1: TableSpec = {
+  name: "legal_concepts_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [
+    uniqueIndex("legal_concepts_v1_alias_set_stable_key_key", ["alias_set_id", "stable_key"]),
+    uniqueIndex("legal_concepts_v1_id_alias_set_id_key", ["id", "alias_set_id"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "alias_set_id", type: "uuid", nn: true, note: "logical FK to legal_concept_alias_sets_v1.id" },
+    { name: "stable_key", type: "text", nn: true },
+    { name: "label_ko", type: "text", nn: true },
+    { name: "definition", type: "text" },
+    { name: "status", type: "text", nn: true, def: "'active'", enum: LEGAL_CONCEPT_STATUS_VALUES },
+    { name: "version", type: "integer", nn: true, def: "1" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const legalConceptAliasesV1: TableSpec = {
+  name: "legal_concept_aliases_v1",
+  database: "worldcons_core",
+  primaryKey: ["id"],
+  indexes: [
+    uniqueIndex("legal_concept_aliases_v1_alias_identity_key", ["alias_set_id", "language", "normalized_alias", "concept_id"]),
+    index("legal_concept_aliases_v1_lookup_idx", ["alias_set_id", "normalized_alias", "concept_id"]),
+    index("legal_concept_aliases_v1_concept_idx", ["alias_set_id", "concept_id", "language", "alias_type"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "alias_set_id", type: "uuid", nn: true, note: "logical FK to legal_concept_alias_sets_v1.id" },
+    { name: "concept_id", type: "uuid", nn: true, note: "logical FK to legal_concepts_v1.id" },
+    { name: "language", type: "text", nn: true, enum: ALIAS_LANGUAGE_VALUES },
+    { name: "raw_alias", type: "text", nn: true },
+    { name: "normalized_alias", type: "text", nn: true },
+    { name: "alias_type", type: "text", nn: true, enum: ALIAS_TYPE_VALUES },
+    { name: "provenance", type: "text", nn: true },
+    { name: "review_status", type: "text", nn: true, def: "'pending'", enum: ALIAS_REVIEW_STATUS_VALUES },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceCorpusPolicies: TableSpec = {
+  name: "source_corpus_policies",
+  database: "worldcons_core",
+  primaryKey: ["source_key", "policy_version"],
+  note: "the replay-policy CHECK also conditions allow_raw_snapshot / bounded_replay_fields; D1 keeps the value CHECK and the service layer keeps the conditional rules",
+  columns: [
+    { name: "source_key", type: "text", nn: true },
+    { name: "policy_version", type: "text", nn: true },
+    { name: "scope_definition", type: "jsonb", nn: true },
+    { name: "official_scope_url", type: "text", nn: true },
+    { name: "discovery_methods", type: "text[]", nn: true, note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "authority_hosts", type: "text[]", nn: true, note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "redirect_hosts", type: "text[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "robots_url", type: "text", nn: true },
+    { name: "robots_observed_at", type: "timestamptz", nn: true },
+    { name: "robots_rules_hash", type: "text", nn: true },
+    { name: "terms_url", type: "text" },
+    { name: "terms_observed_at", type: "timestamptz" },
+    { name: "license_basis", type: "text", nn: true },
+    { name: "default_text_access_policy", type: "text", nn: true, enum: TEXT_ACCESS_POLICY_VALUES },
+    { name: "allow_raw_snapshot", type: "boolean", nn: true, def: "0" },
+    { name: "normalize_replay_policy", type: "text", nn: true, enum: REPLAY_POLICY_VALUES },
+    { name: "bounded_replay_fields", type: "text[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "retention_days", type: "integer" },
+    { name: "min_request_delay_ms", type: "integer", nn: true },
+    { name: "max_concurrency", type: "integer", nn: true },
+    { name: "external_index_hosts", type: "text[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "external_index_usage", type: "text" },
+    { name: "reviewed_by", type: "text", nn: true },
+    { name: "reviewed_at", type: "timestamptz", nn: true },
+    { name: "review_due_at", type: "timestamptz", nn: true },
+    { name: "supersedes_policy_version", type: "text" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+
+export const coreTables: D1TableDefinition[] = [
+  sources,
+  articles,
+  tags,
+  articleTags,
+  glossaryTerms,
+  articleAuditLedgerP3,
+  articleCacheOutboxP3,
+  articleContentVersionsP3,
+  articleEmbeddingArtifacts,
+  articleLifecycleAnomaliesP2,
+  articleLifecycleEventsP2,
+  articlePublicationHistoryP3,
+  articlePublicationQuarantineP3,
+  articlePublicationQuarantineResolutionsP3,
+  articlePublicationRequestsP3,
+  articlePublicationsP3,
+  articleRevisionHeadsV4,
+  articleVersionHeadsP3,
+  articleViewCounts,
+  caseCatalogCacheOutboxV1,
+  caseCatalogPublicationEventsV1,
+  caseCatalogPublicationsV1,
+  caseIdentifiersV1,
+  caseMetadataV1,
+  glossaryCandidates,
+  legacyVersionFreshnessClassificationsV4,
+  legalConceptAliasSetsV1,
+  legalConceptAliasesV1,
+  legalConceptsV1,
+  sourceCorpusPolicies,
+].map(buildTable);

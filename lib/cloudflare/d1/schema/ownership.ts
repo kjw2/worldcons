@@ -2,22 +2,18 @@ import type { D1Database, D1OwnershipEntry } from "../types";
 
 /**
  * Plan section 5 ownership: which D1 database owns each Postgres table, plus
- * which D1-only projection tables exist. M5.1 `covered` tables are fully
- * modeled in `schema/*.ts`; `planned` tables are assigned but explicitly
- * deferred to M5.2+. Validation fails if a Postgres table is unowned or if a
- * `covered` entry has no D1 table, so this map cannot silently drift.
+ * which D1-only projection tables exist. M5.1/M5.1b/M5.1c `covered` tables are
+ * fully modeled in `schema/*.ts`, so every scanned Postgres table now has a D1
+ * table. Validation fails if a Postgres table is unowned or if a `covered`
+ * entry has no D1 table, so this map cannot silently drift.
  */
 function covered(table: string, database: D1Database, note: string): D1OwnershipEntry {
   return { table, database, status: "covered", note };
 }
 
-function planned(table: string, database: D1Database, note: string): D1OwnershipEntry {
-  return { table, database, status: "planned", note };
-}
 
-const CORE_NOTE = "planned for M5.2+: canonical public/legal metadata and publication state (plan 5.1)";
-const INGEST_NOTE = "planned for M5.2+: high-write operational ingestion state (plan 5.2)";
-const OPS_NOTE = "planned for M5.2+: administrative and operational state (plan 5.3)";
+const INGEST_NOTE = "high-write operational ingestion state (plan 5.2)";
+const OPS_NOTE = "administrative and operational state (plan 5.3)";
 
 const coveredEntries: D1OwnershipEntry[] = [
   covered("articles", "worldcons_core", "canonical public article/legal metadata foundation table"),
@@ -35,35 +31,33 @@ const coveredEntries: D1OwnershipEntry[] = [
   covered("llm_settings", "worldcons_ops", "LLM provider settings"),
   covered("search_documents", "worldcons_search", "derived search projection (rebuilt, never authoritative)"),
   covered("search_fts", "worldcons_search", "FTS5 index over search_documents"),
+  covered("article_audit_ledger_p3", "worldcons_core", "immutable publication audit ledger"),
+  covered("article_cache_outbox_p3", "worldcons_core", "publication cache outbox"),
+  covered("article_content_versions_p3", "worldcons_core", "immutable article version snapshots"),
+  covered("article_embedding_artifacts", "worldcons_core", "embedding provenance (vector relocates to Vectorize)"),
+  covered("article_lifecycle_anomalies_p2", "worldcons_core", "lifecycle anomaly register"),
+  covered("article_lifecycle_events_p2", "worldcons_core", "append-only lifecycle transition log"),
+  covered("article_publication_history_p3", "worldcons_core", "append-only publication state history"),
+  covered("article_publication_quarantine_p3", "worldcons_core", "publication quarantine register"),
+  covered("article_publication_quarantine_resolutions_p3", "worldcons_core", "publication quarantine resolutions"),
+  covered("article_publication_requests_p3", "worldcons_core", "publication request idempotency ledger"),
+  covered("article_publications_p3", "worldcons_core", "current article publication head"),
+  covered("article_revision_heads_v4", "worldcons_core", "current article version head (v4 catalog)"),
+  covered("article_version_heads_p3", "worldcons_core", "current article version head (p3)"),
+  covered("article_view_counts", "worldcons_core", "article view counter"),
+  covered("case_catalog_cache_outbox_v1", "worldcons_core", "catalog cache outbox"),
+  covered("case_catalog_publication_events_v1", "worldcons_core", "append-only catalog publication events"),
+  covered("case_catalog_publications_v1", "worldcons_core", "current catalog publication head"),
+  covered("case_identifiers_v1", "worldcons_core", "normalized case identifier registry"),
+  covered("case_metadata_v1", "worldcons_core", "constitutional authority/enrichment state"),
+  covered("glossary_candidates", "worldcons_core", "glossary candidate review queue"),
+  covered("legacy_version_freshness_classifications_v4", "worldcons_core", "legacy version freshness classification"),
+  covered("legal_concept_alias_sets_v1", "worldcons_core", "reviewed legal concept alias set"),
+  covered("legal_concept_aliases_v1", "worldcons_core", "legal concept alias entries"),
+  covered("legal_concepts_v1", "worldcons_core", "legal concept registry"),
+  covered("source_corpus_policies", "worldcons_core", "source corpus policy registry"),
 ];
-const corePlannedTables = [
-  "article_audit_ledger_p3",
-  "article_cache_outbox_p3",
-  "article_content_versions_p3",
-  "article_embedding_artifacts",
-  "article_lifecycle_anomalies_p2",
-  "article_lifecycle_events_p2",
-  "article_publication_history_p3",
-  "article_publication_quarantine_p3",
-  "article_publication_quarantine_resolutions_p3",
-  "article_publication_requests_p3",
-  "article_publications_p3",
-  "article_revision_heads_v4",
-  "article_version_heads_p3",
-  "article_view_counts",
-  "case_catalog_cache_outbox_v1",
-  "case_catalog_publication_events_v1",
-  "case_catalog_publications_v1",
-  "case_identifiers_v1",
-  "case_metadata_v1",
-  "glossary_candidates",
-  "legacy_version_freshness_classifications_v4",
-  "legal_concept_alias_sets_v1",
-  "legal_concept_aliases_v1",
-  "legal_concepts_v1",
-  "source_corpus_policies",
-];
-const ingestPlannedTables = [
+const coveredIngestTables = [
   "article_raw_externalization_ledger",
   "article_raw_externalization_permits",
   "article_raw_inline_clear_permits",
@@ -89,7 +83,7 @@ const ingestPlannedTables = [
   "us_conan_candidate_snapshots_v1",
   "us_conan_case_candidates_v1",
 ];
-const opsPlannedTables = [
+const coveredOpsTables = [
   "admin_command_attempts",
   "admin_command_events",
   "admin_command_runs",
@@ -107,7 +101,6 @@ const opsPlannedTables = [
 
 export const ownership: D1OwnershipEntry[] = [
   ...coveredEntries,
-  ...corePlannedTables.map((table) => planned(table, "worldcons_core", CORE_NOTE)),
-  ...ingestPlannedTables.map((table) => planned(table, "worldcons_ingest", INGEST_NOTE)),
-  ...opsPlannedTables.map((table) => planned(table, "worldcons_ops", OPS_NOTE)),
+  ...coveredIngestTables.map((table) => covered(table, "worldcons_ingest", INGEST_NOTE)),
+  ...coveredOpsTables.map((table) => covered(table, "worldcons_ops", OPS_NOTE)),
 ];

@@ -98,15 +98,15 @@ function mappingKind(type: string, enums: string[] = []): string {
   assert.ok(mapping, `${type} must map to a D1 target`);
   return "relocated" in mapping ? `relocated:${mapping.relocated}` : mapping.kind;
 }
-test("the live M5.1 schema validates against the scanned Postgres DDL", () => {
+test("the live D1 schema validates against the scanned Postgres DDL", () => {
   const report = buildD1SchemaReport(rootDir);
 
   assert.equal(report.validation.ok, true, JSON.stringify(report.validation.errors));
   assert.deepEqual(report.validation.errors, []);
   assert.deepEqual(report.validation.warnings, []);
-  assert.equal(report.summary.tables, 15);
-  assert.equal(report.summary.coveredTables, 15);
-  assert.equal(report.summary.plannedTables, 62);
+  assert.equal(report.summary.tables, 77);
+  assert.equal(report.summary.coveredTables, 77);
+  assert.equal(report.summary.plannedTables, 0);
   assert.equal(report.summary.postgresTables, 75);
   assert.deepEqual(report.summary.databases, [...D1_DATABASES]);
   assert.equal(report.foundationVersion, 1);
@@ -128,6 +128,33 @@ test("the live M5.1 schema validates against the scanned Postgres DDL", () => {
   assert.ok(searchFts);
   assert.equal(searchFts.columns, 0);
   assert.deepEqual(searchFts.primaryKey, []);
+
+  const versions = report.tables.find((table) => table.name === "article_content_versions_p3");
+  assert.ok(versions);
+  assert.deepEqual(versions.primaryKey, ["id"]);
+  assert.equal(versions.columns, 45);
+  assert.deepEqual(versions.relocated, ["search_vector->fts5", "embedding->vectorize"]);
+
+  const corpusPolicies = report.tables.find((table) => table.name === "source_corpus_policies");
+  assert.ok(corpusPolicies);
+  assert.deepEqual(corpusPolicies.primaryKey, ["source_key", "policy_version"]);
+
+  const backfillItems = report.tables.find((table) => table.name === "source_backfill_items");
+  assert.ok(backfillItems);
+  assert.deepEqual(backfillItems.primaryKey, ["id"]);
+  assert.equal(backfillItems.columns, 39);
+
+  const adminCommandRuns = report.tables.find((table) => table.name === "admin_command_runs");
+  assert.ok(adminCommandRuns);
+  assert.equal(adminCommandRuns.indexes, 2);
+
+  const rateLimitBuckets = report.tables.find((table) => table.name === "security_rate_limit_buckets_v1");
+  assert.ok(rateLimitBuckets);
+  assert.deepEqual(rateLimitBuckets.primaryKey, ["profile", "identifier_hash"]);
+
+  const compatibility = report.tables.find((table) => table.name === "admin_compatibility_observations_p5");
+  assert.ok(compatibility);
+  assert.equal(compatibility.primaryKey.length, 6);
 });
 test("the checked-in d1/<database>/0001_init.sql matches the emitter", () => {
   const emitted = emitAllDatabaseDdl(d1Schema);
@@ -193,6 +220,8 @@ test("Postgres types map to the plan 6.1 D1 storage targets", () => {
   assert.equal(mappingKind("tsvector"), "relocated:fts5");
   assert.equal(mappingKind("vector(1536)"), "relocated:vectorize");
   assert.equal(mappingKind("vector"), "relocated:vectorize");
+  assert.equal(mappingKind("extensions.vector"), "relocated:vectorize");
+  assert.equal(mappingKind("extensions.vector(1536)"), "relocated:vectorize");
   assert.equal(mappingKind("article_status", ["article_status"]), "text");
 
   assert.equal(mapPostgresType(""), null);
@@ -569,7 +598,7 @@ test("emitTableDdl emits deterministic DDL with enum checks and indexes", () => 
     "create virtual table if not exists search_fts using fts5(article_id UNINDEXED, title, case_numbers, search_text, tags_text);",
   );
 });
-test("buildD1SchemaReport emits a machine-readable, sorted M5.1 report", () => {
+test("buildD1SchemaReport emits a machine-readable, sorted M5.1c report", () => {
   const report = buildD1SchemaReport(rootDir);
 
   assert.equal(report.version, 1);
@@ -611,4 +640,9 @@ test("the Postgres scanner is read-only, deterministic and finds the source tabl
   assert.ok(articles.columns.some((column) => column.name === "embedding" && column.type === "vector(1536)"));
   assert.ok(first.tables.source_url_candidates);
   assert.ok(first.tables.admin_jobs);
+  assert.deepEqual(first.tables.source_corpus_policies.enumChecks.normalize_replay_policy, [
+    "full_snapshot",
+    "bounded_evidence",
+    "non_replayable",
+  ]);
 });

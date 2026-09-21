@@ -68,6 +68,11 @@ acceptance evidence, not the earlier no-op check.
 `articles.embedding` -> Vectorize (plan 6.1/11.1/11.2); no D1 column stores a `tsvector`
 or `vector`.
 
+Continuation (M5.1b, 2026-09-21): the 25 `worldcons_core` planned tables are now fully
+covered, so `worldcons_core` owns 30 tables and the remaining 37 planned tables are
+`worldcons_ingest` 24 + `worldcons_ops` 13. See
+`docs/worldcons-cloudflare-m5.1b-core-schema-expansion-20260921.md`.
+
 ## 4. Type mapping (plan section 6.1)
 
 `POSTGRES_TYPE_MAPPING_RULES` is surfaced verbatim in the schema report.

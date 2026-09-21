@@ -39,6 +39,10 @@ export function uniqueIndex(name: string, columns: string[]): D1IndexDefinition 
   return { name, columns, unique: true, note: null };
 }
 
+export function index(name: string, columns: string[]): D1IndexDefinition {
+  return { name, columns, unique: false, note: null };
+}
+
 /**
  * Builds a D1 table from its authored column specs. The storage kind, enum
  * requirement and FTS5/Vectorize relocation are derived from the Postgres type

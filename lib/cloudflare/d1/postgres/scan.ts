@@ -228,9 +228,12 @@ function parseInCheck(text: string): { column: string; values: string[] } | null
   const close = matchingParen(text, open);
   if (close === -1) return null;
   const inner = text.slice(open + 1, close).trim();
-  const inMatch = /^"?([A-Za-z_][A-Za-z_0-9$]*)"?\s+in\s*\(([\s\S]*)\)$/i.exec(inner);
+  const inMatch = /^"?([A-Za-z_][A-Za-z_0-9$]*)"?\s+in\s*\(/i.exec(inner);
   if (!inMatch) return null;
-  const values = splitTopLevel(inMatch[2])
+  const listOpen = inMatch[0].length - 1;
+  const listClose = matchingParen(inner, listOpen);
+  if (listClose === -1) return null;
+  const values = splitTopLevel(inner.slice(listOpen + 1, listClose))
     .map((value) => value.trim().replace(/::[\w\s[\]]+$/, "").trim().replace(/^'/, "").replace(/'$/, ""))
     .filter((value) => value.length > 0);
   if (values.length === 0) return null;

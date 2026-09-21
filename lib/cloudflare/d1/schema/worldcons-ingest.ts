@@ -1,9 +1,76 @@
 import type { D1TableDefinition } from "../types";
-import { buildTable, uniqueIndex, type TableSpec } from "./shared";
+import { buildTable, index, uniqueIndex, type TableSpec } from "./shared";
 
 /** Postgres `source_url_candidates_status_check` values. */
 export const SOURCE_URL_CANDIDATE_STATUS_VALUES = ["pending", "retrying", "fetched", "failed", "ignored"] as const;
-
+/** Postgres `article_raw_externalization_ledger_table_check` values. */
+export const ARTICLE_RAW_LEDGER_TABLE_VALUES = ["articles", "article_content_versions_p3"] as const;
+/** Postgres `source_artifact_*_table_check` / `*_permits_table_check` values. */
+export const ARTIFACT_TABLE_VALUES = ["source_fetch_artifacts", "source_normalization_artifacts"] as const;
+/** Postgres `*_actor_check` actor_type values. */
+export const EXTERNALIZATION_ACTOR_TYPE_VALUES = ["service", "operator"] as const;
+/** Postgres backfill phase values (`source_backfill_runs_phase_check`, item claim/retry phase). */
+export const BACKFILL_PHASE_VALUES = ["discover", "fetch", "normalize", "verify", "publish", "reconcile"] as const;
+/** Postgres `source_backfill_items_status_check` values. */
+export const BACKFILL_ITEM_STATUS_VALUES = [
+  "discovered",
+  "queued",
+  "fetching",
+  "fetched",
+  "normalized",
+  "verified",
+  "published",
+  "retry_wait",
+  "terminal_failure",
+  "waived_failure",
+  "excluded",
+  "duplicate",
+  "withdrawn",
+] as const;
+/** Postgres `source_backfill_runs_status_check` values. */
+export const BACKFILL_RUN_STATUS_VALUES = ["queued", "running", "deferred", "succeeded", "degraded", "failed", "aborted"] as const;
+/** Postgres `source_backfill_item_events_type_check` values. */
+export const BACKFILL_ITEM_EVENT_TYPE_VALUES = [
+  "item_discovered",
+  "item_claimed",
+  "item_lease_extended",
+  "fetch_recorded",
+  "normalization_recorded",
+  "item_completed",
+  "item_failed",
+  "claim_released",
+  "verification_noop",
+  "item_excluded",
+] as const;
+/** Postgres `source_inventory_enumeration_artifacts_kind_check` values. */
+export const INVENTORY_ARTIFACT_KIND_VALUES = ["page", "boundary_probe", "crosscheck"] as const;
+/** Postgres `source_inventory_snapshots_status_check` values. */
+export const INVENTORY_SNAPSHOT_STATUS_VALUES = ["open", "closed", "superseded", "failed"] as const;
+/** Postgres `source_inventory_snapshots_coverage_check` values. */
+export const INVENTORY_COVERAGE_ASSURANCE_VALUES = [
+  "authoritative_enumerated",
+  "authoritative_counted",
+  "authoritative_crosschecked",
+  "external_index_assisted",
+  "best_effort",
+] as const;
+/** Postgres `source_normalization_artifacts_status_check` values. */
+export const NORMALIZATION_VALIDATION_STATUS_VALUES = ["valid", "invalid"] as const;
+/** Postgres `source_request_permits_phase_check` values. */
+export const REQUEST_PERMIT_PHASE_VALUES = ["discover", "fetch"] as const;
+/** Postgres `us_conan_candidate_authority_status_check` values. */
+export const US_CONAN_AUTHORITY_STATUS_VALUES = ["verified", "not_found", "mismatch", "blocked"] as const;
+/** Postgres `us_conan_candidate_reviews_status_check` values. */
+export const US_CONAN_REVIEW_STATUS_VALUES = ["verified", "uncertain", "rejected"] as const;
+/** Postgres `us_conan_candidate_snapshots_capture_check` capture_mode values. */
+export const US_CONAN_CAPTURE_MODE_VALUES = ["official_live", "reviewed_fixture"] as const;
+/** Postgres `us_conan_case_candidates_classification_check` values. */
+export const US_CONAN_COURT_CLASSIFICATION_VALUES = [
+  "scotus_candidate",
+  "lower_federal",
+  "state_or_other",
+  "unknown",
+] as const;
 const ingestionRuns: TableSpec = {
   name: "ingestion_runs",
   database: "worldcons_ingest",
@@ -42,5 +109,565 @@ const sourceUrlCandidates: TableSpec = {
     { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
   ],
 };
-
-export const ingestTables: D1TableDefinition[] = [ingestionRuns, sourceUrlCandidates].map(buildTable);
+const articleRawExternalizationLedger: TableSpec = {
+  name: "article_raw_externalization_ledger",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "immutable article-raw externalization ledger; the bigint identity id becomes application-generated decimal TEXT and the hash/size/storage-ref shape checks stay in the service layer",
+  indexes: [
+    uniqueIndex("article_raw_externalization_ledger_unique_idx", ["article_table", "article_row_id", "externalization_contract_version"]),
+    index("article_raw_externalization_ledger_article_idx", ["article_id", "externalized_at"]),
+  ],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "article_table", type: "text", nn: true, enum: ARTICLE_RAW_LEDGER_TABLE_VALUES },
+    { name: "article_row_id", type: "uuid", nn: true },
+    { name: "article_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "actor_type", type: "text", nn: true, enum: EXTERNALIZATION_ACTOR_TYPE_VALUES },
+    { name: "actor_id", type: "text" },
+    { name: "externalized_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articleRawExternalizationPermits: TableSpec = {
+  name: "article_raw_externalization_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["article_table", "article_row_id"],
+  note: "Postgres restricts article_table to article_content_versions_p3; the service layer keeps that value check",
+  columns: [
+    { name: "article_table", type: "text", nn: true },
+    { name: "article_row_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articleRawInlineClearPermits: TableSpec = {
+  name: "article_raw_inline_clear_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["article_table", "article_row_id"],
+  note: "Postgres restricts article_table to article_content_versions_p3; the service layer keeps that value check",
+  columns: [
+    { name: "article_table", type: "text", nn: true },
+    { name: "article_row_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const articleRawInlineRestorePermits: TableSpec = {
+  name: "article_raw_inline_restore_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["article_table", "article_row_id"],
+  note: "Postgres restricts article_table to article_content_versions_p3; the service layer keeps that value check",
+  columns: [
+    { name: "article_table", type: "text", nn: true },
+    { name: "article_row_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceArtifactExternalizationLedger: TableSpec = {
+  name: "source_artifact_externalization_ledger",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "immutable source-artifact externalization ledger; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [
+    uniqueIndex("source_artifact_externalization_ledger_unique_idx", ["artifact_table", "artifact_id", "externalization_contract_version"]),
+    index("source_artifact_externalization_ledger_item_idx", ["item_id", "externalized_at"]),
+  ],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "artifact_table", type: "text", nn: true, enum: ARTIFACT_TABLE_VALUES },
+    { name: "artifact_id", type: "uuid", nn: true },
+    { name: "item_id", type: "uuid" },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "actor_type", type: "text", nn: true, enum: EXTERNALIZATION_ACTOR_TYPE_VALUES },
+    { name: "actor_id", type: "text" },
+    { name: "externalized_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceArtifactExternalizationPermits: TableSpec = {
+  name: "source_artifact_externalization_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["artifact_table", "artifact_id"],
+  note: "the kind/storage-ref/contract shape checks stay in the service layer",
+  columns: [
+    { name: "artifact_table", type: "text", nn: true, enum: ARTIFACT_TABLE_VALUES },
+    { name: "artifact_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceArtifactInlineClearPermits: TableSpec = {
+  name: "source_artifact_inline_clear_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["artifact_table", "artifact_id"],
+  note: "the kind/storage-ref/contract shape checks stay in the service layer",
+  columns: [
+    { name: "artifact_table", type: "text", nn: true, enum: ARTIFACT_TABLE_VALUES },
+    { name: "artifact_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceArtifactInlineRestorePermits: TableSpec = {
+  name: "source_artifact_inline_restore_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["artifact_table", "artifact_id"],
+  note: "the kind/storage-ref/contract shape checks stay in the service layer",
+  columns: [
+    { name: "artifact_table", type: "text", nn: true, enum: ARTIFACT_TABLE_VALUES },
+    { name: "artifact_id", type: "uuid", nn: true },
+    { name: "content_kind", type: "text", nn: true },
+    { name: "storage_ref", type: "text", nn: true },
+    { name: "content_hash", type: "text", nn: true },
+    { name: "content_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalization_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceBackfillItemEvents: TableSpec = {
+  name: "source_backfill_item_events",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "append-only backfill item event log; the bigint identity id becomes application-generated decimal TEXT",
+  indexes: [index("source_backfill_item_events_item_idx", ["item_id", "occurred_at", "id"])],
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "item_id", type: "uuid", nn: true, note: "logical FK to source_backfill_items.id" },
+    { name: "attempt_id", type: "uuid", note: "logical FK to admin_command_attempts.id" },
+    { name: "event_type", type: "text", nn: true, enum: BACKFILL_ITEM_EVENT_TYPE_VALUES },
+    { name: "phase", type: "text", note: "Postgres phase value check stays in the service layer" },
+    { name: "safe_details", type: "jsonb", nn: true, def: "'{}'" },
+    { name: "occurred_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceBackfillRuns: TableSpec = {
+  name: "source_backfill_runs",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the attempt-shape/count/terminal checks stay in the service layer; (snapshot_id, phase, pass_number) uniqueness is enforced there",
+  indexes: [index("source_backfill_runs_snapshot_phase_idx", ["snapshot_id", "phase", "pass_number"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "snapshot_id", type: "uuid", nn: true, note: "logical FK to source_inventory_snapshots.id" },
+    { name: "command_run_id", type: "uuid", note: "logical FK to admin_command_runs.id" },
+    { name: "p1_attempt_id", type: "uuid", note: "logical FK to admin_command_attempts.id" },
+    { name: "p1_fencing_token", type: "bigint", note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "phase", type: "text", nn: true, enum: BACKFILL_PHASE_VALUES },
+    { name: "pass_number", type: "integer", nn: true },
+    { name: "status", type: "text", nn: true, enum: BACKFILL_RUN_STATUS_VALUES },
+    { name: "claimed_count", type: "integer", nn: true, def: "0" },
+    { name: "succeeded_count", type: "integer", nn: true, def: "0" },
+    { name: "retryable_failed_count", type: "integer", nn: true, def: "0" },
+    { name: "terminal_failed_count", type: "integer", nn: true, def: "0" },
+    { name: "cursor_in", type: "jsonb" },
+    { name: "cursor_out", type: "jsonb" },
+    { name: "page_manifest_hash", type: "text" },
+    { name: "heartbeat_at", type: "timestamptz" },
+    { name: "started_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "completed_at", type: "timestamptz" },
+    { name: "last_error_code", type: "text" },
+    { name: "last_error_summary", type: "text" },
+  ],
+};
+const sourceBackfillItems: TableSpec = {
+  name: "source_backfill_items",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the claim/waiver/duplicate/url shape checks stay in the service layer; (snapshot_id, stable_item_key) uniqueness is enforced there",
+  indexes: [
+    index("source_backfill_items_claim_idx", ["snapshot_id", "status", "next_attempt_at", "first_seen_at"]),
+    index("source_backfill_items_claim_lease_idx", ["lease_expires_at", "claimed_attempt_id"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "snapshot_id", type: "uuid", nn: true, note: "logical FK to source_inventory_snapshots.id" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "stable_item_key", type: "text", nn: true },
+    { name: "source_record_id", type: "text" },
+    { name: "discovered_url", type: "text", nn: true },
+    { name: "authority_url", type: "text" },
+    { name: "document_type", type: "text" },
+    { name: "discovered_decision_date_hint", type: "date" },
+    { name: "status", type: "text", nn: true, def: "'discovered'", enum: BACKFILL_ITEM_STATUS_VALUES },
+    { name: "attempt_count", type: "integer", nn: true, def: "0" },
+    { name: "next_attempt_at", type: "timestamptz" },
+    { name: "retry_phase", type: "text", note: "Postgres phase value check stays in the service layer" },
+    { name: "claimed_attempt_id", type: "uuid", note: "logical FK to admin_command_attempts.id" },
+    { name: "claimed_fencing_token", type: "bigint", note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "claimed_phase", type: "text", note: "Postgres phase value check stays in the service layer" },
+    { name: "lease_expires_at", type: "timestamptz" },
+    { name: "http_status", type: "integer" },
+    { name: "source_etag", type: "text" },
+    { name: "source_last_modified_at", type: "timestamptz" },
+    { name: "payload_hash", type: "text" },
+    { name: "parser_version", type: "text" },
+    { name: "current_fetch_artifact_id", type: "uuid", note: "logical FK to source_fetch_artifacts.id" },
+    { name: "current_normalization_artifact_id", type: "uuid" },
+    { name: "verified_normalization_artifact_id", type: "uuid" },
+    { name: "published_normalization_artifact_id", type: "uuid" },
+    { name: "article_id", type: "uuid", note: "logical FK to articles.id" },
+    { name: "duplicate_of_item_id", type: "uuid", note: "logical self-FK to source_backfill_items.id" },
+    { name: "exclusion_code", type: "text" },
+    { name: "error_code", type: "text" },
+    { name: "error_summary", type: "text" },
+    { name: "waived_by", type: "text" },
+    { name: "waived_at", type: "timestamptz" },
+    { name: "waiver_reason", type: "text" },
+    { name: "waiver_expires_at", type: "timestamptz" },
+    { name: "first_seen_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "last_seen_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "inventory_metadata", type: "jsonb", nn: true, def: "'{}'" },
+  ],
+};
+const sourceFetchArtifacts: TableSpec = {
+  name: "source_fetch_artifacts",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the replay/url/header shape checks stay in the service layer; bounded_replay_payload may be cleared to R2 after verified externalization (plan 7.3)",
+  indexes: [index("source_fetch_artifacts_item_created_idx", ["item_id", "created_at"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "item_id", type: "uuid", nn: true, note: "logical FK to source_backfill_items.id" },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "authority_url", type: "text", nn: true },
+    { name: "http_status", type: "integer", nn: true },
+    { name: "response_headers_allowlist", type: "jsonb", nn: true, def: "'{}'" },
+    { name: "source_etag", type: "text" },
+    { name: "source_last_modified_at", type: "timestamptz" },
+    { name: "payload_hash", type: "text", nn: true },
+    { name: "payload_size", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "replayability", type: "text", nn: true },
+    { name: "immutable_storage_ref", type: "text" },
+    { name: "bounded_replay_payload", type: "jsonb", note: "inline cleared to R2 only after verified externalization (plan 7.3)" },
+    { name: "fetched_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "fetch_contract_version", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "bounded_replay_storage_ref", type: "text" },
+    { name: "externalized_at", type: "timestamptz" },
+    { name: "externalization_contract_version", type: "text" },
+  ],
+};
+const sourceInventoryEnumerationArtifacts: TableSpec = {
+  name: "source_inventory_enumeration_artifacts",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the provider/url/hash/count/date shape checks stay in the service layer; (snapshot_id, provider_key, artifact_kind, sequence_no) uniqueness is enforced there",
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "snapshot_id", type: "uuid", nn: true, note: "logical FK to source_inventory_snapshots.id" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "provider_key", type: "text", nn: true },
+    { name: "artifact_kind", type: "text", nn: true, enum: INVENTORY_ARTIFACT_KIND_VALUES },
+    { name: "sequence_no", type: "integer", nn: true },
+    { name: "request_url", type: "text", nn: true },
+    { name: "response_hash", type: "text", nn: true },
+    { name: "record_manifest_hash", type: "text", nn: true },
+    { name: "record_count", type: "integer", nn: true },
+    { name: "newest_decision_date", type: "date" },
+    { name: "oldest_decision_date", type: "date" },
+    { name: "observed_last_page", type: "integer" },
+    { name: "safe_details", type: "jsonb", nn: true, def: "'{}'" },
+    { name: "observed_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceInventorySnapshotSupersessions: TableSpec = {
+  name: "source_inventory_snapshot_supersessions",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "one supersession per snapshot; the bigint identity id becomes application-generated decimal TEXT and the parser/hash/reason checks stay in the service layer",
+  columns: [
+    { name: "id", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule), application-generated identity" },
+    { name: "snapshot_id", type: "uuid", nn: true, note: "logical FK to source_inventory_snapshots.id (unique in Postgres)" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "prior_parser_version", type: "text", nn: true },
+    { name: "replacement_parser_version", type: "text", nn: true },
+    { name: "prior_manifest_hash", type: "text", nn: true },
+    { name: "prior_enumeration_manifest_hash", type: "text", nn: true },
+    { name: "discovered_count", type: "integer", nn: true },
+    { name: "reason_code", type: "text", nn: true },
+    { name: "requested_by", type: "text", nn: true },
+    { name: "superseded_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceInventorySnapshots: TableSpec = {
+  name: "source_inventory_snapshots",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the authoritative-count/manifest/evidence checks stay in the service layer",
+  indexes: [index("source_inventory_snapshots_scope_idx", ["source_key", "document_type", "scope_from", "scope_to", "opened_at"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "scope_from", type: "date" },
+    { name: "scope_to", type: "date" },
+    { name: "document_type", type: "text", nn: true },
+    { name: "discovery_method", type: "text", nn: true },
+    { name: "parser_version", type: "text", nn: true },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "coverage_assurance", type: "text", nn: true, enum: INVENTORY_COVERAGE_ASSURANCE_VALUES },
+    { name: "expected_count", type: "integer" },
+    { name: "expected_count_basis", type: "text" },
+    { name: "coverage_evidence", type: "jsonb", nn: true, def: "'{}'" },
+    { name: "discovered_count", type: "integer", nn: true, def: "0" },
+    { name: "manifest_hash", type: "text" },
+    { name: "status", type: "text", nn: true, def: "'open'", enum: INVENTORY_SNAPSHOT_STATUS_VALUES },
+    { name: "exclusions", type: "jsonb", nn: true, def: "'[]'" },
+    { name: "opened_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "closed_at", type: "timestamptz" },
+    { name: "created_by", type: "text", nn: true },
+    { name: "enumeration_manifest_hash", type: "text" },
+  ],
+};
+const sourceNormalizationArtifacts: TableSpec = {
+  name: "source_normalization_artifacts",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the json/ref/size checks stay in the service layer; normalized_output stays nullable because the live migration drops its NOT NULL once the body is externalized to R2",
+  indexes: [index("source_normalization_artifacts_item_created_idx", ["item_id", "created_at"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "item_id", type: "uuid", nn: true, note: "logical FK to source_backfill_items.id" },
+    { name: "fetch_artifact_id", type: "uuid", nn: true, note: "logical FK to source_fetch_artifacts.id" },
+    { name: "parser_version", type: "text", nn: true },
+    { name: "normalization_contract_version", type: "text", nn: true },
+    { name: "normalized_output", type: "jsonb", note: "NOT NULL was dropped once the body may live in R2" },
+    { name: "normalized_output_hash", type: "text", nn: true },
+    { name: "validation_status", type: "text", nn: true, enum: NORMALIZATION_VALIDATION_STATUS_VALUES },
+    { name: "validation_errors", type: "jsonb", nn: true, def: "'[]'" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "normalized_output_storage_ref", type: "text" },
+    { name: "normalized_output_size", type: "bigint", note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "externalized_at", type: "timestamptz" },
+    { name: "externalization_contract_version", type: "text" },
+  ],
+};
+const sourceRequestGovernorStates: TableSpec = {
+  name: "source_request_governor_states",
+  database: "worldcons_ingest",
+  primaryKey: ["source_key"],
+  note: "the Postgres '-infinity' default sentinel for next_request_not_before is represented by the service layer",
+  columns: [
+    { name: "source_key", type: "text", nn: true },
+    { name: "last_request_started_at", type: "timestamptz" },
+    { name: "next_request_not_before", type: "timestamptz", nn: true, note: "'-infinity' sentinel default is emitted by the service layer" },
+    { name: "updated_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const sourceRequestPermits: TableSpec = {
+  name: "source_request_permits",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the origin/lease/release shape checks stay in the service layer",
+  indexes: [
+    index("source_request_permits_active_idx", ["source_key", "lease_expires_at"]),
+    index("source_request_permits_attempt_idx", ["p1_attempt_id", "acquired_at"]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "source_key", type: "text", nn: true },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "snapshot_id", type: "uuid", nn: true, note: "logical FK to source_inventory_snapshots.id" },
+    { name: "phase", type: "text", nn: true, enum: REQUEST_PERMIT_PHASE_VALUES },
+    { name: "p1_attempt_id", type: "uuid", nn: true, note: "logical FK to admin_command_attempts.id" },
+    { name: "p1_fencing_token", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "request_origin", type: "text", nn: true },
+    { name: "acquired_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "lease_expires_at", type: "timestamptz", nn: true },
+    { name: "released_at", type: "timestamptz" },
+  ],
+};
+const usConanCandidateAuthorityArtifactsV1: TableSpec = {
+  name: "us_conan_candidate_authority_artifacts_v1",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the url/hash/verified-shape checks stay in the service layer; (candidate_id, resolver_version, resolution_hash) uniqueness is enforced there",
+  indexes: [index("us_conan_candidate_authority_latest_idx", ["candidate_id", "observed_at", "created_at"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "candidate_id", type: "uuid", nn: true, note: "logical FK to us_conan_case_candidates_v1.id" },
+    { name: "resolver_version", type: "text", nn: true },
+    { name: "resolution_hash", type: "text", nn: true },
+    { name: "status", type: "text", nn: true, enum: US_CONAN_AUTHORITY_STATUS_VALUES },
+    { name: "citation", type: "text", nn: true },
+    { name: "official_case_name", type: "text" },
+    { name: "details_url", type: "text", nn: true },
+    { name: "pdf_url", type: "text" },
+    { name: "payload_hash", type: "text" },
+    { name: "blocking", type: "text[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "observed_at", type: "timestamptz", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const usConanCandidateCatalogEventsV1: TableSpec = {
+  name: "us_conan_candidate_catalog_events_v1",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the source/hash/revision/text checks stay in the service layer; idempotency_key is unique in Postgres",
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "candidate_id", type: "uuid", nn: true },
+    { name: "candidate_snapshot_id", type: "uuid", nn: true },
+    { name: "candidate_manifest_hash", type: "text", nn: true },
+    { name: "review_id", type: "uuid", nn: true },
+    { name: "review_revision", type: "integer", nn: true },
+    { name: "authority_artifact_id", type: "uuid", nn: true },
+    { name: "publication_source_key", type: "text", nn: true, def: "'us-scotus'" },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "article_id", type: "uuid", nn: true, note: "logical FK to articles.id" },
+    { name: "source_anchor_version_id", type: "uuid", nn: true },
+    { name: "version_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "catalog_publication_id", type: "uuid", nn: true, note: "logical FK to case_catalog_publications_v1.id" },
+    { name: "publication_revision", type: "bigint", nn: true, note: "decimal TEXT (plan 6.1 bigint rule)" },
+    { name: "idempotency_key", type: "text", nn: true },
+    { name: "actor_id", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const usConanCandidateEssayEvidenceV1: TableSpec = {
+  name: "us_conan_candidate_essay_evidence_v1",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the essay url/id checks stay in the service layer; (candidate_id, essay_id) uniqueness is enforced there",
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "candidate_id", type: "uuid", nn: true, note: "logical FK to us_conan_case_candidates_v1.id" },
+    { name: "essay_id", type: "text", nn: true },
+    { name: "essay_title", type: "text", nn: true },
+    { name: "essay_url", type: "text", nn: true },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+const usConanCandidateReviewsV1: TableSpec = {
+  name: "us_conan_candidate_reviews_v1",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the verified-shape/bound-evidence/url checks stay in the service layer; (candidate_id, revision) uniqueness is enforced there",
+  indexes: [index("us_conan_candidate_reviews_latest_idx", ["candidate_id", "revision"])],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "candidate_id", type: "uuid", nn: true, note: "logical FK to us_conan_case_candidates_v1.id" },
+    { name: "revision", type: "integer", nn: true },
+    { name: "status", type: "text", nn: true, enum: US_CONAN_REVIEW_STATUS_VALUES },
+    { name: "official_scotus_identity_verified", type: "boolean", nn: true },
+    { name: "constitutional_essay_context_verified", type: "boolean", nn: true },
+    { name: "official_authority_verified", type: "boolean", nn: true },
+    { name: "constitutional_holding_verified", type: "boolean", nn: true },
+    { name: "official_authority_url", type: "text" },
+    { name: "safe_evidence", type: "jsonb", nn: true, def: "'{}'" },
+    { name: "reviewed_by", type: "text", nn: true },
+    { name: "review_reason", type: "text", nn: true },
+    { name: "reviewed_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "authority_artifact_id", type: "uuid", note: "logical FK to us_conan_candidate_authority_artifacts_v1.id" },
+    { name: "essay_evidence_ids", type: "uuid[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "holding_evidence", type: "jsonb", nn: true, def: "'[]'" },
+  ],
+};
+const usConanCandidateSnapshotsV1: TableSpec = {
+  name: "us_conan_candidate_snapshots_v1",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the source/status/capture checks stay in the service layer; (payload_hash, parser_version, capture_mode, source_policy_version) uniqueness is enforced there",
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "source_key", type: "text", nn: true, def: "'us-constitution-annotated'" },
+    { name: "source_url", type: "text", nn: true },
+    { name: "source_policy_version", type: "text", nn: true },
+    { name: "payload_hash", type: "text", nn: true },
+    { name: "parser_version", type: "text", nn: true },
+    { name: "capture_mode", type: "text", nn: true, enum: US_CONAN_CAPTURE_MODE_VALUES },
+    { name: "citation_coverage_assurance", type: "text", nn: true },
+    { name: "status", type: "text", nn: true, def: "'open'" },
+    { name: "candidate_count", type: "integer", nn: true, def: "0" },
+    { name: "manifest_hash", type: "text" },
+    { name: "observed_at", type: "timestamptz", nn: true },
+    { name: "opened_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+    { name: "closed_at", type: "timestamptz" },
+    { name: "created_by", type: "text", nn: true },
+  ],
+};
+const usConanCaseCandidatesV1: TableSpec = {
+  name: "us_conan_case_candidates_v1",
+  database: "worldcons_ingest",
+  primaryKey: ["id"],
+  note: "the basis/priority/text checks stay in the service layer; (snapshot_id, stable_candidate_key) and (snapshot_id, normalized_citation) uniqueness is enforced there",
+  indexes: [
+    index("us_conan_case_candidates_classification_idx", [
+      "snapshot_id",
+      "court_classification",
+      "priority",
+      "normalized_citation",
+    ]),
+  ],
+  columns: [
+    { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
+    { name: "snapshot_id", type: "uuid", nn: true, note: "logical FK to us_conan_candidate_snapshots_v1.id" },
+    { name: "stable_candidate_key", type: "text", nn: true },
+    { name: "case_name", type: "text", nn: true },
+    { name: "citation", type: "text", nn: true },
+    { name: "normalized_citation", type: "text", nn: true },
+    { name: "court_classification", type: "text", nn: true, enum: US_CONAN_COURT_CLASSIFICATION_VALUES },
+    { name: "candidate_basis", type: "text", nn: true, def: "'constitution_annotated_table_citation'" },
+    { name: "priority", type: "integer", nn: true, def: "0" },
+    { name: "priority_reasons", type: "text[]", nn: true, def: "'[]'", note: "array -> canonical JSON TEXT (plan 6.1)" },
+    { name: "created_at", type: "timestamptz", nn: true, note: "application-generated UTC ISO-8601" },
+  ],
+};
+export const ingestTables: D1TableDefinition[] = [
+  ingestionRuns,
+  sourceUrlCandidates,
+  articleRawExternalizationLedger,
+  articleRawExternalizationPermits,
+  articleRawInlineClearPermits,
+  articleRawInlineRestorePermits,
+  sourceArtifactExternalizationLedger,
+  sourceArtifactExternalizationPermits,
+  sourceArtifactInlineClearPermits,
+  sourceArtifactInlineRestorePermits,
+  sourceBackfillItemEvents,
+  sourceBackfillItems,
+  sourceBackfillRuns,
+  sourceFetchArtifacts,
+  sourceInventoryEnumerationArtifacts,
+  sourceInventorySnapshotSupersessions,
+  sourceInventorySnapshots,
+  sourceNormalizationArtifacts,
+  sourceRequestGovernorStates,
+  sourceRequestPermits,
+  usConanCandidateAuthorityArtifactsV1,
+  usConanCandidateCatalogEventsV1,
+  usConanCandidateEssayEvidenceV1,
+  usConanCandidateReviewsV1,
+  usConanCandidateSnapshotsV1,
+  usConanCaseCandidatesV1,
+].map(buildTable);
