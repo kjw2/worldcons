@@ -732,12 +732,28 @@ Progress (2026-09-21, M3.1 local-runtime checkpoint):
 - no production DNS, production authority, corpus deletion, or remote deployment
   changed during M3.1.
 
-M3.2 next gate:
-- isolate admin ingest/browser execution behind Queue/Workflow -> Container rather
-  than relying on externalized Node packages inside Workers;
-- remove Worker-facing dynamic filesystem state from `lib/ai/gemini-router.ts`;
-- then perform the remote non-production Worker canary and repeat the public/API
-  smoke suite with no production DNS switch.
+M3.2 / remote-canary completion (2026-09-21):
+- admin ingest/job execution is now behind an explicit runtime seam; Cloudflare
+  Workers fail closed before loading Node-only executors, and inline Crawlee is
+  blocked as defense in depth;
+- `lib/ai/gemini-router.ts` no longer imports Node filesystem/path modules;
+  runtime JSON state is selected behind a platform-neutral store;
+- the Next/Turbopack dynamic-filesystem whole-project tracing warnings were
+  removed while preserving Node/Vercel relative-path semantics;
+- focused M3.2 tests pass 9/9, and typecheck/check/lint/vinext and both build paths
+  pass;
+- remote non-production Worker `worldcons-m3-spike` deployed successfully with no
+  Worker secrets and no production DNS or authority change;
+- representative pages, public APIs, search, article detail/print/source-text and
+  MCP health all returned HTTP 200 in the final remote smoke;
+- the canary exposed an incorrect hard-coded `deployment: "vercel"` health field;
+  commit `495d4ad` fixed it and the final Worker reports
+  `deployment: "cloudflare-workers"`;
+- detailed canary evidence is recorded in
+  `docs/worldcons-cloudflare-m3-remote-canary-20260921.md`.
+
+M3 GO gate: **complete**. Proceed to M4 repository/data abstraction while
+Supabase remains production authority.
 
 ### M4 — Repository/data abstraction
 
