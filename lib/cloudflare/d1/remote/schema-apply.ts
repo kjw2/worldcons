@@ -24,14 +24,19 @@ import {
  *
  * - preflight reads `d1 list --json` and refuses a missing or ambiguous target
  *   (it never creates a database);
- * - in apply mode it writes the emitted DDL through `materializeDdl` and runs
- *   `wrangler d1 execute NAME --remote --yes --file <path>`. The `--file` write
- *   stdout is deliberately NOT parsed: `wrangler d1 execute --file` can interleave
- *   spinner or human-readable text even with `--json`, and the runner already
- *   rejects a non-zero exit. A resolved write is only provisional;
  * - it reads `sqlite_master` through `d1 execute --command` and confirms every
- *   expected table and index name is present, in both dry-run and apply mode. That
- *   read-only verification is the single success criterion for an apply;
+ *   expected table and index name is present. That read-only object query runs
+ *   BEFORE any write, in both dry-run and apply mode. If every expected object is
+ *   already present the target is a real no-op: `state:"existing"`,
+ *   `action:"none"`, `verified:true` and no DDL is materialized and no `--file`
+ *   write is attempted, so a re-apply is idempotent;
+ * - only when objects are missing does apply mode write the emitted DDL through
+ *   `materializeDdl` and run `wrangler d1 execute NAME --remote --yes --file <path>`,
+ *   then re-query `sqlite_master` and verify. The `--file` write stdout is
+ *   deliberately NOT parsed: `wrangler d1 execute --file` can interleave spinner or
+ *   human-readable text even with `--json`, and the runner already rejects a non-zero
+ *   exit. A resolved write is only provisional and the re-query is the sole success
+ *   criterion for an apply;
  * - it never deletes a database, never deploys, never copies data and never
  *   changes production authority.
  *
@@ -128,6 +133,24 @@ export async function buildD1SchemaApplyManifest(
     return results.get(name) as D1RemoteSchemaManifestTarget;
   }
 
+  /** Read-only `sqlite_master` check: the expected objects that are absent. */
+  async function queryMissingObjects(target: D1RemoteTarget, objects: D1SchemaObjects): Promise<string[]> {
+    const rows = parseD1ExecuteResultsJson(
+      await runWrangler([
+        "d1",
+        "execute",
+        target.name,
+        "--remote",
+        "--yes",
+        "--json",
+        "--command",
+        D1_SCHEMA_OBJECT_QUERY,
+      ]),
+    );
+    const present = new Set(rows.map((row) => (typeof row.name === "string" ? row.name : "")));
+    return objects.objects.filter((object) => !present.has(object));
+  }
+
   function finalize(): D1RemoteSchemaManifest {
     const all = targets.map((target) => get(target.name));
     return {
@@ -205,65 +228,75 @@ export async function buildD1SchemaApplyManifest(
       aborted = true;
       continue;
     }
-    if (apply) {
-      let path: string;
-      try {
-        path = (options.materializeDdl as (database: D1Database, sql: string) => string)(
-          target.name,
-          emitDatabaseDdl(target.name, schema),
-        );
-      } catch (error) {
-        result.state = "unknown";
-        result.action = "refused";
-        result.errors.push(message(error));
-        errors.push(`materialize ${target.name}: ${message(error)}`);
-        aborted = true;
-        continue;
-      }
-      try {
-        // `d1 execute --file` may emit spinner/human text even with `--json`, so
-        // the write result is not parsed. The runner rejects a non-zero exit and
-        // the read-only `sqlite_master` verification below is the sole authority.
-        await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--file", path]);
-        result.state = "applied";
-        result.action = "apply";
-      } catch (error) {
-        result.state = "unknown";
-        result.action = "refused";
-        result.errors.push(message(error));
-        errors.push(`execute ${target.name}: ${message(error)}`);
-        aborted = true;
-        continue;
-      }
+    // Read-only object query BEFORE any write. This runs identically in dry-run
+    // and apply mode, so a fully present schema is a real no-op: no DDL is
+    // materialized and no `--file` write is attempted.
+    let missing: string[];
+    try {
+      missing = await queryMissingObjects(target, objects);
+    } catch (error) {
+      result.state = "unknown";
+      result.action = "refused";
+      result.errors.push(message(error));
+      errors.push(`verify ${target.name}: ${message(error)}`);
+      aborted = true;
+      continue;
+    }
+
+    if (missing.length === 0) {
+      result.state = "existing";
+      result.action = "none";
+      result.foundObjects = objects.objects.length;
+      result.missingObjects = [];
+      result.verified = true;
+      continue;
+    }
+
+    // Objects are absent. A dry-run reports the pending apply without mutating.
+    result.foundObjects = objects.objects.length - missing.length;
+    result.missingObjects = missing;
+    result.verified = false;
+    if (!apply) continue;
+
+    let path: string;
+    try {
+      path = (options.materializeDdl as (database: D1Database, sql: string) => string)(
+        target.name,
+        emitDatabaseDdl(target.name, schema),
+      );
+    } catch (error) {
+      result.state = "unknown";
+      result.action = "refused";
+      result.errors.push(message(error));
+      errors.push(`materialize ${target.name}: ${message(error)}`);
+      aborted = true;
+      continue;
     }
     try {
-      const rows = parseD1ExecuteResultsJson(
-        await runWrangler([
-          "d1",
-          "execute",
-          target.name,
-          "--remote",
-          "--yes",
-          "--json",
-          "--command",
-          D1_SCHEMA_OBJECT_QUERY,
-        ]),
-      );
-      const present = new Set(rows.map((row) => (typeof row.name === "string" ? row.name : "")));
-      const missing = objects.objects.filter((object) => !present.has(object));
-      result.foundObjects = objects.objects.length - missing.length;
-      result.missingObjects = missing;
-      result.verified = missing.length === 0;
-      if (result.verified && !apply) result.action = "none";
-      if (!result.verified && apply) errors.push(`verify ${target.name}: ${missing.length} schema objects missing`);
+      // `d1 execute --file` may emit spinner/human text even with `--json`, so
+      // the write result is not parsed. The runner rejects a non-zero exit and
+      // the read-only `sqlite_master` re-query below is the sole authority.
+      await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--file", path]);
+      result.state = "applied";
+      result.action = "apply";
+    } catch (error) {
+      result.state = "unknown";
+      result.action = "refused";
+      result.errors.push(message(error));
+      errors.push(`execute ${target.name}: ${message(error)}`);
+      aborted = true;
+      continue;
+    }
+    try {
+      const stillMissing = await queryMissingObjects(target, objects);
+      result.foundObjects = objects.objects.length - stillMissing.length;
+      result.missingObjects = stillMissing;
+      result.verified = stillMissing.length === 0;
+      if (!result.verified) errors.push(`verify ${target.name}: ${stillMissing.length} schema objects missing`);
     } catch (error) {
       result.verified = false;
       result.errors.push(message(error));
       errors.push(`verify ${target.name}: ${message(error)}`);
-      if (!apply) {
-        result.state = "unknown";
-        result.action = "refused";
-      }
     }
   }
 

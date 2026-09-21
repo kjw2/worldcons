@@ -215,6 +215,33 @@ test("an already-present schema verifies even when the write output is not JSON,
   }
 });
 
+test("apply with every schema already present materializes no DDL and makes zero --file calls", async () => {
+  const fake = createFakeWrangler({ databases: allDatabases((database) => expectedObjects(database)) });
+  const materialized: D1Database[] = [];
+  const manifest = await buildD1SchemaApplyManifest({
+    runner: fake.runner,
+    apply: true,
+    materializeDdl: (database) => {
+      materialized.push(database);
+      return `fake/${database}.sql`;
+    },
+  });
+  assert.equal(manifest.ok, true, JSON.stringify(manifest.errors));
+  assert.equal(manifest.dryRun, false);
+  assert.equal(manifest.applied, true);
+  assert.deepEqual(manifest.totals, { targets: 4, applied: 0, present: 4, missing: 0, refused: 0 });
+  assert.deepEqual(materialized, [], "an already-present schema must not materialize DDL");
+  assert.equal(fake.calls.filter((args) => args.includes("--file")).length, 0, "no --file write may run");
+  assert.equal(fake.calls.filter((args) => args.includes("--command")).length, 4, "the read-only query runs per target");
+  for (const target of manifest.targets) {
+    assert.equal(target.state, "existing");
+    assert.equal(target.action, "none");
+    assert.equal(target.verified, true);
+    assert.equal(target.foundObjects, target.expectedObjects);
+    assert.deepEqual(target.missingObjects, []);
+  }
+});
+
 test("a missing remote database is refused and nothing is applied", async () => {
   const databases = allDatabases().filter((entry) => entry.name !== "worldcons_ops");
   const fake = createFakeWrangler({ databases });

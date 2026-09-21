@@ -814,17 +814,25 @@ Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2
   `1d74ebba-918b-4f8c-9c5c-9013479df809`) are now recorded in `wrangler.jsonc`;
 - M5.2c PART 2a delivered the operator-only remote D1 schema apply: a dry-run-by-default,
   fail-closed seam that applies the M5.1 DDL to the four existing `worldcons_*` databases only with an
-  explicit `--apply` and then verifies every expected table and index through `sqlite_master`
-  (`pnpm d1:apply-schema`, `pnpm test:d1-apply-schema`). The first real `--apply` wrote the
-  `worldcons_core` DDL (the `--file` write succeeded; a later `d1 info` reports `num_tables:30`) but
-  the operator reported a false failure because it parsed the `wrangler d1 execute --file` stdout as a
-  `--json` envelope and aborted before the other three targets. The `--file` write is no longer parsed
-  (accepted purely by exit status) and the read-only `sqlite_master` verification is the sole success
-  criterion; `parseD1ExecuteResultsJson` is unchanged for the read-only `--command` path;
-- live remote state is **partial**: `worldcons_core` is schema-applied (30 tables), while
-  `worldcons_ingest`/`worldcons_ops`/`worldcons_search` remain schema-unapplied; every database is
-  still empty of data. The bounded Postgres -> Cloudflare D1 *data* copy (M5.2c PART 2b) and shadow
-  reads (M6) remain M5.2c+/M6 work;
+  explicit `--apply` and verifies every expected table and index through `sqlite_master`
+  (`pnpm d1:apply-schema`, `pnpm test:d1-apply-schema`). The read-only `sqlite_master` object query now
+  runs BEFORE any write in both dry-run and apply mode, so an already-present schema is a true no-op
+  (`state:"existing"`, `action:"none"`, `verified:true`, no DDL materialized, no `--file` call) and a
+  re-apply is idempotent;
+- the first real `--apply` wrote the `worldcons_core` DDL (the `--file` write succeeded; a later
+  `d1 info` reports `num_tables:30`) but the operator reported a false failure because it parsed the
+  `wrangler d1 execute --file` stdout as a `--json` envelope and aborted before the other three targets.
+  The `--file` write is no longer parsed (accepted purely by exit status) and the read-only
+  `sqlite_master` verification is the sole success criterion; `parseD1ExecuteResultsJson` is unchanged
+  for the read-only `--command` path;
+- remote D1 schema apply is **complete**: with the fix deployed, the second live `--apply` applied the
+  remaining `worldcons_ingest`/`worldcons_ops`/`worldcons_search` DDL and all four remote schemas are
+  now applied and verified (`worldcons_core` 78/78 objects, `worldcons_ingest` 43/43, `worldcons_ops`
+  32/32, `worldcons_search` 2/2). A read-only dry-run now reports every target `state:"existing"`,
+  `action:"none"`, `verified:true`. `worldcons_search` reports `num_tables:7` in `d1 info` because D1
+  counts the FTS5 internal/shadow tables while the authored expected table objects remain 2/2; no data
+  has been imported into any database. The bounded Postgres -> Cloudflare D1 *data* copy (M5.2c PART 2b)
+  and shadow reads (M6) remain M5.2c+/M6 work;
 - no Worker deploy, DNS change, or Supabase authority switch occurred.
 
 ### M6 — D1 shadow-read parity
@@ -1069,8 +1077,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [x] Supabase coupling/RPC ledger (M4.6: `pnpm rpc:ledger`, 80 functions / 74 call sites, 0 unbounded dynamic families)
 - [x] four D1 schemas
 - [x] four remote D1 databases created (M5.2c PART 1: `pnpm d1:provision --apply --report --json` created `worldcons_core`/`worldcons_ingest`/`worldcons_ops`/`worldcons_search` in `apac`, all `verified:true`; post-run dry-run reports 4 existing / 0 missing / action `none`; UUIDs recorded in `wrangler.jsonc`; databases are still empty — no schema/DDL or data applied)
-- [ ] remote D1 schema applied (M5.2c PART 2a: the operator `pnpm d1:apply-schema` is dry-run by default; the first real `--apply` applied `worldcons_core` (30 tables) but a `--file` stdout-parsing bug caused a false failure, now fixed — the `--file` write output is no longer parsed and the read-only `sqlite_master` verification is the sole success criterion; `worldcons_ingest`/`worldcons_ops`/`worldcons_search` are still schema-unapplied, and no data has been imported)
-- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and `sqlite_master` verification, `pnpm d1:apply-schema`, first real apply wrote `worldcons_core` (other three pending) with the `--file` stdout parser bug fixed; the Postgres -> D1 *data* copy remains M5.2c PART 2b+)
+- [x] remote D1 schema applied (M5.2c PART 2a: `pnpm d1:apply-schema` is dry-run by default and writes only with `--apply`; the read-only `sqlite_master` object query runs BEFORE any write in both modes, so an already-present schema is a true no-op. The first real `--apply` applied `worldcons_core` (30 tables) but a `--file` stdout-parsing bug caused a false failure; with the fix deployed the second `--apply` applied the remaining `worldcons_ingest`/`worldcons_ops`/`worldcons_search` DDL. All four remote schemas are now applied and verified, a read-only dry-run reports all four `action:"none"` / `verified:true`, and no data has been imported)
+- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); the Postgres -> D1 *data* copy remains M5.2c PART 2b+)
 - [ ] data count/hash/FK invariants
 - [ ] D1 shadow reads
 - [ ] FTS5 parity

@@ -134,9 +134,11 @@ export interface D1RemoteManifest {
  *
  * - dry-run by default; only an explicit `--apply` writes DDL to a remote
  *   database (`wrangler d1 execute --remote --file`);
- * - read-only verification: after apply (and during a dry-run) it reads
- *   `sqlite_master` through `d1 execute --command` and confirms every expected
- *   table and index name exists;
+ * - read-only verification: it reads `sqlite_master` through
+ *   `d1 execute --command` before any write (and again after an apply) and
+ *   confirms every expected table and index name exists. A fully present schema
+ *   is a no-op (`action:"none"`, `verified:true`) with no DDL materialized and no
+ *   `--file` write, so a re-apply is idempotent;
  * - it never creates or deletes a database, never deploys, never copies data and
  *   never changes production authority;
  * - it fails closed on malformed Wrangler JSON, a missing/ambiguous target or an
