@@ -782,7 +782,7 @@ Acceptance:
 - JSON/date/UUID conversion tests
 - representative RPC parity
 
-Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a):
+Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b):
 - four D1 schemas and the Postgres -> canonical transform foundation exist as local-only,
   hand-authored D1 schema code plus a read-only Supabase-migration scanner and a
   schema/ownership/parity validator (`pnpm d1:schema`, `pnpm test:d1-schema`);
@@ -796,8 +796,13 @@ Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a):
   canonical transform that reduces every migrated table to canonical scalar rows plus the
   per-table/per-database hashes across all 75 migratable tables (`pnpm d1:convert`,
   `pnpm test:d1-convert`);
-- the D1 import emitter, the actual Postgres -> D1 data copy and remote D1 creation remain
-  M5.2b+ work;
+- M5.2b delivered the D1 import stage locally: a deterministic parameterized import emitter that
+  respects the D1 100-bound-parameter limit, a literal `wrangler d1 execute` script renderer, a
+  transactional local `node:sqlite` apply, and an import round-trip verification that re-derives the
+  M5.1 per-table/database hashes and compares them to the canonical transform (`pnpm d1:import`,
+  `pnpm test:d1-import`);
+- remote D1 creation, the actual Postgres -> Cloudflare D1 data copy and shadow reads remain
+  M5.2c+/M6 work;
 - no D1 database was created remotely and no authority changed.
 
 ### M6 — D1 shadow-read parity
@@ -1041,7 +1046,7 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] Worker staging deployment
 - [x] Supabase coupling/RPC ledger (M4.6: `pnpm rpc:ledger`, 80 functions / 74 call sites, 0 unbounded dynamic families)
 - [x] four D1 schemas
-- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; D1 import/data copy M5.2b+)
+- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; remote D1 creation/data copy M5.2c+)
 - [ ] data count/hash/FK invariants
 - [ ] D1 shadow reads
 - [ ] FTS5 parity
