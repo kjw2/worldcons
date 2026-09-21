@@ -1,9 +1,10 @@
 /**
- * M5.2c PART 1 remote D1 bootstrap barrel.
+ * M5.2c remote D1 operator barrel: PART 1 bootstrap + PART 2a schema apply.
  *
  * The Wrangler child-process adapter (`runner.ts`) is intentionally NOT
  * re-exported here: it imports `node:child_process`, and runtime Workers code
- * must never load it. Only the operator CLI imports that module directly.
+ * must never load it. Only the operator CLI imports that module directly. This
+ * barrel is pure: it imports no Node builtins.
  */
 export * from "./types";
 export { D1_REMOTE_TARGETS, selectD1RemoteTargets } from "./targets";
@@ -13,7 +14,11 @@ export {
   classifyD1RemoteTargets,
   parseD1RemoteInfoJson,
   parseD1RemoteListJson,
+  parseD1ExecuteResultsJson,
 } from "./classify";
 export type { D1TargetClassification } from "./classify";
 export { buildD1RemoteManifest } from "./bootstrap";
 export type { BuildD1RemoteManifestOptions } from "./bootstrap";
+
+export { buildD1SchemaApplyManifest, d1SchemaObjects, D1_SCHEMA_OBJECT_QUERY } from "./schema-apply";
+export type { BuildD1SchemaApplyManifestOptions, D1SchemaObjects } from "./schema-apply";

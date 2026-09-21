@@ -125,3 +125,96 @@ export interface D1RemoteManifest {
   ok: boolean;
   errors: string[];
 }
+
+/**
+ * M5.2c PART 2a remote D1 schema-apply operator contract.
+ *
+ * M5.2c PART 1 created the four remote `worldcons_*` databases. PART 2a applies
+ * the M5.1 DDL to those existing databases with the same narrow remote surface:
+ *
+ * - dry-run by default; only an explicit `--apply` writes DDL to a remote
+ *   database (`wrangler d1 execute --remote --file`);
+ * - read-only verification: after apply (and during a dry-run) it reads
+ *   `sqlite_master` through `d1 execute --command` and confirms every expected
+ *   table and index name exists;
+ * - it never creates or deletes a database, never deploys, never copies data and
+ *   never changes production authority;
+ * - it fails closed on malformed Wrangler JSON, a missing/ambiguous target or an
+ *   unverifiable apply, and records a deterministic local manifest under
+ *   `artifacts/cloudflare-m5/d1-remote-schema-apply.json`.
+ */
+export const D1_REMOTE_SCHEMA_APPLY_VERSION = 1 as const;
+
+/**
+ * A target's schema state:
+ * - `missing` the remote database does not exist (it is created by PART 1 only);
+ * - `existing` the remote database exists; the schema may or may not be present;
+ * - `ambiguous` the exact name appears more than once and is refused;
+ * - `applied` this run wrote the DDL to the remote database;
+ * - `unknown` preflight, apply or verification failed, so the state is unproven.
+ */
+export const D1_REMOTE_SCHEMA_STATES = [
+  "missing",
+  "existing",
+  "ambiguous",
+  "applied",
+  "unknown",
+] as const;
+export type D1RemoteSchemaState = (typeof D1_REMOTE_SCHEMA_STATES)[number];
+/** What the run did (or, in dry-run, plans to do) for a target. */
+export const D1_REMOTE_SCHEMA_ACTIONS = ["none", "apply", "refused"] as const;
+export type D1RemoteSchemaAction = (typeof D1_REMOTE_SCHEMA_ACTIONS)[number];
+
+/** One target's result in the remote schema-apply manifest. */
+export interface D1RemoteSchemaManifestTarget {
+  name: D1Database;
+  binding: string;
+  state: D1RemoteSchemaState;
+  action: D1RemoteSchemaAction;
+  /** Remote database id when known (from `d1 list`/`d1 info`). */
+  databaseId: string | null;
+  /** `num_tables` reported by `d1 info`, or null when it was not read. */
+  reportedTables: number | null;
+  /** Expected table count for this database from the M5.1 schema. */
+  expectedTables: number;
+  /** Expected index count for this database from the M5.1 schema. */
+  expectedIndexes: number;
+  /** Expected table + index count for this database. */
+  expectedObjects: number;
+  /** Table + index names confirmed present in `sqlite_master`. */
+  foundObjects: number;
+  /** Expected objects that were not found during verification. */
+  missingObjects: string[];
+  /** Whether every expected table and index was confirmed present this run. */
+  verified: boolean;
+  errors: string[];
+}
+export interface D1RemoteSchemaManifestTotals {
+  targets: number;
+  /** Targets this run wrote DDL to (`state:"applied"`). */
+  applied: number;
+  /** Targets whose full expected object set is confirmed present (`verified`). */
+  present: number;
+  /** Targets whose remote database does not exist. */
+  missing: number;
+  /** Targets refused (ambiguous/missing database or an aborted apply). */
+  refused: number;
+}
+
+/**
+ * The deterministic local manifest written to
+ * `artifacts/cloudflare-m5/d1-remote-schema-apply.json`. It contains no
+ * wall-clock timestamp, so identical remote state produces byte-identical JSON.
+ */
+export interface D1RemoteSchemaManifest {
+  version: typeof D1_REMOTE_SCHEMA_APPLY_VERSION;
+  stage: "d1-remote-schema-apply";
+  dryRun: boolean;
+  applied: boolean;
+  targets: D1RemoteSchemaManifestTarget[];
+  totals: D1RemoteSchemaManifestTotals;
+  /** Wrangler commands the run executed, in order, for the audit trail. */
+  commands: string[];
+  ok: boolean;
+  errors: string[];
+}

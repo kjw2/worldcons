@@ -115,3 +115,41 @@ export function classifyD1RemoteTargets(
     return { target, state: "ambiguous", entry: matches[0], matches: matches.length };
   });
 }
+
+/**
+ * Parses the current `wrangler d1 execute --json` output. It must be a JSON array
+ * of successful result envelopes (each `{ results: [...], success: true }`);
+ * anything else fails closed. The returned rows are the flattened `results`.
+ */
+export function parseD1ExecuteResultsJson(stdout: string): Record<string, unknown>[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new D1RemoteError("d1_remote.malformed_execute_json", "d1 execute --json did not return JSON");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new D1RemoteError("d1_remote.malformed_execute_json", "d1 execute --json did not return a JSON array");
+  }
+  const rows: Record<string, unknown>[] = [];
+  parsed.forEach((value, index) => {
+    const record = asRecord(value);
+    if (record === null || record.success !== true || !Array.isArray(record.results)) {
+      throw new D1RemoteError(
+        "d1_remote.malformed_execute_result",
+        `d1 execute --json entry ${index} is not a successful { results, success } envelope`,
+      );
+    }
+    for (const row of record.results) {
+      const object = asRecord(row);
+      if (object === null) {
+        throw new D1RemoteError(
+          "d1_remote.malformed_execute_result",
+          `d1 execute --json entry ${index} contained a non-object row`,
+        );
+      }
+      rows.push(object);
+    }
+  });
+  return rows;
+}
