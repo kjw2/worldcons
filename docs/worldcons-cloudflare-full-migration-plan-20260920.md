@@ -801,7 +801,11 @@ Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b):
   transactional local `node:sqlite` apply, and an import round-trip verification that re-derives the
   M5.1 per-table/database hashes and compares them to the canonical transform (`pnpm d1:import`,
   `pnpm test:d1-import`);
-- remote D1 creation, the actual Postgres -> Cloudflare D1 data copy and shadow reads remain
+- M5.2c PART 1 delivered the operator-only remote D1 bootstrap: a dry-run-by-default Wrangler seam
+  that creates only the missing `worldcons_*` databases with an explicit `--apply`, refuses an
+  ambiguous name, aborts the remaining creates after a failure, and re-lists plus runs `d1 info`
+  to prove each create (`pnpm d1:provision`, `pnpm test:d1-provision`);
+- the bounded Postgres -> Cloudflare D1 data copy (M5.2c PART 2) and shadow reads (M6) remain
   M5.2c+/M6 work;
 - no D1 database was created remotely and no authority changed.
 
@@ -1046,7 +1050,7 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] Worker staging deployment
 - [x] Supabase coupling/RPC ledger (M4.6: `pnpm rpc:ledger`, 80 functions / 74 call sites, 0 unbounded dynamic families)
 - [x] four D1 schemas
-- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; remote D1 creation/data copy M5.2c+)
+- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`; the Postgres -> D1 data copy remains M5.2c PART 2+)
 - [ ] data count/hash/FK invariants
 - [ ] D1 shadow reads
 - [ ] FTS5 parity
