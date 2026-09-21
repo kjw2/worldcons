@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getArticleBySlug,
   getArticlePreviewBySlug,
   getArticleSourceTextBySlug,
+  getRelatedArticles,
+  getTagBySlug,
   listArticles,
+  listArticlesForGlossaryTerm,
+  listPublicSitemapArticles,
+  listTopViewedArticles,
 } from "../lib/db/queries";
-import { mockArticles } from "../lib/db/mock-data";
+import { mockArticles, mockTags } from "../lib/db/mock-data";
+import type { ArticleListItem } from "../lib/db/types";
 import { articleReads } from "../lib/article-reads";
 import { mockArticleReads } from "../lib/article-reads/mock-repository";
 import {
@@ -58,6 +66,7 @@ interface QueryInfo {
   select?: unknown[];
   selectOptions?: unknown;
   eqs: Array<[string, unknown]>;
+  neqs: Array<[string, unknown]>;
   filters: unknown[][];
   orders: Array<[string, unknown?]>;
   ins: Array<[string, unknown]>;
@@ -83,6 +92,7 @@ function createFakeSupabase(options: { tables?: Record<string, (info: QueryInfo)
       const info: QueryInfo = {
         table,
         eqs: [],
+        neqs: [],
         filters: [],
         orders: [],
         ins: [],
@@ -101,6 +111,7 @@ function createFakeSupabase(options: { tables?: Record<string, (info: QueryInfo)
       };
       builder.select = (...args: unknown[]) => { info.select = args; info.selectOptions = args[1]; return builder; };
       builder.eq = (column: string, value: unknown) => { info.eqs.push([column, value]); return builder; };
+      builder.neq = (column: string, value: unknown) => { info.neqs.push([column, value]); return builder; };
       builder.filter = (...args: unknown[]) => { info.filters.push(args); return builder; };
       builder.order = (column: string, opts?: unknown) => { info.orders.push([column, opts]); return builder; };
       builder.in = (column: string, values: unknown) => { info.ins.push([column, values]); return builder; };
@@ -780,4 +791,383 @@ test("raw-text hydration stays at the query boundary and only runs for detail re
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+const SITEMAP_EXPECTED = [...MOCK_SUMMARIZED]
+  .sort((a, b) => (b.originalPublishedAt || "").localeCompare(a.originalPublishedAt || ""))
+  .map((article) => ({
+    slug: article.slug,
+    lastModified: article.summarizedAt || article.fetchedAt || article.discoveredAt || null,
+  }));
+
+test("listPublicSitemapArticles preserves mock fallback and exported delegation", async () => {
+  await withSupabaseEnv({}, async () => {
+    assert.equal(articleReads(), mockArticleReads, "absent config must select the mock adapter");
+    assert.deepEqual(await articleReads().listPublicSitemapArticles(), SITEMAP_EXPECTED);
+    assert.deepEqual(await listPublicSitemapArticles(), SITEMAP_EXPECTED, "exported listPublicSitemapArticles must keep the mock fallback");
+  });
+});
+
+test("Supabase adapter pages the public sitemap up to 50k and maps lastModified with legacy filters", async () => {
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    slug: `s-${index}`,
+    summarized_at: null,
+    fetched_at: null,
+    discovered_at: "2026-01-01T00:00:00.000Z",
+  }));
+  let pageCall = 0;
+  const fake = createFakeSupabase({
+    tables: {
+      articles: () => {
+        pageCall += 1;
+        if (pageCall === 1) return { data: firstPage, error: null };
+        return {
+          data: [
+            { slug: "last", summarized_at: "2026-06-01T00:00:00.000Z", fetched_at: null, discovered_at: null },
+            { slug: "fetched-only", summarized_at: null, fetched_at: "2026-05-01T00:00:00.000Z", discovered_at: null },
+            { slug: null, summarized_at: null, fetched_at: null, discovered_at: null },
+          ],
+          error: null,
+        };
+      },
+    },
+  });
+  const repository = createSupabaseArticleReadRepository({ client: () => fake.client, environment: {} });
+
+  const entries = await repository.listPublicSitemapArticles();
+  assert.equal(entries.length, 1002, "the loop must page once more and skip a slug-less row");
+  assert.deepEqual(entries[0], { slug: "s-0", lastModified: "2026-01-01T00:00:00.000Z" });
+  assert.deepEqual(entries[1000], { slug: "last", lastModified: "2026-06-01T00:00:00.000Z" });
+  assert.deepEqual(entries[1001], { slug: "fetched-only", lastModified: "2026-05-01T00:00:00.000Z" });
+  assert.deepEqual(fake.tableCalls.map((call) => call.table), ["articles", "articles"]);
+  assert.deepEqual(fake.tableCalls.map((call) => call.ranges), [[[0, 999]], [[1000, 1999]]]);
+  const first = fake.tableCalls[0];
+  assert.equal(first.select?.[0], "slug, summarized_at, fetched_at, discovered_at");
+  assert.deepEqual(first.orders, [
+    ["original_published_at", { ascending: false, nullsFirst: false }],
+    ["id", { ascending: true }],
+  ]);
+  assert.deepEqual(first.eqs, [["status", "summarized"], ["catalog_ai_stale_v4", false]]);
+  assert.deepEqual(first.filters, [["source_metadata->collection->>publishable", "eq", "true"]]);
+
+  const projected = createFakeSupabase({
+    tables: {
+      public_article_projection_p3: () => ({
+        data: [{ slug: "projected", summarized_at: "2026-02-02T00:00:00.000Z", fetched_at: null, discovered_at: null }],
+        error: null,
+      }),
+    },
+  });
+  const projectedRepository = createSupabaseArticleReadRepository({
+    client: () => projected.client,
+    environment: { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
+  });
+  assert.deepEqual(await projectedRepository.listPublicSitemapArticles(), [
+    { slug: "projected", lastModified: "2026-02-02T00:00:00.000Z" },
+  ]);
+  assert.equal(projected.tableCalls[0].table, "public_article_projection_p3");
+  assert.equal(projected.tableCalls[0].eqs.length, 0, "projection reads must skip the legacy published filter");
+  assert.equal(projected.tableCalls[0].filters.length, 0);
+
+  const failing = createFakeSupabase({
+    tables: { articles: () => ({ data: null, error: { message: "sitemap unavailable" } }) },
+  });
+  const failingRepository = createSupabaseArticleReadRepository({ client: () => failing.client, environment: {} });
+  await assert.rejects(() => failingRepository.listPublicSitemapArticles(), /sitemap unavailable/);
+});
+
+test("listTopViewedArticles preserves mock fallback and exported delegation", async () => {
+  await withSupabaseEnv({}, async () => {
+    const expected = (await mockArticleReads.listArticles({ pageSize: 5, count: "none" })).items;
+    assert.deepEqual(await articleReads().listTopViewedArticles(5, {}), expected);
+    assert.deepEqual(await listTopViewedArticles(5, {}), expected, "exported listTopViewedArticles must keep the mock fallback");
+    assert.deepEqual(
+      await listTopViewedArticles(5, { tag: "first-amendment" }),
+      (await mockArticleReads.listArticles({ tag: "first-amendment", pageSize: 5, count: "none" })).items,
+      "the tag filter must fall back to the list read",
+    );
+  });
+});
+
+test("Supabase adapter ranks top-viewed articles by view counts and honors filters and fallback", async () => {
+  const fake = createFakeSupabase({
+    tables: {
+      article_view_counts: () => ({
+        data: [{ article_slug: "b", view_count: "9" }, { article_slug: "a", view_count: 3 }],
+        error: null,
+      }),
+      articles: () => ({
+        data: [listRow({ id: "a", slug: "a" }), listRow({ id: "b", slug: "b" })],
+        error: null,
+      }),
+    },
+  });
+  const repository = createSupabaseArticleReadRepository({ client: () => fake.client, environment: {} });
+
+  const ranked = await repository.listTopViewedArticles(5, { source: "us-scotus", range: "month" });
+  assert.deepEqual(ranked.map((item) => item.slug), ["b", "a"], "view-count ranking must define the item order");
+  assert.equal(ranked[0].viewCount, 9);
+  assert.equal(ranked[1].viewCount, 3);
+  assert.equal(ranked[0].summaryJson, null, "the ranked projection must omit summary_json");
+
+  const viewCall = fake.tableCalls[0];
+  assert.equal(viewCall.table, "article_view_counts");
+  assert.deepEqual(viewCall.select?.[0], "article_slug,view_count");
+  assert.deepEqual(viewCall.orders, [["view_count", { ascending: false }]]);
+  assert.deepEqual(viewCall.limits, [20], "the ranked view probe must request limit * 4");
+  const articleCall = fake.tableCalls[1];
+  assert.equal(articleCall.table, "articles");
+  assert.equal(articleCall.select?.[0], ARTICLE_LIST_SELECT);
+  assert.deepEqual(articleCall.ins, [["slug", ["b", "a"]]]);
+  assert.deepEqual(articleCall.eqs, [
+    ["status", "summarized"],
+    ["catalog_ai_stale_v4", false],
+    ["source_key", "us-scotus"],
+  ]);
+  assert.equal(articleCall.gtes.length, 1);
+
+  const clamped = await repository.listTopViewedArticles(100, {});
+  assert.deepEqual(clamped.map((item) => item.slug), ["b", "a"], "the safe limit must clamp to twenty");
+  assert.deepEqual(fake.tableCalls[2].limits, [80], "the ranked view probe must use the clamped limit");
+
+  const tagFake = createFakeSupabase({
+    tables: {
+      tags: () => ({ data: [{ id: "tag-1" }], error: null }),
+      articles: () => ({ data: [listRow({ id: "a", slug: "a" })], error: null, count: 1 }),
+      article_view_counts: () => ({ data: [], error: null }),
+    },
+  });
+  const tagRepository = createSupabaseArticleReadRepository({ client: () => tagFake.client, environment: {} });
+  assert.deepEqual((await tagRepository.listTopViewedArticles(5, { tag: "first-amendment" })).map((item) => item.slug), ["a"]);
+  assert.equal(tagFake.tableCalls[0].table, "tags", "a tag filter must bypass the view-count ranking");
+  assert.equal(tagFake.tableCalls.some((call) => call.orders.some(([column]) => column === "view_count")), false);
+
+  let viewCall2 = 0;
+  const viewErrorFake = createFakeSupabase({
+    tables: {
+      article_view_counts: () => {
+        viewCall2 += 1;
+        return viewCall2 === 1 ? { data: null, error: { message: "views unavailable" } } : { data: [], error: null };
+      },
+      articles: () => ({ data: [listRow({ id: "a", slug: "a" })], error: null, count: 1 }),
+    },
+  });
+  const viewErrorRepository = createSupabaseArticleReadRepository({ client: () => viewErrorFake.client, environment: {} });
+  assert.deepEqual((await viewErrorRepository.listTopViewedArticles(5, {})).map((item) => item.slug), ["a"]);
+
+  let articleCall2 = 0;
+  const articleErrorFake = createFakeSupabase({
+    tables: {
+      article_view_counts: () => ({ data: [{ article_slug: "a", view_count: 1 }], error: null }),
+      articles: () => {
+        articleCall2 += 1;
+        return articleCall2 === 1
+          ? { data: null, error: { message: "articles unavailable" } }
+          : { data: [listRow({ id: "a", slug: "a" })], error: null, count: 1 };
+      },
+    },
+  });
+  const articleErrorRepository = createSupabaseArticleReadRepository({ client: () => articleErrorFake.client, environment: {} });
+  assert.deepEqual((await articleErrorRepository.listTopViewedArticles(5, {})).map((item) => item.slug), ["a"]);
+
+  const projectedFake = createFakeSupabase({
+    tables: {
+      article_view_counts: () => ({ data: [{ article_slug: "a", view_count: 7 }], error: null }),
+      public_article_projection_p3: () => ({ data: [listRow({ id: "a", slug: "a" })], error: null }),
+    },
+  });
+  const projectedRepository = createSupabaseArticleReadRepository({
+    client: () => projectedFake.client,
+    environment: { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
+  });
+  const projectedItems = await projectedRepository.listTopViewedArticles(5, {});
+  assert.deepEqual(projectedItems.map((item) => item.slug), ["a"]);
+  assert.equal(projectedItems[0].viewCount, 7);
+  const projectedArticleCall = projectedFake.tableCalls.find((call) => call.table === "public_article_projection_p3");
+  assert.ok(projectedArticleCall);
+  assert.deepEqual(projectedArticleCall.eqs, [["status", "summarized"]]);
+  assert.equal(projectedArticleCall.filters.length, 0, "projection reads must skip the legacy published filter");
+});
+
+test("Supabase adapter lists related article ids with dedupe and error fallback", async () => {
+  const fake = createFakeSupabase({
+    tables: {
+      article_tags: () => ({
+        data: [{ article_id: "b" }, { article_id: "b" }, { article_id: null }, { article_id: "c" }],
+        error: null,
+      }),
+    },
+  });
+  const repository = createSupabaseArticleReadRepository({ client: () => fake.client, environment: {} });
+
+  assert.deepEqual(await repository.listRelatedArticleIds("tag-9", { excludeArticleId: "a", limit: 12 }), ["b", "c"]);
+  const call = fake.tableCalls[0];
+  assert.equal(call.table, "article_tags");
+  assert.equal(call.select?.[0], "article_id");
+  assert.deepEqual(call.eqs, [["tag_id", "tag-9"]]);
+  assert.deepEqual(call.neqs, [["article_id", "a"]]);
+  assert.deepEqual(call.limits, [12]);
+
+  const failing = createFakeSupabase({
+    tables: { article_tags: () => ({ data: null, error: { message: "article_tags unavailable" } }) },
+  });
+  const failingRepository = createSupabaseArticleReadRepository({ client: () => failing.client, environment: {} });
+  assert.deepEqual(
+    await failingRepository.listRelatedArticleIds("tag-9", { excludeArticleId: "a", limit: 12 }),
+    [],
+    "an article_tags error must fall through to the tag/source fallbacks",
+  );
+});
+
+test("exported getRelatedArticles keeps the strongest-tag ids path and the tag/source fallback chain", async () => {
+  await withSupabaseEnv({}, async () => {
+    const usArticle = MOCK_SUMMARIZED.find((article) => article.sourceKey === "us-scotus");
+    const germanyArticle = MOCK_SUMMARIZED.find((article) => article.jurisdiction === "Germany");
+    assert.ok(usArticle && germanyArticle);
+
+    const strongestTagArticle = {
+      ...MOCK_SUMMARIZED[0],
+      id: "article-x",
+      slug: "article-x",
+      tags: [{ id: "tag-1", slug: "first-amendment", name: "First Amendment", normalizedName: "First Amendment", type: "article" as const, articleCount: 5 }],
+    };
+    assert.deepEqual(
+      (await getRelatedArticles(strongestTagArticle, 3)).map((item) => item.slug),
+      [usArticle.slug],
+      "the mock adapter has no article_tags join, so the tag slug fallback must resolve the related article",
+    );
+
+    const weakTagArticle = { ...MOCK_SUMMARIZED[0], id: "article-y", slug: "article-y" };
+    assert.deepEqual(
+      (await getRelatedArticles(weakTagArticle, 3)).map((item) => item.slug),
+      [germanyArticle.slug],
+      "without a strongest tag the source fallback keeps the same source only",
+    );
+  });
+
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.includes("/rest/v1/article_tags")) {
+      return json([{ article_id: "b" }, { article_id: "b" }, { article_id: "c" }]);
+    }
+    if (url.includes("/rest/v1/articles")) return json([listRow({ id: "b", slug: "b" }), listRow({ id: "c", slug: "c" })]);
+    return json([]);
+  }) as typeof fetch;
+
+  try {
+    await withSupabaseEnv(
+      { SUPABASE_URL: "https://related.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
+      async () => {
+        const article = {
+          ...listRow({ id: "a", slug: "a" }),
+          tags: [{ id: "tag-9", slug: "strong", name: "Strong", normalizedName: "Strong", type: "article", articleCount: 10 }],
+        } as unknown as ArticleListItem;
+        const related = await getRelatedArticles(article, 3);
+        assert.deepEqual(related.map((item) => item.slug), ["b", "c"], "the article_tags ids must define the related order");
+        const tagRequest = requests.find((url) => url.includes("/rest/v1/article_tags"));
+        assert.ok(tagRequest && tagRequest.includes("tag_id=eq.tag-9"), "the strongest tag id must drive the article_tags lookup");
+        assert.ok(tagRequest.includes("article_id=neq.a"), "the lookup must exclude the source article id");
+        assert.equal(
+          requests.some((url) => url.includes("/rest/v1/article_view_counts")),
+          false,
+          "related reads must skip view-count attachment",
+        );
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("exported getTagBySlug composes the tag lookup with the tag article list", async () => {
+  await withSupabaseEnv({}, async () => {
+    const usArticle = MOCK_SUMMARIZED.find((article) => article.sourceKey === "us-scotus");
+    assert.ok(usArticle);
+    const result = await getTagBySlug("first-amendment");
+    assert.ok(result);
+    assert.deepEqual(result.tag, mockTags.find((tag) => tag.slug === "first-amendment"));
+    assert.deepEqual(result.articles.map((article) => article.slug), [usArticle.slug], "the tag articles must resolve through listArticles");
+    assert.equal(await getTagBySlug("missing-tag"), null, "a missing tag must resolve to null without listing articles");
+  });
+
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requests.push(url);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.includes("/rest/v1/tags")) {
+      return json([{
+        id: "tag-1",
+        slug: "qpc",
+        name: "QPC",
+        normalized_name: "QPC",
+        type: "procedure",
+        description: null,
+        article_count: 1,
+        latest_article_at: "2026-05-02T00:00:00.000Z",
+      }]);
+    }
+    if (url.includes("/rest/v1/articles")) return json([listRow({ id: "a", slug: "a" })]);
+    return json([]);
+  }) as typeof fetch;
+
+  try {
+    await withSupabaseEnv(
+      { SUPABASE_URL: "https://tags.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
+      async () => {
+        const result = await getTagBySlug("qpc");
+        assert.ok(result);
+        assert.equal(result.tag.slug, "qpc");
+        assert.equal(result.tag.type, "procedure");
+        assert.deepEqual(result.articles.map((article) => article.slug), ["a"]);
+        assert.ok(requests.some((url) => url.includes("/rest/v1/tags")), "the tag lookup must query the tags relation");
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listArticlesForGlossaryTerm expands, dedupes, sorts, and limits related-tag articles", async () => {
+  await withSupabaseEnv({}, async () => {
+    const usArticle = MOCK_SUMMARIZED.find((article) => article.sourceKey === "us-scotus");
+    const germanyArticle = MOCK_SUMMARIZED.find((article) => article.jurisdiction === "Germany");
+    assert.ok(usArticle && germanyArticle);
+
+    const term = {
+      slug: "free-speech",
+      term: "Free Speech",
+      koreanTerm: "표현의 자유",
+      definition: "정의",
+      jurisdiction: null,
+      relatedTags: ["Free Speech"],
+    };
+    const result = await listArticlesForGlossaryTerm(term, 8);
+    const slugs = result.map((article) => article.slug);
+    assert.ok(slugs.includes(usArticle.slug), "the canonical tag name must resolve the US article");
+    assert.ok(slugs.includes(germanyArticle.slug), "a Korean alias must resolve the German article");
+    assert.equal(new Set(slugs).size, slugs.length, "the related-tag union must dedupe by slug");
+    for (let index = 1; index < result.length; index += 1) {
+      assert.ok(
+        (result[index - 1].originalPublishedAt || "").localeCompare(result[index].originalPublishedAt || "") >= 0,
+        "related articles must stay sorted by published date desc",
+      );
+    }
+
+    const limited = await listArticlesForGlossaryTerm(term, 1);
+    assert.equal(limited.length, 1, "the limit must cap the related-tag union");
+    assert.ok([usArticle.slug, germanyArticle.slug].includes(limited[0].slug));
+  });
+});
+
+test("lib/db/queries.ts keeps no direct Supabase coupling for public reads", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
+  assert.doesNotMatch(source, /getSupabaseAdmin/, "lib/db/queries.ts must not call getSupabaseAdmin");
+  assert.doesNotMatch(source, /\.from\(/, "lib/db/queries.ts must not build Supabase table queries");
+  assert.doesNotMatch(source, /\.rpc\(/, "lib/db/queries.ts must not call Supabase RPCs");
 });

@@ -14,6 +14,7 @@ import {
   articleSelectForKind,
   detailProjectionSelect,
   normalizePagination,
+  projectionSelect,
   publicationProjectionEnabled,
   toFullTextQuery,
   type SupabaseArticleRow,
@@ -23,6 +24,9 @@ import type {
   ArticleReadRepository,
   ArticleReadSelect,
   ArticleSourceTextRecord,
+  RelatedArticleIdsOptions,
+  SitemapArticleEntry,
+  TopViewedArticleFilters,
 } from "@/lib/article-reads/types";
 
 const ARTICLE_SOURCE_TEXT_SELECT = "slug,status,source_key,source_metadata,original_url,cleaned_text,content_hash";
@@ -354,5 +358,120 @@ export function createSupabaseArticleReadRepository(
     };
   }
 
-  return { listArticles, getArticleBySelect, getArticleSourceTextBySlug };
+  async function listPublicSitemapArticles(): Promise<SitemapArticleEntry[]> {
+    const supabase = client();
+    const pageSize = 1000;
+    const items: SitemapArticleEntry[] = [];
+
+    for (let from = 0; from < 50_000; from += pageSize) {
+      let query = supabase
+        .from(articleRelation(undefined, environment))
+        .select("slug, summarized_at, fetched_at, discovered_at")
+        .order("original_published_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (!publicationProjectionEnabled(undefined, environment)) {
+        query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
+      }
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as Array<{
+        slug?: string | null;
+        summarized_at?: string | null;
+        fetched_at?: string | null;
+        discovered_at?: string | null;
+      }>;
+      for (const row of rows) {
+        if (!row.slug) continue;
+        items.push({
+          slug: row.slug,
+          lastModified: row.summarized_at || row.fetched_at || row.discovered_at || null,
+        });
+      }
+      if (rows.length < pageSize) break;
+    }
+    return items;
+  }
+
+  async function listTopViewedArticles(
+    limit = 5,
+    filters: TopViewedArticleFilters = {},
+  ): Promise<ArticleListItem[]> {
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 20) : 5;
+    const supabase = client();
+
+    if (filters.tag) {
+      return (await listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+    }
+
+    const { data: viewRows, error: viewError } = await supabase
+      .from("article_view_counts")
+      .select("article_slug,view_count")
+      .order("view_count", { ascending: false })
+      .limit(Math.max(safeLimit * 4, safeLimit));
+
+    if (viewError || !viewRows?.length) {
+      return (await listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+    }
+
+    const rankedViews = (viewRows as Array<{ article_slug?: string | null; view_count?: number | string | null }>)
+      .filter((row) => row.article_slug)
+      .map((row) => ({
+        slug: String(row.article_slug),
+        viewCount: Number(row.view_count ?? 0),
+      }));
+    const slugs = rankedViews.map((row) => row.slug);
+    const viewCountBySlug = new Map(rankedViews.map((row) => [row.slug, row.viewCount]));
+
+    let query = supabase
+      .from(articleRelation(undefined, environment))
+      .select(projectionSelect(ARTICLE_LIST_SELECT, undefined, environment))
+      .in("slug", slugs)
+      .eq("status", "summarized");
+
+    if (!publicationProjectionEnabled(undefined, environment)) {
+      query = query.eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
+    }
+
+    if (filters.source) query = query.eq("source_key", filters.source);
+    if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
+    if (filters.type) query = query.eq("content_type", filters.type);
+    if (filters.language) query = query.eq("original_language", filters.language);
+    const startIso = getRangeStartIso(filters.range);
+    if (startIso) query = query.gte("original_published_at", startIso);
+
+    const { data, error } = await query;
+    if (error || !data?.length) {
+      return (await listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+    }
+
+    const order = new Map(slugs.map((slug, index) => [slug, index]));
+    return (data as unknown as SupabaseArticleRow[])
+      .map((row) => ({
+        ...articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false }),
+        viewCount: viewCountBySlug.get(row.slug) ?? 0,
+      }))
+      .sort((left, right) => (order.get(left.slug) ?? 9999) - (order.get(right.slug) ?? 9999))
+      .slice(0, safeLimit);
+  }
+
+  async function listRelatedArticleIds(tagId: string, options: RelatedArticleIdsOptions): Promise<string[]> {
+    const supabase = client();
+    const { data, error } = await supabase
+      .from("article_tags")
+      .select("article_id")
+      .eq("tag_id", tagId)
+      .neq("article_id", options.excludeArticleId ?? "")
+      .limit(options.limit);
+    if (error) return [];
+    return Array.from(
+      new Set(
+        (data ?? [])
+          .map((row) => (typeof row.article_id === "string" ? row.article_id : null))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+  }
+
+  return { listArticles, listPublicSitemapArticles, listTopViewedArticles, listRelatedArticleIds, getArticleBySelect, getArticleSourceTextBySlug };
 }

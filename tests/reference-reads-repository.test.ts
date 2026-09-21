@@ -422,3 +422,74 @@ test("Supabase adapter orders ingestion runs by started_at desc and applies the 
   await assert.rejects(() => failingRepository.listIngestionRuns(), /runs unavailable/);
 });
 
+test("Supabase adapter selects the tag relation, maps the tag, and resolves missing/errors", async () => {
+  const fake = createFakeSupabase({
+    tables: {
+      tags: () => ({
+        data: {
+          id: "tag-1",
+          slug: "qpc",
+          name: "QPC",
+          normalized_name: "QPC",
+          type: "procedure",
+          description: null,
+          article_count: 3,
+          latest_article_at: "2026-05-02T00:00:00.000Z",
+        },
+        error: null,
+      }),
+    },
+  });
+  const repository = createSupabaseReferenceReadRepository({ client: () => fake.client, environment: {} });
+
+  assert.deepEqual(await repository.getTagBySlug("qpc"), {
+    id: "tag-1",
+    slug: "qpc",
+    name: "QPC",
+    normalizedName: "QPC",
+    type: "procedure",
+    description: null,
+    articleCount: 3,
+    latestArticleAt: "2026-05-02T00:00:00.000Z",
+    confidence: undefined,
+  });
+  assert.deepEqual(fake.tableCalls.map((call) => call.table), ["tags"]);
+  assert.deepEqual(fake.tableCalls[0].select, ["*"]);
+  assert.deepEqual(fake.tableCalls[0].eqs, [["slug", "qpc"]]);
+
+  const projectedFake = createFakeSupabase({
+    tables: {
+      public_tag_projection_p3: () => ({
+        data: { id: "tag-2", slug: "qpc", name: "QPC", normalized_name: "QPC", type: "procedure", description: null, article_count: 4, latest_article_at: null },
+        error: null,
+      }),
+    },
+  });
+  const projectedRepository = createSupabaseReferenceReadRepository({
+    client: () => projectedFake.client,
+    environment: { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
+  });
+  assert.equal((await projectedRepository.getTagBySlug("qpc"))?.articleCount, 4);
+  assert.deepEqual(projectedFake.tableCalls.map((call) => call.table), ["public_tag_projection_p3"]);
+
+  const missing = createFakeSupabase({ tables: { tags: () => ({ data: null, error: null }) } });
+  assert.equal(await createSupabaseReferenceReadRepository({ client: () => missing.client, environment: {} }).getTagBySlug("missing"), null);
+
+  const failing = createFakeSupabase({ tables: { tags: () => ({ data: null, error: { message: "tag unavailable" } }) } });
+  await assert.rejects(
+    () => createSupabaseReferenceReadRepository({ client: () => failing.client, environment: {} }).getTagBySlug("qpc"),
+    /tag unavailable/,
+  );
+});
+
+test("mock getTagBySlug returns the seed tag and null for a missing slug", async () => {
+  await withSupabaseEnv({}, async () => {
+    assert.deepEqual(
+      await referenceReads().getTagBySlug("qpc"),
+      mockTags.find((tag) => tag.slug === "qpc"),
+      "the mock tag lookup must return the seed tag",
+    );
+    assert.equal(await referenceReads().getTagBySlug("missing"), null, "a missing mock slug must resolve to null");
+  });
+});
+

@@ -147,5 +147,17 @@ export function createSupabaseReferenceReadRepository(
     return ((data ?? []) as SupabaseIngestionRunRow[]).map((row) => ingestionRunRowToRecord(row));
   }
 
-  return { listSources, listTags, listJurisdictionArticleCounts, listGlossaryTerms, getGlossaryTerm, listIngestionRuns };
+  async function getTagBySlug(slug: string): Promise<TagSummary | null> {
+    const supabase = client();
+    const { data, error } = await supabase
+      .from(projectionEnabled() ? "public_tag_projection_p3" : "tags")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return tagRowToSummary(data as SupabaseTagRow);
+  }
+
+  return { listSources, listTags, listJurisdictionArticleCounts, listGlossaryTerms, getGlossaryTerm, listIngestionRuns, getTagBySlug };
 }

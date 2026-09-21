@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleListFilters, ArticleListResult } from "@/lib/db/types";
+import type { ArticleDetail, ArticleListFilters, ArticleListItem, ArticleListResult } from "@/lib/db/types";
 
 /**
  * Which projection of an article row a public detail surface reads:
@@ -25,6 +25,23 @@ export interface ArticleSourceTextRecord {
   contentHash: string | null;
 }
 
+/** A single sitemap article entry: the public slug and its last-modified witness. */
+export interface SitemapArticleEntry {
+  slug: string;
+  lastModified: string | null;
+}
+
+/** The public filters `listTopViewedArticles` accepts (view-count ranking ignores tag filtering). */
+export type TopViewedArticleFilters = Pick<
+  ArticleListFilters,
+  "range" | "source" | "jurisdiction" | "type" | "language" | "tag"
+>;
+
+export interface RelatedArticleIdsOptions {
+  excludeArticleId?: string | null;
+  limit: number;
+}
+
 /**
  * Platform-neutral contract for the public article read domain: the compact
  * filtered/paginated list read, the slug-keyed detail/preview row fetch, and the
@@ -38,6 +55,9 @@ export interface ArticleSourceTextRecord {
  */
 export interface ArticleReadRepository {
   listArticles(filters?: ArticleListFilters): Promise<ArticleListResult>;
+  listPublicSitemapArticles(): Promise<SitemapArticleEntry[]>;
+  listTopViewedArticles(limit?: number, filters?: TopViewedArticleFilters): Promise<ArticleListItem[]>;
+  listRelatedArticleIds(tagId: string, options: RelatedArticleIdsOptions): Promise<string[]>;
   getArticleBySelect(
     slug: string,
     select: ArticleReadSelect,

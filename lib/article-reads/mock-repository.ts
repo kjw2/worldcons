@@ -5,6 +5,7 @@ import type {
   ArticleReadOptions,
   ArticleReadRepository,
   ArticleReadSelect,
+  TopViewedArticleFilters,
 } from "@/lib/article-reads/types";
 
 /**
@@ -30,6 +31,22 @@ export const mockArticleReads: ArticleReadRepository = {
       items: filters.includeViewCounts === false ? pageItems : pageItems.map((item) => ({ ...item, viewCount: 0 })),
       pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
     };
+  },
+
+  async listPublicSitemapArticles() {
+    return filterMockArticles({}).map((article) => ({
+      slug: article.slug,
+      lastModified: article.summarizedAt || article.fetchedAt || article.discoveredAt || null,
+    }));
+  },
+
+  async listTopViewedArticles(limit = 5, filters: TopViewedArticleFilters = {}) {
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 20) : 5;
+    return (await mockArticleReads.listArticles({ ...filters, pageSize: safeLimit, count: "none" })).items;
+  },
+
+  async listRelatedArticleIds() {
+    return [];
   },
 
   async getArticleBySelect(slug: string, select: ArticleReadSelect, options: ArticleReadOptions = {}) {

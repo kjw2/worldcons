@@ -32,4 +32,5 @@ export interface ReferenceReadRepository {
   listGlossaryTerms(): Promise<GlossaryTerm[]>;
   getGlossaryTerm(slug: string): Promise<GlossaryTerm | null>;
   listIngestionRuns(limit?: number): Promise<IngestionRunRecord[]>;
+  getTagBySlug(slug: string): Promise<TagSummary | null>;
 }

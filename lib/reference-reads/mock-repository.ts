@@ -56,4 +56,8 @@ export const mockReferenceReads: ReferenceReadRepository = {
   async listIngestionRuns(limit = 20) {
     return mockIngestionRuns.slice(0, limit);
   },
+
+  async getTagBySlug(slug: string) {
+    return mockTags.find((item) => item.slug === slug) ?? null;
+  },
 };
