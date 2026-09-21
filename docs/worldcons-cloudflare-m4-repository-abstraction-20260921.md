@@ -53,7 +53,7 @@ Supabase stays authoritative:
 | **M4.1** (this) | Public reference reads: `listSources`, `listTags`, `listJurisdictionArticleCounts` | Contract + Supabase adapter + mock adapter + selection. |
 | M4.2 | Remaining simple catalog reads: glossary terms, ingestion-run history | Same contract shape; pure table reads. **Completed — see section 7.** |
 | **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
-| **M4.3b** | Remaining public article reads: `listArticles`, full-text/tag filter, sitemap, related, top-viewed, `getTagBySlug` | Deferred; exercises tag-filter joins and pagination/ordering. |
+| **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) remains. |
 | M4.4 | Search domain: ranked page, exact-case, case catalog, vector | Builds on the frozen search parity corpus. |
 | M4.5 | Admin/ops read domains: dashboard, analytics, triage | Mostly `getSupabaseAdmin` call sites. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
@@ -444,10 +444,160 @@ The focused tests prove:
 
 ### 9.6 Remaining M4.3b scope
 
-Move onto the same seam: `listArticles` (including the full-text path and the
-legacy/projected tag-filter joins), `listTopViewedArticles`, `getRelatedArticles`,
-`listPublicSitemapArticles`, and `getTagBySlug`. M4.3b needs its own parity
-evidence for tag aggregation and pagination/ordering, which M4.3a deliberately
-left in place.
+M4.3b was split once more. **M4.3b1** (`listArticles`, section 10) is now
+complete; **M4.3b2** still must move onto the same seam
+`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`,
+`getTagBySlug`, and `listArticlesForGlossaryTerm`. M4.3b2 reaches the same
+tag-filter joins and pagination/ordering that M4.3b1 has now made canonical.
+
+No commit or push was performed.
+
+## 10. M4.3b1 — public article list read (completed)
+
+**Status: done.** Baseline: clean HEAD `2b8c1d2` (feat: add cloudflare m4.3a
+article detail repository). No Orca, no deploy, no DNS change, no production
+data change, no D1.
+
+### 10.1 Scope and safety boundary
+
+M4.3b1 extracted the public article **list** read out of `lib/db/queries.ts` into
+the existing `lib/article-reads/` seam: `listArticles` and the private
+data-access helpers it owns — pagination normalization, tag slug/name id lookup
+and `article_tags` id lookup, the full-text/ranked/fallback path, the
+legacy/projected tag-filter join selection, count modes, the
+relation/select projection choice, the range/source/jurisdiction/type/language/id
+filters, pagination/ordering/`hasMore`/`total` semantics, row mapping, and the
+optional view-count attachment.
+
+It did **not** move `listPublicSitemapArticles`, `listTopViewedArticles`,
+`getRelatedArticles`, `getTagBySlug`, or `listArticlesForGlossaryTerm` (M4.3b2),
+and it did not change any exported signature.
+
+Rollback is repository-only: delete the `listArticles` method and its private
+helpers from `lib/article-reads/supabase-repository.ts` and
+`lib/article-reads/mock-repository.ts`, restore the helpers and `listArticles`
+body in `lib/db/queries.ts`, and remove the shared list helpers.
+
+### 10.2 What M4.3b1 moved
+
+Contract (`lib/article-reads/types.ts`): `ArticleReadRepository` gained
+`listArticles(filters?: ArticleListFilters): Promise<ArticleListResult>`, so
+`articleReads()` stays the one selection point and both adapters stay complete.
+
+Shared (`lib/article-reads/shared.ts`): added the canonical list helpers
+`DEFAULT_PAGE_SIZE`, `normalizePagination`, `filterMockArticles` (with its
+private `matchesText`), and `toFullTextQuery`. These are the single definitions
+now used by both adapters and by the remaining `lib/db/queries.ts` caller
+(`listPublicSitemapArticles` imports `filterMockArticles`).
+
+Supabase adapter (`lib/article-reads/supabase-repository.ts`) preserves verbatim,
+resolved against the injected client and environment:
+
+- the empty-`ids` early return, then the projected/legacy tag-filter decision
+  (`publicationProjectionEnabled(filters.includeUnpublished)` plus the
+  `/^[a-z0-9][a-z0-9-]*$/i` slug guard), the `tagIdsForTagFilter` slug+name
+  lookup, the `articleIdsForTagFilter` `article_tags` lookup for the `q` +
+  legacy case, and the empty-tag early return;
+- the `q` dispatch into `listArticlesByFullText`, preserving the case-catalog
+  short-circuit, the `!tsQuery` empty result, the exact-case search, the
+  `rankedSearchPage(..., "fulltext", null)` path (with id ordering), and the
+  `textSearch` fallback with `fallbackCandidateLimit`, legacy published filter,
+  and the re-`listArticles` ordering/`hasMore`/`totalIsExact` math;
+- the count mode (`filters.count ?? "exact"`, omitted for `"none"`), the
+  `ARTICLE_LIST_SELECT` / `ARTICLE_LIST_WITH_TAG_FILTER_SELECT` selection via
+  `detailProjectionSelect`, the ordering
+  (`original_published_at desc nullsLast`, `id asc`), every range/source/
+  jurisdiction/type/language/id/legacy-tag/projected-tag filter, `.range(from,
+  to + pageSize)`, the `hasMore`/`minimumTotal`/`Math.max(count, …)` total, and
+  the list row mapping (`{ includeSummaryJson: false, includeDetailFields: false
+  }`);
+- view-count attachment (`articleViewCountsBySlug` over `article_view_counts`
+  with the `site_events` count fallback, `attachArticleViewCounts`, and
+  `attachArticleViewCountsIfNeeded` honoring `filters.includeViewCounts ===
+  false`).
+
+Mock adapter (`lib/article-reads/mock-repository.ts`) reproduces the
+pre-extraction mock fallback exactly: the empty-`ids` early return,
+`filterMockArticles`, the page slice, `viewCount: 0` unless
+`includeViewCounts === false`, and the same `pageInfo` totals.
+
+Changed caller (`lib/db/queries.ts`): `listArticles` is now a thin delegation to
+`articleReads()` that keeps `observePublicProjectionRead(filters.includeUnpublished)`
+at the query boundary, with an unchanged exported signature. `normalizePagination`
+is re-exported from `lib/article-reads/shared`, so the module's exported surface
+is preserved. The relocated helpers and `DEFAULT_PAGE_SIZE` were removed;
+`filterMockArticles` is imported from the shared module for
+`listPublicSitemapArticles`. Because M4.3b1 keeps the observation call at the
+boundary, the recursive re-`listArticles` inside the full-text path no longer
+re-observes; that duplicate observation coalesces in the P5 observation store
+(60 s window, per-key), so telemetry is unchanged.
+
+The full-text path still delegates to the untouched search modules
+(`lib/search/case-catalog`, `lib/search/exact-case`, `lib/search/ranked-page`),
+which keep importing the exported `listArticles`; only the article-read
+repository is authoritative for the list read itself.
+
+Coupling effect (same scan as sections 2/4/9): no new direct-coupling files were
+added (`supabase-repository.ts` and `index.ts` were already counted by M4.3a).
+The measurable win remains at the boundary: no caller or business module gains a
+Supabase dependency.
+
+### 10.3 M4.3b1 files changed
+
+- Changed: `lib/article-reads/types.ts` (`listArticles` contract method)
+- Changed: `lib/article-reads/shared.ts` (list helpers; `filterMockArticles`; `toFullTextQuery`)
+- Changed: `lib/article-reads/supabase-repository.ts` (`listArticles` + private list helpers)
+- Changed: `lib/article-reads/mock-repository.ts` (mock `listArticles`)
+- Changed: `lib/db/queries.ts` (`listArticles` delegation; helper removal; `normalizePagination` re-export)
+- Changed: `tests/article-reads-repository.test.ts` (list parity coverage; extended fake Supabase)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md`
+
+No `package.json` change was needed: `test:article-reads` already runs the
+focused file and is already wired into `verify:release`.
+
+### 10.4 M4.3b1 verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:article-reads` | Pass, 13/13 |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm test:reference-reads` | Pass, 8/8 |
+| `pnpm test:public-regression` | Pass, 15/15 |
+| `pnpm test:plugin` | Pass, 12/12 |
+| `pnpm check:vinext` | Pass (100% compatible) |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+Coupled article regression (article-raw-blob, catalog gate2, publication p3,
+reference-reads, plugin MCP): Pass, 69/69.
+
+The focused tests prove:
+
+1. `articleReads()` selects the mock adapter and preserves the pre-extraction
+   list behavior when Supabase config is absent (published-only filtering, the
+   tag/source/jurisdiction/text filters, date-desc ordering, the page slice,
+   `viewCount: 0` by default and no view-count pass when `includeViewCounts ===
+   false`, and the empty-`ids` early return), and the exported `listArticles`
+   returns the same values;
+2. the Supabase adapter preserves the list select (`ARTICLE_LIST_SELECT`), the
+   legacy published filter, the ordering, `.range(from, to + pageSize)`, the
+   exact-count/total semantics, and view-count attachment (`article_view_counts`
+   keyed by the page slugs), with `count: "none"` omitting the count option and
+   `totalIsExact: false`, and with the range/source/jurisdiction/type/language/id
+   filters applied exactly;
+3. the legacy tag filter resolves ids by slug and by name, uses
+   `ARTICLE_LIST_WITH_TAG_FILTER_SELECT`, and filters by
+   `article_tag_filter.tag_id`; the projected tag filter skips the id lookup,
+   selects the P3 list shape, applies `contains("article_tags", …)`, and carries
+   no legacy published filter; and an unresolved tag returns an empty page
+   without touching `articles`;
+4. the full-text path preserves the `!tsQuery` empty result, the `textSearch`
+   fallback (`표현:* & 자유:*`, limit 200, ordering and legacy filter), the
+   ranked-order re-list, the fallback error semantics (`items: []` with
+   `total: 0`), and the ranked path's ranked-id ordering with the RPC page info
+   passthrough.
 
 No commit or push was performed.

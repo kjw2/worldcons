@@ -9,363 +9,36 @@ import type {
   IngestionRunRecord,
   SourceRecord,
 } from "@/lib/db/types";
-import { isWithinRange, normalizeRange, rangeStartIso as getRangeStartIso } from "@/lib/utils/dates";
+import { rangeStartIso as getRangeStartIso } from "@/lib/utils/dates";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { observeArticlePublicationReadDecision } from "@/lib/article-publication";
 import { hydrateArticleRawText } from "@/lib/article-raw/detail-read";
 import type { ArtifactBlobStore } from "@/lib/storage/blob";
 import { createRuntimeArtifactBlobStore } from "@/lib/storage/runtime-blob";
-import { rankedSearchPage } from "@/lib/search/ranked-page";
-import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 import { referenceReads } from "@/lib/reference-reads";
 import { tagRowToSummary, type SupabaseTagRow } from "@/lib/reference-reads/shared";
 import type { JurisdictionCountOptions, TagListOptions } from "@/lib/reference-reads/types";
 import { articleReads } from "@/lib/article-reads";
 import type { ArticleReadSelect } from "@/lib/article-reads/types";
 import {
-  articleDetailRelation,
   articleRelation,
   articleRowToItem,
-  detailProjectionSelect,
+  filterMockArticles,
   projectionSelect,
   publicationProjectionEnabled,
   ARTICLE_LIST_SELECT,
-  ARTICLE_LIST_WITH_TAG_FILTER_SELECT,
   type SupabaseArticleRow,
 } from "@/lib/article-reads/shared";
 
-const DEFAULT_PAGE_SIZE = 20;
+export { normalizePagination } from "@/lib/article-reads/shared";
 
 function observePublicProjectionRead(includeUnpublished?: boolean) {
   if (!includeUnpublished) observeArticlePublicationReadDecision("public_query");
 }
 
-export function normalizePagination(page?: number, pageSize?: number) {
-  const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
-  const safePageSize = Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.min(Math.floor(pageSize), 100) : DEFAULT_PAGE_SIZE;
-  return { page: safePage, pageSize: safePageSize };
-}
-
-async function articleViewCountsBySlug(slugs: string[]) {
-  const uniqueSlugs = Array.from(new Set(slugs.map((slug) => slug.trim()).filter(Boolean)));
-  const supabase = getSupabaseAdmin();
-  if (!supabase || uniqueSlugs.length === 0) return {};
-
-  const { data: aggregateRows, error: aggregateError } = await supabase
-    .from("article_view_counts")
-    .select("article_slug,view_count")
-    .in("article_slug", uniqueSlugs);
-
-  if (!aggregateError) {
-    return Object.fromEntries(
-      ((aggregateRows ?? []) as Array<{ article_slug?: string | null; view_count?: number | string | null }>)
-        .filter((row) => row.article_slug)
-        .map((row) => [String(row.article_slug), Number(row.view_count ?? 0)]),
-    );
-  }
-
-  const entries = await Promise.all(
-    uniqueSlugs.map(async (slug) => {
-      const { count, error } = await supabase
-        .from("site_events")
-        .select("id", { count: "exact", head: true })
-        .eq("event_type", "article_view")
-        .eq("article_slug", slug);
-
-      return [slug, error ? 0 : count ?? 0] as const;
-    }),
-  );
-
-  return Object.fromEntries(entries);
-}
-
-async function attachArticleViewCounts<T extends ArticleListItem>(items: T[]) {
-  if (items.length === 0) return items;
-  const counts = await articleViewCountsBySlug(items.map((item) => item.slug));
-  return items.map((item) => ({
-    ...item,
-    viewCount: counts[item.slug] ?? 0,
-  }));
-}
-
-async function attachArticleViewCountsIfNeeded<T extends ArticleListItem>(items: T[], filters: ArticleListFilters) {
-  return filters.includeViewCounts === false ? items : attachArticleViewCounts(items);
-}
-
-function matchesText(article: ArticleDetail, q?: string) {
-  if (!q) {
-    return true;
-  }
-
-  const needles = q
-    .toLowerCase()
-    .split(/\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (needles.length === 0) return true;
-
-  const haystack = [
-    article.koreanTitle,
-    article.originalTitle,
-    article.oneLineSummary,
-    article.cleanedText,
-    article.summaryJson ? JSON.stringify(article.summaryJson) : null,
-    article.originalUrl,
-    article.jurisdiction,
-    article.institutionName,
-    ...article.tags.flatMap((tag) => [tag.name, tag.normalizedName, tag.type]),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return needles.every((needle) => haystack.includes(needle));
-}
-
-function filterMockArticles(filters: ArticleListFilters) {
-  const range = normalizeRange(filters.range);
-
-  return mockArticles
-    .filter((article) => matchesText(article, filters.q))
-    .filter((article) => filters.includeUnpublished || article.status === "summarized")
-    .filter((article) => !filters.source || article.sourceKey === filters.source)
-    .filter((article) => !filters.jurisdiction || article.jurisdiction === filters.jurisdiction)
-    .filter((article) => !filters.type || article.contentType === filters.type)
-    .filter((article) => !filters.language || article.originalLanguage === filters.language)
-    .filter((article) => !filters.tag || article.tags.some((tag) => tag.slug === filters.tag || tag.name === filters.tag))
-    .filter((article) => isWithinRange(article.originalPublishedAt, range))
-    .sort((a, b) => (b.originalPublishedAt || "").localeCompare(a.originalPublishedAt || ""));
-}
-
-function toFullTextQuery(q?: string) {
-  const terms =
-    q
-      ?.toLowerCase()
-      .split(/\s+/)
-      .map((term) => term.replace(/[^\p{L}\p{N}]+/gu, ""))
-      .filter(Boolean) ?? [];
-
-  return terms.map((term) => `${term}:*`).join(" & ");
-}
-
-async function articleIdsForTagFilter(tag: string) {
-  const tagIds = await tagIdsForTagFilter(tag);
-  if (tagIds === null || tagIds.length === 0) return tagIds;
-
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-  const { data, error } = await supabase.from("article_tags").select("article_id").in("tag_id", tagIds);
-  if (error) throw new Error(error.message);
-  return data?.map((row) => String(row.article_id)) ?? [];
-}
-
-async function tagIdsForTagFilter(tag: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-
-  const [slugResult, nameResult] = await Promise.all([
-    supabase.from("tags").select("id").eq("slug", tag),
-    supabase.from("tags").select("id").eq("name", tag),
-  ]);
-  if (slugResult.error) throw new Error(slugResult.error.message);
-  if (nameResult.error) throw new Error(nameResult.error.message);
-
-  const tagIds = Array.from(
-    new Set(
-      [...(slugResult.data ?? []), ...(nameResult.data ?? [])]
-        .map((row) => (typeof row.id === "string" ? row.id : null))
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-  return tagIds;
-}
-
-async function listArticlesByFullText(filters: ArticleListFilters, tagArticleIds: string[] | null): Promise<ArticleListResult> {
-  const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
-  const supabase = getSupabaseAdmin();
-  const tsQuery = toFullTextQuery(filters.q);
-
-  if (!supabase) {
-    const items = filterMockArticles(filters);
-    const start = (page - 1) * pageSize;
-    return {
-      items: await attachArticleViewCountsIfNeeded(items.slice(start, start + pageSize), filters),
-      pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
-    };
-  }
-
-  if (!filters.includeUnpublished && caseCatalogSearchEnabled()) {
-    const { catalogCaseSearch } = await import("@/lib/search/case-catalog");
-    return catalogCaseSearch(filters);
-  }
-
-  if (!tsQuery) {
-    return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
-  }
-
-  const { exactCaseSearch } = await import("@/lib/search/exact-case");
-  const exactCaseResult = await exactCaseSearch(filters);
-  if (exactCaseResult.items.length > 0) return exactCaseResult;
-
-  const rankedPage = await rankedSearchPage(filters, "fulltext", null);
-  if (rankedPage) {
-    if (rankedPage.ids.length === 0) return { items: [], pageInfo: rankedPage.pageInfo };
-    const rankedResult = await listArticles({
-      ...filters,
-      q: undefined,
-      ids: rankedPage.ids,
-      page: 1,
-      pageSize: rankedPage.ids.length,
-      count: "none",
-    });
-    const order = new Map(rankedPage.ids.map((id, index) => [id, index]));
-    const items = [...rankedResult.items].sort(
-      (left, right) => (order.get(left.id ?? "") ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id ?? "") ?? Number.MAX_SAFE_INTEGER),
-    );
-    return {
-      items,
-      pageInfo: rankedPage.pageInfo,
-    };
-  }
-
-  const fallbackCandidateLimit = Math.min(Math.max((page + 1) * pageSize, 200), 1000);
-  let query = supabase
-    .from(articleRelation(filters.includeUnpublished))
-    .select("id")
-    .textSearch("search_vector", tsQuery, { config: "simple" })
-    .order("original_published_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: true })
-    .limit(fallbackCandidateLimit);
-
-  if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
-  }
-  if (filters.ids) query = query.in("id", filters.ids);
-  if (filters.source) query = query.eq("source_key", filters.source);
-  if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
-  if (filters.type) query = query.eq("content_type", filters.type);
-  if (filters.language) query = query.eq("original_language", filters.language);
-  if (tagArticleIds) query = query.in("id", tagArticleIds);
-
-  const startIso = getRangeStartIso(filters.range);
-  if (startIso) query = query.gte("original_published_at", startIso);
-
-  const { data, error } = await query;
-  if (error) {
-    return { items: [], pageInfo: { page, pageSize, total: 0 } };
-  }
-
-  const ids = ((data ?? []) as Array<{ id?: string }>).map((row) => row.id).filter((id): id is string => Boolean(id));
-  if (ids.length === 0) {
-    return { items: [], pageInfo: { page, pageSize, total: 0 } };
-  }
-
-  const result = await listArticles({ ...filters, q: undefined, ids, page: 1, pageSize: ids.length });
-  const order = new Map(ids.map((id, index) => [id, index]));
-  const matched = [...result.items]
-    .sort((left, right) => (order.get(left.id ?? "") ?? 9999) - (order.get(right.id ?? "") ?? 9999));
-  const start = (page - 1) * pageSize;
-
-  const hasMore = start + pageSize < matched.length || matched.length >= fallbackCandidateLimit;
-  return {
-    items: matched.slice(start, start + pageSize),
-    pageInfo: {
-      page,
-      pageSize,
-      total: matched.length + (hasMore && start + pageSize >= matched.length ? 1 : 0),
-      hasMore,
-      totalIsExact: matched.length < fallbackCandidateLimit,
-    },
-  };
-}
-
 export async function listArticles(filters: ArticleListFilters = {}): Promise<ArticleListResult> {
   observePublicProjectionRead(filters.includeUnpublished);
-  const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
-  const supabase = getSupabaseAdmin();
-
-  if (filters.ids && filters.ids.length === 0) {
-    return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
-  }
-
-  if (!supabase) {
-    const items = filterMockArticles(filters);
-    const start = (page - 1) * pageSize;
-    return {
-      items: await attachArticleViewCountsIfNeeded(items.slice(start, start + pageSize), filters),
-      pageInfo: { page, pageSize, total: items.length, hasMore: start + pageSize < items.length, totalIsExact: true },
-    };
-  }
-
-  const canFilterProjectedTagBySlug = Boolean(
-    filters.tag &&
-      !filters.q &&
-      publicationProjectionEnabled(filters.includeUnpublished) &&
-      /^[a-z0-9][a-z0-9-]*$/i.test(filters.tag),
-  );
-  let tagIds: string[] | null = null;
-  let tagArticleIds: string[] | null = null;
-  if (filters.tag && !canFilterProjectedTagBySlug) {
-    tagIds = (await tagIdsForTagFilter(filters.tag)) ?? [];
-    if (tagIds.length === 0) {
-      return { items: [], pageInfo: { page, pageSize, total: 0, hasMore: false, totalIsExact: true } };
-    }
-    if (filters.q && !publicationProjectionEnabled(filters.includeUnpublished)) {
-      tagArticleIds = (await articleIdsForTagFilter(filters.tag)) ?? [];
-    }
-  }
-
-  if (filters.q) {
-    return listArticlesByFullText(filters, tagArticleIds);
-  }
-
-  const countMode = filters.count ?? "exact";
-  const useLegacyTagJoin = Boolean(tagIds?.length && !publicationProjectionEnabled(filters.includeUnpublished));
-  let query = supabase
-    .from(articleDetailRelation(filters.includeUnpublished))
-    .select(
-      detailProjectionSelect(useLegacyTagJoin ? ARTICLE_LIST_WITH_TAG_FILTER_SELECT : ARTICLE_LIST_SELECT, filters.includeUnpublished),
-      countMode === "none" ? undefined : { count: countMode },
-    )
-    .order("original_published_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: true });
-
-  if (!filters.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
-  }
-  if (filters.ids) query = query.in("id", filters.ids);
-  if (filters.source) query = query.eq("source_key", filters.source);
-  if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
-  if (filters.type) query = query.eq("content_type", filters.type);
-  if (filters.language) query = query.eq("original_language", filters.language);
-  if (tagArticleIds) query = query.in("id", tagArticleIds);
-  if (useLegacyTagJoin && tagIds) query = query.in("article_tag_filter.tag_id", tagIds);
-  if (canFilterProjectedTagBySlug && filters.tag) {
-    query = query.contains("article_tags", JSON.stringify([{ tags: { slug: filters.tag } }]));
-  }
-
-  const startIso = getRangeStartIso(filters.range);
-  if (startIso) query = query.gte("original_published_at", startIso);
-
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize;
-  const { data, error, count } = await query.range(from, to);
-  if (error) {
-    throw new Error(error.message);
-  }
-  const rows = (data ?? []) as unknown as SupabaseArticleRow[];
-  const hasMore = rows.length > pageSize;
-  const items = await attachArticleViewCountsIfNeeded(
-    rows.slice(0, pageSize).map((row) => articleRowToItem(row, { includeSummaryJson: false, includeDetailFields: false })),
-    filters,
-  );
-  const minimumTotal = from + items.length + (hasMore ? 1 : 0);
-  const total = Math.max(count ?? 0, minimumTotal);
-
-  return {
-    items,
-    pageInfo: { page, pageSize, total, hasMore, totalIsExact: countMode === "exact" },
-  };
+  return articleReads().listArticles(filters);
 }
 
 export async function listPublicSitemapArticles() {

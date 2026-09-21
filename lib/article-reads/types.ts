@@ -1,4 +1,4 @@
-import type { ArticleDetail } from "@/lib/db/types";
+import type { ArticleDetail, ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 
 /**
  * Which projection of an article row a public detail surface reads:
@@ -26,8 +26,9 @@ export interface ArticleSourceTextRecord {
 }
 
 /**
- * Platform-neutral contract for the public article detail read domain: the
- * slug-keyed detail/preview row fetch and the slug-keyed source-text snapshot.
+ * Platform-neutral contract for the public article read domain: the compact
+ * filtered/paginated list read, the slug-keyed detail/preview row fetch, and the
+ * slug-keyed source-text snapshot.
  *
  * The contract exposes no Postgres/Supabase types so a future D1 repository can
  * implement it without callers changing. The Supabase-backed implementation
@@ -36,6 +37,7 @@ export interface ArticleSourceTextRecord {
  * caller.
  */
 export interface ArticleReadRepository {
+  listArticles(filters?: ArticleListFilters): Promise<ArticleListResult>;
   getArticleBySelect(
     slug: string,
     select: ArticleReadSelect,

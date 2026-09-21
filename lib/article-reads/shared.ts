@@ -1,11 +1,14 @@
 import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
 import { publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
+import { mockArticles } from "@/lib/db/mock-data";
 import type {
   ArticleContentType,
   ArticleDetail,
+  ArticleListFilters,
   ArticleRawBlobMetadata,
   SummaryJson,
 } from "@/lib/db/types";
+import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
 import { tagRowToSummary, type SupabaseTagRow } from "@/lib/reference-reads/shared";
 import type { ArticleReadSelect } from "@/lib/article-reads/types";
 
@@ -107,6 +110,70 @@ export const ARTICLE_V4_STATE_SELECT = "enrichment_status,enrichment_freshness,s
 export const ARTICLE_V4_LIST_SELECT = `${ARTICLE_P3_LIST_SELECT},${ARTICLE_V4_STATE_SELECT}`;
 export const ARTICLE_V4_PAGE_SELECT = `${ARTICLE_P3_PAGE_SELECT},${ARTICLE_V4_STATE_SELECT}`;
 export const ARTICLE_V4_DETAIL_SELECT = `${ARTICLE_P3_DETAIL_SELECT},${ARTICLE_V4_STATE_SELECT}`;
+
+export const DEFAULT_PAGE_SIZE = 20;
+
+export function normalizePagination(page?: number, pageSize?: number) {
+  const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
+  const safePageSize = Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.min(Math.floor(pageSize), 100) : DEFAULT_PAGE_SIZE;
+  return { page: safePage, pageSize: safePageSize };
+}
+
+function matchesText(article: ArticleDetail, q?: string) {
+  if (!q) {
+    return true;
+  }
+
+  const needles = q
+    .toLowerCase()
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (needles.length === 0) return true;
+
+  const haystack = [
+    article.koreanTitle,
+    article.originalTitle,
+    article.oneLineSummary,
+    article.cleanedText,
+    article.summaryJson ? JSON.stringify(article.summaryJson) : null,
+    article.originalUrl,
+    article.jurisdiction,
+    article.institutionName,
+    ...article.tags.flatMap((tag) => [tag.name, tag.normalizedName, tag.type]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return needles.every((needle) => haystack.includes(needle));
+}
+
+export function filterMockArticles(filters: ArticleListFilters) {
+  const range = normalizeRange(filters.range);
+
+  return mockArticles
+    .filter((article) => matchesText(article, filters.q))
+    .filter((article) => filters.includeUnpublished || article.status === "summarized")
+    .filter((article) => !filters.source || article.sourceKey === filters.source)
+    .filter((article) => !filters.jurisdiction || article.jurisdiction === filters.jurisdiction)
+    .filter((article) => !filters.type || article.contentType === filters.type)
+    .filter((article) => !filters.language || article.originalLanguage === filters.language)
+    .filter((article) => !filters.tag || article.tags.some((tag) => tag.slug === filters.tag || tag.name === filters.tag))
+    .filter((article) => isWithinRange(article.originalPublishedAt, range))
+    .sort((a, b) => (b.originalPublishedAt || "").localeCompare(a.originalPublishedAt || ""));
+}
+
+export function toFullTextQuery(q?: string) {
+  const terms =
+    q
+      ?.toLowerCase()
+      .split(/\s+/)
+      .map((term) => term.replace(/[^\p{L}\p{N}]+/gu, ""))
+      .filter(Boolean) ?? [];
+
+  return terms.map((term) => `${term}:*`).join(" & ");
+}
 
 export function publicationProjectionEnabled(
   includeUnpublished?: boolean,
