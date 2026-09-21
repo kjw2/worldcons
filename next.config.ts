@@ -70,12 +70,6 @@ const nextConfig: NextConfig = {
       "./node_modules/.pnpm/lru-cache@*/node_modules/lru-cache/**/*",
     ],
   },
-  experimental: {
-    cpus: 1,
-    memoryBasedWorkersCount: true,
-    webpackBuildWorker: false,
-    webpackMemoryOptimizations: true,
-  },
 };
 
 export default nextConfig;

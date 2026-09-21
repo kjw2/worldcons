@@ -13,7 +13,8 @@ import type {
   ArticlePublicationTransitionInput,
   ArticlePublicationTransitionResult,
 } from "@/lib/article-publication/types";
-import { createArtifactBlobStore, type ArtifactBlobStore } from "@/lib/storage/blob";
+import type { ArtifactBlobStore } from "@/lib/storage/blob";
+import { createRuntimeArtifactBlobStore } from "@/lib/storage/runtime-blob";
 
 type Row = Record<string, unknown>;
 
@@ -124,7 +125,7 @@ async function runBlobTransition(
   const sourceKey = sourceRow?.source_key?.trim();
   if (typeof rawText !== "string" || !sourceKey) return runLegacyTransition(supabase, input);
 
-  const store = dependencies.blobStore ?? createArtifactBlobStore();
+  const store = dependencies.blobStore ?? createRuntimeArtifactBlobStore();
   let externalization;
   try {
     externalization = await externalizeArticleRawText(store, sourceKey, rawText);

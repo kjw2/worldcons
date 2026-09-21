@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.js eslint.config.mjs --ext .ts,.tsx,.js,.mjs",
+    "lint": "eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.cjs eslint.config.mjs --ext .ts,.tsx,.js,.mjs,.cjs",
     "ingest": "tsx scripts/ingest.ts",
     "collect:range": "tsx scripts/collect-range.ts",
     "crawl:worker": "tsx scripts/crawlee-worker.ts",
@@ -79,7 +79,7 @@
     "test:ops": "tsx --test tests/ops-summary-backlog.test.ts tests/workflow-heartbeat.test.ts",
     "test:embeddings": "tsx --test tests/embedding-provider.test.ts tests/embedding-vector.test.ts",
     "test:public-regression": "tsx --test tests/homepage-regression.test.ts tests/public-design-slop.test.ts tests/seo-public-surface.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:plugin && pnpm plugin:validate && pnpm build",
     "plugin:validate": "tsx scripts/validate-chatgpt-plugin.ts",
     "plugin:smoke": "tsx scripts/smoke-chatgpt-plugin.ts",
@@ -101,7 +101,11 @@
     "test:catalog": "tsx --test tests/constitutional-case-catalog-gate2.test.ts tests/constitutional-case-catalog-gate2.postgres.test.ts tests/constitutional-case-search-gate3.test.ts tests/constitutional-case-search-gate4.test.ts",
     "test:postgres:release": "tsx scripts/run-postgres-release-gate.ts",
     "test:postgres:release:static": "tsx --test tests/postgres-release-gate.test.ts",
-    "check": "tsx scripts/check.ts"
+    "check": "tsx scripts/check.ts",
+    "dev:vinext": "vinext dev --port 3001",
+    "build:vinext": "vinext build",
+    "start:vinext": "wrangler dev --config dist/server/wrangler.json",
+    "check:vinext": "vinext check"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -117,18 +121,19 @@
     "jsdom": "^26.0.0",
     "lru-cache": "^10.4.3",
     "lucide-react": "^0.468.0",
-    "next": "^15.0.0",
+    "next": "^16.3.5",
     "openai": "^4.77.0",
     "pdf-parse": "^1.1.1",
     "playwright": "^1.49.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "rss-parser": "^3.13.0",
     "slugify": "^1.6.6",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.56.0",
     "@eslint/eslintrc": "^3.3.1",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^22.10.2",
@@ -138,12 +143,19 @@
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
-    "eslint-config-next": "^15.0.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-rsc": "^0.5.35",
+    "@vinext/cloudflare": "^1.0.0-beta.8",
+    "eslint-config-next": "^16.3.5",
     "pg": "^8.20.0",
     "postcss": "^8.5.10",
+    "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vinext": "^1.0.0-beta.10",
+    "vite": "^8.3.0",
+    "wrangler": "^4.135.0"
   },
   "pnpm": {
     "overrides": {
@@ -151,5 +163,6 @@
       "postcss": "^8.5.10"
     }
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.32.1",
+  "type": "module"
 }

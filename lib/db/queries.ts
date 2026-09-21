@@ -25,7 +25,8 @@ import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { hydrateArticleRawText } from "@/lib/article-raw/detail-read";
-import { createArtifactBlobStore, type ArtifactBlobStore } from "@/lib/storage/blob";
+import type { ArtifactBlobStore } from "@/lib/storage/blob";
+import { createRuntimeArtifactBlobStore } from "@/lib/storage/runtime-blob";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
 import { caseCatalogPublicReadsEnabled, caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 
@@ -705,7 +706,7 @@ export async function getArticleBySlug(slug: string, options: ArticleDetailReadO
   const article = await getArticleBySlugWithSelect(slug, select, options);
   if (!article || select !== ARTICLE_DETAIL_SELECT || !article.rawTextBlob) return article;
   return hydrateArticleRawText(article, {
-    store: options.blobStore ?? createArtifactBlobStore(),
+    store: options.blobStore ?? createRuntimeArtifactBlobStore(options.environment),
     environment: options.environment,
   });
 }

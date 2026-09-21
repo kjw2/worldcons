@@ -908,7 +908,7 @@ for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLE_COUNTS_CACHE_TAG",
   "PUBLIC_TAGS_CACHE_TAG",
   "PUBLIC_PORTAL_CACHE_TAG",
-  "revalidateTag(tag)",
+  'revalidateTag(tag, "max")',
   'revalidatePath("/articles/[slug]", "page")',
 ]) {
   assert(publicContentCacheSource.includes(requiredCacheHelperText), `public cache helper must include ${requiredCacheHelperText}`);

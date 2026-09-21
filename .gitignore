@@ -16,3 +16,6 @@ supabase/.temp/
 nul
 .omo/
 .tmp-gate2-pg/
+/dist/
+.vinext/
+.wrangler/

@@ -711,6 +711,34 @@ Acceptance:
 NO-GO:
 - unresolved vinext blocker -> test bounded Next upgrade; then OpenNext fallback.
 
+Progress (2026-09-21, M3.1 local-runtime checkpoint):
+- completed a bounded upgrade to Next.js 16.3.5 with React/React DOM/RSC pinned to
+  the compatible 19.2.6 line;
+- added vinext 1.0.0-beta.10, Vite 8.3.0, Cloudflare Vite plugin 1.56.0, and
+  Wrangler 4.135.0 while preserving the existing Next/Vercel build path;
+- final `vinext check` is 100% compatible with 0 issues;
+- actual vinext build exposed Playwright/Crawlee/browser ingest as the first
+  Node-only blocker; the web build now treats that package set as an explicit
+  external boundary pending M3.2 Container isolation;
+- `vinext build` and the existing `next build` both pass;
+- a custom vinext Worker entry injects the private `WORLDCONS_RAW` R2Bucket binding
+  into the shared storage runtime without long-lived S3 credentials;
+- local workerd R2 put/get/head proof passed through the actual binding path, and
+  the temporary proof endpoint was removed before the final build;
+- representative public pages, APIs, article detail/print/source-text, and MCP
+  health returned HTTP 200 in local workerd smoke testing;
+- typecheck, lint, project checks, 31 storage/R2 tests, and 15 public regression
+  tests pass;
+- no production DNS, production authority, corpus deletion, or remote deployment
+  changed during M3.1.
+
+M3.2 next gate:
+- isolate admin ingest/browser execution behind Queue/Workflow -> Container rather
+  than relying on externalized Node packages inside Workers;
+- remove Worker-facing dynamic filesystem state from `lib/ai/gemini-router.ts`;
+- then perform the remote non-production Worker canary and repeat the public/API
+  smoke suite with no production DNS switch.
+
 ### M4 — Repository/data abstraction
 
 Objective:

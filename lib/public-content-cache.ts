@@ -30,7 +30,7 @@ function validArticleSlug(value?: string | null) {
 
 export function invalidatePublicContentCaches(options: { articleSlug?: string | null } = {}) {
   for (const tag of PUBLIC_CONTENT_CACHE_TAGS) {
-    revalidateTag(tag);
+    revalidateTag(tag, "max");
   }
 
   for (const path of PUBLIC_CONTENT_PATHS) {
