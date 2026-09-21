@@ -1,8 +1,8 @@
 import { publicProjectionReadsEnabled } from "@/lib/article-publication";
-import { getSupabaseAdmin } from "@/lib/db/client";
 import type { ArticleListFilters, PageInfo } from "@/lib/db/types";
+import { searchRepository, type RankedSearchMode } from "@/lib/search/repository";
 
-export type RankedSearchMode = "fulltext" | "semantic" | "hybrid";
+export type { RankedSearchMode };
 
 export type RankedSearchPage = {
   ids: string[];
@@ -41,24 +41,21 @@ export async function rankedSearchPage(
   const offset = (page - 1) * pageSize;
   if (offset > 10_000) return null;
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-
-  const { data, error } = await supabase.rpc("worldcons_ranked_search_page_v1", {
-    p_query: filters.q ?? "",
-    p_mode: mode,
-    p_query_embedding: embedding,
-    p_limit: pageSize,
-    p_offset: offset,
-    p_source: filters.source ?? null,
-    p_jurisdiction: filters.jurisdiction ?? null,
-    p_content_type: filters.type ?? null,
-    p_language: filters.language ?? null,
-    p_tag: filters.tag ?? null,
-    p_range: filters.range ?? "latest",
-    p_count: filters.count ?? "none",
+  const data = await searchRepository().rankedSearchPageRpc({
+    query: filters.q ?? "",
+    mode,
+    embedding,
+    limit: pageSize,
+    offset,
+    source: filters.source ?? null,
+    jurisdiction: filters.jurisdiction ?? null,
+    contentType: filters.type ?? null,
+    language: filters.language ?? null,
+    tag: filters.tag ?? null,
+    range: filters.range ?? "latest",
+    count: filters.count ?? "none",
   });
-  if (error || !data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
 
   const payload = data as RankedSearchRpcPayload;
   const rawEntries = Array.isArray(payload.entries) ? payload.entries : [];

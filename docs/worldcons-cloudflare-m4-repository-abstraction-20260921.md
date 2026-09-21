@@ -54,7 +54,7 @@ Supabase stays authoritative:
 | M4.2 | Remaining simple catalog reads: glossary terms, ingestion-run history | Same contract shape; pure table reads. **Completed — see section 7.** |
 | **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
 | **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) completed — see section 11. |
-| M4.4 | Search domain: ranked page, exact-case, case catalog, vector | Builds on the frozen search parity corpus. |
+| **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) remaining — see section 12. Builds on the frozen search parity corpus. |
 | M4.5 | Admin/ops read domains: dashboard, analytics, triage | Mostly `getSupabaseAdmin` call sites. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
 
@@ -779,27 +779,172 @@ no `getSupabaseAdmin`, `.from(`, or `.rpc(` calls.
 
 No commit or push was performed.
 
-## 12. M4.4 next scope
+## 12. M4.4 — search domain (split)
 
-M4.3 (public article reads) is now complete: `lib/db/queries.ts` is a pure
-service boundary with zero direct Supabase calls, and every public article and
-reference read flows through `lib/article-reads` / `lib/reference-reads`.
-**M4.4 (search domain) is next.** It should extract the ranked page, exact-case,
-case catalog, and vector search reads onto a platform-neutral search repository,
-because they still call `getSupabaseAdmin` directly:
+M4.3 (public article reads) is complete: `lib/db/queries.ts` is a pure service
+boundary with zero direct Supabase calls, and every public article and reference
+read flows through `lib/article-reads` / `lib/reference-reads`. M4.4 (search
+domain) is sliced so the two smallest search data-access paths could land first:
 
-- `lib/search/ranked-page.ts` — `worldcons_ranked_search_page_v1` RPC.
-- `lib/search/exact-case.ts` — exact-case lookup.
-- `lib/search/case-catalog.ts` — catalog case search.
-- `lib/search/vector.ts` — `match_public_article_versions_p3` / `match_articles`
-  RPCs and the embedding reads.
+- **M4.4a (completed — section 13):** the ranked page RPC
+  (`worldcons_ranked_search_page_v1`) and the exact-case id lookup, onto the new
+  platform-neutral `lib/search/repository/` seam.
+- **M4.4b (remaining):** `lib/search/case-catalog.ts` (the
+  `worldcons_case_search_page_v2` RPC, cursor parsing/errors, and materialization)
+  and `lib/search/vector.ts` (`public_fulltext_ranked_ids_v1`,
+  `match_public_article_versions_p3` / `match_articles`, and the embedding reads).
+  These still call `getSupabaseAdmin` directly and need their own parity
+  evidence because they own additional RPC payload schemas, cursor semantics, and
+  client-side cosine/vector reads.
 
-Those modules keep importing the exported `listArticles` for the ranked re-list,
-and `lib/article-reads/supabase-repository.ts` already imports `rankedSearchPage`
-and `caseCatalogSearch`, so the search seam should be introduced without changing
-those call sites. M4.4 must preserve the frozen search parity corpus and the
-case-catalog/exact-case/ranked/vector fallback ordering, then extend the RPC
-ledger (M4.6) with one row per search function. Admin/ops read domains (M4.5)
-remain after that.
+Both search modules keep importing the exported `listArticles` for the ranked
+re-list, and `lib/article-reads/supabase-repository.ts` already imports
+`rankedSearchPage` and `catalogCaseSearch`, so M4.4a was introduced without
+changing those call sites. After M4.4b, the RPC ledger (M4.6) gains one row per
+search function. Admin/ops read domains (M4.5) remain after that.
+
+No commit or push was performed.
+
+## 13. M4.4a — search data-access seam: ranked page + exact-case (completed)
+
+**Status: done.** Baseline: clean HEAD `cb5c4cc` (feat: complete cloudflare
+m4.3b2 public read abstraction). No Orca, no deploy, no DNS change, no production
+data change, no D1.
+
+### 13.1 Scope and safety boundary
+
+M4.4a introduced a new platform-neutral search data-access module
+`lib/search/repository/` and moved only the Supabase client/table/RPC access of
+the two smallest search paths behind it:
+
+- `lib/search/ranked-page.ts` — the `worldcons_ranked_search_page_v1` RPC.
+- `lib/search/exact-case.ts` — the exact-case id lookup against the public
+  article relation, including the indexed `case_key` lookup and the
+  metadata/`original_url` rollout fallbacks.
+
+It did **not** touch `lib/search/case-catalog.ts`, `lib/search/vector.ts`,
+cclmetasearch, or the broader ranking logic, and it did not change any exported
+signature. Orchestration and parsing stay in the search modules: gating, the
+offset guard, payload parsing/page-info, reference extraction, ordering, and the
+final `listArticles` materialization are unchanged.
+
+Rollback is repository-only: delete `lib/search/repository/`, restore the two
+`getSupabaseAdmin()`-based bodies in `lib/search/ranked-page.ts` /
+`lib/search/exact-case.ts`, and revert the `test:search-repository` script.
+
+### 13.2 What M4.4a moved
+
+New module `lib/search/repository/`:
+
+- `types.ts` — the `SearchRepository` contract plus `RankedSearchMode`,
+  `RankedSearchPageRpcRequest`, `ExactCaseLookupReference`, and
+  `ExactCaseArticleIdRequest`. No Postgres/Supabase types.
+- `supabase-repository.ts` — `createSupabaseSearchRepository`, the authoritative
+  adapter. It preserves, resolved against the injected client and environment:
+  - `rankedSearchPageRpc` → the exact `worldcons_ranked_search_page_v1` RPC and
+    every named argument (`p_query`, `p_mode`, `p_query_embedding`, `p_limit`,
+    `p_offset`, `p_source`, `p_jurisdiction`, `p_content_type`, `p_language`,
+    `p_tag`, `p_range`, `p_count`), returning the raw payload or `null` on error;
+  - `findExactCaseArticleIds` → the per-reference `articles` /
+    `public_article_projection_p3` relation choice, the `select("id").eq(
+    "source_key", …)` base query, the legacy `status = summarized` +
+    `source_metadata->collection->>publishable = true` filter only when
+    projection reads are disabled, the jurisdiction/content_type/
+    original_language filters, the indexed `.eq("case_key", …).limit(100)`
+    lookup, the fallback-on-index-query-error branch, the
+    `source_metadata->>caseNumber` `ilike` and the
+    `de-bverfg`/`us-scotus` `original_url` `ilike` (token = `caseKey` for
+    `de-bverfg`, otherwise `caseNumber`), and the per-reference id order/dedupe.
+- `fail-closed-repository.ts` — `failClosedSearchRepository`: the ranked page
+  resolves `null` and the exact-case lookup resolves `[]`, so without a database
+  the exported callers keep their pre-extraction empty/`listArticles` behavior.
+- `index.ts` — `searchRepository()` selection point: Supabase whenever
+  configuration is present, otherwise the fail-closed adapter.
+
+Changed callers:
+
+- `lib/search/ranked-page.ts` keeps the `includeUnpublished` /
+  `publicProjectionReadsEnabled` gate, the `offset > 10_000` guard, the payload
+  parsing, and the `offset + ids.length + (hasMore ? 1 : 0)` total lower bound;
+  it now calls `searchRepository().rankedSearchPageRpc(...)` instead of
+  `getSupabaseAdmin().rpc(...)`. `RankedSearchMode` is defined in the repository
+  contract and re-exported, so the exported surface is unchanged.
+- `lib/search/exact-case.ts` keeps the reference extraction/source filter,
+  reference order/dedupe, and the `listArticles` materialization with its
+  page-slice/`pageInfo` math; it now calls
+  `searchRepository().findExactCaseArticleIds(...)` instead of building the
+  Supabase queries itself. The `publicArticleRelation` /
+  `publicProjectionReadsEnabled` imports moved into the adapter.
+
+### 13.3 Coupling effect and remaining coupling under `lib/search`
+
+The extraction shape matches M4.1–M4.3: `supabase-repository.ts` is a new
+direct-coupling file and `index.ts` calls `getSupabaseAdmin()`, while
+`ranked-page.ts` and `exact-case.ts` lose their `getSupabaseAdmin` / `.from(` /
+`.rpc(` calls. The measurable win is at the boundary: neither module gains a
+Supabase dependency, and a future D1 adapter can implement `SearchRepository`
+without touching them.
+
+Remaining direct Supabase coupling under `lib/search` after M4.4a:
+
+- `lib/search/case-catalog.ts` — `getSupabaseAdmin` + `worldcons_case_search_page_v2`
+  (M4.4b).
+- `lib/search/vector.ts` — `getSupabaseAdmin`, `public_fulltext_ranked_ids_v1`,
+  `match_public_article_versions_p3` / `match_articles`, and the embedding read
+  (M4.4b).
+- `lib/search/repository/index.ts` — the selection point (counted coupling, same
+  as the other repository `index.ts` files).
+- `lib/search/repository/supabase-repository.ts` — the authoritative adapter.
+
+`ranked-page.ts` and `exact-case.ts` now carry no direct Supabase coupling. As
+with the earlier slices, the file-level census is flat-to-slightly-changed rather
+than sharply down because the adapter files are themselves counted.
+
+### 13.4 M4.4a files changed
+
+- Added: `lib/search/repository/types.ts`
+- Added: `lib/search/repository/supabase-repository.ts`
+- Added: `lib/search/repository/fail-closed-repository.ts`
+- Added: `lib/search/repository/index.ts`
+- Added: `tests/search-repository.test.ts`
+- Changed: `lib/search/ranked-page.ts` (RPC delegation; `publicProjectionReadsEnabled` gate/parsing retained)
+- Changed: `lib/search/exact-case.ts` (lookup delegation; reference order/dedupe and `listArticles` materialization retained)
+- Changed: `package.json` (`test:search-repository`; added to `verify:release`)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md`
+
+### 13.5 M4.4a verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:search-repository` | Pass, 14/14 |
+| `pnpm test:article-reads` | Pass, 22/22 |
+| `pnpm test:reference-reads` | Pass, 10/10 |
+| `pnpm test:public-regression` | Pass, 15/15 |
+| `pnpm test:plugin` | Pass, 12/12 |
+| `pnpm test:catalog` | Pass, 13/13 (1 postgres SKIP) |
+| `pnpm test:cclmetasearch` | Pass, 9/9 |
+| `pnpm test:cclrag2` | Pass, 19/19 |
+| `pnpm test:provider:search` | Pass, 20/20 |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm check:vinext` | Pass (100% compatible) |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+The focused tests prove: (1) `searchRepository()` selects the fail-closed adapter
+without configuration and the Supabase adapter with it, and the exported
+`rankedSearchPage` / `exactCaseSearch` keep their no-config behavior; (2) the
+adapter issues the ranked RPC with the exact arguments and returns `null` on
+error; (3) `rankedSearchPage` preserves the projection/unpublished gates, the
+10k offset guard (including the exactly-10k boundary), the payload parsing, the
+mode fallback, and the page-info lower bound, and rejects invalid payloads; (4)
+the exact-case lookup preserves the indexed `case_key` query shape, the relation
+projection choice, the legacy publishable filter, the filters, the
+fallback-on-index-error metadata/`original_url` order, the per-source url token,
+and cross-reference id order/dedupe; (5) the exported `exactCaseSearch` keeps
+reference order/dedupe, the page slice, the projected-relation path, and its empty
+short-circuits.
 
 No commit or push was performed.
