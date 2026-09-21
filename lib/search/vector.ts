@@ -1,19 +1,16 @@
 import { createTextEmbedding } from "@/lib/ai/embeddings";
-import { getSupabaseAdmin } from "@/lib/db/client";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
-import { normalizeRange } from "@/lib/utils/dates";
 import {
   observeArticlePublicationReadDecision,
-  publicArticleRelation,
   publicProjectionReadsEnabled,
-  publicVectorMatchRpc,
 } from "@/lib/article-publication";
 import { exactCaseSearch } from "@/lib/search/exact-case";
 import { rankedSearchPage, type RankedSearchPage } from "@/lib/search/ranked-page";
 import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 import { catalogCaseSearch } from "@/lib/search/case-catalog";
 import { legalSearchRelevanceScore } from "@/lib/search/legal-relevance";
+import { searchRepository } from "@/lib/search/repository";
 
 interface MatchArticleRow {
   article_id: string;
@@ -153,19 +150,16 @@ async function rankedFullTextCandidates(filters: ArticleListFilters): Promise<Ar
     return listArticles(filters);
   }
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return listArticles(filters);
-
-  const { data, error } = await supabase.rpc("public_fulltext_ranked_ids_v1", {
-    p_query: filters.q,
-    p_limit: pageSize,
-    p_source: filters.source ?? null,
-    p_jurisdiction: filters.jurisdiction ?? null,
-    p_content_type: filters.type ?? null,
-    p_language: filters.language ?? null,
-    p_range: filters.range ?? "latest",
+  const data = await searchRepository().fullTextRankedIdsRpc({
+    query: filters.q,
+    limit: pageSize,
+    source: filters.source ?? null,
+    jurisdiction: filters.jurisdiction ?? null,
+    contentType: filters.type ?? null,
+    language: filters.language ?? null,
+    range: filters.range ?? "latest",
   });
-  if (error || !Array.isArray(data)) return listArticles(filters);
+  if (!data) return listArticles(filters);
 
   const ids = (data as FullTextRankRow[])
     .map((row) => row.article_id)
@@ -195,38 +189,15 @@ async function localSemanticSearch(filters: ArticleListFilters, embedding: numbe
     return listArticles(filters);
   }
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return listArticles(filters);
-  }
-
-  let query = supabase
-    .from(publicArticleRelation())
-    .select("id, embedding")
-    .not("embedding", "is", null)
-    .eq("status", "summarized")
-    .limit(Math.max(matchCount, 100));
-
-  if (!publicProjectionReadsEnabled()) {
-    query = query.filter("source_metadata->collection->>publishable", "eq", "true");
-  }
-
-  if (filters.source) query = query.eq("source_key", filters.source);
-  if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
-  if (filters.type) query = query.eq("content_type", filters.type);
-  if (filters.language) query = query.eq("original_language", filters.language);
-
-  const range = normalizeRange(filters.range);
-  if (range === "today") {
-    const now = new Date();
-    query = query.gte("original_published_at", new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString());
-  } else if (range === "week" || range === "month") {
-    const days = range === "week" ? 7 : 30;
-    query = query.gte("original_published_at", new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
-  }
-
-  const { data, error } = await query;
-  if (error || !Array.isArray(data)) {
+  const data = await searchRepository().findSemanticEmbeddingRows({
+    matchCount,
+    source: filters.source ?? null,
+    jurisdiction: filters.jurisdiction ?? null,
+    contentType: filters.type ?? null,
+    language: filters.language ?? null,
+    range: filters.range,
+  });
+  if (!data) {
     return listArticles(filters);
   }
 
@@ -256,8 +227,8 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
   const exact = await exactCaseSearch(filters);
   if (exact.items.length > 0) return exact;
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
+  const repository = searchRepository();
+  if (!repository.isConfigured()) {
     return listArticles(filters);
   }
 
@@ -272,17 +243,16 @@ export async function semanticSearch(filters: ArticleListFilters): Promise<Artic
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const matchCount = Math.min(Math.max(page * pageSize * 3, 20), 200);
-  const searchRpc = publicVectorMatchRpc();
-  const { data, error } = await supabase.rpc(searchRpc, {
-    query_embedding: embedding,
-    match_count: matchCount,
-    source_filter: filters.source ?? null,
-    jurisdiction_filter: filters.jurisdiction ?? null,
-    content_type_filter: filters.type ?? null,
-    language_filter: filters.language ?? null,
+  const data = await repository.vectorMatchRpc({
+    embedding,
+    matchCount,
+    source: filters.source ?? null,
+    jurisdiction: filters.jurisdiction ?? null,
+    contentType: filters.type ?? null,
+    language: filters.language ?? null,
   });
 
-  if (error || !Array.isArray(data)) {
+  if (!data) {
     return localSemanticSearch(filters, embedding, matchCount);
   }
 

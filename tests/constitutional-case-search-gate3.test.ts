@@ -40,9 +40,10 @@ test("Gate 3 API accepts bounded opaque cursors and rejects unsafe cursor charac
 test("Gate 3 app integration carries nextCursor and does not request Gemini embeddings", () => {
   const root = process.cwd();
   const catalogSearch = fs.readFileSync(path.join(root, "lib/search/case-catalog.ts"), "utf8");
+  const searchRepositoryAdapter = fs.readFileSync(path.join(root, "lib/search/repository/supabase-repository.ts"), "utf8");
   const feed = fs.readFileSync(path.join(root, "components/infinite-article-feed.tsx"), "utf8");
   const plugin = fs.readFileSync(path.join(root, "lib/chatgpt-plugin/server.ts"), "utf8");
-  assert.match(catalogSearch, /worldcons_case_search_page_v2/);
+  assert.match(searchRepositoryAdapter, /worldcons_case_search_page_v2/);
   assert.match(catalogSearch, /nextCursor/);
   assert.doesNotMatch(catalogSearch, /createTextEmbedding|query_embedding|Gemini/i);
   assert.match(feed, /pageInfo\.nextCursor/);

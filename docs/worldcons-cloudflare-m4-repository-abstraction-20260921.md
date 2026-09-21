@@ -54,8 +54,8 @@ Supabase stays authoritative:
 | M4.2 | Remaining simple catalog reads: glossary terms, ingestion-run history | Same contract shape; pure table reads. **Completed — see section 7.** |
 | **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
 | **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) completed — see section 11. |
-| **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) remaining — see section 12. Builds on the frozen search parity corpus. |
-| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Mostly `getSupabaseAdmin` call sites. |
+| **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) completed — see section 14. Builds on the frozen search parity corpus. |
+| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Mostly `getSupabaseAdmin` call sites. Next slice after M4.4 — see section 14.7. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
 
 ## 4. Exactly what M4.1 moved
@@ -789,19 +789,20 @@ domain) is sliced so the two smallest search data-access paths could land first:
 - **M4.4a (completed — section 13):** the ranked page RPC
   (`worldcons_ranked_search_page_v1`) and the exact-case id lookup, onto the new
   platform-neutral `lib/search/repository/` seam.
-- **M4.4b (remaining):** `lib/search/case-catalog.ts` (the
-  `worldcons_case_search_page_v2` RPC, cursor parsing/errors, and materialization)
-  and `lib/search/vector.ts` (`public_fulltext_ranked_ids_v1`,
-  `match_public_article_versions_p3` / `match_articles`, and the embedding reads).
-  These still call `getSupabaseAdmin` directly and need their own parity
-  evidence because they own additional RPC payload schemas, cursor semantics, and
-  client-side cosine/vector reads.
+- **M4.4b (completed — section 14):** `lib/search/case-catalog.ts` (the
+  `worldcons_case_search_page_v2` RPC with cursor error evidence, plus the
+  cursor parsing/errors and materialization) and `lib/search/vector.ts`
+  (`public_fulltext_ranked_ids_v1`, `match_public_article_versions_p3` /
+  `match_articles`, and the public embedding-row read). These owned additional
+  RPC payload schemas, cursor semantics, and client-side cosine/vector reads, so
+  they needed their own parity evidence.
 
 Both search modules keep importing the exported `listArticles` for the ranked
 re-list, and `lib/article-reads/supabase-repository.ts` already imports
 `rankedSearchPage` and `catalogCaseSearch`, so M4.4a was introduced without
 changing those call sites. After M4.4b, the RPC ledger (M4.6) gains one row per
-search function. Admin/ops read domains (M4.5) remain after that.
+search function. Admin/ops read domains (M4.5) are the next slice — see section
+14.7.
 
 No commit or push was performed.
 
@@ -948,3 +949,220 @@ reference order/dedupe, the page slice, the projected-relation path, and its emp
 short-circuits.
 
 No commit or push was performed.
+
+## 14. M4.4b — search domain: catalog + vector (completed)
+
+**Status: done.** Baseline: clean HEAD `4dc4fe5` (feat: add cloudflare m4.4a
+search repository seam). No Orca, no deploy, no DNS change, no production data
+change, no D1.
+
+### 14.1 Scope and safety boundary
+
+M4.4b extended the `lib/search/repository/` seam with the remaining direct
+Supabase coupling in the two largest search modules and nothing else:
+
+- `lib/search/case-catalog.ts` — the `worldcons_case_search_page_v2` RPC, with
+  database cursor error evidence passed through so the module keeps its exact
+  `CatalogSearchCursorError` parsing and semantics.
+- `lib/search/vector.ts` — the `public_fulltext_ranked_ids_v1` ranked-id RPC
+  (`rankedFullTextCandidates`), the semantic vector-match RPC selection
+  (`match_public_article_versions_p3` vs `match_articles`, `semanticSearch`), and
+  the public article embedding-row read (`localSemanticSearch`).
+
+It did **not** deploy, change DNS, touch production data, introduce D1, or
+change any exported signature. Orchestration, parsing, legal reranking,
+embedding creation, cosine similarity, fusion, pagination, fallback ordering,
+exact-case precedence, and the `listArticles` materialization all stay in
+`case-catalog.ts` / `vector.ts`.
+
+Rollback is repository-only: delete the four new `SearchRepository` methods (and
+`isConfigured`), restore the three `getSupabaseAdmin()`-based bodies in
+`lib/search/case-catalog.ts` / `lib/search/vector.ts`, and revert the two static
+test relocations.
+
+### 14.2 What M4.4b moved
+
+Contract (`lib/search/repository/types.ts`): `SearchRepository` gained
+`isConfigured()`, `catalogCaseSearchRpc`, `fullTextRankedIdsRpc`,
+`vectorMatchRpc`, and `findSemanticEmbeddingRows`, plus the platform-neutral
+`SearchDatabaseErrorEvidence`, `CatalogCaseSearchRpcRequest`,
+`CatalogCaseSearchRpcResult`, `FullTextRankedIdsRpcRequest`,
+`VectorMatchRpcRequest`, and `SemanticEmbeddingRowRequest` types. No
+Postgres/Supabase types are exposed.
+
+- `CatalogCaseSearchRpcResult` is a discriminated union
+  (`{ status: "ok"; data } | { status: "error"; error } | { status:
+  "unavailable" }`). The `error` evidence (`code` / `message` / `details` /
+  `hint`) is the exact pre-extraction shape that `databaseCursorError` parses,
+  and `unavailable` preserves the no-config
+  `case_catalog.search_database_unavailable` throw.
+
+Supabase adapter (`lib/search/repository/supabase-repository.ts`) preserves,
+resolved against the injected client and environment:
+
+- `catalogCaseSearchRpc` → the exact `worldcons_case_search_page_v2` RPC and
+  every named argument (`p_query`, `p_limit`, `p_cursor`, `p_source`,
+  `p_jurisdiction`, `p_content_type`, `p_language`, `p_tag`, `p_range`), returning
+  the raw payload, the raw error evidence, or the payload unchanged;
+- `fullTextRankedIdsRpc` → the exact `public_fulltext_ranked_ids_v1` RPC and
+  every named argument (`p_query`, `p_limit`, `p_source`, `p_jurisdiction`,
+  `p_content_type`, `p_language`, `p_range`), returning the array or `null` on
+  error/non-array;
+- `vectorMatchRpc` → the `publicVectorMatchRpc(false, environment)` selection
+  (`match_public_article_versions_p3` vs `match_articles`) and the exact
+  `query_embedding` / `match_count` / `source_filter` / `jurisdiction_filter` /
+  `content_type_filter` / `language_filter` arguments, returning the array or
+  `null`;
+- `findSemanticEmbeddingRows` → the `publicArticleRelation(false, environment)`
+  relation, `select("id, embedding")`, `.not("embedding","is",null)`,
+  `.eq("status","summarized")`, `.limit(max(matchCount, 100))`, the legacy
+  `source_metadata->collection->>publishable = true` filter only when projection
+  reads are disabled, the source/jurisdiction/content_type/original_language
+  filters, and the `normalizeRange` `original_published_at >= …` date floor for
+  `today` / `week` / `month`, returning the rows or `null`.
+
+`isConfigured()` returns `true` for the Supabase adapter.
+
+Fail-closed adapter (`lib/search/repository/fail-closed-repository.ts`):
+`isConfigured()` is `false`, the catalog RPC reports `unavailable`, the
+full-text/vector/embedding reads resolve `null`, and the exact-case lookup
+resolves `[]`, so every caller keeps its pre-extraction no-config behavior.
+
+Changed caller (`lib/search/case-catalog.ts`): the `getSupabaseAdmin()` guard and
+the `supabase.rpc("worldcons_case_search_page_v2", …)` call are replaced by
+`searchRepository().catalogCaseSearchRpc(...)`. `case-catalog.ts` keeps the
+flag gate, the `page > 1 && !cursor` guard, `normalizeLegalSearchQuery`,
+`databaseCursorError` parsing, `parseRetrievalMode` / `parseRankingVersion` /
+`parseIds`, the `listArticles` materialization and its
+`case_catalog.search_materialization_mismatch` check, `rerankLegalSearchItems`,
+the page-info/next-cursor validation, and `nonNegativeInteger`.
+
+Changed caller (`lib/search/vector.ts`): the three `getSupabaseAdmin()` guards
+and the direct `.rpc(...)` / `.from(...)` calls are replaced by the repository
+methods. `vector.ts` keeps the projection gate, `rankedSearchWindow` /
+`rankedLookupFilters`, `rankedItemsByIds`, `reorderByIds`,
+`paginateRankedArticleItems`, the cosine similarity, the full-text id mapping,
+the RRF fusion, and the fallback chain. `semanticSearch` now uses
+`searchRepository().isConfigured()` for the same early guard that previously
+skipped embedding creation when Supabase was absent, so no embedding request is
+made without a database; `localSemanticSearch` keeps `parseVector` /
+`cosineSimilarity` and the `matchCount` slice. `publicVectorMatchRpc` and
+`publicArticleRelation` moved out of `vector.ts` into the adapter;
+`publicProjectionReadsEnabled` is still used for the `rankedFullTextCandidates`
+gate, matching `ranked-page.ts`.
+
+### 14.3 Coupling effect and remaining direct Supabase coupling under `lib/search`
+
+The extraction shape matches M4.4a: the adapter stays the one direct-coupling
+file and the selection point stays the one `getSupabaseAdmin()` call site, while
+`case-catalog.ts` and `vector.ts` lose every `getSupabaseAdmin` / `.from(` /
+`.rpc(` call. The measurable win is at the boundary: neither module gains a
+Supabase dependency, and a future D1 adapter can implement `SearchRepository`
+without touching them.
+
+Remaining direct Supabase coupling under `lib/search` after M4.4b:
+
+- `lib/search/repository/index.ts` — the selection point (`getSupabaseAdmin()`).
+- `lib/search/repository/supabase-repository.ts` — the authoritative adapter
+  (all `.rpc(` / `.from(` calls).
+
+`lib/search/case-catalog.ts`, `lib/search/vector.ts`, `lib/search/ranked-page.ts`,
+and `lib/search/exact-case.ts` now carry no direct Supabase coupling. Because the
+adapter and selection files were already counted by M4.4a, the file-level census
+is unchanged.
+
+### 14.4 Static test relocation
+
+Two existing source-scanning tests asserted on definitions that moved. Their
+behavior assertions are unchanged; only the scanned file moved to the canonical
+module:
+
+- `tests/constitutional-case-search-gate3.test.ts` — the
+  `worldcons_case_search_page_v2` proof now reads
+  `lib/search/repository/supabase-repository.ts`; the `nextCursor` and
+  Gemini-free proofs still read `lib/search/case-catalog.ts`.
+- `tests/article-publication-p3.test.ts` — the `publicVectorMatchRpc` proof now
+  reads `lib/search/repository/supabase-repository.ts`, and the adapter is added
+  to the centralized-read-authority scan. The now-unused `vector.ts` read was
+  removed.
+
+### 14.5 M4.4b files changed
+
+- Changed: `lib/search/repository/types.ts` (five contract methods; evidence/result/request types; contract doc)
+- Changed: `lib/search/repository/supabase-repository.ts` (four new methods + `isConfigured`)
+- Changed: `lib/search/repository/fail-closed-repository.ts` (`isConfigured`; catalog/full-text/vector/embedding fallbacks)
+- Changed: `lib/search/case-catalog.ts` (catalog RPC delegation; `getSupabaseAdmin` removal)
+- Changed: `lib/search/vector.ts` (full-text/vector/embedding delegations; `isConfigured` guard; coupling removal)
+- Changed: `tests/search-repository.test.ts` (catalog/full-text/vector/embedding adapter parity; catalog cursor evidence end-to-end; fail-closed coverage; static zero-coupling guard; harness `not`/`gte`)
+- Changed: `tests/constitutional-case-search-gate3.test.ts` (static path relocation)
+- Changed: `tests/article-publication-p3.test.ts` (static path relocation; unused read removal)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md`
+
+No `package.json` change was needed: `test:search-repository` already runs the
+focused file and is already wired into `verify:release`.
+
+### 14.6 M4.4b verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:search-repository` | Pass, 21/21 |
+| `pnpm test:catalog` | Pass, 13/13 (1 postgres SKIP) |
+| `pnpm test:cclrag2` | Pass, 19/19 |
+| `pnpm test:provider:search` | Pass, 20/20 |
+| `pnpm test:cclmetasearch` | Pass, 9/9 |
+| `pnpm test:p3` | Pass, 8/8 (1 postgres SKIP) |
+| `pnpm test:article-reads` | Pass, 22/22 |
+| `pnpm test:reference-reads` | Pass, 10/10 |
+| `pnpm test:public-regression` | Pass, 15/15 |
+| `pnpm test:plugin` | Pass, 12/12 |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm check:vinext` | Pass (100% compatible) |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+The focused tests prove: (1) the fail-closed adapter reports no config and
+returns `unavailable`/`null` for the new operations, and the Supabase adapter
+reports config; (2) the catalog adapter issues the exact RPC/arguments and
+returns raw error evidence; (3) the exported `catalogCaseSearch` keeps the
+no-config `search_database_unavailable` throw, maps
+`EXPIRED`/`MISMATCH`/`MODE_CHANGED`/`INVALID_CURSOR` evidence to the exact
+`CatalogSearchCursorError` reasons, keeps `search_failed:<code>` for other
+errors, and materializes the RPC page with `listArticles`, retrieval
+mode/ranking version, and cursor-bearing page info; (4) the full-text adapter
+issues the exact RPC/arguments and resolves `null` on error/non-array; (5) the
+semantic vector adapter selects `match_public_article_versions_p3` vs
+`match_articles` by projection flag, sends the exact arguments, and resolves
+`null` on error; (6) the embedding read uses the legacy/projected relation, the
+publishable filter only when projection reads are disabled, `select("id,
+embedding")`, the `not`/`status`/`limit`/source/jurisdiction/type/language
+handling, the range date floor, and resolves `null` on error; (7) a static guard
+proves `case-catalog.ts` and `vector.ts` carry no `getSupabaseAdmin`, `.from(`,
+or `.rpc(` calls.
+
+No commit or push was performed.
+
+### 14.7 M4.5 — admin/ops read domains (next scope)
+
+M4.4 completes the search domain: every public and search read path now flows
+through a platform-neutral repository seam, and direct Supabase coupling under
+`lib/search` is limited to the adapter and its selection point. The next slice is
+**M4.5, the admin/ops read domains**, which is a different risk profile and is
+explicitly out of scope for M4.4b:
+
+- **Dashboard/analytics/triage reads** — `lib/db/admin-queries.ts`,
+  `lib/db/analytics.ts`, `lib/db/article-triage.ts`, and the admin page/RSC read
+  paths. These are mostly `getSupabaseAdmin()` call sites plus two snapshot RPCs
+  (`rpc_admin_dashboard_snapshot`, `rpc_admin_analytics_health_snapshot`) that
+  already carry a legacy fallback.
+- **Admin audit/edit-history reads** — `lib/db/admin-audit.ts` and the
+  `admin_audit_logs` / `admin_article_edit_history` projections.
+
+M4.5 needs its own boundary because these reads are privileged (they read
+private/unpublished state), so the contract must keep the "admin authority"
+distinct from the public read authority, and the parity tests must prove the
+privileged projections and redaction are unchanged. M4.6 (the RPC ledger) then
+gains one row per Postgres function, including the two admin snapshot RPCs and
+every search RPC moved in M4.4.

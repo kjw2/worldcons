@@ -227,7 +227,6 @@ test("migration and application contracts cover immutable authority, projection,
   ]
     .map((relative) => fs.readFileSync(path.join(process.cwd(), relative), "utf8"))
     .join("\n");
-  const vector = fs.readFileSync(path.join(process.cwd(), "lib/search/vector.ts"), "utf8");
   const publicReadAuthoritySource = fs.readFileSync(path.join(process.cwd(), "lib/article-publication/public-read-authority.ts"), "utf8");
   const adminQueries = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
 
@@ -270,12 +269,17 @@ test("migration and application contracts cover immutable authority, projection,
   assert.ok(publicReadRepositories.includes("publicProjectionReadsEnabled"));
   assert.ok(publicReadRepositories.includes("public_tag_projection_p3"));
   assert.ok(publicReadRepositories.includes("public_jurisdiction_article_counts_p3"));
-  assert.ok(vector.includes("publicVectorMatchRpc"));
+  const searchRepositoryAdapter = fs.readFileSync(
+    path.join(process.cwd(), "lib/search/repository/supabase-repository.ts"),
+    "utf8",
+  );
+  assert.ok(searchRepositoryAdapter.includes("publicVectorMatchRpc"));
   for (const centralizedReader of [
     "lib/db/queries.ts",
     "lib/search/vector.ts",
     "lib/search/exact-case.ts",
     "lib/search/ranked-page.ts",
+    "lib/search/repository/supabase-repository.ts",
   ]) {
     const source = fs.readFileSync(path.join(process.cwd(), centralizedReader), "utf8");
     assert.ok(!source.includes("articlePublicationV4ReadsEnabled"), `${centralizedReader} must use the centralized public read authority`);

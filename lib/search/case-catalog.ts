@@ -1,8 +1,8 @@
 import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
-import { getSupabaseAdmin } from "@/lib/db/client";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import { normalizeLegalSearchQuery, rerankLegalSearchItems } from "@/lib/search/legal-relevance";
+import { searchRepository } from "@/lib/search/repository";
 
 type CatalogSearchEntry = {
   id?: unknown;
@@ -96,25 +96,25 @@ export async function catalogCaseSearch(
   const pageSize = filters.pageSize ?? 20;
   if (page > 1 && !filters.cursor) throw new Error("case_catalog.search_cursor_required");
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error("case_catalog.search_database_unavailable");
   const effectiveQuery = normalizeLegalSearchQuery(filters.q ?? "");
-  const { data, error } = await supabase.rpc("worldcons_case_search_page_v2", {
-    p_query: effectiveQuery,
-    p_limit: pageSize,
-    p_cursor: filters.cursor ?? null,
-    p_source: filters.source ?? null,
-    p_jurisdiction: filters.jurisdiction ?? null,
-    p_content_type: filters.type ?? null,
-    p_language: filters.language ?? null,
-    p_tag: filters.tag ?? null,
-    p_range: filters.range ?? "latest",
+  const catalogResult = await searchRepository().catalogCaseSearchRpc({
+    query: effectiveQuery,
+    limit: pageSize,
+    cursor: filters.cursor ?? null,
+    source: filters.source ?? null,
+    jurisdiction: filters.jurisdiction ?? null,
+    contentType: filters.type ?? null,
+    language: filters.language ?? null,
+    tag: filters.tag ?? null,
+    range: filters.range ?? "latest",
   });
-  if (error) {
-    const cursorError = databaseCursorError(error);
+  if (catalogResult.status === "unavailable") throw new Error("case_catalog.search_database_unavailable");
+  if (catalogResult.status === "error") {
+    const cursorError = databaseCursorError(catalogResult.error);
     if (cursorError) throw cursorError;
-    throw new Error(`case_catalog.search_failed:${error.code ?? "unknown"}`);
+    throw new Error(`case_catalog.search_failed:${catalogResult.error.code ?? "unknown"}`);
   }
+  const data = catalogResult.data;
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("case_catalog.search_payload_invalid");
 
   const payload = data as CatalogSearchPayload;
