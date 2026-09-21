@@ -52,7 +52,8 @@ Supabase stays authoritative:
 | --- | --- | --- |
 | **M4.1** (this) | Public reference reads: `listSources`, `listTags`, `listJurisdictionArticleCounts` | Contract + Supabase adapter + mock adapter + selection. |
 | M4.2 | Remaining simple catalog reads: glossary terms, ingestion-run history | Same contract shape; pure table reads. **Completed — see section 7.** |
-| M4.3 | Public article read domain: `listArticles`, `getArticleBySlug`, sitemap, related, top-viewed | Largest public seam; exercises detail-projection v4 and tag filtering. |
+| **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
+| **M4.3b** | Remaining public article reads: `listArticles`, full-text/tag filter, sitemap, related, top-viewed, `getTagBySlug` | Deferred; exercises tag-filter joins and pagination/ordering. |
 | M4.4 | Search domain: ranked page, exact-case, case catalog, vector | Builds on the frozen search parity corpus. |
 | M4.5 | Admin/ops read domains: dashboard, analytics, triage | Mostly `getSupabaseAdmin` call sites. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
@@ -261,15 +262,192 @@ The focused tests now additionally prove:
 
 No commit or push was performed.
 
-## 8. Next safe slice — M4.3
+## 8. M4.3 — public article read domain (split)
 
-**M4.3 — public article read domain.** Move `listArticles`, `getArticleBySlug`,
-the sitemap reads, related articles, and top-viewed reads onto the same
-platform-neutral repository seam. This is the largest public seam and unlike
-M4.1/M4.2 it exercises the article detail-projection v4 selection and tag-filter
-joins, so it needs its own parity evidence (field-by-field row mapping, tag
-aggregation, and pagination/ordering). `getTagBySlug` should move with it because
-it depends on `listArticles`.
+The original M4.3 planned to move the whole public article read domain in one
+step. It was split so the lowest-risk seam could land first:
+
+- **M4.3a (completed — section 9):** the public article **detail** read seam —
+  `getArticleBySlug` / `getArticlePreviewBySlug`'s underlying slug row fetch and
+  `getArticleSourceTextBySlug` — onto the platform-neutral repository seam
+  (`lib/article-reads/`).
+- **M4.3b (remaining):** `listArticles` (including the full-text path and the
+  legacy/projected tag-filter joins), `listTopViewedArticles`, `getRelatedArticles`,
+  `listPublicSitemapArticles`, and `getTagBySlug` (which depends on
+  `listArticles`). This still needs its own parity evidence (field-by-field row
+  mapping, tag aggregation, and pagination/ordering) because it exercises the
+  tag-filter joins that M4.3a deliberately avoids.
 
 Search (M4.4), admin/ops reads (M4.5), and the RPC ledger (M4.6) remain after
 that, as planned in section 3.
+
+## 9. M4.3a — public article detail read seam (completed)
+
+**Status: done.** Baseline: clean HEAD `dae38b6` (feat: complete cloudflare m4.2
+catalog read abstraction). No Orca, no deploy, no DNS change, no production data
+change, no D1.
+
+### 9.1 Scope and safety boundary
+
+M4.3a extracted the public article **detail** read seam out of `lib/db/queries.ts`
+into a sibling module `lib/article-reads/`:
+
+- the slug-keyed row fetch behind `getArticleBySlug` and
+  `getArticlePreviewBySlug` (the former private `getArticleBySlugWithSelect`), and
+- `getArticleSourceTextBySlug`.
+
+It did **not** touch `listArticles`, the full-text path, the tag-filter joins,
+`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, or
+`getTagBySlug` (M4.3b), and it did not change any exported signature.
+
+Rollback is repository-only: delete `lib/article-reads/`, restore the private
+`getArticleBySlugWithSelect` and `getArticleSourceTextBySlug` bodies plus the
+select constants / projection helpers / `articleRowToItem` in `lib/db/queries.ts`,
+and revert the three static test path updates.
+
+### 9.2 What M4.3a moved
+
+New module `lib/article-reads/`:
+
+- `types.ts` — `ArticleReadRepository` contract (`getArticleBySelect(slug, select,
+  options)`, `getArticleSourceTextBySlug(slug, options)`), the platform-neutral
+  `ArticleReadSelect` kind (`"list" | "page" | "detail"`), `ArticleReadOptions`,
+  and `ArticleSourceTextRecord`. No Postgres/Supabase types.
+- `shared.ts` — the single source of truth for the article read selection and
+  mapping: the `SupabaseArticleRow` / `SupabaseArticleTagRow` shapes, every
+  `ARTICLE_*_SELECT` constant (`TAG_LIST_SELECT`, `ARTICLE_LIST_SELECT`,
+  `ARTICLE_LIST_WITH_TAG_FILTER_SELECT`, `ARTICLE_PAGE_SELECT`,
+  `ARTICLE_RAW_BLOB_METADATA_SELECT`, `ARTICLE_DETAIL_SELECT`, and the P3/V4
+  variants), the projection/detail-v4 helpers (`publicationProjectionEnabled`,
+  `articleRelation`, `articleDetailRelation`, `projectionSelect`,
+  `detailProjectionSelect`), the kind→select and kind→mapping helpers
+  (`articleSelectForKind`, `articleMappingOptions`), and the row mapping
+  (`minimalSourceMetadata`, `articleRawBlobMetadataFromRow`, `articleRowToItem`).
+  The projection/relation helpers take an optional `environment` that defaults to
+  `process.env`, so the exported callers keep the pre-extraction behavior while
+  focused tests can inject flags.
+- `supabase-repository.ts` — `createSupabaseArticleReadRepository`, the
+  authoritative adapter. It preserves, verbatim: the relation + select selection
+  (`articles` / `public_article_projection_p3` / `public_article_detail_v4`, and
+  the list/page/detail and P3/V4 select shapes), the legacy
+  `status = summarized` + `catalog_ai_stale_v4 = false` + `publishable = true`
+  filter applied only when projection reads are disabled, the
+  `row.source_metadata !== undefined` publishability post-filter guard, and the
+  exact source-text select literal and snapshot mapping.
+- `mock-repository.ts` — `mockArticleReads`, reproducing the pre-extraction mock
+  fallback exactly (full mock article with published-only filtering; mapped
+  source-text snapshot).
+- `index.ts` — `articleReads()` selection point: Supabase whenever configuration
+  is present, otherwise the mock adapter.
+
+Changed caller (`lib/db/queries.ts`):
+
+- `getArticleBySlug`, `getArticlePreviewBySlug`, and `getArticleSourceTextBySlug`
+  are now thin delegations to `articleReads()`, with unchanged exported
+  signatures.
+- Raw-text Blob (R2) hydration stays at the query boundary: `getArticleBySlug`
+  still calls `hydrateArticleRawText` only for the `detail` kind with a mapped
+  `rawTextBlob`, so the repository never touches Blob storage. This keeps the
+  storage concern outside the repository/service boundary.
+- The publication-read observation call (`observePublicProjectionRead()`) is
+  retained at the query boundary, so telemetry semantics are unchanged.
+- The relocated constants/helpers/type were removed. The remaining M4.3b
+  functions (`listArticles`, `listTopViewedArticles`) import them from
+  `lib/article-reads/shared`, so there is exactly one definition of each select
+  shape and relation helper.
+
+Coupling effect (same scan as sections 2/4): M4.3a adds three direct-coupling
+files (`supabase-repository.ts` is a `.from(` file; `index.ts` calls
+`getSupabaseAdmin()`), the same extraction shape as M4.1/M4.2. The measurable win
+is still at the boundary: no caller or business module gains a Supabase
+dependency, and a future D1 adapter can implement `ArticleReadRepository` without
+touching callers.
+
+### 9.3 Static test relocation
+
+Three existing source-scanning tests asserted on definitions that moved from
+`lib/db/queries.ts`. Their behavior assertions are unchanged; only the scanned
+file moved to the canonical module:
+
+- `tests/article-raw-blob.test.ts` — the detail/list select-shape and source-text
+  select proofs now read `lib/article-reads/shared.ts` /
+  `lib/article-reads/supabase-repository.ts`. The "dual read lives only in the
+  detail path" proof still reads `lib/db/queries.ts`.
+- `tests/constitutional-case-catalog-gate2.test.ts` — the
+  `public_article_detail_v4` and `summaryAvailable` proof now reads
+  `lib/article-reads/shared.ts`.
+- `tests/article-publication-p3.test.ts` — the centralized public-read-authority
+  proof now scans the union of `lib/db/queries.ts`,
+  `lib/reference-reads/supabase-repository.ts`, and `lib/article-reads/shared.ts`.
+  This also repairs the assertion that M4.1 had left failing at the old
+  `queries.ts` location when it moved the jurisdiction-count RPC into
+  `lib/reference-reads`.
+
+### 9.4 M4.3a files changed
+
+- Added: `lib/article-reads/types.ts`
+- Added: `lib/article-reads/shared.ts`
+- Added: `lib/article-reads/supabase-repository.ts`
+- Added: `lib/article-reads/mock-repository.ts`
+- Added: `lib/article-reads/index.ts`
+- Added: `tests/article-reads-repository.test.ts`
+- Changed: `lib/db/queries.ts` (three delegations; select/relation/mapping extraction)
+- Changed: `tests/article-raw-blob.test.ts` (static path relocation)
+- Changed: `tests/constitutional-case-catalog-gate2.test.ts` (static path relocation)
+- Changed: `tests/article-publication-p3.test.ts` (static path relocation)
+- Changed: `package.json` (`test:article-reads`; added to `verify:release`)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md`
+
+### 9.5 M4.3a verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:article-reads` | Pass, 7/7 |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm test:public-regression` | Pass, 15/15 |
+| `pnpm test:plugin` | Pass, 12/12 |
+| `pnpm check:vinext` | Pass (100% compatible) |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+Focused coupled regression (article-raw-blob, catalog gate2, publication p3,
+reference-reads, plugin MCP): Pass, 69/69. The p3 assertion that was failing on
+baseline now passes.
+
+The focused tests prove:
+
+1. `articleReads()` selects the mock adapter and preserves the mock fallback when
+   Supabase config is absent, and the exported `lib/db/queries` functions return
+   the same mock detail/preview/source-text values (the mock detail fetch ignores
+   the select kind, exactly as before);
+2. the Supabase adapter maps a detail row byte-for-byte (tag aggregation,
+   `koreanTitle` fallback, `oneLineSummary` fallback, `summaryAvailable`
+   fallback, minimal source metadata, raw-text blob metadata) and applies the
+   legacy `summarized` / `catalog_ai_stale_v4` / `publishable` filter only when
+   projection reads are disabled;
+3. the relation and select switch correctly across `articles` →
+   `public_article_projection_p3` → `public_article_detail_v4` and across the
+   list/page/detail and P3/V4 select shapes, with no legacy published filter on
+   projection reads;
+4. the publishability boundary is preserved: non-publishable rows stay private for
+   public reads, `includeUnpublished` returns them without the legacy filter, and
+   a row without `source_metadata` skips the publishability post-filter; missing
+   rows return `null` and query errors rethrow;
+5. the source-text snapshot is selected and mapped exactly (select literal,
+   relation, filters, published/unpublished handling, missing/error cases);
+6. the exported functions delegate to the configured Supabase adapter;
+7. raw-text hydration stays at the query boundary: it runs only for the `detail`
+   kind with blob metadata and never for the `page` kind.
+
+### 9.6 Remaining M4.3b scope
+
+Move onto the same seam: `listArticles` (including the full-text path and the
+legacy/projected tag-filter joins), `listTopViewedArticles`, `getRelatedArticles`,
+`listPublicSitemapArticles`, and `getTagBySlug`. M4.3b needs its own parity
+evidence for tag aggregation and pagination/ordering, which M4.3a deliberately
+left in place.
+
+No commit or push was performed.

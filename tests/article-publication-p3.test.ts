@@ -220,6 +220,13 @@ test("migration and application contracts cover immutable authority, projection,
   const correction = readMigrationText("supabase/migrations/20260712203000_article_publication_p3_authority_correction.sql");
   const reviewEligibility = readMigrationText("supabase/migrations/20260713090000_article_publication_p3_review_eligibility.sql");
   const queries = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
+  const publicReadRepositories = [
+    "lib/db/queries.ts",
+    "lib/reference-reads/supabase-repository.ts",
+    "lib/article-reads/shared.ts",
+  ]
+    .map((relative) => fs.readFileSync(path.join(process.cwd(), relative), "utf8"))
+    .join("\n");
   const vector = fs.readFileSync(path.join(process.cwd(), "lib/search/vector.ts"), "utf8");
   const publicReadAuthoritySource = fs.readFileSync(path.join(process.cwd(), "lib/article-publication/public-read-authority.ts"), "utf8");
   const adminQueries = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
@@ -259,10 +266,10 @@ test("migration and application contracts cover immutable authority, projection,
 
   assert.ok(publicReadAuthoritySource.includes("public_article_projection_p3"));
   assert.ok(publicReadAuthoritySource.includes("match_public_article_versions_p3"));
-  assert.ok(queries.includes("publicArticleRelation"));
-  assert.ok(queries.includes("publicProjectionReadsEnabled"));
-  assert.ok(queries.includes("public_tag_projection_p3"));
-  assert.ok(queries.includes("public_jurisdiction_article_counts_p3"));
+  assert.ok(publicReadRepositories.includes("publicArticleRelation"));
+  assert.ok(publicReadRepositories.includes("publicProjectionReadsEnabled"));
+  assert.ok(publicReadRepositories.includes("public_tag_projection_p3"));
+  assert.ok(publicReadRepositories.includes("public_jurisdiction_article_counts_p3"));
   assert.ok(vector.includes("publicVectorMatchRpc"));
   for (const centralizedReader of [
     "lib/db/queries.ts",

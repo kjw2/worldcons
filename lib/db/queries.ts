@@ -1,240 +1,49 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { mockArticles, mockTags } from "@/lib/db/mock-data";
 import type {
-  ArticleContentType,
   ArticleDetail,
   ArticleListFilters,
   ArticleListItem,
   ArticleListResult,
-  ArticleRawBlobMetadata,
   GlossaryTerm,
   IngestionRunRecord,
   SourceRecord,
-  SummaryJson,
 } from "@/lib/db/types";
 import { isWithinRange, normalizeRange, rangeStartIso as getRangeStartIso } from "@/lib/utils/dates";
-import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
-import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
+import { observeArticlePublicationReadDecision } from "@/lib/article-publication";
 import { hydrateArticleRawText } from "@/lib/article-raw/detail-read";
 import type { ArtifactBlobStore } from "@/lib/storage/blob";
 import { createRuntimeArtifactBlobStore } from "@/lib/storage/runtime-blob";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
-import { caseCatalogPublicReadsEnabled, caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
+import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
 import { referenceReads } from "@/lib/reference-reads";
 import { tagRowToSummary, type SupabaseTagRow } from "@/lib/reference-reads/shared";
 import type { JurisdictionCountOptions, TagListOptions } from "@/lib/reference-reads/types";
-
-interface SupabaseArticleTagRow {
-  confidence?: number | null;
-  tags?: SupabaseTagRow | SupabaseTagRow[] | null;
-}
-
-interface SupabaseArticleRow {
-  id?: string;
-  slug: string;
-  source_key: string;
-  jurisdiction: string;
-  institution_name: string;
-  content_type: string;
-  original_url: string;
-  canonical_url: string;
-  original_language: string;
-  original_title?: string | null;
-  korean_title?: string | null;
-  original_published_at?: string | null;
-  discovered_at?: string | null;
-  fetched_at?: string | null;
-  summarized_at?: string | null;
-  status: string;
-  raw_text?: string | null;
-  raw_text_storage_ref?: string | null;
-  raw_text_blob_hash?: string | null;
-  raw_text_blob_size?: number | null;
-  raw_text_externalized_at?: string | null;
-  raw_text_blob_contract_version?: string | null;
-  cleaned_text?: string | null;
-  summary_json?: SummaryJson | null;
-  one_line_summary?: string | null;
-  content_hash?: string | null;
-  source_metadata?: Record<string, unknown> | null;
-  resolution_type?: string | null;
-  case_number?: string | null;
-  error_metadata?: Record<string, unknown> | null;
-  article_tags?: SupabaseArticleTagRow[] | null;
-  enrichment_status?: string | null;
-  enrichment_freshness?: string | null;
-  summary_status?: string | null;
-  summary_available?: boolean | null;
-}
+import { articleReads } from "@/lib/article-reads";
+import type { ArticleReadSelect } from "@/lib/article-reads/types";
+import {
+  articleDetailRelation,
+  articleRelation,
+  articleRowToItem,
+  detailProjectionSelect,
+  projectionSelect,
+  publicationProjectionEnabled,
+  ARTICLE_LIST_SELECT,
+  ARTICLE_LIST_WITH_TAG_FILTER_SELECT,
+  type SupabaseArticleRow,
+} from "@/lib/article-reads/shared";
 
 const DEFAULT_PAGE_SIZE = 20;
-const TAG_LIST_SELECT = "id,slug,name,normalized_name,type,description,article_count,latest_article_at";
-const ARTICLE_LIST_SELECT = [
-  "id",
-  "slug",
-  "source_key",
-  "jurisdiction",
-  "institution_name",
-  "content_type",
-  "original_url",
-  "canonical_url",
-  "original_language",
-  "original_title",
-  "korean_title",
-  "original_published_at",
-  "discovered_at",
-  "fetched_at",
-  "summarized_at",
-  "status",
-  "one_line_summary:summary_json->summary->coreSummary->>0",
-  "resolution_type:source_metadata->>resolutionType",
-  "case_number:source_metadata->>caseNumber",
-  `article_tags(confidence,tags(${TAG_LIST_SELECT}))`,
-].join(",");
-const ARTICLE_LIST_WITH_TAG_FILTER_SELECT = `${ARTICLE_LIST_SELECT},article_tag_filter:article_tags!inner(tag_id)`;
-const ARTICLE_PAGE_SELECT = `${ARTICLE_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
-const ARTICLE_RAW_BLOB_METADATA_SELECT = "raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version";
-const ARTICLE_DETAIL_SELECT = `${ARTICLE_PAGE_SELECT},raw_text,cleaned_text,${ARTICLE_RAW_BLOB_METADATA_SELECT}`;
-const ARTICLE_P3_LIST_SELECT = [
-  "id",
-  "slug",
-  "source_key",
-  "jurisdiction",
-  "institution_name",
-  "content_type",
-  "original_url",
-  "canonical_url",
-  "original_language",
-  "original_title",
-  "korean_title",
-  "original_published_at",
-  "discovered_at",
-  "fetched_at",
-  "summarized_at",
-  "status",
-  "one_line_summary:summary_json->summary->coreSummary->>0",
-  "resolution_type:source_metadata->>resolutionType",
-  "case_number:source_metadata->>caseNumber",
-  "article_tags",
-].join(",");
-const ARTICLE_P3_PAGE_SELECT = `${ARTICLE_P3_LIST_SELECT},source_metadata,summary_json,content_hash,error_metadata`;
-const ARTICLE_P3_DETAIL_SELECT = `${ARTICLE_P3_PAGE_SELECT},raw_text,cleaned_text,${ARTICLE_RAW_BLOB_METADATA_SELECT}`;
-const ARTICLE_V4_STATE_SELECT = "enrichment_status,enrichment_freshness,summary_status,summary_available";
-const ARTICLE_V4_LIST_SELECT = `${ARTICLE_P3_LIST_SELECT},${ARTICLE_V4_STATE_SELECT}`;
-const ARTICLE_V4_PAGE_SELECT = `${ARTICLE_P3_PAGE_SELECT},${ARTICLE_V4_STATE_SELECT}`;
-const ARTICLE_V4_DETAIL_SELECT = `${ARTICLE_P3_DETAIL_SELECT},${ARTICLE_V4_STATE_SELECT}`;
-
-function publicationProjectionEnabled(includeUnpublished?: boolean) {
-  return publicProjectionReadsEnabled(Boolean(includeUnpublished));
-}
 
 function observePublicProjectionRead(includeUnpublished?: boolean) {
   if (!includeUnpublished) observeArticlePublicationReadDecision("public_query");
-}
-
-function articleRelation(includeUnpublished?: boolean) {
-  return publicArticleRelation(Boolean(includeUnpublished));
-}
-
-function articleDetailRelation(includeUnpublished?: boolean) {
-  if (!includeUnpublished && caseCatalogPublicReadsEnabled()) return "public_article_detail_v4";
-  return articleRelation(includeUnpublished);
-}
-
-function projectionSelect(select: string, includeUnpublished?: boolean) {
-  if (!publicationProjectionEnabled(includeUnpublished)) return select;
-  if (select === ARTICLE_DETAIL_SELECT) return ARTICLE_P3_DETAIL_SELECT;
-  if (select === ARTICLE_PAGE_SELECT) return ARTICLE_P3_PAGE_SELECT;
-  return ARTICLE_P3_LIST_SELECT;
-}
-
-function detailProjectionSelect(select: string, includeUnpublished?: boolean) {
-  if (!includeUnpublished && caseCatalogPublicReadsEnabled()) {
-    if (select === ARTICLE_DETAIL_SELECT) return ARTICLE_V4_DETAIL_SELECT;
-    if (select === ARTICLE_PAGE_SELECT) return ARTICLE_V4_PAGE_SELECT;
-    return ARTICLE_V4_LIST_SELECT;
-  }
-  return projectionSelect(select, includeUnpublished);
-}
-
-function minimalSourceMetadata(row: SupabaseArticleRow) {
-  const metadata: Record<string, unknown> = {};
-  if (row.resolution_type) metadata.resolutionType = row.resolution_type;
-  if (row.case_number) metadata.caseNumber = row.case_number;
-  return Object.keys(metadata).length > 0 ? metadata : null;
-}
-
-function articleRawBlobMetadataFromRow(row: SupabaseArticleRow): ArticleRawBlobMetadata | null {
-  const storageRef = row.raw_text_storage_ref?.trim();
-  if (!storageRef) return null;
-  const blobHash = row.raw_text_blob_hash;
-  const blobSize = row.raw_text_blob_size;
-  const externalizedAt = row.raw_text_externalized_at;
-  const contractVersion = row.raw_text_blob_contract_version;
-  if (!blobHash || typeof blobSize !== "number" || !externalizedAt || !contractVersion) return null;
-  return { storageRef, blobHash, blobSize, externalizedAt, contractVersion };
 }
 
 export function normalizePagination(page?: number, pageSize?: number) {
   const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
   const safePageSize = Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.min(Math.floor(pageSize), 100) : DEFAULT_PAGE_SIZE;
   return { page: safePage, pageSize: safePageSize };
-}
-
-function articleRowToItem(
-  row: SupabaseArticleRow,
-  options: { includeSummaryJson?: boolean; includeDetailFields?: boolean } = {},
-): ArticleDetail {
-  const includeSummaryJson = options.includeSummaryJson ?? true;
-  const includeDetailFields = options.includeDetailFields ?? true;
-  const tags =
-    row.article_tags
-      ?.flatMap((articleTag) => {
-        const tagRows = Array.isArray(articleTag.tags) ? articleTag.tags : articleTag.tags ? [articleTag.tags] : [];
-        return tagRows.map((tag) => tagRowToSummary(tag, articleTag.confidence));
-      })
-      .filter(Boolean) ?? [];
-  const summary = row.summary_json ?? null;
-
-  const item: ArticleDetail = {
-    id: row.id,
-    slug: row.slug,
-    sourceKey: row.source_key,
-    jurisdiction: row.jurisdiction,
-    institutionName: row.institution_name,
-    contentType: row.content_type as ArticleContentType,
-    originalUrl: row.original_url,
-    canonicalUrl: row.canonical_url,
-    originalLanguage: row.original_language,
-    originalTitle: row.original_title,
-    koreanTitle: row.korean_title || summary?.koreanTitle || row.original_title,
-    originalPublishedAt: row.original_published_at,
-    discoveredAt: row.discovered_at,
-    fetchedAt: row.fetched_at,
-    summarizedAt: row.summarized_at,
-    status: row.status as ArticleDetail["status"],
-    caseNumber: row.case_number ?? null,
-    summaryJson: includeSummaryJson ? summary : null,
-    tags,
-    sourceMetadata: row.source_metadata ?? minimalSourceMetadata(row),
-    oneLineSummary: row.one_line_summary || summary?.summary.coreSummary[0] || "요약이 아직 생성되지 않았습니다.",
-    viewCount: 0,
-    enrichmentStatus: row.enrichment_status as ArticleDetail["enrichmentStatus"],
-    enrichmentFreshness: row.enrichment_freshness as ArticleDetail["enrichmentFreshness"],
-    summaryStatus: row.summary_status as ArticleDetail["summaryStatus"],
-    summaryAvailable: row.summary_available ?? Boolean(summary),
-  };
-
-  if (includeDetailFields) {
-    item.rawText = row.raw_text;
-    item.cleanedText = row.cleaned_text;
-    item.contentHash = row.content_hash;
-    item.errorMetadata = row.error_metadata;
-    item.rawTextBlob = articleRawBlobMetadataFromRow(row);
-  }
-
-  return item;
 }
 
 async function articleViewCountsBySlug(slugs: string[]) {
@@ -602,40 +411,6 @@ export async function listPublicSitemapArticles() {
   return items;
 }
 
-async function getArticleBySlugWithSelect(slug: string, select: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
-  const supabase = getSupabaseAdmin();
-
-  if (!supabase) {
-    const article = mockArticles.find((item) => item.slug === slug) ?? null;
-    return options.includeUnpublished || article?.status === "summarized" ? article : null;
-  }
-
-  let query = supabase
-    .from(articleDetailRelation(options.includeUnpublished))
-    .select(detailProjectionSelect(select, options.includeUnpublished))
-    .eq("slug", slug);
-
-  if (!options.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
-  }
-
-  const { data, error } = await query.maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const row = data as unknown as SupabaseArticleRow;
-  if (!data || (!options.includeUnpublished && row.source_metadata !== undefined && !isPublishableListItem(row))) {
-    return null;
-  }
-
-  return articleRowToItem(row, {
-    includeSummaryJson: select === ARTICLE_DETAIL_SELECT || select === ARTICLE_PAGE_SELECT,
-    includeDetailFields: select === ARTICLE_DETAIL_SELECT,
-  });
-}
-
 export interface ArticleDetailReadOptions {
   includeUnpublished?: boolean;
   includeSourceText?: boolean;
@@ -645,9 +420,9 @@ export interface ArticleDetailReadOptions {
 
 export async function getArticleBySlug(slug: string, options: ArticleDetailReadOptions = {}): Promise<ArticleDetail | null> {
   observePublicProjectionRead(options.includeUnpublished);
-  const select = options.includeSourceText === false ? ARTICLE_PAGE_SELECT : ARTICLE_DETAIL_SELECT;
-  const article = await getArticleBySlugWithSelect(slug, select, options);
-  if (!article || select !== ARTICLE_DETAIL_SELECT || !article.rawTextBlob) return article;
+  const select: ArticleReadSelect = options.includeSourceText === false ? "page" : "detail";
+  const article = await articleReads().getArticleBySelect(slug, select, options);
+  if (!article || select !== "detail" || !article.rawTextBlob) return article;
   return hydrateArticleRawText(article, {
     store: options.blobStore ?? createRuntimeArtifactBlobStore(options.environment),
     environment: options.environment,
@@ -656,53 +431,12 @@ export async function getArticleBySlug(slug: string, options: ArticleDetailReadO
 
 export async function getArticlePreviewBySlug(slug: string, options: { includeUnpublished?: boolean } = {}): Promise<ArticleDetail | null> {
   observePublicProjectionRead(options.includeUnpublished);
-  return getArticleBySlugWithSelect(slug, ARTICLE_LIST_SELECT, options);
+  return articleReads().getArticleBySelect(slug, "list", options);
 }
 
 export async function getArticleSourceTextBySlug(slug: string, options: { includeUnpublished?: boolean } = {}) {
   observePublicProjectionRead(options.includeUnpublished);
-  const supabase = getSupabaseAdmin();
-
-  if (!supabase) {
-    const article = mockArticles.find((item) => item.slug === slug) ?? null;
-    if (!article || (!options.includeUnpublished && article.status !== "summarized")) return null;
-    return {
-      slug: article.slug,
-      sourceKey: article.sourceKey,
-      sourceMetadata: article.sourceMetadata ?? null,
-      officialUrl: article.originalUrl,
-      cleanedText: article.cleanedText ?? null,
-      contentHash: article.contentHash ?? null,
-    };
-  }
-
-  let query = supabase.from(articleDetailRelation(options.includeUnpublished))
-    .select("slug,status,source_key,source_metadata,original_url,cleaned_text,content_hash")
-    .eq("slug", slug);
-  if (!options.includeUnpublished && !publicationProjectionEnabled()) {
-    query = query.eq("status", "summarized").eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
-  }
-
-  const { data, error } = await query.maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data || (!options.includeUnpublished && !isPublishableListItem(data as unknown as SupabaseArticleRow))) return null;
-
-  const row = data as {
-    slug?: string | null;
-    source_key?: string | null;
-    source_metadata?: Record<string, unknown> | null;
-    original_url?: string | null;
-    cleaned_text?: string | null;
-    content_hash?: string | null;
-  };
-  return {
-    slug: row.slug ?? slug,
-    sourceKey: row.source_key ?? null,
-    sourceMetadata: row.source_metadata ?? null,
-    officialUrl: row.original_url ?? null,
-    cleanedText: row.cleaned_text ?? null,
-    contentHash: row.content_hash ?? null,
-  };
+  return articleReads().getArticleSourceTextBySlug(slug, options);
 }
 
 export async function getRelatedArticles(article: ArticleListItem, limit = 3) {

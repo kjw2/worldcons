@@ -41,6 +41,8 @@ const SOURCE_KEY = "us-scotus";
 const EXTERNALIZED_AT = "2026-09-19T00:00:00.000Z";
 
 const queriesPath = path.join(process.cwd(), "lib/db/queries.ts");
+const articleReadsSharedPath = path.join(process.cwd(), "lib/article-reads/shared.ts");
+const articleReadsRepositoryPath = path.join(process.cwd(), "lib/article-reads/supabase-repository.ts");
 const sourceTextRoutePath = path.join(process.cwd(), "app/api/articles/[slug]/source-text/route.ts");
 const migrationPath = path.join(
   process.cwd(),
@@ -476,7 +478,7 @@ test("reader rejects a Blob document that is not a JSON string", async () => {
 // --- static path proofs ----------------------------------------------------
 
 test("raw blob metadata is projected only on detail reads", () => {
-  const source = fs.readFileSync(queriesPath, "utf8");
+  const source = fs.readFileSync(articleReadsSharedPath, "utf8");
   assert.match(
     source,
     /const ARTICLE_RAW_BLOB_METADATA_SELECT = "raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version";/,
@@ -492,13 +494,13 @@ test("raw blob metadata is projected only on detail reads", () => {
 });
 
 test("list and source-text clean reads never request raw blob metadata", () => {
-  const source = fs.readFileSync(queriesPath, "utf8");
+  const source = fs.readFileSync(articleReadsSharedPath, "utf8");
   for (const name of ["ARTICLE_LIST_SELECT", "ARTICLE_P3_LIST_SELECT"]) {
     const body = source.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\]\\.join`));
     assert.ok(body, `${name} array not found`);
     assert.equal((body as RegExpMatchArray)[1].includes("raw_text_blob"), false, `${name} must not request raw blob metadata`);
   }
-  const sourceTextSelect = source.match(/"slug,status,source_key,source_metadata,original_url,cleaned_text,content_hash"/);
+  const sourceTextSelect = fs.readFileSync(articleReadsRepositoryPath, "utf8").match(/"slug,status,source_key,source_metadata,original_url,cleaned_text,content_hash"/);
   assert.ok(sourceTextSelect);
   assert.equal((sourceTextSelect as RegExpMatchArray)[0].includes("raw_text_blob"), false);
 });

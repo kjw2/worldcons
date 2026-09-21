@@ -65,7 +65,7 @@ test("Catalog rollout flags enforce the P3 -> public -> search -> plugin depende
 test("public detail renders source-only and stale-reprocessing states while admin withdraw preserves the publication version", () => {
   const detailPage = fs.readFileSync(path.join(process.cwd(), "app/articles/[slug]/(detail)/page.tsx"), "utf8");
   const adminRoute = fs.readFileSync(path.join(process.cwd(), "app/api/admin/work/[kind]/[id]/route.ts"), "utf8");
-  const queries = fs.readFileSync(path.join(process.cwd(), "lib/db/queries.ts"), "utf8");
+  const queries = fs.readFileSync(path.join(process.cwd(), "lib/article-reads/shared.ts"), "utf8");
   assert.match(detailPage, /공식 원문이 갱신되어 한국어 요약을 재처리하고 있습니다/);
   assert.match(detailPage, /검증된 공식 판례가 먼저 공개되었습니다/);
   assert.match(adminRoute, /action === "withdraw" \? String\(publication\.version_id\) : String\(head\.current_version_id\)/);
