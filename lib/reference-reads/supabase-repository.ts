@@ -1,8 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
-import type { SourceRecord, TagSummary } from "@/lib/db/types";
+import type { GlossaryTerm, IngestionRunRecord, SourceRecord, TagSummary } from "@/lib/db/types";
 import { rangeStartIso } from "@/lib/utils/dates";
-import { normalizeJurisdictions, normalizeTagListOptions, tagRowToSummary, type SupabaseTagRow } from "@/lib/reference-reads/shared";
+import {
+  glossaryTermRowToRecord,
+  ingestionRunRowToRecord,
+  normalizeJurisdictions,
+  normalizeTagListOptions,
+  sortGlossaryTerms,
+  tagRowToSummary,
+  type SupabaseGlossaryTermRow,
+  type SupabaseIngestionRunRow,
+  type SupabaseTagRow,
+} from "@/lib/reference-reads/shared";
 import type { JurisdictionCountOptions, ReferenceReadRepository, TagListOptions } from "@/lib/reference-reads/types";
 
 interface SupabaseJurisdictionCountRow {
@@ -112,5 +122,30 @@ export function createSupabaseReferenceReadRepository(
     return Object.fromEntries(entries);
   }
 
-  return { listSources, listTags, listJurisdictionArticleCounts };
+  async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
+    const supabase = client();
+    const { data, error } = await supabase.from("glossary_terms").select("*").order("term");
+    if (error) throw new Error(error.message);
+
+    return sortGlossaryTerms(((data ?? []) as SupabaseGlossaryTermRow[]).map((row) => glossaryTermRowToRecord(row)));
+  }
+
+  async function getGlossaryTerm(slug: string): Promise<GlossaryTerm | null> {
+    const terms = await listGlossaryTerms();
+    return terms.find((term) => term.slug === slug) ?? null;
+  }
+
+  async function listIngestionRuns(limit = 20): Promise<IngestionRunRecord[]> {
+    const supabase = client();
+    const { data, error } = await supabase
+      .from("ingestion_runs")
+      .select("*")
+      .order("started_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(error.message);
+
+    return ((data ?? []) as SupabaseIngestionRunRow[]).map((row) => ingestionRunRowToRecord(row));
+  }
+
+  return { listSources, listTags, listJurisdictionArticleCounts, listGlossaryTerms, getGlossaryTerm, listIngestionRuns };
 }

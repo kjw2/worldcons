@@ -1,10 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
-import {
-  mockArticles,
-  mockGlossaryTerms,
-  mockIngestionRuns,
-  mockTags,
-} from "@/lib/db/mock-data";
+import { mockArticles, mockTags } from "@/lib/db/mock-data";
 import type {
   ArticleContentType,
   ArticleDetail,
@@ -185,14 +180,6 @@ export function normalizePagination(page?: number, pageSize?: number) {
   const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
   const safePageSize = Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.min(Math.floor(pageSize), 100) : DEFAULT_PAGE_SIZE;
   return { page: safePage, pageSize: safePageSize };
-}
-
-function sortGlossaryTerms(terms: GlossaryTerm[]) {
-  return [...terms].sort((left, right) => {
-    const leftLabel = left.koreanTerm || left.term;
-    const rightLabel = right.koreanTerm || right.term;
-    return leftLabel.localeCompare(rightLabel, "ko");
-  });
 }
 
 function articleRowToItem(
@@ -875,51 +862,15 @@ export async function getSourceByKey(sourceKey: string) {
 }
 
 export async function listIngestionRuns(limit = 20): Promise<IngestionRunRecord[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return mockIngestionRuns.slice(0, limit);
-
-  const { data, error } = await supabase
-    .from("ingestion_runs")
-    .select("*")
-    .order("started_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    sourceKey: row.source_key,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-    status: row.status,
-    discoveredCount: row.discovered_count,
-    fetchedCount: row.fetched_count,
-    summarizedCount: row.summarized_count,
-    failedCount: row.failed_count,
-    errorMessage: row.error_message,
-    metadata: row.metadata,
-  }));
+  return referenceReads().listIngestionRuns(limit);
 }
 
 export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return sortGlossaryTerms(mockGlossaryTerms);
-
-  const { data, error } = await supabase.from("glossary_terms").select("*").order("term");
-  if (error) throw new Error(error.message);
-
-  return sortGlossaryTerms((data ?? []).map((row) => ({
-    slug: row.slug,
-    term: row.term,
-    koreanTerm: row.korean_term,
-    definition: row.definition,
-    jurisdiction: row.jurisdiction,
-    relatedTags: row.related_tags ?? [],
-  })));
+  return referenceReads().listGlossaryTerms();
 }
 
 export async function getGlossaryTerm(slug: string) {
-  const terms = await listGlossaryTerms();
-  return terms.find((term) => term.slug === slug) ?? null;
+  return referenceReads().getGlossaryTerm(slug);
 }
 
 export async function listArticlesForGlossaryTerm(term: GlossaryTerm, limit = 8): Promise<ArticleListItem[]> {

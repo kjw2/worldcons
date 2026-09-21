@@ -1,4 +1,4 @@
-import type { ArticleListFilters, SourceRecord, TagSummary } from "@/lib/db/types";
+import type { ArticleListFilters, GlossaryTerm, IngestionRunRecord, SourceRecord, TagSummary } from "@/lib/db/types";
 
 export interface TagListOptions {
   type?: string;
@@ -15,7 +15,8 @@ export interface JurisdictionCountOptions {
 
 /**
  * Platform-neutral contract for the public reference-read domain: the source
- * inventory, the public tag catalog, and the jurisdiction article counts.
+ * inventory, the public tag catalog, the jurisdiction article counts, the
+ * glossary catalog, and the ingestion-run history.
  *
  * The contract deliberately exposes no Postgres/Supabase types so a future D1
  * repository can implement it without callers changing. The Supabase-backed
@@ -28,4 +29,7 @@ export interface ReferenceReadRepository {
     jurisdictions?: string[],
     options?: JurisdictionCountOptions,
   ): Promise<Record<string, number>>;
+  listGlossaryTerms(): Promise<GlossaryTerm[]>;
+  getGlossaryTerm(slug: string): Promise<GlossaryTerm | null>;
+  listIngestionRuns(limit?: number): Promise<IngestionRunRecord[]>;
 }

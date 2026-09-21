@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { listJurisdictionArticleCounts, listSources, listTags } from "../lib/db/queries";
-import { mockSources, mockTags } from "../lib/db/mock-data";
+import {
+  getGlossaryTerm,
+  listGlossaryTerms,
+  listIngestionRuns,
+  listJurisdictionArticleCounts,
+  listSources,
+  listTags,
+} from "../lib/db/queries";
+import { mockGlossaryTerms, mockIngestionRuns, mockSources, mockTags } from "../lib/db/mock-data";
 import { referenceReads } from "../lib/reference-reads";
 import { mockReferenceReads } from "../lib/reference-reads/mock-repository";
 import { createSupabaseReferenceReadRepository } from "../lib/reference-reads/supabase-repository";
@@ -89,6 +96,25 @@ test("referenceReads selects the mock adapter and preserves mock fallback withou
     assert.deepEqual(await listTags({ type: "procedure" }), [mockTags.find((tag) => tag.slug === "qpc")]);
     assert.deepEqual(await listJurisdictionArticleCounts([]), { Germany: 1, "United States": 1, France: 1 });
     assert.deepEqual(await listJurisdictionArticleCounts(["France", "Spain"]), { France: 1, Spain: 0 });
+
+    const terms = await referenceReads().listGlossaryTerms();
+    assert.equal(terms.length, mockGlossaryTerms.length, "mock glossary fallback must keep the full seed");
+    assert.deepEqual(
+      terms.map((term) => term.slug).sort(),
+      mockGlossaryTerms.map((term) => term.slug).sort(),
+      "mock glossary fallback must keep every seed term",
+    );
+    for (let index = 1; index < terms.length; index += 1) {
+      const previous = terms[index - 1].koreanTerm || terms[index - 1].term;
+      const current = terms[index].koreanTerm || terms[index].term;
+      assert.ok(previous.localeCompare(current, "ko") <= 0, "mock glossary fallback must stay sorted by Korean term label");
+    }
+    assert.deepEqual(await listGlossaryTerms(), terms, "exported listGlossaryTerms must keep the mock fallback");
+    assert.deepEqual(await getGlossaryTerm("qpc"), terms.find((term) => term.slug === "qpc"));
+    assert.equal(await getGlossaryTerm("not-a-real-term"), null, "missing glossary slug must resolve to null");
+    assert.deepEqual(await referenceReads().listIngestionRuns(), mockIngestionRuns);
+    assert.deepEqual(await listIngestionRuns(), mockIngestionRuns, "exported listIngestionRuns must keep the mock fallback");
+    assert.deepEqual(await listIngestionRuns(0), [], "mock ingestion fallback must honor the limit");
   });
 });
 
@@ -108,7 +134,18 @@ test("referenceReads selects the Supabase adapter when Supabase config is presen
         assert.notEqual(repository, mockReferenceReads, "configured Supabase must select the Supabase adapter");
         assert.deepEqual(await repository.listSources(), []);
         assert.deepEqual(await listSources(), [], "exported listSources must delegate to the selected adapter");
+        assert.deepEqual(await listGlossaryTerms(), [], "exported listGlossaryTerms must delegate to the selected adapter");
+        assert.deepEqual(await getGlossaryTerm("qpc"), null, "exported getGlossaryTerm must delegate to the selected adapter");
+        assert.deepEqual(await listIngestionRuns(), [], "exported listIngestionRuns must delegate to the selected adapter");
         assert.ok(requests.some((url) => url.includes("/rest/v1/sources")), "Supabase adapter must query the sources table");
+        assert.ok(
+          requests.some((url) => url.includes("/rest/v1/glossary_terms")),
+          "Supabase adapter must query the glossary_terms table",
+        );
+        assert.ok(
+          requests.some((url) => url.includes("/rest/v1/ingestion_runs")),
+          "Supabase adapter must query the ingestion_runs table",
+        );
       },
     );
   } finally {
@@ -263,5 +300,125 @@ test("Supabase adapter keeps the jurisdiction-count RPC fallback semantics", asy
   assert.deepEqual(projectedFake.tableCalls.map((call) => call.table), ["public_article_projection_p3"]);
   assert.ok(!projectedFake.tableCalls[0].eqs.some(([column]) => column === "catalog_ai_stale_v4"));
   assert.equal(projectedFake.tableCalls[0].filters.length, 0);
+});
+
+test("Supabase adapter orders and maps glossary terms and resolves getGlossaryTerm", async () => {
+  const fake = createFakeSupabase({
+    tables: {
+      glossary_terms: () => ({
+        data: [
+          {
+            slug: "qpc",
+            term: "Question prioritaire de constitutionnalite",
+            korean_term: "우선적 위헌심사절차",
+            definition: "프랑스의 사후적 위헌심사 절차",
+            jurisdiction: "France",
+            related_tags: ["QPC", "Article 61-1"],
+          },
+          {
+            slug: "standing",
+            term: "Standing",
+            korean_term: "당사자적격",
+            definition: "미국 연방법원의 본안 판단 요건",
+            jurisdiction: "United States",
+            related_tags: undefined,
+          },
+        ],
+        error: null,
+      }),
+    },
+  });
+  const repository = createSupabaseReferenceReadRepository({ client: () => fake.client, environment: {} });
+
+  assert.deepEqual(await repository.listGlossaryTerms(), [
+    {
+      slug: "standing",
+      term: "Standing",
+      koreanTerm: "당사자적격",
+      definition: "미국 연방법원의 본안 판단 요건",
+      jurisdiction: "United States",
+      relatedTags: [],
+    },
+    {
+      slug: "qpc",
+      term: "Question prioritaire de constitutionnalite",
+      koreanTerm: "우선적 위헌심사절차",
+      definition: "프랑스의 사후적 위헌심사 절차",
+      jurisdiction: "France",
+      relatedTags: ["QPC", "Article 61-1"],
+    },
+  ]);
+  assert.deepEqual(fake.tableCalls.map((call) => call.table), ["glossary_terms"]);
+  assert.deepEqual(fake.tableCalls[0].select, ["*"]);
+  assert.deepEqual(fake.tableCalls[0].orders, [["term", undefined]]);
+
+  assert.deepEqual(await repository.getGlossaryTerm("qpc"), {
+    slug: "qpc",
+    term: "Question prioritaire de constitutionnalite",
+    koreanTerm: "우선적 위헌심사절차",
+    definition: "프랑스의 사후적 위헌심사 절차",
+    jurisdiction: "France",
+    relatedTags: ["QPC", "Article 61-1"],
+  });
+  assert.equal(await repository.getGlossaryTerm("missing"), null);
+  assert.deepEqual(fake.tableCalls.map((call) => call.table), ["glossary_terms", "glossary_terms", "glossary_terms"]);
+
+  const failing = createFakeSupabase({
+    tables: { glossary_terms: () => ({ data: null, error: { message: "glossary unavailable" } }) },
+  });
+  const failingRepository = createSupabaseReferenceReadRepository({ client: () => failing.client, environment: {} });
+  await assert.rejects(() => failingRepository.listGlossaryTerms(), /glossary unavailable/);
+  await assert.rejects(() => failingRepository.getGlossaryTerm("qpc"), /glossary unavailable/);
+});
+
+test("Supabase adapter orders ingestion runs by started_at desc and applies the limit", async () => {
+  const fake = createFakeSupabase({
+    tables: {
+      ingestion_runs: () => ({
+        data: [{
+          id: "run-1",
+          source_key: "us-scotus",
+          started_at: "2026-05-08T00:00:00.000Z",
+          finished_at: "2026-05-08T00:02:31.000Z",
+          status: "completed",
+          discovered_count: 12,
+          fetched_count: 4,
+          summarized_count: 2,
+          failed_count: 0,
+          error_message: null,
+          metadata: { mode: "mock" },
+        }],
+        error: null,
+      }),
+    },
+  });
+  const repository = createSupabaseReferenceReadRepository({ client: () => fake.client, environment: {} });
+
+  assert.deepEqual(await repository.listIngestionRuns(5), [{
+    id: "run-1",
+    sourceKey: "us-scotus",
+    startedAt: "2026-05-08T00:00:00.000Z",
+    finishedAt: "2026-05-08T00:02:31.000Z",
+    status: "completed",
+    discoveredCount: 12,
+    fetchedCount: 4,
+    summarizedCount: 2,
+    failedCount: 0,
+    errorMessage: null,
+    metadata: { mode: "mock" },
+  }]);
+  assert.deepEqual(fake.tableCalls.map((call) => call.table), ["ingestion_runs"]);
+  assert.deepEqual(fake.tableCalls[0].select, ["*"]);
+  assert.deepEqual(fake.tableCalls[0].orders, [["started_at", { ascending: false }]]);
+  assert.deepEqual(fake.tableCalls[0].limits, [5]);
+
+  await repository.listIngestionRuns();
+  assert.deepEqual(fake.tableCalls[1].limits, [20], "the default ingestion-run limit must stay 20");
+
+  const failing = createFakeSupabase({
+    tables: { ingestion_runs: () => ({ data: null, error: { message: "runs unavailable" } }) },
+  });
+  const failingRepository = createSupabaseReferenceReadRepository({ client: () => failing.client, environment: {} });
+  await assert.rejects(() => failingRepository.listIngestionRuns(), /runs unavailable/);
 });
 

@@ -1,6 +1,10 @@
-import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
+import { mockArticles, mockGlossaryTerms, mockIngestionRuns, mockSources, mockTags } from "@/lib/db/mock-data";
 import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
-import { normalizeJurisdictions, normalizeTagListOptions } from "@/lib/reference-reads/shared";
+import {
+  normalizeJurisdictions,
+  normalizeTagListOptions,
+  sortGlossaryTerms,
+} from "@/lib/reference-reads/shared";
 import type { JurisdictionCountOptions, ReferenceReadRepository, TagListOptions } from "@/lib/reference-reads/types";
 
 /**
@@ -38,5 +42,18 @@ export const mockReferenceReads: ReferenceReadRepository = {
     return normalizedJurisdictions.length
       ? Object.fromEntries(normalizedJurisdictions.map((jurisdiction) => [jurisdiction, counts[jurisdiction] ?? 0]))
       : counts;
+  },
+
+  async listGlossaryTerms() {
+    return sortGlossaryTerms(mockGlossaryTerms);
+  },
+
+  async getGlossaryTerm(slug: string) {
+    const terms = await mockReferenceReads.listGlossaryTerms();
+    return terms.find((term) => term.slug === slug) ?? null;
+  },
+
+  async listIngestionRuns(limit = 20) {
+    return mockIngestionRuns.slice(0, limit);
   },
 };

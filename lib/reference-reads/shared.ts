@@ -1,4 +1,4 @@
-import type { TagSummary, TagType } from "@/lib/db/types";
+import type { GlossaryTerm, IngestionRunRecord, TagSummary, TagType } from "@/lib/db/types";
 import type { TagListOptions } from "@/lib/reference-reads/types";
 
 /**
@@ -53,4 +53,62 @@ export function normalizeTagListOptions(options: TagListOptions = {}): Normalize
 
 export function normalizeJurisdictions(jurisdictions: string[]) {
   return Array.from(new Set(jurisdictions.map((jurisdiction) => jurisdiction.trim()).filter(Boolean)));
+}
+
+export interface SupabaseGlossaryTermRow {
+  slug: string;
+  term: string;
+  korean_term?: string | null;
+  definition: string;
+  jurisdiction?: string | null;
+  related_tags?: string[] | null;
+}
+
+export function glossaryTermRowToRecord(row: SupabaseGlossaryTermRow): GlossaryTerm {
+  return {
+    slug: row.slug,
+    term: row.term,
+    koreanTerm: row.korean_term,
+    definition: row.definition,
+    jurisdiction: row.jurisdiction,
+    relatedTags: row.related_tags ?? [],
+  };
+}
+
+export function sortGlossaryTerms(terms: GlossaryTerm[]): GlossaryTerm[] {
+  return [...terms].sort((left, right) => {
+    const leftLabel = left.koreanTerm || left.term;
+    const rightLabel = right.koreanTerm || right.term;
+    return leftLabel.localeCompare(rightLabel, "ko");
+  });
+}
+
+export interface SupabaseIngestionRunRow {
+  id?: string;
+  source_key: string;
+  started_at: string;
+  finished_at?: string | null;
+  status: string;
+  discovered_count: number;
+  fetched_count: number;
+  summarized_count: number;
+  failed_count: number;
+  error_message?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export function ingestionRunRowToRecord(row: SupabaseIngestionRunRow): IngestionRunRecord {
+  return {
+    id: row.id,
+    sourceKey: row.source_key,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    status: row.status,
+    discoveredCount: row.discovered_count,
+    fetchedCount: row.fetched_count,
+    summarizedCount: row.summarized_count,
+    failedCount: row.failed_count,
+    errorMessage: row.error_message,
+    metadata: row.metadata,
+  };
 }
