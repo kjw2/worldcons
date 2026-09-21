@@ -782,7 +782,7 @@ Acceptance:
 - JSON/date/UUID conversion tests
 - representative RPC parity
 
-Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b):
+Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1):
 - four D1 schemas and the Postgres -> canonical transform foundation exist as local-only,
   hand-authored D1 schema code plus a read-only Supabase-migration scanner and a
   schema/ownership/parity validator (`pnpm d1:schema`, `pnpm test:d1-schema`);
@@ -805,9 +805,16 @@ Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b):
   that creates only the missing `worldcons_*` databases with an explicit `--apply`, refuses an
   ambiguous name, aborts the remaining creates after a failure, and re-lists plus runs `d1 info`
   to prove each create (`pnpm d1:provision`, `pnpm test:d1-provision`);
-- the bounded Postgres -> Cloudflare D1 data copy (M5.2c PART 2) and shadow reads (M6) remain
-  M5.2c+/M6 work;
-- no D1 database was created remotely and no authority changed.
+- remote D1 creation is **complete**: `pnpm d1:provision --apply --report --json` created all four
+  `worldcons_*` databases in `apac` and verified each via `d1 info`; a subsequent read-only dry-run
+  reports 4 existing / 0 missing / action `none`. The four UUIDs (`worldcons_core`
+  `0f4c41f0-778f-4ef4-860e-b0dad05f0984`, `worldcons_ingest`
+  `0ccd27ff-fd16-4071-bc94-616690708c4e`, `worldcons_ops`
+  `6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4`, `worldcons_search`
+  `1d74ebba-918b-4f8c-9c5c-9013479df809`) are now recorded in `wrangler.jsonc`;
+- the bounded Postgres -> Cloudflare D1 schema/data copy (M5.2c PART 2) and shadow reads (M6) remain
+  M5.2c+/M6 work; the four remote databases are still empty (no DDL/schema applied, no data imported);
+- no Worker deploy, DNS change, or Supabase authority switch occurred.
 
 ### M6 — D1 shadow-read parity
 
@@ -1050,7 +1057,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] Worker staging deployment
 - [x] Supabase coupling/RPC ledger (M4.6: `pnpm rpc:ledger`, 80 functions / 74 call sites, 0 unbounded dynamic families)
 - [x] four D1 schemas
-- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`; the Postgres -> D1 data copy remains M5.2c PART 2+)
+- [x] four remote D1 databases created (M5.2c PART 1: `pnpm d1:provision --apply --report --json` created `worldcons_core`/`worldcons_ingest`/`worldcons_ops`/`worldcons_search` in `apac`, all `verified:true`; post-run dry-run reports 4 existing / 0 missing / action `none`; UUIDs recorded in `wrangler.jsonc`; databases are still empty — no schema/DDL or data applied)
+- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; the Postgres -> D1 schema/data copy remains M5.2c PART 2+)
 - [ ] data count/hash/FK invariants
 - [ ] D1 shadow reads
 - [ ] FTS5 parity
