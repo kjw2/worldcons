@@ -1,8 +1,13 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
-import { adminOpsReads, type AdminOpsCandidateRow } from "@/lib/admin/ops-read-repository";
+import {
+  adminOpsReads,
+  collectionFor,
+  isPublishableArticle,
+  type AdminOpsCandidateRow,
+} from "@/lib/admin/ops-read-repository";
 import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 import { fallbackErrorClassForArticleStatus, fallbackReviewStateForArticleStatus } from "@/lib/db/article-triage";
-import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
+import { mockSources, mockTags } from "@/lib/db/mock-data";
 import { listIngestionRuns, listSources } from "@/lib/db/queries";
 import type { ArticleStatus, IngestionRunRecord, SourceRecord } from "@/lib/db/types";
 import { shadowArticleLifecycleTransition } from "@/lib/article-lifecycle";
@@ -294,25 +299,8 @@ function optionalText(value: unknown) {
   return typeof value === "string" && value ? value : null;
 }
 
-function boundedAdminArticlePage(value?: number) {
-  return Number.isFinite(value) && value && value > 0 ? Math.floor(value) : 1;
-}
-
-function boundedAdminArticlePageSize(value?: number) {
-  return Number.isFinite(value) && value && value > 0 ? Math.min(Math.floor(value), 50) : 25;
-}
-
-function collectionFor(row: AdminArticleRow) {
-  const collection = row.source_metadata?.collection;
-  return isRecord(collection) ? collection : {};
-}
-
 function isPublicArticle(row: AdminArticleRow) {
   return row.status === "summarized" && collectionFor(row).publishable === true;
-}
-
-function isPublishableArticle(row: AdminArticleRow) {
-  return collectionFor(row).publishable === true;
 }
 
 function isPendingSummary(row: AdminArticleRow) {
@@ -372,64 +360,6 @@ function adminArticleRowToListItem(row: AdminArticleListRow): AdminArticleListIt
     summarizedAt: row.summarized_at,
     fetchedAt: row.fetched_at,
   };
-}
-
-function matchesAdminArticleText(row: AdminArticleListRow, q?: string) {
-  const normalized = q?.trim().toLowerCase();
-  if (!normalized) return true;
-  const terms = normalized.split(/\s+/).filter(Boolean);
-  const haystack = [
-    row.slug,
-    row.korean_title,
-    row.original_title,
-    row.original_url,
-    row.source_key,
-    row.institution_name,
-    row.jurisdiction,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return terms.every((term) => haystack.includes(term));
-}
-
-function filterAdminMockArticles(filters: AdminArticleListFilters) {
-  const rows = mockArticles.map((article) => ({
-    id: article.id,
-    slug: article.slug,
-    source_key: article.sourceKey,
-    jurisdiction: article.jurisdiction,
-    institution_name: article.institutionName,
-    original_url: article.originalUrl,
-    original_title: article.originalTitle,
-    korean_title: article.koreanTitle,
-    original_published_at: article.originalPublishedAt,
-    fetched_at: article.fetchedAt,
-    summarized_at: article.summarizedAt,
-    status: article.status,
-    summary_json: article.summaryJson,
-    source_metadata: article.sourceMetadata ?? { collection: { publishable: article.status === "summarized" } },
-  })) satisfies AdminArticleListRow[];
-
-  return rows
-    .filter((row) => matchesAdminArticleText(row, filters.q))
-    .filter((row) => !filters.status || row.status === filters.status)
-    .filter((row) => !filters.sourceKey || row.source_key === filters.sourceKey)
-    .filter((row) => !filters.jurisdiction || row.jurisdiction === filters.jurisdiction)
-    .filter((row) => filters.publishable === "yes" ? isPublishableArticle(row) : filters.publishable === "no" ? !isPublishableArticle(row) : true)
-    .filter((row) => filters.hasSummary === "yes" ? Boolean(row.summary_json) : filters.hasSummary === "no" ? !row.summary_json : true)
-    .sort((a, b) => (b.original_published_at ?? b.fetched_at ?? "").localeCompare(a.original_published_at ?? a.fetched_at ?? ""));
-}
-
-function toAdminFullTextQuery(q?: string) {
-  const terms =
-    q
-      ?.toLowerCase()
-      .split(/\s+/)
-      .map((term) => term.replace(/[^\p{L}\p{N}]+/gu, ""))
-      .filter(Boolean) ?? [];
-
-  return terms.map((term) => `${term}:*`).join(" & ");
 }
 
 function reviewMetadataForBulk(
@@ -764,64 +694,8 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
 }
 
 export async function listAdminArticles(filters: AdminArticleListFilters = {}): Promise<AdminArticleListResult> {
-  const page = boundedAdminArticlePage(filters.page);
-  const pageSize = boundedAdminArticlePageSize(filters.pageSize);
-  const supabase = getSupabaseAdmin();
-
-  if (!supabase) {
-    const rows = filterAdminMockArticles(filters);
-    const start = (page - 1) * pageSize;
-    const items = rows.slice(start, start + pageSize).map(adminArticleRowToListItem);
-    return {
-      items,
-      pageInfo: {
-        page,
-        pageSize,
-        total: rows.length,
-        hasMore: start + pageSize < rows.length,
-        totalIsExact: true,
-      },
-    };
-  }
-
-  let query = supabase
-    .from("articles")
-    .select(
-      "id, slug, source_key, jurisdiction, institution_name, original_url, original_title, korean_title, original_published_at, fetched_at, summarized_at, status, source_metadata, summary_json, updated_at",
-      { count: "exact" },
-    )
-    .order("original_published_at", { ascending: false, nullsFirst: false })
-    .order("updated_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: true });
-
-  const tsQuery = toAdminFullTextQuery(filters.q);
-  if (tsQuery) query = query.textSearch("search_vector", tsQuery, { config: "simple" });
-  if (filters.status) query = query.eq("status", filters.status);
-  if (filters.sourceKey) query = query.eq("source_key", filters.sourceKey);
-  if (filters.jurisdiction) query = query.eq("jurisdiction", filters.jurisdiction);
-  if (filters.publishable === "yes") query = query.filter("source_metadata->collection->>publishable", "eq", "true");
-  if (filters.publishable === "no") query = query.or("source_metadata->collection->>publishable.is.null,source_metadata->collection->>publishable.neq.true");
-  if (filters.hasSummary === "yes") query = query.not("summary_json", "is", null);
-  if (filters.hasSummary === "no") query = query.is("summary_json", null);
-
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-  const { data, error, count } = await query.range(from, to);
-  if (error) throw new Error(error.message);
-
-  const rows = (data ?? []) as AdminArticleListRow[];
-  const total = count ?? from + rows.length;
-
-  return {
-    items: rows.map(adminArticleRowToListItem),
-    pageInfo: {
-      page,
-      pageSize,
-      total,
-      hasMore: from + rows.length < total,
-      totalIsExact: true,
-    },
-  };
+  const { rows, pageInfo } = await adminOpsReads().listAdminArticles(filters);
+  return { items: rows.map(adminArticleRowToListItem), pageInfo };
 }
 
 async function loadBulkAdminArticleRows(refs: AdminArticleBulkRef[]) {

@@ -4,6 +4,7 @@ import { createSupabaseAdminOpsReadRepository } from "@/lib/admin/ops-read-repos
 import type { AdminOpsReadRepository } from "@/lib/admin/ops-read-repository/types";
 
 export * from "@/lib/admin/ops-read-repository/mock-repository";
+export * from "@/lib/admin/ops-read-repository/shared";
 export * from "@/lib/admin/ops-read-repository/supabase-repository";
 export * from "@/lib/admin/ops-read-repository/types";
 

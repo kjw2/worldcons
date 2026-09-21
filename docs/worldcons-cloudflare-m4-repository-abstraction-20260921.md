@@ -55,7 +55,7 @@ Supabase stays authoritative:
 | **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
 | **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) completed — see section 11. |
 | **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) completed — see section 14. Builds on the frozen search parity corpus. |
-| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Split. **M4.5a** (dashboard read seam) completed — see section 15. **M4.5b** (admin article list + analytics/audit read domains) remains. |
+| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Split. **M4.5a** (dashboard read seam) completed — see section 15. **M4.5b1** (admin article list read seam) completed — see section 16. **M4.5b2** (analytics/audit read domains) remains. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
 
 ## 4. Exactly what M4.1 moved
@@ -1316,14 +1316,13 @@ No commit or push was performed.
 
 ### 15.5 Remaining M4.5b scope and remaining coupling
 
-M4.5b still owns, under the privileged admin authority:
+M4.5b was split. **M4.5b1** (the admin article list read seam) is completed —
+see section 16. **M4.5b2** still owns, under the privileged admin authority, the
+**analytics/audit read domains**:
 
-- the **admin article list** read — `listAdminArticles` in
-  `lib/db/admin-queries.ts` (relation/select, full-text search, filters,
-  ordering, exact count, page info), which needs its own parity evidence, and
-- the **analytics/audit read domains** — `lib/db/analytics.ts`
-  (`rpc_admin_analytics_health_snapshot` plus the legacy event/article reads) and
-  the `admin_audit_logs` / `admin_article_edit_history` projections in
+- `lib/db/analytics.ts` — `rpc_admin_analytics_health_snapshot` plus the legacy
+  event/article reads, and
+- the `admin_audit_logs` / `admin_article_edit_history` projections in
   `lib/db/admin-audit.ts`.
 
 Remaining direct Supabase calls in `lib/db/admin-queries.ts` after M4.5a (all in
@@ -1333,4 +1332,169 @@ out-of-scope functions; `Array.from` false positives excluded):
 - `.from("articles")` — in `listAdminArticles` (the paged list select/count) and
   in the bulk-action id/slug lookups and the bulk update.
 
-The dashboard data access itself carries none.
+The dashboard data access itself carries none. After **M4.5b1** (section 16), only
+the bulk read/write coupling remains — `listAdminArticles` no longer appears in
+this list.
+
+## 16. M4.5b1 — admin article list read seam (completed)
+
+**Status: done.** Baseline: clean HEAD `4b6d690` (feat: add cloudflare m4.5a
+admin dashboard read repository). No Orca, no deploy, no DNS change, no
+production data change, no D1.
+
+### 16.1 Scope and safety boundary
+
+M4.5b1 extended the existing privileged `lib/admin/ops-read-repository/` seam with
+the read path behind `listAdminArticles` in `lib/db/admin-queries.ts`:
+
+- the bounded page/pageSize normalization (default 1/25, max page size 50),
+- the no-config mock filtering/sorting/pagination,
+- the Supabase `articles` list select with `{ count: "exact" }`, the three-key
+  ordering, the `textSearch` full-text path, the status/sourceKey/jurisdiction
+  filters, the publishable yes/no filters, the hasSummary yes/no filters, the
+  range pagination, the error throw, and the count fallback + page-info
+  semantics.
+
+It did **not** move `loadBulkAdminArticleRows` / `runAdminArticleBulkAction` or
+any write path, `lib/db/analytics.ts`, `lib/db/admin-audit.ts`, the P4/P5
+repositories, command-control-plane, or the `app/api/admin/work` actions, and it
+did not change any exported signature. The exported
+`listAdminArticles(filters)` signature and its returned item/page-info shape are
+unchanged.
+
+The privileged admin authority stays a separate contract from the public
+`ArticleReadRepository` / `ReferenceReadRepository`: these reads intentionally
+expose private/unpublished state and are never composed into a public surface.
+
+Rollback is repository-only: delete the `listAdminArticles` contract method and
+its two adapter implementations plus `lib/admin/ops-read-repository/shared.ts`,
+restore the body of `listAdminArticles` and the `boundedAdminArticlePage` /
+`boundedAdminArticlePageSize` / `collectionFor` / `isPublishableArticle` /
+`matchesAdminArticleText` / `filterAdminMockArticles` / `toAdminFullTextQuery`
+helpers in `lib/db/admin-queries.ts`, and remove the M4.5b1 tests.
+
+### 16.2 What M4.5b1 moved
+
+Contract (`lib/admin/ops-read-repository/types.ts`): `AdminOpsReadRepository`
+gained `listAdminArticles(filters?)`, plus the platform-neutral
+`AdminOpsArticleListRow` (with `summary_json`), `AdminOpsArticleListFilters`,
+`AdminOpsArticleListPageInfo`, and `AdminOpsArticleListPage` types. No
+Postgres/Supabase types are exposed.
+
+Shared (`lib/admin/ops-read-repository/shared.ts`): the canonical
+`collectionFor`, `isPublishableArticle`, `boundedAdminArticlePage`, and
+`boundedAdminArticlePageSize` helpers (the last two carry the
+`DEFAULT_ADMIN_ARTICLE_PAGE_SIZE` / `MAX_ADMIN_ARTICLE_PAGE_SIZE` constants).
+These are the single definitions now used by both adapters and by the remaining
+`lib/db/admin-queries.ts` list-item mapping, so the publishability read and page
+bounds cannot drift. The module is re-exported from the seam `index.ts`.
+
+Supabase adapter (`lib/admin/ops-read-repository/supabase-repository.ts`)
+preserves verbatim, resolved against the injected client:
+
+- the `ADMIN_ARTICLE_LIST_SELECT` list select with `{ count: "exact" }`,
+- `order("original_published_at", { ascending: false, nullsFirst: false })` →
+  `order("updated_at", { ascending: false, nullsFirst: false })` →
+  `order("id", { ascending: true })`,
+- the `toAdminFullTextQuery` normalization (lowercase words, strip to
+  `\p{L}\p{N}`, `${term}:*` joined with ` & `) applied to
+  `textSearch("search_vector", tsQuery, { config: "simple" })`,
+- the `status` / `source_key` / `jurisdiction` equality filters,
+- the publishable `yes` filter
+  (`source_metadata->collection->>publishable` `eq` `true`) and the exact
+  publishable `no` OR expression
+  (`source_metadata->collection->>publishable.is.null,
+  source_metadata->collection->>publishable.neq.true`),
+- the hasSummary `yes` `not("summary_json","is",null)` and `no`
+  `is("summary_json",null)`,
+- `.range(from, to)` with `from = (page-1)*pageSize`,
+  `to = from + pageSize - 1`, the `error` rethrow, and the
+  `total = count ?? from + rows.length` fallback,
+- the page info (`hasMore = from + rows.length < total`, `totalIsExact: true`).
+
+Mock adapter (`lib/admin/ops-read-repository/mock-repository.ts`) reproduces the
+pre-extraction no-database fallback exactly: the `mockArticles` row mapping (with
+the `publishable` default derived from `status === "summarized"`),
+`matchesAdminArticleText` term matching, the status/sourceKey/jurisdiction/
+publishable/hasSummary filters, the published-date-desc sort, the page slice, and
+the same page-info totals.
+
+Changed caller (`lib/db/admin-queries.ts`): `listAdminArticles` is now a thin
+delegation — `const { rows, pageInfo } = await adminOpsReads().listAdminArticles(
+filters); return { items: rows.map(adminArticleRowToListItem), pageInfo };` —
+with an unchanged exported signature. The list-item mapping
+(`adminArticleRowToListItem` / `adminArticleTitle`) stays at the query boundary,
+so the repository never owns the list-item shape. The moved helpers and the
+`mockArticles` import were removed; `collectionFor` / `isPublishableArticle` are
+imported from the seam. `getSupabaseAdmin`, `mockSources`, `mockTags`, and every
+bulk read/write path are untouched.
+
+### 16.3 Coupling effect and remaining coupling
+
+Same scan as sections 2/4/9/10/11/13/14 (`app/lib/scripts/workers/components/plugins`
+`.ts`/`.tsx`; `Array.from` false positives excluded). The extraction shape matches
+M4.5a: `lib/admin/ops-read-repository/index.ts` already called
+`getSupabaseAdmin()` and `supabase-repository.ts` was already a direct-coupling
+file, so the file-level census is unchanged. The measurable win is at the
+boundary: the admin list data access is now a platform-neutral contract, and a
+future adapter can implement it without touching `admin-queries.ts`.
+
+Remaining direct Supabase calls in `lib/db/admin-queries.ts` after M4.5b1 (all in
+out-of-scope bulk read/write functions; `Array.from` false positives excluded):
+
+- `getSupabaseAdmin()` — in `loadBulkAdminArticleRows`.
+- `.from("articles")` — in the bulk-action id/slug lookups
+  (`loadBulkAdminArticleRows`) and the bulk update
+  (`runAdminArticleBulkAction`).
+
+`listAdminArticles` carries none.
+
+### 16.4 M4.5b1 files changed
+
+- Changed: `lib/admin/ops-read-repository/types.ts` (list contract method + row/filters/page types)
+- Added: `lib/admin/ops-read-repository/shared.ts` (`collectionFor`, `isPublishableArticle`, page bounds)
+- Changed: `lib/admin/ops-read-repository/index.ts` (shared re-export)
+- Changed: `lib/admin/ops-read-repository/supabase-repository.ts` (`listAdminArticles` + `toAdminFullTextQuery`)
+- Changed: `lib/admin/ops-read-repository/mock-repository.ts` (mock `listAdminArticles` + `matchesAdminArticleText`/`filterMockAdminArticleRows`)
+- Changed: `lib/db/admin-queries.ts` (`listAdminArticles` delegation; helper/import removal)
+- Changed: `tests/admin-ops-read-repository.test.ts` (list parity; extended fake client; static coupling guard)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md`
+
+No `package.json` change was needed: `test:admin-ops-reads` already runs the
+focused file and is already wired into `verify:release`.
+
+### 16.5 M4.5b1 verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:admin-ops-reads` | Pass, 16/16 |
+| `pnpm test:p4` | Pass |
+| `pnpm test:p5` | Pass |
+| `pnpm test:security` | Pass |
+| `pnpm test:ops` | Pass |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm check:vinext` | Pass |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+The focused tests prove: (1) `adminOpsReads()` selects the mock adapter without
+configuration and preserves the pre-extraction list behavior (published-date-desc
+order, the source/jurisdiction/status/publishable/hasSummary filters, the text
+term match, the page slice, and the default `page 1 / pageSize 25`), and the
+exported `listAdminArticles` returns the same rows/page info; (2) the page/pageSize
+bounds (`0` → page 1, `10 000` → page size 50, fractional → floored); (3) the
+Supabase adapter keeps the exact list select, `{ count: "exact" }`, the three-key
+ordering, `.range(from, to)`, the exact-count total, and range pagination across
+pages; (4) every filter is applied exactly, including the publishable `no` OR
+expression and the hasSummary `not`/`is` pair, and the existing full-text
+normalization produces `표현의:* & 자유:* & bverfg:*` with `{ config: "simple" }`
+(and no `textSearch` for an empty query); (5) a list read error rethrows and a
+`null` count falls back to `range start + returned rows`; (6) the exported list
+delegates to the configured Supabase adapter; and (7) a static guard proves the
+`listAdminArticles` body carries no `getSupabaseAdmin` / `.from(` / `.rpc(`, while
+the bulk read/write functions keep their direct `articles` coupling.
+
+No commit or push was performed.

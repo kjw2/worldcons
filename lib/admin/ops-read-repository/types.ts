@@ -43,6 +43,37 @@ export interface AdminOpsCandidateRow {
 
 export type AdminOpsCountTable = "tags" | "source_url_candidates";
 
+export interface AdminOpsArticleListRow extends AdminOpsArticleRow {
+  summary_json?: unknown;
+}
+
+export type AdminOpsArticlePublishableFilter = "all" | "yes" | "no";
+export type AdminOpsArticleSummaryFilter = "all" | "yes" | "no";
+
+export interface AdminOpsArticleListFilters {
+  q?: string;
+  status?: string;
+  sourceKey?: string;
+  jurisdiction?: string;
+  publishable?: AdminOpsArticlePublishableFilter;
+  hasSummary?: AdminOpsArticleSummaryFilter;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AdminOpsArticleListPageInfo {
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  totalIsExact: boolean;
+}
+
+export interface AdminOpsArticleListPage {
+  rows: AdminOpsArticleListRow[];
+  pageInfo: AdminOpsArticleListPageInfo;
+}
+
 export interface AdminOpsReadRepository {
   /** True when an authoritative database is configured. */
   isConfigured(): boolean;
@@ -58,4 +89,11 @@ export interface AdminOpsReadRepository {
   loadCandidateRows(): Promise<AdminOpsCandidateRow[]>;
   /** The exact head count for a catalog table, or `fallback` on error/no database. */
   countTableRows(table: AdminOpsCountTable, fallback: number): Promise<number>;
+  /**
+   * The paged, filtered private article rows backing the admin article list.
+   * The page/pageSize bounds, mock fallback filtering/sorting, exact count with
+   * fallback, and page-info semantics are all owned here; callers map rows to
+   * their list-item shape.
+   */
+  listAdminArticles(filters?: AdminOpsArticleListFilters): Promise<AdminOpsArticleListPage>;
 }

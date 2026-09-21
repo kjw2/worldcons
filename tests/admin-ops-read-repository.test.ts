@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getAdminDashboardData } from "../lib/db/admin-queries";
+import { getAdminDashboardData, listAdminArticles } from "../lib/db/admin-queries";
 import {
   adminOpsReads,
   createSupabaseAdminOpsReadRepository,
@@ -12,6 +14,8 @@ import { mockArticles, mockIngestionRuns, mockSources, mockTags } from "../lib/d
 
 const ARTICLE_ROW_SELECT =
   "id, slug, source_key, jurisdiction, institution_name, original_url, original_title, korean_title, original_published_at, fetched_at, summarized_at, status, source_metadata, error_metadata, updated_at";
+const ADMIN_ARTICLE_LIST_SELECT =
+  "id, slug, source_key, jurisdiction, institution_name, original_url, original_title, korean_title, original_published_at, fetched_at, summarized_at, status, source_metadata, summary_json, updated_at";
 const CANDIDATE_ROW_SELECT = "source_key, status, candidate_type, created_at, last_attempt_at";
 
 const ENV_KEYS = [
@@ -67,6 +71,13 @@ interface TableCall {
   table: string;
   select: unknown[];
   ranges: Array<[number, number]>;
+  orders: Array<[string, unknown?]>;
+  eqs: Array<[string, unknown]>;
+  filters: unknown[][];
+  ors: unknown[];
+  nots: unknown[][];
+  iss: unknown[][];
+  textSearches: Array<[string, string, unknown?]>;
 }
 
 interface TableResult {
@@ -84,7 +95,7 @@ function createFakeSupabase(options: {
 
   const client = {
     from(table: string) {
-      const info: TableCall = { table, select: [], ranges: [] };
+      const info: TableCall = { table, select: [], ranges: [], orders: [], eqs: [], filters: [], ors: [], nots: [], iss: [], textSearches: [] };
       const builder: Record<string, unknown> = {};
       const resolve = (): TableResult => {
         tableCalls.push(info);
@@ -93,6 +104,13 @@ function createFakeSupabase(options: {
       };
       builder.select = (...args: unknown[]) => { info.select = args; return builder; };
       builder.range = (from: number, to: number) => { info.ranges.push([from, to]); return builder; };
+      builder.order = (column: string, opts?: unknown) => { info.orders.push([column, opts]); return builder; };
+      builder.eq = (column: string, value: unknown) => { info.eqs.push([column, value]); return builder; };
+      builder.filter = (...args: unknown[]) => { info.filters.push(args); return builder; };
+      builder.or = (...args: unknown[]) => { info.ors.push(...args); return builder; };
+      builder.not = (...args: unknown[]) => { info.nots.push(args); return builder; };
+      builder.is = (...args: unknown[]) => { info.iss.push(args); return builder; };
+      builder.textSearch = (column: string, query: string, opts?: unknown) => { info.textSearches.push([column, query, opts]); return builder; };
       builder.then = (onFulfilled: (value: TableResult) => unknown, onRejected?: (reason: unknown) => unknown) =>
         Promise.resolve(resolve()).then(onFulfilled, onRejected);
       return builder;
@@ -409,4 +427,194 @@ test("getAdminDashboardData records the compatibility observation for new and fa
   } finally {
     setCompatibilityObservationWriterForTests(null);
   }
+});
+
+test("listAdminArticles preserves mock filtering, sorting, pagination, bounds, and delegation without Supabase config", async () => {
+  await withSupabaseEnv({}, async () => {
+    assert.equal(adminOpsReads(), mockAdminOpsReads, "absent config must select the mock adapter");
+
+    const expectedOrder = [...mockArticles]
+      .sort((a, b) => (b.originalPublishedAt ?? b.fetchedAt ?? "").localeCompare(a.originalPublishedAt ?? a.fetchedAt ?? ""))
+      .map((article) => article.slug);
+    assert.equal(expectedOrder.length, 3, "the mock corpus must keep three articles");
+    const [germanySlug, franceSlug, usSlug] = expectedOrder;
+
+    const all = await listAdminArticles({});
+    assert.deepEqual(all.items.map((item) => item.slug), expectedOrder, "the mock list must sort by published date desc");
+    assert.equal(all.pageInfo.page, 1);
+    assert.equal(all.pageInfo.pageSize, 25);
+    assert.equal(all.pageInfo.total, 3);
+    assert.equal(all.pageInfo.hasMore, false);
+    assert.equal(all.pageInfo.totalIsExact, true);
+
+    const repositoryPage = await mockAdminOpsReads.listAdminArticles({});
+    assert.deepEqual(all.pageInfo, repositoryPage.pageInfo, "the exported list must delegate to the mock adapter page info");
+    assert.deepEqual(all.items.map((item) => item.slug), repositoryPage.rows.map((row) => row.slug));
+
+    assert.deepEqual((await listAdminArticles({ sourceKey: "us-scotus" })).items.map((item) => item.slug), [usSlug]);
+    assert.deepEqual((await listAdminArticles({ jurisdiction: "France" })).items.map((item) => item.slug), [franceSlug]);
+    assert.equal((await listAdminArticles({ status: "summarized" })).items.length, 3);
+    assert.equal((await listAdminArticles({ status: "failed_fetch" })).items.length, 0);
+    assert.equal((await listAdminArticles({ publishable: "yes" })).items.length, 3);
+    assert.equal((await listAdminArticles({ publishable: "no" })).items.length, 0);
+    assert.equal((await listAdminArticles({ hasSummary: "yes" })).items.length, 3);
+    assert.equal((await listAdminArticles({ hasSummary: "no" })).items.length, 0);
+    assert.deepEqual((await listAdminArticles({ q: "germany" })).items.map((item) => item.slug), [germanySlug]);
+
+    const firstPage = await listAdminArticles({ page: 1, pageSize: 2 });
+    assert.equal(firstPage.pageInfo.hasMore, true);
+    assert.deepEqual(firstPage.items.map((item) => item.slug), expectedOrder.slice(0, 2));
+    const secondPage = await listAdminArticles({ page: 2, pageSize: 2 });
+    assert.equal(secondPage.pageInfo.page, 2);
+    assert.equal(secondPage.pageInfo.hasMore, false);
+    assert.deepEqual(secondPage.items.map((item) => item.slug), [usSlug]);
+
+    const bounded = await listAdminArticles({ page: 0, pageSize: 10_000 });
+    assert.equal(bounded.pageInfo.page, 1, "a non-positive page must fall back to 1");
+    assert.equal(bounded.pageInfo.pageSize, 50, "a page size above 50 must clamp to 50");
+    const fractional = await listAdminArticles({ page: 2.9, pageSize: 2.9 });
+    assert.equal(fractional.pageInfo.page, 2, "a fractional page must floor");
+    assert.equal(fractional.pageInfo.pageSize, 2, "a fractional page size must floor");
+  });
+});
+
+test("Supabase admin/ops adapter preserves the admin list select, order, range, count, and pagination", async () => {
+  const rows = [
+    { id: "a", slug: "a", source_key: "de-bverfg", status: "summarized", summary_json: { coreSummary: ["x"] } },
+    { id: "b", slug: "b", source_key: "us-scotus", status: "cleaned" },
+    { id: "c", slug: "c", source_key: "fr-conseil-constitutionnel", status: "failed_fetch" },
+  ];
+  const fake = createFakeSupabase({ tables: { articles: () => ({ data: rows, error: null, count: 42 }) } });
+  const repository = createSupabaseAdminOpsReadRepository({ client: () => fake.client });
+
+  const firstPage = await repository.listAdminArticles({ page: 1, pageSize: 2 });
+  assert.equal(fake.tableCalls[0].table, "articles");
+  assert.equal(fake.tableCalls[0].select[0], ADMIN_ARTICLE_LIST_SELECT, "the list read must keep the exact select shape");
+  assert.deepEqual(fake.tableCalls[0].select[1], { count: "exact" });
+  assert.deepEqual(fake.tableCalls[0].orders, [
+    ["original_published_at", { ascending: false, nullsFirst: false }],
+    ["updated_at", { ascending: false, nullsFirst: false }],
+    ["id", { ascending: true }],
+  ]);
+  assert.deepEqual(fake.tableCalls[0].ranges, [[0, 1]]);
+  assert.equal(firstPage.rows.length, 3);
+  assert.equal(firstPage.pageInfo.page, 1);
+  assert.equal(firstPage.pageInfo.pageSize, 2);
+  assert.equal(firstPage.pageInfo.total, 42, "the exact count must win");
+  assert.equal(firstPage.pageInfo.hasMore, true);
+  assert.equal(firstPage.pageInfo.totalIsExact, true);
+
+  await repository.listAdminArticles({ page: 3, pageSize: 25 });
+  assert.deepEqual(fake.tableCalls[1].ranges, [[50, 74]], "range pagination must follow the bounded page/pageSize");
+});
+
+test("Supabase admin/ops adapter applies every admin list filter and the existing full-text normalization", async () => {
+  const fake = createFakeSupabase({ tables: { articles: () => ({ data: [], error: null, count: 0 }) } });
+  const repository = createSupabaseAdminOpsReadRepository({ client: () => fake.client });
+
+  await repository.listAdminArticles({
+    q: "표현의 자유! (BVerfG)",
+    status: "summarized",
+    sourceKey: "de-bverfg",
+    jurisdiction: "Germany",
+    publishable: "yes",
+    hasSummary: "yes",
+  });
+
+  const call = fake.tableCalls[0];
+  assert.deepEqual(call.textSearches, [["search_vector", "표현의:* & 자유:* & bverfg:*", { config: "simple" }]]);
+  assert.deepEqual(call.eqs, [["status", "summarized"], ["source_key", "de-bverfg"], ["jurisdiction", "Germany"]]);
+  assert.deepEqual(call.filters, [["source_metadata->collection->>publishable", "eq", "true"]]);
+  assert.deepEqual(call.nots, [["summary_json", "is", null]]);
+  assert.deepEqual(call.ors, []);
+
+  const noFake = createFakeSupabase({ tables: { articles: () => ({ data: [], error: null, count: 0 }) } });
+  const noRepository = createSupabaseAdminOpsReadRepository({ client: () => noFake.client });
+  await noRepository.listAdminArticles({ publishable: "no", hasSummary: "no" });
+  const noCall = noFake.tableCalls[0];
+  assert.deepEqual(noCall.ors, [
+    "source_metadata->collection->>publishable.is.null,source_metadata->collection->>publishable.neq.true",
+  ]);
+  assert.deepEqual(noCall.iss, [["summary_json", null]]);
+  assert.deepEqual(noCall.filters, []);
+  assert.deepEqual(noCall.nots, []);
+  assert.deepEqual(noCall.textSearches, [], "an empty query must not add a text search");
+});
+
+test("Supabase admin/ops adapter throws on list error and falls back to the range total when count is null", async () => {
+  const failing = createFakeSupabase({ tables: { articles: () => ({ data: null, error: { message: "list boom" } }) } });
+  await assert.rejects(
+    () => createSupabaseAdminOpsReadRepository({ client: () => failing.client }).listAdminArticles({}),
+    /list boom/,
+    "a list read error must still throw",
+  );
+
+  const nullCount = createFakeSupabase({
+    tables: {
+      articles: () => ({
+        data: [
+          { id: "a", slug: "a", source_key: "de-bverfg", status: "summarized" },
+          { id: "b", slug: "b", source_key: "de-bverfg", status: "cleaned" },
+        ],
+        error: null,
+        count: null,
+      }),
+    },
+  });
+  const page = await createSupabaseAdminOpsReadRepository({ client: () => nullCount.client }).listAdminArticles({ page: 2, pageSize: 2 });
+  assert.equal(page.pageInfo.total, 4, "a null count must fall back to range start + returned rows");
+  assert.equal(page.pageInfo.hasMore, false);
+});
+
+test("exported listAdminArticles delegates to the configured Supabase adapter", async () => {
+  await withFetch(
+    (url) => {
+      if (url.includes("/rest/v1/articles")) {
+        return new Response(
+          JSON.stringify([
+            { id: "a", slug: "a", source_key: "de-bverfg", institution_name: "BVerfG", jurisdiction: "Germany", status: "summarized", summary_json: { coreSummary: ["x"] } },
+          ]),
+          { status: 200, headers: { "content-type": "application/json", "content-range": "0-0/1" } },
+        );
+      }
+      return jsonResponse([]);
+    },
+    async () => {
+      await withSupabaseEnv(
+        { SUPABASE_URL: "https://admin-ops-list.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
+        async () => {
+          const result = await listAdminArticles({ page: 1, pageSize: 25 });
+          assert.equal(result.items.length, 1);
+          assert.equal(result.items[0].slug, "a");
+          assert.equal(result.items[0].hasSummary, true);
+          assert.equal(result.pageInfo.total, 1);
+          assert.equal(result.pageInfo.hasMore, false);
+        },
+      );
+    },
+  );
+});
+
+test("listAdminArticles carries no direct Supabase coupling while bulk write coupling remains", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
+  const listStart = source.indexOf("export async function listAdminArticles");
+  const bulkStart = source.indexOf("async function loadBulkAdminArticleRows");
+  const bulkEnd = source.indexOf("function unresolvedBulkRefs");
+  assert.ok(
+    listStart >= 0 && bulkStart > listStart && bulkEnd > bulkStart,
+    "expected the admin list and bulk functions to be present in order",
+  );
+
+  const listSource = source.slice(listStart, bulkStart);
+  assert.ok(!listSource.includes("getSupabaseAdmin"), "listAdminArticles must not resolve the Supabase admin client");
+  assert.ok(!listSource.includes(".from("), "listAdminArticles must not call a Supabase table builder");
+  assert.ok(!listSource.includes(".rpc("), "listAdminArticles must not call a Supabase RPC");
+  assert.ok(listSource.includes("adminOpsReads().listAdminArticles"), "listAdminArticles must delegate to the privileged repository");
+
+  const bulkReadSource = source.slice(bulkStart, bulkEnd);
+  assert.ok(bulkReadSource.includes("getSupabaseAdmin"), "bulk article reads must keep their direct Supabase access");
+  assert.ok(bulkReadSource.includes('.from("articles")'), "bulk article reads must keep querying the articles table");
+
+  const bulkWriteSource = source.slice(bulkEnd);
+  assert.ok(bulkWriteSource.includes('.from("articles")'), "bulk article writes must keep querying the articles table");
 });
