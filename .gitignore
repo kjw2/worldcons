@@ -13,6 +13,7 @@ logs
 *.tsbuildinfo
 artifacts/admin-redesign/gate0/
 artifacts/cloudflare-m4/
+artifacts/cloudflare-m5/
 supabase/.temp/
 nul
 .omo/
