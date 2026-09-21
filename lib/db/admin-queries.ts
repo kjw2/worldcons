@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { adminOpsReads, type AdminOpsCandidateRow } from "@/lib/admin/ops-read-repository";
 import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 import { fallbackErrorClassForArticleStatus, fallbackReviewStateForArticleStatus } from "@/lib/db/article-triage";
 import { mockArticles, mockSources, mockTags } from "@/lib/db/mock-data";
@@ -57,14 +58,6 @@ interface AdminArticleRow {
 
 interface AdminArticleListRow extends AdminArticleRow {
   summary_json?: unknown;
-}
-
-interface CandidateRow {
-  source_key: string;
-  status: string;
-  candidate_type?: string | null;
-  created_at?: string | null;
-  last_attempt_at?: string | null;
 }
 
 export interface AdminStatusCount {
@@ -473,80 +466,6 @@ function reviewMetadataForBulk(
   };
 }
 
-async function countTableRows(table: "tags" | "source_url_candidates", fallback: number) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return fallback;
-
-  const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true });
-  if (error) return fallback;
-  return count ?? fallback;
-}
-
-async function loadArticleRows(): Promise<AdminArticleRow[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return mockArticles.map((article) => ({
-      id: article.id,
-      slug: article.slug,
-      source_key: article.sourceKey,
-      jurisdiction: article.jurisdiction,
-      institution_name: article.institutionName,
-      original_url: article.originalUrl,
-      original_title: article.originalTitle,
-      korean_title: article.koreanTitle,
-      original_published_at: article.originalPublishedAt,
-      fetched_at: article.fetchedAt,
-      summarized_at: article.summarizedAt,
-      status: article.status,
-      source_metadata: article.sourceMetadata ?? { collection: { publishable: article.status === "summarized" } },
-      error_metadata: article.errorMetadata,
-    }));
-  }
-
-  const rows: AdminArticleRow[] = [];
-  const pageSize = 1000;
-  let start = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("articles")
-      .select(
-        "id, slug, source_key, jurisdiction, institution_name, original_url, original_title, korean_title, original_published_at, fetched_at, summarized_at, status, source_metadata, error_metadata, updated_at",
-      )
-      .range(start, start + pageSize - 1);
-
-    if (error) throw new Error(error.message);
-    rows.push(...((data ?? []) as AdminArticleRow[]));
-    if (!data || data.length < pageSize) break;
-    start += pageSize;
-  }
-
-  return rows;
-}
-
-async function loadCandidateRows(): Promise<CandidateRow[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return [];
-
-  const rows: CandidateRow[] = [];
-  const pageSize = 1000;
-  let start = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("source_url_candidates")
-      .select("source_key, status, candidate_type, created_at, last_attempt_at")
-      .range(start, start + pageSize - 1);
-
-    if (error) return [];
-    rows.push(...((data ?? []) as CandidateRow[]));
-    if (!data || data.length < pageSize) break;
-    start += pageSize;
-  }
-
-  return rows;
-}
-
 function buildSourceSummaries(sources: SourceRecord[], rows: AdminArticleRow[], runs: IngestionRunRecord[]) {
   const summaries = new Map<string, AdminSourceSummary>();
 
@@ -611,7 +530,7 @@ function buildSourceSummaries(sources: SourceRecord[], rows: AdminArticleRow[], 
   return [...summaries.values()].sort((a, b) => a.sourceKey.localeCompare(b.sourceKey));
 }
 
-function buildCandidateSummaries(sources: SourceRecord[], rows: CandidateRow[]) {
+function buildCandidateSummaries(sources: SourceRecord[], rows: AdminOpsCandidateRow[]) {
   const summaries = new Map<string, AdminCandidateSummary>();
 
   for (const source of sources) {
@@ -751,17 +670,14 @@ function snapshotAttentionArticles(rows: AdminDashboardSnapshotAttentionArticle[
 }
 
 async function loadAdminDashboardSnapshot(): Promise<AdminDashboardData | null> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-
-  const [{ data, error }, latestRuns] = await Promise.all([
-    supabase.rpc("rpc_admin_dashboard_snapshot"),
+  const [snapshotData, latestRuns] = await Promise.all([
+    adminOpsReads().loadDashboardSnapshot(),
     listIngestionRuns(12),
   ]);
-  if (error) return null;
+  if (snapshotData === null) return null;
 
   try {
-    const snapshot = parseAdminDashboardSnapshot(data);
+    const snapshot = parseAdminDashboardSnapshot(snapshotData);
     if (!snapshot) return null;
     const sourceSummaries = snapshotSourceSummaries(snapshot.sourceSummaries);
     const candidateSummaries = snapshotCandidateSummaries(snapshot.candidateSummaries);
@@ -793,14 +709,14 @@ async function loadAdminDashboardSnapshot(): Promise<AdminDashboardData | null> 
 }
 
 async function loadAdminDashboardLegacyData(): Promise<AdminDashboardData> {
-  const supabase = getSupabaseAdmin();
+  const repository = adminOpsReads();
   const [sources, rows, candidateRows, latestRuns, tagCount, candidateCount] = await Promise.all([
     listSources(),
-    loadArticleRows(),
-    loadCandidateRows(),
+    repository.loadArticleRows(),
+    repository.loadCandidateRows(),
     listIngestionRuns(12),
-    countTableRows("tags", mockTags.length),
-    countTableRows("source_url_candidates", 0),
+    repository.countTableRows("tags", mockTags.length),
+    repository.countTableRows("source_url_candidates", 0),
   ]);
 
   const statusMap = new Map<string, number>();
@@ -817,7 +733,7 @@ async function loadAdminDashboardLegacyData(): Promise<AdminDashboardData> {
 
   return {
     generatedAt: new Date().toISOString(),
-    hasDatabase: Boolean(supabase),
+    hasDatabase: repository.isConfigured(),
     totals: {
       sources: sources.length || mockSources.length,
       articles: rows.length,

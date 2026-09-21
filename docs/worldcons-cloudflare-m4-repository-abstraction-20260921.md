@@ -55,7 +55,7 @@ Supabase stays authoritative:
 | **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
 | **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) completed — see section 11. |
 | **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) completed — see section 14. Builds on the frozen search parity corpus. |
-| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Mostly `getSupabaseAdmin` call sites. Next slice after M4.4 — see section 14.7. |
+| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Split. **M4.5a** (dashboard read seam) completed — see section 15. **M4.5b** (admin article list + analytics/audit read domains) remains. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
 
 ## 4. Exactly what M4.1 moved
@@ -1163,6 +1163,174 @@ explicitly out of scope for M4.4b:
 M4.5 needs its own boundary because these reads are privileged (they read
 private/unpublished state), so the contract must keep the "admin authority"
 distinct from the public read authority, and the parity tests must prove the
-privileged projections and redaction are unchanged. M4.6 (the RPC ledger) then
-gains one row per Postgres function, including the two admin snapshot RPCs and
-every search RPC moved in M4.4.
+privileged projections and redaction are unchanged. M4.5 is split: **M4.5a**
+(the admin dashboard read seam) is completed — see section 15. **M4.5b** (the
+admin article list + the analytics/audit read domains) remains. M4.6 (the RPC
+ledger) then gains one row per Postgres function, including the two admin
+snapshot RPCs and every search RPC moved in M4.4.
+
+## 15. M4.5a — admin/ops dashboard read seam (completed)
+
+**Status: done.** Baseline: clean HEAD `2a3af0c` (feat: complete cloudflare
+m4.4 search abstraction). No Orca, no deploy, no DNS change, no production data
+change, no D1.
+
+### 15.1 Scope and safety boundary
+
+M4.5a introduced a privileged, platform-neutral admin/ops read repository seam
+`lib/admin/ops-read-repository/` and moved only the data access behind
+`getAdminDashboardData` out of `lib/db/admin-queries.ts`:
+
+- the `rpc_admin_dashboard_snapshot` RPC,
+- the paged private article rows used by the legacy fallback,
+- the paged `source_url_candidates` rows,
+- the exact head counts for `tags` / `source_url_candidates`.
+
+Dashboard aggregation, parsing, mapping, and orchestration stay in
+`admin-queries.ts`; only the four data-access operations moved. The privileged
+admin authority is a separate contract from `ArticleReadRepository` /
+`ReferenceReadRepository`: these reads intentionally expose private/unpublished
+state and are never composed into a public surface.
+
+It did **not** move `listAdminArticles`, the bulk article reads/updates,
+`article-triage` writes, `analytics.ts`, `admin-audit` writes, the P4/P5
+repositories, command-control-plane, or the `app/api/admin/work` actions, and it
+did not change any exported signature. The `getAdminDashboardData()` exported
+signature is unchanged.
+
+Rollback is repository-only: delete `lib/admin/ops-read-repository/`, restore
+`countTableRows` / `loadArticleRows` / `loadCandidateRows` and the `CandidateRow`
+interface in `lib/db/admin-queries.ts`, and revert the `test:admin-ops-reads`
+script and the relocated `check.ts` assertion.
+
+### 15.2 What M4.5a moved
+
+New module `lib/admin/ops-read-repository/`:
+
+- `types.ts` — the `AdminOpsReadRepository` contract plus the platform-neutral
+  `AdminOpsArticleRow` / `AdminOpsCandidateRow` row shapes and
+  `AdminOpsCountTable`. No Postgres/Supabase types.
+- `supabase-repository.ts` — `createSupabaseAdminOpsReadRepository`, the
+  authoritative adapter. It preserves, verbatim, resolved against the injected
+  client: the exact `rpc_admin_dashboard_snapshot` call (returning `null` on
+  error), the 1000-row `articles` paging loop with the exact select and a
+  rethrow on error, the 1000-row `source_url_candidates` paging loop with the
+  exact select and an empty-list fallback on error, and the
+  `select("*", { count: "exact", head: true })` exact head counts with the
+  supplied fallback on error. There is no artificial cap beyond the existing
+  page loop.
+- `mock-repository.ts` — `mockAdminOpsReads`, reproducing the pre-extraction
+  no-database behavior exactly: the snapshot is unavailable (so the dashboard
+  uses the legacy path), the article rows are the `mockArticles` mapping, the
+  candidates are empty, and every count resolves to the supplied fallback.
+- `index.ts` — `adminOpsReads()` selection point: Supabase whenever
+  configuration is present, otherwise the mock adapter.
+
+Changed caller (`lib/db/admin-queries.ts`):
+
+- `loadAdminDashboardSnapshot` keeps the `Promise.all` composition with
+  `listIngestionRuns(12)` and every snapshot parse/mapping helper; it now reads
+  the raw snapshot payload from `adminOpsReads().loadDashboardSnapshot()` and
+  treats `null` as the same fallback signal as the old RPC error.
+- `loadAdminDashboardLegacyData` keeps the same `Promise.all` composition and
+  every status/public/pending/failure/attention calculation and source/candidate
+  summary; it now calls the repository for the article rows, candidate rows, and
+  the two counts, and derives `hasDatabase` from `repository.isConfigured()`.
+- The private `countTableRows` / `loadArticleRows` / `loadCandidateRows`
+  functions and the now-unused `CandidateRow` interface were removed;
+  `buildCandidateSummaries` now consumes `AdminOpsCandidateRow`. `mockArticles`,
+  `mockSources`, `mockTags`, and `getSupabaseAdmin` remain only for the
+  out-of-scope admin article list and bulk actions (M4.5b).
+- `getAdminDashboardData` itself is unchanged: the same snapshot-vs-legacy
+  ordering and the same `recordCompatibilityObservation` calls
+  (`authority: "new"` / `"fallback"`).
+
+Changed gate:
+
+- `scripts/check.ts` relocated the `rpc("rpc_admin_dashboard_snapshot")` static
+  assertion from `lib/db/admin-queries.ts` to
+  `lib/admin/ops-read-repository/supabase-repository.ts` (the snapshot RPC moved
+  there); the `loadAdminDashboardLegacyData` and snapshot-vs-legacy assertions on
+  `admin-queries.ts` are unchanged and still pass.
+
+Coupling effect: `lib/admin/ops-read-repository/index.ts` calls
+`getSupabaseAdmin()` and `supabase-repository.ts` is a direct-coupling file, the
+same extraction shape as M4.1–M4.4. `lib/db/admin-queries.ts` keeps the direct
+Supabase calls owned by the out-of-scope admin article list and bulk actions
+(M4.5b) — see section 15.5. The measurable win is at the boundary: the dashboard
+data access is now a platform-neutral contract, and a future adapter can
+implement it without touching `admin-queries.ts`.
+
+### 15.3 M4.5a files changed
+
+- Added: `lib/admin/ops-read-repository/types.ts`
+- Added: `lib/admin/ops-read-repository/supabase-repository.ts`
+- Added: `lib/admin/ops-read-repository/mock-repository.ts`
+- Added: `lib/admin/ops-read-repository/index.ts`
+- Added: `tests/admin-ops-read-repository.test.ts`
+- Changed: `lib/db/admin-queries.ts` (dashboard data-access delegation; row interface/helper removal)
+- Changed: `scripts/check.ts` (static snapshot RPC assertion relocation)
+- Changed: `package.json` (`test:admin-ops-reads`; added to `verify:release`)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md`
+
+### 15.4 M4.5a verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:admin-ops-reads` | Pass, 10/10 |
+| `pnpm test:p4` | Pass, 16/16 |
+| `pnpm test:p5` | Pass, 20/20 (1 postgres SKIP) |
+| `pnpm test:security` | Pass, 6/6 |
+| `pnpm test:ops` | Pass, 10/10 |
+| `pnpm test:article-reads` | Pass, 22/22 |
+| `pnpm test:reference-reads` | Pass, 10/10 |
+| `pnpm test:search-repository` | Pass, 21/21 |
+| `pnpm test:public-regression` | Pass, 15/15 |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm check:vinext` | Pass (100% compatible) |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+The focused tests prove: (1) `adminOpsReads()` selects the mock adapter without
+configuration and the Supabase adapter with it, and the mock snapshot is
+unavailable while the mock article rows mirror the catalog, candidates are empty,
+and counts return the fallback; (2) the Supabase adapter issues exactly
+`rpc_admin_dashboard_snapshot` and resolves `null` on RPC error or a null
+payload; (3) the article and candidate reads page in 1000-row windows with the
+exact select shapes, no artificial cap, and continue until a short page, with
+article read errors rethrowing and candidate read errors resolving to `[]`; (4)
+the counts use `select("*", { count: "exact", head: true })` and fall back on
+error; (5) the exported `getAdminDashboardData` returns the mock dashboard
+without config, maps the snapshot (totals/status counts/summaries/attention) when
+the RPC succeeds, and falls back to the legacy aggregation — preserving the
+status/public/pending/failure/attention math and the source/candidate summaries —
+on an RPC error, a null payload, or an invalid payload, with the exact head
+counts flowing into the totals; and (6) the compatibility observation records
+`admin_dashboard` `new`/`succeeded` for the snapshot and `fallback`/`fallback`
+for the legacy path.
+
+No commit or push was performed.
+
+### 15.5 Remaining M4.5b scope and remaining coupling
+
+M4.5b still owns, under the privileged admin authority:
+
+- the **admin article list** read — `listAdminArticles` in
+  `lib/db/admin-queries.ts` (relation/select, full-text search, filters,
+  ordering, exact count, page info), which needs its own parity evidence, and
+- the **analytics/audit read domains** — `lib/db/analytics.ts`
+  (`rpc_admin_analytics_health_snapshot` plus the legacy event/article reads) and
+  the `admin_audit_logs` / `admin_article_edit_history` projections in
+  `lib/db/admin-audit.ts`.
+
+Remaining direct Supabase calls in `lib/db/admin-queries.ts` after M4.5a (all in
+out-of-scope functions; `Array.from` false positives excluded):
+
+- `getSupabaseAdmin()` — in `listAdminArticles` and `loadBulkAdminArticleRows`.
+- `.from("articles")` — in `listAdminArticles` (the paged list select/count) and
+  in the bulk-action id/slug lookups and the bulk update.
+
+The dashboard data access itself carries none.

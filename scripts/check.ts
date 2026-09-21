@@ -1526,7 +1526,11 @@ async function assertAdminRouteSecurityControls() {
     }
 
     const adminQueriesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
-    assert(adminQueriesSource.includes('rpc("rpc_admin_dashboard_snapshot")'), "admin dashboard queries must try the summary snapshot RPC");
+    const adminOpsReadRepositorySource = fs.readFileSync(
+      path.join(process.cwd(), "lib/admin/ops-read-repository/supabase-repository.ts"),
+      "utf8",
+    );
+    assert(adminOpsReadRepositorySource.includes('rpc("rpc_admin_dashboard_snapshot")'), "admin dashboard read repository must try the summary snapshot RPC");
     assert(adminQueriesSource.includes("loadAdminDashboardLegacyData"), "admin dashboard queries must keep the legacy fallback path");
     assert(
       adminQueriesSource.includes("const snapshot = await loadAdminDashboardSnapshot()")
