@@ -1539,7 +1539,11 @@ async function assertAdminRouteSecurityControls() {
     );
 
     const analyticsQueriesSource = fs.readFileSync(path.join(process.cwd(), "lib/db/analytics.ts"), "utf8");
-    assert(analyticsQueriesSource.includes('rpc("rpc_admin_analytics_health_snapshot"'), "analytics queries must try the health snapshot RPC");
+    const adminAnalyticsReadRepositorySource = fs.readFileSync(
+      path.join(process.cwd(), "lib/admin/analytics-read-repository/supabase-repository.ts"),
+      "utf8",
+    );
+    assert(adminAnalyticsReadRepositorySource.includes('rpc("rpc_admin_analytics_health_snapshot"'), "admin analytics read repository must try the health snapshot RPC");
     assert(analyticsQueriesSource.includes("loadAnalyticsHealthData"), "analytics queries must keep a callable health helper with fallback");
     assert(analyticsQueriesSource.includes("loadIngestionRunRows(days)") && analyticsQueriesSource.includes("loadArticleSummaryRows()"), "analytics health fallback must keep legacy collection/model reads");
 

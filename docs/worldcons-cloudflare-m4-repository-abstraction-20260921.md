@@ -55,7 +55,7 @@ Supabase stays authoritative:
 | **M4.3a** | Public article detail read seam: `getArticleBySlug` / `getArticlePreviewBySlug` row fetch, `getArticleSourceTextBySlug` | Contract + Supabase adapter + mock; exercises detail-projection v4, select shapes, and publishability filtering. **Completed — see section 9.** |
 | **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) completed — see section 11. |
 | **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) completed — see section 14. Builds on the frozen search parity corpus. |
-| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Split. **M4.5a** (dashboard read seam) completed — see section 15. **M4.5b1** (admin article list read seam) completed — see section 16. **M4.5b2** (analytics/audit read domains) remains. |
+| M4.5 | Admin/ops read domains: dashboard, analytics, triage | Split. **M4.5a** (dashboard read seam) completed — see section 15. **M4.5b1** (admin article list read seam) completed — see section 16. **M4.5b2** (analytics/audit read domains) completed — see section 17. The M4.5 privileged read domains are now complete. |
 | M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
 
 ## 4. Exactly what M4.1 moved
@@ -1157,17 +1157,22 @@ explicitly out of scope for M4.4b:
   paths. These are mostly `getSupabaseAdmin()` call sites plus two snapshot RPCs
   (`rpc_admin_dashboard_snapshot`, `rpc_admin_analytics_health_snapshot`) that
   already carry a legacy fallback.
-- **Admin audit/edit-history reads** — `lib/db/admin-audit.ts` and the
-  `admin_audit_logs` / `admin_article_edit_history` projections.
+- **Admin audit reads** — the admin audit projection is the `site_events`
+  read owned by `lib/db/analytics.ts` (`getAdminAuditLogData`). Note:
+  `lib/db/admin-audit.ts` is **write-only** here (it inserts into
+  `admin_audit_logs` / `admin_article_edit_history`); it is **not** a read
+  projection and remains outside the M4 read abstraction.
 
 M4.5 needs its own boundary because these reads are privileged (they read
 private/unpublished state), so the contract must keep the "admin authority"
 distinct from the public read authority, and the parity tests must prove the
 privileged projections and redaction are unchanged. M4.5 is split: **M4.5a**
-(the admin dashboard read seam) is completed — see section 15. **M4.5b** (the
-admin article list + the analytics/audit read domains) remains. M4.6 (the RPC
-ledger) then gains one row per Postgres function, including the two admin
-snapshot RPCs and every search RPC moved in M4.4.
+(the admin dashboard read seam) is completed — see section 15. **M4.5b1** (the
+admin article list read seam) is completed — see section 16. **M4.5b2** (the
+analytics/audit read domains) is completed — see section 17, which completes the
+M4.5 privileged read domains. M4.6 (the RPC ledger) then gains one row per
+Postgres function, including the two admin snapshot RPCs and every search RPC
+moved in M4.4.
 
 ## 15. M4.5a — admin/ops dashboard read seam (completed)
 
@@ -1317,13 +1322,15 @@ No commit or push was performed.
 ### 15.5 Remaining M4.5b scope and remaining coupling
 
 M4.5b was split. **M4.5b1** (the admin article list read seam) is completed —
-see section 16. **M4.5b2** still owns, under the privileged admin authority, the
-**analytics/audit read domains**:
+see section 16. **M4.5b2** owned, under the privileged admin authority, the
+**analytics/audit read domains** and is now completed — see section 17:
 
 - `lib/db/analytics.ts` — `rpc_admin_analytics_health_snapshot` plus the legacy
   event/article reads, and
-- the `admin_audit_logs` / `admin_article_edit_history` projections in
-  `lib/db/admin-audit.ts`.
+- the admin audit `site_events` projection (the `admin_audit_logs` /
+  `admin_article_edit_history` tables are only **written** by
+  `lib/db/admin-audit.ts`; that module is write-only and stays outside the M4
+  read abstraction).
 
 Remaining direct Supabase calls in `lib/db/admin-queries.ts` after M4.5a (all in
 out-of-scope functions; `Array.from` false positives excluded):
@@ -1496,5 +1503,225 @@ normalization produces `표현의:* & 자유:* & bverfg:*` with `{ config: "simp
 delegates to the configured Supabase adapter; and (7) a static guard proves the
 `listAdminArticles` body carries no `getSupabaseAdmin` / `.from(` / `.rpc(`, while
 the bulk read/write functions keep their direct `articles` coupling.
+
+No commit or push was performed.
+
+## 17. M4.5b2 — admin analytics/audit read seam (completed)
+
+**Status: done.** Baseline: clean HEAD `2c4d058` (feat: add cloudflare m4.5b1
+admin article read abstraction). No Orca, no deploy, no DNS change, no production
+data change, no D1.
+
+### 17.1 Scope and safety boundary
+
+M4.5b2 introduced a privileged, platform-neutral admin analytics/audit read
+repository seam `lib/admin/analytics-read-repository/` and moved every
+Supabase client/table/RPC access out of `lib/db/analytics.ts`:
+
+1. the admin audit action-option `site_events` read (exact select, admin
+   event-type filter, `occurred_at desc`, limit 1000, `[]` on error/no config);
+2. the admin audit entries `site_events` query (exact select with
+   `{ count: "exact" }`, order, event-type filter, the `action`/`q` limit-1000
+   branch vs the no-filter range branch, and the error/count semantics);
+3. the `loadSiteEvents` analytics read (access-info select first, legacy base
+   select on schema error, `occurred_at >= since`, `occurred_at desc`, limit
+   10,000, and the exact `schemaReady` semantics);
+4. the `ingestion_runs` health fallback read (`started_at >= since`,
+   `started_at desc`, limit 1000, `[]` on error);
+5. the paged `articles` health fallback read (exact select, 1000-row ranges with
+   no artificial cap, preserving partial rows when a later page errors);
+6. the `rpc_admin_analytics_health_snapshot` raw payload (`null` on error); and
+7. the repository `isConfigured()` so `getAnalyticsDashboardData`'s `hasDatabase`
+   preserves the old `Boolean(supabase)` behavior.
+
+It did **not** move any aggregation/redaction/timeline/recommendation logic, the
+snapshot parsing/mapping, the compatibility observations, the audit
+mapping/filtering/page assembly, the `lib/db/admin-audit.ts` writes,
+`lib/db/article-triage.ts`, the admin bulk actions, the P4/P5 repositories, the
+command-control-plane, or the `app/api/admin/work` actions, and it did not change
+any exported signature. `getAdminAuditLogData(options)` and
+`getAnalyticsDashboardData(options)` keep their exact signatures and behavior.
+
+The privileged admin authority stays a separate contract from the public
+`ArticleReadRepository` / `ReferenceReadRepository`: these reads expose
+private/unpublished administrative state and are never composed into a public
+surface.
+
+Rollback is repository-only: delete `lib/admin/analytics-read-repository/`,
+restore the `getSupabaseAdmin()`-based bodies of `loadAdminAuditActionOptions`,
+`loadSiteEvents`, `loadIngestionRunRows`, `loadArticleSummaryRows`, and
+`loadAnalyticsHealthSnapshot` in `lib/db/analytics.ts`, and revert the
+`test:admin-analytics-reads` script plus the relocated `check.ts` assertion.
+
+### 17.2 What M4.5b2 moved
+
+New module `lib/admin/analytics-read-repository/`:
+
+- `types.ts` — the `AdminAnalyticsReadRepository` contract plus the
+  platform-neutral `AdminAnalyticsSiteEventRow` / `AdminAnalyticsIngestionRunRow`
+  / `AdminAnalyticsArticleRow` row shapes, `AdminAnalyticsSiteEventsResult`,
+  `AdminAuditEntryRowsRequest`, and the `AdminAuditEntryRowsResult`
+  discriminated union (`{ status: "ok"; rows; count } | { status: "error" }`).
+  No Postgres/Supabase types.
+- `supabase-repository.ts` — `createSupabaseAdminAnalyticsReadRepository`, the
+  authoritative adapter. It preserves, verbatim, resolved against the injected
+  client:
+  - `loadAdminAuditActionOptionRows` → `site_events` select
+    `id, occurred_at, event_type, path, article_slug, source_key, metadata`,
+    `.in("event_type", …)`, `order("occurred_at", { ascending: false })`,
+    `.limit(1000)`, `[]` on error;
+  - `loadAdminAuditEntryRows` → the same select with `{ count: "exact" }`, the
+    event-type `.in`, the `occurred_at desc` order, then `.limit(1000)` for the
+    filtered branch (`count: null`) or `.range(from, to)` for the unfiltered
+    branch (`count ?? null`), and `{ status: "error" }` on error;
+  - `loadSiteEvents` → the access-info select
+    (`base select + client_ip_hash, accept_language, client_country, is_bot`),
+    then the legacy base select fallback on schema error, both with
+    `.gte("occurred_at", since)`, `occurred_at desc`, `.limit(10_000)`, and the
+    exact `schemaReady` (false only when both reads fail);
+  - `loadIngestionRunRows` → `ingestion_runs` select
+    `source_key, status, discovered_count, fetched_count, summarized_count,
+    failed_count, started_at`, `.gte("started_at", since)`,
+    `order("started_at", { ascending: false })`, `.limit(1000)`, `[]` on error;
+  - `loadArticleSummaryRows` → `articles` select
+    `status, source_key, summary_json, error_metadata, source_metadata,
+    summarized_at, updated_at`, `.range(start, start + 999)` in a loop with no
+    artificial cap, returning the rows read so far on a later page error;
+  - `loadAnalyticsHealthSnapshot` → the exact
+    `rpc("rpc_admin_analytics_health_snapshot", { days })` call, returning the
+    raw payload or `null` on error.
+- `fail-closed-repository.ts` — `failClosedAdminAnalyticsReads`, the no-config
+  adapter: `isConfigured()` is `false`, the audit reads are empty, `loadSiteEvents`
+  resolves `{ rows: [], schemaReady: false }`, the ingestion/article reads are
+  empty, and the snapshot resolves `null`.
+- `index.ts` — `adminAnalyticsReads()` selection point: Supabase whenever
+  configuration is present, otherwise the fail-closed adapter.
+
+Changed caller (`lib/db/analytics.ts`):
+
+- The local `SiteEventRow` / `AnalyticsIngestionRunRow` / `AnalyticsArticleRow`
+  interfaces are now aliases of the contract row shapes, so the row definitions
+  have one source of truth.
+- `getAdminAuditLogData` builds the admin event-type set (`adminAuditEventTypes`)
+  and the page window, resolves the repository once, keeps its
+  `!repository.isConfigured()` early return (`hasDatabase: false`,
+  `schemaReady: true`), and delegates the two read branches to
+  `loadAdminAuditEntryRows`; the mapping (`adminAuditEntryFromSiteEvent`), audit
+  filter (`matchesAuditFilters`), action-option derivation
+  (`auditActionOptionsFromEvents`), page slice, and page-info math stay here.
+- `getAnalyticsDashboardData` keeps its `safeDays`, the `Promise.all` of
+  `loadSiteEvents` + `loadAnalyticsHealthData`, and every aggregation; it derives
+  `hasDatabase` from `repository.isConfigured()`.
+- `loadSiteEvents`, `loadIngestionRunRows`, and `loadArticleSummaryRows` are thin
+  delegations; `loadAnalyticsHealthSnapshot` now reads the raw payload from the
+  repository and keeps `parseAnalyticsHealthSnapshot` /
+  `mapAnalyticsHealthSnapshot` and the `try`/`catch → null` semantics here.
+  `loadAnalyticsHealthData` keeps the `recordCompatibilityObservation`
+  `new`/`succeeded` vs `fallback`/`fallback` calls unchanged.
+- `getSupabaseAdmin` and every `.from(` / `.rpc(` call are gone from the module.
+  The public exports (`getAdminAuditLogData`, `getAnalyticsDashboardData`,
+  `adminAuditEntryFromSiteEvent`, and every stat interface) are unchanged.
+
+Changed gate:
+
+- `scripts/check.ts` relocated the `rpc("rpc_admin_analytics_health_snapshot")`
+  static assertion from `lib/db/analytics.ts` to
+  `lib/admin/analytics-read-repository/supabase-repository.ts`; the
+  `loadAnalyticsHealthData` and legacy-read assertions on `analytics.ts` are
+  unchanged and still pass.
+
+### 17.3 Correction: `lib/db/admin-audit.ts` is write-only
+
+Earlier M4 planning text (sections 14.7 and 15.5) listed “the
+`admin_audit_logs` / `admin_article_edit_history` projections in
+`lib/db/admin-audit.ts`” as M4.5 read work. That was inaccurate: `admin-audit.ts`
+performs only inserts (`recordAdminAuditLog`, `recordAdminArticleEditHistory`)
+and exposes no read. The admin audit **read** projection is the `site_events`
+read behind `getAdminAuditLogData` in `lib/db/analytics.ts` (moved here).
+`lib/db/admin-audit.ts` therefore remains outside the M4 read abstraction as a
+write-only module.
+
+### 17.4 Coupling effect and remaining M4.5 coupling
+
+The extraction shape matches M4.1–M4.5b1: `lib/admin/analytics-read-repository/
+index.ts` calls `getSupabaseAdmin()` and `supabase-repository.ts` is a
+direct-coupling file (two new counted files), while `lib/db/analytics.ts` drops
+every direct call. The measurable win is at the boundary: the admin
+analytics/audit data access is now a platform-neutral contract, and a future
+adapter can implement it without touching `analytics.ts`.
+
+`lib/db/analytics.ts` now has **0** direct Supabase calls (`getSupabaseAdmin`,
+`.from(`, or `.rpc(`; the sole remaining `Array.from` is not a Supabase call).
+
+Remaining direct Supabase coupling in the M4.5 admin surfaces after M4.5b2:
+
+- `lib/db/admin-queries.ts` — **bulk read/write only, outside the M4 read
+  abstraction**: `getSupabaseAdmin()` in `loadBulkAdminArticleRows`, and
+  `.from("articles")` in the bulk-action id/slug lookups
+  (`loadBulkAdminArticleRows`) and the bulk update (`runAdminArticleBulkAction`).
+- `lib/db/admin-audit.ts` — write-only inserts into `admin_audit_logs` /
+  `admin_article_edit_history` (outside the read abstraction).
+- `lib/db/article-triage.ts` — the `articles` update write (outside the read
+  abstraction).
+
+The dashboard, admin article list, analytics, and audit reads all carry none.
+
+### 17.5 M4.5b2 files changed
+
+- Added: `lib/admin/analytics-read-repository/types.ts`
+- Added: `lib/admin/analytics-read-repository/supabase-repository.ts`
+- Added: `lib/admin/analytics-read-repository/fail-closed-repository.ts`
+- Added: `lib/admin/analytics-read-repository/index.ts`
+- Added: `tests/admin-analytics-read-repository.test.ts`
+- Changed: `lib/db/analytics.ts` (all data access delegated; row-shape aliases; snapshot parse/map split)
+- Changed: `scripts/check.ts` (static analytics snapshot RPC assertion relocation)
+- Changed: `package.json` (`test:admin-analytics-reads`; added to `verify:release`)
+- Changed: `docs/worldcons-cloudflare-m4-repository-abstraction-20260921.md` (M4.5b2 completion; M4.5 read-domain completion; `admin-audit.ts` write-only correction)
+
+### 17.6 M4.5b2 verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm test:admin-analytics-reads` | Pass, 17/17 |
+| `pnpm test:admin-ops-reads` | Pass, 16/16 |
+| `pnpm test:p4` | Pass |
+| `pnpm test:p5` | Pass |
+| `pnpm test:security` | Pass |
+| `pnpm test:ops` | Pass |
+| `pnpm test:article-reads` | Pass |
+| `pnpm test:reference-reads` | Pass |
+| `pnpm test:search-repository` | Pass |
+| `pnpm test:public-regression` | Pass |
+| `pnpm typecheck` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` | Pass |
+| `pnpm check:vinext` | Pass |
+| `pnpm build:vinext` | Pass |
+| `pnpm build` (Next/Vercel path) | Pass |
+| `git diff --check` | Pass |
+
+The focused tests prove: (1) `adminAnalyticsReads()` selects the fail-closed
+adapter without configuration (empty reads, `schemaReady: false`, null snapshot)
+and the Supabase adapter with it, and the exported `getAdminAuditLogData` /
+`getAnalyticsDashboardData` keep their no-config behavior; (2) the audit
+action-option read issues the exact select/event-type filter/order/limit and
+resolves `[]` on error; (3) the audit entry read keeps the exact select with
+`{ count: "exact" }` and takes the `.limit(1000)` branch (with `count: null`) for
+the `action`/`q` case and the `.range(from, to)` exact-count branch otherwise,
+resolving `{ status: "error" }` on error; (4) the `site_events` analytics read
+tries the access-info select first, falls back to the legacy base select on a
+schema error, and reports `schemaReady: false` only when both fail; (5) the
+ingestion read keeps its select/gte/order/limit and resolves `[]` on error; (6)
+the article read pages in 1000-row windows with no cap and keeps the partial rows
+already read when a later page errors; (7) the health snapshot adapter returns
+the raw payload and resolves `null` on error/null, while the caller keeps the
+parse/map fallback; (8) the exported `getAdminAuditLogData` maps entries,
+derives action options, applies the exact count, and reports `schemaReady: false`
+on a configured read error; (9) the exported `getAnalyticsDashboardData` maps the
+configured events/snapshot and falls back to the legacy ingestion/article health
+reads; (10) the compatibility observation records `admin_analytics`
+`new`/`succeeded` and `fallback`/`fallback`; and (11) a static guard proves
+`lib/db/analytics.ts` carries no `getSupabaseAdmin` / `.from(` / `.rpc(`, and the
+contract exposes no Supabase/Postgres types.
 
 No commit or push was performed.

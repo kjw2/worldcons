@@ -1,58 +1,16 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { adminAnalyticsReads } from "@/lib/admin/analytics-read-repository";
+import type {
+  AdminAnalyticsArticleRow,
+  AdminAnalyticsIngestionRunRow,
+  AdminAnalyticsSiteEventRow,
+} from "@/lib/admin/analytics-read-repository";
 import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
 
 const DEFAULT_ANALYTICS_DAYS = 30;
 
-interface SiteEventRow {
-  id?: string | null;
-  occurred_at: string;
-  event_type: string;
-  path?: string | null;
-  article_slug?: string | null;
-  article_title?: string | null;
-  tag_slug?: string | null;
-  tag_name?: string | null;
-  source_key?: string | null;
-  jurisdiction?: string | null;
-  institution_name?: string | null;
-  search_query?: string | null;
-  search_mode?: string | null;
-  result_count?: number | null;
-  referrer_host?: string | null;
-  user_agent_family?: string | null;
-  device_type?: string | null;
-  client_ip_hash?: string | null;
-  accept_language?: string | null;
-  client_country?: string | null;
-  is_bot?: boolean | null;
-  metadata?: Record<string, unknown> | null;
-}
-
-interface AnalyticsIngestionRunRow {
-  source_key: string;
-  status: string;
-  discovered_count?: number | null;
-  fetched_count?: number | null;
-  summarized_count?: number | null;
-  failed_count?: number | null;
-  started_at?: string | null;
-}
-
-interface AnalyticsArticleRow {
-  status: string;
-  source_key?: string | null;
-  summary_json?: {
-    aiMetadata?: {
-      provider?: string;
-      model?: string;
-      generatedAt?: string;
-    };
-  } | null;
-  error_metadata?: Record<string, unknown> | null;
-  source_metadata?: Record<string, unknown> | null;
-  summarized_at?: string | null;
-  updated_at?: string | null;
-}
+type SiteEventRow = AdminAnalyticsSiteEventRow;
+type AnalyticsIngestionRunRow = AdminAnalyticsIngestionRunRow;
+type AnalyticsArticleRow = AdminAnalyticsArticleRow;
 
 export interface PopularArticleStat {
   slug: string;
@@ -300,6 +258,10 @@ function isAdminAuditEventType(value?: string | null) {
   return value === "admin_action" || value === "admin_review_action";
 }
 
+function adminAuditEventTypes(eventType?: string | null) {
+  return isAdminAuditEventType(eventType) ? [eventType as string] : ["admin_action", "admin_review_action"];
+}
+
 function percent(numerator: number, denominator: number) {
   return denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
 }
@@ -400,48 +362,12 @@ function auditActionOptionsFromEvents(rows: SiteEventRow[]) {
 }
 
 async function loadAdminAuditActionOptions(eventType?: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return [] as string[];
-
-  const { data, error } = await supabase
-    .from("site_events")
-    .select("id, occurred_at, event_type, path, article_slug, source_key, metadata")
-    .in("event_type", isAdminAuditEventType(eventType) ? [eventType] : ["admin_action", "admin_review_action"])
-    .order("occurred_at", { ascending: false })
-    .limit(1000);
-
-  if (error) return [];
-  return auditActionOptionsFromEvents((data ?? []) as SiteEventRow[]);
+  const rows = await adminAnalyticsReads().loadAdminAuditActionOptionRows(adminAuditEventTypes(eventType));
+  return auditActionOptionsFromEvents(rows);
 }
 
 async function loadSiteEvents(days: number) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return { rows: [] as SiteEventRow[], schemaReady: false };
-
-  const baseSelect =
-    "occurred_at, event_type, path, article_slug, article_title, tag_slug, tag_name, source_key, jurisdiction, institution_name, search_query, search_mode, result_count, referrer_host, user_agent_family, device_type, metadata";
-  const accessInfoSelect = `${baseSelect}, client_ip_hash, accept_language, client_country, is_bot`;
-
-  const { data, error } = await supabase
-    .from("site_events")
-    .select(accessInfoSelect)
-    .gte("occurred_at", sinceIso(days))
-    .order("occurred_at", { ascending: false })
-    .limit(10_000);
-
-  if (error) {
-    const fallback = await supabase
-      .from("site_events")
-      .select(baseSelect)
-      .gte("occurred_at", sinceIso(days))
-      .order("occurred_at", { ascending: false })
-      .limit(10_000);
-
-    if (fallback.error) return { rows: [] as SiteEventRow[], schemaReady: false };
-    return { rows: (fallback.data ?? []) as SiteEventRow[], schemaReady: true };
-  }
-
-  return { rows: (data ?? []) as SiteEventRow[], schemaReady: true };
+  return adminAnalyticsReads().loadSiteEvents(sinceIso(days));
 }
 
 export async function getAdminAuditLogData(options: {
@@ -451,14 +377,14 @@ export async function getAdminAuditLogData(options: {
   page?: number;
   pageSize?: number;
 } = {}): Promise<AdminAuditLogData> {
-  const supabase = getSupabaseAdmin();
+  const repository = adminAnalyticsReads();
   const page = normalizeAuditPage(options.page);
   const pageSize = normalizeAuditPageSize(options.pageSize);
   const eventType = normalizeAuditFilter(options.eventType);
   const action = normalizeAuditFilter(options.action);
   const q = normalizeAuditFilter(options.q, 200);
 
-  if (!supabase) {
+  if (!repository.isConfigured()) {
     return {
       generatedAt: new Date().toISOString(),
       hasDatabase: false,
@@ -473,15 +399,11 @@ export async function getAdminAuditLogData(options: {
   const actionOptions = await loadAdminAuditActionOptions(eventType);
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
-  const baseQuery = supabase
-    .from("site_events")
-    .select("id, occurred_at, event_type, path, article_slug, source_key, metadata", { count: "exact" })
-    .in("event_type", isAdminAuditEventType(eventType) ? [eventType] : ["admin_action", "admin_review_action"])
-    .order("occurred_at", { ascending: false });
+  const eventTypes = adminAuditEventTypes(eventType);
 
   if (action || q) {
-    const { data, error } = await baseQuery.limit(1000);
-    if (error) {
+    const result = await repository.loadAdminAuditEntryRows({ eventTypes, filtered: true, from, to });
+    if (result.status === "error") {
       return {
         generatedAt: new Date().toISOString(),
         hasDatabase: true,
@@ -493,7 +415,7 @@ export async function getAdminAuditLogData(options: {
       };
     }
 
-    const filteredEntries = ((data ?? []) as SiteEventRow[])
+    const filteredEntries = result.rows
       .map(adminAuditEntryFromSiteEvent)
       .filter((entry) => matchesAuditFilters(entry, { action, q }));
     const entries = filteredEntries.slice(from, from + pageSize);
@@ -514,8 +436,8 @@ export async function getAdminAuditLogData(options: {
     };
   }
 
-  const { data, error, count } = await baseQuery.range(from, to);
-  if (error) {
+  const result = await repository.loadAdminAuditEntryRows({ eventTypes, filtered: false, from, to });
+  if (result.status === "error") {
     return {
       generatedAt: new Date().toISOString(),
       hasDatabase: true,
@@ -527,8 +449,8 @@ export async function getAdminAuditLogData(options: {
     };
   }
 
-  const entries = ((data ?? []) as SiteEventRow[]).map(adminAuditEntryFromSiteEvent);
-  const total = count ?? from + entries.length;
+  const entries = result.rows.map(adminAuditEntryFromSiteEvent);
+  const total = result.count ?? from + entries.length;
   return {
     generatedAt: new Date().toISOString(),
     hasDatabase: true,
@@ -546,41 +468,11 @@ export async function getAdminAuditLogData(options: {
 }
 
 async function loadIngestionRunRows(days: number): Promise<AnalyticsIngestionRunRow[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return [];
-
-  const { data, error } = await supabase
-    .from("ingestion_runs")
-    .select("source_key, status, discovered_count, fetched_count, summarized_count, failed_count, started_at")
-    .gte("started_at", sinceIso(days))
-    .order("started_at", { ascending: false })
-    .limit(1000);
-
-  if (error) return [];
-  return (data ?? []) as AnalyticsIngestionRunRow[];
+  return adminAnalyticsReads().loadIngestionRunRows(sinceIso(days));
 }
 
 async function loadArticleSummaryRows(): Promise<AnalyticsArticleRow[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return [];
-
-  const rows: AnalyticsArticleRow[] = [];
-  const pageSize = 1000;
-  let start = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("articles")
-      .select("status, source_key, summary_json, error_metadata, source_metadata, summarized_at, updated_at")
-      .range(start, start + pageSize - 1);
-
-    if (error) return rows;
-    rows.push(...((data ?? []) as AnalyticsArticleRow[]));
-    if (!data || data.length < pageSize) break;
-    start += pageSize;
-  }
-
-  return rows;
+  return adminAnalyticsReads().loadArticleSummaryRows();
 }
 
 function parseAnalyticsHealthSnapshot(input: unknown): AnalyticsHealthSnapshot | null {
@@ -588,42 +480,43 @@ function parseAnalyticsHealthSnapshot(input: unknown): AnalyticsHealthSnapshot |
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as AnalyticsHealthSnapshot) : null;
 }
 
-async function loadAnalyticsHealthSnapshot(days: number): Promise<AnalyticsHealthData | null> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
+function mapAnalyticsHealthSnapshot(snapshot: AnalyticsHealthSnapshot): AnalyticsHealthData {
+  const collectionHealth = (snapshot.collectionHealth ?? [])
+    .map((row) => ({
+      sourceKey: row.sourceKey || "unknown",
+      runs: numericValue(row.runs),
+      completedRuns: numericValue(row.completedRuns),
+      failedRuns: numericValue(row.failedRuns),
+      discovered: numericValue(row.discovered),
+      fetched: numericValue(row.fetched),
+      failedItems: numericValue(row.failedItems),
+      summarized: numericValue(row.summarized),
+      fetchRate: numericValue(row.fetchRate),
+    }))
+    .sort((a, b) => a.fetchRate - b.fetchRate || b.runs - a.runs || a.sourceKey.localeCompare(b.sourceKey))
+    .slice(0, 60);
+  const modelHealth = (snapshot.modelHealth ?? [])
+    .map((row) => ({
+      provider: row.provider || "unknown",
+      model: row.model || "unknown",
+      successes: numericValue(row.successes),
+      failures: numericValue(row.failures),
+      total: numericValue(row.total),
+      failureRate: numericValue(row.failureRate),
+    }))
+    .sort((a, b) => b.total - a.total || b.failureRate - a.failureRate || a.model.localeCompare(b.model))
+    .slice(0, 15);
+  return { collectionHealth, modelHealth };
+}
 
-  const { data, error } = await supabase.rpc("rpc_admin_analytics_health_snapshot", { days });
-  if (error) return null;
+async function loadAnalyticsHealthSnapshot(days: number): Promise<AnalyticsHealthData | null> {
+  const payload = await adminAnalyticsReads().loadAnalyticsHealthSnapshot(days);
+  if (payload === null) return null;
 
   try {
-    const snapshot = parseAnalyticsHealthSnapshot(data);
+    const snapshot = parseAnalyticsHealthSnapshot(payload);
     if (!snapshot) return null;
-    const collectionHealth = (snapshot.collectionHealth ?? [])
-      .map((row) => ({
-        sourceKey: row.sourceKey || "unknown",
-        runs: numericValue(row.runs),
-        completedRuns: numericValue(row.completedRuns),
-        failedRuns: numericValue(row.failedRuns),
-        discovered: numericValue(row.discovered),
-        fetched: numericValue(row.fetched),
-        failedItems: numericValue(row.failedItems),
-        summarized: numericValue(row.summarized),
-        fetchRate: numericValue(row.fetchRate),
-      }))
-      .sort((a, b) => a.fetchRate - b.fetchRate || b.runs - a.runs || a.sourceKey.localeCompare(b.sourceKey))
-      .slice(0, 60);
-    const modelHealth = (snapshot.modelHealth ?? [])
-      .map((row) => ({
-        provider: row.provider || "unknown",
-        model: row.model || "unknown",
-        successes: numericValue(row.successes),
-        failures: numericValue(row.failures),
-        total: numericValue(row.total),
-        failureRate: numericValue(row.failureRate),
-      }))
-      .sort((a, b) => b.total - a.total || b.failureRate - a.failureRate || a.model.localeCompare(b.model))
-      .slice(0, 15);
-    return { collectionHealth, modelHealth };
+    return mapAnalyticsHealthSnapshot(snapshot);
   } catch {
     return null;
   }
@@ -944,7 +837,7 @@ function buildRecommendations(data: {
 
 export async function getAnalyticsDashboardData(options: { days?: number } = {}): Promise<AnalyticsDashboardData> {
   const days = safeDays(options.days);
-  const supabase = getSupabaseAdmin();
+  const repository = adminAnalyticsReads();
   const [{ rows: events, schemaReady }, healthData] = await Promise.all([
     loadSiteEvents(days),
     loadAnalyticsHealthData(days),
@@ -972,7 +865,7 @@ export async function getAnalyticsDashboardData(options: { days?: number } = {})
 
   return {
     generatedAt: new Date().toISOString(),
-    hasDatabase: Boolean(supabase),
+    hasDatabase: repository.isConfigured(),
     schemaReady,
     days,
     totals,
