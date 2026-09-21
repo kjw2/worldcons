@@ -43,6 +43,20 @@ export function getRangeStart(range: TimeRange, now = new Date()) {
   return null;
 }
 
+export function rangeStartIso(rangeValue?: string | null) {
+  const range = normalizeRange(rangeValue);
+  if (range === "today") {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  }
+  if (range === "week" || range === "month") {
+    const days = range === "week" ? 7 : 30;
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  return null;
+}
+
 export function isWithinRange(dateValue: string | null | undefined, range: TimeRange, now = new Date()) {
   const start = getRangeStart(range, now);
   if (!start || !dateValue) {

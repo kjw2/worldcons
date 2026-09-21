@@ -3,7 +3,6 @@ import {
   mockArticles,
   mockGlossaryTerms,
   mockIngestionRuns,
-  mockSources,
   mockTags,
 } from "@/lib/db/mock-data";
 import type {
@@ -17,10 +16,8 @@ import type {
   IngestionRunRecord,
   SourceRecord,
   SummaryJson,
-  TagSummary,
-  TagType,
 } from "@/lib/db/types";
-import { isWithinRange, normalizeRange } from "@/lib/utils/dates";
+import { isWithinRange, normalizeRange, rangeStartIso as getRangeStartIso } from "@/lib/utils/dates";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
 import { observeArticlePublicationReadDecision, publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
@@ -29,17 +26,9 @@ import type { ArtifactBlobStore } from "@/lib/storage/blob";
 import { createRuntimeArtifactBlobStore } from "@/lib/storage/runtime-blob";
 import { rankedSearchPage } from "@/lib/search/ranked-page";
 import { caseCatalogPublicReadsEnabled, caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";
-
-interface SupabaseTagRow {
-  id?: string;
-  slug: string;
-  name: string;
-  normalized_name: string;
-  type: string;
-  description?: string | null;
-  article_count?: number | null;
-  latest_article_at?: string | null;
-}
+import { referenceReads } from "@/lib/reference-reads";
+import { tagRowToSummary, type SupabaseTagRow } from "@/lib/reference-reads/shared";
+import type { JurisdictionCountOptions, TagListOptions } from "@/lib/reference-reads/types";
 
 interface SupabaseArticleTagRow {
   confidence?: number | null;
@@ -82,11 +71,6 @@ interface SupabaseArticleRow {
   enrichment_freshness?: string | null;
   summary_status?: string | null;
   summary_available?: boolean | null;
-}
-
-interface SupabaseJurisdictionCountRow {
-  jurisdiction?: string | null;
-  article_count?: number | string | null;
 }
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -201,20 +185,6 @@ export function normalizePagination(page?: number, pageSize?: number) {
   const safePage = Number.isFinite(page) && page && page > 0 ? Math.floor(page) : 1;
   const safePageSize = Number.isFinite(pageSize) && pageSize && pageSize > 0 ? Math.min(Math.floor(pageSize), 100) : DEFAULT_PAGE_SIZE;
   return { page: safePage, pageSize: safePageSize };
-}
-
-function tagRowToSummary(row: SupabaseTagRow, confidence?: number | null): TagSummary {
-  return {
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    normalizedName: row.normalized_name,
-    type: row.type as TagType,
-    description: row.description,
-    articleCount: row.article_count ?? undefined,
-    latestArticleAt: row.latest_article_at,
-    confidence,
-  };
 }
 
 function sortGlossaryTerms(terms: GlossaryTerm[]) {
@@ -380,20 +350,6 @@ function toFullTextQuery(q?: string) {
       .filter(Boolean) ?? [];
 
   return terms.map((term) => `${term}:*`).join(" & ");
-}
-
-function getRangeStartIso(rangeValue?: ArticleListFilters["range"]) {
-  const range = normalizeRange(rangeValue);
-  if (range === "today") {
-    const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
-  }
-  if (range === "week" || range === "month") {
-    const days = range === "week" ? 7 : 30;
-    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  }
-
-  return null;
 }
 
 async function articleIdsForTagFilter(tag: string) {
@@ -879,90 +835,15 @@ export async function listTopViewedArticles(
 
 export async function listJurisdictionArticleCounts(
   jurisdictions: string[] = [],
-  options: { range?: ArticleListFilters["range"] } = {},
+  options: JurisdictionCountOptions = {},
 ) {
   observePublicProjectionRead();
-  const normalizedJurisdictions = Array.from(new Set(jurisdictions.map((jurisdiction) => jurisdiction.trim()).filter(Boolean)));
-  const supabase = getSupabaseAdmin();
-
-  if (!supabase) {
-    const counts: Record<string, number> = {};
-    for (const article of filterMockArticles({ range: options.range })) {
-      counts[article.jurisdiction] = (counts[article.jurisdiction] ?? 0) + 1;
-    }
-    return normalizedJurisdictions.length
-      ? Object.fromEntries(normalizedJurisdictions.map((jurisdiction) => [jurisdiction, counts[jurisdiction] ?? 0]))
-      : counts;
-  }
-
-  const startIso = getRangeStartIso(options.range);
-  const countRpc = publicationProjectionEnabled() ? "public_jurisdiction_article_counts_p3" : "public_jurisdiction_article_counts";
-  const { data: rpcRows, error: rpcError } = await supabase.rpc(countRpc, { range_start: startIso });
-  if (!rpcError && Array.isArray(rpcRows)) {
-    const counts = Object.fromEntries(
-      (rpcRows as SupabaseJurisdictionCountRow[])
-        .filter((row) => typeof row.jurisdiction === "string" && row.jurisdiction.trim())
-        .map((row) => [String(row.jurisdiction), Number(row.article_count ?? 0)]),
-    );
-    return normalizedJurisdictions.length
-      ? Object.fromEntries(normalizedJurisdictions.map((jurisdiction) => [jurisdiction, counts[jurisdiction] ?? 0]))
-      : counts;
-  }
-
-  const targetJurisdictions = normalizedJurisdictions.length
-    ? normalizedJurisdictions
-    : Array.from(new Set((await listSources()).map((source) => source.jurisdiction)));
-
-  const entries = await Promise.all(
-    targetJurisdictions.map(async (jurisdiction) => {
-      let query = supabase
-        .from(articleRelation())
-        .select("id", { count: "exact", head: true })
-        .eq("status", "summarized")
-        .eq("jurisdiction", jurisdiction);
-      if (!publicationProjectionEnabled()) query = query.eq("catalog_ai_stale_v4", false).filter("source_metadata->collection->>publishable", "eq", "true");
-      if (startIso) query = query.gte("original_published_at", startIso);
-
-      const { count, error } = await query;
-      if (error) throw new Error(error.message);
-      return [jurisdiction, count ?? 0] as const;
-    }),
-  );
-
-  return Object.fromEntries(entries);
+  return referenceReads().listJurisdictionArticleCounts(jurisdictions, options);
 }
 
-export async function listTags(options: { type?: string; sort?: "count" | "latest" | "name"; limit?: number; minArticleCount?: number } = {}) {
+export async function listTags(options: TagListOptions = {}) {
   observePublicProjectionRead();
-  const supabase = getSupabaseAdmin();
-  const limit = Number.isFinite(options.limit) && options.limit && options.limit > 0 ? Math.min(Math.floor(options.limit), 1_000) : null;
-  const minArticleCount = Number.isFinite(options.minArticleCount) && (options.minArticleCount ?? 0) > 0
-    ? Math.floor(options.minArticleCount ?? 0)
-    : null;
-
-  if (!supabase) {
-    const tags = [...mockTags]
-      .filter((tag) => !options.type || tag.type === options.type)
-      .filter((tag) => !minArticleCount || (tag.articleCount ?? 0) >= minArticleCount)
-      .sort((a, b) => {
-        if (options.sort === "name") return a.name.localeCompare(b.name);
-        if (options.sort === "latest") return (b.latestArticleAt || "").localeCompare(a.latestArticleAt || "");
-        return (b.articleCount ?? 0) - (a.articleCount ?? 0);
-      });
-    return limit ? tags.slice(0, limit) : tags;
-  }
-
-  let query = supabase.from(publicationProjectionEnabled() ? "public_tag_projection_p3" : "tags").select("*");
-  if (options.type) query = query.eq("type", options.type);
-  if (minArticleCount) query = query.gte("article_count", minArticleCount);
-  if (options.sort === "name") query = query.order("name");
-  else if (options.sort === "latest") query = query.order("latest_article_at", { ascending: false, nullsFirst: false });
-  else query = query.order("article_count", { ascending: false });
-  if (limit) query = query.limit(limit);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as SupabaseTagRow[]).map((tag) => tagRowToSummary(tag));
+  return referenceReads().listTags(options);
 }
 
 export async function getTagBySlug(slug: string) {
@@ -985,21 +866,7 @@ export async function getTagBySlug(slug: string) {
 }
 
 export async function listSources(): Promise<SourceRecord[]> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return mockSources;
-
-  const { data, error } = await supabase.from("sources").select("*").order("jurisdiction");
-  if (error) throw new Error(error.message);
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    sourceKey: row.source_key,
-    name: row.name,
-    jurisdiction: row.jurisdiction,
-    baseUrl: row.base_url,
-    language: row.language,
-    isActive: row.is_active,
-  }));
+  return referenceReads().listSources();
 }
 
 export async function getSourceByKey(sourceKey: string) {
