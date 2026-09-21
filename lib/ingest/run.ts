@@ -43,6 +43,7 @@ import {
   bverfgOfficialUrlCandidatesFromUrl,
 } from "@/lib/crawlee/bverfg-spider";
 import { isSpainMetadataOnlyNotice } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -193,6 +194,9 @@ function safeCanonicalUrl(value?: string | null) {
 }
 
 function inlineCrawlerBlockReason(options: RunIngestOptions = {}) {
+  if (isCloudflareWorkerRuntime() && process.env.CRAWLEE_WORKER !== "true") {
+    return "Cloudflare Workers에서는 Node 전용 인라인 수집이 차단되어 있습니다. 외부 수집 worker를 사용하세요.";
+  }
   if (process.env.VERCEL !== "1") return null;
   if (process.env.CRAWLEE_WORKER === "true") return null;
   if (process.env.ENABLE_VERCEL_CRAWLING === "true") return null;

@@ -6,6 +6,7 @@ import {
   type AdminIngestRequestContext,
 } from "@/lib/admin/admin-ingest-jobs";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
+import { inlineAdminExecutionAllowed } from "@/lib/admin/admin-worker-execution";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { buildAdminJobIdempotencyKey, createAdminJob, type AdminJobRecord } from "@/lib/db/admin-jobs";
 import { CollectionPausedError, assertCollectionCanStart } from "@/lib/masterdash/store";
@@ -32,10 +33,6 @@ function inlineIngestSucceeded(context: AdminIngestRequestContext, result: Await
     (!isRecord(result.tags) || result.tags.refreshed !== true)
   ) return false;
   return true;
-}
-
-function canRunInlineFallback() {
-  return process.env.NODE_ENV !== "production" || process.env.ADMIN_INGEST_INLINE_FALLBACK === "true";
 }
 
 function publicJob(job: AdminJobRecord) {
@@ -148,7 +145,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!queued.unavailable || !canRunInlineFallback()) {
+    if (!queued.unavailable || !inlineAdminExecutionAllowed()) {
       await recordAdminSiteEvent(
         {
           eventType: "admin_action",

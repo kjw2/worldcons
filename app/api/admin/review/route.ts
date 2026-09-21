@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { adminIngestResultSucceeded } from "@/lib/admin/admin-ingest-jobs";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
-import { runAdminReviewAction } from "@/lib/ingest/review";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { parseAdminReviewBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -41,13 +41,29 @@ export async function POST(request: Request) {
   }
   const { action, articleId, slug, note, provider, model } = parsed.data;
 
+  if (action === "retry-source-ingest" && isCloudflareWorkerRuntime()) {
+    await recordAdminSiteEvent(
+      {
+        eventType: "admin_review_action",
+        path: "/api/admin/review",
+        articleId,
+        articleSlug: slug,
+        metadata: { action, status: "external_worker_required" },
+      },
+      request.headers,
+    ).catch(() => null);
+    return NextResponse.json({ error: "admin.external_worker_required", action }, { status: 503 });
+  }
+
   const compatibility = await executeAdminCompatibilityCommand(
     {
       commandType: "admin.article.review",
       payloadRef: { action, articleId, slug, provider, model, notePresent: Boolean(note) },
       request,
     },
-    () => runAdminReviewAction({ action, articleId, slug, note, provider, model }),
+    () => import("@/lib/ingest/review").then(({ runAdminReviewAction }) =>
+      runAdminReviewAction({ action, articleId, slug, note, provider, model })
+    ),
     { isLegacySuccess: reviewActionSucceeded },
   );
   const result = compatibility.value;

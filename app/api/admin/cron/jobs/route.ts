@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { ADMIN_INGEST_JOB_TYPES } from "@/lib/admin/admin-ingest-jobs";
-import { adminJobWorkerResultSucceeded, runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import {
+  runAdminJobWorkerForRuntime,
+  runtimeAdminJobWorkerResultSucceeded,
+} from "@/lib/admin/admin-worker-execution";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { getCollectionControlState } from "@/lib/masterdash/store";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
@@ -38,10 +41,12 @@ export async function GET(request: Request) {
   }
   const compatibility = await executeAdminCompatibilityCommand(
     { commandType: "cron.jobs.drain", payloadRef: { maxJobs, leaseSeconds, jobTypes }, request, requestedBy: "cron" },
-    () => runAdminJobWorker({ workerId: `admin-job-cron:${Date.now()}`, maxJobs, leaseSeconds, jobTypes }),
-    { isLegacySuccess: adminJobWorkerResultSucceeded },
+    () => runAdminJobWorkerForRuntime({ workerId: `admin-job-cron:${Date.now()}`, maxJobs, leaseSeconds, jobTypes }),
+    { isLegacySuccess: runtimeAdminJobWorkerResultSucceeded },
   );
   const result = compatibility.value;
+
+  if (result.mode === "external_worker_required") return NextResponse.json(result, { status: 503 });
 
   if (result.mode === "unavailable") {
     return NextResponse.json(result, { status: 503 });

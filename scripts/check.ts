@@ -1434,6 +1434,7 @@ async function assertAdminRouteSecurityControls() {
 
     const adminIngestRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/ingest/route.ts"), "utf8");
     const adminIngestExecutorSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/admin-ingest-jobs.ts"), "utf8");
+    const adminWorkerExecutionSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/admin-worker-execution.ts"), "utf8");
     assert(
       /runSummarizePending\(\{\s*limit:\s*summarizeLimit,\s*sourceKey\s*\}\)/s.test(adminIngestExecutorSource),
       "admin source-scoped summarize request must pass sourceKey to runSummarizePending",
@@ -1443,8 +1444,21 @@ async function assertAdminRouteSecurityControls() {
     assert(adminIngestRouteSource.includes("executeAdminIngestJobContext"), "admin ingest route inline fallback must use the shared executor");
     assert(adminIngestRouteSource.includes('mode: "queued"'), "admin ingest route must return queued mode for queued jobs");
     assert(adminIngestRouteSource.includes("{ status: 202 }"), "admin ingest route must return 202 for queued jobs");
-    assert(adminIngestRouteSource.includes("canRunInlineFallback"), "admin ingest route must keep inline execution as an explicit fallback only");
-    assert(adminIngestRouteSource.includes('process.env.NODE_ENV !== "production"'), "admin ingest route must not default production to inline fallback");
+    assert(adminIngestRouteSource.includes("inlineAdminExecutionAllowed"), "admin ingest route must keep inline execution behind the runtime seam");
+    assert(adminWorkerExecutionSource.includes('environment.NODE_ENV !== "production"'), "admin ingest runtime seam must not default production to inline fallback");
+    assert(adminWorkerExecutionSource.includes("isCloudflareWorkerRuntime()"), "admin ingest runtime seam must block inline execution in Cloudflare Workers");
+    const geminiRouterSource = fs.readFileSync(path.join(process.cwd(), "lib/ai/gemini-router.ts"), "utf8");
+    const runtimePersistentStateSource = fs.readFileSync(path.join(process.cwd(), "lib/runtime/persistent-state.ts"), "utf8");
+    const workerEntrySource = fs.readFileSync(path.join(process.cwd(), "worker/index.ts"), "utf8");
+    const ingestRunSource = fs.readFileSync(path.join(process.cwd(), "lib/ingest/run.ts"), "utf8");
+    assert(!/from "node:(fs|os|path)"/.test(geminiRouterSource), "gemini router must not depend on Node filesystem state");
+    assert(geminiRouterSource.includes("readRuntimeJsonState"), "gemini router must read state through the runtime-neutral JSON state seam");
+    assert(geminiRouterSource.includes("writeRuntimeJsonState"), "gemini router must write state through the runtime-neutral JSON state seam");
+    assert(runtimePersistentStateSource.includes("isCloudflareWorkerRuntime()"), "runtime JSON state seam must select memory storage in Cloudflare Workers");
+    assert(runtimePersistentStateSource.includes("createMemoryRuntimeJsonStateStore"), "runtime JSON state seam must expose an in-memory Worker store");
+    assert(workerEntrySource.includes("setRuntimeJsonStateStore"), "worker entry must select the runtime JSON state store explicitly");
+    assert(ingestRunSource.includes("isCloudflareWorkerRuntime()"), "inline Crawlee ingest must fail closed in Cloudflare Workers");
+    assert(ingestRunSource.includes("CRAWLEE_WORKER"), "inline Crawlee ingest must still allow the explicit external worker flag");
     assert(adminIngestExecutorSource.includes("compactAdminIngestExecutionSummary"), "admin ingest executor must produce compact job summaries");
     assert(adminIngestExecutorSource.includes("redactAdminAuditMetadata"), "admin ingest executor summaries must use audit redaction");
     assert(adminIngestExecutorSource.includes("summaryBatchWasDeferred"), "admin ingest jobs must not mark deferred summary work as succeeded");
@@ -1454,11 +1468,11 @@ async function assertAdminRouteSecurityControls() {
       "app/api/admin/review/route.ts",
       "app/api/admin/articles/[articleRef]/summary/route.ts",
       "app/api/admin/articles/bulk/route.ts",
-      "app/api/admin/cron/ingest/route.ts",
     ]) {
       const source = fs.readFileSync(path.join(process.cwd(), publicMutationRoute), "utf8");
       assert(source.includes("invalidatePublicContentCaches"), `${publicMutationRoute} must invalidate public caches after mutations`);
     }
+    assert(adminWorkerExecutionSource.includes("invalidatePublicContentCaches"), "runtime scheduled ingest executor must invalidate public caches after mutations");
     const cacheRevalidationRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/public-content/revalidate/route.ts"), "utf8");
     assert(cacheRevalidationRouteSource.includes("adminMutationAuthFailureStatus"), "cache revalidation route must use admin mutation auth");
     assert(cacheRevalidationRouteSource.includes("invalidatePublicContentCaches"), "cache revalidation route must invalidate public caches");
@@ -1882,14 +1896,16 @@ async function assertAdminRouteSecurityControls() {
 
     const adminJobRunRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/jobs/run/route.ts"), "utf8");
     assert(adminJobRunRouteSource.includes("adminMutationAuthFailureStatus"), "admin job run route must use admin mutation auth");
-    assert(adminJobRunRouteSource.includes("runAdminJobWorker"), "admin job run route must call the bounded job worker");
+    assert(adminJobRunRouteSource.includes("runAdminJobWorkerForRuntime"), "admin job run route must use the runtime-bounded job worker seam");
+    assert(adminJobRunRouteSource.includes('mode === "external_worker_required"'), "admin job run route must fail closed in the Worker runtime");
     assert(adminJobRunRouteSource.includes("parseAdminJobRunBody"), "admin job run route must validate worker payloads");
 
     const adminJobCronRoutePath = path.join(process.cwd(), "app/api/admin/cron/jobs/route.ts");
     assert(fs.existsSync(adminJobCronRoutePath), "admin job cron route must exist");
     const adminJobCronRouteSource = fs.readFileSync(adminJobCronRoutePath, "utf8");
     assert(adminJobCronRouteSource.includes("isAuthorizedSecretRequest"), "admin job cron route must use secret-only auth");
-    assert(adminJobCronRouteSource.includes("runAdminJobWorker"), "admin job cron route must drain the admin job worker");
+    assert(adminJobCronRouteSource.includes("runAdminJobWorkerForRuntime"), "admin job cron route must use the runtime-bounded job worker seam");
+    assert(adminJobCronRouteSource.includes('mode === "external_worker_required"'), "admin job cron route must fail closed in the Worker runtime");
     assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_MAX_JOBS"), "admin job cron route must support bounded max jobs env");
     assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_LEASE_SECONDS"), "admin job cron route must support bounded lease seconds env");
     assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_TYPES"), "admin job cron route must support optional job type env");

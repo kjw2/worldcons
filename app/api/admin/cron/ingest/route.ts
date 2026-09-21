@@ -1,30 +1,16 @@
 import { NextResponse } from "next/server";
-import { adminIngestResultSucceeded } from "@/lib/admin/admin-ingest-jobs";
-import { runSiteAnalyticsRetention } from "@/lib/analytics/retention";
+import {
+  runScheduledIngestForRuntime,
+  runtimeScheduledIngestSucceeded,
+} from "@/lib/admin/admin-worker-execution";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
-import { runRefreshTagCounts, runSummarizePending } from "@/lib/ingest/summary";
 import { summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
-import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { CollectionPausedError, assertCollectionCanStart } from "@/lib/masterdash/store";
 import { isAuthorizedSecretRequest } from "@/lib/utils/auth";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function cronIngestSucceeded(value: { ingest: unknown; summarize: unknown; tags: unknown }) {
-  return (
-    adminIngestResultSucceeded(value.ingest) &&
-    !summaryBatchWasDeferred(value.summarize) &&
-    !summaryBatchHasHardFailure(value.summarize) &&
-    isRecord(value.tags) &&
-    value.tags.refreshed === true
-  );
-}
 
 export async function GET(request: Request) {
   if (!isAuthorizedSecretRequest(request)) {
@@ -54,18 +40,12 @@ export async function GET(request: Request) {
       request,
       requestedBy: "cron",
     },
-    async () => {
-      const { runIngest } = await import("@/lib/ingest/run");
-      const ingest = await runIngest({ limit: ingestLimit, rangeDays, refreshExisting: true });
-      const summarize = await runSummarizePending({ limit: summaryLimit });
-      const tags = await runRefreshTagCounts();
-      const analyticsRetention = await runSiteAnalyticsRetention();
-      invalidatePublicContentCaches();
-      return { ingest, summarize, tags, analyticsRetention };
-    },
-    { isLegacySuccess: cronIngestSucceeded },
+    () => runScheduledIngestForRuntime({ ingestLimit, rangeDays, summaryLimit }),
+    { isLegacySuccess: runtimeScheduledIngestSucceeded },
   );
-  const { ingest, summarize, tags, analyticsRetention } = compatibility.value;
+  const result = compatibility.value;
+  if (result.mode === "external_worker_required") return NextResponse.json(result, { status: 503 });
+  const { ingest, summarize, tags, analyticsRetention } = result;
   const incomplete = summaryBatchWasDeferred(summarize) || summaryBatchHasHardFailure(summarize);
 
   return NextResponse.json({ complete: !incomplete, ingest, summarize, tags, analyticsRetention }, { status: incomplete ? 503 : 200 });

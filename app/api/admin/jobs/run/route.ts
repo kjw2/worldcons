@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { adminJobWorkerResultSucceeded, runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import {
+  runAdminJobWorkerForRuntime,
+  runtimeAdminJobWorkerResultSucceeded,
+} from "@/lib/admin/admin-worker-execution";
 import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { parseAdminJobRunBody } from "@/lib/security/admin-api-validation";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -26,15 +29,17 @@ export async function POST(request: Request) {
 
   const compatibility = await executeAdminCompatibilityCommand(
     { commandType: "admin.jobs.drain", payloadRef: parsed.data, request },
-    () => runAdminJobWorker({
+    () => runAdminJobWorkerForRuntime({
       workerId: `admin-worker:${Date.now()}`,
       maxJobs: parsed.data.maxJobs,
       leaseSeconds: parsed.data.leaseSeconds,
       jobTypes: parsed.data.jobTypes,
     }),
-    { isLegacySuccess: adminJobWorkerResultSucceeded },
+    { isLegacySuccess: runtimeAdminJobWorkerResultSucceeded },
   );
   const result = compatibility.value;
+
+  if (result.mode === "external_worker_required") return NextResponse.json(result, { status: 503 });
 
   if (result.mode === "unavailable") {
     return NextResponse.json(result, { status: 503 });
