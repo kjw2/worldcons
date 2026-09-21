@@ -1021,7 +1021,7 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] inline clear only after per-object verification
 - [ ] vinext compatibility report
 - [ ] Worker staging deployment
-- [ ] Supabase coupling/RPC ledger
+- [x] Supabase coupling/RPC ledger (M4.6: `pnpm rpc:ledger`, 80 functions / 74 call sites, 0 unbounded dynamic families)
 - [ ] four D1 schemas
 - [ ] Postgres -> canonical -> D1 converter
 - [ ] data count/hash/FK invariants

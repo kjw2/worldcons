@@ -56,7 +56,7 @@ Supabase stays authoritative:
 | **M4.3b** | Remaining public article reads | Split further. **M4.3b1** (`listArticles`) completed — see section 10. **M4.3b2** (`listTopViewedArticles`, `getRelatedArticles`, `listPublicSitemapArticles`, `getTagBySlug`, `listArticlesForGlossaryTerm`) completed — see section 11. |
 | **M4.4** | Search domain: ranked page, exact-case, case catalog, vector | Split. **M4.4a** (ranked page + exact-case data-access seam) completed — see section 13. **M4.4b** (case catalog, vector) completed — see section 14. Builds on the frozen search parity corpus. |
 | M4.5 | Admin/ops read domains: dashboard, analytics, triage | Split. **M4.5a** (dashboard read seam) completed — see section 15. **M4.5b1** (admin article list read seam) completed — see section 16. **M4.5b2** (analytics/audit read domains) completed — see section 17. The M4.5 privileged read domains are now complete. |
-| M4.6 | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. |
+| **M4.6** (this) | RPC ledger | One row per Postgres function: call sites, target service method, target DB, transaction semantics, parity test, status. **Completed — see section 18.** The RPC ledger is now complete, reproducible and machine-readable. |
 
 ## 4. Exactly what M4.1 moved
 
@@ -1725,3 +1725,89 @@ reads; (10) the compatibility observation records `admin_analytics`
 contract exposes no Supabase/Postgres types.
 
 No commit or push was performed.
+
+## 18. M4.6 — RPC ledger (completed)
+
+**Status: done.** Baseline: clean HEAD `01a40a5` (feat: complete cloudflare m4.5
+admin analytics read abstraction). No Orca, no deploy, no DNS change, no production
+data change, no D1.
+
+### 18.1 Scope and safety boundary
+
+M4.6 is the ledger that proves M4's "map every RPC to a service operation" objective
+is complete and reproducible. It adds a static scanner, an 80-row curated ledger, a
+validator, a CLI and focused tests. It does not change runtime code, deploy, touch D1,
+or alter authority.
+
+### 18.2 What it adds
+
+- `lib/cloudflare/rpc-ledger/scan.ts` — TypeScript-API scanner over `app/lib/workers`
+  (tests excluded). Resolves string literals, same-file/imported `const` values
+  (ternary / `??` / `||` / `&&` unions), module-local helper parameters, and imported
+  resolver functions (through re-export barrels and `return` expressions).
+- `lib/cloudflare/rpc-ledger/ledger.ts` — 80 enriched Postgres function rows, each with target
+  service operation(s), an explicit Cloudflare data target (one of the four D1
+  databases, or Vectorize for the two semantic vector-match RPCs), transaction
+  semantics, parity tests and typed migration metadata; plus 12 indirections
+  (2 dynamic families).
+- `lib/cloudflare/rpc-ledger/validate.ts` — cross-checks ledger vs. scan and flags
+  unmapped functions, orphan entries, unresolved call sites, unclassified dynamic
+  call sites, catalog drift, and unbounded families without a resolver.
+- `lib/cloudflare/rpc-ledger/index.ts` — barrel + machine-readable report builder.
+- `scripts/rpc-ledger.ts` — `pnpm rpc:ledger` (`--json`, `--write`).
+- `tests/rpc-ledger.test.ts` — 16 focused tests (11 ledger/scan + 5 validator field negative tests).
+- `docs/worldcons-cloudflare-m4-rpc-ledger-20260921.md` — full ledger + method.
+
+The scanner resolves the two dynamic indirections from surrounding code: the
+command-control-plane module-local `rpc(name, args)` helper (its parameter catalog is
+the six literal first arguments at its in-file call sites) and the imported
+`publicVectorMatchRpc()` projection selector resolved through the
+`@/lib/article-publication` barrel. No call site is skipped or silently ignored.
+### 18.3 Result
+
+| Measure | Value |
+| --- | --- |
+| `.rpc(` call sites (`app`/`lib`/`workers`) | 74 |
+| Resolved function references | 82 |
+| Unique Postgres functions | 80 |
+| Non-literal indirections | 12 |
+| Dynamic families | 2 |
+| Unbounded dynamic families | 0 |
+| Operator-CLI sites (`scripts/`, out of scope) | 7 |
+
+Every reachable RPC maps to a target service (service operation and canonical target
+service method) and an explicit Cloudflare data target — one of the four D1 databases
+(`worldcons_core`, `worldcons_ingest`, `worldcons_ops`, `worldcons_search`), or
+`vectorize` for the two semantic vector-match RPCs whose authoritative store is the
+Vectorize index, not a D1 database. M4's acceptance ("map every RPC to a service
+operation") is met and the ledger is reproducible and machine-readable.
+
+### 18.4 Verification
+
+| Check | Result |
+| --- | --- |
+| `pnpm rpc:ledger` | Pass, 80 functions / 74 call sites / 80 unique / 2 dynamic / 0 unbounded |
+| `pnpm test:rpc-ledger` | Pass, 16/16 |
+| `pnpm exec tsc --noEmit` | Pass |
+| `pnpm check` | Pass |
+| `pnpm lint` (new files) | Pass |
+
+The focused tests prove: (1) the scan is complete (74 sites, 80 unique functions, 30
+files, exact kind breakdown) and every call site resolves; (2) the ledger validates
+with zero errors and the machine-readable report annotates every function with its
+call sites; (3) the command-control-plane parameter and `rpcName` constant resolve to
+their finite catalogs; (4) `publicVectorMatchRpc(...)` resolves through the
+article-publication barrel; (5) an unclassified dynamic call site, an unmapped
+function, and a drifted catalog all fail validation; and (6) an unbounded dynamic
+family is recorded and counted rather than failed.
+
+No commit or push was performed.
+
+### 18.5 M4 overall decision
+
+**M4 overall: GO for M5.**
+
+This decision accepts M4 (repository abstraction + RPC ledger) and authorizes D1
+schema/converter work only. It is not a cutover: Supabase remains the production
+authority, no authority change is made, and M5 proceeds behind the existing
+repository seams with parity tests before any read or write is pointed at D1.

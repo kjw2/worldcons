@@ -12,6 +12,7 @@ test-results
 logs
 *.tsbuildinfo
 artifacts/admin-redesign/gate0/
+artifacts/cloudflare-m4/
 supabase/.temp/
 nul
 .omo/
