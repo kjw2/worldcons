@@ -782,7 +782,7 @@ Acceptance:
 - JSON/date/UUID conversion tests
 - representative RPC parity
 
-Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2c PART 2a):
+Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2c PART 2a / M5.2c PART 2b):
 - four D1 schemas and the Postgres -> canonical transform foundation exist as local-only,
   hand-authored D1 schema code plus a read-only Supabase-migration scanner and a
   schema/ownership/parity validator (`pnpm d1:schema`, `pnpm test:d1-schema`);
@@ -833,6 +833,13 @@ Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2
   counts the FTS5 internal/shadow tables while the authored expected table objects remain 2/2; no data
   has been imported into any database. The bounded Postgres -> Cloudflare D1 *data* copy (M5.2c PART 2b)
   and shadow reads (M6) remain M5.2c+/M6 work;
+- M5.2c PART 2b (2026-09-22) delivered the operator-only bounded Postgres -> remote-D1 **data** copy: a
+  dry-run-by-default seam that runs only with an explicit `--apply` and reads its source solely via
+  `--url`/`WORLDCONS_D1_SOURCE_URL`, emits plain `INSERT` statements only, fails closed on
+  exact/prefix/mismatch chunk cases, uses deterministic chunking, and verifies each chunk's row
+  count plus the final canonical hash; the core/ingest/ops scopes are covered with search deferred
+  (`pnpm d1:copy-data`, `pnpm test:d1-copy-data`, 18/18 focused tests);
+- no production data copy has yet been executed and Supabase remains the authority.
 - no Worker deploy, DNS change, or Supabase authority switch occurred.
 
 ### M6 — D1 shadow-read parity
@@ -1078,7 +1085,7 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [x] four D1 schemas
 - [x] four remote D1 databases created (M5.2c PART 1: `pnpm d1:provision --apply --report --json` created `worldcons_core`/`worldcons_ingest`/`worldcons_ops`/`worldcons_search` in `apac`, all `verified:true`; post-run dry-run reports 4 existing / 0 missing / action `none`; UUIDs recorded in `wrangler.jsonc`; databases are still empty — no schema/DDL or data applied)
 - [x] remote D1 schema applied (M5.2c PART 2a: `pnpm d1:apply-schema` is dry-run by default and writes only with `--apply`; the read-only `sqlite_master` object query runs BEFORE any write in both modes, so an already-present schema is a true no-op. The first real `--apply` applied `worldcons_core` (30 tables) but a `--file` stdout-parsing bug caused a false failure; with the fix deployed the second `--apply` applied the remaining `worldcons_ingest`/`worldcons_ops`/`worldcons_search` DDL. All four remote schemas are now applied and verified, a read-only dry-run reports all four `action:"none"` / `verified:true`, and no data has been imported)
-- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); the Postgres -> D1 *data* copy remains M5.2c PART 2b+)
+- [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); M5.2c PART 2b: operator-only bounded Postgres -> remote-D1 *data* copy, dry-run by default with `--apply` to write, source only via `--url`/`WORLDCONS_D1_SOURCE_URL`, plain `INSERT` statements only, exact/prefix/mismatch fail-closed, deterministic chunks, per-chunk count + final canonical hash verification, core/ingest/ops scope with search deferred, `pnpm d1:copy-data` with 18/18 focused tests — PART 2b operator implemented, live/production copy still pending)
 - [ ] data count/hash/FK invariants
 - [ ] D1 shadow reads
 - [ ] FTS5 parity
