@@ -2,10 +2,16 @@
 
 Date: 2026-09-21
 
-Baseline: clean HEAD `45eb445` (chore: bind provisioned worldcons d1 databases). No Orca, no deploy,
-no DNS change, no Supabase/production mutation, no authority switch. No remote schema/data import is
+Baseline: clean HEAD `dc51eb3` (feat: add remote d1 schema apply operator). No Orca, no deploy, no
+DNS change, no Supabase/production mutation, no authority switch. No remote schema/data import is
 performed by default: the operator is dry-run unless `--apply` is given. The existing
 `supabase/migrations/*.sql` files are read-only inputs and were not modified.
+
+Revision note (2026-09-21): the first real `--apply` wrote the `worldcons_core` DDL successfully
+(`d1 info` then reports `num_tables:30`) but the operator reported a false failure because it parsed
+the `wrangler d1 execute --file` stdout as a `--json` envelope. The write stdout is no longer parsed
+(the runner rejects a non-zero exit and the read-only `sqlite_master` verification is the sole success
+criterion); see sections 2.1 and 6. No data was imported and no authority/deploy/DNS change occurred.
 
 ## 1. Objective and scope
 
@@ -36,8 +42,9 @@ shadow reads, and any read/write authority switch. PART 2a applies schema only.
   database UUID, cross-checking the UUID against `d1 list`.
 - Apply mode calls `materializeDdl(database, sql)` with the SQL from `emitDatabaseDdl`, so the applied
   schema is always the live M5.1 schema code rather than a stale committed `.sql` file. It then runs
-  `wrangler d1 execute NAME --remote --yes --json --file <path>` and parses the `--json` result
-  envelope, so a non-`success` response fails closed.
+  `wrangler d1 execute NAME --remote --yes --json --file <path>`. The runner already rejects a non-zero
+  exit, and the `--file` stdout is deliberately NOT parsed (see 2.1): a resolved write is only
+  provisional, and success is decided solely by the read-only `sqlite_master` verification below.
 - Verification runs `wrangler d1 execute NAME --remote --yes --json --command <select sqlite_master>`
   and confirms every expected table and index name is present. The check is a subset test, so the
   FTS5 shadow tables (`search_fts_data`, ...) and any D1 internal tables are ignored.
@@ -48,6 +55,18 @@ shadow reads, and any read/write authority switch. PART 2a applies schema only.
   with `ok:false` and per-target errors rather than throwing, so the operator still gets a
   machine-readable record. It throws only for a caller error (apply without `materializeDdl`).
 - Missing objects are fatal only in apply mode; a verification read failure is always fatal.
+
+### 2.1 The DDL write is accepted by exit status, not by stdout
+
+`parseD1ExecuteResultsJson` is a fail-closed parser for the read-only `d1 execute --command --json`
+output and is unchanged there. It is intentionally NOT applied to the `--file` DDL write: a real
+`wrangler d1 execute --file` run under Wrangler 4.135.0 emitted spinner/human text and no parseable
+`--json` envelope, so the first live apply wrote `worldcons_core` correctly but failed the operator.
+The write step therefore only awaits the runner (whose non-zero exit already rejects), and the
+read-only `sqlite_master` query is the single success criterion. A fully present schema still reports
+`verified:true`, so an idempotent re-apply of `worldcons_core` is a clean no-op and the remaining
+ingest/ops/search targets are the only ones that still need DDL.
+
 ## 3. Contract
 
 | Type | Meaning |
@@ -72,21 +91,25 @@ manifest are `d1 list --json`, `d1 info NAME --json` and
 | `worldcons_search` | 2 | 0 | 2 | `search_documents` + the `search_fts` FTS5 virtual table; the projection stays M7 |
 | Total | 77 | 78 | 155 | every M5.1 D1 table |
 
+Live state (2026-09-21): `worldcons_core` is schema-applied (`d1 info` reports `num_tables:30`); the
+other three are still schema-unapplied (`num_tables:0`). No data has been imported into any database.
+
 Verification compares only the expected names, so the `search_fts` FTS5 shadow tables do not need to
 be enumerated and D1 internals are ignored.
 ## 5. Verification
 
 | Check | Result |
 | --- | --- |
-| `pnpm test:d1-apply-schema` | Pass, 12/12 |
+| `pnpm test:d1-apply-schema` | Pass, 14/14 |
 | `pnpm test:d1-schema` | Pass, 19/19 (no regression) |
 | `pnpm test:d1-convert` | Pass, 10/10 (no regression) |
 | `pnpm test:d1-import` | Pass, 14/14 (no regression) |
 | `pnpm test:d1-provision` | Pass, 16/16 (no regression) |
 | `pnpm typecheck` | Pass |
 | `pnpm lint` | Pass |
-| `pnpm d1:apply-schema --json` (real, READ-ONLY dry-run) | Pass, `ok:true`: all four targets `existing` with the recorded UUIDs, `reportedTables:0`, `foundObjects:0`; only `d1 list --json`, `d1 info NAME --json` and a read-only `d1 execute --command select ... sqlite_master` were invoked; no file was executed and no database was written |
-| Remote surface | No `--apply` executed: no DDL written to any remote database, no data imported, no database created/deleted, no Worker deploy, no DNS change, no authority switch |
+| First real `pnpm d1:apply-schema --apply` | The `--file` DDL write actually succeeded for `worldcons_core`: `d1 info` now reports `num_tables:30`. The operator still reported `ok:false` because it parsed the `wrangler d1 execute --file` stdout as a `--json` envelope, and aborted before `worldcons_ingest`/`worldcons_ops`/`worldcons_search` (all still `num_tables:0`). No data was imported |
+| Parser bug | Fixed: the `--file` write no longer calls `parseD1ExecuteResultsJson`; a resolved runner plus the read-only `sqlite_master` verification decide success. `parseD1ExecuteResultsJson` is unchanged for the read-only `--command --json` path (14/14 focused tests) |
+| Remote surface | Live state is **partial**: `worldcons_core` schema is applied, `worldcons_ingest`/`worldcons_ops`/`worldcons_search` remain schema-unapplied, and no data has been imported into any database. No database created/deleted, no Worker deploy, no DNS change, no authority switch |
 
 The focused tests prove: (1) the four targets and their expected object counts are derived from the
 M5.1 schema (77 tables); (2) dry-run reads list/info/`sqlite_master` and never writes a file or
@@ -95,12 +118,17 @@ verifies an already-present schema as `action:"none"`; (4) apply materializes fo
 `d1 execute --remote --yes --file` per database and verifies every object; (5) a missing or ambiguous
 target is refused before any write; (6) a preflight failure is reported without throwing; (7) an
 execute failure aborts the remaining applies; (8) verification detects a missing object; (9) apply
-without `materializeDdl` throws; and (10) a static guard keeps the seam Node-free/barrelled and the
-CLI behind `--apply`.
+without `materializeDdl` throws; (10) a static guard keeps the seam Node-free/barrelled and the CLI
+behind `--apply`; (11) a non-JSON spinner/human `--file` stdout with exit 0 is ignored and the
+`sqlite_master` query decides success (`applied`/`verified`, `ok:true`); and (12) a fully present schema
+still verifies even when the write output is not JSON, so the idempotent re-apply of `worldcons_core`
+is a clean no-op.
 
 ### 5.1 Expected next run (operator)
 
-The remote databases are still empty (`reportedTables:0`). To apply the schema, the operator runs:
+`worldcons_core` is already schema-applied (`reportedTables:30`); `worldcons_ingest`,
+`worldcons_ops` and `worldcons_search` are still empty (`reportedTables:0`). To finish the schema, the
+operator runs:
 
 ```bash
 pnpm d1:apply-schema --apply --report --json
@@ -117,7 +145,7 @@ Added:
 
 - `lib/cloudflare/d1/remote/schema-apply.ts` - the pure schema-apply seam and expected-object derivation.
 - `scripts/d1-apply-schema.ts` - `pnpm d1:apply-schema` operator CLI (`--apply`, `--database`, `--ddl-dir`, `--timeout-ms`, `--json`, `--report`).
-- `tests/d1-apply-schema.test.ts` - 12 focused tests.
+- `tests/d1-apply-schema.test.ts` - 14 focused tests.
 - this document.
 
 Changed:

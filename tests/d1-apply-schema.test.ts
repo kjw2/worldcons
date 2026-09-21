@@ -64,6 +64,7 @@ function createFakeWrangler(options: {
   databases: FakeDatabase[];
   applyObjects?: Partial<Record<D1Database, FakeObject[]>>;
   failExecuteFor?: string;
+  fileStdout?: string;
 }): FakeWrangler {
   const calls: string[][] = [];
   const runner: WranglerD1Runner = async (args) => {
@@ -92,7 +93,7 @@ function createFakeWrangler(options: {
       if (args.includes("--file")) {
         if (options.failExecuteFor === name) throw new Error("execute failed");
         database.objects = (options.applyObjects?.[database.name as D1Database] ?? []).map((object) => ({ ...object }));
-        return JSON.stringify([{ results: [{ "Total queries executed": 1 }], success: true, meta: {} }]);
+        return options.fileStdout ?? JSON.stringify([{ results: [{ "Total queries executed": 1 }], success: true, meta: {} }]);
       }
       return JSON.stringify([{ results: database.objects.map((object) => ({ ...object })), success: true, meta: {} }]);
     }
@@ -165,6 +166,53 @@ test("apply materializes the DDL, executes it remotely and verifies every object
   assert.ok(
     manifest.commands.includes("d1 execute worldcons_core --remote --yes --json --file fake/worldcons_core.sql"),
   );
+});
+
+test("a non-JSON spinner write output is ignored; sqlite_master verification decides success", async () => {
+  const spinner =
+    "\n⛅️ wrangler 4.135.0\n-------------------\n" +
+    "🌀 Executing on remote database worldcons_core (uuid-worldcons_core):\n" +
+    "🚣 Executed 78 queries in 1.24s\n\n✨ Done in 1.31s.\n";
+  const fake = createFakeWrangler({
+    databases: allDatabases(),
+    applyObjects: expectedByDatabase(),
+    fileStdout: spinner,
+  });
+  const manifest = await buildD1SchemaApplyManifest({
+    runner: fake.runner,
+    apply: true,
+    materializeDdl: (database) => `fake/${database}.sql`,
+  });
+  assert.equal(manifest.ok, true, JSON.stringify(manifest.errors));
+  assert.deepEqual(manifest.totals, { targets: 4, applied: 4, present: 4, missing: 0, refused: 0 });
+  for (const target of manifest.targets) {
+    assert.equal(target.state, "applied");
+    assert.equal(target.action, "apply");
+    assert.equal(target.verified, true);
+    assert.equal(target.foundObjects, target.expectedObjects);
+    assert.deepEqual(target.missingObjects, []);
+  }
+  assert.equal(fake.calls.filter((args) => args.includes("--file")).length, 4);
+});
+
+test("an already-present schema verifies even when the write output is not JSON, so re-apply is idempotent", async () => {
+  const fake = createFakeWrangler({
+    databases: allDatabases((database) => expectedObjects(database)),
+    applyObjects: expectedByDatabase(),
+    fileStdout: "human-readable text, not a JSON envelope",
+  });
+  const manifest = await buildD1SchemaApplyManifest({
+    runner: fake.runner,
+    apply: true,
+    materializeDdl: (database) => `fake/${database}.sql`,
+  });
+  assert.equal(manifest.ok, true, JSON.stringify(manifest.errors));
+  assert.equal(manifest.totals.present, 4);
+  assert.equal(manifest.totals.missing, 0);
+  for (const target of manifest.targets) {
+    assert.equal(target.verified, true);
+    assert.deepEqual(target.missingObjects, []);
+  }
 });
 
 test("a missing remote database is refused and nothing is applied", async () => {

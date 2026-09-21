@@ -24,11 +24,14 @@ import {
  *
  * - preflight reads `d1 list --json` and refuses a missing or ambiguous target
  *   (it never creates a database);
- * - in apply mode it writes the emitted DDL through `materializeDdl`, runs
- *   `wrangler d1 execute NAME --remote --yes --file <path>` and parses the
- *   `--json` result envelope, so a non-`success` response fails closed;
+ * - in apply mode it writes the emitted DDL through `materializeDdl` and runs
+ *   `wrangler d1 execute NAME --remote --yes --file <path>`. The `--file` write
+ *   stdout is deliberately NOT parsed: `wrangler d1 execute --file` can interleave
+ *   spinner or human-readable text even with `--json`, and the runner already
+ *   rejects a non-zero exit. A resolved write is only provisional;
  * - it reads `sqlite_master` through `d1 execute --command` and confirms every
- *   expected table and index name is present, in both dry-run and apply mode;
+ *   expected table and index name is present, in both dry-run and apply mode. That
+ *   read-only verification is the single success criterion for an apply;
  * - it never deletes a database, never deploys, never copies data and never
  *   changes production authority.
  *
@@ -218,9 +221,10 @@ export async function buildD1SchemaApplyManifest(
         continue;
       }
       try {
-        parseD1ExecuteResultsJson(
-          await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--file", path]),
-        );
+        // `d1 execute --file` may emit spinner/human text even with `--json`, so
+        // the write result is not parsed. The runner rejects a non-zero exit and
+        // the read-only `sqlite_master` verification below is the sole authority.
+        await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--file", path]);
         result.state = "applied";
         result.action = "apply";
       } catch (error) {
