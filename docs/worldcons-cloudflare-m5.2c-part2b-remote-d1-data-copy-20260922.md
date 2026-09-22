@@ -11,9 +11,9 @@ inputs and were not modified.
 Status at the time of writing: the four remote `worldcons_*` databases exist and their M5.1 schemas
 are already applied and verified (M5.2c PART 2a: `worldcons_core` 78/78 objects,
 `worldcons_ingest` 43/43, `worldcons_ops` 32/32, `worldcons_search` 2/2). The PART 2b data-copy
-operator is **implemented and offline-verified but has NOT yet been executed against production
-data**. No rows have been copied into any remote database, no Worker was deployed, no DNS was
-changed, and Supabase remains the production authority.
+operator is **implemented and offline-verified**. Only the `worldcons_core.sources` 4-row canary has
+been copied into a remote database so far (section 6); the broader production data copy remains
+pending. No Worker was deployed, no DNS was changed, and Supabase remains the production authority.
 
 ## 1. Objective and scope
 
@@ -99,8 +99,8 @@ Properties of the linked mode:
   recorded in the manifest for diagnostics only.
 
 The linked source is an **alternative read path, not a data mutation**: it is read-only like the `pg`
-source, and selecting it does not change the copy semantics or the "no production copy yet" status
-(see the note below). It is still dry-run by default and still requires `--apply` for any write.
+source, and selecting it does not change the copy semantics or the scope of what has been copied so
+far (see section 6). It is still dry-run by default and still requires `--apply` for any write.
 
 ### 2.3 Scope: core/ingest/ops only, search skipped
 
@@ -261,8 +261,18 @@ A real production read-only end-to-end dry-run was also completed using
 `--source=supabase-linked --database=worldcons_core --tables=sources` against the live project. It
 succeeded: the canonical source dataset was 4 rows, the remote D1 `worldcons_core.sources` table was
 0 rows, the table was classified `pending` with action `copy`, the manifest reported `ok:true`, and
-the run performed zero writes. No production rows were copied by this dry-run, and Supabase remained
-the production authority throughout.
+the run performed zero writes.
+
+The `sources` canary was then **subsequently applied and verified** in the same
+`--source=supabase-linked --database=worldcons_core --tables=sources` scope. The 4 missing rows were
+copied in a single chunk; the source and remote canonical hashes matched; and the manifest reported
+`ok:true`. An immediate read-only re-run reported 4 source rows and 4 remote rows with state
+`existing`, action `none`, `verified:true`, `copied:0`, and zero write commands — an idempotent no-op
+confirming exact parity.
+
+So far **only** the `worldcons_core.sources` 4-row canary has been copied into a remote database. The
+broader production data copy — the remaining `worldcons_core` tables and the `worldcons_ingest` and
+`worldcons_ops` databases — **remains pending**, and Supabase remains the production authority.
 
 The focused tests (`tests/d1-copy-data.test.ts`) prove: (1) a dry-run over an empty remote plans a
 `pending` copy with zero writes and zero chunk files; (2) an apply from an empty remote reaches exact
