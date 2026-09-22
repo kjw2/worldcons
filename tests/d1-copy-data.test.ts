@@ -781,8 +781,46 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     "the CLI must import the linked Supabase row source",
   );
   assert.ok(
-    /if\s*\(kind === "supabase-linked"\)\s*return createSupabaseLinkedRowSource\(\)/.test(cliCode),
+    /if\s*\(kind === "supabase-linked"\)\s*\{[\s\S]*?return createSupabaseLinkedRowSource\(\{[\s\S]*?\}\)/.test(cliCode),
     "the linked branch must construct the linked source without inspecting any URL",
+  );
+
+  // `--linked-max-stdout-bytes=` is a positive-integer option read ONLY by the linked
+  // branch: absent, `positiveIntegerArg` yields null, `?? undefined` keeps the option
+  // unset and the adapter retains its own 8 MiB cap.
+  assert.ok(cliSource.includes("linked-max-stdout-bytes"), "the CLI must document --linked-max-stdout-bytes");
+  assert.ok(
+    cliCode.includes('positiveIntegerArg(args, "linked-max-stdout-bytes")'),
+    "the linked stdout bound must be parsed as a positive integer",
+  );
+  assert.ok(
+    /createSupabaseLinkedRowSource\(\{\s*maxStdoutBytes:\s*positiveIntegerArg\(args, "linked-max-stdout-bytes"\)\s*\?\?\s*undefined,?\s*\}\)/.test(
+      cliCode,
+    ),
+    "the linked branch must thread --linked-max-stdout-bytes into createSupabaseLinkedRowSource as maxStdoutBytes",
+  );
+  assert.equal(
+    (cliCode.match(/maxStdoutBytes/g) ?? []).length,
+    1,
+    "maxStdoutBytes must be wired exactly once, in the linked branch",
+  );
+  assert.equal(
+    (cliCode.match(/linked-max-stdout-bytes/g) ?? []).length,
+    1,
+    "--linked-max-stdout-bytes must be read exactly once, so the postgres source ignores it",
+  );
+
+  // The postgres branch is untouched: it never mentions the linked stdout bound and
+  // still resolves its connection URL explicitly.
+  const sourceFactory = /function createRowSource[\s\S]*?\n\}/.exec(cliCode)?.[0] ?? "";
+  assert.ok(sourceFactory.length > 0, "createRowSource must remain in the CLI source");
+  assert.ok(
+    /createPostgresRowSource\(\{\s*connectionString:\s*resolveSourceUrl\(args\)\s*\}\)/.test(sourceFactory),
+    "the postgres source must stay URL-only gated and ignore --linked-max-stdout-bytes",
+  );
+  assert.ok(
+    !/createPostgresRowSource\([^)]*maxStdoutBytes/.test(sourceFactory),
+    "the postgres construction must not consume the linked stdout bound",
   );
 
   // Apply is an explicit flag, threaded into the manifest builder.
