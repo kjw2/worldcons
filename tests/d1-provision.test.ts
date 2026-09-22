@@ -18,6 +18,7 @@ import {
   type WranglerD1Runner,
 } from "../lib/cloudflare/d1/remote";
 import {
+  buildDefaultWranglerInvocation,
   buildWranglerInvocation,
   createWranglerD1Runner,
   defaultWranglerBinary,
@@ -337,5 +338,37 @@ test("the Wrangler runner stays out of the runtime barrel and the CLI is apply-g
   for (const forbidden of ["d1 delete", "d1 execute", "d1 import", "d1 export", "r2 bucket"]) {
     assert.ok(!scriptSource.includes(forbidden), `the CLI must not run ${forbidden}`);
     assert.ok(!bootstrapSource.includes(forbidden), `the bootstrap must not run ${forbidden}`);
+  }
+});
+
+test("the default Windows invocation runs the local Wrangler JS entrypoint and keeps the SQL as one argv item", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-provision-default-"));
+  try {
+    const entrypoint = path.join(dir, "node_modules", "wrangler", "bin", "wrangler.js");
+    fs.mkdirSync(path.dirname(entrypoint), { recursive: true });
+    fs.writeFileSync(entrypoint, "", "utf8");
+
+    const sql = "select id, name from sources order by id limit 1000";
+    const invocation = buildDefaultWranglerInvocation({
+      platform: "win32",
+      cwd: dir,
+      execPath: "C:\\Program Files\\nodejs\\node.exe",
+      args: ["d1", "execute", "worldcons_core", "--remote", "--json", "--command", sql],
+    });
+
+    assert.equal(invocation.command, "C:\\Program Files\\nodejs\\node.exe");
+    assert.ok(
+      invocation.args[0].endsWith(path.join("node_modules", "wrangler", "bin", "wrangler.js")),
+      `the first arg must be the local Wrangler entrypoint, got ${invocation.args[0]}`,
+    );
+    assert.equal(invocation.args[invocation.args.length - 1], sql, "the SQL must survive unchanged");
+    assert.deepEqual(
+      invocation.args.slice(1, -1),
+      ["d1", "execute", "worldcons_core", "--remote", "--json", "--command"],
+      "the SQL must remain exactly one argv item, not split on spaces",
+    );
+    assert.equal(invocation.args.filter((arg) => arg === sql).length, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

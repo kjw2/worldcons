@@ -2,13 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { D1_DATABASES, type D1Database } from "@/lib/cloudflare/d1";
+import type { PostgresRowSource } from "@/lib/cloudflare/d1/convert";
 import { createPostgresRowSource } from "@/lib/cloudflare/d1/convert/postgres-source";
+import { createSupabaseLinkedRowSource } from "@/lib/cloudflare/d1/convert/supabase-linked-source";
 import { buildD1RemoteDataCopyManifest } from "@/lib/cloudflare/d1/remote/data-copy";
 import { createWranglerD1Runner } from "@/lib/cloudflare/d1/remote/runner";
 
 const CHUNK_DIR = path.join("artifacts", "cloudflare-m5", "d1-data-copy");
 const REPORT_PATH = path.join("artifacts", "cloudflare-m5", "d1-remote-data-copy.json");
 const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
+
+/** The read sources the operator CLI can use. `postgres` is the default. */
+type SourceKind = "postgres" | "supabase-linked";
+const SOURCE_KINDS: readonly SourceKind[] = ["postgres", "supabase-linked"];
 
 /**
  * M5.2c PART 2b remote D1 data-copy CLI.
@@ -18,16 +24,23 @@ const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
  *   pnpm d1:copy-data --apply --url=$WORLDCONS_D1_SOURCE_URL
  *   pnpm d1:copy-data --database=worldcons_core --tables=events,venues --json
  *   pnpm d1:copy-data --apply --batch-size=1000 --rows-per-statement=50
+ *   pnpm d1:copy-data --source=supabase-linked --database=worldcons_core --report
  *
  * Operator-only and dry-run by default. It reads the M5.2a canonical datasets
- * from the read-only Postgres source and copies the missing suffix into the
- * three relational remote `worldcons_*` databases as PLAIN insert chunks. It
- * never creates or deletes a database, never applies DDL, never deploys a Worker
- * and never changes production authority.
+ * from the read-only source and copies the missing suffix into the three
+ * relational remote `worldcons_*` databases as PLAIN insert chunks. It never
+ * creates or deletes a database, never applies DDL, never deploys a Worker and
+ * never changes production authority.
  *
- * The source is Postgres only and MUST be supplied explicitly through `--url=`
- * or `WORLDCONS_D1_SOURCE_URL`; it never falls back to `DATABASE_URL` or any
- * other environment variable, so a production read can never be guessed.
+ * Two read sources are available via `--source=`:
+ *
+ *   postgres        (default) the direct `pg` client. The connection URL MUST be
+ *                   supplied explicitly through `--url=`/`WORLDCONS_D1_SOURCE_URL`;
+ *                   it never falls back to `DATABASE_URL` or any other environment
+ *                   variable, so a production read can never be guessed.
+ *   supabase-linked the `supabase db query --linked` CLI. It resolves its own
+ *                   linked project, so it deliberately inspects NO URL environment
+ *                   variable at all.
  */
 function argValue(args: readonly string[], name: string): string | null {
   const prefix = `--${name}=`;
@@ -59,6 +72,24 @@ function parseDatabases(args: readonly string[]): D1Database[] | null {
   return items as D1Database[];
 }
 
+function resolveSourceKind(args: readonly string[]): SourceKind {
+  const raw = (argValue(args, "source") ?? "postgres").trim();
+  if (!(SOURCE_KINDS as readonly string[]).includes(raw)) {
+    throw new Error(`unknown --source=${raw} (expected ${SOURCE_KINDS.join("|")})`);
+  }
+  return raw as SourceKind;
+}
+
+/**
+ * `postgres` resolves the connection URL explicitly (see `resolveSourceUrl`);
+ * `supabase-linked` never touches a URL environment variable, because the linked
+ * Supabase CLI resolves its own target project.
+ */
+function createRowSource(kind: SourceKind, args: readonly string[]): PostgresRowSource {
+  if (kind === "supabase-linked") return createSupabaseLinkedRowSource();
+  return createPostgresRowSource({ connectionString: resolveSourceUrl(args) });
+}
+
 function resolveSourceUrl(args: readonly string[]): string {
   const url = (argValue(args, "url") ?? process.env[SOURCE_URL_ENV_VAR] ?? "").trim();
   if (url.length === 0) {
@@ -78,12 +109,13 @@ async function main(): Promise<void> {
   const asJson = args.includes("--json");
   const writeReport = args.includes("--report");
   const apply = args.includes("--apply");
-  const source = createPostgresRowSource({ connectionString: resolveSourceUrl(args) });
+  const sourceKind = resolveSourceKind(args);
+  const source = createRowSource(sourceKind, args);
   try {
     const manifest = await buildD1RemoteDataCopyManifest({
       runner: createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined }),
       source,
-      sourceKind: "postgres",
+      sourceKind,
       apply,
       databases: parseDatabases(args) ?? undefined,
       tables: listArg(args, "tables") ?? undefined,

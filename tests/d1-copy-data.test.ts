@@ -761,6 +761,30 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
   assert.ok(cliCode.includes('argValue(args, "url")'), "the CLI must resolve the source from `--url=`");
   assert.ok(!cliCode.includes("DATABASE_URL"), "the CLI must not fall back to DATABASE_URL");
 
+  // Source selection: `--source=` with `postgres` as the default kind.
+  assert.ok(cliCode.includes('argValue(args, "source")'), "the CLI must resolve the source kind from `--source=`");
+  assert.ok(
+    cliCode.includes('argValue(args, "source") ?? "postgres"'),
+    "postgres must remain the default source kind",
+  );
+  assert.ok(cliCode.includes('"supabase-linked"'), "the CLI must know the linked source kind");
+
+  // The postgres branch stays exactly URL-gated: it is the only branch that resolves a URL.
+  assert.ok(
+    /createPostgresRowSource\(\{\s*connectionString:\s*resolveSourceUrl\(args\)\s*\}\)/.test(cliCode),
+    "the postgres branch must remain URL-gated through resolveSourceUrl",
+  );
+
+  // The linked mode is a real import + branch that builds the source without any URL.
+  assert.ok(
+    cliSource.includes("createSupabaseLinkedRowSource"),
+    "the CLI must import the linked Supabase row source",
+  );
+  assert.ok(
+    /if\s*\(kind === "supabase-linked"\)\s*return createSupabaseLinkedRowSource\(\)/.test(cliCode),
+    "the linked branch must construct the linked source without inspecting any URL",
+  );
+
   // Apply is an explicit flag, threaded into the manifest builder.
   assert.ok(cliSource.includes('args.includes("--apply")'), "apply must be an explicit `--apply` flag");
   assert.ok(

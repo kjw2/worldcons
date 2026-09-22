@@ -38,7 +38,8 @@ deletes a database.
 
 `lib/cloudflare/d1/remote/data-copy.ts` is the seam. It imports no Node builtins (`node:child_process`
 and `pg` are injected by the operator CLI), so it stays in the runtime barrel. `scripts/d1-copy-data.ts`
-is the operator CLI that supplies the Wrangler child-process runner and the read-only Postgres source.
+is the operator CLI that supplies the Wrangler child-process runner and one of two read-only sources,
+selected with `--source=` (section 2.1 / 2.2).
 
 For each selected database and table the seam:
 
@@ -50,13 +51,15 @@ For each selected database and table the seam:
 3. revives the stored rows (JSON/array columns are canonical JSON text and are parsed back) and
    re-canonicalizes them with the same M5.2a transform, so the remote hash is directly comparable to
    the source hash;
-4. classifies the table (section 2.3) and, only in apply mode for a `pending`/`resumable` table,
-   copies the missing suffix (section 2.4).
+4. classifies the table (section 2.4) and, only in apply mode for a `pending`/`resumable` table,
+   copies the missing suffix (section 2.5).
 
-### 2.1 Source authority: explicit URL only, never DATABASE_URL
+### 2.1 Source authority: explicit URL only, never DATABASE_URL (`--source=postgres`, default)
 
-The Postgres source is supplied **only** through `--url=` or the `WORLDCONS_D1_SOURCE_URL`
-environment variable. The CLI refuses to run when neither is set:
+The source kind is selected with `--source=postgres|supabase-linked`; `postgres` is the default and
+keeps the exact behavior below. In `postgres` mode the `pg` source is supplied **only** through
+`--url=` or the `WORLDCONS_D1_SOURCE_URL` environment variable. The CLI refuses to run when neither
+is set:
 
 ```
 postgres export requires --url= or WORLDCONS_D1_SOURCE_URL; refusing to guess a production read
@@ -65,9 +68,41 @@ postgres export requires --url= or WORLDCONS_D1_SOURCE_URL; refusing to guess a 
 There is deliberately **no fallback to `DATABASE_URL`** or any other environment variable, so a
 production read can never be guessed from ambient configuration. The focused tests assert the CLI
 does not reference `DATABASE_URL` in executable code (the safety comments may name it; the
-comment-stripped code must not).
+comment-stripped code must not), and that the postgres branch is the only one that resolves a URL.
 
-### 2.2 Scope: core/ingest/ops only, search skipped
+### 2.2 Linked Supabase fallback for the Windows/IPv6 direct-endpoint issue (`--source=supabase-linked`)
+
+`lib/cloudflare/d1/convert/supabase-linked-source.ts` is a second, operator-only `PostgresRowSource`
+backed by the Supabase CLI (`supabase db query --linked -o json <sql>`) instead of a direct `pg`
+connection. It exists to work around a real operator-machine problem: on Windows the direct Postgres
+endpoint is only reachable over IPv4, but a Supabase pooled/direct host that returns an **IPv6-only**
+`AAAA` record cannot be dialed by the `pg` client on that host, so `--source=postgres` cannot connect
+at all. The linked CLI resolves its own project connection (including any IPv4/`supavisor` routing the
+CLI uses), which sidesteps the direct-endpoint IPv6 problem without an operator-side connection string.
+
+Properties of the linked mode:
+
+- `--source=supabase-linked` constructs `createSupabaseLinkedRowSource()` and **inspects no URL
+  environment variable** — not `--url`, `WORLDCONS_D1_SOURCE_URL`, nor `DATABASE_URL`. The linked CLI
+  resolves its own target project, so there is nothing to guess and no ambient URL to leak.
+- The module imports `node:child_process` and is therefore **never re-exported from the convert
+  barrel**; only the operator CLI imports it directly, so runtime Workers code never loads it.
+- The SELECT is authored from the hand-authored schema (guarded, double-quoted identifiers;
+  `LIMIT`/`OFFSET` inlined only after a safe-integer check), passed as a single `argv` entry to
+  `spawn` with `shell:false` (routed through `cmd.exe /d /c` on Windows so the shim resolves via
+  `PATH`/`PATHEXT`), with a bounded timeout and bounded stdout/stderr.
+- The CLI stdout is parsed fail-closed: exactly one JSON envelope with a `rows` array is required, and
+  every decoded value is preserved exactly (bigint decimals stay strings, jsonb stays objects, arrays
+  stay arrays, booleans stay booleans), so no scalar is coerced before the M5.2a canonical transform.
+- Only the read source changes: the data-copy seam, its comparison semantics, the chunked
+  plain-insert apply and the hash verification are identical in both modes, and `sourceKind` is
+  recorded in the manifest for diagnostics only.
+
+The linked source is an **alternative read path, not a data mutation**: it is read-only like the `pg`
+source, and selecting it does not change the copy semantics or the "no production copy yet" status
+(see the note below). It is still dry-run by default and still requires `--apply` for any write.
+
+### 2.3 Scope: core/ingest/ops only, search skipped
 
 `D1_REMOTE_DATA_COPY_DATABASES` is exactly `worldcons_core`, `worldcons_ingest`, `worldcons_ops`.
 `worldcons_search` is deliberately **skipped**: its tables are virtual or derived from other
@@ -78,7 +113,7 @@ Within scope, "migratable" means a table that is not `virtual` and has a non-nul
 processing order is the authored deterministic order (tables sorted by name per database, targets in
 the canonical `core` -> `ingest` -> `ops` order).
 
-### 2.3 Canonical comparison and states
+### 2.4 Canonical comparison and states
 
 | State | Meaning |
 | --- | --- |
@@ -95,7 +130,7 @@ canonical JSON) is `resumable` and only the suffix is copied, and **anything els
 no write attempted. A remote table that is longer than the source, or whose rows do not stand in
 canonical-prefix relation to the source, is refused rather than reconciled.
 
-### 2.4 Apply: plain inserts, deterministic chunks, verified progress, abort on first error
+### 2.5 Apply: plain inserts, deterministic chunks, verified progress, abort on first error
 
 Apply is opt-in: `apply:true` **and** a `materializeChunk` implementation are required (the seam
 throws if apply is requested without a chunk materializer). In apply mode the missing suffix is:
@@ -118,6 +153,17 @@ throws if apply is requested without a chunk materializer). In apply mode the mi
   recorded as `refused` with "not attempted: data copy aborted after an earlier failure". The seam
   never throws for a remote failure — it returns a manifest with `ok:false` and per-table errors so the
   operator still gets a machine-readable record.
+
+### 2.6 Windows default Wrangler runner: local Node entrypoint, one argv per argument
+
+On Windows the **default** Wrangler runner in `lib/cloudflare/d1/remote/runner.ts` no longer goes
+through the `wrangler.cmd` shim or `cmd.exe`: it launches Node (`process.execPath`) directly with the
+absolute local `node_modules/wrangler/bin/wrangler.js` entrypoint as its first argument, followed by
+every D1 argument unchanged. Passing the vector through the command interpreter re-parses it into a
+command line, which splits a spaceful `--command <SQL>` into several arguments and fails; spawning
+Node with the JS entrypoint keeps any SQL string containing spaces as exactly one `argv` entry. The
+default path fails closed when the local entrypoint is missing, and an explicit custom
+`binary`/`prefixArgs` still routes through `cmd.exe /d /c`.
 
 ## 3. Contract
 
@@ -157,11 +203,17 @@ pnpm d1:copy-data --apply --report
 
 # apply with chunk knobs
 pnpm d1:copy-data --apply --batch-size=1000 --rows-per-statement=50 --max-statements-per-chunk=100
+
+# linked fallback (no --url and no URL env var): read via the linked Supabase CLI
+pnpm d1:copy-data --source=supabase-linked --database=worldcons_core --report
 ```
 
-Flags: `--url=` (or `WORLDCONS_D1_SOURCE_URL`), `--apply`, `--database=` (repeatable/comma-separated,
+Flags: `--source=postgres|supabase-linked` (default `postgres`), `--url=` (or
+`WORLDCONS_D1_SOURCE_URL`; `postgres` mode only), `--apply`, `--database=` (repeatable/comma-separated,
 validated against the canonical set), `--tables=`, `--batch-size=`, `--rows-per-statement=`,
 `--max-statements-per-chunk=`, `--max-bytes-per-chunk=`, `--timeout-ms=`, `--json`, `--report`.
+
+`--source=supabase-linked` ignores `--url` entirely and resolves no URL environment variable.
 
 - `--report` writes the deterministic manifest to
   `artifacts/cloudflare-m5/d1-remote-data-copy.json`.
@@ -175,6 +227,8 @@ validated against the canonical set), `--tables=`, `--batch-size=`, `--rows-per-
 - dry-run by default; a remote write requires the explicit `--apply` flag;
 - the Postgres read requires an explicit `--url=`/`WORLDCONS_D1_SOURCE_URL`; there is no
   `DATABASE_URL` fallback;
+- `--source=supabase-linked` reads through the linked Supabase CLI and resolves no URL environment
+  variable at all; it is a read-only alternative read path that changes no copy semantics;
 - `worldcons_search` is out of scope and can never be copied;
 - apply emits PLAIN `insert` statements only — no replace/upsert/update/delete/drop/create;
 - writes are bounded by deterministic chunk files, and every chunk is count-verified before the next;
@@ -190,9 +244,10 @@ validated against the canonical set), `--tables=`, `--batch-size=`, `--rows-per-
 | `pnpm test:d1-schema` | Pass, 19/19 |
 | `pnpm test:d1-convert` | Pass, 10/10 |
 | `pnpm test:d1-import` | Pass, 14/14 |
-| `pnpm test:d1-provision` | Pass, 16/16 |
+| `pnpm test:d1-provision` | Pass, 17/17 |
 | `pnpm test:d1-apply-schema` | Pass, 15/15 |
 | `pnpm test:d1-copy-data` | Pass, 18/18 |
+| `pnpm test:d1-supabase-linked-source` | Pass, 10/10 |
 | `pnpm typecheck` | Pass |
 | `pnpm lint` | Pass |
 | `pnpm check` | Pass |
@@ -201,6 +256,13 @@ validated against the canonical set), `--tables=`, `--batch-size=`, `--rows-per-
 The checks above are the actual completed verification for this slice. The full release suite
 (`pnpm verify:release`) and any gates not listed here were **not** run as part of this record and
 remain optional/pending.
+
+A real production read-only end-to-end dry-run was also completed using
+`--source=supabase-linked --database=worldcons_core --tables=sources` against the live project. It
+succeeded: the canonical source dataset was 4 rows, the remote D1 `worldcons_core.sources` table was
+0 rows, the table was classified `pending` with action `copy`, the manifest reported `ok:true`, and
+the run performed zero writes. No production rows were copied by this dry-run, and Supabase remained
+the production authority throughout.
 
 The focused tests (`tests/d1-copy-data.test.ts`) prove: (1) a dry-run over an empty remote plans a
 `pending` copy with zero writes and zero chunk files; (2) an apply from an empty remote reaches exact
