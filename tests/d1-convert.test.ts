@@ -245,10 +245,31 @@ test("the live report covers four databases and skips the derived search project
     ?.tables.find((entry) => entry.table === "articles");
   assert.ok(articles);
   assert.deepEqual(articles.relocated, [
+    { column: "raw_text", target: "r2" },
     { column: "search_vector", target: "fts5" },
     { column: "embedding", target: "vectorize" },
   ]);
+  assert.ok(!articles.columns.includes("raw_text"), "raw_text must be relocated to R2, not projected");
+  assert.ok(articles.columns.includes("cleaned_text"), "cleaned_text must stay inline in D1");
   assert.ok(!articles.columns.includes("search_vector") && !articles.columns.includes("embedding"));
+
+  const versions = report.databases
+    .find((entry) => entry.database === "worldcons_core")
+    ?.tables.find((entry) => entry.table === "article_content_versions_p3");
+  assert.ok(versions);
+  assert.deepEqual(versions.relocated, [
+    { column: "raw_text", target: "r2" },
+    { column: "search_vector", target: "fts5" },
+    { column: "embedding", target: "vectorize" },
+  ]);
+  assert.ok(!versions.columns.includes("raw_text"), "raw_text must be relocated to R2, not projected");
+  assert.ok(versions.columns.includes("cleaned_text"), "cleaned_text must stay inline in D1");
+  assert.ok(!versions.columns.includes("search_vector") && !versions.columns.includes("embedding"));
+
+  const versionsTable = findTable("article_content_versions_p3");
+  assert.ok(!versionsTable.columns.some((column) => column.name === "raw_text"));
+  assert.ok(projectableColumns(versionsTable).includes("cleaned_text"));
+  assert.ok(!projectableColumns(versionsTable).includes("raw_text"));
 
   const again = await buildD1ConversionReport({ source: createMemoryRowSource({}), sourceKind: "memory" });
   assert.deepEqual(again, report, "the report must be deterministic");

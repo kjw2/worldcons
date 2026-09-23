@@ -4,6 +4,7 @@ import type {
   D1Database,
   D1IndexDefinition,
   D1RelocatedColumn,
+  D1RelocatedTarget,
   D1TableDefinition,
   D1VirtualTableDefinition,
   PostgresColumnRef,
@@ -20,6 +21,8 @@ export interface ColumnSpec {
   /** Enum-like CHECK values (plan 6.1: enums -> TEXT + CHECK). */
   enum?: readonly string[];
   note?: string;
+  /** Explicit relocation target, overriding the Postgres type mapping. */
+  relocate?: D1RelocatedTarget;
   /** Derived projection column with no single Postgres source table. */
   derived?: boolean;
 }
@@ -55,6 +58,10 @@ export function buildTable(spec: TableSpec): D1TableDefinition {
   const sourceTable = spec.sourceTable ?? spec.name;
   for (const column of spec.columns) {
     const source: PostgresColumnRef = { table: sourceTable, column: column.name, postgresType: column.type };
+    if (column.relocate) {
+      relocated.push({ source, target: column.relocate, note: column.note ?? "" });
+      continue;
+    }
     const mapping = mapPostgresType(column.type);
     if (!mapping) throw new Error(`${spec.name}.${column.name}: unmapped Postgres type ${column.type}`);
     if ("relocated" in mapping) {

@@ -121,8 +121,8 @@ test("the live D1 schema validates against the scanned Postgres DDL", () => {
   const articles = report.tables.find((table) => table.name === "articles");
   assert.ok(articles);
   assert.deepEqual(articles.primaryKey, ["id"]);
-  assert.equal(articles.columns, 56);
-  assert.deepEqual(articles.relocated, ["search_vector->fts5", "embedding->vectorize"]);
+  assert.equal(articles.columns, 55);
+  assert.deepEqual(articles.relocated, ["raw_text->r2", "search_vector->fts5", "embedding->vectorize"]);
 
   const searchFts = report.tables.find((table) => table.name === "search_fts");
   assert.ok(searchFts);
@@ -132,8 +132,8 @@ test("the live D1 schema validates against the scanned Postgres DDL", () => {
   const versions = report.tables.find((table) => table.name === "article_content_versions_p3");
   assert.ok(versions);
   assert.deepEqual(versions.primaryKey, ["id"]);
-  assert.equal(versions.columns, 45);
-  assert.deepEqual(versions.relocated, ["search_vector->fts5", "embedding->vectorize"]);
+  assert.equal(versions.columns, 44);
+  assert.deepEqual(versions.relocated, ["raw_text->r2", "search_vector->fts5", "embedding->vectorize"]);
 
   const corpusPolicies = report.tables.find((table) => table.name === "source_corpus_policies");
   assert.ok(corpusPolicies);

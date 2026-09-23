@@ -82,7 +82,10 @@ function validateAgainstPostgres(table: D1TableDefinition, registry: PostgresSch
       continue;
     }
     if (kind === "relocated") {
-      push("column-expected", `${table.name}.${pgColumn.name} must be a stored D1 column`);
+      const relocation = table.relocated.find((entry) => entry.source.column === pgColumn.name);
+      if (!relocation || relocation.target !== "r2") {
+        push("column-expected", `${table.name}.${pgColumn.name} must be a stored D1 column`);
+      }
       continue;
     }
     const column = table.columns.find((entry) => entry.source?.column === pgColumn.name);

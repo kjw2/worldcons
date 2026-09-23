@@ -31,7 +31,7 @@ export type D1StorageKind = (typeof D1_STORAGE_KINDS)[number];
  * `tsvector` becomes an FTS5 projection (plan 6.1/11.1) and `vector(1536)`
  * becomes a Vectorize index (plan 6.1/11.2).
  */
-export const D1_RELOCATED_TARGETS = ["fts5", "vectorize"] as const;
+export const D1_RELOCATED_TARGETS = ["fts5", "vectorize", "r2"] as const;
 export type D1RelocatedTarget = (typeof D1_RELOCATED_TARGETS)[number];
 
 /** Whether a table is fully modeled in M5.1 or explicitly deferred to a later slice. */
