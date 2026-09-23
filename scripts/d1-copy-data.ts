@@ -58,12 +58,14 @@ const SOURCE_KINDS: readonly SourceKind[] = ["postgres", "supabase-linked"];
  *   pnpm d1:copy-data --source=supabase-linked --database=worldcons_core --report
  *   pnpm d1:copy-data --source=supabase-linked --linked-max-stdout-bytes=16777216
  *   pnpm d1:copy-data --source=supabase-linked --linked-timeout-ms=120000
+ *   pnpm d1:copy-data --max-rows=1000 --database=worldcons_core
  *
  * Operator-only and dry-run by default. It reads the M5.2a canonical datasets
  * from the read-only source and copies the missing suffix into the three
  * relational remote `worldcons_*` databases as PLAIN insert chunks. It never
  * creates or deletes a database, never applies DDL, never deploys a Worker and
- * never changes production authority.
+ * never changes production authority. `--max-rows=` optionally caps the rows read
+ * per table (a positive integer); when absent the whole table is read.
  *
  * A statement too large to materialize into a chunk file is written through the
  * D1 HTTP query API instead, because the Wrangler CLI cannot carry a multi-megabyte
@@ -356,6 +358,7 @@ async function main(): Promise<void> {
       databases: databases ?? undefined,
       tables: listArg(args, "tables") ?? undefined,
       batchSize: positiveIntegerArg(args, "batch-size") ?? undefined,
+      maxRows: positiveIntegerArg(args, "max-rows") ?? undefined,
       rowsPerStatement: positiveIntegerArg(args, "rows-per-statement") ?? undefined,
       maxStatementsPerChunk: positiveIntegerArg(args, "max-statements-per-chunk") ?? undefined,
       maxBytesPerChunk: positiveIntegerArg(args, "max-bytes-per-chunk") ?? undefined,

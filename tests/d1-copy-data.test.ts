@@ -1184,6 +1184,32 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     "--linked-timeout-ms must be read exactly once, so the postgres source ignores it",
   );
 
+  // `--max-rows=` is a positive-integer read cap threaded straight into
+  // buildD1RemoteDataCopyManifest as `maxRows`. Absent, `positiveIntegerArg`
+  // yields null, `?? undefined` leaves the field unset and the builder keeps its
+  // own unlimited default, so absence preserves the current behaviour exactly.
+  assert.ok(cliSource.includes("max-rows"), "the CLI must document --max-rows");
+  assert.ok(
+    cliCode.includes('positiveIntegerArg(args, "max-rows")'),
+    "the read cap must be parsed as a positive integer with the shared helper",
+  );
+  assert.ok(
+    /buildD1RemoteDataCopyManifest\(\{[\s\S]*?maxRows:\s*positiveIntegerArg\(args, "max-rows"\)\s*\?\?\s*undefined/.test(
+      cliCode,
+    ),
+    "the CLI must thread --max-rows into buildD1RemoteDataCopyManifest as maxRows",
+  );
+  assert.equal(
+    (cliCode.match(/maxRows/g) ?? []).length,
+    1,
+    "maxRows must be wired exactly once, so absence preserves the unlimited default",
+  );
+  assert.equal(
+    (cliCode.match(/max-rows/g) ?? []).length,
+    1,
+    "--max-rows must be read exactly once",
+  );
+
   // The postgres branch is untouched: it never mentions the linked stdout bound and
   // still resolves its connection URL explicitly.
   const sourceFactory = /function createRowSource[\s\S]*?\n\}/.exec(cliCode)?.[0] ?? "";
