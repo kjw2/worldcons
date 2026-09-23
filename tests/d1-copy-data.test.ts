@@ -300,6 +300,9 @@ test("dry-run over an empty remote plans a pending copy and writes nothing", asy
     pending: 1,
     copied: 0,
     refused: 0,
+    plannedWrites: 1,
+    plannedParameterizedWrites: 0,
+    parameterizedTables: 0,
   });
 
   const [table] = manifest.targets[0].tables;
@@ -308,8 +311,17 @@ test("dry-run over an empty remote plans a pending copy and writes nothing", asy
   assert.equal(table.verified, false);
   assert.equal(table.expectedRowCount, 6);
   assert.equal(table.remoteRowCount, 0);
+  // The dry-run preflight plans the copy without executing any of it.
+  assert.ok(table.plannedWriteCount > 0, "a dry-run small table must plan at least one write");
+  assert.equal(table.plannedParameterizedWriteCount, 0, "a small table must plan no parameterized write");
+  assert.equal(table.requiresParameterizedWriter, false);
+  assert.equal(table.chunkCount, 0, "a dry-run executes no write item");
+  assert.equal(manifest.totals.plannedWrites, table.plannedWriteCount);
   assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
   assert.equal(harness.files.size, 0);
+  assert.equal(harness.materialized.length, 0);
+  assert.equal(harness.parameterCalls.length, 0);
+  assert.equal(harness.executions.length, 0);
 });
 
 test("apply from an empty remote reaches exact verified parity", async () => {
@@ -336,6 +348,13 @@ test("apply from an empty remote reaches exact verified parity", async () => {
   assert.equal(table.remoteRowCount, 6);
   assert.equal(table.remoteHash, table.expectedHash);
   assert.ok(table.chunkCount > 0);
+  // Apply reuses the exact plan a dry-run would report: the executed items equal the plan.
+  assert.equal(table.plannedWriteCount, table.chunkCount);
+  assert.equal(table.plannedParameterizedWriteCount, 0);
+  assert.equal(table.requiresParameterizedWriter, false);
+  assert.equal(manifest.totals.plannedWrites, table.chunkCount);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 0);
+  assert.equal(manifest.totals.parameterizedTables, 0);
   assert.equal(harness.remoteRows("copy_probe").length, 6);
   assert.ok(manifest.commands.some((command) => command.includes("--file")));
 });
@@ -360,6 +379,13 @@ test("an already-complete remote is a verified no-op with zero writes", async ()
   assert.equal(table.action, "none");
   assert.equal(table.verified, true);
   assert.equal(table.remoteHash, table.expectedHash);
+  // An existing table plans nothing.
+  assert.equal(table.plannedWriteCount, 0);
+  assert.equal(table.plannedParameterizedWriteCount, 0);
+  assert.equal(table.requiresParameterizedWriter, false);
+  assert.equal(manifest.totals.plannedWrites, 0);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 0);
+  assert.equal(manifest.totals.parameterizedTables, 0);
   assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
   assert.equal(harness.files.size, 0);
 });
@@ -412,6 +438,11 @@ test("a non-prefix partial remote is refused before any write", async () => {
   assert.equal(table.verified, false);
   assert.equal(table.copiedRowCount, 0);
   assert.ok(table.errors.some((error) => error.includes("neither the full dataset")));
+  // A refused table plans nothing.
+  assert.equal(table.plannedWriteCount, 0);
+  assert.equal(table.plannedParameterizedWriteCount, 0);
+  assert.equal(table.requiresParameterizedWriter, false);
+  assert.equal(manifest.totals.plannedWrites, 0);
   assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
   assert.equal(harness.files.size, 0);
 });
@@ -569,6 +600,13 @@ test("an empty source over an empty remote is a verified existing no-op with zer
   assert.equal(table.remoteRowCount, 0);
   assert.equal(table.copiedRowCount, 0);
   assert.equal(table.chunkCount, 0);
+  // An empty source over an empty remote is `existing`: nothing is planned or executed.
+  assert.equal(table.plannedWriteCount, 0);
+  assert.equal(table.plannedParameterizedWriteCount, 0);
+  assert.equal(table.requiresParameterizedWriter, false);
+  assert.equal(manifest.totals.plannedWrites, 0);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 0);
+  assert.equal(manifest.totals.parameterizedTables, 0);
   assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
   assert.equal(harness.files.size, 0);
 });
@@ -788,6 +826,14 @@ test("an oversized row applies through the parameterized writer without material
   assert.equal(table.copiedRowCount, 1);
   assert.equal(table.remoteRowCount, 1);
   assert.equal(table.remoteHash, table.expectedHash);
+  // The applied plan is one oversized, parameterized write.
+  assert.equal(table.plannedWriteCount, 1);
+  assert.equal(table.plannedParameterizedWriteCount, 1);
+  assert.equal(table.requiresParameterizedWriter, true);
+  assert.equal(table.chunkCount, 1);
+  assert.equal(manifest.totals.plannedWrites, 1);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 1);
+  assert.equal(manifest.totals.parameterizedTables, 1);
   assert.equal(harness.remoteRows("copy_probe").length, 1);
 });
 
@@ -854,10 +900,127 @@ test("a mixed small/oversized/small table writes file, parameter, file in author
   assert.equal(table.remoteRowCount, 3);
   assert.equal(table.remoteHash, table.expectedHash);
   assert.equal(table.chunkCount, 3);
+  assert.equal(table.plannedWriteCount, 3, "the plan is file, parameter, file");
+  assert.equal(table.plannedParameterizedWriteCount, 1, "only the oversized middle row is parameterized");
+  assert.equal(table.requiresParameterizedWriter, true);
+  assert.equal(manifest.totals.plannedWrites, 3);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 1);
+  assert.equal(manifest.totals.parameterizedTables, 1);
   assert.deepEqual(
     harness.remoteRows("copy_probe").map((row) => row.id),
     ["row-1", "row-2", "row-3"],
   );
+});
+
+test("a dry-run over an oversized row plans the parameterized writer without materializing or writing", async () => {
+  const harness = createHarness();
+  const body = "w".repeat(120_000);
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: oversizedSource(body),
+    schema,
+    databases: ["worldcons_core"],
+  });
+
+  assert.equal(manifest.dryRun, true);
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "pending");
+  assert.equal(table.action, "copy");
+  assert.equal(table.plannedWriteCount, 1);
+  assert.equal(table.plannedParameterizedWriteCount, 1);
+  assert.equal(table.requiresParameterizedWriter, true);
+  assert.equal(table.chunkCount, 0, "a dry-run executes no write item");
+
+  assert.equal(manifest.totals.plannedWrites, 1);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 1);
+  assert.equal(manifest.totals.parameterizedTables, 1);
+
+  // The plan is recorded without materializing a chunk or writing anything.
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+  assert.equal(harness.materialized.length, 0);
+  assert.equal(harness.parameterCalls.length, 0);
+  assert.equal(harness.executions.length, 0);
+  assert.equal(harness.remoteRows("copy_probe").length, 0);
+});
+
+test("a mixed small/oversized/small dry-run plans three writes with one parameterized and executes none", async () => {
+  const harness = createHarness();
+  const body = "v".repeat(120_000);
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: createFakeSource({
+      copy_probe: [
+        { id: "row-1", body: "small one", rank: 1 },
+        { id: "row-2", body, rank: 2 },
+        { id: "row-3", body: "small three", rank: 3 },
+      ],
+    }),
+    schema,
+    databases: ["worldcons_core"],
+    rowsPerStatement: 1,
+  });
+
+  assert.equal(manifest.dryRun, true);
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "pending");
+  assert.equal(table.action, "copy");
+  assert.equal(table.plannedWriteCount, 3, "file, parameter, file is three planned writes");
+  assert.equal(table.plannedParameterizedWriteCount, 1, "only the oversized middle row is parameterized");
+  assert.equal(table.requiresParameterizedWriter, true);
+  assert.equal(table.chunkCount, 0, "a dry-run writes nothing");
+
+  assert.equal(manifest.totals.plannedWrites, 3);
+  assert.equal(manifest.totals.plannedParameterizedWrites, 1);
+  assert.equal(manifest.totals.parameterizedTables, 1);
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+  assert.equal(harness.materialized.length, 0);
+  assert.equal(harness.parameterCalls.length, 0);
+  assert.equal(harness.executions.length, 0);
+});
+
+test("a dry-run and an apply of the same source report the identical write plan", async () => {
+  const chunking = { rowsPerStatement: 1, maxStatementsPerChunk: 2 } as const;
+
+  const dryHarness = createHarness();
+  const dryRun = await buildD1RemoteDataCopyManifest({
+    runner: dryHarness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    ...chunking,
+  });
+
+  const applyHarness = createHarness();
+  const applied = await buildD1RemoteDataCopyManifest({
+    runner: applyHarness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: applyHarness.materialize,
+    ...chunking,
+  });
+
+  assert.equal(dryRun.ok, true, dryRun.errors.join("; "));
+  assert.equal(applied.ok, true, applied.errors.join("; "));
+
+  const [dryTable] = dryRun.targets[0].tables;
+  const [appliedTable] = applied.targets[0].tables;
+  assert.equal(dryTable.chunkCount, 0, "the dry-run executes nothing");
+  assert.ok(dryTable.plannedWriteCount > 0);
+  assert.equal(dryTable.plannedWriteCount, appliedTable.plannedWriteCount, "apply reuses the dry-run plan");
+  assert.equal(dryTable.plannedParameterizedWriteCount, appliedTable.plannedParameterizedWriteCount);
+  assert.equal(dryTable.requiresParameterizedWriter, appliedTable.requiresParameterizedWriter);
+  assert.equal(appliedTable.chunkCount, appliedTable.plannedWriteCount, "an apply executes exactly its plan");
+  assert.equal(dryRun.totals.plannedWrites, applied.totals.plannedWrites);
+  assert.equal(dryRun.totals.plannedParameterizedWrites, applied.totals.plannedParameterizedWrites);
+  assert.equal(dryRun.totals.parameterizedTables, applied.totals.parameterizedTables);
 });
 
 test("production data-copy seam keeps destructive DML and Node operator imports out", () => {
@@ -1153,6 +1316,18 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
   assert.ok(
     cliSource.includes('chunk-${String(chunkIndex).padStart(4, "0")}.sql'),
     "chunk files must use zero-padded chunk-NNNN.sql naming",
+  );
+
+  // The human output surfaces the preflight write plan per table and in the totals.
+  assert.ok(
+    cliSource.includes("planned ${table.plannedWriteCount} / parameterized ${table.plannedParameterizedWriteCount}"),
+    "the human output must print each table's planned/parameterized write counts",
+  );
+  assert.ok(
+    cliSource.includes(
+      "planned ${manifest.totals.plannedWrites} / parameterized ${manifest.totals.plannedParameterizedWrites}",
+    ),
+    "the human output must print the planned/parameterized write totals",
   );
 
   // package.json wiring.

@@ -232,14 +232,14 @@ async function main(): Promise<void> {
         for (const table of target.tables) {
           const remoteHash = table.remoteHash === null ? "none" : table.remoteHash.slice(0, 12);
           console.log(
-            `    ${table.table}: ${table.state} / ${table.action} (expected ${table.expectedRowCount} hash ${table.expectedHash.slice(0, 12)}, remote ${table.remoteRowCount} hash ${remoteHash}, copied ${table.copiedRowCount}, chunks ${table.chunkCount})`,
+            `    ${table.table}: ${table.state} / ${table.action} (expected ${table.expectedRowCount} hash ${table.expectedHash.slice(0, 12)}, remote ${table.remoteRowCount} hash ${remoteHash}, copied ${table.copiedRowCount}, chunks ${table.chunkCount}, planned ${table.plannedWriteCount} / parameterized ${table.plannedParameterizedWriteCount})`,
           );
           for (const error of table.errors) console.error(`      error: ${error}`);
         }
         for (const error of target.errors) console.error(`    error: ${error}`);
       }
       console.log(
-        `totals: ${manifest.totals.databases} databases, ${manifest.totals.tables} tables, ${manifest.totals.copied} copied, ${manifest.totals.existing} existing, ${manifest.totals.resumable} resumable, ${manifest.totals.pending} pending, ${manifest.totals.refused} refused`,
+        `totals: ${manifest.totals.databases} databases, ${manifest.totals.tables} tables, ${manifest.totals.copied} copied, ${manifest.totals.existing} existing, ${manifest.totals.resumable} resumable, ${manifest.totals.pending} pending, ${manifest.totals.refused} refused, planned ${manifest.totals.plannedWrites} / parameterized ${manifest.totals.plannedParameterizedWrites} (${manifest.totals.parameterizedTables} tables)`,
       );
       if (writeReport) console.log(`wrote ${REPORT_PATH}`);
       for (const error of manifest.errors) console.error(`error: ${error}`);

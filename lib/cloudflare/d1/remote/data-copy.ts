@@ -34,6 +34,11 @@ import type { WranglerD1Runner } from "./types";
  *   full count + hash match is `existing` (a verified no-op with zero writes), a
  *   strict canonical prefix is `resumable` (only the suffix is copied), and
  *   anything else is `refused`;
+ * - every copy candidate (pending/resumable) gets a write plan computed once,
+ *   before the dry-run/apply branch, so a dry-run reports the exact
+ *   `plannedWriteCount`/`plannedParameterizedWriteCount`/`requiresParameterizedWriter`
+ *   without materializing a chunk, writing a file or making an HTTP call, and apply
+ *   reuses that same plan (`chunkCount` stays the executed write items only);
  * - apply mode is opt-in (`apply:true` plus a `materializeChunk` implementation)
  *   and emits PLAIN `insert` statements only. It never emits
  *   `replace`/`upsert`/`update`/`delete`/`drop`/`create`. Each emitted statement
@@ -113,6 +118,16 @@ export interface D1RemoteDataCopyTableTarget {
   copiedRowCount: number;
   /** Write items this run executed for the table (file chunks plus parameterized statements). */
   chunkCount: number;
+  /**
+   * Write items the preflight plan would execute for the table, computed for every
+   * copy candidate (pending/resumable) in both dry-run and apply, before any write.
+   * Zero for a table that needs no copy (existing/refused/empty-source).
+   */
+  plannedWriteCount: number;
+  /** Planned write items that must go through the parameterized writer. */
+  plannedParameterizedWriteCount: number;
+  /** True when the plan contains an oversized statement that needs the parameterized writer. */
+  requiresParameterizedWriter: boolean;
   /** Whether the remote table now equals the canonical dataset exactly. */
   verified: boolean;
   errors: string[];
@@ -149,6 +164,12 @@ export interface D1RemoteDataCopyManifestTotals {
   copied: number;
   /** Tables refused or unverified. */
   refused: number;
+  /** Sum of every table's planned write items (dry-run preflight). */
+  plannedWrites: number;
+  /** Sum of every table's planned parameterized write items. */
+  plannedParameterizedWrites: number;
+  /** Tables whose plan requires the parameterized writer. */
+  parameterizedTables: number;
 }
 
 /**
@@ -351,6 +372,9 @@ function emptyTableTarget(table: D1TableDefinition): D1RemoteDataCopyTableTarget
     remoteHash: null,
     copiedRowCount: 0,
     chunkCount: 0,
+    plannedWriteCount: 0,
+    plannedParameterizedWriteCount: 0,
+    requiresParameterizedWriter: false,
     verified: false,
     errors: [],
   };
@@ -513,6 +537,9 @@ export async function buildD1RemoteDataCopyManifest(
         pending: countState("pending"),
         copied: countState("applied"),
         refused: tables.filter((table) => table.state === "refused" || table.state === "unknown").length,
+        plannedWrites: tables.reduce((total, table) => total + table.plannedWriteCount, 0),
+        plannedParameterizedWrites: tables.reduce((total, table) => total + table.plannedParameterizedWriteCount, 0),
+        parameterizedTables: tables.filter((table) => table.requiresParameterizedWriter).length,
       },
       commands: [...commands],
       ok: errors.length === 0,
@@ -558,6 +585,9 @@ export async function buildD1RemoteDataCopyManifest(
           remoteHash: remote.rowCount === dataset.rowCount ? remote.hash : null,
           copiedRowCount: 0,
           chunkCount: 0,
+          plannedWriteCount: 0,
+          plannedParameterizedWriteCount: 0,
+          requiresParameterizedWriter: false,
           verified: false,
           errors: [],
         };
@@ -575,66 +605,76 @@ export async function buildD1RemoteDataCopyManifest(
           );
           errors.push(`${target.name}::${table.name}: remote rows are not a canonical prefix; refused`);
           aborted = true;
-        } else if (!apply) {
-          result.state = comparison;
-          result.action = "copy";
         } else {
+          // A pending/resumable table is a copy candidate. Plan its writes once, here
+          // and before the apply branch, so the dry-run preflight records the exact
+          // plan while materializing nothing, writing nothing and making no HTTP call,
+          // and apply reuses this same plan instead of recomputing it. `chunkCount`
+          // below stays executed write items only.
           const { writes, totalRows } = planWrites(table, dataset, remote.rowCount, {
             rowsPerStatement: options.rowsPerStatement ?? null,
             maxStatements: maxStatementsPerChunk,
             maxBytes: maxBytesPerChunk,
           });
-          const executeParameterized = options.executeParameterized;
-          // Fail closed before any write when an oversized statement needs the
-          // parameterized writer but none was injected: never silently materialize
-          // an oversized statement into a file chunk instead.
-          if (writes.some((write) => write.kind === "parameter") && typeof executeParameterized !== "function") {
-            throw new D1RemoteError(
-              "d1_remote.data_copy_oversized_statement",
-              `${table.name} has a statement larger than ${D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES} bytes but no parameterized writer is configured`,
-            );
-          }
-          let expected = remote.rowCount;
-          let fileChunkIndex = 0;
-          for (const write of writes) {
-            if (write.kind === "file") {
-              const path = (
-                options.materializeChunk as (database: D1Database, table: string, chunkIndex: number, sql: string) => string
-              )(target.name, table.name, fileChunkIndex, write.sql);
-              fileChunkIndex += 1;
-              // The write stdout is deliberately not parsed: the runner rejects a
-              // non-zero exit and the count/hash re-reads below are authoritative.
-              await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
-            } else {
-              await (executeParameterized as (database: D1Database, statement: D1ImportStatement) => Promise<void>)(
-                target.name,
-                write.statement,
-              );
-            }
-            const actual = await readRemoteRowCount(target, table);
-            if (actual !== expected + write.rowCount) {
+          result.plannedWriteCount = writes.length;
+          result.plannedParameterizedWriteCount = writes.filter((write) => write.kind === "parameter").length;
+          result.requiresParameterizedWriter = result.plannedParameterizedWriteCount > 0;
+          if (!apply) {
+            result.state = comparison;
+            result.action = "copy";
+          } else {
+            const executeParameterized = options.executeParameterized;
+            // Fail closed before any write when an oversized statement needs the
+            // parameterized writer but none was injected: never silently materialize
+            // an oversized statement into a file chunk instead.
+            if (result.requiresParameterizedWriter && typeof executeParameterized !== "function") {
               throw new D1RemoteError(
-                "d1_remote.data_copy_progress_mismatch",
-                `${table.name} expected ${expected + write.rowCount} rows after a ${write.rowCount}-row ${write.kind === "file" ? "chunk" : "statement"}, found ${actual}`,
+                "d1_remote.data_copy_oversized_statement",
+                `${table.name} has a statement larger than ${D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES} bytes but no parameterized writer is configured`,
               );
             }
-            expected = actual;
+            let expected = remote.rowCount;
+            let fileChunkIndex = 0;
+            for (const write of writes) {
+              if (write.kind === "file") {
+                const path = (
+                  options.materializeChunk as (database: D1Database, table: string, chunkIndex: number, sql: string) => string
+                )(target.name, table.name, fileChunkIndex, write.sql);
+                fileChunkIndex += 1;
+                // The write stdout is deliberately not parsed: the runner rejects a
+                // non-zero exit and the count/hash re-reads below are authoritative.
+                await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
+              } else {
+                await (executeParameterized as (database: D1Database, statement: D1ImportStatement) => Promise<void>)(
+                  target.name,
+                  write.statement,
+                );
+              }
+              const actual = await readRemoteRowCount(target, table);
+              if (actual !== expected + write.rowCount) {
+                throw new D1RemoteError(
+                  "d1_remote.data_copy_progress_mismatch",
+                  `${table.name} expected ${expected + write.rowCount} rows after a ${write.rowCount}-row ${write.kind === "file" ? "chunk" : "statement"}, found ${actual}`,
+                );
+              }
+              expected = actual;
+            }
+            const finalRows = await readRemoteRows(target, table, batchSize);
+            const finalDataset = toCanonicalTableDataset(table, finalRows.map((row) => reviveRow(table, row)));
+            result.remoteRowCount = finalDataset.rowCount;
+            result.remoteHash = finalDataset.hash;
+            result.copiedRowCount = totalRows;
+            result.chunkCount = writes.length;
+            if (finalDataset.rowCount !== dataset.rowCount || finalDataset.hash !== dataset.hash) {
+              throw new D1RemoteError(
+                "d1_remote.data_copy_final_mismatch",
+                `${table.name} final remote dataset (${finalDataset.rowCount} rows, hash ${finalDataset.hash.slice(0, 12)}) != canonical dataset (${dataset.rowCount} rows, hash ${dataset.hash.slice(0, 12)})`,
+              );
+            }
+            result.state = "applied";
+            result.action = "copy";
+            result.verified = true;
           }
-          const finalRows = await readRemoteRows(target, table, batchSize);
-          const finalDataset = toCanonicalTableDataset(table, finalRows.map((row) => reviveRow(table, row)));
-          result.remoteRowCount = finalDataset.rowCount;
-          result.remoteHash = finalDataset.hash;
-          result.copiedRowCount = totalRows;
-          result.chunkCount = writes.length;
-          if (finalDataset.rowCount !== dataset.rowCount || finalDataset.hash !== dataset.hash) {
-            throw new D1RemoteError(
-              "d1_remote.data_copy_final_mismatch",
-              `${table.name} final remote dataset (${finalDataset.rowCount} rows, hash ${finalDataset.hash.slice(0, 12)}) != canonical dataset (${dataset.rowCount} rows, hash ${dataset.hash.slice(0, 12)})`,
-            );
-          }
-          result.state = "applied";
-          result.action = "copy";
-          result.verified = true;
         }
       } catch (error) {
         result = emptyTableTarget(table);
