@@ -1050,6 +1050,97 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     "materializeChunk must only be provided when apply is true",
   );
 
+  // The oversized-statement writer is the D1 HTTP adapter, imported directly from
+  // `remote/http-query` (never through the pure barrel).
+  assert.ok(
+    cliSource.includes('from "@/lib/cloudflare/d1/remote/http-query"'),
+    "the CLI must import the D1 HTTP adapter directly from remote/http-query",
+  );
+  assert.ok(
+    cliCode.includes("createD1HttpParameterizedWriter"),
+    "the CLI must build the HTTP parameterized writer",
+  );
+
+  // Credentials are env-only: both exact names are read, and no token/account
+  // argument exists. Neither value is ever printed.
+  assert.ok(cliSource.includes("CLOUDFLARE_ACCOUNT_ID"), "the CLI must read CLOUDFLARE_ACCOUNT_ID");
+  assert.ok(cliSource.includes("CLOUDFLARE_API_TOKEN"), "the CLI must read CLOUDFLARE_API_TOKEN");
+  assert.ok(
+    /const ACCOUNT_ID_ENV_VAR = "CLOUDFLARE_ACCOUNT_ID"/.test(cliCode),
+    "the account id env name must be defined as the exact CLOUDFLARE_ACCOUNT_ID string",
+  );
+  assert.ok(
+    /const API_TOKEN_ENV_VAR = "CLOUDFLARE_API_TOKEN"/.test(cliCode),
+    "the api token env name must be defined as the exact CLOUDFLARE_API_TOKEN string",
+  );
+  assert.ok(!cliCode.includes("--api-token"), "the CLI must not expose an --api-token argument");
+  assert.ok(!cliCode.includes("--account-id"), "the CLI must not expose an --account-id argument");
+
+  const httpWriterStart = cliCode.indexOf("async function createHttpParameterizedWriter");
+  const httpWriterEnd = cliCode.indexOf("\nasync function main", httpWriterStart);
+  const httpWriter =
+    httpWriterStart === -1 || httpWriterEnd === -1 ? "" : cliCode.slice(httpWriterStart, httpWriterEnd);
+  assert.ok(httpWriter.length > 0, "createHttpParameterizedWriter must remain in the CLI source");
+
+  // `d1 list --json` is gated by apply AND both env values: the dry-run returns
+  // undefined before any credential read, and a missing value returns undefined
+  // before any runner call.
+  assert.ok(
+    httpWriter.includes("if (!options.apply) return undefined;"),
+    "the HTTP writer must return undefined for a dry-run before anything else",
+  );
+  assert.ok(
+    /if \(!options\.apply\) return undefined;[\s\S]*?process\.env\[ACCOUNT_ID_ENV_VAR\][\s\S]*?process\.env\[API_TOKEN_ENV_VAR\][\s\S]*?if \(accountId\.length === 0 \|\| apiToken\.length === 0\) return undefined;[\s\S]*?options\.runner\(\["d1", "list", "--json"\]\)/.test(
+      httpWriter,
+    ),
+    "d1 list --json must run only when apply is true AND both env values are non-empty",
+  );
+  assert.equal(
+    (cliCode.match(/\["d1", "list", "--json"\]/g) ?? []).length,
+    1,
+    "the HTTP writer must run exactly `d1 list --json` once",
+  );
+
+  // Exact-name classification only, defaulting to the copy databases so the
+  // out-of-scope search database is never required for a data copy.
+  assert.ok(
+    cliSource.includes('from "@/lib/cloudflare/d1/remote/classify"'),
+    "the CLI must import the exact-name classifier directly from remote/classify",
+  );
+  assert.ok(
+    cliSource.includes('from "@/lib/cloudflare/d1/remote/targets"'),
+    "the CLI must import selectD1RemoteTargets directly from remote/targets",
+  );
+  assert.ok(cliCode.includes("parseD1RemoteListJson"), "the CLI must parse `d1 list --json`");
+  assert.ok(
+    cliCode.includes("classifyD1RemoteTargets"),
+    "the CLI must classify the list entries by exact name",
+  );
+  assert.ok(
+    /classifyD1RemoteTargets\([\s\S]*?selectD1RemoteTargets\(options\.databases \?\? D1_REMOTE_DATA_COPY_DATABASES\)/.test(
+      httpWriter,
+    ),
+    "the HTTP targets must default to the copy databases, never the full four",
+  );
+  assert.ok(
+    !D1_REMOTE_DATA_COPY_DATABASES.includes("worldcons_search"),
+    "the copy databases must exclude worldcons_search",
+  );
+  assert.ok(D1_REMOTE_DATA_COPY_DATABASES.includes("worldcons_core"));
+  assert.ok(D1_REMOTE_DATA_COPY_DATABASES.includes("worldcons_ingest"));
+  assert.ok(D1_REMOTE_DATA_COPY_DATABASES.includes("worldcons_ops"));
+
+  // The resolved writer (possibly undefined) is passed into the manifest builder.
+  assert.ok(
+    /buildD1RemoteDataCopyManifest\(\{[\s\S]*?\bexecuteParameterized,/.test(cliCode),
+    "the resolved HTTP writer must be passed in as executeParameterized",
+  );
+  assert.ok(
+    /if \(classification\.state !== "existing" \|\| classification\.entry === null\)/.test(httpWriter) &&
+      /databaseIds\[classification\.target\.name\] = classification\.entry\.uuid/.test(httpWriter),
+    "the writer must fail closed unless every target is exactly existing and map its entry.uuid",
+  );
+
   // Deterministic artifact layout.
   assert.ok(
     cliSource.includes('path.join("artifacts", "cloudflare-m5", "d1-data-copy")'),

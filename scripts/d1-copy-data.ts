@@ -5,12 +5,29 @@ import { D1_DATABASES, type D1Database } from "@/lib/cloudflare/d1";
 import type { PostgresRowSource } from "@/lib/cloudflare/d1/convert";
 import { createPostgresRowSource } from "@/lib/cloudflare/d1/convert/postgres-source";
 import { createSupabaseLinkedRowSource } from "@/lib/cloudflare/d1/convert/supabase-linked-source";
-import { buildD1RemoteDataCopyManifest } from "@/lib/cloudflare/d1/remote/data-copy";
+import type { D1ImportStatement } from "@/lib/cloudflare/d1/import/types";
+import type { WranglerD1Runner } from "@/lib/cloudflare/d1/remote";
+import { classifyD1RemoteTargets, parseD1RemoteListJson } from "@/lib/cloudflare/d1/remote/classify";
+import { buildD1RemoteDataCopyManifest, D1_REMOTE_DATA_COPY_DATABASES } from "@/lib/cloudflare/d1/remote/data-copy";
+import { createD1HttpParameterizedWriter } from "@/lib/cloudflare/d1/remote/http-query";
 import { createWranglerD1Runner } from "@/lib/cloudflare/d1/remote/runner";
+import { selectD1RemoteTargets } from "@/lib/cloudflare/d1/remote/targets";
 
 const CHUNK_DIR = path.join("artifacts", "cloudflare-m5", "d1-data-copy");
 const REPORT_PATH = path.join("artifacts", "cloudflare-m5", "d1-remote-data-copy.json");
 const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
+
+/**
+ * The HTTP parameterized writer is credentialed from the environment ONLY. The
+ * CLI deliberately exposes no token or account argument, and never echoes either
+ * value: the operator places them in the environment, and a dry-run never even
+ * reads them.
+ */
+const ACCOUNT_ID_ENV_VAR = "CLOUDFLARE_ACCOUNT_ID";
+const API_TOKEN_ENV_VAR = "CLOUDFLARE_API_TOKEN";
+
+/** The bound-parameter write surface the manifest calls for an oversized statement. */
+type ExecuteParameterized = (database: D1Database, statement: D1ImportStatement) => Promise<void>;
 
 /** The read sources the operator CLI can use. `postgres` is the default. */
 type SourceKind = "postgres" | "supabase-linked";
@@ -33,6 +50,14 @@ const SOURCE_KINDS: readonly SourceKind[] = ["postgres", "supabase-linked"];
  * relational remote `worldcons_*` databases as PLAIN insert chunks. It never
  * creates or deletes a database, never applies DDL, never deploys a Worker and
  * never changes production authority.
+ *
+ * A statement too large to materialize into a chunk file is written through the
+ * D1 HTTP query API instead, because the Wrangler CLI cannot carry a multi-megabyte
+ * literal. That bound-parameter writer is credentialed from the environment ONLY
+ * (`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`): the CLI exposes no token or
+ * account argument and never prints either value. When the credentials are absent
+ * the writer is undefined, so a small file-only apply still works and an oversized
+ * statement fails closed in the manifest.
  *
  * Two read sources are available via `--source=`:
  *
@@ -117,6 +142,49 @@ function chunkPath(database: D1Database, table: string, chunkIndex: number): str
   return path.join(dir, `chunk-${String(chunkIndex).padStart(4, "0")}.sql`);
 }
 
+/**
+ * Builds the operator-only HTTP bound-parameter writer from the environment, or
+ * returns `undefined`.
+ *
+ * It returns `undefined` unless this run is an apply AND both `CLOUDFLARE_ACCOUNT_ID`
+ * and `CLOUDFLARE_API_TOKEN` are non-empty, so a dry-run never reads the
+ * credentials and never runs `d1 list` even when the environment is populated.
+ * When both are present it runs exactly `d1 list --json` once, classifies ONLY
+ * the selected data-copy targets by exact name (the `--database=` selection, else
+ * the three normal copy databases, so `worldcons_search` is never required), and
+ * fails closed unless every target is exactly `existing` with a non-null entry.
+ * The resulting writer maps each target name to its `entry.uuid`.
+ */
+async function createHttpParameterizedWriter(options: {
+  apply: boolean;
+  runner: WranglerD1Runner;
+  databases: readonly D1Database[] | null;
+}): Promise<ExecuteParameterized | undefined> {
+  if (!options.apply) return undefined;
+
+  const accountId = (process.env[ACCOUNT_ID_ENV_VAR] ?? "").trim();
+  const apiToken = (process.env[API_TOKEN_ENV_VAR] ?? "").trim();
+  if (accountId.length === 0 || apiToken.length === 0) return undefined;
+
+  const entries = parseD1RemoteListJson(await options.runner(["d1", "list", "--json"]));
+  const classifications = classifyD1RemoteTargets(
+    entries,
+    selectD1RemoteTargets(options.databases ?? D1_REMOTE_DATA_COPY_DATABASES),
+  );
+
+  const databaseIds: Partial<Record<D1Database, string>> = {};
+  for (const classification of classifications) {
+    if (classification.state !== "existing" || classification.entry === null) {
+      throw new Error(
+        `d1 list did not resolve ${classification.target.name} to exactly one existing database (${classification.state}); refusing the HTTP parameterized writer`,
+      );
+    }
+    databaseIds[classification.target.name] = classification.entry.uuid;
+  }
+
+  return createD1HttpParameterizedWriter({ accountId, apiToken, databaseIds });
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const asJson = args.includes("--json");
@@ -124,13 +192,16 @@ async function main(): Promise<void> {
   const apply = args.includes("--apply");
   const sourceKind = resolveSourceKind(args);
   const source = createRowSource(sourceKind, args);
+  const databases = parseDatabases(args);
+  const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
   try {
+    const executeParameterized = await createHttpParameterizedWriter({ apply, runner, databases });
     const manifest = await buildD1RemoteDataCopyManifest({
-      runner: createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined }),
+      runner,
       source,
       sourceKind,
       apply,
-      databases: parseDatabases(args) ?? undefined,
+      databases: databases ?? undefined,
       tables: listArg(args, "tables") ?? undefined,
       batchSize: positiveIntegerArg(args, "batch-size") ?? undefined,
       rowsPerStatement: positiveIntegerArg(args, "rows-per-statement") ?? undefined,
@@ -143,6 +214,7 @@ async function main(): Promise<void> {
             return file;
           }
         : undefined,
+      executeParameterized,
     });
 
     if (writeReport) {
