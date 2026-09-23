@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import { assertPostgresIdentifier } from "./select";
 import type { PostgresReadRequest, PostgresRowSource } from "./types";
 
@@ -154,6 +155,10 @@ export function createSupabaseLinkedQueryRunner(
       let stdoutBytes = 0;
       let stderrBytes = 0;
       let settled = false;
+      // One decoder per child stdout: a multibyte code point may be split across
+      // chunk boundaries, so per-chunk `toString("utf8")` would corrupt it. The
+      // decoder buffers the trailing partial sequence until the next chunk.
+      const decoder = new StringDecoder("utf8");
       const finish = (action: () => void): void => {
         if (settled) return;
         settled = true;
@@ -174,7 +179,7 @@ export function createSupabaseLinkedQueryRunner(
           abort(`supabase db query output exceeded ${maxStdoutBytes} bytes`);
           return;
         }
-        stdout += chunk.toString("utf8");
+        stdout += decoder.write(chunk);
       });
       child.stderr.on("data", (chunk: Buffer) => {
         // Drained but never recorded: only the byte count is kept, so raw CLI
@@ -194,7 +199,9 @@ export function createSupabaseLinkedQueryRunner(
             reject(new Error(`supabase db query failed with exit code ${code ?? "unknown"}`));
             return;
           }
-          resolve(stdout);
+          // Flush the decoder's final partial sequence exactly once on success;
+          // a failed/aborted run discards the output, so `end()` is never applied.
+          resolve(stdout + decoder.end());
         });
       });
     });

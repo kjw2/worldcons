@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { PostgresReadRequest } from "../lib/cloudflare/d1/convert";
 import {
   buildPostgresSelectSql,
   buildSupabaseLinkedInvocation,
+  createSupabaseLinkedQueryRunner,
   createSupabaseLinkedRowSource,
   defaultSupabaseBinary,
   parseSupabaseLinkedRows,
@@ -217,7 +219,7 @@ test("buildSupabaseLinkedInvocation routes Windows shims through ComSpec/cmd.exe
 });
 
 test("the child-process linked source stays out of the runtime convert barrel", () => {
-  const barrel = readFileSync(path.join(rootDir, "lib/cloudflare/d1/convert/index.ts"), "utf8");
+  const barrel = fs.readFileSync(path.join(rootDir, "lib/cloudflare/d1/convert/index.ts"), "utf8");
   assert.ok(!barrel.includes("supabase-linked-source"), "the source must not be re-exported from the barrel");
   for (const name of [
     "buildPostgresSelectSql",
@@ -229,9 +231,91 @@ test("the child-process linked source stays out of the runtime convert barrel", 
     assert.ok(!barrel.includes(name), `the barrel must not export ${name}`);
   }
 
-  const adapter = readFileSync(path.join(rootDir, "lib/cloudflare/d1/convert/supabase-linked-source.ts"), "utf8");
+  const adapter = fs.readFileSync(path.join(rootDir, "lib/cloudflare/d1/convert/supabase-linked-source.ts"), "utf8");
   assert.ok(
     adapter.includes('from "node:child_process"'),
     "the operator adapter must own the child-process import",
   );
+});
+
+/**
+ * Writes a Node probe that emits `target` as raw UTF-8 bytes, deliberately split
+ * into chunks of the given byte sizes and separated by a short delay so each
+ * write is delivered as its own stdout data event. Exits with `exitCode` (0 by
+ * default) once every byte has been written.
+ */
+function writeSplitUtf8Probe(
+  dir: string,
+  name: string,
+  target: string,
+  split: readonly number[],
+  exitCode = 0,
+): string {
+  const file = path.join(dir, name);
+  const source = [
+    `const bytes = Buffer.from(${JSON.stringify(target)}, "utf8");`,
+    `const split = ${JSON.stringify(split)};`,
+    `const exitCode = ${exitCode};`,
+    "let index = 0;",
+    "let step = 0;",
+    "function pump() {",
+    "  if (index >= bytes.length) process.exit(exitCode);",
+    "  const size = split[step % split.length];",
+    "  process.stdout.write(bytes.subarray(index, index + size));",
+    "  index += size;",
+    "  step += 1;",
+    "  setTimeout(pump, 25);",
+    "}",
+    "pump();",
+  ].join("\n");
+  fs.writeFileSync(file, source, "utf8");
+  return file;
+}
+
+test("the linked child-process runner reassembles a UTF-8 code point split across stdout chunks", async () => {
+  const target = "\uC11C"; // Korean 'seo' — 3 UTF-8 bytes (ec 84 9c)
+  for (const split of [[1, 2], [1, 1, 1]] as const) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-linked-decode-"));
+    try {
+      const probe = writeSplitUtf8Probe(dir, "probe.js", target, split);
+      // The probe is launched as Node directly so the assertion measures stream
+      // decoding only; the platform seam keeps argv entries intact on every host.
+      const runner = createSupabaseLinkedQueryRunner({
+        binary: process.execPath,
+        prefixArgs: [probe],
+        platform: "linux",
+        timeoutMs: 10_000,
+      });
+      const stdout = await runner("select 1");
+      assert.equal(stdout, target, `split ${split.join("+")} must decode to exactly ${target}`);
+      assert.ok(!stdout.includes("\uFFFD"), `split ${split.join("+")} must not emit U+FFFD`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a failed linked run rejects with the bounded message and never surfaces decoded output", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-linked-decode-fail-"));
+  try {
+    const probe = writeSplitUtf8Probe(dir, "probe-fail.js", "\uC11C", [1], 3);
+    const runner = createSupabaseLinkedQueryRunner({
+      binary: process.execPath,
+      prefixArgs: [probe],
+      platform: "linux",
+      timeoutMs: 10_000,
+    });
+    await assert.rejects(
+      () => runner("select 1"),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /supabase db query failed with exit code 3/);
+        assert.ok(!error.message.includes("\uC11C"));
+        assert.ok(!error.message.includes("\uFFFD"));
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

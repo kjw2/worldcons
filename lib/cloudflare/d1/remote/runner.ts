@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import type { WranglerD1Runner } from "./types";
 
 /**
@@ -199,6 +200,10 @@ export function createWranglerD1Runner(options: WranglerD1RunnerOptions = {}): W
       });
       let stdout = "";
       let settled = false;
+      // One decoder per child stdout: a multibyte code point may be split across
+      // chunk boundaries, so per-chunk `toString("utf8")` would corrupt it. The
+      // decoder buffers a trailing partial sequence until the next chunk.
+      const decoder = new StringDecoder("utf8");
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -212,7 +217,7 @@ export function createWranglerD1Runner(options: WranglerD1RunnerOptions = {}): W
         action();
       };
       child.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
+        stdout += decoder.write(chunk);
       });
       child.stderr.on("data", () => {
         // Drained to avoid filling the pipe; deliberately never recorded.
@@ -226,7 +231,9 @@ export function createWranglerD1Runner(options: WranglerD1RunnerOptions = {}): W
             reject(new Error(`wrangler ${wranglerSubcommand(args)} failed with exit code ${code ?? "unknown"}`));
             return;
           }
-          resolve(stdout);
+          // Flush the decoder's final partial sequence exactly once on success;
+          // a failed/aborted run discards the output, so `end()` is never applied.
+          resolve(stdout + decoder.end());
         });
       });
     });
