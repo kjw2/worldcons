@@ -11,6 +11,7 @@ import {
   createSupabaseLinkedRowSource,
   defaultSupabaseBinary,
   parseSupabaseLinkedRows,
+  resolveWindowsSupabaseBinary,
   supabaseLinkedQueryArgs,
 } from "../lib/cloudflare/d1/convert/supabase-linked-source";
 
@@ -161,47 +162,104 @@ test("supabaseLinkedQueryArgs returns the exact deterministic argv for one state
   assert.deepEqual(supabaseLinkedQueryArgs("select 1"), ["db", "query", "--linked", "-o", "json", "select 1"]);
 });
 
-test("buildSupabaseLinkedInvocation routes Windows shims through ComSpec/cmd.exe and spawns directly elsewhere", () => {
+test("buildSupabaseLinkedInvocation directly spawns a resolved Windows .exe with the SQL as one argv entry", () => {
+  const sql = 'select "id", "title" from "articles" order by "id"';
+  const args = ["db", "query", "--linked", "-o", "json", sql];
+  const invocation = buildSupabaseLinkedInvocation({
+    binary: "supabase",
+    args,
+    platform: "win32",
+    resolveBinary: () => "C:\\tools\\supabase\\supabase.exe",
+  });
+  assert.deepEqual(invocation, { command: "C:\\tools\\supabase\\supabase.exe", args });
+  assert.equal(invocation.args[5], sql, "the quoted SQL stays exactly one argv entry");
+  assert.equal(invocation.windowsVerbatimArguments, undefined, "a native spawn is not verbatim");
+
+  // An explicitly named executable short-circuits the PATH search entirely.
   assert.deepEqual(
-    buildSupabaseLinkedInvocation({
-      binary: "supabase.cmd",
-      args: ["db", "query", "--linked", "-o", "json", "select 1"],
-      platform: "win32",
-      env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
-    }),
-    {
-      command: "C:\\Windows\\System32\\cmd.exe",
-      args: ["/d", "/c", "supabase.cmd", "db", "query", "--linked", "-o", "json", "select 1"],
-    },
+    buildSupabaseLinkedInvocation({ binary: "C:\\tools\\supabase.exe", args: ["db"], platform: "win32" }),
+    { command: "C:\\tools\\supabase.exe", args: ["db"] },
   );
+});
+
+test("buildSupabaseLinkedInvocation routes a Windows .cmd shim through cmd.exe with a safely-quoted verbatim command line", () => {
+  const sql = 'select "id", "title" from "articles" order by "id"';
+  const args = ["db", "query", "--linked", "-o", "json", sql];
+  const shim = "C:\\Users\\op\\AppData\\Roaming\\npm\\supabase.cmd";
+  const invocation = buildSupabaseLinkedInvocation({
+    binary: "supabase",
+    args,
+    platform: "win32",
+    env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+    resolveBinary: () => shim,
+  });
+  assert.equal(invocation.command, "C:\\Windows\\System32\\cmd.exe");
+  assert.equal(invocation.windowsVerbatimArguments, true, "cmd fallback must not let Node re-quote");
+  assert.deepEqual(invocation.args.slice(0, 3), ["/d", "/s", "/c"]);
+  const line = invocation.args[3];
+  assert.equal(
+    line,
+    `""${shim}" "db" "query" "--linked" "-o" "json" "select \\"id\\", \\"title\\" from \\"articles\\" order by \\"id\\"""`,
+    "each argument is quoted, embedded quotes are escaped, and the whole line is wrapped for cmd /s",
+  );
+});
+
+test("buildSupabaseLinkedInvocation leaves an unresolved bare name for cmd.exe to resolve", () => {
+  const args = ["db", "query", "--linked", "-o", "json", "select 1"];
+  const invocation = buildSupabaseLinkedInvocation({
+    binary: "supabase",
+    args,
+    platform: "win32",
+    resolveBinary: () => null,
+    env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+  });
+  assert.equal(invocation.command, "C:\\Windows\\System32\\cmd.exe");
+  assert.equal(invocation.windowsVerbatimArguments, true);
+  assert.equal(
+    invocation.args[3],
+    '"supabase "db" "query" "--linked" "-o" "json" "select 1""',
+    "the bare command stays unquoted so cmd.exe resolves it via PATH",
+  );
+});
+
+test("buildSupabaseLinkedInvocation honors the Windows interpreter override and spawns directly elsewhere", () => {
+  const shim = () => "C:\\tools\\supabase.cmd";
   assert.equal(
     buildSupabaseLinkedInvocation({
-      binary: "supabase.cmd",
+      binary: "supabase",
       args: [],
       platform: "win32",
       comspec: "C:\\custom\\cmd.exe",
+      resolveBinary: shim,
     }).command,
     "C:\\custom\\cmd.exe",
     "an explicit comspec override wins",
   );
   assert.equal(
     buildSupabaseLinkedInvocation({
-      binary: "supabase.cmd",
+      binary: "supabase",
       args: [],
       platform: "win32",
       env: { COMSPEC: "C:\\upper\\cmd.exe" },
+      resolveBinary: shim,
     }).command,
     "C:\\upper\\cmd.exe",
     "the uppercase COMSPEC is a fallback",
   );
   assert.equal(
-    buildSupabaseLinkedInvocation({ binary: "supabase.cmd", args: [], platform: "win32", env: { ComSpec: "   " } })
-      .command,
+    buildSupabaseLinkedInvocation({
+      binary: "supabase",
+      args: [],
+      platform: "win32",
+      env: { ComSpec: "   " },
+      resolveBinary: shim,
+    }).command,
     "cmd.exe",
     "a blank interpreter falls back to cmd.exe",
   );
   assert.equal(
-    buildSupabaseLinkedInvocation({ binary: "supabase.cmd", args: [], platform: "win32", env: {} }).command,
+    buildSupabaseLinkedInvocation({ binary: "supabase", args: [], platform: "win32", env: {}, resolveBinary: shim })
+      .command,
     "cmd.exe",
   );
 
@@ -214,9 +272,39 @@ test("buildSupabaseLinkedInvocation routes Windows shims through ComSpec/cmd.exe
     { command: "/usr/local/bin/supabase", args: ["db"] },
   );
 
-  assert.equal(defaultSupabaseBinary(), "supabase", "the bare command resolves via cmd.exe PATH/PATHEXT");
+  assert.equal(defaultSupabaseBinary(), "supabase", "the bare name is resolved dynamically, never hard-coded");
   assert.equal(defaultSupabaseBinary(), defaultSupabaseBinary(), "the default is platform-independent and stable");
 });
+
+test(
+  "resolveWindowsSupabaseBinary searches PATH and prefers a native .exe over a .cmd shim",
+  { skip: process.platform !== "win32" },
+  () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-linked-resolve-"));
+    try {
+      fs.writeFileSync(path.join(dir, "supabase.cmd"), "");
+      assert.equal(
+        resolveWindowsSupabaseBinary("supabase", { Path: dir }),
+        path.join(dir, "supabase.cmd"),
+        "a lone .cmd shim is found",
+      );
+      fs.writeFileSync(path.join(dir, "supabase.exe"), "");
+      assert.equal(
+        resolveWindowsSupabaseBinary("supabase", { Path: dir }),
+        path.join(dir, "supabase.exe"),
+        "the native .exe wins over the .cmd in the same directory",
+      );
+      assert.equal(resolveWindowsSupabaseBinary("supabase", { Path: path.join(dir, "missing") }), null);
+      assert.equal(
+        resolveWindowsSupabaseBinary("C:\\custom\\supabase.exe", { Path: dir }),
+        "C:\\custom\\supabase.exe",
+        "an explicit path is not searched",
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("the child-process linked source stays out of the runtime convert barrel", () => {
   const barrel = fs.readFileSync(path.join(rootDir, "lib/cloudflare/d1/convert/index.ts"), "utf8");
@@ -319,3 +407,75 @@ test("a failed linked run rejects with the bounded message and never surfaces de
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * Writes a `.cmd` shim plus a Node probe that records the argv it receives to
+ * `argv.json` beside itself. The shim forwards `%*` to Node, so the recorded argv
+ * is exactly what a real `.cmd` Supabase shim's child process would see.
+ */
+function writeArgvProbeCmd(dir: string): string {
+  fs.writeFileSync(
+    path.join(dir, "dump-argv.js"),
+    'require("fs").writeFileSync(process.argv[2], JSON.stringify(process.argv.slice(3)));',
+    "utf8",
+  );
+  fs.writeFileSync(path.join(dir, "probe.cmd"), '@echo off\r\nnode "%~dp0dump-argv.js" "%~dp0argv.json" %*\r\n', "ascii");
+  return path.join(dir, "probe.cmd");
+}
+
+test(
+  "the Windows cmd fallback delivers quoted SQL to a .cmd shim as one argv entry",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-linked-cmd-"));
+    try {
+      const probe = writeArgvProbeCmd(dir);
+      const runner = createSupabaseLinkedQueryRunner({
+        binary: "supabase",
+        resolveBinary: () => probe,
+        platform: "win32",
+        cwd: dir,
+        timeoutMs: 10_000,
+      });
+      const sql = 'select "id", "title" from "articles" order by "id"';
+      const stdout = await runner(sql);
+      assert.equal(stdout, "", "the shim probe only writes to its side file");
+      const argv = JSON.parse(fs.readFileSync(path.join(dir, "argv.json"), "utf8"));
+      assert.deepEqual(argv, supabaseLinkedQueryArgs(sql), "cmd.exe must not reparse the quoted SQL");
+      assert.equal(argv[5], sql);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "the Windows native .exe path spawns directly and preserves the quoted SQL as one argv entry",
+  { skip: process.platform !== "win32" },
+  async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-linked-exe-"));
+    try {
+      const dump = path.join(dir, "dump-argv.js");
+      const out = path.join(dir, "argv.json");
+      fs.writeFileSync(
+        dump,
+        'require("fs").writeFileSync(process.argv[2], JSON.stringify(process.argv.slice(3)));',
+        "utf8",
+      );
+      const runner = createSupabaseLinkedQueryRunner({
+        binary: process.execPath,
+        prefixArgs: [dump, out],
+        platform: "win32",
+        cwd: dir,
+        timeoutMs: 10_000,
+      });
+      const sql = 'select "id" from "articles"';
+      await runner(sql);
+      const argv = JSON.parse(fs.readFileSync(out, "utf8"));
+      assert.deepEqual(argv, supabaseLinkedQueryArgs(sql));
+      assert.equal(argv[5], sql);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
