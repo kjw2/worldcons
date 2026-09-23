@@ -6,6 +6,7 @@ import { toCanonicalTableDataset } from "../convert/transform";
 import type { CanonicalTableDataset, PostgresRowSource } from "../convert/types";
 import { d1ReadStatement } from "../import/apply";
 import { emitTableImport, renderImportStatement } from "../import/emitter";
+import type { D1ImportStatement } from "../import/types";
 import { d1Schema } from "../schema";
 import type { D1Database, D1Schema, D1TableDefinition } from "../types";
 import { D1RemoteError, parseD1ExecuteResultsJson } from "./classify";
@@ -35,11 +36,18 @@ import type { WranglerD1Runner } from "./types";
  *   anything else is `refused`;
  * - apply mode is opt-in (`apply:true` plus a `materializeChunk` implementation)
  *   and emits PLAIN `insert` statements only. It never emits
- *   `replace`/`upsert`/`update`/`delete`/`drop`/`create`, chunks the suffix into
- *   deterministic statement/byte-bounded files, runs them serially through
- *   `d1 execute --remote --yes --file`, ignores the write stdout, re-reads the
- *   row count after every chunk and requires the exact expected progress, then
- *   does a final full read/hash check. It aborts after the first failure.
+ *   `replace`/`upsert`/`update`/`delete`/`drop`/`create`. Each emitted statement
+ *   stays parameterized until it is classified: a statement whose literal
+ *   rendering fits `D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES` is grouped
+ *   into deterministic statement/byte-bounded files and run through
+ *   `d1 execute --remote --yes --file`, while an oversized statement flushes any
+ *   pending file chunk and is written unfragmented through the injected
+ *   `executeParameterized` writer using its ORIGINAL `?` SQL and bound params
+ *   (never its literal rendering), so it is never silently materialized. The
+ *   writes run serially in authored row order, the write stdout is ignored, the
+ *   row count is re-read after every write item and must equal the exact
+ *   expected progress, then a final full read/hash check runs. It aborts after
+ *   the first failure.
  *
  * It never creates or deletes a database, never applies DDL, never deploys and
  * never changes production authority. The Wrangler child-process adapter and the
@@ -77,6 +85,15 @@ export type D1RemoteDataCopyState = (typeof D1_REMOTE_DATA_COPY_STATES)[number];
 export const D1_REMOTE_DATA_COPY_ACTIONS = ["none", "copy", "refused"] as const;
 export type D1RemoteDataCopyAction = (typeof D1_REMOTE_DATA_COPY_ACTIONS)[number];
 
+/**
+ * The largest literal statement a file chunk may carry. A statement whose
+ * `renderImportStatement` rendering exceeds this many bytes is never materialized
+ * into a chunk file: it is emitted as a parameterized write so its `?` SQL and
+ * bound params are sent uncorrupted, staying well under the Wrangler/D1
+ * command-length limit a multi-megabyte literal would otherwise breach.
+ */
+export const D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES = 90_000;
+
 /** One migratable table's data-copy comparison/result. */
 export interface D1RemoteDataCopyTableTarget {
   table: string;
@@ -94,7 +111,7 @@ export interface D1RemoteDataCopyTableTarget {
   remoteHash: string | null;
   /** Rows this run copied into the remote table. */
   copiedRowCount: number;
-  /** Chunk files this run executed for the table. */
+  /** Write items this run executed for the table (file chunks plus parameterized statements). */
   chunkCount: number;
   /** Whether the remote table now equals the canonical dataset exactly. */
   verified: boolean;
@@ -188,6 +205,17 @@ export interface BuildD1RemoteDataCopyManifestOptions {
    * within that table (deterministic for identical inputs).
    */
   materializeChunk?: (database: D1Database, table: string, chunkIndex: number, sql: string) => string;
+  /**
+   * Executes one oversized statement through a bound-parameter surface (for
+   * example `wrangler d1 execute --command` with positional params) instead of a
+   * literal file chunk. Called serially, in authored row order, only for a
+   * statement whose literal rendering exceeds
+   * `D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES`. It receives the ORIGINAL
+   * parameterized statement (the `?` SQL plus its bound values), never its
+   * literal rendering. When an oversized statement must be written and this is
+   * absent, apply fails closed before any write for that table.
+   */
+  executeParameterized?: (database: D1Database, statement: D1ImportStatement) => Promise<void>;
   /** Diagnostics only: the configured source kind. */
   sourceKind?: string;
 }
@@ -248,52 +276,66 @@ function compareRemote(source: CanonicalTableDataset, remote: CanonicalTableData
   return "refused";
 }
 
-/** One planned or executed chunk file: literal SQL plus the rows it inserts. */
-interface PlannedChunk {
-  sql: string;
-  rowCount: number;
-}
+/**
+ * One planned write, in authored row order:
+ * - `file`      a deterministic chunk file (literal SQL) run through
+ *               `wrangler d1 execute --file`;
+ * - `parameter` one oversized statement kept parameterized (its original `?` SQL
+ *               plus bound params) for the injected parameterized writer.
+ */
+type PlannedWrite =
+  | { kind: "file"; sql: string; rowCount: number }
+  | { kind: "parameter"; statement: D1ImportStatement; rowCount: number };
 
 /**
- * Emits the plain-insert suffix as deterministic chunk files. Statements come
- * from the M5.2b emitter (so the D1 bound-parameter limit is respected), and the
- * greedy grouping is bounded by statement count and byte size. A single
- * oversized statement is emitted alone rather than being dropped.
+ * Classifies the plain-insert suffix into ordered write items. Statements come
+ * from the M5.2b emitter (so the D1 bound-parameter limit is respected) and stay
+ * parameterized until classified here. A statement whose literal rendering fits
+ * the literal-statement threshold is grouped greedily, bounded by statement count
+ * and byte size; a statement whose literal rendering exceeds the threshold flushes
+ * any pending file chunk and is emitted as a parameterized write carrying the
+ * ORIGINAL statement, so an oversized row is never materialized into a file.
  */
-function planChunks(
+function planWrites(
   table: D1TableDefinition,
   dataset: CanonicalTableDataset,
   from: number,
   options: { rowsPerStatement?: number | null; maxStatements: number; maxBytes: number },
-): { chunks: PlannedChunk[]; totalRows: number } {
+): { writes: PlannedWrite[]; totalRows: number } {
   const rows = dataset.rows.slice(from);
   const suffix: CanonicalTableDataset = { ...dataset, rowCount: rows.length, rows };
   const imported = emitTableImport(table, suffix, { rowsPerStatement: options.rowsPerStatement ?? null });
   const columns = imported.columns.length;
-  const chunks: PlannedChunk[] = [];
+  const writes: PlannedWrite[] = [];
   let pendingSql: string[] = [];
   let pendingBytes = 0;
   let pendingRows = 0;
   const flush = (): void => {
     if (pendingSql.length === 0) return;
-    chunks.push({ sql: pendingSql.join("\n"), rowCount: pendingRows });
+    writes.push({ kind: "file", sql: pendingSql.join("\n"), rowCount: pendingRows });
     pendingSql = [];
     pendingBytes = 0;
     pendingRows = 0;
   };
   for (const statement of imported.statements) {
     const rowCount = columns > 0 ? statement.params.length / columns : 0;
-    const sql = renderImportStatement(statement);
-    const size = byteLength(sql) + 1;
+    const rendered = renderImportStatement(statement);
+    const renderedBytes = byteLength(rendered);
+    if (renderedBytes > D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES) {
+      flush();
+      writes.push({ kind: "parameter", statement, rowCount });
+      continue;
+    }
+    const size = renderedBytes + 1;
     if (pendingSql.length > 0 && (pendingSql.length >= options.maxStatements || pendingBytes + size > options.maxBytes)) {
       flush();
     }
-    pendingSql.push(sql);
+    pendingSql.push(rendered);
     pendingBytes += size;
     pendingRows += rowCount;
   }
   flush();
-  return { chunks, totalRows: rows.length };
+  return { writes, totalRows: rows.length };
 }
 
 function emptyTableTarget(table: D1TableDefinition): D1RemoteDataCopyTableTarget {
@@ -537,24 +579,43 @@ export async function buildD1RemoteDataCopyManifest(
           result.state = comparison;
           result.action = "copy";
         } else {
-          const { chunks, totalRows } = planChunks(table, dataset, remote.rowCount, {
+          const { writes, totalRows } = planWrites(table, dataset, remote.rowCount, {
             rowsPerStatement: options.rowsPerStatement ?? null,
             maxStatements: maxStatementsPerChunk,
             maxBytes: maxBytesPerChunk,
           });
+          const executeParameterized = options.executeParameterized;
+          // Fail closed before any write when an oversized statement needs the
+          // parameterized writer but none was injected: never silently materialize
+          // an oversized statement into a file chunk instead.
+          if (writes.some((write) => write.kind === "parameter") && typeof executeParameterized !== "function") {
+            throw new D1RemoteError(
+              "d1_remote.data_copy_oversized_statement",
+              `${table.name} has a statement larger than ${D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES} bytes but no parameterized writer is configured`,
+            );
+          }
           let expected = remote.rowCount;
-          for (const [chunkIndex, chunk] of chunks.entries()) {
-            const path = (
-              options.materializeChunk as (database: D1Database, table: string, chunkIndex: number, sql: string) => string
-            )(target.name, table.name, chunkIndex, chunk.sql);
-            // The write stdout is deliberately not parsed: the runner rejects a
-            // non-zero exit and the count/hash re-reads below are authoritative.
-            await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
+          let fileChunkIndex = 0;
+          for (const write of writes) {
+            if (write.kind === "file") {
+              const path = (
+                options.materializeChunk as (database: D1Database, table: string, chunkIndex: number, sql: string) => string
+              )(target.name, table.name, fileChunkIndex, write.sql);
+              fileChunkIndex += 1;
+              // The write stdout is deliberately not parsed: the runner rejects a
+              // non-zero exit and the count/hash re-reads below are authoritative.
+              await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
+            } else {
+              await (executeParameterized as (database: D1Database, statement: D1ImportStatement) => Promise<void>)(
+                target.name,
+                write.statement,
+              );
+            }
             const actual = await readRemoteRowCount(target, table);
-            if (actual !== expected + chunk.rowCount) {
+            if (actual !== expected + write.rowCount) {
               throw new D1RemoteError(
                 "d1_remote.data_copy_progress_mismatch",
-                `${table.name} expected ${expected + chunk.rowCount} rows after a ${chunk.rowCount}-row chunk, found ${actual}`,
+                `${table.name} expected ${expected + write.rowCount} rows after a ${write.rowCount}-row ${write.kind === "file" ? "chunk" : "statement"}, found ${actual}`,
               );
             }
             expected = actual;
@@ -564,7 +625,7 @@ export async function buildD1RemoteDataCopyManifest(
           result.remoteRowCount = finalDataset.rowCount;
           result.remoteHash = finalDataset.hash;
           result.copiedRowCount = totalRows;
-          result.chunkCount = chunks.length;
+          result.chunkCount = writes.length;
           if (finalDataset.rowCount !== dataset.rowCount || finalDataset.hash !== dataset.hash) {
             throw new D1RemoteError(
               "d1_remote.data_copy_final_mismatch",

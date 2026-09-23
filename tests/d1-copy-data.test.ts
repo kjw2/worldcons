@@ -17,8 +17,13 @@ import {
   type PostgresReadRequest,
   type PostgresRowSource,
 } from "../lib/cloudflare/d1/convert";
+import type { D1ImportStatement } from "../lib/cloudflare/d1/import/types";
 import type { WranglerD1Runner } from "../lib/cloudflare/d1/remote";
-import { buildD1RemoteDataCopyManifest, D1_REMOTE_DATA_COPY_DATABASES } from "../lib/cloudflare/d1/remote/data-copy";
+import {
+  buildD1RemoteDataCopyManifest,
+  D1_REMOTE_DATA_COPY_DATABASES,
+  D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES,
+} from "../lib/cloudflare/d1/remote/data-copy";
 
 const copyTable = buildTable({
   name: "copy_probe",
@@ -127,12 +132,22 @@ interface MaterializedChunk {
   path: string;
 }
 
+/** One captured `executeParameterized` call: the target database and the ORIGINAL `?` statement. */
+interface ParameterCall {
+  database: D1Database;
+  statement: D1ImportStatement;
+}
+
 interface CopyHarness {
   runner: WranglerD1Runner;
   calls: string[][];
   files: Map<string, string>;
   materialized: MaterializedChunk[];
+  /** Ordered write kinds, so a mixed small/oversized copy can prove file, parameter, file. */
+  executions: ("file" | "parameter")[];
+  parameterCalls: ParameterCall[];
   materialize: (database: D1Database, table: string, chunkIndex: number, sql: string) => string;
+  executeParameterized: (database: D1Database, statement: D1ImportStatement) => Promise<void>;
   remoteRows: (table: string) => Record<string, unknown>[];
 }
 
@@ -159,6 +174,8 @@ function createHarness(
   const files = new Map<string, string>();
   const calls: string[][] = [];
   const materialized: MaterializedChunk[] = [];
+  const executions: ("file" | "parameter")[] = [];
+  const parameterCalls: ParameterCall[] = [];
   const store: Record<string, Record<string, unknown>[]> = {};
   for (const [table, rows] of Object.entries(initialRows)) store[table] = rows.map((row) => ({ ...row }));
 
@@ -185,6 +202,29 @@ function createHarness(
     }
   };
 
+  /**
+   * Applies the ORIGINAL parameterized statement to the in-memory store by binding
+   * each `?` to its param directly. It never renders or parses SQL literals, so a
+   * value larger than the literal-statement threshold round-trips verbatim.
+   */
+  const applyParameterized = (database: D1Database, statement: D1ImportStatement): void => {
+    const match = /^insert into (\w+) \(([^)]*)\) values (.+);$/.exec(statement.sql);
+    assert.ok(match, `unexpected parameterized statement: ${statement.sql}`);
+    const columns = match[2].split(", ");
+    const placeholders = match[3].match(/\?/g) ?? [];
+    assert.equal(placeholders.length, statement.params.length, "every placeholder must have a bound parameter");
+    assert.equal(statement.params.length % columns.length, 0, "bound parameters must fill whole rows");
+    for (let index = 0; index < statement.params.length; index += columns.length) {
+      const row: Record<string, unknown> = {};
+      columns.forEach((column, offset) => {
+        row[column] = statement.params[index + offset];
+      });
+      remoteRows(match[1]).push(row);
+    }
+    parameterCalls.push({ database, statement });
+    executions.push("parameter");
+  };
+
   let executedChunk = false;
   let tamperTable: string | null = null;
 
@@ -195,6 +235,7 @@ function createHarness(
       if (options.failFileExecution) throw new Error("wrangler: failed to execute the chunk file");
       applyChunk(files.get(args[args.indexOf("--file") + 1]) ?? "");
       executedChunk = true;
+      executions.push("file");
       return "wrangler: executed the chunk file";
     }
     const command = args[args.indexOf("--command") + 1];
@@ -230,6 +271,11 @@ function createHarness(
       materialized.push({ database, table, chunkIndex, path });
       return path;
     },
+    executeParameterized: async (database, statement) => {
+      applyParameterized(database, statement);
+    },
+    executions,
+    parameterCalls,
     remoteRows,
   };
 }
@@ -675,6 +721,143 @@ test("applying the rich table from an empty remote reaches verified parity acros
   assert.equal(rich1.active, 0);
   assert.equal(typeof rich2.active, "number");
   assert.equal(typeof rich1.active, "number");
+});
+
+test("a small apply writes through Wrangler --file and never calls the parameterized writer", async () => {
+  const harness = createHarness();
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.ok(harness.files.size > 0, "a small table must still be materialized into a chunk file");
+  assert.ok(manifest.commands.some((command) => command.includes("--file")));
+  assert.deepEqual(harness.executions, ["file"], "every write must go through the --file surface");
+  assert.equal(harness.parameterCalls.length, 0, "the parameterized writer must not be called for a small table");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.remoteHash, table.expectedHash);
+});
+
+/** A one-row `copy_probe` whose text body comfortably exceeds the literal-statement threshold. */
+function oversizedSource(body: string): PostgresRowSource {
+  assert.ok(
+    body.length > D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES,
+    "the test body must exceed the literal-statement threshold",
+  );
+  return createFakeSource({ copy_probe: [{ id: "huge-1", body, rank: 1 }] });
+}
+
+test("an oversized row applies through the parameterized writer without materializing its body", async () => {
+  const harness = createHarness();
+  const body = "x".repeat(120_000);
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: oversizedSource(body),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0, "an oversized statement must never be materialized into a chunk file");
+  assert.equal(harness.parameterCalls.length, 1, "the oversized statement must be written exactly once");
+
+  const [call] = harness.parameterCalls;
+  assert.equal(call.database, "worldcons_core");
+  assert.equal((call.statement.sql.match(/\?/g) ?? []).length, 3, "the original SQL must keep its `?` placeholders");
+  assert.ok(call.statement.sql.includes("?"), "the SQL is sent parameterized, not rendered");
+  assert.ok(!call.statement.sql.includes(body), "the huge body must never appear as a SQL literal");
+  assert.ok(call.statement.params.includes(body), "the exact huge body must travel as a bound parameter");
+  assert.equal(call.statement.params.length, 3);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.copiedRowCount, 1);
+  assert.equal(table.remoteRowCount, 1);
+  assert.equal(table.remoteHash, table.expectedHash);
+  assert.equal(harness.remoteRows("copy_probe").length, 1);
+});
+
+test("an oversized row without a parameterized writer fails closed with zero writes", async () => {
+  const harness = createHarness();
+  const body = "y".repeat(120_000);
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: oversizedSource(body),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+  assert.equal(harness.remoteRows("copy_probe").length, 0, "no row may reach the remote table");
+  assert.ok(manifest.errors.some((error) => error.includes("no parameterized writer")));
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.equal(table.verified, false);
+  assert.equal(table.copiedRowCount, 0);
+});
+
+test("a mixed small/oversized/small table writes file, parameter, file in authored row order", async () => {
+  const harness = createHarness();
+  const body = "z".repeat(120_000);
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: createFakeSource({
+      copy_probe: [
+        { id: "row-1", body: "small one", rank: 1 },
+        { id: "row-2", body, rank: 2 },
+        { id: "row-3", body: "small three", rank: 3 },
+      ],
+    }),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+    rowsPerStatement: 1,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.deepEqual(
+    harness.executions,
+    ["file", "parameter", "file"],
+    "the oversized middle row must flush the leading file chunk and the trailing row its own file",
+  );
+  assert.equal(harness.parameterCalls.length, 1);
+  assert.equal(harness.files.size, 2);
+  assert.ok(harness.parameterCalls[0].statement.params.includes(body));
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.copiedRowCount, 3);
+  assert.equal(table.remoteRowCount, 3);
+  assert.equal(table.remoteHash, table.expectedHash);
+  assert.equal(table.chunkCount, 3);
+  assert.deepEqual(
+    harness.remoteRows("copy_probe").map((row) => row.id),
+    ["row-1", "row-2", "row-3"],
+  );
 });
 
 test("production data-copy seam keeps destructive DML and Node operator imports out", () => {
