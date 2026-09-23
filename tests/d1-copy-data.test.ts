@@ -18,7 +18,7 @@ import {
   type PostgresRowSource,
 } from "../lib/cloudflare/d1/convert";
 import type { D1ImportStatement } from "../lib/cloudflare/d1/import/types";
-import { D1RemoteError, type WranglerD1Runner } from "../lib/cloudflare/d1/remote";
+import { D1RemoteError, WranglerD1ExitError, type WranglerD1Runner } from "../lib/cloudflare/d1/remote";
 import {
   buildD1RemoteDataCopyManifest,
   D1_REMOTE_DATA_COPY_DATABASES,
@@ -26,6 +26,7 @@ import {
 } from "../lib/cloudflare/d1/remote/data-copy";
 import {
   createLazyParameterizedWriter,
+  createLazyRemoteQuery,
   parseAuthTokenJson,
   parseWhoamiAccountId,
   resolveParameterizedWriter,
@@ -144,6 +145,12 @@ interface ParameterCall {
   statement: D1ImportStatement;
 }
 
+/** One captured `executeRemoteQuery` read fallback call. */
+interface QueryCall {
+  database: D1Database;
+  statement: D1ImportStatement;
+}
+
 interface CopyHarness {
   runner: WranglerD1Runner;
   calls: string[][];
@@ -154,6 +161,9 @@ interface CopyHarness {
   parameterCalls: ParameterCall[];
   materialize: (database: D1Database, table: string, chunkIndex: number, sql: string) => string;
   executeParameterized: (database: D1Database, statement: D1ImportStatement) => Promise<void>;
+  /** The injected HTTP read fallback, serving the same in-memory store. */
+  executeRemoteQuery: (database: D1Database, statement: D1ImportStatement) => Promise<Record<string, unknown>[]>;
+  queryCalls: QueryCall[];
   remoteRows: (table: string) => Record<string, unknown>[];
 }
 
@@ -170,6 +180,20 @@ interface HarnessOptions {
    * read, so the final canonical hash no longer matches while the row count does.
    */
   tamperAfterChunk?: boolean;
+  /**
+   * Simulate the confirmed Windows `wrangler d1 execute` read crash by throwing
+   * the typed exit error with exit code 3221226505 from every read command,
+   * before any payload is produced. Writes (`--file`) are unaffected.
+   */
+  crashReads?: boolean;
+  /**
+   * Throw this exact error from every remote read command before any payload, so
+   * a non-crash failure (another exit code, a plain spawn/timeout error) can be
+   * proven not to fall back.
+   */
+  readError?: Error;
+  /** Make the injected HTTP read fallback reject, so both read paths fail. */
+  queryThrows?: boolean;
 }
 
 /** A fake `worldcons_core` that stores canonical rows and applies the emitted chunk files. */
@@ -182,6 +206,7 @@ function createHarness(
   const materialized: MaterializedChunk[] = [];
   const executions: ("file" | "parameter")[] = [];
   const parameterCalls: ParameterCall[] = [];
+  const queryCalls: QueryCall[] = [];
   const store: Record<string, Record<string, unknown>[]> = {};
   for (const [table, rows] of Object.entries(initialRows)) store[table] = rows.map((row) => ({ ...row }));
 
@@ -191,6 +216,30 @@ function createHarness(
   };
   const envelope = (rows: Record<string, unknown>[]): string =>
     JSON.stringify([{ results: rows, success: true, meta: {} }]);
+
+  /**
+   * The injected HTTP read fallback. It binds the read statement's `?` limit/offset
+   * params directly against the same in-memory store, mirroring the D1 API rows
+   * contract, so a crashed Wrangler read can be served without any network.
+   */
+  const executeRemoteQuery = async (
+    database: D1Database,
+    statement: D1ImportStatement,
+  ): Promise<Record<string, unknown>[]> => {
+    queryCalls.push({ database, statement });
+    if (options.queryThrows) throw new Error("d1_http_query.request_failed");
+    const valueAt = (index: number, fallback: number): number => {
+      const value = statement.params[index];
+      return typeof value === "number" ? value : fallback;
+    };
+    const count = /^select count\(\*\) as n from (\w+)$/.exec(statement.sql);
+    if (count) return [{ n: remoteRows(count[1]).length + (options.countDelta ?? 0) }];
+    const table = / from (\w+)/.exec(statement.sql)?.[1] ?? "";
+    const rows = remoteRows(table);
+    const limit = valueAt(0, rows.length);
+    const offset = valueAt(1, 0);
+    return rows.slice(offset, offset + limit);
+  };
 
   const applyChunk = (sql: string): void => {
     for (const line of sql.split("\n")) {
@@ -245,6 +294,10 @@ function createHarness(
       return "wrangler: executed the chunk file";
     }
     const command = args[args.indexOf("--command") + 1];
+    if (options.readError) throw options.readError;
+    if (options.crashReads) {
+      throw new WranglerD1ExitError(3221226505, "wrangler d1 execute failed with exit code 3221226505");
+    }
     if (options.malformedReadJson) return "<!doctype html><html>not json</html>";
     const count = /^select count\(\*\) as n from (\w+)$/.exec(command);
     if (count) {
@@ -280,6 +333,8 @@ function createHarness(
     executeParameterized: async (database, statement) => {
       applyParameterized(database, statement);
     },
+    executeRemoteQuery,
+    queryCalls,
     executions,
     parameterCalls,
     remoteRows,
@@ -1557,6 +1612,31 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     /buildD1RemoteDataCopyManifest\(\{[\s\S]*?\bexecuteParameterized,/.test(cliCode),
     "the lazy writer must be passed in as executeParameterized",
   );
+
+  // The remote READ fallback is a second lazy callback, always provided (dry-run
+  // and apply), whose credential resolution is deferred behind a cached promise.
+  assert.ok(
+    cliCode.includes("createD1HttpQueryExecutor"),
+    "the CLI must build the D1 HTTP read query executor",
+  );
+  assert.ok(cliCode.includes("createLazyRemoteQuery"), "the CLI must build the lazy remote read query");
+  assert.ok(
+    /const executeRemoteQuery = createLazyRemoteQuery\(\{ runner, databases \}\)/.test(cliCode),
+    "main must build the lazy remote query with `{ runner, databases }` and never await it eagerly",
+  );
+  assert.ok(
+    /buildD1RemoteDataCopyManifest\(\{[\s\S]*?\bexecuteRemoteQuery,/.test(cliCode),
+    "the lazy remote query must be passed in as executeRemoteQuery",
+  );
+  const lazyQueryStart = cliCode.indexOf("export function createLazyRemoteQuery");
+  const lazyQueryEnd = cliCode.indexOf("\nasync function main", lazyQueryStart);
+  const lazyQuery =
+    lazyQueryStart === -1 || lazyQueryEnd === -1 ? "" : cliCode.slice(lazyQueryStart, lazyQueryEnd);
+  assert.ok(lazyQuery.length > 0, "createLazyRemoteQuery must remain in the CLI source");
+  assert.ok(
+    /executor \?\?= resolveHttpCredentials\(/.test(lazyQuery),
+    "the lazy remote query must cache the resolved executor promise so auth/list happen at most once",
+  );
   assert.ok(
     /if \(classification\.state !== "existing" \|\| classification\.entry === null\)/.test(resolver) &&
       /databaseIds\[classification\.target\.name\] = classification\.entry\.uuid/.test(resolver),
@@ -1853,4 +1933,335 @@ test("a lazy writer whose first resolution fails stays failed closed and never r
   await assert.rejects(executeParameterized("worldcons_core", statement), /auth_token_unusable/);
   await assert.rejects(executeParameterized("worldcons_core", statement), /auth_token_unusable/);
   assert.deepEqual(calls, [["auth", "token", "--json"]], "a cached rejection must not re-run auth or d1 list");
+});
+
+test("a Wrangler read crash falls back to the injected HTTP query and audits a safe marker", async () => {
+  const harness = createHarness({}, { crashReads: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.dryRun, true);
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.ok(harness.queryCalls.length > 0, "the crashed Wrangler read must be retried through the HTTP query");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "pending");
+  assert.equal(table.action, "copy");
+  assert.equal(table.expectedRowCount, 6);
+  assert.equal(table.remoteRowCount, 0);
+
+  // The audit marker names only the database and table: never SQL or values.
+  assert.ok(manifest.commands.includes("http-query worldcons_core copy_probe"));
+  assert.equal(manifest.commands.filter((command) => command.startsWith("http-query")).length, 1);
+});
+
+test("a Wrangler read crash falls back to the HTTP query over an already-complete remote", async () => {
+  const harness = createHarness({ copy_probe: FULL_ROWS }, { crashReads: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.totals.existing, 1);
+  assert.ok(harness.queryCalls.length > 0);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "existing");
+  assert.equal(table.verified, true);
+  assert.equal(table.plannedWriteCount, 0);
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+});
+
+test("a Wrangler read crash still resumes a canonical prefix through the HTTP fallback", async () => {
+  const harness = createHarness({ copy_probe: FULL_ROWS.slice(0, 2) }, { crashReads: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.totals.copied, 1);
+  assert.ok(harness.queryCalls.length > 0);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.copiedRowCount, 4, "only the missing suffix is copied");
+  assert.equal(table.remoteRowCount, 6);
+  assert.equal(table.remoteHash, table.expectedHash);
+  // Writes still go exclusively through the Wrangler file surface.
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 1);
+  assert.ok(manifest.commands.includes("http-query worldcons_core copy_probe"));
+});
+
+test("the HTTP read fallback is never called when the Wrangler read succeeds", async () => {
+  const harness = createHarness({ copy_probe: FULL_ROWS });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "existing");
+  assert.equal(harness.queryCalls.length, 0, "a successful Wrangler read must never touch the HTTP fallback");
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-query")), false);
+});
+
+test("when both the Wrangler read and the HTTP fallback fail, the table is refused", async () => {
+  const harness = createHarness({}, { crashReads: true, queryThrows: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+  assert.ok(harness.queryCalls.length > 0, "the fallback must be attempted");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.equal(table.copiedRowCount, 0);
+  assert.ok(table.errors.some((error) => error.includes("request_failed")));
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+});
+
+test("a malformed successful Wrangler read never falls back to the HTTP query", async () => {
+  const harness = createHarness({}, { malformedReadJson: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(
+    harness.queryCalls.length,
+    0,
+    "a returned-but-malformed payload must stay fail-closed and never fall back",
+  );
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.ok(table.errors.some((error) => error.includes("did not return JSON")));
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-query")), false);
+});
+
+test("a non-crash Wrangler exit code never falls back and the table is refused", async () => {
+  const harness = createHarness(
+    {},
+    { readError: new WranglerD1ExitError(7, "wrangler d1 execute worldcons_core failed with exit code 7") },
+  );
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+  assert.equal(harness.queryCalls.length, 0, "only exit code 3221226505 may fall back; exit 7 must not");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.equal(table.copiedRowCount, 0);
+  assert.ok(table.errors.some((error) => error.includes("exit code 7")));
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-query")), false);
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+});
+
+test("a plain runner error (timeout/spawn) never falls back and the table is refused", async () => {
+  const harness = createHarness({}, { readError: new Error("failed to run wrangler: spawn ENOENT") });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+  assert.equal(harness.queryCalls.length, 0, "a plain Error must never fall back");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.ok(table.errors.some((error) => error.includes("failed to run wrangler")));
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-query")), false);
+  assert.equal(harness.files.size, 0);
+});
+
+test("the lazy remote query is available in dry-run and apply but reads no credential until invoked", () => {
+  const { runner, calls } = createCredentialRunner();
+  const dry = createLazyRemoteQuery({ runner, databases: null, env: {} });
+  const apply = createLazyRemoteQuery({ runner, databases: ["worldcons_core"], env: {} });
+  assert.equal(typeof dry, "function");
+  assert.equal(typeof apply, "function");
+  assert.equal(calls.length, 0, "building the lazy remote query must resolve no credential, whoami or d1 list");
+});
+
+test("the lazy remote query resolves auth + whoami + d1 list once and caches the executor across reads", async () => {
+  const { runner, calls } = createCredentialRunner();
+  const { fetchImpl, count } = createCredentialFetch();
+  const executeRemoteQuery = createLazyRemoteQuery({
+    runner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: fetchImpl,
+  });
+
+  const statement: D1ImportStatement = { sql: "select count(*) as n from copy_probe", params: [] };
+  await executeRemoteQuery("worldcons_core", statement);
+  await executeRemoteQuery("worldcons_core", statement);
+
+  assert.deepEqual(
+    calls,
+    [
+      ["auth", "token", "--json"],
+      ["whoami", "--json"],
+      ["d1", "list", "--json"],
+    ],
+    "credential and list resolution must happen exactly once, on the first actual read",
+  );
+  assert.equal(count(), 2, "both reads still reach the D1 HTTP API");
+
+  const argv = calls.flat().join(" ");
+  assert.equal(argv.includes(CREDENTIAL_TOKEN), false, "no secret may appear in a recorded argv");
+  assert.equal(argv.includes(CREDENTIAL_ACCOUNT_ID), false, "no account id may appear in a recorded argv");
+});
+
+test("the lazy remote query with env credentials skips auth token and whoami but still lists once", async () => {
+  const { runner, calls } = createCredentialRunner();
+  const { fetchImpl } = createCredentialFetch();
+  const executeRemoteQuery = createLazyRemoteQuery({
+    runner,
+    databases: ["worldcons_core"],
+    env: { CLOUDFLARE_ACCOUNT_ID: CREDENTIAL_ACCOUNT_ID, CLOUDFLARE_API_TOKEN: "env-token" },
+    fetch: fetchImpl,
+  });
+
+  await executeRemoteQuery("worldcons_core", { sql: "select 1", params: [] });
+
+  assert.deepEqual(calls, [["d1", "list", "--json"]], "env credentials must skip auth token and whoami");
+});
+
+test("a lazy remote query whose first resolution fails stays failed closed and never retries auth", async () => {
+  const { runner, calls } = createCredentialRunner({ authToken: "not json" });
+  const { fetchImpl } = createCredentialFetch();
+  const executeRemoteQuery = createLazyRemoteQuery({
+    runner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: fetchImpl,
+  });
+
+  const statement: D1ImportStatement = { sql: "select 1", params: [] };
+  await assert.rejects(executeRemoteQuery("worldcons_core", statement), /malformed_auth_token_json/);
+  await assert.rejects(executeRemoteQuery("worldcons_core", statement), /malformed_auth_token_json/);
+  assert.deepEqual(calls, [["auth", "token", "--json"]], "a cached rejection must not re-run auth or d1 list");
+});
+
+test("a lazy remote query is passed to both a dry-run and an apply but never invoked when Wrangler reads succeed", async () => {
+  for (const apply of [false, true]) {
+    const harness = createHarness();
+    const { runner: credentialRunner, calls } = createCredentialRunner();
+    const { fetchImpl, count } = createCredentialFetch();
+    const executeRemoteQuery = createLazyRemoteQuery({
+      runner: credentialRunner,
+      databases: ["worldcons_core"],
+      env: {},
+      fetch: fetchImpl,
+    });
+
+    const manifest = await buildD1RemoteDataCopyManifest({
+      runner: harness.runner,
+      source: source(),
+      schema,
+      databases: ["worldcons_core"],
+      apply,
+      materializeChunk: apply ? harness.materialize : undefined,
+      executeRemoteQuery,
+    });
+
+    assert.equal(manifest.ok, true, manifest.errors.join("; "));
+    assert.equal(calls.length, 0, `a successful Wrangler read must not authenticate (apply=${apply})`);
+    assert.equal(count(), 0, "the HTTP surface must not be touched");
+    assert.equal(harness.queryCalls.length, 0);
+  }
+});
+
+test("a Wrangler read crash triggers the lazily-authenticated HTTP fallback", async () => {
+  const harness = createHarness({}, { crashReads: true });
+  const { runner: credentialRunner, calls } = createCredentialRunner();
+  const { fetchImpl, count } = createCredentialFetch();
+  const executeRemoteQuery = createLazyRemoteQuery({
+    runner: credentialRunner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: fetchImpl,
+  });
+
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.deepEqual(
+    calls,
+    [
+      ["auth", "token", "--json"],
+      ["whoami", "--json"],
+      ["d1", "list", "--json"],
+    ],
+    "the fallback must authenticate lazily, only once",
+  );
+  assert.ok(count() >= 1, "the fallback must reach the D1 HTTP API");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "pending");
+  assert.ok(manifest.commands.includes("http-query worldcons_core copy_probe"));
 });

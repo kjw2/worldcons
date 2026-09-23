@@ -4,8 +4,10 @@ import type { D1ImportStatement } from "../lib/cloudflare/d1/import/types";
 import type { D1Database } from "../lib/cloudflare/d1/types";
 import {
   createD1HttpParameterizedWriter,
+  createD1HttpQueryExecutor,
   prepareD1HttpQuery,
   type D1HttpParameterizedWriterOptions,
+  type D1HttpQueryExecutorOptions,
 } from "../lib/cloudflare/d1/remote/http-query";
 
 const ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
@@ -107,6 +109,20 @@ function buildWriter(
   overrides?: Partial<D1HttpParameterizedWriterOptions>,
 ) {
   return createD1HttpParameterizedWriter({
+    accountId: ACCOUNT_ID,
+    apiToken: TOKEN,
+    databaseIds: { [DATABASE]: DATABASE_ID },
+    fetch: fetchImpl,
+    timeoutMs: 1000,
+    ...overrides,
+  });
+}
+
+function buildExecutor(
+  fetchImpl: typeof fetch,
+  overrides?: Partial<D1HttpQueryExecutorOptions>,
+) {
+  return createD1HttpQueryExecutor({
     accountId: ACCOUNT_ID,
     apiToken: TOKEN,
     databaseIds: { [DATABASE]: DATABASE_ID },
@@ -426,4 +442,133 @@ test("createD1HttpParameterizedWriter rejects an unknown database", async () => 
       return true;
     },
   );
+});
+
+test("createD1HttpQueryExecutor returns the flattened result rows of a select", async () => {
+  const captured: CapturedRequest[] = [];
+  const fetchImpl = capturingFetch(
+    jsonResponse({
+      success: true,
+      result: [
+        { success: true, results: [{ id: "a", n: 1 }, { id: "b", n: 2 }] },
+        { success: true, results: [{ id: "c", n: 3 }] },
+      ],
+    }),
+    captured,
+  );
+
+  const execute = buildExecutor(fetchImpl);
+  const rows = await execute(DATABASE, { sql: "select id, n from articles order by id limit ?", params: [10] });
+
+  assert.deepEqual(rows, [
+    { id: "a", n: 1 },
+    { id: "b", n: 2 },
+    { id: "c", n: 3 },
+  ]);
+
+  assert.equal(captured.length, 1);
+  const request = captured[0];
+  assert.equal(
+    request.url,
+    `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DATABASE_ID}/query`,
+  );
+  assert.equal(request.init.method, "POST");
+  const headers = request.init.headers as Record<string, string>;
+  assert.equal(headers.Authorization, `Bearer ${TOKEN}`);
+  assert.deepEqual(
+    JSON.parse(String(request.init.body)),
+    prepareD1HttpQuery({ sql: "select id, n from articles order by id limit ?", params: [10] }),
+  );
+});
+
+test("createD1HttpQueryExecutor keeps string params bound and never literalizes them", async () => {
+  const captured: CapturedRequest[] = [];
+  const execute = buildExecutor(
+    capturingFetch(jsonResponse({ success: true, result: [{ success: true, results: [] }] }), captured),
+  );
+
+  await execute(DATABASE, { sql: "select * from articles where body = ?", params: [HUGE_PARAM] });
+
+  const body = JSON.parse(String(captured[0].init.body)) as { sql: string; params: unknown[] };
+  assert.deepEqual(body.params, [HUGE_PARAM]);
+  assert.equal(body.sql.includes(HUGE_PARAM), false);
+  assert.equal(body.sql.includes(ORDINARY_PARAM), false);
+});
+
+test("createD1HttpQueryExecutor treats a successful envelope without results as zero rows", async () => {
+  const rows = await buildExecutor(
+    capturingFetch(jsonResponse({ success: true, result: [{ success: true }] }), []),
+  )(DATABASE, { sql: "select 1", params: [] });
+
+  assert.deepEqual(rows, []);
+});
+
+test("createD1HttpQueryExecutor fails closed on a malformed success payload without leaking secrets", async () => {
+  const payloads: unknown[] = [
+    null,
+    "not-an-object",
+    {},
+    { success: true },
+    { success: false, result: [] },
+    { success: true, result: "not-an-array" },
+    { success: true, result: [null] },
+    { success: true, result: ["not-an-object"] },
+    { success: true, result: [{ success: "yes" }] },
+    { success: true, result: [{ success: true, results: "not-an-array" }] },
+    { success: true, result: [{ success: true, results: [null] }] },
+    { success: true, result: [{ success: true, results: [["not-an-object"]] }] },
+  ];
+
+  for (const payload of payloads) {
+    const execute = buildExecutor(capturingFetch(jsonResponse(payload), []));
+    await assert.rejects(
+      () => execute(DATABASE, SECRET_STATEMENT),
+      (error: unknown) => {
+        assert.equal(errorCode(error), "d1_http_query.invalid_response");
+        assertNoLeak(error);
+        return true;
+      },
+    );
+  }
+});
+
+test("createD1HttpQueryExecutor preserves the http, timeout and unknown-database errors without leaking secrets", async () => {
+  await assert.rejects(
+    () => buildExecutor(capturingFetch(errorResponse(500), []))(DATABASE, SECRET_STATEMENT),
+    (error: unknown) => {
+      assert.equal(errorCode(error), "d1_http_query.http_error");
+      assertNoLeak(error);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () => buildExecutor(abortAwareFetch(), { timeoutMs: 25 })(DATABASE, SECRET_STATEMENT),
+    (error: unknown) => {
+      assert.equal(errorCode(error), "d1_http_query.timeout");
+      assertNoLeak(error);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () => buildExecutor(rejectingFetch("unused"))("worldcons_search", SECRET_STATEMENT),
+    (error: unknown) => {
+      assert.equal(errorCode(error), "d1_http_query.unknown_database");
+      assertNoLeak(error);
+      return true;
+    },
+  );
+});
+
+test("createD1HttpParameterizedWriter discards the rows the executor returns", async () => {
+  const writer = buildWriter(
+    capturingFetch(
+      jsonResponse({ success: true, result: [{ success: true, results: [{ n: 42 }, { n: 43 }] }] }),
+      [],
+    ),
+  );
+
+  const result = await writer(DATABASE, SECRET_STATEMENT);
+  assert.equal(result, undefined, "a writer must resolve void and discard every returned row");
 });

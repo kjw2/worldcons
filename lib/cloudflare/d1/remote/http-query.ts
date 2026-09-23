@@ -2,13 +2,27 @@ import { renderSqlLiteral } from "../import/literal";
 import type { D1ImportStatement } from "../import/types";
 import type { D1Database } from "../types";
 
-export interface D1HttpParameterizedWriterOptions {
+export interface D1HttpQueryExecutorOptions {
   accountId: string;
   apiToken: string;
   databaseIds: Partial<Record<D1Database, string>>;
   fetch?: typeof fetch;
   timeoutMs?: number;
 }
+
+/** Backwards-compatible alias: the parameterized writer shares the executor's options. */
+export type D1HttpParameterizedWriterOptions = D1HttpQueryExecutorOptions;
+
+/**
+ * The bound-parameter HTTP query surface. It executes one `?`-parameterized
+ * statement against the same Cloudflare D1 query endpoint and returns the
+ * flattened result rows, so a READ can reuse the exact credential validation,
+ * timeout, response validation and string-parameter handling of the write path.
+ */
+export type D1HttpQueryExecutor = (
+  database: D1Database,
+  statement: D1ImportStatement,
+) => Promise<Record<string, unknown>[]>;
 
 const ACCOUNT_ID_PATTERN = /^[0-9a-f]{32}$/i;
 const DATABASE_ID_PATTERN =
@@ -107,9 +121,9 @@ export function prepareD1HttpQuery(statement: D1ImportStatement): {
   return { sql, params };
 }
 
-export function createD1HttpParameterizedWriter(
-  options: D1HttpParameterizedWriterOptions,
-): (database: D1Database, statement: D1ImportStatement) => Promise<void> {
+export function createD1HttpQueryExecutor(
+  options: D1HttpQueryExecutorOptions,
+): D1HttpQueryExecutor {
   const { accountId, apiToken, databaseIds } = options;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -155,10 +169,10 @@ export function createD1HttpParameterizedWriter(
 
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  return async function write(
+  return async function execute(
     database: D1Database,
     statement: D1ImportStatement,
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>[]> {
     const databaseId = databaseIds[database];
 
     if (typeof databaseId !== "string" || databaseId.length === 0) {
@@ -236,6 +250,7 @@ export function createD1HttpParameterizedWriter(
         );
       }
 
+      const rows: Record<string, unknown>[] = [];
       for (const entry of body.result) {
         if (
           typeof entry !== "object" ||
@@ -247,9 +262,46 @@ export function createD1HttpParameterizedWriter(
             "d1_http_query.invalid_response",
           );
         }
+
+        const results = (entry as { results?: unknown }).results;
+        // A successful envelope may legitimately carry no `results` (DDL), so an
+        // absent field contributes no rows. A present but non-array `results`, or a
+        // non-object row, is malformed and fails closed.
+        if (results === undefined) continue;
+        if (!Array.isArray(results)) {
+          throw createD1HttpQueryError(
+            "d1_http_query.invalid_response",
+            "d1_http_query.invalid_response",
+          );
+        }
+        for (const row of results) {
+          if (typeof row !== "object" || row === null || Array.isArray(row)) {
+            throw createD1HttpQueryError(
+              "d1_http_query.invalid_response",
+              "d1_http_query.invalid_response",
+            );
+          }
+          rows.push(row as Record<string, unknown>);
+        }
       }
+
+      return rows;
     } finally {
       clearTimeout(timer);
     }
+  };
+}
+
+/**
+ * The bound-parameter write surface. It delegates to the generic executor and
+ * discards the returned rows, so a WRITE keeps the exact validation, timeout and
+ * response handling it always had while sharing one implementation with reads.
+ */
+export function createD1HttpParameterizedWriter(
+  options: D1HttpParameterizedWriterOptions,
+): (database: D1Database, statement: D1ImportStatement) => Promise<void> {
+  const execute = createD1HttpQueryExecutor(options);
+  return async (database, statement) => {
+    await execute(database, statement);
   };
 }

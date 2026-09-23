@@ -11,6 +11,7 @@ import { d1Schema } from "../schema";
 import type { D1Database, D1Schema, D1TableDefinition } from "../types";
 import { D1RemoteError, parseD1ExecuteResultsJson } from "./classify";
 import { selectD1RemoteTargets, type D1RemoteTarget } from "./targets";
+import { D1_WRANGLER_CRASH_EXIT_CODE, isWranglerD1ExitError } from "./types";
 import type { WranglerD1Runner } from "./types";
 
 /**
@@ -240,6 +241,18 @@ export interface BuildD1RemoteDataCopyManifestOptions {
    * absent, apply fails closed before any write for that table.
    */
   executeParameterized?: (database: D1Database, statement: D1ImportStatement) => Promise<void>;
+  /**
+   * Optional READ fallback for the remote comparison reads. It executes the SAME
+   * read-only statement through a bound-parameter HTTP surface (for example the D1
+   * query API) and returns its rows. It is used ONLY when the Wrangler
+   * `d1 execute --command` runner invocation rejects with a `WranglerD1ExitError`
+   * whose `exitCode` is exactly `D1_WRANGLER_CRASH_EXIT_CODE` (3221226505) — the
+   * confirmed Windows `d1 execute` crash. Every other runner failure (a different
+   * exit code, a timeout, a spawn/setup failure or a missing local Wrangler) and
+   * any successfully returned but malformed Wrangler payload stays fail-closed and
+   * never falls back. It is never used for a file write.
+   */
+  executeRemoteQuery?: (database: D1Database, statement: D1ImportStatement) => Promise<Record<string, unknown>[]>;
   /** Diagnostics only: the configured source kind. */
   sourceKind?: string;
 }
@@ -538,6 +551,53 @@ export async function buildD1RemoteDataCopyManifest(
     return options.runner(args);
   }
 
+  const executeRemoteQuery = options.executeRemoteQuery;
+
+  /**
+   * Executes one remote READ statement, preferring the existing Wrangler
+   * `--command` runner exactly as before. The statement is retried over the
+   * injected HTTP query ONLY when that runner invocation rejects with a
+   * `WranglerD1ExitError` whose `exitCode` is exactly
+   * `D1_WRANGLER_CRASH_EXIT_CODE` (3221226505) — the confirmed Windows
+   * `d1 execute` crash — and an injected HTTP query executor is available. On that
+   * narrow match a safe `http-query <database> <table>` audit marker is recorded
+   * (never SQL, values or secrets). Any other runner failure (a different exit
+   * code, a timeout, a spawn/setup failure or a missing local Wrangler) is
+   * re-thrown unchanged, and parsing stays OUTSIDE the try, so a successfully
+   * returned but malformed Wrangler payload remains fail-closed and never falls
+   * back. Writes never use this path.
+   */
+  async function readRemoteBatch(
+    target: D1RemoteTarget,
+    table: D1TableDefinition,
+    statement: D1ImportStatement,
+    command: string,
+  ): Promise<Record<string, unknown>[]> {
+    let stdout: string;
+    try {
+      stdout = await runWrangler([
+        "d1",
+        "execute",
+        target.name,
+        "--remote",
+        "--yes",
+        "--json",
+        "--command",
+        command,
+      ]);
+    } catch (error) {
+      if (
+        typeof executeRemoteQuery !== "function" ||
+        !isWranglerD1ExitError(error, D1_WRANGLER_CRASH_EXIT_CODE)
+      ) {
+        throw error;
+      }
+      commands.push(`http-query ${target.name} ${table.name}`);
+      return executeRemoteQuery(target.name, statement);
+    }
+    return parseD1ExecuteResultsJson(stdout);
+  }
+
   /** Bounded, primary-key-ordered remote read of the authored projection. */
   async function readRemoteRows(
     target: D1RemoteTarget,
@@ -549,9 +609,7 @@ export async function buildD1RemoteDataCopyManifest(
     for (;;) {
       const statement = d1ReadStatement(table, { limit, offset });
       const command = renderImportStatement(statement);
-      const batch = parseD1ExecuteResultsJson(
-        await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--command", command]),
-      );
+      const batch = await readRemoteBatch(target, table, statement, command);
       rows.push(...batch);
       if (batch.length < limit) break;
       offset += batch.length;
@@ -561,9 +619,7 @@ export async function buildD1RemoteDataCopyManifest(
 
   async function readRemoteRowCount(target: D1RemoteTarget, table: D1TableDefinition): Promise<number> {
     const command = `select count(*) as n from ${assertDataCopyIdentifier(table.name)}`;
-    const rows = parseD1ExecuteResultsJson(
-      await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--command", command]),
-    );
+    const rows = await readRemoteBatch(target, table, { sql: command, params: [] }, command);
     const value = rows[0]?.n;
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
       throw new D1RemoteError("d1_remote.malformed_count", `count(*) for ${table.name} was not a non-negative integer`);

@@ -83,6 +83,40 @@ export interface WranglerD1Runner {
   (args: string[]): Promise<string>;
 }
 
+/**
+ * The confirmed Windows `wrangler d1 execute` process crash exit code
+ * (`0xC0000005`, STATUS_ACCESS_VIOLATION, surfaced by Node as 3221226505). Only
+ * this exact code identifies the known crash the remote read fallback retries.
+ */
+export const D1_WRANGLER_CRASH_EXIT_CODE = 3221226505;
+
+/**
+ * A Wrangler child-process failure that carries the non-zero exit code it closed
+ * with. It lives in this runtime-safe contract (no `node:child_process`) so the
+ * data-copy module can classify a runner failure without importing the
+ * child-process adapter. Only a real non-zero child close code produces this
+ * type: a timeout, a spawn failure, a setup error or a signal-killed child
+ * rejects with a plain `Error`, so those remain distinguishable and never match
+ * the exit-code-gated read fallback.
+ */
+export class WranglerD1ExitError extends Error {
+  readonly exitCode: number;
+  constructor(exitCode: number, message: string) {
+    super(message);
+    this.name = "WranglerD1ExitError";
+    this.exitCode = exitCode;
+  }
+}
+
+/**
+ * The narrow classifier the read fallback keys on: true only for a
+ * `WranglerD1ExitError`, and when `exitCode` is supplied, only when it matches
+ * exactly. A plain `Error` (timeout/spawn/setup failure) is always false.
+ */
+export function isWranglerD1ExitError(error: unknown, exitCode?: number): error is WranglerD1ExitError {
+  return error instanceof WranglerD1ExitError && (exitCode === undefined || error.exitCode === exitCode);
+}
+
 /** One target's result in the remote bootstrap manifest. */
 export interface D1RemoteManifestTarget {
   name: D1Database;

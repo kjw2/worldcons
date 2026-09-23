@@ -14,7 +14,10 @@ import {
   parseD1RemoteListJson,
 } from "@/lib/cloudflare/d1/remote/classify";
 import { buildD1RemoteDataCopyManifest, D1_REMOTE_DATA_COPY_DATABASES } from "@/lib/cloudflare/d1/remote/data-copy";
-import { createD1HttpParameterizedWriter } from "@/lib/cloudflare/d1/remote/http-query";
+import {
+  createD1HttpParameterizedWriter,
+  createD1HttpQueryExecutor,
+} from "@/lib/cloudflare/d1/remote/http-query";
 import { createWranglerD1Runner } from "@/lib/cloudflare/d1/remote/runner";
 import { selectD1RemoteTargets } from "@/lib/cloudflare/d1/remote/targets";
 
@@ -39,6 +42,12 @@ const ACCOUNT_ID_PATTERN = /^[0-9a-f]{32}$/i;
 
 /** The bound-parameter write surface the manifest calls for an oversized statement. */
 type ExecuteParameterized = (database: D1Database, statement: D1ImportStatement) => Promise<void>;
+
+/** The bound-parameter READ surface the manifest calls when a Wrangler read crashes. */
+type ExecuteRemoteQuery = (
+  database: D1Database,
+  statement: D1ImportStatement,
+) => Promise<Record<string, unknown>[]>;
 
 /** The credential environment the lazy writer reads; defaults to `process.env`. */
 export type ParameterizedWriterEnv = Record<string, string | undefined>;
@@ -278,6 +287,31 @@ export async function resolveParameterizedWriter(options: {
   env: ParameterizedWriterEnv;
   fetch?: typeof fetch;
 }): Promise<ExecuteParameterized> {
+  const credentials = await resolveHttpCredentials({
+    runner: options.runner,
+    databases: options.databases,
+    env: options.env,
+  });
+  return createD1HttpParameterizedWriter({ ...credentials, fetch: options.fetch });
+}
+
+/**
+ * Resolves the operator-only HTTP credentials plus the exact selected database
+ * ids, fail-closed. It is shared by the bound-parameter writer and the remote
+ * read query so both use the SAME env/Wrangler auth precedence and the SAME
+ * selection: the account id and API token come from the environment when
+ * non-empty, otherwise the existing Wrangler session supplies them through the
+ * injected runner (`whoami --json` for the account, `auth token --json` for the
+ * token), then exactly `d1 list --json` runs once and ONLY the selected data-copy
+ * targets are classified by exact name (the `--database=` selection, else the
+ * three normal copy databases, so `worldcons_search` is never required), failing
+ * closed unless every target is exactly `existing` with a non-null entry.
+ */
+async function resolveHttpCredentials(options: {
+  runner: WranglerD1Runner;
+  databases: readonly D1Database[] | null;
+  env: ParameterizedWriterEnv;
+}): Promise<{ accountId: string; apiToken: string; databaseIds: Partial<Record<D1Database, string>> }> {
   const { runner, env } = options;
   const envAccountId = nonEmptyEnv(env[ACCOUNT_ID_ENV_VAR]);
   const envApiToken = nonEmptyEnv(env[API_TOKEN_ENV_VAR]);
@@ -295,13 +329,13 @@ export async function resolveParameterizedWriter(options: {
   for (const classification of classifications) {
     if (classification.state !== "existing" || classification.entry === null) {
       throw new Error(
-        `d1 list did not resolve ${classification.target.name} to exactly one existing database (${classification.state}); refusing the HTTP parameterized writer`,
+        `d1 list did not resolve ${classification.target.name} to exactly one existing database (${classification.state}); refusing the HTTP query surface`,
       );
     }
     databaseIds[classification.target.name] = classification.entry.uuid;
   }
 
-  return createD1HttpParameterizedWriter({ accountId, apiToken, databaseIds, fetch: options.fetch });
+  return { accountId, apiToken, databaseIds };
 }
 
 /**
@@ -339,6 +373,40 @@ export function createLazyParameterizedWriter(options: {
   };
 }
 
+/**
+ * Builds the lazy remote READ query the manifest receives in both modes.
+ *
+ * The returned callback is ALWAYS present (dry-run and apply) so the confirmed
+ * Windows Wrangler read crash can be retried through the D1 HTTP API, but it
+ * resolves nothing until its first actual invocation: credentials, `whoami`,
+ * `d1 list` and the executor are resolved ONCE behind a cached promise, then
+ * reused for every fallback read. Normal successful Wrangler reads never invoke
+ * it, so they cause ZERO `auth token`/`whoami`/`d1 list` calls through this
+ * fallback. It shares the writer's exact credential precedence and never prints
+ * a credential.
+ */
+export function createLazyRemoteQuery(options: {
+  runner: WranglerD1Runner;
+  databases: readonly D1Database[] | null;
+  env?: ParameterizedWriterEnv;
+  fetch?: typeof fetch;
+}): ExecuteRemoteQuery {
+  const env = options.env ?? process.env;
+  let executor: Promise<ExecuteRemoteQuery> | null = null;
+  const load = (): Promise<ExecuteRemoteQuery> => {
+    executor ??= resolveHttpCredentials({
+      runner: options.runner,
+      databases: options.databases,
+      env,
+    }).then((credentials) => createD1HttpQueryExecutor({ ...credentials, fetch: options.fetch }));
+    return executor;
+  };
+  return async (database, statement) => {
+    const execute = await load();
+    return execute(database, statement);
+  };
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const asJson = args.includes("--json");
@@ -350,6 +418,7 @@ async function main(): Promise<void> {
   const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
   try {
     const executeParameterized = createLazyParameterizedWriter({ apply, runner, databases });
+    const executeRemoteQuery = createLazyRemoteQuery({ runner, databases });
     const manifest = await buildD1RemoteDataCopyManifest({
       runner,
       source,
@@ -370,6 +439,7 @@ async function main(): Promise<void> {
           }
         : undefined,
       executeParameterized,
+      executeRemoteQuery,
     });
 
     if (writeReport) {

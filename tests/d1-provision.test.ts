@@ -9,6 +9,7 @@ import {
   D1_REMOTE_DEFAULT_LOCATION,
   D1_REMOTE_TARGETS,
   D1RemoteError,
+  WranglerD1ExitError,
   buildD1RemoteManifest,
   classifyD1RemoteTargets,
   parseD1RemoteInfoJson,
@@ -447,6 +448,50 @@ test("a failed Wrangler run rejects with the bounded message and never surfaces 
         assert.match(error.message, /wrangler d1 list failed with exit code 5/);
         assert.ok(!error.message.includes("\uC11C"));
         assert.ok(!error.message.includes("\uFFFD"));
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the Wrangler runner types a real exit code and keeps other failures plain", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "d1-provision-exit-code-"));
+  try {
+    // A real non-zero exit is surfaced as a typed WranglerD1ExitError carrying the
+    // exact code, so the read fallback can match 3221226505 and nothing else.
+    const probe = writeSplitUtf8Probe(dir, "probe-exit-7.js", "SECRET_SQL", [4], 7);
+    const runner = createWranglerD1Runner({
+      binary: process.execPath,
+      prefixArgs: [probe],
+      platform: "linux",
+      timeoutMs: 10_000,
+    });
+    await assert.rejects(
+      () => runner(["d1", "execute", "worldcons_core", "--remote", "--json", "--command", "select 1"]),
+      (error: unknown) => {
+        assert.ok(error instanceof WranglerD1ExitError, "a real exit code must be a typed exit error");
+        assert.equal(error.exitCode, 7, "the typed error must expose the exact exit code");
+        assert.match(error.message, /wrangler d1 execute failed with exit code 7/);
+        assert.ok(!error.message.includes("SECRET_SQL"), "the bounded message must not leak the command");
+        return true;
+      },
+    );
+
+    // A spawn/setup failure is NOT an exit code, so it stays a plain Error and can
+    // never be mistaken for the crash the read fallback retries.
+    const missingRunner = createWranglerD1Runner({
+      binary: path.join(dir, "does-not-exist-binary"),
+      platform: "linux",
+      timeoutMs: 10_000,
+    });
+    await assert.rejects(
+      () => missingRunner(["d1", "list", "--json"]),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error instanceof WranglerD1ExitError, false, "a spawn failure must not be a typed exit error");
+        assert.match(error.message, /failed to run wrangler/);
         return true;
       },
     );

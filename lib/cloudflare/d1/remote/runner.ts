@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { StringDecoder } from "node:string_decoder";
+import { WranglerD1ExitError } from "./types";
 import type { WranglerD1Runner } from "./types";
 
 /**
@@ -18,9 +19,12 @@ import type { WranglerD1Runner } from "./types";
  * - the Wrangler argument vector is authored by the caller and never built from
  *   untrusted input (the CLI validates `--database` against the canonical set and
  *   `--location` against a fixed pattern before it reaches this module);
- * - a non-zero exit rejects with a bounded message that names the subcommand and
- *   the exit code only, so raw Wrangler output (which can contain account
- *   details) never reaches a log or the persisted manifest;
+ * - a non-zero child close code rejects with a `WranglerD1ExitError` carrying the
+ *   numeric `exitCode` and a bounded message that names the subcommand and the
+ *   exit code only, so raw Wrangler output (which can contain account details)
+ *   never reaches a log or the persisted manifest. A timeout, a spawn/setup
+ *   failure or a signal-killed child (null close code) rejects with a plain
+ *   `Error`, so those stay distinguishable from a real exit code;
  * - the child is killed when it exceeds `timeoutMs`;
  * - on Windows the default runner does NOT use the `.cmd` shim or `cmd.exe` at
  *   all: it spawns `process.execPath` (Node) directly with the absolute local
@@ -227,8 +231,16 @@ export function createWranglerD1Runner(options: WranglerD1RunnerOptions = {}): W
       });
       child.on("close", (code) => {
         finish(() => {
+          if (code !== null && code !== 0) {
+            // A real non-zero exit code is the only failure that produces a typed
+            // error, so the exit-code-gated read fallback can key on it exactly.
+            reject(new WranglerD1ExitError(code, `wrangler ${wranglerSubcommand(args)} failed with exit code ${code}`));
+            return;
+          }
           if (code !== 0) {
-            reject(new Error(`wrangler ${wranglerSubcommand(args)} failed with exit code ${code ?? "unknown"}`));
+            // A null close code means the child was terminated by a signal, not an
+            // exit code; keep the bounded message but stay a plain Error.
+            reject(new Error(`wrangler ${wranglerSubcommand(args)} failed with exit code unknown`));
             return;
           }
           // Flush the decoder's final partial sequence exactly once on success;
