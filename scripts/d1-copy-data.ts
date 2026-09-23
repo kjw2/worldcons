@@ -26,6 +26,7 @@ const SOURCE_KINDS: readonly SourceKind[] = ["postgres", "supabase-linked"];
  *   pnpm d1:copy-data --apply --batch-size=1000 --rows-per-statement=50
  *   pnpm d1:copy-data --source=supabase-linked --database=worldcons_core --report
  *   pnpm d1:copy-data --source=supabase-linked --linked-max-stdout-bytes=16777216
+ *   pnpm d1:copy-data --source=supabase-linked --linked-timeout-ms=120000
  *
  * Operator-only and dry-run by default. It reads the M5.2a canonical datasets
  * from the read-only source and copies the missing suffix into the three
@@ -42,8 +43,9 @@ const SOURCE_KINDS: readonly SourceKind[] = ["postgres", "supabase-linked"];
  *   supabase-linked the `supabase db query --linked` CLI. It resolves its own
  *                   linked project, so it deliberately inspects NO URL environment
  *                   variable at all. `--linked-max-stdout-bytes=` optionally raises
- *                   its stdout bound; it is read ONLY here, and defaults to the
- *                   adapter's own 8 MiB cap when absent.
+ *                   its stdout bound and `--linked-timeout-ms=` optionally raises
+ *                   its child kill timeout; both are read ONLY here, and default to
+ *                   the adapter's own 8 MiB cap and 60s bound when absent.
  */
 function argValue(args: readonly string[], name: string): string | null {
   const prefix = `--${name}=`;
@@ -86,14 +88,16 @@ function resolveSourceKind(args: readonly string[]): SourceKind {
 /**
  * `postgres` resolves the connection URL explicitly (see `resolveSourceUrl`);
  * `supabase-linked` never touches a URL environment variable, because the linked
- * Supabase CLI resolves its own target project. `--linked-max-stdout-bytes=` is
- * read only inside the linked branch, so the postgres source ignores it entirely
- * and stays URL-only gated; when absent the adapter keeps its own 8 MiB cap.
+ * Supabase CLI resolves its own target project. `--linked-max-stdout-bytes=` and
+ * `--linked-timeout-ms=` are read only inside the linked branch, so the postgres
+ * source ignores them entirely and stays URL-only gated; when absent the adapter
+ * keeps its own 8 MiB cap and 60s timeout.
  */
 function createRowSource(kind: SourceKind, args: readonly string[]): PostgresRowSource {
   if (kind === "supabase-linked") {
     return createSupabaseLinkedRowSource({
       maxStdoutBytes: positiveIntegerArg(args, "linked-max-stdout-bytes") ?? undefined,
+      timeoutMs: positiveIntegerArg(args, "linked-timeout-ms") ?? undefined,
     });
   }
   return createPostgresRowSource({ connectionString: resolveSourceUrl(args) });

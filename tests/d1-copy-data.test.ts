@@ -794,7 +794,7 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     "the linked stdout bound must be parsed as a positive integer",
   );
   assert.ok(
-    /createSupabaseLinkedRowSource\(\{\s*maxStdoutBytes:\s*positiveIntegerArg\(args, "linked-max-stdout-bytes"\)\s*\?\?\s*undefined,?\s*\}\)/.test(
+    /createSupabaseLinkedRowSource\(\{\s*maxStdoutBytes:\s*positiveIntegerArg\(args, "linked-max-stdout-bytes"\)\s*\?\?\s*undefined,?[\s\S]*?\}\)/.test(
       cliCode,
     ),
     "the linked branch must thread --linked-max-stdout-bytes into createSupabaseLinkedRowSource as maxStdoutBytes",
@@ -810,6 +810,28 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     "--linked-max-stdout-bytes must be read exactly once, so the postgres source ignores it",
   );
 
+  // `--linked-timeout-ms=` is a positive-integer option read ONLY by the linked
+  // branch and threaded in as `timeoutMs` alongside `maxStdoutBytes`; absent,
+  // `?? undefined` keeps it unset and the adapter retains its own 60s default.
+  // It is distinct from the Wrangler runner's `--timeout-ms`, whose semantics are
+  // untouched.
+  assert.ok(cliSource.includes("linked-timeout-ms"), "the CLI must document --linked-timeout-ms");
+  assert.ok(
+    cliCode.includes('positiveIntegerArg(args, "linked-timeout-ms")'),
+    "the linked timeout must be parsed as a positive integer",
+  );
+  assert.ok(
+    /createSupabaseLinkedRowSource\(\{[\s\S]*?timeoutMs:\s*positiveIntegerArg\(args, "linked-timeout-ms"\)\s*\?\?\s*undefined,?\s*\}\)/.test(
+      cliCode,
+    ),
+    "the linked branch must thread --linked-timeout-ms into createSupabaseLinkedRowSource as timeoutMs",
+  );
+  assert.equal(
+    (cliCode.match(/linked-timeout-ms/g) ?? []).length,
+    1,
+    "--linked-timeout-ms must be read exactly once, so the postgres source ignores it",
+  );
+
   // The postgres branch is untouched: it never mentions the linked stdout bound and
   // still resolves its connection URL explicitly.
   const sourceFactory = /function createRowSource[\s\S]*?\n\}/.exec(cliCode)?.[0] ?? "";
@@ -821,6 +843,15 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
   assert.ok(
     !/createPostgresRowSource\([^)]*maxStdoutBytes/.test(sourceFactory),
     "the postgres construction must not consume the linked stdout bound",
+  );
+  assert.equal(
+    (sourceFactory.match(/timeoutMs/g) ?? []).length,
+    1,
+    "the linked timeout must be wired exactly once inside createRowSource",
+  );
+  assert.ok(
+    !/createPostgresRowSource\([^)]*timeoutMs/.test(sourceFactory),
+    "the postgres construction must not consume the linked timeout",
   );
 
   // Apply is an explicit flag, threaded into the manifest builder.
