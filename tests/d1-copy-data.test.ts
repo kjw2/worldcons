@@ -18,12 +18,18 @@ import {
   type PostgresRowSource,
 } from "../lib/cloudflare/d1/convert";
 import type { D1ImportStatement } from "../lib/cloudflare/d1/import/types";
-import type { WranglerD1Runner } from "../lib/cloudflare/d1/remote";
+import { D1RemoteError, type WranglerD1Runner } from "../lib/cloudflare/d1/remote";
 import {
   buildD1RemoteDataCopyManifest,
   D1_REMOTE_DATA_COPY_DATABASES,
   D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES,
 } from "../lib/cloudflare/d1/remote/data-copy";
+import {
+  createLazyParameterizedWriter,
+  parseAuthTokenJson,
+  parseWhoamiAccountId,
+  resolveParameterizedWriter,
+} from "../scripts/d1-copy-data";
 
 const copyTable = buildTable({
   name: "copy_probe",
@@ -1239,29 +1245,60 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
   assert.ok(!cliCode.includes("--api-token"), "the CLI must not expose an --api-token argument");
   assert.ok(!cliCode.includes("--account-id"), "the CLI must not expose an --account-id argument");
 
-  const httpWriterStart = cliCode.indexOf("async function createHttpParameterizedWriter");
-  const httpWriterEnd = cliCode.indexOf("\nasync function main", httpWriterStart);
-  const httpWriter =
-    httpWriterStart === -1 || httpWriterEnd === -1 ? "" : cliCode.slice(httpWriterStart, httpWriterEnd);
-  assert.ok(httpWriter.length > 0, "createHttpParameterizedWriter must remain in the CLI source");
-
-  // `d1 list --json` is gated by apply AND both env values: the dry-run returns
-  // undefined before any credential read, and a missing value returns undefined
-  // before any runner call.
+  // The writer is LAZY: a dry-run returns undefined before reading a credential,
+  // and apply mode builds a callback whose credential/list resolution is deferred
+  // behind a cached promise so it runs at most once.
+  const lazyStart = cliCode.indexOf("export function createLazyParameterizedWriter");
+  const lazyEnd = cliCode.indexOf("\nasync function main", lazyStart);
+  const lazyWriter = lazyStart === -1 || lazyEnd === -1 ? "" : cliCode.slice(lazyStart, lazyEnd);
+  assert.ok(lazyWriter.length > 0, "createLazyParameterizedWriter must remain in the CLI source");
   assert.ok(
-    httpWriter.includes("if (!options.apply) return undefined;"),
-    "the HTTP writer must return undefined for a dry-run before anything else",
+    /if \(!options\.apply\) return undefined;/.test(lazyWriter),
+    "the lazy writer must return undefined for a dry-run before reading any credential",
   );
   assert.ok(
-    /if \(!options\.apply\) return undefined;[\s\S]*?process\.env\[ACCOUNT_ID_ENV_VAR\][\s\S]*?process\.env\[API_TOKEN_ENV_VAR\][\s\S]*?if \(accountId\.length === 0 \|\| apiToken\.length === 0\) return undefined;[\s\S]*?options\.runner\(\["d1", "list", "--json"\]\)/.test(
-      httpWriter,
-    ),
-    "d1 list --json must run only when apply is true AND both env values are non-empty",
+    /writer \?\?= resolveParameterizedWriter\(/.test(lazyWriter),
+    "the lazy writer must cache the resolved writer promise so auth/list happen at most once",
+  );
+
+  // Credential resolution is deferred to `resolveParameterizedWriter`: non-empty
+  // env values are used directly, and any missing value falls back to the
+  // existing Wrangler session through the same runner.
+  const resolverStart = cliCode.indexOf("export async function resolveParameterizedWriter");
+  const resolverEnd = cliCode.indexOf("\nexport function createLazyParameterizedWriter", resolverStart);
+  const resolver = resolverStart === -1 || resolverEnd === -1 ? "" : cliCode.slice(resolverStart, resolverEnd);
+  assert.ok(resolver.length > 0, "resolveParameterizedWriter must remain in the CLI source");
+  assert.ok(
+    /nonEmptyEnv\(env\[ACCOUNT_ID_ENV_VAR\]\)/.test(resolver) &&
+      /nonEmptyEnv\(env\[API_TOKEN_ENV_VAR\]\)/.test(resolver),
+    "the resolver must read both credential env values through the non-empty gate",
+  );
+  assert.ok(
+    resolver.includes('runner(["auth", "token", "--json"])'),
+    "the resolver must fall back to `auth token --json` when CLOUDFLARE_API_TOKEN is absent",
+  );
+  assert.ok(
+    resolver.includes('runner(["whoami", "--json"])'),
+    "the resolver must fall back to `whoami --json` when CLOUDFLARE_ACCOUNT_ID is absent",
+  );
+  assert.ok(
+    resolver.includes('runner(["d1", "list", "--json"])'),
+    "the resolver must run `d1 list --json` once to build the database id map",
   );
   assert.equal(
     (cliCode.match(/\["d1", "list", "--json"\]/g) ?? []).length,
     1,
-    "the HTTP writer must run exactly `d1 list --json` once",
+    "the CLI must run exactly `d1 list --json` once",
+  );
+  assert.equal(
+    (cliCode.match(/\["auth", "token", "--json"\]/g) ?? []).length,
+    1,
+    "the CLI must run exactly `auth token --json` once",
+  );
+  assert.equal(
+    (cliCode.match(/\["whoami", "--json"\]/g) ?? []).length,
+    1,
+    "the CLI must run exactly `whoami --json` once",
   );
 
   // Exact-name classification only, defaulting to the copy databases so the
@@ -1281,7 +1318,7 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
   );
   assert.ok(
     /classifyD1RemoteTargets\([\s\S]*?selectD1RemoteTargets\(options\.databases \?\? D1_REMOTE_DATA_COPY_DATABASES\)/.test(
-      httpWriter,
+      resolver,
     ),
     "the HTTP targets must default to the copy databases, never the full four",
   );
@@ -1293,15 +1330,29 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
   assert.ok(D1_REMOTE_DATA_COPY_DATABASES.includes("worldcons_ingest"));
   assert.ok(D1_REMOTE_DATA_COPY_DATABASES.includes("worldcons_ops"));
 
-  // The resolved writer (possibly undefined) is passed into the manifest builder.
+  // main builds the lazy callback in apply mode and never awaits it eagerly, so a
+  // dry-run passes undefined and a small file-only apply never authenticates.
   assert.ok(
-    /buildD1RemoteDataCopyManifest\(\{[\s\S]*?\bexecuteParameterized,/.test(cliCode),
-    "the resolved HTTP writer must be passed in as executeParameterized",
+    /const executeParameterized = createLazyParameterizedWriter\(\{ apply, runner, databases \}\)/.test(cliCode),
+    "main must build the lazy writer with `{ apply, runner, databases }` and never await it eagerly",
   );
   assert.ok(
-    /if \(classification\.state !== "existing" \|\| classification\.entry === null\)/.test(httpWriter) &&
-      /databaseIds\[classification\.target\.name\] = classification\.entry\.uuid/.test(httpWriter),
+    /buildD1RemoteDataCopyManifest\(\{[\s\S]*?\bexecuteParameterized,/.test(cliCode),
+    "the lazy writer must be passed in as executeParameterized",
+  );
+  assert.ok(
+    /if \(classification\.state !== "existing" \|\| classification\.entry === null\)/.test(resolver) &&
+      /databaseIds\[classification\.target\.name\] = classification\.entry\.uuid/.test(resolver),
     "the writer must fail closed unless every target is exactly existing and map its entry.uuid",
+  );
+  assert.ok(
+    cliCode.includes("parseAuthTokenJson") && cliCode.includes("parseWhoamiAccountId"),
+    "the CLI must parse auth token and whoami JSON strictly",
+  );
+  // main only runs when the module is the entry script, so the helpers are import-safe.
+  assert.ok(
+    cliCode.includes("pathToFileURL") && cliCode.includes("import.meta.url"),
+    "the CLI must guard main() so the helpers can be imported under test",
   );
 
   // Deterministic artifact layout.
@@ -1340,4 +1391,249 @@ test("the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contr
     pkg.scripts["verify:release"].includes("pnpm test:d1-copy-data"),
     "verify:release must run pnpm test:d1-copy-data",
   );
+});
+
+/** A valid 32-hex Cloudflare account id, a UUID-shaped D1 id and a sentinel token. */
+const CREDENTIAL_ACCOUNT_ID = "0123456789abcdef0123456789abcdef";
+const CREDENTIAL_DATABASE_UUID = "11111111-2222-3333-4444-555555555555";
+const CREDENTIAL_TOKEN = "secret-api-token-value";
+
+const CREDENTIAL_LIST_JSON = JSON.stringify([
+  { name: "worldcons_core", uuid: CREDENTIAL_DATABASE_UUID, created_at: "2026-09-21T00:00:00.000Z" },
+]);
+const CREDENTIAL_TOKEN_JSON = JSON.stringify({ type: "api_token", token: CREDENTIAL_TOKEN });
+const CREDENTIAL_WHOAMI_JSON = JSON.stringify({
+  loggedIn: true,
+  accounts: [{ id: CREDENTIAL_ACCOUNT_ID, name: "operator" }],
+});
+
+interface CredentialRunner {
+  runner: WranglerD1Runner;
+  calls: string[][];
+}
+
+/**
+ * A fake Wrangler runner that answers the three credential/list commands and
+ * records every argv, so a test can prove the lazy path makes each call exactly
+ * once. Any other command fails, so an unexpected invocation is never silent.
+ */
+function createCredentialRunner(
+  overrides: Partial<{ authToken: string | Error; whoami: string | Error; list: string | Error }> = {},
+): CredentialRunner {
+  const calls: string[][] = [];
+  const runner: WranglerD1Runner = async (args) => {
+    calls.push(args);
+    const command = args.join(" ");
+    const chosen = (value: string | Error | undefined, fallback: string): string => {
+      const resolved = value ?? fallback;
+      if (resolved instanceof Error) throw resolved;
+      return resolved;
+    };
+    if (command === "auth token --json") return chosen(overrides.authToken, CREDENTIAL_TOKEN_JSON);
+    if (command === "whoami --json") return chosen(overrides.whoami, CREDENTIAL_WHOAMI_JSON);
+    if (command === "d1 list --json") return chosen(overrides.list, CREDENTIAL_LIST_JSON);
+    throw new Error(`unexpected wrangler command: ${command}`);
+  };
+  return { runner, calls };
+}
+
+/** A fake D1 HTTP API that succeeds with zero network and counts its requests. */
+function createCredentialFetch(): { fetchImpl: typeof fetch; count: () => number } {
+  let count = 0;
+  const fetchImpl = (async () => {
+    count += 1;
+    return new Response(JSON.stringify({ success: true, result: [{ success: true }] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  return { fetchImpl, count: () => count };
+}
+
+test("the lazy parameterized writer is undefined in dry-run and reads no credential", () => {
+  const { runner, calls } = createCredentialRunner();
+  const writer = createLazyParameterizedWriter({ apply: false, runner, databases: null, env: {} });
+  assert.equal(writer, undefined);
+  assert.equal(calls.length, 0, "a dry-run must not resolve a credential, whoami or d1 list");
+});
+
+test("a small file-only apply holds the lazy writer but never invokes it", async () => {
+  const harness = createHarness();
+  const { runner: credentialRunner, calls } = createCredentialRunner();
+  const executeParameterized = createLazyParameterizedWriter({
+    apply: true,
+    runner: credentialRunner,
+    databases: ["worldcons_core"],
+    env: {},
+  });
+  assert.equal(typeof executeParameterized, "function");
+
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.totals.copied, 1);
+  assert.deepEqual(harness.executions, ["file"], "a small apply writes only through Wrangler --file");
+  assert.equal(harness.parameterCalls.length, 0);
+  assert.equal(calls.length, 0, "a small file-only apply must never resolve credentials, whoami or d1 list");
+});
+
+test("the first oversized write resolves auth token + whoami + d1 list once, then reuses the cached writer", async () => {
+  const { runner, calls } = createCredentialRunner();
+  const { fetchImpl, count } = createCredentialFetch();
+  const executeParameterized = createLazyParameterizedWriter({
+    apply: true,
+    runner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: fetchImpl,
+  });
+  assert.ok(executeParameterized);
+
+  const statement: D1ImportStatement = {
+    sql: "insert into copy_probe (id, body, rank) values (?, ?, ?);",
+    params: ["row-1", "body 1", 1],
+  };
+  await executeParameterized("worldcons_core", statement);
+  await executeParameterized("worldcons_core", statement);
+
+  assert.deepEqual(
+    calls,
+    [
+      ["auth", "token", "--json"],
+      ["whoami", "--json"],
+      ["d1", "list", "--json"],
+    ],
+    "credential and list resolution must happen exactly once, on the first actual invocation",
+  );
+  assert.equal(count(), 2, "both statements still reach the D1 HTTP API");
+});
+
+test("environment credentials skip auth token and whoami but still classify d1 list once", async () => {
+  const { runner, calls } = createCredentialRunner();
+  const { fetchImpl } = createCredentialFetch();
+  const executeParameterized = createLazyParameterizedWriter({
+    apply: true,
+    runner,
+    databases: ["worldcons_core"],
+    env: { CLOUDFLARE_ACCOUNT_ID: CREDENTIAL_ACCOUNT_ID, CLOUDFLARE_API_TOKEN: "env-token" },
+    fetch: fetchImpl,
+  });
+  assert.ok(executeParameterized);
+
+  await executeParameterized("worldcons_core", { sql: "insert into copy_probe (id) values (?);", params: ["row-1"] });
+
+  assert.deepEqual(calls, [["d1", "list", "--json"]], "env credentials must skip auth token and whoami");
+});
+
+test("a malformed or global-key auth token fails closed without leaking the token", () => {
+  const malformed = [
+    "<!doctype html><html>not json</html>",
+    JSON.stringify({ type: "api_key", token: CREDENTIAL_TOKEN }),
+    JSON.stringify({ type: "api_token" }),
+    JSON.stringify({ type: "api_token", token: "" }),
+  ];
+  for (const output of malformed) {
+    assert.throws(
+      () => parseAuthTokenJson(output),
+      (error: unknown) => {
+        assert.ok(error instanceof D1RemoteError, "auth token failures must be a stable D1RemoteError");
+        assert.ok(!error.message.includes(CREDENTIAL_TOKEN), "the error must never include the token");
+        assert.ok(!error.message.includes("doctype"), "the error must never include the raw output");
+        return true;
+      },
+    );
+  }
+  assert.equal(
+    parseAuthTokenJson(JSON.stringify({ type: "oauth", token: CREDENTIAL_TOKEN })),
+    CREDENTIAL_TOKEN,
+    "an oauth token is accepted",
+  );
+});
+
+test("a malformed, logged-out or ambiguous whoami fails closed with a stable code", () => {
+  assert.throws(() => parseWhoamiAccountId("<not json>", null), /malformed_whoami_json/);
+  assert.throws(
+    () => parseWhoamiAccountId(JSON.stringify({ loggedIn: false, accounts: [] }), null),
+    /not_logged_in/,
+  );
+  assert.throws(() => parseWhoamiAccountId(JSON.stringify({ loggedIn: true }), null), /malformed_whoami_json/);
+  assert.throws(
+    () =>
+      parseWhoamiAccountId(
+        JSON.stringify({
+          loggedIn: true,
+          accounts: [{ id: CREDENTIAL_ACCOUNT_ID }, { id: "ffffffffffffffffffffffffffffffff" }],
+        }),
+        null,
+      ),
+    /ambiguous_account/,
+  );
+  assert.throws(
+    () => parseWhoamiAccountId(JSON.stringify({ loggedIn: true, accounts: [{ id: "not-a-hex-id" }] }), null),
+    /invalid_account_id/,
+  );
+  assert.throws(
+    () =>
+      parseWhoamiAccountId(
+        JSON.stringify({ loggedIn: true, accounts: [{ id: CREDENTIAL_ACCOUNT_ID }] }),
+        "ffffffffffffffffffffffffffffffff",
+      ),
+    /account_mismatch/,
+  );
+  assert.equal(
+    parseWhoamiAccountId(JSON.stringify({ loggedIn: true, accounts: [{ id: CREDENTIAL_ACCOUNT_ID }] }), null),
+    CREDENTIAL_ACCOUNT_ID,
+    "a single valid account is selected directly",
+  );
+  assert.equal(
+    parseWhoamiAccountId(
+      JSON.stringify({ loggedIn: true, accounts: [{ id: CREDENTIAL_ACCOUNT_ID }] }),
+      CREDENTIAL_ACCOUNT_ID,
+    ),
+    CREDENTIAL_ACCOUNT_ID,
+    "a matching expected account is returned unchanged",
+  );
+});
+
+test("a malformed d1 list fails closed from the resolver before any HTTP request", async () => {
+  const { runner, calls } = createCredentialRunner({ list: "not json" });
+  const { fetchImpl, count } = createCredentialFetch();
+  await assert.rejects(
+    resolveParameterizedWriter({
+      runner,
+      databases: ["worldcons_core"],
+      env: { CLOUDFLARE_ACCOUNT_ID: CREDENTIAL_ACCOUNT_ID, CLOUDFLARE_API_TOKEN: "env-token" },
+      fetch: fetchImpl,
+    }),
+    /malformed_list_json/,
+  );
+  assert.deepEqual(calls, [["d1", "list", "--json"]]);
+  assert.equal(count(), 0, "a malformed list must fail before any HTTP request");
+});
+
+test("a lazy writer whose first resolution fails stays failed closed and never retries auth", async () => {
+  const { runner, calls } = createCredentialRunner({
+    authToken: JSON.stringify({ type: "api_key", token: CREDENTIAL_TOKEN }),
+  });
+  const { fetchImpl } = createCredentialFetch();
+  const executeParameterized = createLazyParameterizedWriter({
+    apply: true,
+    runner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: fetchImpl,
+  });
+  assert.ok(executeParameterized);
+  const statement: D1ImportStatement = { sql: "insert into copy_probe (id) values (?);", params: ["row-1"] };
+  await assert.rejects(executeParameterized("worldcons_core", statement), /auth_token_unusable/);
+  await assert.rejects(executeParameterized("worldcons_core", statement), /auth_token_unusable/);
+  assert.deepEqual(calls, [["auth", "token", "--json"]], "a cached rejection must not re-run auth or d1 list");
 });
