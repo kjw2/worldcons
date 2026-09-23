@@ -1,6 +1,6 @@
 import { canonicalJson } from "@/lib/backfill/canonical-json";
 import { columnCanonicalKind } from "../canonical-row";
-import type { CanonicalRow } from "../canonical-row";
+import type { CanonicalRow, CanonicalScalar } from "../canonical-row";
 import { convertTable, migratableTables } from "../convert/pipeline";
 import { toCanonicalTableDataset } from "../convert/transform";
 import type { CanonicalTableDataset, PostgresRowSource } from "../convert/types";
@@ -32,8 +32,11 @@ import type { WranglerD1Runner } from "./types";
  *   before canonicalizing so the remote hash is directly comparable;
  * - the comparison is fail-closed: an empty remote table is `pending`, an exact
  *   full count + hash match is `existing` (a verified no-op with zero writes), a
- *   strict canonical prefix is `resumable` (only the suffix is copied), and
- *   anything else is `refused`;
+ *   strict canonical subset (every remote primary key exists in the captured
+ *   source with an identical canonical row) is `resumable`, and anything else is
+ *   `refused`; a resumable table writes only the source rows whose primary key is
+ *   absent remotely, in source canonical order, so identical rows are never
+ *   rewritten;
  * - every copy candidate (pending/resumable) gets a write plan computed once,
  *   before the dry-run/apply branch, so a dry-run reports the exact
  *   `plannedWriteCount`/`plannedParameterizedWriteCount`/`requiresParameterizedWriter`
@@ -72,9 +75,9 @@ export const D1_REMOTE_DATA_COPY_DATABASES: readonly D1Database[] = [
  * A table's remote state after comparison:
  * - `pending`   the remote table is empty;
  * - `existing`  the remote rows exactly match the full canonical dataset;
- * - `resumable` the remote rows are a strict canonical prefix of the dataset;
- * - `applied`   this run copied the missing suffix and the final read matched;
- * - `refused`   the remote rows are neither exact nor a prefix (never written);
+ * - `resumable` the remote rows are a strict canonical subset of the dataset;
+ * - `applied`   this run copied the missing rows and the final read matched;
+ * - `refused`   the remote rows are neither exact nor a canonical subset (never written);
  * - `unknown`   a read or verification failed, so the state is unproven.
  */
 export const D1_REMOTE_DATA_COPY_STATES = [
@@ -156,7 +159,7 @@ export interface D1RemoteDataCopyManifestTotals {
   copiedRows: number;
   /** Tables already exactly present (`state:"existing"`). */
   existing: number;
-  /** Tables whose remote rows are a strict canonical prefix. */
+  /** Tables whose remote rows are a strict canonical subset. */
   resumable: number;
   /** Tables whose remote table is empty. */
   pending: number;
@@ -278,23 +281,75 @@ function reviveRow(table: D1TableDefinition, row: Record<string, unknown>): Reco
   return revived;
 }
 
-/** True when `prefix` equals the first rows of `full` under canonical JSON. */
-function isCanonicalPrefix(full: readonly CanonicalRow[], prefix: readonly CanonicalRow[]): boolean {
-  if (prefix.length > full.length) return false;
-  for (let index = 0; index < prefix.length; index += 1) {
-    if (canonicalJson(full[index]) !== canonicalJson(prefix[index])) return false;
+/**
+ * The deterministic canonical primary-key identity of a row: the canonical JSON
+ * of its declared primary-key column values, in schema order. Composite keys are
+ * supported. Returns null when the table declares no primary key (or a declared
+ * key column is not a real column), so a table without a stable identity fails
+ * closed instead of guessing at one.
+ */
+function canonicalRowKey(table: D1TableDefinition, row: CanonicalRow): string | null {
+  if (table.primaryKey.length === 0) return null;
+  const values: CanonicalScalar[] = [];
+  for (const name of table.primaryKey) {
+    if (!table.columns.some((column) => column.name === name)) return null;
+    values.push(row[name] ?? null);
   }
-  return true;
+  return canonicalJson(values);
 }
 
-type RemoteComparison = "pending" | "existing" | "resumable" | "refused";
+/**
+ * Plans a canonical-subset resume: the source rows whose primary key is absent
+ * from the remote dataset, in source canonical order. Returns null (refuse) when
+ * the remote is not a safe subset — no declared primary key, a duplicate key on
+ * either side, a remote key absent from the source, or a same-key row whose full
+ * canonical row differs. Only the missing rows are returned, so an identical
+ * remote row is never rewritten (no `insert or replace`/upsert masking).
+ */
+function canonicalSubsetPlan(
+  table: D1TableDefinition,
+  source: CanonicalTableDataset,
+  remote: CanonicalTableDataset,
+): CanonicalRow[] | null {
+  const sourceByKey = new Map<string, CanonicalRow>();
+  const sourceKeys: string[] = [];
+  for (const row of source.rows) {
+    const key = canonicalRowKey(table, row);
+    if (key === null || sourceByKey.has(key)) return null;
+    sourceByKey.set(key, row);
+    sourceKeys.push(key);
+  }
+  const remoteKeys = new Set<string>();
+  for (const row of remote.rows) {
+    const key = canonicalRowKey(table, row);
+    if (key === null || remoteKeys.has(key)) return null;
+    const expected = sourceByKey.get(key);
+    if (expected === undefined || canonicalJson(expected) !== canonicalJson(row)) return null;
+    remoteKeys.add(key);
+  }
+  const missing: CanonicalRow[] = [];
+  for (let index = 0; index < source.rows.length; index += 1) {
+    if (!remoteKeys.has(sourceKeys[index])) missing.push(source.rows[index]);
+  }
+  return missing.length === 0 ? null : missing;
+}
+
+type RemoteComparison =
+  | { kind: "existing" }
+  | { kind: "pending" }
+  | { kind: "resumable"; rows: CanonicalRow[] }
+  | { kind: "refused" };
 
 /** Classifies the remote table against the canonical dataset, fail-closed. */
-function compareRemote(source: CanonicalTableDataset, remote: CanonicalTableDataset): RemoteComparison {
-  if (remote.rowCount === source.rowCount && remote.hash === source.hash) return "existing";
-  if (remote.rowCount === 0) return "pending";
-  if (remote.rowCount < source.rowCount && isCanonicalPrefix(source.rows, remote.rows)) return "resumable";
-  return "refused";
+function compareRemote(
+  table: D1TableDefinition,
+  source: CanonicalTableDataset,
+  remote: CanonicalTableDataset,
+): RemoteComparison {
+  if (remote.rowCount === source.rowCount && remote.hash === source.hash) return { kind: "existing" };
+  if (remote.rowCount === 0) return { kind: "pending" };
+  const rows = canonicalSubsetPlan(table, source, remote);
+  return rows === null ? { kind: "refused" } : { kind: "resumable", rows };
 }
 
 /**
@@ -309,23 +364,23 @@ type PlannedWrite =
   | { kind: "parameter"; statement: D1ImportStatement; rowCount: number };
 
 /**
- * Classifies the plain-insert suffix into ordered write items. Statements come
- * from the M5.2b emitter (so the D1 bound-parameter limit is respected) and stay
- * parameterized until classified here. A statement whose literal rendering fits
- * the literal-statement threshold is grouped greedily, bounded by statement count
- * and byte size; a statement whose literal rendering exceeds the threshold flushes
- * any pending file chunk and is emitted as a parameterized write carrying the
- * ORIGINAL statement, so an oversized row is never materialized into a file.
+ * Classifies a set of canonical rows into ordered plain-insert write items.
+ * Statements come from the M5.2b emitter (so the D1 bound-parameter limit is
+ * respected) and stay parameterized until classified here. A statement whose
+ * literal rendering fits the literal-statement threshold is grouped greedily,
+ * bounded by statement count and byte size; a statement whose literal rendering
+ * exceeds the threshold flushes any pending file chunk and is emitted as a
+ * parameterized write carrying the ORIGINAL statement, so an oversized row is
+ * never materialized into a file. The rows are written in the order given.
  */
 function planWrites(
   table: D1TableDefinition,
   dataset: CanonicalTableDataset,
-  from: number,
+  rows: readonly CanonicalRow[],
   options: { rowsPerStatement?: number | null; maxStatements: number; maxBytes: number },
 ): { writes: PlannedWrite[]; totalRows: number } {
-  const rows = dataset.rows.slice(from);
-  const suffix: CanonicalTableDataset = { ...dataset, rowCount: rows.length, rows };
-  const imported = emitTableImport(table, suffix, { rowsPerStatement: options.rowsPerStatement ?? null });
+  const subset: CanonicalTableDataset = { ...dataset, rowCount: rows.length, rows: [...rows] };
+  const imported = emitTableImport(table, subset, { rowsPerStatement: options.rowsPerStatement ?? null });
   const columns = imported.columns.length;
   const writes: PlannedWrite[] = [];
   let pendingSql: string[] = [];
@@ -592,26 +647,29 @@ export async function buildD1RemoteDataCopyManifest(
           errors: [],
         };
 
-        const comparison = compareRemote(dataset, remote);
-        if (comparison === "existing") {
+        const comparison = compareRemote(table, dataset, remote);
+        if (comparison.kind === "existing") {
           result.state = "existing";
           result.action = "none";
           result.verified = true;
-        } else if (comparison === "refused") {
+        } else if (comparison.kind === "refused") {
           result.state = "refused";
           result.action = "refused";
           result.errors.push(
-            `remote rows (${remote.rowCount}) are neither the full dataset (${dataset.rowCount} rows, hash ${dataset.hash.slice(0, 12)}) nor a canonical prefix`,
+            `remote rows (${remote.rowCount}) are neither the full dataset (${dataset.rowCount} rows, hash ${dataset.hash.slice(0, 12)}) nor a canonical subset`,
           );
-          errors.push(`${target.name}::${table.name}: remote rows are not a canonical prefix; refused`);
+          errors.push(`${target.name}::${table.name}: remote rows are not a canonical subset; refused`);
           aborted = true;
         } else {
-          // A pending/resumable table is a copy candidate. Plan its writes once, here
-          // and before the apply branch, so the dry-run preflight records the exact
-          // plan while materializing nothing, writing nothing and making no HTTP call,
-          // and apply reuses this same plan instead of recomputing it. `chunkCount`
-          // below stays executed write items only.
-          const { writes, totalRows } = planWrites(table, dataset, remote.rowCount, {
+          // A pending/resumable table is a copy candidate. A pending table writes
+          // every canonical row; a resumable table writes only the source rows whose
+          // primary key is absent remotely, in source canonical order. Plan those
+          // writes once, here and before the apply branch, so the dry-run preflight
+          // records the exact plan while materializing nothing, writing nothing and
+          // making no HTTP call, and apply reuses this same plan instead of
+          // recomputing it. `chunkCount` below stays executed write items only.
+          const rows = comparison.kind === "resumable" ? comparison.rows : dataset.rows;
+          const { writes, totalRows } = planWrites(table, dataset, rows, {
             rowsPerStatement: options.rowsPerStatement ?? null,
             maxStatements: maxStatementsPerChunk,
             maxBytes: maxBytesPerChunk,
@@ -620,7 +678,7 @@ export async function buildD1RemoteDataCopyManifest(
           result.plannedParameterizedWriteCount = writes.filter((write) => write.kind === "parameter").length;
           result.requiresParameterizedWriter = result.plannedParameterizedWriteCount > 0;
           if (!apply) {
-            result.state = comparison;
+            result.state = comparison.kind;
             result.action = "copy";
           } else {
             const executeParameterized = options.executeParameterized;

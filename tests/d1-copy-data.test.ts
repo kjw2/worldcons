@@ -423,7 +423,7 @@ test("a strict canonical prefix resumes and copies only the suffix", async () =>
   assert.ok(!chunks[0].includes("'row-1'"), "the persisted prefix must not be re-inserted");
 });
 
-test("a non-prefix partial remote is refused before any write", async () => {
+test("a remote row set whose primary keys are absent from the source is refused before any write", async () => {
   const strangers = FULL_ROWS.slice(0, 2).map((row) => ({ ...row, id: `zz-${String(row.id)}` }));
   const harness = createHarness({ copy_probe: strangers });
   const manifest = await buildD1RemoteDataCopyManifest({
@@ -479,6 +479,197 @@ test("a remote row set longer than the source is refused with zero writes", asyn
   assert.ok(table.errors.some((error) => error.includes("neither the full dataset")));
   assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
   assert.equal(harness.files.size, 0);
+});
+
+/**
+ * A source whose new row `r3` sorts before the previously copied `r4` boundary, so
+ * its remote subset is non-prefix. Every remote row is canonical-identical to its
+ * source row, so a canonical-subset resume must accept it while a prefix-only
+ * resume would refuse.
+ */
+const INSERTED_SOURCE_ROWS: Record<string, unknown>[] = [
+  { id: "r1", body: "b1", rank: 1 },
+  { id: "r2", body: "b2", rank: 2 },
+  { id: "r3", body: "b3", rank: 3 },
+  { id: "r4", body: "b4", rank: 4 },
+  { id: "r5", body: "b5", rank: 5 },
+  { id: "r6", body: "b6", rank: 6 },
+];
+const INSERTED_REMOTE_ROWS = INSERTED_SOURCE_ROWS.filter((row) => row.id !== "r3");
+
+test("a non-prefix canonical subset from an inserted earlier primary key resumes and writes only the missing row", async () => {
+  const harness = createHarness({ copy_probe: toCanonicalTableDataset(copyTable, INSERTED_REMOTE_ROWS).rows });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: createFakeSource({ copy_probe: INSERTED_SOURCE_ROWS }),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.totals.copied, 1);
+  assert.equal(manifest.totals.refused, 0);
+  assert.equal(manifest.totals.resumable, 0, "an applied subset becomes applied, not resumable");
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.action, "copy");
+  assert.equal(table.verified, true);
+  assert.equal(table.copiedRowCount, 1, "only the missing r3 is copied");
+  assert.equal(table.remoteRowCount, 6);
+  assert.equal(table.remoteHash, table.expectedHash);
+  assert.equal(table.chunkCount, 1);
+  assert.equal(table.plannedWriteCount, 1, "the plan contains only the missing row");
+
+  const chunks = [...harness.files.values()];
+  assert.equal(chunks.length, 1);
+  assert.ok(chunks[0].includes("'r3'"), "the inserted earlier row must be written");
+  assert.ok(!chunks[0].includes("'r1'"), "identical existing rows must not be re-inserted");
+  assert.ok(!chunks[0].includes("'r4'"), "identical existing rows must not be re-inserted");
+  assert.deepEqual(
+    harness.remoteRows("copy_probe").map((row) => row.id).sort(),
+    ["r1", "r2", "r3", "r4", "r5", "r6"],
+  );
+});
+
+test("a non-prefix canonical subset dry-run reports resumable and executes no write", async () => {
+  const harness = createHarness({ copy_probe: toCanonicalTableDataset(copyTable, INSERTED_REMOTE_ROWS).rows });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: createFakeSource({ copy_probe: INSERTED_SOURCE_ROWS }),
+    schema,
+    databases: ["worldcons_core"],
+  });
+
+  assert.equal(manifest.dryRun, true);
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.totals.resumable, 1);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "resumable");
+  assert.equal(table.action, "copy");
+  assert.equal(table.plannedWriteCount, 1, "only the missing r3 is planned");
+  assert.equal(table.chunkCount, 0, "a dry-run executes no write item");
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+});
+
+test("a same-primary-key row with a changed value is refused with zero writes", async () => {
+  const changed = FULL_ROWS.map((row) => (row.id === "row-3" ? { ...row, body: "changed" } : row));
+  const harness = createHarness({ copy_probe: changed });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "refused");
+  assert.equal(table.action, "refused");
+  assert.equal(table.verified, false);
+  assert.equal(table.copiedRowCount, 0);
+  assert.equal(table.plannedWriteCount, 0);
+  assert.equal(table.requiresParameterizedWriter, false);
+  assert.ok(table.errors.some((error) => error.includes("canonical subset")));
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+  assert.equal(harness.remoteRows("copy_probe").length, FULL_ROWS.length);
+});
+
+test("a remote row whose primary key is absent from the captured source is refused with zero writes", async () => {
+  const remote = [...FULL_ROWS.slice(0, 2), { id: "ghost-1", body: "ghost", rank: 99 }];
+  const harness = createHarness({ copy_probe: remote });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "refused");
+  assert.equal(table.action, "refused");
+  assert.equal(table.verified, false);
+  assert.equal(table.copiedRowCount, 0);
+  assert.equal(table.plannedWriteCount, 0);
+  assert.ok(table.errors.some((error) => error.includes("canonical subset")));
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 0);
+  assert.equal(harness.files.size, 0);
+  assert.equal(harness.remoteRows("copy_probe").length, 3, "a refused table must not be written");
+});
+
+test("a composite-primary-key canonical subset resumes and writes only the missing row", async () => {
+  const compositeTable = buildTable({
+    name: "copy_composite",
+    database: "worldcons_core",
+    primaryKey: ["tenant", "id"],
+    columns: [
+      { name: "tenant", type: "text", nn: true },
+      { name: "id", type: "text", nn: true },
+      { name: "value", type: "text" },
+    ],
+  });
+  const compositeSchema: D1Schema = {
+    version: 1,
+    databases: ["worldcons_core"],
+    tables: [compositeTable],
+    ownership: [],
+  };
+  const compositeRows: Record<string, unknown>[] = [
+    { tenant: "t1", id: "a", value: "va" },
+    { tenant: "t1", id: "b", value: "vb" },
+    { tenant: "t2", id: "a", value: "va2" },
+    { tenant: "t2", id: "b", value: "vb2" },
+  ];
+  // The remote drops (t1, b); its (t2, a) row shares the id `a` but not the tenant,
+  // so the composite identity — not just the id — must decide the subset.
+  const remote = toCanonicalTableDataset(
+    compositeTable,
+    compositeRows.filter((row) => !(row.tenant === "t1" && row.id === "b")),
+  ).rows;
+  const harness = createHarness({ copy_composite: remote });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: createFakeSource({ copy_composite: compositeRows }),
+    schema: compositeSchema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.totals.copied, 1);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.table, "copy_composite");
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.copiedRowCount, 1);
+  assert.equal(table.remoteRowCount, 4);
+  assert.equal(table.remoteHash, table.expectedHash);
+
+  const chunks = [...harness.files.values()];
+  assert.equal(chunks.length, 1);
+  assert.ok(chunks[0].includes("'vb'"), "the missing (t1, b) row must be written");
+  assert.ok(!chunks[0].includes("'va'"), "identical existing rows must not be re-inserted");
+  assert.ok(!chunks[0].includes("'vb2'"));
+  assert.deepEqual(
+    harness.remoteRows("copy_composite").map((row) => `${row.tenant}/${row.id}`).sort(),
+    ["t1/a", "t1/b", "t2/a", "t2/b"],
+  );
 });
 
 test("a file-execution error on the first data chunk fails the manifest and stops the copy", async () => {
