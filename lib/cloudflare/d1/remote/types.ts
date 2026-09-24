@@ -254,3 +254,131 @@ export interface D1RemoteSchemaManifest {
   ok: boolean;
   errors: string[];
 }
+
+/**
+ * M5.2c PART 2c additive remote D1 migration operator contract.
+ *
+ * M5.2c PART 2a applied the M5.1 `0001_init.sql` baseline to the four remote
+ * `worldcons_*` databases. A later correction to the authored D1 schema (for
+ * example a partial unique index that must match the Postgres predicate) cannot
+ * edit `0001_init.sql`, because that file is a historical, already-applied
+ * baseline. PART 2c adds the narrow companion operator that discovers numbered
+ * additive migrations *after* 0001 and applies only the pending ones.
+ *
+ * Properties:
+ *
+ * - additive only: `0001` is filtered out of discovery and is never rerun;
+ * - dry-run by default; only an explicit `--apply` writes a migration through
+ *   `wrangler d1 execute --remote --file`;
+ * - each migration carries one or more `-- @d1-verify` directives. A migration
+ *   is applied only when at least one expected object is absent or its
+ *   `sqlite_master.sql` does not contain every expected fragment, so a rerun
+ *   against the corrected state is a verified no-op;
+ * - it never creates or deletes a database, never deploys, never copies data and
+ *   never changes production authority. It contains no table/row mutation of its
+ *   own: it only executes the reviewed migration files it is handed.
+ */
+export const D1_REMOTE_MIGRATION_APPLY_VERSION = 1 as const;
+
+/**
+ * One expected object a migration must produce, verified idempotently against
+ * `sqlite_master`. Matching is case-insensitive with all whitespace removed, so
+ * `status in ('queued', 'running', 'retry_wait')` matches the stored
+ * `WHERE status IN ('queued','running','retry_wait')`.
+ */
+export interface D1MigrationVerification {
+  type: "table" | "index";
+  name: string;
+  /** Fragments that must all appear in the object's `sqlite_master.sql`. */
+  sqlIncludes: string[];
+}
+
+/** One additive numbered migration discovered for a database (number > 0001). */
+export interface D1RemoteMigration {
+  database: D1Database;
+  /** Numeric migration order parsed from the `NNNN_` file prefix. */
+  number: number;
+  /** Zero-padded migration id from the file prefix, for example `"0002"`. */
+  id: string;
+  /** File basename, for example `"0002_admin_command_runs_partial_dedupe.sql"`. */
+  file: string;
+  /** The migration SQL, applied verbatim through `d1 execute --file`. */
+  sql: string;
+  /** The expected objects that prove the migration is applied. */
+  verify: D1MigrationVerification[];
+}
+
+/** One additive migration source file, before discovery parses and orders it. */
+export interface D1MigrationSourceFile {
+  database: D1Database;
+  file: string;
+  sql: string;
+}
+
+/** One migration's state within a target. */
+export const D1_REMOTE_MIGRATION_STATES = ["pending", "verified", "applied", "unknown"] as const;
+export type D1RemoteMigrationState = (typeof D1_REMOTE_MIGRATION_STATES)[number];
+
+export interface D1RemoteMigrationManifestMigration {
+  number: number;
+  id: string;
+  file: string;
+  state: D1RemoteMigrationState;
+  verified: boolean;
+  /** Why a migration is pending or unverified, when that is known. */
+  detail: string | null;
+  errors: string[];
+}
+
+/** One target's result in the remote migration-apply manifest. */
+export interface D1RemoteMigrationManifestTarget {
+  name: D1Database;
+  binding: string;
+  state: D1RemoteSchemaState;
+  action: D1RemoteSchemaAction;
+  /** Remote database id when known (from `d1 list`/`d1 info`). */
+  databaseId: string | null;
+  /** The discovered migrations for this database, in deterministic order. */
+  migrations: D1RemoteMigrationManifestMigration[];
+  /** Migrations not yet in their verified state. */
+  pending: number;
+  /** Migrations this run applied (`state:"applied"`). */
+  applied: number;
+  /** Whether every discovered migration for this database is verified. */
+  verified: boolean;
+  errors: string[];
+}
+
+export interface D1RemoteMigrationManifestTotals {
+  targets: number;
+  /** Discovered migrations across every target. */
+  migrations: number;
+  /** Migrations not yet in their verified state. */
+  pending: number;
+  /** Migrations this run applied. */
+  applied: number;
+  /** Targets whose full migration set is verified. */
+  present: number;
+  /** Targets whose remote database does not exist. */
+  missing: number;
+  /** Targets refused (ambiguous/missing database or an aborted apply). */
+  refused: number;
+}
+
+/**
+ * The deterministic local manifest written to
+ * `artifacts/cloudflare-m5/d1-remote-migration-apply.json`. It contains no
+ * wall-clock timestamp, so identical remote state produces byte-identical JSON.
+ */
+export interface D1RemoteMigrationManifest {
+  version: typeof D1_REMOTE_MIGRATION_APPLY_VERSION;
+  stage: "d1-remote-migration-apply";
+  dryRun: boolean;
+  applied: boolean;
+  targets: D1RemoteMigrationManifestTarget[];
+  totals: D1RemoteMigrationManifestTotals;
+  /** Wrangler commands the run executed, in order, for the audit trail. */
+  commands: string[];
+  ok: boolean;
+  errors: string[];
+}

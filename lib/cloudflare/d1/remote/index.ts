@@ -22,3 +22,13 @@ export type { BuildD1RemoteManifestOptions } from "./bootstrap";
 
 export { buildD1SchemaApplyManifest, d1SchemaObjects, D1_SCHEMA_OBJECT_QUERY } from "./schema-apply";
 export type { BuildD1SchemaApplyManifestOptions, D1SchemaObjects } from "./schema-apply";
+
+export {
+  buildD1MigrationApplyManifest,
+  buildD1RemoteMigrations,
+  normalizeD1MigrationSql,
+  parseD1MigrationVerifyDirectives,
+  D1_MIGRATION_OBJECT_QUERY,
+  D1_MIGRATION_VERIFY_PREFIX,
+} from "./migration-apply";
+export type { BuildD1MigrationApplyManifestOptions } from "./migration-apply";
