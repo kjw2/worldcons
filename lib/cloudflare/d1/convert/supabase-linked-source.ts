@@ -28,9 +28,10 @@ import type { PostgresReadRequest, PostgresRowSource } from "./types";
  *   re-parse;
  * - the child is killed when it exceeds `timeoutMs`, and both stdout and stderr
  *   are bounded, so a runaway query cannot exhaust memory;
- * - the CLI stdout may carry preamble/footer text around exactly one JSON
- *   envelope; parsing requires that one envelope with a `rows` array and fails
- *   closed on malformed or ambiguous output;
+ * - the CLI stdout may carry preamble/footer text around exactly one top-level
+ *   JSON payload: either an object envelope with a `rows` array (legacy) or a
+ *   bare array of row objects (Supabase CLI 2.107.0). Parsing requires that one
+ *   payload and fails closed on malformed or ambiguous output;
  * - row values are JSON-decoded but otherwise preserved exactly (bigint decimals
  *   stay strings, jsonb stays objects, arrays stay arrays, booleans stay
  *   booleans), so no scalar is coerced here.
@@ -383,13 +384,15 @@ function balancedEnd(text: string, start: number): number | null {
 
 /**
  * Parses `supabase db query -o json` stdout that may carry preamble/footer text
- * around exactly one JSON envelope. It scans for balanced JSON values, counts the
- * object ones as envelopes, and fails closed on malformed or ambiguous output:
- * zero or more than one envelope, a missing/non-array `rows`, or a non-object
- * row all reject. Values are returned exactly as decoded.
+ * around exactly one top-level JSON payload. The CLI emits either an object
+ * envelope with a `rows` array or, as of CLI 2.107.0, a bare top-level array of
+ * row objects. It scans for balanced JSON values, collects the object and array
+ * payloads, and fails closed on malformed or ambiguous output: zero or more than
+ * one payload, an envelope without an array `rows`, or a non-object row all
+ * reject. Values are returned exactly as decoded.
  */
 export function parseSupabaseLinkedRows(stdout: string): Record<string, unknown>[] {
-  const envelopes: Record<string, unknown>[] = [];
+  const payloads: unknown[] = [];
   let index = 0;
   while (index < stdout.length) {
     const char = stdout[index];
@@ -409,15 +412,25 @@ export function parseSupabaseLinkedRows(stdout: string): Record<string, unknown>
       index += 1;
       continue;
     }
-    if (isPlainObject(parsed)) envelopes.push(parsed);
+    payloads.push(parsed);
     index = end + 1;
   }
-  if (envelopes.length === 0) throw new Error("supabase db query -o json did not return a JSON envelope");
-  if (envelopes.length > 1) throw new Error("supabase db query -o json returned multiple JSON envelopes");
-  const rows = envelopes[0].rows;
-  if (!Array.isArray(rows)) throw new Error("supabase db query -o json envelope is missing a rows array");
+  if (payloads.length === 0) throw new Error("supabase db query -o json did not return a JSON payload");
+  if (payloads.length > 1) throw new Error("supabase db query -o json returned multiple JSON payloads");
+  const payload = payloads[0];
+  let rows: unknown[];
+  if (Array.isArray(payload)) {
+    rows = payload;
+  } else if (isPlainObject(payload)) {
+    if (!Array.isArray(payload.rows)) {
+      throw new Error("supabase db query -o json envelope is missing a rows array");
+    }
+    rows = payload.rows;
+  } else {
+    throw new Error("supabase db query -o json did not return a JSON payload");
+  }
   return rows.map((row) => {
-    if (!isPlainObject(row)) throw new Error("supabase db query -o json envelope contained a non-object row");
+    if (!isPlainObject(row)) throw new Error("supabase db query -o json payload contained a non-object row");
     return row;
   });
 }
@@ -438,8 +451,8 @@ export interface SupabaseLinkedRowSourceOptions extends SupabaseLinkedQueryRunne
 /**
  * Read-only `PostgresRowSource` backed by the linked Supabase CLI. It builds the
  * deterministic SELECT, runs it through the injected (or default child-process)
- * runner, parses the single JSON envelope and projects the requested columns,
- * preserving every value's type exactly.
+ * runner, parses the single JSON payload (object envelope or bare row array) and
+ * projects the requested columns, preserving every value's type exactly.
  */
 export function createSupabaseLinkedRowSource(options: SupabaseLinkedRowSourceOptions = {}): PostgresRowSource {
   const query = options.runner ?? createSupabaseLinkedQueryRunner(options);

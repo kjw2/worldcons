@@ -81,16 +81,7 @@ test("buildPostgresSelectSql fails closed on an unsafe identifier or an invalid 
   );
 });
 
-test("parseSupabaseLinkedRows reads one envelope out of preamble/footer text and preserves every value exactly", () => {
-  const stdout = [
-    "Connecting to linked project: worldcons",
-    "Fetching schema...",
-    JSON.stringify({ rows: [PARSED_ROW] }),
-    "Query finished in 42ms",
-    "",
-  ].join("\n");
-
-  const rows = parseSupabaseLinkedRows(stdout);
+function assertRowPreserved(rows: Record<string, unknown>[]): void {
   assert.deepEqual(rows, [PARSED_ROW]);
   assert.equal(rows.length, 1);
 
@@ -104,35 +95,67 @@ test("parseSupabaseLinkedRows reads one envelope out of preamble/footer text and
   assert.equal(rows[0].is_active, true);
   assert.equal(rows[0].deleted_at, null);
   assert.equal(rows[0].created_at, "2026-05-08T10:00:00+00:00");
+}
+
+test("parseSupabaseLinkedRows reads a bare top-level row array out of preamble/footer text and preserves every value exactly", () => {
+  const stdout = [
+    "Connecting to linked project: worldcons",
+    "Fetching schema...",
+    JSON.stringify([PARSED_ROW]),
+    "Query finished in 42ms",
+    "",
+  ].join("\n");
+
+  assertRowPreserved(parseSupabaseLinkedRows(stdout));
 });
 
-test("parseSupabaseLinkedRows accepts an empty rows array", () => {
+test("parseSupabaseLinkedRows still accepts the legacy object envelope out of preamble/footer text and preserves every value exactly", () => {
+  const stdout = [
+    "Connecting to linked project: worldcons",
+    "Fetching schema...",
+    JSON.stringify({ rows: [PARSED_ROW] }),
+    "Query finished in 42ms",
+    "",
+  ].join("\n");
+
+  assertRowPreserved(parseSupabaseLinkedRows(stdout));
+});
+
+test("parseSupabaseLinkedRows accepts an empty bare array or an empty envelope", () => {
+  assert.deepEqual(parseSupabaseLinkedRows("[]"), []);
+  assert.deepEqual(parseSupabaseLinkedRows("Loading...\n[]\nDone."), []);
   assert.deepEqual(parseSupabaseLinkedRows('{"rows": []}'), []);
 });
 
+test("parseSupabaseLinkedRows treats a bare array row that happens to carry a rows key as an ordinary row", () => {
+  assert.deepEqual(parseSupabaseLinkedRows('[{"rows": []}]'), [{ rows: [] }]);
+  assert.deepEqual(parseSupabaseLinkedRows('[{"rows": [1]}]'), [{ rows: [1] }]);
+});
+
 test("parseSupabaseLinkedRows fails closed on missing, malformed, ambiguous or non-object output", () => {
-  assert.throws(() => parseSupabaseLinkedRows(""), /did not return a JSON envelope/);
-  assert.throws(() => parseSupabaseLinkedRows("no json envelope here"), /did not return a JSON envelope/);
-  assert.throws(() => parseSupabaseLinkedRows('{ "rows": [ '), /did not return a JSON envelope/);
-  assert.throws(() => parseSupabaseLinkedRows('[{"rows": []}]'), /did not return a JSON envelope/);
+  assert.throws(() => parseSupabaseLinkedRows(""), /did not return a JSON payload/);
+  assert.throws(() => parseSupabaseLinkedRows("no json payload here"), /did not return a JSON payload/);
+  assert.throws(() => parseSupabaseLinkedRows('{ "rows": [ '), /did not return a JSON payload/);
   assert.throws(() => parseSupabaseLinkedRows('{"result": []}'), /missing a rows array/);
   assert.throws(() => parseSupabaseLinkedRows('{"rows": {}}'), /missing a rows array/);
   assert.throws(() => parseSupabaseLinkedRows('{"rows": [1]}'), /non-object row/);
-  assert.throws(() => parseSupabaseLinkedRows('{"rows": []}\n{"rows": [{}]}'), /multiple JSON envelopes/);
-  assert.throws(() => parseSupabaseLinkedRows("Loading...\n{}\n{}\nDone."), /multiple JSON envelopes/);
+  assert.throws(() => parseSupabaseLinkedRows("[1]"), /non-object row/);
+  assert.throws(() => parseSupabaseLinkedRows("[null]"), /non-object row/);
+  assert.throws(() => parseSupabaseLinkedRows('{"rows": []}\n{"rows": [{}]}'), /multiple JSON payloads/);
+  assert.throws(() => parseSupabaseLinkedRows('{"rows": []}\n[{}]'), /multiple JSON payloads/);
+  assert.throws(() => parseSupabaseLinkedRows("[{}]\n[{}]"), /multiple JSON payloads/);
+  assert.throws(() => parseSupabaseLinkedRows("Loading...\n{}\n{}\nDone."), /multiple JSON payloads/);
 });
 
-test("createSupabaseLinkedRowSource runs the deterministic SELECT and projects only the requested columns", async () => {
+test("createSupabaseLinkedRowSource runs the deterministic SELECT and projects only the requested columns from a bare array", async () => {
   const sqlCalls: string[] = [];
   const runner = async (sql: string): Promise<string> => {
     sqlCalls.push(sql);
-    const envelope = JSON.stringify({
-      rows: [
-        { id: "a", title: "t", body: "drop me", big_counter: "9007199254740993" },
-        { id: "b", title: "u", body: "drop me too", big_counter: "12" },
-      ],
-    });
-    return `supabase: linked\n${envelope}\n`;
+    const payload = JSON.stringify([
+      { id: "a", title: "t", body: "drop me", big_counter: "9007199254740993" },
+      { id: "b", title: "u", body: "drop me too", big_counter: "12" },
+    ]);
+    return `supabase: linked\n${payload}\n`;
   };
 
   const source = createSupabaseLinkedRowSource({ runner });
@@ -151,9 +174,17 @@ test("createSupabaseLinkedRowSource runs the deterministic SELECT and projects o
   await assert.rejects(() => source.readRows(readRequest), /closed/);
 });
 
-test("createSupabaseLinkedRowSource fails closed when the runner returns no envelope", async () => {
+test("createSupabaseLinkedRowSource still reads the legacy rows envelope", async () => {
+  const runner = async (): Promise<string> =>
+    `supabase: linked\n${JSON.stringify({ rows: [{ id: "a", title: "t", body: "drop me" }] })}\n`;
+  const source = createSupabaseLinkedRowSource({ runner });
+  const rows = await source.readRows(request({ columns: ["id", "title"] }));
+  assert.deepEqual(rows, [{ id: "a", title: "t" }]);
+});
+
+test("createSupabaseLinkedRowSource fails closed when the runner returns no payload", async () => {
   const source = createSupabaseLinkedRowSource({ runner: async () => "not json" });
-  await assert.rejects(() => source.readRows(request()), /did not return a JSON envelope/);
+  await assert.rejects(() => source.readRows(request()), /did not return a JSON payload/);
 });
 
 test("supabaseLinkedQueryArgs returns the exact deterministic argv for one statement", () => {

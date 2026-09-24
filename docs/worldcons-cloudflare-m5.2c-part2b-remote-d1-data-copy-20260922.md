@@ -91,9 +91,11 @@ Properties of the linked mode:
   `LIMIT`/`OFFSET` inlined only after a safe-integer check), passed as a single `argv` entry to
   `spawn` with `shell:false` (routed through `cmd.exe /d /c` on Windows so the shim resolves via
   `PATH`/`PATHEXT`), with a bounded timeout and bounded stdout/stderr.
-- The CLI stdout is parsed fail-closed: exactly one JSON envelope with a `rows` array is required, and
-  every decoded value is preserved exactly (bigint decimals stay strings, jsonb stays objects, arrays
-  stay arrays, booleans stay booleans), so no scalar is coerced before the M5.2a canonical transform.
+- The CLI stdout is parsed fail-closed: exactly one top-level JSON payload is required — either an
+  object envelope with a `rows` array (legacy) or a bare array of row objects (Supabase CLI 2.107.0) —
+  and every decoded value is preserved exactly (bigint decimals stay strings, jsonb stays objects,
+  arrays stay arrays, booleans stay booleans), so no scalar is coerced before the M5.2a canonical
+  transform.
 - Only the read source changes: the data-copy seam, its comparison semantics, the chunked
   plain-insert apply and the hash verification are identical in both modes, and `sourceKind` is
   recorded in the manifest for diagnostics only.
