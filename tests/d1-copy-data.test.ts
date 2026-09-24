@@ -170,6 +170,21 @@ interface CopyHarness {
 interface HarnessOptions {
   /** Throw when a chunk file is executed, before any row is stored. */
   failFileExecution?: boolean;
+  /**
+   * Simulate the confirmed Windows `wrangler d1 execute --file` write crash by
+   * throwing the typed exit error with exit code 3221226505 before any row is
+   * stored. Remote reads are unaffected, so the crash can be proven to retry the
+   * exact plain inserts through the HTTP writer.
+   */
+  crashFileWrites?: boolean;
+  /**
+   * Throw this exact error from every `--file` write before any row is stored, so
+   * an ordinary nonzero exit (for example exit 1) or a plain spawn/timeout error
+   * can be proven never to fall back.
+   */
+  fileError?: Error;
+  /** Make the injected parameterized writer reject, so a crash fallback fails closed. */
+  parameterThrows?: boolean;
   /** Return non-JSON for every remote read command. */
   malformedReadJson?: boolean;
   /** Bias every `count(*)` response by this many rows. */
@@ -287,6 +302,10 @@ function createHarness(
     calls.push(args);
     assert.equal(args[2], "worldcons_core");
     if (args.includes("--file")) {
+      if (options.fileError) throw options.fileError;
+      if (options.crashFileWrites) {
+        throw new WranglerD1ExitError(3221226505, "wrangler d1 execute failed with exit code 3221226505");
+      }
       if (options.failFileExecution) throw new Error("wrangler: failed to execute the chunk file");
       applyChunk(files.get(args[args.indexOf("--file") + 1]) ?? "");
       executedChunk = true;
@@ -331,6 +350,7 @@ function createHarness(
       return path;
     },
     executeParameterized: async (database, statement) => {
+      if (options.parameterThrows) throw new Error("d1_http_query.request_failed");
       applyParameterized(database, statement);
     },
     executeRemoteQuery,
@@ -2264,4 +2284,216 @@ test("a Wrangler read crash triggers the lazily-authenticated HTTP fallback", as
   const [table] = manifest.targets[0].tables;
   assert.equal(table.state, "pending");
   assert.ok(manifest.commands.includes("http-query worldcons_core copy_probe"));
+});
+
+test("a Wrangler --file crash falls back to the HTTP writer as equivalent plain inserts and audits a safe marker", async () => {
+  const harness = createHarness({}, { crashFileWrites: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.ok(harness.files.size > 0, "the chunk is still materialized before the crash");
+
+  // The crash is retried as the chunk's ORIGINAL plain inserts, never its literal file.
+  assert.ok(harness.parameterCalls.length > 0, "the crashed chunk must be replayed through the HTTP writer");
+  assert.ok(
+    harness.executions.every((kind) => kind === "parameter"),
+    "a crashed --file chunk must not also count as a file execution",
+  );
+  for (const call of harness.parameterCalls) {
+    assert.equal(call.database, "worldcons_core");
+    assert.ok(call.statement.sql.startsWith("insert into copy_probe "), "only plain inserts may be replayed");
+    assert.ok(call.statement.sql.includes("?"), "the replayed statement stays parameterized");
+  }
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.copiedRowCount, 6);
+  assert.equal(table.remoteRowCount, 6);
+  assert.equal(table.remoteHash, table.expectedHash);
+  assert.deepEqual(
+    harness.remoteRows("copy_probe").map((row) => row.id),
+    ["row-1", "row-2", "row-3", "row-4", "row-5", "row-6"],
+  );
+
+  // The audit marker names only the database and table: never SQL or values.
+  assert.ok(manifest.commands.includes("http-write worldcons_core copy_probe"));
+  assert.equal(manifest.commands.filter((command) => command.startsWith("http-write")).length, 1);
+});
+
+test("a successful Wrangler --file write never calls the HTTP writer or query", async () => {
+  const harness = createHarness();
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.deepEqual(harness.executions, ["file"], "every write must go through the --file surface");
+  assert.equal(harness.parameterCalls.length, 0, "a successful --file write must never call the HTTP writer");
+  assert.equal(harness.queryCalls.length, 0, "a successful --file write must never call the HTTP query");
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-write")), false);
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-query")), false);
+});
+
+test("an ordinary nonzero --file exit never falls back and the table is refused", async () => {
+  const harness = createHarness(
+    {},
+    { fileError: new WranglerD1ExitError(1, "wrangler d1 execute failed with exit code 1") },
+  );
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+  assert.equal(harness.parameterCalls.length, 0, "only exit code 3221226505 may fall back; exit 1 must not");
+  assert.equal(manifest.commands.some((command) => command.startsWith("http-write")), false);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.equal(table.copiedRowCount, 0);
+  assert.ok(table.errors.some((error) => error.includes("exit code 1")));
+  assert.equal(harness.remoteRows("copy_probe").length, 0);
+});
+
+test("a --file crash whose HTTP fallback fails stays fail-closed with zero rows", async () => {
+  const harness = createHarness({}, { crashFileWrites: true, parameterThrows: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+    executeRemoteQuery: harness.executeRemoteQuery,
+  });
+
+  assert.equal(manifest.ok, false);
+  assert.equal(manifest.totals.refused, 1);
+  assert.ok(
+    manifest.commands.includes("http-write worldcons_core copy_probe"),
+    "the attempted fallback must still be audited",
+  );
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+  assert.equal(table.copiedRowCount, 0);
+  assert.equal(harness.remoteRows("copy_probe").length, 0, "a failed fallback must write no rows");
+  assert.ok(table.errors.some((error) => error.includes("request_failed")));
+});
+
+test("the --file crash fallback authenticates lazily and only when a write actually crashes", async () => {
+  // A successful Wrangler --file apply holds the lazy writer but never resolves it.
+  const okHarness = createHarness();
+  const okCredentials = createCredentialRunner();
+  const okFetch = createCredentialFetch();
+  const okWriter = createLazyParameterizedWriter({
+    apply: true,
+    runner: okCredentials.runner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: okFetch.fetchImpl,
+  });
+  assert.ok(okWriter);
+  const okManifest = await buildD1RemoteDataCopyManifest({
+    runner: okHarness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: okHarness.materialize,
+    executeParameterized: okWriter,
+  });
+  assert.equal(okManifest.ok, true, okManifest.errors.join("; "));
+  assert.equal(okCredentials.calls.length, 0, "a successful --file write must not authenticate");
+  assert.equal(okFetch.count(), 0, "a successful --file write must not touch the HTTP API");
+
+  // A crash resolves auth + whoami + d1 list exactly once, then reaches the HTTP API.
+  const crashHarness = createHarness({}, { crashFileWrites: true });
+  const crashCredentials = createCredentialRunner();
+  const crashFetch = createCredentialFetch();
+  const crashWriter = createLazyParameterizedWriter({
+    apply: true,
+    runner: crashCredentials.runner,
+    databases: ["worldcons_core"],
+    env: {},
+    fetch: crashFetch.fetchImpl,
+  });
+  assert.ok(crashWriter);
+  await buildD1RemoteDataCopyManifest({
+    runner: crashHarness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: crashHarness.materialize,
+    executeParameterized: crashWriter,
+  });
+  assert.deepEqual(
+    crashCredentials.calls,
+    [
+      ["auth", "token", "--json"],
+      ["whoami", "--json"],
+      ["d1", "list", "--json"],
+    ],
+    "the crash fallback must authenticate lazily, exactly once",
+  );
+  assert.ok(crashFetch.count() >= 1, "the crash fallback must reach the D1 HTTP API");
+});
+
+test("a multi-chunk --file crash fallback preserves authored chunk and row order", async () => {
+  const harness = createHarness({}, { crashFileWrites: true });
+  const manifest = await buildD1RemoteDataCopyManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    apply: true,
+    materializeChunk: harness.materialize,
+    executeParameterized: harness.executeParameterized,
+    rowsPerStatement: 1,
+    maxStatementsPerChunk: 2,
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.equal(manifest.commands.filter((command) => command.includes("--file")).length, 3);
+  assert.equal(manifest.commands.filter((command) => command.startsWith("http-write")).length, 3);
+
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "applied");
+  assert.equal(table.verified, true);
+  assert.equal(table.chunkCount, 3);
+  assert.equal(table.plannedWriteCount, 3);
+  assert.equal(table.copiedRowCount, 6);
+  assert.equal(table.remoteHash, table.expectedHash);
+  assert.deepEqual(
+    harness.remoteRows("copy_probe").map((row) => row.id),
+    ["row-1", "row-2", "row-3", "row-4", "row-5", "row-6"],
+  );
 });

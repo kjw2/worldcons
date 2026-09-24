@@ -52,11 +52,18 @@ import type { WranglerD1Runner } from "./types";
  *   `d1 execute --remote --yes --file`, while an oversized statement flushes any
  *   pending file chunk and is written unfragmented through the injected
  *   `executeParameterized` writer using its ORIGINAL `?` SQL and bound params
- *   (never its literal rendering), so it is never silently materialized. The
- *   writes run serially in authored row order, the write stdout is ignored, the
- *   row count is re-read after every write item and must equal the exact
- *   expected progress, then a final full read/hash check runs. It aborts after
- *   the first failure.
+ *   (never its literal rendering), so it is never silently materialized. A
+ *   `--file` chunk whose Wrangler invocation rejects with a
+ *   `WranglerD1ExitError` whose `exitCode` is exactly
+ *   `D1_WRANGLER_CRASH_EXIT_CODE` (3221226505) — the confirmed Windows
+ *   `d1 execute --file` crash — is retried through that SAME bound-parameter
+ *   writer as the same plain inserts, one statement at a time, with a safe
+ *   `http-write <database> <table>` audit marker; every other failure (a
+ *   different exit code, a timeout, a spawn/setup failure) stays fail-closed and
+ *   never falls back. The writes run serially in authored row order, the write
+ *   stdout is ignored, the row count is re-read after every write item and must
+ *   equal the exact expected progress, then a final full read/hash check runs. It
+ *   aborts after the first failure.
  *
  * It never creates or deletes a database, never applies DDL, never deploys and
  * never changes production authority. The Wrangler child-process adapter and the
@@ -231,14 +238,22 @@ export interface BuildD1RemoteDataCopyManifestOptions {
    */
   materializeChunk?: (database: D1Database, table: string, chunkIndex: number, sql: string) => string;
   /**
-   * Executes one oversized statement through a bound-parameter surface (for
-   * example `wrangler d1 execute --command` with positional params) instead of a
-   * literal file chunk. Called serially, in authored row order, only for a
-   * statement whose literal rendering exceeds
-   * `D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES`. It receives the ORIGINAL
+   * Executes one statement through a bound-parameter surface (for example the D1
+   * HTTP query API) instead of a literal file chunk. It receives the ORIGINAL
    * parameterized statement (the `?` SQL plus its bound values), never its
-   * literal rendering. When an oversized statement must be written and this is
-   * absent, apply fails closed before any write for that table.
+   * literal rendering, and is called serially in authored row order. It serves
+   * two narrow cases:
+   *
+   * - a statement whose literal rendering exceeds
+   *   `D1_REMOTE_DATA_COPY_MAX_LITERAL_STATEMENT_BYTES` (when such a statement
+   *   must be written and this is absent, apply fails closed before any write for
+   *   that table);
+   * - the PLAIN insert statements of a `--file` chunk whose Wrangler invocation
+   *   rejects with a `WranglerD1ExitError` whose `exitCode` is exactly
+   *   `D1_WRANGLER_CRASH_EXIT_CODE` (3221226505), the confirmed Windows crash.
+   *   That fallback replays the chunk's original plain inserts one by one; every
+   *   other failure (a different exit code, a timeout, a spawn/setup failure) and
+   *   a missing writer stay fail-closed and never fall back.
    */
   executeParameterized?: (database: D1Database, statement: D1ImportStatement) => Promise<void>;
   /**
@@ -368,12 +383,15 @@ function compareRemote(
 /**
  * One planned write, in authored row order:
  * - `file`      a deterministic chunk file (literal SQL) run through
- *               `wrangler d1 execute --file`;
+ *               `wrangler d1 execute --file`; it also carries the chunk's ORIGINAL
+ *               parameterized statements so the confirmed Windows `--file` crash
+ *               can be retried through the bound-parameter HTTP writer as the same
+ *               plain inserts;
  * - `parameter` one oversized statement kept parameterized (its original `?` SQL
  *               plus bound params) for the injected parameterized writer.
  */
 type PlannedWrite =
-  | { kind: "file"; sql: string; rowCount: number }
+  | { kind: "file"; sql: string; statements: D1ImportStatement[]; rowCount: number }
   | { kind: "parameter"; statement: D1ImportStatement; rowCount: number };
 
 /**
@@ -397,12 +415,19 @@ function planWrites(
   const columns = imported.columns.length;
   const writes: PlannedWrite[] = [];
   let pendingSql: string[] = [];
+  let pendingStatements: D1ImportStatement[] = [];
   let pendingBytes = 0;
   let pendingRows = 0;
   const flush = (): void => {
     if (pendingSql.length === 0) return;
-    writes.push({ kind: "file", sql: pendingSql.join("\n"), rowCount: pendingRows });
+    writes.push({
+      kind: "file",
+      sql: pendingSql.join("\n"),
+      statements: pendingStatements,
+      rowCount: pendingRows,
+    });
     pendingSql = [];
+    pendingStatements = [];
     pendingBytes = 0;
     pendingRows = 0;
   };
@@ -420,6 +445,7 @@ function planWrites(
       flush();
     }
     pendingSql.push(rendered);
+    pendingStatements.push(statement);
     pendingBytes += size;
     pendingRows += rowCount;
   }
@@ -755,9 +781,31 @@ export async function buildD1RemoteDataCopyManifest(
                   options.materializeChunk as (database: D1Database, table: string, chunkIndex: number, sql: string) => string
                 )(target.name, table.name, fileChunkIndex, write.sql);
                 fileChunkIndex += 1;
-                // The write stdout is deliberately not parsed: the runner rejects a
-                // non-zero exit and the count/hash re-reads below are authoritative.
-                await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
+                try {
+                  // The write stdout is deliberately not parsed: the runner rejects a
+                  // non-zero exit and the count/hash re-reads below are authoritative.
+                  await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
+                } catch (error) {
+                  // ONLY the confirmed Windows `d1 execute --file` crash (exactly
+                  // 3221226505) is retried through the SAME bound-parameter HTTP writer
+                  // the oversized path uses, replaying this chunk's ORIGINAL plain
+                  // inserts one by one in authored order. A safe `http-write <database>
+                  // <table>` audit marker is recorded (never SQL, values or secrets).
+                  // Every other failure (a different exit code, a timeout, a spawn/setup
+                  // failure) and a missing writer are re-thrown unchanged, so ordinary
+                  // exit 1, a malformed successful payload or a later count/hash
+                  // mismatch never fall back.
+                  if (
+                    typeof executeParameterized !== "function" ||
+                    !isWranglerD1ExitError(error, D1_WRANGLER_CRASH_EXIT_CODE)
+                  ) {
+                    throw error;
+                  }
+                  commands.push(`http-write ${target.name} ${table.name}`);
+                  for (const statement of write.statements) {
+                    await executeParameterized(target.name, statement);
+                  }
+                }
               } else {
                 await (executeParameterized as (database: D1Database, statement: D1ImportStatement) => Promise<void>)(
                   target.name,

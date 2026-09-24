@@ -28,11 +28,13 @@ const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
 /**
  * The HTTP parameterized writer is credentialed from the environment ONLY. The
  * CLI deliberately exposes no token or account argument and never echoes either
- * value. Credentials are resolved LAZILY, on the first oversized statement only:
- * a dry-run passes no writer at all, and a small file-only apply never resolves a
- * credential. A missing env value falls back to the operator's existing Wrangler
- * session through the same runner (`auth token --json` / `whoami --json`), so no
- * secret is ever placed on the command line or in the persisted manifest.
+ * value. Credentials are resolved LAZILY, on the first fallback write only — an
+ * oversized statement or the plain inserts of a `--file` chunk that crashed with
+ * the confirmed Windows exit code 3221226505: a dry-run passes no writer at all,
+ * and a small file-only apply that never crashes resolves no credential. A
+ * missing env value falls back to the operator's existing Wrangler session
+ * through the same runner (`auth token --json` / `whoami --json`), so no secret
+ * is ever placed on the command line or in the persisted manifest.
  */
 const ACCOUNT_ID_ENV_VAR = "CLOUDFLARE_ACCOUNT_ID";
 const API_TOKEN_ENV_VAR = "CLOUDFLARE_API_TOKEN";
@@ -78,10 +80,12 @@ const SOURCE_KINDS: readonly SourceKind[] = ["postgres", "supabase-linked"];
  *
  * A statement too large to materialize into a chunk file is written through the
  * D1 HTTP query API instead, because the Wrangler CLI cannot carry a multi-megabyte
- * literal. That bound-parameter writer is resolved LAZILY: in apply mode the CLI
- * hands the manifest a callback that authenticates and lists the databases only on
- * its first oversized statement, so a dry-run passes no writer and a small
- * file-only apply never resolves a credential, runs `whoami` or runs `d1 list`.
+ * literal. That same bound-parameter writer is also the fail-safe retry for a
+ * `--file` chunk whose Wrangler invocation crashed with the confirmed Windows
+ * exit code 3221226505. It is resolved LAZILY: in apply mode the CLI hands the
+ * manifest a callback that authenticates and lists the databases only on its
+ * first fallback write, so a dry-run passes no writer and a small file-only apply
+ * that never crashes resolves no credential, runs `whoami` or runs `d1 list`.
  * Credentials come from the environment ONLY (`CLOUDFLARE_ACCOUNT_ID` +
  * `CLOUDFLARE_API_TOKEN`); a missing value falls back to the operator's existing
  * Wrangler session through the same runner (`auth token --json` for the token,
@@ -344,9 +348,10 @@ async function resolveHttpCredentials(options: {
  * It returns `undefined` for a dry-run without reading any credential. In apply
  * mode it returns a callback that resolves credentials, `whoami`, `d1 list` and
  * the writer ONCE, on its first actual invocation, caching the resulting promise
- * so a copy with hundreds of oversized statements authenticates and lists at
- * most once. A small file-only apply never invokes the callback, so it never runs
- * `auth token`, `whoami` or `d1 list`.
+ * so a copy with hundreds of oversized statements (or a crashed `--file` chunk
+ * replay) authenticates and lists at most once. A small file-only apply that
+ * never crashes never invokes the callback, so it never runs `auth token`,
+ * `whoami` or `d1 list`.
  */
 export function createLazyParameterizedWriter(options: {
   apply: boolean;
