@@ -1,4 +1,4 @@
-import type { GlossaryTerm, IngestionRunRecord, TagSummary, TagType } from "@/lib/db/types";
+import type { GlossaryTerm, IngestionRunRecord, SourceRecord, TagSummary, TagType } from "@/lib/db/types";
 import type { TagListOptions } from "@/lib/reference-reads/types";
 
 /**
@@ -16,6 +16,33 @@ export interface SupabaseTagRow {
   description?: string | null;
   article_count?: number | null;
   latest_article_at?: string | null;
+}
+
+/**
+ * A source row as returned by Supabase (`is_active` boolean) or D1 (boolean
+ * stored as INTEGER 0/1). The mapper normalizes both to the contract boolean so
+ * the two adapters map identically.
+ */
+export interface SupabaseSourceRow {
+  id?: string;
+  source_key: string;
+  name: string;
+  jurisdiction: string;
+  base_url: string;
+  language: string;
+  is_active: boolean | number | string | null;
+}
+
+export function sourceRowToRecord(row: SupabaseSourceRow): SourceRecord {
+  return {
+    id: row.id,
+    sourceKey: row.source_key,
+    name: row.name,
+    jurisdiction: row.jurisdiction,
+    baseUrl: row.base_url,
+    language: row.language,
+    isActive: row.is_active === true || row.is_active === 1 || row.is_active === "1",
+  };
 }
 
 export function tagRowToSummary(row: SupabaseTagRow, confidence?: number | null): TagSummary {

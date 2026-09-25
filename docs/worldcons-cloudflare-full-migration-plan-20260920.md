@@ -782,7 +782,7 @@ Acceptance:
 - JSON/date/UUID conversion tests
 - representative RPC parity
 
-Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2c PART 2a / M5.2c PART 2b):
+Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2c PART 2a / M5.2c PART 2b / M5.2d):
 - four D1 schemas and the Postgres -> canonical transform foundation exist as local-only,
   hand-authored D1 schema code plus a read-only Supabase-migration scanner and a
   schema/ownership/parity validator (`pnpm d1:schema`, `pnpm test:d1-schema`);
@@ -840,6 +840,20 @@ Progress (2026-09-21, M5.1 / M5.1b / M5.1c / M5.2a / M5.2b / M5.2c PART 1 / M5.2
   count plus the final canonical hash; the core/ingest/ops scopes are covered with search deferred
   (`pnpm d1:copy-data`, `pnpm test:d1-copy-data`, 18/18 focused tests);
 - PART 2b live canary is verified: the `supabase-linked` read path compared production `sources` (4 rows) against empty D1, then copied those 4 rows in one chunk; source/remote canonical hashes matched, and an immediate read-only rerun reported `existing` / `action:none` with zero writes. The broader data copy remains pending and Supabase remains the authority.
+- M5.2d (2026-09-25) delivered the operator-only bounded remote D1 **reconciliation** seam for the residual mutable drift the INSERT-only copy path refuses (`pnpm d1:reconcile`,
+  `pnpm test:d1-reconcile`, 29/29): dry-run by default, `--apply` requires an explicit
+  `--database=` selection, plain INSERTs for source-only rows and full-row parameterized
+  UPDATEs by exact primary key (PK columns excluded from SET), fail-closed refusal whenever a
+  remote-only primary key exists (never a DELETE), and a post-apply source+remote re-read that
+  must match on row count and canonical full-table hash. A final direct dry-run snapshot of all
+  nine mutable-drift tables reported `exact` / `none` / `verified:true` with source == remote
+  counts and hashes, `remoteOnly === 0` and zero planned writes; `glossary_candidates` was
+  reconciled with 50 updates and the remaining eight tables with 21 inserts + 51 updates.
+  M5.2d is complete; see `docs/worldcons-cloudflare-m5.2d-reconcile-completion-20260925.md`.
+  Supabase remains the sole read authority and no cutover occurred.
+- the bounded D1 **reference-read shadow** (M6.0 + M6.1) is now implemented but **default off**;
+  see `docs/worldcons-cloudflare-m6.1-reference-read-shadow-20260925.md`. M6.0 is a planning/
+  transition entry only, not a cutover. Search projection + Vectorize remain M7 and untouched.
 - no Worker deploy, DNS change, or Supabase authority switch occurred.
 
 ### M6 — D1 shadow-read parity
@@ -1086,8 +1100,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [x] four remote D1 databases created (M5.2c PART 1: `pnpm d1:provision --apply --report --json` created `worldcons_core`/`worldcons_ingest`/`worldcons_ops`/`worldcons_search` in `apac`, all `verified:true`; post-run dry-run reports 4 existing / 0 missing / action `none`; UUIDs recorded in `wrangler.jsonc`; databases were empty at creation — schemas/data were not yet applied at creation)
 - [x] remote D1 schema applied (M5.2c PART 2a: `pnpm d1:apply-schema` is dry-run by default and writes only with `--apply`; the read-only `sqlite_master` object query runs BEFORE any write in both modes, so an already-present schema is a true no-op. The first real `--apply` applied `worldcons_core` (30 tables) but a `--file` stdout-parsing bug caused a false failure; with the fix deployed the second `--apply` applied the remaining `worldcons_ingest`/`worldcons_ops`/`worldcons_search` DDL. All four remote schemas are now applied and verified, a read-only dry-run reports all four `action:"none"` / `verified:true`, and no data had been imported at PART 2a completion; PART 2b later copied only the `worldcons_core.sources` canary)
 - [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); M5.2c PART 2b: operator-only bounded Postgres -> remote-D1 *data* copy, dry-run by default with `--apply` to write, source only via `--url`/`WORLDCONS_D1_SOURCE_URL`, plain `INSERT` statements only, exact/prefix/mismatch fail-closed, deterministic chunks, per-chunk count + final canonical hash verification, core/ingest/ops scope with search deferred, `pnpm d1:copy-data` with 18/18 focused tests — PART 2b operator implemented; `supabase-linked` read path verified; `worldcons_core.sources` 4-row canary copied and reverified exact; broader live copy still pending)
-- [ ] data count/hash/FK invariants
-- [ ] D1 shadow reads
+- [ ] data count/hash/FK invariants (M5.2d: the bounded `d1:reconcile` operator reconciled the nine mutable-drift tables — `glossary_candidates` 50 updates, the remaining eight tables 21 inserts + 51 updates — and a final direct dry-run snapshot reported all nine `exact`/`none`/`verified:true`, source == remote counts/hashes, `remoteOnly === 0`, zero planned writes; no authority switch: Supabase remains the read authority. See `docs/worldcons-cloudflare-m5.2d-reconcile-completion-20260925.md`)
+- [ ] D1 shadow reads (M6.0 + M6.1 reference-read shadow implemented, default OFF: runtime D1 binding injection, `waitUntil` background scheduler, default-off shadow flags, bounded runtime-safe D1 read runner, a D1 `ReferenceReadRepository` for `listSources`/`listGlossaryTerms`/`getGlossaryTerm` only, canonical comparison with `orderMatches`, structured `worldcons.d1_shadow` events and per-isolate backpressure; the authoritative Supabase result is always returned and D1 can never replace it. See `docs/worldcons-cloudflare-m6.1-reference-read-shadow-20260925.md`)
 - [ ] FTS5 parity
 - [ ] Vectorize parity
 - [ ] Queues/DLQ/Workflows migration

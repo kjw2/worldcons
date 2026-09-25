@@ -5,6 +5,15 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "vars": {
+    "WORLDCONS_D1_SHADOW_READ_ENABLED": "false",
+    "WORLDCONS_D1_SHADOW_COMPARE_ENABLED": "false",
+    "WORLDCONS_D1_SHADOW_SURFACES": "reference",
+    "WORLDCONS_D1_SHADOW_TIMEOUT_MS": "1500",
+    "WORLDCONS_D1_SHADOW_MAX_ROWS": "2000",
+    "WORLDCONS_D1_SHADOW_MAX_IN_FLIGHT": "2",
+    "WORLDCONS_D1_SHADOW_SAMPLE_RATE": "0.1"
+  },
   "main": "./worker/index.ts",
   "assets": {
     "directory": "dist/client",

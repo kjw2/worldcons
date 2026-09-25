@@ -12,8 +12,10 @@ import {
   canonicalizeTimestamp,
   canonicalizeUuid,
 } from "./canonical-values";
-import { postgresTypeCanonicalKind, type D1CanonicalKind } from "./mapping";
-import type { D1ColumnDefinition, D1TableDefinition, D1StorageKind } from "./types";
+import { columnCanonicalKind } from "./canonical-kind";
+import type { D1ColumnDefinition, D1TableDefinition } from "./types";
+
+export { columnCanonicalKind } from "./canonical-kind";
 
 /**
  * Canonical row/table foundation (M5 acceptance: "canonical per-table hashes").
@@ -33,22 +35,6 @@ export function canonicalizeBlob(value: unknown): string {
   if (value instanceof Uint8Array) return Buffer.from(value).toString("base64");
   throw new Error("blob column requires a base64 string or Uint8Array value");
 }
-function storageFallbackKind(kind: D1StorageKind): D1CanonicalKind {
-  if (kind === "integer") return "integer";
-  if (kind === "real") return "real";
-  if (kind === "blob") return "blob";
-  return "text";
-}
-
-export function columnCanonicalKind(column: D1ColumnDefinition): D1CanonicalKind {
-  if (column.enumValues && column.enumValues.length > 0) return "text";
-  if (column.source) {
-    const kind = postgresTypeCanonicalKind(column.source.postgresType);
-    if (kind && kind !== "fts5" && kind !== "vectorize") return kind;
-  }
-  return storageFallbackKind(column.kind);
-}
-
 export function canonicalizeColumnValue(column: D1ColumnDefinition, value: unknown): CanonicalScalar {
   if (value === null || value === undefined) {
     if (column.notNull) throw new Error(`column ${column.name} is NOT NULL`);

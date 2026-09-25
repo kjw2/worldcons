@@ -8,9 +8,11 @@ import {
   normalizeJurisdictions,
   normalizeTagListOptions,
   sortGlossaryTerms,
+  sourceRowToRecord,
   tagRowToSummary,
   type SupabaseGlossaryTermRow,
   type SupabaseIngestionRunRow,
+  type SupabaseSourceRow,
   type SupabaseTagRow,
 } from "@/lib/reference-reads/shared";
 import type { JurisdictionCountOptions, ReferenceReadRepository, TagListOptions } from "@/lib/reference-reads/types";
@@ -51,15 +53,7 @@ export function createSupabaseReferenceReadRepository(
     const { data, error } = await supabase.from("sources").select("*").order("jurisdiction");
     if (error) throw new Error(error.message);
 
-    return (data ?? []).map((row) => ({
-      id: row.id,
-      sourceKey: row.source_key,
-      name: row.name,
-      jurisdiction: row.jurisdiction,
-      baseUrl: row.base_url,
-      language: row.language,
-      isActive: row.is_active,
-    }));
+    return (data ?? []).map((row) => sourceRowToRecord(row as SupabaseSourceRow));
   }
 
   async function listTags(options: TagListOptions = {}): Promise<TagSummary[]> {
