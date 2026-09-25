@@ -1,0 +1,231 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-25T16:55:39.942Z",
+  "scope": "search-canary",
+  "vectorIndex": "worldcons-search-canary-v2",
+  "database": "worldcons_search_canary_v2",
+  "source": "supabase",
+  "maxArticles": 15,
+  "projection": {
+    "projectedDocuments": 15,
+    "vectorRecords": 15,
+    "missingArtifacts": 0,
+    "staleArtifacts": 0,
+    "truncated": false
+  },
+  "vectorBootstrap": {
+    "version": 1,
+    "index": {
+      "name": "worldcons-search-canary-v2",
+      "exists": true,
+      "dimensions": 1536,
+      "metric": "cosine",
+      "action": "none"
+    },
+    "metadataIndexes": [
+      {
+        "propertyName": "sourceKey",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "jurisdiction",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "contentType",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "language",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "publishedEpoch",
+        "type": "number",
+        "exists": true,
+        "action": "none"
+      }
+    ],
+    "blockers": [],
+    "destructive": false,
+    "ok": true
+  },
+  "remoteWrites": {
+    "indexCreated": false,
+    "metadataIndexesCreated": [],
+    "vectorsUpserted": 0,
+    "searchRowsInserted": 0,
+    "databaseCreated": false
+  },
+  "metrics": {
+    "modes": [
+      {
+        "mode": "fulltext",
+        "cases": 2,
+        "compared": 2,
+        "passed": 2,
+        "mismatched": 0,
+        "errored": 0,
+        "timedOut": 0,
+        "skipped": 0,
+        "mismatchRate": 0,
+        "errorRate": 0,
+        "timeoutRate": 0,
+        "latencyP50Ms": 1784,
+        "latencyP95Ms": 1794,
+        "rowReads": 28,
+        "oracleCompared": 1,
+        "oracleMatched": 1,
+        "pass": true
+      },
+      {
+        "mode": "semantic",
+        "cases": 1,
+        "compared": 1,
+        "passed": 1,
+        "mismatched": 0,
+        "errored": 0,
+        "timedOut": 0,
+        "skipped": 0,
+        "mismatchRate": 0,
+        "errorRate": 0,
+        "timeoutRate": 0,
+        "latencyP50Ms": 2334,
+        "latencyP95Ms": 2334,
+        "rowReads": 0,
+        "oracleCompared": 0,
+        "oracleMatched": 0,
+        "pass": false
+      },
+      {
+        "mode": "hybrid",
+        "cases": 1,
+        "compared": 1,
+        "passed": 1,
+        "mismatched": 0,
+        "errored": 0,
+        "timedOut": 0,
+        "skipped": 0,
+        "mismatchRate": 0,
+        "errorRate": 0,
+        "timeoutRate": 0,
+        "latencyP50Ms": 5090,
+        "latencyP95Ms": 5090,
+        "rowReads": 42,
+        "oracleCompared": 0,
+        "oracleMatched": 0,
+        "pass": false
+      }
+    ],
+    "totalCases": 4,
+    "totalCompared": 4,
+    "totalPassed": 4,
+    "totalRowReads": 70,
+    "latencyP50Ms": 1794,
+    "latencyP95Ms": 5090,
+    "pass": false
+  },
+  "observations": [
+    {
+      "caseId": "exact-case-00083deb-5bc9-4b28-bbcd-68076cd05514",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 1794,
+      "rowReads": 16,
+      "topIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ],
+      "oracleTopIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ],
+      "oracleParity": "match",
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "fulltext-02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 1784,
+      "rowReads": 12,
+      "topIds": [
+        "02b539a7-8607-4a49-a3f9-19356f4eb890",
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "00fc678e-c030-4516-b1d8-3306ae602c38",
+        "02543da6-ac72-47b0-87d2-16ce73f22781"
+      ],
+      "oracleTopIds": [],
+      "oracleParity": "absent",
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "semantic-00083deb-5bc9-4b28-bbcd-68076cd05514",
+      "mode": "semantic",
+      "status": "pass",
+      "latencyMs": 2334,
+      "rowReads": 0,
+      "topIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514",
+        "030db76f-5659-46fb-8587-28488b99f55a",
+        "002da476-2bab-4e04-bd09-24d1429296fd",
+        "0195be1e-876f-4b8e-9297-3875e7d7be0b",
+        "02b539a7-8607-4a49-a3f9-19356f4eb890"
+      ],
+      "oracleTopIds": [],
+      "oracleParity": "absent",
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "hybrid-02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "mode": "hybrid",
+      "status": "pass",
+      "latencyMs": 5090,
+      "rowReads": 42,
+      "topIds": [
+        "02b539a7-8607-4a49-a3f9-19356f4eb890",
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "00fc678e-c030-4516-b1d8-3306ae602c38",
+        "02543da6-ac72-47b0-87d2-16ce73f22781",
+        "0195be1e-876f-4b8e-9297-3875e7d7be0b",
+        "021974ed-396a-4260-93b3-cefcebae24d8",
+        "009047a3-d4ae-4bf8-8d8d-99719f35c18f",
+        "030db76f-5659-46fb-8587-28488b99f55a",
+        "008bb6f9-d4df-4834-8de3-0a0ff791c2e0",
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ],
+      "oracleTopIds": [],
+      "oracleParity": "absent",
+      "errorCode": null,
+      "detail": null
+    }
+  ],
+  "thresholds": {
+    "minCasesPerMode": 1,
+    "maxMismatchRate": 0,
+    "maxErrorRate": 0,
+    "maxTimeoutRate": 0,
+    "maxLatencyP50Ms": 2000,
+    "maxLatencyP95Ms": 5000
+  },
+  "blockers": [
+    {
+      "code": "metadata_high_cardinality_range",
+      "detail": "millisecond publishedEpoch range filters can reduce Vectorize accuracy on large indexes"
+    },
+    {
+      "code": "production_semantic_oracle_drift",
+      "detail": "2 semantic/hybrid canary query articles have provenance-locked artifacts but NULL public_article_projection_p3.embedding; production RPC parity is skipped for those cases"
+    }
+  ],
+  "verdict": "fail"
+}
