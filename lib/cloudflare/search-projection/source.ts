@@ -1,5 +1,5 @@
 import { nullableTrim } from "./canonical";
-import { sortProjectionTags } from "./documents";
+import { sortProjectionTags } from "./tags";
 import { projectionError } from "./errors";
 import type {
   SearchArticleTagRow,

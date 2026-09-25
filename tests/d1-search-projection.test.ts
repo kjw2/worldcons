@@ -8,8 +8,12 @@ import {
   SEARCH_PROJECTION_SCOPE,
   SEARCH_PROJECTION_VERSION,
   SearchProjectionError,
+  TAG_VALUE_BOUNDARY,
+  buildExactTagNeedle,
   buildSearchProjection,
+  encodeSearchTags,
   hashSearchProjectionDocuments,
+  tagHasExactFilter,
   planSearchProjectionFullRebuild,
   planSearchProjectionIncrementalSync,
   searchDocumentChecksum,
@@ -185,7 +189,7 @@ test("title, case, search and tag mapping is deterministic and input-order indep
   const document = forward.documents[0];
   assert.equal(document.display_title, "한국어 제목");
   assert.equal(document.case_numbers, "1 BvR 2656/18\n1bvr265618");
-  assert.equal(document.tags_text, "alpha Alpha doctrine zeta Zeta topic");
+  assert.equal(document.tags_text, "\u0001alpha\u0001 \u0001Alpha\u0001 alpha doctrine \u0001zeta\u0001 \u0001Zeta\u0001 zeta topic");
   assert.equal(document.publication_state, "published");
   assert.equal(document.projection_version, SEARCH_PROJECTION_VERSION);
   assert.equal(document.updated_at, "2026-01-03T00:00:00.000Z");
@@ -217,7 +221,7 @@ test("tag hydration is slug-ordered, deduped, and never reads URLs or raw text",
   const haystack = `${document.search_text ?? ""}\n${document.tags_text ?? ""}\n${document.case_numbers ?? ""}`;
   assert.ok(!haystack.includes(url));
   assert.ok(!haystack.includes("RAW TEXT MUST NOT LEAK"));
-  assert.equal(document.tags_text, "due-process Due Process due process doctrine");
+  assert.equal(document.tags_text, "\u0001due-process\u0001 \u0001Due Process\u0001 due process doctrine");
 
   assert.throws(
     () =>
@@ -242,6 +246,26 @@ test("tag hydration is slug-ordered, deduped, and never reads URLs or raw text",
       }),
     (error: unknown) => error instanceof SearchProjectionError && error.code === "missing_tag",
   );
+});
+
+test("tag encoding distinguishes exact slug/name from searchable normalized_name/type", () => {
+  const tags = [{ id: TAG_1, slug: "due-process", name: "Due Process", normalized_name: "due process", type: "doctrine" }];
+  const encoded = encodeSearchTags(tags);
+  assert.ok(encoded.includes(`${TAG_VALUE_BOUNDARY}due-process${TAG_VALUE_BOUNDARY}`), "slug must be boundary-wrapped");
+  assert.ok(encoded.includes(`${TAG_VALUE_BOUNDARY}Due Process${TAG_VALUE_BOUNDARY}`), "multi-word name must be boundary-wrapped");
+  assert.ok(encoded.includes("due process"), "normalized_name must stay searchable");
+  assert.ok(encoded.includes("doctrine"), "type must stay searchable");
+
+  assert.ok(tagHasExactFilter(encoded, "due-process"), "slug exact match");
+  assert.ok(tagHasExactFilter(encoded, "Due Process"), "multi-word name exact match");
+  assert.ok(!tagHasExactFilter(encoded, "due process"), "normalized_name must not satisfy exact tag");
+  assert.ok(!tagHasExactFilter(encoded, "doctrine"), "type must not satisfy exact tag");
+  assert.ok(!tagHasExactFilter(encoded, "Due"), "substring must not satisfy exact tag");
+  assert.equal(buildExactTagNeedle(""), null);
+  assert.equal(buildExactTagNeedle("   "), null);
+
+  assert.equal(encodeSearchTags(tags), encodeSearchTags([...tags]), "encoding must be deterministic and deduped");
+  assert.equal(encodeSearchTags([...tags, ...tags]), encodeSearchTags(tags), "duplicate article tags must dedupe");
 });
 
 test("the projected document shape exactly matches the authored D1 search schema", () => {

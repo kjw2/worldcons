@@ -6,7 +6,8 @@ projection builder and a local, parameterized FTS5 synchronization plan for the
 disposable `worldcons_search` D1 database. It performs **no deployment, push,
 remote mutation, Vectorize index creation, DNS change or production-flag
 change**, and it makes **no `GO-SEARCH` / `GO-D1-READ` claim**. Vectorize /
-semantic authority is M7.3+ (M7.2 adds the local FTS5 lexical foundation).
+semantic authority is M7.4+ (M7.2 adds the local FTS5 lexical foundation and M7.3
+the local exact-case/latest/fulltext ranked-page foundation).
 
 Related: `docs/worldcons-cloudflare-full-migration-plan-20260920.md` (M7),
 `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`.

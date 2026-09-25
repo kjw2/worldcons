@@ -199,7 +199,8 @@ report). No production credentials, no network, no remote read/write and no
 - No remote projection rebuild, D1/Supabase mutation, Vectorize index, DNS or
   production-flag change.
 - No agreed FTS parity threshold and no `GO-SEARCH` / `GO-D1-READ` claim.
-- No Vectorize / semantic / hybrid authority (deferred to M7.3+).
+- No Vectorize / semantic / hybrid authority (deferred to M7.4+; M7.3 adds the
+  local exact-case/latest/fulltext ranked-page foundation only).
 - No `SearchRepository` D1 adapter selection and no M7 search shadow event.
 - `search_m7` remains a blocker in the M6.5 global `GO-D1-READ` gate.
 - No existing Supabase or D1 `0001` migration was modified; no new migration was

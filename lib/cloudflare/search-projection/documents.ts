@@ -2,7 +2,6 @@ import { caseNumberKey, normalizeCaseNumber } from "@/lib/search/case-number";
 import {
   CASE_NUMBER_SEPARATOR,
   SEARCH_TEXT_COMPONENT_SEPARATOR,
-  TAG_TOKEN_SEPARATOR,
   asMetadataRecord,
   canonicalSummaryText,
   isNonBlankString,
@@ -10,12 +9,12 @@ import {
 } from "./canonical";
 import { searchDocumentChecksum } from "./checksum";
 import { projectionError } from "./errors";
+import { projectionTagsText } from "./tags";
 import {
   SEARCH_PROJECTION_VERSION,
   type SearchProjectionDocument,
   type SearchProjectionDocumentBody,
   type SearchPublicationP3Row,
-  type SearchTagRow,
   type SearchVersionP3Row,
   type SelectedSearchProjectionSource,
 } from "./types";
@@ -72,34 +71,6 @@ export function projectionCaseNumbers(version: SearchVersionP3Row): string[] {
     }
   }
   return [...tokens].sort();
-}
-
-/** Safe searchable tag tokens: slug/name/normalized_name/type only. */
-export function tagSearchTokens(tag: SearchTagRow): string[] {
-  return [tag.slug, tag.name, tag.normalized_name, tag.type].filter(isNonBlankString).map((value) => value.trim());
-}
-
-/** Deterministic tag ordering: slug, then tag id as a stable tie-breaker. */
-export function sortProjectionTags(tags: readonly SearchTagRow[]): SearchTagRow[] {
-  return [...tags].sort((left, right) => {
-    const bySlug = left.slug.trim().localeCompare(right.slug.trim());
-    if (bySlug !== 0) return bySlug;
-    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-  });
-}
-
-/** Builds the `tags_text` component in deterministic tag order. */
-export function projectionTagsText(tags: readonly SearchTagRow[]): string {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const tag of sortProjectionTags(tags)) {
-    for (const token of tagSearchTokens(tag)) {
-      if (seen.has(token)) continue;
-      seen.add(token);
-      ordered.push(token);
-    }
-  }
-  return ordered.join(TAG_TOKEN_SEPARATOR);
 }
 
 /**

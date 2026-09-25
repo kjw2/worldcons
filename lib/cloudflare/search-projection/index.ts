@@ -8,6 +8,7 @@
 export * from "./types";
 export * from "./errors";
 export * from "./canonical";
+export * from "./tags";
 export * from "./checksum";
 export * from "./documents";
 export * from "./fts-document";

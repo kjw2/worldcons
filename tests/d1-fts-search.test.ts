@@ -343,6 +343,33 @@ test("title boundaries never inject artificial single-character tokens", async (
   assert.deepEqual(ids(await search(db, { query: "k", limit: 100 })), [], "a bare 'k' must not match every encoded title");
 });
 
+test("boundary-encoded tags stay FTS-searchable and inject no marker tokens", async () => {
+  const taggedRow: CorpusRow = {
+    originalTitle: "Environment Ruling",
+    koreanTitle: null,
+    sourceKey: "de-bverfg",
+    jurisdiction: "Germany",
+    contentType: "decision",
+    language: "de",
+    caseKey: null,
+    caseNumber: null,
+    publishedAt: "2026-09-25T08:00:00.000Z",
+    cleanedText: "constitution klimaschutz",
+  };
+  const TAGGED = articleId(201);
+  const custom = buildSearchProjection({
+    publications: [publication(201)],
+    versions: [version(taggedRow, 201)],
+    tags: [{ id: "eeeeeeee-0000-0000-0000-000000000201", slug: "environment", name: "Environment", normalized_name: "environment", type: "topic" }],
+    articleTags: [{ article_id: TAGGED, tag_id: "eeeeeeee-0000-0000-0000-000000000201" }],
+  });
+  const db = databaseFor(custom.documents, custom.ftsDocuments);
+
+  assert.deepEqual(ids(await search(db, { query: "environment", limit: 100 })), [TAGGED], "wrapped tag values must stay searchable");
+  assert.deepEqual(ids(await search(db, { query: "topic", limit: 100 })), [TAGGED], "type must stay searchable");
+  assert.deepEqual(ids(await search(db, { query: "o", limit: 100 })), [], "tag boundaries must not inject single-letter marker tokens");
+});
+
 test("exact original-title and exact Korean-title queries win when both titles exist", async () => {
   const db = freshDatabase();
 
