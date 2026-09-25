@@ -36,6 +36,10 @@ const RUNTIME_SAFE_FILES = [
   "lib/reference-reads/shadow.ts",
   "lib/article-reads/d1-repository.ts",
   "lib/article-reads/shadow.ts",
+  "lib/admin/ops-read-repository/d1-read-repository.ts",
+  "lib/admin/ops-read-repository/shadow.ts",
+  "lib/admin/analytics-read-repository/d1-read-repository.ts",
+  "lib/admin/analytics-read-repository/shadow.ts",
 ];
 
 function source(file: string): string {
@@ -69,6 +73,14 @@ test("the shadow read path only reads: no INSERT/UPDATE/DELETE/UPSERT and only p
   const articleRepository = code("lib/article-reads/d1-repository.ts");
   assert.doesNotMatch(articleRepository, /\binsert\s+into\b|\bupdate\s+\w+\s+set\b|\bdelete\s+from\b|\bon\s+conflict\b/i);
   assert.doesNotMatch(articleRepository, /\.run\(|\.batch\(/);
+  for (const file of [
+    "lib/admin/ops-read-repository/d1-read-repository.ts",
+    "lib/admin/analytics-read-repository/d1-read-repository.ts",
+  ]) {
+    const adminRepository = code(file);
+    assert.doesNotMatch(adminRepository, /\binsert\s+into\b|\bupdate\s+\w+\s+set\b|\bdelete\s+from\b|\bon\s+conflict\b/i);
+    assert.doesNotMatch(adminRepository, /\.run\(|\.batch\(/);
+  }
 });
 
 test("the shadow comparison uses canonicalJson and a non-crypto digest", () => {

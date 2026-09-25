@@ -22,6 +22,12 @@ export const D1_SHADOW_REFERENCE_SURFACE = "reference";
 /** M6.3 bounded article-read shadow surface. */
 export const D1_SHADOW_ARTICLE_READ_SURFACE = "article_read";
 
+/** M6.4 privileged admin/ops read shadow surface. */
+export const D1_SHADOW_ADMIN_OPS_READ_SURFACE = "admin_ops_read";
+
+/** M6.4 privileged admin analytics/audit read shadow surface. */
+export const D1_SHADOW_ADMIN_ANALYTICS_READ_SURFACE = "admin_analytics_read";
+
 export const D1_SHADOW_DEFAULT_TIMEOUT_MS = 1500;
 export const D1_SHADOW_DEFAULT_MAX_ROWS = 2000;
 export const D1_SHADOW_DEFAULT_MAX_IN_FLIGHT = 2;
