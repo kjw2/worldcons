@@ -37,8 +37,13 @@ export type RankedSearchRange = (typeof RANKED_SEARCH_RANGES)[number];
 export const RANKED_SEARCH_COUNTS = ["exact", "planned", "estimated", "none"] as const;
 export type RankedSearchCount = (typeof RANKED_SEARCH_COUNTS)[number];
 
-/** Retrieval modes this local slice can actually produce. */
-export type RankedSearchRetrievalMode = "exact-case" | "latest" | "fulltext";
+/**
+ * Retrieval modes this local foundation can produce. M7.3 produced `exact-case`,
+ * `latest` and `fulltext` only; M7.4 additionally produces `semantic` and
+ * `hybrid` through the separate Vectorize orchestrator (never through
+ * `buildRankedSearchQueryPlan`, which still defers semantic/hybrid).
+ */
+export type RankedSearchRetrievalMode = "exact-case" | "latest" | "fulltext" | "semantic" | "hybrid";
 
 /** Hard-coded, authored table names. User text is never an identifier. */
 export const RANKED_SEARCH_DOCUMENT_TABLE = "search_documents" as const;
@@ -93,10 +98,18 @@ export interface RankedSearchResolvedRequest {
   referenceNow: number;
 }
 
-/** One ranked result entry. `score` is present only for the fulltext branch. */
+/**
+ * One ranked result entry. `score` is present only for the fulltext branch; the
+ * M7.4 semantic/hybrid orchestrator additionally carries the RRF ranks and the
+ * semantic similarity, matching `worldcons_ranked_search_page_v1`'s entry shape.
+ * The extra fields are optional so M7.3 entries/tests are unchanged.
+ */
 export interface RankedSearchEntry {
   id: string;
   score?: number;
+  lexicalRank?: number | null;
+  semanticRank?: number | null;
+  semanticSimilarity?: number | null;
 }
 
 /** RPC-shaped, JSON-compatible page payload. */
@@ -124,8 +137,11 @@ export interface RankedSearchQueryPlan {
   count: RankedSearchStatement | null;
 }
 
-/** One validated page row read from D1. */
+/** One validated page row read from D1 (or a Vectorize semantic candidate). */
 export interface RankedSearchPageRow {
   id: string;
   score?: number;
+  lexicalRank?: number | null;
+  semanticRank?: number | null;
+  semanticSimilarity?: number | null;
 }

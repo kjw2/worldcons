@@ -543,6 +543,19 @@ Store provenance:
 
 Do not silently reuse an embedding after source content hash changes.
 
+M7.4 (code/local only) implements the provenance-locked Vectorize projection and
+mutation *plan* from `article_embedding_artifacts` at
+`lib/cloudflare/search-vector/*`, plus a structural Vectorize binding + semantic
+query and a hybrid RRF orchestrator. It uses `float32` 1536 dimensions (the V2
+maximum), `returnValues:false` + `returnMetadata:indexed`, a metadata pre-filter
+(source/jurisdiction/contentType/language + `publishedEpoch >= threshold`) applied
+before topK and omitted (never `{}`) when the request constrains nothing,
+`topK = offset + limit + 1 <= 100`, and the recommended metadata
+index manifest `sourceKey`/`jurisdiction`/`contentType`/`language`/`publishedEpoch`
+(5 of 10; tag excluded because array metadata is not filterable). `p_tag` and
+exact semantic/hybrid COUNT are deferred fail-closed. **No index, metadata index,
+binding or remote rebuild is created.**
+
 ### 11.3 Ranking parity
 
 Prepare a frozen search corpus including:
@@ -992,6 +1005,24 @@ parity threshold is agreed, no Vectorize/semantic authority exists,
 claimed. `search_m7` remains blocked. See
 `docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md`.
 
+M7.4 status (2026-09-25, **code/local verification only**): the Vectorize
+semantic + hybrid foundation is implemented at `lib/cloudflare/search-vector/*`.
+It builds a provenance-locked Vectorize projection/mutation *plan* from
+`article_embedding_artifacts` (current published P3 only; missing/stale artifacts
+omitted and reported, malformed/duplicate artifacts fail closed; no vector values
+in a summary), a structural Vectorize binding + semantic query (metadata
+pre-filter applied before topK, `topK = offset + limit + 1 <= 100`, deterministic
+`score desc, publishedEpoch desc nulls last, id asc` ordering, `tag_filter_deferred`
+and `vector_exact_count_deferred` fail-closed), and a hybrid RRF orchestrator
+reproducing the RPC candidate-limit formula and RRF score with bounded,
+parameterized D1 metadata lookups. The recommended metadata index manifest is
+`sourceKey`/`jurisdiction`/`contentType`/`language`/`publishedEpoch` (5 of 10;
+tag intentionally excluded). **No Vectorize index or metadata index was created,
+no binding was added, no remote rebuild is run**, no production parity threshold
+is agreed, `SearchRepository` selection is unchanged and no
+`GO-SEARCH`/`GO-D1-READ` is claimed. `search_m7` remains blocked. See
+`docs/worldcons-cloudflare-m7.4-vectorize-semantic-hybrid-foundation-20260925.md`.
+
 ### M8 — Async pipeline migration
 
 Objective:
@@ -1214,8 +1245,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); M5.2c PART 2b: operator-only bounded Postgres -> remote-D1 *data* copy, dry-run by default with `--apply` to write, source only via `--url`/`WORLDCONS_D1_SOURCE_URL`, plain `INSERT` statements only, exact/prefix/mismatch fail-closed, deterministic chunks, per-chunk count + final canonical hash verification, core/ingest/ops scope with search deferred, `pnpm d1:copy-data` with 18/18 focused tests — PART 2b operator implemented; `supabase-linked` read path verified; `worldcons_core.sources` 4-row canary copied and reverified exact; broader live copy still pending)
 - [ ] data count/hash/FK invariants (M5.2d: the bounded `d1:reconcile` operator reconciled the nine mutable-drift tables — `glossary_candidates` 50 updates, the remaining eight tables 21 inserts + 51 updates — and a final direct dry-run snapshot reported all nine `exact`/`none`/`verified:true`, source == remote counts/hashes, `remoteOnly === 0`, zero planned writes; no authority switch: Supabase remains the read authority. See `docs/worldcons-cloudflare-m5.2d-reconcile-completion-20260925.md`)
 - [ ] D1 shadow reads (M6.0 + M6.1 reference-read shadow implemented, default OFF: runtime D1 binding injection, `waitUntil` background scheduler, default-off shadow flags, bounded runtime-safe D1 read runner, a D1 `ReferenceReadRepository` for `listSources`/`listGlossaryTerms`/`getGlossaryTerm` only, canonical comparison with `orderMatches`, structured `worldcons.d1_shadow` events and per-isolate backpressure; the authoritative Supabase result is always returned and D1 can never replace it. See `docs/worldcons-cloudflare-m6.1-reference-read-shadow-20260925.md`. M6.2 expands the same default-OFF shadow to `listTags`/`getTagBySlug`/`listIngestionRuns`/`listJurisdictionArticleCounts` with per-method core/ingest binding, projection-mode skips, runtime-safe projection + `eq`/`gte` + ordered reads and truncation-as-skip; does not claim GO-D1-READ. See `docs/worldcons-cloudflare-m6.2-reference-read-shadow-20260925.md`. M6.3 extends the same default-OFF shadow to the six-method `lib/article-reads` seam on the `article_read` surface, with projection/V4/search zero-D1 skips, bounded `neq`/`in` runtime reads, shared article mapping/publishability reuse, truncation/ambiguity-as-skip, and unchanged authoritative Supabase results; does not claim GO-D1-READ and leaves M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.3-article-read-shadow-20260925.md`. M6.4 extends the same default-OFF shadow to the privileged `AdminOpsReadRepository` (`loadArticleRows`/`loadCandidateRows`/`countTableRows`/`listAdminArticles`) and `AdminAnalyticsReadRepository` (`loadAdminAuditActionOptionRows`/`loadAdminAuditEntryRows`/`loadSiteEvents`/`loadIngestionRunRows`/`loadArticleSummaryRows`) on the opt-in `admin_ops_read`/`admin_analytics_read` surfaces with exact per-method core/ingest/ops bindings; both admin RPC snapshots emit `rpc_deferred` with zero D1 calls and every admin `q` path is `search_deferred_m7`; no mixed database substitution, no GO-D1-READ, RPC snapshots deferred to later migration/cutover design, M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.4-admin-read-shadow-20260925.md`. M6.5 adds the local read-only shadow parity report + gate tooling (`pnpm d1:shadow-report`, deterministic JSON/markdown report, `m6EvidenceGate` over implemented comparable methods, always-blocked `globalGoD1Read` with `search_m7`/`rpc_admin_dashboard_snapshot`/`rpc_admin_analytics_health_snapshot`, fail-closed malformed/invalid input, safe output with no hashes/diff paths/URLs/metadata/row content). Current verdict: M6 code coverage/tooling complete but production shadow evidence absent => `m6EvidenceGate=insufficient_evidence`, `globalGoD1Read=blocked`; M6 is not operationally proven and no GO-D1-READ is claimed. See `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`)
-- [ ] FTS5 parity (M7.1 projection builder + FTS5 synchronization plan foundation implemented locally, `pnpm test:d1-search-projection`; M7.2 adds the local `public_fulltext_ranked_ids_v1` D1 equivalent — both-title FTS sidecar, safe/bound FTS5 MATCH compiler, parameterized `search_fts` JOIN `search_documents` query, fail-closed reader and evidence-only parity metrics, `pnpm test:d1-fts-search`; M7.3 adds the local `worldcons_ranked_search_page_v1` exact-case/latest/fulltext foundation — control-character tag exact-filter encoding (no schema change), SQL-precedence primary-reference parser, separator-safe `case_numbers` line match, RPC-shaped payload with exact-vs-lower-bound count semantics and `semantic_deferred` fail-closed, `pnpm test:d1-ranked-search`; semantic/hybrid remain deferred, no remote rebuild executed, no agreed rank/threshold parity, no `GO-SEARCH`; see `docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.2-fts5-fulltext-foundation-20260925.md` and `docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md`)
-- [ ] Vectorize parity (M7.4+, not started)
+- [ ] FTS5 parity (M7.1 projection builder + FTS5 synchronization plan foundation implemented locally, `pnpm test:d1-search-projection`; M7.2 adds the local `public_fulltext_ranked_ids_v1` D1 equivalent — both-title FTS sidecar, safe/bound FTS5 MATCH compiler, parameterized `search_fts` JOIN `search_documents` query, fail-closed reader and evidence-only parity metrics, `pnpm test:d1-fts-search`; M7.3 adds the local `worldcons_ranked_search_page_v1` exact-case/latest/fulltext foundation — control-character tag exact-filter encoding (no schema change), SQL-precedence primary-reference parser, separator-safe `case_numbers` line match, RPC-shaped payload with exact-vs-lower-bound count semantics and `semantic_deferred` fail-closed, `pnpm test:d1-ranked-search`; M7.4 adds the local Vectorize semantic + hybrid foundation — provenance-locked projection/mutation *plan* from `article_embedding_artifacts`, structural Vectorize binding + semantic query with metadata pre-filter and 100 topK ceiling, hybrid RRF with the RPC candidate-limit formula, `tag_filter_deferred`/`vector_exact_count_deferred`/`vector_window_exceeded` fail-closed and five-field metadata index manifest, `pnpm test:d1-vector-search`; no Vectorize index/metadata index/binding created, no remote rebuild executed, no agreed rank/threshold parity, no `GO-SEARCH`; see `docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.2-fts5-fulltext-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md` and `docs/worldcons-cloudflare-m7.4-vectorize-semantic-hybrid-foundation-20260925.md`)
+- [ ] Vectorize parity (M7.4 local projection/semantic/hybrid foundation implemented, `pnpm test:d1-vector-search`; **no remote index/metadata index/binding and no parity threshold yet**, remote creation + agreed regression threshold remain M7.4+/M7.5)
 - [ ] Queues/DLQ/Workflows migration
 - [ ] Browser Run/Container crawler parity
 - [ ] Hono service binding migration

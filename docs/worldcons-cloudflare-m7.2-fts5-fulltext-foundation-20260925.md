@@ -13,6 +13,8 @@ claim**. `search_m7` stays a blocker in the M6.5 global gate.
 Related: `docs/worldcons-cloudflare-full-migration-plan-20260920.md` (M7, 11.1),
 `docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`,
 `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`.
+Forward: `docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md`,
+`docs/worldcons-cloudflare-m7.4-vectorize-semantic-hybrid-foundation-20260925.md`.
 
 ## 1. The gap M7.2 closes
 

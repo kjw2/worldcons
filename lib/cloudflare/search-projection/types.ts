@@ -129,6 +129,13 @@ export interface SearchVersionP3Row {
   created_at: string;
   fetched_at?: string | null;
   summarized_at?: string | null;
+  /**
+   * M7.4 additive field: the immutable P3 content hash the embedding artifact is
+   * provenance-locked to (`article_embedding_artifacts.content_hash`). Optional so
+   * the existing M7.1/M7.2/M7.3 projection callers are unchanged; the vector
+   * projection requires it to match the current published version.
+   */
+  content_hash?: string | null;
 }
 
 /**

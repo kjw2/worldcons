@@ -11,6 +11,9 @@ the local exact-case/latest/fulltext ranked-page foundation).
 
 Related: `docs/worldcons-cloudflare-full-migration-plan-20260920.md` (M7),
 `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`.
+Forward: `docs/worldcons-cloudflare-m7.2-fts5-fulltext-foundation-20260925.md`,
+`docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md`,
+`docs/worldcons-cloudflare-m7.4-vectorize-semantic-hybrid-foundation-20260925.md`.
 
 ## 1. Purpose
 

@@ -21,9 +21,14 @@ export function assembleRankedSearchPage(params: {
 }): RankedSearchPagePayload {
   const pageCount = params.rows.length;
   const hasMore = pageCount > params.limit;
-  const entries: RankedSearchEntry[] = params.rows
-    .slice(0, params.limit)
-    .map((row) => (row.score === undefined ? { id: row.id } : { id: row.id, score: row.score }));
+  const entries: RankedSearchEntry[] = params.rows.slice(0, params.limit).map((row) => {
+    const entry: RankedSearchEntry = { id: row.id };
+    if (row.score !== undefined) entry.score = row.score;
+    if (row.lexicalRank !== undefined) entry.lexicalRank = row.lexicalRank;
+    if (row.semanticRank !== undefined) entry.semanticRank = row.semanticRank;
+    if (row.semanticSimilarity !== undefined) entry.semanticSimilarity = row.semanticSimilarity;
+    return entry;
+  });
   const totalIsExact = params.exactTotal !== null;
   const total = totalIsExact ? (params.exactTotal as number) : params.offset + entries.length + (hasMore ? 1 : 0);
   return {

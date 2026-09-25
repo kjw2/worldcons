@@ -707,6 +707,14 @@ function makePrepared(payload: Record<string, unknown>): D1RuntimePreparedStatem
   return chain;
 }
 
+test("frozen M7.3 entry shape survives the M7.4 optional-field type expansion", async () => {
+  const db = freshDatabase();
+  const latest = await run(db, { query: "", limit: 1 });
+  assert.deepEqual(Object.keys(latest.entries[0]), ["id"], "latest entries stay exactly { id }");
+  const fulltext = await run(db, { query: "constitution", mode: "fulltext", limit: 1 });
+  assert.deepEqual(Object.keys(fulltext.entries[0]).sort(), ["id", "score"], "fulltext entries stay exactly { id, score }");
+});
+
 test("the ranked library stays runtime-neutral with no network code", () => {
   const directory = path.join(rootDir, "lib", "cloudflare", "search-ranked");
   for (const entry of fs.readdirSync(directory)) {
