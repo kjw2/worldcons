@@ -512,6 +512,10 @@ Normal indexed columns:
 - original publication date
 - publication/review state
 
+M7.1 (code/local only) implements the deterministic builder and FTS5
+synchronization plan for these exact columns; text components retain the legacy
+weights' sources but FTS5 rank-weight parity is deliberately deferred to M7.2.
+
 ### 11.2 Vectorize
 
 Current embedding width is 1536 and fits the current Vectorize maximum of 1536 dimensions. Current Vectorize supports up to 20 million vectors per index.
@@ -931,6 +935,21 @@ Acceptance:
 - exact case-number/filter behavior preserved
 - latency/row-read budget acceptable
 
+M7.1 status (2026-09-25, **code/local verification only**): the deterministic,
+runtime-neutral search projection foundation is implemented at
+`lib/cloudflare/search-projection/*` — a P3-authority source selector (published
+`article_publications_p3` joined to its authoritative
+`article_content_versions_p3`, fail-closed on mismatch/duplicate authority),
+deterministic title/case-number/search-text/tag/checksum mapping, a
+parameterized full-rebuild + incremental FTS5 synchronization *plan* hard-scoped
+to `worldcons_search.search_documents`/`search_fts` (plan only, never execute),
+text-free verification helpers and a local dry-run CLI
+(`pnpm d1:search-projection`). **No remote projection rebuild was executed**, no
+FTS5 rank/weight parity is claimed (M7.2), no Vectorize/semantic authority, no
+`SearchRepository` D1 adapter and no `GO-SEARCH`/`GO-D1-READ`. `search_m7` remains
+a blocker in the M6.5 global gate. See
+`docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`.
+
 ### M8 — Async pipeline migration
 
 Objective:
@@ -1153,8 +1172,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); M5.2c PART 2b: operator-only bounded Postgres -> remote-D1 *data* copy, dry-run by default with `--apply` to write, source only via `--url`/`WORLDCONS_D1_SOURCE_URL`, plain `INSERT` statements only, exact/prefix/mismatch fail-closed, deterministic chunks, per-chunk count + final canonical hash verification, core/ingest/ops scope with search deferred, `pnpm d1:copy-data` with 18/18 focused tests — PART 2b operator implemented; `supabase-linked` read path verified; `worldcons_core.sources` 4-row canary copied and reverified exact; broader live copy still pending)
 - [ ] data count/hash/FK invariants (M5.2d: the bounded `d1:reconcile` operator reconciled the nine mutable-drift tables — `glossary_candidates` 50 updates, the remaining eight tables 21 inserts + 51 updates — and a final direct dry-run snapshot reported all nine `exact`/`none`/`verified:true`, source == remote counts/hashes, `remoteOnly === 0`, zero planned writes; no authority switch: Supabase remains the read authority. See `docs/worldcons-cloudflare-m5.2d-reconcile-completion-20260925.md`)
 - [ ] D1 shadow reads (M6.0 + M6.1 reference-read shadow implemented, default OFF: runtime D1 binding injection, `waitUntil` background scheduler, default-off shadow flags, bounded runtime-safe D1 read runner, a D1 `ReferenceReadRepository` for `listSources`/`listGlossaryTerms`/`getGlossaryTerm` only, canonical comparison with `orderMatches`, structured `worldcons.d1_shadow` events and per-isolate backpressure; the authoritative Supabase result is always returned and D1 can never replace it. See `docs/worldcons-cloudflare-m6.1-reference-read-shadow-20260925.md`. M6.2 expands the same default-OFF shadow to `listTags`/`getTagBySlug`/`listIngestionRuns`/`listJurisdictionArticleCounts` with per-method core/ingest binding, projection-mode skips, runtime-safe projection + `eq`/`gte` + ordered reads and truncation-as-skip; does not claim GO-D1-READ. See `docs/worldcons-cloudflare-m6.2-reference-read-shadow-20260925.md`. M6.3 extends the same default-OFF shadow to the six-method `lib/article-reads` seam on the `article_read` surface, with projection/V4/search zero-D1 skips, bounded `neq`/`in` runtime reads, shared article mapping/publishability reuse, truncation/ambiguity-as-skip, and unchanged authoritative Supabase results; does not claim GO-D1-READ and leaves M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.3-article-read-shadow-20260925.md`. M6.4 extends the same default-OFF shadow to the privileged `AdminOpsReadRepository` (`loadArticleRows`/`loadCandidateRows`/`countTableRows`/`listAdminArticles`) and `AdminAnalyticsReadRepository` (`loadAdminAuditActionOptionRows`/`loadAdminAuditEntryRows`/`loadSiteEvents`/`loadIngestionRunRows`/`loadArticleSummaryRows`) on the opt-in `admin_ops_read`/`admin_analytics_read` surfaces with exact per-method core/ingest/ops bindings; both admin RPC snapshots emit `rpc_deferred` with zero D1 calls and every admin `q` path is `search_deferred_m7`; no mixed database substitution, no GO-D1-READ, RPC snapshots deferred to later migration/cutover design, M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.4-admin-read-shadow-20260925.md`. M6.5 adds the local read-only shadow parity report + gate tooling (`pnpm d1:shadow-report`, deterministic JSON/markdown report, `m6EvidenceGate` over implemented comparable methods, always-blocked `globalGoD1Read` with `search_m7`/`rpc_admin_dashboard_snapshot`/`rpc_admin_analytics_health_snapshot`, fail-closed malformed/invalid input, safe output with no hashes/diff paths/URLs/metadata/row content). Current verdict: M6 code coverage/tooling complete but production shadow evidence absent => `m6EvidenceGate=insufficient_evidence`, `globalGoD1Read=blocked`; M6 is not operationally proven and no GO-D1-READ is claimed. See `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`)
-- [ ] FTS5 parity
-- [ ] Vectorize parity
+- [ ] FTS5 parity (M7.1 projection builder + FTS5 synchronization plan foundation implemented locally, `pnpm test:d1-search-projection`; no remote rebuild executed, no rank parity, no `GO-SEARCH`; see `docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`)
+- [ ] Vectorize parity (M7.2+, not started)
 - [ ] Queues/DLQ/Workflows migration
 - [ ] Browser Run/Container crawler parity
 - [ ] Hono service binding migration
