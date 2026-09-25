@@ -15,7 +15,12 @@ export type SearchProjectionErrorCode =
   | "duplicate_tag_id"
   | "duplicate_article_tag"
   | "missing_tag"
-  | "missing_updated_at";
+  | "missing_updated_at"
+  | "duplicate_fts_document_id"
+  | "fts_document_count_mismatch"
+  | "missing_fts_document"
+  | "extra_fts_document"
+  | "fts_document_identity_mismatch";
 
 export class SearchProjectionError extends Error {
   readonly code: SearchProjectionErrorCode;

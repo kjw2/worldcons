@@ -21,6 +21,7 @@ import {
   type SearchVersionP3Row,
 } from "../lib/cloudflare/search-projection";
 import { searchTables } from "../lib/cloudflare/d1/schema/worldcons-search";
+import { ftsTitleHasExactTitle } from "../lib/cloudflare/search-fts";
 
 const rootDir = process.cwd();
 const LIB_DIR = path.join(rootDir, "lib", "cloudflare", "search-projection");
@@ -258,15 +259,43 @@ test("the projected document shape exactly matches the authored D1 search schema
   }
 });
 
+test("the FTS sidecar encodes both authoritative titles 1:1 with search_documents", () => {
+  const { documents, ftsDocuments } = buildSearchProjection({ publications: [publication()], versions: [version()] });
+  assert.equal(ftsDocuments.length, documents.length, "sidecar must stay 1:1 with documents");
+  assert.deepEqual(
+    ftsDocuments.map((ftsDocument) => ftsDocument.article_id),
+    documents.map((document) => document.article_id),
+    "sidecar identity/order must match search_documents",
+  );
+
+  const ftsDocument = ftsDocuments[0];
+  assert.ok(ftsTitleHasExactTitle(ftsDocument.title, "Original Title"), "original title must be exactly matchable");
+  assert.ok(ftsTitleHasExactTitle(ftsDocument.title, "한국어 제목"), "Korean title must be exactly matchable");
+  assert.ok(!ftsTitleHasExactTitle(ftsDocument.title, "Original"), "a partial title must not be an exact match");
+  assert.ok(ftsDocument.title.includes("original title"), "sidecar title must still be searchable text");
+  assert.ok(ftsDocument.title.includes("한국어 제목"), "sidecar title must still carry the Korean title");
+
+  const haystack = `${ftsDocument.title}\n${ftsDocument.search_text}`;
+  assert.ok(!haystack.includes("https://"), "the sidecar must never contain a URL");
+  assert.ok(!haystack.includes("raw_text"), "the sidecar must never contain raw text");
+
+  const missingKorean = buildSearchProjection({
+    publications: [publication()],
+    versions: [version({ korean_title: null })],
+  });
+  assert.ok(ftsTitleHasExactTitle(missingKorean.ftsDocuments[0].title, "Original Title"));
+  assert.ok(!ftsTitleHasExactTitle(missingKorean.ftsDocuments[0].title, "한국어 제목"));
+});
+
 test("full rebuild plan is deterministic, bound and scoped to worldcons_search only", () => {
-  const { documents } = buildSearchProjection({
+  const { documents, ftsDocuments } = buildSearchProjection({
     publications: [publication(), publication({ id: PUB_B, article_id: ARTICLE_B, version_id: VERSION_B })],
     versions: [version(), version({ id: VERSION_B, article_id: ARTICLE_B, source_key: "us-scotus", jurisdiction: "United States", content_type: "opinion", original_language: "en", original_title: "Case B", korean_title: null, case_key: "24-781", source_metadata: { caseNumber: "24-781" } })],
   });
   assert.equal(documents.length, 2);
 
-  const forward = planSearchProjectionFullRebuild(documents);
-  const reversed = planSearchProjectionFullRebuild([...documents].reverse());
+  const forward = planSearchProjectionFullRebuild(documents, ftsDocuments);
+  const reversed = planSearchProjectionFullRebuild([...documents].reverse(), [...ftsDocuments].reverse());
   assert.deepEqual(reversed.statements, forward.statements);
   assert.equal(forward.scope, SEARCH_PROJECTION_SCOPE);
   assert.equal(forward.operation, "full-rebuild");
@@ -300,7 +329,7 @@ test("incremental plan updates both sides for add/change/remove and is a no-op w
   const ARTICLE_C = "33333333-0000-0000-0000-000000000003";
   const VERSION_C = "cccccccc-0000-0000-0000-0000000000cc";
   const PUB_C = "cccccccc-0000-0000-0000-0000000000c1";
-  const { documents } = buildSearchProjection({
+  const { documents, ftsDocuments } = buildSearchProjection({
     publications: [
       publication(),
       publication({ id: PUB_B, article_id: ARTICLE_B, version_id: VERSION_B }),
@@ -315,10 +344,11 @@ test("incremental plan updates both sides for add/change/remove and is a no-op w
   const [docA, docB, docC] = documents;
   assert.deepEqual(documents.map((document) => document.article_id), [ARTICLE_A, ARTICLE_B, ARTICLE_C]);
 
+  const ftsById = new Map(ftsDocuments.map((ftsDocument) => [ftsDocument.article_id, ftsDocument]));
   const changedA: SearchProjectionDocument = { ...docA, checksum: "changed-checksum-a" };
   const current = [docA, docC];
   const next = [changedA, docB];
-  const plan = planSearchProjectionIncrementalSync(current, next);
+  const plan = planSearchProjectionIncrementalSync(current, next, next.map((document) => ftsById.get(document.article_id)!));
   assert.equal(plan.operation, "incremental");
   assert.equal(plan.noop, false);
   assert.deepEqual(plan.changes, { added: 1, changed: 1, removed: 1, unchanged: 0 });
@@ -342,15 +372,41 @@ test("incremental plan updates both sides for add/change/remove and is a no-op w
     new Set([docA.article_id, docB.article_id]),
   );
 
-  const changedPlan = planSearchProjectionIncrementalSync([docA], [{ ...docA, checksum: "new-checksum" }]);
+  const changedPlan = planSearchProjectionIncrementalSync([docA], [{ ...docA, checksum: "new-checksum" }], [ftsById.get(docA.article_id)!]);
   assert.deepEqual(changedPlan.changes, { added: 0, changed: 1, removed: 0, unchanged: 0 });
   assert.equal(changedPlan.statements.filter((statement) => statement.sql.startsWith("DELETE")).length, 2);
   assert.equal(changedPlan.statements.filter((statement) => statement.sql.startsWith("INSERT")).length, 2);
 
-  const noop = planSearchProjectionIncrementalSync(documents, documents);
+  const noop = planSearchProjectionIncrementalSync(documents, documents, ftsDocuments);
   assert.equal(noop.noop, true);
   assert.deepEqual(noop.statements, []);
   assert.deepEqual(noop.changes, { added: 0, changed: 0, removed: 0, unchanged: 3 });
+});
+
+test("the plan fails closed unless FTS sidecar rows are exactly 1:1 with documents", () => {
+  const { documents, ftsDocuments } = buildSearchProjection({
+    publications: [publication(), publication({ id: PUB_B, article_id: ARTICLE_B, version_id: VERSION_B })],
+    versions: [version(), version({ id: VERSION_B, article_id: ARTICLE_B })],
+  });
+  assert.equal(documents.length, 2);
+  assert.equal(ftsDocuments.length, 2);
+
+  assert.throws(
+    () => planSearchProjectionFullRebuild(documents, [ftsDocuments[0], ftsDocuments[0]]),
+    (error: unknown) => error instanceof SearchProjectionError && error.code === "duplicate_fts_document_id",
+  );
+  assert.throws(
+    () => planSearchProjectionFullRebuild(documents, [ftsDocuments[0]]),
+    (error: unknown) => error instanceof SearchProjectionError && error.code === "fts_document_count_mismatch",
+  );
+  assert.throws(
+    () =>
+      planSearchProjectionFullRebuild(documents, [
+        ftsDocuments[0],
+        { ...ftsDocuments[1], article_id: "99999999-0000-0000-0000-000000000009" },
+      ]),
+    (error: unknown) => error instanceof SearchProjectionError && error.code === "missing_fts_document",
+  );
 });
 
 test("verification detects count, hash, checksum, version and FTS identity drift", () => {
@@ -402,7 +458,7 @@ test("the empty corpus is deterministic and valid", () => {
   assert.deepEqual(first.documents, []);
   assert.equal(first.manifest.documentCount, 0);
 
-  const plan = planSearchProjectionFullRebuild([]);
+  const plan = planSearchProjectionFullRebuild([], []);
   assert.equal(plan.scope, SEARCH_PROJECTION_SCOPE);
   assert.deepEqual(plan.statements.map((statement) => statement.sql), ["DELETE FROM search_fts", "DELETE FROM search_documents"]);
 

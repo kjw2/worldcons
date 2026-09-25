@@ -10,6 +10,7 @@ export * from "./errors";
 export * from "./canonical";
 export * from "./checksum";
 export * from "./documents";
+export * from "./fts-document";
 export * from "./source";
 export * from "./build";
 export * from "./plan";

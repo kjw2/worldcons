@@ -80,7 +80,7 @@ function main(): void {
   const planKind = argValue(args, "plan") ?? "full";
   const fixture = loadFixture(args);
 
-  const { documents, manifest } = buildSearchProjection({
+  const { documents, ftsDocuments, manifest } = buildSearchProjection({
     publications: fixture.publications ?? [],
     versions: fixture.versions ?? [],
     articles: fixture.articles ?? [],
@@ -91,8 +91,8 @@ function main(): void {
   if (command === "plan") {
     const plan =
       planKind === "incremental"
-        ? planSearchProjectionIncrementalSync(requireCurrentDocuments(fixture), documents)
-        : planSearchProjectionFullRebuild(documents);
+        ? planSearchProjectionIncrementalSync(requireCurrentDocuments(fixture), documents, ftsDocuments)
+        : planSearchProjectionFullRebuild(documents, ftsDocuments);
     const summary = searchProjectionPlanSummary(plan);
     if (asJson) {
       process.stdout.write(`${JSON.stringify({ manifest, plan: summary }, null, 2)}\n`);

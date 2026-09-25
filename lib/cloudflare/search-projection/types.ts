@@ -55,6 +55,24 @@ export const SEARCH_TEXT_COMPONENT_WEIGHTS = ["korean_title:A", "original_title:
 export type SearchDocumentColumn = (typeof SEARCH_DOCUMENT_COLUMNS)[number];
 export type SearchFtsColumn = (typeof SEARCH_FTS_COLUMNS)[number];
 
+/**
+ * One sidecar FTS5 index row, one-to-one with a `search_documents` row.
+ *
+ * `search_documents` keeps its authored shape (a single Korean-preferred
+ * `display_title`). This sidecar is the only place both authoritative titles are
+ * represented: `title` deterministically encodes normalized variants of the
+ * original and Korean titles (see `lib/cloudflare/search-fts/title.ts`), so
+ * exact-title detection works for either. The remaining columns mirror the
+ * projected document; raw text, URLs and R2 content are never read.
+ */
+export interface SearchProjectionFtsDocument {
+  article_id: string;
+  title: string;
+  case_numbers: string;
+  search_text: string;
+  tags_text: string;
+}
+
 /** One denormalized `search_documents` row. */
 export interface SearchProjectionDocument {
   article_id: string;
@@ -166,6 +184,8 @@ export interface SearchProjectionManifest {
 
 export interface SearchProjectionBuildResult {
   documents: SearchProjectionDocument[];
+  /** Sidecar FTS rows, same length/order/article_id as `documents` (1:1). */
+  ftsDocuments: SearchProjectionFtsDocument[];
   manifest: SearchProjectionManifest;
 }
 

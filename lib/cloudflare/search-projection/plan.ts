@@ -1,5 +1,6 @@
 import { sortSearchProjectionDocuments } from "./checksum";
 import { projectionError } from "./errors";
+import { alignSearchProjectionFtsDocuments } from "./fts-document";
 import {
   SEARCH_DOCUMENT_COLUMNS,
   SEARCH_DOCUMENT_TABLE,
@@ -7,6 +8,7 @@ import {
   SEARCH_FTS_TABLE,
   SEARCH_PROJECTION_SCOPE,
   type SearchProjectionDocument,
+  type SearchProjectionFtsDocument,
   type SearchProjectionParam,
   type SearchProjectionPlan,
   type SearchProjectionPlanChanges,
@@ -41,13 +43,13 @@ function documentParams(document: SearchProjectionDocument): SearchProjectionPar
   return SEARCH_DOCUMENT_COLUMNS.map((column) => document[column] as SearchProjectionParam);
 }
 
-function ftsParams(document: SearchProjectionDocument): SearchProjectionParam[] {
+function ftsParams(document: SearchProjectionFtsDocument): SearchProjectionParam[] {
   return [
     document.article_id,
-    document.display_title ?? "",
-    document.case_numbers ?? "",
-    document.search_text ?? "",
-    document.tags_text ?? "",
+    document.title,
+    document.case_numbers,
+    document.search_text,
+    document.tags_text,
   ];
 }
 
@@ -55,7 +57,7 @@ function documentInsert(document: SearchProjectionDocument): SearchProjectionSta
   return { sql: INSERT_DOCUMENT_SQL, params: documentParams(document) };
 }
 
-function ftsInsert(document: SearchProjectionDocument): SearchProjectionStatement {
+function ftsInsert(document: SearchProjectionFtsDocument): SearchProjectionStatement {
   return { sql: INSERT_FTS_SQL, params: ftsParams(document) };
 }
 
@@ -117,14 +119,16 @@ function plan(
  */
 export function planSearchProjectionFullRebuild(
   documents: readonly SearchProjectionDocument[],
+  ftsDocuments: readonly SearchProjectionFtsDocument[],
 ): SearchProjectionPlan {
   const sorted = sortSearchProjectionDocuments(documents);
   indexUniqueDocuments(sorted, "full-rebuild input");
+  const sortedFts = alignSearchProjectionFtsDocuments(sorted, ftsDocuments, "full-rebuild input");
   const statements: SearchProjectionStatement[] = [
     { sql: DELETE_ALL_FTS_SQL, params: [] },
     { sql: DELETE_ALL_DOCUMENTS_SQL, params: [] },
     ...sorted.map(documentInsert),
-    ...sorted.map(ftsInsert),
+    ...sortedFts.map(ftsInsert),
   ];
   return plan("full-rebuild", statements, planChanges({ added: sorted.length }));
 }
@@ -132,15 +136,23 @@ export function planSearchProjectionFullRebuild(
 /**
  * Deterministic incremental plan from the current materialized documents to the
  * next desired documents. Added and changed rows update both the
- * `search_documents` and `search_fts` sides; removed rows delete from both, so
- * no stale FTS identity survives. Identical input is a true no-op.
+ * `search_documents` and `search_fts` sides (the FTS side uses the M7.2
+ * sidecar); removed rows delete from both, so no stale FTS identity survives.
+ * Identical input is a true no-op.
+ *
+ * Changed detection is driven by the document `checksum`. Because every
+ * authoritative title component is also part of `search_text`, any title change
+ * already changes the checksum, so both the base and FTS sides are recreated.
  */
 export function planSearchProjectionIncrementalSync(
   current: readonly SearchProjectionDocument[],
   next: readonly SearchProjectionDocument[],
+  nextFtsDocuments: readonly SearchProjectionFtsDocument[],
 ): SearchProjectionPlan {
   const currentById = indexUniqueDocuments(current, "current");
   const nextById = indexUniqueDocuments(next, "next");
+  const alignedNextFts = alignSearchProjectionFtsDocuments(next, nextFtsDocuments, "incremental next");
+  const nextFtsById = new Map(alignedNextFts.map((ftsDocument) => [ftsDocument.article_id, ftsDocument]));
 
   const removed = [...currentById.keys()].filter((id) => !nextById.has(id)).sort();
   const added = [...nextById.keys()].filter((id) => !currentById.has(id)).sort();
@@ -155,11 +167,11 @@ export function planSearchProjectionIncrementalSync(
   for (const id of removed) statements.push(ftsDelete(id), documentDelete(id));
   for (const id of changed) {
     const document = nextById.get(id)!;
-    statements.push(ftsDelete(id), documentDelete(id), documentInsert(document), ftsInsert(document));
+    statements.push(ftsDelete(id), documentDelete(id), documentInsert(document), ftsInsert(nextFtsById.get(id)!));
   }
   for (const id of added) {
     const document = nextById.get(id)!;
-    statements.push(documentInsert(document), ftsInsert(document));
+    statements.push(documentInsert(document), ftsInsert(nextFtsById.get(id)!));
   }
 
   const unchanged = nextById.size - added.length - changed.length;
