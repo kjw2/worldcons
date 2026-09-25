@@ -3,6 +3,7 @@ import test from "node:test";
 import type { D1ImportStatement } from "../lib/cloudflare/d1/import/types";
 import type { D1Database } from "../lib/cloudflare/d1/types";
 import {
+  createD1HttpAffectedWriter,
   createD1HttpParameterizedWriter,
   createD1HttpQueryExecutor,
   prepareD1HttpQuery,
@@ -571,4 +572,88 @@ test("createD1HttpParameterizedWriter discards the rows the executor returns", a
 
   const result = await writer(DATABASE, SECRET_STATEMENT);
   assert.equal(result, undefined, "a writer must resolve void and discard every returned row");
+});
+
+function buildAffectedWriter(
+  fetchImpl: typeof fetch,
+  overrides?: Partial<D1HttpQueryExecutorOptions>,
+) {
+  return createD1HttpAffectedWriter({
+    accountId: ACCOUNT_ID,
+    apiToken: TOKEN,
+    databaseIds: { [DATABASE]: DATABASE_ID },
+    fetch: fetchImpl,
+    timeoutMs: 1000,
+    ...overrides,
+  });
+}
+
+test("createD1HttpAffectedWriter returns the affected-row count from meta.changes", async () => {
+  const captured: CapturedRequest[] = [];
+  const statement: D1ImportStatement = {
+    sql: "update articles set title = ? where id = ?",
+    params: [ORDINARY_PARAM, "article-1"],
+  };
+  const writer = buildAffectedWriter(
+    capturingFetch(
+      jsonResponse({ success: true, result: [{ success: true, meta: { changes: 1, duration: 0.2 } }] }),
+      captured,
+    ),
+  );
+
+  const outcome = await writer(DATABASE, statement);
+  assert.deepEqual(outcome, { changes: 1 });
+  const body = JSON.parse(String(captured[0].init.body)) as { sql: string; params: unknown[] };
+  assert.equal(body.sql, prepareD1HttpQuery(statement).sql);
+  assert.equal(body.sql.includes(ORDINARY_PARAM), false, "string params stay bound out of the SQL text");
+  assert.deepEqual(body.params, [ORDINARY_PARAM, "article-1"]);
+});
+
+test("createD1HttpAffectedWriter sums changes across result entries", async () => {
+  const writer = buildAffectedWriter(
+    capturingFetch(
+      jsonResponse({
+        success: true,
+        result: [
+          { success: true, meta: { changes: 2 } },
+          { success: true, meta: { changes: 3 } },
+        ],
+      }),
+      [],
+    ),
+  );
+  assert.deepEqual(await writer(DATABASE, SECRET_STATEMENT), { changes: 5 });
+});
+
+test("createD1HttpAffectedWriter fails closed on a malformed or missing meta.changes without leaking secrets", async () => {
+  const payloads: unknown[] = [
+    { success: true, result: [{ success: true }] },
+    { success: true, result: [{ success: true, meta: {} }] },
+    { success: true, result: [{ success: true, meta: { changes: -1 } }] },
+    { success: true, result: [{ success: true, meta: { changes: 1.5 } }] },
+    { success: true, result: [{ success: true, meta: { changes: "1" } }] },
+    { success: true, result: [] },
+  ];
+  for (const payload of payloads) {
+    const writer = buildAffectedWriter(capturingFetch(jsonResponse(payload), []));
+    await assert.rejects(
+      () => writer(DATABASE, SECRET_STATEMENT),
+      (error: unknown) => {
+        assert.equal(errorCode(error), "d1_http_query.invalid_response");
+        assertNoLeak(error);
+        return true;
+      },
+    );
+  }
+});
+
+test("createD1HttpAffectedWriter surfaces http failures without leaking secrets", async () => {
+  await assert.rejects(
+    () => buildAffectedWriter(capturingFetch(errorResponse(500), []))(DATABASE, SECRET_STATEMENT),
+    (error: unknown) => {
+      assert.equal(errorCode(error), "d1_http_query.http_error");
+      assertNoLeak(error);
+      return true;
+    },
+  );
 });

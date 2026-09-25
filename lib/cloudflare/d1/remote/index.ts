@@ -32,3 +32,22 @@ export {
   D1_MIGRATION_VERIFY_PREFIX,
 } from "./migration-apply";
 export type { BuildD1MigrationApplyManifestOptions } from "./migration-apply";
+
+export {
+  buildD1RemoteReconcileManifest,
+  D1_REMOTE_RECONCILE_ACTIONS,
+  D1_REMOTE_RECONCILE_DATABASES,
+  D1_REMOTE_RECONCILE_DEFAULT_BATCH_SIZE,
+  D1_REMOTE_RECONCILE_DEFAULT_ROWS_PER_INSERT,
+  D1_REMOTE_RECONCILE_STATES,
+  D1_REMOTE_RECONCILE_VERSION,
+} from "./reconcile";
+export type {
+  BuildD1RemoteReconcileManifestOptions,
+  D1RemoteReconcileAction,
+  D1RemoteReconcileManifest,
+  D1RemoteReconcileManifestTarget,
+  D1RemoteReconcileManifestTotals,
+  D1RemoteReconcileState,
+  D1RemoteReconcileTableTarget,
+} from "./reconcile";

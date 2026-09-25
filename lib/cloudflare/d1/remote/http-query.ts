@@ -305,3 +305,128 @@ export function createD1HttpParameterizedWriter(
     await execute(database, statement);
   };
 }
+
+/** The bound-parameter write surface that reports the D1 affected-row count. */
+export type D1HttpAffectedWriter = (
+  database: D1Database,
+  statement: D1ImportStatement,
+) => Promise<{ changes: number }>;
+
+/**
+ * The bound-parameter write surface used by the reconcile operator. It shares
+ * `createD1HttpQueryExecutor`'s exact credential validation, timeout and
+ * response validation, then reads the affected-row count from the D1 response
+ * envelope's `meta.changes`. A response whose `meta.changes` is not a
+ * non-negative integer fails closed, so a silent zero-row write can never pass as
+ * a successful reconciliation. It never literalizes a string parameter.
+ */
+export function createD1HttpAffectedWriter(
+  options: D1HttpQueryExecutorOptions,
+): D1HttpAffectedWriter {
+  const { accountId, apiToken, databaseIds } = options;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  if (typeof accountId !== "string" || !ACCOUNT_ID_PATTERN.test(accountId)) {
+    throw createD1HttpQueryError("d1_http_query.invalid_account_id", "d1_http_query.invalid_account_id");
+  }
+  if (typeof apiToken !== "string" || apiToken.trim().length === 0) {
+    throw createD1HttpQueryError("d1_http_query.invalid_token", "d1_http_query.invalid_token");
+  }
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+    throw createD1HttpQueryError("d1_http_query.invalid_timeout", "d1_http_query.invalid_timeout");
+  }
+  if (databaseIds === null || typeof databaseIds !== "object") {
+    throw createD1HttpQueryError("d1_http_query.invalid_database_id", "d1_http_query.invalid_database_id");
+  }
+  for (const databaseId of Object.values(databaseIds)) {
+    if (databaseId !== undefined && (typeof databaseId !== "string" || !DATABASE_ID_PATTERN.test(databaseId))) {
+      throw createD1HttpQueryError("d1_http_query.invalid_database_id", "d1_http_query.invalid_database_id");
+    }
+  }
+
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+
+  return async function execute(database, statement): Promise<{ changes: number }> {
+    const databaseId = databaseIds[database];
+    if (typeof databaseId !== "string" || databaseId.length === 0) {
+      throw createD1HttpQueryError(
+        "d1_http_query.unknown_database",
+        `d1_http_query.unknown_database (database ${String(database)})`,
+      );
+    }
+    if (!DATABASE_ID_PATTERN.test(databaseId)) {
+      throw createD1HttpQueryError("d1_http_query.invalid_database_id", "d1_http_query.invalid_database_id");
+    }
+
+    const prepared = prepareD1HttpQuery(statement);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      let response: Response;
+      try {
+        response = await fetchImpl(
+          `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiToken}`,
+            },
+            body: JSON.stringify(prepared),
+            signal: controller.signal,
+          },
+        );
+      } catch {
+        throw controller.signal.aborted
+          ? createD1HttpQueryError("d1_http_query.timeout", "d1_http_query.timeout")
+          : createD1HttpQueryError("d1_http_query.request_failed", "d1_http_query.request_failed");
+      }
+
+      if (!response.ok) {
+        throw createD1HttpQueryError(
+          "d1_http_query.http_error",
+          `d1_http_query.http_error (status ${response.status}, database ${String(database)})`,
+        );
+      }
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+      }
+
+      if (typeof payload !== "object" || payload === null) {
+        throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+      }
+
+      const body = payload as { success?: unknown; result?: unknown };
+      if (body.success !== true || !Array.isArray(body.result)) {
+        throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+      }
+
+      let changes: number | null = null;
+      for (const entry of body.result) {
+        if (typeof entry !== "object" || entry === null || (entry as { success?: unknown }).success !== true) {
+          throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+        }
+        const meta = (entry as { meta?: unknown }).meta;
+        if (typeof meta !== "object" || meta === null) {
+          throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+        }
+        const raw = (meta as { changes?: unknown }).changes;
+        if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+          throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+        }
+        changes = changes === null ? raw : changes + raw;
+      }
+      if (changes === null) {
+        throw createD1HttpQueryError("d1_http_query.invalid_response", "d1_http_query.invalid_response");
+      }
+      return { changes };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
