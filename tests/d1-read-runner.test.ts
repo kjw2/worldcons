@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { D1RuntimeReadError, buildD1RuntimeReadStatement, runD1RuntimeRead } from "../lib/cloudflare/d1/runtime-read";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import { d1Schema } from "../lib/cloudflare/d1/schema";
-import { createD1ReferenceReadRepository, D1ReferenceReadUnsupportedError } from "../lib/reference-reads/d1-repository";
+import { createD1ReferenceReadRepository, D1ShadowTruncatedError } from "../lib/reference-reads/d1-repository";
 import { createSupabaseReferenceReadRepository } from "../lib/reference-reads/supabase-repository";
 
 /**
@@ -63,7 +63,10 @@ function table(name: string) {
   return found;
 }
 
-function createFakeSupabase(tables: Record<string, Record<string, unknown>[]>): SupabaseClient {
+function createFakeSupabase(
+  tables: Record<string, Record<string, unknown>[]>,
+  rpc: (name: string, args: unknown) => { data?: unknown; error?: { message: string } | null } = () => ({ data: [], error: null }),
+): SupabaseClient {
   const client = {
     from(name: string) {
       const builder: Record<string, unknown> = {};
@@ -79,7 +82,7 @@ function createFakeSupabase(tables: Record<string, Record<string, unknown>[]>): 
         Promise.resolve(resolve()).then(onFulfilled, onRejected);
       return builder;
     },
-    rpc: async () => ({ data: [], error: null }),
+    rpc: async (name: string, args: unknown) => rpc(name, args),
   };
   return client as unknown as SupabaseClient;
 }
@@ -211,6 +214,87 @@ test("D1 read runner fails closed on a malformed response envelope", async () =>
   );
 });
 
+test("D1 read statement projects authored columns and renders eq/gte plus ordered directions", () => {
+  const projected = buildD1RuntimeReadStatement({
+    binding: createFakeD1({}).database,
+    table: table("articles"),
+    select: ["jurisdiction", "source_metadata"],
+    where: [
+      { column: "status", value: "summarized" },
+      { column: "original_published_at", op: "gte", value: "2026-05-01T00:00:00.000Z" },
+    ],
+    orderBy: [],
+    limit: 50,
+  });
+  assert.equal(
+    projected.sql,
+    "select jurisdiction, source_metadata from articles where status = ? and original_published_at >= ? limit ?",
+  );
+  assert.deepEqual(projected.params, ["summarized", "2026-05-01T00:00:00.000Z", 50]);
+
+  const ordered = buildD1RuntimeReadStatement({
+    binding: createFakeD1({}).database,
+    table: table("tags"),
+    orderBy: [
+      { column: "latest_article_at", direction: "desc", nulls: "last" },
+      { column: "name", direction: "asc" },
+    ],
+    limit: 5,
+  });
+  assert.equal(
+    ordered.sql,
+    "select id, slug, name, normalized_name, type, description, article_count, latest_article_at, created_at, updated_at from tags order by latest_article_at desc nulls last, name asc limit ?",
+  );
+  assert.deepEqual(ordered.params, [5]);
+});
+
+test("D1 read runner rejects unknown select columns and unsupported operators instead of interpolating", () => {
+  assert.throws(
+    () =>
+      buildD1RuntimeReadStatement({
+        binding: createFakeD1({}).database,
+        table: table("tags"),
+        select: ["not_a_column"],
+      }),
+    (error: unknown) => error instanceof D1RuntimeReadError && error.code === "d1_runtime_read.unknown_column",
+  );
+  assert.throws(
+    () =>
+      buildD1RuntimeReadStatement({
+        binding: createFakeD1({}).database,
+        table: table("tags"),
+        where: [{ column: "type", op: "like" as never, value: "%" }],
+      }),
+    (error: unknown) => error instanceof D1RuntimeReadError && error.code === "d1_runtime_read.invalid_operator",
+  );
+  assert.throws(
+    () =>
+      buildD1RuntimeReadStatement({
+        binding: createFakeD1({}).database,
+        table: table("tags"),
+        orderBy: [{ column: "name", direction: "sideways" as never }],
+      }),
+    (error: unknown) => error instanceof D1RuntimeReadError && error.code === "d1_runtime_read.invalid_order",
+  );
+});
+
+test("D1 read runner revives only the projected columns", async () => {
+  const fake = createFakeD1({
+    articles: [
+      { id: "a1", jurisdiction: "France", status: "summarized", source_metadata: '{"collection":{"publishable":true}}' },
+    ],
+  });
+  const rows = await runD1RuntimeRead({
+    binding: fake.database,
+    table: table("articles"),
+    select: ["jurisdiction", "source_metadata"],
+    orderBy: [],
+    limit: 5,
+  });
+  assert.deepEqual(Object.keys(rows[0]).sort(), ["jurisdiction", "source_metadata"]);
+  assert.equal((rows[0].source_metadata as { collection: { publishable: boolean } }).collection.publishable, true);
+});
+
 test("D1 and Supabase source mapping are identical (boolean 0/1 and true/false)", async () => {
   const supabase = createFakeSupabase({ sources: SOURCE_ROWS });
   const d1Rows = SOURCE_ROWS.map((row) => ({ ...row, is_active: row.is_active ? 1 : 0 }));
@@ -252,15 +336,180 @@ test("D1 and Supabase glossary mapping are identical and keep the Korean-label o
   assert.deepEqual(lastCall.params, ["missing", 1]);
 });
 
-test("D1 adapter rejects uncovered methods with an explicit typed error", async () => {
-  const d1 = createFakeD1({ sources: SOURCE_ROWS, glossary_terms: GLOSSARY_ROWS });
-  const repository = createD1ReferenceReadRepository({ binding: d1.database });
-  for (const method of [
-    () => repository.listTags(),
-    () => repository.listJurisdictionArticleCounts(),
-    () => repository.listIngestionRuns(),
-    () => repository.getTagBySlug("qpc"),
-  ]) {
-    await assert.rejects(method, (error: unknown) => error instanceof D1ReferenceReadUnsupportedError);
-  }
+const TAG_ROWS = [
+  {
+    id: "tag-1",
+    slug: "qpc",
+    name: "QPC",
+    normalized_name: "QPC",
+    type: "procedure",
+    description: null,
+    article_count: 3,
+    latest_article_at: "2026-05-02T00:00:00.000Z",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-05-02T00:00:00.000Z",
+  },
+  {
+    id: "tag-2",
+    slug: "amparo",
+    name: "Amparo",
+    normalized_name: "AMPARO",
+    type: "procedure",
+    description: null,
+    article_count: 7,
+    latest_article_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-05-03T00:00:00.000Z",
+  },
+];
+
+const INGESTION_RUN_ROWS = [
+  {
+    id: "run-1",
+    source_key: "us-scotus",
+    started_at: "2026-05-08T00:00:00.000Z",
+    finished_at: "2026-05-08T00:02:31.000Z",
+    status: "completed",
+    discovered_count: 12,
+    fetched_count: 4,
+    summarized_count: 2,
+    failed_count: 0,
+    error_message: null,
+    metadata: { mode: "mock" },
+  },
+  {
+    id: "run-2",
+    source_key: "de-bverfg",
+    started_at: "2026-05-07T00:00:00.000Z",
+    finished_at: null,
+    status: "running",
+    discovered_count: 3,
+    fetched_count: 1,
+    summarized_count: 0,
+    failed_count: 1,
+    error_message: "timeout",
+    metadata: null,
+  },
+];
+
+test("D1 listTags/getTagBySlug map identically to Supabase and bound the query", async () => {
+  const supabase = createFakeSupabase({ tags: TAG_ROWS });
+  const d1 = createFakeD1({ tags: TAG_ROWS });
+
+  const authoritative = await createSupabaseReferenceReadRepository({
+    client: () => supabase,
+    environment: {},
+  }).listTags({ limit: 5 });
+  const shadow = await createD1ReferenceReadRepository({ binding: d1.database }).listTags({ limit: 5 });
+  assert.deepEqual(shadow, authoritative);
+
+  assert.match(d1.calls[0].sql, /from tags order by article_count desc limit \?/);
+  assert.deepEqual(d1.calls[0].params, [5]);
+
+  await createD1ReferenceReadRepository({ binding: d1.database }).listTags({
+    type: "procedure",
+    minArticleCount: 2,
+    sort: "latest",
+    limit: 4,
+  });
+  const latestCall = d1.calls[d1.calls.length - 1];
+  assert.match(latestCall.sql, /where type = \? and article_count >= \?/);
+  assert.match(latestCall.sql, /order by latest_article_at desc nulls last limit \?/);
+  assert.deepEqual(latestCall.params, ["procedure", 2, 4]);
+
+  const tag = await createD1ReferenceReadRepository({ binding: d1.database }).getTagBySlug("qpc");
+  assert.equal(tag?.slug, "qpc");
+  assert.equal(await createD1ReferenceReadRepository({ binding: d1.database }).getTagBySlug("missing"), null);
+  const slugCall = d1.calls[d1.calls.length - 1];
+  assert.match(slugCall.sql, /from tags where slug = \?/);
+  assert.deepEqual(slugCall.params, ["missing", 1]);
+});
+
+test("D1 listTags rejects an unbounded read and getTagBySlug orders by name ascending", async () => {
+  const d1 = createFakeD1({ tags: TAG_ROWS });
+  await assert.rejects(
+    () => createD1ReferenceReadRepository({ binding: d1.database }).listTags({ sort: "name" }),
+    /explicit bounded limit/,
+  );
+
+  await createD1ReferenceReadRepository({ binding: d1.database }).listTags({ sort: "name", limit: 2 });
+  assert.match(d1.calls[0].sql, /order by name asc limit \?/);
+});
+
+test("D1 listIngestionRuns uses the ingest binding, revives metadata and truncates overflow", async () => {
+  const core = createFakeD1({ tags: TAG_ROWS });
+  const ingest = createFakeD1({ ingestion_runs: INGESTION_RUN_ROWS });
+  const supabase = createFakeSupabase({ ingestion_runs: INGESTION_RUN_ROWS });
+
+  const authoritative = await createSupabaseReferenceReadRepository({
+    client: () => supabase,
+    environment: {},
+  }).listIngestionRuns(5);
+  const shadow = await createD1ReferenceReadRepository({
+    binding: core.database,
+    ingestBinding: ingest.database,
+  }).listIngestionRuns(5);
+  assert.deepEqual(shadow, authoritative);
+  assert.equal(core.calls.length, 0, "ingestion runs must never read worldcons_core");
+  assert.match(ingest.calls[0].sql, /from ingestion_runs order by started_at desc limit \?/);
+  assert.deepEqual(ingest.calls[0].params, [5]);
+
+  const truncated = createFakeD1({ ingestion_runs: INGESTION_RUN_ROWS });
+  await assert.rejects(
+    () => createD1ReferenceReadRepository({ binding: core.database, ingestBinding: truncated.database, maxRows: 1 }).listIngestionRuns(5),
+    (error: unknown) => error instanceof D1ShadowTruncatedError && error.code === "d1_shadow.truncated",
+  );
+});
+
+test("D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-fills", async () => {
+  const articleRows = [
+    { id: "a1", status: "summarized", jurisdiction: "France", source_metadata: { collection: { publishable: true } } },
+    { id: "a2", status: "summarized", jurisdiction: "France", source_metadata: '{"collection":{"publishable":true}}' },
+    { id: "a3", status: "summarized", jurisdiction: "France", source_metadata: { collection: { publishable: false } } },
+    { id: "a4", status: "summarized", jurisdiction: "Germany", source_metadata: { collection: { publishable: true } } },
+    { id: "a5", status: "discovered", jurisdiction: "Spain", source_metadata: { collection: { publishable: true } } },
+    { id: "a6", status: "summarized", jurisdiction: "  ", source_metadata: { collection: { publishable: true } } },
+  ];
+  const d1 = createFakeD1({ articles: articleRows });
+  const supabase = createFakeSupabase({}, () => ({
+    data: [
+      { jurisdiction: "France", article_count: "2" },
+      { jurisdiction: "Germany", article_count: 1 },
+    ],
+    error: null,
+  }));
+
+  const authoritative = await createSupabaseReferenceReadRepository({
+    client: () => supabase,
+    environment: {},
+  }).listJurisdictionArticleCounts(["France", "Spain"]);
+  const shadow = await createD1ReferenceReadRepository({ binding: d1.database }).listJurisdictionArticleCounts([
+    "France",
+    "Spain",
+  ]);
+  assert.deepEqual(shadow, authoritative);
+  assert.deepEqual(shadow, { France: 2, Spain: 0 });
+
+  assert.match(d1.calls[0].sql, /select jurisdiction, source_metadata from articles where status = \? limit \?/);
+  assert.deepEqual(d1.calls[0].params, ["summarized", 2001]);
+});
+
+test("D1 listJurisdictionArticleCounts truncates overflow and applies the range lower bound", async () => {
+  const d1 = createFakeD1({
+    articles: [
+      { id: "a1", status: "summarized", jurisdiction: "France", source_metadata: { collection: { publishable: true } } },
+      { id: "a2", status: "summarized", jurisdiction: "France", source_metadata: { collection: { publishable: true } } },
+    ],
+  });
+  await assert.rejects(
+    () => createD1ReferenceReadRepository({ binding: d1.database, maxRows: 1 }).listJurisdictionArticleCounts(["France"]),
+    (error: unknown) => error instanceof D1ShadowTruncatedError,
+  );
+
+  const ranged = createFakeD1({ articles: [] });
+  await createD1ReferenceReadRepository({ binding: ranged.database }).listJurisdictionArticleCounts(["France"], {
+    range: "week",
+  });
+  assert.match(ranged.calls[0].sql, /where status = \? and original_published_at >= \? limit \?/);
+  assert.equal(typeof ranged.calls[0].params[1], "string");
 });

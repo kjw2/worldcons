@@ -23,7 +23,7 @@ import {
 import { resetShadowInFlight } from "../lib/cloudflare/d1/shadow/inflight";
 import type { D1ShadowEvent } from "../lib/cloudflare/d1/shadow/events";
 import type { RuntimeBackgroundScheduler } from "../lib/runtime/background";
-import { withReferenceReadShadow } from "../lib/reference-reads/shadow";
+import { referenceReadShadowCoveredMethods, withReferenceReadShadow } from "../lib/reference-reads/shadow";
 import type { ReferenceReadRepository } from "../lib/reference-reads/types";
 
 /**
@@ -95,6 +95,36 @@ const PRIMARY_TERM = {
   relatedTags: ["QPC"],
 };
 
+const PRIMARY_TAG = {
+  id: "tag-1",
+  slug: "qpc",
+  name: "QPC",
+  normalizedName: "QPC",
+  type: "procedure" as const,
+  description: null,
+  articleCount: 3,
+  latestArticleAt: "2026-05-02T00:00:00.000Z",
+  confidence: undefined,
+};
+
+const PRIMARY_RUNS = [
+  {
+    id: "run-1",
+    sourceKey: "us-scotus",
+    startedAt: "2026-05-08T00:00:00.000Z",
+    finishedAt: "2026-05-08T00:02:31.000Z",
+    status: "completed",
+    discoveredCount: 12,
+    fetchedCount: 4,
+    summarizedCount: 2,
+    failedCount: 0,
+    errorMessage: null,
+    metadata: { mode: "mock" },
+  },
+];
+
+const PRIMARY_COUNTS = { France: 1, Germany: 1 };
+
 function createAuthoritative(overrides: Partial<ReferenceReadRepository> = {}): ReferenceReadRepository {
   return {
     async listSources() {
@@ -107,16 +137,17 @@ function createAuthoritative(overrides: Partial<ReferenceReadRepository> = {}): 
       return slug === "qpc" ? PRIMARY_TERM : null;
     },
     async listTags() {
-      return [];
+      return [PRIMARY_TAG];
     },
-    async listJurisdictionArticleCounts() {
-      return {};
+    async listJurisdictionArticleCounts(jurisdictions: string[] = []) {
+      if (jurisdictions.length === 0) return PRIMARY_COUNTS;
+      return Object.fromEntries(jurisdictions.map((jurisdiction) => [jurisdiction, PRIMARY_COUNTS[jurisdiction as keyof typeof PRIMARY_COUNTS] ?? 0]));
     },
     async listIngestionRuns() {
-      return [];
+      return PRIMARY_RUNS;
     },
-    async getTagBySlug() {
-      return null;
+    async getTagBySlug(slug: string) {
+      return slug === "qpc" ? PRIMARY_TAG : null;
     },
     ...overrides,
   };
@@ -152,6 +183,41 @@ const D1_GLOSSARY = [
     jurisdiction: "France",
     related_tags: '["QPC"]',
   },
+];
+
+const D1_TAGS = [
+  {
+    id: "tag-1",
+    slug: "qpc",
+    name: "QPC",
+    normalized_name: "QPC",
+    type: "procedure",
+    description: null,
+    article_count: 3,
+    latest_article_at: "2026-05-02T00:00:00.000Z",
+  },
+];
+
+const D1_RUNS = [
+  {
+    id: "run-1",
+    source_key: "us-scotus",
+    started_at: "2026-05-08T00:00:00.000Z",
+    finished_at: "2026-05-08T00:02:31.000Z",
+    status: "completed",
+    discovered_count: 12,
+    fetched_count: 4,
+    summarized_count: 2,
+    failed_count: 0,
+    error_message: null,
+    metadata: { mode: "mock" },
+  },
+];
+
+const D1_ARTICLES = [
+  { jurisdiction: "France", status: "summarized", source_metadata: { collection: { publishable: true } } },
+  { jurisdiction: "Germany", status: "summarized", source_metadata: { collection: { publishable: true } } },
+  { jurisdiction: "France", status: "summarized", source_metadata: { collection: { publishable: false } } },
 ];
 
 function baseConfig(overrides: Partial<D1ShadowConfig> = {}): D1ShadowConfig {
@@ -476,9 +542,115 @@ test("per-isolate max in-flight applies backpressure to a second read", async ()
   assert.equal(d1.calls.length, 1, "the backpressured read must not touch D1");
 });
 
-test("the wrapper only shadows covered methods and delegates the rest", async () => {
+test("M6.2 covers every remaining method while keeping the M6.1 methods shadowed", () => {
+  const covered = referenceReadShadowCoveredMethods();
+  for (const method of [
+    "listSources",
+    "listGlossaryTerms",
+    "getGlossaryTerm",
+    "listTags",
+    "getTagBySlug",
+    "listIngestionRuns",
+    "listJurisdictionArticleCounts",
+  ]) {
+    assert.ok(covered.includes(method), `${method} must be shadow-covered`);
+  }
+});
+
+test("M6.1 methods remain shadowed and return authoritative identity after M6.2", async () => {
   resetShadowInFlight();
-  const d1 = createFakeD1({ sources: D1_SOURCES });
+  const d1 = createFakeD1({ sources: D1_SOURCES, glossary_terms: D1_GLOSSARY });
+  const collector = createCollectorScheduler();
+  const { events, sink } = captureEvents();
+  const repository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink,
+    projection: false,
+  });
+
+  assert.equal(await repository.listSources(), PRIMARY_SOURCES);
+  assert.equal(await repository.getGlossaryTerm("qpc"), PRIMARY_TERM);
+  await collector.flush();
+  assert.deepEqual(
+    events.map((event) => `${event.method}:${event.outcome}`),
+    ["listSources:matched", "getGlossaryTerm:matched"],
+  );
+});
+
+test("legacy listTags shadows, compares and returns the authoritative array by identity", async () => {
+  resetShadowInFlight();
+  const primary = [PRIMARY_TAG];
+  const d1 = createFakeD1({ tags: D1_TAGS });
+  const collector = createCollectorScheduler();
+  const { events, sink } = captureEvents();
+  const repository = withReferenceReadShadow(createAuthoritative({ listTags: async () => primary }), {
+    config: baseConfig(),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink,
+    projection: false,
+  });
+
+  const result = await repository.listTags({ limit: 5 });
+  assert.equal(result, primary, "the exact authoritative array must be returned unchanged");
+  assert.equal(d1.calls.length, 1);
+  await collector.flush();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].method, "listTags");
+  assert.equal(events[0].outcome, "matched", `diffPath=${events[0].diffPath ?? "null"}`);
+  assert.equal(events[0].compared, true);
+  assert.equal(events[0].primaryCount, 1);
+  assert.equal(events[0].shadowCount, 1);
+  assert.equal(events[0].primaryHash, events[0].shadowHash);
+});
+
+test("listTags skips with zero D1 calls in projection mode and when unbounded or over maxRows", async () => {
+  resetShadowInFlight();
+  const d1 = createFakeD1({ tags: D1_TAGS });
+  const collector = createCollectorScheduler();
+
+  const projected = captureEvents();
+  const projectedRepository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink: projected.sink,
+    projection: true,
+  });
+  await projectedRepository.listTags({ limit: 5 });
+  assert.equal(projected.events[0].reason, "projection_mode");
+  assert.equal(d1.calls.length, 0);
+
+  const unbounded = captureEvents();
+  const unboundedRepository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink: unbounded.sink,
+    projection: false,
+  });
+  await unboundedRepository.listTags();
+  assert.equal(unbounded.events[0].reason, "unbounded");
+  assert.equal(d1.calls.length, 0);
+
+  const exceeds = captureEvents();
+  const exceedsRepository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig({ maxRows: 3 }),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink: exceeds.sink,
+    projection: false,
+  });
+  await exceedsRepository.listTags({ limit: 5 });
+  assert.equal(exceeds.events[0].reason, "limit_exceeds_max_rows");
+  assert.equal(d1.calls.length, 0);
+});
+
+test("a direct wrapper construction defaults to the conservative projection tag skip", async () => {
+  resetShadowInFlight();
+  const d1 = createFakeD1({ tags: D1_TAGS });
   const collector = createCollectorScheduler();
   const { events, sink } = captureEvents();
   const repository = withReferenceReadShadow(createAuthoritative(), {
@@ -488,11 +660,143 @@ test("the wrapper only shadows covered methods and delegates the rest", async ()
     sink,
   });
 
-  assert.deepEqual(await repository.listIngestionRuns(), []);
-  assert.deepEqual(await repository.listTags(), []);
-  assert.equal(collector.count(), 0);
-  assert.equal(events.length, 0);
+  await repository.listTags({ limit: 5 });
+  assert.equal(events[0].reason, "projection_mode");
   assert.equal(d1.calls.length, 0);
+});
+
+test("getTagBySlug shadows in legacy mode, returns authoritative identity and skips in projection mode", async () => {
+  resetShadowInFlight();
+  const d1 = createFakeD1({ tags: D1_TAGS });
+  const collector = createCollectorScheduler();
+  const { events, sink } = captureEvents();
+  const repository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink,
+    projection: false,
+  });
+
+  assert.equal(await repository.getTagBySlug("qpc"), PRIMARY_TAG);
+  await collector.flush();
+  assert.equal(events[0].method, "getTagBySlug");
+  assert.equal(events[0].outcome, "matched");
+
+  resetShadowInFlight();
+  const projected = captureEvents();
+  const projectedRepository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink: projected.sink,
+    projection: true,
+  });
+  assert.equal(await projectedRepository.getTagBySlug("qpc"), PRIMARY_TAG);
+  assert.equal(projected.events[0].reason, "projection_mode");
+  assert.equal(d1.calls.length, 1, "projection mode must not add a tags D1 read");
+});
+
+test("listIngestionRuns skips when the ingest binding is missing even though core exists", async () => {
+  resetShadowInFlight();
+  const core = createFakeD1({ tags: D1_TAGS });
+  const collector = createCollectorScheduler();
+  const { events, sink } = captureEvents();
+  const repository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: core.database,
+    ingestBinding: null,
+    scheduler: collector.scheduler,
+    sink,
+  });
+
+  assert.equal(await repository.listIngestionRuns(5), PRIMARY_RUNS);
+  assert.equal(events[0].reason, "no_binding");
+  assert.equal(events[0].db, "worldcons_ingest");
+  assert.equal(core.calls.length, 0);
+});
+
+test("listIngestionRuns reads the ingest binding, compares and returns identity", async () => {
+  resetShadowInFlight();
+  const core = createFakeD1({ tags: D1_TAGS });
+  const ingest = createFakeD1({ ingestion_runs: D1_RUNS });
+  const collector = createCollectorScheduler();
+  const { events, sink } = captureEvents();
+  const repository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig(),
+    binding: core.database,
+    ingestBinding: ingest.database,
+    scheduler: collector.scheduler,
+    sink,
+  });
+
+  assert.equal(await repository.listIngestionRuns(5), PRIMARY_RUNS);
+  await collector.flush();
+  assert.equal(events[0].method, "listIngestionRuns");
+  assert.equal(events[0].outcome, "matched", `diffPath=${events[0].diffPath ?? "null"}`);
+  assert.equal(core.calls.length, 0, "ingestion runs must never read worldcons_core");
+  assert.equal(ingest.calls.length, 1);
+});
+
+test("listJurisdictionArticleCounts skips in projection mode and matches the legacy grouping otherwise", async () => {
+  resetShadowInFlight();
+  const primary = { France: 1, Spain: 0 };
+  const d1 = createFakeD1({ articles: D1_ARTICLES });
+  const collector = createCollectorScheduler();
+
+  const projected = captureEvents();
+  const projectedRepository = withReferenceReadShadow(
+    createAuthoritative({ listJurisdictionArticleCounts: async () => primary }),
+    {
+      config: baseConfig(),
+      binding: d1.database,
+      scheduler: collector.scheduler,
+      sink: projected.sink,
+      projection: true,
+    },
+  );
+  assert.equal(await projectedRepository.listJurisdictionArticleCounts(["France", "Spain"]), primary);
+  assert.equal(projected.events[0].reason, "projection_mode");
+  assert.equal(d1.calls.length, 0);
+
+  resetShadowInFlight();
+  const legacy = captureEvents();
+  const legacyRepository = withReferenceReadShadow(
+    createAuthoritative({ listJurisdictionArticleCounts: async () => primary }),
+    {
+      config: baseConfig(),
+      binding: d1.database,
+      scheduler: collector.scheduler,
+      sink: legacy.sink,
+      projection: false,
+    },
+  );
+  assert.equal(await legacyRepository.listJurisdictionArticleCounts(["France", "Spain"]), primary);
+  await collector.flush();
+  assert.equal(legacy.events[0].method, "listJurisdictionArticleCounts");
+  assert.equal(legacy.events[0].outcome, "matched", `diffPath=${legacy.events[0].diffPath ?? "null"}`);
+  assert.equal(d1.calls.length, 1);
+});
+
+test("listJurisdictionArticleCounts overflow is a skip, never a partial comparison", async () => {
+  resetShadowInFlight();
+  const d1 = createFakeD1({ articles: D1_ARTICLES });
+  const collector = createCollectorScheduler();
+  const { events, sink } = captureEvents();
+  const repository = withReferenceReadShadow(createAuthoritative(), {
+    config: baseConfig({ maxRows: 1 }),
+    binding: d1.database,
+    scheduler: collector.scheduler,
+    sink,
+    projection: false,
+  });
+
+  await repository.listJurisdictionArticleCounts(["France"]);
+  await collector.flush();
+  assert.equal(events[0].outcome, "skipped");
+  assert.equal(events[0].reason, "shadow_truncated");
+  assert.equal(events[0].compared, false);
+  assert.equal(events[0].readOutcome, "success");
 });
 
 test("runtime shadow config slot round-trips", () => {
