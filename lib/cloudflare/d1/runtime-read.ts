@@ -13,7 +13,8 @@ import type { D1ColumnDefinition, D1TableDefinition } from "./types";
  *
  * M6.2 extends the request with an optional authored column projection,
  * `eq`/`gte` predicates and `asc`/`desc` (with optional null placement)
- * ordering. The safety properties are unchanged:
+ * ordering. M6.3 adds the `neq` and `in` predicates needed by the bounded
+ * article-read shadow composition. The safety properties are unchanged:
  *
  * - identifiers (table, columns, order by) are authored D1 schema names guarded
  *   by a strict regex; a name never reaches SQL unguarded;
@@ -35,18 +36,22 @@ export class D1RuntimeReadError extends Error {
 }
 
 /**
- * A guarded predicate. `eq` renders `column = ?` and `gte` renders
- * `column >= ?`; the column is always an authored D1 name and the value is
- * always bound, never interpolated.
+ * A guarded predicate. `eq` renders `column = ?`, `gte` renders
+ * `column >= ?`, `neq` renders `column != ?` and `in` renders
+ * `column in (?, ?, ...)`. The column is always an authored D1 name and every
+ * value is always bound, never interpolated.
  */
-export type D1RuntimeReadOperator = "eq" | "gte";
+export type D1RuntimeReadOperator = "eq" | "gte" | "neq" | "in";
 
 export interface D1RuntimeReadPredicate {
   /** An authored D1 column name. */
   column: string;
   /** Comparison operator; defaults to `eq`. */
   op?: D1RuntimeReadOperator;
-  /** A value bound as a `?` parameter, never interpolated. */
+  /**
+   * A value bound as a `?` parameter, never interpolated. An `in` predicate
+   * requires a non-empty array; each element is bound as its own parameter.
+   */
   value: unknown;
 }
 
@@ -150,10 +155,25 @@ export function buildD1RuntimeReadStatement(request: D1RuntimeReadRequest): { sq
       throw new D1RuntimeReadError("d1_runtime_read.unknown_column", `unknown predicate column: ${predicate.column}`);
     }
     const op = predicate.op ?? "eq";
-    if (op === "eq") whereSql.push(`${assertIdentifier(predicate.column)} = ?`);
-    else if (op === "gte") whereSql.push(`${assertIdentifier(predicate.column)} >= ?`);
-    else throw new D1RuntimeReadError("d1_runtime_read.invalid_operator", `unsupported predicate operator: ${String(op)}`);
-    params.push(predicate.value);
+    const column = assertIdentifier(predicate.column);
+    if (op === "eq") {
+      whereSql.push(`${column} = ?`);
+      params.push(predicate.value);
+    } else if (op === "gte") {
+      whereSql.push(`${column} >= ?`);
+      params.push(predicate.value);
+    } else if (op === "neq") {
+      whereSql.push(`${column} != ?`);
+      params.push(predicate.value);
+    } else if (op === "in") {
+      if (!Array.isArray(predicate.value) || predicate.value.length === 0) {
+        throw new D1RuntimeReadError("d1_runtime_read.invalid_operator", "in requires a non-empty array value");
+      }
+      whereSql.push(`${column} in (${predicate.value.map(() => "?").join(", ")})`);
+      params.push(...predicate.value);
+    } else {
+      throw new D1RuntimeReadError("d1_runtime_read.invalid_operator", `unsupported predicate operator: ${String(op)}`);
+    }
   }
 
   const orderBy = (request.orderBy ?? table.primaryKey).map((entry) => {

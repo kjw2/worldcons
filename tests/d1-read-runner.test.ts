@@ -278,8 +278,44 @@ test("D1 read runner rejects unknown select columns and unsupported operators in
   );
 });
 
-test("D1 read runner revives only the projected columns", async () => {
-  const fake = createFakeD1({
+test("D1 read statement renders neq and in with bound values and rejects an empty in", () => {
+  const statement = buildD1RuntimeReadStatement({
+    binding: createFakeD1({}).database,
+    table: table("article_tags"),
+    select: ["article_id"],
+    where: [
+      { column: "tag_id", value: "tag-9" },
+      { column: "article_id", op: "neq", value: "a" },
+    ],
+    orderBy: [],
+    limit: 12,
+  });
+  assert.equal(statement.sql, "select article_id from article_tags where tag_id = ? and article_id != ? limit ?");
+  assert.deepEqual(statement.params, ["tag-9", "a", 12]);
+
+  const inStatement = buildD1RuntimeReadStatement({
+    binding: createFakeD1({}).database,
+    table: table("articles"),
+    select: ["id"],
+    where: [{ column: "id", op: "in", value: ["a", "b", "c"] }],
+    orderBy: [],
+    limit: 3,
+  });
+  assert.equal(inStatement.sql, "select id from articles where id in (?, ?, ?) limit ?");
+  assert.deepEqual(inStatement.params, ["a", "b", "c", 3]);
+
+  assert.throws(
+    () =>
+      buildD1RuntimeReadStatement({
+        binding: createFakeD1({}).database,
+        table: table("articles"),
+        where: [{ column: "id", op: "in", value: [] }],
+      }),
+    (error: unknown) => error instanceof D1RuntimeReadError && error.code === "d1_runtime_read.invalid_operator",
+  );
+});
+
+test("D1 read runner revives only the projected columns", async () => {  const fake = createFakeD1({
     articles: [
       { id: "a1", jurisdiction: "France", status: "summarized", source_metadata: '{"collection":{"publishable":true}}' },
     ],

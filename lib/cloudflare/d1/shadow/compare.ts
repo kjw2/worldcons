@@ -8,7 +8,8 @@ import { shadowDigest } from "./digest";
  * module compares their canonical forms:
  *
  * - an array contract is compared after sorting items by a stable authored key,
- *   so a reordered but otherwise identical result set is EQUAL;
+ *   so a reordered but otherwise identical result set is EQUAL; a primitive
+ *   `unordered` array (no authored key) is sorted by canonical form;
  * - the raw order is recorded separately as `orderMatches` (informational only);
  * - each side is hashed with the pure-JS `shadowDigest` over its canonical form;
  * - the first differing field path is captured, bounded, for triage.
@@ -20,6 +21,13 @@ export interface D1ShadowContract {
   kind: "array" | "object";
   /** Stable key field used to sort array items for equality. */
   stableKey: string | null;
+  /**
+   * Compare an array as an unordered set of canonicalizable values. This is for
+   * primitive arrays (for example a list of related article ids) whose
+   * authoritative order is not contractually defined, so a stable item key
+   * cannot be used.
+   */
+  unordered?: boolean;
 }
 
 export interface D1ShadowComparison {
@@ -50,6 +58,21 @@ function sortedByStableKey(items: readonly unknown[], stableKey: string | null):
     if (a === b) return 0;
     return a < b ? -1 : 1;
   });
+}
+
+/** Sorts primitive arrays by their canonical JSON text (order-insensitive set). */
+function sortedByCanonicalForm(items: readonly unknown[]): unknown[] {
+  return [...items].sort((left, right) => {
+    const a = canonicalJson(left);
+    const b = canonicalJson(right);
+    if (a === b) return 0;
+    return a < b ? -1 : 1;
+  });
+}
+
+function equalityOrderedItems(contract: D1ShadowContract, items: readonly unknown[]): unknown[] {
+  if (contract.unordered) return sortedByCanonicalForm(items);
+  return sortedByStableKey(items, contract.stableKey);
 }
 
 function canonicalItems(items: readonly unknown[]): string[] {
@@ -95,8 +118,8 @@ function arrayDiffPath(
   primary: readonly unknown[],
   shadow: readonly unknown[],
 ): string | null {
-  const sortedPrimary = sortedByStableKey(primary, contract.stableKey);
-  const sortedShadow = sortedByStableKey(shadow, contract.stableKey);
+  const sortedPrimary = equalityOrderedItems(contract, primary);
+  const sortedShadow = equalityOrderedItems(contract, shadow);
   const common = Math.min(sortedPrimary.length, sortedShadow.length);
   for (let index = 0; index < common; index += 1) {
     const diff = firstDiffPath(sortedPrimary[index], sortedShadow[index], `${contract.method}[${index}]`);
@@ -115,8 +138,8 @@ export function compareD1Shadow(
   if (contract.kind === "array") {
     const primaryItems = Array.isArray(primary) ? primary : [];
     const shadowItems = Array.isArray(shadow) ? shadow : [];
-    const primaryForm = equalityForm("array", canonicalItems(sortedByStableKey(primaryItems, contract.stableKey)));
-    const shadowForm = equalityForm("array", canonicalItems(sortedByStableKey(shadowItems, contract.stableKey)));
+    const primaryForm = equalityForm("array", canonicalItems(equalityOrderedItems(contract, primaryItems)));
+    const shadowForm = equalityForm("array", canonicalItems(equalityOrderedItems(contract, shadowItems)));
     return {
       matched: primaryForm === shadowForm,
       orderMatches: canonicalJson(primaryItems) === canonicalJson(shadowItems),

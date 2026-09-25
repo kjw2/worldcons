@@ -19,6 +19,9 @@ export const D1_SHADOW_SAMPLE_RATE_ENV = "WORLDCONS_D1_SHADOW_SAMPLE_RATE";
 /** The only shadow surface implemented so far (M6.1 reference reads). */
 export const D1_SHADOW_REFERENCE_SURFACE = "reference";
 
+/** M6.3 bounded article-read shadow surface. */
+export const D1_SHADOW_ARTICLE_READ_SURFACE = "article_read";
+
 export const D1_SHADOW_DEFAULT_TIMEOUT_MS = 1500;
 export const D1_SHADOW_DEFAULT_MAX_ROWS = 2000;
 export const D1_SHADOW_DEFAULT_MAX_IN_FLIGHT = 2;
