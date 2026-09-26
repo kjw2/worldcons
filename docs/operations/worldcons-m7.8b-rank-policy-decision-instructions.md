@@ -23,9 +23,10 @@ with 1,258/1,258 exact production/local scope, zero errors and zero blockers.
 Evidence is stored at
 `artifacts/cloudflare-m7/m7.8b-fts-parity-holdout.{json,md}`.
 
-The `fulltext_rank_threshold_unagreed` blocker is therefore retired. This does
-not itself grant `GO-SEARCH`; deployed Worker bearer-path runtime evidence and
-the final M7 gate remain pending.
+The `fulltext_rank_threshold_unagreed` blocker is therefore retired. This
+decision did not by itself grant `GO-SEARCH`; the subsequent M7.9 deployed
+Worker bearer-path runtime evidence passed and the final M7 gate now records
+`GO-SEARCH` readiness without switching production authority.
 
 ## What this record governs
 

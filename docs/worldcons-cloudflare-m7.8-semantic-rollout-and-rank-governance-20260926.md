@@ -363,9 +363,9 @@ E3 18/18 and E4 18/18 with zero errors, zero failures and zero blockers.
 Evidence is `artifacts/cloudflare-m7/m7.8b-fts-parity-holdout.{json,md}`.
 
 This retires `fulltext_rank_threshold_unagreed` without inventing a numeric
-threshold. `GO-SEARCH` remains blocked only on deployed-Worker bearer-path
-runtime evidence and the final M7 readiness decision. The signing procedure and
-executed record are documented in
+threshold. The subsequent M7.9 deployed-Worker bearer-path report passed all
+three modes, so `GO-SEARCH` readiness is now recorded without an authority
+switch. The signing procedure and executed record are documented in
 `docs/operations/worldcons-m7.8b-rank-policy-decision-instructions.md`.
 
 ## Local verification
@@ -401,6 +401,6 @@ were performed while producing this record.
   applied or moved.
 - No generic numeric acceptance threshold is invented; the signed
   candidate-coverage E1-E4 policy passed on the disjoint v5 holdout.
-- `fulltext_rank_threshold_unagreed` is retired, but `GO-SEARCH` stays blocked
-  pending deployed-Worker runtime evidence and the separate final readiness
-  decision.
+- `fulltext_rank_threshold_unagreed` is retired; the subsequent M7.9 deployed
+  runtime evidence passes and records `GO-SEARCH` readiness only. Production
+  search authority remains unchanged pending a separate cutover.

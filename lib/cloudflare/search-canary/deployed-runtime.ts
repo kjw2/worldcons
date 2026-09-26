@@ -1,6 +1,6 @@
 import { canonicalJson } from "@/lib/backfill/canonical-json";
 import { shadowDigest } from "@/lib/cloudflare/d1/shadow/digest";
-import type { RankedSearchMode } from "@/lib/cloudflare/search-ranked";
+import { primaryCaseReference, type RankedSearchMode } from "@/lib/cloudflare/search-ranked";
 import type { SearchCanaryCase } from "./types";
 
 export const DEPLOYED_SEARCH_CANARY_WORKER = "worldcons-search-canary";
@@ -83,6 +83,16 @@ function expectationPasses(caseDef: SearchCanaryCase, topIds: readonly string[])
   return topIds[0] === expectation.id;
 }
 
+function expectedRetrievalMode(caseDef: SearchCanaryCase): string {
+  // Ranked search resolves recognized case references before the requested
+  // lexical/semantic mode. The frozen canary intentionally classifies these
+  // cases under the fulltext gate, while the runtime truthfully reports the
+  // narrower `exact-case` branch.
+  if (primaryCaseReference(caseDef.query) !== null) return "exact-case";
+  if (caseDef.query.trim() === "") return "latest";
+  return caseDef.mode;
+}
+
 function observe(
   caseDef: SearchCanaryCase,
   result: DeployedRuntimeResult | null,
@@ -99,7 +109,7 @@ function observe(
       errorCode: result.errorCode,
     };
   }
-  const modeMatches = result.retrievalMode === caseDef.mode;
+  const modeMatches = result.retrievalMode === expectedRetrievalMode(caseDef);
   const expectationMatches = expectationPasses(caseDef, result.topIds);
   return {
     caseId: caseDef.id,

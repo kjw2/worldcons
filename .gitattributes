@@ -1,0 +1,5 @@
+# These M7.8-A files are byte-pinned by the rollout contract and its evidence
+# regression test. Preserve their committed LF bytes even when core.autocrlf is
+# enabled on a Windows operator checkout.
+supabase/migrations/20260926120000_m7_7a_semantic_authority_projection.sql -text
+artifacts/cloudflare-m7/m7.8a-semantic-authority-rollout.md -text

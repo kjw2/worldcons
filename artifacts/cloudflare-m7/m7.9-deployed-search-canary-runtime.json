@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "scope": "deployed-search-canary-runtime",
+  "worker": "worldcons-search-canary",
+  "endpointHost": "worldcons-search-canary.cclib.workers.dev",
+  "source": "supabase",
+  "maxArticles": 100,
+  "projection": {
+    "documents": 100,
+    "vectorRecords": 100,
+    "missingArtifacts": 0,
+    "staleArtifacts": 0
+  },
+  "cases": 8,
+  "observations": [
+    {
+      "caseId": "fulltext-1",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 479,
+      "errorCode": null
+    },
+    {
+      "caseId": "fulltext-2",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 131,
+      "errorCode": null
+    },
+    {
+      "caseId": "fulltext-3",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 131,
+      "errorCode": null
+    },
+    {
+      "caseId": "fulltext-4",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 310,
+      "errorCode": null
+    },
+    {
+      "caseId": "semantic-1",
+      "mode": "semantic",
+      "status": "pass",
+      "latencyMs": 160,
+      "errorCode": null
+    },
+    {
+      "caseId": "semantic-2",
+      "mode": "semantic",
+      "status": "pass",
+      "latencyMs": 143,
+      "errorCode": null
+    },
+    {
+      "caseId": "hybrid-1",
+      "mode": "hybrid",
+      "status": "pass",
+      "latencyMs": 453,
+      "errorCode": null
+    },
+    {
+      "caseId": "hybrid-2",
+      "mode": "hybrid",
+      "status": "pass",
+      "latencyMs": 461,
+      "errorCode": null
+    }
+  ],
+  "modes": [
+    {
+      "mode": "fulltext",
+      "cases": 4,
+      "passed": 4,
+      "mismatched": 0,
+      "errored": 0,
+      "mismatchRate": 0,
+      "errorRate": 0,
+      "latencyP50Ms": 131,
+      "latencyP95Ms": 479,
+      "pass": true
+    },
+    {
+      "mode": "semantic",
+      "cases": 2,
+      "passed": 2,
+      "mismatched": 0,
+      "errored": 0,
+      "mismatchRate": 0,
+      "errorRate": 0,
+      "latencyP50Ms": 143,
+      "latencyP95Ms": 160,
+      "pass": true
+    },
+    {
+      "mode": "hybrid",
+      "cases": 2,
+      "passed": 2,
+      "mismatched": 0,
+      "errored": 0,
+      "mismatchRate": 0,
+      "errorRate": 0,
+      "latencyP50Ms": 453,
+      "latencyP95Ms": 461,
+      "pass": true
+    }
+  ],
+  "latencyP50Ms": 160,
+  "latencyP95Ms": 479,
+  "state": "pass",
+  "blockers": [],
+  "boundaries": [
+    "read-only: the runner calls only the deployed Worker POST /canary/run path and linked Supabase SELECT/RPC source reads",
+    "the bearer token is read from process environment, sent only to the pinned workers.dev origin and never logged or persisted",
+    "no D1/Vectorize write, schema command, deploy, SearchRepository switch, DNS change or traffic change",
+    "report is content-free: no query text, document text, top ids, URLs, vectors or bearer value are persisted",
+    "latency gates are p50 <= 500 ms and p95 <= 1500 ms independently for fulltext, semantic and hybrid"
+  ],
+  "generatedAt": "2026-09-26T07:24:10.897Z",
+  "stableHash": "cb2f07f86f76a074"
+}

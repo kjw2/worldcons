@@ -11,6 +11,15 @@ import {
 
 const cases: SearchCanaryCase[] = [
   {
+    id: "exact-case-private-id",
+    mode: "fulltext",
+    query: "1 BvR 2656/18",
+    source: "de-bverfg",
+    limit: 5,
+    offset: 0,
+    expectation: { kind: "top-id", id: "article-exact" },
+  },
+  {
     id: "fulltext-private-id",
     mode: "fulltext",
     query: "secret-query-shape",
@@ -42,9 +51,10 @@ const cases: SearchCanaryCase[] = [
 
 function passingResults(latencyMs = 100): DeployedRuntimeResult[] {
   return [
-    { caseId: cases[0]!.id, latencyMs, topIds: ["article-a"], retrievalMode: "fulltext", errorCode: null },
-    { caseId: cases[1]!.id, latencyMs, topIds: ["article-b"], retrievalMode: "semantic", errorCode: null },
-    { caseId: cases[2]!.id, latencyMs, topIds: ["article-c"], retrievalMode: "hybrid", errorCode: null },
+    { caseId: cases[0]!.id, latencyMs, topIds: ["article-exact"], retrievalMode: "exact-case", errorCode: null },
+    { caseId: cases[1]!.id, latencyMs, topIds: ["article-a"], retrievalMode: "fulltext", errorCode: null },
+    { caseId: cases[2]!.id, latencyMs, topIds: ["article-b"], retrievalMode: "semantic", errorCode: null },
+    { caseId: cases[3]!.id, latencyMs, topIds: ["article-c"], retrievalMode: "hybrid", errorCode: null },
   ];
 }
 
@@ -88,10 +98,15 @@ test("deployed runtime evidence is content-free and stable across generatedAt", 
   const first = report(passingResults());
   const second = report(passingResults(), "2026-09-26T01:00:00.000Z");
   assert.equal(first.stableHash, second.stableHash);
-  assert.deepEqual(first.observations.map((observation) => observation.caseId), ["fulltext-1", "semantic-1", "hybrid-1"]);
+  assert.deepEqual(first.observations.map((observation) => observation.caseId), [
+    "fulltext-1",
+    "fulltext-2",
+    "semantic-1",
+    "hybrid-1",
+  ]);
   const serialized = `${JSON.stringify(first)}\n${renderDeployedRuntimeMarkdown(first)}`;
   assert.doesNotMatch(serialized, /secret-query-shape|semantic-query-shape|hybrid-query-shape/u);
-  assert.doesNotMatch(serialized, /article-a|article-b|article-c|private-id/u);
+  assert.doesNotMatch(serialized, /article-exact|article-a|article-b|article-c|private-id/u);
   assert.doesNotMatch(serialized, /Bearer|WORLDCONS_SEARCH_CANARY_TOKEN=/u);
 });
 
