@@ -103,4 +103,10 @@ test("operator runner is pinned, dry-run by default and has no apply or write pa
   assert.doesNotMatch(source, /executeScript|upsert|insert|delete|update|wrangler deploy/iu);
   assert.match(source, /runWorkerCanaryCases/u);
   assert.match(source, /createSupabaseCanaryReader/u);
+  const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  assert.equal(packageJson.scripts["m7.9:deployed-runtime"], "tsx scripts/deployed-search-canary-runtime.ts");
+  assert.equal(packageJson.scripts["test:m7.9"], "tsx --test tests/m7.9-deployed-search-canary-runtime.test.ts");
+  assert.match(packageJson.scripts["verify:release"] ?? "", /pnpm test:m7\.9/u);
 });
