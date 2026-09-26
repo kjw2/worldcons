@@ -8,11 +8,12 @@
   "contentFree": true,
   "notes": "No secrets, tokens, raw HTML, or application rows. Only counts, ids, timestamps and code paths. Read-only Cloudflare queries used the operator OAuth session; no message was sent, acked, retried, purged or deleted, and no Supabase/D1/application data was read or written by this step.",
   "restingState": {
-    "deployedVersion": "10e27ad5-6660-43ba-8b88-df5e2a428c01",
+    "deployedVersion": "510507c0-de82-4019-a1dd-d2a1f8f37cf4",
     "M8_SCHEDULER_ENABLED": "false",
     "M8_ENABLED_KINDS": "admin-health",
     "schedulerDisabledThroughoutStep": true,
-    "publicationJobsTriggered": false
+    "publicationJobsTriggered": false,
+    "verifiedAfterMainPush": true
   },
   "queueDlqState": {
     "queue": "worldcons-async-v1",

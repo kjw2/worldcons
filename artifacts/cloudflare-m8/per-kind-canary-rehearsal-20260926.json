@@ -78,6 +78,7 @@
     "automaticDlqTransitionForInjectedInvalid": "OPEN",
     "followUp20260926": {
       "artifact": "artifacts/cloudflare-m8/go-async-acceptance-evidence-20260926.json",
+      "postAcceptanceRestingVersion": "510507c0-de82-4019-a1dd-d2a1f8f37cf4",
       "mainQueueBacklogAtReobservation": 0,
       "dlqBacklogAtReobservation": 3,
       "dlqDeleteOutcomesForMainQueue": ["2026-09-26T08:38:00Z", "2026-09-26T09:03:00Z", "2026-09-26T09:35:00Z"],

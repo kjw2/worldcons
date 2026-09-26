@@ -13,8 +13,8 @@ GO-ASYNC STILL NOT RECORDED.**
 
 The M8 async control plane (Cron + Queues + Workflows) and the Browser Run
 crawler transport are implemented and deployed as isolated resources. The
-deployed `worldcons-ingest` final resting version `10e27ad5-6660-43ba-8b88-
-df5e2a428c01` has `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-
+deployed `worldcons-ingest` final resting version `510507c0-de82-4019-a1dd-
+d2a1f8f37cf4` has `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-
 health`, so every Cron, Queue and Workflow entry point fails closed or
 skips/acks without triggering live GitHub execution.
 
@@ -272,7 +272,7 @@ was changed by the canary.
 ### worldcons-ingest (async control plane)
 
 - Worker name: `worldcons-ingest`
-- Final resting deployed version: `10e27ad5-6660-43ba-8b88-df5e2a428c01`
+- Final resting deployed version: `510507c0-de82-4019-a1dd-d2a1f8f37cf4`
 - Earlier version (first completion record): `8988532e-2feb-4675-8b76-52fd54508e30`
 - Bindings present: Cron triggers, Queue producer/consumer, Workflow
 - `M8_SCHEDULER_ENABLED`: `false` (safety state)
@@ -454,7 +454,8 @@ only after the changes reach `main`:
 
 1. Confirm the deployed `worldcons-ingest`/`worldcons-browser-run` versions
    match the merged config (resting `worldcons-ingest` should be
-   `10e27ad5-6660-43ba-8b88-df5e2a428c01` with `M8_SCHEDULER_ENABLED=false`).
+   `510507c0-de82-4019-a1dd-d2a1f8f37cf4` with
+   `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-health`).
 2. Keep `M8_SCHEDULER_ENABLED=false` during any further activation rehearsal; the
    admin-health canary gate is already proven but the resting state must stay
    disabled.
