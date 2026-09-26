@@ -5,6 +5,7 @@ import type {
   RankedSearchPagePayload,
   RankedSearchRange,
 } from "@/lib/cloudflare/search-ranked";
+import type { RankedIdParityReport } from "@/lib/cloudflare/search-fts";
 import type { VectorizeProjectionRecord } from "@/lib/cloudflare/search-vector";
 
 /**
@@ -17,17 +18,22 @@ import type { VectorizeProjectionRecord } from "@/lib/cloudflare/search-vector";
  * This module imports no Node builtin and performs no remote read or write.
  */
 
-export const SEARCH_CANARY_VERSION = 1 as const;
+export const SEARCH_CANARY_VERSION = 2 as const;
 
 /**
  * The isolated, non-production canary Vectorize index. It is deliberately a
- * distinct name from the production plan index (`worldcons-search`): M7.5 must
- * never modify an existing production index.
+ * distinct name from the production plan index (`worldcons-search`): M7.5/M7.6
+ * must never modify an existing production index. Defaults target the v2 index
+ * created by the bounded M7.5 canary; override with `--index-name`.
  */
-export const SEARCH_CANARY_VECTOR_INDEX = "worldcons-search-canary-v1" as const;
+export const SEARCH_CANARY_VECTOR_INDEX = "worldcons-search-canary-v2" as const;
 
-/** The isolated, non-production canary D1 database for the search projection. */
-export const SEARCH_CANARY_D1_DATABASE = "worldcons_search_canary" as const;
+/**
+ * The isolated, non-production canary D1 database for the search projection.
+ * Defaults target the v2 database created by the bounded M7.5 canary; override
+ * with `--database`.
+ */
+export const SEARCH_CANARY_D1_DATABASE = "worldcons_search_canary_v2" as const;
 
 /** Default bounded canary size; the ceiling is enforced fail-closed. */
 export const SEARCH_CANARY_MAX_ARTICLES_DEFAULT = 100 as const;
@@ -57,6 +63,10 @@ export const SEARCH_CANARY_BLOCKER_CODES = [
   "canary_index_absent",
   "canary_index_mismatch",
   "canary_metadata_index_capacity",
+  "parameterized_writer_unavailable",
+  "binding_canary_unavailable",
+  "runtime_latency_threshold",
+  "fulltext_rank_threshold_unagreed",
 ] as const;
 
 export type SearchCanaryBlockerCode = (typeof SEARCH_CANARY_BLOCKER_CODES)[number];
@@ -80,6 +90,15 @@ export interface SearchCanaryThresholds {
   maxLatencyP50Ms: number;
   /** 95th-percentile observed latency ceiling, in milliseconds. */
   maxLatencyP95Ms: number;
+  /**
+   * Optional median BINDING latency ceiling, in milliseconds. M7.6 separates
+   * true D1/Vectorize binding latency from operator wall time; this ceiling is
+   * enforced only when at least one observation carries a binding latency, so a
+   * legacy operator-only run is not suddenly gated by an unmeasured dimension.
+   */
+  maxBindingLatencyP50Ms?: number;
+  /** Optional 95th-percentile binding latency ceiling, in milliseconds. */
+  maxBindingLatencyP95Ms?: number;
 }
 
 export const SEARCH_CANARY_DEFAULT_THRESHOLDS: SearchCanaryThresholds = {
@@ -89,6 +108,8 @@ export const SEARCH_CANARY_DEFAULT_THRESHOLDS: SearchCanaryThresholds = {
   maxTimeoutRate: 0,
   maxLatencyP50Ms: 2000,
   maxLatencyP95Ms: 5000,
+  maxBindingLatencyP50Ms: 500,
+  maxBindingLatencyP95Ms: 1500,
 };
 
 export type SearchCanaryObservationStatus = "pass" | "mismatch" | "error" | "timeout" | "skipped";
@@ -125,21 +146,148 @@ export interface SearchCanaryCase {
   expectation: SearchCanaryExpectation;
 }
 
-export type SearchCanaryOracleParity = "match" | "mismatch" | "absent";
+export type SearchCanaryOracleParity = "match" | "mismatch" | "informational" | "absent";
+
+/**
+ * Content-free rank comparison between the observed page and the production
+ * oracle page, computed with the M7.2 `compareRankedIds` evidence helper.
+ *
+ * It is stored as a diagnostic, not a threshold: `strict` records whether this
+ * comparison is allowed to gate the case at all. A generic lexical (`contains`)
+ * fulltext case is `strict: false` because M7.2 documents that FTS5 bm25 does
+ * NOT reproduce Postgres `ts_rank_cd`, so production ordering is informational
+ * until an acceptance threshold is agreed. IDs only: no search text.
+ */
+export interface SearchCanaryRankComparison extends RankedIdParityReport {
+  /** True when the production ordering is a pass/fail gate for this case. */
+  strict: boolean;
+}
+
+/**
+ * Explicit oracle modes. `production-rpc` compares against the Supabase
+ * `worldcons_ranked_search_page_v1` RPC; `artifact-reference` compares against
+ * the provenance-locked `article_embedding_artifacts` projection (the M7.4
+ * authority) and is used when the production projection embedding is NULL;
+ * `none` means no oracle was requested/available.
+ */
+export const SEARCH_CANARY_ORACLE_MODES = ["none", "production-rpc", "artifact-reference"] as const;
+export type SearchCanaryOracleMode = (typeof SEARCH_CANARY_ORACLE_MODES)[number];
+
+/**
+ * The transport that executed the parameterized canary writes.
+ *
+ * `local-dev` is the loopback-only, unauthenticated `wrangler dev` transport: it
+ * is never selected by `auto`, requires an explicit `--writer=local-dev` (or the
+ * explicit `WORLDCONS_SEARCH_CANARY_DEV_UNAUTH=true` opt-in), and fails closed
+ * on any non-loopback or non-`http` endpoint.
+ */
+export const SEARCH_CANARY_WRITE_TRANSPORTS = ["none", "worker-binding", "d1-http", "local-dev"] as const;
+export type SearchCanaryWriteTransportKind = (typeof SEARCH_CANARY_WRITE_TRANSPORTS)[number];
+
+/** A JSON-safe bound parameter; blobs are never accepted on the canary path. */
+export type SearchCanaryWriteParam = string | number | null;
+
+/** One parameterized statement: authored `?` SQL plus bound params. */
+export interface SearchCanaryParameterizedStatement {
+  sql: string;
+  params: SearchCanaryWriteParam[];
+}
+
+export interface SearchCanaryWritePlanCounts {
+  statements: number;
+  parameters: number;
+  /** Largest authored `?` SQL statement, in bytes, with bound params excluded. */
+  maxAuthoredSqlBytes: number;
+  /** Largest single bound parameter, in bytes; authored content only. */
+  maxParamBytes: number;
+  /** Largest literal rendering if the statement were literalized (diagnostic). */
+  maxLiteralBytes: number;
+  /** Statements whose literal rendering would exceed the D1 statement limit. */
+  literalOversizedStatements: number;
+  /** Total literal bytes of the statements that would exceed the limit (0 when none). */
+  literalOversizedBytes: number;
+}
+
+/** A parameterized write plan; never carries a literalized statement. */
+export interface SearchCanaryWritePlan {
+  version: 1;
+  destructive: false;
+  limitBytes: number;
+  counts: SearchCanaryWritePlanCounts;
+  /** Authored `?` SQL plus bound params. MUTABLE in-memory only: never serialize. */
+  statements: SearchCanaryParameterizedStatement[];
+}
+
+/**
+ * The content-free view of a write plan that is safe to attach to a
+ * `SearchCanaryReport`, serialize to JSON, render as Markdown or log. It carries
+ * counts and byte sizes only: the authored `?` SQL and every bound parameter
+ * (which may embed document/search text) stay in the in-memory
+ * `SearchCanaryWritePlan` and are never copied into this summary.
+ */
+export interface SearchCanaryWritePlanSummary {
+  version: 1;
+  destructive: false;
+  limitBytes: number;
+  counts: SearchCanaryWritePlanCounts;
+}
+
+export interface SearchCanaryWriteResult {
+  transport: SearchCanaryWriteTransportKind;
+  executedStatements: number;
+  totalChanges: number;
+}
+
+/** Operator wall time and binding/runtime time, reported separately. */
+export interface SearchCanaryTimingSummary {
+  samples: number;
+  operatorP50Ms: number;
+  operatorP95Ms: number;
+  bindingP50Ms: number;
+  bindingP95Ms: number;
+}
+
+export interface SearchCanaryTimings {
+  operator: { samples: number; p50Ms: number; p95Ms: number };
+  binding: { samples: number; p50Ms: number; p95Ms: number };
+}
+
+export interface SearchCanaryOracleModeSummary {
+  productionRpc: number;
+  artifactReference: number;
+  none: number;
+  /** Observations whose artifact-reference mode was forced by production drift. */
+  drift: number;
+}
 
 export interface SearchCanaryObservation {
   caseId: string;
   mode: RankedSearchMode;
   status: SearchCanaryObservationStatus;
+  /** Operator wall time (process/CLI boundary) in milliseconds. */
   latencyMs: number;
+  /**
+   * Binding/runtime latency in milliseconds when measured through the isolated
+   * canary Worker's real D1 + Vectorize bindings; `null` for an operator-only run.
+   */
+  bindingLatencyMs: number | null;
   /** D1 row reads attributed to this observation (0 when unknown/skipped). */
   rowReads: number;
   /** Bounded top ids actually observed (never search text). */
   topIds: string[];
   /** Bounded top ids returned by the Supabase RPC oracle (empty when absent). */
   oracleTopIds: string[];
-  /** Whether the observed page agreed with the production oracle. */
+  /** The explicit oracle mode used for this observation. */
+  oracleMode: SearchCanaryOracleMode;
+  /** True when artifact-reference mode was forced by production embedding drift. */
+  oracleDrift: boolean;
+  /** Whether the observed page agreed with the selected oracle. */
   oracleParity: SearchCanaryOracleParity;
+  /**
+   * Content-free rank comparison against a production lexical oracle, when one
+   * was available; `null` for artifact-reference/none or non-lexical modes.
+   */
+  rankComparison: SearchCanaryRankComparison | null;
   /** Stable error code when `status` is error/timeout. */
   errorCode: string | null;
   /** Deterministic detail for a mismatch, never document content. */
@@ -160,9 +308,15 @@ export interface SearchCanaryModeMetrics {
   timeoutRate: number;
   latencyP50Ms: number;
   latencyP95Ms: number;
+  /** Observations with a measured binding latency. */
+  bindingSamples: number;
+  bindingLatencyP50Ms: number;
+  bindingLatencyP95Ms: number;
   rowReads: number;
   oracleCompared: number;
   oracleMatched: number;
+  /** Observations whose lexical production rank diverged but is non-gating. */
+  oracleInformational: number;
   pass: boolean;
 }
 
@@ -174,6 +328,9 @@ export interface SearchCanaryMetrics {
   totalRowReads: number;
   latencyP50Ms: number;
   latencyP95Ms: number;
+  bindingSamples: number;
+  bindingLatencyP50Ms: number;
+  bindingLatencyP95Ms: number;
   pass: boolean;
 }
 
@@ -228,8 +385,22 @@ export interface SearchCanaryProjectionPlan {
   };
 }
 
+export interface SearchCanaryRemoteWrites {
+  indexCreated: boolean;
+  metadataIndexesCreated: string[];
+  vectorsUpserted: number;
+  searchRowsInserted: number;
+  databaseCreated: boolean;
+  /** M7.6: which parameterized transport executed the projection writes. */
+  writer?: SearchCanaryWriteTransportKind;
+  /** M7.6: parameterized statements executed (0 in dry-run/reuse). */
+  parameterizedStatements?: number;
+  /** M7.6: statements whose literal rendering exceeds the D1 statement limit. */
+  literalOversizedStatements?: number;
+}
+
 export interface SearchCanaryReport {
-  version: 1;
+  version: typeof SEARCH_CANARY_VERSION;
   generatedAt: string;
   scope: "search-canary";
   vectorIndex: string;
@@ -244,14 +415,18 @@ export interface SearchCanaryReport {
     truncated: boolean;
   };
   vectorBootstrap: SearchCanaryVectorBootstrapPlan | null;
-  remoteWrites: {
-    indexCreated: boolean;
-    metadataIndexesCreated: string[];
-    vectorsUpserted: number;
-    searchRowsInserted: number;
-    databaseCreated: boolean;
-  };
+  remoteWrites: SearchCanaryRemoteWrites;
+  /**
+   * The content-free parameterized write-plan summary, or null when no projection
+   * write was planned. The executable plan (with bound params) is never attached
+   * here, so no report serialization can leak SQL parameter values.
+   */
+  writePlan: SearchCanaryWritePlanSummary | null;
   metrics: SearchCanaryMetrics;
+  /** Operator wall time and binding/runtime time, reported separately. */
+  timings: SearchCanaryTimings;
+  /** Explicit oracle-mode accounting (never fabricated parity). */
+  oracle: SearchCanaryOracleModeSummary;
   observations: SearchCanaryObservation[];
   thresholds: SearchCanaryThresholds;
   blockers: SearchCanaryBlocker[];

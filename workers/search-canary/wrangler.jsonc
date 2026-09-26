@@ -1,0 +1,47 @@
+{
+  // WorldCons M7.6 isolated search-canary Worker.
+  //
+  // This config is SEPARATE from the production ./wrangler.jsonc and is never
+  // deployed by production tooling. It intentionally:
+  //   - binds only the isolated, non-production canary resources
+  //     (worldcons_search_canary_v2 + worldcons-search-canary-v2);
+  //   - declares NO `routes`, NO `route` and NO custom domain, so it can never
+  //     receive production traffic;
+  //   - leaves the production Worker config byte-for-byte unchanged.
+  //
+  // `remote: true` is a DEVELOPMENT-ONLY binding option (Wrangler config schema:
+  // "Whether the ... should be remote or not in local development"). With it,
+  // a plain `wrangler dev` executes Worker code LOCALLY while the D1/Vectorize
+  // calls reach the real isolated canary resources, so ChatGPT tooling can drive
+  // the canary remotely without the deployed bearer secret. It changes ONLY how
+  // `wrangler dev` resolves the binding: the binding names, the database/index
+  // identities and the (absent) routes are unchanged, and `wrangler deploy`
+  // ignores it. Production `./wrangler.jsonc` is untouched.
+  //
+  // This id belongs to the isolated `worldcons_search_canary_v2` database.
+  // It is intentionally not the production `worldcons_search` database.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "worldcons-search-canary",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "./src/index.ts",
+  "workers_dev": true,
+  "alias": {
+    "@": "../.."
+  },
+  "d1_databases": [
+    {
+      "binding": "SEARCH_CANARY_DB",
+      "database_name": "worldcons_search_canary_v2",
+      "database_id": "bf163ca5-3644-43b5-9b69-8d05ed497560",
+      "remote": true
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "SEARCH_CANARY_INDEX",
+      "index_name": "worldcons-search-canary-v2",
+      "remote": true
+    }
+  ]
+}

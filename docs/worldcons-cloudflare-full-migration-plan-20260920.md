@@ -1047,6 +1047,61 @@ parameterized D1 write path, an actual D1+Vectorize binding/runtime canary, and 
 formal resolution of semantic authority drift before the search gate can pass.
 See `docs/worldcons-cloudflare-m7.5-remote-search-canary-20260926.md`.
 
+M7.6 status (2026-09-26, **bounded remote canary evidenced through
+local-runtime + remote-bindings; gate still blocked**): a parameterized D1 write
+path, an isolated binding/runtime canary and explicit oracle modes are
+implemented.
+`workers/search-canary/*` is a separate, non-production Worker with real
+`worldcons_search_canary_v2` D1 + `worldcons-search-canary-v2` Vectorize
+bindings, no routes and no custom domain; the production `wrangler.jsonc` is
+unchanged. `lib/cloudflare/search-canary/writer.ts` +
+`operator/parameterized-writer.ts` replace the M7.5 literalized writes: the
+authored `?` SQL and bound params are sent separately through either the
+isolated Worker D1 binding (repository Wrangler account) or the existing D1 HTTP
+query primitives, so a large `search_text` never enters SQL statement text and
+source content is never truncated (the literal-size fields are diagnostics
+only). **Proven remote facts (through `wrangler dev` local runtime with
+`remote: true` bindings, not a deployed Worker):** the isolated canary now holds
+100 `search_documents` + 100 `search_fts` rows and 100 provenance-locked
+Vectorize vectors with all five metadata indexes, append-only expanded from the
+verified 15-row subset with post-write verification; the previous literalized
+path's 10 oversized statements / 272,048 max bytes are carried as bound
+parameters with no truncation; the final rerun was a true no-op; and the latest
+4-case binding latency is p50/p95 161/386 ms (operator 1943/6277 ms is evidence
+only). This is explicitly **not** a deployed Worker runtime SLO. Observations
+carry binding/runtime latency separate from operator wall time. Explicit oracle
+modes (`production-rpc` / `artifact-reference` / `none`) resolve the M7.5
+semantic authority drift without mutating Supabase or adding a migration,
+recording `oracleDrift` when the artifact projection stands in for a NULL
+production embedding. **Refined conservative lexical-rank gate:** M7.2 documents
+that FTS5 bm25 does not reproduce Postgres `ts_rank_cd` and claims no rank
+parity/threshold, so strict production-rpc top-id parity is kept only for the
+deterministic `exact-case-*` cases; generic lexical (`contains`) fulltext
+ordering is informational (`compareRankedIds` overlap/prefix/order/set metrics
+are stored, the local frozen expectation still must pass, and a top-1 divergence
+is no longer a false case mismatch), and an explicit unresolved
+`fulltext_rank_threshold_unagreed` blocker keeps `GO-SEARCH` blocked instead of
+inventing a threshold. **Latency gate selection:** when binding samples exist the
+binding p50/p95 thresholds gate and operator wall time is evidence only; the
+legacy operator thresholds gate only a no-binding run. Focused tests cover the
+Worker contract, parameterized writer, strict auth/no-leak, the
+artifact-reference oracle, the refined rank/latency gates and the
+runtime-neutral boundary (`pnpm test:d1-search-canary-m7.6`), and the frozen M7.5
+suite still passes. **No production resource was created/deleted or switched.**
+The isolated non-production `worldcons-search-canary` Worker is deployed at
+`worldcons-search-canary.cclib.workers.dev`; final version
+`720d2c2a-e2fc-4f05-9aae-fd425b7a392a` is at 100%, and an unauthenticated
+`GET /health` returns HTTP 401. The 100-row materialization and 161/386 ms
+binding evidence still come from local-runtime + remote-bindings, not the
+deployed Worker runtime. Supabase remains production authority,
+`SearchRepository` is unchanged, `search_m7` remains blocked and no
+`GO-SEARCH`/`GO-D1-READ` is claimed. `GO-SEARCH` stays blocked for (a) the
+semantic authority drift and (b) the unagreed fulltext rank acceptance
+threshold; remaining steps are to exercise the bearer-protected deployed canary
+path for deployed-runtime latency evidence when an authorized operator provides
+the canary secret, and to resolve (a)/(b). See
+`docs/worldcons-cloudflare-m7.6-parameterized-writer-binding-canary-20260926.md`.
+
 ### M8 — Async pipeline migration
 
 Objective:
@@ -1152,6 +1207,9 @@ GO-D1-READ:
 
 GO-SEARCH:
 - FTS5 + Vectorize regression threshold passes
+- a fulltext rank acceptance threshold for FTS5 bm25 vs Postgres `ts_rank_cd`
+  is explicitly agreed (until then generic lexical diff is informational and the
+  unresolved `fulltext_rank_threshold_unagreed` blocker keeps GO blocked)
 
 GO-ASYNC:
 - retry/idempotency/DLQ/recovery tests pass
@@ -1269,8 +1327,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] Postgres -> canonical -> D1 converter (M5.2a: Postgres export + canonical transform with per-table/database hashes, `pnpm d1:convert`; M5.2b: D1 import emitter + local apply + round-trip hash verification, `pnpm d1:import`; M5.2c PART 1: operator-only remote D1 bootstrap, dry-run Wrangler create + verify, `pnpm d1:provision`, remote creation now complete; M5.2c PART 2a: operator-only remote D1 schema apply, dry-run by default with `--apply` to write and a read-only `sqlite_master` object query that runs before any write, `pnpm d1:apply-schema`, all four remote schemas now applied and verified (the `--file` stdout parser bug fixed); M5.2c PART 2b: operator-only bounded Postgres -> remote-D1 *data* copy, dry-run by default with `--apply` to write, source only via `--url`/`WORLDCONS_D1_SOURCE_URL`, plain `INSERT` statements only, exact/prefix/mismatch fail-closed, deterministic chunks, per-chunk count + final canonical hash verification, core/ingest/ops scope with search deferred, `pnpm d1:copy-data` with 18/18 focused tests — PART 2b operator implemented; `supabase-linked` read path verified; `worldcons_core.sources` 4-row canary copied and reverified exact; broader live copy still pending)
 - [ ] data count/hash/FK invariants (M5.2d: the bounded `d1:reconcile` operator reconciled the nine mutable-drift tables — `glossary_candidates` 50 updates, the remaining eight tables 21 inserts + 51 updates — and a final direct dry-run snapshot reported all nine `exact`/`none`/`verified:true`, source == remote counts/hashes, `remoteOnly === 0`, zero planned writes; no authority switch: Supabase remains the read authority. See `docs/worldcons-cloudflare-m5.2d-reconcile-completion-20260925.md`)
 - [ ] D1 shadow reads (M6.0 + M6.1 reference-read shadow implemented, default OFF: runtime D1 binding injection, `waitUntil` background scheduler, default-off shadow flags, bounded runtime-safe D1 read runner, a D1 `ReferenceReadRepository` for `listSources`/`listGlossaryTerms`/`getGlossaryTerm` only, canonical comparison with `orderMatches`, structured `worldcons.d1_shadow` events and per-isolate backpressure; the authoritative Supabase result is always returned and D1 can never replace it. See `docs/worldcons-cloudflare-m6.1-reference-read-shadow-20260925.md`. M6.2 expands the same default-OFF shadow to `listTags`/`getTagBySlug`/`listIngestionRuns`/`listJurisdictionArticleCounts` with per-method core/ingest binding, projection-mode skips, runtime-safe projection + `eq`/`gte` + ordered reads and truncation-as-skip; does not claim GO-D1-READ. See `docs/worldcons-cloudflare-m6.2-reference-read-shadow-20260925.md`. M6.3 extends the same default-OFF shadow to the six-method `lib/article-reads` seam on the `article_read` surface, with projection/V4/search zero-D1 skips, bounded `neq`/`in` runtime reads, shared article mapping/publishability reuse, truncation/ambiguity-as-skip, and unchanged authoritative Supabase results; does not claim GO-D1-READ and leaves M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.3-article-read-shadow-20260925.md`. M6.4 extends the same default-OFF shadow to the privileged `AdminOpsReadRepository` (`loadArticleRows`/`loadCandidateRows`/`countTableRows`/`listAdminArticles`) and `AdminAnalyticsReadRepository` (`loadAdminAuditActionOptionRows`/`loadAdminAuditEntryRows`/`loadSiteEvents`/`loadIngestionRunRows`/`loadArticleSummaryRows`) on the opt-in `admin_ops_read`/`admin_analytics_read` surfaces with exact per-method core/ingest/ops bindings; both admin RPC snapshots emit `rpc_deferred` with zero D1 calls and every admin `q` path is `search_deferred_m7`; no mixed database substitution, no GO-D1-READ, RPC snapshots deferred to later migration/cutover design, M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.4-admin-read-shadow-20260925.md`. M6.5 adds the local read-only shadow parity report + gate tooling (`pnpm d1:shadow-report`, deterministic JSON/markdown report, `m6EvidenceGate` over implemented comparable methods, always-blocked `globalGoD1Read` with `search_m7`/`rpc_admin_dashboard_snapshot`/`rpc_admin_analytics_health_snapshot`, fail-closed malformed/invalid input, safe output with no hashes/diff paths/URLs/metadata/row content). Current verdict: M6 code coverage/tooling complete but production shadow evidence absent => `m6EvidenceGate=insufficient_evidence`, `globalGoD1Read=blocked`; M6 is not operationally proven and no GO-D1-READ is claimed. See `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`)
-- [ ] FTS5 parity (M7.1 projection builder + FTS5 synchronization plan foundation implemented locally, `pnpm test:d1-search-projection`; M7.2 adds the local `public_fulltext_ranked_ids_v1` D1 equivalent — both-title FTS sidecar, safe/bound FTS5 MATCH compiler, parameterized `search_fts` JOIN `search_documents` query, fail-closed reader and evidence-only parity metrics, `pnpm test:d1-fts-search`; M7.3 adds the local `worldcons_ranked_search_page_v1` exact-case/latest/fulltext foundation — control-character tag exact-filter encoding (no schema change), SQL-precedence primary-reference parser, separator-safe `case_numbers` line match, RPC-shaped payload with exact-vs-lower-bound count semantics and `semantic_deferred` fail-closed, `pnpm test:d1-ranked-search`; M7.4 adds the local Vectorize semantic + hybrid foundation — provenance-locked projection/mutation *plan* from `article_embedding_artifacts`, structural Vectorize binding + semantic query with metadata pre-filter and 100 topK ceiling, hybrid RRF with the RPC candidate-limit formula, `tag_filter_deferred`/`vector_exact_count_deferred`/`vector_window_exceeded` fail-closed and five-field metadata index manifest, `pnpm test:d1-vector-search`; M7.5 adds the bounded remote D1/Vectorize canary and 4/4 frozen correctness pass, but larger rows expose Wrangler literal-SQL 100 KB limits and actual binding/runtime latency remains unmeasured; no `GO-SEARCH`; see `docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.2-fts5-fulltext-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.4-vectorize-semantic-hybrid-foundation-20260925.md` and `docs/worldcons-cloudflare-m7.5-remote-search-canary-20260926.md`)
-- [ ] Vectorize parity (M7.4 local projection/semantic/hybrid foundation implemented, `pnpm test:d1-vector-search`; M7.5 created isolated `worldcons-search-canary-v2` with 15 provenance-locked vectors and all five metadata indexes and verified semantic/hybrid frozen expectations remotely. **Production semantic RPC parity is not yet a valid oracle for artifact-backed rows because current `public_article_projection_p3.embedding` can be NULL while `article_embedding_artifacts.embedding` is present, and actual Worker binding latency remains unmeasured.** M7.6 must resolve these blockers before `GO-SEARCH`.)
+- [ ] FTS5 parity (M7.1 projection builder + FTS5 synchronization plan foundation implemented locally, `pnpm test:d1-search-projection`; M7.2 adds the local `public_fulltext_ranked_ids_v1` D1 equivalent — both-title FTS sidecar, safe/bound FTS5 MATCH compiler, parameterized `search_fts` JOIN `search_documents` query, fail-closed reader and evidence-only parity metrics, `pnpm test:d1-fts-search`; M7.3 adds the local `worldcons_ranked_search_page_v1` exact-case/latest/fulltext foundation — control-character tag exact-filter encoding (no schema change), SQL-precedence primary-reference parser, separator-safe `case_numbers` line match, RPC-shaped payload with exact-vs-lower-bound count semantics and `semantic_deferred` fail-closed, `pnpm test:d1-ranked-search`; M7.4 adds the local Vectorize semantic + hybrid foundation — provenance-locked projection/mutation *plan* from `article_embedding_artifacts`, structural Vectorize binding + semantic query with metadata pre-filter and 100 topK ceiling, hybrid RRF with the RPC candidate-limit formula, `tag_filter_deferred`/`vector_exact_count_deferred`/`vector_window_exceeded` fail-closed and five-field metadata index manifest, `pnpm test:d1-vector-search`; M7.5 adds the bounded remote D1/Vectorize canary and 4/4 frozen correctness pass, but larger rows expose Wrangler literal-SQL 100 KB limits and actual binding/runtime latency remains unmeasured; M7.6 replaces the literalized write path with a parameterized worker-binding/D1-HTTP writer (no truncation), adds an isolated Worker binding/runtime canary that separates binding latency from operator wall time, and adds explicit artifact-reference oracle/drift modes, with M7.6 evidence written to `m7.6-*` and M7.5 evidence preserved, `pnpm test:d1-search-canary-m7.6`. Bounded remote canary facts (local-runtime + remote-bindings, not a deployed Worker SLO): 100 D1 documents + 100 FTS rows, 100 Vectorize vectors, append-only 15->100 expansion with no truncation, final true no-op rerun, binding p50/p95 161/386 ms. The refined conservative lexical-rank gate keeps strict production-rpc top-id parity only for the deterministic `exact-case-*` cases, records generic lexical (`contains`) fulltext ordering as informational `compareRankedIds` metrics without failing the local expectation, and raises `fulltext_rank_threshold_unagreed` so `GO-SEARCH` stays blocked; binding samples gate latency and operator wall time is evidence only (operator thresholds apply only when no binding samples exist); no `GO-SEARCH`; see `docs/worldcons-cloudflare-m7.1-search-projection-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.2-fts5-fulltext-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.3-ranked-page-local-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.4-vectorize-semantic-hybrid-foundation-20260925.md`, `docs/worldcons-cloudflare-m7.5-remote-search-canary-20260926.md` and `docs/worldcons-cloudflare-m7.6-parameterized-writer-binding-canary-20260926.md`)
+- [ ] Vectorize parity (M7.4 local projection/semantic/hybrid foundation implemented, `pnpm test:d1-vector-search`; M7.5 created isolated `worldcons-search-canary-v2` with 15 provenance-locked vectors and all five metadata indexes and verified semantic/hybrid frozen expectations remotely. M7.6 adds the parameterized D1 writer, the isolated `workers/search-canary` Worker with real D1 + Vectorize bindings, binding/runtime timing separate from operator wall time, and explicit artifact-reference oracle/drift modes (`pnpm test:d1-search-canary-m7.6`). The isolated canary was materialized remotely through local-runtime + remote-bindings (100 vectors + 100 D1 documents/FTS, append-only 15->100, no truncation; binding p50/p95 161/386 ms), **not** a deployed Worker SLO. **Production semantic RPC parity is still not a valid oracle for artifact-backed rows because current `public_article_projection_p3.embedding` can be NULL while `article_embedding_artifacts.embedding` is present; M7.6 records that as explicit `oracleDrift` rather than a false failure, and the remaining deployed-Worker binding run plus semantic-authority and fulltext-rank-threshold decisions must complete before `GO-SEARCH`.**)
 - [ ] Queues/DLQ/Workflows migration
 - [ ] Browser Run/Container crawler parity
 - [ ] Hono service binding migration

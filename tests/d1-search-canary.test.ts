@@ -345,16 +345,33 @@ test("oracle parity requires top-id for lexical and membership for semantic/hybr
   assert.equal(oracleParity("semantic", ["a"], []), "absent");
 });
 
-test("a lexical oracle mismatch fails an otherwise-satisfied case", () => {
-  const caseDef: SearchCanaryCase = { id: "c", mode: "fulltext", query: "q", limit: 5, offset: 0, expectation: { kind: "contains", id: "a", withinTop: 5 } };
+test("a generic lexical oracle divergence is informational and does not fail the case", () => {
+  // M7.6 refinement: M7.2 documents that FTS5 bm25 does NOT reproduce Postgres
+  // ts_rank_cd and claims no rank parity, so a generic `contains` fulltext case
+  // records the production ordering divergence as informational (rank metrics
+  // are stored) instead of a false correctness mismatch. A top-anchored
+  // (`top-id`) exact case still gates strictly.
+  const caseDef: SearchCanaryCase = { id: "fulltext-c", mode: "fulltext", query: "q", limit: 5, offset: 0, expectation: { kind: "contains", id: "a", withinTop: 5 } };
   const observation = evaluateSearchCanaryCase({
     case: caseDef,
     payload: payload(["a", "b"]),
     latencyMs: 5,
     oracle: payload(["b", "a"]),
   });
-  assert.equal(observation.status, "mismatch");
-  assert.equal(observation.oracleParity, "mismatch");
+  assert.equal(observation.status, "pass");
+  assert.equal(observation.oracleParity, "informational");
+  assert.equal(observation.rankComparison?.strict, false);
+
+  const strictCase: SearchCanaryCase = { id: "exact-case-c", mode: "fulltext", query: "q", limit: 5, offset: 0, expectation: { kind: "top-id", id: "a" } };
+  const strictObserver = evaluateSearchCanaryCase({
+    case: strictCase,
+    payload: payload(["a", "b"]),
+    latencyMs: 5,
+    oracle: payload(["b", "a"]),
+  });
+  assert.equal(strictObserver.status, "mismatch");
+  assert.equal(strictObserver.oracleParity, "mismatch");
+  assert.equal(strictObserver.rankComparison?.strict, true);
 });
 
 test("metrics require enough compared cases and reject any mismatch or latency overflow", () => {

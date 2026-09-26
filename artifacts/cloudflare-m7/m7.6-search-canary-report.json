@@ -1,0 +1,475 @@
+{
+  "version": 2,
+  "generatedAt": "2026-09-26T01:55:11.841Z",
+  "scope": "search-canary",
+  "vectorIndex": "worldcons-search-canary-v2",
+  "database": "worldcons_search_canary_v2",
+  "source": "supabase",
+  "maxArticles": 100,
+  "projection": {
+    "projectedDocuments": 100,
+    "vectorRecords": 100,
+    "missingArtifacts": 0,
+    "staleArtifacts": 0,
+    "truncated": false
+  },
+  "vectorBootstrap": {
+    "version": 1,
+    "index": {
+      "name": "worldcons-search-canary-v2",
+      "exists": true,
+      "dimensions": 1536,
+      "metric": "cosine",
+      "action": "none"
+    },
+    "metadataIndexes": [
+      {
+        "propertyName": "sourceKey",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "jurisdiction",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "contentType",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "language",
+        "type": "string",
+        "exists": true,
+        "action": "none"
+      },
+      {
+        "propertyName": "publishedEpoch",
+        "type": "number",
+        "exists": true,
+        "action": "none"
+      }
+    ],
+    "blockers": [],
+    "destructive": false,
+    "ok": true
+  },
+  "remoteWrites": {
+    "indexCreated": false,
+    "metadataIndexesCreated": [],
+    "vectorsUpserted": 100,
+    "searchRowsInserted": 0,
+    "databaseCreated": false,
+    "writer": "local-dev",
+    "parameterizedStatements": 0,
+    "literalOversizedStatements": 10
+  },
+  "writePlan": {
+    "version": 1,
+    "destructive": false,
+    "limitBytes": 100000,
+    "counts": {
+      "statements": 0,
+      "parameters": 0,
+      "maxAuthoredSqlBytes": 0,
+      "maxParamBytes": 0,
+      "maxLiteralBytes": 0,
+      "literalOversizedStatements": 0,
+      "literalOversizedBytes": 0
+    }
+  },
+  "metrics": {
+    "modes": [
+      {
+        "mode": "fulltext",
+        "cases": 4,
+        "compared": 4,
+        "passed": 4,
+        "mismatched": 0,
+        "errored": 0,
+        "timedOut": 0,
+        "skipped": 0,
+        "mismatchRate": 0,
+        "errorRate": 0,
+        "timeoutRate": 0,
+        "latencyP50Ms": 2058,
+        "latencyP95Ms": 2210,
+        "bindingSamples": 4,
+        "bindingLatencyP50Ms": 122,
+        "bindingLatencyP95Ms": 420,
+        "rowReads": 286,
+        "oracleCompared": 4,
+        "oracleMatched": 3,
+        "oracleInformational": 1,
+        "pass": true
+      },
+      {
+        "mode": "semantic",
+        "cases": 2,
+        "compared": 2,
+        "passed": 2,
+        "mismatched": 0,
+        "errored": 0,
+        "timedOut": 0,
+        "skipped": 0,
+        "mismatchRate": 0,
+        "errorRate": 0,
+        "timeoutRate": 0,
+        "latencyP50Ms": 1598,
+        "latencyP95Ms": 2530,
+        "bindingSamples": 2,
+        "bindingLatencyP50Ms": 199,
+        "bindingLatencyP95Ms": 997,
+        "rowReads": 0,
+        "oracleCompared": 2,
+        "oracleMatched": 2,
+        "oracleInformational": 0,
+        "pass": true
+      },
+      {
+        "mode": "hybrid",
+        "cases": 2,
+        "compared": 2,
+        "passed": 2,
+        "mismatched": 0,
+        "errored": 0,
+        "timedOut": 0,
+        "skipped": 0,
+        "mismatchRate": 0,
+        "errorRate": 0,
+        "timeoutRate": 0,
+        "latencyP50Ms": 5403,
+        "latencyP95Ms": 5515,
+        "bindingSamples": 2,
+        "bindingLatencyP50Ms": 496,
+        "bindingLatencyP95Ms": 525,
+        "rowReads": 484,
+        "oracleCompared": 2,
+        "oracleMatched": 2,
+        "oracleInformational": 0,
+        "pass": true
+      }
+    ],
+    "totalCases": 8,
+    "totalCompared": 8,
+    "totalPassed": 8,
+    "totalRowReads": 770,
+    "latencyP50Ms": 2082,
+    "latencyP95Ms": 5515,
+    "bindingSamples": 8,
+    "bindingLatencyP50Ms": 199,
+    "bindingLatencyP95Ms": 997,
+    "pass": true
+  },
+  "timings": {
+    "operator": {
+      "samples": 8,
+      "p50Ms": 2082,
+      "p95Ms": 5515
+    },
+    "binding": {
+      "samples": 8,
+      "p50Ms": 199,
+      "p95Ms": 997
+    }
+  },
+  "oracle": {
+    "productionRpc": 4,
+    "artifactReference": 4,
+    "none": 0,
+    "drift": 4
+  },
+  "observations": [
+    {
+      "caseId": "exact-case-00083deb-5bc9-4b28-bbcd-68076cd05514",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 1850,
+      "bindingLatencyMs": 420,
+      "rowReads": 101,
+      "topIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ],
+      "oracleTopIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ],
+      "oracleMode": "production-rpc",
+      "oracleDrift": false,
+      "oracleParity": "match",
+      "rankComparison": {
+        "strict": true,
+        "expectedCount": 1,
+        "actualCount": 1,
+        "k": 10,
+        "exactOrder": true,
+        "sameSet": true,
+        "overlapAtKCount": 1,
+        "overlapAtK": 0.1,
+        "prefixMatchCount": 1,
+        "prefixMatchRate": 1,
+        "missing": [],
+        "extra": []
+      },
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "exact-case-0018a822-df15-4526-abd8-6c22e6ba7988",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 2210,
+      "bindingLatencyMs": 138,
+      "rowReads": 101,
+      "topIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988"
+      ],
+      "oracleTopIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988"
+      ],
+      "oracleMode": "production-rpc",
+      "oracleDrift": false,
+      "oracleParity": "match",
+      "rankComparison": {
+        "strict": true,
+        "expectedCount": 1,
+        "actualCount": 1,
+        "k": 10,
+        "exactOrder": true,
+        "sameSet": true,
+        "overlapAtKCount": 1,
+        "overlapAtK": 0.1,
+        "prefixMatchCount": 1,
+        "prefixMatchRate": 1,
+        "missing": [],
+        "extra": []
+      },
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "fulltext-02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 2082,
+      "bindingLatencyMs": 116,
+      "rowReads": 81,
+      "topIds": [
+        "140849cc-ff7e-4ab3-9b1c-c13ff9b76e3d",
+        "12705d37-c0fe-47ee-9310-89445dc34966",
+        "02b539a7-8607-4a49-a3f9-19356f4eb890",
+        "07d16b59-bf8d-4a5b-a1b1-c8850e989e19",
+        "05a14ed6-e682-4a72-98fb-df1411de94a7",
+        "116f273c-6541-43ff-9921-07d577c133e6",
+        "085f4746-cb9c-40eb-9570-5a0ab3d29d16",
+        "0942181e-ca57-4b61-a208-cce180d8671c",
+        "041c419e-557e-4a22-bcc3-18c9f0995689",
+        "135983f5-7822-4b8a-8880-282394ce1719"
+      ],
+      "oracleTopIds": [
+        "041c419e-557e-4a22-bcc3-18c9f0995689",
+        "131af65a-6d26-4dd5-b34d-20054225b85a",
+        "07d16b59-bf8d-4a5b-a1b1-c8850e989e19",
+        "05a14ed6-e682-4a72-98fb-df1411de94a7",
+        "0942181e-ca57-4b61-a208-cce180d8671c",
+        "06afbff5-01e5-4e2e-b7f7-ed218810f46c",
+        "164c2b1c-49c4-47e5-a465-13c817cb565c",
+        "0b2a1b99-30a1-4faf-b2ec-22afa28dc782"
+      ],
+      "oracleMode": "production-rpc",
+      "oracleDrift": false,
+      "oracleParity": "informational",
+      "rankComparison": {
+        "strict": false,
+        "expectedCount": 8,
+        "actualCount": 10,
+        "k": 10,
+        "exactOrder": false,
+        "sameSet": false,
+        "overlapAtKCount": 4,
+        "overlapAtK": 0.4,
+        "prefixMatchCount": 0,
+        "prefixMatchRate": 0,
+        "missing": [
+          "06afbff5-01e5-4e2e-b7f7-ed218810f46c",
+          "0b2a1b99-30a1-4faf-b2ec-22afa28dc782",
+          "131af65a-6d26-4dd5-b34d-20054225b85a",
+          "164c2b1c-49c4-47e5-a465-13c817cb565c"
+        ],
+        "extra": [
+          "02b539a7-8607-4a49-a3f9-19356f4eb890",
+          "085f4746-cb9c-40eb-9570-5a0ab3d29d16",
+          "116f273c-6541-43ff-9921-07d577c133e6",
+          "12705d37-c0fe-47ee-9310-89445dc34966",
+          "135983f5-7822-4b8a-8880-282394ce1719",
+          "140849cc-ff7e-4ab3-9b1c-c13ff9b76e3d"
+        ]
+      },
+      "errorCode": null,
+      "detail": "lexical rank informational (strict=false), oracle top 041c419e-557e-4a22-bcc3-18c9f0995689 vs observed 140849cc-ff7e-4ab3-9b1c-c13ff9b76e3d, overlap@10=4"
+    },
+    {
+      "caseId": "fulltext-05d4948e-674a-4094-b218-b691adde2d5a",
+      "mode": "fulltext",
+      "status": "pass",
+      "latencyMs": 2058,
+      "bindingLatencyMs": 122,
+      "rowReads": 3,
+      "topIds": [
+        "05d4948e-674a-4094-b218-b691adde2d5a"
+      ],
+      "oracleTopIds": [
+        "05d4948e-674a-4094-b218-b691adde2d5a"
+      ],
+      "oracleMode": "production-rpc",
+      "oracleDrift": false,
+      "oracleParity": "match",
+      "rankComparison": {
+        "strict": false,
+        "expectedCount": 1,
+        "actualCount": 1,
+        "k": 10,
+        "exactOrder": true,
+        "sameSet": true,
+        "overlapAtKCount": 1,
+        "overlapAtK": 0.1,
+        "prefixMatchCount": 1,
+        "prefixMatchRate": 1,
+        "missing": [],
+        "extra": []
+      },
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "semantic-00083deb-5bc9-4b28-bbcd-68076cd05514",
+      "mode": "semantic",
+      "status": "pass",
+      "latencyMs": 2530,
+      "bindingLatencyMs": 997,
+      "rowReads": 0,
+      "topIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514",
+        "04cf6d4d-abb7-4a2f-a18f-b333680c4893",
+        "0870504b-94d5-4b97-8930-df7da3831dd8",
+        "12ac2f3b-5026-4d50-8807-03a3baeed95b",
+        "0bd9a6f2-fcb0-4dcf-9190-5a12772d6a9b"
+      ],
+      "oracleTopIds": [],
+      "oracleMode": "artifact-reference",
+      "oracleDrift": true,
+      "oracleParity": "match",
+      "rankComparison": null,
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "semantic-0018a822-df15-4526-abd8-6c22e6ba7988",
+      "mode": "semantic",
+      "status": "pass",
+      "latencyMs": 1598,
+      "bindingLatencyMs": 199,
+      "rowReads": 0,
+      "topIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "08df3a7b-c023-48c4-9aae-27909f5807a1",
+        "13c23990-d265-4e35-86c3-7083f77fdac9",
+        "1173c244-3de2-4e82-b8ea-c726ebe2a3ee",
+        "15ef2b23-16c9-42b6-9419-2886122a87a5"
+      ],
+      "oracleTopIds": [],
+      "oracleMode": "artifact-reference",
+      "oracleDrift": true,
+      "oracleParity": "match",
+      "rankComparison": null,
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "hybrid-02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "mode": "hybrid",
+      "status": "pass",
+      "latencyMs": 5403,
+      "bindingLatencyMs": 525,
+      "rowReads": 281,
+      "topIds": [
+        "02b539a7-8607-4a49-a3f9-19356f4eb890",
+        "140849cc-ff7e-4ab3-9b1c-c13ff9b76e3d",
+        "12705d37-c0fe-47ee-9310-89445dc34966",
+        "131af65a-6d26-4dd5-b34d-20054225b85a",
+        "135983f5-7822-4b8a-8880-282394ce1719",
+        "085f4746-cb9c-40eb-9570-5a0ab3d29d16",
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "0942181e-ca57-4b61-a208-cce180d8671c",
+        "164c2b1c-49c4-47e5-a465-13c817cb565c",
+        "05a14ed6-e682-4a72-98fb-df1411de94a7"
+      ],
+      "oracleTopIds": [],
+      "oracleMode": "artifact-reference",
+      "oracleDrift": true,
+      "oracleParity": "match",
+      "rankComparison": null,
+      "errorCode": null,
+      "detail": null
+    },
+    {
+      "caseId": "hybrid-05d4948e-674a-4094-b218-b691adde2d5a",
+      "mode": "hybrid",
+      "status": "pass",
+      "latencyMs": 5515,
+      "bindingLatencyMs": 496,
+      "rowReads": 203,
+      "topIds": [
+        "05d4948e-674a-4094-b218-b691adde2d5a",
+        "0346769f-97d0-48e2-b2e2-3a371e7d2eee",
+        "07fd813d-a07a-403e-aa29-18cef8831ec5",
+        "1078a2ae-bcf7-4a4c-9c07-f46df2f6450e",
+        "0e1859ad-e9b4-48e8-b34f-5224b6f4112a",
+        "163938b8-c830-4020-bca1-556da48201b1",
+        "06565df5-1a86-4c46-b5dc-6dd7a36196c5",
+        "12ac2f3b-5026-4d50-8807-03a3baeed95b",
+        "03fdc730-94e8-4a15-944e-7e9dcbb7566f",
+        "15df91c7-ad36-41f5-8b31-fca6608c49aa"
+      ],
+      "oracleTopIds": [],
+      "oracleMode": "artifact-reference",
+      "oracleDrift": true,
+      "oracleParity": "match",
+      "rankComparison": null,
+      "errorCode": null,
+      "detail": null
+    }
+  ],
+  "thresholds": {
+    "minCasesPerMode": 1,
+    "maxMismatchRate": 0,
+    "maxErrorRate": 0,
+    "maxTimeoutRate": 0,
+    "maxLatencyP50Ms": 2000,
+    "maxLatencyP95Ms": 5000,
+    "maxBindingLatencyP50Ms": 500,
+    "maxBindingLatencyP95Ms": 1500
+  },
+  "blockers": [
+    {
+      "code": "metadata_high_cardinality_range",
+      "detail": "millisecond publishedEpoch range filters can reduce Vectorize accuracy on large indexes"
+    },
+    {
+      "code": "d1_sql_statement_limit",
+      "detail": "10 canary INSERT statements would exceed the 100000-byte D1 SQL limit if literalized (maxBytes=272048); M7.6 sends them as bound parameters, so source content is not truncated"
+    },
+    {
+      "code": "production_semantic_oracle_drift",
+      "detail": "4 semantic/hybrid canary query articles have provenance-locked artifacts but NULL public_article_projection_p3.embedding; comparing against the artifact projection instead of the production RPC"
+    },
+    {
+      "code": "fulltext_rank_threshold_unagreed",
+      "detail": "2 generic lexical fulltext case(s) diverged from production ordering; no FTS5-bm25-vs-Postgres acceptance threshold is agreed, so the divergence is informational and does not fail the case, but GO-SEARCH stays blocked until a rank acceptance threshold is agreed"
+    }
+  ],
+  "verdict": "pass"
+}
