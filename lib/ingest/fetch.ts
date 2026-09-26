@@ -119,6 +119,7 @@ export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscove
     rateLimitDelayMs: robotsDelayMs(robots),
     signal: options?.signal,
     checkpoint: options?.checkpoint,
+    requestGovernor: options?.requestGovernor,
   });
   addDiagnosticAttempt(options?.diagnostics, diagnosticFromResponse(response));
   if ((response.status === 403 || response.status === 0 || !response.html) && shouldUsePlaywright(options)) {
@@ -127,6 +128,7 @@ export async function fetchRawItem(item: DiscoveredItem, options?: SourceDiscove
       usePlaywright: true,
       signal: options?.signal,
       checkpoint: options?.checkpoint,
+      requestGovernor: options?.requestGovernor,
     });
     addDiagnosticAttempt(options?.diagnostics, diagnosticFromResponse(playwright, { fallback: true }));
     if (playwright.html || playwright.buffer || (playwright.status > 0 && playwright.status < 400)) {

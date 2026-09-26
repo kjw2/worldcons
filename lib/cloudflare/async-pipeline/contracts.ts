@@ -20,6 +20,13 @@ export const M8_ENABLED_KINDS_ANY = "*" as const;
 
 export const M8_WORKFLOW_INSTANCE_ID_MAX_LENGTH = 100 as const;
 
+/**
+ * Bounded retry backoff applied to schema-invalid Queue payloads. Combined with
+ * the consumer's `max_retries` this drives poison messages to the DLQ without
+ * hot-looping the consumer.
+ */
+export const M8_INVALID_RETRY_DELAY_SECONDS = 300 as const;
+
 export interface M8TaskMessage {
   schemaVersion: typeof M8_SCHEMA_VERSION;
   kind: M8TaskKind;
@@ -210,6 +217,55 @@ export function partitionM8QueueBatch<T>(
     }
   }
   return partition;
+}
+
+export interface M8WorkflowCreate {
+  /** Deterministic, Cloudflare-safe Workflow instance id. */
+  id: string;
+  params: M8TaskMessage;
+}
+
+/**
+ * Collapses a set of eligible messages into deterministic Workflow creates.
+ *
+ * Cloudflare `createBatch` is idempotent by instance id, but the identity is
+ * also enforced here so duplicate Queue delivery during a consumer restart can
+ * never schedule two Workflows (and therefore two GitHub side effects) for the
+ * same `m8:<kind>:<minute>` identity. The first occurrence wins; ordering is the
+ * inbound batch order.
+ */
+export function dedupeM8WorkflowCreates<T>(
+  messages: readonly T[],
+  getBody: (message: T) => unknown,
+): M8WorkflowCreate[] {
+  const byId = new Map<string, M8WorkflowCreate>();
+  for (const message of messages) {
+    const body = getBody(message);
+    if (!isM8TaskMessage(body)) continue;
+    const id = workflowInstanceId(body);
+    if (!byId.has(id)) byId.set(id, { id, params: body });
+  }
+  return [...byId.values()];
+}
+
+export interface M8QueuePlan<T> extends M8QueuePartition<T> {
+  /** Deduplicated deterministic Workflow creates for the eligible messages. */
+  creates: M8WorkflowCreate[];
+}
+
+/**
+ * Single tested decision function for the Queue consumer. It extends
+ * `partitionM8QueueBatch` with the idempotent Workflow-create set so the
+ * Worker's ack/retry/dispatch behavior and the no-duplicate guarantee are one
+ * runtime-neutral contract.
+ */
+export function planM8QueueBatch<T>(
+  gate: M8RolloutGate,
+  messages: readonly T[],
+  getBody: (message: T) => unknown,
+): M8QueuePlan<T> {
+  const partition = partitionM8QueueBatch(gate, messages, getBody);
+  return { ...partition, creates: dedupeM8WorkflowCreates(partition.eligible, getBody) };
 }
 
 export function workflowInstanceId(message: M8TaskMessage) {

@@ -3,10 +3,10 @@ import {
   githubDispatchForM8Task,
   isM8KindEnabled,
   isM8TaskMessage,
+  M8_INVALID_RETRY_DELAY_SECONDS,
   messagesForM8Cron,
-  partitionM8QueueBatch,
+  planM8QueueBatch,
   resolveM8RolloutGate,
-  workflowInstanceId,
   type M8RolloutGate,
   type M8TaskMessage,
 } from "../../../lib/cloudflare/async-pipeline/contracts";
@@ -119,19 +119,21 @@ export default {
   async queue(batch: MessageBatch<M8TaskMessage>, env: Env) {
     const policy = gate(env);
     const reason = policy.schedulerEnabled ? (policy.policy.reason ?? "kind_not_allowed") : "scheduler_disabled";
-    const partition = partitionM8QueueBatch<Message<M8TaskMessage>>(
+    const plan = planM8QueueBatch<Message<M8TaskMessage>>(
       policy,
       batch.messages,
       (message) => message.body,
     );
     // Malformed payloads can never become valid; keep the bounded retry -> DLQ
     // path so poison messages are observable rather than dropped.
-    for (const message of partition.invalid) message.retry({ delaySeconds: 300 });
+    for (const message of plan.invalid) {
+      message.retry({ delaySeconds: M8_INVALID_RETRY_DELAY_SECONDS });
+    }
     // Valid but gate-blocked (scheduler off or kind not allowlisted): ack
     // without dispatch. They must not spin forever or reach the DLQ merely
     // because a rollout gate is closed; a later eligible schedule re-enqueues
     // them. Disallowed kinds are never dispatched.
-    for (const message of partition.blocked) {
+    for (const message of plan.blocked) {
       message.ack();
       console.log(JSON.stringify({
         event: "m8_queue_kind_blocked",
@@ -140,17 +142,16 @@ export default {
         reason,
       }));
     }
-    const eligible = partition.eligible;
-    if (eligible.length === 0) return;
+    if (plan.creates.length === 0) return;
     try {
-      await env.ASYNC_WORKFLOW.createBatch(eligible.map((message) => ({
-        id: workflowInstanceId(message.body),
-        params: message.body,
-      })));
-      for (const message of eligible) message.ack();
+      // `createBatch` is idempotent by instance id. `planM8QueueBatch` also
+      // dedupes the batch so a redelivery after a consumer restart cannot
+      // schedule two Workflows for the same deterministic identity.
+      await env.ASYNC_WORKFLOW.createBatch(plan.creates);
+      for (const message of plan.eligible) message.ack();
     } catch (error) {
-      console.error(JSON.stringify({ event: "m8_workflow_batch_failed", count: eligible.length }));
-      for (const message of eligible) message.retry();
+      console.error(JSON.stringify({ event: "m8_workflow_batch_failed", count: plan.creates.length }));
+      for (const message of plan.eligible) message.retry();
       throw error;
     }
   },

@@ -64,7 +64,10 @@ test("scheduled workflows embed with Gemini when the secret is unset", () => {
 
 test("embedding backfill workflow is quota-bounded and resumable", () => {
   const workflow = read(".github/workflows/embedding-backfill.yml");
-  assert.match(workflow, /cron: "30 1 \* \* \*"/u);
+  // M8 retired the Cron schedule; embedding-backfill is now manual-only and
+  // carries the stable m8_idempotency_key for the Cron/Queue/Workflow plane.
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/mu);
+  assert.match(workflow, /m8_idempotency_key:/u);
   assert.match(workflow, /group: admin-command-p1/u);
   assert.match(workflow, /--drain --limit=/u);
   assert.match(workflow, /--max-passes=/u);

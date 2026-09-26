@@ -76,6 +76,14 @@
       "dlqHistoricalForgedMessage": "forged-deliberate-invalid"
     },
     "automaticDlqTransitionForInjectedInvalid": "OPEN",
+    "followUp20260926": {
+      "artifact": "artifacts/cloudflare-m8/go-async-acceptance-evidence-20260926.json",
+      "mainQueueBacklogAtReobservation": 0,
+      "dlqBacklogAtReobservation": 3,
+      "dlqDeleteOutcomesForMainQueue": ["2026-09-26T08:38:00Z", "2026-09-26T09:03:00Z", "2026-09-26T09:35:00Z"],
+      "status": "OBSERVED_ACTIVITY_UNATTRIBUTED_OPEN",
+      "limitation": "Read-only Cloudflare API cannot peek push-consumer message bodies; the probe is preserved (not purged) for a future http_pull or dashboard inspection."
+    },
     "nextCommand": "curl -s \"https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/queues/57239b3c71cc41ce8bcae878fd9dc842/metrics\" -H \"Authorization: Bearer $CLOUDFLARE_API_TOKEN\"  ; then peek worldcons-async-dlq-v1 for idempotencyKey m8:invalid:gate-probe"
   }
 }

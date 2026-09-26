@@ -1,4 +1,5 @@
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
+import { withCrawlerRequestPermit } from "@/lib/crawler/request-governor";
 import type { CrawlRequest, CrawlResponse } from "@/lib/crawler/types";
 
 interface BrowserRunResponse {
@@ -49,36 +50,42 @@ export async function crawlWithCloudflareBrowserRun(
 ): Promise<CrawlResponse> {
   const token = environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim();
   if (!token) throw new Error("CLOUDFLARE_BROWSER_RUN_TOKEN is required");
-  const timeoutMs = Math.min(60_000, Math.max(1_000, request.timeoutMs ?? 45_000));
-  const timeout = AbortSignal.timeout(timeoutMs + 5_000);
-  const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
-  const response = await fetch(endpoint(environment), {
-    method: "POST",
-    redirect: "error",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      url: request.url,
-      timeoutMs,
-      waitUntil: request.waitUntil ?? "domcontentloaded",
-      waitForSelector: request.waitForSelector,
-      userAgent: crawlerUserAgent(),
-    }),
-    signal,
+  // Browser Run is a governed network request exactly like the fetch path. When
+  // a per-source request governor is supplied the navigation acquires and
+  // releases a permit around the navigation so M8 orchestration (or any other
+  // caller) cannot bypass the source request policy by escalating to a browser.
+  return withCrawlerRequestPermit(request.url, request, async () => {
+    const timeoutMs = Math.min(60_000, Math.max(1_000, request.timeoutMs ?? 45_000));
+    const timeout = AbortSignal.timeout(timeoutMs + 5_000);
+    const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
+    const response = await fetch(endpoint(environment), {
+      method: "POST",
+      redirect: "error",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        url: request.url,
+        timeoutMs,
+        waitUntil: request.waitUntil ?? "domcontentloaded",
+        waitForSelector: request.waitForSelector,
+        userAgent: crawlerUserAgent(),
+      }),
+      signal,
+    });
+    const body: unknown = await response.json().catch(() => null);
+    if (!response.ok || !validResponse(body)) {
+      throw new Error(`Cloudflare Browser Run failed with HTTP ${response.status}`);
+    }
+    return {
+      url: body.url,
+      finalUrl: body.finalUrl,
+      status: body.status,
+      headers: body.headers,
+      contentType: body.contentType,
+      html: body.html,
+      text: body.html,
+      fetchedAt: body.fetchedAt,
+      strategy: "playwright",
+      diagnostics: body.diagnostics,
+    };
   });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok || !validResponse(body)) {
-    throw new Error(`Cloudflare Browser Run failed with HTTP ${response.status}`);
-  }
-  return {
-    url: body.url,
-    finalUrl: body.finalUrl,
-    status: body.status,
-    headers: body.headers,
-    contentType: body.contentType,
-    html: body.html,
-    text: body.html,
-    fetchedAt: body.fetchedAt,
-    strategy: "playwright",
-    diagnostics: body.diagnostics,
-  };
 }

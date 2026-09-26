@@ -5,8 +5,10 @@ import test from "node:test";
 import {
   M8_CRON_EXPRESSIONS,
   M8_ENABLED_KINDS_ANY,
+  M8_INVALID_RETRY_DELAY_SECONDS,
   M8_TASK_KINDS,
   buildM8TaskMessage,
+  dedupeM8WorkflowCreates,
   githubDispatchForM8Task,
   isM8KindEnabled,
   isM8TaskMessage,
@@ -14,6 +16,7 @@ import {
   messagesForM8Cron,
   parseM8EnabledKinds,
   partitionM8QueueBatch,
+  planM8QueueBatch,
   resolveM8RolloutGate,
   workflowInstanceId,
   type M8TaskKind,
@@ -24,6 +27,10 @@ import {
   cloudflareBrowserRunRequired,
   crawlWithCloudflareBrowserRun,
 } from "@/lib/crawler/cloudflare-browser-run-client";
+import {
+  p1CommandIdentities,
+  resolveP1InvocationIdentity,
+} from "@/lib/admin/command-control-plane/invocation-identity";
 
 const root = process.cwd();
 const scheduledWorkflows = [
@@ -249,9 +256,10 @@ test("legacy schedulers are retired while manual compatibility executors remain"
 
 test("P1 publication pipeline inherits the stable M8 identity", () => {
   const script = fs.readFileSync(path.join(root, "scripts/admin-command-worker-p1.ts"), "utf8");
-  assert.match(script, /process\.env\.M8_IDEMPOTENCY_KEY/);
-  assert.match(script, /idempotencyKey: `p1:\$\{identity\}:\$\{commandType\}`/);
-  assert.match(script, /dedupeKey: `p1:\$\{String\(payloadRef\.cohort\)\}:\$\{commandType\}`/);
+  assert.match(script, /resolveP1InvocationIdentity/);
+  assert.match(script, /p1CommandIdentities\(identity, commandType, payloadRef\.cohort\)/);
+  assert.match(script, /idempotencyKey: identities\.idempotencyKey/);
+  assert.match(script, /dedupeKey: identities\.dedupeKey/);
 });
 
 test("Browser Run client keeps HTTPS, auth, and result mapping bounded", async () => {
@@ -306,4 +314,117 @@ test("Browser Run endpoint refuses plaintext transport", async () => {
     }),
     /HTTPS URL/,
   );
+});
+
+test("request-governor parity: Browser Run navigation acquires and releases a per-source permit", async () => {
+  const environment = {
+    CLOUDFLARE_BROWSER_RUN_URL: "https://worldcons-browser-run.example.workers.dev",
+    CLOUDFLARE_BROWSER_RUN_TOKEN: "secret",
+  };
+  const acquired: string[] = [];
+  const released: string[] = [];
+  let dispatched = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    dispatched = true;
+    released.push("during-dispatch");
+    assert.deepEqual(acquired, ["https://www.supremecourt.gov/opinions/slipopinion/25"]);
+    return Response.json({
+      schemaVersion: 1,
+      url: "https://www.supremecourt.gov/opinions/slipopinion/25",
+      finalUrl: "https://www.supremecourt.gov/opinions/slipopinion/25",
+      status: 200,
+      headers: { "content-type": "text/html" },
+      html: "<html></html>",
+      fetchedAt: "2026-09-26T00:00:00.000Z",
+    });
+  };
+  try {
+    await crawlWithCloudflareBrowserRun({
+      url: "https://www.supremecourt.gov/opinions/slipopinion/25",
+      requestGovernor: {
+        async acquire(url) {
+          acquired.push(url);
+          return { async release() { released.push("released"); } };
+        },
+      },
+    }, environment);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(dispatched, true);
+  assert.deepEqual(released, ["during-dispatch", "released"]);
+});
+
+test("governor propagation: fetchRawItem never drops the per-source request governor on browser escalation", () => {
+  const source = fs.readFileSync(path.join(root, "lib/ingest/fetch.ts"), "utf8");
+  assert.match(source, /requestGovernor: options\?\.requestGovernor/);
+  // Both the primary fetch and the Playwright/Browser Run escalation must forward it.
+  assert.equal((source.match(/requestGovernor: options\?\.requestGovernor/g) ?? []).length >= 2, true);
+  const browserClient = fs.readFileSync(path.join(root, "lib/crawler/cloudflare-browser-run-client.ts"), "utf8");
+  assert.match(browserClient, /withCrawlerRequestPermit\(request\.url, request/);
+});
+
+test("restart/recovery: replay after consumer restart yields the same Workflow id and one create per identity", () => {
+  const health = buildM8TaskMessage("admin-health", Date.parse("2026-09-26T09:00:00Z"));
+  const duplicate = structuredClone(health);
+  const creates = dedupeM8WorkflowCreates([health, duplicate], (message) => message);
+  assert.equal(creates.length, 1);
+  assert.equal(creates[0].id, "m8-admin-health-2026-09-26T09-00-00-000Z");
+  assert.equal(creates[0].id, workflowInstanceId(health));
+  // A distinct minute is a distinct deterministic identity, not a collision.
+  const nextMinute = buildM8TaskMessage("admin-health", Date.parse("2026-09-26T09:15:00Z"));
+  const mixed = dedupeM8WorkflowCreates([health, duplicate, nextMinute], (message) => message);
+  assert.equal(mixed.length, 2);
+  assert.deepEqual(mixed.map((create) => create.id), [
+    "m8-admin-health-2026-09-26T09-00-00-000Z",
+    "m8-admin-health-2026-09-26T09-15-00-000Z",
+  ]);
+  // Invalid payloads never enter the create set.
+  assert.deepEqual(dedupeM8WorkflowCreates([{ kind: "not-real" }], (message) => message), []);
+});
+
+test("restart/recovery: gate-closed valid messages ack without dispatch, malformed payloads stay bounded toward DLQ", () => {
+  const health = buildM8TaskMessage("admin-health", Date.parse("2026-09-26T09:00:00Z"));
+  const forged = { ...health, idempotencyKey: "forged" };
+  const batch = [
+    { id: "a", body: health, attempts: 1, acked: false, retried: [] as number[] },
+    { id: "b", body: forged, attempts: 1, acked: false, retried: [] as number[] },
+    { id: "c", body: { kind: "not-a-real-kind" }, attempts: 2, acked: false, retried: [] as number[] },
+  ];
+  const closed = planM8QueueBatch(resolveM8RolloutGate(false, "admin-health"), batch, (m) => m.body);
+  assert.deepEqual(closed.eligible, []);
+  assert.deepEqual(closed.creates, []);
+  assert.deepEqual(closed.blocked.map((m) => m.id), ["a"]);
+  assert.deepEqual(closed.invalid.map((m) => m.id), ["b", "c"]);
+
+  const canary = planM8QueueBatch(resolveM8RolloutGate(true, "admin-health"), batch, (m) => m.body);
+  assert.deepEqual(canary.eligible.map((m) => m.id), ["a"]);
+  assert.deepEqual(canary.invalid.map((m) => m.id), ["b", "c"]);
+  assert.equal(canary.creates.length, 1);
+  assert.ok(isM8WorkflowInstanceId(canary.creates[0].id));
+  // Bounded retry delay is a fixed constant so poison messages cannot hot-loop.
+  assert.equal(M8_INVALID_RETRY_DELAY_SECONDS, 300);
+  assert.match(
+    fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8"),
+    /delaySeconds: M8_INVALID_RETRY_DELAY_SECONDS/,
+  );
+});
+
+test("no-duplicate-publication: two identical M8 identities collapse to one publication command identity", () => {
+  const m8 = "m8:crawler-daily:2026-09-26T00:00:00.000Z";
+  const first = resolveP1InvocationIdentity({ M8_IDEMPOTENCY_KEY: m8, GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1" });
+  const replayDifferentRun = resolveP1InvocationIdentity({ M8_IDEMPOTENCY_KEY: m8, GITHUB_RUN_ID: "2", GITHUB_RUN_ATTEMPT: "7" });
+  assert.equal(first, replayDifferentRun, "same M8 identity must resolve to the same executor identity");
+
+  const a = p1CommandIdentities(first, "p1.public-cache.revalidate", { cohort: "daily" });
+  const b = p1CommandIdentities(replayDifferentRun, "p1.public-cache.revalidate", { cohort: "daily" });
+  assert.deepEqual(a, b);
+  assert.notEqual(a.idempotencyKey, p1CommandIdentities(first, "p1.summarize", { cohort: "daily" }).idempotencyKey);
+
+  // Without an M8 identity, a different run attempt still yields a distinct identity.
+  const manualA = resolveP1InvocationIdentity({ GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1" });
+  const manualB = resolveP1InvocationIdentity({ GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "2" });
+  assert.notEqual(manualA, manualB);
+  assert.throws(() => p1CommandIdentities("", "p1.collect", { cohort: "daily" }), /identity_invalid/);
 });

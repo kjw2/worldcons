@@ -1,5 +1,4 @@
 import "dotenv/config";
-import { createHash } from "node:crypto";
 import {
   ADMIN_QUEUE_P1_COMMAND_TYPES,
   adminQueueP1CommandAuthorized,
@@ -7,6 +6,10 @@ import {
   type AdminQueueP1CommandType,
 } from "@/lib/admin/command-control-plane/p1-authority";
 import { adminCommandService } from "@/lib/admin/command-control-plane/service";
+import {
+  p1CommandIdentities,
+  resolveP1InvocationIdentity,
+} from "@/lib/admin/command-control-plane/invocation-identity";
 import { ADMIN_P1_WORKER_EXIT, runAdminCommandWorkerP1 } from "@/lib/admin/command-control-plane/p1-worker";
 import { tryRecordWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
@@ -56,11 +59,7 @@ function log(value: Record<string, unknown>) {
 }
 
 function invocationIdentity() {
-  const m8Identity = process.env.M8_IDEMPOTENCY_KEY?.trim();
-  if (m8Identity) return createHash("sha256").update(m8Identity).digest("hex").slice(0, 24);
-  const runId = process.env.GITHUB_RUN_ID?.trim() || "local";
-  const runAttempt = process.env.GITHUB_RUN_ATTEMPT?.trim() || String(Date.now());
-  return createHash("sha256").update(`${runId}:${runAttempt}`).digest("hex").slice(0, 24);
+  return resolveP1InvocationIdentity(process.env);
 }
 
 function wait(delayMs: number) {
@@ -77,11 +76,12 @@ async function submitAndRun(
   if (!authority.enabled || !adminQueueP1CommandAuthorized(authority, commandType, payloadRef)) {
     return ADMIN_P1_WORKER_EXIT.configuration;
   }
+  const identities = p1CommandIdentities(identity, commandType, payloadRef.cohort);
   const submitted = await adminCommandService.submit({
     commandType,
     payloadRef,
-    idempotencyKey: `p1:${identity}:${commandType}`,
-    dedupeKey: `p1:${String(payloadRef.cohort)}:${commandType}`,
+    idempotencyKey: identities.idempotencyKey,
+    dedupeKey: identities.dedupeKey,
     requestedBy: "github-actions",
     maxAttempts: 3,
     retryBackoffBaseSeconds: 60,

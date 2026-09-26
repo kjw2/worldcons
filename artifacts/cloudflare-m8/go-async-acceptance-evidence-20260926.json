@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 2,
+  "milestone": "M8",
+  "step": "go-async-acceptance-evidence",
+  "date": "2026-09-26",
+  "branch": "codex/m7-go-search",
+  "baseHead": "56fd89d02e03193b402c7da6dcba9f3be3accda4",
+  "contentFree": true,
+  "notes": "No secrets, tokens, raw HTML, or application rows. Only counts, ids, timestamps and code paths. Read-only Cloudflare queries used the operator OAuth session; no message was sent, acked, retried, purged or deleted, and no Supabase/D1/application data was read or written by this step.",
+  "restingState": {
+    "deployedVersion": "10e27ad5-6660-43ba-8b88-df5e2a428c01",
+    "M8_SCHEDULER_ENABLED": "false",
+    "M8_ENABLED_KINDS": "admin-health",
+    "schedulerDisabledThroughoutStep": true,
+    "publicationJobsTriggered": false
+  },
+  "queueDlqState": {
+    "queue": "worldcons-async-v1",
+    "queueId": "57239b3c71cc41ce8bcae878fd9dc842",
+    "dlq": "worldcons-async-dlq-v1",
+    "dlqId": "464166e95b0b48cd9cfa4902725384ec",
+    "consumerSettings": {
+      "batchSize": 10,
+      "maxRetries": 3,
+      "retryDelaySeconds": 60,
+      "maxConcurrency": 1,
+      "deadLetterQueue": "worldcons-async-dlq-v1"
+    },
+    "observation": {
+      "observedAt": "2026-09-26T09:36Z",
+      "mainQueueBacklog": 0,
+      "mainQueueBacklogBytes": 0,
+      "dlqBacklog": 3,
+      "dlqBacklogBytes": 398,
+      "dlqOldestMessageTimestamp": "2026-09-26T08:38:18.024Z",
+      "priorObservation": {
+        "mainQueueBacklog": 1,
+        "dlqBacklog": 2,
+        "source": "artifacts/cloudflare-m8/per-kind-canary-rehearsal-20260926.json"
+      }
+    },
+    "dlqTransitionEvidence": {
+      "dataset": "AccountQueueMessageOperationsAdaptiveGroups (Cloudflare GraphQL analytics)",
+      "dlqDeleteOutcomesForMainQueue": [
+        { "datetimeMinute": "2026-09-26T08:38:00Z", "actionType": "DeleteMessage", "outcome": "dlq", "count": 1 },
+        { "datetimeMinute": "2026-09-26T09:03:00Z", "actionType": "DeleteMessage", "outcome": "dlq", "count": 1 },
+        { "datetimeMinute": "2026-09-26T09:35:00Z", "actionType": "DeleteMessage", "outcome": "dlq", "count": 1 }
+      ],
+      "dlqWriteObservations": [
+        { "datetimeMinute": "2026-09-26T08:38:00Z", "actionType": "WriteMessage", "count": 1 },
+        { "datetimeMinute": "2026-09-26T09:03:00Z", "actionType": "WriteMessage", "count": 1 },
+        { "datetimeMinute": "2026-09-26T09:35:00Z", "actionType": "WriteMessage", "count": 1 }
+      ],
+      "interpretation": "Three main-queue DeleteMessage outcomes of type 'dlq' and three matching DLQ writes are observable, together with a main-queue backlog 1->0 and DLQ 2->3 delta. This demonstrates the automatic retry->DLQ transition path is active under the unchanged max_retries=3 / retry_delay=60 policy.",
+      "limitation": "Cloudflare exposes no read-only message-body peek for a push-consumer queue: GET .../messages returns HTTP 405, /messages/preview returns 10405 'Method not allowed for this authentication scheme', and POST .../messages/pull returns 405 'messages cannot be pulled unless http_pull mode is enabled'. Therefore the injected probe (key m8:invalid:gate-probe) cannot be tied by body to a specific DLQ write from the API. It is not purged or deleted to preserve that evidence.",
+      "automaticDlqTransitionForInjectedInvalid": "OBSERVED_ACTIVITY_UNATTRIBUTED_OPEN"
+    }
+  },
+  "requestGovernorParity": {
+    "contracts": [
+      "lib/crawler/types.ts: CrawlerRequestGovernor / CrawlerRequestPermit / CrawlerExecutionHooks.requestGovernor",
+      "lib/crawler/request-governor.ts: withCrawlerRequestPermit / governedBufferedFetch / governedBoundedFetch / createCrawlerNavigationPermitController",
+      "lib/backfill/source-request-governor.ts: createCaseBackfillRequestGovernor (repository-backed distributed permit, phase-scoped, HTTPS-only)"
+    ],
+    "alreadyEnforced": [
+      "lib/crawler/http-client.ts crawlUrl wraps governedBufferedFetch",
+      "lib/crawlee/france-dila-constit.ts, france-conseil-inventory.ts, bverfg-inventory.ts, spain-tribunal-constitucional-spider.ts wrap governed{Buffered,Bounded}Fetch",
+      "lib/crawlee/shared.ts applies createCrawlerNavigationPermitController to Cheerio navigation and refuses Playwright when a governor is present",
+      "lib/sources/conseilconstitutionnel.ts, bundesverfassungsgericht.ts, tribunalconstitucional.ts forward requestGovernor"
+    ],
+    "gapsFixed": [
+      "lib/crawler/cloudflare-browser-run-client.ts now wraps the Browser Run navigation in withCrawlerRequestPermit so Browser Run consumes a permit when a governor is supplied",
+      "lib/ingest/fetch.ts fetchRawItem now forwards options.requestGovernor to both crawlUrl and the Playwright/Browser Run escalation (previously dropped, which bypassed the per-source policy on the us-scotus fetch path)"
+    ],
+    "limitsUnchanged": true,
+    "testEvidence": [
+      "tests/m8-async-pipeline.test.ts: 'request-governor parity: Browser Run navigation acquires and releases a per-source permit'",
+      "tests/m8-async-pipeline.test.ts: 'governor propagation: fetchRawItem never drops the per-source request governor on browser escalation'"
+    ],
+    "liveCrawlerPublication": false
+  },
+  "restartRecovery": {
+    "helpers": [
+      "lib/cloudflare/async-pipeline/contracts.ts: dedupeM8WorkflowCreates / planM8QueueBatch",
+      "workers/async-pipeline/src/index.ts queue() consumes planM8QueueBatch().creates"
+    ],
+    "covered": [
+      "replay after consumer restart yields the same Workflow instance id",
+      "identical identity is collapsed to one create per batch",
+      "distinct minutes remain distinct deterministic identities",
+      "gate-closed valid messages are acked with no dispatch",
+      "malformed payloads stay on the bounded retry path (delaySeconds=300) toward the DLQ",
+      "Workflow re-entry cannot create a second GitHub side effect for the same deterministic identity"
+    ],
+    "testEvidence": [
+      "tests/m8-async-pipeline.test.ts: 'restart/recovery: replay after consumer restart yields the same Workflow id and one create per identity'",
+      "tests/m8-async-pipeline.test.ts: 'restart/recovery: gate-closed valid messages ack without dispatch, malformed payloads stay bounded toward DLQ'"
+    ],
+    "destructiveRemoteTest": false
+  },
+  "noDuplicatePublication": {
+    "identityTrace": [
+      "Queue message.idempotencyKey = m8:<kind>:<minute> (lib/cloudflare/async-pipeline/contracts.ts)",
+      "Workflow instance id = sanitized idempotencyKey; GitHub input m8_idempotency_key keeps the colon form",
+      "scripts/admin-command-worker-p1.ts resolveP1InvocationIdentity -> sha256(m8 key).slice(0,24) when M8_IDEMPOTENCY_KEY is present",
+      "lib/admin/command-control-plane/invocation-identity.ts p1CommandIdentities -> idempotencyKey p1:<identity>:<commandType>, dedupeKey p1:<cohort>:<commandType>",
+      "supabase/migrations/20260712090000_admin_command_control_plane.sql admin_submit_command_v3 enforces unique(command_type, idempotency_key) and an active-run unique dedupe_key under advisory locks"
+    ],
+    "fallbackAndFailClosed": "When M8_IDEMPOTENCY_KEY is present it is the stable source of truth. When absent, the pre-existing GitHub run/attempt or local-clock fallback is preserved. p1CommandIdentities rejects only a blank/invalid resolved invocation identity with p1_invocation_identity_invalid.",
+    "testEvidence": [
+      "tests/m8-async-pipeline.test.ts: 'no-duplicate-publication: two identical M8 identities collapse to one publication command identity'"
+    ],
+    "realPublicationTriggered": false
+  },
+  "p5HardViolations": {
+    "source": "read-only redacted artifact admin-p5-health-evidence from GitHub run 36232371374 (produced by scripts/admin-health-p5.ts)",
+    "generatedAt": "2026-09-26T09:18:40.376Z",
+    "observationWindow": "2026-09-12T09:18:40Z..2026-09-26T09:18:40Z (336h)",
+    "lifecycle.review": {
+      "codePath": "lib/admin/p5/evaluator.ts metric('lifecycle.review') on evidence.lifecycle.oldestReviewAgeSeconds; produced by supabase admin_operational_health_p5 -> admin_operational_health_core_p5 over articles where lifecycle_attention_state in ('active','anomaly') or lifecycle_review_state = 'needs_review'",
+      "threshold": { "warning": 86400, "critical": 259200, "unit": "seconds" },
+      "observedValueSeconds": 1403602,
+      "backlogCount": 5,
+      "unresolvedAnomalyCount": 0,
+      "classification": "data backlog, not a code defect"
+    },
+    "publication.parity": {
+      "codePath": "lib/admin/p5/evaluator.ts metric('publication.parity') on publication.parityMismatchCount + publication.quarantineCount; produced by admin_operational_health_core_p5 comparing articles(status='summarized' and source_metadata#>>'{collection,publishable}'='true') against public_article_projection_p3, plus unresolved article_publication_quarantine_p3 rows",
+      "threshold": { "warning": 0, "critical": 0, "unit": "count" },
+      "legacyPublicCount": 1272,
+      "explicitPublicCount": 1258,
+      "parityMismatchCount": 14,
+      "quarantineCount": 12,
+      "legacyIdentityDigest": "5d9230382eb047fb01b3912c9ba54566",
+      "explicitIdentityDigest": "6d58bd23d3b93008f41c325f003ba93d",
+      "classification": "data backlog (legacy-public rows not yet projected by P3 plus unresolved quarantine), not a code defect"
+    },
+    "remediation": {
+      "status": "not repaired in this task (read-only)",
+      "nextSafeAction": "Run the existing bounded, flag-gated P1/P3 projection + quarantine-resolution paths in a separately authorized maintenance window: (1) submit the P3 backfill/republish command for the 14 legacy/eexplicit mismatch articles so public_article_projection_p3 covers them and the identity digests converge; (2) resolve the 12 unresolved article_publication_quarantine_p3 rows via the existing admin_governance_p5_quarantine_resolution path; (3) triage the 5 lifecycle backlog articles (oldest review age 1403602s) to clear lifecycle_attention_state/review. Then re-run pnpm admin:health:p5 read-only and require hardViolationKeys=[]."
+    }
+  },
+  "verification": {
+    "pnpm test:m8": "19/19 pass",
+    "pnpm m8:types:check": "up to date",
+    "pnpm m8:typecheck": "pass",
+    "pnpm typecheck": "pass",
+    "pnpm lint": "pass",
+    "pnpm test:p1": "23 tests: 22 pass, 1 PostgreSQL integration skip, 0 fail (stale retired-schedule assertions corrected)",
+    "pnpm test:p5": "21 tests: 20 pass, 1 PostgreSQL integration skip, 0 fail (stale retired-schedule assertion corrected)",
+    "pnpm test:embeddings": "10/10 pass (stale retired-schedule assertion corrected)",
+    "pnpm m8:dry-run": "see docs",
+    "git diff --check": "clean"
+  },
+  "goAsync": {
+    "status": "NOT_RECORDED",
+    "provenThisStep": [
+      "retry path active and bounded toward DLQ (activity observed, message-identity attribution still OPEN)",
+      "request-governor parity for Browser Run + fetch escalation",
+      "restart/recovery invariants for Queue->Workflow",
+      "no-duplicate publication identity propagation"
+    ],
+    "stillOpen": [
+      "body-level attribution of m8:invalid:gate-probe's DLQ write (Cloudflare read-only API cannot peek push-consumer messages)",
+      "admin-health P5 hard violations lifecycle.review and publication.parity (application data backlog)"
+    ],
+    "githubActionsRemainsCompatibilityExecutor": true,
+    "containersMigration": "not started",
+    "searchAuthorityOrM7StateChanged": false
+  }
+}
