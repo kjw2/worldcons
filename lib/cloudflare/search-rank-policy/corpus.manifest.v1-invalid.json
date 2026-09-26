@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "corpusHash": "62c5e359e5b9838d",
+  "cases": [
+    {
+      "id": "exact-case-bverfg-climate",
+      "category": "exact-case",
+      "query": "1 BvR 2656/18",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case"
+    },
+    {
+      "id": "exact-case-france-qpc",
+      "category": "exact-case",
+      "query": "2026-912 QPC",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case"
+    },
+    {
+      "id": "exact-title-first-amendment",
+      "category": "exact-title",
+      "query": "First Amendment Standing",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title"
+    },
+    {
+      "id": "exact-title-klimaschutz",
+      "category": "exact-title",
+      "query": "Klimaschutz Beschluss",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title"
+    },
+    {
+      "id": "multilingual-english-privacy",
+      "category": "multilingual-legal-term",
+      "query": "privacy",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "multilingual-french-droit",
+      "category": "multilingual-legal-term",
+      "query": "droit constitutionnel",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "case-number-bverfg",
+      "category": "case-number-identifier",
+      "query": "1 BvR 2656/18",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "case-number-france",
+      "category": "case-number-identifier",
+      "query": "2026-1194 QPC",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "jurisdiction-de-bverfg",
+      "category": "jurisdiction-source",
+      "query": "constitution",
+      "filters": {
+        "source": "de-bverfg",
+        "jurisdiction": "Germany",
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "jurisdiction-es-tribunal",
+      "category": "jurisdiction-source",
+      "query": "constitution",
+      "filters": {
+        "source": "es-tribunal-constitucional",
+        "jurisdiction": "Spain",
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclrag2-climate-rights",
+      "category": "cclrag2-shape",
+      "query": "climate change constitutional rights",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclrag2-neubauer-comparison",
+      "category": "cclrag2-shape",
+      "query": "한국 헌재 기후결정과 독일 연방헌법재판소 Neubauer 기후결정을 비교",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclmetasearch-constitution",
+      "category": "cclmetasearch-shape",
+      "query": "constitution",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclmetasearch-free-expression",
+      "category": "cclmetasearch-shape",
+      "query": "표현의 자유",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    }
+  ]
+}

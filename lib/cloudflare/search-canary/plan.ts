@@ -10,7 +10,6 @@ import {
   buildVectorProjection,
   vectorProjectionManifest,
   type ArticleEmbeddingArtifactRow,
-  type VectorizeProjectionRecord,
   type VectorProjectionOmission,
 } from "@/lib/cloudflare/search-vector";
 import {
@@ -73,6 +72,7 @@ export function buildSearchCanaryProjectionPlan(
     articles: input.articles,
     tags: input.tags,
     articleTags: input.articleTags,
+    gate2Eligibility: input.gate2Eligibility,
   });
   const vectorBuilt = buildVectorProjection({
     publications: input.publications,
@@ -81,6 +81,7 @@ export function buildSearchCanaryProjectionPlan(
     tags: input.tags,
     articleTags: input.articleTags,
     artifacts: input.artifacts,
+    gate2Eligibility: input.gate2Eligibility,
   });
 
   const selectedIds = new Set(built.documents.slice(0, maxArticles).map((document) => document.article_id));

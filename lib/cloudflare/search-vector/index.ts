@@ -16,3 +16,4 @@ export * from "./projection";
 export * from "./semantic";
 export * from "./hybrid";
 export * from "./ranked";
+export * from "./provenance-audit";

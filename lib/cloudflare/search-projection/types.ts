@@ -136,6 +136,46 @@ export interface SearchVersionP3Row {
    * projection requires it to match the current published version.
    */
   content_hash?: string | null;
+  /**
+   * M7.7-A additive fields mirroring the gate2 `article_content_versions_p3`
+   * columns required by the `public_article_projection_p3` eligibility predicate.
+   * Optional so existing callers/fixtures are unchanged; they are only read when
+   * `SearchProjectionSourceInput.gate2Eligibility` is supplied.
+   */
+  version_role?: string | null;
+  source_anchor_version_id?: string | null;
+  /** Gate2 `enrichment_full` source hash; compared to the anchor's `source_content_hash`. */
+  enrichment_source_content_hash?: string | null;
+  /** Gate2 `source_content_hash`; the authoritative anchor exposes this value. */
+  source_content_hash?: string | null;
+}
+
+/** One `legacy_version_freshness_classifications_v4` gate2 freshness row. */
+export interface SearchLegacyFreshnessRow {
+  version_id: string;
+  freshness: string;
+}
+
+/** One `case_catalog_publications_v1` gate2 catalog publication head row. */
+export interface SearchCatalogPublicationV1Row {
+  id: string;
+  article_id: string;
+  state: string;
+  source_anchor_version_id: string;
+}
+
+/**
+ * M7.7-A gate2 public eligibility inputs.
+ *
+ * Supplying this makes `selectPublishedSearchProjectionSources` apply the exact
+ * `public_article_projection_p3` gate2 freshness/catalog predicate. When it is
+ * omitted the historical published-only P3 selection is retained so existing
+ * local fixtures and canary plans are unchanged; exact gate2 parity is only
+ * claimed when these rows are supplied.
+ */
+export interface SearchProjectionGate2Eligibility {
+  legacyFreshnessClassifications: readonly SearchLegacyFreshnessRow[];
+  catalogPublications: readonly SearchCatalogPublicationV1Row[];
 }
 
 /**
@@ -171,6 +211,8 @@ export interface SearchProjectionSourceInput {
   articles?: readonly SearchBaseArticleRow[];
   tags?: readonly SearchTagRow[];
   articleTags?: readonly SearchArticleTagRow[];
+  /** M7.7-A gate2 eligibility rows; see `SearchProjectionGate2Eligibility`. */
+  gate2Eligibility?: SearchProjectionGate2Eligibility;
 }
 
 /** A published publication joined to its authoritative version snapshot. */

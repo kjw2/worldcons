@@ -1,0 +1,693 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-26T03:40:44.064Z",
+  "scope": "fts-parity",
+  "source": "supabase",
+  "maxArticles": 5000,
+  "truncated": false,
+  "corpusHash": "26f2a4d4b03e7a90",
+  "corpusCases": 18,
+  "categories": {
+    "exact-case": 4,
+    "exact-title": 4,
+    "multilingual-legal-term": 2,
+    "case-number-identifier": 2,
+    "jurisdiction-source": 2,
+    "cclrag2-shape": 2,
+    "cclmetasearch-shape": 2
+  },
+  "projection": {
+    "sourceRows": 1258,
+    "documents": 1258,
+    "productionProjectionIds": 1258
+  },
+  "sourceScope": {
+    "productionProjectionIds": 1258,
+    "sourceRowsFetched": 1258,
+    "localDocuments": 1258,
+    "missingIds": 0,
+    "extraIds": 0,
+    "scopeValid": true
+  },
+  "oracleAvailable": true,
+  "errors": [
+    "exact-case-de-bverfg"
+  ],
+  "policy": {
+    "version": 2,
+    "state": "fail",
+    "corpusHash": "26f2a4d4b03e7a90",
+    "strict": {
+      "cases": 7,
+      "passed": 5,
+      "failed": 2,
+      "notApplicable": 1,
+      "strictPassRate": 0.7142857142857143,
+      "exactCaseCases": 3,
+      "exactCasePassed": 2,
+      "exactTitleCases": 4,
+      "exactTitlePassed": 3
+    },
+    "informational": {
+      "cases": 10,
+      "compared": 8,
+      "hasPreRegisteredThreshold": false
+    },
+    "aggregate": {
+      "compared": 14,
+      "overlapAtKCount": 43,
+      "overlapAtKMacro": 0.3071428571428572,
+      "prefixMatchCount": 19,
+      "prefixMatchMacro": 0.5999999999999999,
+      "exactOrderCount": 8,
+      "exactOrderMacro": 0.5714285714285714,
+      "sameSetCount": 9,
+      "sameSetMacro": 0.6428571428571429
+    },
+    "categories": [
+      {
+        "category": "exact-case",
+        "cases": 4,
+        "strictCases": 3,
+        "strictPassed": 2,
+        "strictFailed": 1,
+        "notApplicable": 1,
+        "compared": 0,
+        "aggregate": {
+          "compared": 2,
+          "overlapAtKCount": 6,
+          "overlapAtKMacro": 0.3,
+          "prefixMatchCount": 6,
+          "prefixMatchMacro": 1,
+          "exactOrderCount": 2,
+          "exactOrderMacro": 1,
+          "sameSetCount": 2,
+          "sameSetMacro": 1
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "fail"
+      },
+      {
+        "category": "exact-title",
+        "cases": 4,
+        "strictCases": 4,
+        "strictPassed": 3,
+        "strictFailed": 1,
+        "notApplicable": 0,
+        "compared": 0,
+        "aggregate": {
+          "compared": 4,
+          "overlapAtKCount": 9,
+          "overlapAtKMacro": 0.22499999999999998,
+          "prefixMatchCount": 9,
+          "prefixMatchMacro": 0.825,
+          "exactOrderCount": 3,
+          "exactOrderMacro": 0.75,
+          "sameSetCount": 3,
+          "sameSetMacro": 0.75
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "fail"
+      },
+      {
+        "category": "multilingual-legal-term",
+        "cases": 2,
+        "strictCases": 0,
+        "strictPassed": 0,
+        "strictFailed": 0,
+        "notApplicable": 0,
+        "compared": 2,
+        "aggregate": {
+          "compared": 2,
+          "overlapAtKCount": 8,
+          "overlapAtKMacro": 0.39999999999999997,
+          "prefixMatchCount": 1,
+          "prefixMatchMacro": 0.05,
+          "exactOrderCount": 0,
+          "exactOrderMacro": 0,
+          "sameSetCount": 0,
+          "sameSetMacro": 0
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "insufficient_evidence"
+      },
+      {
+        "category": "case-number-identifier",
+        "cases": 2,
+        "strictCases": 0,
+        "strictPassed": 0,
+        "strictFailed": 0,
+        "notApplicable": 0,
+        "compared": 2,
+        "aggregate": {
+          "compared": 2,
+          "overlapAtKCount": 2,
+          "overlapAtKMacro": 0.1,
+          "prefixMatchCount": 2,
+          "prefixMatchMacro": 1,
+          "exactOrderCount": 2,
+          "exactOrderMacro": 1,
+          "sameSetCount": 2,
+          "sameSetMacro": 1
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "insufficient_evidence"
+      },
+      {
+        "category": "jurisdiction-source",
+        "cases": 2,
+        "strictCases": 0,
+        "strictPassed": 0,
+        "strictFailed": 0,
+        "notApplicable": 0,
+        "compared": 1,
+        "aggregate": {
+          "compared": 1,
+          "overlapAtKCount": 1,
+          "overlapAtKMacro": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchMacro": 1,
+          "exactOrderCount": 1,
+          "exactOrderMacro": 1,
+          "sameSetCount": 1,
+          "sameSetMacro": 1
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "insufficient_evidence"
+      },
+      {
+        "category": "cclrag2-shape",
+        "cases": 2,
+        "strictCases": 0,
+        "strictPassed": 0,
+        "strictFailed": 0,
+        "notApplicable": 0,
+        "compared": 1,
+        "aggregate": {
+          "compared": 1,
+          "overlapAtKCount": 5,
+          "overlapAtKMacro": 0.5,
+          "prefixMatchCount": 0,
+          "prefixMatchMacro": 0,
+          "exactOrderCount": 0,
+          "exactOrderMacro": 0,
+          "sameSetCount": 1,
+          "sameSetMacro": 1
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "insufficient_evidence"
+      },
+      {
+        "category": "cclmetasearch-shape",
+        "cases": 2,
+        "strictCases": 0,
+        "strictPassed": 0,
+        "strictFailed": 0,
+        "notApplicable": 0,
+        "compared": 2,
+        "aggregate": {
+          "compared": 2,
+          "overlapAtKCount": 12,
+          "overlapAtKMacro": 0.6,
+          "prefixMatchCount": 0,
+          "prefixMatchMacro": 0,
+          "exactOrderCount": 0,
+          "exactOrderMacro": 0,
+          "sameSetCount": 0,
+          "sameSetMacro": 0
+        },
+        "hasPreRegisteredThreshold": false,
+        "thresholdState": "insufficient_evidence"
+      }
+    ],
+    "thresholds": null,
+    "blockers": [
+      {
+        "code": "fulltext_rank_threshold_unagreed",
+        "detail": "8/10 generic lexical fulltext case(s) were compared against production ordering; no independently pre-registered FTS5-bm25-vs-Postgres acceptance threshold exists, so the aggregate overlap/prefix/order/set metrics are evidence only and GO-SEARCH stays blocked"
+      },
+      {
+        "code": "rank_policy_strict_invariant_failed",
+        "detail": "2/7 strict exact-case/exact-title invariant(s) failed; the exact invariants must hold for 100% of evaluable cases"
+      }
+    ],
+    "outcomes": [
+      {
+        "caseId": "exact-case-de-bverfg",
+        "category": "exact-case",
+        "invariant": "exact-case",
+        "status": "not_applicable",
+        "strict": true,
+        "expectedId": null,
+        "observedId": "00083deb-5bc9-4b28-bbcd-68076cd05514",
+        "oracleTopId": null,
+        "oracleCompared": false,
+        "metrics": null
+      },
+      {
+        "caseId": "exact-case-es-tribunal-constitucional",
+        "category": "exact-case",
+        "invariant": "exact-case",
+        "status": "fail",
+        "strict": true,
+        "expectedId": "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "observedId": "e6e97786-ad78-46b1-8549-7a69788ea178",
+        "oracleTopId": "e6e97786-ad78-46b1-8549-7a69788ea178",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 5,
+          "actualCount": 5,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 5,
+          "overlapAtK": 0.5,
+          "prefixMatchCount": 5,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "exact-case-fr-conseil-constitutionnel",
+        "category": "exact-case",
+        "invariant": "exact-case",
+        "status": "pass",
+        "strict": true,
+        "expectedId": "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "observedId": "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "oracleTopId": "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 1,
+          "actualCount": 1,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "exact-case-us-scotus",
+        "category": "exact-case",
+        "invariant": "exact-case",
+        "status": "pass",
+        "strict": true,
+        "expectedId": "0346769f-97d0-48e2-b2e2-3a371e7d2eee",
+        "observedId": "0346769f-97d0-48e2-b2e2-3a371e7d2eee",
+        "oracleTopId": null,
+        "oracleCompared": true,
+        "metrics": null
+      },
+      {
+        "caseId": "exact-title-de-bverfg",
+        "category": "exact-title",
+        "invariant": "exact-title",
+        "status": "fail",
+        "strict": true,
+        "expectedId": "00083deb-5bc9-4b28-bbcd-68076cd05514",
+        "observedId": "c27578dc-af58-4c29-9511-d48bf4327682",
+        "oracleTopId": "c27578dc-af58-4c29-9511-d48bf4327682",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 10,
+          "actualCount": 10,
+          "k": 10,
+          "exactOrder": false,
+          "sameSet": false,
+          "overlapAtKCount": 3,
+          "overlapAtK": 0.3,
+          "prefixMatchCount": 3,
+          "prefixMatchRate": 0.3,
+          "missing": [
+            "2cce580d-5c01-4d4a-bbfe-467fe33b6fe7",
+            "50789e02-5b26-464f-a34d-5f181b7514b1",
+            "552950ac-de82-41f5-ae88-411efc5ae9b2",
+            "5b5001b0-0be9-46b5-a8b7-ba75907adc33",
+            "77280ca0-9a53-4915-bd39-c19e862359ef",
+            "7bb7ee6f-67cb-40a6-8f32-39b966054d75",
+            "abba86d9-e018-44eb-a66d-f9e7dee26322"
+          ],
+          "extra": [
+            "0bd9a6f2-fcb0-4dcf-9190-5a12772d6a9b",
+            "4f171fe2-246c-4fe8-af41-1073d615fae1",
+            "51ac45cd-ea61-41e4-b4c1-cf5e492c6784",
+            "59b5341f-d311-4e9f-a075-cbbbd4c0cf53",
+            "c57f69c4-5206-4241-a99d-36ed1c2b7b8e",
+            "cfc58b56-59f1-47ed-a509-3fc52c6ef4c5",
+            "d425b686-3e7b-48be-872d-c493f0b95075"
+          ]
+        }
+      },
+      {
+        "caseId": "exact-title-es-tribunal-constitucional",
+        "category": "exact-title",
+        "invariant": "exact-title",
+        "status": "pass",
+        "strict": true,
+        "expectedId": "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "observedId": "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "oracleTopId": "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 4,
+          "actualCount": 4,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 4,
+          "overlapAtK": 0.4,
+          "prefixMatchCount": 4,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "exact-title-fr-conseil-constitutionnel",
+        "category": "exact-title",
+        "invariant": "exact-title",
+        "status": "pass",
+        "strict": true,
+        "expectedId": "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "observedId": "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "oracleTopId": "0018a822-df15-4526-abd8-6c22e6ba7988",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 1,
+          "actualCount": 1,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "exact-title-us-scotus",
+        "category": "exact-title",
+        "invariant": "exact-title",
+        "status": "pass",
+        "strict": true,
+        "expectedId": "0346769f-97d0-48e2-b2e2-3a371e7d2eee",
+        "observedId": "0346769f-97d0-48e2-b2e2-3a371e7d2eee",
+        "oracleTopId": "0346769f-97d0-48e2-b2e2-3a371e7d2eee",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 1,
+          "actualCount": 1,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "multilingual-english-privacy",
+        "category": "multilingual-legal-term",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "794b359d-eb2b-41a9-84c9-1e6c4619513a",
+        "oracleTopId": "794b359d-eb2b-41a9-84c9-1e6c4619513a",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 10,
+          "actualCount": 10,
+          "k": 10,
+          "exactOrder": false,
+          "sameSet": false,
+          "overlapAtKCount": 7,
+          "overlapAtK": 0.7,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 0.1,
+          "missing": [
+            "50bf2060-ea29-4ee6-853d-b20417ffbb1f",
+            "963b980e-d8e5-49ef-b9d6-68ea9b3eaaf4",
+            "b63da3da-f21c-47ed-b6af-ebcbbc387a57"
+          ],
+          "extra": [
+            "8f05edfa-5467-4211-9f23-759ed061f843",
+            "a2a3b17f-3e9e-4680-9299-23e03436ca4d",
+            "fc547ed2-2eba-4c67-a402-6c26e936bd81"
+          ]
+        }
+      },
+      {
+        "caseId": "multilingual-french-droit",
+        "category": "multilingual-legal-term",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "5199e07f-6506-4200-8097-2de7e624f61a",
+        "oracleTopId": "58409177-0de4-434e-93cf-7dd703e5503c",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 10,
+          "actualCount": 10,
+          "k": 10,
+          "exactOrder": false,
+          "sameSet": false,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 0,
+          "prefixMatchRate": 0,
+          "missing": [
+            "043335d4-6691-4d37-af2a-28f89b9622de",
+            "4df7fcc2-f9e6-4b84-b8b0-ea742c7097ad",
+            "58409177-0de4-434e-93cf-7dd703e5503c",
+            "7cb91679-1860-4a16-8a89-f4da3ff88489",
+            "a481738c-49f9-45bb-bd7a-7e0ec621dcbf",
+            "b05c53f8-b94f-46d7-b790-62aa214cde6b",
+            "b7c0c9f5-3b92-466b-82aa-87da0f7511eb",
+            "cd1f5c8f-d89a-4623-aee0-3fe9c97c5a01",
+            "e8f32c42-430d-48c5-be48-39219cbd8880"
+          ],
+          "extra": [
+            "096baeab-302b-490b-b198-333e091e7157",
+            "20a0da47-db14-4457-8a60-e739406b5f45",
+            "45bde3ea-a5db-476c-8239-d2661cba0fe6",
+            "4c063da2-f192-46ea-8edd-14c31290c011",
+            "7794e61a-6af2-44ca-b9f9-86f3b81d30e6",
+            "87497275-4919-468a-9bc5-c838267a7a7d",
+            "a934491a-577d-4288-8429-203a3cdb87dd",
+            "b4049d95-d2e6-4962-bd94-ed2468f680a3",
+            "e8b27cf3-1bd3-4dc9-833b-7321625837f9"
+          ]
+        }
+      },
+      {
+        "caseId": "case-number-bverfg",
+        "category": "case-number-identifier",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "552950ac-de82-41f5-ae88-411efc5ae9b2",
+        "oracleTopId": "552950ac-de82-41f5-ae88-411efc5ae9b2",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 1,
+          "actualCount": 1,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "case-number-france",
+        "category": "case-number-identifier",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "21fc0052-89d5-4819-aec1-52519fce9f96",
+        "oracleTopId": "21fc0052-89d5-4819-aec1-52519fce9f96",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 1,
+          "actualCount": 1,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "jurisdiction-de-bverfg",
+        "category": "jurisdiction-source",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": null,
+        "oracleTopId": null,
+        "oracleCompared": true,
+        "metrics": null
+      },
+      {
+        "caseId": "jurisdiction-es-tribunal",
+        "category": "jurisdiction-source",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "318922f7-25b4-4dad-83b7-97ecc9963297",
+        "oracleTopId": "318922f7-25b4-4dad-83b7-97ecc9963297",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 1,
+          "actualCount": 1,
+          "k": 10,
+          "exactOrder": true,
+          "sameSet": true,
+          "overlapAtKCount": 1,
+          "overlapAtK": 0.1,
+          "prefixMatchCount": 1,
+          "prefixMatchRate": 1,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "cclrag2-climate-rights",
+        "category": "cclrag2-shape",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "fc547ed2-2eba-4c67-a402-6c26e936bd81",
+        "oracleTopId": "963b980e-d8e5-49ef-b9d6-68ea9b3eaaf4",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 5,
+          "actualCount": 5,
+          "k": 10,
+          "exactOrder": false,
+          "sameSet": true,
+          "overlapAtKCount": 5,
+          "overlapAtK": 0.5,
+          "prefixMatchCount": 0,
+          "prefixMatchRate": 0,
+          "missing": [],
+          "extra": []
+        }
+      },
+      {
+        "caseId": "cclrag2-neubauer-comparison",
+        "category": "cclrag2-shape",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": null,
+        "oracleTopId": null,
+        "oracleCompared": true,
+        "metrics": null
+      },
+      {
+        "caseId": "cclmetasearch-constitution",
+        "category": "cclmetasearch-shape",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "89d41349-6773-4a46-b77e-33db174fa959",
+        "oracleTopId": "e8f32c42-430d-48c5-be48-39219cbd8880",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 10,
+          "actualCount": 10,
+          "k": 10,
+          "exactOrder": false,
+          "sameSet": false,
+          "overlapAtKCount": 3,
+          "overlapAtK": 0.3,
+          "prefixMatchCount": 0,
+          "prefixMatchRate": 0,
+          "missing": [
+            "043335d4-6691-4d37-af2a-28f89b9622de",
+            "58409177-0de4-434e-93cf-7dd703e5503c",
+            "7cb91679-1860-4a16-8a89-f4da3ff88489",
+            "a2a3b17f-3e9e-4680-9299-23e03436ca4d",
+            "b05c53f8-b94f-46d7-b790-62aa214cde6b",
+            "b63da3da-f21c-47ed-b6af-ebcbbc387a57",
+            "b7c0c9f5-3b92-466b-82aa-87da0f7511eb"
+          ],
+          "extra": [
+            "2fd9b450-13e9-4096-a545-039a05b9409c",
+            "7872ba80-b9fa-4c51-89c5-5c5973e28297",
+            "88e28896-be06-4ab1-9158-fc84454f0b5b",
+            "89d41349-6773-4a46-b77e-33db174fa959",
+            "a324a06b-2633-4738-8c8d-bda1a3730639",
+            "b0b47041-76b4-42a6-ba6b-7b005b6b2c07",
+            "f8da0812-905b-416d-be18-8cd00afebb6f"
+          ]
+        }
+      },
+      {
+        "caseId": "cclmetasearch-free-expression",
+        "category": "cclmetasearch-shape",
+        "invariant": "informational",
+        "status": "informational",
+        "strict": false,
+        "expectedId": null,
+        "observedId": "e94c6a43-ffd6-49f4-acf9-cc80344f826e",
+        "oracleTopId": "e71f70eb-56f5-45b7-bc4f-c0b5af235178",
+        "oracleCompared": true,
+        "metrics": {
+          "expectedCount": 10,
+          "actualCount": 10,
+          "k": 10,
+          "exactOrder": false,
+          "sameSet": false,
+          "overlapAtKCount": 9,
+          "overlapAtK": 0.9,
+          "prefixMatchCount": 0,
+          "prefixMatchRate": 0,
+          "missing": [
+            "cdbd1d90-9c4f-4dff-90cc-c97f844db3fa"
+          ],
+          "extra": [
+            "8f05edfa-5467-4211-9f23-759ed061f843"
+          ]
+        }
+      }
+    ]
+  },
+  "boundaries": [
+    "read-only: no Supabase mutation, no D1/Vectorize write, no canary data write and no --apply path",
+    "production authority unchanged: SearchRepository, GO-SEARCH, DNS and traffic are untouched",
+    "the frozen corpus was selected before any D1-vs-Postgres fulltext parity outcome was read",
+    "no generic lexical acceptance threshold is invented or tuned; without an independently pre-registered threshold the generic categories are insufficient_evidence",
+    "report is content-free: query/document text, summaries, URLs and vectors are never copied into it",
+    "production evidence is full like-for-like scope through a read-only FTS source pager that never selects embeddings; rank evaluation fails closed unless the local projected article-id set exactly equals the production projection id set"
+  ]
+}

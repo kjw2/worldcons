@@ -177,6 +177,7 @@ export function buildVectorProjection(input: VectorProjectionSourceInput): Vecto
     articles: input.articles ?? [],
     tags: input.tags ?? [],
     articleTags: input.articleTags ?? [],
+    gate2Eligibility: input.gate2Eligibility,
   });
 
   const records: VectorizeProjectionRecord[] = [];

@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import process from "node:process";
-import type { SearchPublicationP3Row, SearchVersionP3Row } from "@/lib/cloudflare/search-projection";
+import type {
+  SearchProjectionGate2Eligibility,
+  SearchPublicationP3Row,
+  SearchVersionP3Row,
+} from "@/lib/cloudflare/search-projection";
 import {
   buildVectorProjection,
   planVectorFullProjection,
@@ -26,6 +30,7 @@ interface VectorFixture {
   publications?: SearchPublicationP3Row[];
   versions?: SearchVersionP3Row[];
   artifacts?: ArticleEmbeddingArtifactRow[];
+  gate2Eligibility?: SearchProjectionGate2Eligibility;
 }
 
 function argValue(args: readonly string[], name: string): string | null {
@@ -43,6 +48,7 @@ function projectionFor(fixture: VectorFixture) {
     publications: fixture.publications ?? [],
     versions: fixture.versions ?? [],
     artifacts: fixture.artifacts ?? [],
+    gate2Eligibility: fixture.gate2Eligibility,
   });
 }
 

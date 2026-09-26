@@ -8,6 +8,7 @@ import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "@/lib/cloudf
 import {
   buildSearchProjection,
   planSearchProjectionFullRebuild,
+  type SearchProjectionGate2Eligibility,
   type SearchPublicationP3Row,
   type SearchVersionP3Row,
 } from "@/lib/cloudflare/search-projection";
@@ -39,6 +40,7 @@ interface VectorFixture {
   publications?: SearchPublicationP3Row[];
   versions?: SearchVersionP3Row[];
   artifacts?: ArticleEmbeddingArtifactRow[];
+  gate2Eligibility?: SearchProjectionGate2Eligibility;
 }
 
 function argValue(args: readonly string[], name: string): string | null {
@@ -122,6 +124,7 @@ async function main(): Promise<void> {
   const built = buildSearchProjection({
     publications: fixture.publications ?? [],
     versions: fixture.versions ?? [],
+    gate2Eligibility: fixture.gate2Eligibility,
   });
   const db = new DatabaseSync(":memory:");
   db.exec(emitDatabaseDdl("worldcons_search", d1Schema));
@@ -133,6 +136,7 @@ async function main(): Promise<void> {
     publications: fixture.publications ?? [],
     versions: fixture.versions ?? [],
     artifacts: fixture.artifacts ?? [],
+    gate2Eligibility: fixture.gate2Eligibility,
   });
 
   const limitArg = argValue(args, "limit");

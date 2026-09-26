@@ -11,6 +11,7 @@ import {
   type SearchBaseArticleRow,
   type SearchProjectionDocument,
   type SearchProjectionDocumentRow,
+  type SearchProjectionGate2Eligibility,
   type SearchPublicationP3Row,
   type SearchTagRow,
   type SearchVersionP3Row,
@@ -38,6 +39,7 @@ interface ProjectionFixture {
   articles?: SearchBaseArticleRow[];
   tags?: SearchTagRow[];
   articleTags?: SearchArticleTagRow[];
+  gate2Eligibility?: SearchProjectionGate2Eligibility;
   currentDocuments?: SearchProjectionDocument[];
   documentRows?: SearchProjectionDocumentRow[];
   ftsArticleIds?: string[];
@@ -86,6 +88,7 @@ function main(): void {
     articles: fixture.articles ?? [],
     tags: fixture.tags ?? [],
     articleTags: fixture.articleTags ?? [],
+    gate2Eligibility: fixture.gate2Eligibility,
   });
 
   if (command === "plan") {

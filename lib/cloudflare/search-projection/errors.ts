@@ -15,6 +15,7 @@ export type SearchProjectionErrorCode =
   | "duplicate_tag_id"
   | "duplicate_article_tag"
   | "missing_tag"
+  | "duplicate_published_catalog_publication"
   | "missing_updated_at"
   | "duplicate_fts_document_id"
   | "fts_document_count_mismatch"

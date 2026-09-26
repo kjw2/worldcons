@@ -1,0 +1,302 @@
+{
+  "version": 3,
+  "corpusHash": "fb108124e7fe6ed8",
+  "cases": [
+    {
+      "id": "exact-case-de-bverfg",
+      "category": "exact-case",
+      "query": "2 BvL 21/14",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ]
+    },
+    {
+      "id": "exact-case-es-tribunal-constitucional",
+      "category": "exact-case",
+      "query": "57/2025",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077"
+      ]
+    },
+    {
+      "id": "exact-case-fr-conseil-constitutionnel",
+      "category": "exact-case",
+      "query": "2024-6412 AN",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988"
+      ]
+    },
+    {
+      "id": "exact-case-us-scotus",
+      "category": "exact-case",
+      "query": "24-304",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "0346769f-97d0-48e2-b2e2-3a371e7d2eee"
+      ]
+    },
+    {
+      "id": "exact-title-de-bverfg",
+      "category": "exact-title",
+      "query": "Beschluss vom 21. Oktober 2025",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514",
+        "5dce7909-0bdb-4739-acb2-8106abe45c0b",
+        "c27578dc-af58-4c29-9511-d48bf4327682"
+      ]
+    },
+    {
+      "id": "exact-title-es-tribunal-constitucional",
+      "category": "exact-title",
+      "query": "AUTO 57/2025, de 27 de mayo de 2025",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077"
+      ]
+    },
+    {
+      "id": "exact-title-fr-conseil-constitutionnel",
+      "category": "exact-title",
+      "query": "Décision n° 2024-6412 AN du 6 juin 2025",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988"
+      ]
+    },
+    {
+      "id": "exact-title-us-scotus",
+      "category": "exact-title",
+      "query": "Laboratory Corp. of America Holdings v. Davis",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "0346769f-97d0-48e2-b2e2-3a371e7d2eee"
+      ]
+    },
+    {
+      "id": "multilingual-english-privacy",
+      "category": "multilingual-legal-term",
+      "query": "privacy",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "multilingual-french-droit",
+      "category": "multilingual-legal-term",
+      "query": "droit constitutionnel",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "case-number-bverfg",
+      "category": "case-number-identifier",
+      "query": "1 BvR 2656/18",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "case-number-france",
+      "category": "case-number-identifier",
+      "query": "2026-1194 QPC",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "jurisdiction-de-bverfg",
+      "category": "jurisdiction-source",
+      "query": "constitution",
+      "filters": {
+        "source": "de-bverfg",
+        "jurisdiction": "Germany",
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "jurisdiction-es-tribunal",
+      "category": "jurisdiction-source",
+      "query": "constitution",
+      "filters": {
+        "source": "es-tribunal-constitucional",
+        "jurisdiction": "Spain",
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclrag2-climate-rights",
+      "category": "cclrag2-shape",
+      "query": "climate change constitutional rights",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclrag2-neubauer-comparison",
+      "category": "cclrag2-shape",
+      "query": "한국 헌재 기후결정과 독일 연방헌법재판소 Neubauer 기후결정을 비교",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclmetasearch-constitution",
+      "category": "cclmetasearch-shape",
+      "query": "constitution",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "cclmetasearch-free-expression",
+      "category": "cclmetasearch-shape",
+      "query": "표현의 자유",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    }
+  ]
+}

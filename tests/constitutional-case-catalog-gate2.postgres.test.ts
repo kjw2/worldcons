@@ -33,6 +33,7 @@ const usReview = migration("20260903172000_constitutional_case_us_review_gate5.s
 const usCatalog = migration("20260903173000_constitutional_case_us_catalog_gate5.sql");
 const usCanary = migration("20260903174000_constitutional_case_us_catalog_canary_gate5.sql");
 const viewSecurity = migration("20260903175000_constitutional_case_catalog_view_security.sql");
+const m77aSemanticAuthority = migration("20260926120000_m7_7a_semantic_authority_projection.sql");
 const francePublicAttribution = migration("20260903183000_constitutional_case_france_public_attribution.sql");
 const germanyPublicAttribution = migration("20260903186000_constitutional_case_germany_public_attribution.sql");
 const germanyShadowCanary = migration("20260903187000_constitutional_case_germany_shadow_canary.sql");
@@ -286,6 +287,16 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
     await setup.query(p2);
     await setup.query(p3);
     await setup.query(caseKeys);
+    await setup.query(`
+      create table article_embedding_artifacts(
+        article_version_id uuid primary key references article_content_versions_p3(id) on delete cascade,
+        article_id uuid not null references articles(id) on delete cascade,
+        content_hash text not null, provider text not null, model text not null,
+        dimensions integer not null, input_hash text not null,
+        embedding double precision[] not null, generated_at timestamptz not null,
+        updated_at timestamptz not null default now()
+      );
+    `);
     await setup.query(gate1);
     await setup.query(requestGovernor);
     await setup.query(inventoryProvenance);
@@ -313,6 +324,7 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       null,null,'import','catalog-test',null,null,'{}',null
     )`, [legacyArticle.rows[0].id]);
     await setup.query(gate2);
+    await setup.query(m77aSemanticAuthority);
     await setup.query(usCandidates);
     await setup.query(usAuthority);
     await setup.query(usReview);
@@ -1344,6 +1356,83 @@ test("Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enr
       assert.equal(authority.rows[0].public_execute, false);
       assert.equal((await pool.query("select has_table_privilege('public','public_case_search_documents_v1','select') allowed")).rows[0].allowed, false);
       assert.equal((await pool.query("select has_table_privilege('public','legal_concept_aliases_v1','select') allowed")).rows[0].allowed, false);
+    });
+
+    await t.test("M7.7-A projection restores artifact embedding authority for a legacy published P3 row", async () => {
+      const legacy = await pool.query<{ version_id: string; article_id: string; content_hash: string }>(
+        `select v.id version_id,v.article_id,v.content_hash
+         from article_content_versions_p3 v where v.slug='legacy-case'`,
+      );
+      assert.equal(legacy.rowCount, 1);
+      const { version_id: versionId, article_id: articleId, content_hash: contentHash } = legacy.rows[0];
+
+      const before = await pool.query<{ embedding: number[] | null }>(
+        "select embedding from public_article_projection_p3 where slug='legacy-case'",
+      );
+      assert.equal(before.rows[0].embedding, null, "the legacy version embedding must start NULL");
+
+      await pool.query(`insert into article_embedding_artifacts(
+        article_version_id,article_id,content_hash,provider,model,dimensions,input_hash,embedding,generated_at
+      ) values($1,$2,$3,'gemini','gemini-embedding-001',1536,repeat('a',64),array[0.25,0.5]::double precision[],now())`,
+      [versionId, articleId, contentHash]);
+
+      const backed = await pool.query<{ embedding: number[] | null }>(
+        "select embedding from public_article_projection_p3 where slug='legacy-case'",
+      );
+      assert.deepEqual(backed.rows[0].embedding, [0.25, 0.5], "the provenance-locked artifact must back the projection embedding");
+
+      await pool.query("delete from article_embedding_artifacts where article_version_id=$1", [versionId]);
+      const cleared = await pool.query<{ embedding: number[] | null }>(
+        "select embedding from public_article_projection_p3 where slug='legacy-case'",
+      );
+      assert.equal(cleared.rows[0].embedding, null, "removing the artifact must fall back to the legacy embedding");
+    });
+
+    await t.test("M7.7-A projection rejects a non-Gemini artifact and is idempotent", async () => {
+      const legacy = await pool.query<{ version_id: string; article_id: string; content_hash: string }>(
+        `select v.id version_id,v.article_id,v.content_hash
+         from article_content_versions_p3 v where v.slug='legacy-case'`,
+      );
+      const { version_id: versionId, article_id: articleId, content_hash: contentHash } = legacy.rows[0];
+
+      await pool.query(`insert into article_embedding_artifacts(
+        article_version_id,article_id,content_hash,provider,model,dimensions,input_hash,embedding,generated_at
+      ) values($1,$2,$3,'openai','text-embedding-3',1536,repeat('b',64),array[0.9]::double precision[],now())`,
+      [versionId, articleId, contentHash]);
+      assert.equal(
+        (await pool.query("select embedding from public_article_projection_p3 where slug='legacy-case'")).rows[0].embedding,
+        null,
+        "the join must require provider='gemini'",
+      );
+      await pool.query("delete from article_embedding_artifacts where article_version_id=$1", [versionId]);
+
+      await pool.query(m77aSemanticAuthority);
+      const columns = await pool.query<{ attname: string }>(`
+        select a.attname from pg_attribute a
+        join pg_class c on c.oid=a.attrelid
+        join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and c.relname='public_article_projection_p3'
+          and a.attnum>0 and not a.attisdropped
+        order by a.attnum
+      `);
+      assert.equal(columns.rowCount, 36, "re-applying the migration must not change the column shape");
+      assert.equal(columns.rows[35].attname, "summary_available");
+    });
+
+    await t.test("M7.7-A migration fails closed when the current view column shape drifts", async () => {
+      const driftClient = new Client({ connectionString: databaseUrl });
+      await driftClient.connect();
+      try {
+        await driftClient.query("drop view public_article_projection_p3 cascade");
+        await driftClient.query("create view public_article_projection_p3 as select 1 as only_column");
+        await assert.rejects(
+          driftClient.query(m77aSemanticAuthority),
+          /M77A_PROJECTION_VIEW_COLUMN_DRIFT/,
+        );
+      } finally {
+        await driftClient.query("rollback").catch(() => undefined);
+        await driftClient.end();
+      }
     });
   } finally {
     await pool.end();
