@@ -1,0 +1,304 @@
+{
+  "version": 5,
+  "disjointFromCorpusHash": "ed18add749fe4a23",
+  "holdoutHash": "1452c95c29fba160",
+  "cases": [
+    {
+      "id": "holdout-exact-case-de-bverfg",
+      "category": "exact-case",
+      "query": "2 BvL 21/14",
+      "filters": {
+        "source": "de-bverfg",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514"
+      ]
+    },
+    {
+      "id": "holdout-exact-case-es-tribunal-constitucional",
+      "category": "exact-case",
+      "query": "57/2025",
+      "filters": {
+        "source": "es-tribunal-constitucional",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077",
+        "e6e97786-ad78-46b1-8549-7a69788ea178"
+      ]
+    },
+    {
+      "id": "holdout-exact-case-fr-conseil-constitutionnel",
+      "category": "exact-case",
+      "query": "2024-6412 AN",
+      "filters": {
+        "source": "fr-conseil-constitutionnel",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988"
+      ]
+    },
+    {
+      "id": "holdout-exact-case-us-scotus",
+      "category": "exact-case",
+      "query": "24-304",
+      "filters": {
+        "source": "us-scotus",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-case",
+      "expectedIds": [
+        "0346769f-97d0-48e2-b2e2-3a371e7d2eee"
+      ]
+    },
+    {
+      "id": "holdout-exact-title-de-bverfg",
+      "category": "exact-title",
+      "query": "Beschluss vom 21. Oktober 2025",
+      "filters": {
+        "source": "de-bverfg",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "00083deb-5bc9-4b28-bbcd-68076cd05514",
+        "5dce7909-0bdb-4739-acb2-8106abe45c0b",
+        "c27578dc-af58-4c29-9511-d48bf4327682"
+      ]
+    },
+    {
+      "id": "holdout-exact-title-es-tribunal-constitucional",
+      "category": "exact-title",
+      "query": "AUTO 57/2025, de 27 de mayo de 2025",
+      "filters": {
+        "source": "es-tribunal-constitucional",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "00cc18bd-ace3-4b5e-aabb-f3aacbd6d077"
+      ]
+    },
+    {
+      "id": "holdout-exact-title-fr-conseil-constitutionnel",
+      "category": "exact-title",
+      "query": "Décision n° 2024-6412 AN du 6 juin 2025",
+      "filters": {
+        "source": "fr-conseil-constitutionnel",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "0018a822-df15-4526-abd8-6c22e6ba7988"
+      ]
+    },
+    {
+      "id": "holdout-exact-title-us-scotus",
+      "category": "exact-title",
+      "query": "Laboratory Corp. of America Holdings v. Davis",
+      "filters": {
+        "source": "us-scotus",
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "exact-title",
+      "expectedIds": [
+        "0346769f-97d0-48e2-b2e2-3a371e7d2eee"
+      ]
+    },
+    {
+      "id": "holdout-multilingual-english-standing",
+      "category": "multilingual-legal-term",
+      "query": "standing",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-multilingual-french-liberte",
+      "category": "multilingual-legal-term",
+      "query": "liberté d'expression",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-case-number-bverfg",
+      "category": "case-number-identifier",
+      "query": "2 BvR 2415/15",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-case-number-france",
+      "category": "case-number-identifier",
+      "query": "2026-1234 QPC",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-jurisdiction-de-bverfg",
+      "category": "jurisdiction-source",
+      "query": "grundrechte",
+      "filters": {
+        "source": "de-bverfg",
+        "jurisdiction": "Germany",
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-jurisdiction-es-tribunal",
+      "category": "jurisdiction-source",
+      "query": "derechos fundamentales",
+      "filters": {
+        "source": "es-tribunal-constitucional",
+        "jurisdiction": "Spain",
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-cclrag2-korean-climate",
+      "category": "cclrag2-shape",
+      "query": "기후변화 헌법소원",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-cclrag2-neubauer",
+      "category": "cclrag2-shape",
+      "query": "Neubauer",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-cclmetasearch-expression",
+      "category": "cclmetasearch-shape",
+      "query": "표현의 자유 침해",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    },
+    {
+      "id": "holdout-cclmetasearch-standing",
+      "category": "cclmetasearch-shape",
+      "query": "standing",
+      "filters": {
+        "source": null,
+        "jurisdiction": null,
+        "contentType": null,
+        "language": null,
+        "range": "latest"
+      },
+      "limit": 10,
+      "k": 10,
+      "invariant": "informational"
+    }
+  ]
+}

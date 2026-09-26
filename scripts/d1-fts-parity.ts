@@ -21,16 +21,28 @@ import {
 import { compareRankedIds, runSearchFtsQuery, type SearchFtsRange } from "@/lib/cloudflare/search-fts";
 import { runRankedSearchPage } from "@/lib/cloudflare/search-ranked";
 import {
+  assertHoldoutDisjoint,
+  assertRankPolicyDecision,
+  buildFtsParityHoldoutReport,
   buildFtsParityReport,
+  evaluateCandidateCoverageEquivalence,
   evaluateRankPolicyCase,
   rankCorpusHash,
+  rankHoldoutHash,
+  renderFtsParityHoldoutMarkdown,
   renderFtsParityMarkdown,
   resolveFrozenStrictTarget,
+  selectHoldoutCorpus,
   selectRepresentativeCorpus,
   summarizeRankPolicy,
+  type EquivalenceCaseInput,
+  type FtsParityHoldoutPolicy,
+  type FtsParityHoldoutReport,
   type FtsParityReport,
   type FtsParitySourceScopeSummary,
+  type RankCorpusCase,
   type RankPolicyCaseInput,
+  type RankPolicyDecisionRecord,
   type RankPolicyThresholds,
 } from "@/lib/cloudflare/search-rank-policy";
 import {
@@ -239,8 +251,375 @@ function printDryRun(corpusHash: string, cases: ReturnType<typeof selectRepresen
   console.log("  dry-run: no Supabase query executed, no artifact written");
 }
 
+/**
+ * M7.8-B additive v5 HOLDOUT runner.
+ *
+ * The holdout path is entered ONLY via the explicit
+ * `--manifest=holdout-v5 --decision=<path>` flags. It refuses without a valid
+ * FINALIZED decision record, binds all evidence to `decisionHash + holdoutHash`,
+ * and is read-only by construction (it never has an `--apply`). It reuses the
+ * exact same full-scope read-only pager and exact-case ranked branch as v4.
+ */
+
+/** Loads the source rows exactly as the v4 path does (read-only). */
+interface LoadedSourceRows {
+  publications: SearchPublicationP3Row[];
+  versions: SearchVersionP3Row[];
+  articles: SearchBaseArticleRow[];
+  runner: SupabaseLinkedQueryRunner | null;
+  allowedIds: ReadonlySet<string> | null;
+  productionProjectionIds: number | null;
+  sourceScope: FtsParitySourceScopeSummary | null;
+  sourceRowsFetched: number;
+  maxArticles: number;
+  source: "supabase" | "fixture";
+}
+
+async function loadSourceRows(
+  args: readonly string[],
+  requestedMaxArticles: number | null,
+): Promise<LoadedSourceRows> {
+  const source = (argValue(args, "source") ?? "supabase") as "supabase" | "fixture";
+  let publications: SearchPublicationP3Row[];
+  let versions: SearchVersionP3Row[];
+  let articles: SearchBaseArticleRow[];
+  let runner: SupabaseLinkedQueryRunner | null = null;
+  let allowedIds: ReadonlySet<string> | null = null;
+  let productionProjectionIds: number | null = null;
+  const sourceScope: FtsParitySourceScopeSummary | null = null;
+  let sourceRowsFetched = 0;
+  let maxArticles = requestedMaxArticles ?? 100;
+
+  if (source === "fixture") {
+    const fixturePath = argValue(args, "fixture");
+    if (fixturePath === null) throw new Error("--source=fixture requires --fixture=<path>");
+    const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8")) as FixtureSource;
+    publications = fixture.publications ?? [];
+    versions = fixture.versions ?? [];
+    articles = fixture.articles ?? [];
+  } else if (source === "supabase") {
+    runner = createSupabaseLinkedQueryRunner();
+    const productionIds = await readProductionProjectionIds(runner, PRODUCTION_PROJECTION_CEILING);
+    assertProductionScopeLargeEnough(productionIds.size, requestedMaxArticles ?? productionIds.size);
+    maxArticles = requestedMaxArticles ?? productionIds.size;
+    allowedIds = productionIds;
+    productionProjectionIds = productionIds.size;
+    const paged = await readFtsSourcePager(runner);
+    sourceRowsFetched = paged.sourceRowsFetched;
+    const restricted = restrictToProductionIds(paged.published, productionIds);
+    publications = restricted.publications;
+    versions = restricted.versions;
+    articles = restricted.articles;
+  } else {
+    throw new Error("--source must be supabase or fixture");
+  }
+
+  return {
+    publications,
+    versions,
+    articles,
+    runner,
+    allowedIds,
+    productionProjectionIds,
+    sourceScope,
+    sourceRowsFetched,
+    maxArticles,
+    source,
+  };
+}
+
+/** Materializes the local in-memory D1 FTS5 corpus from the loaded source rows. */
+function materializeLocalBinding(loaded: LoadedSourceRows) {
+  const built = buildSearchProjection({
+    publications: loaded.publications,
+    versions: loaded.versions,
+    articles: loaded.articles,
+  });
+  if (loaded.source === "supabase" && loaded.allowedIds !== null) {
+    loaded.sourceScope = evaluateFtsProjectionScope({
+      productionProjectionIds: loaded.allowedIds,
+      localArticleIds: new Set(built.documents.map((document) => document.article_id)),
+      sourceRowsFetched: loaded.sourceRowsFetched,
+    });
+    assertFullProjectionScope(loaded.sourceScope);
+  }
+  const db = new DatabaseSync(":memory:");
+  db.exec(emitDatabaseDdl("worldcons_search", d1Schema));
+  for (const statement of planSearchProjectionFullRebuild(built.documents, built.ftsDocuments).statements) {
+    db.prepare(statement.sql).run(...(statement.params as SQLInputValue[]));
+  }
+  return { built, binding: localBinding(db) };
+}
+
+interface EvaluatedCorpus {
+  caseInputs: RankPolicyCaseInput[];
+  equivalenceInputs: EquivalenceCaseInput[];
+  errors: string[];
+  oracleAvailable: boolean;
+}
+
+/** Evaluates one corpus (v4 or v5) through the shared read-only paths. */
+async function evaluateCorpus(
+  corpus: readonly RankCorpusCase[],
+  loaded: LoadedSourceRows,
+  built: ReturnType<typeof buildSearchProjection>,
+  binding: D1RuntimeDatabase,
+  referenceNow: string,
+  skipOracle: boolean,
+): Promise<EvaluatedCorpus> {
+  const caseInputs: RankPolicyCaseInput[] = [];
+  const equivalenceInputs: EquivalenceCaseInput[] = [];
+  const errors: string[] = [];
+  const oracleAvailable = loaded.source === "supabase" && !skipOracle;
+
+  for (const caseDef of corpus) {
+    let observedIds: string[] = [];
+    let localError = false;
+    try {
+      if (caseDef.invariant === "exact-case") {
+        const page = await runRankedSearchPage({
+          binding,
+          input: {
+            query: caseDef.query,
+            mode: "fulltext",
+            limit: caseDef.limit,
+            offset: 0,
+            source: caseDef.filters.source,
+            jurisdiction: caseDef.filters.jurisdiction,
+            contentType: caseDef.filters.contentType,
+            language: caseDef.filters.language,
+            range: caseDef.filters.range,
+            count: "none",
+            referenceNow,
+          },
+        });
+        if (page.retrievalMode !== "exact-case") throw new Error("local ranked reader did not select exact-case");
+        observedIds = page.entries.map((entry) => entry.id);
+      } else {
+        const rows = await runSearchFtsQuery({
+          binding,
+          input: {
+            query: caseDef.query,
+            limit: caseDef.limit,
+            range: caseDef.filters.range,
+            source: caseDef.filters.source,
+            jurisdiction: caseDef.filters.jurisdiction,
+            contentType: caseDef.filters.contentType,
+            language: caseDef.filters.language,
+            referenceNow,
+          },
+        });
+        observedIds = rows.map((row) => row.article_id);
+      }
+    } catch {
+      localError = true;
+    }
+
+    let oracleIds: string[] = [];
+    let oracleCompared = false;
+    let oracleError = false;
+    if (oracleAvailable && loaded.runner !== null && loaded.allowedIds !== null && !localError) {
+      try {
+        const read = await (caseDef.invariant === "exact-case" ? readExactCaseOracle : readOracle)(
+          loaded.runner,
+          {
+            query: caseDef.query,
+            limit: caseDef.limit,
+            source: caseDef.filters.source,
+            jurisdiction: caseDef.filters.jurisdiction,
+            contentType: caseDef.filters.contentType,
+            language: caseDef.filters.language,
+            range: caseDef.filters.range,
+          },
+          loaded.allowedIds,
+        );
+        oracleIds = read.ids;
+        oracleCompared = read.compared;
+      } catch {
+        oracleError = true;
+      }
+    }
+
+    const target =
+      caseDef.invariant === "informational"
+        ? null
+        : resolveFrozenStrictTarget(caseDef, {
+            documents: built.documents,
+            ftsDocuments: built.ftsDocuments,
+          });
+    const errored = localError || oracleError;
+    if (errored) errors.push(caseDef.id);
+    const metrics =
+      caseDef.invariant !== "exact-case" && oracleCompared && oracleIds.length > 0
+        ? compareRankedIds(oracleIds, observedIds, { k: caseDef.k })
+        : null;
+
+    caseInputs.push({
+      case: caseDef,
+      observedIds,
+      oracleIds,
+      oracleCompared: errored ? false : oracleCompared,
+      metrics: errored ? null : metrics,
+      target: errored ? null : target,
+    });
+    equivalenceInputs.push({
+      case: caseDef,
+      observedIds,
+      oracleIds,
+      oracleCompared: errored ? false : oracleCompared,
+      target: errored ? null : target,
+      // E3 scope is the prevalidated production projection id set whenever the
+      // case's filters are not already restricted to a narrower scope.
+      scopeIds: loaded.allowedIds,
+    });
+  }
+
+  return { caseInputs, equivalenceInputs, errors, oracleAvailable };
+}
+
+const HOLDOUT_REPORT_JSON = "m7.8b-fts-parity-holdout.json";
+const HOLDOUT_REPORT_MD = "m7.8b-fts-parity-holdout.md";
+
+/**
+ * Runs the additive v5 holdout path. It refuses unless `--decision` names a
+ * valid FINALIZED decision bound to the v5 holdout hash, and it writes the
+ * `m7.8b-*` evidence artifacts ONLY after that validation.
+ */
+async function runHoldout(args: readonly string[]): Promise<void> {
+  if (args.includes("--apply")) {
+    throw new Error("--apply is not available: the M7.8-B holdout harness is read-only by construction");
+  }
+  const decisionPath = argValue(args, "decision");
+  if (decisionPath === null) {
+    throw new Error("--manifest=holdout-v5 requires --decision=<path> to a finalized decision record");
+  }
+
+  const holdout = selectHoldoutCorpus();
+  // Governance: the v5 holdout must never re-use a v4 case whose rank outcome was read.
+  assertHoldoutDisjoint(holdout, selectRepresentativeCorpus());
+  const holdoutHash = rankHoldoutHash(holdout);
+  const rawDecision = JSON.parse(fs.readFileSync(decisionPath, "utf8")) as unknown;
+
+  // Fail closed on an undecided/unfinalized/hash-mismatched/leaky record BEFORE
+  // any linked query is issued.
+  const decision: RankPolicyDecisionRecord = assertRankPolicyDecision(rawDecision, {
+    expectedHoldoutManifestHash: holdoutHash,
+    requireFinalized: true,
+  });
+
+  const dryRun = args.includes("--dry-run");
+  const asJson = args.includes("--json");
+  const writeReport = args.includes("--report");
+  const skipOracle = args.includes("--skip-oracle");
+  const requestedMaxArticles = positiveIntegerArg(args, "max-articles");
+  const referenceNow = argValue(args, "now") ?? new Date().toISOString();
+
+  if (dryRun) {
+    console.log("WorldCons M7.8-B rank-policy HOLDOUT (dry-run, read-only)");
+    console.log(`  policy: ${decision.policy}`);
+    console.log(`  holdoutHash: ${holdoutHash}`);
+    console.log(`  decisionHash: ${decision.decisionHash}`);
+    console.log(`  holdoutCases: ${holdout.length}`);
+    console.log("  dry-run: no Supabase query executed, no artifact written");
+    return;
+  }
+
+  const loaded = await loadSourceRows(args, requestedMaxArticles);
+  const { built, binding } = materializeLocalBinding(loaded);
+  const evaluated = await evaluateCorpus(holdout, loaded, built, binding, referenceNow, skipOracle);
+
+  const policy = decision.policy as FtsParityHoldoutPolicy;
+  let equivalence = null as ReturnType<typeof evaluateCandidateCoverageEquivalence> | null;
+  let numeric = null as FtsParityReport["policy"] | null;
+  let state: FtsParityReport["policy"]["state"];
+  let blockers: FtsParityReport["policy"]["blockers"];
+
+  if (policy === "candidate-coverage-equivalence") {
+    equivalence = evaluateCandidateCoverageEquivalence(evaluated.equivalenceInputs);
+    state = equivalence.passed ? "pass" : "fail";
+    blockers = equivalence.passed
+      ? []
+      : [
+          {
+            code: "rank_policy_strict_invariant_failed",
+            detail: `${equivalence.failures.length} candidate-coverage equivalence invariant(s) failed`,
+          },
+        ];
+  } else if (policy === "numeric-thresholds") {
+    numeric = summarizeRankPolicy({
+      corpusHash: holdoutHash,
+      cases: holdout,
+      outcomes: evaluated.caseInputs.map((caseInput) => evaluateRankPolicyCase(caseInput)),
+      thresholds: (decision.thresholds ?? null) as RankPolicyThresholds | null,
+    });
+    state = numeric.state;
+    blockers = numeric.blockers;
+  } else {
+    // informational-only: the state stays insufficient_evidence and the blocker
+    // remains exactly `fulltext_rank_threshold_unagreed`.
+    state = "insufficient_evidence";
+    blockers = [
+      {
+        code: "fulltext_rank_threshold_unagreed",
+        detail:
+          "the signed decision is informational-only: no acceptance threshold was agreed, so GO-SEARCH stays blocked",
+      },
+    ];
+  }
+
+  const report: FtsParityHoldoutReport = buildFtsParityHoldoutReport({
+    generatedAt: new Date().toISOString(),
+    source: loaded.source,
+    maxArticles: loaded.maxArticles,
+    truncated: false,
+    holdoutHash,
+    decisionHash: decision.decisionHash,
+    policy,
+    decidedByRole: decision.decidedByRole,
+    projection: {
+      sourceRows: built.documents.length,
+      documents: built.documents.length,
+      productionProjectionIds: loaded.productionProjectionIds,
+    },
+    sourceScope: loaded.sourceScope,
+    oracleAvailable: evaluated.oracleAvailable,
+    errors: evaluated.errors,
+    equivalence,
+    numeric,
+    state,
+    blockers,
+  });
+
+  if (writeReport) {
+    fs.mkdirSync(REPORT_DIR, { recursive: true });
+    fs.writeFileSync(path.join(REPORT_DIR, HOLDOUT_REPORT_JSON), `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    fs.writeFileSync(path.join(REPORT_DIR, HOLDOUT_REPORT_MD), renderFtsParityHoldoutMarkdown(report), "utf8");
+  }
+
+  if (asJson) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return;
+  }
+
+  console.log("WorldCons M7.8-B rank-policy HOLDOUT (read-only)");
+  console.log(`  policy: ${policy}, state: ${state}`);
+  console.log(`  holdoutHash: ${holdoutHash}, decisionHash: ${decision.decisionHash}`);
+  console.log(`  source: ${loaded.source}, maxArticles: ${loaded.maxArticles}, oracleAvailable: ${evaluated.oracleAvailable}`);
+  if (equivalence) {
+    console.log(`  equivalence passed: ${equivalence.passed}, cases: ${equivalence.cases}, failures: ${equivalence.failures.length}`);
+  }
+  if (numeric) console.log(`  numeric aggregate compared: ${numeric.aggregate.compared}`);
+  for (const blocker of blockers) console.log(`    blocker ${blocker.code}: ${blocker.detail}`);
+  if (evaluated.errors.length > 0) console.log(`    errors: ${evaluated.errors.join(", ")}`);
+  if (writeReport) console.log(`  wrote ${REPORT_DIR}`);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  if (args.includes("--manifest=holdout-v5")) {
+    await runHoldout(args);
+    return;
+  }
   if (args.includes("--apply")) {
     throw new Error("--apply is not available: the M7.7-B FTS parity harness is read-only by construction");
   }

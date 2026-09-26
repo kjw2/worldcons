@@ -330,6 +330,33 @@ The checked-in artifact is `mode=finalize-existing`, `status=applied`,
   recovered-state evidence (null pre-identity, null pre/post comparisons,
   `historyRecorded/historyVerified=true`, artifact JSON/MD render consistency).
 
+## 9. M7.8-B rank-policy governance + disjoint v5 holdout
+
+M7.8-B authors the rank-policy **surfaces only**: no policy is chosen and no
+holdout evidence is produced.
+
+- `holdout.ts` — the additive, content-free v5 holdout candidate pool, a
+  deterministic selection and the frozen `holdoutHash 1452c95c29fba160`. It is
+  DISJOINT from the active v4 corpus (`corpusHash ed18add749fe4a23`) by
+  normalized `(category, query, filters)` and never re-uses a v4 case whose rank
+  outcome was read; the harness asserts disjointness before any query.
+- `corpus.manifest.v5-holdout.json` — the frozen 18-case v5 holdout manifest
+  (8 strict anchors + 10 informational), byte-checked against
+  `buildRankHoldoutManifest()`.
+- `decision.ts` — the typed, fail-closed decision record; the checked-in
+  `docs/operations/worldcons-m7.8b-rank-policy-decision.template.json` is
+  `undecided` and is refused before any linked query.
+- `equivalence.ts` — the product-neutral E1-E4 candidate-coverage invariant
+  evaluator (non-numeric; order/set/overlap metrics stay informational only).
+- `scripts/d1-fts-parity.ts --manifest=holdout-v5 --decision=<path>` — the
+  additive read-only holdout mode, bound to `decisionHash + holdoutHash`,
+  fail-closed before any query and read-only by construction (no `--apply`).
+
+The v4 manifest/hash and every v1/v2/v3 archive remain byte-for-byte unchanged.
+No policy is chosen: the `fulltext_rank_threshold_unagreed` blocker and the
+`GO-SEARCH` block remain. The human signing procedure is documented in
+`docs/operations/worldcons-m7.8b-rank-policy-decision-instructions.md`.
+
 ## Local verification
 
 ```text
@@ -339,6 +366,8 @@ pnpm typecheck      # pass
 pnpm lint           # pass (0 errors; pre-existing wrangler-tmp warnings only)
 git diff --check    # pass
 pnpm m7.8a:dry-run  # offline plan only; no connection
+pnpm test:m7.8b     # 21/21 pass
+pnpm m7.8b:holdout -- --decision=<path> --dry-run  # offline; refuses an undecided record
 ```
 
 No remote schema apply, no `supabase migration repair` and no Supabase mutation
@@ -360,3 +389,6 @@ were performed while producing this record.
   applied or moved.
 - No generic lexical acceptance threshold is invented; `fulltext_rank_threshold_unagreed`
   remains and `GO-SEARCH` stays blocked.
+- M7.8-B authors surfaces only: no policy is chosen, the v5 holdout is not run, no
+  `m7.8b-fts-parity-holdout.{json,md}` evidence is created, and the
+  `fulltext_rank_threshold_unagreed` blocker remains.

@@ -1240,6 +1240,23 @@ remote mutation is performed by this record; no Supabase row was mutated, no
 `SearchRepository`/`GO-SEARCH`/DNS/traffic change and no deploy.** See
 `docs/worldcons-cloudflare-m7.8-semantic-rollout-and-rank-governance-20260926.md`.
 
+M7.8-B status (2026-09-26, **SURFACES AUTHORED / POLICY UNDECIDED**):
+the rank-policy governance and disjoint v5 holdout infrastructure is implemented,
+but no product policy has been selected and no holdout evidence has been run.
+The frozen v5 holdout contains 18 content-free cases with
+`holdoutHash=1452c95c29fba160` and is disjoint from active v4
+(`corpusHash=ed18add749fe4a23`) by normalized `(category, query, filters)`.
+`decision.ts` requires a finalized, hash-bound decision record before any linked
+holdout query can run; the checked-in template remains unsigned/`undecided` and
+fails closed. The non-numeric `candidate-coverage-equivalence` option is available
+as a recommended product choice using E1-E4 (strict exact invariants, production
+top-1 reachable on the local first page, scope soundness, and non-empty parity),
+but it is **not adopted by this implementation**. Numeric mode requires explicitly
+pre-registered independent thresholds and rationale; `informational-only`
+intentionally leaves the blocker in place. v1/v2/v3 archives and active v4 remain
+byte-unchanged; no `m7.8b-fts-parity-holdout.{json,md}` artifact exists yet.
+Therefore `fulltext_rank_threshold_unagreed` remains and `GO-SEARCH` stays blocked.
+
 ### M8 — Async pipeline migration
 
 Objective:

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "policy": "undecided",
+  "decisionId": "",
+  "decidedAt": "",
+  "decidedByRole": "",
+  "holdoutManifestHash": "1452c95c29fba160",
+  "v4EvidenceSealed": true,
+  "invariants": ["E1", "E2", "E3", "E4"],
+  "thresholds": null,
+  "rationale": "",
+  "decisionHash": ""
+}

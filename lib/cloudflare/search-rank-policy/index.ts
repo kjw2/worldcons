@@ -15,3 +15,6 @@ export * from "./metrics";
 export * from "./invariants";
 export * from "./policy";
 export * from "./evidence";
+export * from "./holdout";
+export * from "./decision";
+export * from "./equivalence";
