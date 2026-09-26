@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-26T05:29:10.459Z",
+  "scope": "semantic-authority-rollout",
+  "mode": "finalize-existing",
+  "status": "applied",
+  "recoveredExistingState": true,
+  "preIdentityAvailable": false,
+  "migration": {
+    "version": "20260926120000",
+    "path": "supabase/migrations/20260926120000_m7_7a_semantic_authority_projection.sql",
+    "sha256": "89159138DF2085338D6F54B3D8BA2ADBA9FE74D6F9140CC59C7C28ECBE281FE5",
+    "sqlBytes": 6567
+  },
+  "identity": {
+    "projectRef": "eawgnnytdvjuwhczyhlq",
+    "projectName": "worldcons"
+  },
+  "inventory": {
+    "targetVersion": "20260926120000",
+    "pendingVersions": [],
+    "targetAbsent": false,
+    "pendingSetExact": false,
+    "crossCheckReliable": false
+  },
+  "preflight": {
+    "mode": "preflight",
+    "ok": true,
+    "checks": [
+      "linked_identity",
+      "migration_sha256",
+      "remote_target_present",
+      "pending_set_empty",
+      "projection_columns",
+      "provenance_post_state",
+      "projection_identity",
+      "smoke_oracle_drift"
+    ],
+    "blockers": []
+  },
+  "baseline": {
+    "allowLiveBaseline": false,
+    "currentPublishedRows": 1258,
+    "projectionRows": 1258,
+    "projectionEmbeddingNullCount": 0,
+    "artifactBackedCurrentPublishedRows": 1258,
+    "legacyVersionEmbeddingOnlyCount": 872,
+    "totalMismatchCount": 0
+  },
+  "preIdentity": null,
+  "postIdentity": {
+    "count": 1258,
+    "digest": "8225277ff26ba0622cecfd726a07e3b8"
+  },
+  "postApply": {
+    "applied": true,
+    "columnsUnchanged": true,
+    "projectionEmbeddingNullCount": 0,
+    "rowCountUnchanged": null,
+    "idDigestUnchanged": null,
+    "smokeOracleDrift": 0,
+    "ok": true,
+    "blockers": []
+  },
+  "smoke": {
+    "cases": 4,
+    "compared": 4,
+    "oracleDrift": 0,
+    "pass": true
+  },
+  "history": {
+    "historyRecorded": true,
+    "historyVerified": true,
+    "targetVersion": "20260926120000",
+    "applied": true,
+    "pendingVersions": []
+  },
+  "boundaries": [
+    "code/local verification only: no remote migration was applied by this evidence",
+    "apply, when used, executes only the exact pinned forward-migration bytes through supabase db query --linked",
+    "record-history only reconciles the remote migration ledger with supabase migration repair --linked --status applied AFTER a validated exact-SQL apply; it is never the schema-apply mechanism and is never run in preflight",
+    "finalize-existing is read-only: it verifies an already-applied schema+ledger state, never executes migration SQL and never runs migration repair; its only writes are the local evidence files",
+    "content-free: no vector, article text, summary, URL or query is present",
+    "Supabase remains the sole production search/read authority; SearchRepository, GO-SEARCH, DNS and traffic are unchanged",
+    "the staged rollback candidate lives outside supabase/migrations and is never applied or moved; a failed history repair never rolls the schema back automatically"
+  ]
+}
