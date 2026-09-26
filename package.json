@@ -145,6 +145,7 @@
     "test:m7.8b": "tsx --test tests/m7.8b-rank-policy-decision.test.ts",
     "test:m7.9": "tsx --test tests/m7.9-deployed-search-canary-runtime.test.ts",
     "test:m8": "tsx --test tests/m8-async-pipeline.test.ts",
+    "m8:canary": "tsx scripts/m8-async-canary.ts",
     "m8:types": "wrangler types workers/async-pipeline/worker-configuration.d.ts --config workers/async-pipeline/wrangler.jsonc --strict-vars=false && wrangler types workers/browser-run/worker-configuration.d.ts --config workers/browser-run/wrangler.jsonc --strict-vars=false",
     "m8:types:check": "wrangler types workers/async-pipeline/worker-configuration.d.ts --config workers/async-pipeline/wrangler.jsonc --strict-vars=false --check && wrangler types workers/browser-run/worker-configuration.d.ts --config workers/browser-run/wrangler.jsonc --strict-vars=false --check",
     "m8:typecheck": "tsc --noEmit -p workers/async-pipeline/tsconfig.json && tsc --noEmit -p workers/browser-run/tsconfig.json",

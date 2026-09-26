@@ -1284,32 +1284,43 @@ Acceptance:
 - restart/recovery tests
 - no duplicate publication
 
-M8 status (2026-09-26, **code/verification complete; scheduler safely disabled;
-no activation, no cutover**): the Cron + Queue + Workflow control plane
+M8 status (2026-09-26, **per-kind canary gate implemented + rehearsed; scheduler
+restored to disabled; no cutover**): the Cron + Queue + Workflow control plane
 (`workers/async-pipeline/*`, `lib/cloudflare/async-pipeline/contracts.ts`) and
 the Browser Run transport (`workers/browser-run/*`,
 `lib/crawler/cloudflare-browser-run-client.ts`) are implemented and deployed as
-isolated resources. `worldcons-ingest` version
-`8988532e-2feb-4675-8b76-52fd54508e30` carries Cron/Queue/Workflow bindings with
-`M8_SCHEDULER_ENABLED=false`; queues `worldcons-async-v1` and
-`worldcons-async-dlq-v1` exist. `worldcons-browser-run` version
+isolated resources. A prior global boolean let the scheduled `*/15` cron also
+dispatch non-canary kinds, so a **per-kind allowlist `M8_ENABLED_KINDS`** (exact
+`M8TaskKind` values, comma-separated; `*` only as sole entry; absent/empty/unknown
+fails closed) now gates `scheduled()`, `queue()` and `Workflow.run()`. A Workflow
+instance-id bug (Cloudflare rejects `:`) was fixed by mapping non
+`[A-Za-z0-9_-]` to `-` and capping at 100 chars while GitHub input
+`m8_idempotency_key` keeps the original colon-form key. `worldcons-ingest` resting
+version `10e27ad5-6660-43ba-8b88-df5e2a428c01` carries Cron/Queue/Workflow
+bindings with `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-health`;
+queues `worldcons-async-v1` and `worldcons-async-dlq-v1` exist. A controlled
+canary deploy `e5f23c8f-eed1-46e3-a894-c3ef4c953d0c` (scheduler=true, allowlist
+`admin-health`) produced exactly one Queue → Workflow
+(`m8-admin-health-2026-09-26T09-00-00-000Z`, dispatch step `204`) → GitHub run
+`36232371374`; replaying the same message produced no second Workflow instance or
+GitHub run. The GitHub run failed only at the known P5 health step
+(`hardViolations=lifecycle.review,publication.parity`), which is application-data,
+not M8 transport. `worldcons-browser-run` version
 `f324efe7-9912-4b22-8c94-74aab2a3fc6f` is deployed with the `BROWSER` binding,
-a set `BROWSER_RUN_TOKEN` and an allowlisted host var. Cloudflare/GitHub Browser
-Run tokens, `GITHUB_ACTIONS_TOKEN` and the `CLOUDFLARE_BROWSER_RUN_URL` GitHub
-variable are set. A real Supreme Court discovery through the deployed Browser Run
-transport returned HTTP/navigation `200` with `127875` HTML characters (transport
-evidence only, not full crawler parity). All six operational GitHub workflows had
-their `schedule:` triggers removed (dispatch + optional `m8_idempotency_key`
-retained) and the Vercel `crons` list in `vercel.json` was removed; the retired
-expressions exactly match `M8_CRON_EXPRESSIONS`. `pnpm test:m8` 7/7,
-`pnpm m8:types:check`, `pnpm m8:typecheck`, `pnpm lint`, `pnpm m8:dry-run` and
-root `pnpm typecheck` all pass. **GitHub Actions remains the long-running Node
-compatibility executor; full Cloudflare execution would require Containers and is
-explicitly deferred. `GO-ASYNC` is NOT recorded**: no live Queue/Workflow/GitHub
-dispatch, retry/DLQ/restart/recovery or no-duplicate-publication evidence exists
-yet, because the scheduler is intentionally off. Activation is a separate,
-explicitly authorized post-main step. See
-`docs/worldcons-cloudflare-m8-async-pipeline-completion-20260926.md`.
+a set `BROWSER_RUN_TOKEN` and an allowlisted host var. All six operational GitHub
+workflows had their `schedule:` triggers removed (dispatch + optional
+`m8_idempotency_key` retained) and the Vercel `crons` list in `vercel.json` was
+removed; the retired expressions exactly match `M8_CRON_EXPRESSIONS`.
+`pnpm test:m8` 14/14, `pnpm m8:types:check`, `pnpm m8:typecheck`, `pnpm lint`,
+`pnpm m8:dry-run`, root `pnpm typecheck` and `git diff --check` all pass. **GitHub
+Actions remains the long-running Node compatibility executor; full Cloudflare
+execution would require Containers and is explicitly deferred. `GO-ASYNC` is NOT
+recorded**: admin-health fails on existing P5 data, and the injected invalid-probe
+automatic DLQ transition plus restart/recovery/no-duplicate-publication evidence
+are still outstanding. Activation stays a separate, explicitly authorized
+post-main step. See
+`docs/worldcons-cloudflare-m8-async-pipeline-completion-20260926.md` and
+`artifacts/cloudflare-m8/per-kind-canary-rehearsal-20260926.json`.
 
 ### M9 — API/Hono service extraction
 
@@ -1529,7 +1540,7 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] D1 shadow reads (M6.0 + M6.1 reference-read shadow implemented, default OFF: runtime D1 binding injection, `waitUntil` background scheduler, default-off shadow flags, bounded runtime-safe D1 read runner, a D1 `ReferenceReadRepository` for `listSources`/`listGlossaryTerms`/`getGlossaryTerm` only, canonical comparison with `orderMatches`, structured `worldcons.d1_shadow` events and per-isolate backpressure; the authoritative Supabase result is always returned and D1 can never replace it. See `docs/worldcons-cloudflare-m6.1-reference-read-shadow-20260925.md`. M6.2 expands the same default-OFF shadow to `listTags`/`getTagBySlug`/`listIngestionRuns`/`listJurisdictionArticleCounts` with per-method core/ingest binding, projection-mode skips, runtime-safe projection + `eq`/`gte` + ordered reads and truncation-as-skip; does not claim GO-D1-READ. See `docs/worldcons-cloudflare-m6.2-reference-read-shadow-20260925.md`. M6.3 extends the same default-OFF shadow to the six-method `lib/article-reads` seam on the `article_read` surface, with projection/V4/search zero-D1 skips, bounded `neq`/`in` runtime reads, shared article mapping/publishability reuse, truncation/ambiguity-as-skip, and unchanged authoritative Supabase results; does not claim GO-D1-READ and leaves M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.3-article-read-shadow-20260925.md`. M6.4 extends the same default-OFF shadow to the privileged `AdminOpsReadRepository` (`loadArticleRows`/`loadCandidateRows`/`countTableRows`/`listAdminArticles`) and `AdminAnalyticsReadRepository` (`loadAdminAuditActionOptionRows`/`loadAdminAuditEntryRows`/`loadSiteEvents`/`loadIngestionRunRows`/`loadArticleSummaryRows`) on the opt-in `admin_ops_read`/`admin_analytics_read` surfaces with exact per-method core/ingest/ops bindings; both admin RPC snapshots emit `rpc_deferred` with zero D1 calls and every admin `q` path is `search_deferred_m7`; no mixed database substitution, no GO-D1-READ, RPC snapshots deferred to later migration/cutover design, M7 search/FTS5/Vectorize deferred. See `docs/worldcons-cloudflare-m6.4-admin-read-shadow-20260925.md`. M6.5 adds the local read-only shadow parity report + gate tooling (`pnpm d1:shadow-report`, deterministic JSON/markdown report, `m6EvidenceGate` over implemented comparable methods, always-blocked `globalGoD1Read` with `search_m7`/`rpc_admin_dashboard_snapshot`/`rpc_admin_analytics_health_snapshot`, fail-closed malformed/invalid input, safe output with no hashes/diff paths/URLs/metadata/row content). Current verdict: M6 code coverage/tooling complete but production shadow evidence absent => `m6EvidenceGate=insufficient_evidence`, `globalGoD1Read=blocked`; M6 is not operationally proven and no GO-D1-READ is claimed. See `docs/worldcons-cloudflare-m6.5-shadow-parity-gate-20260925.md`)
 - [x] FTS5 parity (M7.1-M7.6 foundations/canaries remain as previously verified, including the 100-row parameterized D1/Vectorize canary and local-runtime + remote-bindings latency evidence. M7.7-B preserves v1 scope-invalid (`62c5e359e5b9838d`), v2 harness-invalid (`26f2a4d4b03e7a90`) and v3 targetset-invalid (`fb108124e7fe6ed8`) history, and promotes active v4 (`ed18add749fe4a23`) as the first valid full-scope content-free baseline. Its read-only pager materializes the exact production id set (1258/1258, missing=0, extra=0); exact-case uses local `runRankedSearchPage` plus production `worldcons_ranked_search_page_v1`; exact-title/informational cases use the FTS5 vs `public_fulltext_ranked_ids_v1` path; complete metadata-frozen `expectedIds` sets handle duplicate titles/case keys. Final v4 evidence has errors=0 and strict 8/8 pass. M7.8-B subsequently records the independently signed non-numeric `candidate-coverage-equivalence` policy (`decisionHash=82962c60e602e2fc`) and a disjoint v5 holdout PASS over the exact 1,258-document scope: E1 8/8, E2 15/15, E3 18/18, E4 18/18, errors/failures/blockers 0. `fulltext_rank_threshold_unagreed` is retired; this does not itself grant `GO-SEARCH`.)
 - [x] Vectorize parity (M7.4-M7.6 foundation/canary work remains verified: isolated `worldcons-search-canary-v2` is at 100 vectors and the isolated D1 canary at 100 documents/FTS, with append-only 15->100 expansion. M7.8-A removed the former production semantic-oracle blocker: migration `20260926120000` is **APPLIED/VERIFIED**, the production projection is 1,258/1,258 with embedding NULL 0 and provenance mismatch 0, and semantic/hybrid smoke is 4/4 with `oracleDrift=0`. M7.9 then measured the actually deployed bearer path: fulltext 4/4 at p50/p95 131/479 ms, semantic 2/2 at 143/160 ms, hybrid 2/2 at 453/461 ms, with zero mismatches/errors and `stableHash=cb2f07f86f76a074`. `GO-SEARCH` readiness is PASS; no production authority, DNS, route or traffic switch has occurred.)
-- [ ] Queues/DLQ/Workflows migration (M8 code complete and deployed, scheduler **disabled**: `worldcons-ingest` `8988532e-2feb-4675-8b76-52fd54508e30` has Cron/Queue/Workflow bindings and `M8_SCHEDULER_ENABLED=false`; `worldcons-async-v1` + `worldcons-async-dlq-v1` exist; all six legacy GitHub `schedule:` triggers and the Vercel `crons` list are removed while manual dispatch + `m8_idempotency_key` remain. No live Queue/Workflow/GitHub dispatch, retry/DLQ/restart/recovery or no-duplicate-publication evidence yet, so `GO-ASYNC` is NOT recorded. See `docs/worldcons-cloudflare-m8-async-pipeline-completion-20260926.md`)
+- [ ] Queues/DLQ/Workflows migration (M8 code complete and deployed with a per-kind canary allowlist, scheduler **disabled** at rest: `worldcons-ingest` resting `10e27ad5-6660-43ba-8b88-df5e2a428c01` has Cron/Queue/Workflow bindings, `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-health`; `worldcons-async-v1` + `worldcons-async-dlq-v1` exist; all six legacy GitHub `schedule:` triggers and the Vercel `crons` list are removed while manual dispatch + `m8_idempotency_key` remain. A controlled canary deploy `e5f23c8f-eed1-46e3-a894-c3ef4c953d0c` produced exactly one Queue → Workflow → GitHub run `36232371374` for admin-health only, and replay deduplicated; the GitHub failure is the known P5 `lifecycle.review`/`publication.parity` data failure, not M8 transport. The injected invalid-probe automatic DLQ transition and restart/recovery/no-duplicate-publication evidence are still outstanding, so `GO-ASYNC` is NOT recorded. See `docs/worldcons-cloudflare-m8-async-pipeline-completion-20260926.md`)
 - [ ] Browser Run/Container crawler parity (M8 Browser Run transport deployed: `worldcons-browser-run` `f324efe7-9912-4b22-8c94-74aab2a3fc6f` with the `BROWSER` binding returns a real Supreme Court discovery at HTTP/navigation 200 with 127875 HTML chars. This is transport evidence only, not per-source crawler parity; full Cloudflare execution would require Containers and is deferred. GitHub Actions remains the Node compatibility executor.)
 - [ ] Hono service binding migration
 - [ ] D1 bounded write canary

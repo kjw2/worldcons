@@ -2,18 +2,26 @@
 
 Date: 2026-09-26
 Branch: `codex/m7-go-search` (in-place; no new branch)
-Base HEAD: `4d62f8b` (`feat: record M7 GO-SEARCH readiness`)
+Base HEAD: `e3fc2c52c4ea51939d2af245d0870488aeaade5a`
+Earlier checkpoint HEAD: `4d62f8b` (`feat: record M7 GO-SEARCH readiness`)
 
 ## Status
 
-**M8 CODE/VERIFICATION COMPLETE; SCHEDULER SAFELY DISABLED; NO ACTIVATION.**
+**M8 PER-KIND CANARY GATE IMPLEMENTED + REHEARSED; SCHEDULER RESTORED TO
+DISABLED; GO-ASYNC STILL NOT RECORDED.**
 
 The M8 async control plane (Cron + Queues + Workflows) and the Browser Run
-crawler transport are implemented, deployed as isolated resources, and verified
-with the scheduler disabled. `M8_SCHEDULER_ENABLED=false` on the deployed
-`worldcons-ingest` Worker is the safety state: every Cron, Queue and Workflow
-entry point fails closed or skips/retries without triggering live GitHub
-execution.
+crawler transport are implemented and deployed as isolated resources. The
+deployed `worldcons-ingest` final resting version `10e27ad5-6660-43ba-8b88-
+df5e2a428c01` has `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-
+health`, so every Cron, Queue and Workflow entry point fails closed or
+skips/acks without triggering live GitHub execution.
+
+This step adds a **per-kind activation gate** after a prior global boolean let
+the scheduled `*/15` cron also dispatch non-canary kinds. It also performed a
+controlled remote rehearsal (single admin-health kind only) and then restored
+the disabled safety state. The Hive worker itself performed no commit or push;
+the controller checkpoints the reviewed result after this evidence record is finalized.
 
 This milestone deliberately does **not** cut over the existing GitHub Actions
 long-running Node executor. GitHub Actions remains the compatibility executor
@@ -21,9 +29,99 @@ for full Node/Crawlee/Playwright workloads; a fully Cloudflare-executing
 pipeline would require Containers and is documented as a later task
 (see "Post-main sequence" and "Current limitations").
 
-This step performed no commit, no push, no `M8_SCHEDULER_ENABLED` change, no
-scheduler-enabled redeploy, no live Queue/Workflow/GitHub dispatch, and no
-destructive remote action.
+## 0a. Workflow-ID bug and per-kind gate (2026-09-26 follow-up)
+
+### Workflow instance ID bug
+
+The first scheduler-true deploy `d3629a2a-d0c2-488b-98bf-6ce50a2845a6` failed
+because the Workflow instance id was the raw idempotency key
+(`m8:<kind>:<minute>`), and Cloudflare Workflow ids reject `:`. The local fix
+(present in this worktree and awaiting the controller checkpoint) maps every character
+outside `[A-Za-z0-9_-]` to `-` and caps the id at 100 characters in
+`workflowInstanceId()` (`lib/cloudflare/async-pipeline/contracts.ts`). The GitHub
+dispatch input `m8_idempotency_key` keeps the original colon-form key, so
+executor identity is unchanged. The fixed scheduler-true deploy was
+`11f20792-71ec-49e3-8608-b126e76c05f2`.
+
+### Unintended global-gate executions
+
+A real admin-health dispatch (GitHub run `36230534033` at
+`2026-09-26T08:41:29Z`) reached GitHub run-only because the single global
+boolean also let the scheduled `*/15` cron dispatch:
+
+| Workflow | Run ID | Created | Conclusion |
+| --- | --- | --- | --- |
+| `admin-job-worker.yml` | `36230757274` | `2026-09-26T08:45:52Z` | success |
+| `admin-watchdog.yml` | `36230755240` | `2026-09-26T08:45:50Z` | success |
+
+Both succeeded, but this violated the intended "admin-health only" canary
+isolation. Fail-safe was restored afterwards at `2620360d-56f1-413d-b0ab-
+d0d019b2c10d` (`M8_SCHEDULER_ENABLED=false`).
+
+### Per-kind allowlist gate
+
+`M8_ENABLED_KINDS` (comma-separated, exact `M8TaskKind` values) is now parsed by
+`parseM8EnabledKinds()` / `resolveM8RolloutGate()` / `isM8KindEnabled()`:
+
+- `*` means all known kinds, but **only** when it is the sole non-empty entry;
+- an absent/empty allowlist is **invalid** and fails closed — enabling the
+  scheduler never implicitly enables every kind;
+- any unknown kind, or `*` mixed with explicit kinds, is invalid;
+- an invalid policy denies every kind at every entry point;
+- the `M8_SCHEDULER_ENABLED` master switch still gates everything.
+
+Gate application:
+
+- `scheduled()` enqueues only allowed kinds; if none are allowed it logs
+  `m8_schedule_skipped` / `no_enabled_kinds` and returns.
+- `queue()` partitions each batch: malformed payloads retry (bounded) toward the
+  DLQ; schema-valid but gate-blocked messages are **acked without dispatch**
+  (they must not spin forever or reach the DLQ merely because a rollout gate is
+  closed); eligible messages create Workflow(s) then ack.
+- `Workflow.run()` re-checks the kind and returns `{ dispatched: false }` without
+  dispatching when blocked.
+
+### Controlled remote rehearsal (admin-health only)
+
+| Field | Value |
+| --- | --- |
+| Canary deploy (scheduler=true) | `e5f23c8f-eed1-46e3-a894-c3ef4c953d0c` |
+| Allowlist | `admin-health` only |
+| Queue message | `m8:admin-health:2026-09-26T09:00:00.000Z` |
+| Workflow instance id | `m8-admin-health-2026-09-26T09-00-00-000Z` |
+| Workflow status | `Completed`, dispatch step `status:204` |
+| GitHub run | `36232371374` at `2026-09-26T09:18:26Z` (`workflow_dispatch`) |
+| GitHub conclusion | failure at `Produce redacted health evidence` |
+| Failure reason | `hardViolations=lifecycle.review,publication.parity` |
+| Replay | same message resent; **no** second Workflow instance, **no** second GitHub run |
+| Restored safety deploy | `10e27ad5-6660-43ba-8b88-df5e2a428c01` (`scheduler=false`, allowlist `admin-health`) |
+
+The GitHub failure is the **known P5 application-data health failure**
+(`lifecycle.review`, `publication.parity`) — queue/heartbeat/retry/outbox/source
+freshness were healthy. It is separated here from M8 transport, which succeeded
+end-to-end (Queue → Workflow → GitHub `workflow_dispatch`, exactly once).
+
+### Operator canary tooling
+
+`pnpm m8:canary` (`scripts/m8-async-canary.ts`) validates and prints the current
+policy and the deterministic Queue message, Workflow instance id and GitHub
+dispatch mapping. It is dry-run by default, never dispatches GitHub directly,
+refuses to publish a kind the resolved policy blocks, and `--apply` posts exactly
+one message through the Queue API (credentials from
+`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` only).
+
+### Retry / DLQ status
+
+A deliberately invalid, non-dispatchable payload
+(`kind=not-a-real-kind`, key `m8:invalid:gate-probe`) was injected to exercise the
+retry path without any GitHub dispatch or application-data mutation. The main
+queue showed a backing-off backlog entry immediately after injection. The
+`worldcons-async-dlq-v1` queue held two pre-existing entries (one old
+`admin-health` message that reached the DLQ under the OLD disabled gate, and one
+prior forged-payload probe). **Automatic DLQ transition for the new injected
+probe remains OPEN**; exact next procedure is in
+`artifacts/cloudflare-m8/per-kind-canary-rehearsal-20260926.json`
+(`retryDlq.nextCommand`). No retry timings were changed for the proof.
 
 ## 1. Scope completed in this step
 
@@ -33,7 +131,12 @@ destructive remote action.
   roadmap/checklist with the exact deployed resources, safety state, live
   evidence, limitations and post-commit/post-main sequence.
 
-### Small edits made during this step
+### Implementation and tooling edits made during this step
+
+The 2026-09-26 follow-up **does change M8 runtime behavior**: it adds the
+per-kind rollout gate at scheduled, Queue and Workflow entry points, fixes the
+Cloudflare Workflow instance-id encoding, and adds the bounded canary operator.
+The following two earlier edits are tooling-scope only:
 
 1. `eslint.config.mjs` — ignore generated `**/worker-configuration.d.ts`. These
    Wrangler-generated ambient files produced 4 unfixable "unused eslint-disable
@@ -46,19 +149,22 @@ destructive remote action.
    `tsconfig.json` used by `pnpm m8:typecheck`). `pnpm typecheck` and
    `pnpm m8:typecheck` both pass.
 
-No runtime behavior changed; the edits are tooling-scope only.
-
 ## 2. Exact deployed resources (as reported by the operator/context)
 
-These facts are recorded as supplied; this step did not query or mutate the
-remote resources.
+The initial resource facts were supplied by the interrupted Codex run. This
+follow-up then queried the deployed state, performed the bounded admin-health
+canary, and redeployed `worldcons-ingest` first for the canary and then back to
+the disabled resting state. No publication/search authority or application data
+was changed by the canary.
 
 ### worldcons-ingest (async control plane)
 
 - Worker name: `worldcons-ingest`
-- Deployed version: `8988532e-2feb-4675-8b76-52fd54508e30`
+- Final resting deployed version: `10e27ad5-6660-43ba-8b88-df5e2a428c01`
+- Earlier version (first completion record): `8988532e-2feb-4675-8b76-52fd54508e30`
 - Bindings present: Cron triggers, Queue producer/consumer, Workflow
 - `M8_SCHEDULER_ENABLED`: `false` (safety state)
+- `M8_ENABLED_KINDS`: `admin-health` (canary-only, inert while disabled)
 - Secrets required: `GITHUB_ACTIONS_TOKEN` (set)
 - Queues that exist:
   - `worldcons-async-v1` (main)
@@ -124,12 +230,20 @@ long-running Node compatibility executor when orchestrated by M8.
 
 | Command | Result |
 | --- | --- |
-| `pnpm test:m8` | 7/7 pass |
+| `pnpm test:m8` | 14/14 pass (7 original + gate/id/replay/partition/canary tests) |
 | `pnpm m8:types:check` | both Workers "up to date" |
 | `pnpm m8:typecheck` | both Worker tsconfigs pass |
 | `pnpm lint` | exit 0, no warnings |
 | `pnpm m8:dry-run` | both Workers bundle and bind correctly |
-| `pnpm typecheck` (root) | pass after the `tsconfig.json` fix |
+| `pnpm typecheck` (root) | pass |
+| `git diff --check` | clean |
+
+New `test:m8` coverage: `M8_ENABLED_KINDS` parser fail-closed matrix, disabled
+vs. enabled allowlist gate, per-kind `scheduled()` eligibility, Queue
+ack/retry/dispatch partition, workflow-instance-id validity/length and
+collision-safety across all kinds, GitHub input preserving the original
+colon-form key, and the operator canary report staying off GitHub and refusing
+disabled kinds.
 
 Dry-run bindings observed:
 
@@ -148,23 +262,30 @@ Dry-run bindings observed:
    (`lib/cloudflare/async-pipeline/contracts.ts`).
 2. Messages are enqueued to `worldcons-async-v1`.
 3. The queue consumer validates each message and creates a `Workflow` instance
-   whose id is the message `idempotencyKey`.
+   whose id is the Cloudflare-safe deterministic encoding returned by
+   `workflowInstanceId()` (for example
+   `m8-admin-health-2026-09-26T09-00-00-000Z`), while preserving the original
+   colon-form idempotency key for the GitHub executor.
 4. The Workflow's `dispatch-compatible-executor` step dispatches the mapped
    GitHub Actions workflow with `m8_idempotency_key` as an input.
 
 Idempotency is layered:
 
-- queue replay yields the same Workflow instance id (`m8:<kind>:<minute>`);
+- queue replay yields the same sanitized Workflow instance id for the same
+  `m8:<kind>:<minute>` identity;
 - `scripts/admin-command-worker-p1.ts` derives its P1 command identity from
   `M8_IDEMPOTENCY_KEY` when present, falling back to the run id/attempt.
 
 ### Safe-disable behavior
 
-- `scheduled()` logs `m8_schedule_skipped` and returns.
-- `queue()` retries every message with a bounded delay.
-- `Workflow.run()` throws `m8.scheduler_disabled`.
+- `scheduled()` logs `m8_schedule_skipped` and returns (also when the allowlist is
+  invalid or no kind is allowed).
+- `queue()` acks schema-valid but gate-blocked messages without dispatch, and
+  retries only malformed payloads (bounded) toward the DLQ.
+- `Workflow.run()` returns `{ dispatched: false }` when the kind is not enabled.
 
-No live GitHub dispatch can occur while `M8_SCHEDULER_ENABLED=false`.
+No live GitHub dispatch can occur while `M8_SCHEDULER_ENABLED=false`, and only
+allowlisted kinds can dispatch while it is `true`.
 
 ### Browser Run transport
 
@@ -182,13 +303,19 @@ closed when `CLOUDFLARE_BROWSER_RUN_REQUIRED=true` but unconfigured.
 2. **Full Cloudflare execution would require Containers.** Rewriting Crawlee and
    heavy extraction into Workers/Browser Run is not done. This is a later task
    (section 9), not silently implemented here.
-3. **Scheduler disabled.** No live Queue, Workflow or GitHub dispatch has been
-   exercised end-to-end.
-4. **Browser Run evidence is one navigation.** It proves the transport works
+3. **Scheduler disabled at rest.** One live Queue → Workflow → GitHub
+   `workflow_dispatch` was exercised end-to-end during the controlled
+   admin-health-only rehearsal (`36232371374`), and replay deduplicated; but the
+   resting state is disabled until P5 health and GO-ASYNC are resolved.
+4. **admin-health fails on existing P5 data.** `lifecycle.review` and
+   `publication.parity` hard violations are application-data blockers, separate
+   from M8 transport.
+5. **Browser Run evidence is one navigation.** It proves the transport works
    against a real target; it is not a per-source crawler-parity result.
-5. **No request-governor parity evidence yet** across the queue/workflow path.
-6. **No restart/recovery or no-duplicate-publication evidence** on the deployed
-   control plane while disabled.
+6. **No request-governor parity evidence yet** across the queue/workflow path.
+7. **No restart/recovery or no-duplicate-publication evidence** on the deployed
+   control plane beyond the single replay dedupe; automatic DLQ transition for the
+   injected invalid probe is still OPEN.
 
 These limitations mean `GO-ASYNC` is **not** yet recorded; only the code/migration
 milestone is complete.
@@ -199,14 +326,20 @@ After this branch is reviewed and checkpointed by the workflow/controller, and
 only after the changes reach `main`:
 
 1. Confirm the deployed `worldcons-ingest`/`worldcons-browser-run` versions
-   match the merged config.
-2. Keep `M8_SCHEDULER_ENABLED=false` during the first activation rehearsal.
-3. Enable one low-risk path first (e.g. manual `workflow_dispatch` of a single
-   kind) and confirm dispatch idempotency.
+   match the merged config (resting `worldcons-ingest` should be
+   `10e27ad5-6660-43ba-8b88-df5e2a428c01` with `M8_SCHEDULER_ENABLED=false`).
+2. Keep `M8_SCHEDULER_ENABLED=false` during any further activation rehearsal; the
+   admin-health canary gate is already proven but the resting state must stay
+   disabled.
+3. When P5 health blockers clear, enable one low-risk kind at a time via
+   `M8_ENABLED_KINDS` (e.g. exactly `admin-health`), never `*`, and confirm
+   dispatch idempotency with `pnpm m8:canary`.
 4. Flip `M8_SCHEDULER_ENABLED=true` only on explicit authorization, then observe
-   queue backlog, DLQ depth, Workflow success and GitHub run identity.
-5. Capture retry/DLQ/restart/recovery/no-duplicate-publication evidence required
-   by the `GO-ASYNC` gate.
+   queue backlog, DLQ depth, Workflow success and GitHub run identity for the
+   allowlisted kind only.
+5. Capture the remaining retry/DLQ/restart/recovery/no-duplicate-publication
+   evidence required by the `GO-ASYNC` gate (the injected invalid-probe DLQ
+   transition is still OPEN).
 6. Retire the remaining manual fallbacks only after `GO-ASYNC` passes.
 
 None of steps 2–6 is performed by this document.

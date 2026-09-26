@@ -9,6 +9,7 @@
   "secrets": { "required": ["GITHUB_ACTIONS_TOKEN"] },
   "vars": {
     "M8_SCHEDULER_ENABLED": "false",
+    "M8_ENABLED_KINDS": "admin-health",
     "GITHUB_REPOSITORY": "kjw2/worldcons",
     "GITHUB_REF": "main"
   },
