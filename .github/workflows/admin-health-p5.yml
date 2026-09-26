@@ -1,9 +1,12 @@
 name: Admin P5 health evidence
 
 on:
-  schedule:
-    - cron: "17 20 * * *"
   workflow_dispatch:
+    inputs:
+      m8_idempotency_key:
+        description: Stable Cloudflare M8 orchestration identity
+        required: false
+        default: "manual"
 
 permissions:
   contents: read
@@ -18,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       ADMIN_P5_HEALTH_VERIFICATION_ENABLED: "true"
       ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED: ${{ vars.ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED || 'false' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

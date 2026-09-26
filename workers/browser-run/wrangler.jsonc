@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "worldcons-browser-run",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-09-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "secrets": { "required": ["BROWSER_RUN_TOKEN"] },
+  "browser": { "binding": "BROWSER" },
+  "vars": {
+    "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es"
+  }
+}

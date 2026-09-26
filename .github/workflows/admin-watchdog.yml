@@ -1,9 +1,12 @@
 name: Admin ops watchdog
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
+    inputs:
+      m8_idempotency_key:
+        description: Stable Cloudflare M8 orchestration identity
+        required: false
+        default: "manual"
 
 permissions:
   contents: read
@@ -18,12 +21,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       PLAYWRIGHT_ENABLED: "true"
+      CLOUDFLARE_BROWSER_RUN_REQUIRED: "true"
+      CLOUDFLARE_BROWSER_RUN_URL: ${{ vars.CLOUDFLARE_BROWSER_RUN_URL }}
+      CLOUDFLARE_BROWSER_RUN_TOKEN: ${{ secrets.CLOUDFLARE_BROWSER_RUN_TOKEN }}
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
       CRAWLEE_MAX_CONCURRENCY: "1"

@@ -1,0 +1,43 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "worldcons-ingest",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-09-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "secrets": { "required": ["GITHUB_ACTIONS_TOKEN"] },
+  "vars": {
+    "M8_SCHEDULER_ENABLED": "false",
+    "GITHUB_REPOSITORY": "kjw2/worldcons",
+    "GITHUB_REF": "main"
+  },
+  "triggers": {
+    "crons": [
+      "*/15 * * * *",
+      "0 0 * * *",
+      "30 1 * * *",
+      "30 3,9,15,21 * * *",
+      "17 20 * * *"
+    ]
+  },
+  "queues": {
+    "producers": [
+      { "binding": "ASYNC_QUEUE", "queue": "worldcons-async-v1" }
+    ],
+    "consumers": [
+      {
+        "queue": "worldcons-async-v1",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-async-dlq-v1",
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "workflows": [
+    { "binding": "ASYNC_WORKFLOW", "name": "worldcons-async-v1", "class_name": "WorldconsAsyncWorkflow" }
+  ]
+}

@@ -1,11 +1,12 @@
 name: Crawlee worker ingest
 
 on:
-  schedule:
-    # GitHub cron uses UTC. 00:00 UTC = KST 09:00; buffer for GitHub schedule drift.
-    - cron: "0 0 * * *"
   workflow_dispatch:
     inputs:
+      m8_idempotency_key:
+        description: Stable Cloudflare M8 orchestration identity
+        required: false
+        default: "manual"
       source:
         description: Source key, or empty for all active sources
         required: false
@@ -42,6 +43,7 @@ jobs:
           - fr-conseil-constitutionnel
           - es-tribunal-constitucional
     env:
+      M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -59,6 +61,9 @@ jobs:
       EMBEDDING_PROVIDER: gemini
       GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
       PLAYWRIGHT_ENABLED: "true"
+      CLOUDFLARE_BROWSER_RUN_REQUIRED: "true"
+      CLOUDFLARE_BROWSER_RUN_URL: ${{ vars.CLOUDFLARE_BROWSER_RUN_URL }}
+      CLOUDFLARE_BROWSER_RUN_TOKEN: ${{ secrets.CLOUDFLARE_BROWSER_RUN_TOKEN }}
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
       CRAWLER_USER_AGENT: "Mozilla/5.0 (compatible; ConstitutionalCourtCurationBot/0.1; +https://worldcons.vercel.app/)"
@@ -120,7 +125,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
       - name: Validate bounded workflow inputs
         if: github.event_name != 'workflow_dispatch' || inputs.source == '' || inputs.source == matrix.source
         env:

@@ -1,12 +1,12 @@
 name: Gemini embedding backfill
 
 on:
-  schedule:
-    # Resume a quota-deferred migration backlog once per day. A completed corpus
-    # is a cheap no-op while still refreshing the embedding heartbeat.
-    - cron: "30 1 * * *"
   workflow_dispatch:
     inputs:
+      m8_idempotency_key:
+        description: Stable Cloudflare M8 orchestration identity
+        required: false
+        default: "manual"
       limit:
         description: Maximum rows scanned per pass
         required: false
@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
+      M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}

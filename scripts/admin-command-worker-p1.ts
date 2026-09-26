@@ -56,6 +56,8 @@ function log(value: Record<string, unknown>) {
 }
 
 function invocationIdentity() {
+  const m8Identity = process.env.M8_IDEMPOTENCY_KEY?.trim();
+  if (m8Identity) return createHash("sha256").update(m8Identity).digest("hex").slice(0, 24);
   const runId = process.env.GITHUB_RUN_ID?.trim() || "local";
   const runAttempt = process.env.GITHUB_RUN_ATTEMPT?.trim() || String(Date.now());
   return createHash("sha256").update(`${runId}:${runAttempt}`).digest("hex").slice(0, 24);

@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "baseUrl": "../..", "paths": { "@/*": ["./*"] } },
+  "include": ["src/**/*.ts", "worker-configuration.d.ts"],
+  "exclude": []
+}

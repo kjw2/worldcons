@@ -1,4 +1,9 @@
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
+import {
+  cloudflareBrowserRunConfigured,
+  cloudflareBrowserRunRequired,
+  crawlWithCloudflareBrowserRun,
+} from "@/lib/crawler/cloudflare-browser-run-client";
 import { respectRateLimit } from "@/lib/crawler/rate-limit";
 import { delay } from "@/lib/crawler/retry";
 import type { CrawlRequest, CrawlResponse } from "@/lib/crawler/types";
@@ -51,6 +56,10 @@ export async function crawlWithPlaywright(request: CrawlRequest): Promise<CrawlR
   };
   request.signal?.addEventListener("abort", closeOnAbort, { once: true });
   try {
+    if (cloudflareBrowserRunConfigured()) {
+      return await crawlWithCloudflareBrowserRun(request);
+    }
+    if (cloudflareBrowserRunRequired()) throw new Error("Cloudflare Browser Run is required but not configured.");
     const { chromium } = await import("playwright");
     const timeoutMs = request.timeoutMs ?? Number(process.env.PLAYWRIGHT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
     browser = await chromium.launch({ headless: process.env.PLAYWRIGHT_HEADLESS !== "false" });

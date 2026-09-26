@@ -1,11 +1,17 @@
 import { CheerioCrawler, PlaywrightCrawler, RequestList, RequestQueue } from "crawlee";
 import { checkpointCrawlerExecution } from "@/lib/crawler/cancellation";
+import {
+  cloudflareBrowserRunConfigured,
+  cloudflareBrowserRunRequired,
+  crawlWithCloudflareBrowserRun,
+} from "@/lib/crawler/cloudflare-browser-run-client";
 import { addDiagnosticAttempt, createDiagnosticsCollector } from "@/lib/crawler/diagnostics";
 import { extractLinks } from "@/lib/crawler/extract-links";
 import { extractHtmlMetadata } from "@/lib/crawler/extract-metadata";
 import { extractReadableText } from "@/lib/crawler/extract-readable-text";
 import { checkRobotsAllowed, robotsDelayMs } from "@/lib/crawler/robots";
 import { createCrawlerNavigationPermitController } from "@/lib/crawler/request-governor";
+import { respectRateLimit } from "@/lib/crawler/rate-limit";
 import { discoverSitemapUrls } from "@/lib/crawler/sitemap";
 import { crawlerHeaders, crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { MIN_PUBLISHABLE_TEXT_LENGTH } from "@/lib/ingest/publishability";
@@ -625,6 +631,99 @@ async function runPlaywrightPass(state: SpiderRunState, requests: CrawleeStartRe
   requests = prepared.requests;
   settings = prepared.settings;
   if (requests.length === 0) return;
+  if (cloudflareBrowserRunConfigured()) {
+    const pending = [...requests];
+    while (pending.length > 0) {
+      await checkSpiderExecution(state);
+      const request = pending.shift();
+      if (!request) break;
+      await respectRateLimit(request.url, settings.sameDomainDelaySecs * 1000, state.options.signal);
+      try {
+        const response = await crawlWithCloudflareBrowserRun({
+          url: request.url,
+          timeoutMs: settings.navigationTimeoutSecs * 1000,
+          waitUntil: "domcontentloaded",
+          signal: state.options.signal,
+          checkpoint: state.options.checkpoint,
+        });
+        const finalUrl = response.finalUrl;
+        const html = response.html ?? "";
+        if (request.label === "LIST") {
+          const parsed = extractLinks(html, finalUrl, state.config.listSelectors);
+          const links = parsed.links
+            .filter((link) => state.config.isCandidateUrl(link.url, link.title))
+            .slice(0, Math.max(state.limit * 5, 20));
+          addAttempt(state.diagnostics, {
+            url: request.url,
+            finalUrl,
+            strategy: "playwright",
+            status: response.status,
+            contentType: response.contentType,
+            selectorMatched: parsed.selectorMatched,
+            selectorMatchCount: parsed.selectorMatchCount,
+            discoveredCount: links.length,
+            fallback: true,
+            htmlLength: html.length,
+          });
+          for (const link of links) {
+            await checkSpiderExecution(state);
+            const robots = await checkRequestRobots(link.url, state.diagnostics, false, state.options);
+            if (!robots.allowed) continue;
+            pending.push({
+              url: link.url,
+              label: "DETAIL",
+              item: state.config.itemFromUrl(link.url, "playwright", {
+                listingUrl: request.url,
+                title: link.title,
+                surroundingText: link.surroundingText,
+                collectionStrategy: "playwright",
+              }),
+              collectionStrategy: "playwright",
+              fallback: true,
+              listingUrl: request.url,
+            });
+          }
+          continue;
+        }
+        const item = request.item ?? state.config.itemFromUrl(finalUrl, request.collectionStrategy, { listingUrl: request.listingUrl });
+        const raw = rawFromHtml({
+          item,
+          html,
+          finalUrl,
+          status: response.status,
+          contentType: response.contentType,
+          strategy: request.collectionStrategy,
+          transport: "crawlee-playwright",
+          diagnostics: state.diagnostics,
+          config: state.config,
+        });
+        addAttempt(state.diagnostics, {
+          url: request.url,
+          finalUrl,
+          strategy: request.collectionStrategy,
+          status: response.status,
+          contentType: response.contentType,
+          selectorMatched: Boolean(raw.text),
+          selectorMatchCount: raw.text ? 1 : 0,
+          fallback: true,
+          htmlLength: html.length,
+        });
+        remember(state, item, raw);
+      } catch (error) {
+        if (state.options.signal?.aborted) throw state.options.signal.reason;
+        addAttempt(state.diagnostics, failedAttempt(error, {
+          url: request.url,
+          strategy: "playwright",
+          fallback: true,
+        }));
+      }
+    }
+    await checkSpiderExecution(state);
+    return;
+  }
+  if (cloudflareBrowserRunRequired()) {
+    throw new Error("Cloudflare Browser Run is required but not configured.");
+  }
   const requestQueue = await runCrawleeExecutionBoundary(state.options, () =>
     RequestQueue.open(`${state.config.sourceKey}-${name}-playwright-${Date.now()}-${Math.random().toString(36).slice(2)}`),
   );

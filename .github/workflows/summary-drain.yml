@@ -5,11 +5,12 @@
 name: Summary queue drain
 
 on:
-  schedule:
-    # Every 6 hours (UTC). Offset from the 00:00 ingest run to avoid overlapping API load.
-    - cron: "30 3,9,15,21 * * *"
   workflow_dispatch:
     inputs:
+      m8_idempotency_key:
+        description: Stable Cloudflare M8 orchestration identity
+        required: false
+        default: "manual"
       source:
         description: Source key to drain, or empty for all pending sources
         required: false
@@ -35,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
+      M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
