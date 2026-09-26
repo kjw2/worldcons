@@ -4,17 +4,28 @@ Date: 2026-09-26
 
 ## Status
 
-This directory contains an **UNSIGNED / UNDECIDED** template:
+This directory contains both the original **UNSIGNED / UNDECIDED** template and
+the finalized product-owner decision:
 
 - `docs/operations/worldcons-m7.8b-rank-policy-decision.template.json`
+- `docs/operations/worldcons-m7.8b-rank-policy-decision.json`
 
 It is deliberately `policy: "undecided"` with **no** `decidedAt`, **no**
 `decidedByRole` and **no** `decisionHash`. It is not a decision. **No policy has
-been chosen on the user's behalf**, and no holdout evidence exists.
+been chosen on the user's behalf**.
 
-The rank-policy blocker `fulltext_rank_threshold_unagreed` **remains** and
-`GO-SEARCH` stays blocked until a human/product owner selects and signs one of
-the policies below and re-runs the read-only holdout.
+On 2026-09-26 the product owner explicitly selected
+`candidate-coverage-equivalence` with E1-E4 and signed role `product-owner`.
+The finalized record binds `decisionHash=82962c60e602e2fc` to
+`holdoutManifestHash=1452c95c29fba160`. The first effective read-only v5
+holdout passed all gating invariants (E1 8/8, E2 15/15, E3 18/18, E4 18/18),
+with 1,258/1,258 exact production/local scope, zero errors and zero blockers.
+Evidence is stored at
+`artifacts/cloudflare-m7/m7.8b-fts-parity-holdout.{json,md}`.
+
+The `fulltext_rank_threshold_unagreed` blocker is therefore retired. This does
+not itself grant `GO-SEARCH`; deployed Worker bearer-path runtime evidence and
+the final M7 gate remain pending.
 
 ## What this record governs
 
@@ -32,7 +43,7 @@ M7.8-B authors the **surfaces only**:
 The v4 manifest/hash and all v1/v2/v3 archives remain **byte-for-byte
 unchanged**. The active v4 evidence/manifest is untouched.
 
-## How to sign a decision (human/product action — NOT performed here)
+## How to sign a decision (generic human/product procedure)
 
 1. Copy the template to a working path:
 
@@ -132,15 +143,16 @@ The parser/validator (`decision.ts`) rejects:
 - `numeric-thresholds` without explicit thresholds and a rationale;
 - thresholds in any non-numeric policy.
 
-## Boundaries
+## Boundaries and executed outcome
 
-- No policy is chosen here; the template is `undecided`.
-- The holdout was **not** run in M7.8-B; therefore
-  `artifacts/cloudflare-m7/m7.8b-fts-parity-holdout.{json,md}` are **not**
-  created by this task.
+- The template remains `undecided`; it was copied into a distinct finalized
+  decision record rather than edited in place.
+- The signed policy is `candidate-coverage-equivalence`; no numeric threshold
+  was inferred from sealed v4 outcomes.
+- The read-only holdout evidence was created and passed with zero blockers.
 - No Supabase/D1/Vectorize mutation, no deploy, no
   `SearchRepository`/`GO-SEARCH`/DNS/traffic switch, no commit/push.
 - v1/v2/v3 archives and the active v4 manifest/evidence remain byte-for-byte
   unchanged.
-- `fulltext_rank_threshold_unagreed` remains until a human selects and signs a
-  policy.
+- `fulltext_rank_threshold_unagreed` is retired by the signed decision plus
+  passing disjoint holdout; deployed-runtime evidence remains a separate gate.

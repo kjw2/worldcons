@@ -29,8 +29,10 @@ The applied evidence artifact is
 This step is **code/local verification only** in the sense that it performs no
 schema apply, no ledger repair, no Supabase mutation, no deploy, no
 `SearchRepository`/`GO-SEARCH`/`GO-D1-READ` switch, no DNS or traffic change and
-no commit/push. `search_m7` remains blocked and the
-`fulltext_rank_threshold_unagreed` rank-policy blocker remains from M7.7-B.
+no commit/push. `search_m7` remains blocked. At the time of the M7.8-A record,
+`fulltext_rank_threshold_unagreed` still remained from M7.7-B; the subsequent
+signed M7.8-B holdout retired that blocker as recorded in section 9, while the
+deployed-runtime gate remains open.
 
 ## Rollout recovery sequence (2026-09-26)
 
@@ -332,8 +334,8 @@ The checked-in artifact is `mode=finalize-existing`, `status=applied`,
 
 ## 9. M7.8-B rank-policy governance + disjoint v5 holdout
 
-M7.8-B authors the rank-policy **surfaces only**: no policy is chosen and no
-holdout evidence is produced.
+M7.8-B originally authored the rank-policy surfaces without choosing a policy.
+The subsequent product-owner decision and read-only execution are now complete.
 
 - `holdout.ts` — the additive, content-free v5 holdout candidate pool, a
   deterministic selection and the frozen `holdoutHash 1452c95c29fba160`. It is
@@ -353,8 +355,17 @@ holdout evidence is produced.
   fail-closed before any query and read-only by construction (no `--apply`).
 
 The v4 manifest/hash and every v1/v2/v3 archive remain byte-for-byte unchanged.
-No policy is chosen: the `fulltext_rank_threshold_unagreed` blocker and the
-`GO-SEARCH` block remain. The human signing procedure is documented in
+The finalized record selects `candidate-coverage-equivalence`, signed as
+`product-owner`, and binds `decisionHash=82962c60e602e2fc` to
+`holdoutHash=1452c95c29fba160`. The first effective read-only v5 run evaluated
+the full 1,258-document production projection and passed E1 8/8, E2 15/15,
+E3 18/18 and E4 18/18 with zero errors, zero failures and zero blockers.
+Evidence is `artifacts/cloudflare-m7/m7.8b-fts-parity-holdout.{json,md}`.
+
+This retires `fulltext_rank_threshold_unagreed` without inventing a numeric
+threshold. `GO-SEARCH` remains blocked only on deployed-Worker bearer-path
+runtime evidence and the final M7 readiness decision. The signing procedure and
+executed record are documented in
 `docs/operations/worldcons-m7.8b-rank-policy-decision-instructions.md`.
 
 ## Local verification
@@ -367,7 +378,8 @@ pnpm lint           # pass (0 errors; pre-existing wrangler-tmp warnings only)
 git diff --check    # pass
 pnpm m7.8a:dry-run  # offline plan only; no connection
 pnpm test:m7.8b     # 21/21 pass
-pnpm m7.8b:holdout -- --decision=<path> --dry-run  # offline; refuses an undecided record
+pnpm m7.8b:holdout -- --decision=<path> --dry-run  # offline validation
+pnpm m7.8b:holdout -- --decision=docs/operations/worldcons-m7.8b-rank-policy-decision.json  # PASS, read-only
 ```
 
 No remote schema apply, no `supabase migration repair` and no Supabase mutation
@@ -387,8 +399,8 @@ were performed while producing this record.
   switch, no DNS or traffic change and no commit/push.
 - The rollback candidate is staged outside `supabase/migrations` and is never
   applied or moved.
-- No generic lexical acceptance threshold is invented; `fulltext_rank_threshold_unagreed`
-  remains and `GO-SEARCH` stays blocked.
-- M7.8-B authors surfaces only: no policy is chosen, the v5 holdout is not run, no
-  `m7.8b-fts-parity-holdout.{json,md}` evidence is created, and the
-  `fulltext_rank_threshold_unagreed` blocker remains.
+- No generic numeric acceptance threshold is invented; the signed
+  candidate-coverage E1-E4 policy passed on the disjoint v5 holdout.
+- `fulltext_rank_threshold_unagreed` is retired, but `GO-SEARCH` stays blocked
+  pending deployed-Worker runtime evidence and the separate final readiness
+  decision.

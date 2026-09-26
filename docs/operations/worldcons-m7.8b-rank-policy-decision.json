@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "policy": "candidate-coverage-equivalence",
+  "decisionId": "m7.8b-candidate-coverage-equivalence-20260926",
+  "decidedAt": "2026-09-26T06:55:03.195Z",
+  "decidedByRole": "product-owner",
+  "holdoutManifestHash": "1452c95c29fba160",
+  "v4EvidenceSealed": true,
+  "invariants": ["E1", "E2", "E3", "E4"],
+  "thresholds": null,
+  "rationale": "Adopt the product-neutral candidate coverage equivalence policy with E1-E4 as the acceptance gate, without deriving numeric thresholds from sealed prior evidence.",
+  "decisionHash": "82962c60e602e2fc"
+}

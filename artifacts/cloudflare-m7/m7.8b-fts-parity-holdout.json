@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-26T07:00:28.080Z",
+  "scope": "fts-parity-holdout",
+  "source": "supabase",
+  "maxArticles": 1258,
+  "truncated": false,
+  "holdoutHash": "1452c95c29fba160",
+  "decisionHash": "82962c60e602e2fc",
+  "policy": "candidate-coverage-equivalence",
+  "decidedByRole": "product-owner",
+  "holdoutCases": 18,
+  "categories": {},
+  "projection": {
+    "sourceRows": 1258,
+    "documents": 1258,
+    "productionProjectionIds": 1258
+  },
+  "sourceScope": {
+    "productionProjectionIds": 1258,
+    "sourceRowsFetched": 1258,
+    "localDocuments": 1258,
+    "missingIds": 0,
+    "extraIds": 0,
+    "scopeValid": true
+  },
+  "oracleAvailable": true,
+  "errors": [],
+  "equivalence": {
+    "policy": "candidate-coverage-equivalence",
+    "invariants": [
+      "E1",
+      "E2",
+      "E3",
+      "E4"
+    ],
+    "cases": 18,
+    "counts": {
+      "E1": {
+        "applicable": 8,
+        "passed": 8,
+        "failed": 0
+      },
+      "E2": {
+        "applicable": 15,
+        "passed": 15,
+        "failed": 0
+      },
+      "E3": {
+        "applicable": 18,
+        "passed": 18,
+        "failed": 0
+      },
+      "E4": {
+        "applicable": 18,
+        "passed": 18,
+        "failed": 0
+      }
+    },
+    "passed": true,
+    "failures": []
+  },
+  "numeric": null,
+  "state": "pass",
+  "blockers": [],
+  "boundaries": [
+    "read-only: no Supabase mutation, no D1/Vectorize write, no canary data write and no --apply path",
+    "production authority unchanged: SearchRepository, GO-SEARCH, DNS and traffic are untouched",
+    "the v5 holdout candidate pool is disjoint from v4 by normalized (category, query, filters) and selects nothing from a v4 rank outcome",
+    "a valid finalized decision record is required before any linked query is issued; an undecided record is refused",
+    "evidence is bound to decisionHash + holdoutHash",
+    "report is content-free: query/document text, summaries, URLs, ids and vectors are never copied into it",
+    "exact-order/same-set/overlap remain informational and never gate candidate-coverage-equivalence mode"
+  ]
+}

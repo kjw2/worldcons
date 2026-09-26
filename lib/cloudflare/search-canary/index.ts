@@ -19,3 +19,4 @@ export * from "./expansion";
 export * from "./worker-contract";
 export * from "./vector-id";
 export * from "./evidence";
+export * from "./deployed-runtime";
