@@ -1458,6 +1458,29 @@ Acceptance:
 - read-after-write behavior
 - rollback tested
 
+Completion (2026-09-27):
+
+- Selected the low-risk append-only `worldcons_ops.site_events` domain.
+- Recorded the pre-existing count delta separately: D1 15,516 vs Supabase
+  15,581. M10 evaluates only one unique canary UUID and does not claim global
+  table reconciliation.
+- Wrote canary UUID `ee3ac059-01e6-4728-a627-05fe09a66919` to D1 first,
+  received `changes=1`, and verified exact read-after-write.
+- Inserted the same bounded row into Supabase only after D1 read-back and
+  verified canonical field parity across SQLite/Postgres storage forms.
+- Verified the primary-key invariant: a duplicate D1 insert was rejected with
+  `SQLITE_CONSTRAINT_PRIMARYKEY` while the original row remained exactly once.
+- Rolled back the D1 row and Supabase comparison row; final counts returned to
+  D1 15,516 and Supabase 15,581 with canary count zero on both.
+- Added a parameterized/fail-closed M10 canary contract and 5/5 focused tests;
+  root typecheck/lint/diff-check pass.
+- **GO-D1-WRITE-CANARY: PASS.** This is bounded operator evidence only; no
+  application runtime write authority changed. M11 owns the first real
+  domain-authority transition.
+- Detailed evidence:
+  `docs/worldcons-cloudflare-m10-d1-write-canary-20260927.md` and
+  `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.
+
 ### M11 — D1 write authority
 
 Objective:
@@ -1545,6 +1568,9 @@ GO-ASYNC:
 
 GO-D1-WRITE:
 - transaction/audit/write-read invariants pass in canary
+- M10 satisfies this gate only for the bounded `worldcons_ops.site_events`
+  operator canary; M11 still requires a separate runtime authority gate before
+  any production domain is switched
 
 GO-CUTOVER:
 - all above plus rollback rehearsal and observability readiness
@@ -1668,7 +1694,12 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   public cutover remains M12. See
   `docs/worldcons-cloudflare-m9-api-service-extraction-20260927.md` and
   `artifacts/cloudflare-m9/go-service-binding-acceptance-evidence-20260927.json`.)
-- [ ] D1 bounded write canary
+- [x] D1 bounded write canary (M10 `worldcons_ops.site_events`: D1-first
+  insert/read, Supabase comparison parity, duplicate-PK rejection and full
+  rollback all pass; both DBs restored to pre-canary counts. This does not
+  switch runtime authority. See
+  `docs/worldcons-cloudflare-m10-d1-write-canary-20260927.md` and
+  `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.)
 - [ ] domain-by-domain D1 authority
 - [ ] Workers production cutover
 - [ ] Supabase final export

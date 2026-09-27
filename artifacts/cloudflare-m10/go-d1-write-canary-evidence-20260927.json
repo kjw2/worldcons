@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M10",
+  "decision": "GO-D1-WRITE-CANARY",
+  "status": "pass",
+  "date": "2026-09-27",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "site_events",
+    "runtimeAuthorityChanged": false,
+    "publicCutover": false
+  },
+  "preCanary": {
+    "d1Count": 15516,
+    "supabaseCount": 15581,
+    "preExistingDelta": 65
+  },
+  "canary": {
+    "id": "ee3ac059-01e6-4728-a627-05fe09a66919",
+    "occurredAt": "2026-09-27T12:37:13Z",
+    "eventType": "security_event",
+    "path": "/__m10/d1-write-canary",
+    "sourceKey": "m10-d1-write-canary",
+    "resultCount": 1,
+    "metadata": {
+      "authority": "d1",
+      "m10Canary": true,
+      "purpose": "site_events_write_canary"
+    },
+    "isBot": false
+  },
+  "d1Authority": {
+    "insertChanges": 1,
+    "readAfterWriteCount": 1,
+    "readAfterWriteMatched": true,
+    "duplicateInsertRejected": true,
+    "duplicateErrorClass": "SQLITE_CONSTRAINT_PRIMARYKEY"
+  },
+  "supabaseComparison": {
+    "insertedAfterD1ReadBack": true,
+    "readBackCount": 1,
+    "fieldParity": true
+  },
+  "rollback": {
+    "d1CanaryCount": 0,
+    "d1FinalCount": 15516,
+    "supabaseCanaryCount": 0,
+    "supabaseFinalCount": 15581,
+    "restoredPreCanaryCounts": true
+  },
+  "verification": {
+    "m10Tests": "5/5",
+    "typecheck": "pass",
+    "lint": "pass",
+    "diffCheck": "pass"
+  },
+  "nextMilestone": "M11 domain-by-domain D1 runtime write authority"
+}
