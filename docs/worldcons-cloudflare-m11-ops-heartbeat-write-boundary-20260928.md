@@ -73,8 +73,9 @@ Three separate trust boundaries, each least-privilege:
    (`preview_urls=false`). It declares no `routes`/`route` and no custom domain,
    so the workers.dev endpoint is the only entry point. This is intentional:
    Node/GitHub cannot use a Worker Service Binding, so the boundary must be
-   externally reachable. Its only network entries are `POST /v1/ops/heartbeat`
-   and `GET /health`, both authenticated by a constant-time comparison of a
+   externally reachable. Its only network entries are `POST /v1/ops/heartbeat`,
+   `GET /health` and (from M11.3R) the read-only `GET /v1/ops/heartbeats`, all
+   authenticated by a constant-time comparison of a
    bearer `OPS_WRITE_TOKEN` secret. There is no unauthenticated diagnostic
    endpoint: `GET /health` also requires the bearer and cannot be used as a
    public probe. The endpoint is therefore publicly reachable but
@@ -95,7 +96,8 @@ Three separate trust boundaries, each least-privilege:
 
 The new Worker reuses the existing M8 `BROWSER_RUN_TOKEN` constant-time bearer
 pattern and the M9 private-bridge pattern. It does **not** broaden any existing
-permission: the boundary can only upsert one heartbeat row and has no read API.
+permission: the boundary can only upsert one heartbeat row and, from M11.3R,
+serve one bounded read of the same row set; both stay behind the same bearer.
 Its workers.dev endpoint is public but every path is behind the constant-time
 bearer, so no unauthenticated caller can write or probe readiness.
 
@@ -245,14 +247,126 @@ WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
 
 - Live canary requires Cloudflare/DB credential access not available in this
   environment; a controller owns it. No live write proof is claimed.
-- **Read/write split.** Only the write authority is migrated here. Readers
-  (`getWorkflowHeartbeats` → `lib/ops/watchdog.ts` and
-  `app/api/masterdash/health/route.ts`) still read `ops_workflow_heartbeats`
-  from Supabase, so a full `d1` write authority would leave those reads stale.
-  That is acceptable for the bounded `d1-canary` row (which is never read) and
-  is why a production `d1` cutover additionally requires an M11 read-authority
-  parity step; no full-D1 ops read authority is claimed.
+- **Read/write split was resolved by M11.3R (see below).** Only the write
+  authority is migrated here; readers were addressed by the separate M11.3R
+  read-authority parity step.
 - `admin_ops_events` remains the next deferred target (M11.4), needing a
   bounded read+dedupe+prune compatibility contract.
 - M11 is not globally complete: ingest and core/publication remain pending, and
   no full-D1 ops authority cutover is claimed.
+
+## M11.3R — ops_workflow_heartbeats read-authority parity
+
+Date: 2026-09-28. This is the read-authority parity step M11.3 explicitly
+deferred. It is **read-only** and resolves the read authority **independently**
+of the write authority, so a staging write canary can never silently change what
+a reader sees.
+
+### Decision
+
+Add a separate `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase|d1` seam with a
+resting `supabase` default. `d1` selects the migrated `worldcons_ops` read.
+There is deliberately **no `d1-canary` read mode**: a partial read is not a
+meaningful state, so the only non-resting mode is the full `d1` read.
+
+### Why not couple reads to writes
+
+`getWorkflowHeartbeats` (`lib/ops/workflow-heartbeat.ts`) feeds
+`lib/ops/watchdog.ts` and `app/api/masterdash/health/route.ts`. If reads simply
+followed the write authority, a `d1-canary` write would leave ordinary
+(non-canary) readers reading stale Supabase rows, and a full `d1` write with a
+Supabase read would silently diverge. Separating the two authorities makes the
+cutover an explicit, individually reversible operator action.
+
+### Architecture
+
+- **Node/GitHub reader (watchdog job, masterdash route on Vercel).** When the
+  read authority is `d1`, `getWorkflowHeartbeats` calls
+  `readOpsHeartbeatsViaBoundary`, which issues one authenticated
+  `GET /v1/ops/heartbeats` to the existing publicly reachable,
+  bearer-authenticated `worldcons-ops-write` boundary using the same base URL and
+  token as the write path. No new credential, host or unauthenticated surface is
+  added.
+- **Cloudflare runtime reader (masterdash route on Workers).** The main Worker
+  entry resolves its own `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` var into a
+  runtime slot; `resolveEffectiveOpsHeartbeatReadAuthorityConfig` prefers that
+  slot over `process.env`, and `getWorkflowHeartbeats` reads the isolated
+  `WORLDCONS_OPS` D1 binding registered on the runtime slot directly (no HTTP
+  hop). In a Node/GitHub process no binding is registered, so the same authority
+  is served through the authenticated boundary.
+- **Boundary read.** `GET /v1/ops/heartbeats` requires the constant-time bearer.
+  It resolves the read authority independently. Under `d1` it runs one
+  parameterized `SELECT workflow_key, last_started_at, last_completed_at,
+  last_status, run_id FROM ops_workflow_heartbeats WHERE workflow_key IN (?, ...)`
+  over the five authored keys — the exact projection the Supabase reader uses, no
+  `detail`/`updated_at`. Under the resting `supabase` it returns a fail-closed
+  `503 READ_AUTHORITY_UNAVAILABLE` and **never** relays Supabase, so a caller that
+  selected the D1 read authority can never be silently served a Supabase row.
+
+### Fail-closed guarantee
+
+- Selected `d1` with no configured base URL/token, a non-2xx response, a
+  malformed body, an unavailable binding or a failed query all **throw**. The
+  watchdog already treats an unavailable heartbeat read as a
+  `workflow-heartbeat-unavailable` warning and the masterdash route as degraded,
+  so the failure is visible rather than masked.
+- A malformed D1 envelope or non-object row throws rather than returning a
+  silently shorter list, so "no rows" can never be confused with "broken read".
+
+### Column/row parity
+
+The D1 row is mapped to the same `WorkflowHeartbeatRecord` shape
+(`workflowKey`, `lastStartedAt`, `lastCompletedAt`, `lastStatus`, `runId`) and
+applies the same defensive filter (unknown key, missing start timestamp, invalid
+status are dropped). The canonical key list now lives in the runtime-neutral
+contract (`OPS_HEARTBEAT_WORKFLOW_KEYS`) so the Worker and the Node reader agree.
+
+### Preserved behavior and rollback
+
+- Resting read authority is `supabase`: `getWorkflowHeartbeats` returns early
+  and keeps the existing local Supabase read byte-for-byte. With the default,
+  `readOpsHeartbeatsViaBoundary` returns `null` and nothing is sent.
+- Rollback is one var change back to `supabase`, with no schema or data change.
+- No old migration was edited; no D1/Postgres schema change was made.
+
+### Files (M11.3R)
+
+- `lib/cloudflare/ops-write/heartbeat.ts` — read authority resolver + runtime
+  slot, canonical keys, `parseOpsHeartbeatReadRow/Record`, parameterized
+  `readOpsHeartbeatsFromD1`.
+- `lib/cloudflare/ops-write/boundary-client.ts` — `readOpsHeartbeatsViaBoundary`
+  Node/GitHub client.
+- `lib/ops/workflow-heartbeat.ts` — `getWorkflowHeartbeats` selects the D1 read
+  boundary when the read authority is `d1`, fails closed.
+- `workers/ops-write/src/index.ts` — bearer-authenticated
+  `GET /v1/ops/heartbeats`.
+- `workers/ops-write/wrangler.jsonc` — resting `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase`.
+- `worker/index.ts`, `wrangler.jsonc` — Cloudflare runtime read-authority slot.
+- `.github/workflows/admin-watchdog.yml` — read authority repo var (default
+  `supabase`); `.env.example` — documented.
+- `tests/m11-ops-heartbeat-read-authority.test.ts` — 12 focused tests.
+
+### M11.3R verification (local, no live proof)
+
+- `pnpm test:m11`: 49/49 (12 new read-authority + 37 existing M11).
+- `pnpm test:ops`: 10/10; `pnpm test:masterdash`: 22/22; `pnpm test:m9`: 8/8;
+  `pnpm test:m10`: 5/5.
+- root `pnpm typecheck`: pass; `pnpm m11:ops-write:typecheck`: pass;
+  `pnpm m11:ops-write:types:check`: up to date; `pnpm m9:typecheck`: pass.
+- `pnpm lint`: pass (0 errors, 0 warnings).
+- `pnpm m11:ops-write:dry-run`: pass (bindings include the resting
+  `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY ("supabase")`).
+- `git diff --check`: clean.
+
+### M11.3R live-read prerequisites (controller-owned; NOT performed here)
+
+1. Deploy `worldcons-ops-write` with the read authority resting at `supabase`
+   and confirm `GET /v1/ops/heartbeats` requires the bearer (401 without it).
+2. Deploy the main Worker with the read authority resting at `supabase`.
+3. Set repo var `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` (`d1`) **and** the
+   boundary Worker's own read var (`d1`), mirroring the write-authority
+   coordination; confirm `GET /v1/ops/heartbeats` returns the same records the
+   Supabase reader returns for the five authored keys (compare
+   `workflow_key/last_started_at/last_completed_at/last_status/run_id`).
+4. Confirm ordinary Node/GitHub and Cloudflare readers now read D1.
+5. Roll the read authority back to `supabase` and confirm the local read resumes.

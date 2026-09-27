@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3R",
+  "decision": "CODE-READY-LIVE-READ-PARITY-PENDING-NO-LIVE-PROOF",
+  "status": "code_ready_resting_at_supabase",
+  "date": "2026-09-28",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "kind": "read-authority-parity",
+    "liveReadClaimed": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "readAuthority": {
+    "env": "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY",
+    "modes": ["supabase", "d1"],
+    "default": "supabase",
+    "noCanaryMode": true,
+    "noCanaryReason": "a partial read is not a meaningful state; only the full d1 read is offered",
+    "independentFromWriteAuthority": true,
+    "independenceRationale": "a write canary must never silently change what a reader sees; separating the authorities makes the read cutover an explicit, individually reversible operator action"
+  },
+  "architecture": {
+    "nodeGithubReader": {
+      "entry": "getWorkflowHeartbeats (lib/ops/workflow-heartbeat.ts)",
+      "d1Path": "readOpsHeartbeatsViaBoundary -> authenticated GET /v1/ops/heartbeats on the existing worldcons-ops-write boundary",
+      "reusesWriteBoundary": true,
+      "newCredential": false,
+      "newHost": false,
+      "newUnauthenticatedSurface": false,
+      "restingPath": "local Supabase select (unchanged)"
+    },
+    "cloudflareRuntimeReader": {
+      "entry": "getWorkflowHeartbeats through the masterdash route",
+      "d1Path": "runtime slot from worker/index.ts (WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY) preferred over process.env; direct isolated WORLDCONS_OPS D1 binding, no HTTP hop",
+      "runtimeSlot": "setRuntimeOpsHeartbeatReadAuthorityConfig / resolveEffectiveOpsHeartbeatReadAuthorityConfig"
+    },
+    "boundary": {
+      "path": "GET /v1/ops/heartbeats",
+      "auth": "constant-time bearer OPS_WRITE_TOKEN",
+      "authRequired": true,
+      "restingAuthorityBehavior": "fail-closed 503 READ_AUTHORITY_UNAVAILABLE; never relays Supabase",
+      "d1Query": "SELECT workflow_key, last_started_at, last_completed_at, last_status, run_id FROM ops_workflow_heartbeats WHERE workflow_key IN (?, ?, ?, ?, ?)",
+      "projectionMatchesSupabaseReader": true,
+      "selectsDetailOrUpdatedAt": false,
+      "parametersBound": true,
+      "callerValueInSqlText": false
+    }
+  },
+  "failClosed": {
+    "selectedD1Unavailable": "throws (503 at the boundary); never silently falls back to Supabase",
+    "missingBaseUrlOrToken": "throws",
+    "nonOkResponse": "throws",
+    "malformedBody": "throws",
+    "malformedD1EnvelopeOrRow": "throws (never a silently shorter list)",
+    "visibleAtCallers": [
+      "lib/ops/watchdog.ts surfaces workflow-heartbeat-unavailable",
+      "app/api/masterdash/health/route.ts degrades"
+    ]
+  },
+  "parity": {
+    "recordShape": ["workflowKey", "lastStartedAt", "lastCompletedAt", "lastStatus", "runId"],
+    "defensiveRowFilter": "unknown key, missing start timestamp, invalid status are dropped",
+    "canonicalKeysOwner": "lib/cloudflare/ops-write/heartbeat.ts OPS_HEARTBEAT_WORKFLOW_KEYS",
+    "canonicalKeys": ["collection", "summary", "embedding", "watchdog", "catalog_backfill"]
+  },
+  "preservedAuthority": {
+    "default": "supabase",
+    "rollback": "set WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase (restores the local Supabase read); no schema/data change"
+  },
+  "filesChanged": [
+    "lib/cloudflare/ops-write/heartbeat.ts",
+    "lib/cloudflare/ops-write/boundary-client.ts",
+    "lib/ops/workflow-heartbeat.ts",
+    "workers/ops-write/src/index.ts",
+    "workers/ops-write/wrangler.jsonc",
+    "workers/ops-write/worker-configuration.d.ts",
+    "worker/index.ts",
+    "wrangler.jsonc",
+    ".github/workflows/admin-watchdog.yml",
+    ".env.example",
+    "package.json",
+    "tests/m11-ops-heartbeat-read-authority.test.ts",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "verification": {
+    "m11Tests": "49/49",
+    "newM113RTests": "12/12",
+    "opsTests": "10/10",
+    "masterdashTests": "22/22",
+    "m9Tests": "8/8",
+    "m10Tests": "5/5",
+    "rootTypecheck": "pass",
+    "m113RWorkerTypecheck": "pass",
+    "m113RWorkerTypesCheck": "up_to_date",
+    "m9Typecheck": "pass",
+    "lint": "pass (0 errors, 0 warnings)",
+    "opsWriteDryRun": "pass (binding WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY (supabase))",
+    "diffCheck": "pass",
+    "liveReadParity": "not_run_no_proof_claimed"
+  },
+  "liveReadPrerequisites": [
+    "deploy worldcons-ops-write with read authority resting at supabase; confirm GET /v1/ops/heartbeats returns 401 without the bearer",
+    "deploy the main Worker with read authority resting at supabase",
+    "set repo var WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=d1 and the boundary Worker read var=d1; confirm the boundary read returns the same five-field records as the Supabase reader",
+    "confirm ordinary Node/GitHub and Cloudflare readers now read D1",
+    "roll the read authority back to supabase and confirm the local read resumes"
+  ],
+  "blockers": [
+    "no Cloudflare/DB credential access in this environment; controller owns the live read parity proof",
+    "admin_ops_events remains deferred to M11.4 (read-before-write dedupe + prune contract)",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "next": "live read-authority parity by controller; then M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract"
+}

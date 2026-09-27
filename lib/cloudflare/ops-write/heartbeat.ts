@@ -22,14 +22,28 @@ import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
  */
 
 export const OPS_HEARTBEAT_WRITE_AUTHORITY_ENV = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY";
+/**
+ * M11.3R read-authority seam. Reads resolve independently of writes so a
+ * staging write canary never silently changes what a reader sees. The default
+ * `supabase` preserves the resting reader behavior; `d1` selects the migrated
+ * `worldcons_ops` read and fails closed if it is unavailable. There is
+ * deliberately no `d1-canary` read mode: a partial read is not meaningful.
+ */
+export const OPS_HEARTBEAT_READ_AUTHORITY_ENV = "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY";
 export const M11_OPS_HEARTBEAT_CANARY_RUN_ID = "m11-ops-heartbeat-canary";
 export const OPS_HEARTBEAT_BOUNDARY_PATH = "/v1/ops/heartbeat";
+export const OPS_HEARTBEAT_BOUNDARY_READ_PATH = "/v1/ops/heartbeats";
 export const OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH = "/internal/ops-heartbeat/write";
 
 export type OpsHeartbeatWriteAuthority = "supabase" | "d1-canary" | "d1";
+export type OpsHeartbeatReadAuthority = "supabase" | "d1";
 
 export interface OpsHeartbeatWriteAuthorityConfig {
   authority: OpsHeartbeatWriteAuthority;
+}
+
+export interface OpsHeartbeatReadAuthorityConfig {
+  authority: OpsHeartbeatReadAuthority;
 }
 
 export interface OpsHeartbeatWriteAuthorityEnvironment {
@@ -37,6 +51,30 @@ export interface OpsHeartbeatWriteAuthorityEnvironment {
 }
 
 export type OpsHeartbeatStatus = (typeof WORKFLOW_HEARTBEAT_STATUS_VALUES)[number];
+
+/**
+ * The canonical heartbeat workflow keys. Owned here (the runtime-neutral
+ * boundary contract) so the Worker, the Node read/write seams and the D1 read
+ * all agree without importing `lib/ops/workflow-heartbeat.ts` (which pulls in
+ * Node/Next modules).
+ */
+export const OPS_HEARTBEAT_WORKFLOW_KEYS = [
+  "collection",
+  "summary",
+  "embedding",
+  "watchdog",
+  "catalog_backfill",
+] as const;
+export type OpsHeartbeatWorkflowKey = (typeof OPS_HEARTBEAT_WORKFLOW_KEYS)[number];
+
+/** One bounded heartbeat row, shared by the D1 read, the boundary and the Node reader. */
+export interface OpsHeartbeatReadRecord {
+  workflowKey: OpsHeartbeatWorkflowKey;
+  lastStartedAt: string;
+  lastCompletedAt: string | null;
+  lastStatus: OpsHeartbeatStatus;
+  runId: string | null;
+}
 
 export const OPS_HEARTBEAT_STATUS_VALUES = WORKFLOW_HEARTBEAT_STATUS_VALUES;
 export const OPS_HEARTBEAT_MAX_DETAIL_BYTES = 8192;
@@ -70,6 +108,146 @@ export function shouldWriteOpsHeartbeatToD1(
   if (config.authority === "d1") return true;
   if (config.authority !== "d1-canary") return false;
   return row.run_id === M11_OPS_HEARTBEAT_CANARY_RUN_ID;
+}
+
+/**
+ * Resolves the read authority. Any unrecognized value fails safe to `supabase`,
+ * so a typo never silently enables a D1 read.
+ */
+export function resolveOpsHeartbeatReadAuthorityConfig(
+  environment: OpsHeartbeatWriteAuthorityEnvironment = {},
+): OpsHeartbeatReadAuthorityConfig {
+  const raw = environment[OPS_HEARTBEAT_READ_AUTHORITY_ENV]?.trim().toLowerCase();
+  if (raw === "d1") return { authority: "d1" };
+  return { authority: "supabase" };
+}
+
+export function shouldReadOpsHeartbeatFromD1(
+  config: OpsHeartbeatReadAuthorityConfig,
+) {
+  return config.authority === "d1";
+}
+
+interface OpsHeartbeatReadAuthorityGlobal {
+  __worldconsOpsHeartbeatReadAuthorityV1?: OpsHeartbeatReadAuthorityConfig;
+}
+
+function runtimeGlobal(): typeof globalThis & OpsHeartbeatReadAuthorityGlobal {
+  return globalThis as typeof globalThis & OpsHeartbeatReadAuthorityGlobal;
+}
+
+/**
+ * Stores the read authority resolved from the Worker `env` so runtime code can
+ * select `d1` without importing the Worker entry. Mirrors the M11 write/shadow
+ * runtime slots. A `null` value clears the slot.
+ */
+export function setRuntimeOpsHeartbeatReadAuthorityConfig(
+  config: OpsHeartbeatReadAuthorityConfig | null,
+) {
+  const target = runtimeGlobal();
+  if (config) target.__worldconsOpsHeartbeatReadAuthorityV1 = config;
+  else delete target.__worldconsOpsHeartbeatReadAuthorityV1;
+}
+
+export function getRuntimeOpsHeartbeatReadAuthorityConfig(): OpsHeartbeatReadAuthorityConfig | null {
+  return runtimeGlobal().__worldconsOpsHeartbeatReadAuthorityV1 ?? null;
+}
+
+/**
+ * Resolves the read authority for the current runtime. The Worker-entry runtime
+ * slot (set from `env`) wins when present; otherwise the process environment is
+ * consulted. This lets the Cloudflare masterdash route honor its `env` var while
+ * the same code in a Node/GitHub process honors `process.env`.
+ */
+export function resolveEffectiveOpsHeartbeatReadAuthorityConfig(
+  environment: OpsHeartbeatWriteAuthorityEnvironment = {},
+): OpsHeartbeatReadAuthorityConfig {
+  return getRuntimeOpsHeartbeatReadAuthorityConfig() ?? resolveOpsHeartbeatReadAuthorityConfig(environment);
+}
+
+const OPS_HEARTBEAT_READ_STATUS_SET = new Set<string>(OPS_HEARTBEAT_STATUS_VALUES);
+const OPS_HEARTBEAT_READ_KEY_SET = new Set<string>(OPS_HEARTBEAT_WORKFLOW_KEYS);
+
+/**
+ * Maps one raw D1 row to the same record shape the Supabase reader returns.
+ * Returns `null` for a row that cannot be represented (unknown key, missing
+ * start timestamp or invalid status), matching the Supabase reader's defensive
+ * row filter. The `detail` and `updated_at` columns are never selected.
+ */
+export function parseOpsHeartbeatReadRow(row: Record<string, unknown>): OpsHeartbeatReadRecord | null {
+  const workflowKey = row.workflow_key;
+  if (typeof workflowKey !== "string" || !OPS_HEARTBEAT_READ_KEY_SET.has(workflowKey)) return null;
+  const lastStartedAt = row.last_started_at;
+  if (typeof lastStartedAt !== "string" || lastStartedAt.length === 0) return null;
+  const lastStatus = row.last_status;
+  if (typeof lastStatus !== "string" || !OPS_HEARTBEAT_READ_STATUS_SET.has(lastStatus)) return null;
+  const lastCompletedAt = row.last_completed_at;
+  const runId = row.run_id;
+  return {
+    workflowKey: workflowKey as OpsHeartbeatWorkflowKey,
+    lastStartedAt,
+    lastCompletedAt: typeof lastCompletedAt === "string" ? lastCompletedAt : null,
+    lastStatus: lastStatus as OpsHeartbeatStatus,
+    runId: typeof runId === "string" ? runId : null,
+  };
+}
+
+/**
+ * Validates one already-mapped heartbeat record (the boundary's JSON
+ * `heartbeats` array element shape) before the Node reader trusts it. Returns
+ * `null` for an unrepresentable entry, so a malformed boundary body can never be
+ * surfaced as a valid heartbeat.
+ */
+export function parseOpsHeartbeatReadRecord(value: unknown): OpsHeartbeatReadRecord | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const workflowKey = record.workflowKey;
+  if (typeof workflowKey !== "string" || !OPS_HEARTBEAT_READ_KEY_SET.has(workflowKey)) return null;
+  const lastStartedAt = record.lastStartedAt;
+  if (typeof lastStartedAt !== "string" || lastStartedAt.length === 0) return null;
+  const lastStatus = record.lastStatus;
+  if (typeof lastStatus !== "string" || !OPS_HEARTBEAT_READ_STATUS_SET.has(lastStatus)) return null;
+  const lastCompletedAt = record.lastCompletedAt;
+  const runId = record.runId;
+  return {
+    workflowKey: workflowKey as OpsHeartbeatWorkflowKey,
+    lastStartedAt,
+    lastCompletedAt: typeof lastCompletedAt === "string" ? lastCompletedAt : null,
+    lastStatus: lastStatus as OpsHeartbeatStatus,
+    runId: typeof runId === "string" ? runId : null,
+  };
+}
+
+/**
+ * M11.3R read-only D1 heartbeat projection.
+ *
+ * Selects exactly the columns the Supabase reader projects, for the authored
+ * `OPS_HEARTBEAT_WORKFLOW_KEYS`, in one parameterized `IN (?, ...)` statement.
+ * No caller value enters SQL text. A malformed envelope or a non-object row
+ * fails closed (throws) rather than returning a silently shorter list, so a
+ * selected D1 read authority can never be mistaken for "no heartbeats".
+ */
+export async function readOpsHeartbeatsFromD1(
+  binding: D1RuntimeDatabase,
+): Promise<OpsHeartbeatReadRecord[]> {
+  const placeholders = OPS_HEARTBEAT_WORKFLOW_KEYS.map(() => "?").join(", ");
+  const statement = binding.prepare(
+    "SELECT workflow_key, last_started_at, last_completed_at, last_status, run_id "
+    + `FROM ops_workflow_heartbeats WHERE workflow_key IN (${placeholders})`,
+  );
+  const bound = statement.bind(...OPS_HEARTBEAT_WORKFLOW_KEYS);
+  if (typeof bound.all !== "function") throw new Error("ops_heartbeat_d1_read.run_unavailable");
+  const result = await bound.all<Record<string, unknown>>();
+  if (result === null || typeof result !== "object") throw new Error("ops_heartbeat_d1_read.invalid_response");
+  if (result.success === false) throw new Error("ops_heartbeat_d1_read.query_failed");
+  if (!Array.isArray(result.results)) throw new Error("ops_heartbeat_d1_read.invalid_response");
+  return result.results.flatMap((row) => {
+    if (typeof row !== "object" || row === null || Array.isArray(row)) {
+      throw new Error("ops_heartbeat_d1_read.invalid_response");
+    }
+    const parsed = parseOpsHeartbeatReadRow(row as Record<string, unknown>);
+    return parsed ? [parsed] : [];
+  });
 }
 
 function boundedString(value: unknown, max: number): string | null | undefined {

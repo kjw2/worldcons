@@ -137,9 +137,9 @@
   ],
   "blockers": [
     "no Cloudflare/DB credential access in this environment; controller owns the live canary",
-    "write-only migration: getWorkflowHeartbeats readers (lib/ops/watchdog.ts, app/api/masterdash/health/route.ts) still read Supabase, so a full d1 write authority would leave those reads stale; needs a separate M11 read-authority parity step",
+    "write-only migration: getWorkflowHeartbeats readers (lib/ops/watchdog.ts, app/api/masterdash/health/route.ts) still read Supabase, so a full d1 write authority would leave those reads stale; RESOLVED BY M11.3R read-authority parity (WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase|d1, resting supabase)",
     "admin_ops_events deferred to M11.4 (read-before-write dedupe + prune contract)",
     "M11 not globally complete: ingest and core/publication remain pending"
   ],
-  "next": "live canary by controller; then M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract"
+  "next": "M11.3R read-authority parity implemented (read-only, independent WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase|d1, resting supabase; see artifacts/cloudflare-m11/m11.3r-ops-heartbeat-read-authority-20260928.json). Controller live write + read parity pending; then M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract"
 }

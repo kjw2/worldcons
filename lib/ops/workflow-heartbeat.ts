@@ -1,5 +1,11 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
-import { writeOpsHeartbeatViaBoundary } from "@/lib/cloudflare/ops-write/boundary-client";
+import { writeOpsHeartbeatViaBoundary, readOpsHeartbeatsViaBoundary } from "@/lib/cloudflare/ops-write/boundary-client";
+import {
+  readOpsHeartbeatsFromD1,
+  resolveEffectiveOpsHeartbeatReadAuthorityConfig,
+  shouldReadOpsHeartbeatFromD1,
+} from "@/lib/cloudflare/ops-write/heartbeat";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 
 export const WORKFLOW_KEYS = ["collection", "summary", "embedding", "watchdog", "catalog_backfill"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
@@ -107,6 +113,27 @@ export async function runWithRequiredWorkflowHeartbeat<T>(
 }
 
 export async function getWorkflowHeartbeats(): Promise<WorkflowHeartbeatRecord[] | null> {
+  // M11.3R read-authority parity step. The read authority is resolved
+  // independently from the write authority, so a staging write canary never
+  // changes what a reader sees. The default `supabase` returns early and keeps
+  // the existing local read byte-for-byte. When `d1` is selected the boundary is
+  // required and fails closed: a broken or unconfigured D1 read throws (which
+  // `lib/ops/watchdog.ts` and the masterdash route already surface as
+  // "heartbeats unavailable"), rather than silently falling back to Supabase.
+  if (shouldReadOpsHeartbeatFromD1(resolveEffectiveOpsHeartbeatReadAuthorityConfig(process.env as Record<string, string | undefined>))) {
+    // Inside the Cloudflare runtime the isolated `worldcons_ops` D1 binding is
+    // registered on the runtime slot and is read directly (no HTTP hop). In a
+    // Node/GitHub process no binding is registered, so the same authority is
+    // served through the authenticated boundary. Both paths fail closed: a
+    // missing binding and a failed boundary both throw rather than returning a
+    // stale or empty Supabase read.
+    const binding = getRuntimeD1Binding("worldcons_ops");
+    if (binding) return readOpsHeartbeatsFromD1(binding);
+    const records = await readOpsHeartbeatsViaBoundary();
+    if (records === null) throw new Error("ops_heartbeat_read_boundary.not_enabled");
+    return records;
+  }
+
   const supabase = getSupabaseServiceRoleAdmin();
   if (!supabase) return null;
   const { data, error } = await supabase

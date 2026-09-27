@@ -11,10 +11,11 @@
   //     URLs so no unauthenticated, non-production version endpoint exists;
   //   - it declares NO `routes`/`route` and NO custom domain, so the workers.dev
   //     endpoint is the only entry point;
-  //   - every entry point (`POST /v1/ops/heartbeat` and `GET /health`) requires
-  //     the constant-time bearer `OPS_WRITE_TOKEN`, so this is a publicly
-  //     reachable but bearer-authenticated narrow write endpoint. There is no
-  //     unauthenticated write or health surface.
+  //   - every entry point (`POST /v1/ops/heartbeat`, the M11.3R read-only
+  //     `GET /v1/ops/heartbeats`, and `GET /health`) requires the constant-time
+  //     bearer `OPS_WRITE_TOKEN`, so this is a publicly reachable but bearer-
+  //     authenticated narrow endpoint. There is no unauthenticated write,
+  //     read or health surface.
   //
   // By contrast, `worldcons-search` remains internal-only (Service Binding) and
   // is not reachable over workers.dev.
@@ -28,7 +29,8 @@
   "observability": { "enabled": true },
   "secrets": { "required": ["OPS_WRITE_TOKEN"] },
   "vars": {
-    "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "supabase"
+    "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "supabase",
+    "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY": "supabase"
   },
   "services": [
     {

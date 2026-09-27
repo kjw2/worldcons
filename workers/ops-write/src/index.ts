@@ -1,10 +1,15 @@
 import {
   OPS_HEARTBEAT_BOUNDARY_PATH,
+  OPS_HEARTBEAT_BOUNDARY_READ_PATH,
   OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH,
   parseOpsHeartbeatWriteRow,
+  readOpsHeartbeatsFromD1,
+  resolveOpsHeartbeatReadAuthorityConfig,
   resolveOpsHeartbeatWriteAuthorityConfig,
   runOpsHeartbeatUpsertD1,
+  shouldReadOpsHeartbeatFromD1,
   shouldWriteOpsHeartbeatToD1,
+  type OpsHeartbeatReadRecord,
   type OpsHeartbeatWriteRow,
 } from "@/lib/cloudflare/ops-write/heartbeat";
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
@@ -16,6 +21,7 @@ export interface OpsWriteServiceFetcher {
 export interface WorldconsOpsWriteWorkerEnv {
   OPS_WRITE_TOKEN?: string;
   WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY?: string;
+  WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY?: string;
   WORLDCONS_OPS?: D1RuntimeDatabase;
   WORLDCONS_SEARCH_SERVICE?: OpsWriteServiceFetcher;
   [key: string]: unknown;
@@ -24,6 +30,7 @@ export interface WorldconsOpsWriteWorkerEnv {
 export interface WorldconsOpsWriteDependencies {
   writeToD1?: (binding: D1RuntimeDatabase, row: OpsHeartbeatWriteRow) => Promise<unknown>;
   writeToSupabase?: (row: OpsHeartbeatWriteRow, env: WorldconsOpsWriteWorkerEnv) => Promise<void>;
+  readFromD1?: (binding: D1RuntimeDatabase) => Promise<OpsHeartbeatReadRecord[]>;
 }
 
 function json(value: unknown, status = 200) {
@@ -74,6 +81,38 @@ export async function handleOpsHeartbeatBoundary(
   if (url.pathname === "/health") {
     if (!(await opsWriteAuthorized(request, env))) return json({ error: "unauthorized" }, 401);
     return json({ schemaVersion: 1, service: "worldcons-ops-write", status: "ready" });
+  }
+
+  // M11.3R: bearer-authenticated read of the current heartbeat projection. The
+  // read authority is resolved independently from the write authority. Unlike a
+  // write, a read has no safe local fallback: when the boundary is not selected
+  // for D1 reads it returns a fail-closed 503 instead of relaying Supabase, so a
+  // caller that selected the D1 read authority can never be silently served a
+  // Supabase row. There is no unauthenticated diagnostic surface.
+  if (request.method === "GET" && url.pathname === OPS_HEARTBEAT_BOUNDARY_READ_PATH) {
+    if (!(await opsWriteAuthorized(request, env))) return json({ error: "unauthorized" }, 401);
+    const readConfig = resolveOpsHeartbeatReadAuthorityConfig(env as Record<string, string | undefined>);
+    if (!shouldReadOpsHeartbeatFromD1(readConfig)) {
+      return json({ schemaVersion: 1, error: { code: "READ_AUTHORITY_UNAVAILABLE", retryable: true } }, 503);
+    }
+    try {
+      let records: OpsHeartbeatReadRecord[];
+      if (dependencies.readFromD1) {
+        records = await dependencies.readFromD1(env.WORLDCONS_OPS as D1RuntimeDatabase);
+      } else {
+        const binding = env.WORLDCONS_OPS;
+        if (!binding) throw new Error("ops_heartbeat_boundary.d1_binding_unavailable");
+        records = await readOpsHeartbeatsFromD1(binding);
+      }
+      return json({ schemaVersion: 1, authority: readConfig.authority, heartbeats: records });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_ops_write_heartbeat_read_error",
+        authority: readConfig.authority,
+        error: error instanceof Error ? error.message : "UnknownError",
+      }));
+      return json({ schemaVersion: 1, error: { code: "SERVICE_UNAVAILABLE", retryable: true } }, 503);
+    }
   }
 
   if (request.method !== "POST" || url.pathname !== OPS_HEARTBEAT_BOUNDARY_PATH) {

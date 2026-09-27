@@ -57,6 +57,11 @@ jobs:
       # only consulted when the authority is d1-canary/d1. The token is a
       # repository secret and is never written to a source file.
       WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
+      # M11.3R read authority is resolved independently of the write authority so
+      # a write canary never changes what this watchdog reads. It defaults to
+      # "supabase" and is only consulted when explicitly "d1"; it shares the same
+      # boundary base URL/token above and fails closed if D1 is unavailable.
+      WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'supabase' }}
       WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
       WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
