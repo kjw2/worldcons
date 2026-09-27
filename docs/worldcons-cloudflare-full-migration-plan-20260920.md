@@ -1519,6 +1519,36 @@ M11.0 site-events runtime authority slice (2026-09-27):
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md` and
   `artifacts/cloudflare-m11/go-site-events-write-authority-canary-20260927.json`.
 
+M11.1 admin-audit selective authority slice (2026-09-27):
+
+- Added
+  `WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY=supabase|d1-canary|d1`.
+- `d1-canary` is restricted to
+  `action=m11.admin_audit_canary` and
+  `redacted_metadata.m11AuditCanary=true`.
+- Added an internal Supabase compatibility bridge at
+  `worldcons-search /internal/admin-audit/write`; Vercel keeps the direct
+  Supabase client path.
+- Pre-canary counts were D1 125 / Supabase 128; the existing three-row delta was
+  left untouched.
+- Live Supabase baseline: D1 0 / Supabase 1.
+- Live selective D1 canary: D1 1 / Supabase 0.
+- Live rollback control: D1 0 / Supabase 1.
+- Both private audit bridge calls were HTTP 204 / `outcome=ok`.
+- The execution environment blocked the explicit full-D1 outbound canary call
+  before it reached Cloudflare. The block was not bypassed, so M11.1 does not
+  claim a live full-`d1` audit cutover.
+- All canary rows and the temporary canary Worker were deleted; counts returned
+  exactly to D1 125 / Supabase 128.
+- Main and audit authorities currently rest at `supabase`.
+- M11 tests are now 13/13 (11 at canary time plus two fail-closed audit
+  regression tests); M9 8/8, Worker/root typechecks, lint, diff-check and
+  vinext build pass.
+- **GO-ADMIN-AUDIT-D1-CANARY: PASS.**
+- Detailed evidence:
+  `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md` and
+  `artifacts/cloudflare-m11/go-admin-audit-d1-canary-20260927.json`.
+
 ### M12 — Cloudflare production frontend/API cutover
 
 Objective:
@@ -1731,9 +1761,14 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.)
 - [ ] domain-by-domain D1 authority (M11.0 first ops slice complete:
   `site_events` has a canary/full-D1/rollback authority seam and live proof;
-  resting authority remains Supabase. Remaining ops writes plus ingest and
-  core/publication are still pending. See
-  `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`.)
+  M11.1 adds the same `supabase|d1-canary|d1` seam for
+  `worldcons_ops.admin_audit_logs` with a selective-action canary, a private
+  `worldcons-search /internal/admin-audit/write` Supabase compatibility bridge
+  and a live selective-D1 + rollback proof; full-`d1` audit cutover was not
+  live-proven and is not claimed. Resting authority remains Supabase. Remaining
+  ops writes plus ingest and core/publication are still pending. See
+  `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md` and
+  `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`.)
 - [ ] Workers production cutover
 - [ ] Supabase final export
 - [ ] stranded Vercel object recovery/inventory

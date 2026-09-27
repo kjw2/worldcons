@@ -97,6 +97,23 @@ export type BoundSiteEventWriteRow = {
   metadata: Record<string, unknown>;
 };
 
+export type BoundAdminAuditWriteRow = {
+  actor_id: string | null;
+  actor_role: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  article_id: string | null;
+  article_slug: string | null;
+  source_key: string | null;
+  job_id: string | null;
+  result: string | null;
+  error_class: string | null;
+  redacted_metadata: Record<string, unknown>;
+  request_ip_hash: string | null;
+  user_agent_family: string | null;
+};
+
 /**
  * Cloudflare-only legacy write bridge used during M11.
  *
@@ -121,6 +138,27 @@ export async function writeSiteEventViaRuntimeSearchService(
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error("worldcons_site_events_legacy_bridge_unavailable");
+  }
+  await response.body?.cancel();
+  return true;
+}
+
+export async function writeAdminAuditViaRuntimeSearchService(
+  row: BoundAdminAuditWriteRow,
+): Promise<true | null> {
+  const state = runtimeSearchServiceState();
+  if (!state.binding) return null;
+  const response = await state.binding.fetch(new Request(
+    "https://worldcons-search.internal/internal/admin-audit/write",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(row),
+    },
+  ));
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("worldcons_admin_audit_legacy_bridge_unavailable");
   }
   await response.body?.cancel();
   return true;

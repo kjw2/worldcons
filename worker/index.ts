@@ -11,6 +11,10 @@ import {
   setRuntimeSiteEventsWriteAuthorityConfig,
 } from "@/lib/cloudflare/d1/write-authority/site-events";
 import {
+  resolveAdminAuditWriteAuthorityConfig,
+  setRuntimeAdminAuditWriteAuthorityConfig,
+} from "@/lib/cloudflare/d1/write-authority/admin-audit";
+import {
   setRuntimeSearchServiceBinding,
   type WorldconsSearchServiceFetcher,
 } from "@/lib/cloudflare/services/search-service-binding";
@@ -25,6 +29,7 @@ interface WorldconsWorkerEnv {
   WORLDCONS_SEARCH_SERVICE_ENABLED?: string;
   WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?: string;
   WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY?: string;
+  WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY?: string;
   [key: string]: unknown;
 }
 
@@ -58,6 +63,9 @@ export default {
     setRuntimeD1ShadowConfig(resolveD1ShadowConfig(env as Record<string, string | undefined>));
     setRuntimeSiteEventsWriteAuthorityConfig(
       resolveSiteEventsWriteAuthorityConfig(env as Record<string, string | undefined>),
+    );
+    setRuntimeAdminAuditWriteAuthorityConfig(
+      resolveAdminAuditWriteAuthorityConfig(env as Record<string, string | undefined>),
     );
     setRuntimeSearchServiceBinding(
       env.WORLDCONS_SEARCH_SERVICE,

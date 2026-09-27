@@ -4,6 +4,12 @@ import { redactAdminAuditEventInput, redactAdminAuditMetadata, redactAdminAuditT
 import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
 import { createHash as createStableHash } from "@/lib/utils/hash";
 import type { SiteEventInput, SiteEventType } from "@/lib/analytics/events";
+import {
+  getRuntimeAdminAuditWriteAuthorityConfig,
+  shouldWriteAdminAuditToD1,
+  writeAdminAuditToRuntimeD1,
+} from "@/lib/cloudflare/d1/write-authority/admin-audit";
+import { writeAdminAuditViaRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
 
 type AdminSiteEventInput = SiteEventInput & { eventType: Extract<SiteEventType, "admin_action" | "admin_review_action"> };
 
@@ -83,9 +89,6 @@ function adminAuditTarget(input: AdminSiteEventInput, metadata: Record<string, u
 }
 
 export async function recordAdminAuditLog(input: AdminSiteEventInput, headers?: HeaderLike) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
   const safeInput = redactAdminAuditEventInput(input);
   const metadata = redactAdminAuditMetadata(safeInput.metadata);
   const action = metadataText(metadata, ["action", "resolvedAction", "requestedAction"], 160) ?? safeInput.eventType;
@@ -106,23 +109,54 @@ export async function recordAdminAuditLog(input: AdminSiteEventInput, headers?: 
     sourceKey: safeInput.sourceKey,
   });
 
+  const payload = {
+    actor_id: actorId,
+    actor_role: actorRole,
+    action,
+    target_type: targetType,
+    target_id: targetId,
+    article_id: uuidOrNull(safeInput.articleId),
+    article_slug: textValue(safeInput.articleSlug, 300),
+    source_key: textValue(safeInput.sourceKey, 120),
+    job_id: jobId,
+    result,
+    error_class: errorClass,
+    redacted_metadata: redactedMetadata,
+    request_ip_hash: requestIpHash,
+    user_agent_family: userAgentFamily(headers),
+  };
+
+  const authorityConfig = getRuntimeAdminAuditWriteAuthorityConfig();
+  if (shouldWriteAdminAuditToD1(payload, authorityConfig)) {
+    try {
+      await writeAdminAuditToRuntimeD1(payload);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_admin_audit_d1_write_failed",
+        authority: authorityConfig.authority,
+        error: error instanceof Error ? error.message : "UnknownError",
+      }));
+    }
+    return;
+  }
+
   try {
-    const { error } = await supabase.from("admin_audit_logs").insert({
-      actor_id: actorId,
-      actor_role: actorRole,
-      action,
-      target_type: targetType,
-      target_id: targetId,
-      article_id: uuidOrNull(safeInput.articleId),
-      article_slug: textValue(safeInput.articleSlug, 300),
-      source_key: textValue(safeInput.sourceKey, 120),
-      job_id: jobId,
-      result,
-      error_class: errorClass,
-      redacted_metadata: redactedMetadata,
-      request_ip_hash: requestIpHash,
-      user_agent_family: userAgentFamily(headers),
-    });
+    const bridged = await writeAdminAuditViaRuntimeSearchService(payload);
+    if (bridged) return;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "worldcons_admin_audit_legacy_bridge_failed",
+      authority: authorityConfig.authority,
+      error: error instanceof Error ? error.message : "UnknownError",
+    }));
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+
+  try {
+    const { error } = await supabase.from("admin_audit_logs").insert(payload);
     if (error) logOptionalWriteFailure("admin audit dual-write", error.message);
   } catch (error) {
     logOptionalWriteFailure("admin audit dual-write", error);

@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.1",
+  "decision": "GO-ADMIN-AUDIT-D1-CANARY",
+  "status": "pass",
+  "date": "2026-09-27",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "admin_audit_logs",
+    "selectiveCanaryOnly": true,
+    "fullD1LiveCutoverProven": false,
+    "m11GloballyComplete": false
+  },
+  "preCanary": {
+    "d1Count": 125,
+    "supabaseCount": 128,
+    "preExistingDelta": 3
+  },
+  "baseline": {
+    "authority": "supabase",
+    "targetId": "m11.1-supabase-20260927-a",
+    "d1Rows": 0,
+    "supabaseRows": 1
+  },
+  "selectiveCanary": {
+    "authority": "d1-canary",
+    "targetId": "m11.1-d1canary-20260927-b",
+    "action": "m11.admin_audit_canary",
+    "marker": "redacted_metadata.m11AuditCanary=true",
+    "d1Rows": 1,
+    "supabaseRows": 0
+  },
+  "fullD1Attempt": {
+    "executed": false,
+    "reason": "execution safety inspection blocked the outbound canary request before Cloudflare",
+    "bypassAttempted": false,
+    "staticSelectorTested": true
+  },
+  "rollback": {
+    "authority": "supabase",
+    "targetId": "m11.1-rollback-20260927-d",
+    "d1Rows": 0,
+    "supabaseRows": 1,
+    "testRowsRemoved": true,
+    "d1FinalCount": 125,
+    "supabaseFinalCount": 128
+  },
+  "legacyBridge": {
+    "service": "worldcons-search",
+    "path": "/internal/admin-audit/write",
+    "publiclyExposed": false,
+    "observedCalls": [
+      { "status": 204, "outcome": "ok", "wallTimeMs": 626 },
+      { "status": 204, "outcome": "ok", "wallTimeMs": 476 }
+    ]
+  },
+  "deployments": {
+    "worldconsSearchVersion": "b4a9084c-64a6-47a8-a845-cebf4529fdd6",
+    "worldconsMainVersion": "5ed9f641-84ce-45e1-94ea-c0f9f637399c"
+  },
+  "restingState": {
+    "adminAuditWriteAuthority": "supabase",
+    "siteEventsWriteAuthority": "supabase",
+    "searchServiceBinding": "worldcons-search"
+  },
+  "verification": {
+    "m11Tests": "11/11",
+    "m9Tests": "8/8",
+    "m9Typecheck": "pass",
+    "rootTypecheck": "pass",
+    "lint": "pass",
+    "diffCheck": "pass",
+    "vinextBuild": "pass"
+  },
+  "next": "continue worldcons_ops inventory by execution owner"
+}
