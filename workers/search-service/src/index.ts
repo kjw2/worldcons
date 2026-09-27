@@ -13,6 +13,12 @@ import {
   searchCclMetasearchWithEnv,
   type CclMetasearchSearchDependencies,
 } from "@/lib/cclmetasearch/search";
+import {
+  SITE_EVENT_TYPE_VALUES,
+} from "@/lib/cloudflare/d1/schema/worldcons-ops";
+import type {
+  BoundSiteEventWriteRow,
+} from "@/lib/cloudflare/services/search-service-binding";
 
 export interface WorldconsSearchWorkerEnv {
   ENVIRONMENT?: string;
@@ -51,6 +57,10 @@ export interface WorldconsSearchServiceDependencies {
     env: WorldconsSearchWorkerEnv,
   ) => Promise<CclMetasearchSearchPage>;
   cclMetasearchDependencies?: CclMetasearchSearchDependencies;
+  siteEventWrite?: (
+    row: BoundSiteEventWriteRow,
+    env: WorldconsSearchWorkerEnv,
+  ) => Promise<void>;
 }
 
 export function createWorldconsSearchServiceApp(
@@ -182,6 +192,52 @@ export function createWorldconsSearchServiceApp(
     }
   });
 
+  app.post("/internal/site-events/write", async (c) => {
+    let row: BoundSiteEventWriteRow;
+    try {
+      row = internalSiteEventWriteInput(await c.req.json<Record<string, unknown>>());
+    } catch {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "INVALID_REQUEST", retryable: false },
+      }, 400, { "Cache-Control": "no-store" });
+    }
+
+    try {
+      if (dependencies.siteEventWrite) {
+        await dependencies.siteEventWrite(row, c.env);
+      } else {
+        await writeSiteEventToSupabase(
+          dependencies.provider?.fetcher ?? fetch,
+          c.env,
+          row,
+        );
+      }
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_search_service_site_event_write_error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "SERVICE_UNAVAILABLE", retryable: true },
+      }, 503, {
+        "Cache-Control": "no-store",
+        "Retry-After": "30",
+        "X-Content-Type-Options": "nosniff",
+      });
+    }
+  });
+
   app.all("*", (c) => c.json({
     schemaVersion: 1,
     service: "worldcons-search",
@@ -253,6 +309,93 @@ function internalCclMetasearchInput(body: Record<string, unknown>) {
     sort: body.sort,
   });
   return parseCclMetasearchSearchParams(params);
+}
+
+const SITE_EVENT_TYPE_SET = new Set<string>(SITE_EVENT_TYPE_VALUES);
+
+function internalSiteEventWriteInput(body: Record<string, unknown>): BoundSiteEventWriteRow {
+  if (!SITE_EVENT_TYPE_SET.has(stringField(body.event_type))) {
+    throw new Error("invalid event type");
+  }
+  const metadata = body.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    throw new Error("invalid metadata");
+  }
+  const resultCount = nullableInteger(body.result_count);
+  return {
+    event_type: stringField(body.event_type),
+    path: nullableString(body.path),
+    article_id: nullableString(body.article_id),
+    article_slug: nullableString(body.article_slug),
+    article_title: nullableString(body.article_title),
+    tag_slug: nullableString(body.tag_slug),
+    tag_name: nullableString(body.tag_name),
+    source_key: nullableString(body.source_key),
+    jurisdiction: nullableString(body.jurisdiction),
+    institution_name: nullableString(body.institution_name),
+    search_query: nullableString(body.search_query),
+    search_mode: nullableString(body.search_mode),
+    result_count: resultCount,
+    referrer_host: nullableString(body.referrer_host),
+    user_agent_family: nullableString(body.user_agent_family),
+    device_type: nullableString(body.device_type),
+    client_ip_hash: nullableString(body.client_ip_hash),
+    accept_language: nullableString(body.accept_language),
+    client_country: nullableString(body.client_country),
+    is_bot: booleanField(body.is_bot),
+    metadata: metadata as Record<string, unknown>,
+  };
+}
+
+function stringField(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) throw new Error("invalid string");
+  return value;
+}
+
+function nullableString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error("invalid nullable string");
+  return value;
+}
+
+function nullableInteger(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isSafeInteger(value) || Number(value) < 0) throw new Error("invalid integer");
+  return Number(value);
+}
+
+function booleanField(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new Error("invalid boolean");
+  return value;
+}
+
+async function writeSiteEventToSupabase(
+  fetcher: typeof fetch,
+  env: WorldconsSearchWorkerEnv,
+  row: BoundSiteEventWriteRow,
+) {
+  const supabaseUrl = env.SUPABASE_URL?.trim() || "";
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("site_event_supabase_not_configured");
+  }
+  const endpoint = new URL("/rest/v1/site_events", supabaseUrl);
+  const response = await fetcher(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify(row),
+    signal: AbortSignal.timeout(5_000),
+  });
+  await response.body?.cancel();
+  if (!response.ok) {
+    throw new Error("site_event_supabase_write_failed");
+  }
 }
 
 const app = createWorldconsSearchServiceApp();

@@ -21,6 +21,7 @@ export interface D1RuntimeResult<T = Record<string, unknown>> {
 export interface D1RuntimePreparedStatement {
   bind(...values: unknown[]): D1RuntimePreparedStatement;
   all<T = Record<string, unknown>>(): Promise<D1RuntimeResult<T>>;
+  run?(): Promise<D1RuntimeResult>;
 }
 
 export interface D1RuntimeDatabase {

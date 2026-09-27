@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.0",
+  "decision": "GO-SITE-EVENTS-WRITE-AUTHORITY-CANARY",
+  "status": "pass",
+  "date": "2026-09-27",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "site_events",
+    "m11GloballyComplete": false,
+    "publicCutover": false
+  },
+  "authorityModes": [
+    "supabase",
+    "d1-canary",
+    "d1"
+  ],
+  "legacyBridge": {
+    "caller": "worldcons-m3-spike",
+    "binding": "WORLDCONS_SEARCH_SERVICE",
+    "service": "worldcons-search",
+    "path": "/internal/site-events/write",
+    "publiclyExposed": false,
+    "observedCalls": [
+      {
+        "status": 204,
+        "outcome": "ok",
+        "wallTimeMs": 718
+      },
+      {
+        "status": 204,
+        "outcome": "ok",
+        "wallTimeMs": 457
+      }
+    ]
+  },
+  "baseline": {
+    "authority": "supabase",
+    "path": "/__m11/supabase-control-20260927-2230-b1",
+    "d1Rows": 0,
+    "supabaseRows": 1
+  },
+  "selectiveCanary": {
+    "authority": "d1-canary",
+    "path": "/__m11/d1-runtime-canary-20260927-2232-c1",
+    "marker": "metadata.m11Canary=true",
+    "d1Rows": 1,
+    "supabaseRows": 0
+  },
+  "fullD1Canary": {
+    "authority": "d1",
+    "path": "/__m11/d1-full-20260927-2233-c1",
+    "d1Rows": 1,
+    "supabaseRows": 0
+  },
+  "rollback": {
+    "authority": "supabase",
+    "path": "/__m11/rollback-control-20260927-2234-c1",
+    "d1Rows": 0,
+    "supabaseRows": 1,
+    "testRowsRemoved": true,
+    "d1FinalCount": 15516
+  },
+  "deployments": {
+    "worldconsSearchVersion": "d2e28047-3606-4313-9225-5e1693e9dda3",
+    "worldconsMainVersionAfterRollback": "255f401e-522f-4952-9806-26d4ebb99f49"
+  },
+  "restingState": {
+    "siteEventsWriteAuthority": "supabase",
+    "searchServiceBinding": "worldcons-search"
+  },
+  "verification": {
+    "m11Tests": "6/6",
+    "m9Tests": "8/8",
+    "m9Typecheck": "pass",
+    "rootTypecheck": "pass",
+    "lint": "pass",
+    "diffCheck": "pass",
+    "vinextBuild": "pass"
+  },
+  "next": "continue worldcons_ops write authority before ingest/core"
+}

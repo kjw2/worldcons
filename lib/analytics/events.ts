@@ -2,6 +2,12 @@ import { getSupabaseAdmin } from "@/lib/db/client";
 import { recordAdminAuditLog } from "@/lib/db/admin-audit";
 import { redactAdminAuditEventInput } from "@/lib/security/audit-redaction";
 import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
+import {
+  getRuntimeSiteEventsWriteAuthorityConfig,
+  shouldWriteSiteEventToD1,
+  writeSiteEventToRuntimeD1,
+} from "@/lib/cloudflare/d1/write-authority/site-events";
+import { writeSiteEventViaRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
 
 export type SiteEventType =
   | "page_view"
@@ -160,9 +166,6 @@ export function isPublicClientEventType(value: string): value is SiteEventType {
 export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLike) {
   if (process.env.SITE_ANALYTICS_ENABLED === "false" || isPrefetch(headers)) return;
 
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
   const safeInput = redactAdminAuditEventInput(input);
   const payload = {
     event_type: safeInput.eventType,
@@ -187,6 +190,39 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
     is_bot: isBot(headers),
     metadata: sanitizedMetadata(safeInput.metadata),
   };
+
+  const authorityConfig = getRuntimeSiteEventsWriteAuthorityConfig();
+  if (shouldWriteSiteEventToD1({
+    eventType: safeInput.eventType,
+    path: payload.path,
+    metadata: payload.metadata,
+  }, authorityConfig)) {
+    try {
+      await writeSiteEventToRuntimeD1(payload);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_site_events_d1_write_failed",
+        authority: authorityConfig.authority,
+        error: error instanceof Error ? error.message : "UnknownError",
+      }));
+    }
+    return;
+  }
+
+  try {
+    const bridged = await writeSiteEventViaRuntimeSearchService(payload);
+    if (bridged) return;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "worldcons_site_events_legacy_bridge_failed",
+      authority: authorityConfig.authority,
+      error: error instanceof Error ? error.message : "UnknownError",
+    }));
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
 
   const { error } = await supabase.from("site_events").insert(payload);
   if (error) {

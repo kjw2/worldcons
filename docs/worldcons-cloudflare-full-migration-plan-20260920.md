@@ -1490,6 +1490,35 @@ Each domain requires a GO gate and rollback checkpoint.
 
 Supabase remains retained and immutable enough for rollback during the window.
 
+M11.0 site-events runtime authority slice (2026-09-27):
+
+- Added an explicit
+  `WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY=supabase|d1-canary|d1` seam.
+- `d1-canary` is restricted to the M11 canary path plus
+  `metadata.m11Canary=true`; full `d1` sends all Cloudflare runtime
+  `site_events` writes to `worldcons_ops`.
+- The first canary revealed that the Cloudflare spike has no Supabase secrets,
+  so switching back to the historical direct Supabase path would be a no-op.
+  Added a private Service Binding compatibility bridge through
+  `worldcons-search /internal/site-events/write`, which already holds the
+  temporary M9 Supabase credential. Vercel remains on its direct Supabase path.
+- Live baseline under `supabase`: D1 0 / Supabase 1.
+- Live selective `d1-canary`: D1 1 / Supabase 0.
+- Live full `d1`: D1 1 / Supabase 0.
+- Rollback to `supabase`: D1 0 / Supabase 1.
+- Observability recorded two final private bridge calls at HTTP 204 /
+  `outcome=ok`.
+- All test rows were deleted and D1 returned to 15,516 rows.
+- Current resting authority is `supabase`.
+- `test:m11` 6/6, M9 8/8, Worker/root typechecks, lint, diff-check and vinext
+  build pass.
+- **GO-SITE-EVENTS-WRITE-AUTHORITY-CANARY: PASS.**
+- This does not complete M11 globally; remaining ops writes, ingest and
+  core/publication remain pending.
+- Detailed evidence:
+  `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md` and
+  `artifacts/cloudflare-m11/go-site-events-write-authority-canary-20260927.json`.
+
 ### M12 — Cloudflare production frontend/API cutover
 
 Objective:
@@ -1700,7 +1729,11 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   switch runtime authority. See
   `docs/worldcons-cloudflare-m10-d1-write-canary-20260927.md` and
   `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.)
-- [ ] domain-by-domain D1 authority
+- [ ] domain-by-domain D1 authority (M11.0 first ops slice complete:
+  `site_events` has a canary/full-D1/rollback authority seam and live proof;
+  resting authority remains Supabase. Remaining ops writes plus ingest and
+  core/publication are still pending. See
+  `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`.)
 - [ ] Workers production cutover
 - [ ] Supabase final export
 - [ ] stranded Vercel object recovery/inventory

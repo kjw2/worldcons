@@ -7,6 +7,10 @@ import { createWaitUntilBackgroundScheduler, setRuntimeBackgroundScheduler } fro
 import { setRuntimeD1Bindings, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { resolveD1ShadowConfig, setRuntimeD1ShadowConfig } from "@/lib/cloudflare/d1/shadow/config";
 import {
+  resolveSiteEventsWriteAuthorityConfig,
+  setRuntimeSiteEventsWriteAuthorityConfig,
+} from "@/lib/cloudflare/d1/write-authority/site-events";
+import {
   setRuntimeSearchServiceBinding,
   type WorldconsSearchServiceFetcher,
 } from "@/lib/cloudflare/services/search-service-binding";
@@ -20,6 +24,7 @@ interface WorldconsWorkerEnv {
   WORLDCONS_SEARCH_SERVICE?: WorldconsSearchServiceFetcher;
   WORLDCONS_SEARCH_SERVICE_ENABLED?: string;
   WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?: string;
+  WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY?: string;
   [key: string]: unknown;
 }
 
@@ -51,6 +56,9 @@ export default {
     });
     setRuntimeBackgroundScheduler(createWaitUntilBackgroundScheduler(ctx));
     setRuntimeD1ShadowConfig(resolveD1ShadowConfig(env as Record<string, string | undefined>));
+    setRuntimeSiteEventsWriteAuthorityConfig(
+      resolveSiteEventsWriteAuthorityConfig(env as Record<string, string | undefined>),
+    );
     setRuntimeSearchServiceBinding(
       env.WORLDCONS_SEARCH_SERVICE,
       env.WORLDCONS_SEARCH_SERVICE_ENABLED?.trim().toLowerCase() === "true",

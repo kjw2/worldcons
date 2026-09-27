@@ -73,6 +73,59 @@ export type BoundCclMetasearchPage<Item = unknown> = {
   total: number;
 };
 
+export type BoundSiteEventWriteRow = {
+  event_type: string;
+  path: string | null;
+  article_id: string | null;
+  article_slug: string | null;
+  article_title: string | null;
+  tag_slug: string | null;
+  tag_name: string | null;
+  source_key: string | null;
+  jurisdiction: string | null;
+  institution_name: string | null;
+  search_query: string | null;
+  search_mode: string | null;
+  result_count: number | null;
+  referrer_host: string | null;
+  user_agent_family: string | null;
+  device_type: string | null;
+  client_ip_hash: string | null;
+  accept_language: string | null;
+  client_country: string | null;
+  is_bot: boolean;
+  metadata: Record<string, unknown>;
+};
+
+/**
+ * Cloudflare-only legacy write bridge used during M11.
+ *
+ * A null result means no Service Binding exists (for example Vercel), so the
+ * caller must keep using its existing local Supabase client. Once a binding is
+ * present, failure is explicit and must not silently fall through to another
+ * remote writer.
+ */
+export async function writeSiteEventViaRuntimeSearchService(
+  row: BoundSiteEventWriteRow,
+): Promise<true | null> {
+  const state = runtimeSearchServiceState();
+  if (!state.binding) return null;
+  const response = await state.binding.fetch(new Request(
+    "https://worldcons-search.internal/internal/site-events/write",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(row),
+    },
+  ));
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("worldcons_site_events_legacy_bridge_unavailable");
+  }
+  await response.body?.cancel();
+  return true;
+}
+
 export async function searchCclMetasearchViaRuntimeService<Item = unknown>(
   input: BoundCclMetasearchInput,
 ): Promise<BoundCclMetasearchPage<Item> | null> {
