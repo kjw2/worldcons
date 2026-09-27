@@ -84,6 +84,43 @@ test("M9 search service is internal-only and has a bounded health surface", asyn
   });
 });
 
+test("M9 internal upstream probe never exposes secrets and verifies REST plus RPC reachability", async () => {
+  const seen: Array<{ url: string; authorization: string | null; apiKey: string | null }> = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    seen.push({
+      url: request.url,
+      authorization: request.headers.get("authorization"),
+      apiKey: request.headers.get("apikey"),
+    });
+    return Response.json({ ok: true });
+  };
+  const app = createWorldconsSearchServiceApp({ provider: { fetcher } });
+  const env = {
+    ...workerEnv,
+    GEMINI_API_KEY: "test-gemini-key",
+  } satisfies WorldconsSearchWorkerEnv;
+  const response = await app.request("https://service.internal/internal/upstream-probe", {}, env);
+  assert.equal(response.status, 200);
+  const payload = await response.json() as Record<string, unknown>;
+  assert.equal(payload.status, "healthy");
+  assert.equal(payload.supabaseHost, "project.supabase.co");
+  assert.deepEqual(payload.configured, {
+    supabaseUrl: true,
+    serviceRoleKey: true,
+    geminiApiKey: true,
+  });
+  assert.equal(JSON.stringify(payload).includes("test-service-role-key"), false);
+  assert.equal(JSON.stringify(payload).includes("test-gemini-key"), false);
+  assert.equal(seen.length, 2);
+  assert.match(seen[0].url, /\/rest\/v1\/$/u);
+  assert.match(seen[1].url, /\/rest\/v1\/rpc\/worldcons_provider_sources_v1$/u);
+  for (const request of seen) {
+    assert.equal(request.authorization, "Bearer test-service-role-key");
+    assert.equal(request.apiKey, "test-service-role-key");
+  }
+});
+
 test("M9 runtime Service Binding is default-off and fails closed when explicitly enabled without a binding", async () => {
   clearRuntimeSearchServiceBinding();
   const request = new Request("https://service.internal/api/sources");
@@ -96,15 +133,23 @@ test("M9 runtime Service Binding is default-off and fails closed when explicitly
   );
 
   let seenPath = "";
+  let boundResponse: Response | null = null;
   setRuntimeSearchServiceBinding({
     async fetch(boundRequest) {
       seenPath = new URL(boundRequest.url).pathname;
-      return Response.json({ ok: true });
+      boundResponse = Response.json({ ok: true }, {
+        status: 201,
+        headers: { "X-Bound-Response": "yes" },
+      });
+      return boundResponse;
     },
   }, true);
   const response = await forwardToRuntimeSearchService(request);
-  assert.equal(response?.status, 200);
+  assert.equal(response?.status, 201);
   assert.equal(seenPath, "/api/sources");
+  assert.equal(response?.headers.get("x-bound-response"), "yes");
+  assert.deepEqual(await response?.json(), { ok: true });
+  assert.notEqual(response, boundResponse);
   clearRuntimeSearchServiceBinding();
 });
 

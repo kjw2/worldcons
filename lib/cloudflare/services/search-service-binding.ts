@@ -44,7 +44,21 @@ export async function forwardToRuntimeSearchService(request: Request): Promise<R
   const state = runtimeSearchServiceState();
   if (!state.cclrag2Enabled) return null;
   if (!state.binding) throw new Error("worldcons_search_service_binding_unavailable");
-  return state.binding.fetch(request);
+  const response = await state.binding.fetch(request);
+  return materializeRuntimeSearchServiceResponse(response);
+}
+
+async function materializeRuntimeSearchServiceResponse(response: Response) {
+  const init: ResponseInit = {
+    status: response.status,
+    statusText: response.statusText,
+    headers: new Headers(response.headers),
+  };
+  if (!response.body || response.status === 204 || response.status === 205 || response.status === 304) {
+    await response.body?.cancel();
+    return new Response(null, init);
+  }
+  return new Response(await response.arrayBuffer(), init);
 }
 
 export type BoundCclMetasearchInput = {

@@ -1402,7 +1402,7 @@ Objective:
 Acceptance:
 - API contract suite and plugin/cclrag2/cclmetasearch/MasterDash parity.
 
-M9.0 foundation (2026-09-27):
+M9 completion (2026-09-27):
 
 - Selected the cclrag2 provider as the first extraction boundary because its
   core implementation is already Web-standard `Request -> Response` and
@@ -1418,13 +1418,31 @@ M9.0 foundation (2026-09-27):
   retains the existing direct provider fallback. Explicitly enabling the
   binding without a usable target fails closed instead of hiding a failed
   canary.
-- `test:m9` 5/5, cclrag2 19/19, provider 20/20, security 6/6, root/Worker
+- Added the cclmetasearch internal data plane and a second private
+  `cclmetasearch -> worldcons-search` Service Binding seam while preserving
+  its existing public token-authenticated fallback.
+- Required search Worker secrets are now present. Internal secret-free readiness
+  returned Supabase REST/RPC 200 and all required configuration present.
+- Fixed a real vinext cross-worker response handoff defect found by canary:
+  downstream Service Binding responses are materialized into a local bounded
+  `Response` before the Next route returns them.
+- cclrag2 fulltext parity canary returned the same single result as Vercel;
+  Cloudflare hybrid executed Gemini successfully with
+  `effectiveMode=hybrid`, `degraded=false`.
+- cclmetasearch private canary completed with one result and Observability
+  recorded `POST /internal/cclmetasearch/search` -> HTTP 200 on
+  `worldcons-search`.
+- Plugin tests 12/12 and live MCP health 200 ready; MasterDash tests 22/22 and
+  live health preserves the established 2xx degraded contract when its
+  collector DB is absent.
+- `test:m9` 8/8, cclrag2 19/19, provider 20/20, security 6/6, root/Worker
   typechecks, lint, search Worker dry-run, vinext build, generated vinext Worker
   dry-run and diff-check pass.
-- First real `worldcons-search` creation is pending because Wrangler requires
-  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `GEMINI_API_KEY` at
-  creation, while the current host safety layer blocked secret-file
-  construction. No bypass was attempted and no public cutover occurred.
+- `worldcons-search` currently runs internal-only at
+  `881574e8-f145-483b-96af-4a34a0ead469`. The main WorldCons and
+  cclmetasearch binding flags both rest OFF after successful canaries; no M12
+  public cutover has occurred.
+- **GO-SERVICE-BINDING: PASS.**
 - Detailed evidence:
   `docs/worldcons-cloudflare-m9-api-service-extraction-20260927.md`.
 
@@ -1642,12 +1660,14 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [x] Vectorize parity (M7.4-M7.6 foundation/canary work remains verified: isolated `worldcons-search-canary-v2` is at 100 vectors and the isolated D1 canary at 100 documents/FTS, with append-only 15->100 expansion. M7.8-A removed the former production semantic-oracle blocker: migration `20260926120000` is **APPLIED/VERIFIED**, the production projection is 1,258/1,258 with embedding NULL 0 and provenance mismatch 0, and semantic/hybrid smoke is 4/4 with `oracleDrift=0`. M7.9 then measured the actually deployed bearer path: fulltext 4/4 at p50/p95 131/479 ms, semantic 2/2 at 143/160 ms, hybrid 2/2 at 453/461 ms, with zero mismatches/errors and `stableHash=cb2f07f86f76a074`. `GO-SEARCH` readiness is PASS; no production authority, DNS, route or traffic switch has occurred.)
 - [x] Queues/DLQ/Workflows migration (M8 code complete and deployed with a per-kind canary allowlist, scheduler **disabled** at rest: `worldcons-ingest` resting `510507c0-de82-4019-a1dd-d2a1f8f37cf4` has Cron/Queue/Workflow bindings, `M8_SCHEDULER_ENABLED=false` and `M8_ENABLED_KINDS=admin-health`; `worldcons-async-v1` + `worldcons-async-dlq-v1` exist; all six legacy GitHub `schedule:` triggers and the Vercel `crons` list are removed while manual dispatch + `m8_idempotency_key` remain. The controlled admin-health canary produced one Queue → Workflow → GitHub execution and replay deduplicated. Request-governor parity, restart/recovery and no-duplicate-publication are covered. On 2026-09-27 the P5 forward-fixes converged publication mismatch 14→0, unresolved quarantine 12→0, lifecycle backlog 5→0 and drained all 14 generated P3 outbox events; final `admin:health:p5` passes with `hardViolationKeys=[]`. Automatic retry→DLQ activity is observed under the unchanged retry policy. Body-level attribution of the injected probe remains an explicit read-only API observability limitation, not a safety-path failure. **GO-ASYNC is recorded; scheduler activation is intentionally separate and remains OFF.** See `docs/worldcons-cloudflare-m8-async-pipeline-completion-20260926.md` §0d and `artifacts/cloudflare-m8/go-async-acceptance-evidence-20260926.json`.)
 - [ ] Browser Run/Container crawler parity (M8 Browser Run transport deployed: `worldcons-browser-run` `f324efe7-9912-4b22-8c94-74aab2a3fc6f` with the `BROWSER` binding returns a real Supreme Court discovery at HTTP/navigation 200 with 127875 HTML chars. This is transport evidence only, not per-source crawler parity; full Cloudflare execution would require Containers and is deferred. GitHub Actions remains the Node compatibility executor.)
-- [ ] Hono service binding migration (M9.0 foundation complete: internal
-  `worldcons-search` Hono Worker, default-OFF Service Binding seam and public
-  rate-limit-preserving adapter are implemented and fully dry-run verified;
-  first internal Worker deploy + Service Binding canary remain pending required
-  secret injection. See
-  `docs/worldcons-cloudflare-m9-api-service-extraction-20260927.md`.)
+- [x] Hono service binding migration (M9 complete: internal
+  `worldcons-search` is deployed internal-only; cclrag2 and cclmetasearch
+  private Service Bindings are implemented, deployed and canary-proven; the
+  vinext response-handoff defect found during canary was fixed; plugin and
+  MasterDash parity checks pass. Both binding flags intentionally rest OFF and
+  public cutover remains M12. See
+  `docs/worldcons-cloudflare-m9-api-service-extraction-20260927.md` and
+  `artifacts/cloudflare-m9/go-service-binding-acceptance-evidence-20260927.json`.)
 - [ ] D1 bounded write canary
 - [ ] domain-by-domain D1 authority
 - [ ] Workers production cutover

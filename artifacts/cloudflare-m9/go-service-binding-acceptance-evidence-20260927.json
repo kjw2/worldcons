@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M9",
+  "decision": "GO-SERVICE-BINDING",
+  "status": "pass",
+  "date": "2026-09-27",
+  "authorityChanged": false,
+  "publicCutover": false,
+  "worldconsSearch": {
+    "worker": "worldcons-search",
+    "versionId": "881574e8-f145-483b-96af-4a34a0ead469",
+    "workersDevEnabled": false,
+    "previewsEnabled": false,
+    "requiredSecretsPresent": [
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "GEMINI_API_KEY"
+    ],
+    "upstreamProbe": {
+      "status": 200,
+      "supabaseRestStatus": 200,
+      "supabaseRestMs": 995,
+      "supabaseRpcStatus": 200,
+      "supabaseRpcMs": 80,
+      "secretValuesExposed": false
+    }
+  },
+  "cclrag2Canary": {
+    "restingFlag": false,
+    "fulltext": {
+      "query": "gerrymandering",
+      "status": 200,
+      "contractVersion": "2.0",
+      "degraded": false,
+      "total": 1,
+      "baselineResultMatched": true
+    },
+    "hybrid": {
+      "status": 200,
+      "effectiveMode": "hybrid",
+      "degraded": false,
+      "total": 4
+    }
+  },
+  "cclmetasearchCanary": {
+    "repositoryCheckpoint": "c3a73253d7480d688c59d32cc42ae5010e23a878",
+    "restingFlag": false,
+    "query": "gerrymandering gerrymandering",
+    "sessionId": "session_1854a6d2dc5c4f45ba8a578dd24917ee",
+    "status": "completed",
+    "resultCount": 1,
+    "serviceBindingInvocation": {
+      "path": "/internal/cclmetasearch/search",
+      "status": 200,
+      "outcome": "ok",
+      "wallTimeMs": 4819,
+      "observedWorkerVersion": "4c30ae13-a5ed-4602-80c1-6bda9b23c86c"
+    }
+  },
+  "parity": {
+    "m9Tests": "8/8",
+    "cclrag2Tests": "19/19",
+    "providerTests": "20/20",
+    "securityTests": "6/6",
+    "pluginTests": "12/12",
+    "masterdashTests": "22/22",
+    "pluginLiveHealth": "200 ready",
+    "masterdashLiveHealth": "200 degraded-contract"
+  },
+  "restingState": {
+    "worldconsMainSearchBindingEnabled": false,
+    "worldconsMainCclmetasearchBindingEnabled": false,
+    "cclmetasearchWorldconsBindingEnabled": false,
+    "m8SchedulerEnabled": false
+  },
+  "nextMilestone": "M10 bounded D1 write canary"
+}

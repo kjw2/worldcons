@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import {
   handleWorldconsSearchRequest,
   type Cclrag2ProviderEnv,
@@ -68,6 +68,68 @@ export function createWorldconsSearchServiceApp(
     "X-Content-Type-Options": "nosniff",
   }));
 
+  const upstreamProbe = async (c: Context<{ Bindings: WorldconsSearchWorkerEnv }>) => {
+    const supabaseUrl = c.env.SUPABASE_URL?.trim() || "";
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+    const configured = {
+      supabaseUrl: Boolean(supabaseUrl),
+      serviceRoleKey: Boolean(serviceRoleKey),
+      geminiApiKey: Boolean(c.env.GEMINI_API_KEY?.trim()),
+    };
+
+    let supabaseHost: string | null = null;
+    try {
+      supabaseHost = supabaseUrl ? new URL(supabaseUrl).host : null;
+    } catch {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        status: "unhealthy",
+        configured,
+        supabaseHost: null,
+        rest: { ok: false, status: null, error: "invalid_supabase_url" },
+        rpc: { ok: false, status: null, error: "invalid_supabase_url" },
+      }, 503, { "Cache-Control": "no-store" });
+    }
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        status: "unhealthy",
+        configured,
+        supabaseHost,
+        rest: { ok: false, status: null, error: "not_configured" },
+        rpc: { ok: false, status: null, error: "not_configured" },
+      }, 503, { "Cache-Control": "no-store" });
+    }
+
+    const fetcher = dependencies.provider?.fetcher ?? fetch;
+    const rest = await probeSupabase(fetcher, supabaseUrl, serviceRoleKey, "/rest/v1/", undefined, 3_000);
+    const rpc = await probeSupabase(
+      fetcher,
+      supabaseUrl,
+      serviceRoleKey,
+      "/rest/v1/rpc/worldcons_provider_sources_v1",
+      {},
+      5_000,
+    );
+    const healthy = rest.ok && rpc.ok;
+    return c.json({
+      schemaVersion: 1,
+      service: "worldcons-search",
+      status: healthy ? "healthy" : "unhealthy",
+      configured,
+      supabaseHost,
+      rest,
+      rpc,
+    }, healthy ? 200 : 503, {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+  };
+  app.get("/internal/upstream-probe", upstreamProbe);
+
   // This Worker is internal-only (workers_dev=false, no public route). Public
   // rate limiting stays at the caller boundary before a Service Binding call.
   // Keep the provider contract byte-for-byte compatible during M9 canary.
@@ -134,6 +196,45 @@ export function createWorldconsSearchServiceApp(
   }));
 
   return app;
+}
+
+async function probeSupabase(
+  fetcher: typeof fetch,
+  baseUrl: string,
+  serviceRoleKey: string,
+  pathname: string,
+  body: Record<string, unknown> | undefined,
+  timeoutMs: number,
+) {
+  const startedAt = Date.now();
+  try {
+    const endpoint = new URL(pathname, baseUrl);
+    const response = await fetcher(endpoint, {
+      method: body ? "POST" : "GET",
+      headers: {
+        Accept: "application/json",
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    await response.body?.cancel();
+    return {
+      ok: response.ok,
+      status: response.status,
+      error: response.ok ? null : "http_error",
+      ms: Date.now() - startedAt,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      error: error instanceof Error ? error.name : "UnknownError",
+      ms: Date.now() - startedAt,
+    };
+  }
 }
 
 function internalCclMetasearchInput(body: Record<string, unknown>) {
