@@ -39,6 +39,7 @@
     "node_modules",
     "workers/async-pipeline",
     "workers/browser-run",
-    "workers/search-service"
+    "workers/search-service",
+    "workers/ops-write"
   ]
 }

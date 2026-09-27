@@ -110,5 +110,5 @@
     "no deploy/credential access in this environment; controller owns live steps",
     "admin_ops_events and ops_workflow_heartbeats blocked on a Cloudflare-native Node/GitHub compatibility write boundary"
   ],
-  "next": "introduce minimal private Cloudflare-native compatibility/write boundary for Node/GitHub-owned ops_workflow_heartbeats or admin_ops_events"
+  "next": "introduce minimal Cloudflare-native compatibility/write boundary for Node/GitHub-owned ops_workflow_heartbeats or admin_ops_events (later realized as M11.3 worldcons-ops-write: publicly reachable only via workers.dev, all entry points bearer-authenticated)"
 }

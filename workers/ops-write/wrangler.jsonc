@@ -1,0 +1,46 @@
+{
+  // WorldCons M11.3 ops-write boundary Worker.
+  //
+  // This Worker is intentionally reachable from the public internet through its
+  // workers.dev endpoint because the Node/GitHub callers that own
+  // `ops_workflow_heartbeats` cannot use a Worker Service Binding. It is NOT an
+  // internal-only Worker and must never be described as private:
+  //   - `workers_dev: true` exposes only
+  //     https://worldcons-ops-write.<subdomain>.workers.dev;
+  //   - `preview_urls: false` disables the per-version `<version>-<name>` preview
+  //     URLs so no unauthenticated, non-production version endpoint exists;
+  //   - it declares NO `routes`/`route` and NO custom domain, so the workers.dev
+  //     endpoint is the only entry point;
+  //   - every entry point (`POST /v1/ops/heartbeat` and `GET /health`) requires
+  //     the constant-time bearer `OPS_WRITE_TOKEN`, so this is a publicly
+  //     reachable but bearer-authenticated narrow write endpoint. There is no
+  //     unauthenticated write or health surface.
+  //
+  // By contrast, `worldcons-search` remains internal-only (Service Binding) and
+  // is not reachable over workers.dev.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "worldcons-ops-write",
+  "main": "./src/index.ts",
+  "compatibility_date": "2026-09-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "secrets": { "required": ["OPS_WRITE_TOKEN"] },
+  "vars": {
+    "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "supabase"
+  },
+  "services": [
+    {
+      "binding": "WORLDCONS_SEARCH_SERVICE",
+      "service": "worldcons-search"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "WORLDCONS_OPS",
+      "database_name": "worldcons_ops",
+      "database_id": "6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4"
+    }
+  ]
+}

@@ -168,7 +168,9 @@ so steps 3–7 were not completed.
 ## Next step
 
 Continue M11 ops inventory. The next safest target is to introduce the minimal
-private Cloudflare-native compatibility/write boundary for the Node/GitHub-owned
+Cloudflare-native compatibility/write boundary for the Node/GitHub-owned
 `ops_workflow_heartbeats` (or `admin_ops_events`) writer before migrating its
-authority. Do not switch `admin_audit_logs` or `admin_article_edit_history` to
-full `d1` authority until the broader M11 GO gate.
+authority. (Later realized as M11.3's `worldcons-ops-write`: publicly reachable
+only via workers.dev but every entry point is bearer-authenticated.) Do not
+switch `admin_audit_logs` or `admin_article_edit_history` to full `d1` authority
+until the broader M11 GO gate.

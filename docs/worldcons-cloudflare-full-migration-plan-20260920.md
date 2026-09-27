@@ -1586,6 +1586,41 @@ M11.2 admin-article-edit authority seam (2026-09-28):
   and
   `artifacts/cloudflare-m11/m11.2-admin-article-edit-authority-seam-20260928.json`.
 
+M11.3 ops-workflow-heartbeat Node/GitHub write boundary (2026-09-28):
+
+- Introduces the minimal safe Cloudflare-native compatibility/write boundary
+  that Node/GitHub callers (which cannot use a Worker Service Binding) can
+  invoke, and selects the append-only
+  `worldcons_ops.ops_workflow_heartbeats` surface as the lower-risk first target
+  over `admin_ops_events`.
+- Adds a dedicated, publicly reachable but bearer-authenticated Worker
+  `worldcons-ops-write` (`workers/ops-write`, `workers_dev=true`,
+  `preview_urls=false`, no `routes`/custom domain) with two authenticated
+  entries `POST /v1/ops/heartbeat` and `GET /health`, both guarded by a
+  constant-time bearer `OPS_WRITE_TOKEN`. The public workers.dev endpoint exposes
+  no unauthenticated write or diagnostic surface. This is required because
+  Node/GitHub callers cannot use a Worker Service Binding.
+- The boundary resolves D1-vs-Supabase authority independently of the caller:
+  `supabase` relays through the new internal
+  `worldcons-search /internal/ops-heartbeat/write` RPC bridge (the M9 Supabase
+  credential stays in `worldcons-search`); `d1-canary` selects only
+  `run_id=m11-ops-heartbeat-canary`; `d1` routes every heartbeat to
+  `worldcons_ops` with one parameterized, RPC-equivalent upsert. A D1 failure
+  fails closed (503) and is never silently downgraded.
+- `lib/ops/workflow-heartbeat.ts` now routes the real Node/GitHub call path
+  through the explicit seam and falls back to the existing
+  `ops_workflow_heartbeat_v1` RPC only under the resting `supabase` authority.
+  No schema or old migration changed; rollback is one var back to `supabase`.
+- Code and 15 focused tests complete; `test:m11` is now 35/35, M9 8/8,
+  `test:ops` 10/10, root/Worker typechecks, lint (0 warnings), ops-write dry-run
+  and `git diff --check` pass. Resting authority is `supabase`.
+- **GO-OPS-WRITE-BOUNDARY: CODE READY.** No live write canary is claimed; a
+  controller with Cloudflare/DB credentials owns the live canary. `admin_ops_events`
+  (M11.4) and ingest/core-publication remain pending.
+- Detailed evidence:
+  `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md` and
+  `artifacts/cloudflare-m11/m11.3-ops-heartbeat-write-boundary-20260928.json`.
+
 ### M12 — Cloudflare production frontend/API cutover
 
 Objective:
@@ -1811,13 +1846,26 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   temporary canary Worker deployed but the outbound invocation was blocked by
   the execution environment before reaching Cloudflare, so no live write canary
   is claimed and live write proof remains pending (`admin_article_edit_history`
-  stayed D1=0 / Supabase=0). Resting authority remains
-  Supabase. `admin_ops_events`/`ops_workflow_heartbeats` remain blocked on a
-  Cloudflare-native Node/GitHub compatibility write boundary, and ingest plus
+  stayed D1=0 / Supabase=0). M11.3 adds the minimal Cloudflare-native
+  compatibility/write boundary for the Node/GitHub-owned
+  `ops_workflow_heartbeats` writer: a dedicated `worldcons-ops-write` Worker that
+  is publicly reachable only through its workers.dev endpoint (`workers_dev=true`,
+  `preview_urls=false`, no `routes`/custom domain), with `POST /v1/ops/heartbeat`
+  and `GET /health` both behind a constant-time bearer `OPS_WRITE_TOKEN` and no
+  unauthenticated write or diagnostic surface. It has an independent
+  `supabase|d1-canary|d1` authority, a parameterized RPC-equivalent D1 upsert, an
+  internal `worldcons-search /internal/ops-heartbeat/write` Supabase RPC bridge,
+  and the real `recordWorkflowHeartbeat` call path routed through the seam with a
+  `supabase` resting default. The Node-side and boundary-Worker authority vars
+  must be deliberately coordinated for `d1-canary`/`d1`. No live canary is
+  claimed; a controller owns it. Resting authority remains Supabase.
+  `admin_ops_events` (M11.4) still needs the same boundary, and ingest plus
   core/publication are still pending. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
-  `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md` and
-  `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`.)
+  `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
+  `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`
+  and
+  `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`.)
 - [ ] Workers production cutover
 - [ ] Supabase final export
 - [ ] stranded Vercel object recovery/inventory

@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3",
+  "decision": "CODE-AND-BOUNDARY-READY-LIVE-CANARY-PENDING-NO-LIVE-PROOF",
+  "status": "code_ready_resting_at_supabase",
+  "date": "2026-09-28",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "m11GloballyComplete": false,
+    "liveCanaryClaimed": false,
+    "deployOrCommitPerformed": false
+  },
+  "selection": {
+    "surface": "ops_workflow_heartbeats",
+    "writer": "recordWorkflowHeartbeat (lib/ops/workflow-heartbeat.ts)",
+    "executionOwner": [
+      "GitHub Actions workflows",
+      "Node scripts (ops-watchdog, summarize-pending, crawlee-worker, backfill-*, admin-command-worker-p1)",
+      "Vercel fallback route app/api/ops/watchdog/route.ts"
+    ],
+    "rationale": "lower-risk first target: append/upsert only, one row per key, no read-modify-write, no delete in the writer, single call path through recordWorkflowHeartbeat, and only one authoritative SECURITY DEFINER RPC with small explicit service-layer gates",
+    "preferAppendOnlyHeartbeat": true,
+    "rejectedDeferred": [
+      {
+        "surface": "admin_ops_events",
+        "reason": "writer has read-before-write dedupe and a delete/prune path; needs a slightly broader compatibility contract (natural M11.4)"
+      },
+      {
+        "surface": "admin_jobs/admin_job_events, admin_command_*, P5 evidence, MasterDash, llm_settings",
+        "reason": "mutable queue/state machine or upsert state; higher risk"
+      }
+    ]
+  },
+  "securityModel": {
+    "boundary": "workers/ops-write (name worldcons-ops-write)",
+    "networkEntry": "POST /v1/ops/heartbeat and GET /health",
+    "publiclyExposed": true,
+    "reachability": "publicly reachable only via the workers.dev endpoint (workers_dev=true); preview URLs disabled (preview_urls=false); no routes/route and no custom domain",
+    "workersDev": true,
+    "previewUrls": false,
+    "publicRoutes": [],
+    "customDomain": null,
+    "auth": "constant-time bearer OPS_WRITE_TOKEN",
+    "unauthenticatedWriteEndpoint": false,
+    "publicDiagnosticEndpoint": false,
+    "healthRequiresAuth": true,
+    "internalOnlyPeer": "worldcons-search remains internal-only (workers_dev=false, Service Binding only)",
+    "roleSeparation": [
+      "Node/GitHub holds only the boundary bearer, never a Supabase credential for this path",
+      "boundary Worker resolves D1/Supabase authority independently from its own var",
+      "Supabase credential stays only in internal worldcons-search as in M9"
+    ],
+    "d1FailureBehavior": "fail closed (503); never silently downgraded to Supabase",
+    "sqlInjectionPosture": "parameterized upsert; no caller value enters SQL text",
+    "supabaseWritePath": "rest/v1/rpc/ops_workflow_heartbeat_v1 (service_role has SELECT only on the table)"
+  },
+  "authorityModes": ["supabase", "d1-canary", "d1"],
+  "canarySelector": {
+    "field": "run_id",
+    "value": "m11-ops-heartbeat-canary"
+  },
+  "preservedAuthority": {
+    "default": "supabase",
+    "rollback": "set WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=supabase (disables the seam and restores the local RPC); no schema/data change. Unsetting WORLDCONS_OPS_WRITE_BASE_URL alone is not a rollback: the seam stays enabled but unconfigured and fails closed",
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "reusedPatterns": {
+    "bearer": "M8 workers/browser-run constant-time token comparison",
+    "privateBridge": "M9 worldcons-search internal Service Binding + Supabase credential",
+    "authoritySeam": "M11.0/M11.1/M11.2 supabase|d1-canary|d1"
+  },
+  "filesChanged": [
+    "lib/cloudflare/ops-write/heartbeat.ts",
+    "lib/cloudflare/ops-write/boundary-client.ts",
+    "workers/ops-write/wrangler.jsonc",
+    "workers/ops-write/tsconfig.json",
+    "workers/ops-write/src/index.ts",
+    "workers/ops-write/worker-configuration.d.ts",
+    "workers/search-service/src/index.ts",
+    "lib/ops/workflow-heartbeat.ts",
+    "tests/m11-ops-heartbeat-write-boundary.test.ts",
+    ".env.example",
+    "package.json",
+    "tsconfig.json"
+  ],
+  "verification": {
+    "m11Tests": "35/35",
+    "newM113Tests": "15/15",
+    "m9Tests": "8/8",
+    "opsTests": "10/10",
+    "m113OpsWriteTypecheck": "pass",
+    "m113OpsWriteTypesCheck": "up_to_date",
+    "m9Typecheck": "pass",
+    "rootTypecheck": "pass",
+    "lint": "pass (0 errors, 0 warnings)",
+    "diffCheck": "pass",
+    "opsWriteDryRun": "pass",
+    "liveWriteCanary": "not_run_no_proof_claimed",
+    "pnpmCheck": "pre-existing unrelated failure (summary drain workflow must run on its own schedule)"
+  },
+  "liveCanaryPrerequisites": [
+    "deploy worldcons-search with /internal/ops-heartbeat/write; it stays internal-only",
+    "deploy worldcons-ops-write with a set OPS_WRITE_TOKEN and resting authority supabase; confirm workers.dev /health requires the bearer and preview URLs are disabled",
+    "set WORLDCONS_OPS_WRITE_BASE_URL/TOKEN on the GitHub/Node runner and capture baseline counts with the Node-side authority at supabase",
+    "coordinate both authority vars to d1-canary (Node side and boundary Worker var); drive one heartbeat with run_id=m11-ops-heartbeat-canary via a controller-issued authenticated POST /v1/ops/heartbeat (recordWorkflowHeartbeat derives run_id from the CI env and cannot emit the canary id): D1 +1 / Supabase unchanged",
+    "coordinate both authority vars to d1 with an ordinary heartbeat: D1 +1 / Supabase unchanged (may be blocked by execution environment)",
+    "roll both authority vars back to supabase: Node sends nothing to the boundary and the local RPC path resumes",
+    "delete the canary row and restore pre-canary counts"
+  ],
+  "blockers": [
+    "no Cloudflare/DB credential access in this environment; controller owns the live canary",
+    "write-only migration: getWorkflowHeartbeats readers (lib/ops/watchdog.ts, app/api/masterdash/health/route.ts) still read Supabase, so a full d1 write authority would leave those reads stale; needs a separate M11 read-authority parity step",
+    "admin_ops_events deferred to M11.4 (read-before-write dedupe + prune contract)",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "next": "live canary by controller; then M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract"
+}

@@ -16,6 +16,10 @@ import {
 import {
   SITE_EVENT_TYPE_VALUES,
 } from "@/lib/cloudflare/d1/schema/worldcons-ops";
+import {
+  parseOpsHeartbeatWriteRow,
+  type OpsHeartbeatWriteRow,
+} from "@/lib/cloudflare/ops-write/heartbeat";
 import type {
   BoundAdminArticleEditWriteRow,
   BoundAdminAuditWriteRow,
@@ -69,6 +73,10 @@ export interface WorldconsSearchServiceDependencies {
   ) => Promise<void>;
   adminArticleEditWrite?: (
     row: BoundAdminArticleEditWriteRow,
+    env: WorldconsSearchWorkerEnv,
+  ) => Promise<void>;
+  opsHeartbeatWrite?: (
+    row: OpsHeartbeatWriteRow,
     env: WorldconsSearchWorkerEnv,
   ) => Promise<void>;
 }
@@ -348,6 +356,59 @@ export function createWorldconsSearchServiceApp(
     }
   });
 
+  app.post("/internal/ops-heartbeat/write", async (c) => {
+    let row: OpsHeartbeatWriteRow;
+    try {
+      const parsed = parseOpsHeartbeatWriteRow(await c.req.json<Record<string, unknown>>());
+      if (!parsed.ok) {
+        return c.json({
+          schemaVersion: 1,
+          service: "worldcons-search",
+          error: { code: "INVALID_REQUEST", reason: parsed.error, retryable: false },
+        }, 400, { "Cache-Control": "no-store" });
+      }
+      row = parsed.row;
+    } catch {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "INVALID_REQUEST", retryable: false },
+      }, 400, { "Cache-Control": "no-store" });
+    }
+    try {
+      if (dependencies.opsHeartbeatWrite) {
+        await dependencies.opsHeartbeatWrite(row, c.env);
+      } else {
+        await writeOpsHeartbeatToSupabase(
+          dependencies.provider?.fetcher ?? fetch,
+          c.env,
+          row,
+        );
+      }
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_search_service_ops_heartbeat_write_error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "SERVICE_UNAVAILABLE", retryable: true },
+      }, 503, {
+        "Cache-Control": "no-store",
+        "Retry-After": "30",
+        "X-Content-Type-Options": "nosniff",
+      });
+    }
+  });
+
   app.all("*", (c) => c.json({
     schemaVersion: 1,
     service: "worldcons-search",
@@ -519,6 +580,43 @@ function nullableInteger(value: unknown): number | null {
 function booleanField(value: unknown): boolean {
   if (typeof value !== "boolean") throw new Error("invalid boolean");
   return value;
+}
+
+async function writeOpsHeartbeatToSupabase(
+  fetcher: typeof fetch,
+  env: WorldconsSearchWorkerEnv,
+  row: OpsHeartbeatWriteRow,
+) {
+  const supabaseUrl = env.SUPABASE_URL?.trim() || "";
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("ops_heartbeat_supabase_not_configured");
+  }
+  // `ops_workflow_heartbeats` only grants service_role SELECT on the table; the
+  // authorized write path is the SECURITY DEFINER `ops_workflow_heartbeat_v1`
+  // RPC. Call it directly rather than inserting into the table.
+  const endpoint = new URL("/rest/v1/rpc/ops_workflow_heartbeat_v1", supabaseUrl);
+  const response = await fetcher(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({
+      p_workflow_key: row.workflow_key,
+      p_status: row.status,
+      p_run_id: row.run_id,
+      p_detail: row.detail,
+      p_observed_at: row.observed_at,
+    }),
+    signal: AbortSignal.timeout(5_000),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload !== true) {
+    throw new Error("ops_heartbeat_supabase_write_failed");
+  }
 }
 
 async function writeSiteEventToSupabase(

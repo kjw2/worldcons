@@ -1,4 +1,5 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
+import { writeOpsHeartbeatViaBoundary } from "@/lib/cloudflare/ops-write/boundary-client";
 
 export const WORKFLOW_KEYS = ["collection", "summary", "embedding", "watchdog", "catalog_backfill"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
@@ -21,14 +22,32 @@ export async function recordWorkflowHeartbeat(
   status: WorkflowHeartbeatStatus,
   detail: Record<string, unknown> = {},
 ) {
+  const observedAt = new Date().toISOString();
+  const workflowRunId = runId();
+
+  // M11.3: when the explicit ops-heartbeat authority is enabled, Node/GitHub
+  // callers deliver the heartbeat through the publicly reachable, bearer-
+  // authenticated Cloudflare `worldcons-ops-write` boundary instead of the local
+  // Supabase RPC. The boundary owns the Supabase/D1 choice, so this process
+  // never needs a Supabase credential to use D1. The default `supabase`
+  // authority returns false here and preserves the existing RPC path exactly.
+  const delivered = await writeOpsHeartbeatViaBoundary({
+    workflowKey,
+    status,
+    runId: workflowRunId,
+    detail,
+    observedAt,
+  });
+  if (delivered) return;
+
   const supabase = getSupabaseServiceRoleAdmin();
   if (!supabase) throw new Error("Supabase service role is not configured for workflow heartbeat.");
   const { data, error } = await supabase.rpc("ops_workflow_heartbeat_v1", {
     p_workflow_key: workflowKey,
     p_status: status,
-    p_run_id: runId(),
+    p_run_id: workflowRunId,
     p_detail: detail,
-    p_observed_at: new Date().toISOString(),
+    p_observed_at: observedAt,
   });
   if (error) throw new Error(error.message);
   if (data !== true) throw new Error("Workflow heartbeat write was not confirmed.");
