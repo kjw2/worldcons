@@ -19,6 +19,7 @@ interface WorldconsWorkerEnv {
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
   WORLDCONS_SEARCH_SERVICE?: WorldconsSearchServiceFetcher;
   WORLDCONS_SEARCH_SERVICE_ENABLED?: string;
+  WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?: string;
   [key: string]: unknown;
 }
 
@@ -53,6 +54,7 @@ export default {
     setRuntimeSearchServiceBinding(
       env.WORLDCONS_SEARCH_SERVICE,
       env.WORLDCONS_SEARCH_SERVICE_ENABLED?.trim().toLowerCase() === "true",
+      env.WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?.trim().toLowerCase() === "true",
     );
     return handler.fetch(request, env, ctx);
   },

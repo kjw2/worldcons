@@ -16,8 +16,10 @@
   "vars": {
     "ENVIRONMENT": "production",
     "PUBLIC_BASE_URL": "https://worldcons.vercel.app/api/cclrag2",
+    "PUBLIC_SITE_BASE_URL": "https://worldcons.vercel.app",
     "EMBEDDING_PROVIDER": "gemini",
     "SEMANTIC_SEARCH_ENABLED": "true",
-    "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001"
+    "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",
+    "CCL_METASEARCH_DB_TIMEOUT_MS": "8000"
   }
 }

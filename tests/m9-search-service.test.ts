@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   clearRuntimeSearchServiceBinding,
   forwardToRuntimeSearchService,
+  searchCclMetasearchViaRuntimeService,
   setRuntimeSearchServiceBinding,
 } from "@/lib/cloudflare/services/search-service-binding";
 import {
@@ -47,7 +48,7 @@ test("M9 worldcons-search Hono service preserves the existing provider contract"
     providerEnv,
     { fetcher },
   );
-  const app = createWorldconsSearchServiceApp({ fetcher });
+  const app = createWorldconsSearchServiceApp({ provider: { fetcher } });
   const viaHono = await app.request(
     "https://service.internal/api/sources",
     { headers: { "x-request-id": "m9-contract" } },
@@ -88,7 +89,7 @@ test("M9 runtime Service Binding is default-off and fails closed when explicitly
   const request = new Request("https://service.internal/api/sources");
   assert.equal(await forwardToRuntimeSearchService(request), null);
 
-  setRuntimeSearchServiceBinding(undefined, true);
+  setRuntimeSearchServiceBinding(undefined, true, true);
   await assert.rejects(
     () => forwardToRuntimeSearchService(request),
     /worldcons_search_service_binding_unavailable/u,
@@ -105,6 +106,67 @@ test("M9 runtime Service Binding is default-off and fails closed when explicitly
   assert.equal(response?.status, 200);
   assert.equal(seenPath, "/api/sources");
   clearRuntimeSearchServiceBinding();
+});
+
+test("M9 cclmetasearch data-plane extraction is default-off and uses a validated internal binding when enabled", async () => {
+  clearRuntimeSearchServiceBinding();
+  const input = { query: "헌법", limit: 10, offset: 0, sort: "relevance" as const };
+  assert.equal(await searchCclMetasearchViaRuntimeService(input), null);
+
+  let requestBody: unknown;
+  setRuntimeSearchServiceBinding({
+    async fetch(request) {
+      assert.equal(new URL(request.url).pathname, "/internal/cclmetasearch/search");
+      assert.equal(request.method, "POST");
+      requestBody = await request.json();
+      return Response.json({ items: [], total: 0 });
+    },
+  }, false, true);
+  const page = await searchCclMetasearchViaRuntimeService(input);
+  assert.deepEqual(requestBody, input);
+  assert.deepEqual(page, { items: [], total: 0 });
+  clearRuntimeSearchServiceBinding();
+});
+
+test("M9 Hono service executes validated cclmetasearch input without moving public auth or rate limiting", async () => {
+  const app = createWorldconsSearchServiceApp({
+    cclMetasearchSearch: async (input) => {
+      assert.deepEqual(input, {
+        query: "표현의 자유",
+        limit: 2,
+        offset: 4,
+        sort: "latest",
+      });
+      return { items: [], total: 9 };
+    },
+  });
+  const response = await app.request(
+    "https://service.internal/internal/cclmetasearch/search",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "표현의 자유",
+        limit: 2,
+        offset: 4,
+        sort: "latest",
+      }),
+    },
+    workerEnv,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { items: [], total: 9 });
+
+  const invalid = await app.request(
+    "https://service.internal/internal/cclmetasearch/search",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "", limit: 999, offset: 0, sort: "latest" }),
+    },
+    workerEnv,
+  );
+  assert.equal(invalid.status, 400);
 });
 
 test("M9 public cclrag2 adapter keeps rate limiting before the optional Service Binding", () => {
@@ -124,6 +186,7 @@ test("M9 public cclrag2 adapter keeps rate limiting before the optional Service 
 test("M9 frontend binding is wired but remains disabled by default", () => {
   const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(config, /"WORLDCONS_SEARCH_SERVICE_ENABLED": "false"/u);
+  assert.match(config, /"WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "false"/u);
   assert.match(
     config,
     /"binding": "WORLDCONS_SEARCH_SERVICE"[\s\S]*"service": "worldcons-search"/u,

@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { cclMetasearchAuthFailure, configuredCclMetasearchToken } from "@/lib/cclmetasearch/auth";
 import {
   CclMetasearchRequestError,
@@ -63,7 +62,7 @@ export function createCclMetasearchSearchHandler(options: HandlerOptions = {}) {
         throw new Error("The WorldCons search layer returned an invalid page.");
       }
 
-      return NextResponse.json(
+      return Response.json(
         {
           schemaVersion: 1,
           service: "worldcons",
@@ -108,7 +107,7 @@ function errorResponse(
     headers.set("Retry-After", String(options.retryAfterSeconds));
   }
 
-  return NextResponse.json(
+  return Response.json(
     {
       schemaVersion: 1,
       service: "worldcons",
