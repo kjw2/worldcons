@@ -99,6 +99,56 @@ permission: the boundary can only upsert one heartbeat row and has no read API.
 Its workers.dev endpoint is public but every path is behind the constant-time
 bearer, so no unauthenticated caller can write or probe readiness.
 
+## GitHub Actions / Node environment plumbing
+
+The boundary is only reachable if the GitHub-hosted Node jobs actually receive
+its three configuration inputs. All heartbeat-producing workflows now inject
+them, without committing any value:
+
+| Workflow | Heartbeat entrypoint | Env blocks |
+| --- | --- | --- |
+| `.github/workflows/crawlee-worker.yml` | `crawl`: `crawl:worker`/`admin:worker:p1`; `postprocess`: `summarize-pending` | 2 |
+| `.github/workflows/summary-drain.yml` | `summarize-pending` | 1 |
+| `.github/workflows/embedding-backfill.yml` | `backfill:embeddings` | 1 |
+| `.github/workflows/admin-watchdog.yml` | `ops:watchdog` | 1 |
+| `.github/workflows/admin-command-worker-p1.yml` | `admin:worker:p1` | 1 |
+
+Each job env block carries exactly:
+
+```yaml
+WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
+WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
+WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
+```
+
+- **Authority defaults to `supabase`.** The `vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY
+  || 'supabase'` expression resolves to `supabase` whenever the repository
+  variable is absent or empty, which is the resting mode. Node/GitHub behavior
+  is therefore byte-for-byte unchanged until an operator explicitly sets the
+  repo variable. `resolveOpsHeartbeatWriteAuthorityConfig` also treats any
+  unrecognized value as `supabase`, so a typo fails safe rather than enabling
+  the seam.
+- **Base URL/token are repository `vars`/`secrets`.** `WORLDCONS_OPS_WRITE_BASE_URL`
+  is a (non-secret) repository variable; `WORLDCONS_OPS_WRITE_TOKEN` is a
+  repository secret. Neither value appears in a source file: the workflows
+  only carry `${{ vars.* }}`/`${{ secrets.* }}` references, and the token is a
+  secret so GitHub redacts it from logs. The client only consults URL/token when
+  the authority is `d1-canary`/`d1`, so under the resting authority the empty
+  token is inert.
+- **`backfill-corpus` (`catalog_backfill`).** `scripts/backfill-corpus.ts`
+  writes a `catalog_backfill` heartbeat, but it is an operator-run Gate-1 CLI
+  with no GitHub Actions workflow, so there is no workflow job to plumb. It
+  inherits the same `lib/ops/workflow-heartbeat.ts` seam and reads the same
+  three process env vars when an operator sets them.
+- **Vercel fallback unchanged.** The fallback route
+  `app/api/ops/watchdog/route.ts` reads the same process env; its authority
+  stays `supabase`, so it keeps using the local RPC. No Vercel-side change was
+  made.
+- **Not yet wired: `admin-job-worker.yml`.** `scripts/admin-job-worker.ts`
+  currently produces no workflow heartbeat (it uses an internal queue
+  heartbeat, not `recordWorkflowHeartbeat`), so it was left unchanged. If it
+  later emits a workflow heartbeat it must be added to this table.
+
 ## Preserved authority and rollback
 
 - Default/resolving authority is `supabase`, so `recordWorkflowHeartbeat`
@@ -125,10 +175,16 @@ bearer, so no unauthenticated caller can write or probe readiness.
   `/internal/ops-heartbeat/write` Supabase RPC bridge.
 - `lib/ops/workflow-heartbeat.ts` — the real Node/GitHub call path now routes
   through the seam before falling back to the local RPC.
-- `tests/m11-ops-heartbeat-write-boundary.test.ts` — 15 focused tests,
+- `.github/workflows/{crawlee-worker,summary-drain,embedding-backfill,admin-watchdog,admin-command-worker-p1}.yml`
+  — each heartbeat-producing job env block wires the authority (repo var,
+  defaulting to `supabase`), base URL (repo var) and token (repo secret) into
+  the Node process.
+- `tests/m11-ops-heartbeat-write-boundary.test.ts` — 17 focused tests,
   including ones that assert the deployed `wrangler.jsonc` is externally
   reachable only via workers.dev with preview URLs disabled and mandatory bearer
-  auth, and that `worldcons-search` stays internal-only.
+  auth, that `worldcons-search` stays internal-only, and that every
+  heartbeat-producing workflow wires the boundary env from `vars`/`secrets`
+  with a `supabase` default and no committed token value.
 - `package.json`, `tsconfig.json`, `.env.example` — scripts, excludes, docs.
 
 ## Verification (local, no live proof)
@@ -155,9 +211,12 @@ bearer, so no unauthenticated caller can write or probe readiness.
    `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=supabase`. Confirm the deployed
    workers.dev endpoint answers `/health` only with the bearer, and that
    `preview_urls` is disabled.
-3. Set `WORLDCONS_OPS_WRITE_BASE_URL` (the workers.dev base URL)/
-   `WORLDCONS_OPS_WRITE_TOKEN` on the GitHub/Node runner and hold the Node-side
-   authority at `supabase`; capture baseline counts (D1 / Supabase).
+3. Set the repository variables/secrets the workflows already reference:
+   `WORLDCONS_OPS_WRITE_BASE_URL` (repo **var**, the workers.dev base URL) and
+   `WORLDCONS_OPS_WRITE_TOKEN` (repo **secret**, the Worker's `OPS_WRITE_TOKEN`),
+   and leave `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` (repo var) unset or
+   `supabase`; capture baseline counts (D1 / Supabase). The workflow plumbing is
+   already in place, so this step is variable/secret creation only.
 4. **Coordinate both authority vars for the canary.** Switch the Node-side
    `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` to `d1-canary` *and* set the
    boundary Worker's own `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` to

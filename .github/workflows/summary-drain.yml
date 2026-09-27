@@ -61,6 +61,13 @@ jobs:
       SUMMARY_LIMIT_INPUT: ${{ github.event.inputs.limit || '60' }}
       SUMMARY_PASSES_INPUT: ${{ github.event.inputs.max_passes || '6' }}
       SUMMARY_SOURCE_INPUT: ${{ github.event.inputs.source }}
+      # M11.3 ops-heartbeat boundary. Authority defaults to "supabase" so the
+      # resting summary heartbeat path is unchanged; the base URL/token are
+      # only consulted when the authority is d1-canary/d1. The token is a
+      # repository secret and is never written to a source file.
+      WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
+      WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
+      WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     steps:
       - uses: actions/checkout@v4

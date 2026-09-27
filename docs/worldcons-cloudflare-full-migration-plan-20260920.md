@@ -1611,7 +1611,15 @@ M11.3 ops-workflow-heartbeat Node/GitHub write boundary (2026-09-28):
   through the explicit seam and falls back to the existing
   `ops_workflow_heartbeat_v1` RPC only under the resting `supabase` authority.
   No schema or old migration changed; rollback is one var back to `supabase`.
-- Code and 15 focused tests complete; `test:m11` is now 35/35, M9 8/8,
+- The five heartbeat-producing GitHub workflows
+  (`crawlee-worker`, `summary-drain`, `embedding-backfill`, `admin-watchdog`,
+  `admin-command-worker-p1`) now plumb the boundary inputs into their Node jobs
+  from repository vars/secrets: the authority defaults to `supabase`, the base
+  URL comes from a repo var and the token from a repo secret, so resting
+  behavior is unchanged and no secret value is committed. The operator-run
+  `backfill-corpus` CLI and the unchanged Vercel fallback route read the same
+  process env.
+- Code and 17 focused tests complete; `test:m11` is now 37/37, M9 8/8,
   `test:ops` 10/10, root/Worker typechecks, lint (0 warnings), ops-write dry-run
   and `git diff --check` pass. Resting authority is `supabase`.
 - **GO-OPS-WRITE-BOUNDARY: CODE READY.** No live write canary is claimed; a

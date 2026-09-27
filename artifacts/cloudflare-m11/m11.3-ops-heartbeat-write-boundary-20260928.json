@@ -19,6 +19,27 @@
       "Node scripts (ops-watchdog, summarize-pending, crawlee-worker, backfill-*, admin-command-worker-p1)",
       "Vercel fallback route app/api/ops/watchdog/route.ts"
     ],
+    "githubEnvPlumbing": {
+      "status": "wired",
+      "authorityExpr": "vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase'",
+      "baseUrlExpr": "vars.WORLDCONS_OPS_WRITE_BASE_URL",
+      "tokenExpr": "secrets.WORLDCONS_OPS_WRITE_TOKEN",
+      "defaultAuthority": "supabase",
+      "restingBehaviorChanged": false,
+      "secretsInSourceFiles": false,
+      "workflows": [
+        { "file": ".github/workflows/crawlee-worker.yml", "envBlocks": 2, "heartbeatScripts": ["crawl:worker", "admin:worker:p1", "summarize-pending"] },
+        { "file": ".github/workflows/summary-drain.yml", "envBlocks": 1, "heartbeatScripts": ["summarize-pending"] },
+        { "file": ".github/workflows/embedding-backfill.yml", "envBlocks": 1, "heartbeatScripts": ["backfill:embeddings"] },
+        { "file": ".github/workflows/admin-watchdog.yml", "envBlocks": 1, "heartbeatScripts": ["ops:watchdog"] },
+        { "file": ".github/workflows/admin-command-worker-p1.yml", "envBlocks": 1, "heartbeatScripts": ["admin:worker:p1"] }
+      ],
+      "notWired": [
+        { "file": "scripts/backfill-corpus.ts", "reason": "operator-run Gate-1 CLI (catalog_backfill heartbeat); no GitHub Actions workflow to plumb, inherits the same process-env seam" },
+        { "file": ".github/workflows/admin-job-worker.yml", "reason": "admin-job-worker.ts produces no recordWorkflowHeartbeat call today (uses an internal queue heartbeat)" }
+      ],
+      "vercelFallback": "unchanged; app/api/ops/watchdog/route.ts reads the same env and rests at supabase"
+    },
     "rationale": "lower-risk first target: append/upsert only, one row per key, no read-modify-write, no delete in the writer, single call path through recordWorkflowHeartbeat, and only one authoritative SECURITY DEFINER RPC with small explicit service-layer gates",
     "preferAppendOnlyHeartbeat": true,
     "rejectedDeferred": [
@@ -81,13 +102,18 @@
     "workers/search-service/src/index.ts",
     "lib/ops/workflow-heartbeat.ts",
     "tests/m11-ops-heartbeat-write-boundary.test.ts",
+    ".github/workflows/crawlee-worker.yml",
+    ".github/workflows/summary-drain.yml",
+    ".github/workflows/embedding-backfill.yml",
+    ".github/workflows/admin-watchdog.yml",
+    ".github/workflows/admin-command-worker-p1.yml",
     ".env.example",
     "package.json",
     "tsconfig.json"
   ],
   "verification": {
-    "m11Tests": "35/35",
-    "newM113Tests": "15/15",
+    "m11Tests": "37/37",
+    "newM113Tests": "17/17",
     "m9Tests": "8/8",
     "opsTests": "10/10",
     "m113OpsWriteTypecheck": "pass",
@@ -103,7 +129,7 @@
   "liveCanaryPrerequisites": [
     "deploy worldcons-search with /internal/ops-heartbeat/write; it stays internal-only",
     "deploy worldcons-ops-write with a set OPS_WRITE_TOKEN and resting authority supabase; confirm workers.dev /health requires the bearer and preview URLs are disabled",
-    "set WORLDCONS_OPS_WRITE_BASE_URL/TOKEN on the GitHub/Node runner and capture baseline counts with the Node-side authority at supabase",
+    "create repo var WORLDCONS_OPS_WRITE_BASE_URL, repo secret WORLDCONS_OPS_WRITE_TOKEN, and leave repo var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY unset/supabase; the heartbeat workflows already reference all three; capture baseline counts with the Node-side authority at supabase",
     "coordinate both authority vars to d1-canary (Node side and boundary Worker var); drive one heartbeat with run_id=m11-ops-heartbeat-canary via a controller-issued authenticated POST /v1/ops/heartbeat (recordWorkflowHeartbeat derives run_id from the CI env and cannot emit the canary id): D1 +1 / Supabase unchanged",
     "coordinate both authority vars to d1 with an ordinary heartbeat: D1 +1 / Supabase unchanged (may be blocked by execution environment)",
     "roll both authority vars back to supabase: Node sends nothing to the boundary and the local RPC path resumes",

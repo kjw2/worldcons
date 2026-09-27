@@ -474,6 +474,103 @@ test("M11.3 Node heartbeat writer uses the boundary and skips the Supabase RPC w
   }
 });
 
+const HEARTBEAT_WORKFLOWS = [
+  {
+    file: ".github/workflows/crawlee-worker.yml",
+    envBlocks: 2,
+    heartbeatScripts: ["summarize-pending"],
+  },
+  {
+    file: ".github/workflows/summary-drain.yml",
+    envBlocks: 1,
+    heartbeatScripts: ["summarize-pending"],
+  },
+  {
+    file: ".github/workflows/embedding-backfill.yml",
+    envBlocks: 1,
+    heartbeatScripts: ["backfill:embeddings"],
+  },
+  {
+    file: ".github/workflows/admin-watchdog.yml",
+    envBlocks: 1,
+    heartbeatScripts: ["ops:watchdog"],
+  },
+  {
+    file: ".github/workflows/admin-command-worker-p1.yml",
+    envBlocks: 1,
+    heartbeatScripts: ["admin:worker:p1"],
+  },
+] as const;
+
+test("M11.3 heartbeat-producing GitHub workflows wire the boundary env from vars/secrets", () => {
+  for (const workflow of HEARTBEAT_WORKFLOWS) {
+    const source = fs.readFileSync(path.join(process.cwd(), workflow.file), "utf8");
+
+    // The workflow must actually invoke a heartbeat-producing entrypoint.
+    for (const script of workflow.heartbeatScripts) {
+      assert.ok(source.includes(script), `${workflow.file} must invoke ${script}`);
+    }
+
+    // Authority is repo-var driven and defaults to the resting supabase mode.
+    const authority = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}";
+    const authorityCount = source.split(authority).length - 1;
+    assert.equal(
+      authorityCount,
+      workflow.envBlocks,
+      `${workflow.file} must wire the authority default in every heartbeat env block`,
+    );
+
+    assert.equal(
+      source.split("WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}").length - 1,
+      workflow.envBlocks,
+      `${workflow.file} must wire the boundary base URL from repo vars`,
+    );
+    assert.equal(
+      source.split("WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}").length - 1,
+      workflow.envBlocks,
+      `${workflow.file} must wire the boundary token from repo secrets`,
+    );
+
+    // No literal secret value is ever written instead of a secret reference.
+    for (const line of source.split(/\r?\n/u)) {
+      if (/^\s*#/u.test(line)) continue;
+      if (line.includes("WORLDCONS_OPS_WRITE_TOKEN:")) {
+        assert.ok(
+          line.includes("WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}"),
+          `${workflow.file} must never inline a WORLDCONS_OPS_WRITE_TOKEN value: ${line.trim()}`,
+        );
+      }
+      if (line.includes("WORLDCONS_OPS_WRITE_BASE_URL:")) {
+        assert.ok(
+          line.includes("WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}"),
+          `${workflow.file} must never inline a WORLDCONS_OPS_WRITE_BASE_URL value: ${line.trim()}`,
+        );
+      }
+    }
+  }
+});
+
+test("M11.3 no committed source file contains a WORLDCONS_OPS_WRITE_TOKEN assignment", () => {
+  const searchRoots = [".github/workflows", ".env.example"];
+  for (const root of searchRoots) {
+    const entries = fs.statSync(path.join(process.cwd(), root)).isDirectory()
+      ? fs.readdirSync(path.join(process.cwd(), root)).map((name) => path.join(root, name))
+      : [root];
+    for (const entry of entries) {
+      const source = fs.readFileSync(path.join(process.cwd(), entry), "utf8");
+      for (const line of source.split(/\r?\n/u)) {
+        if (!/^\s*(?:#\s*)?WORLDCONS_OPS_WRITE_TOKEN\s*=/u.test(line)) continue;
+        // A commented example is allowed; a live assignment with a value is not.
+        assert.match(
+          line,
+          /^\s*#\s*WORLDCONS_OPS_WRITE_TOKEN=\s*$/u,
+          `${entry} must carry only an empty, commented WORLDCONS_OPS_WRITE_TOKEN example`,
+        );
+      }
+    }
+  }
+});
+
 function heartbeatInput() {
   const row = heartbeatRow();
   return {
