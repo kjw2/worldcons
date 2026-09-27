@@ -1,9 +1,11 @@
 import {
   handleWorldconsSearchRequest,
   providerRateLimitExceededResponse,
+  providerServiceUnavailableResponse,
   type Cclrag2ProviderEnv,
 } from "@/lib/integrations/cclrag2/provider-handler";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
+import { forwardToRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,7 +21,15 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   url.pathname = url.pathname.replace(/^\/api\/cclrag2(?=\/|$)/u, "/api");
-  return handleWorldconsSearchRequest(new Request(url, request), providerEnv());
+  const providerRequest = new Request(url, request);
+  try {
+    const boundResponse = await forwardToRuntimeSearchService(providerRequest);
+    if (boundResponse) return boundResponse;
+  } catch (error) {
+    console.error("[cclrag2] search service binding unavailable", error instanceof Error ? error.name : "UnknownError");
+    return providerServiceUnavailableResponse(providerRequest);
+  }
+  return handleWorldconsSearchRequest(providerRequest, providerEnv());
 }
 
 function providerEnv(): Cclrag2ProviderEnv {

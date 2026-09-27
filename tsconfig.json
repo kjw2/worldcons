@@ -38,6 +38,7 @@
   "exclude": [
     "node_modules",
     "workers/async-pipeline",
-    "workers/browser-run"
+    "workers/browser-run",
+    "workers/search-service"
   ]
 }

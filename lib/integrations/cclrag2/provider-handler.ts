@@ -1208,6 +1208,16 @@ export function providerRateLimitExceededResponse(request: Request, retryAfterSe
   );
 }
 
+export function providerServiceUnavailableResponse(request: Request) {
+  return errorResponse(
+    503,
+    "SERVICE_UNAVAILABLE",
+    "WorldCons search is temporarily unavailable.",
+    { "Retry-After": "30" },
+    requestIdFor(request),
+  );
+}
+
 class RequestValidationError extends Error {
   constructor(message: string) {
     super(message);

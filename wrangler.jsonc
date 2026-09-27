@@ -12,8 +12,15 @@
     "WORLDCONS_D1_SHADOW_TIMEOUT_MS": "1500",
     "WORLDCONS_D1_SHADOW_MAX_ROWS": "2000",
     "WORLDCONS_D1_SHADOW_MAX_IN_FLIGHT": "2",
-    "WORLDCONS_D1_SHADOW_SAMPLE_RATE": "0.1"
+    "WORLDCONS_D1_SHADOW_SAMPLE_RATE": "0.1",
+    "WORLDCONS_SEARCH_SERVICE_ENABLED": "false"
   },
+  "services": [
+    {
+      "binding": "WORLDCONS_SEARCH_SERVICE",
+      "service": "worldcons-search"
+    }
+  ],
   "main": "./worker/index.ts",
   "assets": {
     "directory": "dist/client",
