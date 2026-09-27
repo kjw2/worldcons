@@ -17,6 +17,7 @@ import {
   SITE_EVENT_TYPE_VALUES,
 } from "@/lib/cloudflare/d1/schema/worldcons-ops";
 import type {
+  BoundAdminArticleEditWriteRow,
   BoundAdminAuditWriteRow,
   BoundSiteEventWriteRow,
 } from "@/lib/cloudflare/services/search-service-binding";
@@ -64,6 +65,10 @@ export interface WorldconsSearchServiceDependencies {
   ) => Promise<void>;
   adminAuditWrite?: (
     row: BoundAdminAuditWriteRow,
+    env: WorldconsSearchWorkerEnv,
+  ) => Promise<void>;
+  adminArticleEditWrite?: (
+    row: BoundAdminArticleEditWriteRow,
     env: WorldconsSearchWorkerEnv,
   ) => Promise<void>;
 }
@@ -293,6 +298,56 @@ export function createWorldconsSearchServiceApp(
     }
   });
 
+  app.post("/internal/admin-article-edit/write", async (c) => {
+    let row: BoundAdminArticleEditWriteRow;
+    try {
+      row = internalAdminArticleEditWriteInput(await c.req.json<Record<string, unknown>>());
+    } catch {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "INVALID_REQUEST", retryable: false },
+      }, 400, { "Cache-Control": "no-store" });
+    }
+    try {
+      if (dependencies.adminArticleEditWrite) {
+        await dependencies.adminArticleEditWrite(row, c.env);
+      } else {
+        await writeSupabaseRow(
+          dependencies.provider?.fetcher ?? fetch,
+          c.env,
+          "admin_article_edit_history",
+          row,
+          {
+            notConfigured: "admin_article_edit_supabase_not_configured",
+            writeFailed: "admin_article_edit_supabase_write_failed",
+          },
+        );
+      }
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_search_service_admin_article_edit_write_error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "SERVICE_UNAVAILABLE", retryable: true },
+      }, 503, {
+        "Cache-Control": "no-store",
+        "Retry-After": "30",
+        "X-Content-Type-Options": "nosniff",
+      });
+    }
+  });
+
   app.all("*", (c) => c.json({
     schemaVersion: 1,
     service: "worldcons-search",
@@ -425,6 +480,25 @@ function internalAdminAuditWriteInput(body: Record<string, unknown>): BoundAdmin
   };
 }
 
+function internalAdminArticleEditWriteInput(body: Record<string, unknown>): BoundAdminArticleEditWriteRow {
+  const diff = body.diff_redacted;
+  if (!diff || typeof diff !== "object" || Array.isArray(diff)) {
+    throw new Error("invalid diff_redacted");
+  }
+  if (!Array.isArray(body.changed_fields) || !body.changed_fields.every((field) => typeof field === "string")) {
+    throw new Error("invalid changed_fields");
+  }
+  return {
+    article_id: stringField(body.article_id),
+    article_slug: nullableString(body.article_slug),
+    actor_id: nullableString(body.actor_id),
+    changed_fields: body.changed_fields,
+    previous_summary_hash: nullableString(body.previous_summary_hash),
+    next_summary_hash: nullableString(body.next_summary_hash),
+    diff_redacted: diff as Record<string, unknown>,
+  };
+}
+
 function stringField(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) throw new Error("invalid string");
   return value;
@@ -466,8 +540,8 @@ interface SupabaseWriteErrorCodes {
 async function writeSupabaseRow(
   fetcher: typeof fetch,
   env: WorldconsSearchWorkerEnv,
-  table: "site_events" | "admin_audit_logs",
-  row: BoundSiteEventWriteRow | BoundAdminAuditWriteRow,
+  table: "site_events" | "admin_audit_logs" | "admin_article_edit_history",
+  row: BoundSiteEventWriteRow | BoundAdminAuditWriteRow | BoundAdminArticleEditWriteRow,
   errors: SupabaseWriteErrorCodes,
 ) {
   const supabaseUrl = env.SUPABASE_URL?.trim() || "";

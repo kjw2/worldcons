@@ -114,6 +114,16 @@ export type BoundAdminAuditWriteRow = {
   user_agent_family: string | null;
 };
 
+export type BoundAdminArticleEditWriteRow = {
+  article_id: string;
+  article_slug: string | null;
+  actor_id: string | null;
+  changed_fields: string[];
+  previous_summary_hash: string | null;
+  next_summary_hash: string | null;
+  diff_redacted: Record<string, unknown>;
+};
+
 /**
  * Cloudflare-only legacy write bridge used during M11.
  *
@@ -159,6 +169,27 @@ export async function writeAdminAuditViaRuntimeSearchService(
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error("worldcons_admin_audit_legacy_bridge_unavailable");
+  }
+  await response.body?.cancel();
+  return true;
+}
+
+export async function writeAdminArticleEditViaRuntimeSearchService(
+  row: BoundAdminArticleEditWriteRow,
+): Promise<true | null> {
+  const state = runtimeSearchServiceState();
+  if (!state.binding) return null;
+  const response = await state.binding.fetch(new Request(
+    "https://worldcons-search.internal/internal/admin-article-edit/write",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(row),
+    },
+  ));
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("worldcons_admin_article_edit_legacy_bridge_unavailable");
   }
   await response.body?.cancel();
   return true;

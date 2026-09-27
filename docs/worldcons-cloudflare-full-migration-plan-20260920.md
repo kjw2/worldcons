@@ -1549,6 +1549,43 @@ M11.1 admin-audit selective authority slice (2026-09-27):
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md` and
   `artifacts/cloudflare-m11/go-admin-audit-d1-canary-20260927.json`.
 
+M11.2 admin-article-edit authority seam (2026-09-28):
+
+- Added
+  `WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY=supabase|d1-canary|d1` for the
+  append-only `worldcons_ops.admin_article_edit_history` surface.
+- `d1-canary` is restricted to rows whose `article_slug` equals
+  `m11-admin-article-edit-canary`; full `d1` routes all Cloudflare runtime
+  article-edit writes to `worldcons_ops`.
+- Added an internal Supabase compatibility bridge at
+  `worldcons-search /internal/admin-article-edit/write`; Vercel keeps the direct
+  Supabase client path.
+- Selected because it is the next safest append-only ops writer already emitted
+  from the Cloudflare runtime; `admin_ops_events` and `ops_workflow_heartbeats`
+  were deliberately deferred because they are primarily Node/GitHub-owned and
+  need a Cloudflare-native compatibility write boundary first.
+- Code and 7 new focused tests complete; `test:m11` is now 20/20, M9 8/8,
+  Worker/root typechecks, lint, diff-check and the controller's vinext
+  production build pass.
+- Controller deployed `worldcons-search`
+  `1ce8b477-f8d8-40b6-a389-52630e41451d` and main Worker `worldcons-m3-spike`
+  `4b6119dd-c293-44ce-9430-2b91f3d7f605`; authorities rest at
+  `WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY=supabase`,
+  `WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY=supabase` and
+  `WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY=supabase`, with the
+  `WORLDCONS_SEARCH_SERVICE` binding resolving to `worldcons-search`.
+- A temporary `worldcons-admin-article-edit-canary` Worker deployed
+  successfully, but the outbound invocation was blocked by the execution
+  environment before reaching Cloudflare; the inspection was not bypassed, so
+  no live write canary is claimed. `admin_article_edit_history` counts were
+  D1=0 / Supabase=0 before and after with no accidental row; the temporary
+  canary Worker was deleted and its local source removed.
+- M11.2 code/deployment seam is ready, but live write proof remains pending.
+- Detailed evidence:
+  `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`
+  and
+  `artifacts/cloudflare-m11/m11.2-admin-article-edit-authority-seam-20260928.json`.
+
 ### M12 — Cloudflare production frontend/API cutover
 
 Objective:
@@ -1765,10 +1802,22 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   `worldcons_ops.admin_audit_logs` with a selective-action canary, a private
   `worldcons-search /internal/admin-audit/write` Supabase compatibility bridge
   and a live selective-D1 + rollback proof; full-`d1` audit cutover was not
-  live-proven and is not claimed. Resting authority remains Supabase. Remaining
-  ops writes plus ingest and core/publication are still pending. See
-  `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md` and
-  `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`.)
+  live-proven and is not claimed. M11.2 adds the same seam for the append-only
+  `worldcons_ops.admin_article_edit_history` surface with a canary-slug
+  selector and a private `worldcons-search /internal/admin-article-edit/write`
+  compatibility bridge; code and tests are complete and the controller deployed
+  the seam (`worldcons-search` `1ce8b477-f8d8-40b6-a389-52630e41451d`, main
+  Worker `worldcons-m3-spike` `4b6119dd-c293-44ce-9430-2b91f3d7f605`). The
+  temporary canary Worker deployed but the outbound invocation was blocked by
+  the execution environment before reaching Cloudflare, so no live write canary
+  is claimed and live write proof remains pending (`admin_article_edit_history`
+  stayed D1=0 / Supabase=0). Resting authority remains
+  Supabase. `admin_ops_events`/`ops_workflow_heartbeats` remain blocked on a
+  Cloudflare-native Node/GitHub compatibility write boundary, and ingest plus
+  core/publication are still pending. See
+  `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
+  `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md` and
+  `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`.)
 - [ ] Workers production cutover
 - [ ] Supabase final export
 - [ ] stranded Vercel object recovery/inventory

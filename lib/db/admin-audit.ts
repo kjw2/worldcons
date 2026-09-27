@@ -9,7 +9,12 @@ import {
   shouldWriteAdminAuditToD1,
   writeAdminAuditToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/admin-audit";
-import { writeAdminAuditViaRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
+import { writeAdminAuditViaRuntimeSearchService, writeAdminArticleEditViaRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
+import {
+  getRuntimeAdminArticleEditWriteAuthorityConfig,
+  shouldWriteAdminArticleEditToD1,
+  writeAdminArticleEditToRuntimeD1,
+} from "@/lib/cloudflare/d1/write-authority/admin-article-edit";
 
 type AdminSiteEventInput = SiteEventInput & { eventType: Extract<SiteEventType, "admin_action" | "admin_review_action"> };
 
@@ -179,9 +184,6 @@ function summaryPreview(summary?: SummaryJson | null) {
 }
 
 export async function recordAdminArticleEditHistory(input: AdminArticleEditHistoryInput) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
   const diffRedacted = redactAdminAuditMetadata({
     changedFields: input.changedFields,
     previous: summaryPreview(input.previousSummary),
@@ -189,16 +191,47 @@ export async function recordAdminArticleEditHistory(input: AdminArticleEditHisto
     note: input.note,
   });
 
+  const payload = {
+    article_id: input.articleId,
+    article_slug: textValue(input.articleSlug, 300),
+    actor_id: textValue(input.actorId, 160),
+    changed_fields: input.changedFields,
+    previous_summary_hash: summaryHash(input.previousSummary),
+    next_summary_hash: summaryHash(input.nextSummary),
+    diff_redacted: diffRedacted,
+  };
+
+  const authorityConfig = getRuntimeAdminArticleEditWriteAuthorityConfig();
+  if (shouldWriteAdminArticleEditToD1(payload, authorityConfig)) {
+    try {
+      await writeAdminArticleEditToRuntimeD1(payload);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_admin_article_edit_d1_write_failed",
+        authority: authorityConfig.authority,
+        error: error instanceof Error ? error.message : "UnknownError",
+      }));
+    }
+    return;
+  }
+
   try {
-    const { error } = await supabase.from("admin_article_edit_history").insert({
-      article_id: input.articleId,
-      article_slug: textValue(input.articleSlug, 300),
-      actor_id: textValue(input.actorId, 160),
-      changed_fields: input.changedFields,
-      previous_summary_hash: summaryHash(input.previousSummary),
-      next_summary_hash: summaryHash(input.nextSummary),
-      diff_redacted: diffRedacted,
-    });
+    const bridged = await writeAdminArticleEditViaRuntimeSearchService(payload);
+    if (bridged) return;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "worldcons_admin_article_edit_legacy_bridge_failed",
+      authority: authorityConfig.authority,
+      error: error instanceof Error ? error.message : "UnknownError",
+    }));
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+
+  try {
+    const { error } = await supabase.from("admin_article_edit_history").insert(payload);
     if (error) logOptionalWriteFailure("admin article edit history", error.message);
   } catch (error) {
     logOptionalWriteFailure("admin article edit history", error);

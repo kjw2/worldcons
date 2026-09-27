@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.2",
+  "decision": "DEPLOYED-CANARY-ATTEMPTED-BLOCKED-NO-LIVE-PROOF",
+  "status": "code_and_deployment_seam_ready_live_write_proof_pending",
+  "date": "2026-09-28",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "admin_article_edit_history",
+    "m11GloballyComplete": false,
+    "liveCanaryClaimed": false,
+    "deployOrCommitPerformed": true,
+    "commitOrPushPerformed": false
+  },
+  "controllerDeployment": {
+    "date": "2026-09-28",
+    "worldconsSearch": {
+      "versionId": "1ce8b477-f8d8-40b6-a389-52630e41451d"
+    },
+    "mainWorker": {
+      "service": "worldcons-m3-spike",
+      "versionId": "4b6119dd-c293-44ce-9430-2b91f3d7f605"
+    },
+    "serviceBinding": {
+      "WORLDCONS_SEARCH_SERVICE": "worldcons-search"
+    },
+    "authorities": {
+      "WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY": "supabase",
+      "WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY": "supabase",
+      "WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY": "supabase"
+    },
+    "vinextProductionBuild": "pass"
+  },
+  "canaryAttempt": {
+    "temporaryWorker": "worldcons-admin-article-edit-canary",
+    "deploy": "success",
+    "outboundInvocation": "blocked_by_execution_environment_before_reaching_cloudflare",
+    "inspectionBypassed": false,
+    "liveWriteCanaryAchieved": false,
+    "liveWriteCanaryClaimed": false,
+    "countsBefore": {
+      "d1": 0,
+      "supabase": 0
+    },
+    "countsAfter": {
+      "d1": 0,
+      "supabase": 0
+    },
+    "accidentalRowRemained": false,
+    "temporaryWorkerDeleted": true,
+    "temporaryLocalSourceRemoved": true
+  },
+  "selection": {
+    "surface": "admin_article_edit_history",
+    "rationale": "next safest append-only operational surface: single bounded insert, no read-modify-write, no RPC, already emitted from the Cloudflare Worker runtime via the manual summary edit path, D1 table and ownership already modeled",
+    "rejected": [
+      {
+        "surface": "admin_ops_events",
+        "reason": "primarily Node/GitHub-owned (admin-watchdog.yml, app/api/ops/watchdog); needs a Cloudflare-native compatibility write boundary first"
+      },
+      {
+        "surface": "ops_workflow_heartbeats",
+        "reason": "primarily Node/GitHub-owned (GitHub workflows, Vercel fallback); needs a Cloudflare-native compatibility write boundary first"
+      },
+      {
+        "surface": "admin_jobs/admin_job_events, admin_command_*, P5 evidence, MasterDash, llm_settings",
+        "reason": "mutable queue/state machine or upsert state; not append-only-only and higher risk"
+      }
+    ]
+  },
+  "authorityModes": ["supabase", "d1-canary", "d1"],
+  "canarySelector": {
+    "field": "article_slug",
+    "value": "m11-admin-article-edit-canary"
+  },
+  "legacyBridge": {
+    "caller": "worldcons-m3-spike",
+    "binding": "WORLDCONS_SEARCH_SERVICE",
+    "service": "worldcons-search",
+    "path": "/internal/admin-article-edit/write",
+    "publiclyExposed": false,
+    "vercelBehavior": "direct Supabase client (no Service Binding state)"
+  },
+  "restingState": {
+    "adminArticleEditWriteAuthority": "supabase",
+    "adminAuditWriteAuthority": "supabase",
+    "siteEventsWriteAuthority": "supabase"
+  },
+  "verification": {
+    "m11Tests": "20/20",
+    "newM112Tests": "7/7",
+    "m9Tests": "8/8",
+    "m9Typecheck": "pass",
+    "rootTypecheck": "pass",
+    "lint": "pass",
+    "diffCheck": "pass",
+    "vinextBuild": "pass",
+    "liveWriteCanary": "attempted_blocked_by_execution_environment_before_reaching_cloudflare_no_proof_claimed",
+    "pnpmCheck": "pre-existing unrelated failure (summary drain workflow must run on its own schedule)"
+  },
+  "liveCanaryPrerequisites": [
+    "deploy worldcons-search with /internal/admin-article-edit/write",
+    "deploy main Worker with WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY=supabase",
+    "baseline supabase: D1 0 / Supabase 1",
+    "d1-canary with canary slug: D1 1 / Supabase 0",
+    "rollback to supabase: D1 0 / Supabase 1",
+    "delete all test rows and restore pre-canary counts"
+  ],
+  "blockers": [
+    "no deploy/credential access in this environment; controller owns live steps",
+    "admin_ops_events and ops_workflow_heartbeats blocked on a Cloudflare-native Node/GitHub compatibility write boundary"
+  ],
+  "next": "introduce minimal private Cloudflare-native compatibility/write boundary for Node/GitHub-owned ops_workflow_heartbeats or admin_ops_events"
+}
