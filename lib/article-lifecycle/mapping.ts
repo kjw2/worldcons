@@ -21,6 +21,9 @@ export interface MappedArticleLifecycle {
   processingState: ArticleProcessingState;
   reviewState: ArticleLifecycleReviewState;
   attention: { operation: "keep" } | {
+    operation: "clear";
+    resolvesCodes: string[];
+  } | {
     operation: "raise";
     code: string;
     retryable: boolean;
@@ -55,6 +58,25 @@ function errorAttention(code: string, errorContext: unknown) {
     : /^(summary|llm|job)\./.test(code) ? "high" : "medium";
   const source: ArticleAttentionSource = /^(summary|llm|job)\./.test(code) ? "processing" : "collection";
   return { operation: "raise" as const, code, retryable, severity, source };
+}
+
+function isExpectedTerminalMetadataOnly(
+  status: string,
+  sourceMetadata: unknown,
+  errorClass?: string | null,
+) {
+  if (status !== "metadata_only" || errorClass) return false;
+  const metadata = isRecord(sourceMetadata) ? sourceMetadata : {};
+  const collection = nestedRecord(metadata, "collection");
+  const review = nestedRecord(metadata, "review");
+  return (
+    collection.sourceTextAvailable === false
+    && collection.publishable === false
+    && collection.sourceUrlVerified === true
+    && collection.strategy !== "seed"
+    && metadata.sourceTextStatus === "not_available"
+    && review.required !== true
+  );
 }
 
 const AUTHORITATIVE_REVIEW_DECISIONS = new Set([
@@ -94,6 +116,11 @@ export function mapLegacyArticleLifecycle(evidence: LegacyArticleLifecycleEviden
   const collection = nestedRecord(evidence.sourceMetadata, "collection");
   const textAvailable = booleanSignal(collection.sourceTextAvailable);
   const publishable = booleanSignal(collection.publishable);
+  const expectedTerminalMetadataOnly = isExpectedTerminalMetadataOnly(
+    status,
+    evidence.sourceMetadata,
+    evidence.errorClass,
+  );
   const decision = effectiveReviewDecision(evidence.sourceMetadata, evidence.reviewState);
   const reviewState = lifecycleReviewState(decision, status);
   const anomaly = (anomalyCode: string): LegacyArticleLifecycleMapping => ({
@@ -139,7 +166,7 @@ export function mapLegacyArticleLifecycle(evidence: LegacyArticleLifecycleEviden
   else if (status === "needs_review" && evidence.hasSummary) processingState = "complete";
   else if (status === "needs_review" && collectionState === "source_text_ready") processingState = "ready";
 
-  const fallbackError = evidence.errorClass ?? ({
+  const fallbackError = expectedTerminalMetadataOnly ? undefined : evidence.errorClass ?? ({
     metadata_only: "collection.metadata_only",
     robots_disallowed: "crawl.robots_disallowed",
     blocked: "crawl.blocked",
@@ -154,7 +181,11 @@ export function mapLegacyArticleLifecycle(evidence: LegacyArticleLifecycleEviden
       collectionState,
       processingState,
       reviewState,
-      attention: fallbackError ? errorAttention(fallbackError, evidence.errorContext) : { operation: "keep" },
+      attention: expectedTerminalMetadataOnly
+        ? { operation: "clear", resolvesCodes: ["collection.metadata_only"] }
+        : fallbackError
+          ? errorAttention(fallbackError, evidence.errorContext)
+          : { operation: "keep" },
     },
   };
 }

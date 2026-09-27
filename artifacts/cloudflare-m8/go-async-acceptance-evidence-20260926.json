@@ -1,12 +1,13 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "milestone": "M8",
   "step": "go-async-acceptance-evidence",
   "date": "2026-09-26",
+  "updatedAt": "2026-09-27",
   "branch": "codex/m7-go-search",
   "baseHead": "56fd89d02e03193b402c7da6dcba9f3be3accda4",
   "contentFree": true,
-  "notes": "No secrets, tokens, raw HTML, or application rows. Only counts, ids, timestamps and code paths. Read-only Cloudflare queries used the operator OAuth session; no message was sent, acked, retried, purged or deleted, and no Supabase/D1/application data was read or written by this step.",
+  "notes": "No secrets, tokens, raw HTML, or application row contents. Only aggregate counts, deployment/migration ids, timestamps and code paths. The original 2026-09-26 Cloudflare evidence was read-only; the 2026-09-27 finalResolution20260927 section records separately authorized bounded Supabase production maintenance and its read-back evidence. The DLQ was not purged or switched to pull mode.",
   "restingState": {
     "deployedVersion": "510507c0-de82-4019-a1dd-d2a1f8f37cf4",
     "M8_SCHEDULER_ENABLED": "false",
@@ -137,34 +138,233 @@
       "classification": "data backlog (legacy-public rows not yet projected by P3 plus unresolved quarantine), not a code defect"
     },
     "remediation": {
-      "status": "not repaired in this task (read-only)",
-      "nextSafeAction": "Run the existing bounded, flag-gated P1/P3 projection + quarantine-resolution paths in a separately authorized maintenance window: (1) submit the P3 backfill/republish command for the 14 legacy/eexplicit mismatch articles so public_article_projection_p3 covers them and the identity digests converge; (2) resolve the 12 unresolved article_publication_quarantine_p3 rows via the existing admin_governance_p5_quarantine_resolution path; (3) triage the 5 lifecycle backlog articles (oldest review age 1403602s) to clear lifecycle_attention_state/review. Then re-run pnpm admin:health:p5 read-only and require hardViolationKeys=[]."
+      "status": "completed 2026-09-27 by two new timestamped forward-fix migrations after production ROLLBACK simulations; no existing migration or fail-closed guard was weakened",
+      "finalEvidence": "See finalResolution20260927. Publication mismatch, unresolved quarantine, lifecycle backlog and P3 outbox backlog are all zero; admin:health:p5 passes with hardViolationKeys=[]."
+    },
+    "maintenanceAttempt": {
+      "supersededBy": "finalResolution20260927",
+      "date": "2026-09-26",
+      "actor": "codex-m8-p5-follow-up",
+      "mode": "existing bounded/flag-gated operator paths, dry-run inside explicitly rolled-back transactions, live rows re-read before and after",
+      "productionMutationApplied": false,
+      "schedulerStateUnchanged": { "M8_SCHEDULER_ENABLED": "false", "M8_ENABLED_KINDS": "admin-health" },
+      "dlqPurged": false,
+      "enabledKindsBroadened": false,
+      "migrationsAltered": false,
+      "searchOrM7AuthorityChanged": false,
+      "liveReReadBeforeAfterIdentical": {
+        "legacyPublicCount": 1272,
+        "explicitPublicCount": 1258,
+        "legacyOnlyCount": 14,
+        "projectionOnlyCount": 0,
+        "quarantineTotal": 13,
+        "quarantineUnresolved": 12,
+        "quarantineResolutions": 1,
+        "lifecycleBacklog": 5,
+        "oldestReviewAgeSeconds": 1415272,
+        "unresolvedLifecycleAnomalies": 0
+      },
+      "publicationParity": {
+        "pathProbed": "article_publication_backfill_batch_p3 (pnpm admin:publication:p3 -- --backfill)",
+        "abortReason": "unexpected_quarantine_expansion",
+        "rolledBackBatchLimit": 2000,
+        "selectedCount": 1277,
+        "mappedCount": 0,
+        "quarantinedCount": 81,
+        "unchangedCount": 1201,
+        "batchComplete": true,
+        "quarantineTotalWouldBe": 94,
+        "quarantineTotalBefore": 13,
+        "newQuarantineByCode": {
+          "backfill.authority_rejected": 62,
+          "backfill.existing_state_conflict": 14,
+          "backfill.lifecycle_attention_not_clear": 5,
+          "backfill.public_review_ineligible": 0
+        },
+        "directTransitionProbe": {
+          "path": "article_publication_transition_p3(..., target_state='published', actor_type='backfill')",
+          "rowsAttempted": 14,
+          "rowsSucceeded": 0,
+          "rowsRejected": 14,
+          "distinctErrors": ["ARTICLE_P3_FRESHNESS_UNKNOWN"],
+          "rootCause": "v4 publication guard article_p3_publication_guard_v4 (migration 20260903130000, trigger article_publications_p3_guard_v4_trigger) raises ARTICLE_P3_FRESHNESS_UNKNOWN for a null-version_role published version with no legacy_version_freshness_classifications_v4 freshness='current' row",
+          "freshnessTable": {
+            "rows": 3236,
+            "allClassifiedAtDate": "2026-09-03",
+            "onlyWriterInRepository": "one-time DO block in supabase/migrations/20260903130000_constitutional_case_catalog_gate2.sql; no runtime function or operator CLI classifies versions",
+            "targetVersions": "all 14 current publication versions are p3.article.v1 null-role, created 2026-09-05..2026-09-26, with zero classification rows"
+          },
+          "safeguardWeakened": false
+        }
+      },
+      "unresolvedQuarantine": {
+        "rowsProbed": 12,
+        "allAnomalyCode": "backfill.lifecycle_attention_not_clear",
+        "allLegacyPublic": false,
+        "allAlreadyInProjection": true,
+        "pathProbed": "admin_governance_p5_quarantine_resolution (migration 20260713093000)",
+        "finding": "migration only re-creates the P5 health view to count unresolved quarantine; it defines no resolution function, route or CLI",
+        "onlyWriterInRepository": "one-time DO block in supabase/migrations/20260713090000_article_publication_p3_review_eligibility.sql, which auto-resolves only backfill.public_review_ineligible legacy_public=true eligible rows",
+        "existingResolutionRow": { "anomaly_code": "backfill.public_review_ineligible", "resolution_code": "resolution.completed_processing_is_publishable" },
+        "abortReason": "no_operator_writer_plus_human_semantic_decision_required",
+        "guessed": false
+      },
+      "lifecycleReviewBacklog": {
+        "rowsProbed": 5,
+        "allSourceKey": "es-tribunal-constitucional",
+        "allStatus": "metadata_only",
+        "allAttentionState": "active",
+        "allAttentionCode": "collection.metadata_only",
+        "oldestRaisedAt": "2026-09-10T03:25:18Z",
+        "oldestReviewAgeSeconds": 1415272,
+        "pathProbed": "article_lifecycle_backfill_batch_p2 (pnpm admin:lifecycle:p2 -- --backfill)",
+        "rolledBackBatchLimit": 2000,
+        "selectedCount": 1277,
+        "mappedCount": 0,
+        "anomalyCount": 0,
+        "unchangedCount": 1277,
+        "batchComplete": true,
+        "backlogBefore": 5,
+        "backlogAfter": 5,
+        "abortReason": "bounded_path_is_noop_plus_human_collection_decision_required",
+        "guessed": false
+      },
+      "postMaintenanceHealthReadOnly": {
+        "command": "pnpm admin:health:p5",
+        "status": "failing",
+        "hardViolationKeys": ["lifecycle.review", "publication.parity"],
+        "componentCounts": {
+          "parityMismatchCount": 14,
+          "quarantineCount": 12,
+          "legacyPublicCount": 1272,
+          "explicitPublicCount": 1258,
+          "lifecycleBacklogCount": 5,
+          "oldestReviewAgeSeconds": 1415272
+        }
+      }
     }
   },
+  "finalResolution20260927": {
+    "productionMutationApplied": true,
+    "existingMigrationsModified": false,
+    "newMigrations": [
+      "20260927023756_m8_p5_publication_parity_forward_fix",
+      "20260927025116_m8_p5_terminal_metadata_lifecycle"
+    ],
+    "preconditions": {
+      "inflightAdminCommands": 0,
+      "inflightLegacyJobs": 0,
+      "schedulerEnabled": false,
+      "enabledKinds": "admin-health"
+    },
+    "publicationParity": {
+      "before": {
+        "legacyPublicCount": 1272,
+        "explicitPublicCount": 1258,
+        "parityMismatchCount": 14,
+        "unresolvedQuarantineCount": 12
+      },
+      "diagnosis": [
+        "The 14 missing projection rows had post-Gate2 p3.article.v1 null-role versions with no runtime legacy freshness classification.",
+        "Their existing draft P3 versions also lacked summary_json, so classifying and directly publishing the stale version was not eligible.",
+        "The safe repair captures the current legacy article into a new immutable P3 version, classifies that inserted legacy version current using the original legacy_same_version semantics, and publishes through article_publication_transition_p3 without weakening ARTICLE_P3_FRESHNESS_UNKNOWN."
+      ],
+      "rollbackSimulation": {
+        "legacyPublicCount": 1272,
+        "explicitPublicCount": 1272,
+        "parityMismatchCount": 0,
+        "unresolvedQuarantineCount": 0,
+        "newOutboxPendingCount": 14
+      },
+      "after": {
+        "legacyPublicCount": 1272,
+        "explicitPublicCount": 1272,
+        "parityMismatchCount": 0,
+        "unresolvedQuarantineCount": 0,
+        "quarantineResolutionCount": 13
+      },
+      "outbox": {
+        "firstLocalDrain": "failed safely because operator APP_BASE_URL resolved to localhost:3000; all 14 events returned to pending with attempt_count=1 and dead_letter=0",
+        "productionEndpointProbe": "worldcons.vercel.app reachable; unauthenticated POST returned 401",
+        "boundedRetry": {
+          "passes": 1,
+          "claimedCount": 14,
+          "deliveredCount": 14,
+          "failedCount": 0,
+          "deadLetterCount": 0
+        },
+        "finalPending": 0,
+        "finalProcessing": 0,
+        "finalDeadLetter": 0
+      }
+    },
+    "lifecycleReview": {
+      "beforeBacklogCount": 5,
+      "diagnosis": "All five were expected terminal Spain HJ metadata-only records: official URL verified, sourceTextAvailable=false, publishable=false, sourceTextStatus=not_available, no error class, no human-review requirement, and official metadata states source text is intentionally unavailable because the resolution contains no constitutional doctrine.",
+      "stateModelFix": "Terminal metadata-only evidence now clears only collection.metadata_only attention; collection=metadata_only, processing=not_ready, review=unreviewed, legacy status/source metadata and publication semantics are unchanged. Ordinary awaiting/failure metadata-only rows remain retryable attention.",
+      "scopeGuard": "Migration aborts if more than 100 currently-active rows satisfy the terminal predicate.",
+      "rollbackSimulationBacklogAfter": 0,
+      "afterBacklogCount": 0
+    },
+    "finalDatabaseReadBack": {
+      "legacyPublicCount": 1272,
+      "explicitPublicCount": 1272,
+      "parityMismatchCount": 0,
+      "unresolvedQuarantineCount": 0,
+      "lifecycleBacklogCount": 0,
+      "outboxPendingCount": 0,
+      "outboxProcessingCount": 0,
+      "outboxDeadLetterCount": 0,
+      "inflightAdminCommands": 0,
+      "inflightLegacyJobs": 0
+    },
+    "p5Health": {
+      "command": "ADMIN_P5_HEALTH_VERIFICATION_ENABLED=true pnpm admin:health:p5 -- --window-hours=336",
+      "status": "passing",
+      "hardViolationKeys": []
+    },
+    "deployedM8RestingStateReverified": {
+      "version": "510507c0-de82-4019-a1dd-d2a1f8f37cf4",
+      "M8_SCHEDULER_ENABLED": "false",
+      "M8_ENABLED_KINDS": "admin-health",
+      "source": "wrangler versions view"
+    },
+    "dlqBodyAttributionLimitationUnchanged": true,
+    "dlqPurged": false,
+    "searchOrM7AuthorityChanged": false
+  },
   "verification": {
-    "pnpm test:m8": "19/19 pass",
+    "pnpm test:m8": "23/23 pass",
     "pnpm m8:types:check": "up to date",
     "pnpm m8:typecheck": "pass",
     "pnpm typecheck": "pass",
     "pnpm lint": "pass",
     "pnpm test:p1": "23 tests: 22 pass, 1 PostgreSQL integration skip, 0 fail (stale retired-schedule assertions corrected)",
+    "pnpm test:p2": "16 tests: 15 pass, 1 PostgreSQL integration skip, 0 fail",
+    "pnpm test:p3": "9 tests: 8 pass, 1 PostgreSQL integration skip, 0 fail",
     "pnpm test:p5": "21 tests: 20 pass, 1 PostgreSQL integration skip, 0 fail (stale retired-schedule assertion corrected)",
     "pnpm test:embeddings": "10/10 pass (stale retired-schedule assertion corrected)",
     "pnpm m8:dry-run": "see docs",
+    "pnpm admin:migrations:check": "pass",
+    "evidenceJsonParse": "pass",
     "git diff --check": "clean"
   },
   "goAsync": {
-    "status": "NOT_RECORDED",
+    "status": "RECORDED_WITH_OBSERVABILITY_LIMIT",
+    "recordedAt": "2026-09-27",
     "provenThisStep": [
       "retry path active and bounded toward DLQ (activity observed, message-identity attribution still OPEN)",
       "request-governor parity for Browser Run + fetch escalation",
       "restart/recovery invariants for Queue->Workflow",
-      "no-duplicate publication identity propagation"
+      "no-duplicate publication identity propagation",
+      "P5 production health passes with hardViolationKeys=[] after bounded forward-fix maintenance",
+      "publication parity mismatch=0, unresolved quarantine=0, lifecycle backlog=0, P3 outbox backlog=0"
     ],
     "stillOpen": [
-      "body-level attribution of m8:invalid:gate-probe's DLQ write (Cloudflare read-only API cannot peek push-consumer messages)",
-      "admin-health P5 hard violations lifecycle.review and publication.parity (application data backlog)"
+      "body-level attribution of m8:invalid:gate-probe's DLQ write (Cloudflare read-only API cannot peek push-consumer messages)"
     ],
+    "activationState": "not activated; deployed scheduler remains disabled and enabledKinds remains admin-health",
+    "activationPrerequisite": "checkpoint the verified forward-fix/application mapping changes on the intended branch before any deliberate scheduler enablement",
     "githubActionsRemainsCompatibilityExecutor": true,
     "containersMigration": "not started",
     "searchAuthorityOrM7StateChanged": false

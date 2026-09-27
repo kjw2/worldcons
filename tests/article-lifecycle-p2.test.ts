@@ -24,6 +24,10 @@ const reconciliationMigrationPath = path.join(
   process.cwd(),
   "supabase/migrations/20260712172000_article_lifecycle_p2_evidence_reconciliation.sql",
 );
+const terminalMetadataMigrationPath = path.join(
+  process.cwd(),
+  "supabase/migrations/20260927025116_m8_p5_terminal_metadata_lifecycle.sql",
+);
 
 const expectedByStatus = {
   discovered: ["discovered", "not_ready", "unreviewed"],
@@ -94,6 +98,69 @@ test("review and structured attention mapping stay independent", () => {
     severity: "high",
     source: "processing",
   });
+});
+
+test("expected terminal metadata-only evidence clears retry attention without approving publication", () => {
+  const mapped = mapLegacyArticleLifecycle({
+    status: "metadata_only",
+    sourceMetadata: {
+      sourceTextStatus: "not_available",
+      collection: {
+        strategy: "api",
+        sourceUrlVerified: true,
+        sourceTextAvailable: false,
+        publishable: false,
+      },
+    },
+    errorClass: null,
+    hasSummary: false,
+  });
+  assert.equal(mapped.ok, true);
+  if (!mapped.ok) return;
+  assert.equal(mapped.state.collectionState, "metadata_only");
+  assert.equal(mapped.state.processingState, "not_ready");
+  assert.equal(mapped.state.reviewState, "unreviewed");
+  assert.deepEqual(mapped.state.attention, {
+    operation: "clear",
+    resolvesCodes: ["collection.metadata_only"],
+  });
+
+  const retryable = mapLegacyArticleLifecycle({
+    status: "metadata_only",
+    sourceMetadata: {
+      sourceTextStatus: "awaiting_hj_full_text",
+      collection: {
+        strategy: "api",
+        sourceUrlVerified: true,
+        sourceTextAvailable: false,
+        publishable: false,
+      },
+    },
+    hasSummary: false,
+  });
+  assert.equal(retryable.ok, true);
+  if (retryable.ok) {
+    assert.deepEqual(retryable.state.attention, {
+      operation: "raise",
+      code: "collection.metadata_only",
+      retryable: true,
+      severity: "low",
+      source: "collection",
+    });
+  }
+});
+
+test("terminal metadata-only forward-fix is bounded and changes lifecycle attention only", () => {
+  const sql = fs.readFileSync(terminalMetadataMigrationPath, "utf8");
+  assert.match(sql, /sourceTextStatus}' = 'not_available'/i);
+  assert.match(sql, /sourceTextAvailable}' = 'false'/i);
+  assert.match(sql, /publishable}' = 'false'/i);
+  assert.match(sql, /sourceUrlVerified}' = 'true'/i);
+  assert.match(sql, /M8_P5_TERMINAL_METADATA_SCOPE_EXCEEDED/i);
+  assert.match(sql, /array\['collection\.metadata_only'\]::text\[\]/i);
+  assert.doesNotMatch(sql, /\bupdate\s+articles\s+set\s+status\b/i);
+  assert.doesNotMatch(sql, /\bsource_metadata\s*=/i);
+  assert.doesNotMatch(sql, /\btruncate\b|\bdelete\s+from\s+articles\b/i);
 });
 
 test("workflow-only review labels recover the latest authoritative history decision", () => {
