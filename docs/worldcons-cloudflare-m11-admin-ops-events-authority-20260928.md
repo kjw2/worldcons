@@ -11,12 +11,14 @@ for `worldcons_ops.admin_ops_events` that M11.3 deliberately deferred.**
 Code and focused tests are complete. The M11.4R live read-only list
 read-parity window has since run to PASS, and the M11.4 live write components
 (bounded `d1-canary` insert, D1 read-before-write dedupe, D1 prune, and the
-ordinary full-`d1` write) have since run to bounded PASS at head `6c44e5b`
-(see the result sections below). The Cloudflare authority rests at
+ordinary full-`d1` write) have since run to bounded PASS at head `6c44e5b`.
+The deliberate combined full-`d1` read/write window has since run to PASS at
+clean pushed HEAD `d7e0b68` (see the combined result section below). The
+Cloudflare authority rests at
 `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=supabase` and
 `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=supabase`, so the Node/GitHub watchdog
-behavior is byte-for-byte unchanged. No combined full-`d1` read/write cutover,
-commit or push was performed by this documentation step.
+behavior is byte-for-byte unchanged. No commit or push was performed by this
+documentation step.
 **M11 is not complete**: ingest and core/publication remain pending.
 
 ## Why `admin_ops_events` is broader than the M11.3 heartbeat
@@ -266,9 +268,82 @@ This marks the M11.4 write **components** as bounded PASS. It does **not** claim
 combined full-`d1` `admin_ops_events` read/write cutover or M11 completion. See
 `artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json`.
 
+## M11.4 combined full-`d1` read/write result (2026-09-28, combined gate PASS)
+
+At clean pushed HEAD `d7e0b68000812908f0596d31092a80152d340afd` the controller
+ran exactly one ordinary `admin-watchdog` dispatch to exercise the combined
+full-`d1` `admin_ops_events` read/write gate.
+
+- **Boundary/Worker.** Deployment `7c1fd505-3929-42b3-8980-45d748197cbe` /
+  version `b4230140-6954-462a-aa5d-77d9730b077c` carried admin write/read
+  authorities `d1`/`d1` and heartbeat write/read `supabase`/`supabase`, OIDC
+  audience `worldcons-ops-write`, and temporary allowed refs
+  `refs/heads/main,refs/heads/codex/m7-go-search`.
+- **Baseline.** Supabase and D1 `admin_ops_events` both held count **412** with
+  the latest-20 IDs/order **exactly equal**; latest id
+  `5cb358fb-a0f2-4da6-89f8-995c2716f091` (`watchdog_violation` warning, signature
+  `candidate-backlog|source-outcome:de-bverfg|workflow-heartbeat:catalog_backfill|workflow-heartbeat:embedding|workflow-heartbeat:summary`).
+- **GitHub run.** Run `36389389417`, job `108821626217`, branch
+  `codex/m7-go-search`, head `d7e0b68`, input `admin_ops_events_combined=true`,
+  completed **success**.
+- **Read leg (ran BEFORE the write leg) — PASS.** Artifact `10955696922` / name
+  `m11.4-combined-admin-ops-events-read-parity-live-evidence` reported
+  `boundaryCount` 20, `supabaseCount` 20, `boundaryVsSupabase.holds=true`,
+  `differences=[]`, `directD1.enabled=false`, `ok=true` (date
+  `2026-09-28T07:01:36.792Z`). The read leg endpoint
+  `GET /v1/ops/admin-events/list?limit=20` returned `200` outcome `ok` in
+  `591ms`.
+- **Write leg — PASS (no-insert dedupe skip, an allowed outcome).** Cloudflare
+  Observability on the canary version recorded
+  `GET /v1/ops/admin-events/latest` `200` outcome `ok` `119ms` and
+  `POST /v1/ops/admin-events/prune` `200` outcome `ok` `118ms`. **No
+  `POST /v1/ops/admin-events` insert occurred because the current watchdog
+  violation signature exactly matched the existing latest event, so the dedupe
+  correctly skipped the insert.** This no-insert case is explicitly an allowed
+  successful write-path outcome, and the actual insert path was already
+  live-proven separately in the committed M11.4 write evidence.
+- **Auth.** OIDC/auth failure count during the window = **0**.
+- **Post-run stores.** Supabase `admin_ops_events` stayed count **412** / latest
+  unchanged; D1 stayed count **412** / latest unchanged; the two remained
+  reconciled.
+- **Heartbeat correction.** Because heartbeat authorities remained **Supabase**,
+  the combined watchdog run **DID advance the Supabase watchdog heartbeat** to
+  run_id `36389389417` (`last_started_at 2026-09-28T07:01:41.624+00`,
+  `last_completed_at 2026-09-28T07:01:48.085+00`, status success). Any earlier
+  draft wording claiming the Supabase heartbeat should remain unchanged is
+  **incorrect and corrected here**. The D1 watchdog heartbeat remained run_id
+  `36384300267` (`last_started_at 2026-09-28T06:00:00.283Z`,
+  `last_completed_at 2026-09-28T06:00:10.231Z`, status success), confirming the
+  heartbeat write authority rested at Supabase throughout.
+- **Rollback.** Resting Worker deployment
+  `fe26a512-b4d3-4cff-a6a8-31cf06410b6c` / version
+  `1dbc2ca8-04f3-4ebb-9a3a-c30a30999116` with admin write/read `supabase`/
+  `supabase`, heartbeat write/read `supabase`/`supabase`, temporary allowed-ref
+  binding removed. GitHub repo admin write/read and heartbeat write/read vars all
+  `supabase`; running/queued actions 0. Unauthenticated endpoints all `401`:
+  `/health`; `GET /v1/ops/heartbeats`; `POST /v1/ops/heartbeat`;
+  `GET /v1/ops/admin-events/list?limit=20`; `GET /v1/ops/admin-events/latest`;
+  `POST /v1/ops/admin-events`; `POST /v1/ops/admin-events/prune`.
+
+The combined M11.4 read+write gate is **PASS**. This does **not** claim M11
+overall complete; see the next-step section. Live D1 fault injection was not
+performed; the existing fail-closed tests are accepted in lieu (documented). See
+`artifacts/cloudflare-m11/m11.4-combined-admin-ops-events-read-write-live-evidence-20260928.json`.
+
+## Next step (remaining M11 domain/gate)
+
+M11.4 is now combined-PASS and is **not** M11 completion. The next remaining M11
+domain/gate from the migration plan is **ingest and/or core/publication** (see
+`docs/worldcons-cloudflare-full-migration-plan-20260920.md`). Concretely, the
+next slice is to extend the same bounded, fail-closed `supabase|d1-canary|d1`
+authority seam to the ingest `worldcons_ingest` operational write surface
+(`ingestion_runs`, source backfill/inventory/governor tables) and/or the
+core/publication `worldcons_core` surface, live-prove each bounded component,
+then run a combined read/write window as done here.
+
 ## What is NOT claimed
 
-- No combined full-`d1` `admin_ops_events` read/write cutover, no deploy, commit or push.
+- No commit or push was performed by this documentation step.
 - No M11 completion: ingest and core/publication remain pending.
 - The `412/412` reconciliation is the post-live clean state, not evidence the historical D1 inserts did not happen.
 
@@ -294,10 +369,11 @@ combined full-`d1` `admin_ops_events` read/write cutover or M11 completion. See
 8. Delete the canary event(s) and restore pre-canary counts. **(DONE — Supabase
    and D1 reconciled at 412/412, latest-20 identity matched.)**
 
-**Next gate.** The deliberate combined full-`d1` `admin_ops_events` read/write
-window, using the already-proven write components (bounded `d1-canary` insert,
-D1 dedupe read, D1 prune, ordinary full-`d1` write) and the already-proven read
-component (M11.4R D1 list read parity). This is explicitly **not** claimed yet.
+**Combined gate — DONE.** The deliberate combined full-`d1` `admin_ops_events`
+read/write window (read leg + write leg in one dispatch) has since run to PASS at
+HEAD `d7e0b68`; see the combined result section below.
+**Next gate.** The next remaining M11 domain/gate is ingest and/or
+core/publication (see the migration plan). M11 overall is **not** complete.
 
 ## M11.4 combined full-`d1` read/write window (code-ready)
 
@@ -375,9 +451,13 @@ process env so the Node client issues the boundary GET.
    correctly skips it and no `POST /admin-events` appears — verify the latest
    `detail.signature` to explain which), and `POST /v1/ops/admin-events/prune`
    `200`. Auth-failure count 0.
-8. **Verify Supabase invariance:** the Supabase `admin_ops_events` row/count is
-   unchanged except any unrelated preexisting activity; the Supabase watchdog
-   heartbeat `run_id` does not advance (heartbeat rests on Supabase).
+8. **Verify Supabase event invariance (heartbeat advances):** the Supabase
+   `admin_ops_events` row/count is unchanged except any unrelated preexisting
+   activity. **Correction:** because the heartbeat authorities remain `supabase`,
+   the Supabase watchdog heartbeat `run_id` **does** advance to this run's id
+   (it rests on Supabase and is therefore written by the Supabase path), while
+   the D1 watchdog heartbeat stays at its prior id. Do not claim the Supabase
+   heartbeat remains unchanged.
 9. **Fail closed:** no silent Supabase fallback; any D1 failure is a `503`/
    throw. Live D1 fault injection is not performed; the existing fail-closed
    tests are accepted in lieu (documented).

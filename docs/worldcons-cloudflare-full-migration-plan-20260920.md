@@ -1849,6 +1849,63 @@ combined cutover; M11 still incomplete):
   `artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json`
   (and `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`).
 
+M11.4 combined full-`d1` `admin_ops_events` read/write window (2026-09-28,
+**combined gate PASS**; M11 still incomplete):
+
+- At clean pushed HEAD `d7e0b68000812908f0596d31092a80152d340afd` the controller
+  ran exactly one ordinary `admin-watchdog` dispatch (GitHub run `36389389417`,
+  job `108821626217`, branch `codex/m7-go-search`, input
+  `admin_ops_events_combined=true`, completed **success**) to exercise the
+  combined full-`d1` `admin_ops_events` read/write gate.
+- **Boundary/Worker.** Deployment
+  `7c1fd505-3929-42b3-8980-45d748197cbe` / version
+  `b4230140-6954-462a-aa5d-77d9730b077c` carried admin write/read `d1`/`d1`,
+  heartbeat write/read `supabase`/`supabase`, OIDC audience
+  `worldcons-ops-write`, and temporary allowed refs
+  `refs/heads/main,refs/heads/codex/m7-go-search`.
+- **Baseline.** Supabase and D1 both count **412** with latest-20 IDs/order
+  **exactly equal**; latest id `5cb358fb-a0f2-4da6-89f8-995c2716f091`
+  (`watchdog_violation` warning, signature `candidate-backlog|source-outcome:de-bverfg|workflow-heartbeat:catalog_backfill|workflow-heartbeat:embedding|workflow-heartbeat:summary`).
+- **Read leg (ran BEFORE write leg) — PASS.** Artifact `10955696922` / name
+  `m11.4-combined-admin-ops-events-read-parity-live-evidence` reported
+  `boundaryCount` 20, `supabaseCount` 20, `boundaryVsSupabase.holds=true`,
+  `differences=[]`, `directD1.enabled=false`, `ok=true` (date
+  `2026-09-28T07:01:36.792Z`); endpoint
+  `GET /v1/ops/admin-events/list?limit=20` `200` outcome `ok` `591ms`.
+- **Write leg — PASS (no-insert dedupe skip).** Observability on the canary
+  version recorded `GET /v1/ops/admin-events/latest` `200` `ok` `119ms` and
+  `POST /v1/ops/admin-events/prune` `200` `ok` `118ms`. **No
+  `POST /v1/ops/admin-events` occurred because the current watchdog violation
+  signature exactly matched the existing latest event, so the dedupe correctly
+  skipped the insert**; this is explicitly an allowed successful write-path
+  outcome and the actual insert path was already live-proven in the M11.4 write
+  evidence. OIDC/auth failure count = **0**.
+- **Post-run stores.** Supabase stayed count **412** / latest unchanged and D1
+  stayed count **412** / latest unchanged, so they remained reconciled.
+- **Heartbeat correction.** Because heartbeat authorities remained **Supabase**,
+  the combined watchdog run **DID advance the Supabase watchdog heartbeat** to
+  run_id `36389389417` (`last_started_at 2026-09-28T07:01:41.624+00`,
+  `last_completed_at 2026-09-28T07:01:48.085+00`, status success). Any draft
+  wording claiming the Supabase heartbeat should remain unchanged is **wrong**.
+  The D1 watchdog heartbeat stayed at run_id `36384300267`
+  (`last_started_at 2026-09-28T06:00:00.283Z`, `last_completed_at
+  2026-09-28T06:00:10.231Z`, success).
+- **Rollback.** Resting Worker deployment
+  `fe26a512-b4d3-4cff-a6a8-31cf06410b6c` / version
+  `1dbc2ca8-04f3-4ebb-9a3a-c30a30999116` with admin write/read `supabase`/
+  `supabase` and heartbeat write/read `supabase`/`supabase`, temporary
+  allowed-ref binding removed; repo admin and heartbeat vars all `supabase`;
+  running/queued actions 0. Every unauthenticated endpoint returns `401`:
+  `/health`; `GET /v1/ops/heartbeats`; `POST /v1/ops/heartbeat`;
+  `GET /v1/ops/admin-events/list?limit=20`; `GET /v1/ops/admin-events/latest`;
+  `POST /v1/ops/admin-events`; `POST /v1/ops/admin-events/prune`.
+- **Not claimed.** No M11 completion: the next remaining M11 domain/gate is
+  **ingest and/or core/publication** (see the checklist entry below). Live D1
+  fault injection was not performed; the existing fail-closed tests are accepted
+  in lieu.
+- Detailed evidence:
+  `artifacts/cloudflare-m11/m11.4-combined-admin-ops-events-read-write-live-evidence-20260928.json`.
+
 M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28):
 
 - Replaces the shared `WORLDCONS_OPS_WRITE_TOKEN` repository secret for
@@ -2326,9 +2383,12 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   20/20 bounded list parity on `workflow_dispatch` run `36379545354` (watchdog and
   write-capable steps skipped); counts and the Supabase watchdog run id were
   unchanged and the Worker was restored to `bc257622-da6e-45fb-9be3-46d9c0e56991`.
-  Its combined full-`d1` read/write cutover still needs a
-  live controller window, and ingest plus
-  core/publication are still pending. See
+  The deliberate combined full-`d1` read/write window has since run to **PASS**
+  at clean pushed HEAD `d7e0b68` (run `36389389417`, read leg before write leg,
+  artifact `10955696922`, boundary/supabase 20/20 `holds=true` `differences=[]`,
+  write leg dedupe correctly skipped the insert on a matching signature with
+  prune `200`; rollback to resting version `1dbc2ca8`). Ingest plus
+  core/publication are still pending — the next remaining M11 domain/gate. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`

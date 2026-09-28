@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.4-combined-live-read-write",
+  "decision": "COMBINED-READ-WRITE-GATE-PASS-NO-INSERT-DEDUPE-SKIP-ALLOWED-M11-INCOMPLETE",
+  "status": "combined_admin_ops_events_read_write_gate_pass_resting_reconciled_at_supabase_and_d1_412_412",
+  "date": "2026-09-28",
+  "headSha": "d7e0b68000812908f0596d31092a80152d340afd",
+  "branch": "codex/m7-go-search",
+  "predecessorEvidence": [
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json"
+  ],
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "admin_ops_events",
+    "authorityMode": "combined-live-full-d1-read-write",
+    "combinedFullD1ReadWriteCutoverLiveProven": true,
+    "readLegRanBeforeWriteLeg": true,
+    "readLegListParityProvProven": true,
+    "writeLegInsertPathExercised": false,
+    "writeLegDedupeSkipObserved": true,
+    "writeLegPruneProven": true,
+    "authFailureCountDuringWindow": 0,
+    "adminOpsEventsWriteAuthorityDuringWindow": "d1",
+    "adminOpsEventsReadAuthorityDuringWindow": "d1",
+    "heartbeatWriteAuthorityDuringWindow": "supabase",
+    "heartbeatReadAuthorityDuringWindow": "supabase",
+    "heartbeatConsequence": "the combined watchdog run advanced the Supabase watchdog heartbeat (heartbeat authorities remained supabase); D1 watchdog heartbeat unchanged",
+    "m11Complete": false,
+    "readOnlyRun": false,
+    "insertPerformed": false,
+    "dedupeSkipReason": "the current watchdog violation signature exactly matched the existing latest event, so the read-before-write dedupe correctly skipped the insert",
+    "prunePerformed": true,
+    "destructiveLiveFaultInjection": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false,
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false
+  },
+  "summary": "At clean pushed HEAD d7e0b68000812908f0596d31092a80152d340afd the controller ran exactly one ordinary admin-watchdog dispatch (GitHub run 36389389417, job 108821626217, branch codex/m7-go-search, input admin_ops_events_combined=true, completed success) to exercise the combined full-d1 admin_ops_events read/write gate. The boundary Worker was deployment 7c1fd505-3929-42b3-8980-45d748197cbe / version b4230140-6954-462a-aa5d-77d9730b077c with admin write/read authorities d1/d1 and heartbeat write/read supabase/supabase, OIDC audience worldcons-ops-write and temporary allowed refs refs/heads/main,refs/heads/codex/m7-go-search. Baseline before the window: Supabase and D1 admin_ops_events both at count 412 with the latest-20 IDs/order exactly equal, latest id 5cb358fb-a0f2-4da6-89f8-995c2716f091 (watchdog_violation warning, signature candidate-backlog|source-outcome:de-bverfg|workflow-heartbeat:catalog_backfill|workflow-heartbeat:embedding|workflow-heartbeat:summary). The read leg ran BEFORE the write leg and uploaded artifact 10955696922 / name m11.4-combined-admin-ops-events-read-parity-live-evidence reporting boundaryCount 20, supabaseCount 20, boundaryVsSupabase.holds true, differences [], directD1.enabled false, ok true (date 2026-09-28T07:01:36.792Z); the read leg endpoint GET /v1/ops/admin-events/list?limit=20 returned 200 outcome ok in 591ms. The write leg, observed via Cloudflare Observability on the canary version, recorded GET /v1/ops/admin-events/latest 200 outcome ok 119ms and POST /v1/ops/admin-events/prune 200 outcome ok 118ms; no POST /v1/ops/admin-events insert occurred because the current watchdog violation signature exactly matched the existing latest event, so the dedupe correctly skipped the insert. This no-insert case is explicitly an allowed successful write-path outcome, and the actual insert path was already live-proven separately in the committed M11.4 write evidence. OIDC/auth failure count during the window was 0. Post-run Supabase admin_ops_events stayed count 412 / latest unchanged and D1 stayed count 412 / latest unchanged, so the two stores remained reconciled. CORRECTION: because heartbeat authorities remained Supabase, the combined watchdog run DID advance the Supabase watchdog heartbeat to run_id 36389389417, last_started_at 2026-09-28T07:01:41.624+00, last_completed_at 2026-09-28T07:01:48.085+00, status success, while the D1 watchdog remained run_id 36384300267, last_started_at 2026-09-28T06:00:00.283Z, last_completed_at 2026-09-28T06:00:10.231Z, status success. The combined M11.4 read+write gate is PASS; M11 overall is NOT claimed complete. The Worker was rolled back to resting deployment fe26a512-b4d3-4cff-a6a8-31cf06410b6c / version 1dbc2ca8-04f3-4ebb-9a3a-c30a30999116 with admin write/read supabase/supabase and heartbeat write/read supabase/supabase, the temporary allowed-ref binding removed, and all repository admin and heartbeat authority vars at supabase; every unauthenticated endpoint returned 401.",
+  "baselineBeforeWindow": {
+    "supabaseAdminOpsEventsCount": 412,
+    "d1AdminOpsEventsCount": 412,
+    "latest20IdsAndOrderExactlyEqual": true,
+    "latestEventId": "5cb358fb-a0f2-4da6-89f8-995c2716f091",
+    "latestEventType": "watchdog_violation",
+    "latestEventSeverity": "warning",
+    "latestEventSignature": "candidate-backlog|source-outcome:de-bverfg|workflow-heartbeat:catalog_backfill|workflow-heartbeat:embedding|workflow-heartbeat:summary"
+  },
+  "canaryWorker": {
+    "worker": "worldcons-ops-write",
+    "deploymentId": "7c1fd505-3929-42b3-8980-45d748197cbe",
+    "versionId": "b4230140-6954-462a-aa5d-77d9730b077c",
+    "adminOpsEventsWriteAuthority": "d1",
+    "adminOpsEventsReadAuthority": "d1",
+    "heartbeatWriteAuthority": "supabase",
+    "heartbeatReadAuthority": "supabase",
+    "oidcAudience": "worldcons-ops-write",
+    "allowedRefsTemporary": true,
+    "allowedRefs": ["refs/heads/main", "refs/heads/codex/m7-go-search"]
+  },
+  "githubRun": {
+    "workflow": ".github/workflows/admin-watchdog.yml",
+    "runId": 36389389417,
+    "jobId": 108821626217,
+    "branch": "codex/m7-go-search",
+    "headSha": "d7e0b68000812908f0596d31092a80152d340afd",
+    "input": "admin_ops_events_combined=true",
+    "conclusion": "success",
+    "readLeg": "ran BEFORE the write leg",
+    "writeLeg": "ran after the read leg"
+  },
+  "readLeg": {
+    "order": "1 (before write leg)",
+    "artifact": {
+      "id": 10955696922,
+      "name": "m11.4-combined-admin-ops-events-read-parity-live-evidence"
+    },
+    "date": "2026-09-28T07:01:36.792Z",
+    "endpoint": "GET /v1/ops/admin-events/list?limit=20",
+    "boundaryCount": 20,
+    "supabaseCount": 20,
+    "boundaryVsSupabaseHolds": true,
+    "differences": [],
+    "directD1Enabled": false,
+    "ok": true,
+    "interpretation": "the read leg ran while Supabase and D1 were still reconciled, so the order-aware id-aligned boundary (d1) projection matched the canonical Supabase list exactly before the write leg could add a D1-only leading event"
+  },
+  "writeLeg": {
+    "order": "2 (after read leg)",
+    "observabilitySource": "Cloudflare Observability on the canary version",
+    "workerVersionId": "b4230140-6954-462a-aa5d-77d9730b077c",
+    "requests": [
+      {"method": "GET", "path": "/v1/ops/admin-events/latest", "status": 200, "outcome": "ok", "wallTimeMs": 119},
+      {"method": "POST", "path": "/v1/ops/admin-events/prune", "status": 200, "outcome": "ok", "wallTimeMs": 118}
+    ],
+    "observabilityAbsent": [
+      {"method": "POST", "path": "/v1/ops/admin-events"}
+    ],
+    "noInsertReason": "the current watchdog violation signature exactly matched the existing latest event (5cb358fb-a0f2-4da6-89f8-995c2716f091), so the read-before-write dedupe correctly skipped the insert",
+    "noInsertIsAllowedSuccess": true,
+    "noInsertExplanation": "the no-insert dedupe-skip is explicitly an allowed successful write-path outcome; the actual D1 insert path was already live-proven separately in the committed M11.4 write evidence",
+    "pruneProven": true,
+    "authFailureCount": 0
+  },
+  "readLegEndpoint": {
+    "endpoint": "GET /v1/ops/admin-events/list?limit=20",
+    "status": 200,
+    "outcome": "ok",
+    "wallTimeMs": 591
+  },
+  "authFailureCountDuringWindow": 0,
+  "postRunReconciliation": {
+    "supabaseAdminOpsEventsCount": 412,
+    "supabaseLatestUnchanged": true,
+    "d1AdminOpsEventsCount": 412,
+    "d1LatestUnchanged": true,
+    "storesRemainedReconciled": true
+  },
+  "watchdogHeartbeatAdvanceCorrection": {
+    "heartbeatAuthoritiesRemainedSupabase": true,
+    "supabaseWatchdogHeartbeatAdvanced": true,
+    "supabaseWatchdog": {
+      "runId": 36389389417,
+      "lastStartedAt": "2026-09-28T07:01:41.624+00",
+      "lastCompletedAt": "2026-09-28T07:01:48.085+00",
+      "status": "success"
+    },
+    "d1WatchdogHeartbeat": {
+      "runId": 36384300267,
+      "lastStartedAt": "2026-09-28T06:00:00.283Z",
+      "lastCompletedAt": "2026-09-28T06:00:10.231Z",
+      "status": "success"
+    },
+    "correction": "because heartbeat authorities remained Supabase, the combined watchdog run DID advance the Supabase watchdog heartbeat to run_id 36389389417; any draft wording claiming the Supabase heartbeat should remain unchanged is incorrect and is corrected here",
+    "note": "the D1 watchdog heartbeat remained at run_id 36384300267, confirming the heartbeat write authority was supabase throughout"
+  },
+  "rollback": {
+    "restoredWorker": {
+      "worker": "worldcons-ops-write",
+      "deploymentId": "fe26a512-b4d3-4cff-a6a8-31cf06410b6c",
+      "versionId": "1dbc2ca8-04f3-4ebb-9a3a-c30a30999116",
+      "adminOpsEventsWriteAuthority": "supabase",
+      "adminOpsEventsReadAuthority": "supabase",
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "temporaryAllowedRefsBinding": false
+    },
+    "restoredRepositoryAuthorityVars": {
+      "adminOpsEventsWrite": "supabase",
+      "adminOpsEventsRead": "supabase",
+      "heartbeatWrite": "supabase",
+      "heartbeatRead": "supabase"
+    },
+    "runningOrQueuedActions": 0,
+    "unauthenticatedProbes": {
+      "/health": 401,
+      "GET /v1/ops/heartbeats": 401,
+      "POST /v1/ops/heartbeat": 401,
+      "GET /v1/ops/admin-events/list?limit=20": 401,
+      "GET /v1/ops/admin-events/latest": 401,
+      "POST /v1/ops/admin-events": 401,
+      "POST /v1/ops/admin-events/prune": 401
+    }
+  },
+  "failClosed": {
+    "liveDestructiveFaultInjectionPerformed": false,
+    "acceptedInLieuOfLiveInjection": "the existing fail-closed M11.4 write/read tests covering missing URL/token, non-2xx, malformed body, unavailable binding and the resting-supabase 503 READ_AUTHORITY_UNAVAILABLE, which fail closed and never fall back to Supabase",
+    "note": "no destructive live D1 fault injection was performed; the existing fail-closed tests are accepted in lieu. A selected D1 endpoint returning 200 is only possible when the bound parameterized operation succeeded, because any D1 failure fails closed (throws at the Node writer / 503 at the boundary) and is never silently downgraded to Supabase."
+  },
+  "whatThisProves": [
+    "the combined full-d1 admin_ops_events read/write gate passes on a single ordinary admin-watchdog dispatch: run 36389389417 with admin_ops_events_combined=true completed success",
+    "the read leg ran first and proved order-aware id-aligned d1 list parity against Supabase (boundaryCount 20, supabaseCount 20, boundaryVsSupabase.holds true, differences [], ok true, artifact 10955696922); GET /v1/ops/admin-events/list?limit=20 returned 200 ok in 591ms",
+    "the write leg exercised the ordinary write triple on the canary version under full d1 write authority: GET /v1/ops/admin-events/latest 200 ok 119ms and POST /v1/ops/admin-events/prune 200 ok 118ms; the read-before-write dedupe correctly skipped the insert because the signature matched the existing latest event, which is an allowed successful write-path outcome",
+    "the actual D1 insert path was already live-proven separately in the committed M11.4 write evidence, so the dedupe-skip does not leave the insert path unproven",
+    "no auth failures occurred during the window (OIDC/auth failure count 0)",
+    "the stores remained reconciled after the window (Supabase and D1 both count 412 with unchanged latest), and the Worker was rolled back to resting version 1dbc2ca8 with all authorities at supabase and every unauthenticated endpoint returning 401"
+  ],
+  "whatThisDoesNotProve": [
+    "M11 completion: M11 overall is not complete; ingest and core/publication remain pending",
+    "fail-closed behavior under a live D1 failure: only the existing fail-closed tests are accepted, no destructive live fault injection was performed"
+  ],
+  "verification": {
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false,
+    "jsonValidated": true,
+    "diffCheck": "pass",
+    "liveCombinedFullD1ReadWriteCutover": "pass",
+    "m11Complete": false
+  },
+  "filesChanged": [
+    "artifacts/cloudflare-m11/m11.4-combined-admin-ops-events-read-write-live-evidence-20260928.json",
+    "docs/worldcons-cloudflare-m11-admin-ops-events-authority-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "blockers": [
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "nextGate": "the next remaining M11 domain/gate is ingest and/or core/publication (see docs/worldcons-cloudflare-full-migration-plan-20260920.md)"
+}
