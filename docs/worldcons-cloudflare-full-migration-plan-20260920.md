@@ -2060,6 +2060,44 @@ ordinary run; M11 still incomplete):
   the "M11.3 full heartbeat-domain D1 WRITE live result" section of
   `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`.
 
+M11-C final status (2026-09-28, **GO-CORE-PUBLICATION PASS / M11 COMPLETE**):
+
+- Added the shared `WORLDCONS_CORE_WRITE_AUTHORITY=supabase|d1-canary|d1`
+  authority seam for the P2 lifecycle and P3 publication repositories.
+  Cloudflare runtime callers use the `WORLDCONS_CORE` binding directly;
+  Node/GitHub callers use the existing OIDC-authenticated
+  `worldcons-ops-write` boundary at `/v1/core/lifecycle` and
+  `/v1/core/publication`. Once D1 is selected, D1 failures fail closed and do
+  not fall through to Supabase.
+- P2 lifecycle applies the article lifecycle revision/state update and its
+  append-only event in one D1 batch with optimistic revision enforcement. P3
+  publication batches version/head, publication, history, hash-chained audit,
+  cache outbox and request-idempotency ledger writes.
+- A synthetic UUID isolated from production data was live-proven through the
+  real GitHub OIDC path on workflow run `36437726625`, Worker version
+  `9132a25e-1a97-4bfc-bb43-3148cfd05950`: lifecycle revision 1→2,
+  processing `ready→complete`, one lifecycle event, one version/head,
+  one `published` publication, one history row, two audit rows, one request
+  ledger row and one outbox row. Replaying the same publication request returned
+  `idempotent=true`. The same UUID remained absent from Supabase.
+- Two earlier synthetic rehearsals failed closed and exposed D1 bigint/TEXT
+  comparison issues; each was fully rolled back before the fix/retry. The final
+  implementation normalizes revision comparisons with numeric casts and keeps
+  lifecycle event creation conditional on the successful optimistic update.
+- Rollback completed: the exact synthetic graph was deleted, D1 and Supabase
+  both contain zero rows for the canary UUID, the boundary Worker rests at
+  version `692fc591-f06b-458d-9b21-30d012b5917f` with core authority
+  `supabase`, the GitHub repository authority variable is `supabase`, and an
+  unauthenticated publication-boundary POST returns 401.
+- Historical core drift remains explicit (for example Supabase/D1
+  `articles=1277/1272`, `tags=5019/4990`, `article_tags=13176/13125` and
+  P3 deltas). It was not falsified by the canary and must be reconciled before
+  any later permanent D1 resting-authority switch.
+- **M11-A OPS = GO/PASS, M11-B INGEST = GO/PASS, M11-C CORE/PUBLICATION =
+  GO/PASS. M11 is complete.** No M12 DNS, frontend/API traffic or custom-domain
+  cutover occurred. Detailed evidence:
+  `artifacts/cloudflare-m11/go-core-publication-domain-acceptance-evidence-20260928.json`.
+
 ### M12 — Cloudflare production frontend/API cutover
 
 Objective:
@@ -2270,8 +2308,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   switch runtime authority. See
   `docs/worldcons-cloudflare-m10-d1-write-canary-20260927.md` and
   `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.)
-- [ ] domain-by-domain D1 authority (**M11-A OPS DOMAIN = GO/PASS and M11-B
-  INGEST DOMAIN = GO/PASS on 2026-09-28**;
+- [x] domain-by-domain D1 authority (**M11-A OPS, M11-B INGEST and M11-C
+  CORE/PUBLICATION = GO/PASS on 2026-09-28; M11 COMPLETE**;
   the OPS write/read/rollback acceptance gate is closed and recorded in
   `artifacts/cloudflare-m11/go-ops-domain-acceptance-evidence-20260928.json`.
   The ingest gate is recorded in
@@ -2287,11 +2325,15 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   absent from Supabase, and the exact canary row was deleted; D1 returned to
   527 and Supabase remained 539. The Worker was restored to
   `WORLDCONS_INGEST_RUN_WRITE_AUTHORITY=supabase` and unauthenticated boundary
-  access returns 401. The rollback-safe resting authority remains Supabase
-  while later domains are pending; this is intentional and does not reopen
-  M11-A or M11-B. The pre-existing 12-row history delta must be reconciled
-  before any later permanent D1 resting-authority switch. **Only M11-C
-  core/publication remains pending, so global M11 is not complete.**
+  access returns 401. The pre-existing 12-row history delta must be reconciled
+  before any later permanent D1 resting-authority switch. M11-C then closed the
+  final core/publication gate with an OIDC-authenticated synthetic D1
+  lifecycle/publication transaction (run `36437726625`) and exact rollback;
+  the core gate evidence is
+  `artifacts/cloudflare-m11/go-core-publication-domain-acceptance-evidence-20260928.json`.
+  The rollback-safe resting authority remains Supabase until the later
+  production cutover sequence. **All three M11 domain gates now pass; M11 is
+  complete and M12 is next.**
   Detailed OPS history follows. M11.0 first ops slice complete:
   `site_events` has a canary/full-D1/rollback authority seam and live proof;
   M11.1 adds the same `supabase|d1-canary|d1` seam for
@@ -2413,7 +2455,9 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   passed its domain gate with the bounded `ingestion_runs` authority seam,
   live D1 start+finish isolation proof and rollback recorded in
   `artifacts/cloudflare-m11/go-ingest-domain-acceptance-evidence-20260928.json`.
-  **Core/publication is now the only remaining M11 domain/gate.** See
+  M11-C core/publication subsequently passed its bounded OIDC-authenticated D1
+  transaction/rollback gate. **M11 is complete; M12 production frontend/API
+  cutover is next.** See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`

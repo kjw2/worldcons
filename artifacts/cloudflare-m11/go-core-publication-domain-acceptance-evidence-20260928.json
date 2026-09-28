@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11-C-core-publication-domain",
+  "decision": "GO-CORE-PUBLICATION-PASS",
+  "status": "m11_complete_all_three_domain_gates_passed_resting_supabase",
+  "date": "2026-09-28",
+  "branch": "main",
+  "implementationCommits": [
+    "178dbe8ad7bd016189464a22938b237edd44a3d9",
+    "c65f6c16604a13a3af1aa2feb3ad514623aae6f8",
+    "bd82002e16f36aecc92a524b1eb74c78b29f0e48"
+  ],
+  "scope": {
+    "database": "worldcons_core",
+    "databaseId": "0f4c41f0-778f-4ef4-860e-b0dad05f0984",
+    "ownedTablesInventoried": 30,
+    "gate": "M11-C",
+    "globalM11Complete": true,
+    "nextMilestone": "M12 Cloudflare production frontend/API cutover",
+    "productionTrafficCutover": "not_performed"
+  },
+  "authority": {
+    "environment": "WORLDCONS_CORE_WRITE_AUTHORITY",
+    "modes": [
+      "supabase",
+      "d1-canary",
+      "d1"
+    ],
+    "canaryMarkerEnvironment": "WORLDCONS_CORE_WRITE_CANARY_MARKER",
+    "restingMode": "supabase",
+    "boundaryWorker": "worldcons-ops-write",
+    "boundaryPaths": [
+      "POST /v1/core/lifecycle",
+      "POST /v1/core/publication"
+    ],
+    "d1Binding": "WORLDCONS_CORE",
+    "githubAuthentication": "OIDC",
+    "failClosedAfterD1Selection": true
+  },
+  "transactionContracts": {
+    "lifecycle": {
+      "repository": "ArticleLifecycleRepository",
+      "writes": [
+        "articles lifecycle state/revision",
+        "article_lifecycle_events_p2 append-only event"
+      ],
+      "atomicity": "D1 batch"
+    },
+    "publication": {
+      "repository": "ArticlePublicationRepository",
+      "writes": [
+        "article_content_versions_p3",
+        "article_version_heads_p3",
+        "article_publications_p3",
+        "article_publication_history_p3",
+        "article_audit_ledger_p3",
+        "article_cache_outbox_p3",
+        "article_publication_requests_p3"
+      ],
+      "atomicity": "D1 batch",
+      "idempotency": "article_publication_requests_p3"
+    }
+  },
+  "preExistingCoreDriftSnapshot": {
+    "note": "The bounded M11-C gate did not falsify or delete historical production drift. Supabase remains the rollback-safe resting authority, so these differences must be reconciled immediately before a later permanent D1 resting-authority selection.",
+    "d1": {
+      "articles": 1272,
+      "sources": 4,
+      "tags": 4990,
+      "article_tags": 13125,
+      "glossary_terms": 55,
+      "article_audit_ledger_p3": 6545,
+      "article_cache_outbox_p3": 3269,
+      "article_content_versions_p3": 3268,
+      "article_embedding_artifacts": 1258,
+      "article_lifecycle_anomalies_p2": 0,
+      "article_lifecycle_events_p2": 2751,
+      "article_publication_history_p3": 3269,
+      "article_publication_quarantine_p3": 13,
+      "article_publication_quarantine_resolutions_p3": 1,
+      "article_publication_requests_p3": 3277,
+      "article_publications_p3": 1272,
+      "article_revision_heads_v4": 1272,
+      "article_version_heads_p3": 1272,
+      "article_view_counts": 149,
+      "glossary_candidates": 121,
+      "legacy_version_freshness_classifications_v4": 3236,
+      "source_corpus_policies": 6
+    },
+    "supabase": {
+      "articles": 1277,
+      "sources": 4,
+      "tags": 5019,
+      "article_tags": 13176,
+      "glossary_terms": 55,
+      "article_audit_ledger_p3": 6605,
+      "article_cache_outbox_p3": 3299,
+      "article_content_versions_p3": 3298,
+      "article_embedding_artifacts": 1258,
+      "article_lifecycle_anomalies_p2": 0,
+      "article_lifecycle_events_p2": 2779,
+      "article_publication_history_p3": 3299,
+      "article_publication_quarantine_p3": 13,
+      "article_publication_quarantine_resolutions_p3": 13,
+      "article_publication_requests_p3": 3307,
+      "article_publications_p3": 1277,
+      "article_revision_heads_v4": 1277,
+      "article_version_heads_p3": 1277,
+      "article_view_counts": 149,
+      "glossary_candidates": 121,
+      "legacy_version_freshness_classifications_v4": 3298,
+      "source_corpus_policies": 6
+    }
+  },
+  "liveGate": {
+    "successfulGithubRunId": "36437726625",
+    "successfulGithubJobId": "108979886309",
+    "canaryWorkerVersion": "9132a25e-1a97-4bfc-bb43-3148cfd05950",
+    "canaryArticleId": "c11c0000-0000-4000-a000-000000000001",
+    "supabaseCanaryRowsDuringWindow": {
+      "articles": 0,
+      "article_lifecycle_events_p2": 0,
+      "article_content_versions_p3": 0,
+      "article_publications_p3": 0,
+      "article_publication_requests_p3": 0
+    },
+    "d1Result": {
+      "lifecycleFromRevision": 1,
+      "lifecycleToRevision": 2,
+      "lifecycleApplied": true,
+      "lifecycleEvents": 1,
+      "versions": 1,
+      "versionHeads": 1,
+      "publications": 1,
+      "publicationState": "published",
+      "publicationHistory": 1,
+      "auditLedger": 2,
+      "publicationRequests": 1,
+      "cacheOutbox": 1,
+      "versionCreated": true,
+      "publicationApplied": true,
+      "replayIdempotent": true
+    },
+    "isolation": "The synthetic article and all P2/P3 rows existed only in D1 during the canary window."
+  },
+  "rehearsalDefectsFoundAndFixed": [
+    {
+      "githubRunId": "36436339528",
+      "result": "failed_closed",
+      "cause": "D1 bigint revision uses TEXT representation; the first optimistic lifecycle comparison bound a numeric value.",
+      "rollback": "exact synthetic lifecycle event/article cleanup; Worker and repository authority restored to supabase",
+      "fixCommit": "c65f6c16604a13a3af1aa2feb3ad514623aae6f8"
+    },
+    {
+      "githubRunId": "36437236997",
+      "result": "failed_closed",
+      "cause": "D1 represented the updated bigint revision as 2.0, so the conditional event insert compared against 2 byte-wise.",
+      "rollback": "exact synthetic article cleanup; Worker and repository authority restored to supabase",
+      "fixCommit": "bd82002e16f36aecc92a524b1eb74c78b29f0e48"
+    }
+  ],
+  "rollback": {
+    "restingWorkerVersion": "692fc591-f06b-458d-9b21-30d012b5917f",
+    "workerAuthority": "supabase",
+    "githubRepositoryAuthority": "supabase",
+    "coreBindingDatabaseId": "0f4c41f0-778f-4ef4-860e-b0dad05f0984",
+    "deletedCanaryRows": {
+      "article_cache_outbox_p3": 1,
+      "article_publication_requests_p3": 1,
+      "article_audit_ledger_p3": 2,
+      "article_publication_history_p3": 1,
+      "article_publications_p3": 1,
+      "article_version_heads_p3": 1,
+      "article_content_versions_p3": 1,
+      "article_lifecycle_events_p2": 1,
+      "articles": 1
+    },
+    "d1CanaryRowsAfterRollback": {
+      "articles": 0,
+      "article_lifecycle_events_p2": 0,
+      "article_content_versions_p3": 0,
+      "article_version_heads_p3": 0,
+      "article_publications_p3": 0,
+      "article_publication_history_p3": 0,
+      "article_audit_ledger_p3": 0,
+      "article_publication_requests_p3": 0,
+      "article_cache_outbox_p3": 0
+    },
+    "supabaseCanaryRowsAfterRollback": 0,
+    "unauthenticatedPublicationBoundaryStatus": 401
+  },
+  "verificationBeforeFinalEvidenceCommit": {
+    "pnpm test:m11": "PASS 132/132",
+    "pnpm typecheck": "PASS",
+    "pnpm m11:ops-write:typecheck": "PASS",
+    "pnpm m11:ops-write:types:check": "PASS",
+    "pnpm test:ingest-workflow": "PASS 18/18",
+    "pnpm m11:ops-write:dry-run": "PASS",
+    "git diff --check": "PASS"
+  },
+  "nonClaims": [
+    "No M12 DNS, custom-domain, frontend or public API traffic cutover was performed.",
+    "Supabase remains the resting authority for rollback.",
+    "Historical Supabase-to-D1 core drift was not claimed as reconciled by this bounded canary.",
+    "A fresh bounded reconcile is required before any later permanent D1 resting-authority selection."
+  ],
+  "m11": {
+    "ops": "GO/PASS",
+    "ingest": "GO/PASS",
+    "corePublication": "GO/PASS",
+    "overall": "COMPLETE"
+  },
+  "nextGate": "M12 Cloudflare production frontend/API cutover"
+}
