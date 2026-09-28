@@ -44,3 +44,11 @@ test("M12 public production surfaces no longer advertise worldcons.vercel.app", 
     assert.match(source, /worldcons\.soltera\.dev/u, file);
   }
 });
+
+test("M12 redirects only the legacy Vercel production hostname and preserves deployment rollback URLs", () => {
+  const config = read("next.config.ts");
+  assert.match(config, /type: "host" as const, value: "worldcons\.vercel\.app"/u);
+  assert.match(config, /destination: "https:\/\/worldcons\.soltera\.dev\/:path\*"/u);
+  assert.match(config, /permanent: false/u);
+  assert.doesNotMatch(config, /jwkms-projects\.vercel\.app/u);
+});

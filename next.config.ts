@@ -38,10 +38,20 @@ const legacyV2Redirects = [
   { source: "/v2/:path*", destination: "/:path*" },
 ] as const;
 
+const cloudflareProductionRedirect = {
+  source: "/:path*",
+  has: [{ type: "host" as const, value: "worldcons.vercel.app" }],
+  destination: "https://worldcons.soltera.dev/:path*",
+  permanent: false,
+};
+
 const nextConfig: NextConfig = {
   typedRoutes: false,
   async redirects() {
-    return legacyV2Redirects.map((route) => ({ ...route, permanent: true }));
+    return [
+      ...legacyV2Redirects.map((route) => ({ ...route, permanent: true })),
+      cloudflareProductionRedirect,
+    ];
   },
   async headers() {
     return [
