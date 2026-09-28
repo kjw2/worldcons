@@ -956,3 +956,40 @@ end.
 Explicit non-claims: no combined full-`d1` read/write cutover, no M11 completion,
 and no destructive live fault injection. The D1 read authority is live-proven
 only after a controller runs the sequence above and captures its evidence.
+
+## M11.3R feature-branch dispatch caveat + `admin-watchdog` read-only shell
+
+Date: 2026-09-28. Head `8436e127`. **Caveat.** The dedicated
+`.github/workflows/ops-heartbeat-read-parity.yml` is intentionally kept for
+post-merge/default-branch use, but a brand-new workflow **cannot** be
+`workflow_dispatch`-ed before it exists on the repository default branch:
+GitHub returns **404** for a dispatch of a workflow ref it does not know. A
+feature-branch live read-parity proof therefore needed an already-present
+dispatch shell.
+
+`admin-watchdog.yml` exists on the default branch, so it gains a
+`workflow_dispatch`-only boolean input `read_parity_only` (default `false`).
+When `true`:
+
+- the normal `pnpm ops:watchdog -- --compensate` step is **skipped entirely**
+  (`if: ${{ inputs.read_parity_only != true }}`);
+- the only job step is the read-only probe
+  `pnpm ops:heartbeat-read-parity -- --run --no-direct-d1 --report --json`
+  (`if: ${{ inputs.read_parity_only == true }}`), which reuses the same per-job
+  OIDC `id-token: write` and the existing Supabase read secrets;
+- there is **no** `recordWorkflowHeartbeat`, no watchdog evaluation, no
+  compensation and no write path — the probe issues only
+  `GET /v1/ops/heartbeats` plus plain Supabase SELECTs.
+
+Scheduled runs and ordinary manual dispatches are byte-for-byte unchanged: they
+never set `read_parity_only`, so the watchdog runs exactly as before and the
+probe step is skipped. The OIDC read trust already includes `admin-watchdog.yml`
+and the write trust is **not** broadened; the dispatch shell does not add any
+write trust or any new permission (`contents: read`, `issues: write`,
+`id-token: write` are unchanged). The dedicated
+`ops-heartbeat-read-parity.yml` remains the intended default-branch workflow.
+
+Focused tests in `tests/m11-ops-heartbeat-read-parity.test.ts` assert the
+`read_parity_only` input is a dispatch-only boolean defaulting to `false`, that
+the watchdog step is guarded off in that mode, and that only the exact read-only
+probe command runs (no write path, no broadened trust).

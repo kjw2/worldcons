@@ -12,6 +12,17 @@ on:
         required: false
         type: boolean
         default: false
+      # M11.3R feature-branch dispatch shell. A brand-new
+      # ops-heartbeat-read-parity.yml cannot be workflow_dispatch'ed until it
+      # exists on the default branch (GitHub returns 404), so this already-present
+      # workflow carries the read-only probe for a feature-branch live proof. When
+      # true the job skips the watchdog write path entirely and runs ONLY the
+      # read-only probe; scheduled and ordinary manual runs are unchanged.
+      read_parity_only:
+        description: Run only the read-only D1 heartbeat read-parity probe (no watchdog, no writes)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -96,4 +107,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Evaluate collection health, alert, and compensate
+        if: ${{ inputs.read_parity_only != true }}
         run: pnpm ops:watchdog -- --compensate
+      # M11.3R feature-branch dispatch shell. This step is the ONLY thing that
+      # runs when read_parity_only=true: no recordWorkflowHeartbeat, no watchdog
+      # evaluation, no compensation and no write path. It authenticates the
+      # read-only GET /v1/ops/heartbeats with the same per-job OIDC id-token and
+      # reuses the existing Supabase read secrets, issuing SELECTs only.
+      - name: Compare boundary D1 read against Supabase (read-only, no writes)
+        if: ${{ inputs.read_parity_only == true }}
+        run: pnpm ops:heartbeat-read-parity -- --run --no-direct-d1 --report --json
+      - name: Upload read-parity evidence
+        if: ${{ inputs.read_parity_only == true && always() && hashFiles('artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: m11.3r-read-parity-live-evidence
+          path: artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence.json
+          retention-days: 30
+          if-no-files-found: error

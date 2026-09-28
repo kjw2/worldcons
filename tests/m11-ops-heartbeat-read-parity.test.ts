@@ -108,6 +108,52 @@ test("M11.3R read-only probe workflow is dispatch-only, read-only and carries no
   }
 });
 
+test("M11.3R feature-branch dispatch shell exposes a dispatch-only read_parity_only boolean", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
+  // The input is a workflow_dispatch-only boolean defaulting to false, so
+  // scheduled runs and ordinary manual runs never select the read-only mode.
+  assert.match(source, /^\s*read_parity_only:\s*$/mu);
+  assert.match(source, /read_parity_only:[\s\S]{0,240}?type:\s*boolean[\s\S]{0,120}?default:\s*false/u);
+});
+
+test("M11.3R read_parity_only skips the watchdog and runs only the read-only probe", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
+  const lines = source.split(/\r?\n/u);
+
+  // Locate each step block by its leading `- name:` marker.
+  const steps: { name: string; body: string[] }[] = [];
+  for (const line of lines) {
+    const name = /^\s*- name:\s*(.+?)\s*$/u.exec(line);
+    if (name) steps.push({ name: name[1], body: [] });
+    else if (steps.length > 0) steps[steps.length - 1].body.push(line);
+  }
+
+  const watchdog = steps.find((step) => step.body.some((line) => /run:\s*pnpm ops:watchdog/u.test(line)));
+  assert.ok(watchdog, "the watchdog step must remain present for normal runs");
+  assert.ok(
+    watchdog!.body.some((line) => /if:\s*\$\{\{\s*inputs\.read_parity_only != true\s*\}\}/u.test(line)),
+    "the watchdog step must be skipped when read_parity_only is true",
+  );
+
+  const probe = steps.find((step) => step.body.some((line) => /pnpm ops:heartbeat-read-parity/u.test(line)));
+  assert.ok(probe, "the read-only probe step must exist in the dispatch shell");
+  assert.ok(
+    probe!.body.some((line) => /if:\s*\$\{\{\s*inputs\.read_parity_only == true\s*\}\}/u.test(line)),
+    "the probe step must run only when read_parity_only is true",
+  );
+  assert.ok(
+    probe!.body.some((line) => line.includes("pnpm ops:heartbeat-read-parity -- --run --no-direct-d1 --report --json")),
+    "the read_parity_only branch must run the exact read-only probe command",
+  );
+
+  // The read-only branch must not add any write path or broaden trust: the
+  // OIDC permission stays id-token: write and no contents/issues write appears.
+  assert.doesNotMatch(source, /contents:\s*write/u);
+  assert.match(source, /id-token:\s*write/u);
+  const executable = lines.filter((line) => !/^\s*#/u.test(line)).join("\n");
+  assert.doesNotMatch(executable, /recordWorkflowHeartbeat/u);
+});
+
 test("M11.3R read-parity probe script never writes a heartbeat", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "scripts/ops-heartbeat-read-parity.ts"), "utf8");
   const executable = source

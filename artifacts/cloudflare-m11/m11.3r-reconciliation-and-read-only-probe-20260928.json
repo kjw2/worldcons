@@ -61,6 +61,21 @@
     "oidcReadAllowlist": [".github/workflows/admin-watchdog.yml", ".github/workflows/ops-heartbeat-read-parity.yml"],
     "oidcWriteAllowlistUnchanged": [".github/workflows/crawlee-worker.yml", ".github/workflows/summary-drain.yml", ".github/workflows/embedding-backfill.yml", ".github/workflows/admin-watchdog.yml", ".github/workflows/admin-command-worker-p1.yml"],
     "probeForcesReadAuthority": "d1 only in its own process environment; no repo/boundary var change",
+    "featureBranchDispatchCaveat": {
+      "problem": "the new ops-heartbeat-read-parity.yml cannot be workflow_dispatch'ed before it exists on GitHub's default branch; GitHub returns 404",
+      "shell": ".github/workflows/admin-watchdog.yml",
+      "shellExistsOnDefaultBranch": true,
+      "input": "read_parity_only (workflow_dispatch-only boolean, default false)",
+      "whenTrue": "skip pnpm ops:watchdog entirely; run only pnpm ops:heartbeat-read-parity -- --run --no-direct-d1 --report --json",
+      "reusesOidcIdToken": true,
+      "reusesSupabaseReadSecrets": true,
+      "heartbeatWrite": false,
+      "watchdogInvoked": false,
+      "compensation": false,
+      "broadenedWriteTrust": false,
+      "normalBehaviorUnchanged": "scheduled and ordinary manual runs never set read_parity_only and keep the watchdog behavior byte-for-byte",
+      "dedicatedWorkflowKept": ".github/workflows/ops-heartbeat-read-parity.yml for post-merge/default-branch use"
+    },
     "requiresBoundaryReadAuthority": "d1; under supabase the boundary returns 503 READ_AUTHORITY_UNAVAILABLE and the probe reports a mismatch, never a false pass",
     "parityComparator": "lib/cloudflare/ops-write/read-parity.ts",
     "timestampComparison": "by instant (Date.parse), because PostgREST and D1 print the same instant differently",
@@ -71,7 +86,8 @@
     "noHeartbeatWrite": true,
     "noWatchdog": true,
     "probeStatements": "SELECT only",
-    "assertedByTests": true
+    "assertedByTests": true,
+    "featureBranchShellSkipsWatchdog": true
   },
   "filesChanged": [
     "lib/cloudflare/ops-write/github-oidc.ts",
