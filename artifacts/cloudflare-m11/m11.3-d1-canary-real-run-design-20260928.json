@@ -2,10 +2,16 @@
   "schemaVersion": 1,
   "milestone": "M11.3-canary",
   "decision": "CODE-READY-LIVE-CANARY-PENDING-NO-LIVE-PROOF",
-  "status": "code_ready_resting_at_supabase",
+  "status": "realized_live_canary_pass_see_live_evidence_artifact",
   "date": "2026-09-28",
   "baseCheckpoint": "9d74d422335f5d761530f438242bbccceee97fb7",
   "branch": "codex/m7-go-search",
+  "realizedBy": {
+    "artifact": "artifacts/cloudflare-m11/m11.3-d1-canary-live-evidence-20260928.json",
+    "atHead": "1e286e2d",
+    "outcome": "bounded real-run d1-canary PASS on GitHub dispatch run 36367270071; full heartbeat-domain D1 authority NOT claimed",
+    "note": "this file is preserved as the pre-live design record; the live-evidence artifact carries the observed facts"
+  },
   "scope": {
     "database": "worldcons_ops",
     "table": "ops_workflow_heartbeats",
@@ -13,7 +19,8 @@
     "d1WriteAuthoritySwitched": false,
     "readAuthorityThroughout": "supabase",
     "singleRun": true,
-    "liveCanaryClaimed": false,
+    "liveCanaryClaimed": "realized (bounded d1-canary only; see m11.3-d1-canary-live-evidence-20260928.json)",
+    "fullHeartbeatDomainD1AuthorityClaimed": false,
     "deployOrCommitPerformed": false,
     "oldMigrationsEdited": false,
     "d1OrPostgresSchemaChanged": false
@@ -80,7 +87,7 @@
     "diffCheck": "pass"
   },
   "blockers": [
-    "live canary requires Cloudflare/DB/GitHub dispatch credentials not available in this environment; controller owns it",
+    "live canary was realized later by the controller on the real run; see m11.3-d1-canary-live-evidence-20260928.json",
     "no full-d1 ops-heartbeat cutover is claimed; only the bounded d1-canary authority, one run",
     "M11 not globally complete: ingest and core/publication remain pending"
   ]

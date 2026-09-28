@@ -672,3 +672,75 @@ any var set.
   `readAuthority: "supabase"`, `temporaryAllowedRefsBinding: false`,
   unauthenticated `/health`/read/write = `401`.
 - `scope.d1WriteAuthoritySwitched: false` (only `d1-canary`, one run).
+
+## M11.3 real-run d1-canary live result (PASS, 2026-09-28)
+
+Date: 2026-09-28. Head `1e286e2d` on `codex/m7-go-search`. This realizes the
+step above: the bounded `d1-canary` authority was live-exercised on **one**
+deliberately dispatched `admin-watchdog` run. Live evidence:
+`artifacts/cloudflare-m11/m11.3-d1-canary-live-evidence-20260928.json` (the
+design record is preserved at
+`artifacts/cloudflare-m11/m11.3-d1-canary-real-run-design-20260928.json`).
+
+### Observed facts
+
+- **Baseline.** Supabase watchdog run id `36365145716` (`last_started_at`
+  `2026-09-28 01:13:28.847+00`, `last_completed_at` `2026-09-28 01:13:38.435+00`,
+  status `success`); D1 watchdog run id `36079260476` (`last_started_at`
+  `2026-09-25T00:49:21.138Z`, `last_completed_at` `2026-09-25T00:49:29.943Z`).
+- **Canary Worker.** `worldcons-ops-write` version
+  `161d73de-0ac1-436b-8392-33c5ef9adc7d`: write authority `d1-canary`, read
+  authority `supabase`, audience `worldcons-ops-write`, temporary allowed refs
+  `main` + `codex/m7-go-search`.
+- **Dispatch.** GitHub run `36367270071` at head `1e286e2d` with
+  `ops_heartbeat_canary=true`, completed **success**.
+- **Boundary.** Cloudflare Observability recorded two `POST /v1/ops/heartbeat`
+  calls, both **200 / outcome ok**, wall times `284ms` and `182ms`;
+  auth-failure count **0**.
+- **D1 (`d1-canary` write).** The D1 watchdog became run id `36367270071`,
+  `last_started_at` `2026-09-28T01:46:50.444Z`, `last_completed_at`
+  `2026-09-28T01:47:01.595Z`, status `success`, detail
+  `{ "m11OpsHeartbeatCanary": true }`.
+- **Supabase (read/resting).** The Supabase watchdog stayed **exactly** at
+  baseline run id `36365145716` for the whole canary.
+- **Restored.** Repo write/read vars back to `supabase`; Worker redeployed as
+  version `2a38e10a-d329-4fa6-8017-a05f21a9f367` with write/read authority
+  `supabase`, audience `worldcons-ops-write` and **no** temporary allowed-refs
+  binding. Unauthenticated `/health`, `GET /v1/ops/heartbeats` and
+  `POST /v1/ops/heartbeat` all return **401**.
+
+### What this proves ??and what it does not
+
+**PASS: the bounded real-run `d1-canary` write path.** The real Node/GitHub
+call path (whose `run_id` is `GITHUB_RUN_ID`) was selected by the
+`d1-canary` authority through the dispatch-pinned
+`detail.m11OpsHeartbeatCanary` marker, the OIDC-authenticated boundary write
+landed in D1 with the exact GitHub run id, the Supabase row was untouched, and
+every authority/binding was restored.
+
+> **This is NOT a full heartbeat-domain D1 authority and NOT M11 completion.**
+> Ordinary, non-canary heartbeats still resolve to Supabase; reads remained
+> Supabase throughout and no live `d1` read parity is claimed. `admin_ops_events`
+> (M11.4), ingest and core/publication remain pending.
+
+### Next gate ??move heartbeat writes fully to D1 while reads remain Supabase
+
+1. **Coordinate both write authority vars to full `d1`** for one deliberate
+   window: set the boundary Worker `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1`
+   **and** the repo var `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1`. No
+   `d1-canary` marker and no canary dispatch input are needed.
+2. **Verify an ordinary run.** Dispatch/observe one ordinary `admin-watchdog`
+   run; confirm the ordinary heartbeat lands in D1 with the real GitHub run id
+   and **no** marker, and that the Supabase watchdog row does not advance.
+3. **Keep reads at Supabase.** Leave `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY`
+   resolved to `supabase` on both the repo and the boundary Worker, so readers
+   are unchanged during the write cutover.
+4. **Fail-closed check.** Confirm a D1 failure still returns `503` and is never
+   silently downgraded to Supabase.
+5. **Roll back.** Restore both write vars to `supabase` and confirm the ordinary
+   RPC path resumes.
+6. **Only then** consider the combined full-`d1` read/write cutover as a
+   separate gate (M11.3R live-read parity).
+
+Explicit non-claims for that gate: no full heartbeat-domain D1 write authority,
+no D1 read authority/parity, and no M11 completion.

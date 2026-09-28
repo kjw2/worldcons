@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3-canary",
+  "decision": "BOUNDED-REAL-RUN-D1-CANARY-PASS-FULL-D1-NOT-CLAIMED",
+  "status": "live_d1_canary_pass_resting_at_supabase",
+  "date": "2026-09-28",
+  "baseCheckpoint": "1e286e2d",
+  "branch": "codex/m7-go-search",
+  "designArtifact": "artifacts/cloudflare-m11/m11.3-d1-canary-real-run-design-20260928.json",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "authorityMode": "d1-canary-only",
+    "d1WriteAuthoritySwitched": false,
+    "fullHeartbeatDomainD1AuthorityClaimed": false,
+    "readAuthorityThroughout": "supabase",
+    "singleRun": true,
+    "liveCanaryClaimed": true,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "summary": "The bounded real-run d1-canary selector was live-exercised on one deliberately dispatched admin-watchdog run. Exactly one dispatched run was selected, its heartbeat write landed in D1 with detail.m11OpsHeartbeatCanary=true while the Supabase watchdog row stayed byte-for-byte at its baseline, and all authority/boundary vars were restored to resting supabase afterwards. Only the bounded d1-canary authority (one run) is proven; a full heartbeat-domain D1 write authority is NOT claimed and read authority remained Supabase throughout.",
+  "baseline": {
+    "supabaseWatchdog": {
+      "runId": 36365145716,
+      "lastStartedAt": "2026-09-28 01:13:28.847+00",
+      "lastCompletedAt": "2026-09-28 01:13:38.435+00",
+      "status": "success"
+    },
+    "d1Watchdog": {
+      "runId": 36079260476,
+      "lastStartedAt": "2026-09-25T00:49:21.138Z",
+      "lastCompletedAt": "2026-09-25T00:49:29.943Z",
+      "status": "success"
+    }
+  },
+  "canaryWorker": {
+    "worker": "worldcons-ops-write",
+    "versionId": "161d73de-0ac1-436b-8392-33c5ef9adc7d",
+    "writeAuthority": "d1-canary",
+    "readAuthority": "supabase",
+    "audience": "worldcons-ops-write",
+    "temporaryAllowedRefs": [
+      "refs/heads/main",
+      "refs/heads/codex/m7-go-search"
+    ]
+  },
+  "githubDispatch": {
+    "workflow": ".github/workflows/admin-watchdog.yml",
+    "runId": 36367270071,
+    "headSha": "1e286e2d",
+    "branch": "codex/m7-go-search",
+    "input": {
+      "ops_heartbeat_canary": true
+    },
+    "conclusion": "success"
+  },
+  "canaryResult": {
+    "branch": "codex/m7-go-search",
+    "githubRunId": 36367270071,
+    "boundaryRequests": [
+      {
+        "method": "POST",
+        "path": "/v1/ops/heartbeat",
+        "status": 200,
+        "outcome": "ok",
+        "wallTimeMs": 284
+      },
+      {
+        "method": "POST",
+        "path": "/v1/ops/heartbeat",
+        "status": 200,
+        "outcome": "ok",
+        "wallTimeMs": 182
+      }
+    ],
+    "boundaryRequestsSource": "Cloudflare Observability",
+    "authFailureCount": 0,
+    "authFailureLogs": [],
+    "d1Watchdog": {
+      "runId": 36367270071,
+      "lastStartedAt": "2026-09-28T01:46:50.444Z",
+      "lastCompletedAt": "2026-09-28T01:47:01.595Z",
+      "status": "success",
+      "detail": {
+        "m11OpsHeartbeatCanary": true
+      },
+      "runIdEqualsGithubRunId": true,
+      "markerTrue": true
+    },
+    "supabaseWatchdog": {
+      "runId": 36365145716,
+      "unchangedThroughout": true,
+      "interpretation": "the Supabase watchdog row stayed exactly at baseline during the canary, proving the d1-canary write went to D1 and not to Supabase"
+    }
+  },
+  "restoredState": {
+    "repositoryAuthorityVars": {
+      "write": "supabase",
+      "read": "supabase",
+      "restoredAfterCanary": true
+    },
+    "restingWorker": {
+      "worker": "worldcons-ops-write",
+      "versionId": "2a38e10a-d329-4fa6-8017-a05f21a9f367",
+      "writeAuthority": "supabase",
+      "readAuthority": "supabase",
+      "audience": "worldcons-ops-write",
+      "temporaryAllowedRefsBinding": false,
+      "unauthenticated": {
+        "/health": 401,
+        "GET /v1/ops/heartbeats": 401,
+        "POST /v1/ops/heartbeat": 401
+      }
+    }
+  },
+  "whatThisProves": [
+    "the real Node/GitHub call path (run_id = GITHUB_RUN_ID) can be selected by the d1-canary authority via the explicit workflow_dispatch-pinned detail.m11OpsHeartbeatCanary marker",
+    "an OIDC-authenticated boundary POST /v1/ops/heartbeat can be routed to D1 for exactly the canary run",
+    "the D1 watchdog row updates to the exact GitHub run id with the canary marker while the Supabase watchdog row is untouched",
+    "all authority vars and the temporary OIDC allowed-refs binding were restored, and the resting boundary rejects unauthenticated access"
+  ],
+  "whatThisDoesNotProve": [
+    "a full heartbeat-domain D1 write authority (ordinary, non-canary heartbeats still resolve to Supabase)",
+    "a D1 read authority: reads remained Supabase throughout, and no live d1 read parity is claimed",
+    "M11 completion: admin_ops_events (M11.4), ingest and core/publication remain pending"
+  ],
+  "verification": {
+    "m11Tests": "75/75",
+    "newCanaryTests": "4",
+    "opsTests": "10/10",
+    "masterdashTests": "22/22",
+    "rootTypecheck": "pass",
+    "opsWriteWorkerTypecheck": "pass",
+    "opsWriteWorkerTypesCheck": "up_to_date",
+    "lint": "pass (0 errors, 0 warnings)",
+    "opsWriteDryRun": "pass (resting bindings unchanged)",
+    "diffCheck": "pass"
+  },
+  "filesChanged": [
+    "artifacts/cloudflare-m11/m11.3-d1-canary-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-d1-canary-real-run-design-20260928.json",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "nextGate": {
+    "name": "Move heartbeat writes fully to D1 while reads remain Supabase",
+    "precondition": "the bounded d1-canary real-run canary above is live-proven; the D1 row shape/marker parity is confirmed",
+    "sequence": [
+      "coordinate both authority vars to full d1 for one deliberate window: set the boundary Worker WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1 and the repo var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1 (no d1-canary marker, no canary dispatch input needed)",
+      "dispatch/observe one ordinary admin-watchdog run; confirm the ordinary heartbeat lands in D1 with the real GitHub run id and no marker, and confirm the Supabase watchdog row does not advance",
+      "keep WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY resolved to supabase on both the repo and the boundary Worker, so readers are unchanged during the write cutover",
+      "verify a D1 failure still fails closed (503, never silently downgraded to Supabase)",
+      "roll both write vars back to supabase and confirm the ordinary RPC path resumes",
+      "only after a stable soak, consider the combined full-d1 read/write cutover as a separate gate (M11.3R live-read parity)"
+    ],
+    "explicitNonClaims": [
+      "no full heartbeat-domain D1 write authority is claimed yet",
+      "no D1 read authority or read parity is claimed",
+      "M11 is not complete"
+    ]
+  },
+  "blockers": [
+    "only the bounded d1-canary authority (one run) is live-proven; the full heartbeat-domain D1 write authority is still pending",
+    "read authority remains Supabase; no live d1 read parity is claimed",
+    "admin_ops_events remains deferred to M11.4",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ]
+}
