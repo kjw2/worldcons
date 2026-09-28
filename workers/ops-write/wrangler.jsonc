@@ -39,6 +39,8 @@
   "vars": {
     "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY": "supabase",
+    "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY": "supabase",
+    "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY": "supabase",
     "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"
   },
   "services": [

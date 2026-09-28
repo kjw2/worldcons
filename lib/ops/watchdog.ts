@@ -5,6 +5,28 @@ import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
 import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";
 import { INCREMENTAL_SOURCE_KEYS } from "@/lib/ingest/incremental";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import {
+  ADMIN_OPS_EVENTS_CANARY_DETAIL_KEY,
+  insertAdminOpsEventToD1,
+  listAdminOpsEventsFromD1,
+  pruneAdminOpsEventsInD1,
+  readLatestAdminOpsEventFromD1,
+  resolveAdminOpsEventsCanaryMarker,
+  resolveEffectiveAdminOpsEventsReadAuthorityConfig,
+  shouldReadAdminOpsEventsFromD1,
+  shouldWriteAdminOpsEventsToD1,
+  type AdminOpsEventRecord,
+  type AdminOpsEventType as CloudflareAdminOpsEventType,
+  type AdminOpsEventSeverity as CloudflareAdminOpsEventSeverity,
+  type AdminOpsEventWriteRow,
+} from "@/lib/cloudflare/ops-write/admin-ops-events";
+import {
+  listAdminOpsEventsViaBoundary,
+  pruneAdminOpsEventsViaBoundary,
+  readLatestAdminOpsEventViaBoundary,
+  writeAdminOpsEventViaBoundary,
+} from "@/lib/cloudflare/ops-write/admin-ops-events-client";
 import {
   getWorkflowHeartbeats,
   workflowHeartbeatIsStale,
@@ -455,6 +477,35 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
 }
 
 export async function listAdminOpsEvents(limit = 20): Promise<AdminOpsEvent[]> {
+  // M11.4R read-authority seam. The admin list projection resolves independently
+  // from the write authority, exactly as M11.3R separated the heartbeat read
+  // authority. The resting `supabase` keeps the existing read byte-for-byte.
+  // When `d1` is selected the runtime binding is used inside Cloudflare and the
+  // authenticated boundary is used from Node/GitHub; both fail closed rather
+  // than silently falling back to Supabase.
+  const readConfig = resolveEffectiveAdminOpsEventsReadAuthorityConfig(
+    process.env as Record<string, string | undefined>,
+  );
+  if (shouldReadAdminOpsEventsFromD1(readConfig)) {
+    const binding = getRuntimeD1Binding("worldcons_ops");
+    const records: AdminOpsEventRecord[] = binding
+      ? await listAdminOpsEventsFromD1(binding, limit)
+      : await (async () => {
+        const listed = await listAdminOpsEventsViaBoundary(limit);
+        if (listed === null) throw new Error("admin_ops_events_read_boundary.not_enabled");
+        return listed;
+      })();
+    return records.map((record) => ({
+      id: record.id,
+      event_type: record.event_type as AdminOpsEventType,
+      severity: record.severity as WatchdogSeverity,
+      source_key: record.source_key,
+      summary: record.summary,
+      detail: record.detail,
+      created_at: record.created_at,
+    }));
+  }
+
   const supabase = getSupabaseAdmin();
   if (!supabase) return [];
   const { data, error } = await supabase
@@ -474,10 +525,57 @@ export async function listAdminOpsEvents(limit = 20): Promise<AdminOpsEvent[]> {
   }));
 }
 
+/** The write route: the runtime D1 binding, the Node/GitHub boundary, or resting Supabase. */
+function adminOpsEventsWriteRoute(): "d1-runtime" | "d1-boundary" | "supabase" {
+  if (!shouldWriteAdminOpsEventsToD1(process.env as Record<string, string | undefined>)) return "supabase";
+  return getRuntimeD1Binding("worldcons_ops") ? "d1-runtime" : "d1-boundary";
+}
+
+function adminOpsEventRow(
+  input: {
+    eventType: AdminOpsEventType;
+    severity: WatchdogSeverity;
+    sourceKey?: string | null;
+    summary: string;
+    detail?: Record<string, unknown>;
+  },
+  createdAt: string,
+): AdminOpsEventWriteRow {
+  const detail = { ...(input.detail ?? {}) };
+  // M11.4 canary: only in a deliberate canary window, and only outside the
+  // resting authority, add the bounded marker so the boundary's `d1-canary`
+  // selector can pick this run. Ordinary events are byte-for-byte unchanged.
+  if (
+    adminOpsEventsWriteRoute() !== "supabase"
+    && resolveAdminOpsEventsCanaryMarker(process.env as Record<string, string | undefined>)
+  ) {
+    detail[ADMIN_OPS_EVENTS_CANARY_DETAIL_KEY] = true;
+  }
+  return {
+    event_type: input.eventType as CloudflareAdminOpsEventType,
+    severity: input.severity as CloudflareAdminOpsEventSeverity,
+    source_key: input.sourceKey ?? null,
+    summary: input.summary,
+    detail,
+    created_at: createdAt,
+  };
+}
+
 async function pruneAdminOpsEvents(now: Date) {
+  const route = adminOpsEventsWriteRoute();
+  const cutoff = new Date(now.getTime() - OPS_EVENT_RETENTION_DAYS * 86_400_000).toISOString();
+  if (route === "d1-runtime") {
+    const binding = getRuntimeD1Binding("worldcons_ops");
+    if (!binding) throw new Error("admin_ops_events_d1_authority.binding_unavailable");
+    await pruneAdminOpsEventsInD1(binding, cutoff);
+    return;
+  }
+  if (route === "d1-boundary") {
+    await pruneAdminOpsEventsViaBoundary(cutoff);
+    return;
+  }
   const supabase = getSupabaseAdmin();
   if (!supabase) return;
-  const cutoff = new Date(now.getTime() - OPS_EVENT_RETENTION_DAYS * 86_400_000).toISOString();
   await supabase.from("admin_ops_events").delete().lt("created_at", cutoff);
 }
 
@@ -488,6 +586,20 @@ export async function recordAdminOpsEvent(input: {
   summary: string;
   detail?: Record<string, unknown>;
 }) {
+  const route = adminOpsEventsWriteRoute();
+  const row = adminOpsEventRow(input, new Date().toISOString());
+
+  if (route === "d1-runtime") {
+    const binding = getRuntimeD1Binding("worldcons_ops");
+    if (!binding) throw new Error("admin_ops_events_d1_authority.binding_unavailable");
+    await insertAdminOpsEventToD1(binding, row, crypto.randomUUID());
+    return;
+  }
+  if (route === "d1-boundary") {
+    await writeAdminOpsEventViaBoundary(row);
+    return;
+  }
+
   const supabase = getSupabaseAdmin();
   if (!supabase) return;
   await supabase.from("admin_ops_events").insert({
@@ -499,18 +611,43 @@ export async function recordAdminOpsEvent(input: {
   });
 }
 
-/** Writes a state-change event (deduplicated by violation signature) and prunes old events. */
-export async function recordWatchdogEvents(evaluation: WatchdogEvaluation, now = new Date()) {
+/**
+ * The dedupe read: the latest event's `detail`, or `null` when none exists.
+ * Returns `unavailable` only for a resting Supabase read error (which preserves
+ * the existing "proceed to write" behavior). The selected D1 authority fails
+ * closed (throws) instead of silently treating a read failure as "no latest".
+ */
+async function readLatestAdminOpsEventDetail(): Promise<Record<string, unknown> | null | "unavailable"> {
+  const route = adminOpsEventsWriteRoute();
+  if (route === "d1-runtime") {
+    const binding = getRuntimeD1Binding("worldcons_ops");
+    if (!binding) throw new Error("admin_ops_events_d1_authority.binding_unavailable");
+    const latest = await readLatestAdminOpsEventFromD1(binding);
+    return latest?.detail ?? null;
+  }
+  if (route === "d1-boundary") {
+    const latest = await readLatestAdminOpsEventViaBoundary();
+    return latest.enabled ? latest.event?.detail ?? null : null;
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-  const signature = evaluationViolationSignature(evaluation);
-  const { data: latest, error } = await supabase
+  if (!supabase) return "unavailable";
+  const { data, error } = await supabase
     .from("admin_ops_events")
     .select("event_type, detail")
     .order("created_at", { ascending: false })
     .limit(1);
-  const latestDetail = record(latest?.[0]?.detail);
-  if (!error && latestDetail?.signature === signature) {
+  if (error) return "unavailable";
+  return record(data?.[0]?.detail);
+}
+
+/** Writes a state-change event (deduplicated by violation signature) and prunes old events. */
+export async function recordWatchdogEvents(evaluation: WatchdogEvaluation, now = new Date()) {
+  const route = adminOpsEventsWriteRoute();
+  if (route === "supabase" && !getSupabaseAdmin()) return;
+
+  const signature = evaluationViolationSignature(evaluation);
+  const latestDetail = await readLatestAdminOpsEventDetail();
+  if (latestDetail !== "unavailable" && latestDetail?.signature === signature) {
     await pruneAdminOpsEvents(now);
     return;
   }

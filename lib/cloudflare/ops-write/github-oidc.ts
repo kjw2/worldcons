@@ -1,4 +1,9 @@
 import { OPS_HEARTBEAT_BOUNDARY_PATH, OPS_HEARTBEAT_BOUNDARY_READ_PATH } from "@/lib/cloudflare/ops-write/heartbeat";
+import {
+  ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH,
+} from "@/lib/cloudflare/ops-write/admin-ops-events";
 
 /**
  * M11.3-OIDC: GitHub Actions OIDC trust for the `worldcons-ops-write` boundary.
@@ -605,4 +610,10 @@ export async function authorizeGithubOidcRequest(
 }
 
 /** The boundary paths that may use OIDC, for documentation/tests. */
-export const OIDC_PROTECTED_PATHS = [OPS_HEARTBEAT_BOUNDARY_PATH, OPS_HEARTBEAT_BOUNDARY_READ_PATH] as const;
+export const OIDC_PROTECTED_PATHS = [
+  OPS_HEARTBEAT_BOUNDARY_PATH,
+  OPS_HEARTBEAT_BOUNDARY_READ_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH,
+] as const;

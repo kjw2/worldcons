@@ -26,6 +26,12 @@ import {
   resolveOpsHeartbeatReadAuthorityConfig,
   setRuntimeOpsHeartbeatReadAuthorityConfig,
 } from "@/lib/cloudflare/ops-write/heartbeat";
+import {
+  resolveAdminOpsEventsReadAuthorityConfig,
+  resolveAdminOpsEventsWriteAuthorityConfig,
+  setRuntimeAdminOpsEventsReadAuthorityConfig,
+  setRuntimeAdminOpsEventsWriteAuthorityConfig,
+} from "@/lib/cloudflare/ops-write/admin-ops-events";
 
 interface WorldconsWorkerEnv {
   WORLDCONS_RAW: ArtifactBlobR2Bucket;
@@ -40,6 +46,8 @@ interface WorldconsWorkerEnv {
   WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY?: string;
   WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY?: string;
+  WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY?: string;
+  WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY?: string;
   [key: string]: unknown;
 }
 
@@ -82,6 +90,12 @@ export default {
     );
     setRuntimeOpsHeartbeatReadAuthorityConfig(
       resolveOpsHeartbeatReadAuthorityConfig(env as Record<string, string | undefined>),
+    );
+    setRuntimeAdminOpsEventsWriteAuthorityConfig(
+      resolveAdminOpsEventsWriteAuthorityConfig(env as Record<string, string | undefined>),
+    );
+    setRuntimeAdminOpsEventsReadAuthorityConfig(
+      resolveAdminOpsEventsReadAuthorityConfig(env as Record<string, string | undefined>),
     );
     setRuntimeSearchServiceBinding(
       env.WORLDCONS_SEARCH_SERVICE,

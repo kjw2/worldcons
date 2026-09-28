@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.4",
+  "decision": "CODE-AND-BOUNDARY-READY-LIVE-CANARY-PENDING-NO-LIVE-PROOF",
+  "status": "code_ready_resting_at_supabase",
+  "date": "2026-09-28",
+  "baseCheckpoint": "015397f869d261bebd2857305d64ad0c8dee8fcb",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "admin_ops_events",
+    "kind": "write+read-authority-seam",
+    "m11GloballyComplete": false,
+    "liveCanaryClaimed": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "selection": {
+    "surface": "admin_ops_events",
+    "writer": "recordAdminOpsEvent / recordWatchdogEvents / listAdminOpsEvents (lib/ops/watchdog.ts)",
+    "executionOwner": [
+      "GitHub Actions (.github/workflows/admin-watchdog.yml -> pnpm ops:watchdog)",
+      "Vercel fallback route app/api/ops/watchdog/route.ts"
+    ],
+    "contractPreserved": {
+      "insert": "one row per event; event_type/severity/source_key/summary/detail/created_at",
+      "dedupe": "read-before-write of the latest event's detail.signature; an unchanged signature skips the insert but still prunes",
+      "prune": "delete created_at < now - OPS_EVENT_RETENTION_DAYS (30) * 86400000",
+      "readProjection": "id, event_type, severity, source_key, summary, detail, created_at ordered created_at DESC limit N (default 20, max 100)",
+      "adminConsumer": "app/admin/ops/page.tsx -> listAdminOpsEvents(20)"
+    },
+    "reusesM113Boundary": true,
+    "reusesM113Credentials": true,
+    "newCredential": false,
+    "newHost": false,
+    "newUnauthenticatedSurface": false,
+    "sqlParameterized": true,
+    "callerValueInSqlText": false
+  },
+  "authority": {
+    "writeEnv": "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY",
+    "writeModes": ["supabase", "d1-canary", "d1"],
+    "writeDefault": "supabase",
+    "readEnv": "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY",
+    "readModes": ["supabase", "d1"],
+    "readDefault": "supabase",
+    "readIndependentFromWrite": true,
+    "readHasNoCanaryMode": true,
+    "readCanaryReason": "a partial read is not a meaningful state",
+    "canaryMarkerEnv": "WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER",
+    "canaryDetailKey": "m11AdminOpsEventsCanary",
+    "canarySelector": "the Node writer adds detail.m11AdminOpsEventsCanary=true only while the marker env is true/1; the boundary's d1-canary selector accepts only that exact boolean"
+  },
+  "architecture": {
+    "boundary": {
+      "worker": "workers/ops-write (name worldcons-ops-write)",
+      "writePaths": [
+        "POST /v1/ops/admin-events",
+        "GET /v1/ops/admin-events/latest",
+        "POST /v1/ops/admin-events/prune"
+      ],
+      "readPath": "GET /v1/ops/admin-events/list",
+      "writeAuth": "GitHub OIDC JWT or constant-time OPS_WRITE_TOKEN bearer",
+      "readAuth": "GitHub OIDC JWT or constant-time OPS_WRITE_TOKEN bearer",
+      "restingRelay": "internal worldcons-search Service Binding (never the public internet)",
+      "d1FailureBehavior": "fail closed (503); never silently downgraded to Supabase"
+    },
+    "internalBridge": {
+      "worker": "workers/search-service (worldcons-search, internal-only)",
+      "paths": [
+        "POST /internal/admin-ops-events",
+        "GET /internal/admin-ops-events/latest",
+        "POST /internal/admin-ops-events/prune"
+      ],
+      "supabaseWrite": "POST /rest/v1/admin_ops_events (Prefer: return=minimal)",
+      "supabaseLatest": "GET /rest/v1/admin_ops_events?select=...&order=created_at.desc&limit=1",
+      "supabasePrune": "DELETE /rest/v1/admin_ops_events?created_at=lt.<cutoff>",
+      "validatesBody": true
+    },
+    "nodeClient": {
+      "entry": "lib/cloudflare/ops-write/admin-ops-events-client.ts",
+      "reusesBaseUrlEnv": "WORLDCONS_OPS_WRITE_BASE_URL",
+      "reusesBearerOrOidc": true,
+      "defaultOff": true,
+      "failsClosedWhenEnabled": true
+    },
+    "runtimePath": {
+      "slots": [
+        "setRuntimeAdminOpsEventsWriteAuthorityConfig",
+        "setRuntimeAdminOpsEventsReadAuthorityConfig"
+      ],
+      "setFrom": "worker/index.ts (env)",
+      "runtimeReadUsesDirectD1Binding": true,
+      "nodeReadUsesBoundary": true
+    }
+  },
+  "d1Statements": {
+    "insert": "INSERT INTO admin_ops_events (id, event_type, severity, source_key, summary, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "latest": "SELECT id, event_type, severity, source_key, summary, detail, created_at FROM admin_ops_events ORDER BY created_at DESC LIMIT 1",
+    "list": "SELECT id, event_type, severity, source_key, summary, detail, created_at FROM admin_ops_events ORDER BY created_at DESC LIMIT ?",
+    "prune": "DELETE FROM admin_ops_events WHERE created_at < ?"
+  },
+  "failClosed": {
+    "selectedD1WriteUnavailable": "throws at the Node writer / 503 at the boundary",
+    "selectedD1ReadUnavailable": "throws at the Node reader / 503 at the boundary",
+    "restingReadBoundary": "503 READ_AUTHORITY_UNAVAILABLE; never relays Supabase",
+    "missingBaseUrlOrToken": "throws",
+    "nonOkResponse": "throws",
+    "malformedBody": "throws",
+    "unexpectedChanges": "throws"
+  },
+  "preservedAuthority": {
+    "default": "supabase",
+    "restingBehaviorChanged": false,
+    "rollback": "set WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=supabase (and the read var) to restore the direct Supabase writer/reader; no schema/data change",
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "reusedPatterns": {
+    "bearer": "M8 workers/browser-run constant-time token comparison",
+    "oidc": "M11.3-OIDC GitHub Actions OIDC trust",
+    "privateBridge": "M9 worldcons-search internal Service Binding + Supabase credential",
+    "authoritySeam": "M11.0/M11.1/M11.2/M11.3 supabase|d1-canary|d1",
+    "readAuthoritySeam": "M11.3R supabase|d1"
+  },
+  "filesChanged": [
+    "lib/cloudflare/ops-write/admin-ops-events.ts",
+    "lib/cloudflare/ops-write/admin-ops-events-client.ts",
+    "lib/cloudflare/ops-write/github-oidc.ts",
+    "lib/ops/watchdog.ts",
+    "workers/ops-write/src/index.ts",
+    "workers/ops-write/wrangler.jsonc",
+    "workers/ops-write/worker-configuration.d.ts",
+    "workers/search-service/src/index.ts",
+    "worker/index.ts",
+    "wrangler.jsonc",
+    ".env.example",
+    "package.json",
+    "tests/m11-admin-ops-events-write-authority.test.ts",
+    "docs/worldcons-cloudflare-m11-admin-ops-events-authority-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "verification": {
+    "newM114Tests": "21/21",
+    "m11Tests": "106/106",
+    "opsTests": "10/10",
+    "masterdashTests": "22/22",
+    "gate0Tests": "4/4",
+    "m9Tests": "8/8",
+    "m10Tests": "5/5",
+    "adminOpsReadsTests": "16/16",
+    "adminOpsReadShadowTests": "23/23",
+    "rootTypecheck": "pass",
+    "opsWriteWorkerTypecheck": "pass",
+    "opsWriteWorkerTypesCheck": "up_to_date",
+    "searchServiceWorkerTypecheck": "pass",
+    "lint": "pass (0 errors, 0 warnings)",
+    "opsWriteDryRun": "pass (binding WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY (supabase), WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY (supabase))",
+    "diffCheck": "pass",
+    "postgresReleaseStatic": "pre-existing unrelated Windows CRLF failure at clean HEAD (d1:emit \\n vs working-copy \\r\\n); unchanged by M11.4",
+    "pnpmCheck": "pre-existing unrelated failure (summary drain workflow must run on its own schedule)",
+    "liveCanary": "not_run_no_proof_claimed"
+  },
+  "liveCanaryPrerequisites": [
+    "deploy worldcons-search with /internal/admin-ops-events* (stays internal-only)",
+    "deploy worldcons-ops-write with resting admin-ops-events write/read authority supabase; confirm the new paths return 401 without auth and the boundary stays workers.dev-only",
+    "capture baseline admin_ops_events row counts on both Supabase and worldcons_ops D1",
+    "coordinate both write vars (Node repo var + boundary Worker var) to d1-canary and set WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER for one dispatched admin-watchdog run; confirm the marked event lands in D1 only and the Supabase count is unchanged; the dedupe read and prune must hit D1",
+    "coordinate both write vars to d1 with an ordinary watchdog run; confirm insert/dedupe-read/prune all resolve to D1 and Supabase is unchanged",
+    "switch WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1 and confirm app/admin/ops/page.tsx list equals the Supabase projection (id/type/severity/source/summary/detail/created_at order)",
+    "roll every write/read var back to supabase and confirm the direct Supabase writer/reader resumes",
+    "delete the canary event(s) and restore pre-canary counts"
+  ],
+  "blockers": [
+    "no Cloudflare/DB credential access in this environment; controller owns the live canary",
+    "write-path canary must also prove dedupe and prune land in D1, not only the insert",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "next": "M11.4 live canary by controller (insert+dedupe+prune write window, then the independent d1 list read), then restore supabase; M11 remains incomplete for ingest and core/publication"
+}

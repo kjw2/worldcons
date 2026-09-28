@@ -20,6 +20,15 @@ import {
   parseOpsHeartbeatWriteRow,
   type OpsHeartbeatWriteRow,
 } from "@/lib/cloudflare/ops-write/heartbeat";
+import {
+  ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH,
+  ADMIN_OPS_EVENTS_SEARCH_PATH,
+  ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH,
+  parseAdminOpsEventRecord,
+  parseAdminOpsEventWriteRow,
+  type AdminOpsEventRecord,
+  type AdminOpsEventWriteRow,
+} from "@/lib/cloudflare/ops-write/admin-ops-events";
 import type {
   BoundAdminArticleEditWriteRow,
   BoundAdminAuditWriteRow,
@@ -77,6 +86,17 @@ export interface WorldconsSearchServiceDependencies {
   ) => Promise<void>;
   opsHeartbeatWrite?: (
     row: OpsHeartbeatWriteRow,
+    env: WorldconsSearchWorkerEnv,
+  ) => Promise<void>;
+  adminOpsEventWrite?: (
+    row: AdminOpsEventWriteRow,
+    env: WorldconsSearchWorkerEnv,
+  ) => Promise<void>;
+  adminOpsEventLatestRead?: (
+    env: WorldconsSearchWorkerEnv,
+  ) => Promise<AdminOpsEventRecord | null>;
+  adminOpsEventPrune?: (
+    cutoff: string,
     env: WorldconsSearchWorkerEnv,
   ) => Promise<void>;
 }
@@ -409,6 +429,117 @@ export function createWorldconsSearchServiceApp(
     }
   });
 
+  // M11.4 admin_ops_events internal Supabase compatibility bridge. The
+  // service-role credential stays in this internal Worker; the boundary never
+  // holds it. Insert/prune use PostgREST table writes; latest is a bounded
+  // descending read. Every body is validated by the shared runtime-neutral
+  // parser before it reaches Supabase.
+  app.post(ADMIN_OPS_EVENTS_SEARCH_PATH, async (c) => {
+    let row: AdminOpsEventWriteRow;
+    try {
+      const parsed = parseAdminOpsEventWriteRow(await c.req.json<Record<string, unknown>>());
+      if (!parsed.ok) {
+        return c.json({
+          schemaVersion: 1,
+          service: "worldcons-search",
+          error: { code: "INVALID_REQUEST", reason: parsed.error, retryable: false },
+        }, 400, { "Cache-Control": "no-store" });
+      }
+      row = parsed.row;
+    } catch {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "INVALID_REQUEST", retryable: false },
+      }, 400, { "Cache-Control": "no-store" });
+    }
+    try {
+      if (dependencies.adminOpsEventWrite) {
+        await dependencies.adminOpsEventWrite(row, c.env);
+      } else {
+        await writeAdminOpsEventToSupabase(dependencies.provider?.fetcher ?? fetch, c.env, row);
+      }
+      return new Response(null, {
+        status: 204,
+        headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_search_service_admin_ops_event_write_error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "SERVICE_UNAVAILABLE", retryable: true },
+      }, 503, {
+        "Cache-Control": "no-store",
+        "Retry-After": "30",
+        "X-Content-Type-Options": "nosniff",
+      });
+    }
+  });
+
+  app.get(ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH, async (c) => {
+    try {
+      const event = dependencies.adminOpsEventLatestRead
+        ? await dependencies.adminOpsEventLatestRead(c.env)
+        : await readLatestAdminOpsEventFromSupabase(dependencies.provider?.fetcher ?? fetch, c.env);
+      return c.json({ schemaVersion: 1, service: "worldcons-search", event }, 200, { "Cache-Control": "no-store" });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_search_service_admin_ops_event_latest_error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "SERVICE_UNAVAILABLE", retryable: true },
+      }, 503, { "Cache-Control": "no-store", "Retry-After": "30" });
+    }
+  });
+
+  app.post(ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH, async (c) => {
+    let cutoff: unknown;
+    try {
+      cutoff = (await c.req.json<Record<string, unknown>>()).cutoff;
+    } catch {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "INVALID_REQUEST", retryable: false },
+      }, 400, { "Cache-Control": "no-store" });
+    }
+    if (typeof cutoff !== "string" || cutoff.length === 0 || cutoff.length > 64 || !Number.isFinite(Date.parse(cutoff))) {
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "INVALID_REQUEST", reason: "invalid_cutoff", retryable: false },
+      }, 400, { "Cache-Control": "no-store" });
+    }
+    try {
+      if (dependencies.adminOpsEventPrune) {
+        await dependencies.adminOpsEventPrune(cutoff, c.env);
+      } else {
+        await pruneAdminOpsEventsInSupabase(dependencies.provider?.fetcher ?? fetch, c.env, cutoff);
+      }
+      return new Response(null, {
+        status: 204,
+        headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_search_service_admin_ops_event_prune_error",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+      return c.json({
+        schemaVersion: 1,
+        service: "worldcons-search",
+        error: { code: "SERVICE_UNAVAILABLE", retryable: true },
+      }, 503, { "Cache-Control": "no-store", "Retry-After": "30" });
+    }
+  });
+
   app.all("*", (c) => c.json({
     schemaVersion: 1,
     service: "worldcons-search",
@@ -617,6 +748,84 @@ async function writeOpsHeartbeatToSupabase(
   if (!response.ok || payload !== true) {
     throw new Error("ops_heartbeat_supabase_write_failed");
   }
+}
+
+async function writeAdminOpsEventToSupabase(
+  fetcher: typeof fetch,
+  env: WorldconsSearchWorkerEnv,
+  row: AdminOpsEventWriteRow,
+) {
+  const supabaseUrl = env.SUPABASE_URL?.trim() || "";
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  if (!supabaseUrl || !serviceRoleKey) throw new Error("admin_ops_events_supabase_not_configured");
+  const endpoint = new URL("/rest/v1/admin_ops_events", supabaseUrl);
+  const response = await fetcher(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify(row),
+    signal: AbortSignal.timeout(5_000),
+  });
+  await response.body?.cancel();
+  if (!response.ok) throw new Error("admin_ops_events_supabase_write_failed");
+}
+
+async function readLatestAdminOpsEventFromSupabase(
+  fetcher: typeof fetch,
+  env: WorldconsSearchWorkerEnv,
+): Promise<AdminOpsEventRecord | null> {
+  const supabaseUrl = env.SUPABASE_URL?.trim() || "";
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  if (!supabaseUrl || !serviceRoleKey) throw new Error("admin_ops_events_supabase_not_configured");
+  const endpoint = new URL("/rest/v1/admin_ops_events", supabaseUrl);
+  endpoint.searchParams.set("select", "id,event_type,severity,source_key,summary,detail,created_at");
+  endpoint.searchParams.set("order", "created_at.desc");
+  endpoint.searchParams.set("limit", "1");
+  const response = await fetcher(endpoint, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("admin_ops_events_supabase_read_failed");
+  }
+  const payload = await response.json().catch(() => null);
+  if (!Array.isArray(payload) || payload.length === 0) return null;
+  return parseAdminOpsEventRecord(payload[0]);
+}
+
+async function pruneAdminOpsEventsInSupabase(
+  fetcher: typeof fetch,
+  env: WorldconsSearchWorkerEnv,
+  cutoff: string,
+) {
+  const supabaseUrl = env.SUPABASE_URL?.trim() || "";
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  if (!supabaseUrl || !serviceRoleKey) throw new Error("admin_ops_events_supabase_not_configured");
+  const endpoint = new URL("/rest/v1/admin_ops_events", supabaseUrl);
+  endpoint.searchParams.set("created_at", `lt.${cutoff}`);
+  const response = await fetcher(endpoint, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      Prefer: "return=minimal",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    signal: AbortSignal.timeout(5_000),
+  });
+  await response.body?.cancel();
+  if (!response.ok) throw new Error("admin_ops_events_supabase_prune_failed");
 }
 
 async function writeSiteEventToSupabase(

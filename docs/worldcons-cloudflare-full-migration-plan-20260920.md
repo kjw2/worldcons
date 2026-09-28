@@ -1668,6 +1668,47 @@ M11.3R ops-workflow-heartbeat read-authority parity (2026-09-28):
   (and the M11.3R section of
   `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`).
 
+M11.4 admin_ops_events Node/GitHub authority seam (2026-09-28, **code ready,
+resting at `supabase`, no live canary**):
+
+- Implements the bounded, fail-closed Cloudflare D1 compatibility path for
+  `worldcons_ops.admin_ops_events` that M11.3 deferred, preserving the watchdog
+  writer's full contract exactly: one insert, the read-before-write dedupe read
+  (`detail.signature`), the 30-day retention prune, and the descending
+  `created_at` limit projection the admin ops page consumes.
+- Reuses the existing M11.3 private boundary rather than inventing a new one.
+  The publicly reachable but authenticated `worldcons-ops-write` Worker gains
+  `POST /v1/ops/admin-events`, `GET /v1/ops/admin-events/latest`,
+  `POST /v1/ops/admin-events/prune` (write authority, for insert/dedupe/prune)
+  and the independently resolved read path `GET /v1/ops/admin-events/list`
+  (`WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY`). The internal
+  `worldcons-search` Worker gains the matching `/internal/admin-ops-events*`
+  Supabase bridge so the service-role credential stays exactly where it already
+  lives. No new credential, host or unauthenticated surface; the ops-write
+  `wrangler.jsonc` was already public (workers.dev) and bearer/OIDC-gated.
+- Authority: `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=supabase|d1-canary|d1`
+  (default `supabase`) and an independent
+  `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=supabase|d1` (default `supabase`,
+  no `d1-canary`). `d1-canary` is a narrow selector: the Node writer adds the
+  bounded `detail.m11AdminOpsEventsCanary=true` marker only while
+  `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER` is `true`/`1`, and the boundary
+  accepts only that exact marker. No caller value enters SQL text; every D1
+  statement is parameterized. A selected D1 write/read fails closed (503 /
+  throws) and is never silently downgraded to Supabase.
+- Resting behavior is byte-for-byte unchanged: the default `supabase` never
+  touches the boundary and keeps the existing direct Supabase
+  insert/dedupe-read/prune and `listAdminOpsEvents` read. Rollback is one var
+  back to `supabase`; no schema or old migration was edited.
+- Code and 21 new focused tests complete; `test:m11` is 106/106, `test:ops`
+  10/10, `test:masterdash` 22/22, `test:gate0` 4/4, M9 8/8, M10 5/5,
+  admin-ops-reads 16/16, admin-ops-read-shadow 23/23, root/ops-write typechecks,
+  worker types check, lint, ops-write dry-run and `git diff --check` pass.
+- **GO-ADMIN-OPS-EVENTS: CODE READY.** No live canary is claimed and **M11 is not
+  complete** (ingest and core/publication remain pending). A controller with
+  Cloudflare/DB credentials owns the live canary.
+- Detailed evidence:
+  `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`.
+
 M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28):
 
 - Replaces the shared `WORLDCONS_OPS_WRITE_TOKEN` repository secret for
@@ -2137,7 +2178,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   bounded live D1 read parity PASS**; it does **not** claim a combined full-`d1`
   read/write cutover or global M11 completion. See
   `artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json`.
-  `admin_ops_events` (M11.4) still needs the same boundary, and ingest plus
+  `admin_ops_events` (M11.4) now has its own bounded code-ready authority seam
+  (see the M11.4 entry above); it still needs a live canary, and ingest plus
   core/publication are still pending. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
