@@ -16,6 +16,7 @@ import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import {
   resolveGithubOidcTrustConfig,
   verifyGithubOidcToken,
+  type GithubOidcFailureCode,
   type GithubOidcTrustConfig,
   type OpsWriteOperation,
 } from "@/lib/cloudflare/ops-write/github-oidc";
@@ -74,6 +75,30 @@ async function opsWriteBearerAuthorized(request: Request, env: WorldconsOpsWrite
 }
 
 /**
+ * M11.3-OIDC structured auth-failure diagnostic.
+ *
+ * Records ONLY the boundary operation and the stable OIDC failure code, plus a
+ * boolean `bearerConfigured` that says whether an operator bearer exists
+ * without ever revealing its value. It never logs token text, the raw
+ * `Authorization` header, any claim value (jti, subject, ref, repo, workflow)
+ * or any other caller-identifying material. The OIDC failure is emitted only
+ * after the optional bearer has also failed, so a successful bearer fallback is
+ * not misreported as an OIDC rejection.
+ */
+export function logOpsWriteAuthFailure(
+  operation: OpsWriteOperation,
+  code: GithubOidcFailureCode,
+  bearerConfigured: boolean,
+): void {
+  console.warn(JSON.stringify({
+    event: "worldcons_ops_write_auth_failure",
+    operation,
+    code,
+    bearerConfigured,
+  }));
+}
+
+/**
  * M11.3-OIDC dual trust model.
  *
  * A request is authorized when EITHER:
@@ -87,7 +112,8 @@ async function opsWriteBearerAuthorized(request: Request, env: WorldconsOpsWrite
  * path. If `OPS_WRITE_TOKEN` is unset, bearer auth is simply unavailable and
  * OIDC still works, so the first Worker deploy no longer requires the shared
  * secret. Neither path is optional in the sense of being bypassable: a request
- * that satisfies neither is rejected.
+ * that satisfies neither is rejected, and the OIDC failure code is logged only
+ * once both paths have failed.
  */
 export async function opsWriteAuthorized(
   request: Request,
@@ -104,7 +130,10 @@ export async function opsWriteAuthorized(
     resolveGithubOidcTrustConfig(env as Record<string, string | undefined>, options.oidc),
   );
   if (oidc.ok) return true;
-  return opsWriteBearerAuthorized(request, env);
+  const authorizedByBearer = await opsWriteBearerAuthorized(request, env);
+  if (authorizedByBearer) return true;
+  logOpsWriteAuthFailure(operation, oidc.code, Boolean(env.OPS_WRITE_TOKEN?.trim()));
+  return false;
 }
 
 async function relayHeartbeatToSupabase(

@@ -489,7 +489,7 @@ receives a shared credentials secret.
 - `tests/m11-ops-heartbeat-oidc-auth.test.ts` — 17 focused tests.
 - `package.json`, `docs/…`, `artifacts/…` — scripts/evidence.
 
-### M11.3-OIDC verification (local, no live proof)
+### M11.3-OIDC verification (local, plus live OIDC canary — see below)
 
 - `pnpm test:m11`: 66/66 (17 new OIDC + 49 existing M11).
 - `pnpm test:ops`: 10/10; `pnpm test:masterdash`: 22/22;
@@ -501,19 +501,72 @@ receives a shared credentials secret.
   required secret).
 - `git diff --check`: clean.
 
-### M11.3-OIDC live prerequisites (controller-owned; NOT performed here)
+## M11.3-OIDC live canary (PASS, 2026-09-28)
 
-1. Deploy `worldcons-ops-write` (no `OPS_WRITE_TOKEN` required). Confirm a
-   request with no Authorization header returns 401 on `/health`,
-   `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat`.
-2. Set repo var `WORLDCONS_OPS_WRITE_BASE_URL` (the workers.dev base URL) and,
-   optionally, `WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE` (defaults to
-   `worldcons-ops-write`). Do **not** create `WORLDCONS_OPS_WRITE_TOKEN`.
-3. Dispatch `admin-watchdog.yml` (it grants `id-token: write`). With both
-   authority vars still `supabase`, confirm the job authenticates and the
-   boundary relays the heartbeat to Supabase (no shared secret in play).
-4. For a D1 canary, coordinate both authority vars as in M11.3 and confirm the
-   OIDC-authenticated request reaches D1; capture the absence of any
-   `WORLDCONS_OPS_WRITE_TOKEN` secret in the run.
-5. Confirm a request forged with a foreign repository/audience/workflow is
+The GitHub-Actions-OIDC trust for the boundary is now **live-proven**. On
+2026-09-28 the controller ran the canary from branch `codex/m7-go-search` and
+captured the following chain:
+
+1. **First live canary attempt — run `36362320031`.** The canary reached
+   `POST /v1/ops/heartbeat` but the boundary returned **401**: the request was
+   authenticated neither by OIDC nor by the optional bearer.
+2. **Diagnostic — run `36363873138`.** The boundary logged the stable failure
+   code **`jwks_unavailable`** from `worldcons-ops-write`. This was the single
+   opaque code that collapsed every discovery/JWKS stage, so it did not yet say
+   *which* stage broke.
+3. **Root cause reproduced under workerd.** The trust config stores
+   `fetcher: fetch`, and the verifier called it as `trust.fetcher(...)`. In
+   workerd, invoking the global `fetch` as a method throws
+   `TypeError: Illegal invocation` (the `this` receiver is the trust config
+   object, not a valid fetch receiver), so every discovery/JWKS read failed and
+   the `try/catch` collapsed it to `jwks_unavailable`. The fix calls the
+   fetcher **detached** (a plain local reference, `this === undefined`), which
+   the Workers runtime accepts; the test fetcher seam is unchanged. The failure
+   codes were also split per stage (`discovery_fetch_failed`,
+   `discovery_http_error`, `discovery_invalid`, `jwks_uri_invalid`,
+   `jwks_fetch_failed`, `jwks_http_error`, `jwks_invalid`,
+   `jwks_no_usable_keys`) and the boundary now logs only the operation and the
+   stable code (plus a boolean `bearerConfigured`), never token/claim material.
+4. **Successful live canary — run `36365145716`.** On branch
+   `codex/m7-go-search`, Worker version
+   `0ed20eb2-e71c-46f8-aa29-26792293a3cc`, the canary produced **two
+   `POST /v1/ops/heartbeat` responses with status 200**.
+
+### What the live canary proves — and what it does not
+
+The canary proves the **OIDC-authenticated boundary write path end-to-end**:
+GitHub Actions obtained a per-job OIDC JWT for `worldcons-ops-write`, the
+boundary verified it in-Worker (discovery 200, exact issuer, JWKS 200, four
+RS256 keys imported under workerd), authorized the request, and relayed it to
+the **resting Supabase** authority.
+
+- **Supabase watchdog.** `ops_workflow_heartbeats` was updated to run id
+  `36365145716` with `last_started_at` `2026-09-28 01:13:28.847+00`,
+  `last_completed_at` `2026-09-28 01:13:38.435+00`, status `success`.
+- **D1 watchdog.** D1 **remained unchanged** at run id `36079260476`, proving
+  the canary Worker relayed to resting Supabase and did **not** write D1.
+
+> **The D1 write authority itself was NOT switched by this canary.** Only the
+> OIDC auth path and the Supabase relay were exercised. A deliberate full-`d1`
+> ops-heartbeat authority cutover (coordinating both the Node-side and
+> boundary-Worker authority vars, as described in M11.3) remains pending and is
+> not claimed here.
+
+### Final resting state
+
+- Repo write/read authority vars were **restored to `supabase`** after the
+  canary.
+- Final resting `worldcons-ops-write` version
+  `1024bf85-913c-4759-8d65-ea0a47cd1137`: write authority `supabase`, read
+  authority `supabase`, audience `worldcons-ops-write`, **no** temporary OIDC
+  allowed-refs binding.
+- Unauthenticated requests to `/health`, `GET /v1/ops/heartbeats` and
+  `POST /v1/ops/heartbeat` all return **401**.
+
+### Remaining controller-owned prerequisites (unchanged)
+
+1. No live read-authority (`GET /v1/ops/heartbeats` under `d1`) parity is
+   claimed.
+2. A deliberate full-`d1` ops-heartbeat write cutover is not claimed.
+3. A forged foreign repository/audience/workflow token must be confirmed
    rejected with 401.

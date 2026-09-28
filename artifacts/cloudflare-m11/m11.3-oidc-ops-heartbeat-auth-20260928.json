@@ -1,15 +1,17 @@
 {
   "schemaVersion": 1,
   "milestone": "M11.3-OIDC",
-  "decision": "CODE-READY-LIVE-OIDC-PROOF-PENDING-NO-LIVE-PROOF",
-  "status": "code_ready_resting_at_supabase",
+  "decision": "GO-OPS-WRITE-OIDC-LIVE-CANARY-PASS-D1-AUTHORITY-NOT-SWITCHED",
+  "status": "live_oidc_canary_pass_resting_at_supabase",
   "date": "2026-09-28",
   "baseCheckpoint": "e7ea50ea",
   "scope": {
     "database": "worldcons_ops",
     "table": "ops_workflow_heartbeats",
     "kind": "github-actions-oidc-auth-for-boundary",
-    "liveAuthClaimed": false,
+    "liveAuthClaimed": true,
+    "liveCanaryClaimed": true,
+    "d1WriteAuthoritySwitchedByCanary": false,
     "deployOrCommitPerformed": false,
     "oldMigrationsEdited": false,
     "d1OrPostgresSchemaChanged": false,
@@ -111,8 +113,21 @@
       "token_expired",
       "token_issued_in_future",
       "replayed_token",
-      "jwks_unavailable"
-    ]
+      "discovery_fetch_failed",
+      "discovery_http_error",
+      "discovery_invalid",
+      "jwks_uri_invalid",
+      "jwks_fetch_failed",
+      "jwks_http_error",
+      "jwks_invalid",
+      "jwks_no_usable_keys"
+    ],
+    "jwksRuntimeFix": {
+      "symptom": "live diagnostic run 36363873138 logged code jwks_unavailable from worldcons-ops-write",
+      "rootCause": "trust.fetcher(...) invoked the global fetch as a method; workerd throws TypeError Illegal invocation because this was the trust config object, and the try/catch collapsed every stage to jwks_unavailable",
+      "fix": "call the fetcher detached via a local reference so this is undefined (Workers runtime accepts it); test fetcher seam unchanged",
+      "liveChainStatus": "discovery 200, issuer exact, jwks 200, four RS256 keys import under workerd"
+    }
   },
   "boundary": {
     "worker": "worldcons-ops-write",
@@ -207,7 +222,76 @@
     "lint": "pass",
     "opsWriteDryRun": "pass (no required secret; audience var present)",
     "diffCheck": "pass",
-    "liveOidcProof": "not_run_no_proof_claimed"
+    "liveOidcProof": "pass_live_canary_run_36365145716",
+    "liveOidcProofNote": "proves OIDC-authenticated boundary write end-to-end into the resting Supabase authority; the D1 write authority itself was NOT switched by this canary"
+  },
+  "liveCanary": {
+    "proven": true,
+    "date": "2026-09-28",
+    "branch": "codex/m7-go-search",
+    "githubActor": "kjw2",
+    "chain": [
+      {
+        "step": "first-live-canary-attempt",
+        "run": 36362320031,
+        "outcome": "reached POST /v1/ops/heartbeat but returned 401"
+      },
+      {
+        "step": "diagnostic",
+        "run": 36363873138,
+        "outcome": "logged stable failure code jwks_unavailable from worldcons-ops-write"
+      },
+      {
+        "step": "root-cause",
+        "outcome": "reproduced under workerd: global fetch invoked as trust.fetcher(...) threw TypeError Illegal invocation; detached-fetch fix implemented"
+      },
+      {
+        "step": "successful-live-canary",
+        "run": 36365145716,
+        "outcome": "pass"
+      }
+    ],
+    "successfulRun": {
+      "runId": 36365145716,
+      "branch": "codex/m7-go-search",
+      "workerVersion": "0ed20eb2-e71c-46f8-aa29-26792293a3cc",
+      "requests": [
+        { "method": "POST", "path": "/v1/ops/heartbeat", "status": 200 },
+        { "method": "POST", "path": "/v1/ops/heartbeat", "status": 200 }
+      ],
+      "heartbeatResponses": 2
+    },
+    "supabaseWatchdog": {
+      "updated": true,
+      "runId": 36365145716,
+      "lastStartedAt": "2026-09-28 01:13:28.847+00",
+      "lastCompletedAt": "2026-09-28 01:13:38.435+00",
+      "status": "success"
+    },
+    "d1Watchdog": {
+      "updated": false,
+      "runId": 36079260476,
+      "interpretation": "unchanged D1 watchdog proves the canary Worker relayed to the resting Supabase authority and did not write D1"
+    },
+    "repositoryAuthorityVars": {
+      "write": "supabase",
+      "read": "supabase",
+      "restoredAfterCanary": true
+    },
+    "workflowHeartbeatWriteBoundary": "the canary exercised the OIDC-authenticated boundary write path; the D1 write authority itself was NOT switched by this canary",
+    "finalRestingWorker": {
+      "versionId": "1024bf85-913c-4759-8d65-ea0a47cd1137",
+      "worker": "worldcons-ops-write",
+      "writeAuthority": "supabase",
+      "readAuthority": "supabase",
+      "audience": "worldcons-ops-write",
+      "temporaryOidcAllowedRefsBinding": false,
+      "unauthenticated": {
+        "/health": 401,
+        "GET /v1/ops/heartbeats": 401,
+        "POST /v1/ops/heartbeat": 401
+      }
+    }
   },
   "livePrerequisites": [
     "deploy worldcons-ops-write with no OPS_WRITE_TOKEN required; confirm 401 without Authorization on /health, GET /v1/ops/heartbeats and POST /v1/ops/heartbeat",
@@ -216,11 +300,18 @@
     "for a D1 canary, coordinate both authority vars as in M11.3 and confirm the OIDC-authenticated request reaches D1",
     "confirm a forged foreign repository/audience/workflow token is rejected with 401"
   ],
+  "livePrerequisitesStatus": {
+    "noSecretUnauth401": "satisfied (final resting Worker 1024bf85-913c-4759-8d65-ea0a47cd1137 returns 401 on /health, GET /v1/ops/heartbeats, POST /v1/ops/heartbeat)",
+    "repoVerbUrlAndAudience": "satisfied (write/read authority vars restored to supabase; audience worldcons-ops-write)",
+    "oidcAuthRestingSupabase": "satisfied (live canary run 36365145716; Supabase watchdog update, D1 unchanged)",
+    "d1CanaryReachedD1": "not_claimed (D1 write authority was NOT switched by this canary)",
+    "forgedTokenRejected": "pending (controller-owned)"
+  },
   "blockers": [
-    "no Cloudflare/DB credential access in this environment; controller owns the live OIDC proof",
+    "live OIDC boundary auth is proven (run 36365145716); the D1 write authority itself was NOT switched, so no full-D1 ops-heartbeat cutover is claimed",
     "anti-replay is bounded to a single Worker isolate; not a global ledger (documented, not claimed)",
     "admin_ops_events remains deferred to M11.4",
     "M11 not globally complete: ingest and core/publication remain pending"
   ],
-  "next": "live OIDC proof by controller; then M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract"
+  "next": "M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract; a separate deliberate full-D1 ops-heartbeat authority cutover remains pending"
 }

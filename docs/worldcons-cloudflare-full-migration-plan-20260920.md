@@ -1705,9 +1705,33 @@ M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28)
   `test:ingest-workflow` 18/18, root/Worker typechecks, worker types check, lint,
   ops-write dry-run (no required secret) and `git diff --check` pass. Resting
   authorities remain `supabase`.
-- **GO-OPS-WRITE-OIDC: CODE READY.** No live OIDC proof is claimed; a controller
-  with Cloudflare/DB credentials owns it. Old migrations untouched; no schema
-  change. `admin_ops_events` (M11.4) and ingest/core-publication remain pending.
+- **GO-OPS-WRITE-OIDC: LIVE CANARY PASS (2026-09-28).** First live canary run
+  `36362320031` reached `POST /v1/ops/heartbeat` but returned 401; diagnostic run
+  `36363873138` logged the stable code `jwks_unavailable`. The root cause was
+  reproduced under workerd — the trust config stores `fetcher: fetch` and the
+  verifier invoked it as `trust.fetcher(...)`, which workerd rejects with
+  `TypeError: Illegal invocation`, collapsing every discovery/JWKS stage into
+  `jwks_unavailable`. The detached-fetch fix (plain local reference, plus
+  per-stage failure codes and operation+code-only logging) was implemented, and
+  successful live canary run `36365145716` on branch `codex/m7-go-search`
+  (Worker version `0ed20eb2-e71c-46f8-aa29-26792293a3cc`) produced two
+  `POST /v1/ops/heartbeat` responses with status 200.
+- **What the live canary proves.** The OIDC-authenticated boundary write path
+  end-to-end into the **resting Supabase** authority: the Supabase
+  `ops_workflow_heartbeats` watchdog updated to run id `36365145716`
+  (`last_started_at` `2026-09-28 01:13:28.847+00`, `last_completed_at`
+  `2026-09-28 01:13:38.435+00`, status `success`), while the D1 watchdog stayed
+  unchanged at run id `36079260476`, proving the canary Worker relayed to
+  Supabase and did not write D1.
+- **Not claimed: the D1 write authority was NOT switched by this canary.** Only
+  OIDC auth + Supabase relay were exercised. Repo write/read authority vars were
+  restored to `supabase`; the final resting `worldcons-ops-write` version
+  `1024bf85-913c-4759-8d65-ea0a47cd1137` has write/read authority `supabase`,
+  audience `worldcons-ops-write`, no temporary OIDC allowed-refs binding, and
+  unauthenticated `/health`, `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat`
+  all return 401. A deliberate full-`d1` cutover and live read-authority parity
+  remain pending. Old migrations untouched; no schema change. `admin_ops_events`
+  (M11.4) and ingest/core-publication remain pending.
 - Detailed evidence:
   `artifacts/cloudflare-m11/m11.3-oidc-ops-heartbeat-auth-20260928.json`
   (and the M11.3-OIDC section of
@@ -1950,8 +1974,12 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   internal `worldcons-search /internal/ops-heartbeat/write` Supabase RPC bridge,
   and the real `recordWorkflowHeartbeat` call path routed through the seam with a
   `supabase` resting default. The Node-side and boundary-Worker authority vars
-  must be deliberately coordinated for `d1-canary`/`d1`. No live canary is
-  claimed; a controller owns it. Resting authority remains Supabase.
+  must be deliberately coordinated for `d1-canary`/`d1`. The M11.3-OIDC live
+  canary passed (run `36365145716`): the OIDC-authenticated boundary write path
+  was proven end-to-end into the resting Supabase authority, while D1 stayed
+  unchanged — **the D1 write authority itself was not switched by this canary**,
+  and no full-D1 ops-heartbeat cutover is claimed. Resting authority remains
+  Supabase.
   M11.3R adds the read-authority parity step: a read-only, independently
   resolved `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase|d1` (resting
   `supabase`, no `d1-canary` read mode) that routes `getWorkflowHeartbeats`

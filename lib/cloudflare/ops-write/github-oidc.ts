@@ -52,6 +52,8 @@ export const GITHUB_OIDC_JTI_TTL_SECONDS = 3600;
 export const GITHUB_OIDC_DEFAULT_JTI_CACHE_MAX = 4096;
 export const GITHUB_OIDC_JWKS_TTL_MS = 3_600_000;
 export const GITHUB_OIDC_JWKS_MIN_REFETCH_MS = 30_000;
+/** Bounded timeout for each discovery/JWKS HTTP request. */
+export const GITHUB_OIDC_FETCH_TIMEOUT_MS = 5_000;
 /** Minimum accepted RSA modulus size. */
 const GITHUB_OIDC_MIN_RSA_MODULUS_BYTES = 256;
 
@@ -119,7 +121,16 @@ export type GithubOidcFailureCode =
   | "token_expired"
   | "token_issued_in_future"
   | "replayed_token"
-  | "jwks_unavailable";
+  // Discovery/JWKS trust-chain failures, split so an operator can tell which
+  // stage broke without ever logging a URL, body or claim value.
+  | "discovery_fetch_failed"
+  | "discovery_http_error"
+  | "discovery_invalid"
+  | "jwks_uri_invalid"
+  | "jwks_fetch_failed"
+  | "jwks_http_error"
+  | "jwks_invalid"
+  | "jwks_no_usable_keys";
 
 export type GithubOidcVerification =
   | { ok: true; claims: GithubOidcClaims }
@@ -260,8 +271,23 @@ interface CachedJwks {
   keys: JwkValidationResult[];
 }
 
+/** Discovery/JWKS stage failures, a subset of the full failure-code union. */
+export type GithubOidcJwksFailureCode =
+  | "discovery_fetch_failed"
+  | "discovery_http_error"
+  | "discovery_invalid"
+  | "jwks_uri_invalid"
+  | "jwks_fetch_failed"
+  | "jwks_http_error"
+  | "jwks_invalid"
+  | "jwks_no_usable_keys";
+
+type JwksOutcome =
+  | { ok: true; cached: CachedJwks }
+  | { ok: false; code: GithubOidcJwksFailureCode };
+
 let cachedJwks: CachedJwks | null = null;
-let inFlightJwks: Promise<CachedJwks | null> | null = null;
+let inFlightJwks: Promise<JwksOutcome> | null = null;
 
 /** Clears the module-level JWKS/discovery cache. For tests and forced rotation. */
 export function resetGithubOidcCaches(): void {
@@ -269,74 +295,92 @@ export function resetGithubOidcCaches(): void {
   inFlightJwks = null;
 }
 
-async function fetchJwks(trust: GithubOidcTrustConfig): Promise<CachedJwks | null> {
+/**
+ * Calls the configured fetcher as a detached function.
+ *
+ * The global `fetch` is not an ordinary function in the Workers runtime: when
+ * it is invoked as a method (`obj.fetch(...)`), workerd throws `TypeError:
+ * Illegal invocation`. The trust config stores `fetcher: fetch`, so calling
+ * `trust.fetcher(...)` passes the config object as `this` and always fails,
+ * which previously collapsed every discovery/JWKS read into a single opaque
+ * `jwks_unavailable`. Rebinding to a plain local call passes `this === undefined`,
+ * which the Workers runtime accepts, while leaving the test fetcher seam intact.
+ */
+function detachedFetch(fetcher: typeof fetch, input: string, init: RequestInit): Promise<Response> {
+  const call = fetcher;
+  return call(input, init);
+}
+
+async function fetchJwks(trust: GithubOidcTrustConfig): Promise<JwksOutcome> {
   let discovery: Response;
   try {
-    discovery = await trust.fetcher(trust.discoveryUrl, {
+    discovery = await detachedFetch(trust.fetcher, trust.discoveryUrl, {
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(GITHUB_OIDC_FETCH_TIMEOUT_MS),
     });
   } catch {
-    return null;
+    return { ok: false, code: "discovery_fetch_failed" };
   }
   if (!discovery.ok) {
     await discovery.body?.cancel();
-    return null;
+    return { ok: false, code: "discovery_http_error" };
   }
   let discoveryBody: unknown;
   try {
     discoveryBody = await discovery.json();
   } catch {
-    return null;
+    return { ok: false, code: "discovery_invalid" };
   }
-  if (!isRecord(discoveryBody)) return null;
-  if (discoveryBody.issuer !== trust.issuer) return null;
+  if (!isRecord(discoveryBody)) return { ok: false, code: "discovery_invalid" };
+  if (discoveryBody.issuer !== trust.issuer) return { ok: false, code: "discovery_invalid" };
   const jwksUri = discoveryBody.jwks_uri;
-  if (typeof jwksUri !== "string" || !jwksUri.startsWith(`${trust.issuer}/`)) return null;
+  if (typeof jwksUri !== "string" || !jwksUri.startsWith(`${trust.issuer}/`)) {
+    return { ok: false, code: "jwks_uri_invalid" };
+  }
 
   let response: Response;
   try {
-    response = await trust.fetcher(jwksUri, {
+    response = await detachedFetch(trust.fetcher, jwksUri, {
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(GITHUB_OIDC_FETCH_TIMEOUT_MS),
     });
   } catch {
-    return null;
+    return { ok: false, code: "jwks_fetch_failed" };
   }
   if (!response.ok) {
     await response.body?.cancel();
-    return null;
+    return { ok: false, code: "jwks_http_error" };
   }
   let body: unknown;
   try {
     body = await response.json();
   } catch {
-    return null;
+    return { ok: false, code: "jwks_invalid" };
   }
-  if (!isRecord(body) || !Array.isArray(body.keys)) return null;
+  if (!isRecord(body) || !Array.isArray(body.keys)) return { ok: false, code: "jwks_invalid" };
   const keys = body.keys.flatMap((key) => {
     const validated = validateRsaJwk(key);
     return validated ? [validated] : [];
   });
-  if (keys.length === 0) return null;
-  return { jwksUri, fetchedAt: trust.now(), keys };
+  if (keys.length === 0) return { ok: false, code: "jwks_no_usable_keys" };
+  return { ok: true, cached: { jwksUri, fetchedAt: trust.now(), keys } };
 }
 
-async function loadJwks(trust: GithubOidcTrustConfig, force: boolean): Promise<CachedJwks | null> {
+async function loadJwks(trust: GithubOidcTrustConfig, force: boolean): Promise<JwksOutcome> {
   const fresh = cachedJwks
     && trust.now() - cachedJwks.fetchedAt < trust.jwksTtlMs
     && !force;
-  if (fresh) return cachedJwks;
+  if (fresh) return { ok: true, cached: cachedJwks as CachedJwks };
   if (inFlightJwks) return inFlightJwks;
   inFlightJwks = fetchJwks(trust).then(
     (result) => {
-      if (result) cachedJwks = result;
+      if (result.ok) cachedJwks = result.cached;
       inFlightJwks = null;
       return result;
     },
-    () => {
+    (): JwksOutcome => {
       inFlightJwks = null;
-      return null;
+      return { ok: false, code: "discovery_fetch_failed" };
     },
   );
   return inFlightJwks;
@@ -345,15 +389,23 @@ async function loadJwks(trust: GithubOidcTrustConfig, force: boolean): Promise<C
 async function selectKey(
   trust: GithubOidcTrustConfig,
   kid: string,
-): Promise<{ key: JsonWebKey } | { code: "jwks_unavailable" | "unknown_key" }> {
-  let cache = await loadJwks(trust, false);
-  let match = cache?.keys.find((key) => (key.jwk as { kid?: string }).kid === kid);
-  if (!match && cache && trust.now() - cache.fetchedAt >= trust.jwksMinRefetchMs) {
-    cache = await loadJwks(trust, true);
-    match = cache?.keys.find((key) => (key.jwk as { kid?: string }).kid === kid);
+): Promise<{ key: JsonWebKey } | { code: GithubOidcFailureCode }> {
+  let outcome = await loadJwks(trust, false);
+  let match = outcome.ok
+    ? outcome.cached.keys.find((key) => (key.jwk as { kid?: string }).kid === kid)
+    : undefined;
+  if (!match && outcome.ok && trust.now() - outcome.cached.fetchedAt >= trust.jwksMinRefetchMs) {
+    outcome = await loadJwks(trust, true);
+    match = outcome.ok
+      ? outcome.cached.keys.find((key) => (key.jwk as { kid?: string }).kid === kid)
+      : undefined;
   }
   if (match) return { key: match.jwk };
-  return { code: cache ? "unknown_key" : "jwks_unavailable" };
+  // We hold a usable, discovered JWKS but the token's kid is not in it: the key
+  // is genuinely unknown. Without a usable JWKS the stage failure is surfaced
+  // verbatim so the operator can tell discovery from fetch from key-set errors.
+  if (outcome.ok) return { code: "unknown_key" };
+  return { code: outcome.code };
 }
 
 async function verifySignature(signingInput: Uint8Array, signature: Uint8Array, jwk: JsonWebKey) {

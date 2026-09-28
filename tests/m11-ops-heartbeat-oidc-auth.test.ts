@@ -345,28 +345,28 @@ test("M11.3-OIDC fails closed on discovery, jwks and network errors", async () =
   const discoveryDown = oidcFetcher(key, { discoveryStatus: 500 });
   assert.deepEqual(
     await verifyGithubOidcToken(token, "write", trust({ fetcher: discoveryDown.fetcher })),
-    { ok: false, code: "jwks_unavailable" },
+    { ok: false, code: "discovery_http_error" },
   );
 
   resetGithubOidcCaches();
   const jwksDown = oidcFetcher(key, { jwksStatus: 500 });
   assert.deepEqual(
     await verifyGithubOidcToken(token, "write", trust({ fetcher: jwksDown.fetcher })),
-    { ok: false, code: "jwks_unavailable" },
+    { ok: false, code: "jwks_http_error" },
   );
 
   resetGithubOidcCaches();
   const wrongIssuer = oidcFetcher(key, { issuer: "https://evil.example" });
   assert.deepEqual(
     await verifyGithubOidcToken(token, "write", trust({ fetcher: wrongIssuer.fetcher })),
-    { ok: false, code: "jwks_unavailable" },
+    { ok: false, code: "discovery_invalid" },
   );
 
   resetGithubOidcCaches();
   const offOriginJwks = oidcFetcher(key, { jwksUri: "https://evil.example/jwks" });
   assert.deepEqual(
     await verifyGithubOidcToken(token, "write", trust({ fetcher: offOriginJwks.fetcher })),
-    { ok: false, code: "jwks_unavailable" },
+    { ok: false, code: "jwks_uri_invalid" },
   );
 
   resetGithubOidcCaches();
@@ -377,15 +377,160 @@ test("M11.3-OIDC fails closed on discovery, jwks and network errors", async () =
   // treated as unavailable rather than silently continuing without a key.
   assert.deepEqual(
     await verifyGithubOidcToken(token, "write", trust({ fetcher: weak.fetcher })),
-    { ok: false, code: "jwks_unavailable" },
+    { ok: false, code: "jwks_no_usable_keys" },
   );
 
   resetGithubOidcCaches();
   const networkError = (async () => { throw new Error("network blocked"); }) as unknown as typeof fetch;
   assert.deepEqual(
     await verifyGithubOidcToken(token, "write", trust({ fetcher: networkError })),
-    { ok: false, code: "jwks_unavailable" },
+    { ok: false, code: "discovery_fetch_failed" },
   );
+});
+
+test("M11.3-OIDC categorises every discovery and jwks failure stage distinctly", async () => {
+  const key = await generateKeyPair();
+  const token = await signToken(key, {});
+
+  // discovery: transport throw
+  resetGithubOidcCaches();
+  const discoveryThrow = (async () => { throw new Error("connection refused"); }) as unknown as typeof fetch;
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: discoveryThrow })),
+    { ok: false, code: "discovery_fetch_failed" },
+  );
+
+  // discovery: non-2xx
+  resetGithubOidcCaches();
+  const discovery500 = oidcFetcher(key, { discoveryStatus: 503 });
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: discovery500.fetcher })),
+    { ok: false, code: "discovery_http_error" },
+  );
+
+  // discovery: body is not JSON
+  resetGithubOidcCaches();
+  const discoveryBadJson = (async (input: string | URL | Request) => {
+    if (String(input) === GITHUB_OIDC_DISCOVERY_URL) return new Response("<html>not json</html>", { status: 200 });
+    return new Response(null, { status: 404 });
+  }) as unknown as typeof fetch;
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: discoveryBadJson })),
+    { ok: false, code: "discovery_invalid" },
+  );
+
+  // discovery: mismatched issuer
+  resetGithubOidcCaches();
+  const wrongIssuer = oidcFetcher(key, { issuer: "https://evil.example" });
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: wrongIssuer.fetcher })),
+    { ok: false, code: "discovery_invalid" },
+  );
+
+  // discovery: jwks_uri leaves the issuer origin
+  resetGithubOidcCaches();
+  const offOrigin = oidcFetcher(key, { jwksUri: "https://evil.example/jwks" });
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: offOrigin.fetcher })),
+    { ok: false, code: "jwks_uri_invalid" },
+  );
+
+  // discovery: jwks_uri is not a string
+  resetGithubOidcCaches();
+  const noJwksUri = oidcFetcher(key, { jwksUri: 42 });
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: noJwksUri.fetcher })),
+    { ok: false, code: "jwks_uri_invalid" },
+  );
+
+  // jwks: transport throw after a valid discovery document
+  resetGithubOidcCaches();
+  const jwksThrow = (async (input: string | URL | Request) => {
+    if (String(input) === GITHUB_OIDC_DISCOVERY_URL) {
+      return Response.json({ issuer: ISSUER, jwks_uri: JWKS_URI });
+    }
+    throw new Error("tls failure");
+  }) as unknown as typeof fetch;
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: jwksThrow })),
+    { ok: false, code: "jwks_fetch_failed" },
+  );
+
+  // jwks: non-2xx
+  resetGithubOidcCaches();
+  const jwks500 = oidcFetcher(key, { jwksStatus: 502 });
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: jwks500.fetcher })),
+    { ok: false, code: "jwks_http_error" },
+  );
+
+  // jwks: body is not a JSON key set
+  resetGithubOidcCaches();
+  const jwksBadJson = (async (input: string | URL | Request) => {
+    if (String(input) === GITHUB_OIDC_DISCOVERY_URL) {
+      return Response.json({ issuer: ISSUER, jwks_uri: JWKS_URI });
+    }
+    return new Response("not json", { status: 200 });
+  }) as unknown as typeof fetch;
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: jwksBadJson })),
+    { ok: false, code: "jwks_invalid" },
+  );
+
+  // jwks: keys array missing
+  resetGithubOidcCaches();
+  const jwksNoKeys = (async (input: string | URL | Request) => {
+    if (String(input) === GITHUB_OIDC_DISCOVERY_URL) {
+      return Response.json({ issuer: ISSUER, jwks_uri: JWKS_URI });
+    }
+    return Response.json({ nope: true });
+  }) as unknown as typeof fetch;
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: jwksNoKeys })),
+    { ok: false, code: "jwks_invalid" },
+  );
+
+  // jwks: every advertised key is unusable
+  resetGithubOidcCaches();
+  const weakOnly = oidcFetcher(key, { jwksKeys: [{ kty: "oct", kid: "hmac", k: "AAAA" }] });
+  assert.deepEqual(
+    await verifyGithubOidcToken(token, "write", trust({ fetcher: weakOnly.fetcher })),
+    { ok: false, code: "jwks_no_usable_keys" },
+  );
+
+  // A usable JWKS without the token's kid is a genuine unknown key, not a
+  // discovery failure, and must remain distinguishable.
+  resetGithubOidcCaches();
+  const goodKeys = oidcFetcher(key);
+  const unknownKidToken = await signToken(key, {}, { kid: "not-in-jwks" });
+  assert.deepEqual(
+    await verifyGithubOidcToken(unknownKidToken, "write", trust({ fetcher: goodKeys.fetcher })),
+    { ok: false, code: "unknown_key" },
+  );
+});
+
+test("M11.3-OIDC calls the fetcher detached so workerd does not throw Illegal invocation", async () => {
+  const key = await generateKeyPair();
+
+  // workerd rejects `obj.fetch(...)` with `TypeError: Illegal invocation`
+  // because the global fetch is not an ordinary method. A regression here is
+  // invisible to a normal test fetcher, so this guarded fetcher throws unless
+  // it is invoked with `this === undefined`, exactly like the real runtime.
+  const guardedFetch = function (this: unknown, input: string | URL | Request) {
+    if (this !== undefined) {
+      throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+    }
+    const url = String(input);
+    if (url === GITHUB_OIDC_DISCOVERY_URL) {
+      return Promise.resolve(Response.json({ issuer: ISSUER, jwks_uri: JWKS_URI }));
+    }
+    if (url === JWKS_URI) return Promise.resolve(Response.json({ keys: [key.jwk] }));
+    return Promise.resolve(new Response(null, { status: 404 }));
+  } as unknown as typeof fetch;
+
+  const token = await signToken(key, {});
+  const result = await verifyGithubOidcToken(token, "write", trust({ fetcher: guardedFetch }));
+  assert.equal(result.ok, true, "a detached fetcher call must preserve discovery/JWKS verification");
 });
 
 test("M11.3-OIDC caches JWKS and refetches on an unknown kid within bounds", async () => {
@@ -479,6 +624,102 @@ test("M11.3-OIDC authorizeGithubOidcRequest returns stable failure codes", async
   });
   const result = await authorizeGithubOidcRequest(request, "write", {}, { fetcher });
   assert.deepEqual(result, { ok: false, code: "malformed_token" });
+});
+
+function heartbeatRequest(token: string | null) {
+  return new Request("https://worldcons-ops-write.example.workers.dev/v1/ops/heartbeat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      workflow_key: "watchdog",
+      status: "success",
+      run_id: "github-1",
+      detail: {},
+      observed_at: "2026-09-28T12:00:00.000Z",
+    }),
+  });
+}
+
+function captureWarn() {
+  const records: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    records.push(args.map((value) => String(value)).join(" "));
+  };
+  return { records, restore: () => { console.warn = original; } };
+}
+
+test("M11.3-OIDC auth-failure log records only operation and stable code", async () => {
+  const key = await generateKeyPair();
+  const { fetcher } = oidcFetcher(key);
+  const token = await signToken(key, { ref: "refs/heads/feature" });
+  const capture = captureWarn();
+  try {
+    const response = await handleOpsHeartbeatBoundary(
+      heartbeatRequest(token),
+      { OPS_WRITE_TOKEN: "operator-secret" } satisfies WorldconsOpsWriteWorkerEnv,
+      { writeToSupabase: async () => { throw new Error("must not write"); }, auth: { oidc: { fetcher } } },
+    );
+    assert.equal(response.status, 401);
+  } finally {
+    capture.restore();
+  }
+  assert.equal(capture.records.length, 1);
+  const logged = JSON.parse(capture.records[0]) as Record<string, unknown>;
+  assert.deepEqual(logged, {
+    event: "worldcons_ops_write_auth_failure",
+    operation: "write",
+    code: "invalid_ref",
+    bearerConfigured: true,
+  });
+});
+
+test("M11.3-OIDC auth-failure log contains no token or claim material", async () => {
+  const key = await generateKeyPair();
+  const { fetcher } = oidcFetcher(key);
+  const token = await signToken(key, {
+    ref: "refs/heads/attacker-branch",
+    repository: "attacker/worldcons",
+    jti: "raw-jti-claim-123",
+    workflow_ref: "attacker/worldcons/.github/workflows/crawlee-worker.yml@refs/heads/attacker-branch",
+  });
+  const capture = captureWarn();
+  try {
+    await handleOpsHeartbeatBoundary(
+      heartbeatRequest(token),
+      { OPS_WRITE_TOKEN: "operator-secret" } satisfies WorldconsOpsWriteWorkerEnv,
+      { writeToSupabase: async () => {}, auth: { oidc: { fetcher } } },
+    );
+  } finally {
+    capture.restore();
+  }
+  assert.equal(capture.records.length, 1);
+  const raw = capture.records[0];
+  for (const forbidden of [token, "raw-jti-claim-123", "attacker-branch", "attacker/worldcons", "operator-secret"]) {
+    assert.ok(!raw.includes(forbidden), `auth-failure log must not contain ${forbidden}`);
+  }
+  assert.ok(!raw.includes("Bearer"), "auth-failure log must not contain the Authorization scheme");
+  assert.ok(!raw.includes("eyJ"), "auth-failure log must not contain a JWT segment");
+});
+
+test("M11.3-OIDC no auth-failure log when the bearer fallback succeeds", async () => {
+  const capture = captureWarn();
+  try {
+    // "operator-secret" is not a JWT, so OIDC fails, but the matching bearer
+    // succeeds: the OIDC failure must not be reported.
+    const response = await handleOpsHeartbeatBoundary(
+      heartbeatRequest("operator-secret"),
+      { OPS_WRITE_TOKEN: "operator-secret" } satisfies WorldconsOpsWriteWorkerEnv,
+      { writeToSupabase: async () => {} },
+    );
+    assert.equal(response.status, 200);
+  } finally {
+    capture.restore();
+  }
+  assert.equal(capture.records.length, 0, "a successful bearer must not emit an OIDC failure log");
 });
 
 test("M11.3-OIDC no committed source file sets an OIDC token or shared secret value", () => {
