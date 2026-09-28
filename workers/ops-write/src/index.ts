@@ -50,6 +50,18 @@ import {
   shouldWriteIngestionRunToD1,
   type IngestionRunMutation,
 } from "@/lib/cloudflare/ingest-write/ingestion-runs";
+import {
+  CORE_LIFECYCLE_BOUNDARY_PATH,
+  CORE_PUBLICATION_BOUNDARY_PATH,
+  readArticleLifecycleFromD1,
+  readArticlePublicationSnapshotFromD1,
+  resolveCoreWriteAuthorityConfig,
+  shouldUseD1CoreWrite,
+  transitionArticleLifecycleInD1,
+  transitionArticlePublicationInD1,
+} from "@/lib/cloudflare/core-write/authority";
+import type { ArticleLifecycleTransitionInput } from "@/lib/article-lifecycle/types";
+import type { ArticlePublicationTransitionInput } from "@/lib/article-publication/types";
 
 export interface OpsWriteServiceFetcher {
   fetch(request: Request): Promise<Response>;
@@ -70,8 +82,10 @@ export interface WorldconsOpsWriteWorkerEnv {
   WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY?: string;
   WORLDCONS_INGEST_RUN_WRITE_AUTHORITY?: string;
+  WORLDCONS_CORE_WRITE_AUTHORITY?: string;
   WORLDCONS_OPS?: D1RuntimeDatabase;
   WORLDCONS_INGEST?: D1RuntimeDatabase;
+  WORLDCONS_CORE?: D1RuntimeDatabase;
   WORLDCONS_SEARCH_SERVICE?: OpsWriteServiceFetcher;
   [key: string]: unknown;
 }
@@ -94,6 +108,10 @@ export interface WorldconsOpsWriteDependencies {
   listAdminOpsEventsFromSupabase?: (limit: number, env: WorldconsOpsWriteWorkerEnv) => Promise<AdminOpsEventRecord[]>;
   pruneAdminOpsEventsInSupabase?: (cutoff: string, env: WorldconsOpsWriteWorkerEnv) => Promise<void>;
   applyIngestionRunMutationToD1?: (binding: D1RuntimeDatabase, mutation: IngestionRunMutation) => Promise<number>;
+  readArticleLifecycleFromD1?: typeof readArticleLifecycleFromD1;
+  transitionArticleLifecycleInD1?: typeof transitionArticleLifecycleInD1;
+  readArticlePublicationSnapshotFromD1?: typeof readArticlePublicationSnapshotFromD1;
+  transitionArticlePublicationInD1?: typeof transitionArticlePublicationInD1;
   auth?: OpsWriteAuthOptions;
 }
 
@@ -304,6 +322,70 @@ export async function handleOpsHeartbeatBoundary(
         event: "worldcons_ingest_run_write_error",
         authority: config.authority,
         action: mutation.action,
+        error: error instanceof Error ? error.message : "UnknownError",
+      }));
+      return json({ schemaVersion: 1, error: { code: "SERVICE_UNAVAILABLE", retryable: true } }, 503);
+    }
+  }
+
+  if (
+    request.method === "POST"
+    && (url.pathname === CORE_LIFECYCLE_BOUNDARY_PATH || url.pathname === CORE_PUBLICATION_BOUNDARY_PATH)
+  ) {
+    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+      return json({ error: "unauthorized" }, 401);
+    }
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await request.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST" } }, 400);
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST" } }, 400);
+    }
+    const config = resolveCoreWriteAuthorityConfig(env as Record<string, string | undefined>);
+    const canary = body.canary === true;
+    if (!shouldUseD1CoreWrite(config, canary)) {
+      return json({ schemaVersion: 1, error: { code: "AUTHORITY_NOT_SELECTED", retryable: false } }, 409);
+    }
+    const binding = env.WORLDCONS_CORE;
+    if (!binding) return json({ schemaVersion: 1, error: { code: "SERVICE_UNAVAILABLE", retryable: true } }, 503);
+    try {
+      if (url.pathname === CORE_LIFECYCLE_BOUNDARY_PATH) {
+        if (body.operation === "get" && typeof body.articleId === "string") {
+          const result = dependencies.readArticleLifecycleFromD1
+            ? await dependencies.readArticleLifecycleFromD1(binding, body.articleId)
+            : await readArticleLifecycleFromD1(binding, body.articleId);
+          return json(result, result.ok ? 200 : result.error.code === "not_found" ? 404 : 409);
+        }
+        if (body.operation === "transition" && body.input && typeof body.input === "object") {
+          const result = dependencies.transitionArticleLifecycleInD1
+            ? await dependencies.transitionArticleLifecycleInD1(binding, body.input as ArticleLifecycleTransitionInput)
+            : await transitionArticleLifecycleInD1(binding, body.input as ArticleLifecycleTransitionInput);
+          return json(result, result.ok ? 200 : result.error.code === "unavailable" ? 503 : 409);
+        }
+      } else {
+        if (body.operation === "get" && typeof body.articleId === "string") {
+          const result = dependencies.readArticlePublicationSnapshotFromD1
+            ? await dependencies.readArticlePublicationSnapshotFromD1(binding, body.articleId)
+            : await readArticlePublicationSnapshotFromD1(binding, body.articleId);
+          return json(result, result.ok ? 200 : result.error.code === "not_found" ? 404 : 409);
+        }
+        if (body.operation === "transition" && body.input && typeof body.input === "object") {
+          const result = dependencies.transitionArticlePublicationInD1
+            ? await dependencies.transitionArticlePublicationInD1(binding, body.input as ArticlePublicationTransitionInput)
+            : await transitionArticlePublicationInD1(binding, body.input as ArticlePublicationTransitionInput);
+          return json(result, result.ok ? 200 : result.error.code === "unavailable" ? 503 : 409);
+        }
+      }
+      return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST" } }, 400);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_core_write_error",
+        authority: config.authority,
+        path: url.pathname,
         error: error instanceof Error ? error.message : "UnknownError",
       }));
       return json({ schemaVersion: 1, error: { code: "SERVICE_UNAVAILABLE", retryable: true } }, 503);

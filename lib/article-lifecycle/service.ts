@@ -1,5 +1,5 @@
 import { articleLifecycleError } from "@/lib/article-lifecycle/errors";
-import { postgresArticleLifecycleRepository } from "@/lib/article-lifecycle/repository";
+import { coreAuthorityArticleLifecycleRepository } from "@/lib/cloudflare/core-write/repositories";
 import {
   ARTICLE_ATTENTION_SEVERITIES,
   ARTICLE_ATTENTION_SOURCES,
@@ -56,7 +56,7 @@ function validTransition(input: ArticleLifecycleTransitionInput) {
   return true;
 }
 
-export function createArticleLifecycleService(repository: ArticleLifecycleRepository = postgresArticleLifecycleRepository) {
+export function createArticleLifecycleService(repository: ArticleLifecycleRepository = coreAuthorityArticleLifecycleRepository) {
   const observed = <T extends { ok: boolean }>(promise: Promise<T>, direction: "read" | "write") => promise.then((result) => {
     recordCompatibilityObservation({ surface: "article_lifecycle", domain: "lifecycle", direction, authority: "new", outcome: result.ok ? "succeeded" : "failed" });
     return result;

@@ -6,6 +6,7 @@
     "nodejs_compat"
   ],
   "vars": {
+    "WORLDCONS_CORE_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_D1_SHADOW_READ_ENABLED": "false",
     "WORLDCONS_D1_SHADOW_COMPARE_ENABLED": "false",
     "WORLDCONS_D1_SHADOW_SURFACES": "reference",

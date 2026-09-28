@@ -26,6 +26,7 @@ export interface D1RuntimePreparedStatement {
 
 export interface D1RuntimeDatabase {
   prepare(query: string): D1RuntimePreparedStatement;
+  batch?(statements: D1RuntimePreparedStatement[]): Promise<D1RuntimeResult[]>;
 }
 
 /** The D1 binding name for each database (plan section 4.1). */

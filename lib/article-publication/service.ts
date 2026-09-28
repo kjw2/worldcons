@@ -1,5 +1,5 @@
 import { articlePublicationError } from "@/lib/article-publication/errors";
-import { postgresArticlePublicationRepository } from "@/lib/article-publication/repository";
+import { coreAuthorityArticlePublicationRepository } from "@/lib/cloudflare/core-write/repositories";
 import {
   ARTICLE_PUBLICATION_ACTORS,
   ARTICLE_PUBLICATION_STATES,
@@ -34,7 +34,7 @@ function validTransition(input: ArticlePublicationTransitionInput) {
     && (input.captureLegacy === true ? !input.versionId : Boolean(input.versionId && UUID_PATTERN.test(input.versionId)));
 }
 
-export function createArticlePublicationService(repository: ArticlePublicationRepository = postgresArticlePublicationRepository) {
+export function createArticlePublicationService(repository: ArticlePublicationRepository = coreAuthorityArticlePublicationRepository) {
   const observed = <T extends { ok: boolean }>(promise: Promise<T>, direction: "read" | "write") => promise.then((result) => {
     recordCompatibilityObservation({ surface: "article_publication", domain: "publication", direction, authority: "new", outcome: result.ok ? "succeeded" : "failed" });
     return result;
