@@ -20,6 +20,7 @@ import {
 } from "@/lib/article-lifecycle";
 import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
 import { EMPTY_EMBEDDING_FIELDS, tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
+import { writeIngestionRunViaBoundary } from "@/lib/cloudflare/ingest-write/boundary-client";
 
 interface SummaryCandidateRow {
   id: string;
@@ -87,11 +88,18 @@ async function syncIngestionRunSummarizedCounts(
     if (error) throw new Error(`Failed to count summaries for ingestion run ${runId}: ${error.message}`);
 
     const summarizedCount = count ?? 0;
-    const { error: updateError } = await supabase
-      .from("ingestion_runs")
-      .update({ summarized_count: summarizedCount })
-      .eq("id", runId);
-    if (updateError) throw new Error(`Failed to update ingestion run ${runId}: ${updateError.message}`);
+    const boundaryWrite = await writeIngestionRunViaBoundary({
+      action: "summary",
+      id: runId,
+      summarizedCount,
+    });
+    if (!boundaryWrite) {
+      const { error: updateError } = await supabase
+        .from("ingestion_runs")
+        .update({ summarized_count: summarizedCount })
+        .eq("id", runId);
+      if (updateError) throw new Error(`Failed to update ingestion run ${runId}: ${updateError.message}`);
+    }
     counts[runId] = summarizedCount;
   }
   return counts;

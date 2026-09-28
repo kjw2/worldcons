@@ -41,6 +41,7 @@
     "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY": "supabase",
     "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY": "supabase",
+    "WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"
   },
   "services": [
@@ -54,6 +55,11 @@
       "binding": "WORLDCONS_OPS",
       "database_name": "worldcons_ops",
       "database_id": "6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4"
+    },
+    {
+      "binding": "WORLDCONS_INGEST",
+      "database_name": "worldcons_ingest",
+      "database_id": "0ccd27ff-fd16-4071-bc94-616690708c4e"
     }
   ]
 }

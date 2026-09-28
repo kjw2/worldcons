@@ -2270,12 +2270,28 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   switch runtime authority. See
   `docs/worldcons-cloudflare-m10-d1-write-canary-20260927.md` and
   `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.)
-- [ ] domain-by-domain D1 authority (**M11-A OPS DOMAIN = GO/PASS on 2026-09-28**;
+- [ ] domain-by-domain D1 authority (**M11-A OPS DOMAIN = GO/PASS and M11-B
+  INGEST DOMAIN = GO/PASS on 2026-09-28**;
   the OPS write/read/rollback acceptance gate is closed and recorded in
   `artifacts/cloudflare-m11/go-ops-domain-acceptance-evidence-20260928.json`.
-  The rollback-safe resting authority remains Supabase while later domains are
-  pending; this is intentional and does not reopen M11-A. **M11-B ingest and
-  M11-C core/publication remain pending, so global M11 is not complete.**
+  The ingest gate is recorded in
+  `artifacts/cloudflare-m11/go-ingest-domain-acceptance-evidence-20260928.json`:
+  all 26 owned ingest tables were inventoried with Supabase + Cloudflare MCP,
+  25/26 had matching row counts at the gate snapshot, and the only current
+  count drift was the known 12-row `ingestion_runs` historical delta
+  (Supabase 539 / D1 527). The active `ingestion_runs` write surface now has a
+  `supabase|d1-canary|d1` authority seam covering start, finish, summarized
+  count and stale-run recovery through the authenticated
+  `worldcons-ops-write` boundary and `WORLDCONS_INGEST` binding. A bounded
+  live D1 start+finish canary changed exactly one row at each step, remained
+  absent from Supabase, and the exact canary row was deleted; D1 returned to
+  527 and Supabase remained 539. The Worker was restored to
+  `WORLDCONS_INGEST_RUN_WRITE_AUTHORITY=supabase` and unauthenticated boundary
+  access returns 401. The rollback-safe resting authority remains Supabase
+  while later domains are pending; this is intentional and does not reopen
+  M11-A or M11-B. The pre-existing 12-row history delta must be reconciled
+  before any later permanent D1 resting-authority switch. **Only M11-C
+  core/publication remains pending, so global M11 is not complete.**
   Detailed OPS history follows. M11.0 first ops slice complete:
   `site_events` has a canary/full-D1/rollback authority seam and live proof;
   M11.1 adds the same `supabase|d1-canary|d1` seam for
@@ -2393,8 +2409,11 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   at clean pushed HEAD `d7e0b68` (run `36389389417`, read leg before write leg,
   artifact `10955696922`, boundary/supabase 20/20 `holds=true` `differences=[]`,
   write leg dedupe correctly skipped the insert on a matching signature with
-  prune `200`; rollback to resting version `1dbc2ca8`). Ingest plus
-  core/publication are still pending — the next remaining M11 domain/gate. See
+  prune `200`; rollback to resting version `1dbc2ca8`). M11-B ingest then
+  passed its domain gate with the bounded `ingestion_runs` authority seam,
+  live D1 start+finish isolation proof and rollback recorded in
+  `artifacts/cloudflare-m11/go-ingest-domain-acceptance-evidence-20260928.json`.
+  **Core/publication is now the only remaining M11 domain/gate.** See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`

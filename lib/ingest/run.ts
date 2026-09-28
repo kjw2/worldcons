@@ -44,6 +44,7 @@ import {
 } from "@/lib/crawlee/bverfg-spider";
 import { isSpainMetadataOnlyNotice } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
+import { writeIngestionRunViaBoundary } from "@/lib/cloudflare/ingest-write/boundary-client";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -334,6 +335,15 @@ function shouldRefreshExistingArticles(options: RunIngestOptions = {}, sourceKey
 }
 
 async function createIngestionRun(sourceKey: string) {
+  const boundaryId = crypto.randomUUID();
+  const boundaryWrite = await writeIngestionRunViaBoundary({
+    action: "start",
+    id: boundaryId,
+    sourceKey,
+    startedAt: new Date().toISOString(),
+  });
+  if (boundaryWrite) return boundaryId;
+
   const supabase = getSupabaseAdmin();
   if (!supabase) return null;
 
@@ -348,51 +358,67 @@ async function createIngestionRun(sourceKey: string) {
 }
 
 async function closeIngestionRun(runId: string | null, result: SourceRunResult, status = "completed", runOptions?: Record<string, unknown>) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase || !runId) return;
+  if (!runId) return;
+  const metadata = {
+    runOptions,
+    outcome: result.outcome,
+    skippedCount: result.skippedCount,
+    errors: result.errors.slice(0, 10),
+    diagnostics: result.diagnostics,
+    fallbackUsed: Boolean(result.diagnostics?.attempts.some((attempt) => attempt.fallback || attempt.strategy === "seed")),
+    uncollectedCandidateCount: result.uncollectedCandidates.length,
+    uncollectedCandidates: result.uncollectedCandidates.slice(0, 20),
+    statusCounts: result.statusCounts,
+    collectionCounts: result.collectionCounts,
+    recordsAdded: result.recordsAdded ?? null,
+    refreshedCount: result.refreshedCount,
+    unchangedCount: result.unchangedCount,
+    skippedOutOfRangeCount: result.skippedOutOfRangeCount,
+    skippedNonConstitutionalCount: result.skippedNonConstitutionalCount,
+    discoveredBeforeFilterCount: result.discoveredBeforeFilterCount,
+    attemptedCount: result.attemptedCount,
+    verifiedSourceTextCount: result.verifiedSourceTextCount,
+    deferredBackoffCount: result.deferredBackoffCount,
+    blocked403Count: result.blocked403Count,
+    revisionRecheckCount: result.revisionRecheckCount,
+    spainSourceTextPromotedCount: result.spainSourceTextPromotedCount,
+    pendingRecheckCount: result.pendingRecheckCount,
+    lastVerifiedPublishedAt: result.lastVerifiedPublishedAt ?? null,
+    checkpoint: result.lastVerifiedPublishedAt
+      ? `${result.sourceKey}:${result.lastVerifiedPublishedAt}`
+      : null,
+    circuitBroken: result.circuitBroken,
+    playwrightEscalated: result.playwrightEscalated,
+    spainPendingPromotionStale: result.spainPendingPromotionStale,
+  };
+  const finishedAt = new Date().toISOString();
+  const boundaryWrite = await writeIngestionRunViaBoundary({
+    action: "finish",
+    id: runId,
+    status,
+    finishedAt,
+    discoveredCount: result.discoveredCount,
+    fetchedCount: result.fetchedCount,
+    summarizedCount: result.summarizedCount,
+    failedCount: result.failedCount,
+    errorMessage: result.errors[0] ?? null,
+    metadata,
+  });
+  if (boundaryWrite) return;
 
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
   await supabase
     .from("ingestion_runs")
     .update({
       status,
-      finished_at: new Date().toISOString(),
+      finished_at: finishedAt,
       discovered_count: result.discoveredCount,
       fetched_count: result.fetchedCount,
       summarized_count: result.summarizedCount,
       failed_count: result.failedCount,
       error_message: result.errors[0] ?? null,
-      metadata: {
-        runOptions,
-        outcome: result.outcome,
-        skippedCount: result.skippedCount,
-        errors: result.errors.slice(0, 10),
-        diagnostics: result.diagnostics,
-        fallbackUsed: Boolean(result.diagnostics?.attempts.some((attempt) => attempt.fallback || attempt.strategy === "seed")),
-        uncollectedCandidateCount: result.uncollectedCandidates.length,
-        uncollectedCandidates: result.uncollectedCandidates.slice(0, 20),
-        statusCounts: result.statusCounts,
-        collectionCounts: result.collectionCounts,
-        recordsAdded: result.recordsAdded ?? null,
-        refreshedCount: result.refreshedCount,
-        unchangedCount: result.unchangedCount,
-        skippedOutOfRangeCount: result.skippedOutOfRangeCount,
-        skippedNonConstitutionalCount: result.skippedNonConstitutionalCount,
-        discoveredBeforeFilterCount: result.discoveredBeforeFilterCount,
-        attemptedCount: result.attemptedCount,
-        verifiedSourceTextCount: result.verifiedSourceTextCount,
-        deferredBackoffCount: result.deferredBackoffCount,
-        blocked403Count: result.blocked403Count,
-        revisionRecheckCount: result.revisionRecheckCount,
-        spainSourceTextPromotedCount: result.spainSourceTextPromotedCount,
-        pendingRecheckCount: result.pendingRecheckCount,
-        lastVerifiedPublishedAt: result.lastVerifiedPublishedAt ?? null,
-        checkpoint: result.lastVerifiedPublishedAt
-          ? `${result.sourceKey}:${result.lastVerifiedPublishedAt}`
-          : null,
-        circuitBroken: result.circuitBroken,
-        playwrightEscalated: result.playwrightEscalated,
-        spainPendingPromotionStale: result.spainPendingPromotionStale,
-      },
+      metadata,
     })
     .eq("id", runId);
 }
@@ -585,17 +611,26 @@ function scotusRevisionRecheckLimit() {
 }
 
 async function recoverStaleIngestionRuns(sourceKey: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return 0;
-
   const finishedAt = new Date().toISOString();
   const cutoff = new Date(Date.now() - staleIngestionRunMinutes() * 60 * 1000).toISOString();
+  const errorMessage = `Recovered stale ingestion run after ${staleIngestionRunMinutes()} minutes without completion.`;
+  const boundaryWrite = await writeIngestionRunViaBoundary({
+    action: "recover-stale",
+    sourceKey,
+    cutoff,
+    finishedAt,
+    errorMessage,
+  });
+  if (boundaryWrite) return boundaryWrite.affected;
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return 0;
   const { data, error } = await supabase
     .from("ingestion_runs")
     .update({
       status: "failed",
       finished_at: finishedAt,
-      error_message: `Recovered stale ingestion run after ${staleIngestionRunMinutes()} minutes without completion.`,
+      error_message: errorMessage,
     })
     .eq("source_key", sourceKey)
     .eq("status", "running")

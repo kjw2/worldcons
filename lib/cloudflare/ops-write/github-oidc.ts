@@ -77,6 +77,7 @@ export const OPS_WRITE_TRUSTED_WORKFLOWS: Record<OpsWriteOperation, readonly str
     ".github/workflows/embedding-backfill.yml",
     ".github/workflows/admin-watchdog.yml",
     ".github/workflows/admin-command-worker-p1.yml",
+    ".github/workflows/admin-job-worker.yml",
   ],
   // M11.3R: the read operation additionally trusts the dedicated read-only
   // parity probe. The probe issues only `GET /v1/ops/heartbeats` and never calls

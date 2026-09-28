@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11-B-ingest-domain",
+  "decision": "GO-INGEST-PASS",
+  "status": "ingest_domain_write_authority_gate_pass_resting_supabase",
+  "date": "2026-09-28",
+  "branch": "main",
+  "baseHeadSha": "7ef4ccffafa1d2dd210026c74c5150ac5fe5915f",
+  "scope": {
+    "database": "worldcons_ingest",
+    "databaseId": "0ccd27ff-fd16-4071-bc94-616690708c4e",
+    "ownedTables": 26,
+    "gate": "M11-B",
+    "globalM11Complete": false,
+    "remainingDomain": "M11-C core/publication",
+    "productionTrafficCutover": "not_in_scope_M12"
+  },
+  "preGateSnapshot": {
+    "supabaseProject": "worldcons",
+    "supabaseIngestionRuns": 539,
+    "d1IngestionRuns": 527,
+    "historicalIngestionRunDelta": 12,
+    "otherOwnedTableCount": 25,
+    "otherOwnedTablesCountMatchedAtSnapshot": 25,
+    "note": "The pre-existing 12-row ingestion_runs delta was not fabricated away. The existing bounded reconcile CLI was attempted read-only and failed because the Supabase CLI output exceeded 8 MiB due to large metadata. No production source row was changed. This historical delta must be reconciled before a later permanent D1 resting-authority selection."
+  },
+  "authoritySeam": {
+    "environment": "WORLDCONS_INGEST_RUN_WRITE_AUTHORITY",
+    "modes": ["supabase", "d1-canary", "d1"],
+    "restingMode": "supabase",
+    "boundary": "POST /v1/ingest/run",
+    "worker": "worldcons-ops-write",
+    "d1Binding": "WORLDCONS_INGEST",
+    "mutationsCovered": ["start", "finish", "summary", "recover-stale"],
+    "failClosedWhenD1Selected": true,
+    "canarySelector": "explicit canary marker only"
+  },
+  "liveCanary": {
+    "method": "Cloudflare MCP direct D1 execution using the same parameterized SQL contract as the deployed boundary",
+    "authenticatedBoundaryInvocation": "not_executed",
+    "authenticatedBoundaryInvocationReason": "Both Cloudflare secret injection and local wrangler secret injection were blocked by the host credential-transfer safety guard. Authentication was not weakened or bypassed.",
+    "canaryId": "61c65930-cdd3-49b9-8449-b7f06b261d20",
+    "sourceKey": "m11-ingest-canary",
+    "d1StartChanges": 1,
+    "d1FinishChanges": 1,
+    "d1FinalStatusBeforeRollback": "completed",
+    "supabaseCanaryCountDuringWindow": 0,
+    "d1CanaryCountDuringWindow": 1,
+    "isolatedToD1": true
+  },
+  "rollback": {
+    "canaryDeleteChanges": 1,
+    "d1CanaryCountAfterRollback": 0,
+    "supabaseCanaryCountAfterRollback": 0,
+    "d1IngestionRunsAfterRollback": 527,
+    "supabaseIngestionRunsAfterRollback": 539,
+    "workerRestingAuthority": "supabase",
+    "workerRestingVersion": "1ae9925a-69f3-4918-ac41-6e8b65ec3b25",
+    "temporarySecretCount": 0,
+    "unauthenticatedBoundaryPostStatus": 401
+  },
+  "deployment": {
+    "initialSupabaseRestingVersion": "c528579b-bd22-416a-b9d5-70b8331b1488",
+    "d1CanaryVersion": "2cb15b9c-30d2-4037-ba32-382e927f685d",
+    "restoredSupabaseVersion": "1ae9925a-69f3-4918-ac41-6e8b65ec3b25",
+    "ingestBindingVerifiedByCloudflareMcp": true,
+    "restingAuthorityVerifiedByCloudflareMcp": "supabase"
+  },
+  "verification": {
+    "m11Tests": "127/127 PASS",
+    "opsWriteTypecheck": "PASS",
+    "opsWriteTypesCheck": "PASS",
+    "opsWriteDryRun": "PASS",
+    "cloudflareMcpD1Canary": "PASS",
+    "supabaseMcpIsolationCheck": "PASS",
+    "rollback": "PASS",
+    "unauthenticatedBoundaryFailClosed": "PASS_401"
+  },
+  "implementation": [
+    "lib/cloudflare/ingest-write/ingestion-runs.ts",
+    "lib/cloudflare/ingest-write/boundary-client.ts",
+    "workers/ops-write/src/index.ts",
+    "workers/ops-write/wrangler.jsonc",
+    "lib/ingest/run.ts",
+    "lib/ingest/summary.ts",
+    ".github/workflows/crawlee-worker.yml",
+    ".github/workflows/summary-drain.yml",
+    ".github/workflows/admin-command-worker-p1.yml",
+    ".github/workflows/admin-job-worker.yml",
+    "tests/m11-ingest-run-write-authority.test.ts"
+  ],
+  "nextGate": "M11-C core/publication"
+}

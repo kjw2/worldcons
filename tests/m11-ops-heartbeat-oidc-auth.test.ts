@@ -252,6 +252,7 @@ test("M11.3-OIDC read operation trusts only the watchdog and the read-only probe
     ".github/workflows/embedding-backfill.yml",
     ".github/workflows/admin-watchdog.yml",
     ".github/workflows/admin-command-worker-p1.yml",
+    ".github/workflows/admin-job-worker.yml",
   ]);
 });
 

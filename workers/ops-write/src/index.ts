@@ -42,6 +42,14 @@ import {
   type GithubOidcTrustConfig,
   type OpsWriteOperation,
 } from "@/lib/cloudflare/ops-write/github-oidc";
+import {
+  INGEST_RUN_BOUNDARY_PATH,
+  applyIngestionRunMutationToD1,
+  parseIngestionRunMutation,
+  resolveIngestRunWriteAuthorityConfig,
+  shouldWriteIngestionRunToD1,
+  type IngestionRunMutation,
+} from "@/lib/cloudflare/ingest-write/ingestion-runs";
 
 export interface OpsWriteServiceFetcher {
   fetch(request: Request): Promise<Response>;
@@ -61,7 +69,9 @@ export interface WorldconsOpsWriteWorkerEnv {
   WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS?: string;
   WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY?: string;
+  WORLDCONS_INGEST_RUN_WRITE_AUTHORITY?: string;
   WORLDCONS_OPS?: D1RuntimeDatabase;
+  WORLDCONS_INGEST?: D1RuntimeDatabase;
   WORLDCONS_SEARCH_SERVICE?: OpsWriteServiceFetcher;
   [key: string]: unknown;
 }
@@ -83,6 +93,7 @@ export interface WorldconsOpsWriteDependencies {
   readLatestAdminOpsEventFromSupabase?: (env: WorldconsOpsWriteWorkerEnv) => Promise<AdminOpsEventRecord | null>;
   listAdminOpsEventsFromSupabase?: (limit: number, env: WorldconsOpsWriteWorkerEnv) => Promise<AdminOpsEventRecord[]>;
   pruneAdminOpsEventsInSupabase?: (cutoff: string, env: WorldconsOpsWriteWorkerEnv) => Promise<void>;
+  applyIngestionRunMutationToD1?: (binding: D1RuntimeDatabase, mutation: IngestionRunMutation) => Promise<number>;
   auth?: OpsWriteAuthOptions;
 }
 
@@ -259,6 +270,40 @@ export async function handleOpsHeartbeatBoundary(
       console.error(JSON.stringify({
         event: "worldcons_ops_write_heartbeat_read_error",
         authority: readConfig.authority,
+        error: error instanceof Error ? error.message : "UnknownError",
+      }));
+      return json({ schemaVersion: 1, error: { code: "SERVICE_UNAVAILABLE", retryable: true } }, 503);
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === INGEST_RUN_BOUNDARY_PATH) {
+    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+      return json({ error: "unauthorized" }, 401);
+    }
+    let mutation: IngestionRunMutation;
+    try {
+      const parsed = parseIngestionRunMutation(await request.json());
+      if (!parsed.ok) return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST", reason: parsed.error } }, 400);
+      mutation = parsed.mutation;
+    } catch {
+      return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST" } }, 400);
+    }
+    const config = resolveIngestRunWriteAuthorityConfig(env as Record<string, string | undefined>);
+    if (!shouldWriteIngestionRunToD1(mutation, config)) {
+      return json({ schemaVersion: 1, error: { code: "AUTHORITY_NOT_SELECTED", retryable: false } }, 409);
+    }
+    try {
+      const binding = env.WORLDCONS_INGEST;
+      if (!binding) throw new Error("ingestion_run_boundary.d1_binding_unavailable");
+      const affected = dependencies.applyIngestionRunMutationToD1
+        ? await dependencies.applyIngestionRunMutationToD1(binding, mutation)
+        : await applyIngestionRunMutationToD1(binding, mutation);
+      return json({ schemaVersion: 1, ok: true, authority: config.authority, target: "d1", affected });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "worldcons_ingest_run_write_error",
+        authority: config.authority,
+        action: mutation.action,
         error: error instanceof Error ? error.message : "UnknownError",
       }));
       return json({ schemaVersion: 1, error: { code: "SERVICE_UNAVAILABLE", retryable: true } }, 503);
