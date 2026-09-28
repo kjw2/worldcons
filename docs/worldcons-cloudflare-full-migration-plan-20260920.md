@@ -2095,6 +2095,21 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   Cloudflare runtime, and fails closed (503 / throws) rather than falling back to
   Supabase. The read authority must be coordinated with the boundary Worker's
   own read var; no live read parity is claimed.
+  The M11.3R reconciliation + read-only probe step (head `deb6172`) then closed
+  the two gaps that gate assumed: (1) the five authored Supabase rows are
+  reconciled into D1 with the existing bounded, never-delete, verify-by-hash
+  `pnpm d1:reconcile --database=worldcons_ops --tables=ops_workflow_heartbeats`
+  (no code change needed, run before the read switch while reads are still
+  Supabase); and (2) a dedicated `workflow_dispatch`-only, OIDC-authenticated,
+  read-only probe `ops-heartbeat-read-parity.yml` plus
+  `pnpm ops:heartbeat-read-parity` and the runtime-neutral comparator in
+  `lib/cloudflare/ops-write/read-parity.ts`, because the previous read allowlist
+  trusted only `admin-watchdog.yml`, which emits heartbeat writes and so could
+  not prove a no-write read. The probe issues only
+  `GET /v1/ops/heartbeats` and a plain Supabase SELECT, forces the `d1` read
+  authority only in its own process environment, and fails closed (503) rather
+  than passing when the boundary read var is still `supabase`. See
+  `artifacts/cloudflare-m11/m11.3r-reconciliation-and-read-only-probe-20260928.json`.
   `admin_ops_events` (M11.4) still needs the same boundary, and ingest plus
   core/publication are still pending. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,

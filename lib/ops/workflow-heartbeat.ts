@@ -129,6 +129,35 @@ export async function runWithRequiredWorkflowHeartbeat<T>(
   }
 }
 
+/**
+ * The resting Supabase heartbeat read, extracted so the M11.3R live read-parity
+ * probe can compare the D1 read against the authoritative Supabase projection
+ * regardless of the currently selected read authority. Returns `null` only when
+ * the service-role client is not configured; a query error throws. The five-field
+ * projection and the defensive row filter are byte-for-byte the resting read.
+ */
+export async function readWorkflowHeartbeatsFromSupabase(): Promise<WorkflowHeartbeatRecord[] | null> {
+  const supabase = getSupabaseServiceRoleAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("ops_workflow_heartbeats")
+    .select("workflow_key, last_started_at, last_completed_at, last_status, run_id")
+    .in("workflow_key", [...WORKFLOW_KEYS]);
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).flatMap((row) => {
+    if (!WORKFLOW_KEYS.includes(row.workflow_key as WorkflowKey)) return [];
+    if (!row.last_started_at || !["running", "success", "failed", "deferred"].includes(row.last_status)) return [];
+    return [{
+      workflowKey: row.workflow_key as WorkflowKey,
+      lastStartedAt: row.last_started_at as string,
+      lastCompletedAt: (row.last_completed_at as string | null) ?? null,
+      lastStatus: row.last_status as WorkflowHeartbeatStatus,
+      runId: (row.run_id as string | null) ?? null,
+    }];
+  });
+}
+
 export async function getWorkflowHeartbeats(): Promise<WorkflowHeartbeatRecord[] | null> {
   // M11.3R read-authority parity step. The read authority is resolved
   // independently from the write authority, so a staging write canary never
@@ -151,25 +180,7 @@ export async function getWorkflowHeartbeats(): Promise<WorkflowHeartbeatRecord[]
     return records;
   }
 
-  const supabase = getSupabaseServiceRoleAdmin();
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("ops_workflow_heartbeats")
-    .select("workflow_key, last_started_at, last_completed_at, last_status, run_id")
-    .in("workflow_key", [...WORKFLOW_KEYS]);
-  if (error) throw new Error(error.message);
-
-  return (data ?? []).flatMap((row) => {
-    if (!WORKFLOW_KEYS.includes(row.workflow_key as WorkflowKey)) return [];
-    if (!row.last_started_at || !["running", "success", "failed", "deferred"].includes(row.last_status)) return [];
-    return [{
-      workflowKey: row.workflow_key as WorkflowKey,
-      lastStartedAt: row.last_started_at as string,
-      lastCompletedAt: (row.last_completed_at as string | null) ?? null,
-      lastStatus: row.last_status as WorkflowHeartbeatStatus,
-      runId: (row.run_id as string | null) ?? null,
-    }];
-  });
+  return readWorkflowHeartbeatsFromSupabase();
 }
 
 export const WORKFLOW_EXPECTED_INTERVAL_SECONDS: Record<WorkflowKey, number> = {

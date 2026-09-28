@@ -210,7 +210,7 @@ test("M11.3-OIDC rejects an untrusted workflow file", async () => {
   assert.deepEqual(result, { ok: false, code: "invalid_workflow" });
 });
 
-test("M11.3-OIDC read operation only trusts the watchdog workflow", async () => {
+test("M11.3-OIDC read operation trusts only the watchdog and the read-only probe", async () => {
   const key = await generateKeyPair();
   const { fetcher } = oidcFetcher(key);
   const writeOnly = await signToken(key, {
@@ -227,7 +227,32 @@ test("M11.3-OIDC read operation only trusts the watchdog workflow", async () => 
   });
   const readOk = await verifyGithubOidcToken(watchdog, "read", trust({ fetcher }));
   assert.equal(readOk.ok, true);
-  assert.deepEqual(OPS_WRITE_TRUSTED_WORKFLOWS.read, [".github/workflows/admin-watchdog.yml"]);
+
+  resetGithubOidcReplayCache();
+  const probe = await signToken(key, {
+    workflow_ref: "kjw2/worldcons/.github/workflows/ops-heartbeat-read-parity.yml@refs/heads/main",
+  });
+  const probeOk = await verifyGithubOidcToken(probe, "read", trust({ fetcher }));
+  assert.equal(probeOk.ok, true);
+
+  // The read-only probe is deliberately NOT trusted for writes.
+  resetGithubOidcReplayCache();
+  assert.deepEqual(
+    await verifyGithubOidcToken(probe, "write", trust({ fetcher })),
+    { ok: false, code: "invalid_workflow" },
+  );
+
+  assert.deepEqual(OPS_WRITE_TRUSTED_WORKFLOWS.read, [
+    ".github/workflows/admin-watchdog.yml",
+    ".github/workflows/ops-heartbeat-read-parity.yml",
+  ]);
+  assert.deepEqual(OPS_WRITE_TRUSTED_WORKFLOWS.write, [
+    ".github/workflows/crawlee-worker.yml",
+    ".github/workflows/summary-drain.yml",
+    ".github/workflows/embedding-backfill.yml",
+    ".github/workflows/admin-watchdog.yml",
+    ".github/workflows/admin-command-worker-p1.yml",
+  ]);
 });
 
 test("M11.3-OIDC rejects a disallowed ref and a workflow_ref/ref mismatch", async () => {

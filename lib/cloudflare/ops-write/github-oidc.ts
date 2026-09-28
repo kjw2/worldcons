@@ -73,7 +73,15 @@ export const OPS_WRITE_TRUSTED_WORKFLOWS: Record<OpsWriteOperation, readonly str
     ".github/workflows/admin-watchdog.yml",
     ".github/workflows/admin-command-worker-p1.yml",
   ],
-  read: [".github/workflows/admin-watchdog.yml"],
+  // M11.3R: the read operation additionally trusts the dedicated read-only
+  // parity probe. The probe issues only `GET /v1/ops/heartbeats` and never calls
+  // a heartbeat writer, so a live read-parity gate can be authenticated without
+  // exercising any write. The five write workflows stay the complete write
+  // allowlist; the probe is deliberately NOT a write-trusted workflow.
+  read: [
+    ".github/workflows/admin-watchdog.yml",
+    ".github/workflows/ops-heartbeat-read-parity.yml",
+  ],
 };
 
 export interface GithubOidcTrustConfig {

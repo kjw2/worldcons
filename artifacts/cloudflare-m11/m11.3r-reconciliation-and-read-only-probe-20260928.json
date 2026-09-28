@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3R-reconciliation-and-read-only-probe",
+  "decision": "CODE-READY-LIVE-READ-PARITY-PENDING-NO-LIVE-PROOF",
+  "status": "code_ready_resting_at_supabase",
+  "date": "2026-09-28",
+  "baseCheckpoint": "deb617243860ccf1ecc95923fbb8f7a5dcb2e468",
+  "branch": "codex/m7-go-search",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "kind": "read-authority-parity-read-only",
+    "readOnly": true,
+    "heartbeatWritePerformed": false,
+    "watchdogInvoked": false,
+    "authorityChanged": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "divergence": {
+    "authoritative": "supabase",
+    "authority": { "write": "supabase", "read": "supabase" },
+    "authorityOn": ["repo", "worldcons-ops-write"],
+    "staleOrDivergedKeysInD1": ["collection", "summary", "embedding", "watchdog"],
+    "matchingKey": "catalog_backfill",
+    "cause": "prior M11.3 write canaries advanced only the D1 watchdog row while Supabase stayed authoritative",
+    "fiveAuthoredKeys": ["collection", "summary", "embedding", "watchdog", "catalog_backfill"]
+  },
+  "reconciliation": {
+    "codeChangeNeeded": false,
+    "reusedExistingTooling": true,
+    "tooling": "lib/cloudflare/d1/remote/reconcile.ts via scripts/d1-reconcile.ts",
+    "dryRunCommand": "pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats",
+    "applyCommand": "pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats --apply",
+    "boundedToFiveRows": true,
+    "scopedToOneTable": true,
+    "neverDeletes": true,
+    "refusesOnRemoteOnlyKey": true,
+    "parameterizedOnly": true,
+    "verifiesFinalCanonicalHash": true,
+    "touchesSchema": false,
+    "touchesOtherOpsRows": false,
+    "fieldSemantics": "timestamptz -> canonical UTC ISO-8601 TEXT; key/status/run_id stored verbatim; detail/updated_at physical-only and never projected by the reader",
+    "ordering": "run before selecting the d1 read authority, so no reader sees a partial reconcile"
+  },
+  "readOnlyProbe": {
+    "codeGapClosed": true,
+    "gap": "the M11.3-OIDC read allowlist trusted only admin-watchdog.yml, which emits heartbeat writes; no authenticated path could prove a d1 read without a write",
+    "workflow": ".github/workflows/ops-heartbeat-read-parity.yml",
+    "workflowProperties": {
+      "dispatchOnly": true,
+      "idTokenWrite": true,
+      "issuesOnlyGetBoundaryRead": true,
+      "issuesPlainSupabaseSelect": true,
+      "heartbeatWrite": false,
+      "watchdogInvoked": false,
+      "authorityChanged": false,
+      "sharedTokenExposed": false
+    },
+    "oidcReadAllowlist": [".github/workflows/admin-watchdog.yml", ".github/workflows/ops-heartbeat-read-parity.yml"],
+    "oidcWriteAllowlistUnchanged": [".github/workflows/crawlee-worker.yml", ".github/workflows/summary-drain.yml", ".github/workflows/embedding-backfill.yml", ".github/workflows/admin-watchdog.yml", ".github/workflows/admin-command-worker-p1.yml"],
+    "probeForcesReadAuthority": "d1 only in its own process environment; no repo/boundary var change",
+    "requiresBoundaryReadAuthority": "d1; under supabase the boundary returns 503 READ_AUTHORITY_UNAVAILABLE and the probe reports a mismatch, never a false pass",
+    "parityComparator": "lib/cloudflare/ops-write/read-parity.ts",
+    "timestampComparison": "by instant (Date.parse), because PostgREST and D1 print the same instant differently",
+    "exactComparison": ["workflowKey", "lastStatus", "runId"],
+    "directD1Read": "one parameterized IN (?,?,?,?,?) SELECT over the five authored keys; detail/updated_at never selected"
+  },
+  "readOnlyInvariant": {
+    "noHeartbeatWrite": true,
+    "noWatchdog": true,
+    "probeStatements": "SELECT only",
+    "assertedByTests": true
+  },
+  "filesChanged": [
+    "lib/cloudflare/ops-write/github-oidc.ts",
+    "lib/cloudflare/ops-write/read-parity.ts",
+    "lib/ops/workflow-heartbeat.ts",
+    "scripts/ops-heartbeat-read-parity.ts",
+    ".github/workflows/ops-heartbeat-read-parity.yml",
+    "package.json",
+    "tests/m11-ops-heartbeat-read-parity.test.ts",
+    "tests/m11-ops-heartbeat-oidc-auth.test.ts",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md"
+  ],
+  "verification": {
+    "m11Tests": "83/83",
+    "newReadParityTests": "8/8",
+    "opsTests": "10/10",
+    "masterdashTests": "22/22",
+    "m8Tests": "23/23",
+    "m9Tests": "8/8",
+    "m10Tests": "5/5",
+    "ingestWorkflowTests": "18/18",
+    "d1ReconcileTests": "29/29",
+    "rootTypecheck": "pass",
+    "m113RWorkerTypecheck": "pass",
+    "m113RWorkerTypesCheck": "up_to_date",
+    "lint": "pass",
+    "opsWriteDryRun": "pass (resting authorities unchanged)",
+    "probeDryRun": "pass (no network call)",
+    "liveReadParity": "not_run_no_proof_claimed"
+  },
+  "controllerSequence": [
+    "reconcile D1 for ops_workflow_heartbeats (dry-run then --apply) while reads remain supabase",
+    "confirm unauthenticated GET /v1/ops/heartbeats returns 401",
+    "set the boundary Worker read authority to d1 and redeploy (write stays supabase)",
+    "dispatch ops-heartbeat-read-parity.yml and confirm boundary/Supabase parity; cross-check direct D1 with operator Cloudflare credentials",
+    "prove the Cloudflare runtime reader via the masterdash health route under d1",
+    "accept the existing fail-closed unit tests in lieu of destructive live fault injection",
+    "roll the read authority back to supabase and confirm the local read resumes and unauthenticated paths return 401"
+  ],
+  "nonClaims": [
+    "no live read parity is claimed by this code step",
+    "no combined full-d1 read/write cutover is claimed",
+    "no destructive live fault injection was performed",
+    "M11 is not complete: admin_ops_events (M11.4), ingest and core/publication remain pending"
+  ],
+  "nextGate": "controller-run M11.3R live D1 read parity (read-only), then M11.4 admin_ops_events"
+}

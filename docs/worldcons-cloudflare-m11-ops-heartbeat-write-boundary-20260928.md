@@ -819,3 +819,140 @@ marker, and left the Supabase row untouched.
 
 Explicit non-claims for that gate: no combined full-`d1` read/write cutover, no
 live read parity yet, and no M11 completion.
+
+## M11.3R reconciliation + read-only probe (code, 2026-09-28)
+
+Date: 2026-09-28. Head `deb6172`. Base checkpoint for the live D1 read cutover.
+This adds the missing pieces the M11.3R live prerequisites assumed but did not
+have: a safe bounded pre-cutover reconciliation and a **no-write** OIDC read
+probe. No live cutover was performed and no live read parity is claimed.
+
+### The divergence and the bounded reconciliation
+
+Prior write canaries advanced only the D1 `watchdog` row (and earlier bounded
+canary runs), so D1 is **stale/diverged** from the now-authoritative Supabase
+`ops_workflow_heartbeats` for `collection`, `summary`, `embedding` and
+`watchdog`; `catalog_backfill` is `local-11948` on both. Before a read switch,
+those five authored rows must equal the Supabase rows.
+
+- **No code change was needed for reconciliation.** The existing
+  `pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops
+  --tables=ops_workflow_heartbeats` (M5.2d, `lib/cloudflare/d1/remote/reconcile.ts`)
+  already reconciles exactly this shape: it reads the source and remote
+  canonically by primary key, refuses the table if the remote has any primary key
+  the source lacks (so it **never DELETEs**), emits source-only rows as plain
+  INSERTs and changed common-PK rows as full-row parameterized UPDATEs by exact
+  PK (PK columns excluded from SET), re-reads and verifies the final canonical
+  hash, and is dry-run by default with an explicit `--apply`. It touches only the
+  selected table, never schema and never another `ops` row.
+- **Field semantics.** The projected columns are `workflow_key`,
+  `last_started_at`, `last_completed_at`, `last_status`, `run_id` (plus
+  `detail`/`updated_at` for the physical row, which the reader never projects).
+  `last_started_at`/`last_completed_at`/`updated_at` are Postgres `timestamptz`
+  whose canonical D1 form is normalized UTC ISO-8601 TEXT, so the reconcile
+  rewrites them as the same instant in canonical text — the exact format the D1
+  reader and the boundary already emit. Run this **before** selecting the `d1`
+  read authority; while reads are still Supabase this is a pure D1 write that
+  changes nothing a reader sees.
+
+### The read-only probe (code gap closed)
+
+The M11.3-OIDC read allowlist trusted only `admin-watchdog.yml`, which **emits**
+`recordWorkflowHeartbeat` writes. There was therefore no existing authenticated
+path that could prove a `d1` read without exercising a heartbeat write.
+
+- `lib/cloudflare/ops-write/github-oidc.ts` — the `read` operation now trusts
+  `admin-watchdog.yml` **and** the new dedicated
+  `.github/workflows/ops-heartbeat-read-parity.yml`. The probe is deliberately
+  **not** write-trusted; the write allowlist is unchanged.
+- `.github/workflows/ops-heartbeat-read-parity.yml` — `workflow_dispatch`-only,
+  `id-token: write`, runs `pnpm ops:heartbeat-read-parity -- --run
+  --no-direct-d1 --report --json`. It issues only `GET /v1/ops/heartbeats` plus a
+  plain Supabase SELECT; it never calls a heartbeat writer, never runs the
+  watchdog and changes no authority. `--no-direct-d1` keeps the GitHub job free
+  of any Cloudflare credential.
+- `lib/cloudflare/ops-write/read-parity.ts` — the runtime-neutral comparator
+  (timestamps compared by instant, key/status/run-id exact, exactly the five
+  authored keys) plus the parameterized direct-D1 projection reader.
+- `scripts/ops-heartbeat-read-parity.ts` — the read-only probe CLI. It forces
+  `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=d1` **only in its own process
+  environment**, so no repo/boundary var changes for the probe. It requires the
+  boundary's own read var to already be `d1`; otherwise the boundary returns the
+  fail-closed `503 READ_AUTHORITY_UNAVAILABLE` and the probe reports a mismatch
+  rather than a false pass.
+- `lib/ops/workflow-heartbeat.ts` — extracted `readWorkflowHeartbeatsFromSupabase`
+  so the probe can compare against the authoritative Supabase projection
+  regardless of the selected read authority. `getWorkflowHeartbeats` behavior is
+  byte-for-byte unchanged.
+
+### Read-only invariant
+
+The gate exercises **no** heartbeat write. The probe's only statements are
+SELECTs; it does not import or call `recordWorkflowHeartbeat`,
+`runWithWorkflowHeartbeats` or the watchdog. The admin-watchdog workflow is not
+used for the gate, precisely because it cannot prove no writes.
+
+### Files (M11.3R reconciliation + probe)
+
+- `lib/cloudflare/ops-write/github-oidc.ts`, `lib/cloudflare/ops-write/read-parity.ts`,
+  `lib/ops/workflow-heartbeat.ts`, `scripts/ops-heartbeat-read-parity.ts`,
+  `.github/workflows/ops-heartbeat-read-parity.yml`, `package.json`.
+- `tests/m11-ops-heartbeat-read-parity.test.ts` (8 focused tests, including a
+  script/workflow scan that asserts no write path).
+- `tests/m11-ops-heartbeat-oidc-auth.test.ts` (read-trust assertion updated).
+
+### M11.3R probe verification (local, no live proof)
+
+- `pnpm test:m11`: 83/83 (8 new read-parity + 75 existing M11).
+- `pnpm test:ops`: 10/10; `pnpm test:masterdash`: 22/22; `pnpm test:m8`: 23/23;
+  `pnpm test:m9`: 8/8; `pnpm test:m10`: 5/5; `pnpm test:ingest-workflow`: 18/18;
+  `pnpm test:d1-reconcile`: 29/29.
+- root `pnpm typecheck`: pass; `pnpm m11:ops-write:typecheck`: pass;
+  `pnpm m11:ops-write:types:check`: up to date; `pnpm lint`: pass.
+- `pnpm m11:ops-write:dry-run`: pass (resting authorities unchanged).
+- `pnpm ops:heartbeat-read-parity`: dry-run prints no network call.
+
+### Exact controller sequence (READ-only; no writes)
+
+Preconditions: resting write/read authority `supabase` everywhere; the
+`worldcons-ops-write` and `worldcons-search` Workers deployed; the
+`WORLDCONS_OPS_WRITE_BASE_URL` repo var set; the OIDC `read` allowlist on the
+boundary includes `ops-heartbeat-read-parity.yml`. If the probe is dispatched
+from a feature branch (for example `codex/m7-go-search`), temporarily set the
+boundary `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS` to include
+`refs/heads/<branch>` for the window, exactly as the earlier canaries did, and
+remove it on rollback. This is one deliberate window; restore every var at the
+end.
+
+1. **Reconcile D1 (before any read switch).** Dry-run, then apply:
+   - `pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats`
+   - `pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats --apply`
+   Confirm the manifest reports `exact`/verified for the table and touches only
+   `ops_workflow_heartbeats`. Because reads are still Supabase, no reader changes.
+2. **Confirm resting rejects.** `GET /v1/ops/heartbeats` without a bearer returns
+   `401`.
+3. **Isolate the read cutover.** Set the boundary Worker
+   `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=d1` and redeploy (write authority stays
+   `supabase`). Set the repo var `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=d1` only
+   if an ordinary Node/GitHub reader is also being proven.
+4. **Prove boundary/Node parity (no writes).** Dispatch
+   `ops-heartbeat-read-parity.yml` (workflow_dispatch). It authenticates with
+   OIDC and compares the five-field records to Supabase; expect parity. Cross-check
+   independently with `pnpm ops:heartbeat-read-parity -- --run --report` using
+   operator `CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` for the direct-D1 read
+   (not in GitHub), and with `GET /v1/ops/heartbeats`.
+5. **Prove the Cloudflare runtime read.** With the main Worker's read var `d1`,
+   exercise the masterdash health route so `getWorkflowHeartbeats` reads the
+   isolated D1 binding directly (no HTTP hop) and reports the same records.
+6. **Prove fail-closed from existing tests.** The fail-closed read paths are
+   already covered by `tests/m11-ops-heartbeat-read-authority.test.ts` (missing
+   URL/token, non-2xx, malformed body, unavailable binding → throw/503, never a
+   Supabase fallback). Do **not** perform destructive live fault injection.
+7. **Roll back.** Set the boundary Worker and repo read authority back to
+   `supabase` and redeploy; confirm the local Supabase read resumes and
+   unauthenticated `/health`, `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat`
+   all return `401`.
+
+Explicit non-claims: no combined full-`d1` read/write cutover, no M11 completion,
+and no destructive live fault injection. The D1 read authority is live-proven
+only after a controller runs the sequence above and captures its evidence.
