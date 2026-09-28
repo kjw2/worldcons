@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11-A-ops-domain",
+  "decision": "GO-OPS-PASS",
+  "status": "ops_domain_acceptance_complete_global_m11_incomplete",
+  "date": "2026-09-28",
+  "branch": "main",
+  "baselineHeadSha": "444846c148a772f4841be0fb79ec78f7dd95c3d7",
+  "branchIntegration": {
+    "sourceBranch": "codex/m7-go-search",
+    "integratedIntoMain": true,
+    "mergeMode": "fast-forward",
+    "originMainSynchronized": true,
+    "ahead": 0,
+    "behind": 0
+  },
+  "scope": {
+    "database": "worldcons_ops",
+    "domain": "ops",
+    "gate": "M11-A",
+    "globalM11Complete": false,
+    "remainingDomains": [
+      "M11-B ingest",
+      "M11-C core/publication"
+    ],
+    "interpretation": "M11-A is the OPS domain acceptance gate defined by the existing M11 live write/read/rollback evidence. It does not require a separate live milestone for every worldcons_ops table and does not perform the M12 production frontend/API cutover."
+  },
+  "liveEvidence": [
+    "artifacts/cloudflare-m11/go-site-events-write-authority-canary-20260927.json",
+    "artifacts/cloudflare-m11/go-admin-audit-d1-canary-20260927.json",
+    "artifacts/cloudflare-m11/m11.2-admin-article-edit-authority-seam-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-full-d1-write-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.4-combined-admin-ops-events-read-write-live-evidence-20260928.json"
+  ],
+  "acceptance": {
+    "boundedD1Write": "pass",
+    "fullD1WriteWindow": "pass",
+    "D1ReadParity": "pass",
+    "combinedReadWriteWindow": "pass",
+    "OIDCAuth": "pass",
+    "failClosedTests": "pass",
+    "rollback": "pass",
+    "unauthenticatedBoundaryAccess": "rejected"
+  },
+  "currentRestingState": {
+    "reason": "Rollback-safe resting state retained intentionally until the later global M11 cutover sequence. A passing domain GO gate does not require leaving a partial production cutover active while later domains remain pending.",
+    "cloudflareOpsWrite": {
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "adminOpsEventsWriteAuthority": "supabase",
+      "adminOpsEventsReadAuthority": "supabase",
+      "d1Binding": "worldcons_ops",
+      "observability": "enabled"
+    },
+    "cloudflareMainWorker": {
+      "siteEventsWriteAuthority": "supabase",
+      "adminAuditWriteAuthority": "supabase",
+      "adminArticleEditWriteAuthority": "supabase",
+      "d1Binding": "worldcons_ops"
+    },
+    "githubRepositoryVariables": {
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "adminOpsEventsWriteAuthority": "supabase",
+      "adminOpsEventsReadAuthority": "supabase"
+    }
+  },
+  "dataSnapshot": {
+    "note": "Supabase is the intentional resting authority after rollback, so append-only/event counters may continue advancing there after a successful D1 window. These post-rollback deltas are not evidence of a failed M11-A gate; a fresh bounded reconcile is required immediately before any later permanent D1 authority selection.",
+    "supabaseRows": {
+      "site_events": 16263,
+      "admin_jobs": 0,
+      "admin_job_events": 0,
+      "admin_audit_logs": 128,
+      "admin_article_edit_history": 0,
+      "llm_settings": 1,
+      "admin_command_attempts": 427,
+      "admin_command_events": 113738,
+      "admin_command_runs": 424,
+      "admin_commands": 424,
+      "admin_compatibility_observations_p5": 0,
+      "admin_governance_evidence_p5": 0,
+      "admin_ops_events": 412,
+      "admin_retention_holds_p5": 0,
+      "masterdash_collection_control": 1,
+      "masterdash_control_requests": 0,
+      "masterdash_sso_jtis": 1,
+      "ops_workflow_heartbeats": 5,
+      "security_rate_limit_buckets_v1": 14
+    },
+    "d1Rows": {
+      "site_events": 15516,
+      "admin_jobs": 0,
+      "admin_job_events": 0,
+      "admin_audit_logs": 125,
+      "admin_article_edit_history": 0,
+      "llm_settings": 1,
+      "admin_command_attempts": 427,
+      "admin_command_events": 113726,
+      "admin_command_runs": 424,
+      "admin_commands": 424,
+      "admin_compatibility_observations_p5": 0,
+      "admin_governance_evidence_p5": 0,
+      "admin_ops_events": 412,
+      "admin_retention_holds_p5": 0,
+      "masterdash_collection_control": 1,
+      "masterdash_control_requests": 0,
+      "masterdash_sso_jtis": 1,
+      "ops_workflow_heartbeats": 5,
+      "security_rate_limit_buckets_v1": 13
+    },
+    "postRollbackDeltasObserved": {
+      "site_events": 747,
+      "admin_audit_logs": 3,
+      "admin_command_events": 12,
+      "security_rate_limit_buckets_v1": 1
+    }
+  },
+  "verification": {
+    "pnpm test:m11": "PASS 121/121",
+    "pnpm m11:ops-write:typecheck": "PASS",
+    "pnpm m11:ops-write:dry-run": "PASS",
+    "cloudflareMcpWorkerSettingsRead": "PASS",
+    "supabaseMcpProjectAndTableRead": "PASS",
+    "remoteD1Read": "PASS"
+  },
+  "nextGate": "M11-B ingest domain authority"
+}

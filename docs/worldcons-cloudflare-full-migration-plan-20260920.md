@@ -2270,7 +2270,13 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   switch runtime authority. See
   `docs/worldcons-cloudflare-m10-d1-write-canary-20260927.md` and
   `artifacts/cloudflare-m10/go-d1-write-canary-evidence-20260927.json`.)
-- [ ] domain-by-domain D1 authority (M11.0 first ops slice complete:
+- [ ] domain-by-domain D1 authority (**M11-A OPS DOMAIN = GO/PASS on 2026-09-28**;
+  the OPS write/read/rollback acceptance gate is closed and recorded in
+  `artifacts/cloudflare-m11/go-ops-domain-acceptance-evidence-20260928.json`.
+  The rollback-safe resting authority remains Supabase while later domains are
+  pending; this is intentional and does not reopen M11-A. **M11-B ingest and
+  M11-C core/publication remain pending, so global M11 is not complete.**
+  Detailed OPS history follows. M11.0 first ops slice complete:
   `site_events` has a canary/full-D1/rollback authority seam and live proof;
   M11.1 adds the same `supabase|d1-canary|d1` seam for
   `worldcons_ops.admin_audit_logs` with a selective-action canary, a private
