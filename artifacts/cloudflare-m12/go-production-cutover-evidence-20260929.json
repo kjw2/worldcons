@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M12-cloudflare-production-frontend-api-cutover",
+  "decision": "GO-CUTOVER-PASS",
+  "status": "complete",
+  "dateKst": "2026-09-29",
+  "productionOrigin": "https://worldcons.soltera.dev",
+  "implementation": {
+    "mainCommit": "90ca934ce91aef88549c3e8331a2e73e29f8b47a",
+    "preRedirectCommit": "a3f635179cb19bb0f5a3be4bac0bb093c8b6d3fa",
+    "workerName": "worldcons",
+    "stagingWorkerName": "worldcons-m12-staging",
+    "stagingVersion": "d5575ec3-23ca-48f8-929a-f3379a8faa1f",
+    "productionVersion": "91573b85-8952-484a-9a1b-bedf2733683b",
+    "productionDeploymentId": "568fc22b-d0f9-4d0d-a1d4-f7eadb3fb608",
+    "deploymentMessage": "M12 final production 90ca934",
+    "productionPercentage": 100
+  },
+  "domain": {
+    "zone": "soltera.dev",
+    "zoneId": "46aba5beb060810d14b161b86aafbe47",
+    "hostname": "worldcons.soltera.dev",
+    "workerDomainRecordId": "6aa8f3b54ef92bd771c4b27607af7e3d39be319b",
+    "certificateId": "5bab2fea-bcd8-4da4-8306-2489fc238fb9",
+    "enabled": true,
+    "previewsEnabled": false,
+    "dns": {
+      "recordId": "f924e3a16e2178c494e09e841cead2ba",
+      "type": "AAAA",
+      "content": "100::",
+      "proxied": true,
+      "ttl": 1,
+      "managedByWorkersCustomDomain": true
+    },
+    "ttlReduction": "not_applicable_new_hostname_had_no_preexisting_dns_record"
+  },
+  "runtime": {
+    "framework": "vinext",
+    "workersDevUrl": "https://worldcons.cclib.workers.dev",
+    "observability": {
+      "enabled": true,
+      "headSamplingRate": 1,
+      "logsEnabled": true,
+      "persistLogs": true,
+      "invocationLogs": true,
+      "tracesEnabled": false
+    },
+    "bindings": {
+      "d1": [
+        "WORLDCONS_CORE",
+        "WORLDCONS_INGEST",
+        "WORLDCONS_OPS",
+        "WORLDCONS_SEARCH"
+      ],
+      "r2": "WORLDCONS_RAW -> worldcons-artifacts",
+      "searchService": "WORLDCONS_SEARCH_SERVICE -> worldcons-search",
+      "images": "IMAGES",
+      "assets": "ASSETS"
+    },
+    "serviceBindingFlags": {
+      "WORLDCONS_SEARCH_SERVICE_ENABLED": true,
+      "WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": true
+    },
+    "restingWriteAuthorities": {
+      "core": "supabase",
+      "siteEvents": "supabase",
+      "adminAudit": "supabase",
+      "adminArticleEdit": "supabase",
+      "adminOpsEvents": "supabase"
+    }
+  },
+  "secrets": {
+    "source": "existing local git-ignored .env",
+    "valuesExposedInEvidence": false,
+    "requiredPresenceVerified": [
+      "ADMIN_PASSWORD",
+      "ADMIN_SESSION_SECRET",
+      "CRON_SECRET",
+      "LLM_SETTINGS_SECRET",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "GEMINI_API_KEY"
+    ],
+    "temporarySecretFilesRemovedAfterDeploy": true
+  },
+  "stagingGate": {
+    "sameSourceCommitAsProduction": "90ca934ce91aef88549c3e8331a2e73e29f8b47a",
+    "home": 200,
+    "mcpHealth": 200,
+    "searchQpc": 200,
+    "representativePublicRoutes": "PASS",
+    "providerFulltext": 200,
+    "adminUnauthenticatedMutation": 401,
+    "productionSecurityHeaders": "PASS",
+    "pluginSmoke": {
+      "status": "ok",
+      "toolCount": 5,
+      "searchResultCount": 10
+    },
+    "cleanup": "temporary staging Worker deleted after production validation"
+  },
+  "productionGate": {
+    "representativeRoutes": {
+      "/": 200,
+      "/list": 200,
+      "/search": 200,
+      "/tags": 200,
+      "/sources": 200,
+      "/glossary": 200,
+      "/guide": 200,
+      "/rss.xml": 200,
+      "/sitemap.xml": 200,
+      "/robots.txt": 200,
+      "/api/articles": 200,
+      "/api/tags": 200,
+      "/api/sources": 200,
+      "/api/mcp/health": 200,
+      "/api/search?q=QPC": 200,
+      "/api/cclrag2/search?mode=fulltext": 200
+    },
+    "mcpHealth": {
+      "status": "ready",
+      "deployment": "cloudflare-workers",
+      "version": "worker",
+      "database": "ok",
+      "search": "ok"
+    },
+    "articleApiParity": {
+      "cloudflareStatus": 200,
+      "vercelStatusBeforeRedirectVerification": 200,
+      "returnedItems": 20,
+      "matchingFirstId": "4b3d5644-2681-449e-8ad5-28ee2defffe8"
+    },
+    "canonicalOriginObserved": "https://worldcons.soltera.dev",
+    "pluginSmoke": {
+      "status": "ok",
+      "endpoint": "https://worldcons.soltera.dev/api/mcp",
+      "toolCount": 5,
+      "searchResultCount": 10,
+      "firstResultId": "united-states-us-scotus-2026-03-31-chiles-v-salazar-99d92e"
+    },
+    "sampleLatencySeconds": {
+      "home": 1.670205,
+      "list": 0.436199,
+      "searchPage": 0.806925,
+      "articlesApi": 0.240435,
+      "mcpHealth": 0.063818,
+      "searchQpc": 5.798513,
+      "cclrag2Fulltext": 3.553561
+    }
+  },
+  "cloudflareResourceReadiness": {
+    "d1Connectivity": {
+      "core": true,
+      "ingest": true,
+      "ops": true,
+      "search": true
+    },
+    "r2WorldconsArtifactsPresent": true,
+    "queueWorldconsAsyncPresent": true,
+    "queueWorldconsAsyncDlqPresent": true,
+    "observabilityPersistedLogsEnabled": true
+  },
+  "trafficSwitch": {
+    "legacyProductionHost": "worldcons.vercel.app",
+    "redirectStatus": 307,
+    "redirectDestination": "https://worldcons.soltera.dev/:path*",
+    "pathAndQueryPreserved": true,
+    "redirectCondition": "host == worldcons.vercel.app",
+    "vercelUniqueDeploymentHostsExcludedFromRedirectCondition": true,
+    "githubRepositoryVariables": {
+      "APP_BASE_URL": "https://worldcons.soltera.dev",
+      "WORLDCONS_BASE_URL": "https://worldcons.soltera.dev"
+    }
+  },
+  "vercelCompatibilityAndRollback": {
+    "currentRedirectDeployment": {
+      "id": "dpl_DaLK5FuU5LWeXy3PLFB145uPduQG",
+      "url": "worldcons-h5bdl28pn-jwkms-projects.vercel.app",
+      "status": "READY",
+      "commit": "90ca934ce91aef88549c3e8331a2e73e29f8b47a",
+      "mcpHealth": "200 database/search ok"
+    },
+    "previousReadyDeployment": {
+      "id": "dpl_2k1kmoTZcGPjbNRSk7StgFSf5VnA",
+      "url": "worldcons-d308p3iqz-jwkms-projects.vercel.app",
+      "status": "READY",
+      "directPublicAccess": "deployment protection may return 302 SSO"
+    },
+    "rollbackRehearsal": {
+      "rollbackCommand": "SUCCESS",
+      "rollbackTarget": "dpl_2k1kmoTZcGPjbNRSk7StgFSf5VnA",
+      "restorePromoteCommand": "SUCCESS",
+      "restoreTarget": "dpl_DaLK5FuU5LWeXy3PLFB145uPduQG",
+      "cloudflareRemained200DuringRestore": true,
+      "legacyAliasAfterRestore": "307 -> https://worldcons.soltera.dev/"
+    }
+  },
+  "costRecalculation": {
+    "observationWindow": "30d pre-cutover Vercel production runtime logs",
+    "observedRuntimeStatus200Count": 8,
+    "observedPaths": {
+      "/api/mcp/health": 2,
+      "/api/articles": 2,
+      "/": 2,
+      "/tags/f0cc9e78": 1,
+      "/api/search": 1
+    },
+    "limitation": "Vercel runtime logs do not represent all static/CDN traffic.",
+    "workersPaidPlanBaselineUsdPerMonthFromMigrationPlan": 5,
+    "includedDynamicRequestsPerMonthFromMigrationPlan": 10000000,
+    "assessment": "Observed dynamic runtime traffic is orders of magnitude below the included request allowance; no additional dynamic-request charge signal is visible at cutover."
+  },
+  "verification": {
+    "testM12": "PASS 4/4",
+    "testM9": "PASS 8/8",
+    "publicRegression": "PASS 15/15",
+    "pluginTests": "PASS 12/12",
+    "pluginValidate": "PASS",
+    "cclrag2": "PASS 19/19",
+    "providerSearch": "PASS 20/20",
+    "typecheck": "PASS",
+    "lint": "PASS with 2 pre-existing unused-helper warnings in lib/cloudflare/core-write/authority.ts",
+    "diffCheck": "PASS",
+    "vinextProductionBuild": "PASS"
+  },
+  "cleanup": {
+    "temporaryStagingWorkerDeleted": true,
+    "temporarySecretFilesDeleted": true,
+    "gitWorkingTreeCleanBeforeEvidenceEdit": true
+  },
+  "nonClaims": [
+    "M13 retirement has not started.",
+    "Supabase is intentionally retained for rollback and remains authoritative for compatibility read/write paths that have not been permanently switched.",
+    "Vercel is intentionally retained as a rollback control plane/deployment history during the soak window.",
+    "No Supabase project, Vercel project, historical Worker, R2 object or D1 database was deleted by M12.",
+    "M12 does not claim that D1 is the sole resting write authority."
+  ],
+  "m12": {
+    "goWeb": "PASS",
+    "goCutover": "PASS",
+    "productionTraffic": "Cloudflare Workers",
+    "overall": "COMPLETE"
+  },
+  "nextMilestone": "M13 Supabase/Vercel retirement after its explicit soak/export/credential/DR gates"
+}

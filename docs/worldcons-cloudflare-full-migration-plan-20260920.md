@@ -2113,6 +2113,63 @@ Procedure:
 Rollback:
 - restore Vercel route/DNS and prior write authority while rollback window remains open.
 
+M12 final status (2026-09-29 KST, **GO-CUTOVER PASS / M12 COMPLETE**):
+
+- Production frontend/API Worker is now `worldcons` on
+  `https://worldcons.soltera.dev`, deployed from M12 application commit
+  `90ca934ce91aef88549c3e8331a2e73e29f8b47a`. The final Cloudflare
+  production version is `91573b85-8952-484a-9a1b-bedf2733683b` at 100%.
+- The hostname did not exist before M12, so pre-cutover TTL reduction was not
+  applicable. Workers Custom Domains created the proxied DNS record and
+  certificate in the active `soltera.dev` zone.
+- The exact final M12 source was built with vinext and deployed first to
+  `worldcons-m12-staging` version
+  `d5575ec3-23ca-48f8-929a-f3379a8faa1f`, where representative UI/API,
+  cclrag2, MCP/plugin, security-header and unauthenticated-admin gates passed.
+  The same build was then deployed to production. The temporary staging Worker
+  was deleted after the production gate.
+- Production representative pages/APIs all returned 200, including
+  `/api/search?q=QPC` and the fulltext cclrag2 boundary. MCP health reports
+  `deployment=cloudflare-workers`, `database=ok`, `search=ok`; the plugin
+  smoke exposed all five public read-only tools and returned live case results.
+  A bounded `/api/articles` comparison matched Vercel on returned count and
+  first article id.
+- The M9 private `WORLDCONS_SEARCH_SERVICE -> worldcons-search` Service
+  Binding is now enabled for production cclrag2/cclmetasearch execution.
+  Supabase compatibility credentials are installed as Worker secrets, while
+  M11 write authorities intentionally continue to rest at `supabase` during
+  the rollback/soak window. M12 therefore moves the production compute/traffic
+  boundary without pretending that M13 data-provider retirement already
+  happened.
+- Cloudflare production Observability is enabled with persisted invocation
+  logs. All four D1 bindings answered a live `SELECT 1`; the
+  `worldcons-artifacts` R2 bucket and the `worldcons-async-v1` +
+  `worldcons-async-dlq-v1` Queues are present.
+- The former public production alias `worldcons.vercel.app` now returns a
+  reversible 307 to `https://worldcons.soltera.dev/:path*` and preserves path
+  and query. The redirect is host-scoped, so Vercel deployment URLs remain
+  outside the redirect rule for rollback/control-plane use.
+- Rollback rehearsal completed: Vercel CLI successfully rolled the project
+  back to previous READY deployment
+  `dpl_2k1kmoTZcGPjbNRSk7StgFSf5VnA`, then successfully promoted current M12
+  deployment `dpl_DaLK5FuU5LWeXy3PLFB145uPduQG` back to production.
+  Cloudflare production remained HTTP 200 during the restore and the legacy
+  alias again resolved to the intended 307 redirect afterward.
+- GitHub repository `APP_BASE_URL` and `WORLDCONS_BASE_URL` now both point
+  to `https://worldcons.soltera.dev`; public canonical/plugin/crawler URLs in
+  the code and plugin package use the same origin.
+- Cost checkpoint: the preceding 30-day Vercel production runtime-log window
+  exposed only eight 200 runtime requests (not a count of all CDN/static
+  traffic). Against the migration plan's Workers Paid baseline of USD 5/month
+  and 10M included dynamic requests/month, current observed dynamic traffic
+  gives no additional request-charge signal. Post-cutover billing still needs
+  normal ongoing observation.
+- Detailed evidence:
+  `artifacts/cloudflare-m12/go-production-cutover-evidence-20260929.json`.
+- **M12 is complete. M13 is next, but retirement remains blocked until its
+  explicit D1-sole-authority soak, final export, stranded-object inventory,
+  credential rotation and DR gates are all satisfied.**
+
 ### M13 — Supabase/Vercel retirement
 
 Allowed only after:
@@ -2463,7 +2520,13 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   `docs/worldcons-cloudflare-m11-admin-article-edit-write-authority-20260928.md`
   and
   `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`.)
-- [ ] Workers production cutover
+- [x] Workers production cutover (M12 GO-CUTOVER PASS on 2026-09-29 KST:
+  `worldcons.soltera.dev` -> Worker `worldcons`, final version
+  `91573b85-8952-484a-9a1b-bedf2733683b`; representative UI/API/search/MCP
+  gates pass, legacy `worldcons.vercel.app` redirects 307 with path/query
+  preservation, Observability is enabled, rollback+restore rehearsal succeeded,
+  and Vercel/Supabase are retained for M13 rollback/retirement. See
+  `artifacts/cloudflare-m12/go-production-cutover-evidence-20260929.json`.)
 - [ ] Supabase final export
 - [ ] stranded Vercel object recovery/inventory
 - [ ] credential rotation
