@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.4R-live-read-parity",
+  "decision": "LIVE-READ-PARITY-PASS-NO-COMBINED-CUTOVER-M11-INCOMPLETE",
+  "status": "live_read_parity_pass_resting_at_supabase",
+  "date": "2026-09-28",
+  "headSha": "3f584f239b3c7f82f08b705e699a34bb8e3949d5",
+  "branch": "codex/m7-go-search",
+  "predecessorEvidence": [
+    "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json",
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json",
+    "artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json"
+  ],
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "admin_ops_events",
+    "authorityMode": "bounded-live-d1-read-parity",
+    "d1ReadAuthorityLiveProven": true,
+    "d1ReadParityLiveProven": true,
+    "combinedFullD1ReadWriteCutover": false,
+    "adminOpsEventsWriteAuthorityThroughout": "supabase",
+    "adminOpsEventsReadAuthorityDuringWindow": "d1",
+    "adminOpsEventsReadAuthorityRestoredToSupabase": true,
+    "heartbeatWriteAuthorityThroughout": "supabase",
+    "heartbeatReadAuthorityThroughout": "supabase",
+    "m11Complete": false,
+    "readOnlyRun": true,
+    "insertPerformed": false,
+    "prunePerformed": false,
+    "heartbeatWritePerformed": false,
+    "watchdogInvoked": false,
+    "adminEventMutationPerformed": false,
+    "destructiveLiveFaultInjection": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "summary": "With the admin_ops_events write authority resting at supabase, the boundary Worker read authority was set to d1 for one deliberate read-only window (version 38b27a5b-ae1a-4d1d-94a1-49ee51236e7d; admin write supabase, admin read d1, heartbeat write/read supabase, OIDC allowed refs main + codex/m7-go-search). Before the probe both stores held 412 admin_ops_events rows and the latest 20 IDs/order matched. The OIDC-authenticated GET /v1/ops/admin-events/list?limit=20 then returned the same 20 newest rows as the canonical Supabase listAdminOpsEvents(20): boundaryCount 20, supabaseCount 20, boundaryVsSupabase.holds true, differences [], ok true (directD1 disabled in GitHub). Because the boundary read authority was d1, boundary-vs-Supabase is itself a D1 projection comparison. Cloudflare Observability recorded exactly one authenticated GET (200/outcome ok, wallTimeMs 471, auth-failure count 0) on version 38b27a5b and no writes. After the run Supabase and D1 counts both stayed 412 and the Supabase watchdog run_id stayed the prior 36377461933, proving no heartbeat/watchdog/admin-event write. The Worker was restored to resting version bc257622-da6e-45fb-9be3-46d9c0e56991 (admin write/read supabase, no temporary allowed-refs binding) and unauthenticated list GET returns 401. This marks M11.4R LIVE-READ-PARITY-PASS; it does NOT claim a combined full-d1 admin_ops_events read/write cutover or global M11 completion.",
+  "baselineBeforeProbe": {
+    "supabaseAdminOpsEventsCount": 412,
+    "d1AdminOpsEventsCount": 412,
+    "latest20IdsAndOrderMatched": true
+  },
+  "readWindow": {
+    "safeOrdering": [
+      {
+        "step": 1,
+        "action": "confirm Supabase and worldcons_ops D1 admin_ops_events counts are 412/412 and the latest 20 IDs/order match",
+        "writeAuthority": "supabase",
+        "readAuthority": "supabase"
+      },
+      {
+        "step": 2,
+        "action": "confirm unauthenticated GET /v1/ops/admin-events/list?limit=20 returns 401",
+        "unauthenticatedListGetStatus": 401
+      },
+      {
+        "step": 3,
+        "action": "set the worldcons-ops-write boundary Worker admin_ops_events read authority to d1 (write authority stayed supabase) and deploy the canary version",
+        "workerVersion": "38b27a5b-ae1a-4d1d-94a1-49ee51236e7d",
+        "adminOpsEventsWriteAuthority": "supabase",
+        "adminOpsEventsReadAuthority": "d1",
+        "heartbeatWriteAuthority": "supabase",
+        "heartbeatReadAuthority": "supabase",
+        "audience": "worldcons-ops-write",
+        "temporaryAllowedRefs": ["main", "codex/m7-go-search"]
+      }
+    ],
+    "canary": {
+      "worker": "worldcons-ops-write",
+      "versionId": "38b27a5b-ae1a-4d1d-94a1-49ee51236e7d",
+      "adminOpsEventsWriteAuthority": "supabase",
+      "adminOpsEventsReadAuthority": "d1",
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "audience": "worldcons-ops-write",
+      "allowedRefsTemporary": true,
+      "allowedRefs": ["refs/heads/main", "refs/heads/codex/m7-go-search"],
+      "unauthenticatedListGetStatus": 401
+    }
+  },
+  "githubRun": {
+    "workflow": ".github/workflows/admin-watchdog.yml",
+    "runId": 36379545354,
+    "headSha": "3f584f239b3c7f82f08b705e699a34bb8e3949d5",
+    "branch": "codex/m7-go-search",
+    "input": "admin_ops_events_read_parity_only=true",
+    "conclusion": "success",
+    "watchdogStep": "skipped",
+    "heartbeatReadProbeStep": "skipped",
+    "writeCapableWork": "skipped",
+    "adminOpsEventsReadParityStep": "succeeded",
+    "evidenceUploadStep": "succeeded",
+    "artifactName": "m11.4r-admin-ops-events-read-parity-live-evidence"
+  },
+  "probeOutput": {
+    "boundaryCount": 20,
+    "supabaseCount": 20,
+    "boundaryVsSupabaseHolds": true,
+    "differences": [],
+    "directD1": "disabled in GitHub",
+    "ok": true
+  },
+  "cloudflareObservability": {
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/ops/admin-events/list?limit=20",
+        "authenticated": true,
+        "status": 200,
+        "outcome": "ok",
+        "wallTimeMs": 471
+      }
+    ],
+    "getRequestCount": 1,
+    "postRequestCount": 0,
+    "authFailureCount": 0,
+    "workerVersionId": "38b27a5b-ae1a-4d1d-94a1-49ee51236e7d",
+    "requestsSource": "Cloudflare Observability"
+  },
+  "postRunCrossCheck": {
+    "supabaseAdminOpsEventsCount": 412,
+    "d1AdminOpsEventsCount": 412,
+    "supabaseWatchdogRunId": "36377461933",
+    "supabaseWatchdogRunIdNote": "remained the prior value, proving no heartbeat/watchdog/admin-event write occurred in this read-only run",
+    "top20IdentityIndependentlyConfirmedByController": true,
+    "boundaryComparisonIsD1ProjectionComparison": true,
+    "boundaryComparisonNote": "because the boundary read authority was d1, boundary-vs-Supabase is itself a D1 projection comparison",
+    "directD1GitHubLegSkippedIntentionally": true,
+    "directD1LegNote": "the --no-direct-d1 flag intentionally disabled the direct D1 GitHub leg; independently the controller confirmed D1 count and top-20 identity"
+  },
+  "failClosed": {
+    "liveDestructiveFaultInjectionPerformed": false,
+    "acceptedInLieuOfLiveInjection": "existing fail-closed read tests (tests/m11-admin-ops-events-read-parity.test.ts) covering missing URL/token, non-2xx, malformed body, unavailable binding and the resting-supabase 503 READ_AUTHORITY_UNAVAILABLE, which fail closed and never fall back to Supabase",
+    "note": "no live D1 read fault was injected"
+  },
+  "rollback": {
+    "restoredWorker": {
+      "worker": "worldcons-ops-write",
+      "versionId": "bc257622-da6e-45fb-9be3-46d9c0e56991",
+      "adminOpsEventsWriteAuthority": "supabase",
+      "adminOpsEventsReadAuthority": "supabase",
+      "temporaryAllowedRefsBinding": false
+    },
+    "restoredRepositoryAuthorityVars": {
+      "adminOpsEventsWrite": "supabase",
+      "adminOpsEventsRead": "supabase"
+    },
+    "unauthenticated": {
+      "GET /v1/ops/admin-events/list?limit=20": 401
+    }
+  },
+  "whatThisProves": [
+    "the bounded live D1 READ path works for the admin_ops_events list projection: with the admin write authority resting at supabase, the boundary read authority d1 returned the same 20 newest rows as the canonical Supabase listAdminOpsEvents(20)",
+    "because the boundary read authority was d1, boundary-vs-Supabase is itself a D1 projection comparison",
+    "the OIDC-authenticated GET /v1/ops/admin-events/list?limit=20 succeeded with zero auth failures (exactly one GET, 200/ok, 471ms) and no writes occurred during the run",
+    "no insert, prune, heartbeat or admin-event write occurred: Supabase and D1 counts stayed 412/412 and the Supabase watchdog run_id stayed the prior 36377461933",
+    "the read authority change was applied and rolled back in the documented safe order and the resting boundary rejects unauthenticated access"
+  ],
+  "whatThisDoesNotProve": [
+    "a combined full-d1 admin_ops_events read/write cutover: the admin write authority stayed supabase throughout and no combined cutover is claimed",
+    "M11 completion: ingest and core/publication remain pending",
+    "fail-closed behavior under a live D1 failure: only the existing fail-closed read tests are accepted, no destructive live fault injection was performed"
+  ],
+  "verification": {
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false,
+    "jsonValidated": true,
+    "diffCheck": "pass",
+    "liveD1ReadParity": "pass_bounded",
+    "liveCombinedFullD1ReadWriteCutover": "not_claimed"
+  },
+  "filesChanged": [
+    "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json",
+    "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json",
+    "docs/worldcons-cloudflare-m11-admin-ops-events-authority-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "blockers": [
+    "combined full-d1 admin_ops_events read/write cutover not yet live-proven",
+    "fail-closed behavior under a live D1 failure is only covered by the existing read tests, not a live fault injection",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "nextGate": "deliberate combined full-d1 admin_ops_events read/write cutover gate, then M11 ingest and core/publication"
+}

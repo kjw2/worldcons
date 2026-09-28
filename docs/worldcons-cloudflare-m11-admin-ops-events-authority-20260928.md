@@ -8,11 +8,13 @@ Base checkpoint: `015397f869d261bebd2857305d64ad0c8dee8fcb` (M11.3R live D1 read
 **M11.4 implements the bounded, fail-closed Cloudflare D1 compatibility path
 for `worldcons_ops.admin_ops_events` that M11.3 deliberately deferred.**
 
-Code and focused tests are complete. The Cloudflare authority rests at
+Code and focused tests are complete, and the M11.4R live read-only list
+read-parity window has since run to PASS (see below). The Cloudflare authority
+rests at
 `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=supabase` and
 `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=supabase`, so the Node/GitHub watchdog
-behavior is byte-for-byte unchanged. No deploy, commit or push was performed and
-**no live canary is claimed**; a controller with Cloudflare credentials owns it.
+behavior is byte-for-byte unchanged. No write-canary window, commit or push was
+performed; the M11.4 write canary remains controller-owned and unclaimed.
 **M11 is not complete**: ingest and core/publication remain pending.
 
 ## Why `admin_ops_events` is broader than the M11.3 heartbeat
@@ -174,15 +176,50 @@ mutation, and it changes no authority.
   step wiring, and a source assertion that the probe never invokes a writer,
   insert, prune, watchdog or heartbeat path.
 
-**No live M11.4R PASS is claimed.** The probe is code-ready; a controller owns
-the live window (set the boundary admin read authority to `d1`, dispatch
-`admin_ops_events_read_parity_only=true`, then roll back). See
+At code-complete time **no live M11.4R PASS was claimed**: the probe was
+code-ready and a controller owned the live window (set the boundary admin read
+authority to `d1`, dispatch `admin_ops_events_read_parity_only=true`, then roll
+back). That live window has since run; see the result section below and
 `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json`.
+
+## M11.4R live read-parity result (2026-09-28, bounded PASS)
+
+The controller live window has now run. At clean HEAD `3f584f239b3c7f82f08b705e699a34bb8e3949d5`
+the baseline was Supabase `admin_ops_events` count 412 and D1 count 412, and the
+latest 20 IDs/order matched. The canary/read-parity Worker version
+`38b27a5b-ae1a-4d1d-94a1-49ee51236e7d` ran with `admin_ops_events` write authority
+`supabase`, read authority `d1`, heartbeat write/read `supabase`, and OIDC allowed
+refs `main` + `codex/m7-go-search`; unauthenticated
+`GET /v1/ops/admin-events/list?limit=20` returned `401`.
+
+GitHub `workflow_dispatch` run `36379545354` at head `3f584f23` with
+`admin_ops_events_read_parity_only=true` completed **success**. The watchdog step,
+the heartbeat M11.3R read probe, and all write-capable work were **skipped**; only
+the `admin_ops_events` read-only parity step and the evidence upload ran. The
+downloaded workflow artifact reports `boundaryCount` 20, `supabaseCount` 20,
+`boundaryVsSupabase.holds=true`, `differences=[]`, `directD1` disabled in GitHub,
+`ok=true`. **Because the boundary read authority was `d1`, boundary-vs-Supabase is
+itself a D1 projection comparison.** The direct-D1 GitHub leg was intentionally
+skipped (`--no-direct-d1`); independently the controller confirmed the D1
+count/top-20 identity.
+
+Cloudflare Observability saw exactly one authenticated `GET` for this parity run
+(status `200`, outcome `ok`, `wallTimeMs` 471, auth-failure count 0, on version
+`38b27a5b`). After the run Supabase count remained 412, D1 count remained 412, and
+the Supabase watchdog `run_id` remained the prior `36377461933`, proving that no
+heartbeat/watchdog/admin-event write occurred during this read-only run. The Worker
+was restored to resting version `bc257622-da6e-45fb-9be3-46d9c0e56991` with
+`admin_ops_events` write/read `supabase` and no temporary allowed-refs binding;
+unauthenticated list `GET` returns `401`.
+
+This marks **LIVE-READ-PARITY-PASS for M11.4R**. It does **not** claim a combined
+full-`d1` `admin_ops_events` read/write cutover or M11 completion (ingest and
+core/publication remain pending). See
+`artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json`.
 
 ## What is NOT claimed
 
-- No live canary, no live read parity and no deploy, commit or push.
-- No combined full-`d1` read/write cutover.
+- No combined full-`d1` `admin_ops_events` read/write cutover, no deploy, commit or push.
 - No M11 completion: ingest and core/publication remain pending.
 
 ## Safest next live canary sequence (controller)
@@ -211,7 +248,8 @@ the live window (set the boundary admin read authority to `d1`, dispatch
    confirm the boundary/D1 list equals the Supabase `listAdminOpsEvents(20)`
    projection (same ids/order/fields) and download the JSON evidence artifact.
    Separately confirm `app/admin/ops/page.tsx`'s `listAdminOpsEvents(20)` against
-   the same projection.
+   the same projection. **(DONE — M11.4R LIVE-READ-PARITY-PASS, see the result
+   section above; steps 4-5 write-canary windows remain pending.)**
 7. Roll every write/read var and binding back to `supabase`; confirm the direct
    Supabase writer/reader resumes.
 8. Delete the canary event(s) and restore pre-canary counts.

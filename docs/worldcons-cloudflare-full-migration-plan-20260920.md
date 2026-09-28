@@ -1719,7 +1719,7 @@ resting at `supabase`, no live canary**):
   `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`.
 
 M11.4R read-only `admin_ops_events` list read parity (2026-09-28, **code ready,
-live parity pending, no live proof**):
+live read parity PASS, no combined cutover**):
 
 - Adds a strictly READ-ONLY parity gate for the `admin_ops_events` list
   projection, modeled on the M11.3R heartbeat read-parity tooling but scoped to
@@ -1765,10 +1765,35 @@ live parity pending, no live proof**):
   insert, prune, heartbeat/event mutation or watchdog path is exercised.
 - 11 new focused tests (`tests/m11-admin-ops-events-read-parity.test.ts`);
   `test:m11` is 120/120, `test:m8` 23/23, plus the M11.4 verification set above.
-  **No live M11.4R PASS is claimed**; a controller owns the live read window and
-  the later deliberate combined full-`d1` read/write cutover.
+  A controller live window then ran the probe at clean HEAD
+  `3f584f239b3c7f82f08b705e699a34bb8e3949d5`: baseline Supabase 412 / D1 412 with
+  the latest 20 IDs/order matching; the canary Worker version
+  `38b27a5b-ae1a-4d1d-94a1-49ee51236e7d` ran with `admin_ops_events` write
+  `supabase`, read `d1`, heartbeat write/read `supabase`, OIDC allowed refs
+  `main` + `codex/m7-go-search`, and unauthenticated
+  `GET /v1/ops/admin-events/list?limit=20` returned `401`. GitHub
+  `workflow_dispatch` run `36379545354` at head `3f584f23` with
+  `admin_ops_events_read_parity_only=true` completed success with the watchdog
+  step, the heartbeat M11.3R read probe and all write-capable work **skipped**;
+  only the admin-ops-events read-only parity step and the artifact upload ran. The
+  downloaded artifact reports `boundaryCount` 20, `supabaseCount` 20,
+  `boundaryVsSupabase.holds=true`, `differences=[]`, `directD1` disabled in GitHub,
+  `ok=true`. Because the boundary read authority was `d1`, boundary-vs-Supabase is
+  itself a D1 projection comparison; the direct-D1 GitHub leg was intentionally
+  skipped (`--no-direct-d1`) and independently the controller confirmed the D1
+  count/top-20 identity. Cloudflare Observability saw exactly one authenticated
+  `GET` (200/outcome ok, `wallTimeMs` 471, auth-failure count 0, version
+  `38b27a5b`). After the run Supabase and D1 counts both stayed 412 and the
+  Supabase watchdog `run_id` stayed the prior `36377461933`, proving no
+  heartbeat/watchdog/admin-event write occurred. The Worker was restored to resting
+  version `bc257622-da6e-45fb-9be3-46d9c0e56991` (admin write/read `supabase`, no
+  temporary allowed-refs binding) and unauthenticated list `GET` returns `401`.
+  This marks **M11.4R LIVE-READ-PARITY-PASS**; it does **not** claim a combined
+  full-`d1` `admin_ops_events` read/write cutover or global M11 completion.
 - Detailed evidence:
-  `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json`.
+  `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json`
+  and
+  `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json`.
 
 M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28):
 
@@ -2240,8 +2265,15 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   read/write cutover or global M11 completion. See
   `artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json`.
   `admin_ops_events` (M11.4) now has its own bounded code-ready authority seam
-  and a code-ready **M11.4R read-only list read-parity probe** (see the M11.4 and
-  M11.4R entries above); both still need a live controller window, and ingest plus
+  and a live-proven **M11.4R read-only list read-parity probe** (see the M11.4 and
+  M11.4R entries above): at head `3f584f23` the canary Worker version
+  `38b27a5b-ae1a-4d1d-94a1-49ee51236e7d` ran admin write `supabase` / read `d1`
+  with heartbeat write/read `supabase` and returned `ok:true`, `differences:[]`,
+  20/20 bounded list parity on `workflow_dispatch` run `36379545354` (watchdog and
+  write-capable steps skipped); counts and the Supabase watchdog run id were
+  unchanged and the Worker was restored to `bc257622-da6e-45fb-9be3-46d9c0e56991`.
+  Its combined full-`d1` read/write cutover still needs a
+  live controller window, and ingest plus
   core/publication are still pending. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
