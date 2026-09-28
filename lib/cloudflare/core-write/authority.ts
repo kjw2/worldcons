@@ -338,19 +338,26 @@ export async function transitionArticleLifecycleInD1(
         collectionState, processingState, reviewState, attentionState, attentionCode,
         attentionRetryable, attentionSeverity, attentionSource, attentionRaisedAt, attentionClearedAt,
         revision, now, collectionState, now, processingState, now, reviewState, now,
-        attentionState, attentionCode, now, input.articleId, current.revision,
+        attentionState, attentionCode, now, input.articleId, String(current.revision),
       ));
     }
-    statements.push(binding.prepare(
-      "INSERT INTO article_lifecycle_events_p2 (id,article_id,idempotency_key,from_revision,to_revision,actor_type,actor_id,transition_source,reason_code,applied,collection_state,processing_state,review_state,attention_state,attention_code,attention_retryable,attention_severity,attention_source,occurred_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    ).bind(
+    const eventValues = [
       decimalIdentity(), input.articleId, input.idempotencyKey, String(current.revision), String(revision),
       input.actorType, input.actorId ?? null, input.source, input.reasonCode, applied,
       collectionState, processingState, reviewState, attentionState, attentionCode,
       attentionRetryable, attentionSeverity, attentionSource, now,
-    ));
+    ];
+    statements.push(applied
+      ? binding.prepare(
+          "INSERT INTO article_lifecycle_events_p2 (id,article_id,idempotency_key,from_revision,to_revision,actor_type,actor_id,transition_source,reason_code,applied,collection_state,processing_state,review_state,attention_state,attention_code,attention_retryable,attention_severity,attention_source,occurred_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM articles WHERE id=? AND lifecycle_revision=?)",
+        ).bind(...eventValues, input.articleId, String(revision))
+      : binding.prepare(
+          "INSERT INTO article_lifecycle_events_p2 (id,article_id,idempotency_key,from_revision,to_revision,actor_type,actor_id,transition_source,reason_code,applied,collection_state,processing_state,review_state,attention_state,attention_code,attention_retryable,attention_severity,attention_source,occurred_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ).bind(...eventValues));
     const results = await batch(binding, statements);
-    if (applied && changes(results[0]) !== 1) return { ok: false, error: articleLifecycleError("stale_revision") };
+    if (applied && (changes(results[0]) !== 1 || changes(results[1]) !== 1)) {
+      return { ok: false, error: articleLifecycleError("stale_revision") };
+    }
     return {
       ok: true,
       data: {
