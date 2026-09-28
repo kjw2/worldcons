@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3-canary",
+  "decision": "CODE-READY-LIVE-CANARY-PENDING-NO-LIVE-PROOF",
+  "status": "code_ready_resting_at_supabase",
+  "date": "2026-09-28",
+  "baseCheckpoint": "9d74d422335f5d761530f438242bbccceee97fb7",
+  "branch": "codex/m7-go-search",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "authorityMode": "d1-canary-only",
+    "d1WriteAuthoritySwitched": false,
+    "readAuthorityThroughout": "supabase",
+    "singleRun": true,
+    "liveCanaryClaimed": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "problem": {
+    "summary": "the d1-canary selector keyed only on the fixed literal run_id m11-ops-heartbeat-canary, which the real Node/GitHub writer (run_id = GITHUB_RUN_ID) can never emit, so no real admin-watchdog run could be selected",
+    "priorCaveat": "documented in M11.3 section 'Reachability caveat'"
+  },
+  "canarySelector": {
+    "authority": "d1-canary",
+    "surfaces": [
+      { "field": "run_id", "value": "m11-ops-heartbeat-canary", "kind": "legacy literal" },
+      { "field": "detail.m11OpsHeartbeatCanary", "value": true, "kind": "explicit real-run detail marker" }
+    ],
+    "nodeMarkerEnv": "WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER",
+    "nodeMarkerAcceptedValues": ["true", "1", "<exact GITHUB_RUN_ID>"],
+    "defaultWhenUnset": "no marker; ordinary detail unchanged",
+    "requiresNonRestingWriteAuthority": true
+  },
+  "filesChanged": [
+    "lib/cloudflare/ops-write/heartbeat.ts",
+    "lib/ops/workflow-heartbeat.ts",
+    ".github/workflows/admin-watchdog.yml",
+    ".env.example",
+    "tests/m11-ops-heartbeat-write-boundary.test.ts",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md",
+    "artifacts/cloudflare-m11/m11.3-d1-canary-real-run-design-20260928.json"
+  ],
+  "liveSequence": [
+    "record baseline Supabase + D1 watchdog rows (all five keys) incl. D1 watchdog run_id 36079260476 and Supabase watchdog run_id 36365145716",
+    "set boundary Worker var WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS=refs/heads/main,refs/heads/codex/m7-go-search and redeploy",
+    "set boundary Worker var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary and redeploy; leave read authority supabase",
+    "set repo var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary and repo var WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER=true; leave read authority unset/supabase",
+    "dispatch admin-watchdog.yml exactly once on codex/m7-go-search; note the GitHub run id",
+    "verify OIDC 2xx on POST /v1/ops/heartbeat with no worldcons_ops_write_auth_failure log",
+    "verify D1 watchdog run_id becomes the exact GitHub run id with detail.m11OpsHeartbeatCanary=true and Supabase watchdog run_id stays at baseline throughout",
+    "restore: unset repo write authority and canary marker; set boundary Worker write authority back to supabase; remove the temporary allowed-refs binding; redeploy",
+    "verify unauthenticated GET /health, GET /v1/ops/heartbeats and POST /v1/ops/heartbeat all return 401"
+  ],
+  "expectedEvidenceFields": [
+    "canary.branch",
+    "canary.githubRunId",
+    "canary.workerVersionId",
+    "canary.boundaryRequests[{method,path,status}]",
+    "canary.authFailureLogs (expect none)",
+    "canary.supabaseWatchdog{runId,lastStartedAt,lastCompletedAt,status} (expect unchanged during canary)",
+    "canary.d1Watchdog{runId,m11OpsHeartbeatCanary,lastStatus} (expect runId == githubRunId, marker true)",
+    "canary.authorityVars{write,read,canaryMarker} during and restored",
+    "canary.restingWorker{versionId,writeAuthority,readAuthority,temporaryAllowedRefsBinding,unauth401{health,read,write}}",
+    "scope.d1WriteAuthoritySwitched (false)"
+  ],
+  "verification": {
+    "m11Tests": "74/74",
+    "newCanaryTests": "3",
+    "opsTests": "10/10",
+    "masterdashTests": "22/22",
+    "rootTypecheck": "pass",
+    "opsWriteWorkerTypecheck": "pass",
+    "opsWriteWorkerTypesCheck": "up_to_date",
+    "lint": "pass (0 errors, 0 warnings)",
+    "opsWriteDryRun": "pass (resting bindings unchanged)",
+    "diffCheck": "pass"
+  },
+  "blockers": [
+    "live canary requires Cloudflare/DB/GitHub dispatch credentials not available in this environment; controller owns it",
+    "no full-d1 ops-heartbeat cutover is claimed; only the bounded d1-canary authority, one run",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ]
+}

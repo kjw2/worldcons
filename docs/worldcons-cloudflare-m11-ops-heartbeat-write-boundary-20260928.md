@@ -1,4 +1,4 @@
-# WorldCons Cloudflare M11.3 — ops_workflow_heartbeats Node/GitHub write boundary
+# WorldCons Cloudflare M11.3 ??ops_workflow_heartbeats Node/GitHub write boundary
 
 Date: 2026-09-28
 Base checkpoint: `9573173` (M11.2 admin-article-edit authority seam)
@@ -17,7 +17,7 @@ live canary.
 
 ## Why a boundary is needed
 
-The remaining `worldcons_ops` writers selected by M11.0–M11.2 run from the
+The remaining `worldcons_ops` writers selected by M11.0?�M11.2 run from the
 Cloudflare runtime and could use the M9 `WORLDCONS_SEARCH_SERVICE` Service
 Binding compatibility bridge. `admin_ops_events` and `ops_workflow_heartbeats`
 are different: their writers run from GitHub Actions and Node scripts
@@ -38,7 +38,7 @@ endpoint.
 | Surface | Primary writer | Execution owner | Selection |
 | --- | --- | --- | --- |
 | `ops_workflow_heartbeats` | `recordWorkflowHeartbeat` (`lib/ops/workflow-heartbeat.ts`) | GitHub Actions + Node scripts + Vercel fallback route | **selected** |
-| `admin_ops_events` | `recordAdminOpsEvent` / `recordWatchdogEvents` (`lib/ops/watchdog.ts`) | GitHub Actions (`admin-watchdog.yml` → `pnpm ops:watchdog`) + `app/api/ops/watchdog/route.ts` | deferred |
+| `admin_ops_events` | `recordAdminOpsEvent` / `recordWatchdogEvents` (`lib/ops/watchdog.ts`) | GitHub Actions (`admin-watchdog.yml` ??`pnpm ops:watchdog`) + `app/api/ops/watchdog/route.ts` | deferred |
 | `admin_jobs`, `admin_job_events` | `lib/db/admin-jobs.ts` | Node admin routes + P1 worker | deferred (mutable queue state) |
 | `admin_command_*`, P5 evidence | command control plane | Node worker/scripts | deferred (higher-risk state machine) |
 | MasterDash control/SSO, `llm_settings` | Node API routes | mutable upsert state | deferred |
@@ -56,7 +56,7 @@ endpoint.
   `recordWorkflowHeartbeat`, so a single client seam covers all GitHub/Node
   callers at once.
 - **No secret leakage required.** The heartbeat carries no article/credential
-  material — only a bounded key, status, run id, timestamp and a small detail
+  material ??only a bounded key, status, run id, timestamp and a small detail
   object.
 
 `admin_ops_events` is deferred: its writer has a read-before-write dedupe path
@@ -67,7 +67,7 @@ it needs a slightly broader compatibility contract. It is the natural M11.4.
 
 Three separate trust boundaries, each least-privilege:
 
-1. **Node/GitHub → Cloudflare boundary (public HTTPS, bearer).**
+1. **Node/GitHub ??Cloudflare boundary (public HTTPS, bearer).**
    `worldcons-ops-write` is a dedicated Worker with a **publicly reachable
    workers.dev endpoint** (`workers_dev=true`) and **preview URLs disabled**
    (`preview_urls=false`). It declares no `routes`/`route` and no custom domain,
@@ -79,15 +79,15 @@ Three separate trust boundaries, each least-privilege:
    bearer `OPS_WRITE_TOKEN` secret. There is no unauthenticated diagnostic
    endpoint: `GET /health` also requires the bearer and cannot be used as a
    public probe. The endpoint is therefore publicly reachable but
-   bearer-authenticated and narrow — not private and not internal-only.
-2. **Cloudflare boundary → D1 or Supabase.** The boundary resolves the write
+   bearer-authenticated and narrow ??not private and not internal-only.
+2. **Cloudflare boundary ??D1 or Supabase.** The boundary resolves the write
    authority from its own `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` var,
    independent of the caller. `d1-canary` selects only the explicit canary run
    id; `d1` routes every heartbeat to `worldcons_ops` with one parameterized
    upsert (no caller value enters SQL text); `supabase` relays to the internal
    `worldcons-search` compatibility bridge. A D1 failure returns 503 and is
    **never** silently downgraded to Supabase.
-3. **`worldcons-search` bridge → Supabase.** The bridge calls the
+3. **`worldcons-search` bridge ??Supabase.** The bridge calls the
    `ops_workflow_heartbeat_v1` RPC with the existing M9 temporary Supabase
    credential, so the credential stays exactly where it already lives and is not
    copied into the GitHub caller path or the new Worker. `worldcons-search`
@@ -167,27 +167,27 @@ WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
 
 ## Files
 
-- `lib/cloudflare/ops-write/heartbeat.ts` — shared contract: authority
+- `lib/cloudflare/ops-write/heartbeat.ts` ??shared contract: authority
   resolution, canary selector, RPC-equivalent validation, parameterized D1
   upsert.
-- `lib/cloudflare/ops-write/boundary-client.ts` — Node/GitHub client seam.
-- `workers/ops-write/{wrangler.jsonc,tsconfig.json,src/index.ts}` — publicly
+- `lib/cloudflare/ops-write/boundary-client.ts` ??Node/GitHub client seam.
+- `workers/ops-write/{wrangler.jsonc,tsconfig.json,src/index.ts}` ??publicly
   reachable, bearer-authenticated boundary Worker.
-- `workers/search-service/src/index.ts` — new internal
+- `workers/search-service/src/index.ts` ??new internal
   `/internal/ops-heartbeat/write` Supabase RPC bridge.
-- `lib/ops/workflow-heartbeat.ts` — the real Node/GitHub call path now routes
+- `lib/ops/workflow-heartbeat.ts` ??the real Node/GitHub call path now routes
   through the seam before falling back to the local RPC.
 - `.github/workflows/{crawlee-worker,summary-drain,embedding-backfill,admin-watchdog,admin-command-worker-p1}.yml`
-  — each heartbeat-producing job env block wires the authority (repo var,
+  ??each heartbeat-producing job env block wires the authority (repo var,
   defaulting to `supabase`), base URL (repo var) and token (repo secret) into
   the Node process.
-- `tests/m11-ops-heartbeat-write-boundary.test.ts` — 17 focused tests,
+- `tests/m11-ops-heartbeat-write-boundary.test.ts` ??17 focused tests,
   including ones that assert the deployed `wrangler.jsonc` is externally
   reachable only via workers.dev with preview URLs disabled and mandatory bearer
   auth, that `worldcons-search` stays internal-only, and that every
   heartbeat-producing workflow wires the boundary env from `vars`/`secrets`
   with a `supabase` default and no committed token value.
-- `package.json`, `tsconfig.json`, `.env.example` — scripts, excludes, docs.
+- `package.json`, `tsconfig.json`, `.env.example` ??scripts, excludes, docs.
 
 ## Verification (local, no live proof)
 
@@ -232,12 +232,12 @@ WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
      The canary is therefore driven by a controller-issued authenticated request
      to `POST /v1/ops/heartbeat` (or an equivalent one-off canary driver) that
      sets `run_id=m11-ops-heartbeat-canary`; the Node-side writer is only used to
-     prove the seam routes to the boundary at all. This mirrors M11.0–M11.2,
+     prove the seam routes to the boundary at all. This mirrors M11.0?�M11.2,
      where the canary selector keys on caller-controlled input.
 5. **Coordinate both authority vars for full `d1`.** Switch both the Node-side and
    boundary Worker authority vars to `d1` with an ordinary heartbeat; confirm
    D1 +1 / Supabase unchanged (the execution environment may block outbound
-   calls, as it did for M11.1/M11.2 — if so, record the block and do not claim
+   calls, as it did for M11.1/M11.2 ??if so, record the block and do not claim
    full `d1`).
 6. Roll both authority vars back to `supabase`; confirm the ordinary RPC path
    resumes (Node sends nothing to the boundary under `supabase`).
@@ -255,7 +255,7 @@ WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
 - M11 is not globally complete: ingest and core/publication remain pending, and
   no full-D1 ops authority cutover is claimed.
 
-## M11.3R — ops_workflow_heartbeats read-authority parity
+## M11.3R ??ops_workflow_heartbeats read-authority parity
 
 Date: 2026-09-28. This is the read-authority parity step M11.3 explicitly
 deferred. It is **read-only** and resolves the read authority **independently**
@@ -298,7 +298,7 @@ cutover an explicit, individually reversible operator action.
   It resolves the read authority independently. Under `d1` it runs one
   parameterized `SELECT workflow_key, last_started_at, last_completed_at,
   last_status, run_id FROM ops_workflow_heartbeats WHERE workflow_key IN (?, ...)`
-  over the five authored keys — the exact projection the Supabase reader uses, no
+  over the five authored keys ??the exact projection the Supabase reader uses, no
   `detail`/`updated_at`. Under the resting `supabase` it returns a fail-closed
   `503 READ_AUTHORITY_UNAVAILABLE` and **never** relays Supabase, so a caller that
   selected the D1 read authority can never be silently served a Supabase row.
@@ -331,20 +331,20 @@ contract (`OPS_HEARTBEAT_WORKFLOW_KEYS`) so the Worker and the Node reader agree
 
 ### Files (M11.3R)
 
-- `lib/cloudflare/ops-write/heartbeat.ts` — read authority resolver + runtime
+- `lib/cloudflare/ops-write/heartbeat.ts` ??read authority resolver + runtime
   slot, canonical keys, `parseOpsHeartbeatReadRow/Record`, parameterized
   `readOpsHeartbeatsFromD1`.
-- `lib/cloudflare/ops-write/boundary-client.ts` — `readOpsHeartbeatsViaBoundary`
+- `lib/cloudflare/ops-write/boundary-client.ts` ??`readOpsHeartbeatsViaBoundary`
   Node/GitHub client.
-- `lib/ops/workflow-heartbeat.ts` — `getWorkflowHeartbeats` selects the D1 read
+- `lib/ops/workflow-heartbeat.ts` ??`getWorkflowHeartbeats` selects the D1 read
   boundary when the read authority is `d1`, fails closed.
-- `workers/ops-write/src/index.ts` — bearer-authenticated
+- `workers/ops-write/src/index.ts` ??bearer-authenticated
   `GET /v1/ops/heartbeats`.
-- `workers/ops-write/wrangler.jsonc` — resting `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase`.
-- `worker/index.ts`, `wrangler.jsonc` — Cloudflare runtime read-authority slot.
-- `.github/workflows/admin-watchdog.yml` — read authority repo var (default
-  `supabase`); `.env.example` — documented.
-- `tests/m11-ops-heartbeat-read-authority.test.ts` — 12 focused tests.
+- `workers/ops-write/wrangler.jsonc` ??resting `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase`.
+- `worker/index.ts`, `wrangler.jsonc` ??Cloudflare runtime read-authority slot.
+- `.github/workflows/admin-watchdog.yml` ??read authority repo var (default
+  `supabase`); `.env.example` ??documented.
+- `tests/m11-ops-heartbeat-read-authority.test.ts` ??12 focused tests.
 
 ### M11.3R verification (local, no live proof)
 
@@ -371,7 +371,7 @@ contract (`OPS_HEARTBEAT_WORKFLOW_KEYS`) so the Worker and the Node reader agree
 4. Confirm ordinary Node/GitHub and Cloudflare readers now read D1.
 5. Roll the read authority back to `supabase` and confirm the local read resumes.
 
-## M11.3-OIDC — GitHub Actions OIDC trust for the boundary
+## M11.3-OIDC ??GitHub Actions OIDC trust for the boundary
 
 Date: 2026-09-28. This step is the direct follow-up to M11.3: the original
 design authenticated GitHub-hosted callers with the shared repository secret
@@ -385,11 +385,11 @@ secret at all**.
 
 The `worldcons-ops-write` boundary now accepts **either** of two trust paths:
 
-1. **Primary — GitHub Actions OIDC (secret-free).** A GitHub-hosted job grants
+1. **Primary ??GitHub Actions OIDC (secret-free).** A GitHub-hosted job grants
    `id-token: write`, the Node client requests a JWT for the dedicated audience
    `worldcons-ops-write` from the Actions OIDC endpoint at runtime, and the
    boundary verifies it in-Worker before authorizing the request.
-2. **Secondary — optional constant-time `OPS_WRITE_TOKEN` bearer.** Retained
+2. **Secondary ??optional constant-time `OPS_WRITE_TOKEN` bearer.** Retained
    only for operator canary calls and non-GitHub callers. It is **no longer a
    required Wrangler secret**, so the first Worker creation succeeds without it,
    and it is checked only after OIDC fails.
@@ -475,21 +475,21 @@ receives a shared credentials secret.
 
 ### Files (M11.3-OIDC)
 
-- `lib/cloudflare/ops-write/github-oidc.ts` — strict OIDC verification
+- `lib/cloudflare/ops-write/github-oidc.ts` ??strict OIDC verification
   (discovery/JWKS, claims, replay, caching).
-- `lib/cloudflare/ops-write/boundary-client.ts` — OIDC-preferred auth resolution
+- `lib/cloudflare/ops-write/boundary-client.ts` ??OIDC-preferred auth resolution
   and runtime token request.
-- `workers/ops-write/src/index.ts` — dual trust auth on `/health`,
+- `workers/ops-write/src/index.ts` ??dual trust auth on `/health`,
   `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat`.
-- `workers/ops-write/wrangler.jsonc` + `worker-configuration.d.ts` — audience
+- `workers/ops-write/wrangler.jsonc` + `worker-configuration.d.ts` ??audience
   var; `OPS_WRITE_TOKEN` no longer required.
 - `.github/workflows/{crawlee-worker,summary-drain,embedding-backfill,admin-watchdog,admin-command-worker-p1}.yml`
-  — `id-token: write`, OIDC audience var, shared token removed.
-- `.env.example` — dual trust model documented.
-- `tests/m11-ops-heartbeat-oidc-auth.test.ts` — 17 focused tests.
-- `package.json`, `docs/…`, `artifacts/…` — scripts/evidence.
+  ??`id-token: write`, OIDC audience var, shared token removed.
+- `.env.example` ??dual trust model documented.
+- `tests/m11-ops-heartbeat-oidc-auth.test.ts` ??17 focused tests.
+- `package.json`, `docs/??, `artifacts/?? ??scripts/evidence.
 
-### M11.3-OIDC verification (local, plus live OIDC canary — see below)
+### M11.3-OIDC verification (local, plus live OIDC canary ??see below)
 
 - `pnpm test:m11`: 66/66 (17 new OIDC + 49 existing M11).
 - `pnpm test:ops`: 10/10; `pnpm test:masterdash`: 22/22;
@@ -507,10 +507,10 @@ The GitHub-Actions-OIDC trust for the boundary is now **live-proven**. On
 2026-09-28 the controller ran the canary from branch `codex/m7-go-search` and
 captured the following chain:
 
-1. **First live canary attempt — run `36362320031`.** The canary reached
+1. **First live canary attempt ??run `36362320031`.** The canary reached
    `POST /v1/ops/heartbeat` but the boundary returned **401**: the request was
    authenticated neither by OIDC nor by the optional bearer.
-2. **Diagnostic — run `36363873138`.** The boundary logged the stable failure
+2. **Diagnostic ??run `36363873138`.** The boundary logged the stable failure
    code **`jwks_unavailable`** from `worldcons-ops-write`. This was the single
    opaque code that collapsed every discovery/JWKS stage, so it did not yet say
    *which* stage broke.
@@ -527,12 +527,12 @@ captured the following chain:
    `jwks_fetch_failed`, `jwks_http_error`, `jwks_invalid`,
    `jwks_no_usable_keys`) and the boundary now logs only the operation and the
    stable code (plus a boolean `bearerConfigured`), never token/claim material.
-4. **Successful live canary — run `36365145716`.** On branch
+4. **Successful live canary ??run `36365145716`.** On branch
    `codex/m7-go-search`, Worker version
    `0ed20eb2-e71c-46f8-aa29-26792293a3cc`, the canary produced **two
    `POST /v1/ops/heartbeat` responses with status 200**.
 
-### What the live canary proves — and what it does not
+### What the live canary proves ??and what it does not
 
 The canary proves the **OIDC-authenticated boundary write path end-to-end**:
 GitHub Actions obtained a per-job OIDC JWT for `worldcons-ops-write`, the
@@ -570,3 +570,97 @@ the **resting Supabase** authority.
 2. A deliberate full-`d1` ops-heartbeat write cutover is not claimed.
 3. A forged foreign repository/audience/workflow token must be confirmed
    rejected with 401.
+
+## M11.3 next live canary ??one real admin-watchdog run, d1-canary only
+
+Date: 2026-09-28. This closes the M11.3 caveat that the `d1-canary` selector
+keys only on the fixed literal `m11-ops-heartbeat-canary`, which the real
+Node/GitHub writer (whose `run_id` is `GITHUB_RUN_ID`) can never emit. It is
+**not** a full-`d1` cutover: only the bounded `d1-canary` authority is used, on
+one deliberately dispatched `admin-watchdog` run, and read authority stays
+`supabase` throughout.
+
+### Code change (this step)
+
+- `lib/cloudflare/ops-write/heartbeat.ts` ??`shouldWriteOpsHeartbeatToD1` now
+  also selects a row whose `detail.m11OpsHeartbeatCanary === true` under
+  `d1-canary`; new bounded `resolveOpsHeartbeatCanaryMarker` accepts only
+  `true`/`1` (a brief window) or the run's exact id (an exact single-run pin).
+- `lib/ops/workflow-heartbeat.ts` ??`recordWorkflowHeartbeat` adds the marker
+  only when the write authority is non-resting **and** the canary marker env
+  var matches this run; `run_id` stays the real GitHub run id. Under the resting
+  `supabase` authority the detail is unchanged.
+- `.github/workflows/admin-watchdog.yml` ??optional
+  `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER` repo-var plumbing (inert when unset).
+- `.env.example`, focused tests ??documented and covered.
+
+### Canary selector env vars
+
+| Side | Env var | Canary value |
+| --- | --- | --- |
+| Boundary Worker (`worldcons-ops-write`) | `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` | `d1-canary` |
+| Boundary Worker (OIDC) | `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS` | `refs/heads/main,refs/heads/codex/m7-go-search` |
+| Node/GitHub (repo var) | `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` | `d1-canary` |
+| Node/GitHub (repo var) | `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER` | `true` (or the dispatched run id) |
+| Node/GitHub (repo var) | `WORLDCONS_OPS_WRITE_BASE_URL` | the workers.dev base URL (already set) |
+| Node/GitHub (repo var) | `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` | **unchanged `supabase`** |
+
+### Exact safe controller sequence
+
+Preconditions: the `worldcons-ops-write` Worker and `worldcons-search` bridge
+are deployed; `WORLDCONS_OPS_WRITE_BASE_URL` repo var already points at the
+workers.dev endpoint. Everything below is one deliberate window; do not leave
+any var set.
+
+1. **Baseline.** Record the Supabase and D1 `ops_workflow_heartbeats` watchdog
+   rows exactly (workflow `watchdog`, and the other four keys):
+   `SELECT workflow_key, last_started_at, last_completed_at, last_status, run_id`.
+   Expected baseline (from the M11.3-OIDC canary): D1 watchdog run id
+   `36079260476`; Supabase watchdog run id `36365145716`.
+2. **Feature-ref allowlist.** Set the boundary Worker var
+   `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS=refs/heads/main,refs/heads/codex/m7-go-search`
+   (`wrangler secret`/`vars` + redeploy) so the OIDC `ref` claim for the feature
+   branch is accepted. Both entries are well-formed and are the only extension.
+3. **Boundary authority.** Set the boundary Worker var
+   `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary` and redeploy. Leave the
+   read authority `supabase`.
+4. **Repo vars.** Set repo var `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary`
+   and repo var `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER=true`. Leave
+   `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` unset/`supabase`.
+5. **Trigger exactly one run.** Dispatch `admin-watchdog.yml` once on
+   `codex/m7-go-search` (Actions ??Run workflow). Note its GitHub run id.
+6. **Verify during the canary.**
+   - Boundary OIDC: the run's `POST /v1/ops/heartbeat` responses are **2xx**
+     (200) and the Worker logs show no `worldcons_ops_write_auth_failure`.
+   - D1: `ops_workflow_heartbeats` watchdog row `run_id` changes to that exact
+     GitHub run id; `detail.m11OpsHeartbeatCanary` is `true`; Supabase watchdog
+     `run_id` stays at its baseline value for the whole canary.
+7. **Rollback / restore all vars to the resting state.**
+   - Repo vars: delete/unset `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` (or set
+     `supabase`) and delete `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER`.
+   - Boundary Worker: set `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=supabase`,
+     remove the temporary `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS` binding,
+     and redeploy so the resting version has only the default `refs/heads/main`.
+   - Confirm unauthenticated `GET /health`, `GET /v1/ops/heartbeats` and
+     `POST /v1/ops/heartbeat` all return **401** again.
+8. **Optional cleanup.** The canary overwrote the single `watchdog` row; either
+   leave it (no schema/data change, next scheduled run overwrites it) or restore
+   the recorded pre-canary row. Do not delete the table.
+
+### Expected evidence fields
+
+- `schemaVersion`, `milestone: "M11.3-canary"`, `date`.
+- `canary.branch: "codex/m7-go-search"`, `canary.githubRunId`, the Worker
+  version id the boundary was running.
+- `canary.boundaryRequests`: method/path/status (expect 200 on
+  `/v1/ops/heartbeat`, no auth-failure log).
+- `canary.supabaseWatchdog`: `{ runId, lastStartedAt, lastCompletedAt, status }`
+  ??expected unchanged from baseline for the whole canary.
+- `canary.d1Watchdog`: `{ runId, detail.m11OpsHeartbeatCanary, lastStatus }` ??
+  expected `runId === githubRunId` and marker `true`.
+- `canary.authorityVars`: write/read/canary-marker values during the window and
+  the restored resting values.
+- `canary.restingWorker`: version id, `writeAuthority: "supabase"`,
+  `readAuthority: "supabase"`, `temporaryAllowedRefsBinding: false`,
+  unauthenticated `/health`/read/write = `401`.
+- `scope.d1WriteAuthoritySwitched: false` (only `d1-canary`, one run).

@@ -23,6 +23,19 @@ import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 
 export const OPS_HEARTBEAT_WRITE_AUTHORITY_ENV = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY";
 /**
+ * M11.3 live-canary marker. A real GitHub/Node heartbeat derives its `run_id`
+ * from `GITHUB_RUN_ID` and cannot be forced to the fixed
+ * `M11_OPS_HEARTBEAT_CANARY_RUN_ID` literal, so the `d1-canary` selector would
+ * never select a real admin-watchdog run. When this env var is set, the Node
+ * writer adds an explicit, bounded `detail.m11OpsHeartbeatCanary = true` marker
+ * (leaving `run_id` as the exact GitHub run id), and the boundary's
+ * `d1-canary` selector accepts that marker. The marker is only wired into the
+ * one deliberately dispatched canary job, so ordinary runs are never selected.
+ */
+export const OPS_HEARTBEAT_CANARY_MARKER_ENV = "WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER";
+/** Bounded detail key that marks one heartbeat as the deliberate D1 canary. */
+export const OPS_HEARTBEAT_CANARY_DETAIL_KEY = "m11OpsHeartbeatCanary";
+/**
  * M11.3R read-authority seam. Reads resolve independently of writes so a
  * staging write canary never silently changes what a reader sees. The default
  * `supabase` preserves the resting reader behavior; `d1` selects the migrated
@@ -101,13 +114,37 @@ export function resolveOpsHeartbeatWriteAuthorityConfig(
   return { authority: "supabase" };
 }
 
+/**
+ * Resolves whether one real Node/GitHub heartbeat is the deliberate D1 canary.
+ *
+ * Returns `true` only when `OPS_HEARTBEAT_CANARY_MARKER_ENV` is set to the
+ * literal `true`/`1` (a brief canary window) or exactly equals the caller's
+ * derived `run_id` (an exact, single-run pin). Any other value — including an
+ * empty/missing var — is `false`, so an ordinary run is never marked.
+ */
+export function resolveOpsHeartbeatCanaryMarker(
+  environment: OpsHeartbeatWriteAuthorityEnvironment,
+  runId: string,
+): boolean {
+  const raw = environment[OPS_HEARTBEAT_CANARY_MARKER_ENV]?.trim();
+  if (!raw) return false;
+  if (raw === "1" || raw.toLowerCase() === "true") return true;
+  return raw === runId;
+}
+
 export function shouldWriteOpsHeartbeatToD1(
   row: Pick<OpsHeartbeatWriteRow, "run_id" | "detail">,
   config: OpsHeartbeatWriteAuthorityConfig,
 ) {
   if (config.authority === "d1") return true;
   if (config.authority !== "d1-canary") return false;
-  return row.run_id === M11_OPS_HEARTBEAT_CANARY_RUN_ID;
+  // Two disjoint, caller-controlled ways to select exactly one canary heartbeat:
+  // the legacy fixed run-id literal, or the explicit detail marker a real
+  // GitHub/Node canary run emits under OPS_HEARTBEAT_CANARY_MARKER_ENV. Both
+  // leave `run_id` free to be the real GitHub run id. Ordinary heartbeats never
+  // carry either, so no ordinary or later run is selected.
+  if (row.run_id === M11_OPS_HEARTBEAT_CANARY_RUN_ID) return true;
+  return row.detail[OPS_HEARTBEAT_CANARY_DETAIL_KEY] === true;
 }
 
 /**

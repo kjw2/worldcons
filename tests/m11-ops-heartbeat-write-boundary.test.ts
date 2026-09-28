@@ -6,7 +6,10 @@ import {
   M11_OPS_HEARTBEAT_CANARY_RUN_ID,
   OPS_HEARTBEAT_BOUNDARY_PATH,
   OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH,
+  OPS_HEARTBEAT_CANARY_DETAIL_KEY,
+  OPS_HEARTBEAT_CANARY_MARKER_ENV,
   parseOpsHeartbeatWriteRow,
+  resolveOpsHeartbeatCanaryMarker,
   resolveOpsHeartbeatWriteAuthorityConfig,
   runOpsHeartbeatUpsertD1,
   shouldWriteOpsHeartbeatToD1,
@@ -87,6 +90,46 @@ test("M11.3 d1-canary only selects the explicit canary run id", () => {
     { run_id: M11_OPS_HEARTBEAT_CANARY_RUN_ID, detail: {} },
     { authority: "supabase" },
   ), false);
+});
+
+test("M11.3 d1-canary also selects the explicit real-run detail marker", () => {
+  const config = { authority: "d1-canary" as const };
+  // A real GitHub run whose run_id is the GitHub run id, marked explicitly.
+  assert.equal(shouldWriteOpsHeartbeatToD1(
+    { run_id: "github-36365145716", detail: { [OPS_HEARTBEAT_CANARY_DETAIL_KEY]: true } },
+    config,
+  ), true);
+  // The marker must be exactly `true`, not truthy.
+  assert.equal(shouldWriteOpsHeartbeatToD1(
+    { run_id: "github-36365145716", detail: { [OPS_HEARTBEAT_CANARY_DETAIL_KEY]: "true" } },
+    config,
+  ), false);
+  // An ordinary run carries no marker and is not selected.
+  assert.equal(shouldWriteOpsHeartbeatToD1(
+    { run_id: "github-999", detail: { phase: "watchdog" } },
+    config,
+  ), false);
+  // The marker is inert under the resting authority and under full d1 it is
+  // irrelevant (d1 selects everything).
+  assert.equal(shouldWriteOpsHeartbeatToD1(
+    { run_id: "github-1", detail: { [OPS_HEARTBEAT_CANARY_DETAIL_KEY]: true } },
+    { authority: "supabase" },
+  ), false);
+  assert.equal(shouldWriteOpsHeartbeatToD1(
+    { run_id: "github-1", detail: {} },
+    { authority: "d1" },
+  ), true);
+});
+
+test("M11.3 canary marker resolver accepts only a bounded true/1 or exact run id", () => {
+  assert.equal(resolveOpsHeartbeatCanaryMarker({}, "github-1"), false);
+  assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "" }, "github-1"), false);
+  assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "true" }, "github-1"), true);
+  assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "TRUE" }, "github-1"), true);
+  assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "1" }, "github-1"), true);
+  // An exact single-run pin, and a mismatching pin that must not mark.
+  assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "github-1" }, "github-1"), true);
+  assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "github-2" }, "github-1"), false);
 });
 
 test("M11.3 boundary validation mirrors the Postgres heartbeat RPC gates", () => {
@@ -286,13 +329,32 @@ test("M11.3 boundary routes d1 authority to D1 and never downgrades on failure",
   assert.equal((await canaryResponse.json() as { target: string }).target, "supabase");
   assert.equal(d1Calls, 1);
 
+  // A real GitHub run id carrying the explicit canary detail marker is routed to
+  // D1 by the d1-canary authority, even though its run_id is not the literal.
+  const markedResponse = await handleOpsHeartbeatBoundary(
+    boundRequest(heartbeatRow({
+      run_id: "github-36365145716",
+      detail: { [OPS_HEARTBEAT_CANARY_DETAIL_KEY]: true },
+    })),
+    { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1-canary" },
+    { writeToD1: async () => { d1Calls += 1; }, writeToSupabase: async () => {} },
+  );
+  assert.equal(markedResponse.status, 200);
+  assert.deepEqual(await markedResponse.json(), {
+    schemaVersion: 1,
+    ok: true,
+    authority: "d1-canary",
+    target: "d1",
+  });
+  assert.equal(d1Calls, 2);
+
   const failed = await handleOpsHeartbeatBoundary(
     boundRequest(heartbeatRow()),
     { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1" },
     { writeToD1: async () => { throw new Error("d1 down"); }, writeToSupabase: async () => { d1Calls += 100; } },
   );
   assert.equal(failed.status, 503);
-  assert.equal(d1Calls, 1);
+  assert.equal(d1Calls, 2);
 });
 
 test("M11.3 boundary relays Supabase authority through the private search bridge", async () => {
@@ -481,6 +543,46 @@ test("M11.3 Node heartbeat writer uses the boundary and skips the Supabase RPC w
       () => recordWorkflowHeartbeat("watchdog", "failed"),
       /ops_heartbeat_boundary_failed_503/u,
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  }
+});
+
+test("M11.3 Node heartbeat writer emits the bounded canary marker only in a canary window", async () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const bodies: unknown[] = [];
+  try {
+    process.env.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY = "d1-canary";
+    process.env[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV] = "https://ops.example";
+    process.env[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV] = "boundary-secret";
+    process.env.GITHUB_RUN_ID = "36365145716";
+    globalThis.fetch = (async (input, init) => {
+      bodies.push(await new Request(input, init).json());
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    // No marker env -> ordinary detail, run id is the real GitHub run id.
+    delete process.env[OPS_HEARTBEAT_CANARY_MARKER_ENV];
+    await recordWorkflowHeartbeat("watchdog", "success", { phase: "watchdog" });
+    assert.deepEqual(bodies[0], {
+      workflow_key: "watchdog",
+      status: "success",
+      run_id: "36365145716",
+      detail: { phase: "watchdog" },
+      observed_at: (bodies[0] as { observed_at: string }).observed_at,
+    });
+    assert.equal((bodies[0] as { detail: Record<string, unknown> }).detail[OPS_HEARTBEAT_CANARY_DETAIL_KEY], undefined);
+
+    // Marker set to "true" -> bounded marker added, run id unchanged.
+    process.env[OPS_HEARTBEAT_CANARY_MARKER_ENV] = "true";
+    await recordWorkflowHeartbeat("watchdog", "success", { phase: "watchdog" });
+    assert.equal((bodies[1] as { run_id: string }).run_id, "36365145716");
+    assert.equal((bodies[1] as { detail: Record<string, unknown> }).detail[OPS_HEARTBEAT_CANARY_DETAIL_KEY], true);
   } finally {
     globalThis.fetch = originalFetch;
     for (const key of Object.keys(process.env)) {

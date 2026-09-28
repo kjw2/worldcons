@@ -1,8 +1,11 @@
 import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
 import { writeOpsHeartbeatViaBoundary, readOpsHeartbeatsViaBoundary } from "@/lib/cloudflare/ops-write/boundary-client";
 import {
+  OPS_HEARTBEAT_CANARY_DETAIL_KEY,
   readOpsHeartbeatsFromD1,
   resolveEffectiveOpsHeartbeatReadAuthorityConfig,
+  resolveOpsHeartbeatCanaryMarker,
+  resolveOpsHeartbeatWriteAuthorityConfig,
   shouldReadOpsHeartbeatFromD1,
 } from "@/lib/cloudflare/ops-write/heartbeat";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
@@ -31,6 +34,20 @@ export async function recordWorkflowHeartbeat(
   const observedAt = new Date().toISOString();
   const workflowRunId = runId();
 
+  // M11.3 live-canary branch. Only when the write authority is explicitly
+  // non-resting and the bounded canary marker env var matches this exact run is
+  // one `detail` key added, so the boundary's `d1-canary` selector can pick this
+  // single run while `run_id` stays the real GitHub run id. Under the resting
+  // `supabase` authority (and any non-canary marker value) the detail is byte-for
+  // -byte unchanged, so ordinary heartbeats are never marked.
+  const writeAuthority = resolveOpsHeartbeatWriteAuthorityConfig(
+    process.env as Record<string, string | undefined>,
+  );
+  const canaryDetail = writeAuthority.authority !== "supabase"
+    && resolveOpsHeartbeatCanaryMarker(process.env as Record<string, string | undefined>, workflowRunId)
+    ? { ...detail, [OPS_HEARTBEAT_CANARY_DETAIL_KEY]: true }
+    : detail;
+
   // M11.3: when the explicit ops-heartbeat authority is enabled, Node/GitHub
   // callers deliver the heartbeat through the publicly reachable, bearer-
   // authenticated Cloudflare `worldcons-ops-write` boundary instead of the local
@@ -41,7 +58,7 @@ export async function recordWorkflowHeartbeat(
     workflowKey,
     status,
     runId: workflowRunId,
-    detail,
+    detail: canaryDetail,
     observedAt,
   });
   if (delivered) return;
