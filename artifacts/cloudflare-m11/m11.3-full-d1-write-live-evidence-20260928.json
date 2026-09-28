@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3-full-d1-write",
+  "decision": "LIVE-FULL-D1-WRITE-PASS-FOR-ORDINARY-RUN-READ-PARITY-NOT-PROVEN-M11-INCOMPLETE",
+  "status": "live_full_d1_write_pass_resting_at_supabase_read_not_live_proven",
+  "date": "2026-09-28",
+  "baseCheckpoint": "fae2b83f",
+  "branch": "codex/m7-go-search",
+  "predecessorEvidence": [
+    "artifacts/cloudflare-m11/m11.3-d1-canary-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-oidc-ops-heartbeat-auth-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-ops-heartbeat-write-boundary-20260928.json"
+  ],
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "authorityMode": "full-d1-write-window",
+    "d1WriteAuthoritySwitched": true,
+    "d1WriteAuthorityRestoredToSupabase": true,
+    "fullHeartbeatDomainD1WritePathProven": true,
+    "readAuthorityThroughout": "supabase",
+    "d1ReadAuthorityLiveProven": false,
+    "d1ReadParityLiveProven": false,
+    "m11Complete": false,
+    "ordinaryRun": true,
+    "canaryMarkerUsed": false,
+    "canaryInputUsed": false,
+    "destructiveLiveFaultInjection": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "summary": "The full heartbeat-domain D1 WRITE path was live-exercised for one deliberate window on an ordinary (non-canary) admin-watchdog dispatch run. Both write-authority vars were coordinated to d1 while read authority stayed supabase; the ordinary heartbeat landed in D1 with the real GitHub run id and an empty detail, the Supabase watchdog row stayed exactly at baseline, and all authority/bindings were restored to resting supabase afterwards. This proves the full D1 WRITE path for the tested ordinary run/window. D1 READ authority/parity is NOT live-proven, so M11 remains incomplete.",
+  "windowPreconditions": {
+    "allFiveHeartbeatWorkflowsIdle": true,
+    "idleInterpretation": "before the window none of the five heartbeat workflows (crawlee-worker, summary-drain, embedding-backfill, admin-watchdog, admin-command-worker-p1) had any running or queued runs, so no concurrent heartbeat writer could contaminate the observed window",
+    "ordinaryRunDispatched": true
+  },
+  "baseline": {
+    "supabaseRows": {
+      "catalog_backfill": "local-11948",
+      "collection": 36216022066,
+      "embedding": 36223085744,
+      "summary": 36216022066,
+      "watchdog": 36365145716
+    },
+    "d1Rows": {
+      "catalog_backfill": "local-11948",
+      "collection": 35951479432,
+      "embedding": 36075282131,
+      "summary": 36075282131,
+      "watchdog": 36367270071,
+      "watchdogBoundedCanaryMarker": true,
+      "watchdogNote": "the D1 watchdog baseline still carried the prior bounded d1-canary marker from run 36367270071"
+    }
+  },
+  "safeOrdering": {
+    "description": "authority changes were applied in a deliberate order to avoid a state where an authenticated write is accepted but cannot be routed",
+    "steps": [
+      {
+        "step": 1,
+        "action": "temporary feature-ref allowlist under the resting supabase boundary Worker version 29831266-ac98-4ac9-a45b-fa0f60792d",
+        "note": "temporary OIDC allowed-ref binding added while write/read authority were still supabase"
+      },
+      {
+        "step": 2,
+        "action": "set repo write authority to d1 and repo read authority to supabase"
+      },
+      {
+        "step": 3,
+        "action": "set boundary Worker write authority to d1 and read authority to supabase, version f943ae4f-8485-4f1e-b748-d1cfb0043bfc"
+      }
+    ]
+  },
+  "ordinaryRun": {
+    "workflow": ".github/workflows/admin-watchdog.yml",
+    "runId": 36367859952,
+    "headSha": "fae2b83f",
+    "branch": "codex/m7-go-search",
+    "canaryInput": null,
+    "canaryMarkerUsed": false,
+    "conclusion": "success"
+  },
+  "liveResult": {
+    "d1Watchdog": {
+      "runId": 36367859952,
+      "lastStartedAt": "2026-09-28T01:56:23.596Z",
+      "lastCompletedAt": "2026-09-28T01:56:32.678Z",
+      "status": "success",
+      "detail": {},
+      "runIdEqualsGithubRunId": true,
+      "markerTrue": false,
+      "interpretation": "the ordinary heartbeat write landed in D1 with the real GitHub run id and an empty detail, i.e. with no canary marker"
+    },
+    "supabaseWatchdog": {
+      "runId": 36365145716,
+      "unchangedThroughout": true,
+      "interpretation": "the Supabase watchdog row stayed exactly at baseline during the window, proving the ordinary heartbeat write went to D1 and not to Supabase"
+    },
+    "boundary": {
+      "worker": "worldcons-ops-write",
+      "versionId": "f943ae4f-8485-4f1e-b748-d1cfb0043bfc",
+      "writeAuthority": "d1",
+      "readAuthority": "supabase",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/v1/ops/heartbeat",
+          "status": 200,
+          "outcome": "ok",
+          "wallTimeMs": 303
+        },
+        {
+          "method": "POST",
+          "path": "/v1/ops/heartbeat",
+          "status": 200,
+          "outcome": "ok",
+          "wallTimeMs": 244
+        }
+      ],
+      "requestsSource": "Cloudflare Observability",
+      "authFailureCount": 0
+    }
+  },
+  "failClosed": {
+    "liveDestructiveFaultInjectionPerformed": false,
+    "acceptedInLieuOfLiveInjection": "existing fail-closed D1 failure unit test",
+    "note": "the existing fail-closed D1 failure unit test is accepted in lieu of a destructive live fault injection; the routine D1-write path was not faulted live during this window"
+  },
+  "rollback": {
+    "order": [
+      {
+        "step": 1,
+        "action": "boundary Worker restored first to write authority supabase / read authority supabase with no feature-ref binding",
+        "finalVersionId": "7e661453-4253-4297-b508-79a7d8ca3749"
+      },
+      {
+        "step": 2,
+        "action": "repo write authority restored to supabase; repo read authority remained supabase"
+      }
+    ],
+    "restoredState": {
+      "repositoryAuthorityVars": {
+        "write": "supabase",
+        "read": "supabase",
+        "restoredAfterWindow": true
+      },
+      "restingWorker": {
+        "worker": "worldcons-ops-write",
+        "versionId": "7e661453-4253-4297-b508-79a7d8ca3749",
+        "writeAuthority": "supabase",
+        "readAuthority": "supabase",
+        "featureRefBinding": false,
+        "unauthenticated": {
+          "/health": 401,
+          "GET /v1/ops/heartbeats": 401,
+          "POST /v1/ops/heartbeat": 401
+        }
+      }
+    }
+  },
+  "whatThisProves": [
+    "the full heartbeat-domain D1 WRITE path works for an ordinary (non-canary) admin-watchdog run: both write-authority vars coordinated to d1 produced a D1 watchdog row with the real GitHub run id and no marker",
+    "the Supabase watchdog row was untouched during the D1-write window, proving the ordinary write resolved to D1 and not Supabase",
+    "the OIDC-authenticated boundary accepted the ordinary run with zero auth failures (two POST /v1/ops/heartbeat calls, both 200 outcome ok)",
+    "authority changes can be applied and rolled back in the safe documented order and the resting boundary rejects unauthenticated access"
+  ],
+  "whatThisDoesNotProve": [
+    "a D1 READ authority: reads remained Supabase throughout, and no live d1 read authority or read parity is claimed",
+    "fail-closed behavior under a live D1 failure: only the existing fail-closed unit test is accepted, no destructive live fault injection was performed",
+    "M11 completion: admin_ops_events (M11.4), ingest and core/publication remain pending"
+  ],
+  "verification": {
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false,
+    "jsonValidated": true,
+    "diffCheck": "pass",
+    "liveFullD1Write": "pass_for_tested_ordinary_run_window",
+    "liveD1ReadParity": "not_run_no_proof_claimed"
+  },
+  "filesChanged": [
+    "artifacts/cloudflare-m11/m11.3-full-d1-write-live-evidence-20260928.json",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "nextGate": {
+    "name": "M11.3R live D1 read parity (no writes)",
+    "precondition": "the live full-D1-write window above is proven and all authority/bindings are restored to resting supabase",
+    "sequence": [
+      "confirm the resting boundary still rejects unauthenticated reads (401)",
+      "set the read authority to d1 on both the boundary Worker and the repo while the write authority stays supabase, so the read cutover is isolated from writes and no writes are exercised",
+      "confirm the boundary GET /v1/ops/heartbeats returns the same five-field records as the Supabase reader for the five authored keys (workflow_key/last_started_at/last_completed_at/last_status/run_id), i.e. live D1 read parity",
+      "confirm ordinary Node/GitHub and Cloudflare runtime readers resolve to D1 without any write",
+      "confirm a selected d1 read still fails closed (503) on a missing URL/token, non-2xx, malformed body or unavailable binding, never falling back to Supabase",
+      "roll the read authority back to supabase and confirm the local read resumes"
+    ],
+    "constraints": {
+      "noWrites": true,
+      "readOnly": true,
+      "readAuthorityIndependentFromWriteAuthority": true
+    },
+    "explicitNonClaims": [
+      "no combined full-d1 read/write cutover is claimed yet",
+      "M11 is not complete"
+    ]
+  },
+  "blockers": [
+    "D1 read authority and read parity are still not live-proven",
+    "fail-closed behavior under a live D1 failure is only covered by the unit test, not a live fault injection",
+    "admin_ops_events remains deferred to M11.4",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ]
+}

@@ -744,3 +744,78 @@ every authority/binding was restored.
 
 Explicit non-claims for that gate: no full heartbeat-domain D1 write authority,
 no D1 read authority/parity, and no M11 completion.
+
+## M11.3 full heartbeat-domain D1 WRITE live result (PASS, 2026-09-28)
+
+Date: 2026-09-28. Head `fae2b83f` on `codex/m7-go-search`. This executes the
+gate above: the full heartbeat-domain D1 **WRITE** path was live-exercised on
+**one** ordinary (non-canary) `admin-watchdog` dispatch run. Live evidence:
+`artifacts/cloudflare-m11/m11.3-full-d1-write-live-evidence-20260928.json`.
+
+### Observed facts
+
+- **Window precondition.** Before the window, all five heartbeat workflows had
+  **no** running or queued runs, so no concurrent writer could contaminate the
+  observation.
+- **Baseline rows.** Supabase: catalog_backfill `local-11948`, collection
+  `36216022066`, embedding `36223085744`, summary `36216022066`, watchdog
+  `36365145716`. D1: catalog_backfill `local-11948`, collection `35951479432`,
+  embedding `36075282131`, summary `36075282131`, watchdog `36367270071`
+  (bounded canary marker `true`).
+- **Safe ordering.** (1) A temporary feature-ref allowlist was set under the
+  resting `supabase` boundary Worker version
+  `29831266-ac98-4ac9-a45b-fa0f60792d`; (2) repo write authority was set to `d1`
+  and repo read authority kept `supabase`; (3) the boundary Worker write
+  authority was set to `d1` and read authority kept `supabase`, version
+  `f943ae4f-8485-4f1e-b748-d1cfb0043bfc`.
+- **Ordinary dispatch.** `admin-watchdog` run `36367859952` at head `fae2b83f`,
+  with **no canary input and no canary marker**, completed **success**.
+- **D1 result.** The D1 watchdog became run id `36367859952`,
+  `last_started_at` `2026-09-28T01:56:23.596Z`, `last_completed_at`
+  `2026-09-28T01:56:32.678Z`, status `success`, detail `{}` — the real GitHub
+  run id with **no** marker.
+- **Supabase (resting/read).** The Supabase watchdog stayed **exactly** at
+  baseline run id `36365145716`.
+- **Boundary.** Cloudflare Observability recorded two `POST /v1/ops/heartbeat`
+  calls on version `f943ae4f-8485-4f1e-b748-d1cfb0043bfc`, both **200 / outcome
+  ok**, wall times `303ms` and `244ms`; auth-failure count **0**.
+- **Fail-closed.** No destructive live fault injection was performed; the
+  existing fail-closed D1 failure unit test is accepted in lieu of it.
+- **Rollback.** Boundary Worker was restored **first** to write/read authority
+  `supabase` with no feature-ref binding, final version
+  `7e661453-4253-4297-b508-79a7d8ca3749`; then repo write authority was restored
+  to `supabase` (repo read stayed `supabase`). Unauthenticated `/health`,
+  `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat` all return **401**.
+
+### What this proves ??and what it does not
+
+**PASS: the full heartbeat-domain D1 WRITE path for the tested ordinary
+run/window.** An ordinary, non-canary heartbeat resolved to D1 through the
+coordinated full-`d1` write authority, landed with the real GitHub run id and no
+marker, and left the Supabase row untouched.
+
+> **This is NOT M11 completion.** Resting authority is Supabase, and D1 READ
+> authority/parity is still not live-proven. `admin_ops_events` (M11.4), ingest
+> and core/publication remain pending.
+
+### Next gate ??M11.3R live D1 read parity (no writes)
+
+1. **Confirm resting rejects.** The resting boundary still rejects
+   unauthenticated reads (`GET /v1/ops/heartbeats` `401`).
+2. **Isolate the read cutover.** Set `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=d1`
+   on both the boundary Worker and the repo while the write authority stays
+   `supabase`, so the read cutover is isolated and **no writes** are exercised.
+3. **Prove parity.** Confirm `GET /v1/ops/heartbeats` returns the same five-field
+   records as the Supabase reader for the five authored keys
+   (`workflow_key/last_started_at/last_completed_at/last_status/run_id`), i.e.
+   live D1 read parity.
+4. **Prove ordinary readers.** Confirm ordinary Node/GitHub and Cloudflare
+   runtime readers resolve to D1 without any write.
+5. **Prove fail-closed read.** Confirm a selected `d1` read still returns `503`
+   on a missing URL/token, non-2xx, malformed body or unavailable binding and
+   never falls back to Supabase.
+6. **Roll back.** Restore the read authority to `supabase` and confirm the local
+   read resumes.
+
+Explicit non-claims for that gate: no combined full-`d1` read/write cutover, no
+live read parity yet, and no M11 completion.

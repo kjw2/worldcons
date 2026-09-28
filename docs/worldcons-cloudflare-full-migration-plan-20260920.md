@@ -1779,6 +1779,49 @@ M11.3 real-run d1-canary live canary (2026-09-28, bounded PASS):
   the "M11.3 real-run d1-canary live result" section of
   `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`.
 
+M11.3 full heartbeat-domain D1 WRITE live window (2026-09-28, PASS for the tested
+ordinary run; M11 still incomplete):
+
+- Executes the previous gate: the full heartbeat-domain D1 **WRITE** path was
+  live-exercised for one deliberate window on one **ordinary** (non-canary)
+  `admin-watchdog` dispatch run at head `fae2b83f`. Before the window all five
+  heartbeat workflows had no running/queued runs.
+- Safe ordering: a temporary feature-ref allowlist under the resting `supabase`
+  boundary Worker version `29831266-ac98-4ac9-a45b-fa0f60792d`; repo write
+  authority set to `d1` with repo read kept `supabase`; then boundary Worker
+  write authority `d1` with read kept `supabase`, version
+  `f943ae4f-8485-4f1e-b748-d1cfb0043bfc`.
+- **PASS, ordinary run.** `admin-watchdog` run `36367859952` at head `fae2b83f`
+  with **no canary input and no canary marker** completed success. The D1
+  watchdog became run id `36367859952` (`last_started_at`
+  `2026-09-28T01:56:23.596Z`, `last_completed_at` `2026-09-28T01:56:32.678Z`,
+  status `success`, detail `{}`), while the Supabase watchdog stayed **exactly**
+  at baseline run id `36365145716`, proving the ordinary write resolved to D1.
+  Cloudflare Observability recorded two `POST /v1/ops/heartbeat` calls on
+  `f943ae4f`, both **200 / outcome ok** (303ms, 244ms), auth-failure count 0.
+- **Fail-closed.** No destructive live fault injection; the existing fail-closed
+  D1 failure unit test is accepted in lieu of it.
+- **Rolled back.** Boundary Worker restored **first** to `supabase`/`supabase`
+  with no feature-ref binding, final version
+  `7e661453-4253-4297-b508-79a7d8ca3749`; then repo write authority restored to
+  `supabase` (repo read stayed `supabase`). Unauthenticated `/health`,
+  `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat` all return `401`.
+- **PASS claim (bounded).** The full heartbeat-domain D1 WRITE path is marked
+  live PASS for the tested ordinary run/window. **Resting authority is
+  Supabase**, and **D1 READ authority/parity is still not live-proven**, so
+  **M11 remains incomplete** (`admin_ops_events`/M11.4, ingest and
+  core/publication remain pending).
+- **Next gate.** M11.3R live D1 read parity with **no writes**: keep write
+  authority `supabase`, set read authority `d1` on both the boundary Worker and
+  the repo, confirm `GET /v1/ops/heartbeats` returns the same five-field records
+  as the Supabase reader for the five authored keys, confirm ordinary Node/GitHub
+  and Cloudflare readers resolve to D1, confirm a selected `d1` read still fails
+  closed (503, never Supabase fallback), then roll the read authority back.
+- Detailed evidence:
+  `artifacts/cloudflare-m11/m11.3-full-d1-write-live-evidence-20260928.json` and
+  the "M11.3 full heartbeat-domain D1 WRITE live result" section of
+  `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`.
+
 ### M12 — Cloudflare production frontend/API cutover
 
 Objective:
@@ -2028,10 +2071,22 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   auth-failure count 0, the D1 watchdog updated to the exact GitHub run id with
   the marker while the Supabase watchdog stayed exactly at baseline run id
   `36365145716`, and all vars/bindings were restored (Worker
-  `2a38e10a-d329-4fa6-8017-a05f21a9f367`, unauthenticated paths 401). This proves
+  `2a38e10a-d329-4fa6-8017-a05f21a9f367`, unauthenticated paths 401). This proved
   only the bounded `d1-canary` write path on one run; ordinary heartbeats still
-  resolve to Supabase, reads remained Supabase (no live `d1` read parity), and a
-  full heartbeat-domain D1 write authority is **not** claimed.
+  resolved to Supabase and reads remained Supabase.
+  The subsequent full heartbeat-domain D1 WRITE window (head `fae2b83f`) then
+  live-exercised the **ordinary** write path: `admin-watchdog` run `36367859952`
+  with no canary input/marker landed in D1 with the real GitHub run id and empty
+  detail while the Supabase watchdog stayed exactly at baseline run id
+  `36365145716` (two `POST /v1/ops/heartbeat` calls 200/ok, auth-failure count 0),
+  then all authority/bindings were rolled back (boundary Worker restored first to
+  `supabase`/`supabase`, final version
+  `7e661453-4253-4297-b508-79a7d8ca3749`; repo write restored to `supabase`).
+  This marks the full heartbeat-domain D1 WRITE path **live PASS for the tested
+  ordinary run/window**, but resting authority is Supabase, D1 READ
+  authority/parity is **still not live-proven**, and `admin_ops_events` (M11.4),
+  ingest and core/publication remain pending — so **M11 remains incomplete**.
+  The next gate is M11.3R live D1 read parity with **no writes**.
   M11.3R adds the read-authority parity step: a read-only, independently
   resolved `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY=supabase|d1` (resting
   `supabase`, no `d1-canary` read mode) that routes `getWorkflowHeartbeats`
