@@ -1,4 +1,5 @@
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 export const ADMIN_AUDIT_WRITE_AUTHORITY_ENV = "WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY";
 export const M11_ADMIN_AUDIT_CANARY_ACTION = "m11.admin_audit_canary";
@@ -41,6 +42,7 @@ function runtimeGlobal(): typeof globalThis & AdminAuditWriteAuthorityGlobal {
 export function resolveAdminAuditWriteAuthorityConfig(
   environment: AdminAuditWriteAuthorityEnvironment = {},
 ): AdminAuditWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(ADMIN_AUDIT_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[ADMIN_AUDIT_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1" || raw === "d1-canary") return { authority: raw };
   return { authority: "supabase" };

@@ -37,6 +37,7 @@
   "preview_urls": false,
   "observability": { "enabled": true },
   "vars": {
+    "WORLDCONS_M13_AUTHORITY_PROFILE": "supabase",
     "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY": "supabase",
     "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY": "supabase",

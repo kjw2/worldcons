@@ -1,4 +1,5 @@
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 export const SITE_EVENTS_WRITE_AUTHORITY_ENV = "WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY";
 export const SITE_EVENTS_D1_CANARY_PATH_PREFIX = "/__m11/d1-runtime-canary";
@@ -54,6 +55,7 @@ function runtimeGlobal(): typeof globalThis & SiteEventsWriteAuthorityGlobal {
 export function resolveSiteEventsWriteAuthorityConfig(
   environment: SiteEventsWriteAuthorityEnvironment = {},
 ): SiteEventsWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(SITE_EVENTS_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[SITE_EVENTS_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1" || raw === "d1-canary") return { authority: raw };
   return { authority: "supabase" };

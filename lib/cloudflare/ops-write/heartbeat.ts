@@ -2,6 +2,7 @@ import {
   WORKFLOW_HEARTBEAT_STATUS_VALUES,
 } from "@/lib/cloudflare/d1/schema/worldcons-ops";
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 /**
  * M11.3 ops-heartbeat Cloudflare boundary contract.
@@ -109,6 +110,7 @@ export type OpsHeartbeatWriteRowParseResult =
 export function resolveOpsHeartbeatWriteAuthorityConfig(
   environment: OpsHeartbeatWriteAuthorityEnvironment = {},
 ): OpsHeartbeatWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(OPS_HEARTBEAT_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[OPS_HEARTBEAT_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1" || raw === "d1-canary") return { authority: raw };
   return { authority: "supabase" };
@@ -154,6 +156,7 @@ export function shouldWriteOpsHeartbeatToD1(
 export function resolveOpsHeartbeatReadAuthorityConfig(
   environment: OpsHeartbeatWriteAuthorityEnvironment = {},
 ): OpsHeartbeatReadAuthorityConfig {
+  if (m13ProfileValueForEnvVar(OPS_HEARTBEAT_READ_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[OPS_HEARTBEAT_READ_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1") return { authority: "d1" };
   return { authority: "supabase" };

@@ -2184,6 +2184,130 @@ Allowed only after:
 
 No deletion is automatic.
 
+M13 reality at main head `3d8b0b4` (2026-09-29): M12 production compute/traffic
+has cut over to Cloudflare, but **every M11 authority selector still rests at
+`supabase`**. M13 is therefore the deliberate, single, bounded operation that
+moves proven domains to permanent D1 authority and then runs the observation,
+export, rotation, DR and approval gates before any destructive retirement. The
+336-hour (14-day) continuous observation window does **not** start until the
+permanent D1 switch occurs.
+
+#### M13 authority profile (the single bounded switch)
+
+A new runtime-neutral contract `lib/cloudflare/m13/authority-profile.ts` owns the
+switch. It adds no parallel selector system; it sets the existing M11 env
+contracts from one variable:
+
+- `WORLDCONS_M13_AUTHORITY_PROFILE=supabase | d1` (default resting `supabase`).
+- `d1` expands to **exactly** the authored per-domain selectors, each set to
+  `d1` (never `d1-canary`):
+
+  | domain | direction | existing selector |
+  | --- | --- | --- |
+  | ops.site_events | write | `WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY` |
+  | ops.admin_audit | write | `WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY` |
+  | ops.admin_article_edit | write | `WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY` |
+  | ops.ops_heartbeat | write | `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` |
+  | ops.admin_ops_events | write | `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY` |
+  | ingest.ingestion_runs | write | `WORLDCONS_INGEST_RUN_WRITE_AUTHORITY` |
+  | core.publication | write | `WORLDCONS_CORE_WRITE_AUTHORITY` |
+  | ops.ops_heartbeat | read | `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` |
+  | ops.admin_ops_events | read | `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY` |
+
+- The profile is applied in `worker/index.ts` (main Worker) and
+  `workers/ops-write/src/index.ts` (the Node/GitHub boundary) before the existing
+  per-domain `resolve*AuthorityConfig` reads, so the same one variable moves the
+  Cloudflare runtime, the ops-write boundary and the GitHub repository vars
+  together. The resting `supabase`/unset profile leaves the environment
+  byte-for-byte untouched.
+- **Explicit rollback:** `WORLDCONS_M13_AUTHORITY_PROFILE=supabase` (or removing
+  it) restores every domain to Supabase. The exact forward and rollback maps are
+  emitted by `pnpm m13:readiness --emit-authority-env` and asserted by
+  `pnpm test:m13`.
+- **Fail closed:** any value other than `supabase`/`d1` is a hard error
+  (`m13_authority_profile.invalid_authority_profile`) and the Worker/boundary
+  refuses to serve. It is never silently treated as the resting default, so a
+  typo can neither start a cutover nor fall back mid-cutover. A selected `d1`
+  whose D1 path fails still fails closed in the existing M11 seam code; the
+  profile only resolves the selector value.
+
+The Worker/ops-write `wrangler.jsonc` rest at
+`WORLDCONS_M13_AUTHORITY_PROFILE=supabase`. The forward switch is one deployment
+of the two Worker configs plus the GitHub repository variables `WORLDCONS_*`;
+the rollback is the same operation with the value set back to `supabase`.
+
+#### M13 final Supabase -> D1 delta
+
+`lib/cloudflare/m13/final-delta.ts` wraps the existing M5.2d never-delete
+reconcile (`buildD1RemoteReconcileManifest`) in a final gate over
+`worldcons_ops`, `worldcons_ingest` and `worldcons_core`. It forces `apply:false`
+(read-only), scans **every** migratable table, and reports `deltaClear` only when
+all tables are `exact` with a matching canonical full-table hash, zero
+remote-only rows and zero pending inserts/updates. It contains no DELETE,
+TRUNCATE, REPLACE, UPSERT or DDL, and it never mutates. The final delta is closed
+by the existing separately-authorized operator
+`pnpm d1:reconcile --apply --database=<db>` (never from the readiness tool).
+
+#### M13 read-only readiness/evidence command
+
+`pnpm m13:readiness` (`scripts/m13-readiness.ts`) is strictly read-only. It
+reports the current authority profile, the per-domain assignment verification,
+the final-delta summary, the 336h observation state (via
+`--observation-start/--observation-end`), the P5 retirement evaluator state (via
+`--p5`), R2/search readiness references, stranded Vercel inventory state,
+final-export/rotation/DR records and the explicit blockers. It **cannot** claim
+readiness: `destructiveRetirementAuthorized` is always `false`, and
+`readyForDestructiveRetirement` is true only when every machine gate passes AND
+the three explicit human attestation flags are supplied. `--report` writes the
+content-free evidence to
+`artifacts/cloudflare-m13/m13-readiness-evidence.json`. `--emit-authority-env`
+prints the exact forward/rollback values without applying them.
+
+#### Single M13 execution procedure
+
+The permanent switch is allowed only after M12, and the destructive
+delete/pause step is allowed only after the final gate. Every step is bounded
+and reversible until the last; **destructive delete/pause is forbidden until the
+final gate passes**.
+
+1. **Reconcile (close the historical drift).** Confirm the final delta is zero:
+   `pnpm m13:readiness --source=supabase-linked --json` (read-only). If any table
+   is not `exact`, close it with the existing operator, one database at a time:
+   `pnpm d1:reconcile --source=supabase-linked --database=<db> --apply --report`.
+   Re-run the readiness check until `deltaClear=true` with zero refused tables and
+   zero remote-only rows. The known M11/M5.2d drift (`articles`, `tags`,
+   `article_tags`, `glossary_candidates`, `ingestion_runs`, `admin_ops_events`,
+   `ops_workflow_heartbeats`, `admin_audit_logs`, `site_events`) must be closed,
+   never falsified.
+2. **Flip D1 sole write.** Set `WORLDCONS_M13_AUTHORITY_PROFILE=d1` on both
+   Worker configs and on the GitHub repository variables, then confirm
+   `pnpm m13:readiness --json` reports `authority.profile_valid` and
+   `authority.d1_sole` PASS. Rollback is the same operation with `supabase`.
+3. **Start the 336h observation.** From the successful switch timestamp, observe
+   at least 336 continuous production hours (14 days) with zero unexplained
+   legacy Supabase writes. Record the explicit window; until it completes the
+   observation gate is a blocker.
+4. **Final Supabase export.** Produce and record the final export (plus a
+   `wrangler d1 export` snapshot to R2 for portable backup).
+5. **Stranded Vercel inventory.** Recover every stranded Vercel object to R2 with
+   size/hash/document verification, or explicitly inventory the unresolved set.
+   No Vercel object is deleted.
+6. **Credential rotation.** Rotate the exposed Supabase service-role key and DB
+   password; update every remaining deployment.
+7. **Isolated DR restore rehearsal.** Restore D1 (and the export) into an
+   isolated environment and verify, producing current restore evidence.
+8. **Distinct approvals/legal review.** Record the three distinct required owner
+   approvals (operations, data, security), the legal/retention review and the
+   explicit retirement approval. These are human attestations and are never
+   auto-satisfied.
+9. **Retirement.** Only after every gate (including `pnpm m13:readiness`
+   `readyForDestructiveRetirement=true` with attestations) may the orchestrator
+   delete/pause Supabase/Vercel resources. The read-only tool never authorizes
+   this step.
+
+Verified so far: `pnpm test:m13` and the per-module suites. The plan does not
+record any production M13 action as having occurred.
+
 ## 16. Zero-downtime data cutover
 
 Preferred sequence:
@@ -2532,3 +2656,6 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] credential rotation
 - [ ] DR rehearsal
 - [ ] explicit retirement approval
+- [ ] M13 authority profile switch (`WORLDCONS_M13_AUTHORITY_PROFILE=d1`; readiness/tests implemented, **not applied**)
+- [ ] M13 final Supabase -> D1 delta cleared across ops/ingest/core (`pnpm m13:readiness --source=supabase-linked`; **not run**)
+- [ ] M13 336h continuous D1-sole-authority observation window (**not started**)

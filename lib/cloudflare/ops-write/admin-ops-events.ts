@@ -1,4 +1,5 @@
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 /**
  * M11.4 admin_ops_events Cloudflare boundary contract.
@@ -127,6 +128,7 @@ export type AdminOpsEventWriteRowParseResult =
 export function resolveAdminOpsEventsWriteAuthorityConfig(
   environment: AdminOpsEventsEnvironment = {},
 ): AdminOpsEventsWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1" || raw === "d1-canary") return { authority: raw };
   return { authority: "supabase" };
@@ -139,6 +141,7 @@ export function resolveAdminOpsEventsWriteAuthorityConfig(
 export function resolveAdminOpsEventsReadAuthorityConfig(
   environment: AdminOpsEventsEnvironment = {},
 ): AdminOpsEventsReadAuthorityConfig {
+  if (m13ProfileValueForEnvVar(ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1") return { authority: "d1" };
   return { authority: "supabase" };

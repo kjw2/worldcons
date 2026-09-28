@@ -36,6 +36,7 @@ import {
   resolveCoreWriteAuthorityConfig,
   setRuntimeCoreWriteAuthorityConfig,
 } from "@/lib/cloudflare/core-write/authority";
+import { applyM13AuthorityProfileToEnvironment } from "@/lib/cloudflare/m13/authority-profile";
 
 interface WorldconsWorkerEnv {
   WORLDCONS_RAW: ArtifactBlobR2Bucket;
@@ -46,6 +47,7 @@ interface WorldconsWorkerEnv {
   WORLDCONS_SEARCH_SERVICE?: WorldconsSearchServiceFetcher;
   WORLDCONS_SEARCH_SERVICE_ENABLED?: string;
   WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?: string;
+  WORLDCONS_M13_AUTHORITY_PROFILE?: string;
   WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY?: string;
@@ -73,6 +75,14 @@ const handler = vinextHandler as unknown as VinextWorkerHandler;
 
 export default {
   fetch(request: Request, env: WorldconsWorkerEnv, ctx: WorkerExecutionContextLike) {
+    // M13 permanent D1 authority profile. This is the single bounded switch:
+    // when `WORLDCONS_M13_AUTHORITY_PROFILE=d1` the authored per-domain
+    // selectors are applied together; the resting `supabase`/unset profile
+    // leaves `env` untouched. An invalid profile throws here (fail closed)
+    // rather than silently running under the resting default.
+    const authorityEnv = applyM13AuthorityProfileToEnvironment(
+      env as Record<string, string | undefined>,
+    ) as WorldconsWorkerEnv;
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
@@ -83,27 +93,27 @@ export default {
       worldcons_search: env.WORLDCONS_SEARCH,
     });
     setRuntimeBackgroundScheduler(createWaitUntilBackgroundScheduler(ctx));
-    setRuntimeD1ShadowConfig(resolveD1ShadowConfig(env as Record<string, string | undefined>));
+    setRuntimeD1ShadowConfig(resolveD1ShadowConfig(authorityEnv as Record<string, string | undefined>));
     setRuntimeSiteEventsWriteAuthorityConfig(
-      resolveSiteEventsWriteAuthorityConfig(env as Record<string, string | undefined>),
+      resolveSiteEventsWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeAdminAuditWriteAuthorityConfig(
-      resolveAdminAuditWriteAuthorityConfig(env as Record<string, string | undefined>),
+      resolveAdminAuditWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeAdminArticleEditWriteAuthorityConfig(
-      resolveAdminArticleEditWriteAuthorityConfig(env as Record<string, string | undefined>),
+      resolveAdminArticleEditWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeOpsHeartbeatReadAuthorityConfig(
-      resolveOpsHeartbeatReadAuthorityConfig(env as Record<string, string | undefined>),
+      resolveOpsHeartbeatReadAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeAdminOpsEventsWriteAuthorityConfig(
-      resolveAdminOpsEventsWriteAuthorityConfig(env as Record<string, string | undefined>),
+      resolveAdminOpsEventsWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeAdminOpsEventsReadAuthorityConfig(
-      resolveAdminOpsEventsReadAuthorityConfig(env as Record<string, string | undefined>),
+      resolveAdminOpsEventsReadAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeCoreWriteAuthorityConfig(
-      resolveCoreWriteAuthorityConfig(env as Record<string, string | undefined>),
+      resolveCoreWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
     setRuntimeSearchServiceBinding(
       env.WORLDCONS_SEARCH_SERVICE,

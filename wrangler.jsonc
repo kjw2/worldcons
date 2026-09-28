@@ -31,6 +31,7 @@
   "vars": {
     "APP_BASE_URL": "https://worldcons.soltera.dev",
     "WORLDCONS_BASE_URL": "https://worldcons.soltera.dev",
+    "WORLDCONS_M13_AUTHORITY_PROFILE": "supabase",
     "WORLDCONS_CORE_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_D1_SHADOW_READ_ENABLED": "false",
     "WORLDCONS_D1_SHADOW_COMPARE_ENABLED": "false",

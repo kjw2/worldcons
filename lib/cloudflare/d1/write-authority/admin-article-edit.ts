@@ -1,4 +1,5 @@
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 export const ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY_ENV = "WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY";
 export const M11_ADMIN_ARTICLE_EDIT_CANARY_ARTICLE_SLUG = "m11-admin-article-edit-canary";
@@ -34,6 +35,7 @@ function runtimeGlobal(): typeof globalThis & AdminArticleEditWriteAuthorityGlob
 export function resolveAdminArticleEditWriteAuthorityConfig(
   environment: AdminArticleEditWriteAuthorityEnvironment = {},
 ): AdminArticleEditWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1" || raw === "d1-canary") return { authority: raw };
   return { authority: "supabase" };

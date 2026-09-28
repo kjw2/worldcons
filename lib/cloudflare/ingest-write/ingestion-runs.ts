@@ -1,4 +1,5 @@
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 export const INGEST_RUN_WRITE_AUTHORITY_ENV = "WORLDCONS_INGEST_RUN_WRITE_AUTHORITY";
 export const INGEST_RUN_CANARY_MARKER_ENV = "WORLDCONS_INGEST_RUN_CANARY_MARKER";
@@ -88,6 +89,7 @@ function metadata(value: unknown) {
 export function resolveIngestRunWriteAuthorityConfig(
   environment: IngestRunWriteAuthorityEnvironment = {},
 ): IngestRunWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(INGEST_RUN_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[INGEST_RUN_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   if (raw === "d1" || raw === "d1-canary") return { authority: raw };
   return { authority: "supabase" };

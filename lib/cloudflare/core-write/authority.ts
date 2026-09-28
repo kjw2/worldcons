@@ -22,6 +22,7 @@ import type {
   D1RuntimePreparedStatement,
   D1RuntimeResult,
 } from "@/lib/cloudflare/d1/runtime-binding";
+import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override";
 
 export const CORE_WRITE_AUTHORITY_ENV = "WORLDCONS_CORE_WRITE_AUTHORITY";
 export const CORE_WRITE_CANARY_MARKER_ENV = "WORLDCONS_CORE_WRITE_CANARY_MARKER";
@@ -45,6 +46,7 @@ function runtimeGlobal() {
 export function resolveCoreWriteAuthorityConfig(
   environment: Record<string, string | undefined> = {},
 ): CoreWriteAuthorityConfig {
+  if (m13ProfileValueForEnvVar(CORE_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[CORE_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
   return raw === "d1" || raw === "d1-canary" ? { authority: raw } : { authority: "supabase" };
 }

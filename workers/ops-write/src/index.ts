@@ -62,6 +62,7 @@ import {
 } from "@/lib/cloudflare/core-write/authority";
 import type { ArticleLifecycleTransitionInput } from "@/lib/article-lifecycle/types";
 import type { ArticlePublicationTransitionInput } from "@/lib/article-publication/types";
+import { applyM13AuthorityProfileToEnvironment } from "@/lib/cloudflare/m13/authority-profile";
 
 export interface OpsWriteServiceFetcher {
   fetch(request: Request): Promise<Response>;
@@ -75,6 +76,7 @@ export interface WorldconsOpsWriteWorkerEnv {
    * bearer still works for operator canary calls and non-GitHub callers.
    */
   OPS_WRITE_TOKEN?: string;
+  WORLDCONS_M13_AUTHORITY_PROFILE?: string;
   WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY?: string;
   WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY?: string;
   WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE?: string;
@@ -604,7 +606,15 @@ export async function handleOpsHeartbeatBoundary(
 
 const opsWriteWorker = {
   async fetch(request: Request, env: WorldconsOpsWriteWorkerEnv) {
-    return handleOpsHeartbeatBoundary(request, env);
+    // M13 permanent D1 authority profile. The boundary applies the single
+    // bounded switch over its own `env` so every ops-write domain it owns
+    // (heartbeats, admin ops events, ingestion runs, core publication) moves
+    // together. The resting profile leaves `env` untouched; an invalid profile
+    // throws here (fail closed) rather than silently serving the resting default.
+    const authorityEnv = applyM13AuthorityProfileToEnvironment(
+      env as Record<string, string | undefined>,
+    ) as WorldconsOpsWriteWorkerEnv;
+    return handleOpsHeartbeatBoundary(request, authorityEnv);
   },
 };
 
