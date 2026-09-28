@@ -132,6 +132,27 @@ test("M11.3 canary marker resolver accepts only a bounded true/1 or exact run id
   assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "github-2" }, "github-1"), false);
 });
 
+test("M11.3 admin-watchdog pins the canary marker to the dispatched run id only", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
+
+  // The canary marker is derived from the dispatch input and the exact run id,
+  // never from a shared repo var that a later unrelated run could inherit.
+  assert.equal(
+    source.split("WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.ops_heartbeat_canary == true && github.run_id || '' }}").length - 1,
+    1,
+    "admin-watchdog.yml must pin the canary marker to the dispatched run id exactly once",
+  );
+  assert.doesNotMatch(
+    source,
+    /vars\.WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER/u,
+    "admin-watchdog.yml must not fall back to the shared canary-marker repo var",
+  );
+
+  // The explicit dispatch-only boolean input is declared.
+  assert.match(source, /^\s*ops_heartbeat_canary:\s*$/m);
+  assert.match(source, /type:\s*boolean/u);
+});
+
 test("M11.3 boundary validation mirrors the Postgres heartbeat RPC gates", () => {
   assert.equal(parseOpsHeartbeatWriteRow(heartbeatRow()).ok, true);
 

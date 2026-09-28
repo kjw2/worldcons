@@ -17,7 +17,7 @@ live canary.
 
 ## Why a boundary is needed
 
-The remaining `worldcons_ops` writers selected by M11.0?“M11.2 run from the
+The remaining `worldcons_ops` writers selected by M11.0?ï¿½M11.2 run from the
 Cloudflare runtime and could use the M9 `WORLDCONS_SEARCH_SERVICE` Service
 Binding compatibility bridge. `admin_ops_events` and `ops_workflow_heartbeats`
 are different: their writers run from GitHub Actions and Node scripts
@@ -232,7 +232,7 @@ WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
      The canary is therefore driven by a controller-issued authenticated request
      to `POST /v1/ops/heartbeat` (or an equivalent one-off canary driver) that
      sets `run_id=m11-ops-heartbeat-canary`; the Node-side writer is only used to
-     prove the seam routes to the boundary at all. This mirrors M11.0?“M11.2,
+     prove the seam routes to the boundary at all. This mirrors M11.0?ï¿½M11.2,
      where the canary selector keys on caller-controlled input.
 5. **Coordinate both authority vars for full `d1`.** Switch both the Node-side and
    boundary Worker authority vars to `d1` with an ordinary heartbeat; confirm
@@ -590,8 +590,12 @@ one deliberately dispatched `admin-watchdog` run, and read authority stays
   only when the write authority is non-resting **and** the canary marker env
   var matches this run; `run_id` stays the real GitHub run id. Under the resting
   `supabase` authority the detail is unchanged.
-- `.github/workflows/admin-watchdog.yml` ??optional
-  `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER` repo-var plumbing (inert when unset).
+- `.github/workflows/admin-watchdog.yml` ??explicit `workflow_dispatch`-only
+  `ops_heartbeat_canary` boolean input. Only `ops_heartbeat_canary=true` pins
+  `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER` to `${{ github.run_id }}` for that one
+  run; scheduled and ordinary manual runs get an empty marker. The shared
+  canary-marker repo var and its plumbing were removed, so a lingering value can
+  never select an unrelated watchdog run.
 - `.env.example`, focused tests ??documented and covered.
 
 ### Canary selector env vars
@@ -601,7 +605,7 @@ one deliberately dispatched `admin-watchdog` run, and read authority stays
 | Boundary Worker (`worldcons-ops-write`) | `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` | `d1-canary` |
 | Boundary Worker (OIDC) | `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS` | `refs/heads/main,refs/heads/codex/m7-go-search` |
 | Node/GitHub (repo var) | `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` | `d1-canary` |
-| Node/GitHub (repo var) | `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER` | `true` (or the dispatched run id) |
+| Node/GitHub (dispatch input) | `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER` | `ops_heartbeat_canary=true` pins `${{ github.run_id }}` (no repo var) |
 | Node/GitHub (repo var) | `WORLDCONS_OPS_WRITE_BASE_URL` | the workers.dev base URL (already set) |
 | Node/GitHub (repo var) | `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` | **unchanged `supabase`** |
 
@@ -624,11 +628,14 @@ any var set.
 3. **Boundary authority.** Set the boundary Worker var
    `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary` and redeploy. Leave the
    read authority `supabase`.
-4. **Repo vars.** Set repo var `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary`
-   and repo var `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER=true`. Leave
-   `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` unset/`supabase`.
+4. **Repo vars.** Set only the repo var
+   `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary`. Do **not** set any
+   canary-marker repo var. Leave `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY`
+   unset/`supabase`.
 5. **Trigger exactly one run.** Dispatch `admin-watchdog.yml` once on
-   `codex/m7-go-search` (Actions ??Run workflow). Note its GitHub run id.
+   `codex/m7-go-search` with the `ops_heartbeat_canary` input set to `true`
+   (Actions ??Run workflow). The workflow pins the canary marker to that
+   dispatch's exact `github.run_id`; note the run id.
 6. **Verify during the canary.**
    - Boundary OIDC: the run's `POST /v1/ops/heartbeat` responses are **2xx**
      (200) and the Worker logs show no `worldcons_ops_write_auth_failure`.
@@ -637,7 +644,8 @@ any var set.
      `run_id` stays at its baseline value for the whole canary.
 7. **Rollback / restore all vars to the resting state.**
    - Repo vars: delete/unset `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` (or set
-     `supabase`) and delete `WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER`.
+     `supabase`). There is no canary-marker repo var to delete â€” the marker is
+     pinned per dispatch.
    - Boundary Worker: set `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=supabase`,
      remove the temporary `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS` binding,
      and redeploy so the resting version has only the default `refs/heads/main`.

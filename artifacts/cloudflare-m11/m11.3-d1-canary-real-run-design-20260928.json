@@ -30,6 +30,8 @@
     ],
     "nodeMarkerEnv": "WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER",
     "nodeMarkerAcceptedValues": ["true", "1", "<exact GITHUB_RUN_ID>"],
+    "nodeMarkerSource": "admin-watchdog.yml workflow_dispatch input ops_heartbeat_canary=true pins ${{ github.run_id }} for that one run",
+    "nodeMarkerRepoVarFallback": false,
     "defaultWhenUnset": "no marker; ordinary detail unchanged",
     "requiresNonRestingWriteAuthority": true
   },
@@ -46,11 +48,11 @@
     "record baseline Supabase + D1 watchdog rows (all five keys) incl. D1 watchdog run_id 36079260476 and Supabase watchdog run_id 36365145716",
     "set boundary Worker var WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS=refs/heads/main,refs/heads/codex/m7-go-search and redeploy",
     "set boundary Worker var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary and redeploy; leave read authority supabase",
-    "set repo var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary and repo var WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER=true; leave read authority unset/supabase",
-    "dispatch admin-watchdog.yml exactly once on codex/m7-go-search; note the GitHub run id",
+    "set repo var WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY=d1-canary; leave the canary marker out of repo vars and leave read authority unset/supabase",
+    "dispatch admin-watchdog.yml exactly once on codex/m7-go-search with input ops_heartbeat_canary=true; note the GitHub run id (the workflow pins the marker to that exact id)",
     "verify OIDC 2xx on POST /v1/ops/heartbeat with no worldcons_ops_write_auth_failure log",
     "verify D1 watchdog run_id becomes the exact GitHub run id with detail.m11OpsHeartbeatCanary=true and Supabase watchdog run_id stays at baseline throughout",
-    "restore: unset repo write authority and canary marker; set boundary Worker write authority back to supabase; remove the temporary allowed-refs binding; redeploy",
+    "restore: unset repo write authority; set boundary Worker write authority back to supabase; remove the temporary allowed-refs binding; redeploy (no canary-marker repo var exists to unset)",
     "verify unauthenticated GET /health, GET /v1/ops/heartbeats and POST /v1/ops/heartbeat all return 401"
   ],
   "expectedEvidenceFields": [
@@ -66,8 +68,8 @@
     "scope.d1WriteAuthoritySwitched (false)"
   ],
   "verification": {
-    "m11Tests": "74/74",
-    "newCanaryTests": "3",
+    "m11Tests": "75/75",
+    "newCanaryTests": "4",
     "opsTests": "10/10",
     "masterdashTests": "22/22",
     "rootTypecheck": "pass",

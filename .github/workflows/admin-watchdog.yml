@@ -7,6 +7,11 @@ on:
         description: Stable Cloudflare M8 orchestration identity
         required: false
         default: "manual"
+      ops_heartbeat_canary:
+        description: Mark only this dispatched run as the M11.3 D1 heartbeat canary
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,13 +74,14 @@ jobs:
       # "supabase" and is only consulted when explicitly "d1"; it shares the same
       # boundary base URL and OIDC audience and fails closed if D1 is unavailable.
       WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'supabase' }}
-      # M11.3 live D1 canary selector (optional, inert when unset). When the repo
-      # var is set to "true"/"1" (or this run's exact id) for one deliberate
-      # canary window, the Node writer adds the bounded
-      # detail.m11OpsHeartbeatCanary marker so the boundary's d1-canary authority
-      # selects exactly this run. Leave it unset in the resting state; ordinary
-      # runs never emit the marker.
-      WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ vars.WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER }}
+      # M11.3 live D1 canary selector. Only an explicit workflow_dispatch with
+      # ops_heartbeat_canary=true pins the marker to THIS run's exact id, so the
+      # Node writer adds the bounded detail.m11OpsHeartbeatCanary marker and the
+      # boundary's d1-canary authority selects exactly this run. Scheduled runs
+      # and ordinary manual runs have no marker and are never selected. The
+      # risky shared repo var is deliberately removed: a lingering repo var could
+      # make an unrelated watchdog run the canary.
+      WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.ops_heartbeat_canary == true && github.run_id || '' }}
       WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
       WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
