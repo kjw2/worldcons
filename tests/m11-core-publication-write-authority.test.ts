@@ -100,10 +100,10 @@ test("M11-C lifecycle transition is a D1 batch with optimistic revision and appe
   assert.equal(db.batches.length, 1);
   assert.equal(db.batches[0].length, 2);
   assert.match(db.batches[0][0].sql, /UPDATE articles SET/u);
-  assert.match(db.batches[0][0].sql, /WHERE id=\? AND lifecycle_revision=\?/u);
+  assert.match(db.batches[0][0].sql, /WHERE id=\? AND CAST\(lifecycle_revision AS INTEGER\)=\?/u);
   assert.match(db.batches[0][1].sql, /INSERT INTO article_lifecycle_events_p2/u);
   assert.match(db.batches[0][1].sql, /WHERE EXISTS/u);
-  assert.equal(db.batches[0][0].values.at(-1), "3");
+  assert.equal(db.batches[0][0].values.at(-1), 3);
   assert.ok(db.batches[0].every((statement) => !statement.sql.includes(articleId)));
 });
 
