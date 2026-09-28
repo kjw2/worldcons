@@ -229,7 +229,14 @@ test("M11.3R boundary read returns D1 rows under d1 and 503 under resting supaba
 test("M11.3R Node read client is default-off and fails closed when d1 is selected", async () => {
   assert.deepEqual(
     resolveOpsHeartbeatReadBoundaryConfig({}),
-    { authority: "supabase", enabled: false, baseUrl: null, token: null },
+    {
+      authority: "supabase",
+      enabled: false,
+      baseUrl: null,
+      token: null,
+      oidcToken: null,
+      oidcAudience: "worldcons-ops-write",
+    },
   );
   assert.equal(
     await readOpsHeartbeatsViaBoundary({ environment: {}, fetcher: async () => new Response() }),
@@ -246,6 +253,8 @@ test("M11.3R Node read client is default-off and fails closed when d1 is selecte
     enabled: true,
     baseUrl: "https://ops.example",
     token: "boundary-secret",
+    oidcToken: null,
+    oidcAudience: "worldcons-ops-write",
   });
 
   const seen: { url: string; method: string; authorization: string | null }[] = [];
@@ -286,7 +295,7 @@ test("M11.3R Node read client is default-off and fails closed when d1 is selecte
       environment: { [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "d1", [OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]: "https://ops.example" },
       fetcher: async () => new Response(),
     }),
-    /ops_heartbeat_read_boundary\.token_unavailable/u,
+    /ops_heartbeat_read_boundary\.auth_unavailable/u,
   );
 
   await assert.rejects(

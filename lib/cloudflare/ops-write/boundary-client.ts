@@ -32,6 +32,11 @@ import {
 
 export const OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV = "WORLDCONS_OPS_WRITE_BASE_URL";
 export const OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV = "WORLDCONS_OPS_WRITE_TOKEN";
+/** Optional explicit GitHub OIDC JWT, useful for tests/operator one-offs. */
+export const OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV = "WORLDCONS_OPS_WRITE_OIDC_TOKEN";
+/** Dedicated OIDC audience; must match the boundary's configured audience. */
+export const OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV = "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE";
+export const OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE = "worldcons-ops-write";
 const OPS_HEARTBEAT_BOUNDARY_TIMEOUT_MS = 5_000;
 
 export interface OpsHeartbeatBoundaryEnvironment {
@@ -42,7 +47,11 @@ export interface OpsHeartbeatBoundaryConfig {
   authority: "supabase" | "d1-canary" | "d1";
   enabled: boolean;
   baseUrl: string | null;
+  /** Optional operator/legacy shared bearer (the boundary's OPS_WRITE_TOKEN). */
   token: string | null;
+  /** Optional explicit OIDC JWT; otherwise one is requested from the Actions runtime. */
+  oidcToken: string | null;
+  oidcAudience: string;
 }
 
 export interface OpsHeartbeatBoundaryInput {
@@ -56,6 +65,13 @@ export interface OpsHeartbeatBoundaryInput {
 export interface OpsHeartbeatBoundaryOptions {
   fetcher?: typeof fetch;
   environment?: OpsHeartbeatBoundaryEnvironment;
+  /**
+   * Supplies the Authorization header value for the boundary request. When
+   * omitted, an OIDC token is preferred (explicit env, then a live request to
+   * the GitHub Actions OIDC endpoint when `ACTIONS_ID_TOKEN_REQUEST_URL` is
+   * present), and the optional shared bearer is used only as a fallback.
+   */
+  authTokenProvider?: () => Promise<string | null>;
 }
 
 function trimToNull(value: string | undefined) {
@@ -69,12 +85,78 @@ export function resolveOpsHeartbeatBoundaryConfig(
   const authority = resolveOpsHeartbeatWriteAuthorityConfig(environment).authority;
   const enabled = authority !== "supabase";
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
+  const audience = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]);
   return {
     authority,
     enabled,
     baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null,
     token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
+    oidcToken: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]),
+    oidcAudience: audience ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   };
+}
+
+/**
+ * Requests a short-lived GitHub Actions OIDC JWT for the dedicated audience.
+ *
+ * The Actions runtime injects `ACTIONS_ID_TOKEN_REQUEST_URL` /
+ * `ACTIONS_ID_TOKEN_REQUEST_TOKEN` and only then can a token be minted; the
+ * value is returned to the caller and never logged. Returns `null` outside
+ * GitHub Actions (or when the workflow lacks `id-token: write`), letting the
+ * caller fall back to the optional bearer.
+ */
+export async function requestGithubActionsOidcToken(
+  environment: OpsHeartbeatBoundaryEnvironment = process.env as OpsHeartbeatBoundaryEnvironment,
+  fetcher: typeof fetch = fetch,
+): Promise<string | null> {
+  const requestUrl = trimToNull(environment.ACTIONS_ID_TOKEN_REQUEST_URL);
+  const requestToken = trimToNull(environment.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
+  if (!requestUrl || !requestToken) return null;
+  const audience = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV])
+    ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE;
+  let response: Response;
+  try {
+    const url = new URL(requestUrl);
+    url.searchParams.set("audience", audience);
+    response = await fetcher(url.toString(), {
+      headers: { Authorization: `Bearer ${requestToken}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(OPS_HEARTBEAT_BOUNDARY_TIMEOUT_MS),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    return null;
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  if (typeof body !== "object" || body === null) return null;
+  const value = (body as { value?: unknown }).value;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * Resolves the Authorization header value for a boundary request. OIDC is the
+ * preferred, secret-free path; the optional shared bearer is the fallback.
+ */
+export async function resolveOpsHeartbeatBoundaryAuth(
+  config: OpsHeartbeatBoundaryConfig,
+  options: OpsHeartbeatBoundaryOptions,
+): Promise<string | null> {
+  if (options.authTokenProvider) return options.authTokenProvider();
+  if (config.oidcToken) return `Bearer ${config.oidcToken}`;
+  const requested = await requestGithubActionsOidcToken(
+    options.environment,
+    options.fetcher ?? fetch,
+  );
+  if (requested) return `Bearer ${requested}`;
+  if (config.token) return `Bearer ${config.token}`;
+  return null;
 }
 
 /**
@@ -92,7 +174,8 @@ export async function writeOpsHeartbeatViaBoundary(
   const config = resolveOpsHeartbeatBoundaryConfig(options.environment);
   if (!config.enabled) return false;
   if (!config.baseUrl) throw new Error("ops_heartbeat_boundary.not_configured");
-  if (!config.token) throw new Error("ops_heartbeat_boundary.token_unavailable");
+  const authorization = await resolveOpsHeartbeatBoundaryAuth(config, options);
+  if (!authorization) throw new Error("ops_heartbeat_boundary.auth_unavailable");
 
   const parsed = parseOpsHeartbeatWriteRow({
     workflow_key: input.workflowKey,
@@ -108,7 +191,7 @@ export async function writeOpsHeartbeatViaBoundary(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.token}`,
+      Authorization: authorization,
     },
     body: JSON.stringify(parsed.row),
     signal: AbortSignal.timeout(OPS_HEARTBEAT_BOUNDARY_TIMEOUT_MS),
@@ -134,6 +217,8 @@ export interface OpsHeartbeatReadBoundaryConfig {
   enabled: boolean;
   baseUrl: string | null;
   token: string | null;
+  oidcToken: string | null;
+  oidcAudience: string;
 }
 
 export function resolveOpsHeartbeatReadBoundaryConfig(
@@ -141,11 +226,14 @@ export function resolveOpsHeartbeatReadBoundaryConfig(
 ): OpsHeartbeatReadBoundaryConfig {
   const authority = resolveOpsHeartbeatReadAuthorityConfig(environment).authority;
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
+  const audience = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]);
   return {
     authority,
     enabled: authority === "d1",
     baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null,
     token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
+    oidcToken: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]),
+    oidcAudience: audience ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   };
 }
 
@@ -167,12 +255,13 @@ export async function readOpsHeartbeatsViaBoundary(
   const config = resolveOpsHeartbeatReadBoundaryConfig(options.environment);
   if (!config.enabled) return null;
   if (!config.baseUrl) throw new Error("ops_heartbeat_read_boundary.not_configured");
-  if (!config.token) throw new Error("ops_heartbeat_read_boundary.token_unavailable");
+  const authorization = await resolveOpsHeartbeatBoundaryAuth(config, options);
+  if (!authorization) throw new Error("ops_heartbeat_read_boundary.auth_unavailable");
 
   const fetcher = options.fetcher ?? fetch;
   const response = await fetcher(`${config.baseUrl}${OPS_HEARTBEAT_BOUNDARY_READ_PATH}`, {
     method: "GET",
-    headers: { Authorization: `Bearer ${config.token}` },
+    headers: { Authorization: authorization },
     signal: AbortSignal.timeout(OPS_HEARTBEAT_BOUNDARY_TIMEOUT_MS),
   });
   if (!response.ok) {

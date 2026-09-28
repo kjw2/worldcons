@@ -370,3 +370,150 @@ contract (`OPS_HEARTBEAT_WORKFLOW_KEYS`) so the Worker and the Node reader agree
    `workflow_key/last_started_at/last_completed_at/last_status/run_id`).
 4. Confirm ordinary Node/GitHub and Cloudflare readers now read D1.
 5. Roll the read authority back to `supabase` and confirm the local read resumes.
+
+## M11.3-OIDC — GitHub Actions OIDC trust for the boundary
+
+Date: 2026-09-28. This step is the direct follow-up to M11.3: the original
+design authenticated GitHub-hosted callers with the shared repository secret
+`WORLDCONS_OPS_WRITE_TOKEN`. Provisioning that secret was blocked by the
+execution environment's credential-transfer safety inspection. M11.3-OIDC
+replaces the shared secret with short-lived, per-job GitHub Actions OIDC
+tokens, so the boundary and its GitHub callers need **no shared repository
+secret at all**.
+
+### Decision
+
+The `worldcons-ops-write` boundary now accepts **either** of two trust paths:
+
+1. **Primary — GitHub Actions OIDC (secret-free).** A GitHub-hosted job grants
+   `id-token: write`, the Node client requests a JWT for the dedicated audience
+   `worldcons-ops-write` from the Actions OIDC endpoint at runtime, and the
+   boundary verifies it in-Worker before authorizing the request.
+2. **Secondary — optional constant-time `OPS_WRITE_TOKEN` bearer.** Retained
+   only for operator canary calls and non-GitHub callers. It is **no longer a
+   required Wrangler secret**, so the first Worker creation succeeds without it,
+   and it is checked only after OIDC fails.
+
+### Strict verification
+
+`lib/cloudflare/ops-write/github-oidc.ts` (runtime-neutral; no `node:*`/`next/*`)
+implements the trust policy. It is fail-closed on every error and never logs or
+returns token material.
+
+- **Discovery/JWKS.** Fetched only from the exact issuer
+  `https://token.actions.githubusercontent.com`. A discovery document whose
+  `issuer` is not exact, or whose `jwks_uri` does not live under the issuer
+  origin, is rejected. JWKS keys must be `kty=RSA`, `use=sig` (or unset),
+  `alg=RS256` (or unset) and have a modulus of at least 2048 bits.
+- **Signature.** Only `RS256` is accepted (`alg: none` and HMAC are rejected);
+  the signature is verified with `crypto.subtle` against the discovered key, and
+  a `kid` is required.
+- **Claims.** `iss` must equal the exact issuer; `aud` must equal the dedicated
+  audience; `repository` must equal `kjw2/worldcons`.
+- **Workflow/ref binding.** `workflow_ref` must resolve to a
+  `.github/workflows/<file>.yml` in the per-operation allowlist and its embedded
+  ref must equal the `ref` claim exactly. Write trusts the five heartbeat
+  workflows; read trusts only `admin-watchdog.yml`. A brand-new workflow added to
+  the repository is rejected even though repository and audience match.
+- **Time.** `exp`, `nbf` and `iat` are all required; `nbf <= exp`; each is
+  validated against the current time with a bounded skew (default 60s, capped at
+  300s).
+- **Replay.** A `jti` is required and single-use within its live window. This is
+  a bounded, process-local (per-isolate) control; replay is prevented
+  "where practical within Workers constraints", not claimed as a globally
+  consistent ledger.
+- **Caching.** JWKS is cached with a TTL and a bounded refetch for an unknown
+  `kid`; the `jti` cache is bounded and swept.
+
+### Node/GitHub client
+
+`lib/cloudflare/ops-write/boundary-client.ts` prefers OIDC: it uses an explicit
+`WORLDCONS_OPS_WRITE_OIDC_TOKEN` when present, otherwise requests a live token
+from `ACTIONS_ID_TOKEN_REQUEST_URL` for the configured audience, and only then
+falls back to the optional `WORLDCONS_OPS_WRITE_TOKEN` bearer. The requested
+token is used in the `Authorization` header and is never logged. The dedicated
+audience is read from `WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE` (default
+`worldcons-ops-write`).
+
+### Workflow wiring
+
+Each of the five heartbeat-producing workflows now declares a top-level
+`permissions:` block with `id-token: write` and no longer passes
+`WORLDCONS_OPS_WRITE_TOKEN`:
+
+| Workflow | Heartbeat entrypoint | Env blocks |
+| --- | --- | --- |
+| `.github/workflows/crawlee-worker.yml` | `crawl`: `crawl:worker`/`admin:worker:p1`; `postprocess`: `summarize-pending` | 2 |
+| `.github/workflows/summary-drain.yml` | `summarize-pending` | 1 |
+| `.github/workflows/embedding-backfill.yml` | `backfill:embeddings` | 1 |
+| `.github/workflows/admin-watchdog.yml` | `ops:watchdog` | 1 |
+| `.github/workflows/admin-command-worker-p1.yml` | `admin:worker:p1` | 1 |
+
+Each job env block carries exactly:
+
+```yaml
+WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
+WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
+WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}
+```
+
+`id-token: write` is granted only where a heartbeat boundary use is possible
+(the five workflows above); no other permission is broadened and no workflow
+receives a shared credentials secret.
+
+### Dual trust model and first deploy
+
+- The boundary's own `OPS_WRITE_TOKEN` is **optional**. Because `wrangler.jsonc`
+  no longer lists it as a required secret, `wrangler deploy` succeeds without
+  it; GitHub-hosted callers authenticate with OIDC. Operators who want bearer
+  access for non-GitHub canary calls may set the secret and the matching Node
+  `WORLDCONS_OPS_WRITE_TOKEN`.
+- Resting authorities are unchanged (`supabase` for both read and write); the
+  OIDC change only affects *how* a non-resting boundary request is authorized.
+- No broad permissions, no unauthenticated mutation/read/health surface. Every
+  path still rejects a request that satisfies neither trust path.
+
+### Files (M11.3-OIDC)
+
+- `lib/cloudflare/ops-write/github-oidc.ts` — strict OIDC verification
+  (discovery/JWKS, claims, replay, caching).
+- `lib/cloudflare/ops-write/boundary-client.ts` — OIDC-preferred auth resolution
+  and runtime token request.
+- `workers/ops-write/src/index.ts` — dual trust auth on `/health`,
+  `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat`.
+- `workers/ops-write/wrangler.jsonc` + `worker-configuration.d.ts` — audience
+  var; `OPS_WRITE_TOKEN` no longer required.
+- `.github/workflows/{crawlee-worker,summary-drain,embedding-backfill,admin-watchdog,admin-command-worker-p1}.yml`
+  — `id-token: write`, OIDC audience var, shared token removed.
+- `.env.example` — dual trust model documented.
+- `tests/m11-ops-heartbeat-oidc-auth.test.ts` — 17 focused tests.
+- `package.json`, `docs/…`, `artifacts/…` — scripts/evidence.
+
+### M11.3-OIDC verification (local, no live proof)
+
+- `pnpm test:m11`: 66/66 (17 new OIDC + 49 existing M11).
+- `pnpm test:ops`: 10/10; `pnpm test:masterdash`: 22/22;
+  `pnpm test:ingest-workflow`: 18/18; `pnpm test:m9`: 8/8; `pnpm test:m10`: 5/5.
+- root `pnpm typecheck`: pass; `pnpm m11:ops-write:typecheck`: pass;
+  `pnpm m11:ops-write:types:check`: up to date; `pnpm lint`: pass.
+- `pnpm m11:ops-write:dry-run`: pass (the only bindings are the D1 database, the
+  search service, the two resting authority vars and the OIDC audience var; no
+  required secret).
+- `git diff --check`: clean.
+
+### M11.3-OIDC live prerequisites (controller-owned; NOT performed here)
+
+1. Deploy `worldcons-ops-write` (no `OPS_WRITE_TOKEN` required). Confirm a
+   request with no Authorization header returns 401 on `/health`,
+   `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat`.
+2. Set repo var `WORLDCONS_OPS_WRITE_BASE_URL` (the workers.dev base URL) and,
+   optionally, `WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE` (defaults to
+   `worldcons-ops-write`). Do **not** create `WORLDCONS_OPS_WRITE_TOKEN`.
+3. Dispatch `admin-watchdog.yml` (it grants `id-token: write`). With both
+   authority vars still `supabase`, confirm the job authenticates and the
+   boundary relays the heartbeat to Supabase (no shared secret in play).
+4. For a D1 canary, coordinate both authority vars as in M11.3 and confirm the
+   OIDC-authenticated request reaches D1; capture the absence of any
+   `WORLDCONS_OPS_WRITE_TOKEN` secret in the run.
+5. Confirm a request forged with a foreign repository/audience/workflow is
+   rejected with 401.

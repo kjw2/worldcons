@@ -12,10 +12,19 @@
   //   - it declares NO `routes`/`route` and NO custom domain, so the workers.dev
   //     endpoint is the only entry point;
   //   - every entry point (`POST /v1/ops/heartbeat`, the M11.3R read-only
-  //     `GET /v1/ops/heartbeats`, and `GET /health`) requires the constant-time
-  //     bearer `OPS_WRITE_TOKEN`, so this is a publicly reachable but bearer-
-  //     authenticated narrow endpoint. There is no unauthenticated write,
-  //     read or health surface.
+  //     `GET /v1/ops/heartbeats`, and `GET /health`) requires authentication, so
+  //     this is a publicly reachable but authenticated narrow endpoint. There is
+  //     no unauthenticated write, read or health surface.
+  //
+  // M11.3-OIDC dual trust model:
+  //   - Primary: a GitHub Actions OIDC JWT, verified strictly in-Worker against
+  //     GitHub's discovery/JWKS (exact issuer, dedicated audience, exact
+  //     repository, bound workflow_ref/ref, exp/nbf/iat, single-use jti). This
+  //     needs NO shared repository secret.
+  //   - Secondary (optional): the constant-time bearer `OPS_WRITE_TOKEN`, for
+  //     operator canary calls and non-GitHub callers. It is deliberately NOT a
+  //     required Wrangler secret anymore, so the first Worker creation succeeds
+  //     without it. Set it only when operator/legacy bearer access is needed.
   //
   // By contrast, `worldcons-search` remains internal-only (Service Binding) and
   // is not reachable over workers.dev.
@@ -27,10 +36,10 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
-  "secrets": { "required": ["OPS_WRITE_TOKEN"] },
   "vars": {
     "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "supabase",
-    "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY": "supabase"
+    "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY": "supabase",
+    "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"
   },
   "services": [
     {

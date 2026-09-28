@@ -22,6 +22,10 @@ on:
 
 permissions:
   contents: read
+  # M11.3-OIDC: request a short-lived GitHub OIDC token so the heartbeat
+  # boundary can authenticate without the shared WORLDCONS_OPS_WRITE_TOKEN
+  # repository secret.
+  id-token: write
 
 concurrency:
   group: admin-command-p1
@@ -55,12 +59,14 @@ jobs:
       SPAIN_INGEST_RANGE_DAYS_CAP: "730"
       BVERFG_INGEST_RANGE_DAYS: "60"
       # M11.3 ops-heartbeat boundary. The authority var defaults to "supabase"
-      # (resting behavior, Node keeps using the local RPC). The base URL/token
-      # are only consulted once the authority is d1-canary/d1. The token is a
-      # repository secret and is never written to a source file.
+      # (resting behavior, Node keeps using the local RPC). The base URL is only
+      # consulted once the authority is d1-canary/d1. The boundary is
+      # authenticated with a per-job GitHub OIDC token (id-token: write above)
+      # carrying the dedicated audience, so no shared repository secret is
+      # required. WORLDCONS_OPS_WRITE_TOKEN is intentionally NOT set.
       WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
       WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
-      WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
+      WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     steps:
       - uses: actions/checkout@v4

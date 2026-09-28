@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3-OIDC",
+  "decision": "CODE-READY-LIVE-OIDC-PROOF-PENDING-NO-LIVE-PROOF",
+  "status": "code_ready_resting_at_supabase",
+  "date": "2026-09-28",
+  "baseCheckpoint": "e7ea50ea",
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "kind": "github-actions-oidc-auth-for-boundary",
+    "liveAuthClaimed": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false,
+    "sharedSecretRequired": false
+  },
+  "motivation": {
+    "problem": "the shared OPS_WRITE_TOKEN bootstrap was blocked by the execution environment's credential-transfer safety inspection",
+    "resolution": "replace/augment GitHub Actions -> worldcons-ops-write auth with per-job GitHub Actions OIDC JWTs verified in-Worker"
+  },
+  "dualTrustModel": {
+    "primary": {
+      "method": "github-actions-oidc",
+      "requiresSharedSecret": false,
+      "audience": "worldcons-ops-write",
+      "issuer": "https://token.actions.githubusercontent.com"
+    },
+    "secondary": {
+      "method": "constant-time-bearer",
+      "env": "OPS_WRITE_TOKEN",
+      "required": false,
+      "purpose": "operator canary calls and non-GitHub callers",
+      "checkedAfterOidc": true,
+      "requiredForFirstWorkerCreation": false
+    }
+  },
+  "verification": {
+    "module": "lib/cloudflare/ops-write/github-oidc.ts",
+    "runtimeNeutral": true,
+    "failsClosed": true,
+    "neverLogsToken": true,
+    "issuer": {
+      "exact": "https://token.actions.githubusercontent.com",
+      "discoveryUrl": "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+      "rejectsOffOriginJwksUri": true,
+      "rejectsMismatchedDiscoveryIssuer": true
+    },
+    "algorithm": {
+      "accepted": ["RS256"],
+      "rejectsAlgNone": true,
+      "rejectsHmac": true,
+      "kidRequired": true,
+      "minRsaModulusBits": 2048
+    },
+    "claims": {
+      "audience": "worldcons-ops-write",
+      "audienceIsGithubDefault": false,
+      "repository": "kjw2/worldcons",
+      "repositoryExact": true,
+      "workflowRefBound": true,
+      "workflowRefEmbeddedRefMustEqualRefClaim": true,
+      "trustedWorkflows": {
+        "write": [
+          ".github/workflows/crawlee-worker.yml",
+          ".github/workflows/summary-drain.yml",
+          ".github/workflows/embedding-backfill.yml",
+          ".github/workflows/admin-watchdog.yml",
+          ".github/workflows/admin-command-worker-p1.yml"
+        ],
+        "read": [".github/workflows/admin-watchdog.yml"]
+      },
+      "allowedRefs": ["refs/heads/main"],
+      "allowedRefsMayBeExtendedByOperatorVar": true
+    },
+    "time": {
+      "expRequired": true,
+      "nbfRequired": true,
+      "iatRequired": true,
+      "nbfLteExp": true,
+      "defaultSkewSeconds": 60,
+      "maxSkewSeconds": 300
+    },
+    "replay": {
+      "jtiRequired": true,
+      "singleUseWindow": true,
+      "scope": "process-local per Worker isolate",
+      "globalLedgerClaimed": false,
+      "bounded": true,
+      "swept": true
+    },
+    "caching": {
+      "jwksTtlMs": 3600000,
+      "jwksMinRefetchMs": 30000,
+      "boundedRefetchOnUnknownKid": true,
+      "moduleCacheResettableForTests": true
+    },
+    "failureCodes": [
+      "missing_token",
+      "malformed_token",
+      "unsupported_algorithm",
+      "unknown_key",
+      "invalid_signature",
+      "invalid_issuer",
+      "invalid_audience",
+      "invalid_repository",
+      "invalid_workflow",
+      "invalid_ref",
+      "invalid_claims",
+      "token_not_yet_valid",
+      "token_expired",
+      "token_issued_in_future",
+      "replayed_token",
+      "jwks_unavailable"
+    ]
+  },
+  "boundary": {
+    "worker": "worldcons-ops-write",
+    "withoutOpsWriteToken": {
+      "requiredSecret": false,
+      "oidcStillWorks": true,
+      "unauthRequest": 401
+    },
+    "health": "either trust path; no data surface",
+    "readPath": "GET /v1/ops/heartbeats; read workflow allowlist",
+    "writePath": "POST /v1/ops/heartbeat; write workflow allowlist",
+    "noUnauthenticatedSurface": true
+  },
+  "nodeGithubClient": {
+    "module": "lib/cloudflare/ops-write/boundary-client.ts",
+    "oidcPreferred": true,
+    "explicitTokenEnv": "WORLDCONS_OPS_WRITE_OIDC_TOKEN",
+    "runtimeRequestEnv": ["ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
+    "audienceEnv": "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE",
+    "audienceDefault": "worldcons-ops-write",
+    "bearerFallbackEnv": "WORLDCONS_OPS_WRITE_TOKEN",
+    "logsToken": false
+  },
+  "workflows": [
+    {
+      "file": ".github/workflows/crawlee-worker.yml",
+      "idTokenWrite": true,
+      "envBlocks": 2,
+      "sharedTokenRemoved": true
+    },
+    {
+      "file": ".github/workflows/summary-drain.yml",
+      "idTokenWrite": true,
+      "envBlocks": 1,
+      "sharedTokenRemoved": true
+    },
+    {
+      "file": ".github/workflows/embedding-backfill.yml",
+      "idTokenWrite": true,
+      "envBlocks": 1,
+      "sharedTokenRemoved": true
+    },
+    {
+      "file": ".github/workflows/admin-watchdog.yml",
+      "idTokenWrite": true,
+      "envBlocks": 1,
+      "sharedTokenRemoved": true
+    },
+    {
+      "file": ".github/workflows/admin-command-worker-p1.yml",
+      "idTokenWrite": true,
+      "envBlocks": 1,
+      "sharedTokenRemoved": true
+    }
+  ],
+  "preservedAuthority": {
+    "write": "supabase",
+    "read": "supabase",
+    "rollback": "no schema/data change; resting authorities unchanged"
+  },
+  "filesChanged": [
+    "lib/cloudflare/ops-write/github-oidc.ts",
+    "lib/cloudflare/ops-write/boundary-client.ts",
+    "workers/ops-write/src/index.ts",
+    "workers/ops-write/wrangler.jsonc",
+    "workers/ops-write/worker-configuration.d.ts",
+    ".github/workflows/crawlee-worker.yml",
+    ".github/workflows/summary-drain.yml",
+    ".github/workflows/embedding-backfill.yml",
+    ".github/workflows/admin-watchdog.yml",
+    ".github/workflows/admin-command-worker-p1.yml",
+    ".env.example",
+    "package.json",
+    "tests/m11-ops-heartbeat-oidc-auth.test.ts",
+    "tests/m11-ops-heartbeat-write-boundary.test.ts",
+    "tests/m11-ops-heartbeat-read-authority.test.ts",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md",
+    "artifacts/cloudflare-m11/m11.3-oidc-ops-heartbeat-auth-20260928.json"
+  ],
+  "verificationRun": {
+    "m11Tests": "66/66",
+    "newOidcTests": "17/17",
+    "opsTests": "10/10",
+    "masterdashTests": "22/22",
+    "ingestWorkflowTests": "18/18",
+    "m9Tests": "8/8",
+    "m10Tests": "5/5",
+    "rootTypecheck": "pass",
+    "opsWriteWorkerTypecheck": "pass",
+    "opsWriteWorkerTypesCheck": "up_to_date",
+    "lint": "pass",
+    "opsWriteDryRun": "pass (no required secret; audience var present)",
+    "diffCheck": "pass",
+    "liveOidcProof": "not_run_no_proof_claimed"
+  },
+  "livePrerequisites": [
+    "deploy worldcons-ops-write with no OPS_WRITE_TOKEN required; confirm 401 without Authorization on /health, GET /v1/ops/heartbeats and POST /v1/ops/heartbeat",
+    "set repo var WORLDCONS_OPS_WRITE_BASE_URL (workers.dev base URL) and optionally WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE; do NOT create WORLDCONS_OPS_WRITE_TOKEN",
+    "dispatch admin-watchdog.yml and confirm OIDC auth succeeds with both authorities resting at supabase",
+    "for a D1 canary, coordinate both authority vars as in M11.3 and confirm the OIDC-authenticated request reaches D1",
+    "confirm a forged foreign repository/audience/workflow token is rejected with 401"
+  ],
+  "blockers": [
+    "no Cloudflare/DB credential access in this environment; controller owns the live OIDC proof",
+    "anti-replay is bounded to a single Worker isolate; not a global ledger (documented, not claimed)",
+    "admin_ops_events remains deferred to M11.4",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "next": "live OIDC proof by controller; then M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract"
+}

@@ -1,5 +1,12 @@
 name: Gemini embedding backfill
 
+# M11.3-OIDC: this job emits workflow heartbeats, so request a short-lived
+# GitHub OIDC token (id-token: write) instead of the shared
+# WORLDCONS_OPS_WRITE_TOKEN repository secret.
+permissions:
+  contents: read
+  id-token: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -40,12 +47,14 @@ jobs:
       EMBEDDING_LIMIT_INPUT: ${{ github.event.inputs.limit || '50' }}
       EMBEDDING_PASSES_INPUT: ${{ github.event.inputs.max_passes || '20' }}
       # M11.3 ops-heartbeat boundary. Authority defaults to "supabase" so the
-      # resting embedding heartbeat path is unchanged; the base URL/token are
-      # only consulted when the authority is d1-canary/d1. The token is a
-      # repository secret and is never written to a source file.
+      # resting embedding heartbeat path is unchanged; the base URL is only
+      # consulted when the authority is d1-canary/d1. The boundary is
+      # authenticated with a per-job GitHub OIDC token (id-token: write above)
+      # carrying the dedicated audience, so no shared repository secret is
+      # required. WORLDCONS_OPS_WRITE_TOKEN is intentionally NOT set.
       WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
       WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
-      WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}
+      WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     steps:
       - uses: actions/checkout@v4

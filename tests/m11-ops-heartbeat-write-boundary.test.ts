@@ -14,7 +14,9 @@ import {
 } from "@/lib/cloudflare/ops-write/heartbeat";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
+  OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV,
   OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV,
+  resolveOpsHeartbeatBoundaryAuth,
   resolveOpsHeartbeatBoundaryConfig,
   writeOpsHeartbeatViaBoundary,
 } from "@/lib/cloudflare/ops-write/boundary-client";
@@ -204,9 +206,13 @@ test("M11.3 deployed ops-write config is externally reachable only via workers.d
   // No custom routes/custom domain: workers.dev is the sole entry point.
   assert.doesNotMatch(config, /"routes"\s*:/u);
   assert.doesNotMatch(config, /"route"\s*:/u);
-  // The bearer secret stays a required Wrangler secret, never a committed var.
-  assert.match(config, /"secrets":\s*\{[^}]*"OPS_WRITE_TOKEN"/su);
-  assert.doesNotMatch(config, /"vars"[\s\S]*?"OPS_WRITE_TOKEN"/u);
+  // M11.3-OIDC: OPS_WRITE_TOKEN is no longer a required secret, so the Worker
+  // can be created without a shared repository secret.
+  assert.doesNotMatch(config, /"secrets"\s*:\s*\{[^}]*"OPS_WRITE_TOKEN"/su);
+  // The dedicated OIDC audience is a committed, non-secret var.
+  assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE":\s*"worldcons-ops-write"/u);
+  // No token value is ever committed as a var.
+  assert.doesNotMatch(config, /"vars"[\s\S]*?"OPS_WRITE_TOKEN"\s*:/u);
 });
 
 test("M11.3 worldcons-search stays internal-only and is not reachable over workers.dev", () => {
@@ -320,7 +326,14 @@ test("M11.3 boundary relays Supabase authority through the private search bridge
 test("M11.3 Node boundary client is default-off and fails closed when explicitly enabled", async () => {
   assert.deepEqual(
     resolveOpsHeartbeatBoundaryConfig({}),
-    { authority: "supabase", enabled: false, baseUrl: null, token: null },
+    {
+      authority: "supabase",
+      enabled: false,
+      baseUrl: null,
+      token: null,
+      oidcToken: null,
+      oidcAudience: "worldcons-ops-write",
+    },
   );
   assert.equal(
     await writeOpsHeartbeatViaBoundary(heartbeatInput(), { environment: {}, fetcher: async () => new Response() }),
@@ -338,7 +351,10 @@ test("M11.3 Node boundary client is default-off and fails closed when explicitly
     enabled: true,
     baseUrl: "https://ops.example",
     token: "boundary-secret",
+    oidcToken: null,
+    oidcAudience: "worldcons-ops-write",
   });
+  assert.equal(await resolveOpsHeartbeatBoundaryAuth(config, { environment: base }), "Bearer boundary-secret");
 
   const seen: { url: string; authorization: string | null; body: unknown }[] = [];
   const delivered = await writeOpsHeartbeatViaBoundary(heartbeatInput(), {
@@ -502,7 +518,7 @@ const HEARTBEAT_WORKFLOWS = [
   },
 ] as const;
 
-test("M11.3 heartbeat-producing GitHub workflows wire the boundary env from vars/secrets", () => {
+test("M11.3-OIDC heartbeat-producing GitHub workflows wire OIDC and never the shared token", () => {
   for (const workflow of HEARTBEAT_WORKFLOWS) {
     const source = fs.readFileSync(path.join(process.cwd(), workflow.file), "utf8");
 
@@ -511,39 +527,50 @@ test("M11.3 heartbeat-producing GitHub workflows wire the boundary env from vars
       assert.ok(source.includes(script), `${workflow.file} must invoke ${script}`);
     }
 
+    // A short-lived OIDC token is requested at the job/workflow level.
+    assert.match(
+      source,
+      /^permissions:\r?\n(?:[ \t]+\S.*\r?\n)*[ \t]+id-token:\s*write$/mu,
+      `${workflow.file} must grant id-token: write`,
+    );
+
     // Authority is repo-var driven and defaults to the resting supabase mode.
     const authority = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}";
-    const authorityCount = source.split(authority).length - 1;
     assert.equal(
-      authorityCount,
+      source.split(authority).length - 1,
       workflow.envBlocks,
       `${workflow.file} must wire the authority default in every heartbeat env block`,
     );
-
     assert.equal(
       source.split("WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}").length - 1,
       workflow.envBlocks,
       `${workflow.file} must wire the boundary base URL from repo vars`,
     );
     assert.equal(
-      source.split("WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}").length - 1,
+      source.split("WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}").length - 1,
       workflow.envBlocks,
-      `${workflow.file} must wire the boundary token from repo secrets`,
+      `${workflow.file} must wire the OIDC audience in every heartbeat env block`,
     );
 
-    // No literal secret value is ever written instead of a secret reference.
+    // No inline value is ever written instead of a var reference. Comments may
+    // name the retired secret, but no active line may reference it.
     for (const line of source.split(/\r?\n/u)) {
       if (/^\s*#/u.test(line)) continue;
-      if (line.includes("WORLDCONS_OPS_WRITE_TOKEN:")) {
-        assert.ok(
-          line.includes("WORLDCONS_OPS_WRITE_TOKEN: ${{ secrets.WORLDCONS_OPS_WRITE_TOKEN }}"),
-          `${workflow.file} must never inline a WORLDCONS_OPS_WRITE_TOKEN value: ${line.trim()}`,
-        );
-      }
+      assert.doesNotMatch(
+        line,
+        /WORLDCONS_OPS_WRITE_TOKEN/u,
+        `${workflow.file} must not reference the shared WORLDCONS_OPS_WRITE_TOKEN secret: ${line.trim()}`,
+      );
       if (line.includes("WORLDCONS_OPS_WRITE_BASE_URL:")) {
         assert.ok(
           line.includes("WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}"),
           `${workflow.file} must never inline a WORLDCONS_OPS_WRITE_BASE_URL value: ${line.trim()}`,
+        );
+      }
+      if (line.includes("WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE:")) {
+        assert.ok(
+          line.includes("WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}"),
+          `${workflow.file} must never inline an OIDC audience value: ${line.trim()}`,
         );
       }
     }

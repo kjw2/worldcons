@@ -1642,8 +1642,9 @@ M11.3R ops-workflow-heartbeat read-authority parity (2026-09-28):
   `app/api/masterdash/health/route.ts`).
 - Node/GitHub readers under `d1` deliver one authenticated
   `GET /v1/ops/heartbeats` to the existing publicly reachable but
-  bearer-authenticated `worldcons-ops-write` boundary, reusing the M11.3 base
-  URL/token; no new credential, host or unauthenticated surface. The Cloudflare
+  authenticated `worldcons-ops-write` boundary, reusing the M11.3 base URL and
+  (from M11.3-OIDC) the GitHub OIDC audience; no new credential, host or
+  unauthenticated surface. The Cloudflare
   runtime reader resolves the same var from its own `env` and reads the isolated
   `WORLDCONS_OPS` D1 binding directly.
 - The boundary read selects exactly the Supabase reader's projection
@@ -1665,6 +1666,51 @@ M11.3R ops-workflow-heartbeat read-authority parity (2026-09-28):
 - Detailed evidence:
   `artifacts/cloudflare-m11/m11.3r-ops-heartbeat-read-authority-20260928.json`
   (and the M11.3R section of
+  `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`).
+
+M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28):
+
+- Replaces the shared `WORLDCONS_OPS_WRITE_TOKEN` repository secret for
+  GitHub-hosted heartbeat auth with short-lived, per-job GitHub Actions OIDC
+  JWTs. This was required because the execution environment's credential-transfer
+  safety inspection blocked provisioning the shared secret.
+- New runtime-neutral `lib/cloudflare/ops-write/github-oidc.ts` verifies the
+  token strictly in-Worker: exact issuer
+  `https://token.actions.githubusercontent.com`, discovery + JWKS fetched from
+  that issuer only (a discovery doc whose `issuer`/`jwks_uri` leave the issuer
+  origin is rejected), RS256 only, RSA >= 2048-bit, exact dedicated audience
+  `worldcons-ops-write`, exact repository `kjw2/worldcons`, bound
+  `workflow_ref`/`ref` (the workflow file must be in the per-operation allowlist
+  and the embedded ref must equal the `ref` claim), required `exp`/`nbf`/`iat`
+  validated with bounded skew, and a required single-use `jti`.
+- **Fail closed:** any discovery/JWKS/network/parse/crypto error returns a stable
+  failure code and never throws or logs token material. JWKS is cached with a
+  TTL and a bounded refetch, and the anti-replay `jti` cache is bounded and
+  swept. Replay prevention is best-effort within a single Worker isolate, which
+  is stated explicitly rather than claimed as a global ledger.
+- `workers/ops-write` now authorizes each path by **either** a verified OIDC JWT
+  **or** the optional constant-time `OPS_WRITE_TOKEN` bearer (checked second).
+  `OPS_WRITE_TOKEN` is no longer a required Wrangler secret and is no longer a
+  required input for first Worker creation; the dedicated audience is a
+  committed non-secret var.
+- The five heartbeat-producing workflows (`crawlee-worker`, `summary-drain`,
+  `embedding-backfill`, `admin-watchdog`, `admin-command-worker-p1`) now grant
+  `id-token: write` and no longer receive `WORLDCONS_OPS_WRITE_TOKEN`. The Node
+  client requests a token for the dedicated audience at runtime and never logs
+  it; the audience is plumbed from a repo var defaulting to
+  `worldcons-ops-write`.
+- Code and 17 new focused tests (signature/issuer/audience/repository/workflow/
+  ref/expiry/replay/discovery-failure/workflow wiring) complete; `test:m11` is
+  now 66/66, plus M9 8/8, M10 5/5, `test:ops` 10/10, `test:masterdash` 22/22,
+  `test:ingest-workflow` 18/18, root/Worker typechecks, worker types check, lint,
+  ops-write dry-run (no required secret) and `git diff --check` pass. Resting
+  authorities remain `supabase`.
+- **GO-OPS-WRITE-OIDC: CODE READY.** No live OIDC proof is claimed; a controller
+  with Cloudflare/DB credentials owns it. Old migrations untouched; no schema
+  change. `admin_ops_events` (M11.4) and ingest/core-publication remain pending.
+- Detailed evidence:
+  `artifacts/cloudflare-m11/m11.3-oidc-ops-heartbeat-auth-20260928.json`
+  (and the M11.3-OIDC section of
   `docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md`).
 
 ### M12 — Cloudflare production frontend/API cutover
@@ -1897,7 +1943,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   `ops_workflow_heartbeats` writer: a dedicated `worldcons-ops-write` Worker that
   is publicly reachable only through its workers.dev endpoint (`workers_dev=true`,
   `preview_urls=false`, no `routes`/custom domain), with `POST /v1/ops/heartbeat`
-  and `GET /health` both behind a constant-time bearer `OPS_WRITE_TOKEN` and no
+  and `GET /health` both authenticated (M11.3-OIDC: GitHub OIDC JWT primarily,
+  optional constant-time `OPS_WRITE_TOKEN` bearer secondarily) and no
   unauthenticated write or diagnostic surface. It has an independent
   `supabase|d1-canary|d1` authority, a parameterized RPC-equivalent D1 upsert, an
   internal `worldcons-search /internal/ops-heartbeat/write` Supabase RPC bridge,
