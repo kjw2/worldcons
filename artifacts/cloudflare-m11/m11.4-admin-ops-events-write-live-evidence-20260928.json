@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.4-live-write",
+  "decision": "BOUNDED-D1-CANARY-INSERT-PASS-DEDUPE-PASS-FULL-D1-WRITE-PASS-NO-COMBINED-CUTOVER-M11-INCOMPLETE",
+  "status": "live_write_paths_pass_resting_reconciled_at_supabase_and_d1_412_412",
+  "date": "2026-09-28",
+  "headSha": "877f138a45034633bc3b8483ce3927517acb1848",
+  "branch": "codex/m7-go-search",
+  "runsHeadSha": "6c44e5b",
+  "predecessorEvidence": [
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json",
+    "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-full-d1-write-live-evidence-20260928.json"
+  ],
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "admin_ops_events",
+    "authorityModesExercised": ["d1-canary-write", "d1-full-write"],
+    "boundedD1CanaryInsertLiveProven": true,
+    "d1DedupeReadBeforeWriteLiveProven": true,
+    "d1PruneLiveProven": true,
+    "ordinaryFullD1WriteLiveProven": true,
+    "d1ListReadAuthorityLiveProven": true,
+    "combinedFullD1ReadWriteCutover": false,
+    "readAuthorityThroughout": "supabase",
+    "readAuthorityException": "the separate M11.4R read-parity window held read=d1; these write runs held read=supabase",
+    "heartbeatWriteAuthorityThroughout": "supabase",
+    "heartbeatReadAuthorityThroughout": "supabase",
+    "m11Complete": false,
+    "faultInjectionPerformed": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false,
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false
+  },
+  "summary": "Three controller-owned GitHub admin-watchdog dispatches at head 6c44e5b live-exercised the M11.4 admin_ops_events Cloudflare D1 write paths while read authority rested at supabase. Run 36377157726 (write=d1-canary, canary marker=true) inserted one marked event into D1 only with a 200 on the parameterized insert, and Cloudflare Observability recorded GET /v1/ops/admin-events/latest 200, POST /v1/ops/admin-events 200 and POST /v1/ops/admin-events/prune 200 on Worker version cc448d9b-566c-465a-8ee9-dcfc2aef42c7. Run 36377256343 (same d1-canary + marker) produced the identical watchdog violation signature but Observability shows GET /latest 200 and POST /prune 200 with NO POST /admin-events, proving the read-before-write signature dedupe skipped the second insert while prune still ran on D1. Run 36377461933 (write=d1, canary marker empty) recorded GET /latest 200, POST /admin-events 200 and POST /prune 200 on Worker version 87f3acb5-6843-4118-bb7f-cc0f51a0f5e9, proving the ordinary full-D1 write path (dedupe read + successful insert + prune). Because a selected D1 insert returns 200 only when the parameterized insert actually succeeded (the boundary fails closed otherwise, 503/throws), the 200 responses prove the D1 inserts executed. These bounded write runs do NOT prove a combined full-D1 read/write cutover and do NOT complete M11. The current production reconciliation of Supabase and D1 admin_ops_events at 412/412 with matching latest-20 identity is the post-live clean state: the temporary canary/full-write D1 rows were subsequently deleted/reconciled, and that clean state is NOT evidence that the historical inserts did not happen.",
+  "liveRuns": [
+    {
+      "label": "bounded-d1-canary-insert",
+      "workflow": ".github/workflows/admin-watchdog.yml",
+      "runId": 36377157726,
+      "headSha": "6c44e5b",
+      "conclusion": "success",
+      "adminOpsEventsWriteAuthority": "d1-canary",
+      "adminOpsEventsReadAuthority": "supabase",
+      "canaryMarker": true,
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "worker": "worldcons-ops-write",
+      "workerVersionId": "cc448d9b-566c-465a-8ee9-dcfc2aef42c7",
+      "workerAuthority": {
+        "adminOpsEventsWrite": "d1-canary",
+        "adminOpsEventsRead": "supabase",
+        "featureAllowedRefsBinding": true
+      },
+      "observability": [
+        {"method": "GET", "path": "/v1/ops/admin-events/latest", "status": 200},
+        {"method": "POST", "path": "/v1/ops/admin-events", "status": 200},
+        {"method": "POST", "path": "/v1/ops/admin-events/prune", "status": 200}
+      ],
+      "observabilitySource": "Cloudflare Observability",
+      "interpretation": "the bounded d1-canary selector accepted the explicitly marked event, the parameterized D1 insert returned 200 (the boundary fails closed otherwise, so a 200 means the D1 insert succeeded), the dedupe read resolved to D1, and the prune ran on D1; no ordinary event was routed to D1 and Supabase read authority was untouched",
+      "verdict": "bounded_d1_canary_insert_pass"
+    },
+    {
+      "label": "d1-dedupe-read-before-write",
+      "workflow": ".github/workflows/admin-watchdog.yml",
+      "runId": 36377256343,
+      "headSha": "6c44e5b",
+      "conclusion": "success",
+      "adminOpsEventsWriteAuthority": "d1-canary",
+      "adminOpsEventsReadAuthority": "supabase",
+      "canaryMarker": true,
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "worker": "worldcons-ops-write",
+      "workerVersionId": "cc448d9b-566c-465a-8ee9-dcfc2aef42c7",
+      "workerAuthority": {
+        "adminOpsEventsWrite": "d1-canary",
+        "adminOpsEventsRead": "supabase",
+        "featureAllowedRefsBinding": true
+      },
+      "watchdogViolationSignature": "same as run 36377157726",
+      "observability": [
+        {"method": "GET", "path": "/v1/ops/admin-events/latest", "status": 200},
+        {"method": "POST", "path": "/v1/ops/admin-events/prune", "status": 200}
+      ],
+      "observabilityAbsent": [
+        {"method": "POST", "path": "/v1/ops/admin-events"}
+      ],
+      "observabilitySource": "Cloudflare Observability",
+      "interpretation": "the read-before-write dedupe resolved the same latest signature on D1 and skipped the insert (no POST /admin-events), while prune still ran on D1 (POST /prune 200); this proves the M11.4 dedupe-skipped-insert-while-still-pruning contract against D1",
+      "verdict": "d1_dedupe_read_before_write_pass"
+    },
+    {
+      "label": "ordinary-full-d1-write",
+      "workflow": ".github/workflows/admin-watchdog.yml",
+      "runId": 36377461933,
+      "headSha": "6c44e5b",
+      "conclusion": "success",
+      "adminOpsEventsWriteAuthority": "d1",
+      "adminOpsEventsReadAuthority": "supabase",
+      "canaryMarker": "",
+      "heartbeatWriteAuthority": "supabase",
+      "heartbeatReadAuthority": "supabase",
+      "worker": "worldcons-ops-write",
+      "workerVersionId": "87f3acb5-6843-4118-bb7f-cc0f51a0f5e9",
+      "workerAuthority": {
+        "adminOpsEventsWrite": "d1",
+        "adminOpsEventsRead": "supabase",
+        "featureAllowedRefsBinding": true
+      },
+      "observability": [
+        {"method": "GET", "path": "/v1/ops/admin-events/latest", "status": 200},
+        {"method": "POST", "path": "/v1/ops/admin-events", "status": 200},
+        {"method": "POST", "path": "/v1/ops/admin-events/prune", "status": 200}
+      ],
+      "observabilitySource": "Cloudflare Observability",
+      "interpretation": "under full d1 write authority an ordinary (unmarked) event ran the dedupe read on D1, the parameterized D1 insert returned 200 (success), and prune ran on D1; this is the full admin_ops_events D1 write path for an ordinary run",
+      "verdict": "ordinary_full_d1_write_pass"
+    }
+  ],
+  "restingReconciliationCheck": {
+    "worker": "worldcons-ops-write",
+    "restingVersionIdAtProbeTime": "d9ccf235-e4c6-4e78-9fdc-fdcaec122428",
+    "restingVersionTime": "04:21",
+    "restingAuthority": {
+      "adminOpsEventsWrite": "supabase",
+      "adminOpsEventsRead": "supabase",
+      "featureAllowedRefsBinding": false
+    },
+    "unauthenticatedProbes": "401 as expected",
+    "note": "at 04:21 the resting version carried no feature allowed-refs binding and unauthenticated endpoint probes returned 401 as expected"
+  },
+  "postLiveCleanState": {
+    "supabaseAdminOpsEventsCount": 412,
+    "d1AdminOpsEventsCount": 412,
+    "latest20IdentityMatched": true,
+    "explanation": "the temporary canary and full-write D1 rows inserted during the write runs have already been cleaned/deleted and Supabase and D1 admin_ops_events reconciled to 412/412 with matching latest-20 identity; this clean state is the post-live reconciled state and is NOT evidence that the historical inserts did not happen",
+    "notToBeReintroduced": "any temporary canary or full-write D1 rows"
+  },
+  "readParityCrossReference": {
+    "milestone": "M11.4R-live-read-parity",
+    "commit": "877f138a",
+    "runId": 36379545354,
+    "boundaryReadAuthority": "d1",
+    "boundaryWriteAuthority": "supabase",
+    "boundaryCount": 20,
+    "supabaseCount": 20,
+    "differences": [],
+    "countsUnchanged": "412/412",
+    "verdict": "live_read_parity_pass",
+    "artifact": "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json",
+    "note": "M11.4R live read parity is separately PASS and is recorded at commit 877f138a; it is not combined with these write runs"
+  },
+  "failClosed": {
+    "faultInjectionPerformed": false,
+    "acceptedInLieuOfLiveInjection": "existing fail-closed M11.4 write/read tests covering missing URL/token, non-2xx, malformed body, unavailable binding and the resting-supabase 503 READ_AUTHORITY_UNAVAILABLE",
+    "note": "a selected D1 insert returning 200 is only possible when the bound parameterized insert succeeded, because any D1 failure fails closed (throws at the Node writer / 503 at the boundary) and is never silently downgraded to Supabase; no destructive live fault injection was performed"
+  },
+  "whatThisProves": [
+    "the bounded d1-canary insert path works: run 36377157726 with write=d1-canary and the exact canary marker inserted one marked event into D1 with POST /admin-events 200, dedupe read 200 and prune 200 on version cc448d9b",
+    "the read-before-write dedupe works against D1: run 36377256343 produced the same violation signature but skipped the insert (no POST /admin-events) while still pruning (POST /prune 200) on version cc448d9b",
+    "the ordinary full-D1 write path works: run 36377461933 with write=d1 and an empty canary marker ran dedupe read 200, a successful parameterized D1 insert 200 and prune 200 on version 87f3acb5",
+    "a selected D1 insert returning 200 proves the parameterized D1 insert succeeded, because the boundary fails closed otherwise and never downgrades to Supabase",
+    "the prune path ran on D1 in all three runs (POST /admin-events/prune 200)",
+    "the resting boundary (version d9ccf235 at 04:21, write/read supabase, no feature allowed-refs binding) rejected unauthenticated probes with 401"
+  ],
+  "whatThisDoesNotProve": [
+    "a combined full-d1 admin_ops_events read/write cutover: write runs held read=supabase and the separate M11.4R read window held write=supabase; the two are never combined",
+    "M11 completion: ingest and core/publication remain pending",
+    "fail-closed behavior under a live D1 failure: only the existing fail-closed write/read tests are accepted, no destructive live fault injection was performed",
+    "that the historical D1 inserts never happened: the current 412/412 reconciliation is the post-live clean state after cleanup, not absence of the inserts"
+  ],
+  "verification": {
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false,
+    "jsonValidated": true,
+    "diffCheck": "pass",
+    "liveBoundedD1CanaryInsert": "pass",
+    "liveD1DedupeReadBeforeWrite": "pass",
+    "liveOrdinaryFullD1Write": "pass",
+    "liveCombinedFullD1ReadWriteCutover": "not_claimed",
+    "m11Complete": false
+  },
+  "filesChanged": [
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json",
+    "docs/worldcons-cloudflare-m11-admin-ops-events-authority-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "blockers": [
+    "combined full-d1 admin_ops_events read/write cutover not yet live-proven",
+    "fail-closed behavior under a live D1 failure is only covered by the existing tests, not a live fault injection",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "nextGate": "deliberate combined full-d1 admin_ops_events read/write window, using the already-proven write components (bounded/ordinary D1 insert + dedupe read + prune) and the already-proven read component (M11.4R d1 list read parity), then M11 ingest and core/publication"
+}

@@ -1795,6 +1795,54 @@ live read parity PASS, no combined cutover**):
   and
   `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json`.
 
+M11.4 live `admin_ops_events` write components (2026-09-28, bounded PASS; no
+combined cutover; M11 still incomplete):
+
+- Three controller-owned `admin-watchdog` dispatches at head `6c44e5b`
+  live-exercised the M11.4 `admin_ops_events` D1 write paths while read authority
+  rested at `supabase`. Because a selected D1 insert returns `200` only when the
+  bound parameterized insert actually succeeded (the boundary fails closed with
+  `503`/throws otherwise and never silently downgrades to Supabase), the `200`
+  responses prove the D1 inserts executed.
+- **Bounded `d1-canary` insert — PASS.** Run `36377157726` ran write
+  `d1-canary` / read `supabase` / canary marker `true` on Worker version
+  `cc448d9b-566c-465a-8ee9-dcfc2aef42c7` (admin write `d1-canary`, read
+  `supabase`, feature allowed-refs binding). Observability recorded
+  `GET /v1/ops/admin-events/latest` 200, `POST /v1/ops/admin-events` 200 and
+  `POST /v1/ops/admin-events/prune` 200; the marked event landed in D1 only with
+  dedupe read and prune resolving to D1.
+- **D1 read-before-write dedupe — PASS.** Run `36377256343` on the same authority
+  and version `cc448d9b` produced the same watchdog violation signature but
+  Observability shows `GET /latest` 200 and `POST /prune` 200 with **no**
+  `POST /admin-events`; the dedupe read resolved the same latest signature on D1
+  and skipped the insert while prune still ran on D1.
+- **Ordinary full-`d1` write — PASS.** Run `36377461933` ran write `d1` / read
+  `supabase` / empty canary marker on Worker version
+  `87f3acb5-6843-4118-bb7f-cc0f51a0f5e9` (admin write `d1`, read `supabase`,
+  feature allowed-refs binding). Observability recorded `GET /latest` 200,
+  `POST /admin-events` 200 and `POST /prune` 200, proving the ordinary full-D1
+  write path (dedupe read + successful insert + prune) under full `d1`
+  authority.
+- **Resting/reconciled.** At 04:21 a resting Worker version
+  `d9ccf235-e4c6-4e78-9fdc-fdcaec122428` carried admin write/read `supabase` with
+  no feature allowed-refs binding and unauthenticated probes returned `401` as
+  expected. Current/reconciled production holds Supabase and D1 both at **412**
+  with matching latest-20 identity; the temporary canary/full-write D1 rows were
+  cleaned/reconciled and must not be reintroduced. This `412/412` state is the
+  post-live reconciled state and is explicitly **not** evidence that the
+  historical inserts did not happen.
+- **Not claimed.** No combined full-`d1` `admin_ops_events` read/write cutover
+  (the write runs held read `supabase` and the separate M11.4R window held write
+  `supabase`; the two are never combined), no live D1 fault injection, and no M11
+  completion (ingest and core/publication remain pending).
+- **Next gate.** The deliberate combined full-`d1` `admin_ops_events` read/write
+  window using the already-proven write components (bounded `d1-canary` insert,
+  D1 dedupe read, D1 prune, ordinary full-`d1` write) and the already-proven read
+  component (M11.4R D1 list read parity).
+- Detailed evidence:
+  `artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json`
+  (and `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`).
+
 M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28):
 
 - Replaces the shared `WORLDCONS_OPS_WRITE_TOKEN` repository secret for

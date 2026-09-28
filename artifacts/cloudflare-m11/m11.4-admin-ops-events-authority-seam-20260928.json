@@ -1,16 +1,22 @@
 {
   "schemaVersion": 1,
   "milestone": "M11.4",
-  "decision": "CODE-AND-BOUNDARY-READY-LIVE-CANARY-PENDING-NO-LIVE-PROOF",
-  "status": "code_ready_resting_at_supabase",
+  "decision": "CODE-AND-BOUNDARY-READY-LIVE-WRITE-COMPONENTS-PASS-NO-COMBINED-CUTOVER-M11-INCOMPLETE",
+  "status": "code_ready_live_write_components_pass_resting_reconciled_412_412",
   "date": "2026-09-28",
   "baseCheckpoint": "015397f869d261bebd2857305d64ad0c8dee8fcb",
+  "liveEvidenceHead": "877f138a45034633bc3b8483ce3927517acb1848",
+  "liveRunsHead": "6c44e5b",
   "scope": {
     "database": "worldcons_ops",
     "table": "admin_ops_events",
     "kind": "write+read-authority-seam",
     "m11GloballyComplete": false,
-    "liveCanaryClaimed": false,
+    "liveCanaryClaimed": true,
+    "liveBoundedD1CanaryInsertClaimed": true,
+    "liveD1DedupeReadBeforeWriteClaimed": true,
+    "liveOrdinaryFullD1WriteClaimed": true,
+    "liveCombinedFullD1ReadWriteCutoverClaimed": false,
     "deployOrCommitPerformed": false,
     "oldMigrationsEdited": false,
     "d1OrPostgresSchemaChanged": false
@@ -170,33 +176,82 @@
     "diffCheck": "pass",
     "postgresReleaseStatic": "pre-existing unrelated Windows CRLF failure at clean HEAD (d1:emit \\n vs working-copy \\r\\n); unchanged by M11.4",
     "pnpmCheck": "pre-existing unrelated failure (summary drain workflow must run on its own schedule)",
-    "liveCanary": "not_run_no_proof_claimed"
+    "liveCanary": "pass_components_bounded_see_liveWriteEvidence",
+    "liveBoundedD1CanaryInsert": "pass",
+    "liveD1DedupeReadBeforeWrite": "pass",
+    "liveOrdinaryFullD1Write": "pass",
+    "liveCombinedFullD1ReadWriteCutover": "not_claimed"
+  },
+  "liveWriteEvidence": {
+    "artifact": "artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json",
+    "status": "bounded-d1-canary-insert-pass-dedupe-pass-full-d1-write-pass",
+    "runsHeadSha": "6c44e5b",
+    "runs": [
+      {
+        "runId": 36377157726,
+        "writeAuthority": "d1-canary",
+        "readAuthority": "supabase",
+        "canaryMarker": true,
+        "workerVersionId": "cc448d9b-566c-465a-8ee9-dcfc2aef42c7",
+        "observability": "GET /latest 200, POST /admin-events 200, POST /prune 200",
+        "verdict": "bounded_d1_canary_insert_pass"
+      },
+      {
+        "runId": 36377256343,
+        "writeAuthority": "d1-canary",
+        "readAuthority": "supabase",
+        "canaryMarker": true,
+        "workerVersionId": "cc448d9b-566c-465a-8ee9-dcfc2aef42c7",
+        "observability": "GET /latest 200, POST /prune 200, no POST /admin-events (dedupe skipped the insert)",
+        "verdict": "d1_dedupe_read_before_write_pass"
+      },
+      {
+        "runId": 36377461933,
+        "writeAuthority": "d1",
+        "readAuthority": "supabase",
+        "canaryMarker": "",
+        "workerVersionId": "87f3acb5-6843-4118-bb7f-cc0f51a0f5e9",
+        "observability": "GET /latest 200, POST /admin-events 200, POST /prune 200",
+        "verdict": "ordinary_full_d1_write_pass"
+      }
+    ],
+    "restingReconciliation": "Supabase and D1 admin_ops_events both at 412 with matching latest-20 identity; temporary canary/full-write D1 rows already cleaned/reconciled and not to be reintroduced; the 412/412 clean state is the post-live state, not evidence the historical inserts did not happen",
+    "combinedCutoverClaimed": false
   },
   "liveCanaryPrerequisites": [
-    "deploy worldcons-search with /internal/admin-ops-events* (stays internal-only)",
-    "deploy worldcons-ops-write with resting admin-ops-events write/read authority supabase; confirm the new paths return 401 without auth and the boundary stays workers.dev-only",
-    "capture baseline admin_ops_events row counts on both Supabase and worldcons_ops D1",
-    "coordinate both write vars (Node repo var + boundary Worker var) to d1-canary and dispatch admin-watchdog with admin_ops_events_canary=true (which sets WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true for that run only); confirm the marked event lands in D1 only and the Supabase count is unchanged; the dedupe read and prune must hit D1",
-    "coordinate both write vars to d1 with an ordinary watchdog run; confirm insert/dedupe-read/prune all resolve to D1 and Supabase is unchanged",
-    "switch WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1 and confirm app/admin/ops/page.tsx list equals the Supabase projection (id/type/severity/source/summary/detail/created_at order)",
-    "roll every write/read var back to supabase and confirm the direct Supabase writer/reader resumes",
-    "delete the canary event(s) and restore pre-canary counts"
+    "DONE: deploy worldcons-search with /internal/admin-ops-events* (stays internal-only)",
+    "DONE: deploy worldcons-ops-write with resting admin-ops-events write/read authority supabase; unauthenticated paths return 401 and the boundary stays workers.dev-only",
+    "DONE: capture baseline admin_ops_events row counts on both Supabase and worldcons_ops D1",
+    "DONE (run 36377157726 and 36377256343): coordinate both write vars (Node repo var + boundary Worker var) to d1-canary and dispatch admin-watchdog with admin_ops_events_canary=true; a marked event landed in D1 only, the dedupe read and prune hit D1, and the second run proved dedupe skipped the insert while still pruning",
+    "DONE (run 36377461933): coordinate both write vars to d1 with an ordinary watchdog run; insert/dedupe-read/prune all resolved to D1",
+    "DONE (M11.4R run 36379545354): switch WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1 and confirm app/admin/ops/page.tsx list equals the Supabase projection",
+    "DONE: roll every write/read var back to supabase and confirm the direct Supabase writer/reader resumes; resting versions carry no feature allowed-refs binding and reject unauthenticated access with 401",
+    "DONE: delete the canary event(s) and restore pre-canary counts (Supabase and D1 both reconciled at 412, latest-20 identity matched)"
   ],
   "blockers": [
-    "no Cloudflare/DB credential access in this environment; controller owns the live canary",
-    "write-path canary must also prove dedupe and prune land in D1, not only the insert",
+    "combined full-d1 admin_ops_events read/write cutover not yet live-proven",
+    "fail-closed behavior under a live D1 failure is only covered by the existing tests, not a live fault injection",
     "M11 not globally complete: ingest and core/publication remain pending"
   ],
   "readParityMilestone": {
     "milestone": "M11.4R-admin-ops-events-read-parity",
-    "status": "code_ready_live_parity_pending",
+    "status": "live_read_parity_pass_at_877f138a",
     "readOnly": true,
     "artifact": "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json",
+    "liveEvidenceArtifact": "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json",
     "comparator": "lib/cloudflare/ops-write/admin-ops-events-read-parity.ts",
     "probe": "scripts/ops-admin-events-read-parity.ts",
     "dispatchInput": "admin_ops_events_read_parity_only (workflow_dispatch-only boolean, default false) in .github/workflows/admin-watchdog.yml",
     "reconciliationPreceded": "before 382 D1 vs 412 Supabase; dry-run source-only 30 / remote-only 0 / updates 0; apply inserted 30; final dry-run exact 412/412, remote-only 0, zero writes, verified true",
-    "liveParityClaimed": false
+    "liveParityClaimed": true,
+    "liveRunId": 36379545354,
+    "liveHeadSha": "3f584f239b3c7f82f08b705e699a34bb8e3949d5",
+    "boundaryReadAuthority": "d1",
+    "boundaryWriteAuthority": "supabase",
+    "boundaryCount": 20,
+    "supabaseCount": 20,
+    "differences": [],
+    "countsUnchanged": "412/412"
   },
-  "next": "M11.4 live canary by controller (insert+dedupe+prune write window), then the M11.4R read-only d1 list read-parity window, then restore supabase; M11 remains incomplete for ingest and core/publication"
+  "next": "Deliberate combined full-d1 admin_ops_events read/write window using the already-proven write components (bounded d1-canary insert, dedupe read, prune, ordinary full-d1 write) and the already-proven read component (M11.4R d1 list read parity); explicitly NOT claimed yet. M11 remains incomplete for ingest and core/publication."
 }

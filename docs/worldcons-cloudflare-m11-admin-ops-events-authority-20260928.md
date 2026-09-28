@@ -8,13 +8,15 @@ Base checkpoint: `015397f869d261bebd2857305d64ad0c8dee8fcb` (M11.3R live D1 read
 **M11.4 implements the bounded, fail-closed Cloudflare D1 compatibility path
 for `worldcons_ops.admin_ops_events` that M11.3 deliberately deferred.**
 
-Code and focused tests are complete, and the M11.4R live read-only list
-read-parity window has since run to PASS (see below). The Cloudflare authority
-rests at
+Code and focused tests are complete. The M11.4R live read-only list
+read-parity window has since run to PASS, and the M11.4 live write components
+(bounded `d1-canary` insert, D1 read-before-write dedupe, D1 prune, and the
+ordinary full-`d1` write) have since run to bounded PASS at head `6c44e5b`
+(see the result sections below). The Cloudflare authority rests at
 `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=supabase` and
 `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=supabase`, so the Node/GitHub watchdog
-behavior is byte-for-byte unchanged. No write-canary window, commit or push was
-performed; the M11.4 write canary remains controller-owned and unclaimed.
+behavior is byte-for-byte unchanged. No combined full-`d1` read/write cutover,
+commit or push was performed by this documentation step.
 **M11 is not complete**: ingest and core/publication remain pending.
 
 ## Why `admin_ops_events` is broader than the M11.3 heartbeat
@@ -217,41 +219,84 @@ full-`d1` `admin_ops_events` read/write cutover or M11 completion (ingest and
 core/publication remain pending). See
 `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence-20260928.json`.
 
+## M11.4 live write result (2026-09-28, bounded component PASS)
+
+At head `6c44e5b` the controller ran three `admin-watchdog` dispatches that
+live-exercised the M11.4 `admin_ops_events` D1 write paths while read authority
+rested at `supabase`. Because a selected D1 insert returns `200` only when the
+bound parameterized insert actually succeeded (the boundary fails closed with a
+`503`/throw otherwise and never silently downgrades to Supabase), the observed
+`200` responses prove the D1 inserts executed.
+
+- **Bounded `d1-canary` insert — PASS.** Run `36377157726` ran with
+  `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=d1-canary`, read `supabase`, and
+  `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true`. Worker version
+  `cc448d9b-566c-465a-8ee9-dcfc2aef42c7` carried admin write `d1-canary`, read
+  `supabase`, and the temporary feature allowed-refs binding. Cloudflare
+  Observability recorded `GET /v1/ops/admin-events/latest` `200`,
+  `POST /v1/ops/admin-events` `200` and `POST /v1/ops/admin-events/prune` `200`.
+  The marked event therefore landed in D1 only, with the dedupe read and prune
+  resolving to D1 and ordinary events still on Supabase.
+- **D1 read-before-write dedupe — PASS.** Run `36377256343` ran on the same
+  authority and Worker version `cc448d9b` and produced the same watchdog
+  violation signature, but Observability shows `GET /latest` `200` and
+  `POST /prune` `200` with **no** `POST /admin-events`. The dedupe read resolved
+  the same latest signature on D1 and skipped the insert while prune still ran on
+  D1, proving the dedupe-skipped-insert-while-still-pruning contract against D1.
+- **Ordinary full-`d1` write — PASS.** Run `36377461933` ran with
+  `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=d1`, read `supabase` and an empty
+  canary marker. Worker version `87f3acb5-6843-4118-bb7f-cc0f51a0f5e9` carried
+  admin write `d1`, read `supabase` and the feature allowed-refs binding.
+  Observability recorded `GET /latest` `200`, `POST /admin-events` `200` and
+  `POST /prune` `200`, proving the ordinary full-D1 write path (dedupe read +
+  successful parameterized insert + prune) under full `d1` authority.
+
+At 04:21 a resting Worker version `d9ccf235-e4c6-4e78-9fdc-fdcaec122428` carried
+admin write/read `supabase` with no feature allowed-refs binding, and controller
+unauthenticated endpoint probes returned `401` as expected.
+
+**Post-live clean state.** Current/reconciled production holds Supabase and D1
+`admin_ops_events` both at **412** with matching latest-20 identity. Any temporary
+canary or full-write D1 rows have already been cleaned/deleted and reconciled and
+must **not** be reintroduced. This `412/412` clean state is the post-live
+reconciled state and is explicitly **not** evidence that the historical inserts
+did not happen.
+
+This marks the M11.4 write **components** as bounded PASS. It does **not** claim a
+combined full-`d1` `admin_ops_events` read/write cutover or M11 completion. See
+`artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json`.
+
 ## What is NOT claimed
 
 - No combined full-`d1` `admin_ops_events` read/write cutover, no deploy, commit or push.
 - No M11 completion: ingest and core/publication remain pending.
+- The `412/412` reconciliation is the post-live clean state, not evidence the historical D1 inserts did not happen.
 
 ## Safest next live canary sequence (controller)
 
 1. Deploy `worldcons-search` with `/internal/admin-ops-events*`; confirm it stays
-   internal-only (`workers_dev=false`, Service Binding only).
+   internal-only (`workers_dev=false`, Service Binding only). **(DONE)**
 2. Deploy `worldcons-ops-write` with both admin-ops-events vars at `supabase`;
    confirm the four new paths return 401 without auth and the boundary remains
-   workers.dev-only with preview URLs disabled.
+   workers.dev-only with preview URLs disabled. **(DONE)**
 3. Capture baseline `admin_ops_events` counts on Supabase and on `worldcons_ops`
-   D1.
+   D1. **(DONE)**
 4. Write canary: coordinate both write vars to `d1-canary` and dispatch
-   `admin-watchdog` with `admin_ops_events_canary=true` (which sets
-   `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true` for that run only). Confirm
-   the marked event lands in D1 only, the Supabase count is
-   unchanged, and the dedupe read + prune both hit D1. Re-run with an unchanged
-   signature to prove dedupe skips the D1 insert while still pruning.
-5. Full write window: coordinate both write vars to `d1` with an ordinary run;
-   confirm insert, dedupe read and prune all resolve to D1 and Supabase is
-   unchanged.
-6. Read parity (M11.4R, read-only): set the boundary
-   `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1`, then dispatch
-   `admin-watchdog.yml` with `admin_ops_events_read_parity_only=true` (or, after
-   merge, dispatch the dedicated probe) to run
-   `pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json`;
-   confirm the boundary/D1 list equals the Supabase `listAdminOpsEvents(20)`
-   projection (same ids/order/fields) and download the JSON evidence artifact.
-   Separately confirm `app/admin/ops/page.tsx`'s `listAdminOpsEvents(20)` against
-   the same projection. **(DONE — M11.4R LIVE-READ-PARITY-PASS, see the result
-   section above; steps 4-5 write-canary windows remain pending.)**
+   `admin-watchdog` with `admin_ops_events_canary=true`. **(DONE — bounded
+   `d1-canary` insert PASS, run `36377157726`; second-run D1 dedupe PASS, run
+   `36377256343`.)**
+5. Full write window: coordinate both write vars to `d1` with an ordinary run.
+   **(DONE — ordinary full-`d1` write PASS, run `36377461933`.)**
+6. Read parity (M11.4R, read-only). **(DONE — M11.4R LIVE-READ-PARITY-PASS, run
+   `36379545354`, recorded at commit `877f138a`.)**
 7. Roll every write/read var and binding back to `supabase`; confirm the direct
-   Supabase writer/reader resumes.
-8. Delete the canary event(s) and restore pre-canary counts.
+   Supabase writer/reader resumes. **(DONE)**
+8. Delete the canary event(s) and restore pre-canary counts. **(DONE — Supabase
+   and D1 reconciled at 412/412, latest-20 identity matched.)**
+
+**Next gate.** The deliberate combined full-`d1` `admin_ops_events` read/write
+window, using the already-proven write components (bounded `d1-canary` insert,
+D1 dedupe read, D1 prune, ordinary full-`d1` write) and the already-proven read
+component (M11.4R D1 list read parity). This is explicitly **not** claimed yet.
 
 See `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`.
