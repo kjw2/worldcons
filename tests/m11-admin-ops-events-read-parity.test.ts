@@ -140,11 +140,14 @@ test("M11.4R admin_ops_events_read_parity_only skips the watchdog and runs only 
     "the watchdog step must be skipped when either read-parity-only input is true",
   );
 
-  const probe = steps.find((step) => step.body.some((line) => /pnpm ops:admin-events-read-parity/u.test(line)));
+  // There are now two steps running the admin_ops_events probe (the M11.4R
+  // read-parity-only step and the M11.4 combined-window step), so select the
+  // read-parity-only step by its exact guard rather than by first match.
+  const probe = steps.find((step) => step.body.some((line) => /if:\s*\$\{\{\s*inputs\.admin_ops_events_read_parity_only == true\s*\}\}/u.test(line)));
   assert.ok(probe, "the read-only admin_ops_events probe step must exist in the dispatch shell");
   assert.ok(
-    probe!.body.some((line) => /if:\s*\$\{\{\s*inputs\.admin_ops_events_read_parity_only == true\s*\}\}/u.test(line)),
-    "the probe step must run only when admin_ops_events_read_parity_only is true",
+    probe!.body.some((line) => /pnpm ops:admin-events-read-parity/u.test(line)),
+    "the read-parity-only step must run the admin_ops_events probe",
   );
   assert.ok(
     probe!.body.some((line) => line.includes("pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json")),
@@ -153,6 +156,53 @@ test("M11.4R admin_ops_events_read_parity_only skips the watchdog and runs only 
 
   // The read-only branch must not broaden trust: OIDC stays id-token: write and
   // no contents/issues write appears.
+  assert.doesNotMatch(source, /contents:\s*write/u);
+  assert.match(source, /id-token:\s*write/u);
+});
+
+test("M11.4 combined dispatch exposes a boolean and lets one run exercise write + read", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
+  assert.match(source, /^\s*admin_ops_events_combined:\s*$/mu);
+  assert.match(
+    source,
+    /admin_ops_events_combined:[\s\S]{0,300}?type:\s*boolean[\s\S]{0,120}?default:\s*false/u,
+    "the combined window input must be a boolean defaulting to false",
+  );
+
+  const lines = source.split(/\r?\n/u);
+  const steps: { name: string; body: string[] }[] = [];
+  for (const line of lines) {
+    const name = /^\s*- name:\s*(.+?)\s*$/u.exec(line);
+    if (name) steps.push({ name: name[1], body: [] });
+    else if (steps.length > 0) steps[steps.length - 1].body.push(line);
+  }
+
+  // The ordinary watchdog step must STILL run in combined mode (the combined
+  // window proves the write path too), i.e. the watchdog guard excludes only the
+  // two read-parity-only inputs, never the combined input.
+  const watchdog = steps.find((step) => step.body.some((line) => /run:\s*pnpm ops:watchdog/u.test(line)));
+  assert.ok(watchdog, "the watchdog step must remain present for normal and combined runs");
+  assert.ok(
+    watchdog!.body.some((line) => /if:\s*\$\{\{\s*inputs\.read_parity_only != true && inputs\.admin_ops_events_read_parity_only != true\s*\}\}/u.test(line)),
+    "the watchdog step must run in combined mode and only be skipped for read-parity-only modes",
+  );
+  assert.ok(
+    !watchdog!.body.some((line) => /inputs\.admin_ops_events_combined/u.test(line)),
+    "the combined input must never skip the watchdog write step",
+  );
+
+  const combined = steps.find((step) => step.name.includes("combined window, read-only"));
+  assert.ok(combined, "the combined-window read-parity step must exist");
+  assert.ok(
+    combined!.body.some((line) => /if:\s*\$\{\{\s*inputs\.admin_ops_events_combined == true\s*\}\}/u.test(line)),
+    "the combined read-parity step must run only when admin_ops_events_combined is true",
+  );
+  assert.ok(
+    combined!.body.some((line) => line.includes("pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json")),
+    "the combined branch must run the exact read-only admin_ops_events probe command",
+  );
+
+  // Combined mode must not broaden trust.
   assert.doesNotMatch(source, /contents:\s*write/u);
   assert.match(source, /id-token:\s*write/u);
 });

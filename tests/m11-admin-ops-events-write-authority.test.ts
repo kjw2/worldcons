@@ -680,9 +680,16 @@ test("M11.4 search-service bridge writes/pauses against Supabase table semantics
   assert.match(seen[2].url, /created_at=lt\./u);
 });
 
-test("M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails closed without a binding", async () => {
+test("M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails closed without a binding", async (t) => {
   const originalEnv = { ...process.env };
   clearRuntimeD1Bindings();
+  // `recordAdminOpsEvent` stamps `created_at` from the wall clock (`new Date()`)
+  // while the dedupe read and the admin list projection order strictly by
+  // `created_at`. Without a frozen clock the first and third writes can land in
+  // the same millisecond, so the descending list order (and the latest-row read)
+  // became nondeterministic. Freeze Date so each snapshot gets a distinct,
+  // deterministic timestamp; only `Date` is mocked, so real timers are untouched.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-09-28T12:00:00.000Z") });
   try {
     process.env[ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV] = "d1";
     process.env[ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV] = "d1";
@@ -708,7 +715,9 @@ test("M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails c
     assert.equal(state.inserts.length, 1);
     assert.equal(state.deletes.length, deletesBefore + 1);
 
-    // A changed signature writes a new event.
+    // A changed signature writes a new event, strictly later than the first so
+    // the descending `created_at` projection is unambiguous.
+    t.mock.timers.setTime(Date.parse("2026-09-28T12:05:00.000Z"));
     await recordWatchdogEvents(evaluation({
       ok: false,
       violations: [{ key: "missed-window", severity: "critical", summary: "위반" }],

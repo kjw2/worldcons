@@ -299,4 +299,115 @@ window, using the already-proven write components (bounded `d1-canary` insert,
 D1 dedupe read, D1 prune, ordinary full-`d1` write) and the already-proven read
 component (M11.4R D1 list read parity). This is explicitly **not** claimed yet.
 
+## M11.4 combined full-`d1` read/write window (code-ready)
+
+The combined gate is a **single ordinary `admin-watchdog` dispatch** on
+`codex/m7-go-search` that exercises **both** the D1 write contract and the D1
+list-read parity against Supabase. It is required because the ordinary watchdog
+only touches the write contract (`recordWatchdogEvents`: dedupe read + insert +
+prune); it never calls `listAdminOpsEvents`, so a plain write run cannot observe
+the list-read path. The M11.4R probe reads only the list; it never writes. A
+single-dispatch combined window therefore needs one added dispatch-only step.
+
+The minimum plumbing (implemented; no runtime/authority behavior change) is a
+`workflow_dispatch`-only boolean `admin_ops_events_combined` (default `false`)
+in `.github/workflows/admin-watchdog.yml`. When true, a `combined window,
+read-only` step runs
+`pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json`
+and uploads `m11.4-combined-admin-ops-events-read-parity-live-evidence`, and the
+ordinary watchdog step then still runs (it is only skipped by the two
+read-parity-only inputs).
+
+**Ordering is deliberate: the read leg runs BEFORE the watchdog write leg.**
+Under full `d1` write authority the watchdog's own new event lands in D1 only,
+so a strict order-aware read parity probe run *after* the watchdog would see the
+D1-only leading row and report a false parity difference. Running the read probe
+first compares the still-reconciled shared projection, then the watchdog step
+proves the write path (insert/dedupe/prune) via Cloudflare Observability.
+Scheduled and ordinary manual runs never set the input, and it neither broadens
+OIDC trust nor adds a credential.
+
+### Boundary and Node write/read authority for the window
+
+| Var | Where | Window value | After |
+| --- | --- | --- | --- |
+| `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY` | repo var (Node watchdog) | `d1` | `supabase` |
+| `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY` | repo var (Node list read) | `d1` | `supabase` |
+| `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY` | ops-write Worker var | `d1` | `supabase` |
+| `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY` | ops-write Worker var | `d1` | `supabase` |
+| `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER` | dispatch | unset (combined uses full `d1`) | unset |
+| `WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY` | repo + Worker | **`supabase` (untouched)** | `supabase` |
+| `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` | repo + Worker | **`supabase` (untouched)** | `supabase` |
+| `WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS` | Worker temp binding | `refs/heads/main,refs/heads/codex/m7-go-search` | removed |
+
+`WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY` on the **Worker** must be `d1` for
+the boundary to serve the list; the probe additionally forces `d1` in its own
+process env so the Node client issues the boundary GET.
+
+### Controller sequence (shortest window)
+
+1. **Baseline.** Confirm Supabase and `worldcons_ops` D1 `admin_ops_events`
+   counts match (currently 412/412) and the latest-20 IDs/order match; confirm
+   unauthenticated `GET /v1/ops/admin-events/list?limit=20` returns `401`.
+2. **Isolate concurrency.** Confirm the other four heartbeat-producing
+   workflows have no running/queued runs and that `concurrency.group:
+   admin-ops-watchdog` has no other in-flight run, so no concurrent writer can
+   contaminate the observation. Note: any *scheduled production* watchdog run
+   during the window would also write its own event under `d1`; the window is
+   one dispatched run only.
+3. **Temp ref binding (only as needed).** On the resting ops-write Worker, set
+   the temporary OIDC allowed-refs binding to `refs/heads/main +
+   refs/heads/codex/m7-go-search`.
+4. **Set all four admin authorities to `d1`** (repo write+read, Worker
+   write+read) and deploy the canary Worker version. Leave both heartbeat
+   authorities at `supabase`.
+5. **Exactly one dispatch:** `admin-watchdog.yml` on `codex/m7-go-search` with
+   `admin_ops_events_combined=true` and every other input default (`false`).
+   Within the run the read-parity step executes first, then the watchdog write.
+6. **Verify read path (runs first):** the job's read-parity step must report
+   `boundaryVsSupabase.holds=true`, `differences=[]`, `ok=true`, `boundaryCount`
+   and `supabaseCount` equal (20 with `--no-direct-d1`), and upload the combined
+   evidence artifact. This compares the still-reconciled shared projection before
+   the write leg adds its D1-only event.
+7. **Verify write path from Observability (runs second):** exactly the ordinary write triple —
+   `GET /v1/ops/admin-events/latest` `200`, `POST /v1/ops/admin-events` `200`
+   (or, if the signature is unchanged from the last D1 event, the dedupe
+   correctly skips it and no `POST /admin-events` appears — verify the latest
+   `detail.signature` to explain which), and `POST /v1/ops/admin-events/prune`
+   `200`. Auth-failure count 0.
+8. **Verify Supabase invariance:** the Supabase `admin_ops_events` row/count is
+   unchanged except any unrelated preexisting activity; the Supabase watchdog
+   heartbeat `run_id` does not advance (heartbeat rests on Supabase).
+9. **Fail closed:** no silent Supabase fallback; any D1 failure is a `503`/
+   throw. Live D1 fault injection is not performed; the existing fail-closed
+   tests are accepted in lieu (documented).
+10. **Roll back immediately:** restore repo write/read and Worker write/read to
+    `supabase`, redeploy the resting Worker version, remove the temporary
+    allowed-refs binding; confirm unauthenticated list `GET` returns `401` and
+    the direct Supabase writer/reader resumes.
+11. **Reconcile.** If the injected ordinary D1 event diverged from Supabase,
+    reconcile with the operator tool and record the post-live clean state
+    (temporary rows are not to be reintroduced).
+
+### Expected endpoints
+
+- Insert (write authority): `POST /v1/ops/admin-events`
+- Dedupe read (write authority): `GET /v1/ops/admin-events/latest`
+- Prune (write authority): `POST /v1/ops/admin-events/prune`
+- List read (read authority): `GET /v1/ops/admin-events/list?limit=20`
+
+### Expected evidence fields
+
+Combined artifact (`m11.4-combined-…`) plus the M11.4R
+`m11.4r-admin-ops-events-read-parity-live-evidence.json` shape:
+`boundaryCount`, `supabaseCount`, `comparison.boundaryVsSupabase.holds`,
+`comparison.boundaryVsSupabase.differences`, `directD1.enabled` (false in
+GitHub), `ok`; Cloudflare Observability request list/method/path/status/outcome
+for the three write endpoints and the one list read; Supabase invariant
+counts and watchdog `run_id`; canary Worker version id and the four authority
+values; rollback Worker version id and unauth probe status.
+
+This gate is explicitly **not** M11 completion: ingest and core/publication
+remain pending.
+
 See `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`.

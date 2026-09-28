@@ -50,6 +50,21 @@ on:
         required: false
         type: boolean
         default: false
+      # M11.4 combined full-d1 read/write window selector. A
+      # workflow_dispatch-only boolean defaulting to false. The ordinary watchdog
+      # only exercises the WRITE contract (insert + dedupe read + prune); it never
+      # reads the admin list projection. So when true this run additionally runs
+      # the read-only admin_ops_events list parity probe AFTER the watchdog, in
+      # the SAME dispatch, so one run proves BOTH the D1 write path and the D1
+      # list-read parity against Supabase. No canary marker is needed: the
+      # combined window uses full `d1` write authority on an ordinary run.
+      # Scheduled and ordinary manual runs never set it; a dispatch selects it
+      # deliberately and not together with either read-parity-only input.
+      admin_ops_events_combined:
+        description: Combined M11.4 full-d1 admin_ops_events read/write window (watchdog write + list read parity)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -152,6 +167,24 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # M11.4 combined window, read leg. This step runs BEFORE the watchdog write
+      # step deliberately: at this point Supabase and D1 still hold the same
+      # reconciled rows, so the strict order-aware list parity probe holds on the
+      # shared projection. Running it after the watchdog would see the D1-only
+      # event this same window just wrote (write authority is full `d1`) and
+      # report a false parity difference. The write leg is proven immediately
+      # after by the ordinary watchdog step plus Cloudflare Observability.
+      - name: Compare boundary admin_ops_events list against Supabase (combined window, read-only)
+        if: ${{ inputs.admin_ops_events_combined == true }}
+        run: pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json
+      - name: Upload combined-window admin_ops_events read-parity evidence
+        if: ${{ inputs.admin_ops_events_combined == true && always() && hashFiles('artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: m11.4-combined-admin-ops-events-read-parity-live-evidence
+          path: artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Evaluate collection health, alert, and compensate
         if: ${{ inputs.read_parity_only != true && inputs.admin_ops_events_read_parity_only != true }}
         run: pnpm ops:watchdog -- --compensate

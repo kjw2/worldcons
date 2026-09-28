@@ -1838,7 +1838,13 @@ combined cutover; M11 still incomplete):
 - **Next gate.** The deliberate combined full-`d1` `admin_ops_events` read/write
   window using the already-proven write components (bounded `d1-canary` insert,
   D1 dedupe read, D1 prune, ordinary full-`d1` write) and the already-proven read
-  component (M11.4R D1 list read parity).
+  component (M11.4R D1 list read parity). As of this step the combined window is
+  **code-ready**: `.github/workflows/admin-watchdog.yml` gains a
+  `workflow_dispatch`-only boolean `admin_ops_events_combined` (default `false`)
+  so a **single ordinary dispatch** runs the watchdog write step (insert +
+  dedupe read + prune under full `d1`) and then the read-only
+  `pnpm ops:admin-events-read-parity` list probe in the same run. No runtime or
+  authority behavior changes; scheduled and ordinary runs never set it.
 - Detailed evidence:
   `artifacts/cloudflare-m11/m11.4-admin-ops-events-write-live-evidence-20260928.json`
   (and `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`).
