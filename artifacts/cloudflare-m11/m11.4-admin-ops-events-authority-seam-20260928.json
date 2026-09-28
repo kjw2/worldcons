@@ -51,6 +51,17 @@
     "canaryDetailKey": "m11AdminOpsEventsCanary",
     "canarySelector": "the Node writer adds detail.m11AdminOpsEventsCanary=true only while the marker env is true/1; the boundary's d1-canary selector accepts only that exact boolean"
   },
+  "githubActionsWiring": {
+    "workflow": ".github/workflows/admin-watchdog.yml",
+    "writeAuthority": "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'supabase' }}",
+    "readAuthority": "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'supabase' }}",
+    "canaryInput": "workflow_dispatch-only boolean admin_ops_events_canary, default false",
+    "canaryMarker": "WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.admin_ops_events_canary == true && 'true' || '' }}",
+    "canaryMarkerRepoVarFallback": false,
+    "heartbeatInputsUnchanged": true,
+    "sharedAuthSecret": false,
+    "oidcUnchanged": true
+  },
   "architecture": {
     "boundary": {
       "worker": "workers/ops-write (name worldcons-ops-write)",
@@ -165,7 +176,7 @@
     "deploy worldcons-search with /internal/admin-ops-events* (stays internal-only)",
     "deploy worldcons-ops-write with resting admin-ops-events write/read authority supabase; confirm the new paths return 401 without auth and the boundary stays workers.dev-only",
     "capture baseline admin_ops_events row counts on both Supabase and worldcons_ops D1",
-    "coordinate both write vars (Node repo var + boundary Worker var) to d1-canary and set WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER for one dispatched admin-watchdog run; confirm the marked event lands in D1 only and the Supabase count is unchanged; the dedupe read and prune must hit D1",
+    "coordinate both write vars (Node repo var + boundary Worker var) to d1-canary and dispatch admin-watchdog with admin_ops_events_canary=true (which sets WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true for that run only); confirm the marked event lands in D1 only and the Supabase count is unchanged; the dedupe read and prune must hit D1",
     "coordinate both write vars to d1 with an ordinary watchdog run; confirm insert/dedupe-read/prune all resolve to D1 and Supabase is unchanged",
     "switch WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1 and confirm app/admin/ops/page.tsx list equals the Supabase projection (id/type/severity/source/summary/detail/created_at order)",
     "roll every write/read var back to supabase and confirm the direct Supabase writer/reader resumes",

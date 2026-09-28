@@ -23,6 +23,18 @@ on:
         required: false
         type: boolean
         default: false
+      # M11.4 live admin_ops_events canary selector. A workflow_dispatch-only
+      # boolean defaulting to false, so scheduled and ordinary manual runs never
+      # carry the bounded marker. Only an explicit dispatch with
+      # admin_ops_events_canary=true sets
+      # WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true for THIS run, letting the
+      # Node writer add detail.m11AdminOpsEventsCanary and the boundary's
+      # d1-canary authority select exactly this run.
+      admin_ops_events_canary:
+        description: Mark only this dispatched run as the M11.4 admin_ops_events D1 canary
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -93,6 +105,25 @@ jobs:
       # risky shared repo var is deliberately removed: a lingering repo var could
       # make an unrelated watchdog run the canary.
       WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.ops_heartbeat_canary == true && github.run_id || '' }}
+      # M11.4 admin_ops_events boundary. Write authority resolves independently
+      # from the heartbeat authority and defaults to "supabase", so the resting
+      # watchdog write path is unchanged. It reuses the same authenticated
+      # boundary base URL and per-job GitHub OIDC token; no shared repository
+      # secret is introduced and WORLDCONS_OPS_WRITE_TOKEN stays unset.
+      WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'supabase' }}
+      # M11.4R read authority resolves independently of the write authority so a
+      # write canary never changes what the admin ops page reads. Defaults to
+      # "supabase" and is only consulted when explicitly "d1"; it fails closed if
+      # D1 is unavailable.
+      WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'supabase' }}
+      # M11.4 live D1 canary selector. Only an explicit workflow_dispatch with
+      # admin_ops_events_canary=true activates the bounded marker for THIS run, so
+      # the Node writer adds detail.m11AdminOpsEventsCanary and the boundary's
+      # d1-canary authority selects exactly this run. Scheduled and ordinary
+      # manual runs have no marker and are never selected. There is deliberately
+      # no shared vars.WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER fallback: a
+      # lingering repo var could make an unrelated watchdog run the canary.
+      WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.admin_ops_events_canary == true && 'true' || '' }}
       WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
       WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"

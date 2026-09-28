@@ -81,6 +81,27 @@ importable by the Node writer.
 
 Rollback is one var back to `supabase`; no schema or old migration was edited.
 
+## GitHub Actions wiring
+
+The concrete live-canary blocker was that `.github/workflows/admin-watchdog.yml`
+never injected the M11.4 authority seam into the Node watchdog process. The
+minimum safe wiring is:
+
+- `WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'supabase' }}`
+  and `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'supabase' }}`
+  are injected from repo vars with an explicit `supabase` fallback, so the
+  resting watchdog write/read path is unchanged. The existing authenticated
+  boundary base URL and per-job GitHub OIDC audience are reused; no shared secret
+  is added and `WORLDCONS_OPS_WRITE_TOKEN` stays unset.
+- The canary marker is **not** a persistent repo var. A
+  `workflow_dispatch`-only boolean input `admin_ops_events_canary` (default
+  `false`) sets
+  `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.admin_ops_events_canary == true && 'true' || '' }}`,
+  so only that dispatched run is marked and scheduled/ordinary runs stay
+  unmarked. There is deliberately no
+  `vars.WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER` fallback.
+- The M11.3 heartbeat canary/read-parity inputs and behavior are unchanged.
+
 ## Verification
 
 `test:m11` 106/106, `test:ops` 10/10, `test:masterdash` 22/22, `test:gate0` 4/4,
@@ -106,9 +127,10 @@ working copy) reproduced at clean HEAD.
    workers.dev-only with preview URLs disabled.
 3. Capture baseline `admin_ops_events` counts on Supabase and on `worldcons_ops`
    D1.
-4. Write canary: coordinate both write vars to `d1-canary` and set
-   `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER` for one dispatched `admin-watchdog`
-   run. Confirm the marked event lands in D1 only, the Supabase count is
+4. Write canary: coordinate both write vars to `d1-canary` and dispatch
+   `admin-watchdog` with `admin_ops_events_canary=true` (which sets
+   `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true` for that run only). Confirm
+   the marked event lands in D1 only, the Supabase count is
    unchanged, and the dedupe read + prune both hit D1. Re-run with an unchanged
    signature to prove dedupe skips the D1 insert while still pruning.
 5. Full write window: coordinate both write vars to `d1` with an ordinary run;

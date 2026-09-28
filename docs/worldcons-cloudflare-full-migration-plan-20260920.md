@@ -1695,12 +1695,21 @@ resting at `supabase`, no live canary**):
   accepts only that exact marker. No caller value enters SQL text; every D1
   statement is parameterized. A selected D1 write/read fails closed (503 /
   throws) and is never silently downgraded to Supabase.
+- Live-canary wiring in `.github/workflows/admin-watchdog.yml`: the write and
+  read authority vars are injected from repo vars with an explicit `supabase`
+  fallback, and a `workflow_dispatch`-only boolean `admin_ops_events_canary`
+  (default `false`) sets `WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER=true` for that
+  dispatched run only. There is no
+  `vars.WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER` fallback, the M11.3 heartbeat
+  canary/read-parity inputs are unchanged, and the existing OIDC trust is reused
+  with no shared secret.
 - Resting behavior is byte-for-byte unchanged: the default `supabase` never
   touches the boundary and keeps the existing direct Supabase
   insert/dedupe-read/prune and `listAdminOpsEvents` read. Rollback is one var
   back to `supabase`; no schema or old migration was edited.
-- Code and 21 new focused tests complete; `test:m11` is 106/106, `test:ops`
-  10/10, `test:masterdash` 22/22, `test:gate0` 4/4, M9 8/8, M10 5/5,
+- Code and 24 new focused tests complete (including the three admin-watchdog
+  env-wiring/fallback/dispatch-only-marker tests); `test:m11` is 109/109,
+  `test:ops` 10/10, `test:masterdash` 22/22, `test:gate0` 4/4, M9 8/8, M10 5/5,
   admin-ops-reads 16/16, admin-ops-read-shadow 23/23, root/ops-write typechecks,
   worker types check, lint, ops-write dry-run and `git diff --check` pass.
 - **GO-ADMIN-OPS-EVENTS: CODE READY.** No live canary is claimed and **M11 is not
