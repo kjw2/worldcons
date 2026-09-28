@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M11.3R-live-read-parity",
+  "decision": "LIVE-BOUNDED-D1-READ-PARITY-PASS-NO-COMBINED-CUTOVER-M11-INCOMPLETE",
+  "status": "live_bounded_read_parity_pass_resting_at_supabase",
+  "date": "2026-09-28",
+  "headSha": "3d20579e46132841bada071f2bc91eed8bf7a215",
+  "branch": "codex/m7-go-search",
+  "predecessorEvidence": [
+    "artifacts/cloudflare-m11/m11.3r-reconciliation-and-read-only-probe-20260928.json",
+    "artifacts/cloudflare-m11/m11.3r-ops-heartbeat-read-authority-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-full-d1-write-live-evidence-20260928.json",
+    "artifacts/cloudflare-m11/m11.3-d1-canary-live-evidence-20260928.json"
+  ],
+  "scope": {
+    "database": "worldcons_ops",
+    "table": "ops_workflow_heartbeats",
+    "authorityMode": "bounded-live-d1-read-parity",
+    "d1ReadAuthorityLiveProven": true,
+    "d1ReadParityLiveProven": true,
+    "combinedFullD1ReadWriteCutover": false,
+    "writeAuthorityThroughout": "supabase",
+    "readAuthorityDuringWindow": "d1",
+    "readAuthorityRestoredToSupabase": true,
+    "m11Complete": false,
+    "ordinaryRun": true,
+    "heartbeatWritePerformed": false,
+    "watchdogInvokedByGate": false,
+    "destructiveLiveFaultInjection": false,
+    "deployOrCommitPerformed": false,
+    "oldMigrationsEdited": false,
+    "d1OrPostgresSchemaChanged": false
+  },
+  "summary": "With the write authority resting at supabase, the boundary Worker read authority was set to d1 for one deliberate window while the write authority stayed supabase, so no heartbeat write was exercised. The five authored Supabase rows were first reconciled into D1 with the bounded, never-delete, verify-by-hash d1:reconcile (dry-run planned 4 UPDATEs / 1 unchanged / 0 inserts / 0 remote-only; apply verified exact 5/5; a second dry-run showed 0 updates/inserts and 5 unchanged). An OIDC-authenticated GET /v1/ops/heartbeats on the worldcons-ops-write boundary then returned the same five five-field records as the Supabase reader: all five keys enumerated, differences [] and ok true. Cloudflare Observability recorded exactly one GET request (200/outcome ok, 641ms, auth-failure count 0) and no POSTs during the run. All authority/bindings were restored to resting supabase afterwards. This marks M11.3R bounded live D1 read parity PASS; it does NOT claim a combined full-D1 read/write cutover or global M11 completion.",
+  "preconditionReconciliation": {
+    "rationale": "prior write canaries advanced only the D1 watchdog row while Supabase stayed authoritative, so D1 was stale/diverged for collection/summary/embedding/watchdog; those five authored rows had to equal the Supabase rows before a read switch",
+    "tooling": "lib/cloudflare/d1/remote/reconcile.ts via scripts/d1-reconcile.ts",
+    "dryRunCommand": "pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats",
+    "applyCommand": "pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats --apply",
+    "dryRunResult": {
+      "plannedUpdates": 4,
+      "unchanged": 1,
+      "plannedInserts": 0,
+      "remoteOnly": 0
+    },
+    "applyResult": {
+      "verified": true,
+      "verifiedRows": "5/5",
+      "verifiedExact": true
+    },
+    "secondDryRunResult": {
+      "plannedUpdates": 0,
+      "plannedInserts": 0,
+      "unchanged": 5
+    },
+    "neverDeletes": true,
+    "scopedToOneTable": true,
+    "touchesSchema": false,
+    "ordering": "run before selecting the d1 read authority, while reads were still supabase, so no reader saw a partial reconcile"
+  },
+  "dispatchFallback": {
+    "problem": "the new dedicated .github/workflows/ops-heartbeat-read-parity.yml could not be workflow_dispatch'ed before it exists on the repository default branch; GitHub returns 404 for a dispatch of a workflow ref it does not know",
+    "dedicatedWorkflowDispatchPreMerge": "blocked_github_404",
+    "shell": ".github/workflows/admin-watchdog.yml",
+    "shellExistsOnDefaultBranch": true,
+    "input": "read_parity_only",
+    "inputValue": true,
+    "inputSemantics": "workflow_dispatch-only boolean defaulting to false; when true the normal pnpm ops:watchdog -- --compensate step is skipped entirely and only the read-only probe pnpm ops:heartbeat-read-parity -- --run --no-direct-d1 --report --json runs",
+    "heartbeatWrite": false,
+    "watchdogInvoked": false,
+    "compensation": false,
+    "broadenedWriteTrust": false,
+    "dedicatedWorkflowKept": ".github/workflows/ops-heartbeat-read-parity.yml for post-merge/default-branch use"
+  },
+  "readWindow": {
+    "safeOrdering": [
+      {
+        "step": 1,
+        "action": "reconcile D1 ops_workflow_heartbeats against Supabase (dry-run then --apply) while reads and writes rested at supabase"
+      },
+      {
+        "step": 2,
+        "action": "set the worldcons-ops-write boundary Worker read authority to d1 and redeploy; write authority stayed supabase",
+        "workerVersion": "30806ea5-2900-48c1-9ebe-c1b03d7c8097",
+        "writeAuthority": "supabase",
+        "readAuthority": "d1",
+        "audience": "worldcons-ops-write",
+        "temporaryAllowedRefs": ["main", "codex/m7-go-search"]
+      }
+    ],
+    "canary": {
+      "worker": "worldcons-ops-write",
+      "versionId": "30806ea5-2900-48c1-9ebe-c1b03d7c8097",
+      "writeAuthority": "supabase",
+      "readAuthority": "d1",
+      "audience": "worldcons-ops-write",
+      "allowedRefsTemporary": true,
+      "allowedRefs": ["refs/heads/main", "refs/heads/codex/m7-go-search"]
+    }
+  },
+  "githubRun": {
+    "workflow": ".github/workflows/admin-watchdog.yml",
+    "runId": 36370837395,
+    "headSha": "3d20579e46132841bada071f2bc91eed8bf7a215",
+    "branch": "codex/m7-go-search",
+    "input": "read_parity_only=true",
+    "conclusion": "success",
+    "normalWatchdogCompensationStep": "skipped",
+    "readOnlyCompareStep": "succeeded",
+    "evidenceUploadStep": "succeeded",
+    "artifactName": "m11.3r-read-parity-live-evidence",
+    "artifactId": 10948798032
+  },
+  "probeOutput": {
+    "keysEnumerated": 5,
+    "differences": [],
+    "ok": true,
+    "boundaryVsSupabaseHolds": true
+  },
+  "cloudflareObservability": {
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/ops/heartbeats",
+        "status": 200,
+        "outcome": "ok",
+        "wallTimeMs": 641
+      }
+    ],
+    "getRequestCount": 1,
+    "postRequestCount": 0,
+    "authFailureCount": 0,
+    "requestsSource": "Cloudflare Observability"
+  },
+  "postRunCrossCheck": {
+    "source": "direct Supabase vs D1 comparison",
+    "fieldsCompared": ["workflowKey", "lastStatus", "runId"],
+    "timestampsCompared": "by instant",
+    "rowsMatch": true,
+    "rows": {
+      "catalog_backfill": { "runId": "local-11948", "status": "success" },
+      "collection": { "runId": "36216022066", "status": "success" },
+      "embedding": { "runId": "36223085744", "status": "success" },
+      "summary": { "runId": "36216022066", "status": "success" },
+      "watchdog": { "runId": "36365145716", "status": "success" }
+    }
+  },
+  "failClosed": {
+    "liveDestructiveFaultInjectionPerformed": false,
+    "acceptedInLieuOfLiveInjection": "existing fail-closed read tests (tests/m11-ops-heartbeat-read-authority.test.ts) covering missing URL/token, non-2xx, malformed body and unavailable binding, which throw/503 and never fall back to Supabase",
+    "note": "existing fail-closed read tests are accepted instead of destructive live fault injection; no live D1 read fault was injected"
+  },
+  "rollback": {
+    "restoredWorker": {
+      "worker": "worldcons-ops-write",
+      "versionId": "a4569103-f426-4742-a1d8-c72c82ed9837",
+      "writeAuthority": "supabase",
+      "readAuthority": "supabase",
+      "audience": "worldcons-ops-write",
+      "temporaryAllowedRefsBinding": false
+    },
+    "restoredRepositoryAuthorityVars": {
+      "write": "supabase",
+      "read": "supabase"
+    },
+    "unauthenticated": {
+      "/health": 401,
+      "GET /v1/ops/heartbeats": 401,
+      "POST /v1/ops/heartbeat": 401
+    }
+  },
+  "whatThisProves": [
+    "the bounded live D1 READ path works: with the write authority resting at supabase, the boundary Worker read authority d1 returned the same five five-field records as the authoritative Supabase reader for the five authored keys",
+    "the OIDC-authenticated GET /v1/ops/heartbeats boundary read succeeded with zero auth failures (exactly one GET, 200/ok, 641ms) and no POSTs occurred during the run",
+    "the pre-read reconciliation brought D1 to exact parity with Supabase (dry-run 4 updates/1 unchanged/0 inserts/0 remote-only; apply verified 5/5; second dry-run 0 updates/0 inserts/5 unchanged)",
+    "a post-run direct cross-check confirms Supabase and D1 hold the same five rows by workflow key/status/run_id and timestamp instant",
+    "the read authority change was applied and rolled back in the documented safe order and the resting boundary rejects unauthenticated access"
+  ],
+  "whatThisDoesNotProve": [
+    "a combined full-d1 read/write cutover: write authority stayed supabase throughout and no combined cutover is claimed",
+    "M11 completion: admin_ops_events (M11.4), ingest and core/publication remain pending",
+    "fail-closed behavior under a live D1 failure: only the existing fail-closed read tests are accepted, no destructive live fault injection was performed"
+  ],
+  "verification": {
+    "documentationEvidenceOnly": true,
+    "runtimeLogicOrTestsChangedByThisStep": false,
+    "jsonValidated": true,
+    "diffCheck": "pass",
+    "liveD1ReadParity": "pass_bounded",
+    "liveCombinedFullD1ReadWriteCutover": "not_claimed"
+  },
+  "filesChanged": [
+    "artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json",
+    "docs/worldcons-cloudflare-m11-ops-heartbeat-write-boundary-20260928.md",
+    "docs/worldcons-cloudflare-full-migration-plan-20260920.md"
+  ],
+  "blockers": [
+    "combined full-d1 read/write cutover not yet live-proven",
+    "fail-closed behavior under a live D1 failure is only covered by the existing read tests, not a live fault injection",
+    "admin_ops_events remains deferred to M11.4",
+    "M11 not globally complete: ingest and core/publication remain pending"
+  ],
+  "nextGate": "M11.4 admin_ops_events with a bounded read+dedupe+prune compatibility contract, then a deliberate combined full-d1 read/write cutover gate"
+}

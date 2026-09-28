@@ -993,3 +993,70 @@ Focused tests in `tests/m11-ops-heartbeat-read-parity.test.ts` assert the
 `read_parity_only` input is a dispatch-only boolean defaulting to `false`, that
 the watchdog step is guarded off in that mode, and that only the exact read-only
 probe command runs (no write path, no broadened trust).
+
+## M11.3R bounded live D1 read parity (PASS, 2026-09-28)
+
+Date: 2026-09-28. Head `3d20579e46132841bada071f2bc91eed8bf7a215` on
+`codex/m7-go-search`. This executes the M11.3R read-only controller sequence for
+one deliberate window and marks **bounded live D1 read parity PASS**. Live
+evidence:
+`artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json`.
+
+### Observed facts
+
+- **Pre-read reconciliation (no code change).** With reads and writes still
+  resting at `supabase`, the existing bounded, never-delete, verify-by-hash tool
+  was run for the single table:
+  `pnpm d1:reconcile --source=supabase-linked --database=worldcons_ops --tables=ops_workflow_heartbeats`.
+  The dry-run planned **4 UPDATEs / 1 unchanged / 0 inserts / 0 remote-only**;
+  the `--apply` then verified **exact 5/5**; a second dry-run showed **0
+  updates / 0 inserts / 5 unchanged**.
+- **Read window.** The `worldcons-ops-write` boundary Worker was deployed as
+  version `30806ea5-2900-48c1-9ebe-c1b03d7c8097` with **write authority
+  `supabase`**, **read authority `d1`**, audience `worldcons-ops-write`, and a
+  temporary allowed-refs binding for `main` + `codex/m7-go-search`. Because the
+  write authority stayed `supabase`, the window exercised **no** heartbeat write.
+- **Dispatch fallback.** The new dedicated
+  `ops-heartbeat-read-parity.yml` could **not** be `workflow_dispatch`-ed
+  pre-merge because it is absent from the default branch (GitHub **404**), so the
+  feature-branch fallback used the default-branch shell `admin-watchdog.yml` with
+  `workflow_dispatch` input `read_parity_only=true`.
+- **Run.** GitHub run `36370837395` at head `3d20579` completed **success**: the
+  normal watchdog/compensation step was **skipped**, the read-only compare step
+  **succeeded**, and the evidence upload **succeeded** (artifact id `10948798032`).
+  The workflow output enumerated **all five keys**, showed **differences: []** and
+  **ok: true**.
+- **Boundary observability.** Cloudflare Observability recorded **exactly one
+  `GET /v1/ops/heartbeats`** request on the window version, **200 / outcome ok**,
+  wall time **641ms**, and **no POSTs** during the run; auth-failure count **0**.
+- **Post-run cross-check.** A direct comparison confirmed Supabase and D1 hold the
+  same five rows by workflow key/status/run_id and timestamp instant:
+  `catalog_backfill local-11948`; `collection 36216022066`; `embedding
+  36223085744`; `summary 36216022066`; `watchdog 36365145716`.
+- **Fail-closed.** No destructive live fault injection was performed; the existing
+  fail-closed read tests (`tests/m11-ops-heartbeat-read-authority.test.ts`, which
+  cover missing URL/token, non-2xx, malformed body and unavailable binding and
+  throw/503 rather than falling back to Supabase) are accepted in lieu of it.
+- **Rolled back.** The `worldcons-ops-write` Worker was restored as version
+  `a4569103-f426-4742-a1d8-c72c82ed9837` with write/read authority `supabase`,
+  audience `worldcons-ops-write`, and **no** temporary allowed-ref binding; the
+  GitHub repo write/read vars are `supabase`. Unauthenticated `/health`,
+  `GET /v1/ops/heartbeats` and `POST /v1/ops/heartbeat` all return **401**.
+
+### What this proves ??and what it does not
+
+**PASS (bounded): M11.3R live D1 read parity.** With the write authority resting
+at `supabase`, the boundary read authority `d1` returned the same five five-field
+records as the authoritative Supabase reader for the five authored keys, with one
+200/ok GET and zero POSTs, then every authority/binding was restored.
+
+> **This is NOT a combined full-`d1` read/write cutover and NOT M11 completion.**
+> The write authority stayed `supabase` throughout, no combined read/write
+> cutover is claimed, and `admin_ops_events` (M11.4), ingest and
+> core/publication remain pending.
+
+### Next gate ??M11.4 `admin_ops_events`
+
+M11.4 needs the same boundary with a bounded read+dedupe+prune compatibility
+contract. A deliberate combined full-`d1` read/write cutover is a separate,
+later gate.

@@ -2094,7 +2094,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   under `d1`, reads the isolated `WORLDCONS_OPS` binding directly from the
   Cloudflare runtime, and fails closed (503 / throws) rather than falling back to
   Supabase. The read authority must be coordinated with the boundary Worker's
-  own read var; no live read parity is claimed.
+  own read var; live read parity was subsequently proven in the bounded M11.3R
+  window recorded below.
   The M11.3R reconciliation + read-only probe step (head `deb6172`) then closed
   the two gaps that gate assumed: (1) the five authored Supabase rows are
   reconciled into D1 with the existing bounded, never-delete, verify-by-hash
@@ -2110,6 +2111,32 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   authority only in its own process environment, and fails closed (503) rather
   than passing when the boundary read var is still `supabase`. See
   `artifacts/cloudflare-m11/m11.3r-reconciliation-and-read-only-probe-20260928.json`.
+  M11.3R bounded live D1 read parity then completed (head `3d20579e`): after the
+  pre-read reconciliation dry-run planned 4 UPDATEs / 1 unchanged / 0 inserts /
+  0 remote-only and the `--apply` verified exact 5/5 (a second dry-run showed 0
+  updates / 0 inserts / 5 unchanged), the boundary Worker version
+  `30806ea5-2900-48c1-9ebe-c1b03d7c8097` ran with write authority `supabase` and
+  read authority `d1` (audience `worldcons-ops-write`, temporary allowed refs
+  `main` + `codex/m7-go-search`). Because the new dedicated
+  `ops-heartbeat-read-parity.yml` is absent from the default branch (GitHub 404),
+  the feature-branch fallback dispatched `admin-watchdog.yml` with
+  `read_parity_only=true`; run `36370837395` completed success with the
+  watchdog/compensation step skipped, the read-only compare step succeeded and the
+  evidence upload succeeded (artifact id `10948798032`). The output enumerated all
+  five keys with `differences: []` and `ok: true`; Cloudflare Observability
+  recorded exactly one `GET /v1/ops/heartbeats` (200/outcome ok, 641ms) and no
+  POSTs, auth-failure count 0; a post-run direct cross-check confirmed Supabase and
+  D1 hold the same five rows by workflow key/status/run_id and timestamp instant
+  (`catalog_backfill local-11948`, `collection 36216022066`, `embedding
+  36223085744`, `summary 36216022066`, `watchdog 36365145716`). The Worker was then
+  restored as version `a4569103-f426-4742-a1d8-c72c82ed9837` (write/read
+  `supabase`, no temporary allowed-ref binding), repo write/read vars are
+  `supabase`, and unauthenticated `/health`, `GET /v1/ops/heartbeats` and
+  `POST /v1/ops/heartbeat` all return `401`; the existing fail-closed read tests
+  are accepted instead of destructive live fault injection. This marks **M11.3R
+  bounded live D1 read parity PASS**; it does **not** claim a combined full-`d1`
+  read/write cutover or global M11 completion. See
+  `artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json`.
   `admin_ops_events` (M11.4) still needs the same boundary, and ingest plus
   core/publication are still pending. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
