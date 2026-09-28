@@ -130,8 +130,11 @@ test("M11.3R read_parity_only skips the watchdog and runs only the read-only pro
 
   const watchdog = steps.find((step) => step.body.some((line) => /run:\s*pnpm ops:watchdog/u.test(line)));
   assert.ok(watchdog, "the watchdog step must remain present for normal runs");
+  // M11.4R added a second dispatch-only read-parity input, so the watchdog step
+  // is now skipped when either read-parity mode is selected. The heartbeat
+  // read_parity_only clause must still be present in the guard.
   assert.ok(
-    watchdog!.body.some((line) => /if:\s*\$\{\{\s*inputs\.read_parity_only != true\s*\}\}/u.test(line)),
+    watchdog!.body.some((line) => /if:\s*\$\{\{[^}]*inputs\.read_parity_only != true[^}]*\}\}/u.test(line)),
     "the watchdog step must be skipped when read_parity_only is true",
   );
 

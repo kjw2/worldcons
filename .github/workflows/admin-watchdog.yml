@@ -23,6 +23,21 @@ on:
         required: false
         type: boolean
         default: false
+      # M11.4R feature-branch dispatch shell. Like read_parity_only above, a
+      # brand-new admin-ops-events read-parity workflow cannot be
+      # workflow_dispatch'ed before it exists on the default branch (GitHub
+      # returns 404), so this already-present workflow carries the read-only
+      # admin_ops_events list probe for a feature-branch live proof. When true
+      # the job skips the watchdog write path entirely and runs ONLY
+      # `pnpm ops:admin-events-read-parity`, which issues authenticated
+      # GET /v1/ops/admin-events/list reads and Supabase SELECTs only: no
+      # insert, no prune, no watchdog, no heartbeat and no admin-event write.
+      # Scheduled and ordinary manual runs never set it.
+      admin_ops_events_read_parity_only:
+        description: Run only the read-only M11.4R admin_ops_events list read-parity probe (no watchdog, no writes)
+        required: false
+        type: boolean
+        default: false
       # M11.4 live admin_ops_events canary selector. A workflow_dispatch-only
       # boolean defaulting to false, so scheduled and ordinary manual runs never
       # carry the bounded marker. Only an explicit dispatch with
@@ -138,7 +153,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Evaluate collection health, alert, and compensate
-        if: ${{ inputs.read_parity_only != true }}
+        if: ${{ inputs.read_parity_only != true && inputs.admin_ops_events_read_parity_only != true }}
         run: pnpm ops:watchdog -- --compensate
       # M11.3R feature-branch dispatch shell. This step is the ONLY thing that
       # runs when read_parity_only=true: no recordWorkflowHeartbeat, no watchdog
@@ -154,5 +169,23 @@ jobs:
         with:
           name: m11.3r-read-parity-live-evidence
           path: artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence.json
+          retention-days: 30
+          if-no-files-found: error
+      # M11.4R feature-branch dispatch shell. This step is the ONLY thing that
+      # runs when admin_ops_events_read_parity_only=true: no recordAdminOpsEvent,
+      # no recordWatchdogEvents, no watchdog evaluation, no compensation, no
+      # insert/prune and no heartbeat write. It authenticates the read-only
+      # GET /v1/ops/admin-events/list?limit=20 with the same per-job OIDC
+      # id-token and reuses the existing Supabase read secrets, issuing only
+      # SELECTs.
+      - name: Compare boundary admin_ops_events list against Supabase (read-only, no writes)
+        if: ${{ inputs.admin_ops_events_read_parity_only == true }}
+        run: pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json
+      - name: Upload admin_ops_events read-parity evidence
+        if: ${{ inputs.admin_ops_events_read_parity_only == true && always() && hashFiles('artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: m11.4r-admin-ops-events-read-parity-live-evidence
+          path: artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence.json
           retention-days: 30
           if-no-files-found: error

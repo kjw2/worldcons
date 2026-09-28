@@ -525,6 +525,37 @@ export async function listAdminOpsEvents(limit = 20): Promise<AdminOpsEvent[]> {
   }));
 }
 
+/**
+ * M11.4R read-only canonical Supabase list projection.
+ *
+ * Extracted so the read-parity probe can compare the D1/boundary list against
+ * the authoritative Supabase projection regardless of the currently selected
+ * read authority. It issues exactly the resting `listAdminOpsEvents` Supabase
+ * SELECT (`select("*")`, `order("created_at", desc)`, `limit(limit)`) and the
+ * same defensive row mapping, so the compared left node is the canonical admin
+ * list projection. Returns `null` only when the Supabase client is not
+ * configured; a query error throws rather than masquerading as an empty list.
+ */
+export async function readAdminOpsEventsFromSupabase(limit = 20): Promise<AdminOpsEvent[] | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("admin_ops_events")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    event_type: row.event_type as AdminOpsEventType,
+    severity: row.severity as WatchdogSeverity,
+    source_key: row.source_key as string | null,
+    summary: String(row.summary),
+    detail: record(row.detail) ?? {},
+    created_at: String(row.created_at),
+  }));
+}
+
 /** The write route: the runtime D1 binding, the Node/GitHub boundary, or resting Supabase. */
 function adminOpsEventsWriteRoute(): "d1-runtime" | "d1-boundary" | "supabase" {
   if (!shouldWriteAdminOpsEventsToD1(process.env as Record<string, string | undefined>)) return "supabase";

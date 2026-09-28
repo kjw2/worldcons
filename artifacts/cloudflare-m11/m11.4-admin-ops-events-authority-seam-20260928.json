@@ -187,5 +187,16 @@
     "write-path canary must also prove dedupe and prune land in D1, not only the insert",
     "M11 not globally complete: ingest and core/publication remain pending"
   ],
-  "next": "M11.4 live canary by controller (insert+dedupe+prune write window, then the independent d1 list read), then restore supabase; M11 remains incomplete for ingest and core/publication"
+  "readParityMilestone": {
+    "milestone": "M11.4R-admin-ops-events-read-parity",
+    "status": "code_ready_live_parity_pending",
+    "readOnly": true,
+    "artifact": "artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json",
+    "comparator": "lib/cloudflare/ops-write/admin-ops-events-read-parity.ts",
+    "probe": "scripts/ops-admin-events-read-parity.ts",
+    "dispatchInput": "admin_ops_events_read_parity_only (workflow_dispatch-only boolean, default false) in .github/workflows/admin-watchdog.yml",
+    "reconciliationPreceded": "before 382 D1 vs 412 Supabase; dry-run source-only 30 / remote-only 0 / updates 0; apply inserted 30; final dry-run exact 412/412, remote-only 0, zero writes, verified true",
+    "liveParityClaimed": false
+  },
+  "next": "M11.4 live canary by controller (insert+dedupe+prune write window), then the M11.4R read-only d1 list read-parity window, then restore supabase; M11 remains incomplete for ingest and core/publication"
 }

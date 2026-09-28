@@ -104,17 +104,84 @@ minimum safe wiring is:
 
 ## Verification
 
-`test:m11` 106/106, `test:ops` 10/10, `test:masterdash` 22/22, `test:gate0` 4/4,
-M9 8/8, M10 5/5, admin-ops-reads 16/16, admin-ops-read-shadow 23/23, root and
+`test:m11` 120/120 (including the 11 new M11.4R read-parity tests), `test:m8`
+23/23, `test:ops` 10/10, `test:masterdash` 22/22, `test:gate0` 4/4, M9 8/8, M10
+5/5, admin-ops-reads 16/16, admin-ops-read-shadow 23/23, root and
 ops-write/search-service typechecks, worker types check, lint (0 warnings),
-ops-write dry-run with both admin-ops-events vars at `supabase`, and
-`git diff --check` pass. The `test:postgres:release:static` (`test:d1-schema`)
-failure is a **pre-existing** Windows CRLF artifact (`\n` emitter vs `\r\n`
-working copy) reproduced at clean HEAD.
+`pnpm ops:admin-events-read-parity` dry-run (no network call), ops-write dry-run
+with both admin-ops-events vars at `supabase`, and `git diff --check` pass. The
+`test:postgres:release:static` (`test:d1-schema`) failure is a **pre-existing**
+Windows CRLF artifact (`\n` emitter vs `\r\n` working copy) reproduced at clean
+HEAD; the `m11:ops-write:types:check` failure is likewise a **pre-existing**
+Windows wrangler issue reproduced at clean HEAD.
+
+## M11.4R read-only `admin_ops_events` list parity probe
+
+M11.4R is a **strictly READ-ONLY** parity gate for the `admin_ops_events` list
+projection, modeled on the M11.3R heartbeat read-parity tooling but scoped to the
+admin list. It compares the canonical Supabase `listAdminOpsEvents(limit=20)`
+projection against the boundary/D1 read for the same 20 newest rows. It performs
+**no** insert, **no** prune, **no** watchdog run and **no** heartbeat/event
+mutation, and it changes no authority.
+
+- **Comparator** `lib/cloudflare/ops-write/admin-ops-events-read-parity.ts`
+  (runtime-neutral, no `node:*`/`next:*`). Unlike the M11.3R heartbeat (one row
+  per authored key), the list is arbitrary and ordered, so the comparison is
+  **order-aware and id-aligned**: array positions are compared one-to-one,
+  `id`/`event_type`/`severity`/`source_key`/`summary`/`detail` are compared
+  exactly, and `detail` is normalized to **canonical JSON** (recursively
+  key-sorted) so Supabase JSONB and the D1 TEXT copy cannot create a false
+  difference. `created_at` is compared by **instant** (`Date.parse`) because
+  PostgREST `timestamptz` and D1 canonical UTC ISO-8601 TEXT may print the same
+  instant differently. `AdminOpsEventsReadParityDifference` records the row
+  `index` and `id` (or `null`) so evidence is unambiguous.
+- **Canonical Supabase node** `readAdminOpsEventsFromSupabase(limit)` in
+  `lib/ops/watchdog.ts` (extracted read-only from `listAdminOpsEvents`): the same
+  `select("*")`, `order("created_at", desc)`, `limit(limit)` and defensive row
+  mapping, so the left node is the exact admin list projection. Returns `null`
+  only when Supabase is unconfigured; a query error throws (never a silent empty
+  list).
+- **Boundary/D1 node** `listAdminOpsEventsViaBoundary(20)` against the existing
+  authenticated `GET /v1/ops/admin-events/list?limit=20`; the probe forces the
+  admin read authority to `d1` **only in its own request environment**, so no
+  repository or Worker authority changes. Under a resting `supabase` boundary the
+  endpoint returns the fail-closed `503 READ_AUTHORITY_UNAVAILABLE` and the probe
+  reports a mismatch rather than a false pass.
+- **Optional independent direct-D1 node** `readAdminOpsEventsViaHttp(execute, 20)`:
+  one parameterized `SELECT id, event_type, severity, source_key, summary, detail,
+  created_at FROM admin_ops_events ORDER BY created_at DESC LIMIT ?` through the
+  D1 HTTP query API (operator credential only).
+- **Probe CLI** `scripts/ops-admin-events-read-parity.ts` / `pnpm
+  ops:admin-events-read-parity`, mirroring the M11.3R probe: `--run`, `--report`,
+  `--json`, `--no-direct-d1`, `--base-url=`; `--apply` is rejected. It emits a
+  machine-readable JSON evidence artifact
+  (`artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence.json`)
+  containing only the compared records (with `detail` canonicalized), booleans
+  and counts; it never prints a token or credential.
+- **Feature-branch dispatch shell.** A brand-new workflow cannot be
+  `workflow_dispatch`-ed before it exists on the default branch (GitHub 404), so
+  the already-present `admin-watchdog.yml` gains a `workflow_dispatch`-only
+  boolean `admin_ops_events_read_parity_only` (default `false`). When true the
+  watchdog/compensation step is skipped and the job runs **only**
+  `pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json`,
+  authenticating the boundary with the existing per-job GitHub OIDC `id-token`
+  and reading Supabase only with the existing secrets. The M11.3R
+  `read_parity_only` input and all normal watchdog behavior are unchanged.
+- **Focused tests** `tests/m11-admin-ops-events-read-parity.test.ts` (11 tests):
+  order/id alignment, canonical-JSON `detail`, instant timestamps, missing-row and
+  length differences, the single parameterized direct-D1 read and its fail-closed
+  limit/row validation, the dispatch-only boolean, the watchdog-skip/probe-only
+  step wiring, and a source assertion that the probe never invokes a writer,
+  insert, prune, watchdog or heartbeat path.
+
+**No live M11.4R PASS is claimed.** The probe is code-ready; a controller owns
+the live window (set the boundary admin read authority to `d1`, dispatch
+`admin_ops_events_read_parity_only=true`, then roll back). See
+`artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json`.
 
 ## What is NOT claimed
 
-- No live canary, no deploy, no commit/push.
+- No live canary, no live read parity and no deploy, commit or push.
 - No combined full-`d1` read/write cutover.
 - No M11 completion: ingest and core/publication remain pending.
 
@@ -136,9 +203,15 @@ working copy) reproduced at clean HEAD.
 5. Full write window: coordinate both write vars to `d1` with an ordinary run;
    confirm insert, dedupe read and prune all resolve to D1 and Supabase is
    unchanged.
-6. Read parity: set `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1` and confirm
-   `app/admin/ops/page.tsx`'s `listAdminOpsEvents(20)` equals the Supabase
-   projection (same ids/order/fields).
+6. Read parity (M11.4R, read-only): set the boundary
+   `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1`, then dispatch
+   `admin-watchdog.yml` with `admin_ops_events_read_parity_only=true` (or, after
+   merge, dispatch the dedicated probe) to run
+   `pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json`;
+   confirm the boundary/D1 list equals the Supabase `listAdminOpsEvents(20)`
+   projection (same ids/order/fields) and download the JSON evidence artifact.
+   Separately confirm `app/admin/ops/page.tsx`'s `listAdminOpsEvents(20)` against
+   the same projection.
 7. Roll every write/read var and binding back to `supabase`; confirm the direct
    Supabase writer/reader resumes.
 8. Delete the canary event(s) and restore pre-canary counts.

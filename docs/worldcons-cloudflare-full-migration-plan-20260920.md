@@ -1718,6 +1718,58 @@ resting at `supabase`, no live canary**):
 - Detailed evidence:
   `artifacts/cloudflare-m11/m11.4-admin-ops-events-authority-seam-20260928.json`.
 
+M11.4R read-only `admin_ops_events` list read parity (2026-09-28, **code ready,
+live parity pending, no live proof**):
+
+- Adds a strictly READ-ONLY parity gate for the `admin_ops_events` list
+  projection, modeled on the M11.3R heartbeat read-parity tooling but scoped to
+  the admin list. Before this step the table was safely reconciled with the
+  existing operator tool: before 382 D1 vs 412 Supabase, the dry-run planned
+  30 source-only / 0 remote-only / 0 updates, `--apply` inserted 30, and the final
+  dry-run is exact 412/412 with 0 remote-only and 0 writes (verified true).
+- The runtime-neutral comparator
+  `lib/cloudflare/ops-write/admin-ops-events-read-parity.ts` compares the
+  canonical Supabase `listAdminOpsEvents(limit=20)` projection against the
+  boundary/D1 read for the same 20 newest rows. Because the list is arbitrary and
+  ordered, the comparison is **order-aware and id-aligned** (unlike the M11.3R
+  per-key heartbeat): `id`/`event_type`/`severity`/`source_key`/`summary`/`detail`
+  are compared exactly, `detail` as **canonical JSON** (recursively key-sorted) so
+  Supabase JSONB and the D1 TEXT copy cannot create a false difference, and
+  `created_at` by **instant** (`Date.parse`) because PostgREST `timestamptz` and
+  D1 canonical UTC ISO-8601 TEXT may print the same instant differently. Every
+  difference carries the row `index` and `id` (or `null`).
+- `readAdminOpsEventsFromSupabase(limit)` in `lib/ops/watchdog.ts` extracts the
+  exact resting `listAdminOpsEvents` Supabase projection (`select("*")`,
+  `order("created_at", desc)`, `limit(limit)`), so the comparison's left node is
+  the canonical admin list. The probe forces the admin read authority to `d1`
+  only in its own process environment; under a resting `supabase` boundary the
+  endpoint returns fail-closed `503 READ_AUTHORITY_UNAVAILABLE` and the probe
+  reports a mismatch, never a false pass.
+- `scripts/ops-admin-events-read-parity.ts` (`pnpm
+  ops:admin-events-read-parity`) is the read-only CLI (`--run`, `--report`,
+  `--json`, `--no-direct-d1`, `--base-url=`; `--apply` rejected) with an optional
+  parameterized direct-D1 node (`ORDER BY created_at DESC LIMIT ?`). It emits the
+  machine-readable
+  `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-live-evidence.json`
+  containing only the compared records (with `detail` canonicalized), booleans and
+  counts and no credential material.
+- Feature-branch dispatch caveat: a brand-new workflow cannot be
+  `workflow_dispatch`-ed before it exists on the default branch (GitHub 404), so
+  the already-present `admin-watchdog.yml` gains a `workflow_dispatch`-only
+  boolean `admin_ops_events_read_parity_only` (default `false`). When true the
+  watchdog/compensation step is skipped and only
+  `pnpm ops:admin-events-read-parity -- --run --no-direct-d1 --report --json`
+  runs, authenticating the boundary with the existing per-job GitHub OIDC
+  `id-token` and reading Supabase only with the existing secrets. The M11.3R
+  `read_parity_only` input and all normal watchdog behavior are unchanged; no
+  insert, prune, heartbeat/event mutation or watchdog path is exercised.
+- 11 new focused tests (`tests/m11-admin-ops-events-read-parity.test.ts`);
+  `test:m11` is 120/120, `test:m8` 23/23, plus the M11.4 verification set above.
+  **No live M11.4R PASS is claimed**; a controller owns the live read window and
+  the later deliberate combined full-`d1` read/write cutover.
+- Detailed evidence:
+  `artifacts/cloudflare-m11/m11.4r-admin-ops-events-read-parity-20260928.json`.
+
 M11.3-OIDC GitHub Actions OIDC trust for the ops-heartbeat boundary (2026-09-28):
 
 - Replaces the shared `WORLDCONS_OPS_WRITE_TOKEN` repository secret for
@@ -2188,7 +2240,8 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   read/write cutover or global M11 completion. See
   `artifacts/cloudflare-m11/m11.3r-read-parity-live-evidence-20260928.json`.
   `admin_ops_events` (M11.4) now has its own bounded code-ready authority seam
-  (see the M11.4 entry above); it still needs a live canary, and ingest plus
+  and a code-ready **M11.4R read-only list read-parity probe** (see the M11.4 and
+  M11.4R entries above); both still need a live controller window, and ingest plus
   core/publication are still pending. See
   `docs/worldcons-cloudflare-m11-site-events-write-authority-20260927.md`,
   `docs/worldcons-cloudflare-m11-admin-audit-write-authority-20260927.md`,
