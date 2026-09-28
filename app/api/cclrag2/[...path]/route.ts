@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 30;
 
-const PUBLIC_BASE_URL = "https://worldcons.vercel.app/api/cclrag2";
+const PUBLIC_BASE_URL = "https://worldcons.soltera.dev/api/cclrag2";
 
 export async function GET(request: Request) {
   const rateLimit = await consumeRateLimit(request, "publicApi");

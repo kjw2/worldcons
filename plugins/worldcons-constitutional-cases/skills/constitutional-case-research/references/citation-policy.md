@@ -3,7 +3,7 @@
 For every case used in an answer:
 
 1. State the court or institution, decision date, and docket or case number when available.
-2. Link the case title to its `https://worldcons.vercel.app/articles/...` URL.
+2. Link the case title to its `https://worldcons.soltera.dev/articles/...` URL.
 3. Add the court's `officialUrl` as the authoritative source.
 4. Clearly separate these layers:
    - bibliographic facts supplied by the source record;

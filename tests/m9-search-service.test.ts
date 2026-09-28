@@ -228,10 +228,10 @@ test("M9 public cclrag2 adapter keeps rate limiting before the optional Service 
   assert.match(route, /providerServiceUnavailableResponse\(providerRequest\)/u);
 });
 
-test("M9 frontend binding is wired but remains disabled by default", () => {
+test("M9 frontend binding is wired and M12 production cutover enables the proven path", () => {
   const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
-  assert.match(config, /"WORLDCONS_SEARCH_SERVICE_ENABLED": "false"/u);
-  assert.match(config, /"WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "false"/u);
+  assert.match(config, /"WORLDCONS_SEARCH_SERVICE_ENABLED": "true"/u);
+  assert.match(config, /"WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "true"/u);
   assert.match(
     config,
     /"binding": "WORLDCONS_SEARCH_SERVICE"[\s\S]*"service": "worldcons-search"/u,

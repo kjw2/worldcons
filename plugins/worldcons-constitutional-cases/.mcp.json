@@ -2,7 +2,7 @@
   "mcpServers": {
     "worldcons": {
       "type": "http",
-      "url": "https://worldcons.vercel.app/api/mcp"
+      "url": "https://worldcons.soltera.dev/api/mcp"
     }
   }
 }

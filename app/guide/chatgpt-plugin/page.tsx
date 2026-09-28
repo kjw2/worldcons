@@ -7,7 +7,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
 import { SITE_NAME } from "@/lib/site-brand";
 
-const PLUGIN_ENDPOINT = "https://worldcons.vercel.app/api/mcp";
+const PLUGIN_ENDPOINT = "https://worldcons.soltera.dev/api/mcp";
 const OPENAI_APP_GUIDE = "https://developers.openai.com/plugins/deploy/connect-chatgpt";
 
 export const metadata: Metadata = {

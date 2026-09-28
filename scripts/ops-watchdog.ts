@@ -74,7 +74,7 @@ function issueBody(evaluation: WatchdogEvaluation) {
       lines.push(`- [${violation.severity}] ${violation.key} — ${violation.summary}`);
     }
   }
-  lines.push("", "관리자 페이지: https://worldcons.vercel.app/admin/ops", "미수집 후보: https://worldcons.vercel.app/admin/candidates");
+  lines.push("", "관리자 페이지: https://worldcons.soltera.dev/admin/ops", "미수집 후보: https://worldcons.soltera.dev/admin/candidates");
   lines.push(`<!-- ops-signature:${evaluationViolationSignature(evaluation)} -->`);
   return lines.join("\n");
 }

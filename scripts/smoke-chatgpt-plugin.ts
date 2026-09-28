@@ -1,4 +1,4 @@
-const endpoint = process.argv[2]?.trim() || "https://worldcons.vercel.app/api/mcp";
+const endpoint = process.argv[2]?.trim() || "https://worldcons.soltera.dev/api/mcp";
 const url = new URL(endpoint);
 if (url.protocol !== "https:" && url.hostname !== "localhost") {
   throw new Error("MCP smoke endpoint must use HTTPS, except for localhost.");

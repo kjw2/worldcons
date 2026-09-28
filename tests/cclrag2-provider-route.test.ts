@@ -53,7 +53,7 @@ const embeddingEnv = {
 test("Vercel catch-all route preserves the provider contract and applies public rate limiting", () => {
   const route = fs.readFileSync(providerRoutePath, "utf8");
 
-  assert.match(route, /https:\/\/worldcons\.vercel\.app\/api\/cclrag2/u);
+  assert.match(route, /https:\/\/worldcons\.soltera\.dev\/api\/cclrag2/u);
   assert.match(route, /consumeRateLimit\(request, "publicApi"\)/u);
   assert.match(route, /providerRateLimitExceededResponse/u);
   assert.match(route, /replace\(\/\^\\\/api\\\/cclrag2/u);

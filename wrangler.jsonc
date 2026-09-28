@@ -1,11 +1,36 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "worldcons-m3-spike",
+  "name": "worldcons",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "worldcons.soltera.dev",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
   "vars": {
+    "APP_BASE_URL": "https://worldcons.soltera.dev",
+    "WORLDCONS_BASE_URL": "https://worldcons.soltera.dev",
     "WORLDCONS_CORE_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_D1_SHADOW_READ_ENABLED": "false",
     "WORLDCONS_D1_SHADOW_COMPARE_ENABLED": "false",
@@ -14,8 +39,8 @@
     "WORLDCONS_D1_SHADOW_MAX_ROWS": "2000",
     "WORLDCONS_D1_SHADOW_MAX_IN_FLIGHT": "2",
     "WORLDCONS_D1_SHADOW_SAMPLE_RATE": "0.1",
-    "WORLDCONS_SEARCH_SERVICE_ENABLED": "false",
-    "WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "false",
+    "WORLDCONS_SEARCH_SERVICE_ENABLED": "true",
+    "WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "true",
     "WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY": "supabase",
     "WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY": "supabase",

@@ -62,7 +62,7 @@ jobs:
       GEMINI_EMBEDDING_MODEL: ${{ vars.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001' }}
       ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
       ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED || 'false' }}
-      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.soltera.dev' }}
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       SUMMARY_LIMIT_INPUT: ${{ github.event.inputs.limit || '60' }}
@@ -108,7 +108,7 @@ jobs:
             echo "CRON_SECRET secret is required" >&2
             exit 1
           fi
-          BASE_URL="${WORLDCONS_BASE_URL:-https://worldcons.vercel.app}"
+          BASE_URL="${WORLDCONS_BASE_URL:-https://worldcons.soltera.dev}"
           BASE_URL="${BASE_URL%/}"
           curl --fail-with-body --show-error --silent \
             --request POST \

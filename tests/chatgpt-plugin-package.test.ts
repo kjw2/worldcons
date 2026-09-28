@@ -17,12 +17,12 @@ test("ChatGPT plugin package keeps the canonical identity and no-auth endpoint",
   assert.equal(manifest.name, "worldcons-constitutional-cases");
   assert.equal(manifest.version, "0.4.0");
   assert.equal(manifest.interface.displayName, "헌법판례요약시스템");
-  assert.equal(manifest.homepage, "https://worldcons.vercel.app/guide/chatgpt-plugin");
+  assert.equal(manifest.homepage, "https://worldcons.soltera.dev/guide/chatgpt-plugin");
   assert.deepEqual(mcp, {
     mcpServers: {
       worldcons: {
         type: "http",
-        url: "https://worldcons.vercel.app/api/mcp",
+        url: "https://worldcons.soltera.dev/api/mcp",
       },
     },
   });

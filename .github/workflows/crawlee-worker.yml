@@ -84,7 +84,7 @@ jobs:
       CLOUDFLARE_BROWSER_RUN_TOKEN: ${{ secrets.CLOUDFLARE_BROWSER_RUN_TOKEN }}
       CRAWLEE_PLAYWRIGHT_ENABLED: "true"
       CRAWLEE_WORKER: "true"
-      CRAWLER_USER_AGENT: "Mozilla/5.0 (compatible; ConstitutionalCourtCurationBot/0.1; +https://worldcons.vercel.app/)"
+      CRAWLER_USER_AGENT: "Mozilla/5.0 (compatible; ConstitutionalCourtCurationBot/0.1; +https://worldcons.soltera.dev/)"
       ADMIN_QUEUE_V3_WORKER_ENABLED: ${{ vars.ADMIN_QUEUE_V3_WORKER_ENABLED || 'false' }}
       ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES: ${{ vars.ADMIN_QUEUE_V3_WORKER_COMMAND_TYPES }}
       ADMIN_QUEUE_V3_WORKER_COHORTS: ${{ vars.ADMIN_QUEUE_V3_WORKER_COHORTS }}
@@ -92,7 +92,7 @@ jobs:
       ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS: ${{ vars.ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS }}
       ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED || 'false' }}
       ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED || 'false' }}
-      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.soltera.dev' }}
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       INGESTION_RUN_STALE_MINUTES: "180"
@@ -228,7 +228,7 @@ jobs:
       ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED || 'false' }}
       ADMIN_PUBLICATION_V4_SHADOW_COHORTS: ${{ vars.ADMIN_PUBLICATION_V4_SHADOW_COHORTS }}
       ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED: ${{ vars.ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED || 'false' }}
-      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.vercel.app' }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL || 'https://worldcons.soltera.dev' }}
       WORLDCONS_BASE_URL: ${{ vars.WORLDCONS_BASE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
       # M11.3 ops-heartbeat boundary for the summarize-pending step, same
@@ -263,7 +263,7 @@ jobs:
             echo "CRON_SECRET secret is required" >&2
             exit 1
           fi
-          BASE_URL="${WORLDCONS_BASE_URL:-https://worldcons.vercel.app}"
+          BASE_URL="${WORLDCONS_BASE_URL:-https://worldcons.soltera.dev}"
           BASE_URL="${BASE_URL%/}"
           curl --fail-with-body --show-error --silent \
             --request POST \
