@@ -6,6 +6,7 @@ import {
   handleWorldconsSearchRequest,
   type Cclrag2ProviderEnv,
 } from "../lib/integrations/cclrag2/provider-handler";
+import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 
 const migrationPath = path.join(
   process.cwd(),
@@ -436,106 +437,83 @@ test("Vercel provider preserves exact total semantics returned by the DB-native 
   });
 });
 
-test("Vercel provider source and article endpoints expose bounded Contract V2 evidence", async () => {
-  const calls: Array<{ pathname: string; body: Record<string, unknown> }> = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const pathname = new URL(String(input)).pathname;
-    calls.push({
-      pathname,
-      body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
-    });
-    if (pathname.endsWith("/worldcons_provider_sources_v1")) {
-      return Response.json([
-        {
-          sourceKey: "de-bverfg",
-          name: "Bundesverfassungsgericht",
-          jurisdiction: "Germany",
-          baseUrl: "https://www.bundesverfassungsgericht.de",
-          language: "de",
-          isActive: true,
-        },
-      ]);
-    }
-    if (pathname.endsWith("/worldcons_provider_article_v2")) {
-      return Response.json({
-        ...neubauerRow(),
-        cleaned_text: "공식 원문 스냅샷",
-        cleaned_text_offset: 0,
-        cleaned_text_limit: 350000,
-        cleaned_text_total_chars: 9,
-        cleaned_text_has_more: false,
-      });
-    }
-    if (pathname.endsWith("/worldcons_provider_source_text_v2")) {
-      return Response.json({
-        id: neubauerRow().id,
-        slug: neubauerRow().slug,
-        cleaned_text: "공식 원문 스냅샷 일부",
-        cleaned_text_offset: 10,
-        cleaned_text_limit: 20,
-        cleaned_text_total_chars: 100,
-        cleaned_text_has_more: true,
-        content_hash: NEUBAUER_CHECKSUM,
-      });
-    }
-    return Response.json({}, { status: 404 });
-  };
-
+test("Vercel provider source and article endpoints read bounded Contract V2 evidence from D1", async () => {
+  const calls: string[] = [];
+  const d1 = createProviderFakeD1(calls);
+  const dependencies = { coreBinding: d1 };
+  const d1OnlyEnv = { ...env, SUPABASE_URL: "", SUPABASE_SERVICE_ROLE_KEY: "" };
   const sources = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/sources"),
-    env,
-    { fetcher },
+    d1OnlyEnv,
+    dependencies,
   );
   const detail = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/articles/germany-neubauer?textLimit=16000"),
     env,
-    { fetcher },
+    dependencies,
   );
   const sourceText = await handleWorldconsSearchRequest(
-    new Request(
-      "https://provider.example/api/articles/germany-neubauer/source-text?offset=10&limit=20",
-    ),
+    new Request("https://provider.example/api/articles/germany-neubauer/source-text?offset=0&limit=5"),
     env,
-    { fetcher },
+    dependencies,
   );
 
   assert.equal(sources.status, 200);
+  assert.equal(sources.headers.get("cache-control"), "public, s-maxage=300, stale-while-revalidate=900");
   const sourcesPayload = await sources.json();
   assert.equal(sourcesPayload.contractVersion, "2.0");
   assert.equal(sourcesPayload.items[0].sourceType, "foreign_constitutional");
   assert.equal(sourcesPayload.items[0].countryCode, "DE");
   assert.equal(sourcesPayload.items[0].officialUri, "https://www.bundesverfassungsgericht.de/");
+  assert.equal(sourcesPayload.items.length, 1, "inactive sources are excluded");
   assert.equal(detail.status, 200);
+  assert.equal(detail.headers.get("cache-control"), "public, s-maxage=300, stale-while-revalidate=900");
   const detailPayload = await detail.json();
   assert.equal(detailPayload.contractVersion, "2.0");
   assert.equal(detailPayload.cleanedText, "공식 원문 스냅샷");
   assert.equal(detailPayload.excerptKind, "document_section");
   assert.equal(detailPayload.bodyChecksum, NEUBAUER_CHECKSUM);
-  assert.equal(detailPayload.textPage.hasMore, false);
-  const detailCall = calls.find((call) => call.pathname.endsWith("/worldcons_provider_article_v2"));
-  assert.deepEqual(detailCall?.body, {
-    p_slug: "germany-neubauer",
-    p_text_limit: 16000,
+  assert.deepEqual(detailPayload.textPage, {
+    offset: 0,
+    limit: 16000,
+    returnedChars: 9,
+    totalChars: 9,
+    hasMore: false,
+    nextOffset: null,
   });
   assert.ok(Number(detail.headers.get("content-length")) < 1_900_000);
   assert.equal(sourceText.status, 200);
+  assert.equal(sourceText.headers.get("cache-control"), "public, s-maxage=300, stale-while-revalidate=900");
   const sourceTextPayload = await sourceText.json();
-  assert.equal(sourceTextPayload.cleanedText, "공식 원문 스냅샷 일부");
+  assert.equal(sourceTextPayload.cleanedText, "공식 원문");
   assert.equal(sourceTextPayload.bodyChecksum, NEUBAUER_CHECKSUM);
   assert.deepEqual(sourceTextPayload.textPage, {
-    offset: 10,
-    limit: 20,
-    returnedChars: 12,
-    totalChars: 100,
+    offset: 0,
+    limit: 5,
+    returnedChars: 5,
+    totalChars: 9,
     hasMore: true,
-    nextOffset: 22,
+    nextOffset: 5,
   });
-  const sourceTextCall = calls.find((call) => call.pathname.endsWith("/worldcons_provider_source_text_v2"));
-  assert.deepEqual(sourceTextCall?.body, {
-    p_slug: "germany-neubauer",
-    p_offset: 10,
-    p_limit: 20,
-  });
+  assert.ok(calls.some((sql) => /from sources/u.test(sql)));
+  assert.ok(calls.some((sql) => /from articles where slug = \? and status = \? and catalog_ai_stale_v4 = \?/u.test(sql)));
+  assert.equal(calls.length, 5, "one sources read plus detail and source-text article/tag reads");
+
+  const missing = await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/articles/not-found"),
+    env,
+    { coreBinding: createProviderFakeD1([], { includeArticle: false }) },
+  );
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error.code, "NOT_FOUND");
+
+  const noSnapshot = await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/articles/germany-neubauer/source-text"),
+    env,
+    { coreBinding: createProviderFakeD1([], { cleanedText: null }) },
+  );
+  assert.equal(noSnapshot.status, 404);
+  assert.equal((await noSnapshot.json()).error.message, "Source snapshot not found.");
 });
 
 test("Vercel provider rejects invalid input and normalizes dependency failures", async () => {
@@ -669,16 +647,7 @@ test("Vercel provider truncates a large article body without dropping the preser
   const response = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/articles/germany-neubauer"),
     env,
-    {
-      fetcher: async () => Response.json({
-        ...neubauerRow(),
-        cleaned_text: oversizedText,
-        cleaned_text_offset: 0,
-        cleaned_text_limit: 350000,
-        cleaned_text_total_chars: oversizedText.length,
-        cleaned_text_has_more: true,
-      }),
-    },
+    { coreBinding: createProviderFakeD1([], { cleanedText: oversizedText }) },
   );
   const raw = await response.clone().text();
   const payload = JSON.parse(raw);
@@ -690,6 +659,117 @@ test("Vercel provider truncates a large article body without dropping the preser
   assert.ok(Buffer.byteLength(raw, "utf8") < 1_900_000);
   assert.match(payload.sourceTextUrl, /\/source-text$/u);
 });
+
+function createProviderFakeD1(
+  calls: string[] = [],
+  options: { includeArticle?: boolean; cleanedText?: string | null } = {},
+): D1RuntimeDatabase {
+  const article = {
+    id: neubauerRow().id,
+    slug: neubauerRow().slug,
+    source_key: "de-bverfg",
+    jurisdiction: "Germany",
+    institution_name: "Bundesverfassungsgericht",
+    content_type: "decision",
+    original_url: neubauerRow().original_url,
+    canonical_url: neubauerRow().canonical_url,
+    original_language: "de",
+    original_title: "Beschluss vom 24. März 2021",
+    korean_title: "독일 연방헌법재판소 기후보호법 헌법소원 결정",
+    original_published_at: "2021-03-24T00:00:00Z",
+    discovered_at: "2021-03-24T00:00:00Z",
+    fetched_at: "2021-03-24T00:00:00Z",
+    summarized_at: "2026-07-27T00:00:00Z",
+    status: "summarized",
+    cleaned_text: options.cleanedText === undefined ? "공식 원문 스냅샷" : options.cleanedText,
+    content_hash: NEUBAUER_CHECKSUM,
+    summary_json: neubauerRow().summary_json,
+    source_metadata: { collection: { publishable: true }, caseNumber: "1 BvR 2656/18" },
+    catalog_ai_stale_v4: 0,
+  };
+  const tables: Record<string, Record<string, unknown>[]> = {
+    sources: [
+      {
+        id: "source-de",
+        source_key: "de-bverfg",
+        name: "Bundesverfassungsgericht",
+        jurisdiction: "Germany",
+        base_url: "https://www.bundesverfassungsgericht.de",
+        language: "de",
+        is_active: 1,
+      },
+      {
+        id: "source-inactive",
+        source_key: "de-old-court",
+        name: "Inactive court",
+        jurisdiction: "Germany",
+        base_url: "https://www.bundesverfassungsgericht.de",
+        language: "de",
+        is_active: 0,
+      },
+    ],
+    articles: options.includeArticle === false ? [] : [article],
+    article_tags: [],
+    tags: [],
+  };
+
+  return {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      let params: unknown[] = [];
+      const statement: D1RuntimePreparedStatement = {
+        bind(...values: unknown[]) {
+          params = values;
+          return statement;
+        },
+        async all<T = Record<string, unknown>>() {
+          calls.push(sql);
+          const tableName = / from ([a-z_]+)/u.exec(sql)?.[1] ?? "";
+          const tableRows = (tables[tableName] ?? []).map((row) => ({ ...row }));
+          const where = / where (.*?)(?= order by | limit |$)/u.exec(sql)?.[1];
+          let paramIndex = 0;
+          let rows = tableRows;
+          if (where) {
+            for (const predicate of where.split(" and ")) {
+              const inMatch = /^([a-z_]+) in \((?:\?,? ?)+\)$/u.exec(predicate);
+              const equality = /^([a-z_][a-z0-9_]*) = \?$/u.exec(predicate);
+              if (inMatch) {
+                const column = inMatch[1];
+                const valueCount = (predicate.match(/\?/gu) ?? []).length;
+                const values = params.slice(paramIndex, paramIndex + valueCount);
+                paramIndex += valueCount;
+                rows = rows.filter((row) => values.includes(row[column]));
+              } else if (equality) {
+                const column = equality[1];
+                const value = params[paramIndex++];
+                rows = rows.filter((row) => row[column] === value);
+              } else {
+                throw new Error(`Fake D1 cannot evaluate ${predicate}`);
+              }
+            }
+          }
+          const order = / order by ([a-z_]+)(?: (asc|desc))?/u.exec(sql);
+          if (order) {
+            const [, column, direction] = order;
+            rows.sort((left, right) => {
+              const a = left[column] ?? "";
+              const b = right[column] ?? "";
+              return (a < b ? -1 : a > b ? 1 : 0) * (direction === "desc" ? -1 : 1);
+            });
+          }
+          const limit = / limit \?/u.test(sql) ? Number(params[paramIndex++]) : rows.length;
+          rows = rows.slice(0, limit);
+          const select = /select (.*?) from /u.exec(sql)?.[1];
+          if (select && select !== "*") {
+            const columns = select.split(", ");
+            rows = rows.map((row) => Object.fromEntries(columns.map((column) => [column, row[column] ?? null])));
+          }
+          return { success: true, results: rows as unknown as T[] };
+        },
+      };
+      return statement;
+    },
+  };
+}
 
 function embeddingResponse() {
   return Response.json({

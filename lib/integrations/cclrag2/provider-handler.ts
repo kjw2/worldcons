@@ -1,4 +1,8 @@
 import { normalizeEmbeddingVector } from "@/lib/ai/embedding-vector";
+import { createD1ArticleReadRepository } from "@/lib/article-reads/d1-repository";
+import type { ArticleDetail } from "@/lib/db/types";
+import { createD1ReferenceReadRepository } from "@/lib/reference-reads/d1-repository";
+import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { hasExactCaseReference } from "@/lib/search/case-number";
 
 export type Cclrag2ProviderEnv = {
@@ -17,6 +21,7 @@ type Fetcher = typeof fetch;
 
 export type ProviderDependencies = {
   fetcher?: Fetcher;
+  coreBinding?: D1RuntimeDatabase | null;
 };
 
 const SEARCH_PARAMETERS = new Set([
@@ -150,28 +155,27 @@ export async function handleWorldconsSearchRequest(
     }, requestId);
   }
 
-  if (!env.SUPABASE_URL?.trim() || !env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
-    return errorResponse(503, "SERVICE_UNAVAILABLE", "WorldCons data access is not configured.", {
-      "Retry-After": "30",
-    }, requestId);
-  }
-
   const url = new URL(request.url);
   const pathname = normalizedPathname(url.pathname);
   const fetcher = dependencies.fetcher ?? fetch;
 
   try {
     if (pathname === "/api/search") {
+      if (!env.SUPABASE_URL?.trim() || !env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+        return errorResponse(503, "SERVICE_UNAVAILABLE", "WorldCons data access is not configured.", {
+          "Retry-After": "30",
+        }, requestId);
+      }
       return await searchResponse(url, env, fetcher, requestId);
     }
     if (pathname === "/api/sources") {
       assertNoParameters(url.searchParams);
-      return await sourcesResponse(env, fetcher, requestId);
+      return await sourcesResponse(dependencies.coreBinding, requestId);
     }
 
     const articleMatch = pathname.match(/^\/api\/articles\/([a-z0-9]+(?:-[a-z0-9]+)*)(\/source-text)?$/u);
     if (articleMatch) {
-      return await articleResponse(url, articleMatch[1], Boolean(articleMatch[2]), env, fetcher, requestId);
+      return await articleResponse(url, articleMatch[1], Boolean(articleMatch[2]), env, dependencies.coreBinding, requestId);
     }
 
     return errorResponse(404, "NOT_FOUND", "The requested WorldCons endpoint does not exist.", {}, requestId);
@@ -432,9 +436,10 @@ async function createQueryEmbedding(
   }
 }
 
-async function sourcesResponse(env: Cclrag2ProviderEnv, fetcher: Fetcher, requestId: string) {
-  const rpcPayload = await callRpc(env, "worldcons_provider_sources_v1", {}, fetcher, requestId);
-  const sources = Array.isArray(rpcPayload) ? rpcPayload : [];
+async function sourcesResponse(binding: D1RuntimeDatabase | null | undefined, requestId: string) {
+  const sources = (await createD1ReferenceReadRepository({ binding }).listSources())
+    .filter((source) => source.isActive)
+    .sort((left, right) => left.sourceKey.localeCompare(right.sourceKey));
   return jsonResponse({
     contractVersion: CONTRACT_VERSION,
     schemaVersion: 1,
@@ -442,26 +447,25 @@ async function sourcesResponse(env: Cclrag2ProviderEnv, fetcher: Fetcher, reques
     service: "worldcons",
     transport: "vercel-route-handler",
     items: sources.map((source) => {
-      const row = requiredRecord(source, "source");
-      const sourceKey = requiredString(row.sourceKey ?? row.source_key, "sourceKey");
+      const sourceKey = requiredString(source.sourceKey, "sourceKey");
       const context = sourceContextFor(sourceKey);
-      const baseUrl = requiredOfficialUri(sourceKey, row.baseUrl ?? row.base_url);
+      const baseUrl = requiredOfficialUri(sourceKey, source.baseUrl);
       return {
         providerId: "worldcons",
         sourceKey,
-        name: requiredString(row.name, "name"),
-        institutionName: requiredString(row.name, "name"),
-        courtName: requiredString(row.name, "name"),
-        jurisdiction: requiredString(row.jurisdiction, "jurisdiction"),
+        name: requiredString(source.name, "name"),
+        institutionName: requiredString(source.name, "name"),
+        courtName: requiredString(source.name, "name"),
+        jurisdiction: requiredString(source.jurisdiction, "jurisdiction"),
         jurisdictionCode: context.jurisdictionCode,
         jurisdictionName: context.jurisdictionName,
-        country: requiredString(row.jurisdiction, "jurisdiction"),
+        country: requiredString(source.jurisdiction, "jurisdiction"),
         countryCode: context.jurisdictionCode,
         countryName: context.jurisdictionName,
         baseUrl,
         officialUri: baseUrl,
-        language: requiredString(row.language, "language"),
-        isActive: row.isActive ?? row.is_active ?? true,
+        language: requiredString(source.language, "language"),
+        isActive: source.isActive,
         sourceType: SOURCE_TYPE,
       };
     }),
@@ -473,7 +477,7 @@ async function articleResponse(
   slug: string,
   sourceTextOnly: boolean,
   env: Cclrag2ProviderEnv,
-  fetcher: Fetcher,
+  binding: D1RuntimeDatabase | null | undefined,
   requestId: string,
 ) {
   if (!SLUG_PATTERN.test(slug)) {
@@ -482,26 +486,25 @@ async function articleResponse(
 
   if (sourceTextOnly) {
     const textInput = parseSourceTextInput(url.searchParams);
-    const rpcPayload = await callRpc(env, "worldcons_provider_source_text_v2", {
-      p_slug: slug,
-      p_offset: textInput.offset,
-      p_limit: textInput.limit,
-    }, fetcher, requestId);
-    if (rpcPayload === null) {
+    const row = await createD1ArticleReadRepository({ binding }).getArticleBySelect(slug, "detail");
+    if (!row) {
       return errorResponse(404, "NOT_FOUND", "Article not found.", {}, requestId);
     }
-    const row = requiredRecord(rpcPayload, "source text");
-    const cleanedText = optionalString(row.cleaned_text);
+    const cleanedText = row.cleanedText;
     if (!cleanedText) {
       return errorResponse(404, "NOT_FOUND", "Source snapshot not found.", {}, requestId);
     }
-    const boundedText = truncateUtf8(cleanedText, MAX_DETAIL_TEXT_BYTES);
-    const offset = nonNegativeInteger(row.cleaned_text_offset) ?? textInput.offset;
-    const totalChars = nonNegativeInteger(row.cleaned_text_total_chars) ?? unicodeCharacterLength(cleanedText);
+    const textPage = optionalString(cleanedText.slice(textInput.offset, textInput.offset + textInput.limit));
+    if (!textPage) {
+      return errorResponse(404, "NOT_FOUND", "Source snapshot not found.", {}, requestId);
+    }
+    const boundedText = truncateUtf8(textPage, MAX_DETAIL_TEXT_BYTES);
+    const offset = textInput.offset;
+    const totalChars = cleanedText.length;
     const returnedChars = unicodeCharacterLength(boundedText.text);
     const nextOffset = offset + returnedChars;
-    const hasMore = Boolean(row.cleaned_text_has_more) || boundedText.truncated || nextOffset < totalChars;
-    const bodyChecksum = normalizedSha256(row.content_hash);
+    const hasMore = boundedText.truncated || nextOffset < totalChars;
+    const bodyChecksum = normalizedSha256(row.contentHash);
 
     return jsonResponse({
       contractVersion: CONTRACT_VERSION,
@@ -526,15 +529,15 @@ async function articleResponse(
   }
 
   const detailInput = parseDetailInput(url.searchParams);
-  const rpcPayload = await callRpc(env, "worldcons_provider_article_v2", {
-    p_slug: slug,
-    p_text_limit: detailInput.textLimit,
-  }, fetcher, requestId);
-  if (rpcPayload === null) {
+  const article = await createD1ArticleReadRepository({ binding }).getArticleBySelect(slug, "detail");
+  if (!article) {
     return errorResponse(404, "NOT_FOUND", "Article not found.", {}, requestId);
   }
-
-  const item = mapArticleDetail(rpcPayload, env.PUBLIC_BASE_URL);
+  const cleanedText = article.cleanedText ?? null;
+  const codePoints = cleanedText === null ? null : Array.from(cleanedText);
+  const limitedText = codePoints?.slice(0, detailInput.textLimit).join("") ?? null;
+  const row = providerArticleRow(article, limitedText, detailInput.textLimit, codePoints?.length ?? 0);
+  const item = mapArticleDetail(row, env.PUBLIC_BASE_URL);
   return jsonResponse({
     contractVersion: CONTRACT_VERSION,
     schemaVersion: 1,
@@ -757,6 +760,45 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
       detailApiUrl,
       sourceTextUrl: `${detailApiUrl}/source-text`,
     },
+  };
+}
+
+function providerArticleRow(
+  article: ArticleDetail,
+  cleanedText: string | null,
+  textLimit: number,
+  totalChars: number,
+) {
+  const sourceMetadata = article.sourceMetadata ?? {};
+  const summaryJson = article.summaryJson;
+  return {
+    id: article.id,
+    slug: article.slug,
+    source_key: article.sourceKey,
+    jurisdiction: article.jurisdiction,
+    institution_name: article.institutionName,
+    content_type: article.contentType,
+    original_url: article.originalUrl,
+    canonical_url: article.canonicalUrl,
+    original_language: article.originalLanguage,
+    original_title: article.originalTitle,
+    korean_title: article.koreanTitle,
+    original_published_at: article.originalPublishedAt,
+    discovered_at: article.discoveredAt,
+    fetched_at: article.fetchedAt,
+    summarized_at: article.summarizedAt,
+    summary_json: summaryJson,
+    source_metadata: sourceMetadata,
+    article_tags: article.tags.map((tag) => ({ confidence: tag.confidence, tags: tag })),
+    case_number: article.caseNumber,
+    body_excerpt: (article.cleanedText ?? "").slice(0, MAX_DETAIL_EXCERPT_CHARS),
+    cleaned_text: cleanedText,
+    cleaned_text_offset: 0,
+    cleaned_text_limit: textLimit,
+    cleaned_text_total_chars: totalChars,
+    cleaned_text_has_more: totalChars > textLimit,
+    content_hash: article.contentHash,
+    relevance_score: null,
   };
 }
 

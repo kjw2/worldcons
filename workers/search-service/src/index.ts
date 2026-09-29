@@ -187,7 +187,7 @@ export function createWorldconsSearchServiceApp(
   app.all("/api/*", (c) => handleWorldconsSearchRequest(
     c.req.raw,
     providerEnvFromSearchWorkerBindings(c.env),
-    dependencies.provider,
+    { ...dependencies.provider, coreBinding: c.env.WORLDCONS_CORE },
   ));
 
   app.post("/internal/cclmetasearch/search", async (c) => {
