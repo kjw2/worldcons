@@ -2184,24 +2184,43 @@ Allowed only after:
 
 No deletion is automatic.
 
-M13 reality at main head `3d8b0b4` (2026-09-29): M12 production compute/traffic
-has cut over to Cloudflare. On 2026-09-29 the final Supabase -> D1 delta was
-verified **exact across all 75 migratable tables** using three production
-reconciliation manifests that share the never-delete canonical full-table logic:
-core 30/30 exact, ingest 26/26 exact, ops 19/19 exact, before any authority
-switch. The persistent Worker configuration now carries the permanent D1
-authority profile, but the actual production switch is pending and has not yet
-been deployed. M13 is the deliberate,
-single, bounded operation that moves proven domains to permanent D1 authority and
-then runs the observation, export, rotation, DR and approval gates before any
-destructive retirement.
+M13 reality (2026-09-29): M12 production compute/traffic has cut over to
+Cloudflare. On 2026-09-29 the final Supabase -> D1 delta was verified **exact
+across all 75 migratable tables** using three production reconciliation manifests
+that share the never-delete canonical full-table logic: core 30/30 exact, ingest
+26/26 exact, ops 19/19 exact, immediately before the authority switch.
 
-**The 336-hour (14-day) continuous observation window starts only from the actual
-successful production switch timestamp**, which the orchestrator records after the
-deploy. Until that timestamp is recorded and verified, the observation gate remains
-open. The switch itself, the observation start, the final export, credential
-rotation, the DR rehearsal, the distinct approvals and any retirement are **not**
-yet complete and must not be recorded as such.
+**The M13 authority profile switch is COMPLETE.** All 11 M13 forward GitHub
+repository variables were set to `d1` before the final deployment, and both
+Workers were then deployed with the permanent D1 authority profile and verified
+through Cloudflare settings as `WORLDCONS_M13_AUTHORITY_PROFILE=d1` with all
+relevant leaf selectors `d1`:
+
+- `worldcons` main Worker version `6c29ed00-cb11-4edb-bedc-8480a2772795`,
+  deployment `created_on` `2026-09-29T03:19:48.565786Z`.
+- `worldcons-ops-write` Worker version
+  `c01d9d8d-8442-47d6-a6ee-1281fcc32c05`, deployment `created_on`
+  `2026-09-29T03:20:00.23024Z` (later of the two).
+
+A production live canary `POST /api/analytics/event` returned `204` for path
+`/__m13/live-canary-6c29ed00`; the `worldcons_ops` D1 `site_events` table then
+contained canary id `ed6c7a5b-77c4-44d6-8c05-813f96a6167d` at
+`2026-09-29T03:21:20.419Z`, while Supabase held 0 rows for that path and stayed
+frozen (see the observation paragraph below). No destructive retirement occurred.
+
+**The 336-hour (14-day) continuous observation window is STARTED, not complete.**
+The observation start is the later `worldcons-ops-write` deployment, and the
+earliest possible 336h completion is:
+
+- Observation start: `2026-09-29T03:20:00.23024Z` = `2026-09-29 12:20:00.230240 KST`.
+- Earliest 336h completion: `2026-10-13 12:20:00.230240 KST`.
+
+The observation gate remains open until that window completes. The final export,
+credential rotation, the DR rehearsal, the distinct approvals and any retirement
+are still **not** complete and must not be recorded as such. M13 is still the
+deliberate, single, bounded operation that moves proven domains to permanent D1
+authority and then runs the remaining observation, export, rotation, DR and
+approval gates before any destructive retirement.
 
 #### M13 authority profile (the single bounded switch)
 
@@ -2243,13 +2262,15 @@ contracts from one variable:
   whose D1 path fails still fails closed in the existing M11 seam code; the
   profile only resolves the selector value.
 
-The Worker/ops-write `wrangler.jsonc` now persist
+The Worker/ops-write `wrangler.jsonc` persist
 `WORLDCONS_M13_AUTHORITY_PROFILE=d1` (and the exact per-domain `d1` selector
-values) as the repository configuration, ahead of the 2026-09-29 final delta
-being verified exact 75/75. The forward switch is imminent: one deployment of the
-two Worker configs plus the GitHub repository variables `WORLDCONS_*`; the actual
-production switch timestamp is not yet recorded. The rollback is the same
-operation with the value set back to `supabase`.
+values) as the repository configuration. All 11 M13 forward GitHub repository
+variables were set to `d1` before the final deployment; the forward switch was
+then completed by deploying both Worker configs and was verified through
+Cloudflare settings, with the production switch timestamp recorded at
+`2026-09-29T03:19:48.565786Z` (`worldcons`) and `2026-09-29T03:20:00.23024Z`
+(`worldcons-ops-write`). The rollback is the same operation with the value set
+back to `supabase`.
 
 ##### M13 distributed rate limit (`ops.rate_limit`)
 
@@ -2344,14 +2365,21 @@ final gate passes**.
    delete/pause Supabase/Vercel resources. The read-only tool never authorizes
    this step.
 
-Verified so far: the 2026-09-29 final Supabase -> D1 delta is exact 75/75 via the
+Verified: the 2026-09-29 final Supabase -> D1 delta is exact 75/75 via the
 three production reconciliation manifests (core 30/30, ingest 26/26, ops 19/19)
 using the never-delete canonical full-table logic; `pnpm test:m13` and the
-per-module suites pass; the repository Worker configs now persist the permanent
-`d1` profile. **Not** yet recorded as done: the actual production deploy/switch
-timestamp, the 336h observation start, the final Supabase export, credential
-rotation, the DR rehearsal, the approvals and the destructive retirement. The
-orchestrator records the successful production switch timestamp after deploy.
+per-module suites pass; the repository Worker configs persist the permanent
+`d1` profile. The permanent profile switch is **complete and verified**: all 11
+M13 forward GitHub repository variables were set to `d1` before deployment, and
+the deployed Workers (`worldcons` `6c29ed00-cb11-4edb-bedc-8480a2772795` at
+`2026-09-29T03:19:48.565786Z`, `worldcons-ops-write`
+`c01d9d8d-8442-47d6-a6ee-1281fcc32c05` at `2026-09-29T03:20:00.23024Z`) were
+verified through Cloudflare settings with the `d1` profile. The 336h observation
+is **STARTED** from `2026-09-29 12:20:00.230240 KST`, with earliest completion
+`2026-10-13 12:20:00.230240 KST`, and is not complete. **Not** yet recorded as
+done: the completed 336h observation, the final Supabase export, credential
+rotation, the DR rehearsal, the approvals and the destructive retirement. No
+destructive retirement has occurred.
 
 ## 16. Zero-downtime data cutover
 
@@ -2701,6 +2729,6 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] credential rotation
 - [ ] DR rehearsal
 - [ ] explicit retirement approval
-- [ ] M13 authority profile switch (`WORLDCONS_M13_AUTHORITY_PROFILE=d1`; repository Worker configs now carry `d1`, **production switch pending, timestamp not yet recorded**)
+- [x] M13 authority profile switch (`WORLDCONS_M13_AUTHORITY_PROFILE=d1`; all 11 M13 forward GitHub repository variables set to `d1` before final deployment; `worldcons` version `6c29ed00-cb11-4edb-bedc-8480a2772795` at `2026-09-29T03:19:48.565786Z` and `worldcons-ops-write` version `c01d9d8d-8442-47d6-a6ee-1281fcc32c05` at `2026-09-29T03:20:00.23024Z`; both verified through Cloudflare settings with M13 profile `d1` and all relevant leaf selectors `d1`)
 - [x] M13 final Supabase -> D1 delta verified exact across all 75 migratable tables (core 30/30, ingest 26/26, ops 19/19) on 2026-09-29 via three production reconciliation manifests using the never-delete canonical full-table logic (read-only)
-- [ ] M13 336h continuous D1-sole-authority observation window (**not started**; starts only from the orchestrator-recorded successful production switch timestamp)
+- [ ] M13 336h continuous D1-sole-authority observation window (**STARTED, not complete**; start `2026-09-29T03:20:00.23024Z` = `2026-09-29 12:20:00.230240 KST`, earliest completion `2026-10-13 12:20:00.230240 KST`; live canary `POST /api/analytics/event` -> `204` for `/__m13/live-canary-6c29ed00`, D1 `worldcons_ops.site_events` canary id `ed6c7a5b-77c4-44d6-8c05-813f96a6167d` at `2026-09-29T03:21:20.419Z`, Supabase 0 rows for that path and frozen at `site_events` count 21395 / max `occurred_at` `2026-09-29 02:37:02.408718+00`, `security_rate_limit_buckets_v1` frozen at 26 rows / max `updated_at` `2026-09-29 01:16:00.485314+00`)

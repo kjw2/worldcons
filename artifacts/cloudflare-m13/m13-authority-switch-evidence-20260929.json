@@ -1,0 +1,79 @@
+{
+  "artifact": "m13-authority-switch-evidence",
+  "recordedOn": "2026-09-29",
+  "milestone": "M13",
+  "authority": "d1",
+  "destructiveRetirementAuthorized": false,
+  "finalDeltaBeforeSwitch": {
+    "verifiedOn": "2026-09-29",
+    "result": "exact",
+    "tablesExact": 75,
+    "tablesTotal": 75,
+    "core": { "exact": 30, "total": 30 },
+    "ingest": { "exact": 26, "total": 26 },
+    "ops": { "exact": 19, "total": 19 },
+    "method": "three production reconciliation manifests using never-delete canonical full-table logic",
+    "readOnly": true
+  },
+  "githubRepositoryVariables": {
+    "m13ForwardVariablesSetToD1": 11,
+    "setBeforeFinalDeployment": true
+  },
+  "workers": {
+    "worldcons": {
+      "version": "6c29ed00-cb11-4edb-bedc-8480a2772795",
+      "deploymentCreatedOn": "2026-09-29T03:19:48.565786Z",
+      "verifiedViaCloudflareSettings": true,
+      "m13Profile": "d1",
+      "leafSelectors": "d1"
+    },
+    "worldcons-ops-write": {
+      "version": "c01d9d8d-8442-47d6-a6ee-1281fcc32c05",
+      "deploymentCreatedOn": "2026-09-29T03:20:00.23024Z",
+      "verifiedViaCloudflareSettings": true,
+      "m13Profile": "d1",
+      "leafSelectors": "d1"
+    }
+  },
+  "observation": {
+    "state": "started",
+    "start": "2026-09-29T03:20:00.23024Z",
+    "startKst": "2026-09-29 12:20:00.230240 KST",
+    "durationHours": 336,
+    "earliestCompletion": "2026-10-13 12:20:00.230240 KST",
+    "completed": false,
+    "startBasis": "later of the two M13 deployments (worldcons-ops-write created_on)"
+  },
+  "liveCanary": {
+    "request": "POST /api/analytics/event",
+    "status": 204,
+    "path": "/__m13/live-canary-6c29ed00",
+    "d1": {
+      "database": "worldcons_ops",
+      "table": "site_events",
+      "canaryId": "ed6c7a5b-77c4-44d6-8c05-813f96a6167d",
+      "occurredAt": "2026-09-29T03:21:20.419Z"
+    }
+  },
+  "supabaseFrozenState": {
+    "canaryPathRows": 0,
+    "siteEvents": {
+      "count": 21395,
+      "maxOccurredAt": "2026-09-29 02:37:02.408718+00"
+    },
+    "securityRateLimitBucketsV1": {
+      "count": 26,
+      "maxUpdatedAt": "2026-09-29 01:16:00.485314+00",
+      "note": "canary rate-limit call did not write Supabase"
+    }
+  },
+  "pending": [
+    "336h observation completion",
+    "final export",
+    "credential rotation",
+    "DR rehearsal",
+    "approvals",
+    "retirement"
+  ],
+  "destructiveRetirementOccurred": false
+}
