@@ -240,7 +240,10 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   assert.equal(consumer.max_retries, 3);
   assert.equal(consumer.retry_delay, 60);
   assert.equal(consumer.dead_letter_queue, "worldcons-async-dlq-v1");
-  assert.deepEqual(config.secrets.required, ["GITHUB_ACTIONS_TOKEN"]);
+  assert.deepEqual(config.secrets.required, ["GITHUB_ACTIONS_TOKEN", "BROWSER_RUN_TOKEN"]);
+  assert.equal(config.browser.binding, "BROWSER");
+  assert.equal(config.workers_dev, true);
+  assert.equal(config.preview_urls, false);
 });
 
 test("legacy schedulers are retired while manual compatibility executors remain", () => {

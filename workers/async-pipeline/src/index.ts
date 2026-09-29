@@ -10,6 +10,7 @@ import {
   type M8RolloutGate,
   type M8TaskMessage,
 } from "../../../lib/cloudflare/async-pipeline/contracts";
+import { handleBrowserNavigate } from "./browser-navigate";
 
 function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -77,7 +78,14 @@ export default {
         enabledKindsAny: policy.policy.any,
         enabledKindsValid: policy.policy.valid,
         enabledKindsReason: policy.policy.reason ?? null,
+        browserNavigate: true,
       });
+    }
+    // Authenticated Browser Rendering transport, merged in from the retired
+    // standalone `worldcons-browser-run` Worker. The existing Node/GitHub
+    // crawler caller only needs this bearer-protected POST route.
+    if (request.method === "POST" && url.pathname === "/v1/navigate") {
+      return handleBrowserNavigate(request, env);
     }
     return json({ error: "not_found" }, 404);
   },
