@@ -1,15 +1,21 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { GET as unknownEndpointGet } from "../app/api/cclmetasearch/[...path]/route";
 import {
   CCL_METASEARCH_TOKEN_HEADER,
   CclMetasearchRequestError,
   parseCclMetasearchSearchParams,
+  type CclMetasearchSearchInput,
 } from "../lib/cclmetasearch/contract";
 import { createCclMetasearchSearchHandler } from "../lib/cclmetasearch/handler";
 import { mapCclMetasearchRow } from "../lib/cclmetasearch/mapper";
+import { searchCclMetasearchWithEnv } from "../lib/cclmetasearch/search";
+import { emitDatabaseDdl } from "../lib/cloudflare/d1/ddl";
+import { d1Schema } from "../lib/cloudflare/d1/schema";
+import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 
 const TOKEN = "test-cclmetasearch-token-value";
 const migrationPath = path.join(
@@ -219,6 +225,337 @@ test("migration searches only the public projection and applies database paginat
   assert.match(sql, /grant execute on function cclmetasearch_search_v1[\s\S]*to service_role/iu);
   assert.doesNotMatch(sql, /\bfrom\s+articles\b/iu);
 });
+
+test("production cclmetasearch backend no longer references Supabase", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "lib/cclmetasearch/search.ts"), "utf8");
+
+  assert.doesNotMatch(source, /@supabase\/supabase-js/u);
+  assert.doesNotMatch(source, /SUPABASE_URL/u);
+  assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/u);
+});
+
+test("search reads matching ids/rank/date from worldcons_search and hydrates from worldcons_core", async () => {
+  const { core, search } = d1Fixture();
+  const env = fixtureEnv(core, search);
+
+  const page = await searchCclMetasearchWithEnv(searchInput({ query: "constitution" }), env);
+
+  assert.equal(page.total, 2);
+  assert.deepEqual(page.items.map((item) => item.id), [CONSTITUTION_ID, PRIVACY_ID]);
+  const [first] = page.items;
+  assert.equal(first.title, "헌법의 날");
+  assert.equal(first.originalTitle, "Constitution Day");
+  assert.equal(first.caseNumber, "2026-1000");
+  assert.equal(first.originalLanguage, "en");
+  assert.deepEqual(first.keywords, ["Constitution", "헌법"]);
+  assert.deepEqual(first.topics, ["Constitution", "기본권"]);
+  assert.ok(first.relevanceScore !== null && Number.isFinite(first.relevanceScore));
+  assert.match(first.detailUrl, /^https:\/\/worldcons\.vercel\.app\/articles\//u);
+});
+
+test("latest sort orders the same match set by publication date", async () => {
+  const { core, search } = d1Fixture();
+  const env = fixtureEnv(core, search);
+
+  const page = await searchCclMetasearchWithEnv(
+    searchInput({ query: "constitution", sort: "latest" }),
+    env,
+  );
+
+  assert.equal(page.total, 2);
+  assert.deepEqual(page.items.map((item) => item.id), [PRIVACY_ID, CONSTITUTION_ID]);
+});
+
+test("exact total is returned even when the page is bounded or empty", async () => {
+  const { core, search } = d1Fixture();
+  const env = fixtureEnv(core, search);
+
+  const bounded = await searchCclMetasearchWithEnv(searchInput({ query: "constitution", limit: 1 }), env);
+  assert.equal(bounded.total, 2);
+  assert.equal(bounded.items.length, 1);
+  assert.deepEqual(bounded.items.map((item) => item.id), [CONSTITUTION_ID]);
+
+  const pastTheEnd = await searchCclMetasearchWithEnv(
+    searchInput({ query: "constitution", offset: 10 }),
+    env,
+  );
+  assert.equal(pastTheEnd.total, 2);
+  assert.deepEqual(pastTheEnd.items, []);
+
+  const noMatch = await searchCclMetasearchWithEnv(searchInput({ query: "nonexistentterm" }), env);
+  assert.equal(noMatch.total, 0);
+  assert.deepEqual(noMatch.items, []);
+});
+
+test("search fails closed on malformed worldcons_search D1 responses", async () => {
+  const { core } = d1Fixture();
+  const baseEnv = {
+    PUBLIC_SITE_BASE_URL: "https://worldcons.vercel.app",
+    CORE_BINDING: localBinding(core),
+  };
+
+  const nonObjectResult: D1RuntimeDatabase = { prepare: () => stubPrepared({ success: true, results: null }) };
+  await assert.rejects(
+    () => searchCclMetasearchWithEnv(searchInput({ query: "constitution" }), { ...baseEnv, SEARCH_BINDING: nonObjectResult }),
+  );
+
+  const failedResult: D1RuntimeDatabase = { prepare: () => stubPrepared({ success: false, error: "boom" }) };
+  await assert.rejects(
+    () => searchCclMetasearchWithEnv(searchInput({ query: "constitution" }), { ...baseEnv, SEARCH_BINDING: failedResult }),
+  );
+
+  const nonObjectRow: D1RuntimeDatabase = { prepare: () => stubPrepared({ success: true, results: [null] }) };
+  await assert.rejects(
+    () => searchCclMetasearchWithEnv(searchInput({ query: "constitution" }), { ...baseEnv, SEARCH_BINDING: nonObjectRow }),
+  );
+
+  const badTotal: D1RuntimeDatabase = {
+    prepare: () => stubPrepared({ success: true, results: [{ article_id: CONSTITUTION_ID, relevance_score: 1, original_published_at: null }] }),
+  };
+  await assert.rejects(
+    () => searchCclMetasearchWithEnv(searchInput({ query: "constitution" }), { ...baseEnv, SEARCH_BINDING: badTotal }),
+  );
+});
+
+test("search fails closed when a D1 binding is not configured", async () => {
+  await assert.rejects(
+    () =>
+      searchCclMetasearchWithEnv(searchInput({ query: "constitution" }), {
+        PUBLIC_SITE_BASE_URL: "https://worldcons.vercel.app",
+      }),
+    /not configured/u,
+  );
+});
+
+// --- D1 fixture -----------------------------------------------------------------
+
+const CONSTITUTION_ID = "11111111-1111-4111-8111-111111111111";
+const PRIVACY_ID = "22222222-2222-4222-8222-222222222222";
+const EXPRESSION_ID = "33333333-3333-4333-8333-333333333333";
+const TAG_ID = "eeeeeeee-0000-0000-0000-000000000001";
+
+interface FixtureRow {
+  articleId: string;
+  versionId: string;
+  publicationId: string;
+  slug: string;
+  sourceKey: string;
+  jurisdiction: string;
+  institutionName: string;
+  language: string;
+  originalTitle: string;
+  koreanTitle: string | null;
+  publishedAt: string;
+  summaryJson: string;
+  sourceMetadata: string;
+  searchTitle: string;
+  caseNumbers: string;
+  searchText: string;
+  tagsText: string;
+}
+
+const FIXTURE_ROWS: FixtureRow[] = [
+  {
+    articleId: CONSTITUTION_ID,
+    versionId: "aaaa1111-1111-4111-8111-111111111111",
+    publicationId: "bbbb1111-1111-4111-8111-111111111111",
+    slug: "constitution-day",
+    sourceKey: "us-scotus",
+    jurisdiction: "United States",
+    institutionName: "Supreme Court of the United States",
+    language: "en",
+    originalTitle: "Constitution Day",
+    koreanTitle: "헌법의 날",
+    publishedAt: "2026-01-01T00:00:00.000Z",
+    summaryJson: '{"summary":{"coreSummary":["첫 번째 요약","두 번째 요약"]},"tags":["헌법"],"categories":["기본권"]}',
+    sourceMetadata: '{"caseNumber":"2026-1000"}',
+    searchTitle: "constitution day",
+    caseNumbers: "2026-1000",
+    searchText: "constitution constitution constitution alpha",
+    tagsText: "constitution",
+  },
+  {
+    articleId: PRIVACY_ID,
+    versionId: "aaaa2222-2222-4222-8222-222222222222",
+    publicationId: "bbbb2222-2222-4222-8222-222222222222",
+    slug: "privacy-ruling",
+    sourceKey: "de-bverfg",
+    jurisdiction: "Germany",
+    institutionName: "Bundesverfassungsgericht",
+    language: "de",
+    originalTitle: "Privacy Ruling",
+    koreanTitle: null,
+    publishedAt: "2026-06-01T00:00:00.000Z",
+    summaryJson: '{"summary":{"coreSummary":["독일 판결 요약"]}}',
+    sourceMetadata: "{}",
+    searchTitle: "privacy ruling",
+    caseNumbers: "",
+    searchText: "constitution beta gamma delta",
+    tagsText: "",
+  },
+  {
+    articleId: EXPRESSION_ID,
+    versionId: "aaaa3333-3333-4333-8333-333333333333",
+    publicationId: "bbbb3333-3333-4333-8333-333333333333",
+    slug: "free-expression",
+    sourceKey: "fr-conseil-constitutionnel",
+    jurisdiction: "France",
+    institutionName: "Conseil constitutionnel",
+    language: "fr",
+    originalTitle: "Free Expression",
+    koreanTitle: "표현의 자유",
+    publishedAt: "2026-09-01T00:00:00.000Z",
+    summaryJson: '{"summary":{"coreSummary":["표현의 자유 요약"]}}',
+    sourceMetadata: "{}",
+    searchTitle: "free expression 표현의 자유",
+    caseNumbers: "",
+    searchText: "표현의 자유 freedom",
+    tagsText: "",
+  },
+];
+
+function d1Fixture(): { core: DatabaseSync; search: DatabaseSync } {
+  const core = new DatabaseSync(":memory:");
+  core.exec(emitDatabaseDdl("worldcons_core", d1Schema));
+  const search = new DatabaseSync(":memory:");
+  search.exec(emitDatabaseDdl("worldcons_search", d1Schema));
+
+  core
+    .prepare(
+      "insert into tags (id, slug, name, normalized_name, type, article_count, created_at, updated_at) values (?, ?, ?, ?, ?, 0, ?, ?)",
+    )
+    .run(TAG_ID, "constitution", "Constitution", "constitution", "topic", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+
+  const insertVersion = core.prepare(
+    [
+      "insert into article_content_versions_p3 (",
+      "id, article_id, revision, content_hash, provenance_actor_type, slug, source_key, jurisdiction,",
+      "institution_name, content_type, original_url, canonical_url, original_language, original_title,",
+      "korean_title, original_published_at, discovered_at, fetched_at, summarized_at, summary_json,",
+      "source_metadata, created_at",
+      ") values (?, ?, '1', ?, 'import', ?, ?, ?, ?, 'decision', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
+  const insertPublication = core.prepare(
+    [
+      "insert into article_publications_p3 (",
+      "id, article_id, state, version_id, revision, decided_by_type, reason, created_at, updated_at",
+      ") values (?, ?, 'published', ?, '1', 'system', 'test', ?, ?)",
+    ].join(" "),
+  );
+  const insertArticleTag = core.prepare(
+    "insert into article_tags (article_id, tag_id, confidence, created_at) values (?, ?, ?, ?)",
+  );
+  const insertDocument = search.prepare(
+    [
+      "insert into search_documents (",
+      "article_id, jurisdiction, source_key, language, content_type, publication_state, review_state,",
+      "original_published_at, display_title, case_numbers, search_text, tags_text, projection_version, checksum, updated_at",
+      ") values (?, ?, ?, ?, 'decision', 'published', null, ?, ?, ?, ?, ?, 1, ?, ?)",
+    ].join(" "),
+  );
+  const insertFts = search.prepare(
+    "insert into search_fts (article_id, title, case_numbers, search_text, tags_text) values (?, ?, ?, ?, ?)",
+  );
+
+  for (const row of FIXTURE_ROWS) {
+    const created = "2026-01-01T00:00:00.000Z";
+    insertVersion.run(
+      row.versionId,
+      row.articleId,
+      `${row.articleId}-hash`,
+      row.slug,
+      row.sourceKey,
+      row.jurisdiction,
+      row.institutionName,
+      row.originalTitle.toLowerCase().replace(/\s+/gu, "-"),
+      `https://example.test/${row.slug}`,
+      row.language,
+      row.originalTitle,
+      row.koreanTitle,
+      row.publishedAt,
+      created,
+      created,
+      created,
+      row.summaryJson,
+      row.sourceMetadata,
+      created,
+    );
+    insertPublication.run(row.publicationId, row.articleId, row.versionId, created, created);
+    if (row.articleId === CONSTITUTION_ID) {
+      insertArticleTag.run(row.articleId, TAG_ID, 0.9, created);
+    }
+    insertDocument.run(
+      row.articleId,
+      row.jurisdiction,
+      row.sourceKey,
+      row.language,
+      row.publishedAt,
+      row.koreanTitle ?? row.originalTitle,
+      row.caseNumbers,
+      row.searchText,
+      row.tagsText,
+      `${row.articleId}-checksum`,
+      created,
+    );
+    insertFts.run(row.articleId, row.searchTitle, row.caseNumbers, row.searchText, row.tagsText);
+  }
+
+  return { core, search };
+}
+
+function searchInput(overrides: Partial<CclMetasearchSearchInput> = {}): CclMetasearchSearchInput {
+  return { query: "constitution", limit: 10, offset: 0, sort: "relevance", ...overrides };
+}
+
+function fixtureEnv(core: DatabaseSync, search: DatabaseSync) {
+  return {
+    PUBLIC_SITE_BASE_URL: "https://worldcons.vercel.app",
+    CORE_BINDING: localBinding(core),
+    SEARCH_BINDING: localBinding(search),
+  };
+}
+
+function localBinding(db: DatabaseSync): D1RuntimeDatabase {
+  return {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      const statement = db.prepare(sql);
+      let bound: SQLInputValue[] = [];
+      const chain: D1RuntimePreparedStatement = {
+        bind(...values: unknown[]) {
+          bound = values as SQLInputValue[];
+          return chain;
+        },
+        async all<T = Record<string, unknown>>() {
+          try {
+            return { success: true, results: statement.all(...bound) as unknown as T[] };
+          } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
+          }
+        },
+      };
+      return chain;
+    },
+  };
+}
+
+function stubPrepared(result: {
+  success?: boolean;
+  results?: unknown;
+  error?: string | null;
+}): D1RuntimePreparedStatement {
+  const chain: D1RuntimePreparedStatement = {
+    bind() {
+      return chain;
+    },
+    async all<T = Record<string, unknown>>() {
+      return result as { success?: boolean; results?: T[]; error?: string | null };
+    },
+  };
+  return chain;
+}
+
+// --- Existing shared helpers ----------------------------------------------------
 
 function testHandler() {
   return createCclMetasearchSearchHandler({

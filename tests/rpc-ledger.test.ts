@@ -83,9 +83,9 @@ test("scanner is complete and reproducible over the M4.6 scope", () => {
   const scan = scanRpcLedgerSources({ rootDir });
 
   assert.deepEqual(scan.roots, ["app", "lib", "workers"]);
-  assert.equal(scan.callSites.length, 74, "the ledger scope must contain exactly 74 .rpc( call sites");
-  assert.equal(scan.uniqueFunctions.length, 80, "the 74 call sites must resolve to 80 unique Postgres functions");
-  assert.deepEqual(scan.byKind, { literal: 62, constant: 10, parameter: 1, "function-call": 1, unresolved: 0 });
+  assert.equal(scan.callSites.length, 73, "the ledger scope must contain exactly 73 .rpc( call sites");
+  assert.equal(scan.uniqueFunctions.length, 79, "the 73 call sites must resolve to 79 unique Postgres functions");
+  assert.deepEqual(scan.byKind, { literal: 61, constant: 10, parameter: 1, "function-call": 1, unresolved: 0 });
   assert.equal(scan.adjacentCallSiteCounts.scripts, 7, "operator-script RPCs are counted as a documented out-of-scope root");
   assert.equal(scan.adjacentCallSiteCounts.components, 0);
   assert.equal(scan.adjacentCallSiteCounts.plugins, 0);
@@ -94,7 +94,7 @@ test("scanner is complete and reproducible over the M4.6 scope", () => {
   for (const callSite of scan.callSites) {
     assert.ok(callSite.names.length > 0, `${callSite.file}:${callSite.line} must resolve to at least one function`);
   }
-  assert.equal(new Set(scan.callSites.map((callSite) => callSite.file)).size, 30, "the ledger scope must cover 30 coupling files");
+  assert.equal(new Set(scan.callSites.map((callSite) => callSite.file)).size, 29, "the ledger scope must cover 29 coupling files");
 });
 
 test("the ledger validates against the live scan", () => {
@@ -103,11 +103,11 @@ test("the ledger validates against the live scan", () => {
 
   assert.deepEqual(validation.errors, []);
   assert.equal(validation.ok, true);
-  assert.equal(validation.callSiteCount, 74);
-  assert.equal(validation.uniqueFunctionCount, 80);
+  assert.equal(validation.callSiteCount, 73);
+  assert.equal(validation.uniqueFunctionCount, 79);
   assert.equal(validation.dynamicCallSiteCount, 2);
   assert.equal(validation.unboundedDynamicFamilyCount, 0);
-  assert.equal(rpcLedger.functions.length, 80, "one ledger row per Postgres function");
+  assert.equal(rpcLedger.functions.length, 79, "one ledger row per Postgres function");
   assert.equal(rpcLedger.indirections.length, 12, "one indirection entry per non-literal call site");
 });
 test("command-control-plane indirections resolve to their finite catalogs", () => {
@@ -204,13 +204,13 @@ test("an unbounded dynamic family is recorded and counted, not failed", () => {
   assert.equal(validation.unboundedDynamicFamilyCount, 1);
   assert.equal(validation.dynamicCallSiteCount, 2);
 });
-test("the machine-readable report carries every required M4.6 field on all 80 rows", () => {
+test("the machine-readable report carries every required M4.6 field on all 79 rows", () => {
   const report = buildRpcLedgerReport(rootDir);
 
   assert.equal(report.version, 1);
-  assert.equal(report.functions.length, 80);
-  assert.equal(report.generatedFrom.callSiteCount, 74);
-  assert.equal(report.generatedFrom.uniqueFunctionCount, 80);
+  assert.equal(report.functions.length, 79);
+  assert.equal(report.generatedFrom.callSiteCount, 73);
+  assert.equal(report.generatedFrom.uniqueFunctionCount, 79);
   assert.equal(report.validation.ok, true);
 
   const entries: RpcLedgerEntry[] = report.functions;
@@ -249,9 +249,9 @@ test("the machine-readable report carries every required M4.6 field on all 80 ro
 test("the report summary exposes typed target databases and serializes the required fields", () => {
   const report = buildRpcLedgerReport(rootDir);
 
-  assert.equal(report.summary.mapped + report.summary.pendingParity, 80);
+  assert.equal(report.summary.mapped + report.summary.pendingParity, 79);
   const summed = Object.values(report.summary.byTargetDatabase).reduce((total, count) => total + count, 0);
-  assert.equal(summed, 80);
+  assert.equal(summed, 79);
   assert.equal(report.summary.byTargetDatabase.vectorize, 2, "the two vector-match RPCs use the non-D1 Vectorize target");
   for (const database of ["worldcons_core", "worldcons_ingest", "worldcons_ops", "worldcons_search"] as const) {
     assert.ok(report.summary.byTargetDatabase[database] > 0, `${database} must own at least one RPC`);
@@ -273,7 +273,7 @@ test("the report summary exposes typed target databases and serializes the requi
     "notes",
   ];
   const roundTripped = JSON.parse(JSON.stringify(report)) as typeof report;
-  assert.equal(roundTripped.functions.length, 80);
+  assert.equal(roundTripped.functions.length, 79);
   assert.equal(roundTripped.indirections.length, 12);
   assert.equal(roundTripped.validation.ok, true);
   for (const entry of roundTripped.functions) {

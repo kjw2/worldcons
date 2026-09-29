@@ -13,6 +13,7 @@ import {
   searchCclMetasearchWithEnv,
   type CclMetasearchSearchDependencies,
 } from "@/lib/cclmetasearch/search";
+import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import {
   SITE_EVENT_TYPE_VALUES,
 } from "@/lib/cloudflare/d1/schema/worldcons-ops";
@@ -46,6 +47,8 @@ export interface WorldconsSearchWorkerEnv {
   GEMINI_EMBEDDING_MODEL?: string;
   PUBLIC_SITE_BASE_URL?: string;
   CCL_METASEARCH_DB_TIMEOUT_MS?: string;
+  WORLDCONS_CORE?: D1RuntimeDatabase;
+  WORLDCONS_SEARCH?: D1RuntimeDatabase;
 }
 
 const DEFAULT_PUBLIC_BASE_URL = "https://worldcons.vercel.app/api/cclrag2";
@@ -204,9 +207,9 @@ export function createWorldconsSearchServiceApp(
       const page = dependencies.cclMetasearchSearch
         ? await dependencies.cclMetasearchSearch(input, c.env)
         : await searchCclMetasearchWithEnv(input, {
-          SUPABASE_URL: c.env.SUPABASE_URL?.trim() || "",
-          SUPABASE_SERVICE_ROLE_KEY: c.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "",
           PUBLIC_SITE_BASE_URL: c.env.PUBLIC_SITE_BASE_URL?.trim() || "https://worldcons.vercel.app",
+          CORE_BINDING: c.env.WORLDCONS_CORE,
+          SEARCH_BINDING: c.env.WORLDCONS_SEARCH,
           CCL_METASEARCH_DB_TIMEOUT_MS: c.env.CCL_METASEARCH_DB_TIMEOUT_MS,
         }, dependencies.cclMetasearchDependencies);
       return c.json(page, 200, {

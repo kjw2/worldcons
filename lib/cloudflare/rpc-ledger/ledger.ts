@@ -47,7 +47,6 @@ const ARTICLE_RAW_INLINE_CLEAR = "tests/article-raw-blob-inline-clear.test.ts";
 const ARTICLE_RAW_EXTERNALIZE = "tests/article-raw-blob-externalize.test.ts";
 const ARTICLE_RAW_RESTORE = "tests/article-raw-blob-restore.test.ts";
 const ARTICLE_RAW_READINESS = "tests/article-raw-readiness.test.ts";
-const CCLMETASEARCH = "tests/cclmetasearch-api.test.ts";
 const ANALYTICS_PRIVACY = "tests/analytics-privacy.test.ts";
 const SECURITY_HARDENING = "tests/security-platform-hardening.test.ts";
 const ADMIN_OPS_READS = "tests/admin-ops-read-repository.test.ts";
@@ -76,7 +75,6 @@ type RpcLedgerRow = readonly [
 ];
 
 const RPC_LEDGER_ROWS: readonly RpcLedgerRow[] = [
-  ["cclmetasearch_search_v1", "search", "worldcons_search", "search-rank", "d1-search", "medium", "searchCclMetasearch", [], "Serve the CCL/ChatGPT metasearch page over the worldcons corpus (query, limit, offset, sort).", [CCLMETASEARCH], [], "FTS5/BM25 ranking in worldcons_search replaces the Postgres full-text rank; the search corpus stays the parity oracle."],
   ["article_raw_operator_candidates_v1", "article-raw", "worldcons_core", "read", "d1-read", "low", "ArticleRawInlineClearRepository.listArticleRawInlineClearCandidates", ["ArticleRawExternalizationRepository.listArticleRawExternalizationCandidates"], "List article-raw rows whose inline text is clearable or externalizable, for the operator CLIs.", [ARTICLE_RAW_OPERATOR_READ, ARTICLE_RAW_INLINE_CLEAR, ARTICLE_RAW_EXTERNALIZE], [], "Read-only candidate listing shared by the inline-clear and externalization repositories."],
   ["article_raw_inline_clear_v1", "article-raw", "worldcons_core", "mutate-idempotent", "r2-coordination+d1-transaction", "high", "ArticleRawInlineClearRepository.clearArticleRawInline", [], "Clear the inline article raw text after the R2 copy has been verified (idempotent re-run).", [ARTICLE_RAW_INLINE_CLEAR], [], "R2 clear gate (PUT, GET, size, SHA-256, decode) must pass before the inline column is cleared."],
   ["article_raw_externalize_v1", "article-raw", "worldcons_core", "mutate-idempotent", "r2-coordination+d1-transaction", "high", "ArticleRawExternalizationRepository.attachArticleRawExternalization", [], "Attach the R2 object key/hash metadata for an externalized article raw body.", [ARTICLE_RAW_EXTERNALIZE], [], "R2 coordination; dual-copy rows are preserved until the clear gate passes."],
