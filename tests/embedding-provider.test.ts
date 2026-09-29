@@ -75,12 +75,15 @@ test("embedding backfill workflow is quota-bounded and resumable", () => {
   assert.match(workflow, /timeout-minutes: 50/u);
 });
 
-test("embedding backfill uses the provenance RPC and resumes after a provider deferral", () => {
+test("embedding backfill uses D1 provenance persistence and resumes after provider deferral", () => {
   const backlog = read("lib/ingest/embedding-backlog.ts");
+  const store = read("lib/ingest/embedding-store.ts");
   assert.match(backlog, /persistArticleEmbedding\(row\.id, artifact\)/u);
-  assert.doesNotMatch(backlog, /\.from\("articles"\)\.update/u);
-  assert.match(backlog, /embedding_provider\.is\.null/u);
-  assert.match(backlog, /embedding_model\.is\.null/u);
+  assert.match(backlog, /getRuntimeD1Binding\("worldcons_core"\)/u);
+  assert.match(backlog, /embedding_provider IS NULL/u);
+  assert.match(backlog, /embedding_model IS NULL/u);
+  assert.match(store, /UPDATE articles SET embedding_provider/u);
+  assert.match(store, /article_embedding_artifacts/u);
   // Quota exhaustion is a pause, so the run stops cleanly and stays repeatable.
   assert.match(backlog, /isGlobalSummaryBackoff\(message\)/u);
   assert.match(backlog, /status: "deferred"/u);

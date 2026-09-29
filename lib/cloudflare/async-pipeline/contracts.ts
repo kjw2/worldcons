@@ -283,8 +283,8 @@ export function isM8WorkflowInstanceId(id: string): boolean {
   return id.length > 0 && id.length <= M8_WORKFLOW_INSTANCE_ID_MAX_LENGTH && M8_WORKFLOW_INSTANCE_ID_PATTERN.test(id);
 }
 
-export function isM8NativeTaskKind(kind: M8TaskKind): kind is "admin-job-drain" | "watchdog" | "admin-health" {
-  return kind === "admin-job-drain" || kind === "watchdog" || kind === "admin-health";
+export function isM8NativeTaskKind(kind: M8TaskKind): kind is "admin-job-drain" | "watchdog" | "admin-health" | "embedding-backfill" {
+  return kind === "admin-job-drain" || kind === "watchdog" || kind === "admin-health" || kind === "embedding-backfill";
 }
 
 export async function routeM8Task<T>(

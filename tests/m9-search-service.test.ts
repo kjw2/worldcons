@@ -164,6 +164,20 @@ test("M9 public cclrag2 adapter keeps rate limiting before direct D1 reads", () 
   assert.doesNotMatch(route, /forwardToRuntimeSearchService/u);
 });
 
+test("WorldconsOpsService initializes D1, Vectorize, and Gemini bindings for native embedding backfills", () => {
+  const worker = fs.readFileSync(path.join(process.cwd(), "worker/index.ts"), "utf8");
+  const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
+  assert.match(worker, /export class WorldconsOpsService extends WorkerEntrypoint/u);
+  assert.match(worker, /async runEmbeddingBackfill\(input: \{ limit\?: number; maxPasses\?: number; delayMs\?: number \}\)/u);
+  assert.match(worker, /setRuntimeD1Bindings\(\{ worldcons_core: env\.WORLDCONS_CORE \}\)/u);
+  assert.match(worker, /setRuntimeSearchVectorBinding\(env\.WORLDCONS_SEARCH_VECTOR\)/u);
+  assert.match(worker, /apiKeys: \[env\.GEMINI_API_KEY, \.\.\.\(env\.GEMINI_API_KEYS/u);
+  assert.match(worker, /model: env\.GEMINI_EMBEDDING_MODEL/u);
+  assert.match(worker, /provider: env\.EMBEDDING_PROVIDER/u);
+  assert.match(config, /"binding":\s*"WORLDCONS_SEARCH_VECTOR"/u);
+  assert.match(config, /"GEMINI_EMBEDDING_MODEL":\s*"gemini-embedding-001"/u);
+});
+
 test("M9 main config contains the D1 and Gemini runtime settings without a self-binding", () => {
   const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(config, /"binding":\s*"WORLDCONS_CORE"/u);

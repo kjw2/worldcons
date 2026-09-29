@@ -75,7 +75,7 @@
     "test:provider:search": "tsx --test tests/cclrag2-provider-route.test.ts",
     "test:security": "tsx --test tests/security-platform-hardening.test.ts",
     "test:ops": "tsx --test tests/ops-summary-backlog.test.ts tests/workflow-heartbeat.test.ts",
-    "test:embeddings": "tsx --test tests/embedding-provider.test.ts tests/embedding-vector.test.ts",
+    "test:embeddings": "tsx --test tests/embedding-backlog-d1.test.ts tests/embedding-provider.test.ts tests/embedding-vector.test.ts",
     "test:public-regression": "tsx --test tests/homepage-regression.test.ts tests/public-design-slop.test.ts tests/seo-public-surface.test.ts",
     "test:reference-reads": "tsx --test tests/reference-reads-repository.test.ts",
     "test:article-reads": "tsx --test tests/article-reads-repository.test.ts",

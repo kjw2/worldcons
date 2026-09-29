@@ -251,6 +251,11 @@ export interface VectorizeQueryResult {
 
 export interface VectorizeIndexBinding {
   query(vector: readonly number[], options: VectorizeQueryOptions): Promise<VectorizeQueryResult>;
+  upsert?(vectors: Array<{
+    id: string;
+    values: number[];
+    metadata?: Record<string, VectorizeMetadataValue>;
+  }>): Promise<unknown>;
 }
 
 /** The authoring shape of a `worldcons_ranked_search_page_v1` payload entry. */

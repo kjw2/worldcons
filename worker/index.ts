@@ -72,6 +72,7 @@ import {
   type WorldconsOpsWriteWorkerEnv,
 } from "../workers/ops-write/src/index";
 import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
+import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -89,6 +90,7 @@ interface WorldconsWorkerEnv {
   EMBEDDING_PROVIDER?: string;
   SEMANTIC_SEARCH_ENABLED?: string;
   GEMINI_API_KEY?: string;
+  GEMINI_API_KEYS?: string;
   GEMINI_EMBEDDING_MODEL?: string;
   CCL_METASEARCH_DB_TIMEOUT_MS?: string;
   WORLDCONS_M13_AUTHORITY_PROFILE?: string;
@@ -250,5 +252,126 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
       );
     }
     return result;
+  }
+
+  async runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
+    setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE });
+    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
+    const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
+      .map((key) => key?.trim())
+      .filter((key): key is string => Boolean(key));
+    if (apiKeys.length === 0) {
+      return {
+        status: "unavailable" as const,
+        passes: 0,
+        scanned: 0,
+        embedded: 0,
+        skipped: 0,
+        failed: 0,
+        missingBefore: await countMissingEmbeddings(),
+        missingAfter: await countMissingEmbeddings(),
+        readiness: await getEmbeddingReadiness(),
+        stoppedReason: "Gemini API key is not configured.",
+      };
+    }
+    const limit = Math.max(1, Math.min(input.limit ?? 8, 500));
+    const maxPasses = Math.max(1, Math.min(input.maxPasses ?? 20, 100));
+    const delayMs = Math.max(0, Math.min(input.delayMs ?? 0, 60_000));
+    const missingBefore = await countMissingEmbeddings();
+    const readinessBefore = await getEmbeddingReadiness();
+    if (missingBefore === null || readinessBefore === null) {
+      return {
+        status: "unavailable" as const,
+        passes: 0,
+        scanned: 0,
+        embedded: 0,
+        skipped: 0,
+        failed: 0,
+        missingBefore,
+        missingAfter: missingBefore,
+        readiness: readinessBefore,
+        stoppedReason: "D1 embedding readiness is unavailable.",
+      };
+    }
+    if (readinessBefore.missingArticleCount === 0) {
+      return {
+        status: "completed" as const,
+        passes: 0,
+        scanned: 0,
+        embedded: 0,
+        skipped: 0,
+        failed: 0,
+        missingBefore,
+        missingAfter: missingBefore,
+        readiness: readinessBefore,
+      };
+    }
+    let totalScanned = 0;
+    let totalEmbedded = 0;
+    let totalSkipped = 0;
+    let totalFailed = 0;
+    let passes = 0;
+    let status: "completed" | "deferred" | "unavailable" = "completed";
+    let stoppedReason: string | undefined;
+    let exhaustedPasses = true;
+
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+      passes += 1;
+      const result = await runEmbeddingBacklog({
+        limit,
+        delayMs,
+        apiKeys: [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
+          .map((key) => key?.trim())
+          .filter((key): key is string => Boolean(key)),
+        model: env.GEMINI_EMBEDDING_MODEL?.trim() || "gemini-embedding-001",
+        provider: env.EMBEDDING_PROVIDER?.trim() || "gemini",
+      });
+      totalScanned += result.scanned;
+      totalEmbedded += result.embedded;
+      totalSkipped += result.skipped;
+      totalFailed += result.failed;
+      if (result.status !== "completed") {
+        status = result.status;
+        stoppedReason = result.stoppedReason;
+        exhaustedPasses = false;
+        break;
+      }
+      if (result.scanned === 0) {
+        exhaustedPasses = false;
+        break;
+      }
+      const readiness = await getEmbeddingReadiness();
+      if (!readiness) {
+        status = "unavailable";
+        stoppedReason = "D1 embedding readiness is unavailable.";
+        break;
+      }
+      if (readiness.missingArticleCount === 0) {
+        exhaustedPasses = false;
+        break;
+      }
+    }
+
+    const missingAfter = await countMissingEmbeddings();
+    const readiness = await getEmbeddingReadiness();
+    if (status === "completed" && exhaustedPasses && readiness?.missingArticleCount) {
+      status = "deferred";
+      stoppedReason = "Embedding backfill reached its maximum pass count.";
+    }
+    return {
+      status,
+      passes,
+      scanned: totalScanned,
+      embedded: totalEmbedded,
+      skipped: totalSkipped,
+      failed: totalFailed,
+      missingBefore,
+      missingAfter,
+      readiness,
+      ...(stoppedReason ? { stoppedReason } : {}),
+    };
   }
 }

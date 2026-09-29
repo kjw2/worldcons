@@ -11,6 +11,7 @@ import {
   dedupeM8WorkflowCreates,
   githubDispatchForM8Task,
   isM8KindEnabled,
+  isM8NativeTaskKind,
   isM8TaskMessage,
   isM8WorkflowInstanceId,
   messagesForM8Cron,
@@ -23,6 +24,7 @@ import {
   type M8TaskKind,
 } from "@/lib/cloudflare/async-pipeline/contracts";
 import { buildCanaryReport, readCanaryPolicy } from "@/scripts/m8-async-canary";
+import { executeM8TaskNative } from "@/lib/cloudflare/async-pipeline/native-executor";
 import {
   cloudflareBrowserRunConfigured,
   cloudflareBrowserRunRequired,
@@ -106,10 +108,49 @@ test("native M8 kinds bypass GitHub dispatch while legacy kinds keep compatibili
     assert.equal(result, "native");
   }
   assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health"]);
+  const embedding = buildM8TaskMessage("embedding-backfill", Date.parse("2026-09-26T08:45:00Z"));
+  assert.equal(isM8NativeTaskKind(embedding.kind), true);
+  assert.equal(await routeM8Task(embedding, async (task) => { nativeCalls.push(task.kind); return "native"; }, async () => { githubDispatchCount += 1; return "github"; }), "native");
   assert.equal(githubDispatchCount, 0);
+  assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health", "embedding-backfill"]);
   const legacy = buildM8TaskMessage("crawler-daily", Date.parse("2026-09-26T08:45:00Z"));
   assert.equal(await routeM8Task<string>(legacy, async () => "native", async () => { githubDispatchCount += 1; return "github"; }), "github");
   assert.equal(githubDispatchCount, 1);
+});
+
+test("embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch", async () => {
+  const message = buildM8TaskMessage("embedding-backfill", Date.parse("2026-09-26T08:45:00Z"));
+  const calls: unknown[] = [];
+  let stepName = "";
+  let stepOptions: unknown;
+  const result = await executeM8TaskNative({
+    WORLDCONS_OPS: {} as never,
+    WORLDCONS_CORE: {} as never,
+    WORLDCONS_INGEST: {} as never,
+    WORLDCONS_APP_SERVICE: {
+      async runAdminJobDrain() { throw new Error("not expected"); },
+      async runEmbeddingBackfill(input) {
+        calls.push(input);
+        return {
+          status: "completed", passes: 1, scanned: 0, embedded: 0, skipped: 0, failed: 0,
+          missingBefore: 0, missingAfter: 0, readiness: null,
+        };
+      },
+    },
+  }, message, {
+    async do<T>(name: string, options: unknown, callback: () => Promise<T>) {
+      stepName = name;
+      stepOptions = options;
+      return callback();
+    },
+  });
+  assert.equal(stepName, "native-embedding-backfill");
+  assert.equal((stepOptions as { timeout: string }).timeout, "50 minutes");
+  assert.deepEqual(calls, [{ limit: 8, maxPasses: 20, delayMs: 0 }]);
+  assert.equal((result as { kind: string }).kind, "embedding-backfill");
+  const executor = fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/native-executor.ts"), "utf8");
+  assert.match(executor, /runEmbeddingBackfill\(/u);
+  assert.doesNotMatch(executor, /githubDispatchForM8Task/u);
 });
 
 test("github input preserves the original colon-form idempotency key", () => {
@@ -231,9 +272,9 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
   assert.equal(report.workflowInstanceIdValid, true);
   assert.equal(report.githubDispatch.workflow, "admin-health-p5.yml");
   assert.equal(report.githubDispatch.inputs.m8_idempotency_key, report.message.idempotencyKey);
-  assert.equal(report.enabledKindsRaw, "admin-health");
+  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,admin-health,embedding-backfill");
   assert.equal(report.enabledKindsValid, true);
-  assert.equal(report.kindEnabled, false, "scheduler disabled at rest resolves to no dispatch");
+  assert.equal(report.kindEnabled, true, "the checked-in enabled scheduler allows admin-health");
 
   const enabledPolicy = { ...policy, schedulerEnabled: true };
   const enabledReport = buildCanaryReport({
@@ -243,7 +284,7 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
   });
   assert.equal(enabledReport.kindEnabled, true);
   const blockedReport = buildCanaryReport({
-    kind: "watchdog",
+    kind: "crawler-daily",
     scheduledFor: Date.parse("2026-09-26T08:45:00Z"),
     policy: enabledPolicy,
   });
@@ -253,8 +294,8 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
 test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, "workers/async-pipeline/wrangler.jsonc"), "utf8"));
   const consumer = config.queues.consumers[0];
-  assert.equal(config.vars.M8_SCHEDULER_ENABLED, "false");
-  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-health");
+  assert.equal(config.vars.M8_SCHEDULER_ENABLED, "true");
+  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,admin-health,embedding-backfill");
   assert.deepEqual(config.triggers.crons, M8_CRON_EXPRESSIONS);
   assert.equal(consumer.max_concurrency, 1);
   assert.equal(consumer.max_retries, 3);
@@ -262,6 +303,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   assert.equal(consumer.dead_letter_queue, "worldcons-async-dlq-v1");
   assert.deepEqual(config.secrets.required, ["GITHUB_ACTIONS_TOKEN"]);
   assert.equal(config.browser.binding, "BROWSER");
+  assert.deepEqual(config.services, [{ binding: "WORLDCONS_APP_SERVICE", service: "worldcons", entrypoint: "WorldconsOpsService" }]);
   assert.equal(config.workers_dev, true);
   assert.equal(config.preview_urls, false);
 });

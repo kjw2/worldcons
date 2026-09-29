@@ -28,14 +28,17 @@ export function embeddingText(summary: SummaryJson) {
   ].join("\n");
 }
 
-function configuredProvider() {
-  const provider = process.env.EMBEDDING_PROVIDER?.trim().toLowerCase() || "gemini";
+function configuredProvider(configured?: string) {
+  const provider = configured?.trim().toLowerCase() || process.env.EMBEDDING_PROVIDER?.trim().toLowerCase() || "gemini";
   if (provider !== "gemini") {
     throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}. WorldCons embeddings are Gemini-only.`);
   }
 }
 
-export async function createEmbeddingArtifact(summary: SummaryJson, options: { signal?: AbortSignal } = {}) {
+export async function createEmbeddingArtifact(
+  summary: SummaryJson,
+  options: { signal?: AbortSignal; apiKeys?: string[]; model?: string; provider?: string } = {},
+) {
   return createTextEmbeddingArtifact(embeddingText(summary), {
     ...options,
     taskType: "RETRIEVAL_DOCUMENT",
@@ -44,13 +47,19 @@ export async function createEmbeddingArtifact(summary: SummaryJson, options: { s
 
 export async function createTextEmbeddingArtifact(
   input: string,
-  options: { signal?: AbortSignal; taskType?: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY" } = {},
+  options: {
+    signal?: AbortSignal;
+    apiKeys?: string[];
+    model?: string;
+    provider?: string;
+    taskType?: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" | "SEMANTIC_SIMILARITY";
+  } = {},
 ): Promise<EmbeddingArtifact | null> {
-  configuredProvider();
-  const runtime = await getRuntimeLlmSettings();
+  configuredProvider(options.provider);
+  const runtime = options.apiKeys ? null : await getRuntimeLlmSettings();
   const result = await createGeminiEmbeddingResult(input, {
-    apiKeys: runtime.providers.gemini.apiKeys,
-    model: process.env.GEMINI_EMBEDDING_MODEL?.trim() || DEFAULT_GEMINI_EMBEDDING_MODEL,
+    apiKeys: options.apiKeys ?? runtime?.providers.gemini.apiKeys,
+    model: options.model?.trim() || process.env.GEMINI_EMBEDDING_MODEL?.trim() || DEFAULT_GEMINI_EMBEDDING_MODEL,
     dimensions: EMBEDDING_DIMENSIONS,
     taskType: options.taskType ?? "SEMANTIC_SIMILARITY",
     signal: options.signal,

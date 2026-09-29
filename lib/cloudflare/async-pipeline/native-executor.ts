@@ -20,6 +20,18 @@ export interface M8NativeEnvironment {
       jobs: unknown[];
       error?: string;
     }>;
+    runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }): Promise<{
+      status: "completed" | "deferred" | "unavailable";
+      passes: number;
+      scanned: number;
+      embedded: number;
+      skipped: number;
+      failed: number;
+      missingBefore: number | null;
+      missingAfter: number | null;
+      readiness: unknown;
+      stoppedReason?: string;
+    }>;
   };
 }
 
@@ -39,6 +51,14 @@ export async function executeM8TaskNative(
         idempotencyKey: message.idempotencyKey,
         maxJobs: 2,
         leaseSeconds: 1200,
+      });
+      return { kind: message.kind, ...result };
+    }
+    if (message.kind === "embedding-backfill") {
+      const result = await env.WORLDCONS_APP_SERVICE.runEmbeddingBackfill({
+        limit: 8,
+        maxPasses: 20,
+        delayMs: 0,
       });
       return { kind: message.kind, ...result };
     }
@@ -72,6 +92,9 @@ export async function executeM8TaskNative(
     throw new Error(`m8.native_kind_unsupported:${message.kind}`);
   };
   return step
-    ? step.do(`native-${message.kind}`, { retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes" }, execute)
+    ? step.do(`native-${message.kind}`, {
+      retries: { limit: 5, delay: "30 seconds", backoff: "exponential" },
+      timeout: message.kind === "embedding-backfill" ? "50 minutes" : "2 minutes",
+    }, execute)
     : execute();
 }
