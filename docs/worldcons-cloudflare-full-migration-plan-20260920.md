@@ -2392,10 +2392,18 @@ the deployed Workers (`worldcons` `6c29ed00-cb11-4edb-bedc-8480a2772795` at
 `c01d9d8d-8442-47d6-a6ee-1281fcc32c05` at `2026-09-29T03:20:00.23024Z`) were
 verified through Cloudflare settings with the `d1` profile. The 336h observation
 is **STARTED** from `2026-09-29 12:20:00.230240 KST`, with earliest completion
-`2026-10-13 12:20:00.230240 KST`, and is not complete. **Not** yet recorded as
-done: the completed 336h observation, the final Supabase export, credential
-rotation, the DR rehearsal, the approvals and the destructive retirement. No
-destructive retirement has occurred.
+`2026-10-13 12:20:00.230240 KST`, and is not complete. M13 readiness also reuses
+the already-passing M7.8-A/M7.8-B/M7.9 search evidence (`r2.corpus_verified`
+PASS) and now has a live Vercel-vs-R2 legacy-object inventory: 2,020 Vercel
+objects / 43,758,058 bytes are fully accounted for, 125 objects / 3,339,200
+bytes already exist in R2 with identical key+size, and the remaining 1,895
+objects / 40,418,858 bytes are explicitly inventoried as unresolved with digest
+`f27d1269704f5f93952d9efb9c895d8c22fc486438796a2a7753ff863db07548`.
+No Vercel or R2 object was deleted; see
+`artifacts/cloudflare-m13/vercel-stranded-inventory-20260929.json`. **Not** yet
+recorded as done: the completed 336h observation, the final Supabase export,
+credential rotation, the DR rehearsal, the approvals and the destructive
+retirement. No destructive retirement has occurred.
 
 ## 16. Zero-downtime data cutover
 
@@ -2741,7 +2749,11 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
   and Vercel/Supabase are retained for M13 rollback/retirement. See
   `artifacts/cloudflare-m12/go-production-cutover-evidence-20260929.json`.)
 - [ ] Supabase final export
-- [ ] stranded Vercel object recovery/inventory
+- [x] stranded Vercel object recovery/inventory (2026-09-29 live inventory:
+  2,020 legacy Vercel objects / 43,758,058 bytes accounted for; 125 / 3,339,200
+  bytes already present in R2 with matching key+size; 1,895 / 40,418,858 bytes
+  explicitly inventoried unresolved; zero deletes; evidence
+  `artifacts/cloudflare-m13/vercel-stranded-inventory-20260929.json`)
 - [ ] credential rotation
 - [ ] DR rehearsal
 - [ ] explicit retirement approval

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-29T03:53:45.437Z",
+  "generatedAt": "2026-09-29T04:10:58.504Z",
   "destructiveRetirementAuthorized": false,
   "authority": {
     "profile": "d1",
@@ -1186,14 +1186,24 @@
   },
   "observation": {
     "start": "2026-09-29T03:20:00.230Z",
-    "end": "2026-09-29T03:53:43.672Z",
-    "hours": 0.5620672222222223,
+    "end": "2026-09-29T04:10:54.230Z",
+    "hours": 0.8483333333333334,
     "minimumHours": 336,
     "verified": false,
     "reference": "artifacts/cloudflare-m13/m13-authority-switch-evidence-20260929.json"
   },
-  "search": null,
-  "strandedVercelObjects": null,
+  "search": {
+    "ftsParityPass": true,
+    "vectorizeParityPass": true,
+    "stable": true,
+    "reference": "M7.8b FTS + M7.8a semantic + M7.9 deployed canary"
+  },
+  "strandedVercelObjects": {
+    "resolved": true,
+    "recovered": 125,
+    "inventoriedUnresolved": 1895,
+    "reference": "artifacts/cloudflare-m13/vercel-stranded-inventory-20260929.json"
+  },
   "finalSupabaseExport": null,
   "credentialRotation": null,
   "drRehearsal": null,
@@ -1228,23 +1238,23 @@
       "category": "machine",
       "label": "Approved continuous production observation window is satisfied",
       "passed": false,
-      "detail": "minimum=336h verified=false window=2026-09-29T03:20:00.230Z..2026-09-29T03:53:43.672Z",
+      "detail": "minimum=336h verified=false window=2026-09-29T03:20:00.230Z..2026-09-29T04:10:54.230Z",
       "humanAttestationRequired": false
     },
     {
       "key": "r2.corpus_verified",
       "category": "machine",
       "label": "R2 corpus verification is complete",
-      "passed": false,
-      "detail": "no search/parity evidence",
+      "passed": true,
+      "detail": "fts=true vectorize=true stable=true",
       "humanAttestationRequired": false
     },
     {
       "key": "vercel.stranded_resolved",
       "category": "machine",
       "label": "Stranded Vercel objects recovered or explicitly inventoried",
-      "passed": false,
-      "detail": "no stranded-object inventory",
+      "passed": true,
+      "detail": "resolved=true recovered=125 inventoriedUnresolved=1895",
       "humanAttestationRequired": false
     },
     {
@@ -1306,8 +1316,6 @@
   ],
   "blockers": [
     "observation.window",
-    "r2.corpus_verified",
-    "vercel.stranded_resolved",
     "export.final_supabase",
     "credentials.rotated",
     "dr.rehearsal_current",
