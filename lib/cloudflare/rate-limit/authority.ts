@@ -4,13 +4,12 @@ import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override"
  * M13 rate-limit authority selector.
  *
  * The M11 per-domain selectors prove one authority domain at a time. The
- * distributed rate limiter is the `ops.rate_limit` domain: its resting authority
- * is Supabase (`worldcons_consume_rate_limit_v1`), and the deliberate M13 switch
- * moves it to a Cloudflare-native distributed backend.
+ * distributed rate limiter is the `ops.rate_limit` domain. M13 made the
+ * Cloudflare-native distributed backend the permanent resting authority.
  *
  * The selector is owned by the M13 profile through the leaf `profile-override`
  * module, so `WORLDCONS_M13_AUTHORITY_PROFILE=d1` moves this domain too. Exact
- * accepted values are `supabase | d1`; the resting default is `supabase`.
+ * accepted legacy values are `supabase | d1`; the resting default is `d1`.
  *
  * IMPORTANT: selecting `d1` here is decisive. A Durable Object binding being
  * present is never sufficient to switch behavior on its own.
@@ -36,9 +35,8 @@ function runtimeGlobal(): typeof globalThis & RateLimitAuthorityGlobal {
 }
 
 /**
- * Resolves the configured authority. Any unrecognized value fails safe to
- * `supabase`, mirroring the M11 read selectors, so a typo never silently enables
- * the Cloudflare backend. The M13 `d1` profile is authoritative when supplied.
+ * Resolves the configured authority. D1 is permanent after M13; missing or
+ * unrecognized values remain on the Cloudflare backend.
  */
 export function resolveRateLimitAuthorityConfig(
   environment: RateLimitAuthorityEnvironment = {},
@@ -47,8 +45,7 @@ export function resolveRateLimitAuthorityConfig(
     return { authority: "d1" };
   }
   const raw = environment[RATE_LIMIT_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1") return { authority: "d1" };
-  return { authority: "supabase" };
+  return { authority: "d1" };
 }
 
 export function setRuntimeRateLimitAuthorityConfig(config: RateLimitAuthorityConfig | null) {

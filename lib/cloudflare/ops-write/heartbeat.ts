@@ -112,8 +112,8 @@ export function resolveOpsHeartbeatWriteAuthorityConfig(
 ): OpsHeartbeatWriteAuthorityConfig {
   if (m13ProfileValueForEnvVar(OPS_HEARTBEAT_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[OPS_HEARTBEAT_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1" || raw === "d1-canary") return { authority: raw };
-  return { authority: "supabase" };
+  if (raw === "d1-canary") return { authority: raw };
+  return { authority: "d1" };
 }
 
 /**
@@ -150,16 +150,15 @@ export function shouldWriteOpsHeartbeatToD1(
 }
 
 /**
- * Resolves the read authority. Any unrecognized value fails safe to `supabase`,
- * so a typo never silently enables a D1 read.
+ * Resolves the read authority. D1 is permanent after M13, so missing or
+ * unrecognized values stay on D1 instead of reopening the retired backend.
  */
 export function resolveOpsHeartbeatReadAuthorityConfig(
   environment: OpsHeartbeatWriteAuthorityEnvironment = {},
 ): OpsHeartbeatReadAuthorityConfig {
   if (m13ProfileValueForEnvVar(OPS_HEARTBEAT_READ_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[OPS_HEARTBEAT_READ_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1") return { authority: "d1" };
-  return { authority: "supabase" };
+  return { authority: "d1" };
 }
 
 export function shouldReadOpsHeartbeatFromD1(

@@ -44,10 +44,6 @@ jobs:
     timeout-minutes: 50
     env:
       M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
       LLM_SETTINGS_SECRET: ${{ secrets.LLM_SETTINGS_SECRET }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -68,17 +64,17 @@ jobs:
       SUMMARY_LIMIT_INPUT: ${{ github.event.inputs.limit || '60' }}
       SUMMARY_PASSES_INPUT: ${{ github.event.inputs.max_passes || '6' }}
       SUMMARY_SOURCE_INPUT: ${{ github.event.inputs.source }}
-      # M11.3 ops-heartbeat boundary. Authority defaults to "supabase" so the
+      # M13: ops-heartbeat authority defaults to D1.
       # resting summary heartbeat path is unchanged; the base URL is only
       # consulted when the authority is d1-canary/d1. The boundary is
       # authenticated with a per-job GitHub OIDC token (id-token: write above)
       # carrying the dedicated audience, so no shared repository secret is
       # required. WORLDCONS_OPS_WRITE_TOKEN is intentionally NOT set.
-      WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
+      WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'd1' }}
       WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}
       WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}
-      WORLDCONS_INGEST_RUN_WRITE_AUTHORITY: ${{ vars.WORLDCONS_INGEST_RUN_WRITE_AUTHORITY || 'supabase' }}
-      WORLDCONS_CORE_WRITE_AUTHORITY: ${{ vars.WORLDCONS_CORE_WRITE_AUTHORITY || 'supabase' }}
+      WORLDCONS_INGEST_RUN_WRITE_AUTHORITY: ${{ vars.WORLDCONS_INGEST_RUN_WRITE_AUTHORITY || 'd1' }}
+      WORLDCONS_CORE_WRITE_AUTHORITY: ${{ vars.WORLDCONS_CORE_WRITE_AUTHORITY || 'd1' }}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     steps:
       - uses: actions/checkout@v4

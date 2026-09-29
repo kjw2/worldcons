@@ -44,8 +44,8 @@ export function resolveAdminAuditWriteAuthorityConfig(
 ): AdminAuditWriteAuthorityConfig {
   if (m13ProfileValueForEnvVar(ADMIN_AUDIT_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[ADMIN_AUDIT_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1" || raw === "d1-canary") return { authority: raw };
-  return { authority: "supabase" };
+  if (raw === "d1-canary") return { authority: raw };
+  return { authority: "d1" };
 }
 
 export function setRuntimeAdminAuditWriteAuthorityConfig(
@@ -57,7 +57,7 @@ export function setRuntimeAdminAuditWriteAuthorityConfig(
 }
 
 export function getRuntimeAdminAuditWriteAuthorityConfig(): AdminAuditWriteAuthorityConfig {
-  return runtimeGlobal().__worldconsAdminAuditWriteAuthorityV1 ?? { authority: "supabase" };
+  return runtimeGlobal().__worldconsAdminAuditWriteAuthorityV1 ?? { authority: "d1" };
 }
 
 export function shouldWriteAdminAuditToD1(

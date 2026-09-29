@@ -112,10 +112,10 @@ test("M13 profile is authoritative in every M11 resolver even with only the prof
   assert.equal(resolveRateLimitAuthorityConfig(d1Only).authority, "d1");
 });
 
-test("M13 rate-limit leaf selector rests at supabase and accepts the exact d1 value", () => {
-  assert.equal(resolveRateLimitAuthorityConfig({}).authority, "supabase");
+test("M13 rate-limit leaf selector rests at D1", () => {
+  assert.equal(resolveRateLimitAuthorityConfig({}).authority, "d1");
   assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: " D1 " }).authority, "d1");
-  assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: "d1-canary" }).authority, "supabase");
+  assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: "d1-canary" }).authority, "d1");
   const failClosed = { WORLDCONS_RATE_LIMIT_AUTHORITY: "supabase", [M13_AUTHORITY_PROFILE_ENV]: "bogus" };
   assert.throws(
     () => resolveRateLimitAuthorityConfig(failClosed),

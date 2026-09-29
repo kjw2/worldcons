@@ -8,13 +8,14 @@
  *
  * Semantics:
  *
- * - Unset/blank/`supabase` → no override (`null`). Every resolver keeps its
- *   existing behavior, including an explicit per-domain `d1`/`d1-canary`.
+ * - Unset/blank → `d1`. The completed M13 cutover is now the resting profile.
+ * - Explicit `supabase` remains a legacy/manual compatibility profile only; it
+ *   is never selected automatically and has no runtime credentials.
  * - `d1` → every owned selector resolves to `d1`, regardless of a stale
  *   per-domain value, so the whole switch is authoritative from one variable and
  *   a partial env wiring can never leave one domain on Supabase.
  * - Any other value → `fail_closed`; the resolvers treat the unowned/invalid
- *   case exactly as their own resting default, while the Worker entry and the
+ *   case as `d1`, while the Worker entry and the
  *   readiness command reject it explicitly.
  */
 

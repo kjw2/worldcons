@@ -57,8 +57,8 @@ export function resolveSiteEventsWriteAuthorityConfig(
 ): SiteEventsWriteAuthorityConfig {
   if (m13ProfileValueForEnvVar(SITE_EVENTS_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[SITE_EVENTS_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1" || raw === "d1-canary") return { authority: raw };
-  return { authority: "supabase" };
+  if (raw === "d1-canary") return { authority: raw };
+  return { authority: "d1" };
 }
 
 export function setRuntimeSiteEventsWriteAuthorityConfig(
@@ -70,7 +70,7 @@ export function setRuntimeSiteEventsWriteAuthorityConfig(
 }
 
 export function getRuntimeSiteEventsWriteAuthorityConfig(): SiteEventsWriteAuthorityConfig {
-  return runtimeGlobal().__worldconsSiteEventsWriteAuthorityV1 ?? { authority: "supabase" };
+  return runtimeGlobal().__worldconsSiteEventsWriteAuthorityV1 ?? { authority: "d1" };
 }
 
 export function shouldWriteSiteEventToD1(

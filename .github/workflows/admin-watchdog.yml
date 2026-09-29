@@ -86,10 +86,6 @@ jobs:
     env:
       M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       PLAYWRIGHT_ENABLED: "true"
       CLOUDFLARE_BROWSER_RUN_REQUIRED: "true"
       CLOUDFLARE_BROWSER_RUN_URL: ${{ vars.CLOUDFLARE_BROWSER_RUN_URL }}
@@ -115,18 +111,18 @@ jobs:
       SPAIN_DISCOVERY_MAX_PAGES: "20"
       SPAIN_REQUEST_DELAY_MS: "2000"
       INGEST_REFRESH_EXISTING: "true"
-      # M11.3 ops-heartbeat boundary. Authority defaults to "supabase" so the
+      # M13: ops-heartbeat authority defaults to D1.
       # resting watchdog heartbeat path is unchanged; the base URL is only
       # consulted when the authority is d1-canary/d1. The boundary is
       # authenticated with a per-job GitHub OIDC token (id-token: write above)
       # carrying the dedicated audience, so no shared repository secret is
       # required. WORLDCONS_OPS_WRITE_TOKEN is intentionally NOT set here.
-      WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}
+      WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'd1' }}
       # M11.3R read authority is resolved independently of the write authority so
       # a write canary never changes what this watchdog reads. It defaults to
-      # "supabase" and is only consulted when explicitly "d1"; it shares the same
+      # D1 authority is the resting state and shares the same
       # boundary base URL and OIDC audience and fails closed if D1 is unavailable.
-      WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'supabase' }}
+      WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'd1' }}
       # M11.3 live D1 canary selector. Only an explicit workflow_dispatch with
       # ops_heartbeat_canary=true pins the marker to THIS run's exact id, so the
       # Node writer adds the bounded detail.m11OpsHeartbeatCanary marker and the
@@ -136,16 +132,16 @@ jobs:
       # make an unrelated watchdog run the canary.
       WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.ops_heartbeat_canary == true && github.run_id || '' }}
       # M11.4 admin_ops_events boundary. Write authority resolves independently
-      # from the heartbeat authority and defaults to "supabase", so the resting
+      # from the heartbeat authority and now defaults to D1, so the resting
       # watchdog write path is unchanged. It reuses the same authenticated
       # boundary base URL and per-job GitHub OIDC token; no shared repository
       # secret is introduced and WORLDCONS_OPS_WRITE_TOKEN stays unset.
-      WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'supabase' }}
+      WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'd1' }}
       # M11.4R read authority resolves independently of the write authority so a
       # write canary never changes what the admin ops page reads. Defaults to
-      # "supabase" and is only consulted when explicitly "d1"; it fails closed if
+      # D1 is the resting authority and fails closed if
       # D1 is unavailable.
-      WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'supabase' }}
+      WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'd1' }}
       # M11.4 live D1 canary selector. Only an explicit workflow_dispatch with
       # admin_ops_events_canary=true activates the bounded marker for THIS run, so
       # the Node writer adds detail.m11AdminOpsEventsCanary and the boundary's

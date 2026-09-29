@@ -24,8 +24,6 @@ jobs:
       M8_IDEMPOTENCY_KEY: ${{ github.event.inputs.m8_idempotency_key || format('manual:{0}', github.run_id) }}
       ADMIN_P5_HEALTH_VERIFICATION_ENABLED: "true"
       ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED: ${{ vars.ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED || 'false' }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

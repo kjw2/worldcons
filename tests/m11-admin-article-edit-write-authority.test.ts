@@ -12,8 +12,8 @@ import {
   writeAdminArticleEditToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/admin-article-edit";
 
-test("M11.2 admin article edit authority defaults to Supabase and supports bounded D1 modes", () => {
-  assert.deepEqual(resolveAdminArticleEditWriteAuthorityConfig({}), { authority: "supabase" });
+test("M13 admin article edit authority defaults to D1 and supports bounded canary mode", () => {
+  assert.deepEqual(resolveAdminArticleEditWriteAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(resolveAdminArticleEditWriteAuthorityConfig({
     WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY: "d1-canary",
   }), { authority: "d1-canary" });
@@ -22,7 +22,7 @@ test("M11.2 admin article edit authority defaults to Supabase and supports bound
   }), { authority: "d1" });
   assert.deepEqual(resolveAdminArticleEditWriteAuthorityConfig({
     WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY: "invalid",
-  }), { authority: "supabase" });
+  }), { authority: "d1" });
 });
 
 test("M11.2 d1-canary only selects the explicit canary article slug", () => {

@@ -48,7 +48,7 @@ export function resolveCoreWriteAuthorityConfig(
 ): CoreWriteAuthorityConfig {
   if (m13ProfileValueForEnvVar(CORE_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[CORE_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
-  return raw === "d1" || raw === "d1-canary" ? { authority: raw } : { authority: "supabase" };
+  return raw === "d1-canary" ? { authority: raw } : { authority: "d1" };
 }
 
 export function setRuntimeCoreWriteAuthorityConfig(config: CoreWriteAuthorityConfig) {

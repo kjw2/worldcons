@@ -101,15 +101,15 @@ function makeDurableObjectBinding(handler?: (name: string) => Promise<Response> 
   };
 }
 
-test("M13 rate-limit authority selector defaults to supabase and the d1 profile overrides it", () => {
-  assert.equal(resolveRateLimitAuthorityConfig({}).authority, "supabase");
+test("M13 rate-limit authority selector defaults to D1", () => {
+  assert.equal(resolveRateLimitAuthorityConfig({}).authority, "d1");
   assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_M13_AUTHORITY_PROFILE: "d1" }).authority, "d1");
   assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: "d1" }).authority, "d1");
   // Exact values only; a lookalike is rejected.
-  assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: "d1-canary" }).authority, "supabase");
+  assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: "d1-canary" }).authority, "d1");
 });
 
-test("resting supabase authority path is unchanged and never touches Cloudflare", async () => {
+test("resting authority is D1 and uses the Cloudflare distributed backend", async () => {
   const restore = new ResetEnvironment();
   try {
     process.env.RATE_LIMIT_ENABLED = "true";
@@ -119,16 +119,20 @@ test("resting supabase authority path is unchanged and never touches Cloudflare"
     delete process.env.WORLDCONS_M13_AUTHORITY_PROFILE;
     delete process.env.WORLDCONS_RATE_LIMIT_AUTHORITY;
 
-    // A DO binding and D1 binding are present, but the selector is decisive.
+    // With no authority env at all, M13 now selects the Cloudflare backend.
     setRuntimeRateLimitAuthorityConfig(null);
+    setRuntimeRateLimitClock(() => 1_000_000);
+    let doCalls = 0;
     setRuntimeRateLimitDurableObjectBinding(makeDurableObjectBinding(() => {
-      throw new Error("supabase mode must not call the Durable Object");
+      doCalls += 1;
+      return Response.json({ count: doCalls, resetAt: 1_000_000 + RATE_WINDOW_MS, limited: false, remaining: 1 - doCalls, retryAfterSeconds: 0 });
     }));
     setRuntimeD1Binding("worldcons_ops", makeD1Stub() as never);
 
     const request = new Request("https://worldcons.example/api/search", { headers: { "x-forwarded-for": "203.0.113.10" } });
     const first = await consumeRateLimit(request, RATE_LIMIT_PROFILE);
-    assert.equal(first?.backend, "local", "supabase resting mode resolves to the legacy/local path");
+    assert.equal(first?.backend, "distributed");
+    assert.equal(doCalls, 1);
   } finally {
     restore.restore();
     resetRuntimeSeams();

@@ -54,8 +54,8 @@ function heartbeatRow(overrides: Partial<OpsHeartbeatWriteRow> = {}): OpsHeartbe
   };
 }
 
-test("M11.3 ops heartbeat authority defaults to Supabase and supports bounded D1 modes", () => {
-  assert.deepEqual(resolveOpsHeartbeatWriteAuthorityConfig({}), { authority: "supabase" });
+test("M13 ops heartbeat authority defaults to D1 and supports bounded canary mode", () => {
+  assert.deepEqual(resolveOpsHeartbeatWriteAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(resolveOpsHeartbeatWriteAuthorityConfig({
     WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1-canary",
   }), { authority: "d1-canary" });
@@ -64,7 +64,7 @@ test("M11.3 ops heartbeat authority defaults to Supabase and supports bounded D1
   }), { authority: "d1" });
   assert.deepEqual(resolveOpsHeartbeatWriteAuthorityConfig({
     WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "invalid",
-  }), { authority: "supabase" });
+  }), { authority: "d1" });
 });
 
 test("M11.3 d1-canary only selects the explicit canary run id", () => {
@@ -382,21 +382,21 @@ test("M11.3 boundary routes d1 authority to D1 and never downgrades on failure",
   assert.equal(d1Calls, 2);
 });
 
-test("M11.3 Node boundary client is default-off and fails closed when explicitly enabled", async () => {
+test("M13 Node boundary client defaults to D1 and fails closed when the boundary is missing", async () => {
   assert.deepEqual(
     resolveOpsHeartbeatBoundaryConfig({}),
     {
-      authority: "supabase",
-      enabled: false,
+      authority: "d1",
+      enabled: true,
       baseUrl: null,
       token: null,
       oidcToken: null,
       oidcAudience: "worldcons-ops-write",
     },
   );
-  assert.equal(
-    await writeOpsHeartbeatViaBoundary(heartbeatInput(), { environment: {}, fetcher: async () => new Response() }),
-    false,
+  await assert.rejects(
+    () => writeOpsHeartbeatViaBoundary(heartbeatInput(), { environment: {}, fetcher: async () => new Response() }),
+    /ops_heartbeat_boundary\.not_configured/u,
   );
 
   const base = {
@@ -570,8 +570,8 @@ test("M11.3-OIDC heartbeat-producing GitHub workflows wire OIDC and never the sh
       `${workflow.file} must grant id-token: write`,
     );
 
-    // Authority is repo-var driven and defaults to the resting supabase mode.
-    const authority = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'supabase' }}";
+    // Authority is repo-var driven and defaults to the permanent D1 mode.
+    const authority = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'd1' }}";
     assert.equal(
       source.split(authority).length - 1,
       workflow.envBlocks,

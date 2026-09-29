@@ -49,9 +49,9 @@ class FakeD1 implements D1RuntimeDatabase {
   }
 }
 
-test("M11-C core authority is rollback-safe by default and d1-canary is explicit", () => {
-  assert.equal(resolveCoreWriteAuthorityConfig({}).authority, "supabase");
-  assert.equal(resolveCoreWriteAuthorityConfig({ WORLDCONS_CORE_WRITE_AUTHORITY: "invalid" }).authority, "supabase");
+test("M13 core authority defaults to D1 and d1-canary remains explicit", () => {
+  assert.equal(resolveCoreWriteAuthorityConfig({}).authority, "d1");
+  assert.equal(resolveCoreWriteAuthorityConfig({ WORLDCONS_CORE_WRITE_AUTHORITY: "invalid" }).authority, "d1");
   assert.equal(resolveCoreWriteAuthorityConfig({ WORLDCONS_CORE_WRITE_AUTHORITY: "d1-canary" }).authority, "d1-canary");
   assert.equal(resolveCoreWriteAuthorityConfig({ WORLDCONS_CORE_WRITE_AUTHORITY: "d1" }).authority, "d1");
   assert.equal(shouldUseD1CoreWrite({ authority: "supabase" }, true), false);

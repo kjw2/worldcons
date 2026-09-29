@@ -70,11 +70,11 @@ function d1Binding(rows: unknown[]) {
   };
 }
 
-test("M11.3R read authority defaults to Supabase and only d1 selects D1", () => {
-  assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({}), { authority: "supabase" });
+test("M13 heartbeat read authority defaults to D1", () => {
+  assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "D1" }), { authority: "d1" });
-  assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "d1-canary" }), { authority: "supabase" });
-  assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "invalid" }), { authority: "supabase" });
+  assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "d1-canary" }), { authority: "d1" });
+  assert.deepEqual(resolveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "invalid" }), { authority: "d1" });
   assert.equal(shouldReadOpsHeartbeatFromD1({ authority: "supabase" }), false);
   assert.equal(shouldReadOpsHeartbeatFromD1({ authority: "d1" }), true);
 });
@@ -83,18 +83,18 @@ test("M11.3R the runtime read-authority slot wins over the process environment",
   try {
     assert.deepEqual(
       resolveEffectiveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "supabase" }),
-      { authority: "supabase" },
-    );
-    setRuntimeOpsHeartbeatReadAuthorityConfig({ authority: "d1" });
-    assert.deepEqual(
-      resolveEffectiveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "supabase" }),
       { authority: "d1" },
+    );
+    setRuntimeOpsHeartbeatReadAuthorityConfig({ authority: "supabase" });
+    assert.deepEqual(
+      resolveEffectiveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "d1" }),
+      { authority: "supabase" },
     );
   } finally {
     setRuntimeOpsHeartbeatReadAuthorityConfig(null);
     assert.deepEqual(
       resolveEffectiveOpsHeartbeatReadAuthorityConfig({ [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "supabase" }),
-      { authority: "supabase" },
+      { authority: "d1" },
     );
   }
 });
@@ -176,7 +176,7 @@ test("M11.3R boundary read endpoint requires the bearer and exposes no unauth su
   assert.equal(wrong.status, 401);
 });
 
-test("M11.3R boundary read returns D1 rows under d1 and 503 under resting supabase", async () => {
+test("M13 boundary read defaults to D1 and fails closed without a readable binding", async () => {
   const ok = await handleOpsHeartbeatBoundary(
     readRequest(),
     { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: "d1" },
@@ -203,12 +203,12 @@ test("M11.3R boundary read returns D1 rows under d1 and 503 under resting supaba
     }],
   });
 
-  // The resting authority has no read to serve and must not relay Supabase.
+  // D1 is the resting authority; without a binding the boundary fails closed.
   const resting = await handleOpsHeartbeatBoundary(readRequest(), envWithToken);
   assert.equal(resting.status, 503);
   assert.deepEqual(await resting.json(), {
     schemaVersion: 1,
-    error: { code: "READ_AUTHORITY_UNAVAILABLE", retryable: true },
+    error: { code: "SERVICE_UNAVAILABLE", retryable: true },
   });
 
   // A selected D1 read with a failing binding fails closed (503).
@@ -226,21 +226,21 @@ test("M11.3R boundary read returns D1 rows under d1 and 503 under resting supaba
   assert.equal(missingBinding.status, 503);
 });
 
-test("M11.3R Node read client is default-off and fails closed when d1 is selected", async () => {
+test("M13 Node read client defaults to D1 and fails closed when the boundary is missing", async () => {
   assert.deepEqual(
     resolveOpsHeartbeatReadBoundaryConfig({}),
     {
-      authority: "supabase",
-      enabled: false,
+      authority: "d1",
+      enabled: true,
       baseUrl: null,
       token: null,
       oidcToken: null,
       oidcAudience: "worldcons-ops-write",
     },
   );
-  assert.equal(
-    await readOpsHeartbeatsViaBoundary({ environment: {}, fetcher: async () => new Response() }),
-    null,
+  await assert.rejects(
+    () => readOpsHeartbeatsViaBoundary({ environment: {}, fetcher: async () => new Response() }),
+    /ops_heartbeat_read_boundary\.not_configured/u,
   );
 
   const base = {
@@ -315,17 +315,17 @@ test("M11.3R Node read client is default-off and fails closed when d1 is selecte
   );
 });
 
-test("M11.3R getWorkflowHeartbeats reads the boundary under d1 and fails closed, resting under supabase", async () => {
+test("M13 getWorkflowHeartbeats defaults to D1 and fails closed without a configured boundary", async () => {
   const originalEnv = { ...process.env };
   const originalFetch = globalThis.fetch;
   try {
     clearRuntimeD1Bindings();
-    // Resting supabase with no Supabase config returns null (unchanged behavior).
+    // D1 is the resting authority; no boundary means an immediate configuration error.
     delete process.env.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY;
     delete process.env.SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    assert.equal(await getWorkflowHeartbeats(), null);
+    await assert.rejects(() => getWorkflowHeartbeats(), /ops_heartbeat_read_boundary\.not_configured/u);
 
     // Selected d1 with no runtime binding sends one authenticated GET through
     // the boundary (the Node/GitHub path).
@@ -388,10 +388,10 @@ test("M11.3R Cloudflare runtime reads the D1 binding directly and never calls th
   }
 });
 
-test("M11.3R watchdog workflow plumbs the read authority from repo vars with a supabase default", () => {
+test("M13 watchdog workflow plumbs the read authority from repo vars with a d1 default", () => {
   const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
   assert.equal(
-    source.split("WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'supabase' }}").length - 1,
+    source.split("WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'd1' }}").length - 1,
     1,
     "admin-watchdog.yml must wire the read authority default exactly once",
   );

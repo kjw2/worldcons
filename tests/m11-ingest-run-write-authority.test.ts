@@ -36,9 +36,9 @@ function d1Capture(changes = 1) {
   };
 }
 
-test("M11-B ingestion_runs authority defaults to Supabase and selects only bounded D1 modes", () => {
-  assert.equal(resolveIngestRunWriteAuthorityConfig({}).authority, "supabase");
-  assert.equal(resolveIngestRunWriteAuthorityConfig({ WORLDCONS_INGEST_RUN_WRITE_AUTHORITY: "bogus" }).authority, "supabase");
+test("M13 ingestion_runs authority defaults to D1 and keeps bounded canary mode", () => {
+  assert.equal(resolveIngestRunWriteAuthorityConfig({}).authority, "d1");
+  assert.equal(resolveIngestRunWriteAuthorityConfig({ WORLDCONS_INGEST_RUN_WRITE_AUTHORITY: "bogus" }).authority, "d1");
   const canary = { canary: true };
   const ordinary = { canary: false };
   assert.equal(shouldWriteIngestionRunToD1(canary, { authority: "d1-canary" }), true);
@@ -82,14 +82,17 @@ test("M11-B D1 mutation uses bound statements for start, finish, summary and sta
   assert.ok(capture.calls.every((call) => !call.sql.includes(id)));
 });
 
-test("M11-B Node client keeps resting Supabase local and fails closed once D1 is selected", async () => {
+test("M13 Node ingestion client never falls back to Supabase and fails closed without the D1 boundary", async () => {
   const id = crypto.randomUUID();
   let calls = 0;
   const input = { action: "start" as const, id, sourceKey: "de-bverfg", startedAt: "2026-09-28T00:00:00.000Z" };
-  assert.equal(await writeIngestionRunViaBoundary(input, {
-    environment: { WORLDCONS_INGEST_RUN_WRITE_AUTHORITY: "supabase" },
-    fetcher: async () => { calls += 1; return new Response(); },
-  }), null);
+  await assert.rejects(
+    writeIngestionRunViaBoundary(input, {
+      environment: { WORLDCONS_INGEST_RUN_WRITE_AUTHORITY: "supabase" },
+      fetcher: async () => { calls += 1; return new Response(); },
+    }),
+    /not_configured/u,
+  );
   assert.equal(calls, 0);
   await assert.rejects(
     writeIngestionRunViaBoundary(input, {

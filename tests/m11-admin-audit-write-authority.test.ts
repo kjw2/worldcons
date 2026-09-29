@@ -12,8 +12,8 @@ import {
   writeAdminAuditToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/admin-audit";
 
-test("M11.1 admin audit authority defaults to Supabase and supports bounded D1 modes", () => {
-  assert.deepEqual(resolveAdminAuditWriteAuthorityConfig({}), { authority: "supabase" });
+test("M13 admin audit authority defaults to D1 and supports bounded canary mode", () => {
+  assert.deepEqual(resolveAdminAuditWriteAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(resolveAdminAuditWriteAuthorityConfig({
     WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY: "d1-canary",
   }), { authority: "d1-canary" });
@@ -22,7 +22,7 @@ test("M11.1 admin audit authority defaults to Supabase and supports bounded D1 m
   }), { authority: "d1" });
   assert.deepEqual(resolveAdminAuditWriteAuthorityConfig({
     WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY: "invalid",
-  }), { authority: "supabase" });
+  }), { authority: "d1" });
 });
 
 test("M11.1 d1-canary only selects the explicit canary action plus marker", () => {

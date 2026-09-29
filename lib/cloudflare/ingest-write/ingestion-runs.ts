@@ -91,8 +91,8 @@ export function resolveIngestRunWriteAuthorityConfig(
 ): IngestRunWriteAuthorityConfig {
   if (m13ProfileValueForEnvVar(INGEST_RUN_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[INGEST_RUN_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1" || raw === "d1-canary") return { authority: raw };
-  return { authority: "supabase" };
+  if (raw === "d1-canary") return { authority: raw };
+  return { authority: "d1" };
 }
 
 export function resolveIngestRunCanaryMarker(

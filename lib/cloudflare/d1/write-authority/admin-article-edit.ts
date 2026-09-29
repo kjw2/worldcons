@@ -37,8 +37,8 @@ export function resolveAdminArticleEditWriteAuthorityConfig(
 ): AdminArticleEditWriteAuthorityConfig {
   if (m13ProfileValueForEnvVar(ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY_ENV, environment) === "d1") return { authority: "d1" };
   const raw = environment[ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY_ENV]?.trim().toLowerCase();
-  if (raw === "d1" || raw === "d1-canary") return { authority: raw };
-  return { authority: "supabase" };
+  if (raw === "d1-canary") return { authority: raw };
+  return { authority: "d1" };
 }
 
 export function setRuntimeAdminArticleEditWriteAuthorityConfig(
@@ -50,7 +50,7 @@ export function setRuntimeAdminArticleEditWriteAuthorityConfig(
 }
 
 export function getRuntimeAdminArticleEditWriteAuthorityConfig(): AdminArticleEditWriteAuthorityConfig {
-  return runtimeGlobal().__worldconsAdminArticleEditWriteAuthorityV1 ?? { authority: "supabase" };
+  return runtimeGlobal().__worldconsAdminArticleEditWriteAuthorityV1 ?? { authority: "d1" };
 }
 
 export function shouldWriteAdminArticleEditToD1(

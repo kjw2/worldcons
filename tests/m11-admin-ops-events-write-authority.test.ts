@@ -155,8 +155,8 @@ function fakeD1(state: FakeD1State) {
   };
 }
 
-test("M11.4 admin ops events write authority defaults to Supabase and supports bounded D1 modes", () => {
-  assert.deepEqual(resolveAdminOpsEventsWriteAuthorityConfig({}), { authority: "supabase" });
+test("M13 admin ops events write authority defaults to D1 and supports bounded canary mode", () => {
+  assert.deepEqual(resolveAdminOpsEventsWriteAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(resolveAdminOpsEventsWriteAuthorityConfig({
     [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "d1-canary",
   }), { authority: "d1-canary" });
@@ -165,20 +165,20 @@ test("M11.4 admin ops events write authority defaults to Supabase and supports b
   }), { authority: "d1" });
   assert.deepEqual(resolveAdminOpsEventsWriteAuthorityConfig({
     [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "invalid",
-  }), { authority: "supabase" });
+  }), { authority: "d1" });
 });
 
-test("M11.4 read authority defaults to Supabase and only d1 selects D1", () => {
-  assert.deepEqual(resolveAdminOpsEventsReadAuthorityConfig({}), { authority: "supabase" });
+test("M13 admin ops events read authority defaults to D1", () => {
+  assert.deepEqual(resolveAdminOpsEventsReadAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(resolveAdminOpsEventsReadAuthorityConfig({
     [ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV]: "D1",
   }), { authority: "d1" });
   assert.deepEqual(resolveAdminOpsEventsReadAuthorityConfig({
     [ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV]: "d1-canary",
-  }), { authority: "supabase" });
+  }), { authority: "d1" });
   assert.deepEqual(resolveAdminOpsEventsReadAuthorityConfig({
     [ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV]: "invalid",
-  }), { authority: "supabase" });
+  }), { authority: "d1" });
   assert.equal(shouldReadAdminOpsEventsFromD1({ authority: "supabase" }), false);
   assert.equal(shouldReadAdminOpsEventsFromD1({ authority: "d1" }), true);
 });
@@ -215,8 +215,8 @@ test("M11.4 runtime authority slot wins over the process environment", () => {
     setRuntimeAdminOpsEventsWriteAuthorityConfig(null);
     setRuntimeAdminOpsEventsReadAuthorityConfig(null);
     assert.deepEqual(resolveAdminOpsEventsBoundaryConfig({}), {
-      authority: "supabase",
-      enabled: false,
+      authority: "d1",
+      enabled: true,
       baseUrl: null,
     });
   }
@@ -459,7 +459,7 @@ test("M11.4 boundary list read is fail-closed and independent from the write aut
   assert.equal(resting.status, 503);
   assert.deepEqual(await resting.json(), {
     schemaVersion: 1,
-    error: { code: "READ_AUTHORITY_UNAVAILABLE", retryable: true },
+    error: { code: "SERVICE_UNAVAILABLE", retryable: true },
   });
 
   const ok = await handleOpsHeartbeatBoundary(
@@ -495,18 +495,24 @@ test("M11.4 boundary dedupe read and prune fail closed when the D1 authority bin
   assert.equal(prune.status, 503);
 });
 
-test("M11.4 Node client is default-off and fails closed when explicitly enabled", async () => {
+test("M13 admin ops Node client defaults to D1 and fails closed without a boundary", async () => {
   assert.deepEqual(resolveAdminOpsEventsBoundaryConfig({}), {
-    authority: "supabase",
-    enabled: false,
+    authority: "d1",
+    enabled: true,
     baseUrl: null,
   });
-  assert.equal(
-    await writeAdminOpsEventViaBoundary(eventRow(), { environment: {}, fetcher: async () => new Response() }),
-    false,
+  await assert.rejects(
+    () => writeAdminOpsEventViaBoundary(eventRow(), { environment: {}, fetcher: async () => new Response() }),
+    /admin_ops_events_boundary\.not_configured/u,
   );
-  assert.deepEqual(await readLatestAdminOpsEventViaBoundary({ environment: {}, fetcher: async () => new Response() }), { enabled: false });
-  assert.equal(await pruneAdminOpsEventsViaBoundary("2026-08-29T00:00:00.000Z", { environment: {}, fetcher: async () => new Response() }), false);
+  await assert.rejects(
+    () => readLatestAdminOpsEventViaBoundary({ environment: {}, fetcher: async () => new Response() }),
+    /admin_ops_events_boundary\.not_configured/u,
+  );
+  await assert.rejects(
+    () => pruneAdminOpsEventsViaBoundary("2026-08-29T00:00:00.000Z", { environment: {}, fetcher: async () => new Response() }),
+    /admin_ops_events_boundary\.not_configured/u,
+  );
 
   const base = {
     [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "d1",
@@ -548,13 +554,16 @@ test("M11.4 Node client is default-off and fails closed when explicitly enabled"
   );
 });
 
-test("M11.4 Node list client is default-off and fails closed when d1 read is selected", async () => {
+test("M13 Node list client defaults to D1 and fails closed when the boundary is not configured", async () => {
   assert.deepEqual(resolveAdminOpsEventsReadBoundaryConfig({}), {
-    authority: "supabase",
-    enabled: false,
+    authority: "d1",
+    enabled: true,
     baseUrl: null,
   });
-  assert.equal(await listAdminOpsEventsViaBoundary(20, { environment: {}, fetcher: async () => new Response() }), null);
+  await assert.rejects(
+    () => listAdminOpsEventsViaBoundary(20, { environment: {}, fetcher: async () => new Response() }),
+    /admin_ops_events_read_boundary\.not_configured/u,
+  );
 
   const base = {
     [ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV]: "d1",
@@ -666,16 +675,16 @@ function adminWatchdogWorkflowSource() {
   return fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
 }
 
-test("M11.4 admin-watchdog injects both admin ops events authority vars with an explicit supabase fallback", () => {
+test("M13 admin-watchdog injects both admin ops events authority vars with an explicit d1 fallback", () => {
   const source = adminWatchdogWorkflowSource();
 
-  const writeAuthority = "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'supabase' }}";
+  const writeAuthority = "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'd1' }}";
   assert.equal(
     source.split(writeAuthority).length - 1,
     1,
     "admin-watchdog.yml must wire the admin ops events write authority default exactly once",
   );
-  const readAuthority = "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'supabase' }}";
+  const readAuthority = "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'd1' }}";
   assert.equal(
     source.split(readAuthority).length - 1,
     1,

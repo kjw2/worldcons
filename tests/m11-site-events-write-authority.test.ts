@@ -13,11 +13,11 @@ import {
   writeSiteEventToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/site-events";
 
-test("M11 site_events authority defaults to Supabase and invalid values fail safe", () => {
-  assert.deepEqual(resolveSiteEventsWriteAuthorityConfig({}), { authority: "supabase" });
+test("M13 site_events authority defaults to D1 and invalid values stay on D1", () => {
+  assert.deepEqual(resolveSiteEventsWriteAuthorityConfig({}), { authority: "d1" });
   assert.deepEqual(
     resolveSiteEventsWriteAuthorityConfig({ WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY: "unexpected" }),
-    { authority: "supabase" },
+    { authority: "d1" },
   );
   assert.deepEqual(
     resolveSiteEventsWriteAuthorityConfig({ WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY: "D1" }),
