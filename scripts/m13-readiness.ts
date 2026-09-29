@@ -23,7 +23,7 @@ import {
   type M13SearchReadinessEvidence,
 } from "@/lib/cloudflare/m13/readiness";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
-import { createLazyRemoteQuery } from "./d1-reconcile";
+import { createLazyRemoteQuery, resolveReadFallbackPolicy } from "./d1-reconcile";
 
 const REPORT_PATH = path.join("artifacts", "cloudflare-m13", "m13-readiness-evidence.json");
 const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
@@ -234,11 +234,13 @@ async function main(): Promise<void> {
     try {
       const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
       const executeRemoteQuery = createLazyRemoteQuery({ runner, databases: null });
+      const remoteReadFallbackPolicy = resolveReadFallbackPolicy(args);
       const built = await buildM13FinalDeltaManifest({
         runner,
         source: delta.source,
         executeRemoteQuery,
         batchSize: positiveIntegerArg(args, "batch-size") ?? undefined,
+        remoteReadFallbackPolicy,
       });
       finalDelta = built.report;
     } finally {

@@ -97,6 +97,20 @@ export const D1_REMOTE_RECONCILE_DEFAULT_BATCH_SIZE = 500;
 /** Conservative default rows per multi-row INSERT statement. */
 export const D1_REMOTE_RECONCILE_DEFAULT_ROWS_PER_INSERT = 50;
 
+/**
+ * When the remote comparison READ may retry through the bound-parameter HTTP
+ * query surface after a Wrangler read failure:
+ *
+ * - `crash-only` (the default, fail-closed) retries ONLY when the runner rejects
+ *   with the confirmed Windows crash `WranglerD1ExitError` exit code;
+ * - `any-wrangler-exit` additionally retries for ANY `WranglerD1ExitError` exit
+ *   code. A non-`WranglerD1ExitError` (a timeout, spawn failure or setup error)
+ *   never falls back under either policy, and writes are never affected.
+ */
+export const D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES = ["crash-only", "any-wrangler-exit"] as const;
+export type D1RemoteReconcileReadFallbackPolicy = (typeof D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES)[number];
+export const D1_REMOTE_RECONCILE_DEFAULT_READ_FALLBACK_POLICY: D1RemoteReconcileReadFallbackPolicy = "crash-only";
+
 /** One table's reconciliation comparison/result. */
 export interface D1RemoteReconcileTableTarget {
   table: string;
@@ -216,15 +230,23 @@ export interface BuildD1RemoteReconcileManifestOptions {
   /**
    * Optional READ fallback for the remote comparison reads. It executes the SAME
    * read-only statement through a bound-parameter HTTP surface and returns its
-   * rows. It is used ONLY when the Wrangler `d1 execute --command` invocation
-   * rejects with a `WranglerD1ExitError` whose `exitCode` is exactly
-   * `D1_WRANGLER_CRASH_EXIT_CODE`. Every other failure stays fail-closed. Never
-   * used for a write.
+   * rows. When the Wrangler `d1 execute --command` invocation rejects with a
+   * `WranglerD1ExitError` it is retried according to `remoteReadFallbackPolicy`.
+   * A non-`WranglerD1ExitError` (timeout/spawn/setup failure) is never retried.
+   * Never used for a write.
    */
   executeRemoteQuery?: (
     database: D1Database,
     statement: D1ImportStatement,
   ) => Promise<Record<string, unknown>[]>;
+  /**
+   * Controls which Wrangler READ failures may fall back to `executeRemoteQuery`:
+   * `crash-only` (default and fail-closed) retries only the confirmed Windows
+   * crash exit code; `any-wrangler-exit` also retries any other
+   * `WranglerD1ExitError` exit code. Non-`WranglerD1ExitError` failures always
+   * stay fail-closed under both policies. This never affects writes.
+   */
+  remoteReadFallbackPolicy?: D1RemoteReconcileReadFallbackPolicy;
 }
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
@@ -563,6 +585,10 @@ export async function buildD1RemoteReconcileManifest(
   const schema = options.schema ?? d1Schema;
   const batchSize = options.batchSize ?? D1_REMOTE_RECONCILE_DEFAULT_BATCH_SIZE;
   if (!Number.isInteger(batchSize) || batchSize <= 0) throw new Error("batchSize must be a positive integer");
+  const readFallbackPolicy = options.remoteReadFallbackPolicy ?? D1_REMOTE_RECONCILE_DEFAULT_READ_FALLBACK_POLICY;
+  if (!(D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES as readonly string[]).includes(readFallbackPolicy)) {
+    throw new Error(`unknown remoteReadFallbackPolicy: ${String(readFallbackPolicy)}`);
+  }
   const rowsPerInsert =
     options.rowsPerInsertStatement === undefined
       ? D1_REMOTE_RECONCILE_DEFAULT_ROWS_PER_INSERT
@@ -599,9 +625,12 @@ export async function buildD1RemoteReconcileManifest(
 
   /**
    * Executes one remote READ statement through Wrangler, retrying over the
-   * injected HTTP query ONLY when that runner invocation rejects with a
-   * `WranglerD1ExitError` whose exit code is exactly `D1_WRANGLER_CRASH_EXIT_CODE`
-   * and an HTTP query executor is available. This mirrors the data-copy fallback.
+   * injected HTTP query when the runner invocation rejects with a
+   * `WranglerD1ExitError` and an HTTP query executor is available. Under the
+   * default `crash-only` policy only the confirmed Windows crash exit code
+   * matches; under `any-wrangler-exit` any `WranglerD1ExitError` exit code
+   * matches. A non-`WranglerD1ExitError` (timeout/spawn/setup failure) always
+   * fails closed. This mirrors the data-copy fallback and never affects a write.
    */
   async function readRemoteBatch(
     target: D1RemoteTarget,
@@ -622,7 +651,10 @@ export async function buildD1RemoteReconcileManifest(
         command,
       ]);
     } catch (error) {
-      if (typeof executeRemoteQuery !== "function" || !isWranglerD1ExitError(error, D1_WRANGLER_CRASH_EXIT_CODE)) {
+      const crashOnly = isWranglerD1ExitError(error, D1_WRANGLER_CRASH_EXIT_CODE);
+      const anyWranglerExit =
+        readFallbackPolicy === "any-wrangler-exit" && isWranglerD1ExitError(error);
+      if (typeof executeRemoteQuery !== "function" || (!crashOnly && !anyWranglerExit)) {
         throw error;
       }
       commands.push(`http-query ${target.name} ${table.name}`);

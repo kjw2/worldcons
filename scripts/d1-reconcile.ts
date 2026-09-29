@@ -11,7 +11,10 @@ import type { WranglerD1Runner } from "@/lib/cloudflare/d1/remote";
 import { classifyD1RemoteTargets, parseD1RemoteListJson } from "@/lib/cloudflare/d1/remote/classify";
 import {
   D1_REMOTE_RECONCILE_DATABASES,
+  D1_REMOTE_RECONCILE_DEFAULT_READ_FALLBACK_POLICY,
+  D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES,
   buildD1RemoteReconcileManifest,
+  type D1RemoteReconcileReadFallbackPolicy,
 } from "@/lib/cloudflare/d1/remote/reconcile";
 import {
   createD1HttpAffectedWriter,
@@ -32,6 +35,7 @@ const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
  *   pnpm d1:reconcile --source=supabase-linked --tables=tags,articles --json
  *   pnpm d1:reconcile --source=postgres --url=$WORLDCONS_D1_SOURCE_URL --batch-size=500
  *   pnpm d1:reconcile --source=postgres --url=$WORLDCONS_D1_SOURCE_URL --postgres-role=postgres
+ *   pnpm d1:reconcile --source=supabase-linked --http-read-fallback=any-wrangler-exit
  *
  * Operator-only and dry-run by default. It reads the M5.2a canonical datasets
  * from the read-only source and reconciles the nine mutable drift tables in the
@@ -86,6 +90,25 @@ function parseDatabases(args: readonly string[]): D1Database[] | null {
 
 const SOURCE_KINDS = ["postgres", "supabase-linked"] as const;
 type SourceKind = (typeof SOURCE_KINDS)[number];
+
+/**
+ * Resolves the opt-in remote READ fallback policy from `--http-read-fallback=`.
+ * Omitted (or an explicit `crash-only`) keeps the fail-closed default that only
+ * retries the confirmed Windows crash exit code. `any-wrangler-exit` is the
+ * explicit operator opt-in that also retries any other Wrangler exit code. An
+ * unknown value is rejected.
+ */
+export function resolveReadFallbackPolicy(args: readonly string[]): D1RemoteReconcileReadFallbackPolicy {  const raw = argValue(args, "http-read-fallback");
+  if (raw === null || raw === D1_REMOTE_RECONCILE_DEFAULT_READ_FALLBACK_POLICY) {
+    return D1_REMOTE_RECONCILE_DEFAULT_READ_FALLBACK_POLICY;
+  }
+  if (!(D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES as readonly string[]).includes(raw)) {
+    throw new Error(
+      `unknown --http-read-fallback=${raw} (expected ${D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES.join("|")})`,
+    );
+  }
+  return raw as D1RemoteReconcileReadFallbackPolicy;
+}
 
 function resolveSourceKind(args: readonly string[]): SourceKind {
   const raw = (argValue(args, "source") ?? "postgres").trim();
@@ -246,6 +269,7 @@ async function main(): Promise<void> {
     throw new Error("--apply requires an explicit --database= selection; refusing an implicit all-database apply");
   }
   const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
+  const remoteReadFallbackPolicy = resolveReadFallbackPolicy(args);
   try {
     const executeStatement = createLazyAffectedWriter({ apply, runner, databases });
     const executeRemoteQuery = createLazyRemoteQuery({ runner, databases });
@@ -259,6 +283,7 @@ async function main(): Promise<void> {
       rowsPerInsertStatement: positiveIntegerArg(args, "rows-per-insert-statement") ?? undefined,
       executeStatement,
       executeRemoteQuery,
+      remoteReadFallbackPolicy,
     });
 
     if (writeReport) {

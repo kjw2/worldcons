@@ -20,6 +20,7 @@ import {
   D1_REMOTE_RECONCILE_DEFAULT_BATCH_SIZE,
 } from "../lib/cloudflare/d1/remote/reconcile";
 import { postgresSessionRoleStatement } from "../lib/cloudflare/d1/convert/postgres-source";
+import { resolveReadFallbackPolicy } from "../scripts/d1-reconcile";
 
 /**
  * M5.2d reconcile tests. The harness models the D1 HTTP affected-writer and the
@@ -824,6 +825,15 @@ test("the reconcile CLI exposes an explicit, opt-in, no-broad-apply surface", ()
   assert.ok(cliSource.includes("--database"), "the CLI must expose --database");
   assert.ok(cliSource.includes("--apply"), "the CLI must expose an explicit --apply");
   assert.ok(cliSource.includes("--json"), "the CLI must expose --json");
+  assert.ok(cliSource.includes("http-read-fallback"), "the CLI must expose --http-read-fallback");
+  assert.ok(
+    cliSource.includes('any-wrangler-exit'),
+    "the CLI must expose the any-wrangler-exit policy",
+  );
+  assert.ok(
+    /remoteReadFallbackPolicy,/.test(cliSource),
+    "the resolved policy must be passed into buildD1RemoteReconcileManifest",
+  );
 
   assert.ok(cliSource.includes('args.includes("--apply")'), "apply must be an explicit `--apply` flag");
   assert.ok(
@@ -888,6 +898,21 @@ test("m13-readiness exposes --postgres-role and --batch-size for the read-only f
     /buildM13FinalDeltaManifest\(\{[\s\S]*?batchSize:\s*positiveIntegerArg\(args, "batch-size"\)/.test(code),
     "m13-readiness must pass --batch-size to buildM13FinalDeltaManifest",
   );
+  assert.ok(
+    /buildM13FinalDeltaManifest\(\{[\s\S]*?remoteReadFallbackPolicy,/.test(code),
+    "m13-readiness must pass the resolved read fallback policy to buildM13FinalDeltaManifest",
+  );
+});
+
+test("the CLI read fallback policy defaults to crash-only and rejects unknown values", () => {
+  assert.equal(resolveReadFallbackPolicy([]), "crash-only");
+  assert.equal(resolveReadFallbackPolicy(["--source=supabase-linked"]), "crash-only");
+  assert.equal(resolveReadFallbackPolicy(["--http-read-fallback=crash-only"]), "crash-only");
+  assert.equal(resolveReadFallbackPolicy(["--http-read-fallback=any-wrangler-exit"]), "any-wrangler-exit");
+  assert.throws(
+    () => resolveReadFallbackPolicy(["--http-read-fallback=bogus"]),
+    /unknown --http-read-fallback=bogus/,
+  );
 });
 
 test("d1:copy-data remains INSERT-only and does not gain update/delete/upsert behavior", () => {
@@ -944,6 +969,62 @@ test("a non-crash Wrangler read failure never falls back and refuses the table",
 
   assert.equal(manifest.ok, false);
   assert.equal(harness.queryCalls.length, 0, "only exit 3221226505 may fall back");
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+});
+
+test("the default crash-only policy never falls back for a non-crash Wrangler exit", async () => {
+  const harness = createHarness({ reconcile_probe: FULL_ROWS }, { readError: new WranglerD1ExitError(1, "exit 1") });
+  const manifest = await buildD1RemoteReconcileManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    executeRemoteQuery: harness.executeRemoteQuery,
+    remoteReadFallbackPolicy: "crash-only",
+  });
+
+  assert.equal(harness.queryCalls.length, 0, "crash-only must not retry exit 1");
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "unknown");
+  assert.equal(table.action, "refused");
+});
+
+test("any-wrangler-exit falls back for exit 1 using the exact read statement", async () => {
+  const harness = createHarness({ reconcile_probe: FULL_ROWS }, { readError: new WranglerD1ExitError(1, "exit 1") });
+  const manifest = await buildD1RemoteReconcileManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    executeRemoteQuery: harness.executeRemoteQuery,
+    remoteReadFallbackPolicy: "any-wrangler-exit",
+  });
+
+  assert.equal(manifest.ok, true, manifest.errors.join("; "));
+  assert.ok(harness.queryCalls.length > 0, "any-wrangler-exit must retry exit 1 through HTTP");
+  assert.ok(
+    harness.queryCalls.every((call) => /^select .* from reconcile_probe/.test(call.statement.sql)),
+    "the fallback must replay the exact read-only select statement",
+  );
+  assert.ok(manifest.commands.includes("http-query worldcons_core reconcile_probe"));
+  const [table] = manifest.targets[0].tables;
+  assert.equal(table.state, "exact");
+});
+
+test("any-wrangler-exit still does not fall back for a non-Wrangler error", async () => {
+  const harness = createHarness({}, { readError: new Error("spawn ENOENT") });
+  const manifest = await buildD1RemoteReconcileManifest({
+    runner: harness.runner,
+    source: source(),
+    schema,
+    databases: ["worldcons_core"],
+    executeRemoteQuery: harness.executeRemoteQuery,
+    remoteReadFallbackPolicy: "any-wrangler-exit",
+  });
+
+  assert.equal(harness.queryCalls.length, 0, "a non-WranglerD1ExitError must never fall back");
   const [table] = manifest.targets[0].tables;
   assert.equal(table.state, "unknown");
   assert.equal(table.action, "refused");

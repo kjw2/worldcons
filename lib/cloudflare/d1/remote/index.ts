@@ -38,7 +38,9 @@ export {
   D1_REMOTE_RECONCILE_ACTIONS,
   D1_REMOTE_RECONCILE_DATABASES,
   D1_REMOTE_RECONCILE_DEFAULT_BATCH_SIZE,
+  D1_REMOTE_RECONCILE_DEFAULT_READ_FALLBACK_POLICY,
   D1_REMOTE_RECONCILE_DEFAULT_ROWS_PER_INSERT,
+  D1_REMOTE_RECONCILE_READ_FALLBACK_POLICIES,
   D1_REMOTE_RECONCILE_STATES,
   D1_REMOTE_RECONCILE_VERSION,
 } from "./reconcile";
@@ -48,6 +50,7 @@ export type {
   D1RemoteReconcileManifest,
   D1RemoteReconcileManifestTarget,
   D1RemoteReconcileManifestTotals,
+  D1RemoteReconcileReadFallbackPolicy,
   D1RemoteReconcileState,
   D1RemoteReconcileTableTarget,
 } from "./reconcile";
