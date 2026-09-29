@@ -1,6 +1,14 @@
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { withCrawlerRequestPermit } from "@/lib/crawler/request-governor";
 import type { CrawlRequest, CrawlResponse } from "@/lib/crawler/types";
+import {
+  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
+  requestGithubActionsOidcToken,
+} from "@/lib/cloudflare/ops-write/boundary-client";
+import {
+  githubActionsOidcAvailable,
+  WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE,
+} from "@/lib/cloudflare/browser-run/oidc";
 
 interface BrowserRunResponse {
   schemaVersion: 1;
@@ -15,7 +23,10 @@ interface BrowserRunResponse {
 }
 
 export function cloudflareBrowserRunConfigured(environment: Record<string, string | undefined> = process.env) {
-  return Boolean(environment.CLOUDFLARE_BROWSER_RUN_URL?.trim() && environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim());
+  return Boolean(
+    environment.CLOUDFLARE_BROWSER_RUN_URL?.trim()
+      && (environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim() || githubActionsOidcAvailable(environment)),
+  );
 }
 
 export function cloudflareBrowserRunRequired(environment: Record<string, string | undefined> = process.env) {
@@ -48,8 +59,8 @@ export async function crawlWithCloudflareBrowserRun(
   request: CrawlRequest,
   environment: Record<string, string | undefined> = process.env,
 ): Promise<CrawlResponse> {
-  const token = environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim();
-  if (!token) throw new Error("CLOUDFLARE_BROWSER_RUN_TOKEN is required");
+  const authorization = await browserRunAuthorization(environment);
+  if (!authorization) throw new Error("Cloudflare Browser Run authentication is unavailable");
   // Browser Run is a governed network request exactly like the fetch path. When
   // a per-source request governor is supplied the navigation acquires and
   // releases a permit around the navigation so M8 orchestration (or any other
@@ -61,7 +72,7 @@ export async function crawlWithCloudflareBrowserRun(
     const response = await fetch(endpoint(environment), {
       method: "POST",
       redirect: "error",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: { authorization, "content-type": "application/json" },
       body: JSON.stringify({
         url: request.url,
         timeoutMs,
@@ -88,4 +99,16 @@ export async function crawlWithCloudflareBrowserRun(
       diagnostics: body.diagnostics,
     };
   });
+}
+
+async function browserRunAuthorization(environment: Record<string, string | undefined>): Promise<string | null> {
+  if (githubActionsOidcAvailable(environment)) {
+    const oidc = await requestGithubActionsOidcToken({
+      ...environment,
+      [OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]: WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE,
+    });
+    if (oidc) return `Bearer ${oidc}`;
+  }
+  const token = environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim();
+  return token ? `Bearer ${token}` : null;
 }

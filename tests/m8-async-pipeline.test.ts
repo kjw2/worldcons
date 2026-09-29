@@ -240,7 +240,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   assert.equal(consumer.max_retries, 3);
   assert.equal(consumer.retry_delay, 60);
   assert.equal(consumer.dead_letter_queue, "worldcons-async-dlq-v1");
-  assert.deepEqual(config.secrets.required, ["GITHUB_ACTIONS_TOKEN", "BROWSER_RUN_TOKEN"]);
+  assert.deepEqual(config.secrets.required, ["GITHUB_ACTIONS_TOKEN"]);
   assert.equal(config.browser.binding, "BROWSER");
   assert.equal(config.workers_dev, true);
   assert.equal(config.preview_urls, false);
@@ -307,6 +307,50 @@ test("Browser Run client keeps HTTPS, auth, and result mapping bounded", async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Browser Run client prefers GitHub Actions OIDC when the runtime can mint it", async () => {
+  const environment = {
+    CLOUDFLARE_BROWSER_RUN_URL: "https://worldcons-ingest.example.workers.dev",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "actions-request-token",
+  };
+  assert.equal(cloudflareBrowserRunConfigured(environment), true);
+
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; authorization: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, authorization: new Headers(init?.headers).get("authorization") });
+    if (url.startsWith("https://oidc.example/token")) {
+      assert.equal(new URL(url).searchParams.get("audience"), "worldcons-ingest");
+      return Response.json({ value: "oidc.jwt.token" });
+    }
+    return Response.json({
+      schemaVersion: 1,
+      url: "https://www.supremecourt.gov/",
+      finalUrl: "https://www.supremecourt.gov/",
+      status: 200,
+      headers: { "content-type": "text/html" },
+      html: "<html></html>",
+      fetchedAt: "2026-09-29T00:00:00.000Z",
+    });
+  };
+  try {
+    await crawlWithCloudflareBrowserRun({ url: "https://www.supremecourt.gov/" }, environment);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0]?.authorization, "Bearer actions-request-token");
+    assert.equal(calls[1]?.authorization, "Bearer oidc.jwt.token");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("consolidated Browser Run endpoint accepts GitHub OIDC without requiring a shared secret", () => {
+  const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/browser-navigate.ts"), "utf8");
+  assert.match(source, /authorizeGithubOidcRequest/);
+  assert.match(source, /WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE/);
+  assert.match(source, /browser_oidc_auth_failed/);
 });
 
 test("Browser Run endpoint refuses plaintext transport", async () => {

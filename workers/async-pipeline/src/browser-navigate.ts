@@ -1,4 +1,6 @@
 import { launch } from "@cloudflare/playwright";
+import { authorizeGithubOidcRequest } from "../../../lib/cloudflare/ops-write/github-oidc";
+import { WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE } from "../../../lib/cloudflare/browser-run/oidc";
 
 export const MAX_HTML_BYTES = 3_000_000;
 export const MAX_TIMEOUT_MS = 60_000;
@@ -27,8 +29,23 @@ async function digest(value: string) {
 async function authorized(request: Request, env: Env) {
   const header = request.headers.get("authorization");
   const supplied = header?.startsWith("Bearer ") ? header.slice(7) : "";
-  const expected = env.BROWSER_RUN_TOKEN?.trim();
-  if (!supplied || !expected) return false;
+  if (!supplied) return false;
+
+  if (supplied.split(".").length === 3) {
+    const oidc = await authorizeGithubOidcRequest(
+      request,
+      "write",
+      {},
+      { audience: WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE },
+    );
+    if (!oidc.ok) {
+      console.warn(JSON.stringify({ event: "browser_oidc_auth_failed", code: oidc.code }));
+    }
+    return oidc.ok;
+  }
+
+  const expected = (env as Env & { BROWSER_RUN_TOKEN?: string }).BROWSER_RUN_TOKEN?.trim();
+  if (!expected) return false;
   const [left, right] = await Promise.all([digest(supplied), digest(expected)]);
   let difference = 0;
   for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];

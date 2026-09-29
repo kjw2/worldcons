@@ -7,7 +7,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
-  "secrets": { "required": ["GITHUB_ACTIONS_TOKEN", "BROWSER_RUN_TOKEN"] },
+  "secrets": { "required": ["GITHUB_ACTIONS_TOKEN"] },
   "browser": { "binding": "BROWSER" },
   "vars": {
     "M8_SCHEDULER_ENABLED": "false",
