@@ -14,6 +14,7 @@ import {
   type CclMetasearchSearchDependencies,
 } from "@/lib/cclmetasearch/search";
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
 import {
   SITE_EVENT_TYPE_VALUES,
 } from "@/lib/cloudflare/d1/schema/worldcons-ops";
@@ -49,6 +50,7 @@ export interface WorldconsSearchWorkerEnv {
   CCL_METASEARCH_DB_TIMEOUT_MS?: string;
   WORLDCONS_CORE?: D1RuntimeDatabase;
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
+  WORLDCONS_SEARCH_VECTOR?: VectorizeIndexBinding;
 }
 
 const DEFAULT_PUBLIC_BASE_URL = "https://worldcons.vercel.app/api/cclrag2";
@@ -59,8 +61,6 @@ export function providerEnvFromSearchWorkerBindings(
   return {
     ENVIRONMENT: env.ENVIRONMENT?.trim() || "production",
     PUBLIC_BASE_URL: env.PUBLIC_BASE_URL?.trim() || DEFAULT_PUBLIC_BASE_URL,
-    SUPABASE_URL: env.SUPABASE_URL?.trim() || "",
-    SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "",
     EMBEDDING_PROVIDER: env.EMBEDDING_PROVIDER,
     SEMANTIC_SEARCH_ENABLED: env.SEMANTIC_SEARCH_ENABLED,
     GEMINI_API_KEY: env.GEMINI_API_KEY,
@@ -187,7 +187,12 @@ export function createWorldconsSearchServiceApp(
   app.all("/api/*", (c) => handleWorldconsSearchRequest(
     c.req.raw,
     providerEnvFromSearchWorkerBindings(c.env),
-    { ...dependencies.provider, coreBinding: c.env.WORLDCONS_CORE },
+    {
+      ...dependencies.provider,
+      coreBinding: c.env.WORLDCONS_CORE,
+      searchBinding: c.env.WORLDCONS_SEARCH,
+      vectorBinding: c.env.WORLDCONS_SEARCH_VECTOR,
+    },
   ));
 
   app.post("/internal/cclmetasearch/search", async (c) => {

@@ -36,8 +36,6 @@ function providerEnv(): Cclrag2ProviderEnv {
   return {
     ENVIRONMENT: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
     PUBLIC_BASE_URL,
-    SUPABASE_URL: process.env.SUPABASE_URL ?? "",
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     EMBEDDING_PROVIDER: process.env.EMBEDDING_PROVIDER,
     SEMANTIC_SEARCH_ENABLED: process.env.SEMANTIC_SEARCH_ENABLED,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,

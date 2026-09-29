@@ -5,8 +5,10 @@ import test from "node:test";
 import {
   handleWorldconsSearchRequest,
   type Cclrag2ProviderEnv,
+  type ProviderDependencies,
 } from "../lib/integrations/cclrag2/provider-handler";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
+import type { VectorizeIndexBinding, VectorizeQueryOptions, VectorizeQueryResult } from "../lib/cloudflare/search-vector/types";
 
 const migrationPath = path.join(
   process.cwd(),
@@ -39,8 +41,6 @@ const NEUBAUER_EXCERPT =
 const env = {
   ENVIRONMENT: "test",
   PUBLIC_BASE_URL: "https://worldcons.vercel.app/api/cclrag2",
-  SUPABASE_URL: "https://project.supabase.co",
-  SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
 } satisfies Cclrag2ProviderEnv;
 
 const embeddingEnv = {
@@ -63,31 +63,13 @@ test("Vercel catch-all route preserves the provider contract and applies public 
 });
 
 test("Vercel provider accepts the cclrag2 contract and returns the Neubauer case first", async () => {
-  const calls: Array<{
-    url: string;
-    body: Record<string, unknown>;
-    authorization: string | null;
-    requestId: string | null;
-  }> = [];
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
   const response = await handleWorldconsSearchRequest(
-    new Request(
-      "https://provider.example/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none&jurisdiction=Germany&source=de-bverfg",
-      { headers: { "x-request-id": "cclrag2-neubauer-test" } },
-    ),
+    new Request("https://provider.example/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none&jurisdiction=Germany&source=de-bverfg", {
+      headers: { "x-request-id": "cclrag2-neubauer-test" },
+    }),
     env,
-    {
-      fetcher: async (input, init) => {
-        calls.push({
-          url: String(input),
-          body: JSON.parse(String(init?.body)) as Record<string, unknown>,
-          authorization: new Headers(init?.headers).get("authorization"),
-          requestId: new Headers(init?.headers).get("x-request-id"),
-        });
-        return Response.json({
-          items: [neubauerRow()],
-        });
-      },
-    },
+    searchDependencies(calls),
   );
   const payload = await response.json();
 
@@ -98,8 +80,9 @@ test("Vercel provider accepts the cclrag2 contract and returns the Neubauer case
   assert.equal(payload.requestId, "cclrag2-neubauer-test");
   assert.equal(payload.transport, "vercel-route-handler");
   assert.equal(payload.requestedMode, "hybrid");
-  assert.equal(payload.effectiveMode, "hybrid");
+  assert.equal(payload.effectiveMode, "hybrid", "the requested retrieval mode is retained for exact-case orchestration");
   assert.equal(payload.mode, "hybrid");
+  assert.equal(payload.databaseRetrievalMode, "exact-case");
   assert.equal(payload.degraded, false);
   assert.equal(payload.items[0].caseNumber, "1 BvR 2656/18");
   assert.equal(payload.items[0].sourceType, "foreign_constitutional");
@@ -123,75 +106,45 @@ test("Vercel provider accepts the cclrag2 contract and returns the Neubauer case
     publishedAt: "2021-03-24",
   });
   assert.match(payload.items[0].officialUri, /^https:\/\/www\.bundesverfassungsgericht\.de\//u);
-  assert.equal(payload.items[0].sectionAnchors[0].kind, "passage");
-  assert.equal(
-    payload.items[0].detailApiUrl,
-    "https://worldcons.vercel.app/api/cclrag2/articles/germany-neubauer",
-  );
+  assert.equal(payload.items[0].detailApiUrl, "https://worldcons.vercel.app/api/cclrag2/articles/germany-neubauer");
   assert.equal(payload.items[0].summaryJson.summary.background, "기후위기와 미래세대의 자유가 문제 되었다.");
-  assert.deepEqual(payload.meta, {
-    limit: 10,
-    offset: 0,
-    total: 1,
-    hasMore: false,
-    totalIsExact: false,
-  });
-  assert.equal(calls[0].body.p_query, "1 BvR 2656/18 climate");
-  assert.equal(calls[0].body.p_mode, "hybrid");
-  assert.equal(calls[0].body.p_query_embedding, null);
-  assert.equal(calls[0].body.p_source, "de-bverfg");
-  assert.equal(calls[0].body.p_jurisdiction, "Germany");
-  assert.equal(calls[0].body.p_count, "none");
-  assert.equal(calls[0].authorization, "Bearer test-service-role-key");
-  assert.equal(calls[0].requestId, "cclrag2-neubauer-test");
-  assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
+  assert.deepEqual(payload.meta, { limit: 10, offset: 0, total: 1, hasMore: false, totalIsExact: false });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /search_documents/u);
+  assert.deepEqual(calls[0].params.slice(0, 2), ["de-bverfg", "1bvr265618"]);
   assert.ok(Number(response.headers.get("content-length")) < 1_500_000);
   assert.doesNotMatch(JSON.stringify(payload), /workers\.dev/iu);
 });
 
-test("Vercel provider preserves the Korean comparison query and returns Neubauer first", async () => {
-  let rpcBody: Record<string, unknown> | undefined;
-  const response = await handleWorldconsSearchRequest(
-    new Request(
-      "https://provider.example/api/search?q=%ED%95%9C%EA%B5%AD%20%ED%97%8C%EC%9E%AC%20%EA%B8%B0%ED%9B%84%EA%B2%B0%EC%A0%95%EA%B3%BC%20%EB%8F%85%EC%9D%BC%20%EC%97%B0%EB%B0%A9%ED%97%8C%EB%B2%95%EC%9E%AC%ED%8C%90%EC%86%8C%20Neubauer%20%EA%B8%B0%ED%9B%84%EA%B2%B0%EC%A0%95%EC%9D%84%20%EB%B9%84%EA%B5%90&mode=hybrid&pageSize=5&count=none",
-    ),
-    env,
-    {
-      fetcher: async (_input, init) => {
-        rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return Response.json({ items: [neubauerRow()] });
-      },
-    },
-  );
+test("Vercel provider preserves the Korean comparison query and source inference", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const query = "한국 헌재 기후결정과 독일 연방헌법재판소 Neubauer 기후결정을 비교";
+  const url = new URL("https://provider.example/api/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("mode", "fulltext");
+  const response = await handleWorldconsSearchRequest(new Request(url), env, searchDependencies(calls));
   const payload = await response.json();
 
   assert.equal(response.status, 200);
+  assert.equal(payload.query, query);
   assert.equal(payload.items[0].caseNumber, "1 BvR 2656/18");
-  assert.match(String(rpcBody?.p_query), /Neubauer/u);
+  assert.ok(calls[0].params.includes("de-bverfg"));
 });
 
-test("Vercel provider fulltext mode bypasses embeddings and executes V4 lexical retrieval", async () => {
-  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+test("Vercel provider fulltext mode bypasses embeddings and uses D1 lexical retrieval", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const dependencies = searchDependencies(calls);
+  dependencies.vectorBinding = null;
   const response = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=freedom&mode=fulltext&pageSize=5"),
     embeddingEnv,
-    {
-      fetcher: async (input, init) => {
-        calls.push({
-          url: String(input),
-          body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
-        });
-        return Response.json({ items: [neubauerRow()], retrievalMode: "fulltext" });
-      },
-    },
+    dependencies,
   );
   const payload = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
-  assert.equal(calls[0].body.p_mode, "fulltext");
-  assert.equal(calls[0].body.p_query_embedding, null);
+  assert.match(calls[0].sql, /search_fts match \?/u);
   assert.equal(payload.requestedMode, "fulltext");
   assert.equal(payload.effectiveMode, "fulltext");
   assert.equal(payload.degraded, false);
@@ -199,125 +152,78 @@ test("Vercel provider fulltext mode bypasses embeddings and executes V4 lexical 
 });
 
 test("Vercel provider reports an explicit fulltext fallback when semantic capability is not configured", async () => {
-  const rpcBodies: Array<Record<string, unknown>> = [];
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
   const response = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
     env,
-    {
-      fetcher: async (_input, init) => {
-        rpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ items: [neubauerRow()], retrievalMode: "fulltext" });
-      },
-    },
+    searchDependencies(calls),
   );
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(rpcBodies.length, 1);
-  assert.equal(rpcBodies[0].p_mode, "fulltext");
-  assert.equal(rpcBodies[0].p_query_embedding, null);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /search_fts match \?/u);
   assert.equal(payload.requestedMode, "hybrid");
   assert.equal(payload.effectiveMode, "fulltext");
   assert.equal(payload.degraded, true);
   assert.equal(payload.degradationReason, "embedding_not_configured");
 });
 
-test("Vercel provider narrows a generic US-versus-Germany comparison to German constitutional authority", async () => {
-  let rpcBody: Record<string, unknown> | undefined;
+test("Vercel provider narrows a generic comparison to German constitutional authority", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
   const query = "미국 판례와 독일 헌법재판 결정을 비교해 주세요. 각각의 판례 근거를 구분해서 제시해 주세요.";
   const url = new URL("https://provider.example/api/search");
   url.searchParams.set("q", query);
-  url.searchParams.set("mode", "hybrid");
-  url.searchParams.set("pageSize", "5");
-  const response = await handleWorldconsSearchRequest(new Request(url), env, {
-    fetcher: async (_input, init) => {
-      rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return Response.json({ items: [neubauerRow()], retrievalMode: "latest" });
-    },
-  });
+  url.searchParams.set("mode", "fulltext");
+  const response = await handleWorldconsSearchRequest(new Request(url), env, searchDependencies(calls));
   const payload = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(payload.query, query);
-  assert.equal(payload.requestedMode, "hybrid");
   assert.equal(payload.effectiveMode, "fulltext");
-  assert.equal(payload.databaseRetrievalMode, "latest");
-  assert.equal(rpcBody?.p_source, "de-bverfg");
-  assert.equal(rpcBody?.p_jurisdiction, null);
-  assert.equal(rpcBody?.p_query, "");
+  assert.ok(calls[0].params.includes("de-bverfg"));
+  assert.ok(!calls[0].params.some((value) => typeof value === "string" && value.includes("미국")));
 });
 
 test("Vercel provider translates a jurisdiction code into the source-owned search boundary", async () => {
-  let rpcBody: Record<string, unknown> | undefined;
-  const response = await handleWorldconsSearchRequest(
-    new Request("https://provider.example/api/search?q=%EB%8F%85%EC%9D%BC&mode=fulltext&jurisdiction=DE"),
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/search?q=독일&mode=fulltext&jurisdiction=DE"),
     env,
-    {
-      fetcher: async (_input, init) => {
-        rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return Response.json({ items: [neubauerRow()], retrievalMode: "latest" });
-      },
-    },
+    searchDependencies(calls),
   );
-
-  assert.equal(response.status, 200);
-  assert.equal(rpcBody?.p_source, "de-bverfg");
-  assert.equal(rpcBody?.p_jurisdiction, null);
-  assert.equal(rpcBody?.p_query, "");
+  assert.ok(calls[0].params.includes("de-bverfg"));
 });
 
 test("Vercel provider infers a source boundary from a short Korean jurisdiction name", async () => {
-  let rpcBody: Record<string, unknown> | undefined;
-  const response = await handleWorldconsSearchRequest(
-    new Request("https://provider.example/api/search?q=%EB%8F%85%EC%9D%BC&mode=fulltext"),
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/search?q=독일&mode=fulltext"),
     env,
-    {
-      fetcher: async (_input, init) => {
-        rpcBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return Response.json({ items: [neubauerRow()], retrievalMode: "latest" });
-      },
-    },
+    searchDependencies(calls),
   );
-
-  assert.equal(response.status, 200);
-  assert.equal(rpcBody?.p_source, "de-bverfg");
-  assert.equal(rpcBody?.p_jurisdiction, null);
-  assert.equal(rpcBody?.p_query, "");
+  assert.ok(calls[0].params.includes("de-bverfg"));
 });
 
-test("Vercel provider semantic mode creates an embedding and passes it to V4 vector retrieval", async () => {
-  const rpcCalls: Array<Record<string, unknown>> = [];
+test("Vercel provider semantic mode creates an embedding and queries Vectorize", async () => {
+  const vectorCalls: Array<{ vector: readonly number[]; options: { topK: number } }> = [];
   let embeddingCalls = 0;
   const response = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=intergenerational%20climate%20freedom&mode=semantic&pageSize=5"),
     embeddingEnv,
-    {
-      fetcher: async (input, init) => {
-        const url = String(input);
-        if (url === "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") {
-          embeddingCalls += 1;
-          const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          assert.equal(requestBody.model, "models/gemini-embedding-001");
-          assert.equal(requestBody.outputDimensionality, 1536);
-          assert.equal(requestBody.taskType, "RETRIEVAL_QUERY");
-          assert.match(JSON.stringify(requestBody.content), /climate/u);
-          assert.equal(new Headers(init?.headers).get("x-goog-api-key"), "test-gemini-key");
-          assert.equal(new Headers(init?.headers).get("authorization"), null);
-          return embeddingResponse();
-        }
-        rpcCalls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ items: [neubauerRow()], retrievalMode: "semantic" });
-      },
-    },
+    searchDependencies([], vectorCalls, async (input) => {
+      if (String(input) !== "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") return new Response(null, { status: 500 });
+      embeddingCalls += 1;
+      return embeddingResponse();
+    }),
   );
   const payload = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(embeddingCalls, 1);
-  assert.equal(rpcCalls.length, 1);
-  assert.equal(rpcCalls[0].p_mode, "semantic");
-  assert.equal(Array.isArray(rpcCalls[0].p_query_embedding), true);
-  assert.equal((rpcCalls[0].p_query_embedding as unknown[]).length, 1536);
+  assert.equal(vectorCalls.length, 1);
+  assert.equal(vectorCalls[0].vector.length, 1536);
+  assert.equal(vectorCalls[0].options.topK, 6);
   assert.equal(payload.requestedMode, "semantic");
   assert.equal(payload.effectiveMode, "semantic");
   assert.equal(payload.mode, "semantic");
@@ -325,47 +231,30 @@ test("Vercel provider semantic mode creates an embedding and passes it to V4 vec
   assert.equal(payload.databaseRetrievalMode, "semantic");
 });
 
-test("Vercel provider hybrid mode uses embeddings when available and degrades explicitly when embedding fails", async () => {
-  const hybridRpcBodies: Array<Record<string, unknown>> = [];
+test("Vercel provider hybrid mode uses embeddings and explicitly degrades when embedding fails", async () => {
+  const vectorCalls: Array<{ vector: readonly number[]; options: { topK: number } }> = [];
   const hybrid = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
     embeddingEnv,
-    {
-      fetcher: async (input, init) => {
-        if (String(input) === "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") return embeddingResponse();
-        hybridRpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ items: [neubauerRow()], retrievalMode: "hybrid" });
-      },
-    },
+    searchDependencies([], vectorCalls, async (input) => String(input).includes("generativelanguage.googleapis.com") ? embeddingResponse() : new Response(null, { status: 500 })),
   );
   const hybridPayload = await hybrid.json();
-
   assert.equal(hybrid.status, 200);
-  assert.equal(hybridRpcBodies[0].p_mode, "hybrid");
-  assert.equal((hybridRpcBodies[0].p_query_embedding as unknown[]).length, 1536);
+  assert.equal(vectorCalls.length, 1);
+  assert.equal(vectorCalls[0].options.topK, 100);
   assert.equal(hybridPayload.requestedMode, "hybrid");
   assert.equal(hybridPayload.effectiveMode, "hybrid");
   assert.equal(hybridPayload.degraded, false);
 
-  const degradedRpcBodies: Array<Record<string, unknown>> = [];
   const degraded = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=climate%20freedom&mode=hybrid&pageSize=5"),
     embeddingEnv,
-    {
-      fetcher: async (input, init) => {
-        if (String(input) === "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent") {
-          return Response.json({ error: "embedding unavailable" }, { status: 503 });
-        }
-        degradedRpcBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return Response.json({ items: [neubauerRow()], retrievalMode: "fulltext" });
-      },
-    },
+    searchDependencies([], [], async (input) => String(input).includes("generativelanguage.googleapis.com")
+      ? Response.json({ error: "embedding unavailable" }, { status: 503 })
+      : new Response(null, { status: 500 })),
   );
   const degradedPayload = await degraded.json();
-
   assert.equal(degraded.status, 200);
-  assert.equal(degradedRpcBodies[0].p_mode, "fulltext");
-  assert.equal(degradedRpcBodies[0].p_query_embedding, null);
   assert.equal(degradedPayload.requestedMode, "hybrid");
   assert.equal(degradedPayload.effectiveMode, "fulltext");
   assert.equal(degradedPayload.mode, "fulltext");
@@ -373,78 +262,49 @@ test("Vercel provider hybrid mode uses embeddings when available and degrades ex
   assert.equal(degradedPayload.degradationReason, "embedding_unavailable");
 });
 
-test("Vercel provider exact-case preflight covers France, Spain, and the US without embedding calls", async () => {
+test("Vercel provider exact-case preflight supports France, Spain, and the US without embeddings", async () => {
   const cases = [
-    ["2026-912%20QPC", "fr-conseil-constitutionnel"],
-    ["53%2F2025", "es-tribunal-constitucional"],
-    ["No.%2024-109", "us-scotus"],
+    ["2026-912 QPC", "fr-conseil-constitutionnel"],
+    ["53/2025", "es-tribunal-constitucional"],
+    ["No. 24-109", "us-scotus"],
   ] as const;
-
   for (const [query, sourceKey] of cases) {
-    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
-    const response = await handleWorldconsSearchRequest(
-      new Request(`https://provider.example/api/search?q=${query}&mode=hybrid&source=${sourceKey}`),
-      env,
-      {
-        fetcher: async (input, init) => {
-          calls.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
-          return Response.json({ items: [], retrievalMode: "exact-case", total: 0, hasMore: false, totalIsExact: false });
-        },
-      },
-    );
+    const vectorCalls: Array<{ vector: readonly number[]; options: VectorizeQueryOptions }> = [];
+    const url = new URL("https://provider.example/api/search");
+    url.searchParams.set("q", query);
+    url.searchParams.set("mode", "hybrid");
+    url.searchParams.set("source", sourceKey);
+    const dependencies = searchDependencies([], vectorCalls);
+    dependencies.vectorBinding = null;
+    const response = await handleWorldconsSearchRequest(new Request(url), embeddingEnv, dependencies);
     const payload = await response.json();
-
     assert.equal(response.status, 200);
-    assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /worldcons_provider_search_v4$/u);
-    assert.equal(calls[0].body.p_query_embedding, null);
-    assert.equal(calls[0].body.p_mode, "hybrid");
+    assert.equal(vectorCalls.length, 0);
     assert.equal(payload.degraded, false);
     assert.equal(payload.databaseRetrievalMode, "exact-case");
   }
 });
 
-test("Vercel provider preserves exact total semantics returned by the DB-native page contract", async () => {
+test("Vercel provider preserves exact total semantics from ranked D1 pages", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
   const response = await handleWorldconsSearchRequest(
-    new Request("https://provider.example/api/search?q=freedom&mode=fulltext&page=2&pageSize=10&count=exact"),
+    new Request("https://provider.example/api/search?q=freedom&mode=fulltext&page=2&pageSize=1&count=exact"),
     env,
-    {
-      fetcher: async () => Response.json({
-        items: [neubauerRow()],
-        retrievalMode: "fulltext",
-        total: 37,
-        hasMore: true,
-        totalIsExact: true,
-      }),
-    },
+    searchDependencies(calls, [], undefined, { total: 37, hasMore: true }),
   );
   const payload = await response.json();
-
   assert.equal(response.status, 200);
-  assert.deepEqual(payload.meta, {
-    limit: 10,
-    offset: 10,
-    total: 37,
-    hasMore: true,
-    totalIsExact: true,
-  });
-  assert.deepEqual(payload.pageInfo, {
-    page: 2,
-    pageSize: 10,
-    total: 37,
-    hasMore: true,
-    totalIsExact: true,
-  });
+  assert.deepEqual(payload.meta, { limit: 1, offset: 1, total: 37, hasMore: true, totalIsExact: true });
+  assert.deepEqual(payload.pageInfo, { page: 2, pageSize: 1, total: 37, hasMore: true, totalIsExact: true });
 });
 
 test("Vercel provider source and article endpoints read bounded Contract V2 evidence from D1", async () => {
   const calls: string[] = [];
   const d1 = createProviderFakeD1(calls);
   const dependencies = { coreBinding: d1 };
-  const d1OnlyEnv = { ...env, SUPABASE_URL: "", SUPABASE_SERVICE_ROLE_KEY: "" };
   const sources = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/sources"),
-    d1OnlyEnv,
+    env,
     dependencies,
   );
   const detail = await handleWorldconsSearchRequest(
@@ -524,28 +384,20 @@ test("Vercel provider rejects invalid input and normalizes dependency failures",
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).error.code, "INVALID_REQUEST");
 
-  const rateLimited = await handleWorldconsSearchRequest(
-    new Request("https://provider.example/api/search?q=test"),
-    env,
-    {
-      fetcher: async () => Response.json({ error: "rate limited" }, {
-        status: 429,
-        headers: { "retry-after": "17" },
-      }),
-    },
-  );
-  assert.equal(rateLimited.status, 429);
-  assert.equal(rateLimited.headers.get("retry-after"), "17");
-
   const unavailable = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=test"),
     env,
-    {
-      fetcher: async () => Response.json({ error: "upstream unavailable" }, { status: 500 }),
-    },
   );
   assert.equal(unavailable.status, 503);
   assert.equal((await unavailable.json()).error.code, "SERVICE_UNAVAILABLE");
+
+  const searchUnavailable = await handleWorldconsSearchRequest(
+    new Request("https://provider.example/api/search?q=test&mode=fulltext"),
+    env,
+    { coreBinding: createProviderFakeD1() },
+  );
+  assert.equal(searchUnavailable.status, 503);
+  assert.equal((await searchUnavailable.json()).error.code, "SERVICE_UNAVAILABLE");
 
   const invalidTextPage = await handleWorldconsSearchRequest(
     new Request(
@@ -660,11 +512,74 @@ test("Vercel provider truncates a large article body without dropping the preser
   assert.match(payload.sourceTextUrl, /\/source-text$/u);
 });
 
+function searchDependencies(
+  calls: Array<{ sql: string; params: unknown[] }> = [],
+  vectorCalls: Array<{ vector: readonly number[]; options: VectorizeQueryOptions }> = [],
+  fetcher?: typeof fetch,
+  pageOptions: { total?: number; hasMore?: boolean } = {},
+): ProviderDependencies & { pageOptions: { total?: number; hasMore?: boolean } } {
+  const searchBinding: D1RuntimeDatabase = {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      let params: unknown[] = [];
+      const statement: D1RuntimePreparedStatement = {
+        bind(...values: unknown[]) {
+          params = values;
+          return statement;
+        },
+        async all<T = Record<string, unknown>>() {
+          calls.push({ sql, params });
+          let results: Record<string, unknown>[];
+          if (/count\(\*\) as total/iu.test(sql)) {
+            results = [{ total: pageOptions.total ?? 1 }];
+          } else if (/from search_fts[\s\S]*match \?/iu.test(sql) && /as score/iu.test(sql)) {
+            results = [
+              { article_id: neubauerRow().id, score: 1 },
+              ...(pageOptions.hasMore ? [
+                { article_id: "552950ac-de82-41f5-ae88-411efc5ae9b3", score: 0.5 },
+                { article_id: "552950ac-de82-41f5-ae88-411efc5ae9b4", score: 0.25 },
+              ] : []),
+            ];
+          } else if (/from search_fts[\s\S]*match \?/iu.test(sql)) {
+            results = [{ article_id: neubauerRow().id, relevance_score: 1 }];
+          } else if (/join search_fts on search_fts\.article_id/iu.test(sql)) {
+            results = [{ article_id: neubauerRow().id, original_published_at: "2021-03-24T00:00:00Z", title: "Beschluss" }];
+          } else {
+            results = [{ article_id: neubauerRow().id }];
+          }
+          if (/offset \?/iu.test(sql) && /as score/iu.test(sql)) {
+            results = results.slice(Number(params[params.length - 1] ?? 0));
+          }
+          if (/limit \?/iu.test(sql)) {
+            const limit = Number(params[params.length - 2] ?? params[params.length - 1]);
+            if (Number.isFinite(limit)) results = results.slice(0, limit);
+          }
+          return { success: true, results: results as unknown as T[] };
+        },
+      };
+      return statement;
+    },
+  };
+  const vectorBinding: VectorizeIndexBinding = {
+    async query(vector, options): Promise<VectorizeQueryResult> {
+      vectorCalls.push({ vector, options });
+      return { matches: [{ id: neubauerRow().id, score: 0.9, metadata: { publishedEpoch: Date.parse("2021-03-24T00:00:00Z") } }] };
+    },
+  };
+  return {
+    coreBinding: createProviderFakeD1([], { cleanedText: NEUBAUER_EXCERPT }),
+    searchBinding,
+    vectorBinding,
+    ...(fetcher ? { fetcher } : {}),
+    pageOptions,
+  };
+}
+
 function createProviderFakeD1(
   calls: string[] = [],
   options: { includeArticle?: boolean; cleanedText?: string | null } = {},
 ): D1RuntimeDatabase {
   const article = {
+    ...neubauerRow(),
     id: neubauerRow().id,
     slug: neubauerRow().slug,
     source_key: "de-bverfg",

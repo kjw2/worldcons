@@ -1,15 +1,23 @@
 import { normalizeEmbeddingVector } from "@/lib/ai/embedding-vector";
-import { createD1ArticleReadRepository } from "@/lib/article-reads/d1-repository";
 import type { ArticleDetail } from "@/lib/db/types";
-import { createD1ReferenceReadRepository } from "@/lib/reference-reads/d1-repository";
+import type { SupabaseArticleTagRow } from "@/lib/article-reads/shared";
+import { createD1ArticleReadRepository } from "@/lib/article-reads/d1-repository";
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import { d1Schema } from "@/lib/cloudflare/d1/schema";
+import { runD1RuntimeRead } from "@/lib/cloudflare/d1/runtime-read";
+import type { RankedSearchEntry, RankedSearchPageInput } from "@/lib/cloudflare/search-ranked";
+import { runVectorRankedSearchPage } from "@/lib/cloudflare/search-vector/ranked";
+import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
+import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { hasExactCaseReference } from "@/lib/search/case-number";
+import { createD1ReferenceReadRepository } from "@/lib/reference-reads/d1-repository";
+import type { SupabaseTagRow } from "@/lib/reference-reads/shared";
+import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
+import { D1ShadowTruncatedError } from "@/lib/reference-reads/d1-repository";
 
 export type Cclrag2ProviderEnv = {
   ENVIRONMENT: string;
   PUBLIC_BASE_URL: string;
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
   EMBEDDING_PROVIDER?: string;
   SEMANTIC_SEARCH_ENABLED?: string;
   GEMINI_API_KEY?: string;
@@ -22,6 +30,8 @@ type Fetcher = typeof fetch;
 export type ProviderDependencies = {
   fetcher?: Fetcher;
   coreBinding?: D1RuntimeDatabase | null;
+  searchBinding?: D1RuntimeDatabase | null;
+  vectorBinding?: VectorizeIndexBinding | null;
 };
 
 const SEARCH_PARAMETERS = new Set([
@@ -45,13 +55,11 @@ const SAFE_FILTER_PATTERN = /^[\p{L}\p{M}\p{N} _./:·°§#-]+$/u;
 const SEARCH_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
 const DETAIL_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=900";
 const CONTRACT_VERSION = "2.0";
-const UPSTREAM_TIMEOUT_MS = 8_000;
 const EMBEDDING_TIMEOUT_MS = 5_000;
 const GEMINI_EMBEDDING_API = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
 const EXPECTED_EMBEDDING_DIMENSIONS = 1536;
 const MAX_EMBEDDING_RESPONSE_BYTES = 256_000;
-const MAX_UPSTREAM_RPC_BYTES = 4_000_000;
 const MAX_SEARCH_RESPONSE_BYTES = 1_500_000;
 const MAX_SOURCES_RESPONSE_BYTES = 200_000;
 const MAX_DETAIL_RESPONSE_BYTES = 1_900_000;
@@ -161,12 +169,7 @@ export async function handleWorldconsSearchRequest(
 
   try {
     if (pathname === "/api/search") {
-      if (!env.SUPABASE_URL?.trim() || !env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
-        return errorResponse(503, "SERVICE_UNAVAILABLE", "WorldCons data access is not configured.", {
-          "Retry-After": "30",
-        }, requestId);
-      }
-      return await searchResponse(url, env, fetcher, requestId);
+      return await searchResponse(url, env, fetcher, dependencies, requestId);
     }
     if (pathname === "/api/sources") {
       assertNoParameters(url.searchParams);
@@ -183,11 +186,6 @@ export async function handleWorldconsSearchRequest(
     if (error instanceof RequestValidationError) {
       return errorResponse(400, "INVALID_REQUEST", error.message, {}, requestId);
     }
-    if (error instanceof UpstreamRateLimitError) {
-      return errorResponse(429, "RATE_LIMITED", "WorldCons search is temporarily rate limited.", {
-        "Retry-After": error.retryAfter,
-      }, requestId);
-    }
     console.error(JSON.stringify({
       event: "worldcons_search_api_error",
       path: pathname,
@@ -200,31 +198,153 @@ export async function handleWorldconsSearchRequest(
   }
 }
 
-async function searchResponse(url: URL, env: Cclrag2ProviderEnv, fetcher: Fetcher, requestId: string) {
+const PROVIDER_SEARCH_COLUMNS = [
+  "id",
+  "slug",
+  "source_key",
+  "jurisdiction",
+  "institution_name",
+  "content_type",
+  "original_url",
+  "canonical_url",
+  "original_language",
+  "original_title",
+  "korean_title",
+  "original_published_at",
+  "discovered_at",
+  "fetched_at",
+  "summarized_at",
+  "status",
+  "summary_json",
+  "source_metadata",
+  "cleaned_text",
+  "content_hash",
+] as const;
+
+const PROVIDER_TABLES = new Map(d1Schema.tables.map((table) => [table.name, table]));
+
+async function hydrateProviderSearchRows(binding: D1RuntimeDatabase, entries: readonly RankedSearchEntry[]) {
+  const ids = [...new Set(entries.map((entry) => entry.id))];
+  if (ids.length === 0) return [];
+  const articleTable = PROVIDER_TABLES.get("articles");
+  const articleTagTable = PROVIDER_TABLES.get("article_tags");
+  const tagTable = PROVIDER_TABLES.get("tags");
+  if (!articleTable || !articleTagTable || !tagTable) throw new Error("Provider search D1 schema is incomplete.");
+
+  const articles = await runD1RuntimeRead({
+    binding,
+    table: articleTable,
+    select: [...PROVIDER_SEARCH_COLUMNS],
+    where: [
+      { column: "id", op: "in", value: ids },
+      { column: "status", value: "summarized" },
+      { column: "catalog_ai_stale_v4", value: 0 },
+    ],
+    limit: ids.length,
+  });
+  if (articles.length > ids.length) throw new D1ShadowTruncatedError("hydrateProviderSearchRows");
+  if (articles.length === 0) return [];
+
+  const articleIds = articles.flatMap((article) => typeof article.id === "string" ? [article.id] : []);
+  const links = await runD1RuntimeRead({
+    binding,
+    table: articleTagTable,
+    select: ["article_id", "tag_id", "confidence"],
+    where: [{ column: "article_id", op: "in", value: articleIds }],
+    orderBy: [{ column: "article_id", direction: "asc" }, { column: "tag_id", direction: "asc" }],
+    limit: D1_SHADOW_DEFAULT_MAX_ROWS + 1,
+  });
+  if (links.length > D1_SHADOW_DEFAULT_MAX_ROWS) throw new D1ShadowTruncatedError("hydrateProviderSearchRows");
+  const tagIds = [...new Set(links.flatMap((link) => typeof link.tag_id === "string" ? [link.tag_id] : []))];
+  const tags = tagIds.length === 0 ? [] : await runD1RuntimeRead({
+    binding,
+    table: tagTable,
+    select: ["id", "slug", "name", "normalized_name", "type", "description", "article_count", "latest_article_at"],
+    where: [{ column: "id", op: "in", value: tagIds }],
+    orderBy: ["slug"],
+    limit: D1_SHADOW_DEFAULT_MAX_ROWS + 1,
+  });
+  if (tags.length > D1_SHADOW_DEFAULT_MAX_ROWS) throw new D1ShadowTruncatedError("hydrateProviderSearchRows");
+
+  const tagsById = new Map(tags.map((tag) => [String(tag.id), tag as unknown as SupabaseTagRow]));
+  const linksByArticleId = new Map<string, SupabaseArticleTagRow[]>();
+  for (const link of links) {
+    const articleId = typeof link.article_id === "string" ? link.article_id : null;
+    const tag = typeof link.tag_id === "string" ? tagsById.get(link.tag_id) : undefined;
+    if (!articleId || !tag) continue;
+    const articleTags = linksByArticleId.get(articleId) ?? [];
+    articleTags.push({ confidence: finiteNumber(link.confidence), tags: tag });
+    articleTags.sort((left, right) => {
+      const leftTag = left.tags as SupabaseTagRow;
+      const rightTag = right.tags as SupabaseTagRow;
+      return leftTag.slug.localeCompare(rightTag.slug);
+    });
+    linksByArticleId.set(articleId, articleTags);
+  }
+
+  const articleById = new Map(articles.map((article) => {
+    const sourceMetadata = optionalRecord(article.source_metadata);
+    const body = optionalString(article.cleaned_text) ?? "";
+    const row: JsonRecord = {
+      ...article,
+      article_tags: linksByArticleId.get(String(article.id)) ?? [],
+      case_number: firstString(sourceMetadata, ["caseNumber", "case_number", "docketNumber", "docket_number"]),
+      body_excerpt: Array.from(body).slice(0, MAX_BODY_EXCERPT_CHARS).join(""),
+    };
+    return [String(article.id), row];
+  }));
+  return entries.flatMap((entry) => {
+    const row = articleById.get(entry.id);
+    if (!row || !isPublishableListItem(row)) return [];
+    return [{
+      ...row,
+      relevance_score: entry.score ?? null,
+      lexical_rank: entry.lexicalRank ?? null,
+      semantic_rank: entry.semanticRank ?? null,
+      semantic_similarity: entry.semanticSimilarity ?? null,
+    }];
+  });
+}
+
+async function searchResponse(
+  url: URL,
+  env: Cclrag2ProviderEnv,
+  fetcher: Fetcher,
+  dependencies: ProviderDependencies,
+  requestId: string,
+) {
   const input = parseSearchInput(url.searchParams);
   const retrieval = await resolveRetrievalPlan(input.query, input.mode, env, fetcher, requestId);
   const providerSearch = providerSearchInput(input, retrieval.effectiveMode);
-  const rpcPayload = await callRpc(env, "worldcons_provider_search_v4", {
-    p_query: providerSearch.query,
-    p_mode: retrieval.effectiveMode,
-    p_query_embedding: retrieval.embedding,
-    p_limit: input.pageSize,
-    p_offset: (input.page - 1) * input.pageSize,
-    p_source: providerSearch.source,
-    p_jurisdiction: providerSearch.jurisdiction,
-    p_range: input.range,
-    p_count: input.count,
-  }, fetcher, requestId);
-  const payload = requiredRecord(rpcPayload, "search response");
-  const rawItems = Array.isArray(payload.items) ? payload.items : [];
-  const items = rawItems.slice(0, input.pageSize).map((item) => mapSearchItem(item, env.PUBLIC_BASE_URL));
+  const searchBinding = dependencies.searchBinding;
+  const coreBinding = dependencies.coreBinding;
+  if (!searchBinding || !coreBinding) {
+    return errorResponse(503, "SERVICE_UNAVAILABLE", "WorldCons data access is not configured.", {
+      "Retry-After": "30",
+    }, requestId);
+  }
   const offset = (input.page - 1) * input.pageSize;
-  const hasMore = typeof payload.hasMore === "boolean" ? payload.hasMore : rawItems.length > input.pageSize;
-  const lowerBoundTotal = offset + items.length + (hasMore ? 1 : 0);
-  const upstreamTotal = nonNegativeInteger(payload.total);
-  const totalIsExact = payload.totalIsExact === true;
-  const total = Math.max(upstreamTotal ?? 0, lowerBoundTotal);
-  const databaseRetrievalMode = optionalString(payload.retrievalMode);
+  const rankedInput: RankedSearchPageInput = {
+    query: providerSearch.query,
+    mode: retrieval.effectiveMode,
+    limit: input.pageSize,
+    offset,
+    source: providerSearch.source,
+    jurisdiction: providerSearch.jurisdiction,
+    range: input.range,
+    count: input.count,
+    embedding: retrieval.embedding,
+    referenceNow: new Date(),
+  };
+  const page = await runVectorRankedSearchPage({
+    d1: searchBinding,
+    vector: dependencies.vectorBinding,
+    input: rankedInput,
+  });
+  const hydrated = await hydrateProviderSearchRows(coreBinding, page.entries);
+  const items = hydrated.map((row) => mapSearchItem(row, env.PUBLIC_BASE_URL));
+  const { hasMore, total, totalIsExact } = page;
+  const databaseRetrievalMode = page.retrievalMode;
 
   return jsonResponse({
     contractVersion: CONTRACT_VERSION,
@@ -844,51 +964,6 @@ function mapArticleDetail(value: unknown, publicBaseUrl: string) {
   };
 }
 
-async function callRpc(
-  env: Cclrag2ProviderEnv,
-  functionName: string,
-  payload: JsonRecord,
-  fetcher: Fetcher,
-  requestId: string,
-): Promise<unknown> {
-  const endpoint = new URL(`/rest/v1/rpc/${functionName}`, normalizedSupabaseUrl(env.SUPABASE_URL));
-  const response = await fetcher(endpoint, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-Request-Id": requestId,
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
-  if (response.status === 429) {
-    await response.body?.cancel();
-    throw new UpstreamRateLimitError(normalizedRetryAfter(response.headers.get("retry-after")));
-  }
-  if (!response.ok) {
-    await response.body?.cancel();
-    console.error(JSON.stringify({
-      event: "worldcons_supabase_rpc_failed",
-      rpc: functionName,
-      status: response.status,
-      requestId,
-    }));
-    throw new Error("SupabaseRpcError");
-  }
-  return readBoundedJson(response, MAX_UPSTREAM_RPC_BYTES);
-}
-
-function normalizedSupabaseUrl(value: string) {
-  const url = new URL(value);
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
-  return url;
-}
-
 function normalizedBaseUrl(value: string) {
   return value.replace(/\/+$/u, "");
 }
@@ -896,11 +971,6 @@ function normalizedBaseUrl(value: string) {
 function normalizedPathname(pathname: string) {
   if (pathname === "/") return pathname;
   return pathname.replace(/\/+$/u, "");
-}
-
-function normalizedRetryAfter(value: string | null) {
-  if (value && /^(?:[1-9]\d{0,3})$/u.test(value)) return value;
-  return "30";
 }
 
 function requestIdFor(request: Request) {
@@ -1147,9 +1217,9 @@ async function readBoundedJson(response: Response, maxBytes: number) {
   const contentLength = response.headers.get("content-length");
   if (contentLength && Number(contentLength) > maxBytes) {
     await response.body?.cancel();
-    throw new Error("SupabaseRpcResponseTooLarge");
+    throw new Error("EmbeddingResponseTooLarge");
   }
-  if (!response.body) throw new Error("SupabaseRpcEmptyResponse");
+  if (!response.body) throw new Error("EmbeddingResponseEmpty");
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -1161,7 +1231,7 @@ async function readBoundedJson(response: Response, maxBytes: number) {
       totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
         await reader.cancel();
-        throw new Error("SupabaseRpcResponseTooLarge");
+        throw new Error("EmbeddingResponseTooLarge");
       }
       chunks.push(value);
     }
@@ -1264,15 +1334,5 @@ class RequestValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RequestValidationError";
-  }
-}
-
-class UpstreamRateLimitError extends Error {
-  retryAfter: string;
-
-  constructor(retryAfter: string) {
-    super("WorldCons upstream rate limit reached.");
-    this.name = "UpstreamRateLimitError";
-    this.retryAfter = retryAfter;
   }
 }

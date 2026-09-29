@@ -20,11 +20,13 @@ import {
 const providerEnv = {
   ENVIRONMENT: "test",
   PUBLIC_BASE_URL: "https://worldcons.vercel.app/api/cclrag2",
-  SUPABASE_URL: "https://project.supabase.co",
-  SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
 } satisfies Cclrag2ProviderEnv;
 
-const workerEnv = providerEnv satisfies WorldconsSearchWorkerEnv;
+const workerEnv = {
+  ...providerEnv,
+  SUPABASE_URL: "https://project.supabase.co",
+  SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+} satisfies WorldconsSearchWorkerEnv;
 
 function sourceFetcher(): typeof fetch {
   return async () => Response.json([
