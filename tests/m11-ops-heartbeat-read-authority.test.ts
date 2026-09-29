@@ -402,12 +402,12 @@ test("M11.3R watchdog workflow plumbs the read authority from repo vars with a s
   }
 });
 
-test("M11.3R root Worker and ops-write config rest the read authority at supabase", () => {
+test("M11.3R root Worker and ops-write config persist the permanent d1 read authority", () => {
   const rootConfig = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
-  assert.match(rootConfig, /"WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY":\s*"supabase"/u);
+  assert.match(rootConfig, /"WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY":\s*"d1"/u);
 
   // The boundary Worker declares its own read authority (resolved independently
-  // from the Node caller's) and it too must rest at the safe supabase default.
+  // from the Node caller's) and it too carries the permanent D1 value.
   const opsWriteConfig = fs.readFileSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"), "utf8");
-  assert.match(opsWriteConfig, /"WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY":\s*"supabase"/u);
+  assert.match(opsWriteConfig, /"WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY":\s*"d1"/u);
 });

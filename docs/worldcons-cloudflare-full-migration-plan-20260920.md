@@ -2185,12 +2185,23 @@ Allowed only after:
 No deletion is automatic.
 
 M13 reality at main head `3d8b0b4` (2026-09-29): M12 production compute/traffic
-has cut over to Cloudflare, but **every M11 authority selector still rests at
-`supabase`**. M13 is therefore the deliberate, single, bounded operation that
-moves proven domains to permanent D1 authority and then runs the observation,
-export, rotation, DR and approval gates before any destructive retirement. The
-336-hour (14-day) continuous observation window does **not** start until the
-permanent D1 switch occurs.
+has cut over to Cloudflare. On 2026-09-29 the final Supabase -> D1 delta was
+verified **exact across all 75 migratable tables** using three production
+reconciliation manifests that share the never-delete canonical full-table logic:
+core 30/30 exact, ingest 26/26 exact, ops 19/19 exact, before any authority
+switch. The persistent Worker configuration now carries the permanent D1
+authority profile, but the actual production switch is pending and has not yet
+been deployed. M13 is the deliberate,
+single, bounded operation that moves proven domains to permanent D1 authority and
+then runs the observation, export, rotation, DR and approval gates before any
+destructive retirement.
+
+**The 336-hour (14-day) continuous observation window starts only from the actual
+successful production switch timestamp**, which the orchestrator records after the
+deploy. Until that timestamp is recorded and verified, the observation gate remains
+open. The switch itself, the observation start, the final export, credential
+rotation, the DR rehearsal, the distinct approvals and any retirement are **not**
+yet complete and must not be recorded as such.
 
 #### M13 authority profile (the single bounded switch)
 
@@ -2232,10 +2243,13 @@ contracts from one variable:
   whose D1 path fails still fails closed in the existing M11 seam code; the
   profile only resolves the selector value.
 
-The Worker/ops-write `wrangler.jsonc` rest at
-`WORLDCONS_M13_AUTHORITY_PROFILE=supabase`. The forward switch is one deployment
-of the two Worker configs plus the GitHub repository variables `WORLDCONS_*`;
-the rollback is the same operation with the value set back to `supabase`.
+The Worker/ops-write `wrangler.jsonc` now persist
+`WORLDCONS_M13_AUTHORITY_PROFILE=d1` (and the exact per-domain `d1` selector
+values) as the repository configuration, ahead of the 2026-09-29 final delta
+being verified exact 75/75. The forward switch is imminent: one deployment of the
+two Worker configs plus the GitHub repository variables `WORLDCONS_*`; the actual
+production switch timestamp is not yet recorded. The rollback is the same
+operation with the value set back to `supabase`.
 
 ##### M13 distributed rate limit (`ops.rate_limit`)
 
@@ -2330,8 +2344,14 @@ final gate passes**.
    delete/pause Supabase/Vercel resources. The read-only tool never authorizes
    this step.
 
-Verified so far: `pnpm test:m13` and the per-module suites. The plan does not
-record any production M13 action as having occurred.
+Verified so far: the 2026-09-29 final Supabase -> D1 delta is exact 75/75 via the
+three production reconciliation manifests (core 30/30, ingest 26/26, ops 19/19)
+using the never-delete canonical full-table logic; `pnpm test:m13` and the
+per-module suites pass; the repository Worker configs now persist the permanent
+`d1` profile. **Not** yet recorded as done: the actual production deploy/switch
+timestamp, the 336h observation start, the final Supabase export, credential
+rotation, the DR rehearsal, the approvals and the destructive retirement. The
+orchestrator records the successful production switch timestamp after deploy.
 
 ## 16. Zero-downtime data cutover
 
@@ -2681,6 +2701,6 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] credential rotation
 - [ ] DR rehearsal
 - [ ] explicit retirement approval
-- [ ] M13 authority profile switch (`WORLDCONS_M13_AUTHORITY_PROFILE=d1`; readiness/tests implemented, **not applied**)
-- [ ] M13 final Supabase -> D1 delta cleared across ops/ingest/core (`pnpm m13:readiness --source=supabase-linked`; **not run**)
-- [ ] M13 336h continuous D1-sole-authority observation window (**not started**)
+- [ ] M13 authority profile switch (`WORLDCONS_M13_AUTHORITY_PROFILE=d1`; repository Worker configs now carry `d1`, **production switch pending, timestamp not yet recorded**)
+- [x] M13 final Supabase -> D1 delta verified exact across all 75 migratable tables (core 30/30, ingest 26/26, ops 19/19) on 2026-09-29 via three production reconciliation manifests using the never-delete canonical full-table logic (read-only)
+- [ ] M13 336h continuous D1-sole-authority observation window (**not started**; starts only from the orchestrator-recorded successful production switch timestamp)

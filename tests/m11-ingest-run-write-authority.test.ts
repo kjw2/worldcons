@@ -101,7 +101,7 @@ test("M11-B Node client keeps resting Supabase local and fails closed once D1 is
 
 test("M11-B deployment and GitHub writers carry the ingest authority seam", () => {
   const config = fs.readFileSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"), "utf8");
-  assert.match(config, /"WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "supabase"/u);
+  assert.match(config, /"WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "d1"/u);
   assert.match(config, /"binding": "WORLDCONS_INGEST"/u);
   assert.match(config, /"database_name": "worldcons_ingest"/u);
 

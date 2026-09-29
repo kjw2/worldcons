@@ -39,9 +39,9 @@ test("M13 profile is wired into the ops-write boundary Worker", () => {
   assert.match(source, /handleOpsHeartbeatBoundary\(request, authorityEnv\)/u);
 });
 
-test("M13 profile var rests at supabase in both Worker configs", () => {
-  assert.match(read("wrangler.jsonc"), /"WORLDCONS_M13_AUTHORITY_PROFILE": "supabase"/u);
-  assert.match(read("workers/ops-write/wrangler.jsonc"), /"WORLDCONS_M13_AUTHORITY_PROFILE": "supabase"/u);
+test("M13 profile var persists at the permanent d1 authority in both Worker configs", () => {
+  assert.match(read("wrangler.jsonc"), /"WORLDCONS_M13_AUTHORITY_PROFILE": "d1"/u);
+  assert.match(read("workers/ops-write/wrangler.jsonc"), /"WORLDCONS_M13_AUTHORITY_PROFILE": "d1"/u);
 });
 
 test("M13 rate-limit Worker binding, DO export and wrangler migration are wired", () => {
@@ -55,7 +55,7 @@ test("M13 rate-limit Worker binding, DO export and wrangler migration are wired"
   assert.match(wrangler, /"name": "WORLDCONS_RATE_LIMIT"/u);
   assert.match(wrangler, /"class_name": "RateLimitBucketDurableObject"/u);
   assert.match(wrangler, /"new_sqlite_classes": \["RateLimitBucketDurableObject"\]/u);
-  assert.match(wrangler, /"WORLDCONS_RATE_LIMIT_AUTHORITY": "supabase"/u);
+  assert.match(wrangler, /"WORLDCONS_RATE_LIMIT_AUTHORITY": "d1"/u);
 
   const durable = read("lib/cloudflare/rate-limit/durable-object.ts");
   assert.match(durable, /export class RateLimitBucketDurableObject/u);

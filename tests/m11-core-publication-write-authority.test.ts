@@ -171,11 +171,11 @@ test("M11-C publication transition batches publication/history/audit/outbox/requ
   assert.ok(db.batches[0].every((statement) => !statement.sql.includes(articleId)));
 });
 
-test("M11-C deployed configs expose worldcons_core only behind supabase-resting authority", () => {
+test("M11-C deployed configs persist the permanent d1 core write authority for worldcons_core", () => {
   const rootConfig = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   const boundaryConfig = fs.readFileSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"), "utf8");
-  assert.match(rootConfig, /"WORLDCONS_CORE_WRITE_AUTHORITY": "supabase"/u);
-  assert.match(boundaryConfig, /"WORLDCONS_CORE_WRITE_AUTHORITY": "supabase"/u);
+  assert.match(rootConfig, /"WORLDCONS_CORE_WRITE_AUTHORITY": "d1"/u);
+  assert.match(boundaryConfig, /"WORLDCONS_CORE_WRITE_AUTHORITY": "d1"/u);
   assert.match(boundaryConfig, /"binding": "WORLDCONS_CORE"/u);
   assert.match(boundaryConfig, /"database_name": "worldcons_core"/u);
   for (const file of [

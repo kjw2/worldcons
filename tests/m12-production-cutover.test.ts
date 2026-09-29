@@ -22,7 +22,7 @@ test("M12 production runtime uses the new canonical origin and the proven search
   assert.match(config, /"WORLDCONS_BASE_URL": "https:\/\/worldcons\.soltera\.dev"/u);
   assert.match(config, /"WORLDCONS_SEARCH_SERVICE_ENABLED": "true"/u);
   assert.match(config, /"WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "true"/u);
-  assert.match(config, /"WORLDCONS_CORE_WRITE_AUTHORITY": "supabase"/u);
+  assert.match(config, /"WORLDCONS_CORE_WRITE_AUTHORITY": "d1"/u);
 });
 
 test("M12 public production surfaces no longer advertise worldcons.vercel.app", () => {
