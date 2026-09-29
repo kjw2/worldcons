@@ -7,6 +7,7 @@ import { createSupabaseLinkedRowSource } from "@/lib/cloudflare/d1/convert/supab
 import type { PostgresRowSource } from "@/lib/cloudflare/d1/convert";
 import { createWranglerD1Runner } from "@/lib/cloudflare/d1/remote/runner";
 import { buildM13FinalDeltaManifest } from "@/lib/cloudflare/m13/final-delta";
+import { evaluateM13FinalDeltaFromManifestFiles } from "@/lib/cloudflare/m13/delta-manifest-evidence";
 import {
   M13_AUTHORITY_PROFILE_ENV,
   buildM13AuthorityEnvProfile,
@@ -35,15 +36,19 @@ const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
  *   pnpm m13:readiness --profile=d1 --json
  *   pnpm m13:readiness --emit-authority-env
  *   pnpm m13:readiness --source=supabase-linked --observation-start=<iso> --observation-end=<iso> --json
+ *   pnpm m13:readiness --delta-manifests=<core.json>,<ingest.json>,<ops.json> --json
  *
  * It is strictly READ-ONLY: it never writes to Supabase, D1, R2, Vercel, the
  * Worker or any remote resource. `--emit-authority-env` prints the exact
  * per-domain values a permanent switch or rollback would use; it does not apply
- * them. The final-delta leg is only run when an explicit `--source=` is given,
- * and it is forced to dry-run. It never claims `readyForDestructiveRetirement`
- * unless every machine gate passes AND the caller supplies explicit human
- * attestation flags for owner approvals, legal/retention review and retirement
- * approval.
+ * them. The final-delta leg is only run when an explicit `--source=` is given
+ * (forced dry-run), and it is mutually exclusive with `--delta-manifests=`.
+ * After the permanent D1 cutover, use the immutable PRE-SWITCH raw reconcile
+ * manifests via `--delta-manifests=` instead of a live parity re-run against the
+ * now-authoritative D1, which diverges by design. It never claims
+ * `readyForDestructiveRetirement` unless every machine gate passes AND the
+ * caller supplies explicit human attestation flags for owner approvals,
+ * legal/retention review and retirement approval.
  */
 
 function argValue(args: readonly string[], name: string): string | null {
@@ -190,6 +195,27 @@ function buildGovernance(args: readonly string[]): M13GovernanceEvidence {
   };
 }
 
+export function deltaManifestPaths(args: readonly string[]): string[] | null {
+  const raw = argValue(args, "delta-manifests");
+  if (raw === null) return null;
+  const items = raw.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  if (items.length === 0) throw new Error("--delta-manifests requires a comma-separated list of manifest file paths");
+  return items;
+}
+
+/**
+ * `--source=` (live read-only parity) and `--delta-manifests=` (immutable
+ * PRE-SWITCH raw evidence) are mutually exclusive final-delta evidence inputs.
+ * Supplying both is ambiguous and rejected rather than silently preferring one.
+ */
+export function assertDeltaEvidenceInputs(args: readonly string[]): void {
+  const manifestPaths = deltaManifestPaths(args);
+  const sourceArg = (argValue(args, "source") ?? "").trim();
+  if (manifestPaths !== null && sourceArg !== "") {
+    throw new Error("--source and --delta-manifests are mutually exclusive; use one final-delta evidence input");
+  }
+}
+
 function createDeltaSource(args: readonly string[]): { source: PostgresRowSource; close: () => Promise<void> } | null {
   const kind = (argValue(args, "source") ?? "").trim();
   if (kind === "") return null;
@@ -228,23 +254,30 @@ async function main(): Promise<void> {
     return;
   }
 
+  assertDeltaEvidenceInputs(args);
+  const manifestPaths = deltaManifestPaths(args);
+
   let finalDelta = null;
-  const delta = createDeltaSource(args);
-  if (delta) {
-    try {
-      const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
-      const executeRemoteQuery = createLazyRemoteQuery({ runner, databases: null });
-      const remoteReadFallbackPolicy = resolveReadFallbackPolicy(args);
-      const built = await buildM13FinalDeltaManifest({
-        runner,
-        source: delta.source,
-        executeRemoteQuery,
-        batchSize: positiveIntegerArg(args, "batch-size") ?? undefined,
-        remoteReadFallbackPolicy,
-      });
-      finalDelta = built.report;
-    } finally {
-      await delta.close();
+  if (manifestPaths !== null) {
+    finalDelta = evaluateM13FinalDeltaFromManifestFiles(manifestPaths);
+  } else {
+    const delta = createDeltaSource(args);
+    if (delta) {
+      try {
+        const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
+        const executeRemoteQuery = createLazyRemoteQuery({ runner, databases: null });
+        const remoteReadFallbackPolicy = resolveReadFallbackPolicy(args);
+        const built = await buildM13FinalDeltaManifest({
+          runner,
+          source: delta.source,
+          executeRemoteQuery,
+          batchSize: positiveIntegerArg(args, "batch-size") ?? undefined,
+          remoteReadFallbackPolicy,
+        });
+        finalDelta = built.report;
+      } finally {
+        await delta.close();
+      }
     }
   }
 

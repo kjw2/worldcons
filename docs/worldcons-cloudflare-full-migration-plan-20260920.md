@@ -2308,14 +2308,30 @@ TRUNCATE, REPLACE, UPSERT or DDL, and it never mutates. The final delta is close
 by the existing separately-authorized operator
 `pnpm d1:reconcile --apply --database=<db>` (never from the readiness tool).
 
+After the permanent D1 cutover, do **not** re-run a live `--source=` parity
+against the now-authoritative D1: Supabase is frozen while D1 legitimately
+receives new writes, so the live comparison diverges by design and can no longer
+reproduce the pre-switch machine evidence. Instead, evaluate the immutable
+PRE-SWITCH raw reconcile manifests with
+`lib/cloudflare/m13/delta-manifest-evidence.ts` via
+`pnpm m13:readiness --delta-manifests=<core.json>,<ingest.json>,<ops.json>`. This
+reads the raw M5.2d manifests (read-only, local), requires `dryRun:true` and
+`applied:false`, requires exactly one unique target for each of the three
+databases (no missing/duplicate/extra), and re-evaluates them with the exact same
+`evaluateM13FinalDelta` logic and per-table hash/state checks. An aggregate
+boolean or user-authored summary is never accepted. `--delta-manifests=` is
+mutually exclusive with `--source=`.
+
 #### M13 read-only readiness/evidence command
 
 `pnpm m13:readiness` (`scripts/m13-readiness.ts`) is strictly read-only. It
 reports the current authority profile, the per-domain assignment verification,
-the final-delta summary, the 336h observation state (via
-`--observation-start/--observation-end`), the P5 retirement evaluator state (via
-`--p5`), R2/search readiness references, stranded Vercel inventory state,
-final-export/rotation/DR records and the explicit blockers. It **cannot** claim
+the final-delta summary (live `--source=` before the cutover; immutable
+`--delta-manifests=` PRE-SWITCH raw reconcile manifests after it), the 336h
+observation state (via `--observation-start/--observation-end`), the P5
+retirement evaluator state (via `--p5`), R2/search readiness references, stranded
+Vercel inventory state, final-export/rotation/DR records and the explicit
+blockers. It **cannot** claim
 readiness: `destructiveRetirementAuthorized` is always `false`, and
 `readyForDestructiveRetirement` is true only when every machine gate passes AND
 the three explicit human attestation flags are supplied. `--report` writes the

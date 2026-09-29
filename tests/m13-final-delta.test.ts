@@ -108,6 +108,23 @@ test("M13 final delta treats an unknown/unverified table as a blocker", () => {
   assert.ok(report.blockers.some((blocker) => blocker.code === "table_unknown"));
 });
 
+test("M13 final delta fails closed on an exact/hash-matching table with verified=false", () => {
+  const report = evaluateM13FinalDelta(manifest([
+    table({ table: "articles", state: "exact", remoteHash: "hash-a", verified: false }),
+  ]));
+  assert.equal(report.deltaClear, false);
+  assert.equal(report.exactCount, 0);
+  assert.ok(report.blockers.some((blocker) => blocker.code === "table_unverified"));
+});
+
+test("M13 final delta fails closed on an exact/hash-matching table with non-empty errors", () => {
+  const report = evaluateM13FinalDelta(manifest([
+    table({ table: "articles", state: "exact", remoteHash: "hash-a", verified: true, errors: ["post-read drift"] }),
+  ]));
+  assert.equal(report.deltaClear, false);
+  assert.ok(report.blockers.some((blocker) => blocker.code === "table_errors"));
+});
+
 test("M13 final delta is not clear on an empty or unconfigured source", () => {
   const empty = evaluateM13FinalDelta(manifest([]));
   assert.equal(empty.deltaClear, false);

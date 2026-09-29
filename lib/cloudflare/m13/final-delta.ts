@@ -66,6 +66,8 @@ export interface M13FinalDeltaTableResult {
   hashVerified: boolean;
   /** True when the per-table canonical hash equality held. */
   hashMatches: boolean;
+  /** The upstream M5.2d per-table `verified` flag. */
+  verified: boolean;
   errors: string[];
 }
 
@@ -74,6 +76,8 @@ export interface M13FinalDeltaBlocker {
     | "postgres_source_unconfigured"
     | "table_refused"
     | "table_unknown"
+    | "table_unverified"
+    | "table_errors"
     | "remote_only_rows"
     | "pending_inserts"
     | "pending_updates"
@@ -118,6 +122,7 @@ function tableResult(target: D1RemoteReconcileManifestTarget, table: D1RemoteRec
     updateRowCount: table.updateRowCount,
     hashVerified: hashRead,
     hashMatches,
+    verified: table.verified,
     errors: [...table.errors],
   };
 }
@@ -146,6 +151,19 @@ export function evaluateM13FinalDelta(manifest: D1RemoteReconcileManifest): M13F
           table: table.table,
           detail: `${result.remoteOnlyRowCount} remote-only primary key(s); reconciliation never deletes`,
         });
+      }
+      if (!table.verified) {
+        blockers.push({
+          code: "table_unverified",
+          database: target.name,
+          table: table.table,
+          detail: `table ${table.table} is not verified (state ${table.state}); a hash/state match is not sufficient`,
+        });
+      }
+      if (table.errors.length > 0) {
+        for (const error of table.errors) {
+          blockers.push({ code: "table_errors", database: target.name, table: table.table, detail: error });
+        }
       }
       if (table.state === "refused") {
         for (const error of table.errors) {
@@ -185,7 +203,7 @@ export function evaluateM13FinalDelta(manifest: D1RemoteReconcileManifest): M13F
   const remoteOnlyTotal = tables.reduce((total, table) => total + table.remoteOnlyRowCount, 0);
   const pendingInsertTotal = tables.reduce((total, table) => total + table.insertRowCount, 0);
   const pendingUpdateTotal = tables.reduce((total, table) => total + table.updateRowCount, 0);
-  const exactCount = tables.filter((table) => table.state === "exact" && table.hashMatches).length;
+  const exactCount = tables.filter((table) => table.state === "exact" && table.hashMatches && table.verified && table.errors.length === 0).length;
   const deltaClear =
     tables.length > 0
     && blockers.length === 0
