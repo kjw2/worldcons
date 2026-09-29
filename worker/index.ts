@@ -71,6 +71,7 @@ import {
   handleOpsHeartbeatBoundary,
   type WorldconsOpsWriteWorkerEnv,
 } from "../workers/ops-write/src/index";
+import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -221,5 +222,33 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
       SEARCH_BINDING: env.WORLDCONS_SEARCH,
       CCL_METASEARCH_DB_TIMEOUT_MS: env.CCL_METASEARCH_DB_TIMEOUT_MS,
     });
+  }
+}
+
+export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
+  async runAdminJobDrain(input: { idempotencyKey: string; maxJobs?: number; leaseSeconds?: number }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeD1Bindings({
+      worldcons_core: env.WORLDCONS_CORE,
+      worldcons_ingest: env.WORLDCONS_INGEST,
+      worldcons_ops: env.WORLDCONS_OPS,
+      worldcons_search: env.WORLDCONS_SEARCH,
+    });
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
+    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
+    const result = await runAdminJobWorker({
+      workerId: `m8:${input.idempotencyKey}`,
+      maxJobs: input.maxJobs ?? 2,
+      leaseSeconds: input.leaseSeconds ?? 1200,
+    });
+    if (result.mode === "unavailable" || result.error || result.failed > 0) {
+      throw new Error(
+        result.mode === "unavailable"
+          ? result.error
+          : result.error ?? `m8.admin_job_worker_failed:${result.failed}`,
+      );
+    }
+    return result;
   }
 }

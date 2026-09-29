@@ -3,6 +3,7 @@ import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
 import { getCollectionControlState } from "@/lib/masterdash/store";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
 import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
+import { getP5HealthEvidenceFromD1 } from "@/lib/admin/p5/d1-health-repository";
 import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";
 import { INCREMENTAL_SOURCE_KEYS } from "@/lib/ingest/incremental";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
@@ -132,6 +133,21 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function nullableNumberValue(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function jsonValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 function textValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -161,6 +177,20 @@ export interface SummaryBacklogStatus {
 // gap between ingestion and publication.
 async function getSummaryBacklogBySource(): Promise<Map<string, SummaryBacklogStatus>> {
   const backlog = new Map<string, SummaryBacklogStatus>();
+  const coreBinding = getRuntimeD1Binding("worldcons_core");
+  if (coreBinding) {
+    const statement = coreBinding.prepare(`SELECT source_key, COUNT(*) AS count, MIN(created_at) AS oldest_created_at FROM articles WHERE status IN (?, ?) AND lower(CAST(json_extract(source_metadata, '$.collection.publishable') AS TEXT)) = 'true' GROUP BY source_key`).bind(...SUMMARY_BACKLOG_STATUSES);
+    if (!statement.all) throw new Error("watchdog_summary_backlog_d1.unavailable");
+    const result = await statement.all<Record<string, unknown>>();
+    if (!result || result.success === false || !Array.isArray(result.results)) throw new Error("watchdog_summary_backlog_d1.failed");
+    for (const row of result.results) {
+      const sourceKey = textValue(row.source_key);
+      if (sourceKey && INCREMENTAL_SOURCE_KEYS.includes(sourceKey as (typeof INCREMENTAL_SOURCE_KEYS)[number])) {
+        backlog.set(sourceKey, { count: nullableNumberValue(row.count) ?? 0, oldestCreatedAt: textValue(row.oldest_created_at) });
+      }
+    }
+    return backlog;
+  }
   const supabase = getSupabaseAdmin();
   if (!supabase) return backlog;
 
@@ -227,18 +257,35 @@ export function summaryBacklogViolation(sourceKey: string, status: SummaryBacklo
   return null;
 }
 
-export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvaluation> {
-  const supabase = getSupabaseAdmin();
+async function watchdogD1Rows(binding: NonNullable<ReturnType<typeof getRuntimeD1Binding>>, sql: string, values: unknown[] = []) {
+  const statement = binding.prepare(sql).bind(...values);
+  if (!statement.all) throw new Error("watchdog_d1.read_unavailable");
+  const result = await statement.all<Record<string, unknown>>();
+  if (!result || result.success === false || !Array.isArray(result.results)) throw new Error("watchdog_d1.read_failed");
+  return result.results;
+}
+
+async function getD1CollectionControlState() {
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  if (!binding) return { available: false, paused: false };
+  const [row] = await watchdogD1Rows(binding, "SELECT paused FROM masterdash_collection_control WHERE system_id = ? LIMIT 1", ["worldcons"]);
+  return { available: Boolean(row), paused: numberValue(row?.paused) === 1 };
+}
+
+export async function evaluateWatchdog(now = new Date(), nativeRuntime = false): Promise<WatchdogEvaluation> {
+  const ingestBinding = getRuntimeD1Binding("worldcons_ingest");
+  const nativeD1 = Boolean(ingestBinding && getRuntimeD1Binding("worldcons_core") && getRuntimeD1Binding("worldcons_ops"));
+  const supabase = nativeD1 ? null : getSupabaseAdmin();
   const generatedAt = now.toISOString();
   const policy = resolveP5OperationalPolicy();
   const freshnessWarningSeconds = policy.sourceFreshnessSeconds.warning;
   const freshnessCriticalSeconds = policy.sourceFreshnessSeconds.critical;
 
   const violations: WatchdogViolation[] = [];
-  const control = await getCollectionControlState();
+  const control = nativeD1 ? await getD1CollectionControlState() : await getCollectionControlState();
   const paused = control.available && control.paused;
 
-  if (!supabase) {
+  if (!nativeD1 && !supabase) {
     return {
       ok: false,
       generatedAt,
@@ -255,11 +302,27 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
   }
 
   const lookbackStart = new Date(now.getTime() - LOOKBACK_HOURS * 3_600_000).toISOString();
-  const { data: runRows, error: runError } = await supabase
-    .from("ingestion_runs")
-    .select("source_key, status, started_at, finished_at, discovered_count, fetched_count, metadata")
-    .gte("started_at", lookbackStart)
-    .order("started_at", { ascending: false });
+  let runRows: IngestionRunRow[] = [];
+  let runError: { message: string } | null = null;
+  try {
+    if (nativeD1 && ingestBinding) {
+      runRows = (await watchdogD1Rows(ingestBinding, "SELECT source_key, status, started_at, finished_at, discovered_count, fetched_count, metadata FROM ingestion_runs WHERE started_at >= ? ORDER BY started_at DESC", [lookbackStart])).map((row) => ({
+        source_key: String(row.source_key ?? ""),
+        status: textValue(row.status),
+        started_at: textValue(row.started_at),
+        finished_at: textValue(row.finished_at),
+        discovered_count: nullableNumberValue(row.discovered_count),
+        fetched_count: nullableNumberValue(row.fetched_count),
+        metadata: jsonValue(row.metadata),
+      }));
+    } else if (supabase) {
+      const result = await supabase.from("ingestion_runs").select("source_key, status, started_at, finished_at, discovered_count, fetched_count, metadata").gte("started_at", lookbackStart).order("started_at", { ascending: false });
+      if (result.error) runError = { message: result.error.message };
+      else runRows = (result.data ?? []) as IngestionRunRow[];
+    }
+  } catch (error) {
+    runError = { message: error instanceof Error ? error.message : String(error) };
+  }
 
   if (runError) {
     return {
@@ -378,7 +441,18 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     }
   }
 
-  const workflowHeartbeats = await getWorkflowHeartbeats().catch(() => null);
+  const workflowHeartbeats = nativeRuntime && nativeD1 && getRuntimeD1Binding("worldcons_ops")
+    ? await (async () => {
+      const rows = await watchdogD1Rows(getRuntimeD1Binding("worldcons_ops")!, "SELECT workflow_key, last_started_at, last_completed_at, last_status, run_id FROM ops_workflow_heartbeats WHERE workflow_key IN (?, ?, ?, ?, ?)", [...WORKFLOW_KEYS]);
+      return rows.flatMap((row) => {
+        const workflowKey = textValue(row.workflow_key);
+        const lastStartedAt = textValue(row.last_started_at);
+        const lastStatus = textValue(row.last_status);
+        if (!workflowKey || !WORKFLOW_KEYS.includes(workflowKey as (typeof WORKFLOW_KEYS)[number]) || !lastStartedAt || !["running", "success", "failed", "deferred"].includes(lastStatus ?? "")) return [];
+        return [{ workflowKey: workflowKey as (typeof WORKFLOW_KEYS)[number], lastStartedAt, lastCompletedAt: textValue(row.last_completed_at), lastStatus: lastStatus as "running" | "success" | "failed" | "deferred", runId: textValue(row.run_id) }];
+      });
+    })().catch(() => null)
+    : await getWorkflowHeartbeats().catch(() => null);
   if (workflowHeartbeats === null) {
     violations.push({
       key: "workflow-heartbeat-unavailable",
@@ -400,12 +474,19 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
     }
   }
 
-  const evidence = await getP5HealthEvidence({
-    observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
-    observationEnd: generatedAt,
-    now,
-    policy,
-  });
+  const evidence = nativeD1
+    ? await getP5HealthEvidenceFromD1({
+      observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
+      observationEnd: generatedAt,
+      now,
+      policy,
+    })
+    : await getP5HealthEvidence({
+      observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
+      observationEnd: generatedAt,
+      now,
+      policy,
+    });
   if (!evidence.available) {
     violations.push({
       key: "p5-evidence-unavailable",
@@ -435,15 +516,21 @@ export async function evaluateWatchdog(now = new Date()): Promise<WatchdogEvalua
   let pendingCandidateCount = 0;
   let oldestOpenCandidateAt: string | null = null;
   try {
-    pendingCandidateCount = await countOpenSourceUrlCandidates();
-    const { data: oldest, error: oldestError } = await supabase
-      .from("source_url_candidates")
-      .select("created_at")
-      .in("status", ["pending", "retrying"])
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!oldestError && oldest?.created_at) oldestOpenCandidateAt = oldest.created_at as string;
+    if (nativeD1 && ingestBinding) {
+      const [counts] = await watchdogD1Rows(ingestBinding, "SELECT COUNT(*) AS count, MIN(created_at) AS oldest_created_at FROM source_url_candidates WHERE status IN ('pending', 'retrying')");
+      pendingCandidateCount = nullableNumberValue(counts?.count) ?? 0;
+      oldestOpenCandidateAt = textValue(counts?.oldest_created_at);
+    } else if (supabase) {
+      pendingCandidateCount = await countOpenSourceUrlCandidates();
+      const { data: oldest, error: oldestError } = await supabase
+        .from("source_url_candidates")
+        .select("created_at")
+        .in("status", ["pending", "retrying"])
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!oldestError && oldest?.created_at) oldestOpenCandidateAt = oldest.created_at as string;
+    }
   } catch {
     // Candidate queue metrics are best-effort; do not fail the evaluation.
   }
@@ -672,6 +759,35 @@ async function readLatestAdminOpsEventDetail(): Promise<Record<string, unknown> 
 }
 
 /** Writes a state-change event (deduplicated by violation signature) and prunes old events. */
+export async function recordWatchdogEventsToD1(evaluation: WatchdogEvaluation, now = new Date()) {
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  if (!binding) throw new Error("watchdog_admin_ops_events_d1.binding_unavailable");
+  const [latest] = await watchdogD1Rows(binding, "SELECT detail FROM admin_ops_events ORDER BY created_at DESC LIMIT 1");
+  const latestDetail = jsonValue(latest?.detail);
+  const signature = evaluationViolationSignature(evaluation);
+  if (record(latestDetail)?.signature === signature) {
+    const cutoff = new Date(now.getTime() - OPS_EVENT_RETENTION_DAYS * 86_400_000).toISOString();
+    const statement = binding.prepare("DELETE FROM admin_ops_events WHERE created_at < ?").bind(cutoff);
+    if (!statement.run) throw new Error("watchdog_admin_ops_events_d1.write_unavailable");
+    await statement.run();
+    return;
+  }
+  const worst = evaluation.violations.reduce<"warning" | "critical">((current, violation) => violation.severity === "critical" ? "critical" : current, "warning");
+  const row = evaluation.ok
+    ? { eventType: "watchdog_ok", severity: "info", summary: "수집 운영이 정상입니다. 소스별 신선도와 실행 상태에 이상이 없습니다." }
+    : { eventType: "watchdog_violation", severity: worst, summary: `${evaluation.violations.length}건 위반 감지: ${evaluation.violations.map((violation) => violation.key).join(", ")}` };
+  const createdAt = now.toISOString();
+  const detail = JSON.stringify({ signature, generatedAt: evaluation.generatedAt, ...(evaluation.ok ? {} : { violations: evaluation.violations }) });
+  const insert = binding.prepare("INSERT INTO admin_ops_events (id, event_type, severity, source_key, summary, detail, created_at) VALUES (?, ?, ?, NULL, ?, ?, ?)").bind(globalThis.crypto.randomUUID(), row.eventType, row.severity, row.summary, detail, createdAt);
+  if (!insert.run) throw new Error("watchdog_admin_ops_events_d1.write_unavailable");
+  const result = await insert.run();
+  if (result.success === false || result.error || result.meta?.changes !== 1) throw new Error("watchdog_admin_ops_events_d1.write_failed");
+  const cutoff = new Date(now.getTime() - OPS_EVENT_RETENTION_DAYS * 86_400_000).toISOString();
+  const prune = binding.prepare("DELETE FROM admin_ops_events WHERE created_at < ?").bind(cutoff);
+  if (!prune.run) throw new Error("watchdog_admin_ops_events_d1.write_unavailable");
+  await prune.run();
+}
+
 export async function recordWatchdogEvents(evaluation: WatchdogEvaluation, now = new Date()) {
   const route = adminOpsEventsWriteRoute();
   if (route === "supabase" && !getSupabaseAdmin()) return;

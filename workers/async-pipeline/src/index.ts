@@ -6,10 +6,16 @@ import {
   M8_INVALID_RETRY_DELAY_SECONDS,
   messagesForM8Cron,
   planM8QueueBatch,
+  routeM8Task,
   resolveM8RolloutGate,
   type M8RolloutGate,
   type M8TaskMessage,
 } from "../../../lib/cloudflare/async-pipeline/contracts";
+import {
+  executeM8TaskNative,
+  type M8NativeEnvironment,
+} from "../../../lib/cloudflare/async-pipeline/native-executor";
+import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
 import { handleBrowserNavigate } from "./browser-navigate";
 
 function json(value: unknown, status = 200) {
@@ -44,6 +50,11 @@ async function dispatchGitHubWorkflow(env: Env, message: M8TaskMessage) {
 
 export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessage> {
   async run(event: WorkflowEvent<M8TaskMessage>, step: WorkflowStep) {
+    setRuntimeD1Bindings({
+      worldcons_ops: this.env.WORLDCONS_OPS,
+      worldcons_core: this.env.WORLDCONS_CORE,
+      worldcons_ingest: this.env.WORLDCONS_INGEST,
+    });
     const policy = gate(this.env);
     if (!isM8TaskMessage(event.payload)) {
       throw new Error("m8.invalid_workflow_payload");
@@ -57,10 +68,14 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       }));
       return { dispatched: false, kind: event.payload.kind, idempotencyKey: event.payload.idempotencyKey };
     }
-    return step.do(
-      "dispatch-compatible-executor",
-      { retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes" },
-      () => dispatchGitHubWorkflow(this.env, event.payload),
+    return routeM8Task<unknown>(
+      event.payload,
+      (message) => executeM8TaskNative(this.env as unknown as M8NativeEnvironment, message, step),
+      (message) => step.do(
+        "dispatch-compatible-executor",
+        { retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes" },
+        () => dispatchGitHubWorkflow(this.env, message),
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { redactAdminAuditMetadata, redactAdminAuditText } from "@/lib/security/audit-redaction";
 import { createHash } from "@/lib/utils/hash";
 
@@ -283,6 +284,41 @@ function firstRow(value: unknown): Row | null {
   return isRecord(value) ? value : null;
 }
 
+function jsonValue(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return isRecord(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function adminJobsD1() {
+  return getRuntimeD1Binding("worldcons_ops");
+}
+
+async function d1Rows(binding: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const statement = binding.prepare(sql).bind(...values);
+  if (typeof statement.all !== "function") throw new Error("admin_jobs_d1.read_unavailable");
+  const result = await statement.all<Row>();
+  if (!result || result.success === false || !Array.isArray(result.results)) {
+    throw new Error(result?.error || "admin_jobs_d1.read_failed");
+  }
+  return result.results;
+}
+
+async function d1Run(binding: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const statement = binding.prepare(sql).bind(...values);
+  if (!statement.run) throw new Error("admin_jobs_d1.write_unavailable");
+  const result = await statement.run();
+  if (result.success === false || result.error) throw new Error(result.error || "admin_jobs_d1.write_failed");
+  return Number(result.meta?.changes ?? 0);
+}
+
 function rowToAdminJob(row: Row): AdminJobRecord {
   return {
     id: textValue(row.id),
@@ -301,14 +337,14 @@ function rowToAdminJob(row: Row): AdminJobRecord {
     workerId: nullableTextValue(row.worker_id),
     progressCurrent: numberValue(row.progress_current),
     progressTotal: nullableNumberValue(row.progress_total),
-    resultSummary: redactedRecord(recordValue(row.result_summary)),
+    resultSummary: redactedRecord(jsonValue(row.result_summary)),
     errorClass: redactedText(nullableTextValue(row.error_class), 160),
     errorMessage: redactedText(nullableTextValue(row.error_message), 500),
     cancelRequestedAt: nullableTextValue(row.cancel_requested_at),
     cancelledAt: nullableTextValue(row.cancelled_at),
     cancelReason: nullableTextValue(row.cancel_reason),
     parentJobId: nullableTextValue(row.parent_job_id),
-    options: redactedRecord(recordValue(row.options)),
+    options: redactedRecord(jsonValue(row.options)),
     createdAt: textValue(row.created_at),
     updatedAt: textValue(row.updated_at),
   };
@@ -322,13 +358,22 @@ function rowToAdminJobEvent(row: Row): AdminJobEventRecord {
     eventType: textValue(row.event_type),
     message: redactedText(nullableTextValue(row.message), 500),
     errorClass: redactedText(nullableTextValue(row.error_class), 160),
-    metadata: redactedRecord(recordValue(row.metadata)),
+    metadata: redactedRecord(jsonValue(row.metadata)),
   };
 }
 
 async function getAdminJobById(jobId: string): Promise<AdminJobResult<AdminJobRecord>> {
+  const binding = adminJobsD1();
+  if (binding) {
+    try {
+      const [row] = await d1Rows(binding, `SELECT ${ADMIN_JOB_SELECT} FROM admin_jobs WHERE id = ? LIMIT 1`, [jobId]);
+      return row ? { ok: true, data: rowToAdminJob(row) } : failure(`Admin job ${jobId} was not found.`);
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const { data, error } = await supabase.from("admin_jobs").select(ADMIN_JOB_SELECT).eq("id", jobId).maybeSingle();
   if (error) return failure(error);
@@ -349,9 +394,7 @@ export function buildAdminJobIdempotencyKey(input: AdminJobIdempotencyInput) {
 }
 
 export async function createAdminJob(input: CreateAdminJobInput): Promise<AdminJobResult<{ job: AdminJobRecord; created: boolean }>> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
-
+  const binding = adminJobsD1();
   const idempotencyKey = input.idempotencyKey ?? buildAdminJobIdempotencyKey(input);
   const payload = {
     job_type: input.jobType,
@@ -365,6 +408,43 @@ export async function createAdminJob(input: CreateAdminJobInput): Promise<AdminJ
     options: redactedRecord(input.options),
   };
 
+  if (binding) {
+    try {
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      const values = [
+        id,
+        payload.job_type,
+        "queued",
+        payload.priority,
+        payload.source_key,
+        payload.article_id,
+        payload.article_slug,
+        idempotencyKey,
+        payload.requested_by,
+        now,
+        payload.parent_job_id,
+        JSON.stringify(payload.options),
+        now,
+        now,
+      ];
+      const [row] = await d1Rows(
+        binding,
+        `INSERT INTO admin_jobs (id, job_type, status, priority, source_key, article_id, article_slug, idempotency_key, requested_by, requested_at, parent_job_id, options, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING RETURNING ${ADMIN_JOB_SELECT}`,
+        values,
+      );
+      if (row) return { ok: true, data: { job: rowToAdminJob(row), created: true } };
+      const [existing] = await d1Rows(binding, `SELECT ${ADMIN_JOB_SELECT} FROM admin_jobs WHERE idempotency_key = ? LIMIT 1`, [idempotencyKey]);
+      return existing
+        ? { ok: true, data: { job: rowToAdminJob(existing), created: false } }
+        : failure("Admin job insert returned no row.");
+    } catch (error) {
+      return failure(error);
+    }
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
   const { data, error } = await supabase.from("admin_jobs").insert(payload).select("*").single();
   if (!error && isRecord(data)) return { ok: true, data: { job: rowToAdminJob(data), created: true } };
 
@@ -380,8 +460,26 @@ export async function createAdminJob(input: CreateAdminJobInput): Promise<AdminJ
 }
 
 export async function claimAdminJob(input: ClaimAdminJobInput): Promise<AdminJobResult<AdminJobRecord | null>> {
+  const binding = adminJobsD1();
+  if (binding) {
+    try {
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const leaseUntil = new Date(now.getTime() + Math.max(1, input.leaseSeconds ?? 60) * 1000).toISOString();
+      const jobTypes = input.jobTypes.filter((jobType) => typeof jobType === "string");
+      const typeClause = jobTypes.length > 0 ? `AND job_type IN (${jobTypes.map(() => "?").join(", ")})` : "";
+      const [row] = await d1Rows(
+        binding,
+        `UPDATE admin_jobs SET status = 'running', started_at = COALESCE(started_at, ?), lease_until = ?, worker_id = ?, updated_at = ? WHERE id = (SELECT id FROM admin_jobs WHERE (status = 'queued' OR (status = 'running' AND lease_until < ?)) ${typeClause} ORDER BY CASE WHEN status = 'running' THEN 0 ELSE 1 END, priority DESC, requested_at ASC LIMIT 1) RETURNING ${ADMIN_JOB_SELECT}`,
+        [nowIso, leaseUntil, input.workerId, nowIso, nowIso, ...jobTypes],
+      );
+      return { ok: true, data: row ? rowToAdminJob(row) : null };
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const { data, error } = await supabase.rpc("claim_admin_job", {
     worker_id: input.workerId,
@@ -395,8 +493,20 @@ export async function claimAdminJob(input: ClaimAdminJobInput): Promise<AdminJob
 }
 
 export async function appendAdminJobEvent(input: AppendAdminJobEventInput): Promise<AdminJobResult<AdminJobEventRecord>> {
+  const binding = adminJobsD1();
+  const occurredAt = new Date().toISOString();
+  const values = [globalThis.crypto.randomUUID(), input.jobId, occurredAt, redactAdminAuditText(input.eventType, 120), redactedText(input.message, 500), redactedText(input.errorClass, 160), JSON.stringify(redactedRecord(input.metadata))];
+  if (binding) {
+    try {
+      const [row] = await d1Rows(binding, `INSERT INTO admin_job_events (id, job_id, occurred_at, event_type, message, error_class, metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING ${ADMIN_JOB_EVENT_SELECT}`, values);
+      if (!row) return failure("append_admin_job_event returned no row.");
+      return { ok: true, data: rowToAdminJobEvent(row) };
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const { data, error } = await supabase.rpc("append_admin_job_event", {
     job_id: input.jobId,
@@ -413,8 +523,18 @@ export async function appendAdminJobEvent(input: AppendAdminJobEventInput): Prom
 }
 
 export async function markAdminJobSucceeded(input: MarkAdminJobSucceededInput): Promise<AdminJobResult<AdminJobRecord>> {
+  const binding = adminJobsD1();
+  const now = new Date().toISOString();
+  if (binding) {
+    try {
+      const [row] = await d1Rows(binding, `UPDATE admin_jobs SET status = 'succeeded', finished_at = ?, lease_until = NULL, worker_id = NULL, progress_current = ?, progress_total = ?, result_summary = ?, error_class = NULL, error_message = NULL, updated_at = ? WHERE id = ? RETURNING ${ADMIN_JOB_SELECT}`, [now, Math.max(0, Math.trunc(input.progressCurrent ?? input.progressTotal ?? 0)), input.progressTotal ?? null, JSON.stringify(redactedRecord(input.resultSummary)), now, input.jobId]);
+      return row ? { ok: true, data: rowToAdminJob(row) } : failure(`Admin job ${input.jobId} was not found.`);
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const update = {
     status: "succeeded",
@@ -440,8 +560,18 @@ export async function markAdminJobSucceeded(input: MarkAdminJobSucceededInput): 
 }
 
 export async function markAdminJobFailed(input: MarkAdminJobFailedInput): Promise<AdminJobResult<AdminJobRecord>> {
+  const binding = adminJobsD1();
+  const now = new Date().toISOString();
+  if (binding) {
+    try {
+      const [row] = await d1Rows(binding, `UPDATE admin_jobs SET status = 'failed', finished_at = ?, lease_until = NULL, worker_id = NULL, result_summary = ?, error_class = ?, error_message = ?, updated_at = ? WHERE id = ? RETURNING ${ADMIN_JOB_SELECT}`, [now, JSON.stringify(redactedRecord(input.resultSummary)), redactedText(input.errorClass, 160), redactedText(input.errorMessage, 500), now, input.jobId]);
+      return row ? { ok: true, data: rowToAdminJob(row) } : failure(`Admin job ${input.jobId} was not found.`);
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const update = {
     status: "failed",
@@ -465,8 +595,18 @@ export async function markAdminJobFailed(input: MarkAdminJobFailedInput): Promis
 }
 
 export async function requestAdminJobCancel(input: RequestAdminJobCancelInput): Promise<AdminJobResult<AdminJobRecord>> {
+  const binding = adminJobsD1();
+  const now = new Date().toISOString();
+  if (binding) {
+    try {
+      const [row] = await d1Rows(binding, `UPDATE admin_jobs SET status = 'cancel_requested', cancel_requested_at = ?, cancel_reason = ?, updated_at = ? WHERE id = ? AND status IN ('queued', 'running', 'cancel_requested') RETURNING ${ADMIN_JOB_SELECT}`, [now, redactedText(input.reason, 500), now, input.jobId]);
+      return row ? { ok: true, data: rowToAdminJob(row) } : failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const update = {
     status: "cancel_requested",
@@ -487,9 +627,7 @@ export async function requestAdminJobCancel(input: RequestAdminJobCancelInput): 
 }
 
 export async function markAdminJobCancelled(input: MarkAdminJobCancelledInput): Promise<AdminJobResult<AdminJobRecord>> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
-
+  const binding = adminJobsD1();
   const existing = await getAdminJobById(input.jobId);
   if (!existing.ok) return existing;
 
@@ -510,6 +648,16 @@ export async function markAdminJobCancelled(input: MarkAdminJobCancelledInput): 
   }
 
   const now = new Date().toISOString();
+  if (binding) {
+    try {
+      const [row] = await d1Rows(binding, `UPDATE admin_jobs SET status = 'cancelled', cancelled_at = ?, cancel_reason = ?, finished_at = ?, lease_until = NULL, worker_id = NULL, updated_at = ? WHERE id = ? AND status IN ('queued', 'cancel_requested') RETURNING ${ADMIN_JOB_SELECT}`, [now, redactedText(input.reason, 500), now, now, input.jobId]);
+      return row ? { ok: true, data: rowToAdminJob(row) } : failure(`Admin job ${input.jobId} was not found or is no longer cancellable.`);
+    } catch (error) {
+      return failure(error);
+    }
+  }
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
   const update = {
     status: "cancelled",
     cancelled_at: now,
@@ -568,15 +716,32 @@ export async function retryAdminJob(input: RetryAdminJobInput): Promise<AdminJob
 }
 
 export async function listAdminJobs(input: ListAdminJobsInput = {}): Promise<AdminJobResult<ListAdminJobsData>> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
-
+  const binding = adminJobsD1();
   const limit = boundedListLimit(input.limit);
   const offset = boundedOffset(input.offset);
-  let query = supabase.from("admin_jobs").select(ADMIN_JOB_SELECT, { count: "exact" });
   const status = redactedText(input.status, 80);
   const jobType = redactedText(input.jobType, 120);
   const sourceKey = redactedText(input.sourceKey, 120);
+  if (binding) {
+    try {
+      const filters: string[] = [];
+      const values: unknown[] = [];
+      if (status) { filters.push("status = ?"); values.push(status); }
+      if (jobType) { filters.push("job_type = ?"); values.push(jobType); }
+      if (sourceKey) { filters.push("source_key = ?"); values.push(sourceKey); }
+      const where = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
+      const [rows, counts] = await Promise.all([
+        d1Rows(binding, `SELECT ${ADMIN_JOB_SELECT} FROM admin_jobs${where} ORDER BY requested_at DESC LIMIT ? OFFSET ?`, [...values, limit, offset]),
+        d1Rows(binding, `SELECT COUNT(*) AS total FROM admin_jobs${where}`, values),
+      ]);
+      return { ok: true, data: { jobs: rows.map(rowToAdminJob), total: numberValue(counts[0]?.total), limit, offset } };
+    } catch (error) {
+      return failure(error);
+    }
+  }
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
+  let query = supabase.from("admin_jobs").select(ADMIN_JOB_SELECT, { count: "exact" });
 
   if (status) query = query.eq("status", status);
   if (jobType) query = query.eq("job_type", jobType);
@@ -597,11 +762,19 @@ export async function listAdminJobs(input: ListAdminJobsInput = {}): Promise<Adm
 }
 
 export async function listAdminJobEvents(input: ListAdminJobEventsInput): Promise<AdminJobResult<AdminJobEventRecord[]>> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
-
+  const binding = adminJobsD1();
   const jobId = input.jobId.trim();
   if (!jobId) return failure("Admin job id is required.");
+  if (binding) {
+    try {
+      const rows = await d1Rows(binding, `SELECT ${ADMIN_JOB_EVENT_SELECT} FROM admin_job_events WHERE job_id = ? ORDER BY occurred_at DESC LIMIT ?`, [jobId, boundedListLimit(input.limit, 10)]);
+      return { ok: true, data: rows.map(rowToAdminJobEvent) };
+    } catch (error) {
+      return failure(error);
+    }
+  }
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const { data, error } = await supabase
     .from("admin_job_events")
@@ -615,8 +788,24 @@ export async function listAdminJobEvents(input: ListAdminJobEventsInput): Promis
 }
 
 export async function getAdminJobSummary(): Promise<AdminJobResult<AdminJobSummary>> {
+  const binding = adminJobsD1();
+  if (binding) {
+    try {
+      const rows = await d1Rows(binding, "SELECT status, COUNT(*) AS count FROM admin_jobs GROUP BY status");
+      const summary = Object.fromEntries(ADMIN_JOB_STATUSES.map((status) => [status, 0])) as AdminJobSummary;
+      for (const row of rows) {
+        if ((ADMIN_JOB_STATUSES as readonly string[]).includes(textValue(row.status))) {
+          summary[textValue(row.status) as AdminJobStatus] = numberValue(row.count);
+        }
+      }
+      summary.total = ADMIN_JOB_STATUSES.reduce((sum, status) => sum + summary[status], 0);
+      return { ok: true, data: summary };
+    } catch (error) {
+      return failure(error);
+    }
+  }
   const supabase = getSupabaseAdmin();
-  if (!supabase) return unavailable("Supabase is not configured for admin jobs.");
+  if (!supabase) return unavailable("Admin jobs D1 binding is not available.");
 
   const entries: Array<[AdminJobStatus, number]> = [];
   for (const status of ADMIN_JOB_STATUSES) {

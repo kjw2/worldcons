@@ -9,6 +9,14 @@
   "observability": { "enabled": true },
   "secrets": { "required": ["GITHUB_ACTIONS_TOKEN"] },
   "browser": { "binding": "BROWSER" },
+  "services": [
+    { "binding": "WORLDCONS_APP_SERVICE", "service": "worldcons", "entrypoint": "WorldconsOpsService" }
+  ],
+  "d1_databases": [
+    { "binding": "WORLDCONS_OPS", "database_name": "worldcons_ops", "database_id": "6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4" },
+    { "binding": "WORLDCONS_CORE", "database_name": "worldcons_core", "database_id": "0f4c41f0-778f-4ef4-860e-b0dad05f0984" },
+    { "binding": "WORLDCONS_INGEST", "database_name": "worldcons_ingest", "database_id": "0ccd27ff-fd16-4071-bc94-616690708c4e" }
+  ],
   "vars": {
     "M8_SCHEDULER_ENABLED": "false",
     "M8_ENABLED_KINDS": "admin-health",

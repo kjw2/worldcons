@@ -283,6 +283,18 @@ export function isM8WorkflowInstanceId(id: string): boolean {
   return id.length > 0 && id.length <= M8_WORKFLOW_INSTANCE_ID_MAX_LENGTH && M8_WORKFLOW_INSTANCE_ID_PATTERN.test(id);
 }
 
+export function isM8NativeTaskKind(kind: M8TaskKind): kind is "admin-job-drain" | "watchdog" | "admin-health" {
+  return kind === "admin-job-drain" || kind === "watchdog" || kind === "admin-health";
+}
+
+export async function routeM8Task<T>(
+  message: M8TaskMessage,
+  nativeExecutor: (message: M8TaskMessage) => Promise<T>,
+  githubExecutor: (message: M8TaskMessage) => Promise<T>,
+): Promise<T> {
+  return isM8NativeTaskKind(message.kind) ? nativeExecutor(message) : githubExecutor(message);
+}
+
 export function githubDispatchForM8Task(message: M8TaskMessage): M8GitHubDispatch {
   return {
     workflow: WORKFLOW_BY_KIND[message.kind],

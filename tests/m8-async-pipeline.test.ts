@@ -17,6 +17,7 @@ import {
   parseM8EnabledKinds,
   partitionM8QueueBatch,
   planM8QueueBatch,
+  routeM8Task,
   resolveM8RolloutGate,
   workflowInstanceId,
   type M8TaskKind,
@@ -90,6 +91,25 @@ test("workflow instance ids are Cloudflare-valid and collision-safe for represen
     }
   }
   assert.equal(keys.size, samples.length * 3);
+});
+
+test("native M8 kinds bypass GitHub dispatch while legacy kinds keep compatibility dispatch", async () => {
+  const nativeCalls: string[] = [];
+  let githubDispatchCount = 0;
+  for (const kind of ["admin-job-drain", "watchdog", "admin-health"] as const) {
+    const message = buildM8TaskMessage(kind, Date.parse("2026-09-26T08:45:00Z"));
+    const result = await routeM8Task(
+      message,
+      async (task) => { nativeCalls.push(task.kind); return "native"; },
+      async () => { githubDispatchCount += 1; return "github"; },
+    );
+    assert.equal(result, "native");
+  }
+  assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health"]);
+  assert.equal(githubDispatchCount, 0);
+  const legacy = buildM8TaskMessage("crawler-daily", Date.parse("2026-09-26T08:45:00Z"));
+  assert.equal(await routeM8Task<string>(legacy, async () => "native", async () => { githubDispatchCount += 1; return "github"; }), "github");
+  assert.equal(githubDispatchCount, 1);
 });
 
 test("github input preserves the original colon-form idempotency key", () => {
