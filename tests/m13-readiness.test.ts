@@ -29,20 +29,10 @@ function clearDelta(): M13FinalDeltaReport {
   };
 }
 
-const OBSERVATION = {
-  start: "2026-09-01T00:00:00.000Z",
-  end: "2026-09-15T00:00:00.000Z",
-  hours: 336,
-  minimumHours: 336,
-  verified: true,
-  reference: "obs-1",
-};
-
 function fullMachineInput(now: Date): M13ReadinessInput {
   return {
     environment: buildM13AuthorityEnvProfile("d1"),
     finalDelta: clearDelta(),
-    observation: OBSERVATION,
     search: { ftsParityPass: true, vectorizeParityPass: true, stable: true, reference: "search-1" },
     strandedVercelObjects: { resolved: true, recovered: 10, inventoriedUnresolved: 0, reference: "vercel-1" },
     finalSupabaseExport: { exists: true, reference: "export-1" },
@@ -103,11 +93,9 @@ test("M13 readiness fails closed on an invalid authority profile", () => {
   assert.ok(report.blockers.includes("authority.d1_sole"));
 });
 
-test("M13 readiness blocks a short observation window and a stale DR rehearsal", () => {
+test("M13 readiness blocks a stale DR rehearsal", () => {
   const input = fullMachineInput(new Date("2026-12-01T00:00:00.000Z"));
-  input.observation = { ...OBSERVATION, end: "2026-09-10T00:00:00.000Z", verified: false };
   const report = evaluateM13Readiness(input);
-  assert.ok(report.blockers.includes("observation.window"));
   assert.ok(report.blockers.includes("dr.rehearsal_current"), "an over-age or unparseable DR record blocks");
 });
 

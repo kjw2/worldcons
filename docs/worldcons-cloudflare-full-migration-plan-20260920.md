@@ -2137,8 +2137,9 @@ M12 final status (2026-09-29 KST, **GO-CUTOVER PASS / M12 COMPLETE**):
 - The M9 private `WORLDCONS_SEARCH_SERVICE -> worldcons-search` Service
   Binding is now enabled for production cclrag2/cclmetasearch execution.
   Supabase compatibility credentials are installed as Worker secrets, while
-  M11 write authorities intentionally continue to rest at `supabase` during
-  the rollback/soak window. M12 therefore moves the production compute/traffic
+  M11 write authorities intentionally continued to rest at `supabase` during
+  the M12 rollback window before the permanent M13 `d1` switch. M12 therefore
+  moves the production compute/traffic
   boundary without pretending that M13 data-provider retirement already
   happened.
 - Cloudflare production Observability is enabled with persisted invocation
@@ -2167,14 +2168,15 @@ M12 final status (2026-09-29 KST, **GO-CUTOVER PASS / M12 COMPLETE**):
 - Detailed evidence:
   `artifacts/cloudflare-m12/go-production-cutover-evidence-20260929.json`.
 - **M12 is complete. M13 is next, but retirement remains blocked until its
-  explicit D1-sole-authority soak, final export, stranded-object inventory,
-  credential rotation and DR gates are all satisfied.**
+  final export, stranded-object inventory, credential rotation, DR and governance
+  gates are all satisfied (the former D1-sole-authority soak was removed by
+  operator decision on 2026-09-29).**
 
 ### M13 — Supabase/Vercel retirement
 
 Allowed only after:
 
-- D1 has been sole write authority for the approved soak window
+- D1 is the sole write authority (the 336h soak requirement was removed by operator decision on 2026-09-29)
 - R2 corpus verification is complete
 - search/Vectorize parity stable
 - all stranded Vercel objects have been recovered or explicitly inventoried as unresolved
@@ -2206,20 +2208,16 @@ A production live canary `POST /api/analytics/event` returned `204` for path
 `/__m13/live-canary-6c29ed00`; the `worldcons_ops` D1 `site_events` table then
 contained canary id `ed6c7a5b-77c4-44d6-8c05-813f96a6167d` at
 `2026-09-29T03:21:20.419Z`, while Supabase held 0 rows for that path and stayed
-frozen (see the observation paragraph below). No destructive retirement occurred.
+frozen. No destructive retirement occurred.
 
-**The 336-hour (14-day) continuous observation window is STARTED, not complete.**
-The observation start is the later `worldcons-ops-write` deployment, and the
-earliest possible 336h completion is:
-
-- Observation start: `2026-09-29T03:20:00.23024Z` = `2026-09-29 12:20:00.230240 KST`.
-- Earliest 336h completion: `2026-10-13 12:20:00.230240 KST`.
-
-The observation gate remains open until that window completes. The final export,
-credential rotation, the DR rehearsal, the distinct approvals and any retirement
-are still **not** complete and must not be recorded as such. M13 is still the
-deliberate, single, bounded operation that moves proven domains to permanent D1
-authority and then runs the remaining observation, export, rotation, DR and
+**The 336-hour (14-day) continuous D1-sole-authority observation requirement is
+REMOVED by operator decision on 2026-09-29.** The planned soak, its scheduled
+observer and its readiness gate are abolished entirely, and no replacement soak
+or observer is introduced. This does **not** make retirement complete: the final
+export, credential rotation, the DR rehearsal, the distinct approvals and any
+retirement are still **not** complete and must not be recorded as such. M13 is
+still the deliberate, single, bounded operation that moves proven domains to
+permanent D1 authority and then satisfies the remaining export, rotation, DR and
 approval gates before any destructive retirement.
 
 #### M13 authority profile (the single bounded switch)
@@ -2327,8 +2325,7 @@ mutually exclusive with `--source=`.
 `pnpm m13:readiness` (`scripts/m13-readiness.ts`) is strictly read-only. It
 reports the current authority profile, the per-domain assignment verification,
 the final-delta summary (live `--source=` before the cutover; immutable
-`--delta-manifests=` PRE-SWITCH raw reconcile manifests after it), the 336h
-observation state (via `--observation-start/--observation-end`), the P5
+`--delta-manifests=` PRE-SWITCH raw reconcile manifests after it), the P5
 retirement evaluator state (via `--p5`), R2/search readiness references, stranded
 Vercel inventory state, final-export/rotation/DR records and the explicit
 blockers. It **cannot** claim
@@ -2338,6 +2335,12 @@ the three explicit human attestation flags are supplied. `--report` writes the
 content-free evidence to
 `artifacts/cloudflare-m13/m13-readiness-evidence.json`. `--emit-authority-env`
 prints the exact forward/rollback values without applying them.
+
+**P5 compatibility observation remains separate and pending.** The existing P5
+compatibility observation must NOT be enabled yet:
+`lib/admin/p5/observations.ts` writes its observation through the Supabase RPC
+`admin_record_compatibility_observation_p5` directly to Supabase, which would be
+a new legacy Supabase write. It stays disabled until that writer is ported to D1.
 
 #### Single M13 execution procedure
 
@@ -2359,10 +2362,10 @@ final gate passes**.
    Worker configs and on the GitHub repository variables, then confirm
    `pnpm m13:readiness --json` reports `authority.profile_valid` and
    `authority.d1_sole` PASS. Rollback is the same operation with `supabase`.
-3. **Start the 336h observation.** From the successful switch timestamp, observe
-   at least 336 continuous production hours (14 days) with zero unexplained
-   legacy Supabase writes. Record the explicit window; until it completes the
-   observation gate is a blocker.
+3. **Observation (removed).** The 336h continuous production observation
+   requirement was **removed by operator decision on 2026-09-29**; there is no
+   soak, no scheduled observer and no observation gate. Proceed directly to the
+   remaining gates below.
 4. **Final Supabase export.** Produce and record the final export (plus a
    `wrangler d1 export` snapshot to R2 for portable backup).
 5. **Stranded Vercel inventory.** Recover every stranded Vercel object to R2 with
@@ -2390,9 +2393,10 @@ M13 forward GitHub repository variables were set to `d1` before deployment, and
 the deployed Workers (`worldcons` `6c29ed00-cb11-4edb-bedc-8480a2772795` at
 `2026-09-29T03:19:48.565786Z`, `worldcons-ops-write`
 `c01d9d8d-8442-47d6-a6ee-1281fcc32c05` at `2026-09-29T03:20:00.23024Z`) were
-verified through Cloudflare settings with the `d1` profile. The 336h observation
-is **STARTED** from `2026-09-29 12:20:00.230240 KST`, with earliest completion
-`2026-10-13 12:20:00.230240 KST`, and is not complete. M13 readiness also reuses
+verified through Cloudflare settings with the `d1` profile. The 336h continuous
+observation requirement was **removed by operator decision on 2026-09-29**, so
+there is no soak, no scheduled observer and no observation gate. M13 readiness
+also reuses
 the already-passing M7.8-A/M7.8-B/M7.9 search evidence (`r2.corpus_verified`
 PASS) and now has a live Vercel-vs-R2 legacy-object inventory: 2,020 Vercel
 objects / 43,758,058 bytes are fully accounted for, 125 objects / 3,339,200
@@ -2401,9 +2405,9 @@ objects / 40,418,858 bytes are explicitly inventoried as unresolved with digest
 `f27d1269704f5f93952d9efb9c895d8c22fc486438796a2a7753ff863db07548`.
 No Vercel or R2 object was deleted; see
 `artifacts/cloudflare-m13/vercel-stranded-inventory-20260929.json`. **Not** yet
-recorded as done: the completed 336h observation, the final Supabase export,
-credential rotation, the DR rehearsal, the approvals and the destructive
-retirement. No destructive retirement has occurred.
+recorded as done: the final Supabase export, credential rotation, the DR
+rehearsal, the approvals and the destructive retirement. No destructive
+retirement has occurred.
 
 ## 16. Zero-downtime data cutover
 
@@ -2759,4 +2763,5 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [ ] explicit retirement approval
 - [x] M13 authority profile switch (`WORLDCONS_M13_AUTHORITY_PROFILE=d1`; all 11 M13 forward GitHub repository variables set to `d1` before final deployment; `worldcons` version `6c29ed00-cb11-4edb-bedc-8480a2772795` at `2026-09-29T03:19:48.565786Z` and `worldcons-ops-write` version `c01d9d8d-8442-47d6-a6ee-1281fcc32c05` at `2026-09-29T03:20:00.23024Z`; both verified through Cloudflare settings with M13 profile `d1` and all relevant leaf selectors `d1`)
 - [x] M13 final Supabase -> D1 delta verified exact across all 75 migratable tables (core 30/30, ingest 26/26, ops 19/19) on 2026-09-29 via three production reconciliation manifests using the never-delete canonical full-table logic (read-only)
-- [ ] M13 336h continuous D1-sole-authority observation window (**STARTED, not complete**; start `2026-09-29T03:20:00.23024Z` = `2026-09-29 12:20:00.230240 KST`, earliest completion `2026-10-13 12:20:00.230240 KST`; live canary `POST /api/analytics/event` -> `204` for `/__m13/live-canary-6c29ed00`, D1 `worldcons_ops.site_events` canary id `ed6c7a5b-77c4-44d6-8c05-813f96a6167d` at `2026-09-29T03:21:20.419Z`, Supabase 0 rows for that path and frozen at `site_events` count 21395 / max `occurred_at` `2026-09-29 02:37:02.408718+00`, `security_rate_limit_buckets_v1` frozen at 26 rows / max `updated_at` `2026-09-29 01:16:00.485314+00`)
+- [x] M13 336h continuous D1-sole-authority observation requirement **removed by operator decision on 2026-09-29** (the soak, its scheduled observer and its readiness gate are abolished; retirement is still not complete and the final export, credential rotation, DR rehearsal, explicit approvals and governance gates all remain outstanding)
+

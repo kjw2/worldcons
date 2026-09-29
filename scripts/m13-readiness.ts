@@ -19,7 +19,6 @@ import {
   evaluateM13Readiness,
   type M13DrRehearsalEvidence,
   type M13GovernanceEvidence,
-  type M13ObservationEvidence,
   type M13P5RetirementEvidence,
   type M13SearchReadinessEvidence,
 } from "@/lib/cloudflare/m13/readiness";
@@ -35,7 +34,7 @@ const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
  *   pnpm m13:readiness --json
  *   pnpm m13:readiness --profile=d1 --json
  *   pnpm m13:readiness --emit-authority-env
- *   pnpm m13:readiness --source=supabase-linked --observation-start=<iso> --observation-end=<iso> --json
+ *   pnpm m13:readiness --source=supabase-linked --json
  *   pnpm m13:readiness --delta-manifests=<core.json>,<ingest.json>,<ops.json> --json
  *
  * It is strictly READ-ONLY: it never writes to Supabase, D1, R2, Vercel, the
@@ -96,24 +95,6 @@ function profileOverlay(args: readonly string[]): Record<string, string | undefi
   const profileArg = argValue(args, "profile");
   if (profileArg !== null) environment[M13_AUTHORITY_PROFILE_ENV] = profileArg;
   return environment;
-}
-
-function buildObservation(args: readonly string[], minimumHours: number): M13ObservationEvidence | null {
-  const start = argValue(args, "observation-start");
-  const end = argValue(args, "observation-end");
-  if (!start && !end) return null;
-  const parsedStart = start ? new Date(start) : null;
-  const parsedEnd = end ? new Date(end) : null;
-  const valid = Boolean(parsedStart && parsedEnd && !Number.isNaN(parsedStart.getTime()) && !Number.isNaN(parsedEnd.getTime()) && parsedStart < parsedEnd);
-  const hours = valid && parsedStart && parsedEnd ? (parsedEnd.getTime() - parsedStart.getTime()) / 3_600_000 : null;
-  return {
-    start: parsedStart && !Number.isNaN(parsedStart.getTime()) ? parsedStart.toISOString() : null,
-    end: parsedEnd && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd.toISOString() : null,
-    hours,
-    minimumHours,
-    verified: Boolean(valid && hours !== null && hours >= minimumHours),
-    reference: boundedReference(argValue(args, "observation-reference")),
-  };
 }
 
 function buildSearch(args: readonly string[]): M13SearchReadinessEvidence | null {
@@ -241,7 +222,6 @@ function createDeltaSource(args: readonly string[]): { source: PostgresRowSource
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const environment = profileOverlay(args);
-  const policy = resolveP5OperationalPolicy();
 
   if (flag(args, "emit-authority-env")) {
     const emission = {
@@ -285,7 +265,6 @@ async function main(): Promise<void> {
   const report = evaluateM13Readiness({
     environment,
     finalDelta,
-    observation: buildObservation(args, policy.minimumObservationHours),
     search: buildSearch(args),
     strandedVercelObjects: flag(args, "stranded-resolved") || argValue(args, "stranded-reference")
       ? {

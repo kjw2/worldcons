@@ -18,8 +18,8 @@ import type { M13FinalDeltaReport } from "@/lib/cloudflare/m13/final-delta";
  * Two classes of gate are kept strictly separate:
  *
  * - `machine` gates are computed from evidence the orchestrator collects
- *   (authority assignment, final-delta clears, observation window, search
- *   parity, stranded-object resolution, export/rotation/DR records);
+ *   (authority assignment, final-delta clears, search parity, stranded-object
+ *   resolution, export/rotation/DR records);
  * - `governance` gates (three distinct owner approvals, legal/retention review
  *   and explicit retirement approval) are NEVER auto-satisfied. They require an
  *   explicit human attestation input and remain blockers otherwise.
@@ -30,7 +30,7 @@ import type { M13FinalDeltaReport } from "@/lib/cloudflare/m13/final-delta";
  * fabricate retirement readiness.
  */
 
-export const M13_READINESS_SCHEMA_VERSION = 2 as const;
+export const M13_READINESS_SCHEMA_VERSION = 3 as const;
 
 export type M13GateCategory = "machine" | "governance";
 
@@ -42,16 +42,6 @@ export interface M13ReadinessGate {
   detail: string;
   /** True for a gate that can only be satisfied by explicit human attestation. */
   humanAttestationRequired: boolean;
-}
-
-export interface M13ObservationEvidence {
-  start: string | null;
-  end: string | null;
-  hours: number | null;
-  minimumHours: number;
-  /** True when the observation evidence covers the full requested window. */
-  verified: boolean;
-  reference: string | null;
 }
 
 export interface M13SearchReadinessEvidence {
@@ -117,7 +107,6 @@ export interface M13ReadinessInput {
   environment: M13AuthorityEnvironment;
   /** The final Supabase -> D1 delta report, or null when not yet measured. */
   finalDelta: M13FinalDeltaReport | null;
-  observation: M13ObservationEvidence | null;
   search: M13SearchReadinessEvidence | null;
   strandedVercelObjects: M13StrandedVercelEvidence | null;
   finalSupabaseExport: M13FinalExportEvidence | null;
@@ -149,7 +138,6 @@ export interface M13ReadinessReport {
   destructiveRetirementAuthorized: false;
   authority: M13AuthoritySummary;
   finalDelta: M13FinalDeltaReport | null;
-  observation: M13ObservationEvidence | null;
   search: M13SearchReadinessEvidence | null;
   strandedVercelObjects: M13StrandedVercelEvidence | null;
   finalSupabaseExport: M13FinalExportEvidence | null;
@@ -177,16 +165,6 @@ function drCurrent(evidence: M13DrRehearsalEvidence | null, now: Date): boolean 
   if (Number.isNaN(at.getTime())) return false;
   const ageHours = (now.getTime() - at.getTime()) / 3_600_000;
   return ageHours >= 0 && ageHours <= evidence.maxAgeHours;
-}
-
-function observationWindowPass(evidence: M13ObservationEvidence | null): boolean {
-  if (!evidence || !evidence.verified) return false;
-  if (!evidence.start || !evidence.end) return false;
-  const start = new Date(evidence.start);
-  const end = new Date(evidence.end);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) return false;
-  const hours = (end.getTime() - start.getTime()) / 3_600_000;
-  return hours >= evidence.minimumHours;
 }
 
 export function buildM13AuthoritySummary(environment: M13AuthorityEnvironment): M13AuthoritySummary {
@@ -253,17 +231,6 @@ export function evaluateM13Readiness(input: M13ReadinessInput): M13ReadinessRepo
     detail: delta
       ? `tables=${delta.tableCount} exact=${delta.exactCount} remoteOnly=${delta.remoteOnlyTotal} pendingInsert=${delta.pendingInsertTotal} pendingUpdate=${delta.pendingUpdateTotal} blockers=${delta.blockers.length}`
       : "final delta not yet measured",
-    humanAttestationRequired: false,
-  });
-
-  gates.push({
-    key: "observation.window",
-    category: "machine",
-    label: "Approved continuous production observation window is satisfied",
-    passed: observationWindowPass(input.observation),
-    detail: input.observation
-      ? `minimum=${input.observation.minimumHours}h verified=${input.observation.verified} window=${input.observation.start ?? "?"}..${input.observation.end ?? "?"}`
-      : "no observation evidence",
     humanAttestationRequired: false,
   });
 
@@ -379,7 +346,6 @@ export function evaluateM13Readiness(input: M13ReadinessInput): M13ReadinessRepo
     destructiveRetirementAuthorized: false,
     authority,
     finalDelta: input.finalDelta,
-    observation: input.observation,
     search: input.search,
     strandedVercelObjects: input.strandedVercelObjects,
     finalSupabaseExport: input.finalSupabaseExport,
