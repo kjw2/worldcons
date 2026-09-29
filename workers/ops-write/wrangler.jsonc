@@ -26,8 +26,6 @@
   //     required Wrangler secret anymore, so the first Worker creation succeeds
   //     without it. Set it only when operator/legacy bearer access is needed.
   //
-  // By contrast, `worldcons-search` remains internal-only (Service Binding) and
-  // is not reachable over workers.dev.
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "worldcons-ops-write",
   "main": "./src/index.ts",
@@ -46,12 +44,6 @@
     "WORLDCONS_CORE_WRITE_AUTHORITY": "d1",
     "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"
   },
-  "services": [
-    {
-      "binding": "WORLDCONS_SEARCH_SERVICE",
-      "service": "worldcons-search"
-    }
-  ],
   "d1_databases": [
     {
       "binding": "WORLDCONS_OPS",

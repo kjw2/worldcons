@@ -56,8 +56,7 @@ export function hashRequestValue(value?: string | null) {
   const secret =
     process.env.ANALYTICS_HASH_SECRET ||
     process.env.ADMIN_SESSION_SECRET ||
-    process.env.CRON_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.CRON_SECRET;
 
   if (secret) {
     return createHmac("sha256", secret).update(value).digest("hex");

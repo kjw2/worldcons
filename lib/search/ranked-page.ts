@@ -1,4 +1,5 @@
 import { publicProjectionReadsEnabled } from "@/lib/article-publication";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 import type { ArticleListFilters, PageInfo } from "@/lib/db/types";
 import { searchRepository, type RankedSearchMode } from "@/lib/search/repository";
 
@@ -34,7 +35,7 @@ export async function rankedSearchPage(
   mode: RankedSearchMode,
   embedding: number[] | null,
 ): Promise<RankedSearchPage | null> {
-  if (filters.includeUnpublished || !publicProjectionReadsEnabled()) return null;
+  if (filters.includeUnpublished || (!isCloudflareWorkerRuntime() && !publicProjectionReadsEnabled())) return null;
 
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;

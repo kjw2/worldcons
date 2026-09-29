@@ -5,7 +5,6 @@ import test from "node:test";
 import {
   M11_OPS_HEARTBEAT_CANARY_RUN_ID,
   OPS_HEARTBEAT_BOUNDARY_PATH,
-  OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH,
   OPS_HEARTBEAT_CANARY_DETAIL_KEY,
   OPS_HEARTBEAT_CANARY_MARKER_ENV,
   parseOpsHeartbeatWriteRow,
@@ -29,7 +28,6 @@ import {
   opsWriteAuthorized,
   type WorldconsOpsWriteWorkerEnv,
 } from "@/workers/ops-write/src/index";
-import { createWorldconsSearchServiceApp } from "@/workers/search-service/src/index";
 import { recordWorkflowHeartbeat } from "@/lib/ops/workflow-heartbeat";
 
 const envWithToken = { OPS_WRITE_TOKEN: "boundary-secret" } satisfies WorldconsOpsWriteWorkerEnv;
@@ -279,15 +277,18 @@ test("M11.3 deployed ops-write config is externally reachable only via workers.d
   assert.doesNotMatch(config, /"vars"[\s\S]*?"OPS_WRITE_TOKEN"\s*:/u);
 });
 
-test("M11.3 worldcons-search stays internal-only and is not reachable over workers.dev", () => {
+test("M11.3 ops-write has no search-service binding or Supabase bridge", () => {
   const config = fs.readFileSync(
-    path.join(process.cwd(), "workers/search-service/wrangler.jsonc"),
+    path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"),
     "utf8",
   );
-  assert.match(config, /"name": "worldcons-search"/u);
-  assert.match(config, /"workers_dev":\s*false/u);
-  assert.doesNotMatch(config, /"routes"\s*:/u);
-  assert.doesNotMatch(config, /"route"\s*:/u);
+  const source = fs.readFileSync(
+    path.join(process.cwd(), "workers/ops-write/src/index.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(config, /WORLDCONS_SEARCH_SERVICE|"services"\s*:/u);
+  assert.doesNotMatch(source, /WORLDCONS_SEARCH_SERVICE|relayHeartbeatToSupabase|relayAdminOpsEventToSupabase/u);
+  assert.match(config, /"binding": "WORLDCONS_OPS"/u);
 });
 
 test("M11.3 boundary health endpoint is bearer-protected and exposes no unauth surface", async () => {
@@ -344,10 +345,13 @@ test("M11.3 boundary routes d1 authority to D1 and never downgrades on failure",
   const canaryResponse = await handleOpsHeartbeatBoundary(
     boundRequest(heartbeatRow({ run_id: "github-1" })),
     { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1-canary" },
-    { writeToD1: async () => { d1Calls += 1; }, writeToSupabase: async () => {} },
+    { writeToD1: async () => { d1Calls += 1; } },
   );
-  assert.equal(canaryResponse.status, 200);
-  assert.equal((await canaryResponse.json() as { target: string }).target, "supabase");
+  assert.equal(canaryResponse.status, 409);
+  assert.deepEqual(await canaryResponse.json(), {
+    schemaVersion: 1,
+    error: { code: "AUTHORITY_NOT_SELECTED", retryable: false },
+  });
   assert.equal(d1Calls, 1);
 
   // A real GitHub run id carrying the explicit canary detail marker is routed to
@@ -358,7 +362,7 @@ test("M11.3 boundary routes d1 authority to D1 and never downgrades on failure",
       detail: { [OPS_HEARTBEAT_CANARY_DETAIL_KEY]: true },
     })),
     { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1-canary" },
-    { writeToD1: async () => { d1Calls += 1; }, writeToSupabase: async () => {} },
+    { writeToD1: async () => { d1Calls += 1; } },
   );
   assert.equal(markedResponse.status, 200);
   assert.deepEqual(await markedResponse.json(), {
@@ -372,38 +376,10 @@ test("M11.3 boundary routes d1 authority to D1 and never downgrades on failure",
   const failed = await handleOpsHeartbeatBoundary(
     boundRequest(heartbeatRow()),
     { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1" },
-    { writeToD1: async () => { throw new Error("d1 down"); }, writeToSupabase: async () => { d1Calls += 100; } },
+    { writeToD1: async () => { throw new Error("d1 down"); } },
   );
   assert.equal(failed.status, 503);
   assert.equal(d1Calls, 2);
-});
-
-test("M11.3 boundary relays Supabase authority through the private search bridge", async () => {
-  let seenUrl = "";
-  let seenBody: unknown = null;
-  const response = await handleOpsHeartbeatBoundary(
-    boundRequest(heartbeatRow()),
-    {
-      ...envWithToken,
-      WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "supabase",
-      WORLDCONS_SEARCH_SERVICE: {
-        async fetch(request) {
-          seenUrl = request.url;
-          seenBody = await request.json();
-          return new Response(null, { status: 204 });
-        },
-      },
-    },
-  );
-  assert.equal(response.status, 200);
-  assert.equal(seenUrl, `https://worldcons-search.internal${OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH}`);
-  assert.deepEqual(seenBody, heartbeatRow());
-
-  const bridgeMissing = await handleOpsHeartbeatBoundary(
-    boundRequest(heartbeatRow()),
-    { ...envWithToken, WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "supabase" },
-  );
-  assert.equal(bridgeMissing.status, 503);
 });
 
 test("M11.3 Node boundary client is default-off and fails closed when explicitly enabled", async () => {
@@ -478,69 +454,6 @@ test("M11.3 Node boundary client is default-off and fails closed when explicitly
     }),
     /ops_heartbeat_boundary_failed_503/u,
   );
-});
-
-test("M11.3 search-service Supabase bridge validates and writes one bounded heartbeat", async () => {
-  let written: unknown = null;
-  const app = createWorldconsSearchServiceApp({
-    async opsHeartbeatWrite(row) {
-      written = row;
-    },
-  });
-  const ok = await app.request(
-    `https://worldcons-search.internal${OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(heartbeatRow()),
-    },
-    {},
-  );
-  assert.equal(ok.status, 204);
-  assert.deepEqual(written, heartbeatRow());
-
-  const invalid = await app.request(
-    `https://worldcons-search.internal${OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...heartbeatRow(), status: "nope" }),
-    },
-    {},
-  );
-  assert.equal(invalid.status, 400);
-});
-
-test("M11.3 search-service bridge calls the heartbeat RPC, not a direct table insert", async () => {
-  const seen: Array<{ url: string; body: unknown }> = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const request = new Request(input, init);
-    seen.push({ url: request.url, body: JSON.parse(String(init?.body ?? "{}")) });
-    return Response.json(true);
-  };
-  const app = createWorldconsSearchServiceApp({ provider: { fetcher } });
-  const response = await app.request(
-    `https://worldcons-search.internal${OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(heartbeatRow()),
-    },
-    {
-      SUPABASE_URL: "https://project.supabase.co",
-      SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
-    },
-  );
-  assert.equal(response.status, 204);
-  assert.equal(seen.length, 1);
-  assert.equal(seen[0].url, "https://project.supabase.co/rest/v1/rpc/ops_workflow_heartbeat_v1");
-  assert.deepEqual(seen[0].body, {
-    p_workflow_key: "watchdog",
-    p_status: "success",
-    p_run_id: M11_OPS_HEARTBEAT_CANARY_RUN_ID,
-    p_detail: { phase: "m11.3" },
-    p_observed_at: "2026-09-28T12:00:00.000Z",
-  });
 });
 
 test("M11.3 Node heartbeat writer uses the boundary and skips the Supabase RPC when enabled", async () => {

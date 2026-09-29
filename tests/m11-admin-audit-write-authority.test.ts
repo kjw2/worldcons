@@ -11,12 +11,6 @@ import {
   shouldWriteAdminAuditToD1,
   writeAdminAuditToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/admin-audit";
-import {
-  clearRuntimeSearchServiceBinding,
-  setRuntimeSearchServiceBinding,
-  writeAdminAuditViaRuntimeSearchService,
-} from "@/lib/cloudflare/services/search-service-binding";
-import { createWorldconsSearchServiceApp } from "@/workers/search-service/src/index";
 
 test("M11.1 admin audit authority defaults to Supabase and supports bounded D1 modes", () => {
   assert.deepEqual(resolveAdminAuditWriteAuthorityConfig({}), { authority: "supabase" });
@@ -89,68 +83,6 @@ test("M11.1 selected D1 audit authority fails closed when the write binding is u
     () => writeAdminAuditToRuntimeD1(sampleAuditRow()),
     /binding_unavailable/u,
   );
-});
-
-test("M11.1 audit legacy bridge uses the private Service Binding", async () => {
-  clearRuntimeSearchServiceBinding();
-  assert.equal(await writeAdminAuditViaRuntimeSearchService(sampleAuditRow()), null);
-  let seenUrl = "";
-  let seenBody: unknown = null;
-  setRuntimeSearchServiceBinding({
-    async fetch(request) {
-      seenUrl = request.url;
-      seenBody = await request.json();
-      return new Response(null, { status: 204 });
-    },
-  }, false, false);
-  assert.equal(await writeAdminAuditViaRuntimeSearchService(sampleAuditRow()), true);
-  assert.equal(seenUrl, "https://worldcons-search.internal/internal/admin-audit/write");
-  assert.deepEqual(seenBody, sampleAuditRow());
-  clearRuntimeSearchServiceBinding();
-});
-
-test("M11.1 audit legacy bridge fails closed on a non-ok Service Binding response", async () => {
-  clearRuntimeSearchServiceBinding();
-  setRuntimeSearchServiceBinding({
-    async fetch() {
-      return new Response(null, { status: 503 });
-    },
-  }, false, false);
-  await assert.rejects(
-    () => writeAdminAuditViaRuntimeSearchService(sampleAuditRow()),
-    /worldcons_admin_audit_legacy_bridge_unavailable/u,
-  );
-  clearRuntimeSearchServiceBinding();
-});
-
-test("M11.1 internal audit bridge validates and writes one bounded row", async () => {
-  let written: unknown = null;
-  const app = createWorldconsSearchServiceApp({
-    async adminAuditWrite(row) {
-      written = row;
-    },
-  });
-  const response = await app.request(
-    "https://worldcons-search.internal/internal/admin-audit/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sampleAuditRow()),
-    },
-    {},
-  );
-  assert.equal(response.status, 204);
-  assert.deepEqual(written, sampleAuditRow());
-  const invalid = await app.request(
-    "https://worldcons-search.internal/internal/admin-audit/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...sampleAuditRow(), action: "" }),
-    },
-    {},
-  );
-  assert.equal(invalid.status, 400);
 });
 
 function sampleAuditRow() {

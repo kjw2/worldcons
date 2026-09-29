@@ -9,12 +9,14 @@ import {
   type ArtifactBlobStore,
 } from "@/lib/storage/blob";
 import { getRuntimeArtifactBlobR2Binding } from "@/lib/storage/runtime-binding";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 
 export function createRuntimeArtifactBlobStore(
   environment: Record<string, string | undefined> = process.env,
 ): ArtifactBlobStore {
   const binding = getRuntimeArtifactBlobR2Binding();
   if (binding) return createR2BindingRuntimeArtifactBlobStore(binding, environment);
+  if (isCloudflareWorkerRuntime()) throw new Error("artifact_blob.r2_binding_unavailable");
   return createArtifactBlobStore(createArtifactBlobTransport(environment));
 }
 

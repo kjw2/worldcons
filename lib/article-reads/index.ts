@@ -1,6 +1,9 @@
 import { publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
+import { createD1ArticleReadRepository } from "@/lib/article-reads/d1-repository";
 import { mockArticleReads } from "@/lib/article-reads/mock-repository";
 import { withArticleReadShadow } from "@/lib/article-reads/shadow";
 import { createSupabaseArticleReadRepository } from "@/lib/article-reads/supabase-repository";
@@ -26,6 +29,9 @@ export * from "@/lib/article-reads/shadow";
  * not migrated to D1, so public projection/V4 reads skip.
  */
 export function articleReads(): ArticleReadRepository {
+  if (isCloudflareWorkerRuntime()) {
+    return createD1ArticleReadRepository({ binding: getRuntimeD1Binding("worldcons_core") });
+  }
   const supabase = getSupabaseAdmin();
   if (!supabase) return mockArticleReads;
   const adminClient = supabase;

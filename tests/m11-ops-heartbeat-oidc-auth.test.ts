@@ -598,7 +598,9 @@ test("M11.3-OIDC boundary accepts OIDC and does not require OPS_WRITE_TOKEN", as
   const key = await generateKeyPair();
   const { fetcher } = oidcFetcher(key);
   const token = await signToken(key, {});
-  const env = {} satisfies WorldconsOpsWriteWorkerEnv;
+  const env = {
+    WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1",
+  } satisfies WorldconsOpsWriteWorkerEnv;
 
   const request = new Request("https://worldcons-ops-write.example.workers.dev/v1/ops/heartbeat", {
     method: "POST",
@@ -613,7 +615,7 @@ test("M11.3-OIDC boundary accepts OIDC and does not require OPS_WRITE_TOKEN", as
   });
 
   const unauthorized = await handleOpsHeartbeatBoundary(request.clone(), env, {
-    writeToSupabase: async () => {},
+    writeToD1: async () => {},
     auth: { oidc: { fetcher } },
   });
   assert.equal(unauthorized.status, 200);
@@ -636,7 +638,6 @@ test("M11.3-OIDC boundary still rejects an OIDC token for another repo", async (
     }),
   });
   const response = await handleOpsHeartbeatBoundary(request, {}, {
-    writeToSupabase: async () => { throw new Error("must not write"); },
     auth: { oidc: { fetcher } },
   });
   assert.equal(response.status, 401);
@@ -687,7 +688,7 @@ test("M11.3-OIDC auth-failure log records only operation and stable code", async
     const response = await handleOpsHeartbeatBoundary(
       heartbeatRequest(token),
       { OPS_WRITE_TOKEN: "operator-secret" } satisfies WorldconsOpsWriteWorkerEnv,
-      { writeToSupabase: async () => { throw new Error("must not write"); }, auth: { oidc: { fetcher } } },
+      { auth: { oidc: { fetcher } } },
     );
     assert.equal(response.status, 401);
   } finally {
@@ -717,7 +718,7 @@ test("M11.3-OIDC auth-failure log contains no token or claim material", async ()
     await handleOpsHeartbeatBoundary(
       heartbeatRequest(token),
       { OPS_WRITE_TOKEN: "operator-secret" } satisfies WorldconsOpsWriteWorkerEnv,
-      { writeToSupabase: async () => {}, auth: { oidc: { fetcher } } },
+      { auth: { oidc: { fetcher } } },
     );
   } finally {
     capture.restore();
@@ -738,8 +739,11 @@ test("M11.3-OIDC no auth-failure log when the bearer fallback succeeds", async (
     // succeeds: the OIDC failure must not be reported.
     const response = await handleOpsHeartbeatBoundary(
       heartbeatRequest("operator-secret"),
-      { OPS_WRITE_TOKEN: "operator-secret" } satisfies WorldconsOpsWriteWorkerEnv,
-      { writeToSupabase: async () => {} },
+      {
+        OPS_WRITE_TOKEN: "operator-secret",
+        WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: "d1",
+      } satisfies WorldconsOpsWriteWorkerEnv,
+      { writeToD1: async () => {} },
     );
     assert.equal(response.status, 200);
   } finally {

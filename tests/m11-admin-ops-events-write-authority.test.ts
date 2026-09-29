@@ -11,9 +11,6 @@ import {
   ADMIN_OPS_EVENTS_CANARY_MARKER_ENV,
   ADMIN_OPS_EVENTS_MAX_LIST_LIMIT,
   ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV,
-  ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH,
-  ADMIN_OPS_EVENTS_SEARCH_PATH,
-  ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH,
   ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV,
   insertAdminOpsEventToD1,
   listAdminOpsEventsFromD1,
@@ -53,7 +50,6 @@ import {
   handleOpsHeartbeatBoundary,
   type WorldconsOpsWriteWorkerEnv,
 } from "@/workers/ops-write/src/index";
-import { createWorldconsSearchServiceApp } from "@/workers/search-service/src/index";
 import {
   listAdminOpsEvents,
   OPS_EVENT_RETENTION_DAYS,
@@ -424,7 +420,7 @@ test("M11.4 boundary rejects unauthenticated admin ops events and never downgrad
       [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "d1-canary",
       WORLDCONS_OPS: fakeD1({ rows: [], inserts: [], deletes: [], sqlLog: [] }) as never,
     },
-    { insertAdminOpsEventToD1: async () => eventRow() as never, writeAdminOpsEventToSupabase: async () => {} },
+    { insertAdminOpsEventToD1: async () => eventRow() as never },
   );
   assert.equal(canaryMarked.status, 200);
   assert.equal((await canaryMarked.json() as { target: string }).target, "d1");
@@ -436,9 +432,12 @@ test("M11.4 boundary rejects unauthenticated admin ops events and never downgrad
       [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "d1-canary",
       WORLDCONS_OPS: fakeD1({ rows: [], inserts: [], deletes: [], sqlLog: [] }) as never,
     },
-    { insertAdminOpsEventToD1: async () => { throw new Error("should not run"); }, writeAdminOpsEventToSupabase: async () => {} },
   );
-  assert.equal((await canaryUnmarked.json() as { target: string }).target, "supabase");
+  assert.equal(canaryUnmarked.status, 409);
+  assert.deepEqual(await canaryUnmarked.json(), {
+    schemaVersion: 1,
+    error: { code: "AUTHORITY_NOT_SELECTED", retryable: false },
+  });
 
   const failed = await handleOpsHeartbeatBoundary(
     boundRequest(eventRow()),
@@ -447,7 +446,7 @@ test("M11.4 boundary rejects unauthenticated admin ops events and never downgrad
       [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "d1",
       WORLDCONS_OPS: fakeD1({ rows: [], inserts: [], deletes: [], sqlLog: [] }) as never,
     },
-    { insertAdminOpsEventToD1: async () => { throw new Error("d1 down"); }, writeAdminOpsEventToSupabase: async () => {} },
+    { insertAdminOpsEventToD1: async () => { throw new Error("d1 down"); } },
   );
   assert.equal(failed.status, 503);
 });
@@ -494,31 +493,6 @@ test("M11.4 boundary dedupe read and prune fail closed when the D1 authority bin
     { ...envWithToken, [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "d1" },
   );
   assert.equal(prune.status, 503);
-});
-
-test("M11.4 boundary relays resting Supabase authority through the private search bridge", async () => {
-  const seen: string[] = [];
-  const response = await handleOpsHeartbeatBoundary(
-    boundRequest(eventRow()),
-    {
-      ...envWithToken,
-      [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "supabase",
-      WORLDCONS_SEARCH_SERVICE: {
-        async fetch(request) {
-          seen.push(new URL(request.url).pathname);
-          return new Response(null, { status: 204 });
-        },
-      },
-    },
-  );
-  assert.equal(response.status, 200);
-  assert.deepEqual(seen, [ADMIN_OPS_EVENTS_SEARCH_PATH]);
-
-  const bridgeMissing = await handleOpsHeartbeatBoundary(
-    boundRequest(eventRow()),
-    { ...envWithToken, [ADMIN_OPS_EVENTS_WRITE_AUTHORITY_ENV]: "supabase" },
-  );
-  assert.equal(bridgeMissing.status, 503);
 });
 
 test("M11.4 Node client is default-off and fails closed when explicitly enabled", async () => {
@@ -615,69 +589,6 @@ test("M11.4 Node list client is default-off and fails closed when d1 read is sel
     }),
     /admin_ops_events_list_boundary_failed_503/u,
   );
-});
-
-test("M11.4 search-service Supabase bridge validates, inserts, reads latest and prunes", async () => {
-  let written: unknown = null;
-  let pruned: string | null = null;
-  const app = createWorldconsSearchServiceApp({
-    async adminOpsEventWrite(row) { written = row; },
-    async adminOpsEventLatestRead() { return { ...eventRow(), id: "e1" }; },
-    async adminOpsEventPrune(cutoff) { pruned = cutoff; },
-  });
-
-  const insert = await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_PATH}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(eventRow()),
-  }, {});
-  assert.equal(insert.status, 204);
-  assert.deepEqual(written, eventRow());
-
-  const invalid = await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_PATH}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...eventRow(), event_type: "nope" }),
-  }, {});
-  assert.equal(invalid.status, 400);
-
-  const latest = await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH}`, {}, {});
-  assert.equal(latest.status, 200);
-  assert.equal((await latest.json() as { event: { id: string } }).event.id, "e1");
-
-  const prune = await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cutoff: "2026-08-29T00:00:00.000Z" }),
-  }, {});
-  assert.equal(prune.status, 204);
-  assert.equal(pruned, "2026-08-29T00:00:00.000Z");
-});
-
-test("M11.4 search-service bridge writes/pauses against Supabase table semantics", async () => {
-  const seen: Array<{ url: string; method: string; body: unknown }> = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const request = new Request(input, init);
-    seen.push({ url: request.url, method: request.method, body: init?.body ? JSON.parse(String(init.body)) : null });
-    if (request.method === "GET") return Response.json([{ ...eventRow(), id: "e1" }]);
-    return new Response(null, { status: 204 });
-  };
-  const app = createWorldconsSearchServiceApp({ provider: { fetcher } });
-  const env = { SUPABASE_URL: "https://project.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key" };
-
-  await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_PATH}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(eventRow()),
-  }, env);
-  await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH}`, {}, env);
-  await app.request(`https://worldcons-search.internal${ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cutoff: "2026-08-29T00:00:00.000Z" }),
-  }, env);
-
-  assert.match(seen[0].url, /\/rest\/v1\/admin_ops_events$/u);
-  assert.equal(seen[0].method, "POST");
-  assert.match(seen[1].url, /\/rest\/v1\/admin_ops_events\?.*order=created_at\.desc/u);
-  assert.equal(seen[2].method, "DELETE");
-  assert.match(seen[2].url, /created_at=lt\./u);
 });
 
 test("M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails closed without a binding", async (t) => {

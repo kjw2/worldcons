@@ -9,7 +9,6 @@ import {
   shouldWriteAdminAuditToD1,
   writeAdminAuditToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/admin-audit";
-import { writeAdminAuditViaRuntimeSearchService, writeAdminArticleEditViaRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
 import {
   getRuntimeAdminArticleEditWriteAuthorityConfig,
   shouldWriteAdminArticleEditToD1,
@@ -145,18 +144,6 @@ export async function recordAdminAuditLog(input: AdminSiteEventInput, headers?: 
     return;
   }
 
-  try {
-    const bridged = await writeAdminAuditViaRuntimeSearchService(payload);
-    if (bridged) return;
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: "worldcons_admin_audit_legacy_bridge_failed",
-      authority: authorityConfig.authority,
-      error: error instanceof Error ? error.message : "UnknownError",
-    }));
-    return;
-  }
-
   const supabase = getSupabaseAdmin();
   if (!supabase) return;
 
@@ -212,18 +199,6 @@ export async function recordAdminArticleEditHistory(input: AdminArticleEditHisto
         error: error instanceof Error ? error.message : "UnknownError",
       }));
     }
-    return;
-  }
-
-  try {
-    const bridged = await writeAdminArticleEditViaRuntimeSearchService(payload);
-    if (bridged) return;
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: "worldcons_admin_article_edit_legacy_bridge_failed",
-      authority: authorityConfig.authority,
-      error: error instanceof Error ? error.message : "UnknownError",
-    }));
     return;
   }
 

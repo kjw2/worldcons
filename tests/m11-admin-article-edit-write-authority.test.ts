@@ -11,12 +11,6 @@ import {
   shouldWriteAdminArticleEditToD1,
   writeAdminArticleEditToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/admin-article-edit";
-import {
-  clearRuntimeSearchServiceBinding,
-  setRuntimeSearchServiceBinding,
-  writeAdminArticleEditViaRuntimeSearchService,
-} from "@/lib/cloudflare/services/search-service-binding";
-import { createWorldconsSearchServiceApp } from "@/workers/search-service/src/index";
 
 test("M11.2 admin article edit authority defaults to Supabase and supports bounded D1 modes", () => {
   assert.deepEqual(resolveAdminArticleEditWriteAuthorityConfig({}), { authority: "supabase" });
@@ -90,80 +84,6 @@ test("M11.2 selected D1 article edit authority fails closed when the write bindi
     () => writeAdminArticleEditToRuntimeD1(sampleEditRow()),
     /binding_unavailable/u,
   );
-});
-
-test("M11.2 article edit legacy bridge uses the private Service Binding", async () => {
-  clearRuntimeSearchServiceBinding();
-  assert.equal(await writeAdminArticleEditViaRuntimeSearchService(sampleEditRow()), null);
-  let seenUrl = "";
-  let seenBody: unknown = null;
-  setRuntimeSearchServiceBinding({
-    async fetch(request) {
-      seenUrl = request.url;
-      seenBody = await request.json();
-      return new Response(null, { status: 204 });
-    },
-  }, false, false);
-  assert.equal(await writeAdminArticleEditViaRuntimeSearchService(sampleEditRow()), true);
-  assert.equal(seenUrl, "https://worldcons-search.internal/internal/admin-article-edit/write");
-  assert.deepEqual(seenBody, sampleEditRow());
-  clearRuntimeSearchServiceBinding();
-});
-
-test("M11.2 article edit legacy bridge fails closed on a non-ok Service Binding response", async () => {
-  clearRuntimeSearchServiceBinding();
-  setRuntimeSearchServiceBinding({
-    async fetch() {
-      return new Response(null, { status: 503 });
-    },
-  }, false, false);
-  await assert.rejects(
-    () => writeAdminArticleEditViaRuntimeSearchService(sampleEditRow()),
-    /worldcons_admin_article_edit_legacy_bridge_unavailable/u,
-  );
-  clearRuntimeSearchServiceBinding();
-});
-
-test("M11.2 internal article edit bridge validates and writes one bounded row", async () => {
-  let written: unknown = null;
-  const app = createWorldconsSearchServiceApp({
-    async adminArticleEditWrite(row) {
-      written = row;
-    },
-  });
-  const response = await app.request(
-    "https://worldcons-search.internal/internal/admin-article-edit/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sampleEditRow()),
-    },
-    {},
-  );
-  assert.equal(response.status, 204);
-  assert.deepEqual(written, sampleEditRow());
-
-  const invalid = await app.request(
-    "https://worldcons-search.internal/internal/admin-article-edit/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...sampleEditRow(), article_id: "" }),
-    },
-    {},
-  );
-  assert.equal(invalid.status, 400);
-
-  const invalidFields = await app.request(
-    "https://worldcons-search.internal/internal/admin-article-edit/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...sampleEditRow(), changed_fields: [1, 2] }),
-    },
-    {},
-  );
-  assert.equal(invalidFields.status, 400);
 });
 
 function sampleEditRow() {

@@ -1,7 +1,6 @@
 import {
   OPS_HEARTBEAT_BOUNDARY_PATH,
   OPS_HEARTBEAT_BOUNDARY_READ_PATH,
-  OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH,
   parseOpsHeartbeatWriteRow,
   readOpsHeartbeatsFromD1,
   resolveOpsHeartbeatReadAuthorityConfig,
@@ -19,9 +18,6 @@ import {
   ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH,
   ADMIN_OPS_EVENTS_DEFAULT_LIST_LIMIT,
   ADMIN_OPS_EVENTS_MAX_LIST_LIMIT,
-  ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH,
-  ADMIN_OPS_EVENTS_SEARCH_PATH,
-  ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH,
   insertAdminOpsEventToD1,
   listAdminOpsEventsFromD1,
   parseAdminOpsEventWriteRow,
@@ -64,10 +60,6 @@ import type { ArticleLifecycleTransitionInput } from "@/lib/article-lifecycle/ty
 import type { ArticlePublicationTransitionInput } from "@/lib/article-publication/types";
 import { applyM13AuthorityProfileToEnvironment } from "@/lib/cloudflare/m13/authority-profile";
 
-export interface OpsWriteServiceFetcher {
-  fetch(request: Request): Promise<Response>;
-}
-
 export interface WorldconsOpsWriteWorkerEnv {
   /**
    * Optional operator/legacy bearer. M11.3-OIDC makes this optional: GitHub
@@ -88,7 +80,6 @@ export interface WorldconsOpsWriteWorkerEnv {
   WORLDCONS_OPS?: D1RuntimeDatabase;
   WORLDCONS_INGEST?: D1RuntimeDatabase;
   WORLDCONS_CORE?: D1RuntimeDatabase;
-  WORLDCONS_SEARCH_SERVICE?: OpsWriteServiceFetcher;
   [key: string]: unknown;
 }
 
@@ -99,16 +90,11 @@ export interface OpsWriteAuthOptions {
 
 export interface WorldconsOpsWriteDependencies {
   writeToD1?: (binding: D1RuntimeDatabase, row: OpsHeartbeatWriteRow) => Promise<unknown>;
-  writeToSupabase?: (row: OpsHeartbeatWriteRow, env: WorldconsOpsWriteWorkerEnv) => Promise<void>;
   readFromD1?: (binding: D1RuntimeDatabase) => Promise<OpsHeartbeatReadRecord[]>;
   insertAdminOpsEventToD1?: (binding: D1RuntimeDatabase, row: AdminOpsEventWriteRow) => Promise<AdminOpsEventRecord>;
   readLatestAdminOpsEventFromD1?: (binding: D1RuntimeDatabase) => Promise<AdminOpsEventRecord | null>;
   listAdminOpsEventsFromD1?: (binding: D1RuntimeDatabase, limit: number) => Promise<AdminOpsEventRecord[]>;
   pruneAdminOpsEventsInD1?: (binding: D1RuntimeDatabase, cutoff: string) => Promise<number>;
-  writeAdminOpsEventToSupabase?: (row: AdminOpsEventWriteRow, env: WorldconsOpsWriteWorkerEnv) => Promise<void>;
-  readLatestAdminOpsEventFromSupabase?: (env: WorldconsOpsWriteWorkerEnv) => Promise<AdminOpsEventRecord | null>;
-  listAdminOpsEventsFromSupabase?: (limit: number, env: WorldconsOpsWriteWorkerEnv) => Promise<AdminOpsEventRecord[]>;
-  pruneAdminOpsEventsInSupabase?: (cutoff: string, env: WorldconsOpsWriteWorkerEnv) => Promise<void>;
   applyIngestionRunMutationToD1?: (binding: D1RuntimeDatabase, mutation: IngestionRunMutation) => Promise<number>;
   readArticleLifecycleFromD1?: typeof readArticleLifecycleFromD1;
   transitionArticleLifecycleInD1?: typeof transitionArticleLifecycleInD1;
@@ -197,52 +183,6 @@ export async function opsWriteAuthorized(
   if (authorizedByBearer) return true;
   logOpsWriteAuthFailure(operation, oidc.code, Boolean(env.OPS_WRITE_TOKEN?.trim()));
   return false;
-}
-
-async function relayHeartbeatToSupabase(
-  row: OpsHeartbeatWriteRow,
-  env: WorldconsOpsWriteWorkerEnv,
-) {
-  const binding = env.WORLDCONS_SEARCH_SERVICE;
-  if (!binding) throw new Error("ops_heartbeat_boundary.supabase_bridge_unavailable");
-  const response = await binding.fetch(new Request(
-    `https://worldcons-search.internal${OPS_HEARTBEAT_BOUNDARY_SEARCH_PATH}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(row),
-    },
-  ));
-  await response.body?.cancel();
-  if (!response.ok) throw new Error("ops_heartbeat_boundary.supabase_bridge_failed");
-}
-
-async function relayAdminOpsEventToSupabase(
-  path: string,
-  env: WorldconsOpsWriteWorkerEnv,
-  body?: unknown,
-): Promise<unknown> {
-  const binding = env.WORLDCONS_SEARCH_SERVICE;
-  if (!binding) throw new Error("admin_ops_events_boundary.supabase_bridge_unavailable");
-  const response = await binding.fetch(new Request(
-    `https://worldcons-search.internal${path}`,
-    {
-      method: body === undefined ? "GET" : "POST",
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    },
-  ));
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error("admin_ops_events_boundary.supabase_bridge_failed");
-  }
-  const payload = await response.json().catch(() => null);
-  return payload;
-}
-
-function adminOpsEventsTargetD1(env: WorldconsOpsWriteWorkerEnv) {
-  const config = resolveAdminOpsEventsWriteAuthorityConfig(env as Record<string, string | undefined>);
-  return config.authority === "d1" || config.authority === "d1-canary";
 }
 
 export async function handleOpsHeartbeatBoundary(
@@ -394,12 +334,8 @@ export async function handleOpsHeartbeatBoundary(
     }
   }
 
-  // M11.4 admin_ops_events boundary. Like M11.3, the write authority is
-  // resolved independently from the caller. `d1` routes every event to
-  // `worldcons_ops`; `d1-canary` routes only an event carrying the exact
-  // `detail.m11AdminOpsEventsCanary === true` marker (defense in depth on top of
-  // the Node-side marker), everything else relays to the internal Supabase
-  // bridge. A D1 failure is returned as 503 and never silently downgraded.
+  // M11.4 admin_ops_events boundary. The `d1` profile routes every event to
+  // `worldcons_ops`; a selected D1 failure always fails closed.
   const adminOpsWriteConfig = resolveAdminOpsEventsWriteAuthorityConfig(env as Record<string, string | undefined>);
 
   if (request.method === "POST" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_PATH) {
@@ -415,21 +351,18 @@ export async function handleOpsHeartbeatBoundary(
       return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST" } }, 400);
     }
     const targetD1 = shouldWriteAdminOpsEventToD1(eventRow, adminOpsWriteConfig);
+    if (!targetD1) {
+      return json({ schemaVersion: 1, error: { code: "AUTHORITY_NOT_SELECTED", retryable: false } }, 409);
+    }
     try {
-      if (targetD1) {
-        const binding = env.WORLDCONS_OPS;
-        if (!binding) throw new Error("admin_ops_events_boundary.d1_binding_unavailable");
-        if (dependencies.insertAdminOpsEventToD1) {
-          await dependencies.insertAdminOpsEventToD1(binding, eventRow);
-        } else {
-          await insertAdminOpsEventToD1(binding, eventRow, crypto.randomUUID());
-        }
-      } else if (dependencies.writeAdminOpsEventToSupabase) {
-        await dependencies.writeAdminOpsEventToSupabase(eventRow, env);
+      const binding = env.WORLDCONS_OPS;
+      if (!binding) throw new Error("admin_ops_events_boundary.d1_binding_unavailable");
+      if (dependencies.insertAdminOpsEventToD1) {
+        await dependencies.insertAdminOpsEventToD1(binding, eventRow);
       } else {
-        await relayAdminOpsEventToSupabase(ADMIN_OPS_EVENTS_SEARCH_PATH, env, eventRow);
+        await insertAdminOpsEventToD1(binding, eventRow, crypto.randomUUID());
       }
-      return json({ schemaVersion: 1, ok: true, authority: adminOpsWriteConfig.authority, target: targetD1 ? "d1" : "supabase" });
+      return json({ schemaVersion: 1, ok: true, authority: adminOpsWriteConfig.authority, target: "d1" });
     } catch (error) {
       console.error(JSON.stringify({
         event: "worldcons_ops_write_admin_ops_event_error",
@@ -440,33 +373,17 @@ export async function handleOpsHeartbeatBoundary(
     }
   }
 
-  // The dedupe read and the retention prune are part of the write contract, so
-  // they follow the write authority (not a separate read authority). When the
-  // boundary is not selected for D1 they relay to the Supabase bridge; when D1
-  // is selected an unavailable binding/read/prune fails closed (503) and is
-  // never silently served from Supabase.
+  // The dedupe read and retention prune follow the write authority and are D1-only.
   if (request.method === "GET" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH) {
     if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
       return json({ error: "unauthorized" }, 401);
     }
-    const targetD1 = adminOpsEventsTargetD1(env);
     try {
-      if (targetD1) {
-        const binding = env.WORLDCONS_OPS;
-        if (!binding) throw new Error("admin_ops_events_boundary.d1_binding_unavailable");
-        const event = dependencies.readLatestAdminOpsEventFromD1
-          ? await dependencies.readLatestAdminOpsEventFromD1(binding)
-          : await readLatestAdminOpsEventFromD1(binding);
-        return json({ schemaVersion: 1, authority: adminOpsWriteConfig.authority, event });
-      }
-      if (dependencies.readLatestAdminOpsEventFromSupabase) {
-        const event = await dependencies.readLatestAdminOpsEventFromSupabase(env);
-        return json({ schemaVersion: 1, authority: adminOpsWriteConfig.authority, event });
-      }
-      const payload = await relayAdminOpsEventToSupabase(ADMIN_OPS_EVENTS_SEARCH_LATEST_PATH, env);
-      const event = payload && typeof payload === "object" && !Array.isArray(payload)
-        ? (payload as { event?: unknown }).event ?? null
-        : null;
+      const binding = env.WORLDCONS_OPS;
+      if (!binding) throw new Error("admin_ops_events_boundary.d1_binding_unavailable");
+      const event = dependencies.readLatestAdminOpsEventFromD1
+        ? await dependencies.readLatestAdminOpsEventFromD1(binding)
+        : await readLatestAdminOpsEventFromD1(binding);
       return json({ schemaVersion: 1, authority: adminOpsWriteConfig.authority, event });
     } catch (error) {
       console.error(JSON.stringify({
@@ -528,19 +445,12 @@ export async function handleOpsHeartbeatBoundary(
     if (typeof cutoff !== "string" || cutoff.length === 0 || cutoff.length > 64 || !Number.isFinite(Date.parse(cutoff))) {
       return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST", reason: "invalid_cutoff" } }, 400);
     }
-    const targetD1 = adminOpsEventsTargetD1(env);
     try {
-      if (targetD1) {
-        const binding = env.WORLDCONS_OPS;
-        if (!binding) throw new Error("admin_ops_events_boundary.d1_binding_unavailable");
-        if (dependencies.pruneAdminOpsEventsInD1) await dependencies.pruneAdminOpsEventsInD1(binding, cutoff);
-        else await pruneAdminOpsEventsInD1(binding, cutoff);
-      } else if (dependencies.pruneAdminOpsEventsInSupabase) {
-        await dependencies.pruneAdminOpsEventsInSupabase(cutoff, env);
-      } else {
-        await relayAdminOpsEventToSupabase(ADMIN_OPS_EVENTS_SEARCH_PRUNE_PATH, env, { cutoff });
-      }
-      return json({ schemaVersion: 1, ok: true, authority: adminOpsWriteConfig.authority, target: targetD1 ? "d1" : "supabase" });
+      const binding = env.WORLDCONS_OPS;
+      if (!binding) throw new Error("admin_ops_events_boundary.d1_binding_unavailable");
+      if (dependencies.pruneAdminOpsEventsInD1) await dependencies.pruneAdminOpsEventsInD1(binding, cutoff);
+      else await pruneAdminOpsEventsInD1(binding, cutoff);
+      return json({ schemaVersion: 1, ok: true, authority: adminOpsWriteConfig.authority, target: "d1" });
     } catch (error) {
       console.error(JSON.stringify({
         event: "worldcons_ops_write_admin_ops_event_prune_error",
@@ -567,32 +477,25 @@ export async function handleOpsHeartbeatBoundary(
     return json({ schemaVersion: 1, error: { code: "INVALID_REQUEST" } }, 400);
   }
 
-  // Authority is resolved independently by the boundary. `d1-canary` only
-  // selects the explicit canary run id; everything else relays to the internal
-  // Supabase compatibility bridge on `worldcons-search` (reached over a Service
-  // Binding, never the public internet). `d1` routes every heartbeat to D1. A D1
-  // failure is returned as 503 and never silently downgraded to Supabase.
+  // The permanent M13 profile selects D1 for every heartbeat; other targets fail closed.
   const config = resolveOpsHeartbeatWriteAuthorityConfig(env as Record<string, string | undefined>);
   const targetD1 = shouldWriteOpsHeartbeatToD1(row, config);
+  if (!targetD1) {
+    return json({ schemaVersion: 1, error: { code: "AUTHORITY_NOT_SELECTED", retryable: false } }, 409);
+  }
   try {
-    if (targetD1) {
-      if (dependencies.writeToD1) {
-        await dependencies.writeToD1(env.WORLDCONS_OPS as D1RuntimeDatabase, row);
-      } else {
-        const binding = env.WORLDCONS_OPS;
-        if (!binding) throw new Error("ops_heartbeat_boundary.d1_binding_unavailable");
-        await runOpsHeartbeatUpsertD1(binding, row);
-      }
-    } else if (dependencies.writeToSupabase) {
-      await dependencies.writeToSupabase(row, env);
+    if (dependencies.writeToD1) {
+      await dependencies.writeToD1(env.WORLDCONS_OPS as D1RuntimeDatabase, row);
     } else {
-      await relayHeartbeatToSupabase(row, env);
+      const binding = env.WORLDCONS_OPS;
+      if (!binding) throw new Error("ops_heartbeat_boundary.d1_binding_unavailable");
+      await runOpsHeartbeatUpsertD1(binding, row);
     }
     return json({
       schemaVersion: 1,
       ok: true,
       authority: config.authority,
-      target: targetD1 ? "d1" : "supabase",
+      target: "d1",
     });
   } catch (error) {
     console.error(JSON.stringify({

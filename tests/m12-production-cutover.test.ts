@@ -20,8 +20,12 @@ test("M12 production runtime uses the new canonical origin and the proven search
   const config = read("wrangler.jsonc");
   assert.match(config, /"APP_BASE_URL": "https:\/\/worldcons\.soltera\.dev"/u);
   assert.match(config, /"WORLDCONS_BASE_URL": "https:\/\/worldcons\.soltera\.dev"/u);
-  assert.match(config, /"WORLDCONS_SEARCH_SERVICE_ENABLED": "true"/u);
-  assert.match(config, /"WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "true"/u);
+  assert.match(config, /"binding": "WORLDCONS_SEARCH_VECTOR"/u);
+  assert.match(config, /"index_name": "worldcons-search"/u);
+  assert.match(config, /"ARTIFACT_BLOB_PROVIDER": "r2"/u);
+  assert.match(config, /"main": "\.\/worker\/index\.ts"/u);
+  assert.doesNotMatch(config, /"no_bundle"/u);
+  assert.doesNotMatch(config, /WORLDCONS_SEARCH_SERVICE|"service":\s*"worldcons-search"/u);
   assert.match(config, /"WORLDCONS_CORE_WRITE_AUTHORITY": "d1"/u);
 });
 

@@ -7,7 +7,6 @@ import {
   shouldWriteSiteEventToD1,
   writeSiteEventToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/site-events";
-import { writeSiteEventViaRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
 
 export type SiteEventType =
   | "page_view"
@@ -206,18 +205,6 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
         error: error instanceof Error ? error.message : "UnknownError",
       }));
     }
-    return;
-  }
-
-  try {
-    const bridged = await writeSiteEventViaRuntimeSearchService(payload);
-    if (bridged) return;
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: "worldcons_site_events_legacy_bridge_failed",
-      authority: authorityConfig.authority,
-      error: error instanceof Error ? error.message : "UnknownError",
-    }));
     return;
   }
 

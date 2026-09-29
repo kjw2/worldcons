@@ -41,8 +41,14 @@
     "WORLDCONS_D1_SHADOW_MAX_ROWS": "2000",
     "WORLDCONS_D1_SHADOW_MAX_IN_FLIGHT": "2",
     "WORLDCONS_D1_SHADOW_SAMPLE_RATE": "0.1",
-    "WORLDCONS_SEARCH_SERVICE_ENABLED": "true",
-    "WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED": "true",
+    "ENVIRONMENT": "production",
+    "PUBLIC_BASE_URL": "https://worldcons.soltera.dev/api/cclrag2",
+    "PUBLIC_SITE_BASE_URL": "https://worldcons.soltera.dev",
+    "EMBEDDING_PROVIDER": "gemini",
+    "SEMANTIC_SEARCH_ENABLED": "true",
+    "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",
+    "ARTIFACT_BLOB_PROVIDER": "r2",
+    "CCL_METASEARCH_DB_TIMEOUT_MS": "8000",
     "WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY": "d1",
     "WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY": "d1",
     "WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY": "d1",
@@ -50,10 +56,10 @@
     "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY": "d1",
     "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY": "d1"
   },
-  "services": [
+  "vectorize": [
     {
-      "binding": "WORLDCONS_SEARCH_SERVICE",
-      "service": "worldcons-search"
+      "binding": "WORLDCONS_SEARCH_VECTOR",
+      "index_name": "worldcons-search"
     }
   ],
   "durable_objects": {

@@ -1,4 +1,5 @@
 import type { D1Database as D1DatabaseName } from "./types";
+import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
 
 /**
  * M6.1 runtime-safe D1 binding injection.
@@ -41,6 +42,7 @@ export type D1RuntimeBindings = Partial<Record<D1DatabaseName, D1RuntimeDatabase
 
 interface WorldconsD1RuntimeGlobal {
   __worldconsD1RuntimeBindingsV1?: D1RuntimeBindings;
+  __worldconsSearchVectorBindingV1?: VectorizeIndexBinding;
 }
 
 function runtimeGlobal(): typeof globalThis & WorldconsD1RuntimeGlobal {
@@ -81,6 +83,19 @@ export function getRuntimeD1Bindings(): D1RuntimeBindings {
   return { ...existing() };
 }
 
+export function setRuntimeSearchVectorBinding(
+  binding: VectorizeIndexBinding | null | undefined,
+): void {
+  const target = runtimeGlobal();
+  if (binding) target.__worldconsSearchVectorBindingV1 = binding;
+  else delete target.__worldconsSearchVectorBindingV1;
+}
+
+export function getRuntimeSearchVectorBinding(): VectorizeIndexBinding | null {
+  return runtimeGlobal().__worldconsSearchVectorBindingV1 ?? null;
+}
+
 export function clearRuntimeD1Bindings(): void {
   runtimeGlobal().__worldconsD1RuntimeBindingsV1 = {};
+  delete runtimeGlobal().__worldconsSearchVectorBindingV1;
 }

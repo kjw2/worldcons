@@ -1,5 +1,8 @@
 import { publicProjectionReadsEnabled } from "@/lib/article-publication";
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
+import { createD1ReferenceReadRepository } from "@/lib/reference-reads/d1-repository";
 import { mockReferenceReads } from "@/lib/reference-reads/mock-repository";
 import { withReferenceReadShadow } from "@/lib/reference-reads/shadow";
 import { createSupabaseReferenceReadRepository } from "@/lib/reference-reads/supabase-repository";
@@ -25,6 +28,12 @@ export * from "@/lib/reference-reads/shadow";
  * to D1, so tag/count shadows skip in projection mode.
  */
 export function referenceReads(): ReferenceReadRepository {
+  if (isCloudflareWorkerRuntime()) {
+    return createD1ReferenceReadRepository({
+      binding: getRuntimeD1Binding("worldcons_core"),
+      ingestBinding: getRuntimeD1Binding("worldcons_ingest"),
+    });
+  }
   const supabase = getSupabaseAdmin();
   if (!supabase) return mockReferenceReads;
   const adminClient = supabase;

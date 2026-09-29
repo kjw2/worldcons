@@ -1,4 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
+import { createD1AdminAnalyticsReadRepository } from "@/lib/admin/analytics-read-repository/d1-read-repository";
 import { failClosedAdminAnalyticsReads } from "@/lib/admin/analytics-read-repository/fail-closed-repository";
 import { withAdminAnalyticsReadShadow } from "@/lib/admin/analytics-read-repository/shadow";
 import { createSupabaseAdminAnalyticsReadRepository } from "@/lib/admin/analytics-read-repository/supabase-repository";
@@ -23,6 +26,22 @@ export * from "@/lib/admin/analytics-read-repository/types";
  * No-config behavior is unchanged: the fail-closed adapter is returned unwrapped.
  */
 export function adminAnalyticsReads(): AdminAnalyticsReadRepository {
+  if (isCloudflareWorkerRuntime()) {
+    const d1 = createD1AdminAnalyticsReadRepository({
+      binding: getRuntimeD1Binding("worldcons_core"),
+      ingestBinding: getRuntimeD1Binding("worldcons_ingest"),
+      opsBinding: getRuntimeD1Binding("worldcons_ops"),
+    });
+    return {
+      ...failClosedAdminAnalyticsReads,
+      ...d1,
+      isConfigured: () => Boolean(
+        getRuntimeD1Binding("worldcons_core")
+        && getRuntimeD1Binding("worldcons_ingest")
+        && getRuntimeD1Binding("worldcons_ops"),
+      ),
+    };
+  }
   const supabase = getSupabaseAdmin();
   if (!supabase) return failClosedAdminAnalyticsReads;
   const adminClient = supabase;

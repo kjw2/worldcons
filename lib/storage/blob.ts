@@ -1,12 +1,4 @@
 import { createHash, createHmac } from "node:crypto";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import {
-  BlobNotFoundError,
-  get as vercelGet,
-  head as vercelHead,
-  put as vercelPut,
-} from "@vercel/blob";
-
 export const ARTIFACT_BLOB_ACCESS = "private" as const;
 export const ARTIFACT_BLOB_CONTRACT_VERSION = "worldcons-artifact-blob-v1";
 export const ARTIFACT_BLOB_KEY_PREFIX = "artifacts";
@@ -241,7 +233,6 @@ export function isSupabaseObjectNotFound(error: unknown): boolean {
 }
 
 function isVercelBlobNotFound(error: unknown): boolean {
-  if (error instanceof BlobNotFoundError) return true;
   return (error as { name?: unknown })?.name === "BlobNotFoundError";
 }
 
@@ -302,30 +293,17 @@ export function resolveArtifactBlobBucket(
   return bucket;
 }
 
-function createSupabaseServiceRoleClient(
-  environment: Record<string, string | undefined> = process.env,
-): SupabaseClient {
-  if (typeof window !== "undefined") throw new Error("artifact_blob.server_only");
-  const url = (environment.SUPABASE_URL || environment.NEXT_PUBLIC_SUPABASE_URL || "").trim();
-  const key = (environment.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  if (!url || !key) throw new Error("artifact_blob.supabase_not_configured");
-  return createClient(url, key, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
 export function createVercelArtifactBlobTransport(): ArtifactBlobTransport {
   if (typeof window !== "undefined") throw new Error("artifact_blob.server_only");
   return {
     async put(pathname, body, options) {
-      const result = await vercelPut(pathname, body, options);
+      const { put } = await import("@vercel/blob");
+      const result = await put(pathname, body, options);
       return { pathname: result.pathname };
     },
     async get(pathname, options) {
-      const result = await vercelGet(pathname, options);
+      const { get } = await import("@vercel/blob");
+      const result = await get(pathname, options);
       if (!result) return null;
       return {
         statusCode: result.statusCode,
@@ -335,7 +313,8 @@ export function createVercelArtifactBlobTransport(): ArtifactBlobTransport {
     },
     async head(pathname) {
       try {
-        const result = await vercelHead(pathname);
+        const { head } = await import("@vercel/blob");
+        const result = await head(pathname);
         return { pathname: result.pathname, size: result.size };
       } catch (error) {
         if (isVercelBlobNotFound(error)) return missingHeadResult(pathname);
@@ -712,9 +691,9 @@ function createProviderTransport(
     return (dependencies.vercelTransport ?? createVercelArtifactBlobTransport)();
   }
   if (provider === ARTIFACT_BLOB_PROVIDER_SUPABASE) {
-    const client = (dependencies.supabaseClient ?? createSupabaseServiceRoleClient)(environment);
+    if (!dependencies.supabaseClient) throw new Error("artifact_blob.supabase_transport_unavailable");
     return createSupabaseArtifactBlobTransport({
-      client,
+      client: dependencies.supabaseClient(environment),
       bucket: resolveArtifactBlobBucket(environment),
     });
   }

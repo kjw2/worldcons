@@ -2765,3 +2765,17 @@ Reviewed against current official Cloudflare documentation on 2026-09-20:
 - [x] M13 final Supabase -> D1 delta verified exact across all 75 migratable tables (core 30/30, ingest 26/26, ops 19/19) on 2026-09-29 via three production reconciliation manifests using the never-delete canonical full-table logic (read-only)
 - [x] M13 336h continuous D1-sole-authority observation requirement **removed by operator decision on 2026-09-29** (the soak, its scheduled observer and its readiness gate are abolished; retirement is still not complete and the final export, credential rotation, DR rehearsal, explicit approvals and governance gates all remain outstanding)
 
+## Current Worker topology correction (2026-09-29)
+
+The deployed production target is exactly three Workers: `worldcons`, `worldcons-ingest`, and `worldcons-ops-write`. The main `worldcons` Worker uses the generated `dist/server/index.js` artifact produced by `pnpm build:vinext`; its default export remains Vinext’s normal fetch handler and its named exports include `RateLimitBucketDurableObject` and `WorldconsSearchService`. The standalone `workers/search-service` deployment is retired. `/internal/*` exists only on the named entrypoint and is not routed through the public default fetch surface.
+
+External Worker callers that need the former internal search HTTP contract must configure the Service Binding as `service: "worldcons"`, `entrypoint: "WorldconsSearchService"` (for cclmetasearch, `binding: "WORLDCONS_SEARCH_SERVICE"`). Do not target a `worldcons-search` Worker. The main Worker owns core/search D1, `worldcons-search` Vectorize, Gemini settings and `worldcons-artifacts` R2; its Cloudflare production bundle does not import `@supabase/supabase-js` and its runtime selectors fail closed instead of selecting Supabase. `worldcons-ops-write` remains isolated and D1-only. `worldcons-ingest` retains its authenticated `/v1/navigate` Browser Run endpoint.
+
+External Wrangler binding fragment:
+
+```jsonc
+"services": [
+  { "binding": "WORLDCONS_SEARCH_SERVICE", "service": "worldcons", "entrypoint": "WorldconsSearchService" }
+]
+```
+

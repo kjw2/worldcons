@@ -1,10 +1,15 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
 import vinextHandler from "vinext/server/fetch-handler";
 import type { ArtifactBlobR2Bucket } from "@/lib/storage/blob";
 import { setRuntimeArtifactBlobR2Binding } from "@/lib/storage/runtime-binding";
 import { createMemoryRuntimeJsonStateStore, setRuntimeJsonStateStore } from "@/lib/runtime/persistent-state";
 import { setRuntimePlatform } from "@/lib/runtime/platform";
 import { createWaitUntilBackgroundScheduler, setRuntimeBackgroundScheduler } from "@/lib/runtime/background";
-import { setRuntimeD1Bindings, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
+import {
+  setRuntimeD1Bindings,
+  setRuntimeSearchVectorBinding,
+  type D1RuntimeDatabase,
+} from "@/lib/cloudflare/d1/runtime-binding";
 import { resolveD1ShadowConfig, setRuntimeD1ShadowConfig } from "@/lib/cloudflare/d1/shadow/config";
 import {
   resolveSiteEventsWriteAuthorityConfig,
@@ -19,9 +24,11 @@ import {
   setRuntimeAdminArticleEditWriteAuthorityConfig,
 } from "@/lib/cloudflare/d1/write-authority/admin-article-edit";
 import {
-  setRuntimeSearchServiceBinding,
-  type WorldconsSearchServiceFetcher,
-} from "@/lib/cloudflare/services/search-service-binding";
+  createWorldconsSearchServiceApp,
+  setRuntimeWorldconsSearchServiceEnv,
+  type WorldconsSearchServiceEnv,
+} from "@/lib/cloudflare/services/worldcons-search-service";
+import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
 import {
   resolveOpsHeartbeatReadAuthorityConfig,
   setRuntimeOpsHeartbeatReadAuthorityConfig,
@@ -54,10 +61,16 @@ interface WorldconsWorkerEnv {
   WORLDCONS_INGEST?: D1RuntimeDatabase;
   WORLDCONS_OPS?: D1RuntimeDatabase;
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
+  WORLDCONS_SEARCH_VECTOR?: VectorizeIndexBinding;
   WORLDCONS_RATE_LIMIT?: DurableObjectNamespaceLike;
-  WORLDCONS_SEARCH_SERVICE?: WorldconsSearchServiceFetcher;
-  WORLDCONS_SEARCH_SERVICE_ENABLED?: string;
-  WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?: string;
+  ENVIRONMENT?: string;
+  PUBLIC_BASE_URL?: string;
+  PUBLIC_SITE_BASE_URL?: string;
+  EMBEDDING_PROVIDER?: string;
+  SEMANTIC_SEARCH_ENABLED?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_EMBEDDING_MODEL?: string;
+  CCL_METASEARCH_DB_TIMEOUT_MS?: string;
   WORLDCONS_M13_AUTHORITY_PROFILE?: string;
   WORLDCONS_RATE_LIMIT_AUTHORITY?: string;
   WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY?: string;
@@ -104,6 +117,8 @@ export default {
       worldcons_ops: env.WORLDCONS_OPS,
       worldcons_search: env.WORLDCONS_SEARCH,
     });
+    setRuntimeWorldconsSearchServiceEnv(env);
+    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     setRuntimeRateLimitDurableObjectBinding(env.WORLDCONS_RATE_LIMIT);
     setRuntimeRateLimitAuthorityConfig(
       resolveRateLimitAuthorityConfig(authorityEnv as Record<string, string | undefined>),
@@ -131,11 +146,20 @@ export default {
     setRuntimeCoreWriteAuthorityConfig(
       resolveCoreWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
-    setRuntimeSearchServiceBinding(
-      env.WORLDCONS_SEARCH_SERVICE,
-      env.WORLDCONS_SEARCH_SERVICE_ENABLED?.trim().toLowerCase() === "true",
-      env.WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?.trim().toLowerCase() === "true",
-    );
     return handler.fetch(request, env, ctx);
   },
 };
+
+const searchServiceApp = createWorldconsSearchServiceApp();
+
+export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServiceEnv> {
+  fetch(request: Request): Response | Promise<Response> {
+    const env = this.env;
+    setRuntimeD1Bindings({
+      worldcons_core: env.WORLDCONS_CORE,
+      worldcons_search: env.WORLDCONS_SEARCH,
+    });
+    setRuntimeWorldconsSearchServiceEnv(env);
+    return searchServiceApp.fetch(request, env);
+  }
+}

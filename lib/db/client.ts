@@ -1,52 +1,21 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-let cachedClient: SupabaseClient | null = null;
-let cachedServiceRoleClient: SupabaseClient | null = null;
-
-export function hasSupabaseConfig() {
-  return Boolean(
-    (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-  );
+/**
+ * Supabase was retired from the WorldCons runtime during the M13 Cloudflare
+ * cutover. Keep this compatibility seam so legacy modules fail closed instead
+ * of reconnecting to Supabase when old environment variables happen to exist.
+ *
+ * Historical migration/rollback source may still import these helpers, but
+ * WorldCons no longer creates a Supabase client or reads Supabase credentials.
+ */
+export function hasSupabaseConfig(): false {
+  return false;
 }
 
-export function getSupabaseAdmin() {
-  if (!hasSupabaseConfig()) {
-    return null;
-  }
-
-  if (cachedClient) {
-    return cachedClient;
-  }
-
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !key) {
-    return null;
-  }
-
-  cachedClient = createClient(url, key, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-
-  return cachedClient;
+export function getSupabaseAdmin(): SupabaseClient | null {
+  return null;
 }
 
-export function getSupabaseServiceRoleAdmin() {
-  const url = process.env.SUPABASE_URL?.trim();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!url || !key) return null;
-  if (cachedServiceRoleClient) return cachedServiceRoleClient;
-
-  cachedServiceRoleClient = createClient(url, key, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-  return cachedServiceRoleClient;
+export function getSupabaseServiceRoleAdmin(): SupabaseClient | null {
+  return null;
 }

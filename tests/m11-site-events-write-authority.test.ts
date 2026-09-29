@@ -12,12 +12,6 @@ import {
   SITE_EVENTS_D1_CANARY_PATH_PREFIX,
   writeSiteEventToRuntimeD1,
 } from "@/lib/cloudflare/d1/write-authority/site-events";
-import {
-  clearRuntimeSearchServiceBinding,
-  setRuntimeSearchServiceBinding,
-  writeSiteEventViaRuntimeSearchService,
-} from "@/lib/cloudflare/services/search-service-binding";
-import { createWorldconsSearchServiceApp } from "@/workers/search-service/src/index";
 
 test("M11 site_events authority defaults to Supabase and invalid values fail safe", () => {
   assert.deepEqual(resolveSiteEventsWriteAuthorityConfig({}), { authority: "supabase" });
@@ -150,59 +144,6 @@ test("M11 selected D1 authority fails closed when the write binding is unavailab
     /binding_unavailable/u,
   );
   setRuntimeSiteEventsWriteAuthorityConfig(null);
-});
-
-test("M11 Cloudflare legacy bridge uses the private Service Binding and Vercel can fall back locally", async () => {
-  clearRuntimeSearchServiceBinding();
-  assert.equal(await writeSiteEventViaRuntimeSearchService(sampleRow()), null);
-
-  let seenUrl = "";
-  let seenBody: unknown = null;
-  setRuntimeSearchServiceBinding({
-    async fetch(request) {
-      seenUrl = request.url;
-      seenBody = await request.json();
-      return new Response(null, { status: 204 });
-    },
-  }, false, false);
-  assert.equal(await writeSiteEventViaRuntimeSearchService(sampleRow()), true);
-  assert.equal(seenUrl, "https://worldcons-search.internal/internal/site-events/write");
-  assert.deepEqual(seenBody, sampleRow());
-  clearRuntimeSearchServiceBinding();
-});
-
-test("M11 internal legacy bridge validates and writes one bounded Supabase row", async () => {
-  let written: unknown = null;
-  const app = createWorldconsSearchServiceApp({
-    async siteEventWrite(row) {
-      written = row;
-    },
-  });
-  const response = await app.request(
-    "https://worldcons-search.internal/internal/site-events/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sampleRow()),
-    },
-    {
-      SUPABASE_URL: "https://project.supabase.co",
-      SUPABASE_SERVICE_ROLE_KEY: "test-key",
-    },
-  );
-  assert.equal(response.status, 204);
-  assert.deepEqual(written, sampleRow());
-
-  const invalid = await app.request(
-    "https://worldcons-search.internal/internal/site-events/write",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...sampleRow(), event_type: "not-allowed" }),
-    },
-    {},
-  );
-  assert.equal(invalid.status, 400);
 });
 
 function sampleRow() {

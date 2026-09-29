@@ -46,6 +46,17 @@ test("runtime R2 binding store forces the binding transport without S3 credentia
   assert.deepEqual(await store.head(uploaded.storageRef), { size: bytes.byteLength });
 });
 
+test("runtime R2 factory fails closed when a Cloudflare binding is absent", async () => {
+  setRuntimeArtifactBlobR2Binding(null);
+  const { setRuntimePlatform } = await import("../lib/runtime/platform");
+  setRuntimePlatform("cloudflare-worker");
+  try {
+    assert.throws(() => createRuntimeArtifactBlobStore({ [ARTIFACT_BLOB_PROVIDER_ENV]: "supabase" }), /r2_binding_unavailable/u);
+  } finally {
+    setRuntimePlatform(null);
+  }
+});
+
 test("runtime slot selects the Worker binding and can be cleared back to the host factory", async () => {
   const objects = new Map<string, Uint8Array>();
   const bucket: ArtifactBlobR2Bucket = {

@@ -5,7 +5,8 @@ import {
   type Cclrag2ProviderEnv,
 } from "@/lib/integrations/cclrag2/provider-handler";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
-import { forwardToRuntimeSearchService } from "@/lib/cloudflare/services/search-service-binding";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { getRuntimeWorldconsSearchServiceEnv } from "@/lib/cloudflare/services/worldcons-search-service";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,14 +23,24 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   url.pathname = url.pathname.replace(/^\/api\/cclrag2(?=\/|$)/u, "/api");
   const providerRequest = new Request(url, request);
-  try {
-    const boundResponse = await forwardToRuntimeSearchService(providerRequest);
-    if (boundResponse) return boundResponse;
-  } catch (error) {
-    console.error("[cclrag2] search service binding unavailable", error instanceof Error ? error.name : "UnknownError");
-    return providerServiceUnavailableResponse(providerRequest);
-  }
-  return handleWorldconsSearchRequest(providerRequest, providerEnv());
+  const runtimeEnv = getRuntimeWorldconsSearchServiceEnv();
+  const dependencies = runtimeEnv ? {
+    coreBinding: getRuntimeD1Binding("worldcons_core"),
+    searchBinding: getRuntimeD1Binding("worldcons_search"),
+    vectorBinding: runtimeEnv.WORLDCONS_SEARCH_VECTOR,
+  } : undefined;
+  return handleWorldconsSearchRequest(
+    providerRequest,
+    runtimeEnv ? {
+      ENVIRONMENT: runtimeEnv.ENVIRONMENT?.trim() || "production",
+      PUBLIC_BASE_URL: runtimeEnv.PUBLIC_BASE_URL?.trim() || PUBLIC_BASE_URL,
+      EMBEDDING_PROVIDER: runtimeEnv.EMBEDDING_PROVIDER,
+      SEMANTIC_SEARCH_ENABLED: runtimeEnv.SEMANTIC_SEARCH_ENABLED,
+      GEMINI_API_KEY: runtimeEnv.GEMINI_API_KEY,
+      GEMINI_EMBEDDING_MODEL: runtimeEnv.GEMINI_EMBEDDING_MODEL,
+    } : providerEnv(),
+    dependencies,
+  );
 }
 
 function providerEnv(): Cclrag2ProviderEnv {
