@@ -304,7 +304,6 @@ test("migration and application contracts cover immutable authority, projection,
     "lib/ingest/review.ts",
     "lib/ingest/manual-summary-edit.ts",
     "lib/db/admin-queries.ts",
-    "scripts/canonicalize-source-terminology.ts",
   ]) {
     assert.ok(fs.readFileSync(path.join(process.cwd(), mutationPath), "utf8").includes("shadowConfirmedLegacyArticleMutation"));
   }

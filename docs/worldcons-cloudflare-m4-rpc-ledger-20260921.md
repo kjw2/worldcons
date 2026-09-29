@@ -247,9 +247,9 @@ The scanner also counts adjacent roots so nothing is dropped silently.
 | `worker/` | 0 | |
 | `components/` | 0 | |
 | `plugins/` | 0 | |
-| `scripts/` | 7 | operator/backfill CLIs, not app runtime |
+| `scripts/` | 6 | operator/backfill CLIs, not app runtime |
 
-The 7 operator-CLI calls are documented for completeness but are not part of the
+The 6 operator-CLI calls are documented for completeness but are not part of the
 `app/lib/workers` runtime ledger:
 
 | Call site | Function |
@@ -260,7 +260,6 @@ The 7 operator-CLI calls are documented for completeness but are not part of the
 | `scripts/article-lifecycle-p2.ts:43` | `article_lifecycle_evidence_p2` |
 | `scripts/admin-ops-readiness.ts:48` | `admin.rpc(functionName, args)` (dynamic probe) |
 | `scripts/admin-ops-readiness.ts:112` | `claim_admin_job` |
-| `scripts/backfill-judicial-complaint-tags.ts:187` | `refresh_tag_counts` |
 
 A follow-on slice can extend `DEFAULT_SCAN_ROOTS` to include `scripts` if the
 operator paths are brought under the same repository abstraction.
