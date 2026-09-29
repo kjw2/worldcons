@@ -19,6 +19,7 @@ import {
   D1_REMOTE_RECONCILE_DATABASES,
   D1_REMOTE_RECONCILE_DEFAULT_BATCH_SIZE,
 } from "../lib/cloudflare/d1/remote/reconcile";
+import { postgresSessionRoleStatement } from "../lib/cloudflare/d1/convert/postgres-source";
 
 /**
  * M5.2d reconcile tests. The harness models the D1 HTTP affected-writer and the
@@ -852,6 +853,40 @@ test("the reconcile CLI exposes an explicit, opt-in, no-broad-apply surface", ()
   assert.ok(
     pkg.scripts["verify:release"].includes("pnpm test:d1-reconcile"),
     "verify:release must run pnpm test:d1-reconcile",
+  );
+});
+
+test("the persistent Postgres source quotes only a validated session role", () => {
+  assert.equal(postgresSessionRoleStatement("postgres"), 'set role "postgres"');
+  assert.equal(postgresSessionRoleStatement("cli_login"), 'set role "cli_login"');
+  for (const unsafe of ["Postgres", "postgres; drop table x", 'postgres"', "postgres--", "public.articles", ""]) {
+    assert.throws(() => postgresSessionRoleStatement(unsafe), /invalid postgres identifier/, unsafe);
+  }
+});
+
+test("the postgres --postgres-role option is only wired to the persistent source", () => {
+  const cliSource = readFileSync(path.join(process.cwd(), "scripts/d1-reconcile.ts"), "utf8");
+  const code = cliSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.ok(code.includes('argValue(args, "postgres-role")'), "the CLI must read --postgres-role");
+  assert.ok(
+    /createPostgresRowSource\(\{[\s\S]*?sessionRole:\s*argValue\(args, "postgres-role"\)/.test(code),
+    "the CLI must pass --postgres-role to createPostgresRowSource",
+  );
+  const linkedBlock = code.slice(code.indexOf('kind === "supabase-linked"'), code.indexOf("return createPostgresRowSource"));
+  assert.ok(!linkedBlock.includes("postgres-role"), "the linked source must not receive --postgres-role");
+});
+
+test("m13-readiness exposes --postgres-role and --batch-size for the read-only final-delta path", () => {
+  const cliSource = readFileSync(path.join(process.cwd(), "scripts/m13-readiness.ts"), "utf8");
+  const code = cliSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  assert.ok(code.includes('argValue(args, "postgres-role")'), "the CLI must read --postgres-role");
+  assert.ok(
+    /createPostgresRowSource\(\{[\s\S]*?sessionRole:\s*argValue\(args, "postgres-role"\)/.test(code),
+    "m13-readiness must pass --postgres-role to createPostgresRowSource",
+  );
+  assert.ok(
+    /buildM13FinalDeltaManifest\(\{[\s\S]*?batchSize:\s*positiveIntegerArg\(args, "batch-size"\)/.test(code),
+    "m13-readiness must pass --batch-size to buildM13FinalDeltaManifest",
   );
 });
 

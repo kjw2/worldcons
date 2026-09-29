@@ -31,6 +31,7 @@ const SOURCE_URL_ENV_VAR = "WORLDCONS_D1_SOURCE_URL";
  *   pnpm d1:reconcile --source=supabase-linked --database=worldcons_core --apply
  *   pnpm d1:reconcile --source=supabase-linked --tables=tags,articles --json
  *   pnpm d1:reconcile --source=postgres --url=$WORLDCONS_D1_SOURCE_URL --batch-size=500
+ *   pnpm d1:reconcile --source=postgres --url=$WORLDCONS_D1_SOURCE_URL --postgres-role=postgres
  *
  * Operator-only and dry-run by default. It reads the M5.2a canonical datasets
  * from the read-only source and reconciles the nine mutable drift tables in the
@@ -109,7 +110,10 @@ function createRowSource(kind: SourceKind, args: readonly string[]): PostgresRow
       timeoutMs: positiveIntegerArg(args, "linked-timeout-ms") ?? undefined,
     });
   }
-  return createPostgresRowSource({ connectionString: resolveSourceUrl(args) });
+  return createPostgresRowSource({
+    connectionString: resolveSourceUrl(args),
+    sessionRole: argValue(args, "postgres-role") ?? undefined,
+  });
 }
 
 /** A 32-character hexadecimal Cloudflare account id. */

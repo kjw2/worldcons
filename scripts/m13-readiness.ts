@@ -203,7 +203,10 @@ function createDeltaSource(args: readonly string[]): { source: PostgresRowSource
   if (kind === "postgres") {
     const url = (argValue(args, "url") ?? process.env[SOURCE_URL_ENV_VAR] ?? "").trim();
     if (url.length === 0) throw new Error(`postgres export requires --url= or ${SOURCE_URL_ENV_VAR}`);
-    const source = createPostgresRowSource({ connectionString: url });
+    const source = createPostgresRowSource({
+      connectionString: url,
+      sessionRole: argValue(args, "postgres-role") ?? undefined,
+    });
     return { source, close: () => source.close() };
   }
   throw new Error(`unknown --source=${kind} (expected postgres|supabase-linked)`);
@@ -231,7 +234,12 @@ async function main(): Promise<void> {
     try {
       const runner = createWranglerD1Runner({ timeoutMs: positiveIntegerArg(args, "timeout-ms") ?? undefined });
       const executeRemoteQuery = createLazyRemoteQuery({ runner, databases: null });
-      const built = await buildM13FinalDeltaManifest({ runner, source: delta.source, executeRemoteQuery });
+      const built = await buildM13FinalDeltaManifest({
+        runner,
+        source: delta.source,
+        executeRemoteQuery,
+        batchSize: positiveIntegerArg(args, "batch-size") ?? undefined,
+      });
       finalDelta = built.report;
     } finally {
       await delta.close();
