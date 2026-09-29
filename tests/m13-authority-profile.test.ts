@@ -17,6 +17,7 @@ import { resolveOpsHeartbeatReadAuthorityConfig, resolveOpsHeartbeatWriteAuthori
 import { resolveAdminOpsEventsReadAuthorityConfig, resolveAdminOpsEventsWriteAuthorityConfig } from "@/lib/cloudflare/ops-write/admin-ops-events";
 import { resolveIngestRunWriteAuthorityConfig } from "@/lib/cloudflare/ingest-write/ingestion-runs";
 import { resolveCoreWriteAuthorityConfig } from "@/lib/cloudflare/core-write/authority";
+import { resolveRateLimitAuthorityConfig } from "@/lib/cloudflare/rate-limit/authority";
 
 test("M13 authority profile defaults to the resting supabase profile", () => {
   const resolution = resolveM13AuthorityProfile({});
@@ -47,6 +48,7 @@ test("M13 permanent d1 assignments are d1 and rollback assignments are supabase,
   assert.ok(domains.has("core.publication:write"));
   assert.ok(domains.has("ingest.ingestion_runs:write"));
   assert.ok(domains.has("ops.admin_ops_events:read"));
+  assert.ok(domains.has("ops.rate_limit:write"));
   assert.equal(domains.size, M13_AUTHORITY_ASSIGNMENTS.length, "no duplicate domain/direction assignment");
 });
 
@@ -107,6 +109,19 @@ test("M13 profile is authoritative in every M11 resolver even with only the prof
   assert.equal(resolveAdminOpsEventsReadAuthorityConfig(d1Only).authority, "d1");
   assert.equal(resolveIngestRunWriteAuthorityConfig(d1Only).authority, "d1");
   assert.equal(resolveCoreWriteAuthorityConfig(d1Only).authority, "d1");
+  assert.equal(resolveRateLimitAuthorityConfig(d1Only).authority, "d1");
+});
+
+test("M13 rate-limit leaf selector rests at supabase and accepts the exact d1 value", () => {
+  assert.equal(resolveRateLimitAuthorityConfig({}).authority, "supabase");
+  assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: " D1 " }).authority, "d1");
+  assert.equal(resolveRateLimitAuthorityConfig({ WORLDCONS_RATE_LIMIT_AUTHORITY: "d1-canary" }).authority, "supabase");
+  const failClosed = { WORLDCONS_RATE_LIMIT_AUTHORITY: "supabase", [M13_AUTHORITY_PROFILE_ENV]: "bogus" };
+  assert.throws(
+    () => resolveRateLimitAuthorityConfig(failClosed),
+    /m13_authority_profile\.invalid_authority_profile/u,
+    "an invalid M13 profile must fail closed in the rate-limit selector",
+  );
 });
 
 test("M13 profile never overrides an explicit d1-canary when it rests at supabase", () => {

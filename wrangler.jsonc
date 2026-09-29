@@ -33,6 +33,7 @@
     "WORLDCONS_BASE_URL": "https://worldcons.soltera.dev",
     "WORLDCONS_M13_AUTHORITY_PROFILE": "supabase",
     "WORLDCONS_CORE_WRITE_AUTHORITY": "supabase",
+    "WORLDCONS_RATE_LIMIT_AUTHORITY": "supabase",
     "WORLDCONS_D1_SHADOW_READ_ENABLED": "false",
     "WORLDCONS_D1_SHADOW_COMPARE_ENABLED": "false",
     "WORLDCONS_D1_SHADOW_SURFACES": "reference",
@@ -53,6 +54,20 @@
     {
       "binding": "WORLDCONS_SEARCH_SERVICE",
       "service": "worldcons-search"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WORLDCONS_RATE_LIMIT",
+        "class_name": "RateLimitBucketDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RateLimitBucketDurableObject"]
     }
   ],
   "main": "./worker/index.ts",

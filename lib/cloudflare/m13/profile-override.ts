@@ -31,6 +31,7 @@ export const M13_AUTHORITY_ENV_VARS = {
   coreWrite: "WORLDCONS_CORE_WRITE_AUTHORITY",
   opsHeartbeatRead: "WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY",
   adminOpsEventsRead: "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY",
+  rateLimit: "WORLDCONS_RATE_LIMIT_AUTHORITY",
 } as const;
 
 export const M13_AUTHORITY_PROFILES = ["supabase", "d1"] as const;

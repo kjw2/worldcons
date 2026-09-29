@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/db/client";
 import { getClientIp, hashRequestValue } from "@/lib/security/request-client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import {
+  resolveEffectiveRateLimitAuthorityConfig,
+  shouldUseCloudflareRateLimit,
+} from "@/lib/cloudflare/rate-limit/authority";
+import { consumeRateLimitInD1 } from "@/lib/cloudflare/rate-limit/d1-backend";
+import {
+  consumeRateLimitViaDurableObject,
+  getRuntimeRateLimitDurableObjectBinding,
+  runtimeRateLimitNow,
+} from "@/lib/cloudflare/rate-limit/runtime-binding";
 
 type RateLimitProfileDefinition = {
   envPrefix: string;
@@ -163,6 +174,50 @@ async function consumeDistributed(
   }
 }
 
+/**
+ * M13 Cloudflare distributed backend (`ops.rate_limit` under the `d1` authority
+ * profile). This never calls Supabase. Preference order:
+ *
+ *   1. Durable Object hot path (one atomic object per profile+identifier bucket);
+ *   2. `worldcons_ops` D1 `security_rate_limit_buckets_v1` fallback when the DO
+ *      binding is absent or errors;
+ *   3. `null`, which lets the caller fall back to the process-local limiter.
+ *
+ * The caller has already resolved the effective authority as `d1`; this function
+ * is only reached on that mutually exclusive path, so the authority selector is
+ * decisive and a present DO binding alone never changes behavior.
+ */
+async function consumeCloudflareDistributed(
+  profileName: RateLimitProfile,
+  identifier: string,
+  limit: number,
+  windowMs: number,
+): Promise<RateLimitResult | null> {
+  const nowMs = runtimeRateLimitNow();
+  const input = { profile: profileName, identifier, limit, windowMs, nowMs };
+
+  try {
+    const viaDo = await consumeRateLimitViaDurableObject(getRuntimeRateLimitDurableObjectBinding(), input);
+    if (viaDo) {
+      return buildResult("distributed", viaDo.limited, limit, viaDo.remaining, viaDo.resetAt, viaDo.retryAfterSeconds);
+    }
+  } catch {
+    // fall through to the D1 fallback
+  }
+
+  try {
+    const binding = getRuntimeD1Binding("worldcons_ops");
+    if (binding) {
+      const viaD1 = await consumeRateLimitInD1(binding, profileName, identifier, limit, windowMs, nowMs);
+      return buildResult("distributed", viaD1.limited, limit, viaD1.remaining, viaD1.resetAt, viaD1.retryAfterSeconds);
+    }
+  } catch {
+    // fall through to the process-local limiter
+  }
+
+  return null;
+}
+
 export async function consumeRateLimit(request: Request, profileName: RateLimitProfile): Promise<RateLimitResult | null> {
   if (!envBool("RATE_LIMIT_ENABLED", true)) return null;
   const profile = RATE_LIMIT_PROFILES[profileName];
@@ -171,8 +226,19 @@ export async function consumeRateLimit(request: Request, profileName: RateLimitP
   if (limit <= 0 || windowMs <= 0) return null;
 
   const identifier = requestIdentifier(request);
-  const distributed = await consumeDistributed(profileName, identifier, limit, windowMs);
-  if (distributed) return distributed;
+  // Resolve the effective authority exactly once and select a mutually exclusive
+  // backend chain. The `d1` authority must never reach the Supabase distributed
+  // path, even when both the Durable Object and the D1 fallback fail.
+  const authority = resolveEffectiveRateLimitAuthorityConfig(
+    typeof process === "undefined" ? {} : (process.env as Record<string, string | undefined>),
+  );
+  if (shouldUseCloudflareRateLimit(authority)) {
+    const distributed = await consumeCloudflareDistributed(profileName, identifier, limit, windowMs);
+    if (distributed) return distributed;
+    return consumeLocal(profileName, identifier, limit, windowMs);
+  }
+  const legacyDistributed = await consumeDistributed(profileName, identifier, limit, windowMs);
+  if (legacyDistributed) return legacyDistributed;
   return consumeLocal(profileName, identifier, limit, windowMs);
 }
 

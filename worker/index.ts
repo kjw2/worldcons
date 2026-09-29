@@ -37,6 +37,16 @@ import {
   setRuntimeCoreWriteAuthorityConfig,
 } from "@/lib/cloudflare/core-write/authority";
 import { applyM13AuthorityProfileToEnvironment } from "@/lib/cloudflare/m13/authority-profile";
+import {
+  resolveRateLimitAuthorityConfig,
+  setRuntimeRateLimitAuthorityConfig,
+} from "@/lib/cloudflare/rate-limit/authority";
+import {
+  setRuntimeRateLimitDurableObjectBinding,
+  type DurableObjectNamespaceLike,
+} from "@/lib/cloudflare/rate-limit/runtime-binding";
+
+export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
 interface WorldconsWorkerEnv {
   WORLDCONS_RAW: ArtifactBlobR2Bucket;
@@ -44,10 +54,12 @@ interface WorldconsWorkerEnv {
   WORLDCONS_INGEST?: D1RuntimeDatabase;
   WORLDCONS_OPS?: D1RuntimeDatabase;
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
+  WORLDCONS_RATE_LIMIT?: DurableObjectNamespaceLike;
   WORLDCONS_SEARCH_SERVICE?: WorldconsSearchServiceFetcher;
   WORLDCONS_SEARCH_SERVICE_ENABLED?: string;
   WORLDCONS_CCLMETASEARCH_SERVICE_ENABLED?: string;
   WORLDCONS_M13_AUTHORITY_PROFILE?: string;
+  WORLDCONS_RATE_LIMIT_AUTHORITY?: string;
   WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_AUDIT_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_ARTICLE_EDIT_WRITE_AUTHORITY?: string;
@@ -92,6 +104,10 @@ export default {
       worldcons_ops: env.WORLDCONS_OPS,
       worldcons_search: env.WORLDCONS_SEARCH,
     });
+    setRuntimeRateLimitDurableObjectBinding(env.WORLDCONS_RATE_LIMIT);
+    setRuntimeRateLimitAuthorityConfig(
+      resolveRateLimitAuthorityConfig(authorityEnv as Record<string, string | undefined>),
+    );
     setRuntimeBackgroundScheduler(createWaitUntilBackgroundScheduler(ctx));
     setRuntimeD1ShadowConfig(resolveD1ShadowConfig(authorityEnv as Record<string, string | undefined>));
     setRuntimeSiteEventsWriteAuthorityConfig(

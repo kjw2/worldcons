@@ -2213,6 +2213,7 @@ contracts from one variable:
   | core.publication | write | `WORLDCONS_CORE_WRITE_AUTHORITY` |
   | ops.ops_heartbeat | read | `WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY` |
   | ops.admin_ops_events | read | `WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY` |
+  | ops.rate_limit | write | `WORLDCONS_RATE_LIMIT_AUTHORITY` |
 
 - The profile is applied in `worker/index.ts` (main Worker) and
   `workers/ops-write/src/index.ts` (the Node/GitHub boundary) before the existing
@@ -2235,6 +2236,30 @@ The Worker/ops-write `wrangler.jsonc` rest at
 `WORLDCONS_M13_AUTHORITY_PROFILE=supabase`. The forward switch is one deployment
 of the two Worker configs plus the GitHub repository variables `WORLDCONS_*`;
 the rollback is the same operation with the value set back to `supabase`.
+
+##### M13 distributed rate limit (`ops.rate_limit`)
+
+M11 deferred `security_rate_limit_buckets_v1` to Cloudflare-native controls
+(plan 5.3 / 12). The M13 `ops.rate_limit` domain closes that gap. Its selector
+`WORLDCONS_RATE_LIMIT_AUTHORITY` (`supabase | d1`, resting `supabase`) is owned
+by the same M13 profile, so `WORLDCONS_M13_AUTHORITY_PROFILE=d1` moves it too.
+
+- `supabase` (resting): the existing `worldcons_consume_rate_limit_v1` RPC path
+  is byte-for-byte unchanged, so rollback stays explicit.
+- `d1`: `lib/security/rate-limit.ts` uses a Cloudflare-only backend and **never
+  calls Supabase**. Preference order: (1) the `RateLimitBucketDurableObject`
+  Durable Object, one object per `profile + identifier` bucket, for atomic
+  sequential consumption; (2) `worldcons_ops` `security_rate_limit_buckets_v1`
+  via a single `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` statement when
+  the DO binding is unavailable or errors; (3) the existing process-local
+  limiter only if both Cloudflare surfaces fail.
+- The Durable Object namespace (`WORLDCONS_RATE_LIMIT`) and the existing
+  `WORLDCONS_OPS` D1 binding are wired in `worker/index.ts`. The selector is
+  decisive: the mere presence of a DO binding never changes behavior.
+- Bucket semantics are preserved exactly (profile+identifier key, limit,
+  windowMs, expired reset to 1 with a new `resetAt`, otherwise increment,
+  `limited = count > limit`, `remaining = max(0, limit - count)`,
+  `retryAfterSeconds`). Invalid inputs fail closed.
 
 #### M13 final Supabase -> D1 delta
 

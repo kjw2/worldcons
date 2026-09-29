@@ -57,6 +57,7 @@ import {
   OPS_HEARTBEAT_READ_AUTHORITY_ENV,
   OPS_HEARTBEAT_WRITE_AUTHORITY_ENV,
 } from "@/lib/cloudflare/ops-write/heartbeat";
+import { RATE_LIMIT_AUTHORITY_ENV } from "@/lib/cloudflare/rate-limit/authority";
 import {
   M13_AUTHORITY_PROFILE_ENV,
   resolveM13AuthorityProfile,
@@ -101,6 +102,7 @@ export const M13_AUTHORITY_ASSIGNMENTS: readonly M13AuthorityAssignment[] = [
   { domain: "core.publication", direction: "write", envVar: CORE_WRITE_AUTHORITY_ENV },
   { domain: "ops.ops_heartbeat", direction: "read", envVar: OPS_HEARTBEAT_READ_AUTHORITY_ENV },
   { domain: "ops.admin_ops_events", direction: "read", envVar: ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV },
+  { domain: "ops.rate_limit", direction: "write", envVar: RATE_LIMIT_AUTHORITY_ENV },
 ] as const;
 
 /** The exact value every assignment must carry under the permanent D1 profile. */
