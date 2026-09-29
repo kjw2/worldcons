@@ -255,38 +255,19 @@ test("M11.3 boundary rejects unauthenticated heartbeat writes", async () => {
   assert.equal(await opsWriteAuthorized(boundRequest(heartbeatRow()), envWithToken), true);
 });
 
-test("M11.3 deployed ops-write config is externally reachable only via workers.dev with preview URLs disabled", () => {
-  const config = fs.readFileSync(
-    path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"),
-    "utf8",
-  );
-  assert.match(config, /"name": "worldcons-ops-write"/u);
-  // Externally reachable through the workers.dev endpoint only.
-  assert.match(config, /"workers_dev":\s*true/u);
-  // No per-version preview URLs, so no unauthenticated version endpoint.
-  assert.match(config, /"preview_urls":\s*false/u);
-  // No custom routes/custom domain: workers.dev is the sole entry point.
-  assert.doesNotMatch(config, /"routes"\s*:/u);
-  assert.doesNotMatch(config, /"route"\s*:/u);
-  // M11.3-OIDC: OPS_WRITE_TOKEN is no longer a required secret, so the Worker
-  // can be created without a shared repository secret.
-  assert.doesNotMatch(config, /"secrets"\s*:\s*\{[^}]*"OPS_WRITE_TOKEN"/su);
-  // The dedicated OIDC audience is a committed, non-secret var.
+test("M13 standalone ops-write deployment config is retired", () => {
+  assert.equal(fs.existsSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc")), false);
+  const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE":\s*"worldcons-ops-write"/u);
-  // No token value is ever committed as a var.
-  assert.doesNotMatch(config, /"vars"[\s\S]*?"OPS_WRITE_TOKEN"\s*:/u);
+  assert.doesNotMatch(config, /"OPS_WRITE_TOKEN"\s*:/u);
 });
 
-test("M11.3 ops-write has no search-service binding or Supabase bridge", () => {
-  const config = fs.readFileSync(
-    path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"),
-    "utf8",
-  );
+test("M13 shared ops-write handler has no Supabase bridge", () => {
+  const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   const source = fs.readFileSync(
     path.join(process.cwd(), "workers/ops-write/src/index.ts"),
     "utf8",
   );
-  assert.doesNotMatch(config, /WORLDCONS_SEARCH_SERVICE|"services"\s*:/u);
   assert.doesNotMatch(source, /WORLDCONS_SEARCH_SERVICE|relayHeartbeatToSupabase|relayAdminOpsEventToSupabase/u);
   assert.match(config, /"binding": "WORLDCONS_OPS"/u);
 });

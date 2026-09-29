@@ -763,13 +763,10 @@ test("M11.4 admin-watchdog keeps the heartbeat canary/read-parity inputs and OID
   }
 });
 
-test("M11.4 config persists the permanent d1 admin ops events authority without touching env examples", () => {
+test("M13 root config persists the permanent d1 admin ops events authority without touching env examples", () => {
   const rootConfig = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(rootConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY":\s*"d1"/u);
   assert.match(rootConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY":\s*"d1"/u);
-
-  const opsWriteConfig = fs.readFileSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"), "utf8");
-  assert.match(opsWriteConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY":\s*"d1"/u);
 
   // `.env.example` keeps the safe/neutral rollback default; it is not the
   // deployed production resting config.

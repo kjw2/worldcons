@@ -54,7 +54,7 @@ test("M13 production Worker absorbs the authenticated ops-write boundary", () =>
   assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"/u);
 });
 
-test("M13 profile is wired into the ops-write boundary Worker", () => {
+test("M13 shared ops-write handler retains the profile seam", () => {
   const source = read("workers/ops-write/src/index.ts");
   assert.match(source, /applyM13AuthorityProfileToEnvironment/u);
   assert.match(source, /const authorityEnv = applyM13AuthorityProfileToEnvironment/u);
@@ -62,9 +62,9 @@ test("M13 profile is wired into the ops-write boundary Worker", () => {
   assert.match(source, /handleOpsHeartbeatBoundary\(request, authorityEnv\)/u);
 });
 
-test("M13 profile var persists at the permanent d1 authority in both Worker configs", () => {
+test("M13 profile var persists at the permanent d1 authority in the root Worker config", () => {
   assert.match(read("wrangler.jsonc"), /"WORLDCONS_M13_AUTHORITY_PROFILE": "d1"/u);
-  assert.match(read("workers/ops-write/wrangler.jsonc"), /"WORLDCONS_M13_AUTHORITY_PROFILE": "d1"/u);
+  assert.equal(fs.existsSync(path.join(root, "workers/ops-write/wrangler.jsonc")), false);
 });
 
 test("M13 rate-limit Worker binding, DO export and wrangler migration are wired", () => {
@@ -85,9 +85,8 @@ test("M13 rate-limit Worker binding, DO export and wrangler migration are wired"
   assert.match(durable, /async consume\(/u);
 });
 
-test("M13 profile var is declared in the generated ops-write Worker types", () => {
-  const types = read("workers/ops-write/worker-configuration.d.ts");
-  assert.match(types, /WORLDCONS_M13_AUTHORITY_PROFILE: string/u);
+test("M13 standalone ops-write generated types are retired", () => {
+  assert.equal(fs.existsSync(path.join(root, "workers/ops-write/worker-configuration.d.ts")), false);
 });
 
 test("every M13 assignment names a selector owned by an existing M11 domain", () => {

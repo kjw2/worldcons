@@ -103,7 +103,7 @@ test("M13 Node ingestion client never falls back to Supabase and fails closed wi
 });
 
 test("M11-B deployment and GitHub writers carry the ingest authority seam", () => {
-  const config = fs.readFileSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc"), "utf8");
+  const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(config, /"WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "d1"/u);
   assert.match(config, /"binding": "WORLDCONS_INGEST"/u);
   assert.match(config, /"database_name": "worldcons_ingest"/u);
