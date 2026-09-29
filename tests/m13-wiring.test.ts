@@ -31,6 +31,29 @@ test("M13 profile is wired into the production Worker entry", () => {
   assert.doesNotMatch(source, /resolveCoreWriteAuthorityConfig\(env as/u, "the raw env must not bypass the M13 profile");
 });
 
+test("M13 production Worker absorbs the authenticated ops-write boundary", () => {
+  const source = read("worker/index.ts");
+  assert.match(source, /handleOpsHeartbeatBoundary/u);
+  for (const boundary of [
+    "OPS_HEARTBEAT_BOUNDARY_PATH",
+    "OPS_HEARTBEAT_BOUNDARY_READ_PATH",
+    "ADMIN_OPS_EVENTS_BOUNDARY_PATH",
+    "ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH",
+    "ADMIN_OPS_EVENTS_BOUNDARY_LIST_PATH",
+    "ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH",
+    "INGEST_RUN_BOUNDARY_PATH",
+    "CORE_LIFECYCLE_BOUNDARY_PATH",
+    "CORE_PUBLICATION_BOUNDARY_PATH",
+  ]) {
+    assert.ok(source.includes(boundary), `${boundary} must be routed by the production Worker`);
+  }
+
+  const config = read("wrangler.jsonc");
+  assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "d1"/u);
+  assert.match(config, /"WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "d1"/u);
+  assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"/u);
+});
+
 test("M13 profile is wired into the ops-write boundary Worker", () => {
   const source = read("workers/ops-write/src/index.ts");
   assert.match(source, /applyM13AuthorityProfileToEnvironment/u);

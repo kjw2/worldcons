@@ -36,19 +36,28 @@ import {
 import { searchCclMetasearchWithEnv } from "@/lib/cclmetasearch/search";
 import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
 import {
+  OPS_HEARTBEAT_BOUNDARY_PATH,
+  OPS_HEARTBEAT_BOUNDARY_READ_PATH,
   resolveOpsHeartbeatReadAuthorityConfig,
   setRuntimeOpsHeartbeatReadAuthorityConfig,
 } from "@/lib/cloudflare/ops-write/heartbeat";
 import {
+  ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_LIST_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH,
   resolveAdminOpsEventsReadAuthorityConfig,
   resolveAdminOpsEventsWriteAuthorityConfig,
   setRuntimeAdminOpsEventsReadAuthorityConfig,
   setRuntimeAdminOpsEventsWriteAuthorityConfig,
 } from "@/lib/cloudflare/ops-write/admin-ops-events";
 import {
+  CORE_LIFECYCLE_BOUNDARY_PATH,
+  CORE_PUBLICATION_BOUNDARY_PATH,
   resolveCoreWriteAuthorityConfig,
   setRuntimeCoreWriteAuthorityConfig,
 } from "@/lib/cloudflare/core-write/authority";
+import { INGEST_RUN_BOUNDARY_PATH } from "@/lib/cloudflare/ingest-write/ingestion-runs";
 import { applyM13AuthorityProfileToEnvironment } from "@/lib/cloudflare/m13/authority-profile";
 import {
   resolveRateLimitAuthorityConfig,
@@ -58,6 +67,10 @@ import {
   setRuntimeRateLimitDurableObjectBinding,
   type DurableObjectNamespaceLike,
 } from "@/lib/cloudflare/rate-limit/runtime-binding";
+import {
+  handleOpsHeartbeatBoundary,
+  type WorldconsOpsWriteWorkerEnv,
+} from "../workers/ops-write/src/index";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -103,6 +116,18 @@ interface VinextWorkerHandler {
 }
 
 const handler = vinextHandler as unknown as VinextWorkerHandler;
+
+const OPS_WRITE_BOUNDARY_PATHS = new Set([
+  OPS_HEARTBEAT_BOUNDARY_PATH,
+  OPS_HEARTBEAT_BOUNDARY_READ_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_LIST_PATH,
+  ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH,
+  INGEST_RUN_BOUNDARY_PATH,
+  CORE_LIFECYCLE_BOUNDARY_PATH,
+  CORE_PUBLICATION_BOUNDARY_PATH,
+]);
 
 export default {
   fetch(request: Request, env: WorldconsWorkerEnv, ctx: WorkerExecutionContextLike) {
@@ -152,6 +177,12 @@ export default {
     setRuntimeCoreWriteAuthorityConfig(
       resolveCoreWriteAuthorityConfig(authorityEnv as Record<string, string | undefined>),
     );
+    if (OPS_WRITE_BOUNDARY_PATHS.has(new URL(request.url).pathname)) {
+      return handleOpsHeartbeatBoundary(
+        request,
+        authorityEnv as unknown as WorldconsOpsWriteWorkerEnv,
+      );
+    }
     return handler.fetch(request, env, ctx);
   },
 };
