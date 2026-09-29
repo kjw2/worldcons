@@ -28,6 +28,12 @@ import {
   setRuntimeWorldconsSearchServiceEnv,
   type WorldconsSearchServiceEnv,
 } from "@/lib/cloudflare/services/worldcons-search-service";
+import {
+  parseCclMetasearchSearchParams,
+  type CclMetasearchSearchInput,
+  type CclMetasearchSearchPage,
+} from "@/lib/cclmetasearch/contract";
+import { searchCclMetasearchWithEnv } from "@/lib/cclmetasearch/search";
 import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
 import {
   resolveOpsHeartbeatReadAuthorityConfig,
@@ -161,5 +167,28 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
     });
     setRuntimeWorldconsSearchServiceEnv(env);
     return searchServiceApp.fetch(request, env);
+  }
+
+  async searchCclMetasearch(input: CclMetasearchSearchInput): Promise<CclMetasearchSearchPage> {
+    const env = this.env;
+    setRuntimeD1Bindings({
+      worldcons_core: env.WORLDCONS_CORE,
+      worldcons_search: env.WORLDCONS_SEARCH,
+    });
+    setRuntimeWorldconsSearchServiceEnv(env);
+
+    const params = new URLSearchParams({
+      q: input?.query ?? "",
+      limit: String(input?.limit ?? ""),
+      offset: String(input?.offset ?? ""),
+      sort: input?.sort ?? "",
+    });
+    const validated = parseCclMetasearchSearchParams(params);
+    return searchCclMetasearchWithEnv(validated, {
+      PUBLIC_SITE_BASE_URL: env.PUBLIC_SITE_BASE_URL?.trim() || "https://worldcons.soltera.dev",
+      CORE_BINDING: env.WORLDCONS_CORE,
+      SEARCH_BINDING: env.WORLDCONS_SEARCH,
+      CCL_METASEARCH_DB_TIMEOUT_MS: env.CCL_METASEARCH_DB_TIMEOUT_MS,
+    });
   }
 }

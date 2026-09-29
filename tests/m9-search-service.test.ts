@@ -134,6 +134,8 @@ test("M9 named entrypoint owns internal requests while default fetch stays vinex
   const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(worker, /export class WorldconsSearchService extends WorkerEntrypoint/u);
   assert.match(worker, /return searchServiceApp\.fetch\(request, env\)/u);
+  assert.match(worker, /async searchCclMetasearch\(input: CclMetasearchSearchInput\)/u);
+  assert.match(worker, /return searchCclMetasearchWithEnv\(validated/u);
   assert.match(worker, /return handler\.fetch\(request, env, ctx\)/u);
   assert.doesNotMatch(worker.slice(worker.indexOf("export default {"), worker.indexOf("const searchServiceApp")), /searchServiceApp|\/internal/u);
   assert.doesNotMatch(config, /"WORLDCONS_SEARCH_SERVICE"|"service":\s*"worldcons-search"/u);
