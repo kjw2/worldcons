@@ -434,7 +434,7 @@ test("Supabase adapter maps the source-text snapshot and filters publishability"
   await assert.rejects(() => failingRepository.getArticleSourceTextBySlug("case-1"), /source unavailable/);
 });
 
-test("exported detail reads delegate to the configured adapter", async () => {
+test("retired Supabase env cannot reactivate the exported article-read backend", async () => {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -446,14 +446,11 @@ test("exported detail reads delegate to the configured adapter", async () => {
     await withSupabaseEnv(
       { SUPABASE_URL: "https://article-reads.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
       async () => {
-        assert.notEqual(articleReads(), mockArticleReads, "configured Supabase must select the Supabase adapter");
+        assert.equal(articleReads(), mockArticleReads, "without a runtime D1 binding the local fixture adapter remains authoritative");
         assert.equal(await getArticleBySlug("case-1"), null);
         assert.equal(await getArticlePreviewBySlug("case-1"), null);
         assert.equal(await getArticleSourceTextBySlug("case-1"), null);
-        assert.ok(
-          requests.some((url) => url.includes("/rest/v1/articles")),
-          "delegated detail reads must query the article relation",
-        );
+        assert.deepEqual(requests, [], "retired Supabase credentials must never trigger a network read");
       },
     );
   } finally {
@@ -694,7 +691,7 @@ test("Supabase adapter preserves the full-text fallback and its error semantics"
   });
 });
 
-test("exported listArticles uses the ranked full-text path and preserves ranked ordering", async () => {
+test("exported listArticles ignores retired Supabase env and preserves local fallback semantics", async () => {
   const originalFetch = globalThis.fetch;
   const rankedRows = [listRow({ id: "a", slug: "a" }), listRow({ id: "b", slug: "b" })];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -716,9 +713,9 @@ test("exported listArticles uses the ranked full-text path and preserves ranked 
         ADMIN_PUBLICATION_V4_READ_ENABLED: "true",
       },
       async () => {
-        const result = await listArticles({ q: "표현 자유", page: 1, pageSize: 10 });
-        assert.deepEqual(result.items.map((item) => item.id), ["b", "a"], "ranked ids must define the item order");
-        assert.deepEqual(result.pageInfo, { page: 1, pageSize: 10, total: 2, hasMore: false, totalIsExact: true });
+        const filters = { q: "표현 자유", page: 1, pageSize: 10 } as const;
+        assert.equal(articleReads(), mockArticleReads);
+        assert.deepEqual(await listArticles(filters), await mockArticleReads.listArticles(filters));
       },
     );
   } finally {
@@ -749,7 +746,7 @@ function blobTransport(bytes: Buffer): ArtifactBlobTransport {
   };
 }
 
-test("raw-text hydration stays at the query boundary and only runs for detail reads", async () => {
+test("retired Supabase env cannot drive raw-text detail reads", async () => {
   const encoded = encodeArticleRawText("hydrated blob text");
   const storageRef = articleRawBlobStorageRef("us-scotus", encoded.sha256);
   const transport = blobTransport(encoded.bytes);
@@ -764,7 +761,9 @@ test("raw-text hydration stays at the query boundary and only runs for detail re
   });
 
   const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requests.push(String(input));
     assert.ok(String(input).includes("/rest/v1/articles"));
     return new Response(JSON.stringify([blobRow]), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
@@ -778,16 +777,17 @@ test("raw-text hydration stays at the query boundary and only runs for detail re
           blobStore,
           environment: { ARTICLE_RAW_BLOB_READ_ENABLED: "true" },
         });
-        assert.equal(hydrated?.rawText, "hydrated blob text", "the detail read must hydrate the externalized raw text");
+        assert.equal(hydrated, null, "without a D1 row there is no detail to hydrate");
 
         const pageRead = await getArticleBySlug("case-blob", {
           includeSourceText: false,
           blobStore,
           environment: { ARTICLE_RAW_BLOB_READ_ENABLED: "true" },
         });
-        assert.equal(pageRead?.rawText, undefined, "the page read must not hydrate raw text");
+        assert.equal(pageRead, null);
       },
     );
+    assert.deepEqual(requests, [], "retired Supabase credentials must not be used for raw-text reads");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1045,6 +1045,8 @@ test("exported getRelatedArticles keeps the strongest-tag ids path and the tag/s
     );
   });
 
+  const retiredEnvSource = MOCK_SUMMARIZED[0];
+  const expectedWithoutRetiredEnv = await getRelatedArticles(retiredEnvSource, 3);
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -1062,20 +1064,9 @@ test("exported getRelatedArticles keeps the strongest-tag ids path and the tag/s
     await withSupabaseEnv(
       { SUPABASE_URL: "https://related.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
       async () => {
-        const article = {
-          ...listRow({ id: "a", slug: "a" }),
-          tags: [{ id: "tag-9", slug: "strong", name: "Strong", normalizedName: "Strong", type: "article", articleCount: 10 }],
-        } as unknown as ArticleListItem;
-        const related = await getRelatedArticles(article, 3);
-        assert.deepEqual(related.map((item) => item.slug), ["b", "c"], "the article_tags ids must define the related order");
-        const tagRequest = requests.find((url) => url.includes("/rest/v1/article_tags"));
-        assert.ok(tagRequest && tagRequest.includes("tag_id=eq.tag-9"), "the strongest tag id must drive the article_tags lookup");
-        assert.ok(tagRequest.includes("article_id=neq.a"), "the lookup must exclude the source article id");
-        assert.equal(
-          requests.some((url) => url.includes("/rest/v1/article_view_counts")),
-          false,
-          "related reads must skip view-count attachment",
-        );
+        assert.equal(articleReads(), mockArticleReads);
+        assert.deepEqual(await getRelatedArticles(retiredEnvSource, 3), expectedWithoutRetiredEnv);
+        assert.deepEqual(requests, [], "retired Supabase credentials must not drive related reads");
       },
     );
   } finally {
@@ -1120,12 +1111,11 @@ test("exported getTagBySlug composes the tag lookup with the tag article list", 
     await withSupabaseEnv(
       { SUPABASE_URL: "https://tags.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
       async () => {
-        const result = await getTagBySlug("qpc");
+        assert.equal(articleReads(), mockArticleReads);
+        const result = await getTagBySlug("first-amendment");
         assert.ok(result);
-        assert.equal(result.tag.slug, "qpc");
-        assert.equal(result.tag.type, "procedure");
-        assert.deepEqual(result.articles.map((article) => article.slug), ["a"]);
-        assert.ok(requests.some((url) => url.includes("/rest/v1/tags")), "the tag lookup must query the tags relation");
+        assert.equal(result.tag.slug, "first-amendment");
+        assert.deepEqual(requests, [], "retired Supabase credentials must not drive tag reads");
       },
     );
   } finally {
