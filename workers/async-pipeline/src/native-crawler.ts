@@ -309,6 +309,12 @@ async function discoverBverfgOpenLegalData(fetcher: typeof fetch, rangeStart: nu
   return candidates;
 }
 
+function isTransientCrawlerHttpError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return /^crawler\.http_5\d\d$/u.test(error.message)
+    || /^crawler\.bverfg_index_http_5\d\d$/u.test(error.message);
+}
+
 function discoverFrance(html: string, base: string): NativeArticleCandidate[] {
   return absoluteLinks(html, base).filter((link) => officialHost("fr-conseil-constitutionnel", link.url) && (/^\/decision\/20\d{2}\/[^/]+\.html?$/i.test(new URL(link.url).pathname) || /^\/20\d{2}-\d{2}-\d{2}\/decision-/i.test(new URL(link.url).pathname))).map((link) => ({
     sourceKey: "fr-conseil-constitutionnel", url: link.url, title: link.title || link.url.split("/").at(-1) || "Décision", publishedAt: dateIso(`${link.context} ${link.url}`), contentType: "decision", metadata: { decisionNumber: link.context.match(/\bn[°ºo]?\s*[0-9]{4}-[0-9]+\s*(?:QPC|DC|AN|SEN)?/i)?.[0], collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false } },
@@ -698,9 +704,13 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
   }
   if (source === "de-bverfg") {
     const url = `${base}/DE/Entscheidungen/entscheidungen_node.html`;
-    const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-    const officialListing = discoverBverfg(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
-    if (officialListing.length > 0) return officialListing;
+    try {
+      const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+      const officialListing = discoverBverfg(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
+      if (officialListing.length > 0) return officialListing;
+    } catch (error) {
+      if (!isTransientCrawlerHttpError(error)) throw error;
+    }
     return discoverBverfgOpenLegalData(fetcher, rangeStart, limit);
   }
   if (source === "fr-conseil-constitutionnel") {
@@ -723,6 +733,7 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
     const configured = Array.isArray(candidate.metadata.officialUrlCandidates)
       ? candidate.metadata.officialUrlCandidates.filter((value): value is string => typeof value === "string" && officialHost("de-bverfg", value))
       : [candidate.url];
+    let sawTransient5xx = false;
     for (const officialUrl of configured) {
       try {
         const result = await fetchHtml(candidate.sourceKey, officialUrl, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
@@ -731,9 +742,14 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
         return { text: extractOfficialText(result.html, candidate.sourceKey), status: result.status, fetched: true };
       } catch (error) {
         if (error instanceof Error && error.message === "crawler.http_404") continue;
+        if (isTransientCrawlerHttpError(error)) {
+          sawTransient5xx = true;
+          continue;
+        }
         throw error;
       }
     }
+    if (sawTransient5xx) candidate.metadata.fetchUnavailableCode = "BVERFG_OFFICIAL_TRANSIENT_5XX";
     return { text: "", status: 404, fetched: false };
   }
   if (candidate.sourceKey === "es-tribunal-constitucional") {
@@ -830,9 +846,13 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
         const collection = candidate.metadata.collection as Record<string, unknown>;
         if (!fetched.fetched) {
           uncollectedCount += 1;
-          const unavailableCode = source === "de-bverfg" ? "BVERFG_OFFICIAL_VARIANTS_404" : source === "es-tribunal-constitucional" ? "SPAIN_SOURCE_TEXT_UNAVAILABLE" : "PDF_TEXT_EXTRACTION_UNAVAILABLE";
+          const unavailableCode = source === "de-bverfg"
+            ? (typeof candidate.metadata.fetchUnavailableCode === "string" ? candidate.metadata.fetchUnavailableCode : "BVERFG_OFFICIAL_VARIANTS_404")
+            : source === "es-tribunal-constitucional" ? "SPAIN_SOURCE_TEXT_UNAVAILABLE" : "PDF_TEXT_EXTRACTION_UNAVAILABLE";
           const unavailableMessage = source === "de-bverfg"
-            ? "Official BVerfG URL variants are not published yet; keep the discovery candidate for bounded recheck."
+            ? unavailableCode === "BVERFG_OFFICIAL_TRANSIENT_5XX"
+              ? "Official BVerfG endpoints are temporarily unavailable; keep the discovery candidate for bounded recheck."
+              : "Official BVerfG URL variants are not published yet; keep the discovery candidate for bounded recheck."
             : source === "es-tribunal-constitucional"
               ? "Official Spain HJ listing metadata is preserved; JSON source text is temporarily unavailable."
               : "Official PDF metadata preserved; source text awaits review.";

@@ -323,6 +323,52 @@ test("BVerfG unpublished official variants remain a bounded retry candidate inst
   }
 });
 
+test("BVerfG transient official 5xx falls back to discovery and remains uncollected instead of failing the source run", async () => {
+  const store = memoryBindings();
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
+  try {
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") {
+        return response("temporary tls/origin failure", 525);
+      }
+      if (url.startsWith("https://de.openlegaldata.io/api/cases/")) {
+        return response(JSON.stringify({
+          next: null,
+          results: [{
+            file_number: "2 BvR 1702/26",
+            date: "2026-09-17",
+            type: "Einstweilige Anordnung",
+            ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226",
+          }],
+        }), 200, "application/json");
+      }
+      if (/\/SharedDocs\/Entscheidungen\/DE\/2026\/09\/(?:rk|rs)20260917_2bvr170226\.html$/.test(url)) {
+        return response("temporary tls/origin failure", 525);
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, {
+      now,
+      limit: 20,
+      fetch: fetcher,
+      idempotencyKey: "m8:crawler-daily:bverfg-transient-525",
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(result.discoveredCount, 1);
+    assert.equal(result.fetchedCount, 0);
+    assert.equal(result.uncollectedCount, 1);
+    assert.equal(result.failedCount, 0);
+    assert.equal(store.articles.size, 0);
+    assert.equal([...store.candidates.values()][0].last_error_code, "BVERFG_OFFICIAL_TRANSIENT_5XX");
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test("Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids", async () => {
   const store = memoryBindings();
   const requestedIds: number[] = [];
