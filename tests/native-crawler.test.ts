@@ -387,7 +387,7 @@ test("Spain native discovery uses the authenticated official search session befo
         assert.match(String(init?.body ?? ""), new RegExp(`__RequestVerificationToken=${token}`));
         return response('{"success":"1"}', 200, "application/json");
       }
-      if (url.endsWith("/HJ/es/Resolucion/List?page=1")) return response('<a href="/HJ/es/Resolucion/Show/32141">SENTENCIA 62/2026 22 septiembre 2026</a>');
+      if (url.endsWith("/HJ/es/Resolucion/List?page=1")) return response('<a href="/HJ/es/Resolucion/Show/32141">SENTENCIA 62/2026</a>');
       if (url.endsWith("/HJ/es/Resolucion/List?page=2")) return response("<html></html>");
       if (/\/(?:HJ\/)?Resolucion\/Api\/json\/32141$/.test(url)) return response(JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: 62, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: "22/09/2026 0:00:00", CONTENIDO_IRRELEVANTE_PARA_INTERNET: false, AVISO: "Este auto no incorpora doctrina constitucional." }), 200, "application/json");
       if (url.includes("/Busqueda/BuscarAjax")) return response('{"success":"0","message":"No se han encontrado resultados"}', 200, "application/json");

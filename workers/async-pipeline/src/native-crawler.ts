@@ -432,7 +432,11 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
         }
         if (!pageItems?.length) break;
         for (const candidate of pageItems) {
-          if (withinRange(candidate.publishedAt, rangeStart)) candidates.set(candidate.url, candidate);
+          // BuscarAjax is already scoped by FECHA_DESDE/FECHA_HASTA. List labels do not
+          // consistently expose a parseable decision date, so do not discard an official
+          // search hit merely because the list title lacks one. fetchCandidate() will
+          // refresh publishedAt from FECHA_REGISTRO when the JSON detail endpoint responds.
+          candidates.set(candidate.url, candidate);
           if (candidates.size >= limit) break;
         }
       }
@@ -812,7 +816,8 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     const incrementalDays = latest?.finished_at ? Math.max(rangeDays, Math.min(365, Math.ceil((Date.parse(startedAt) - Date.parse(latest.finished_at)) / 86_400_000) + 2)) : rangeDays;
     const effectiveStart = Date.parse(startedAt) - incrementalDays * 86_400_000;
     discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.browserNavigate);
-    const primary = discovered.filter((item) => withinRange(item.publishedAt, effectiveStart));
+    const primary = discovered.filter((item) => withinRange(item.publishedAt, effectiveStart)
+      || (item.sourceKey === "es-tribunal-constitucional" && item.metadata.discoveryIndex === "official-search"));
     const revisions = source === "us-scotus"
       ? discovered.filter((item) => !withinRange(item.publishedAt, effectiveStart) && withinRange(typeof item.metadata.revisionDate === "string" ? item.metadata.revisionDate : undefined, Date.parse(startedAt) - 90 * 86_400_000)).slice(0, 100)
       : [];
