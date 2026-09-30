@@ -364,11 +364,18 @@ function spainPayloadText(payload: Record<string, unknown>) {
 async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBindings, robotsCache: Map<string, string>, lastRequest: Map<string, number>, hjId: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   const api = `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/Resolucion/Api/json/${hjId}`;
   await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
-  const response = await fetcher(api, { headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
-  if (!officialHost("es-tribunal-constitucional", response.url || api)) throw new Error("crawler.redirect_non_official_host");
-  if (response.ok) {
-    const payload = await response.json().catch(() => null);
-    if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload as Record<string, unknown>;
+  let response: Response | null = null;
+  try {
+    response = await fetcher(api, { headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+  } catch {
+    response = null;
+  }
+  if (response) {
+    if (!officialHost("es-tribunal-constitucional", response.url || api)) throw new Error("crawler.redirect_non_official_host");
+    if (response.ok) {
+      const payload = await response.json().catch(() => null);
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload as Record<string, unknown>;
+    }
   }
   if (!browserNavigate) return null;
   const rendered = await browserNavigate({ url: api, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" });

@@ -326,6 +326,7 @@ test("BVerfG unpublished official variants remain a bounded retry candidate inst
 test("Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids", async () => {
   const store = memoryBindings();
   const requestedIds: number[] = [];
+  const browserIds: number[] = [];
   const originalNow = Date.now;
   let tick = 0;
   Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
@@ -339,16 +340,27 @@ test("Spain native discovery probes official JSON ids after the D1 HJ tail and s
       if (idMatch) {
         const id = Number(idMatch[1]);
         requestedIds.push(id);
-        if (id === 32141 || id === 32142) return response(JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: id - 32080, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: id === 32141 ? "29/09/2026" : "30/09/2026", RESOLUCIONES_FUNDAMENTOS: [{ TEXTO: substantive }] }), 200, "application/json");
+        if (id === 32141) throw new TypeError("simulated Worker fetch transport failure");
+        if (id === 32142) return response(JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: id - 32080, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: "30/09/2026", RESOLUCIONES_FUNDAMENTOS: [{ TEXTO: substantive }] }), 200, "application/json");
         return response("{}", 404, "application/json");
       }
       throw new Error(`unexpected fetch ${url}`);
     };
-    const result = await runNativeSourceCollection("es-tribunal-constitucional", store.bindings, { now, limit: 20, fetch: fetcher, idempotencyKey: "m8:crawler-daily:spain-tail" });
+    const browserNavigate = async ({ url }: { url: string }) => {
+      const id = Number(url.match(/\/HJ\/Resolucion\/Api\/json\/(\d+)$/)?.[1] ?? 0);
+      browserIds.push(id);
+      if (id === 32141) {
+        const payload = JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: 61, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: "29/09/2026", RESOLUCIONES_FUNDAMENTOS: [{ TEXTO: substantive }] });
+        return { html: `<html><body><pre>${payload}</pre></body></html>`, finalUrl: url, status: 200, headers: { "content-type": "application/json" } };
+      }
+      return { html: "<html><body></body></html>", finalUrl: url, status: 404, headers: { "content-type": "text/html" } };
+    };
+    const result = await runNativeSourceCollection("es-tribunal-constitucional", store.bindings, { now, limit: 20, fetch: fetcher, browserNavigate, idempotencyKey: "m8:crawler-daily:spain-tail" });
     assert.equal(result.discoveredCount, 2);
     assert.equal(result.fetchedCount, 2);
     assert.equal(result.failedCount, 0);
     assert.deepEqual([...new Set(requestedIds)].slice(0, 5), [32141, 32142, 32143, 32144, 32145]);
+    assert.ok(browserIds.includes(32141), "transport exceptions fall back to Browser Rendering");
     assert.equal(store.articles.size, 2);
     for (const article of store.articles.values()) {
       const metadata = JSON.parse(String(article.source_metadata)) as { collection: { publishable: boolean; sourceTextAvailable: boolean } };
