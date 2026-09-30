@@ -82,10 +82,12 @@ test("workflow instance ids are Cloudflare-valid and collision-safe for represen
 });
 
 test("every M8 task kind is native and crawler-daily fans out by source", () => {
-  assert.deepEqual(M8_TASK_KINDS, ["admin-job-drain", "watchdog", "crawler-daily", "embedding-backfill", "summary-drain", "admin-health", "analytics-retention"]);
+  assert.deepEqual(M8_TASK_KINDS, ["admin-job-drain", "watchdog", "crawler-daily", "search-projection-sync", "embedding-backfill", "summary-drain", "admin-health", "analytics-retention"]);
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*for \(const source of NATIVE_CRAWLER_SOURCES\)/u);
   assert.match(source, /native-crawler-\$\{source\}/u);
+  assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*native-search-projection-sync/u);
   assert.match(source, /launch\(binding/);
   assert.match(source, /this\.env\.BROWSER/);
   assert.match(source, /native-analytics-retention/);
@@ -282,7 +284,7 @@ test("canary operator report routes every eligible kind natively", () => {
   });
   assert.equal(report.workflowInstanceIdValid, true);
   assert.equal(report.route, "native");
-  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,crawler-daily,admin-health,embedding-backfill,summary-drain,analytics-retention");
+  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,summary-drain,analytics-retention");
   assert.equal(report.enabledKindsValid, true);
   assert.equal(report.kindEnabled, true, "the checked-in enabled scheduler allows admin-health");
 
@@ -306,7 +308,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, "workers/async-pipeline/wrangler.jsonc"), "utf8"));
   const consumer = config.queues.consumers[0];
   assert.equal(config.vars.M8_SCHEDULER_ENABLED, "true");
-  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,crawler-daily,admin-health,embedding-backfill,summary-drain,analytics-retention");
+  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,summary-drain,analytics-retention");
   assert.deepEqual(config.triggers.crons, M8_CRON_EXPRESSIONS);
   assert.equal(consumer.max_concurrency, 1);
   assert.equal(consumer.max_retries, 3);
@@ -315,6 +317,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   assert.equal("secrets" in config, false);
   assert.equal(config.browser.binding, "BROWSER");
   assert.equal(config.r2_buckets[0].binding, "WORLDCONS_RAW");
+  assert.ok(config.d1_databases.some((binding: { binding: string }) => binding.binding === "WORLDCONS_SEARCH"));
   assert.deepEqual(config.services, [
     { binding: "WORLDCONS_APP_SERVICE", service: "worldcons", entrypoint: "WorldconsOpsService" },
   ]);

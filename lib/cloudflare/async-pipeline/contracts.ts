@@ -4,6 +4,7 @@ export const M8_TASK_KINDS = [
   "admin-job-drain",
   "watchdog",
   "crawler-daily",
+  "search-projection-sync",
   "embedding-backfill",
   "summary-drain",
   "admin-health",

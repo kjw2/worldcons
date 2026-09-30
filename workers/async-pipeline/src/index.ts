@@ -17,6 +17,7 @@ import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding
 import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
+import { runNativeSearchProjectionSync } from "./search-projection-sync";
 import { launch } from "@cloudflare/playwright";
 
 async function browserNavigate(input: { url: string; timeoutMs: number; waitUntil: "domcontentloaded"; userAgent: string }, binding: BrowserRun) {
@@ -44,6 +45,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       worldcons_ops: this.env.WORLDCONS_OPS,
       worldcons_core: this.env.WORLDCONS_CORE,
       worldcons_ingest: this.env.WORLDCONS_INGEST,
+      worldcons_search: this.env.WORLDCONS_SEARCH,
     });
     const policy = gate(this.env);
     if (!isM8TaskMessage(event.payload)) {
@@ -62,11 +64,19 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       return step.do("native-admin-job-drain", {
         retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
       }, () => runNativeAdminJobDrain({
-        env: this.env,
+        env: this.env as unknown as Parameters<typeof runNativeAdminJobDrain>[0]["env"],
         idempotencyKey: event.payload.idempotencyKey,
         maxJobs: 2,
         leaseSeconds: 1200,
         browserNavigate: (input) => browserNavigate(input, this.env.BROWSER),
+      }));
+    }
+    if (event.payload.kind === "search-projection-sync") {
+      return step.do("native-search-projection-sync", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+      }, () => runNativeSearchProjectionSync({
+        WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+        WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
       }));
     }
     if (event.payload.kind === "crawler-daily") {
@@ -78,7 +88,13 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
           () => runNativeSourceCollection(source, this.env, { limit: 20, idempotencyKey: event.payload.idempotencyKey, browserNavigate: (input) => browserNavigate(input, this.env.BROWSER) }),
         ));
       }
-      return results;
+      const searchProjection = await step.do("native-search-projection-sync", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+      }, () => runNativeSearchProjectionSync({
+        WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+        WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
+      }));
+      return { crawlers: results, searchProjection };
     }
     if (event.payload.kind === "analytics-retention") {
       return step.do("native-analytics-retention", {
