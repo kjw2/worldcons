@@ -165,6 +165,17 @@ function uniqueStrings(values: readonly unknown[]): string[] {
   return out;
 }
 
+function compareListRows(left: Record<string, unknown>, right: Record<string, unknown>): number {
+  const leftPublished = typeof left.original_published_at === "string" ? left.original_published_at : null;
+  const rightPublished = typeof right.original_published_at === "string" ? right.original_published_at : null;
+  if (leftPublished !== rightPublished) {
+    if (leftPublished === null) return 1;
+    if (rightPublished === null) return -1;
+    return rightPublished.localeCompare(leftPublished);
+  }
+  return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+}
+
 /**
  * Mirrors the PostgREST `source_metadata->collection->>publishable = 'true'`
  * predicate: the canonical JSON text of `publishable` is compared as text, so a
@@ -398,22 +409,37 @@ export function createD1ArticleReadRepository(
       where.push({ column: "status", value: "summarized" });
       where.push({ column: "catalog_ai_stale_v4", value: 0 });
     }
-    if (filters.ids) where.push({ column: "id", op: "in", value: filters.ids });
     if (filters.source) where.push({ column: "source_key", value: filters.source });
     if (filters.jurisdiction) where.push({ column: "jurisdiction", value: filters.jurisdiction });
     if (filters.type) where.push({ column: "content_type", value: filters.type });
     if (filters.language) where.push({ column: "original_language", value: filters.language });
-    if (taggedArticleIds) where.push({ column: "id", op: "in", value: taggedArticleIds });
     const startIso = rangeStartIso(filters.range);
     if (startIso) where.push({ column: "original_published_at", op: "gte", value: startIso });
 
-    const rows = await read(binding, "articles", {
-      select: [...LIST_COLUMNS],
-      where,
-      orderBy: LIST_ORDER,
-      limit: maxRows + 1,
-    });
+    let constrainedArticleIds: string[] | null = null;
+    if (taggedArticleIds) {
+      const requested = filters.ids ? new Set(filters.ids) : null;
+      constrainedArticleIds = taggedArticleIds.filter((id) => !requested || requested.has(id));
+    } else if (filters.ids) {
+      constrainedArticleIds = uniqueStrings(filters.ids);
+    }
+    if (constrainedArticleIds && constrainedArticleIds.length === 0) return empty();
+
+    const rows = constrainedArticleIds
+      ? await readByInBatches(binding, "articles", "id", constrainedArticleIds, {
+          select: [...LIST_COLUMNS],
+          where,
+          orderBy: LIST_ORDER,
+          limit: maxRows + 1,
+        })
+      : await read(binding, "articles", {
+          select: [...LIST_COLUMNS],
+          where,
+          orderBy: LIST_ORDER,
+          limit: maxRows + 1,
+        });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listArticles");
+    if (constrainedArticleIds) rows.sort(compareListRows);
 
     const matched = filters.includeUnpublished ? rows : rows.filter((row) => isTextuallyPublishable(row));
     const from = (page - 1) * pageSize;

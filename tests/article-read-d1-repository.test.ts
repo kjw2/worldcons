@@ -358,6 +358,29 @@ test("D1 article adapter listArticles applies source/jurisdiction/type/language/
   assert.deepEqual((await repository.listArticles({ range: "month" })).items.map((i) => i.slug), ["b"]);
 });
 
+test("D1 article adapter batches large tag article-id filters below the bind ceiling", async () => {
+  const articles = Array.from({ length: 105 }, (_, index) => d1Article({
+    id: `article-${String(index).padStart(3, "0")}`,
+    slug: `article-${index}`,
+    original_published_at: `2026-08-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
+  }));
+  const fake = createFakeD1({
+    articles,
+    article_tags: articles.map((article) => ({ article_id: article.id, tag_id: "tag-1", confidence: 0.9 })),
+    tags: [TAG_ROW as unknown as Record<string, unknown>],
+    article_view_counts: [],
+  }, { maxBoundParams: 100 });
+  const repository = createD1ArticleReadRepository({ binding: fake.database });
+
+  const result = await repository.listArticles({ tag: "first-amendment", pageSize: 9, includeViewCounts: false });
+  assert.equal(result.items.length, 9);
+  assert.equal(result.pageInfo.total, 105);
+
+  const articleReads = fake.calls.filter((call) => call.table === "articles");
+  assert.equal(articleReads.length, 2, "105 tagged article ids must be split into two D1 reads");
+  assert.ok(articleReads.every((call) => call.params.length <= 83));
+});
+
 test("D1 article adapter is bounded: overflow and unsupported count are skips", async () => {
   const fake = createFakeD1({
     articles: [d1Article({ id: "a", slug: "a" }), d1Article({ id: "b", slug: "b" })],
