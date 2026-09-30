@@ -477,7 +477,7 @@ test("D1 listTags safely bounds an omitted limit and getTagBySlug orders by name
 
   const defaultBound = createFakeD1({ tags: TAG_ROWS });
   await createD1ReferenceReadRepository({ binding: defaultBound.database }).listTags({ sort: "name" });
-  assert.deepEqual(defaultBound.calls[0].params, [10_001]);
+  assert.deepEqual(defaultBound.calls[0].params, [1_000]);
 });
 
 test("D1 listIngestionRuns uses the ingest binding, revives metadata and truncates overflow", async () => {

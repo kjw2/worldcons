@@ -25,6 +25,7 @@ import {
 import type { JurisdictionCountOptions, ReferenceReadRepository, TagListOptions } from "@/lib/reference-reads/types";
 
 export const D1_REFERENCE_READ_DEFAULT_MAX_ROWS = 10_000;
+const D1_REFERENCE_READ_PAGE_SIZE = 1_000;
 
 /**
  * M6.1 + M6.2 D1-backed reference reads.
@@ -161,13 +162,20 @@ export function createD1ReferenceReadRepository(
     if (type) where.push({ column: "type", value: type });
     if (minArticleCount) where.push({ column: "article_count", op: "gte", value: minArticleCount });
     const boundedLimit = limit ? Math.min(limit, maxRows + 1) : maxRows + 1;
-    const rows = await runD1RuntimeRead({
-      binding: requireCore(dependencies),
-      table: requireTable("tags"),
-      where,
-      orderBy: tagOrder(sort),
-      limit: boundedLimit,
-    });
+    const rows: Record<string, unknown>[] = [];
+    while (rows.length < boundedLimit) {
+      const pageLimit = Math.min(D1_REFERENCE_READ_PAGE_SIZE, boundedLimit - rows.length);
+      const page = await runD1RuntimeRead({
+        binding: requireCore(dependencies),
+        table: requireTable("tags"),
+        where,
+        orderBy: tagOrder(sort),
+        limit: pageLimit,
+        offset: rows.length,
+      });
+      rows.push(...page);
+      if (page.length < pageLimit) break;
+    }
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listTags");
     return rows.map((row) => tagRowToSummary(row as unknown as SupabaseTagRow));
   }
