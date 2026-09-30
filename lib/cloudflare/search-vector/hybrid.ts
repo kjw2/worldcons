@@ -159,14 +159,6 @@ async function loadCandidateMetadata(
   return byId;
 }
 
-function requireMetadata(byId: Map<string, CandidateMetadata>, id: string): CandidateMetadata {
-  const metadata = byId.get(id);
-  if (!metadata) {
-    throw vectorError("invalid_response", `hybrid candidate ${id} has no D1 projection metadata`);
-  }
-  return metadata;
-}
-
 function compareCandidates(left: Candidate, right: Candidate): number {
   if (left.exactTitle !== right.exactTitle) return left.exactTitle ? -1 : 1;
   if (left.score !== right.score) return right.score - left.score;
@@ -264,13 +256,19 @@ export async function runHybridVectorPage(request: HybridVectorPageRequest): Pro
   const metadataById = await loadCandidateMetadata(d1, unionIds);
   const needletest = buildFtsExactTitleNeedle(exactQueryText);
 
-  const candidates: Candidate[] = unionIds.map((id) => {
-    const metadata = requireMetadata(metadataById, id);
+  // Vectorize can temporarily retain a vector whose published search projection
+  // has already been removed/rebuilt. Such an orphan must not make the entire
+  // public hybrid search unavailable. Only candidates that still have the
+  // authoritative D1 search projection participate in ranking; malformed or
+  // duplicate D1 metadata continues to fail closed in loadCandidateMetadata().
+  const candidates: Candidate[] = unionIds.flatMap((id) => {
+    const metadata = metadataById.get(id);
+    if (!metadata) return [];
     const lexicalRank = lexicalRankById.get(id) ?? null;
     const semanticRank = semanticRankById.get(id) ?? null;
     const semantic = semanticById.get(id);
     const exactTitle = needletest.length > 0 && ftsTitleHasExactTitle(metadata.title, exactQueryText);
-    return {
+    return [{
       id,
       exactTitle,
       score: rrfScore(lexicalRank, semanticRank),
@@ -278,7 +276,7 @@ export async function runHybridVectorPage(request: HybridVectorPageRequest): Pro
       semanticRank,
       semanticSimilarity: semantic ? semantic.score : null,
       publishedEpoch: metadata.publishedEpoch,
-    };
+    }];
   });
 
   candidates.sort(compareCandidates);

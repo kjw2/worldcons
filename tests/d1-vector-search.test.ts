@@ -679,6 +679,36 @@ test("malformed Vectorize responses fail closed", async () => {
   }
 });
 
+test("hybrid ignores Vectorize-only orphan ids while preserving valid ranked candidates", async () => {
+  const db = databaseFor(CORPUS);
+  const valid = createFakeVectorize(vectorProjection(CORPUS).records);
+  const vector: VectorizeIndexBinding = {
+    async query(embedding, options) {
+      const base = await valid.query(embedding, options);
+      const matches = Array.isArray(base.matches) ? base.matches : [];
+      return {
+        ...base,
+        matches: [
+          { id: "orphan-vector-only", score: 2, metadata: null },
+          ...matches,
+        ].slice(0, options.topK),
+      };
+    },
+  };
+
+  const page = await runVector(db, vector, {
+    query: "constitution",
+    mode: "hybrid",
+    limit: 20,
+    embedding: seedVector(1),
+  });
+
+  assert.equal(page.retrievalMode, "hybrid");
+  assert.ok(page.entries.length > 0, "valid D1-backed candidates must still be returned");
+  assert.ok(!ids(page).includes("orphan-vector-only"), "a Vectorize-only orphan must be discarded");
+  assert.ok(ids(page).every((id) => CORPUS.some((entry) => articleId(entry.index) === id)));
+});
+
 test("hybrid RRF rewards lexical + semantic agreement with the exact RPC score", async () => {
   const agree = row(41, { title: "Alpha Beta", sourceKey: "us-scotus", jurisdiction: "United States", contentType: "opinion", language: "en", publishedAt: "2026-09-10T00:00:00.000Z", cleanedText: "alpha beta" });
   const lexicalOnly = row(42, { title: "Gamma Delta", sourceKey: "us-scotus", jurisdiction: "United States", contentType: "opinion", language: "en", publishedAt: "2026-09-10T00:00:00.000Z", cleanedText: "alpha beta" });
