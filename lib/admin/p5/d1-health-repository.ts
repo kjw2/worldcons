@@ -1,7 +1,24 @@
 import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { resolveP5OperationalPolicy, type P5OperationalPolicy } from "@/lib/admin/p5/policy";
 import type { P5HealthEvidence } from "@/lib/admin/p5/types";
-import { unavailableP5HealthEvidence } from "@/lib/admin/p5/repository";
+
+export function unavailableP5HealthEvidenceFromD1(start: string, end: string): P5HealthEvidence {
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    available: false,
+    observationWindow: { start, end },
+    queue: { states: {}, oldestQueuedAgeSeconds: null, staleLeaseCount: 0, oldestHeartbeatAgeSeconds: null, abortPendingCount: 0, oldestAbortAgeSeconds: null, retryWaitingCount: 0, oldestRetryAgeSeconds: null },
+    lifecycle: { backlogCount: 0, oldestReviewAgeSeconds: null, unresolvedAnomalyCount: 0 },
+    publication: { legacyPublicCount: 0, explicitPublicCount: 0, parityMismatchCount: 0, quarantineCount: 0, legacyIdentityDigest: "", explicitIdentityDigest: "" },
+    outbox: { pendingCount: 0, processingCount: 0, deadLetterCount: 0, oldestUndeliveredAgeSeconds: null },
+    sources: [],
+    compatibility: { totalCount: 0, legacyReadCount: 0, legacyWriteCount: 0, newReadCount: 0, newWriteCount: 0, fallbackCount: 0, unexplainedLegacyCount: 0, firstObservedAt: null, lastObservedAt: null, bucketCount: 0, legacyReadObserved: false, legacyWriteObserved: false, newReadObserved: false, newWriteObserved: false, fallbackObserved: false, unexplainedLegacyObserved: false, legacyLastSeenAt: null, newLastSeenAt: null },
+    inFlight: { legacyCount: 0, newCount: 0, conflict: false },
+    governance: { backupRestoreAt: null, backupRestoreExpiresAt: null, approvalSets: [] },
+    retention: { commandAttemptsDue: 0, commandEventsDue: 0, lifecycleEventsDue: 0, publicationHistoryDue: 0, contentVersionsDue: 0, compatibilityObservationsDue: 0, deliveredOutboxDue: 0, deadLetterOutboxDue: 0, legalHoldActive: false },
+  };
+}
 
 function numberValue(value: unknown) {
   const parsed = Number(value ?? 0);
@@ -34,7 +51,7 @@ export async function getP5HealthEvidenceFromD1(input: {
   now?: Date;
   policy?: P5OperationalPolicy;
 }): Promise<P5HealthEvidence> {
-  const fallback = unavailableP5HealthEvidence(input.observationStart, input.observationEnd);
+  const fallback = unavailableP5HealthEvidenceFromD1(input.observationStart, input.observationEnd);
   const ops = getRuntimeD1Binding("worldcons_ops");
   const core = getRuntimeD1Binding("worldcons_core");
   const ingest = getRuntimeD1Binding("worldcons_ingest");

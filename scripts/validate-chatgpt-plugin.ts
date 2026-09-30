@@ -5,7 +5,7 @@ const root = process.cwd();
 const pluginRoot = path.join(root, "plugins/worldcons-constitutional-cases");
 const expectedName = "worldcons-constitutional-cases";
 const expectedDisplayName = "헌법판례요약시스템";
-const expectedEndpoint = "https://worldcons.soltera.dev/api/mcp";
+const expectedEndpoint = "https://worldcons.cclib.workers.dev/api/mcp";
 
 function readJson(relativePath: string) {
   const absolutePath = path.join(root, relativePath);

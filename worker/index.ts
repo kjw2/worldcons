@@ -71,9 +71,8 @@ import {
   handleOpsHeartbeatBoundary,
   type WorldconsOpsWriteWorkerEnv,
 } from "../workers/ops-write/src/index";
-import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
-import { runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
+import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -139,9 +138,9 @@ export default {
   fetch(request: Request, env: WorldconsWorkerEnv, ctx: WorkerExecutionContextLike) {
     // M13 permanent D1 authority profile. This is the single bounded switch:
     // when `WORLDCONS_M13_AUTHORITY_PROFILE=d1` the authored per-domain
-    // selectors are applied together; the resting `supabase`/unset profile
-    // leaves `env` untouched. An invalid profile throws here (fail closed)
-    // rather than silently running under the resting default.
+    // selectors are applied together when the permanent `d1` profile is set.
+    // An unset profile keeps any explicit bounded canary selector intact, while
+    // an invalid profile throws here (fail closed).
     const authorityEnv = applyM13AuthorityProfileToEnvironment(
       env as Record<string, string | undefined>,
     ) as WorldconsWorkerEnv;
@@ -222,7 +221,7 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
     });
     const validated = parseCclMetasearchSearchParams(params);
     return searchCclMetasearchWithEnv(validated, {
-      PUBLIC_SITE_BASE_URL: env.PUBLIC_SITE_BASE_URL?.trim() || "https://worldcons.soltera.dev",
+      PUBLIC_SITE_BASE_URL: env.PUBLIC_SITE_BASE_URL?.trim() || "https://worldcons.cclib.workers.dev",
       CORE_BINDING: env.WORLDCONS_CORE,
       SEARCH_BINDING: env.WORLDCONS_SEARCH,
       CCL_METASEARCH_DB_TIMEOUT_MS: env.CCL_METASEARCH_DB_TIMEOUT_MS,
@@ -231,32 +230,6 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
 }
 
 export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
-  async runAdminJobDrain(input: { idempotencyKey: string; maxJobs?: number; leaseSeconds?: number }) {
-    const env = this.env;
-    setRuntimePlatform("cloudflare-worker");
-    setRuntimeD1Bindings({
-      worldcons_core: env.WORLDCONS_CORE,
-      worldcons_ingest: env.WORLDCONS_INGEST,
-      worldcons_ops: env.WORLDCONS_OPS,
-      worldcons_search: env.WORLDCONS_SEARCH,
-    });
-    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
-    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
-    const result = await runAdminJobWorker({
-      workerId: `m8:${input.idempotencyKey}`,
-      maxJobs: input.maxJobs ?? 2,
-      leaseSeconds: input.leaseSeconds ?? 1200,
-    });
-    if (result.mode === "unavailable" || result.error || result.failed > 0) {
-      throw new Error(
-        result.mode === "unavailable"
-          ? result.error
-          : result.error ?? `m8.admin_job_worker_failed:${result.failed}`,
-      );
-    }
-    return result;
-  }
-
   async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
@@ -274,6 +247,28 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
       apiKeys,
       model: env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
     });
+  }
+
+  async runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
+    setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST });
+    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
+    const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
+      .map((key) => key?.trim()).filter((key): key is string => Boolean(key));
+    return runD1SummarizeArticle({
+      ...input,
+      apiKeys,
+      model: input.model?.trim() || env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+    });
+  }
+
+  async runRefreshTagCounts() {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE });
+    return runD1RefreshTagCounts();
   }
 
   async runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }) {

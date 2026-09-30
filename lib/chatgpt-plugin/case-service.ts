@@ -16,7 +16,7 @@ import { caseCatalogPluginEnabled } from "@/lib/case-catalog/flags";
 import { publicSourceAttribution } from "@/lib/case-catalog/source-attribution";
 import { WorldconsToolError } from "@/lib/chatgpt-plugin/errors";
 
-const CANONICAL_SITE_URL = "https://worldcons.soltera.dev";
+const CANONICAL_SITE_URL = "https://worldcons.cclib.workers.dev";
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 export type SearchFilters = {

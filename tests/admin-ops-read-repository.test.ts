@@ -6,9 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminDashboardData, listAdminArticles } from "../lib/db/admin-queries";
 import {
   adminOpsReads,
-  createSupabaseAdminOpsReadRepository,
   mockAdminOpsReads,
 } from "../lib/admin/ops-read-repository";
+import { createSupabaseAdminOpsReadRepository } from "../lib/admin/ops-read-repository/supabase-repository";
 import { setCompatibilityObservationWriterForTests } from "../lib/admin/p5/observations";
 import { mockArticles, mockIngestionRuns, mockSources, mockTags } from "../lib/db/mock-data";
 

@@ -8,12 +8,11 @@ export type HeaderLike = {
 // come from a header the current deployment actually controls. Any header a client can
 // set at will would let a caller rotate its own bucket key and bypass the limit.
 //
-// Vercel overwrites `x-vercel-forwarded-for` at the edge, so it stays authoritative
-// by default. Reverse-proxy headers such as `cf-connecting-ip` are only meaningful
-// when that proxy is genuinely in front of the app, so they require explicit opt-in
-// through TRUSTED_CLIENT_IP_HEADERS.
-const PLATFORM_CLIENT_IP_HEADERS = ["x-vercel-forwarded-for", "x-forwarded-for"] as const;
-const OPT_IN_CLIENT_IP_HEADERS = new Set(["cf-connecting-ip", "true-client-ip", "x-real-ip", "x-client-ip"]);
+// Cloudflare overwrites `cf-connecting-ip` at the edge, so it is the only
+// platform-trusted client address by default. Other proxy headers require an
+// explicit opt-in and must never outrank the Cloudflare edge identity.
+const PLATFORM_CLIENT_IP_HEADERS = ["cf-connecting-ip"] as const;
+const OPT_IN_CLIENT_IP_HEADERS = new Set(["true-client-ip", "x-forwarded-for", "x-real-ip", "x-client-ip"]);
 
 function limitText(value?: string | null, max = 300) {
   const text = value?.trim();
@@ -39,7 +38,7 @@ function firstForwardedAddress(value: string | null) {
 }
 
 export function clientIpHeaderPriority() {
-  return [...trustedOptInHeaders(), ...PLATFORM_CLIENT_IP_HEADERS];
+  return [...PLATFORM_CLIENT_IP_HEADERS, ...trustedOptInHeaders()];
 }
 
 export function getClientIp(headers?: HeaderLike) {

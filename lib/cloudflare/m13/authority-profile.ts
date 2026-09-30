@@ -158,7 +158,7 @@ export function applyM13AuthorityProfileToEnvironment<T extends M13AuthorityEnvi
   if (resolution.source === "fail_closed") {
     throw new Error(`m13_authority_profile.${resolution.error ?? "invalid_authority_profile"}`);
   }
-  if (resolution.profile !== "d1") return base;
+  if (resolution.source !== "env" || resolution.profile !== "d1") return base;
   const next: M13AuthorityEnvironment = { ...base };
   for (const assignment of m13AuthorityAssignmentsForProfile("d1")) {
     next[assignment.envVar] = assignment.value;
@@ -205,7 +205,7 @@ export function verifyM13AuthorityProfileAssignment(
   const expectedValue = resolution.profile;
   const assignments = M13_AUTHORITY_ASSIGNMENTS.map((assignment) => {
     const actual = environment[assignment.envVar]?.trim().toLowerCase() ?? null;
-    const effective = actual ?? "supabase";
+    const effective = actual ?? "d1";
     return { ...assignment, value: expectedValue, actual, matches: effective === expectedValue };
   });
   const divergences = assignments

@@ -19,22 +19,22 @@ import { resolveIngestRunWriteAuthorityConfig } from "@/lib/cloudflare/ingest-wr
 import { resolveCoreWriteAuthorityConfig } from "@/lib/cloudflare/core-write/authority";
 import { resolveRateLimitAuthorityConfig } from "@/lib/cloudflare/rate-limit/authority";
 
-test("M13 authority profile defaults to the resting supabase profile", () => {
+test("M13 authority profile defaults to permanent D1", () => {
   const resolution = resolveM13AuthorityProfile({});
-  assert.equal(resolution.profile, "supabase");
+  assert.equal(resolution.profile, "d1");
   assert.equal(resolution.source, "default");
   assert.equal(resolution.error, null);
   assert.equal(resolveM13AuthorityProfile({ [M13_AUTHORITY_PROFILE_ENV]: "   " }).source, "default");
 });
 
-test("M13 authority profile accepts the exact d1/supabase switch and fails closed on anything else", () => {
+test("M13 authority profile accepts only d1 and fails closed on retired or invalid profiles", () => {
   assert.equal(resolveM13AuthorityProfile({ [M13_AUTHORITY_PROFILE_ENV]: "d1" }).profile, "d1");
   assert.equal(resolveM13AuthorityProfile({ [M13_AUTHORITY_PROFILE_ENV]: " D1 " }).profile, "d1");
-  assert.equal(resolveM13AuthorityProfile({ [M13_AUTHORITY_PROFILE_ENV]: "Supabase" }).profile, "supabase");
+  assert.equal(resolveM13AuthorityProfile({ [M13_AUTHORITY_PROFILE_ENV]: "Supabase" }).source, "fail_closed");
   const invalid = resolveM13AuthorityProfile({ [M13_AUTHORITY_PROFILE_ENV]: "d1-canary" });
   assert.equal(invalid.source, "fail_closed");
   assert.equal(invalid.error, "invalid_authority_profile");
-  assert.equal(invalid.profile, "supabase");
+  assert.equal(invalid.profile, "d1");
 });
 
 test("M13 permanent d1 assignments are d1 and rollback assignments are supabase, never d1-canary", () => {
@@ -60,7 +60,7 @@ test("M13 authority env profile expands to the exact authored selector variables
   }
 });
 
-test("applyM13AuthorityProfileToEnvironment leaves the resting env untouched and applies the d1 overlay", () => {
+test("applyM13AuthorityProfileToEnvironment preserves explicit canary without a profile env and applies the d1 overlay when requested", () => {
   const resting: Record<string, string | undefined> = { WORLDCONS_CORE_WRITE_AUTHORITY: "d1-canary", KEEP: "value" };
   const unchanged = applyM13AuthorityProfileToEnvironment(resting, {});
   assert.deepEqual(unchanged, resting);
@@ -87,7 +87,7 @@ test("verifyM13AuthorityProfileAssignment reports every divergence", () => {
   assert.equal(verified.divergences.length, 0);
 
   const partial: Record<string, string | undefined> = { ...complete };
-  delete partial[M13_AUTHORITY_ASSIGNMENTS[0].envVar];
+  partial[M13_AUTHORITY_ASSIGNMENTS[0].envVar] = "d1-canary";
   partial[M13_AUTHORITY_ASSIGNMENTS[1].envVar] = "supabase";
   const partialVerification = verifyM13AuthorityProfileAssignment(partial);
   assert.equal(partialVerification.holds, false);
@@ -124,17 +124,21 @@ test("M13 rate-limit leaf selector rests at D1", () => {
   );
 });
 
-test("M13 profile never overrides an explicit d1-canary when it rests at supabase", () => {
+test("default D1 resolution preserves an explicit canary until the profile env is explicitly pinned", () => {
   const canary = { WORLDCONS_CORE_WRITE_AUTHORITY: "d1-canary" };
   assert.equal(resolveCoreWriteAuthorityConfig(canary).authority, "d1-canary");
   const d1Win = { ...canary, [M13_AUTHORITY_PROFILE_ENV]: "d1" };
   assert.equal(resolveCoreWriteAuthorityConfig(d1Win).authority, "d1");
-  const rollback = { ...canary, [M13_AUTHORITY_PROFILE_ENV]: "supabase" };
-  assert.equal(resolveCoreWriteAuthorityConfig(rollback).authority, "d1-canary", "resting profile keeps explicit per-domain values");
+  const retired = { ...canary, [M13_AUTHORITY_PROFILE_ENV]: "supabase" };
+  assert.throws(
+    () => resolveCoreWriteAuthorityConfig(retired),
+    /m13_authority_profile\.invalid_authority_profile/u,
+    "the retired profile must fail closed",
+  );
   const failClosed = { WORLDCONS_CORE_WRITE_AUTHORITY: "d1", [M13_AUTHORITY_PROFILE_ENV]: "bogus" };
   assert.throws(
     () => resolveCoreWriteAuthorityConfig(failClosed),
     /m13_authority_profile\.invalid_authority_profile/u,
-    "an invalid profile must fail closed in every resolver, never fall back to supabase",
+    "an invalid profile must fail closed in every resolver",
   );
 });

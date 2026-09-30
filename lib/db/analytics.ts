@@ -802,7 +802,7 @@ function buildRecommendations(data: {
 }) {
   const recommendations: string[] = [];
   if (!data.schemaReady) {
-    recommendations.push("site_events 테이블이 아직 없어서 이용 통계가 비어 있습니다. 최신 Supabase migration을 적용하세요.");
+    recommendations.push("site_events 테이블이 아직 없어서 이용 통계가 비어 있습니다. 최신 Cloudflare D1 스키마를 적용하세요.");
   }
 
   const topZero = data.searchQueries.find((item) => item.zeroResultCount > 0);

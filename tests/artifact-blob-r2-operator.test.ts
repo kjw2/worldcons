@@ -113,10 +113,10 @@ test("Wrangler R2 operator transport returns stable errors without runner detail
 test("operator store uses Wrangler only for explicit R2 operator mode", () => {
   assert.throws(
     () => createOperatorArtifactBlobStore({
-      [ARTIFACT_BLOB_PROVIDER_ENV]: "vercel",
+      [ARTIFACT_BLOB_PROVIDER_ENV]: "legacy",
       [ARTIFACT_BLOB_R2_OPERATOR_TRANSPORT_ENV]: "wrangler",
     }),
-    /r2_operator_requires_r2_provider/,
+    /artifact_blob\.invalid_provider/,
   );
   assert.throws(
     () => createOperatorArtifactBlobStore({

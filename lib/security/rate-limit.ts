@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/db/client";
 import { getClientIp, hashRequestValue } from "@/lib/security/request-client";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
-import {
-  resolveEffectiveRateLimitAuthorityConfig,
-  shouldUseCloudflareRateLimit,
-} from "@/lib/cloudflare/rate-limit/authority";
 import { consumeRateLimitInD1 } from "@/lib/cloudflare/rate-limit/d1-backend";
 import {
   consumeRateLimitViaDurableObject,
@@ -40,14 +35,6 @@ export type RateLimitResult = {
   retryAfterSeconds: number;
   backend: RateLimitBackend;
   headers: HeadersInit;
-};
-
-type DistributedRateLimitPayload = {
-  limited?: unknown;
-  limit?: unknown;
-  remaining?: unknown;
-  resetAt?: unknown;
-  retryAfterSeconds?: unknown;
 };
 
 const STORE_KEY = "__worldconsRateLimitStore";
@@ -137,43 +124,6 @@ function consumeLocal(profileName: RateLimitProfile, identifier: string, limit: 
   return buildResult("local", limited, limit, limit - bucket.count, bucket.resetAt, retryAfterSeconds);
 }
 
-function finiteInteger(value: unknown) {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isSafeInteger(number) ? number : null;
-}
-
-async function consumeDistributed(
-  profileName: RateLimitProfile,
-  identifier: string,
-  limit: number,
-  windowMs: number,
-): Promise<RateLimitResult | null> {
-  if (!envBool("RATE_LIMIT_DISTRIBUTED_ENABLED", true)) return null;
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-
-  try {
-    const { data, error } = await supabase.rpc("worldcons_consume_rate_limit_v1", {
-      p_profile: profileName,
-      p_identifier_hash: identifier,
-      p_limit: limit,
-      p_window_ms: windowMs,
-    });
-    if (error || !data || typeof data !== "object" || Array.isArray(data)) return null;
-    const payload = data as DistributedRateLimitPayload;
-    const returnedLimit = finiteInteger(payload.limit);
-    const remaining = finiteInteger(payload.remaining);
-    const resetAt = finiteInteger(payload.resetAt);
-    const retryAfterSeconds = finiteInteger(payload.retryAfterSeconds);
-    if (typeof payload.limited !== "boolean" || returnedLimit !== limit || remaining === null || resetAt === null || retryAfterSeconds === null) {
-      return null;
-    }
-    return buildResult("distributed", payload.limited, limit, remaining, resetAt, retryAfterSeconds);
-  } catch {
-    return null;
-  }
-}
-
 /**
  * M13 Cloudflare distributed backend (`ops.rate_limit` under the `d1` authority
  * profile). This never calls Supabase. Preference order:
@@ -226,19 +176,8 @@ export async function consumeRateLimit(request: Request, profileName: RateLimitP
   if (limit <= 0 || windowMs <= 0) return null;
 
   const identifier = requestIdentifier(request);
-  // Resolve the effective authority exactly once and select a mutually exclusive
-  // backend chain. The `d1` authority must never reach the Supabase distributed
-  // path, even when both the Durable Object and the D1 fallback fail.
-  const authority = resolveEffectiveRateLimitAuthorityConfig(
-    typeof process === "undefined" ? {} : (process.env as Record<string, string | undefined>),
-  );
-  if (shouldUseCloudflareRateLimit(authority)) {
-    const distributed = await consumeCloudflareDistributed(profileName, identifier, limit, windowMs);
-    if (distributed) return distributed;
-    return consumeLocal(profileName, identifier, limit, windowMs);
-  }
-  const legacyDistributed = await consumeDistributed(profileName, identifier, limit, windowMs);
-  if (legacyDistributed) return legacyDistributed;
+  const distributed = await consumeCloudflareDistributed(profileName, identifier, limit, windowMs);
+  if (distributed) return distributed;
   return consumeLocal(profileName, identifier, limit, windowMs);
 }
 

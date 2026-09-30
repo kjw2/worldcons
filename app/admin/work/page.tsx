@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Layers3 } from "lucide-react";
 import { AdminWorkQueue } from "@/components/admin-work-queue";
 import { parseAdminWorkFilters } from "@/lib/admin/p4/filters";
-import { getAdminWorkQueueSnapshot } from "@/lib/admin/p4/repository";
+import { getD1AdminWorkQueueSnapshot } from "@/lib/admin/p4/d1-repository";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 import { resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -16,7 +16,7 @@ export default async function AdminWorkPage({ searchParams }: { searchParams?: P
   if (!(await isAuthorizedPageRequest())) redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`);
 
   const filters = parseAdminWorkFilters(params);
-  const [snapshot, csrfToken] = await Promise.all([getAdminWorkQueueSnapshot(filters), createAdminCsrfToken()]);
+  const [snapshot, csrfToken] = await Promise.all([getD1AdminWorkQueueSnapshot(filters), createAdminCsrfToken()]);
 
   return (
     <div className="min-w-0 py-6">

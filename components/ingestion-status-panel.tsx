@@ -38,7 +38,6 @@ interface RunOptionsMetadata {
   rangeDays?: number | null;
   strategy?: string;
   usePlaywright?: boolean | null;
-  allowVercelCrawling?: boolean;
   refreshExisting?: boolean;
 }
 
@@ -323,7 +322,6 @@ function RunOptions({ options }: { options: RunOptionsMetadata }) {
       <OptionBadge label="기간" value={options.rangeDays ? `${options.rangeDays}일` : null} />
       <OptionBadge label="수집 방식" value={options.strategy} />
       <OptionBadge label="브라우저 수집" value={options.usePlaywright} />
-      <OptionBadge label="Vercel" value={options.allowVercelCrawling} />
       <OptionBadge label="기존 자료 갱신" value={options.refreshExisting} />
     </div>
   );

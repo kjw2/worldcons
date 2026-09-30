@@ -98,7 +98,6 @@ const adminIngestBodySchema = z
     refreshExisting: z.boolean().optional(),
     summarize: optionalBoolean(),
     refreshTags: optionalBoolean(),
-    allowVercelCrawling: optionalBoolean(),
   })
   .strict();
 

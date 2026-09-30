@@ -1,4 +1,11 @@
-import type { AdminJobType } from "@/lib/db/admin-jobs";
+import {
+  ADMIN_INGEST_JOB_TYPES,
+  adminIngestResultSucceeded,
+  buildAdminIngestJobContext,
+  validateAdminIngestJobContext,
+  type AdminIngestJobType,
+  type AdminIngestRequestContext,
+} from "@/lib/admin/admin-ingest-contract";
 import { runRefreshTagCounts, runSummarizeArticle, runSummarizePending } from "@/lib/ingest/summary";
 import { summaryBatchFailureMessage, summaryBatchHasHardFailure, summaryBatchWasDeferred } from "@/lib/ingest/summary-batch";
 import { ingestResultSucceeded } from "@/lib/ingest/results";
@@ -6,26 +13,8 @@ import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 import { redactAdminAuditMetadata } from "@/lib/security/audit-redaction";
 import { parseAdminIngestBody, type AdminIngestBody } from "@/lib/security/admin-api-validation";
 
-export type AdminIngestJobType = Extract<AdminJobType, "ingest" | "ingest-and-summarize" | "summarize" | "retry-summary" | "refresh-tags">;
-
-export interface AdminIngestRequestContext {
-  action: AdminIngestJobType;
-  requestedAction: AdminIngestJobType;
-  sourceKey?: string;
-  articleId?: string;
-  slug?: string;
-  limit?: number;
-  rangeDays?: number;
-  refreshExisting?: boolean;
-  summarizeLimit: number;
-  allowVercelCrawling: boolean;
-  shouldSummarize: boolean;
-  shouldIngest: boolean;
-  shouldRefreshTags: boolean;
-  requestedOptions: Record<string, unknown>;
-  jobOptions: Record<string, unknown>;
-  auditMetadata: Record<string, unknown>;
-}
+export { ADMIN_INGEST_JOB_TYPES, adminIngestResultSucceeded, buildAdminIngestJobContext } from "@/lib/admin/admin-ingest-contract";
+export type { AdminIngestJobType, AdminIngestRequestContext } from "@/lib/admin/admin-ingest-contract";
 
 export interface AdminIngestExecutionResult {
   ingest: unknown;
@@ -33,8 +22,6 @@ export interface AdminIngestExecutionResult {
   tags: unknown;
   resultSummary: Record<string, unknown>;
 }
-
-export const ADMIN_INGEST_JOB_TYPES: AdminIngestJobType[] = ["ingest", "ingest-and-summarize", "summarize", "retry-summary", "refresh-tags"];
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -85,84 +72,11 @@ function tagResultSummary(value: unknown) {
   };
 }
 
-function supportedAction(value: string): value is AdminIngestJobType {
-  return (ADMIN_INGEST_JOB_TYPES as string[]).includes(value);
-}
-
-export function buildAdminIngestJobContext(input: AdminIngestBody): AdminIngestRequestContext {
-  const { action, sourceKey, articleId, slug, limit, rangeDays, refreshExisting, allowVercelCrawling } = input;
-  if (!supportedAction(action)) throw new Error(`Unsupported admin ingest job action: ${action}`);
-
-  const requestedAction = action;
-  const summarizeLimit = input.summarizeLimit ?? limit ?? 20;
-  const shouldSummarize = action === "summarize" || action === "retry-summary" || action === "ingest-and-summarize" || input.summarize;
-  const shouldIngest = action === "ingest" || action === "ingest-and-summarize";
-  const shouldRefreshTags = action === "refresh-tags" || input.refreshTags || shouldSummarize;
-  const jobOptions = {
-    action,
-    sourceKey: sourceKey ?? null,
-    limit: limit ?? null,
-    rangeDays: rangeDays ?? null,
-    refreshExisting: refreshExisting ?? null,
-    summarizeLimit,
-    summarize: input.summarize,
-    refreshTags: input.refreshTags,
-    allowVercelCrawling,
-    articleId: articleId ?? null,
-    slug: slug ?? null,
-  };
-  const requestedOptions = {
-    requestedAction,
-    ...jobOptions,
-  };
-  const auditMetadata = {
-    action,
-    requestedAction,
-    requestedSourceKey: sourceKey ?? null,
-    requestedArticleId: articleId ?? null,
-    requestedArticleSlug: slug ?? null,
-    requestedLimit: limit ?? null,
-    requestedSummarizeLimit: summarizeLimit,
-    requestedSummarize: input.summarize,
-    requestedRefreshTags: input.refreshTags,
-    requestedAllowVercelCrawling: allowVercelCrawling,
-    shouldSummarize,
-    shouldIngest,
-    shouldRefreshTags,
-    result: "started",
-  };
-
-  return {
-    action,
-    requestedAction,
-    sourceKey,
-    articleId,
-    slug,
-    limit,
-    rangeDays,
-    refreshExisting,
-    summarizeLimit,
-    allowVercelCrawling,
-    shouldSummarize,
-    shouldIngest,
-    shouldRefreshTags,
-    requestedOptions,
-    jobOptions,
-    auditMetadata,
-  };
-}
-
 export function buildAdminIngestJobContextFromOptions(options: Record<string, unknown>, fallbackAction?: string | null) {
   const action = typeof options.action === "string" && options.action.trim() ? options.action : fallbackAction;
   const parsed = parseAdminIngestBody({ ...options, action });
   if (!parsed.ok) throw new Error(`Invalid admin ingest job options: ${parsed.error}`);
   return buildAdminIngestJobContext(parsed.data);
-}
-
-export function validateAdminIngestJobContext(context: AdminIngestRequestContext) {
-  if (context.action === "retry-summary" && !context.articleId && !context.slug) {
-    throw new Error("articleId or slug is required");
-  }
 }
 
 export function compactAdminIngestExecutionSummary(result: Pick<AdminIngestExecutionResult, "ingest" | "summarize" | "tags">) {
@@ -171,10 +85,6 @@ export function compactAdminIngestExecutionSummary(result: Pick<AdminIngestExecu
     summarize: summarizeResultSummary(result.summarize),
     tags: tagResultSummary(result.tags),
   });
-}
-
-export function adminIngestResultSucceeded(value: unknown) {
-  return ingestResultSucceeded(value);
 }
 
 export async function executeAdminIngestJobContext(context: AdminIngestRequestContext): Promise<AdminIngestExecutionResult> {
@@ -187,7 +97,6 @@ export async function executeAdminIngestJobContext(context: AdminIngestRequestCo
           limit: context.limit,
           rangeDays: context.rangeDays,
           refreshExisting: context.refreshExisting,
-          allowVercelCrawling: context.allowVercelCrawling,
         }),
       )
     : null;

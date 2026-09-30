@@ -1,25 +1,33 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/db/client";
-import { getSourceUrlCandidateHealthMetrics } from "@/lib/db/source-url-candidates";
-import { getCollectionControlState } from "@/lib/masterdash/store";
-import { getEmbeddingReadiness } from "@/lib/ingest/embedding-backlog";
+import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import {
-  getWorkflowHeartbeats,
-  workflowHeartbeatIsStale,
-  type WorkflowHeartbeatRecord,
-  type WorkflowKey,
-} from "@/lib/ops/workflow-heartbeat";
+  readOpsHeartbeatsFromD1,
+  type OpsHeartbeatReadRecord,
+  type OpsHeartbeatWorkflowKey,
+} from "@/lib/cloudflare/ops-write/heartbeat";
+import { getSourceUrlCandidateHealthMetrics } from "@/lib/db/source-url-candidates";
+import { getEmbeddingReadiness } from "@/lib/ingest/embedding-backlog";
 import {
   collectionHealthMetrics,
   FAILURE_RECENCY_WINDOW_HOURS,
   SUMMARY_BACKLOG_STATUSES,
   summaryBacklogIsStale,
+  type CollectionHealthRunRow,
 } from "@/lib/masterdash/health";
+import { getCollectionControlState } from "@/lib/masterdash/store";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const HEALTH_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+const VERSION = process.env.WORLDCONS_VERSION?.slice(0, 12) || "0.1.0";
+const WORKFLOW_EXPECTED_INTERVAL_SECONDS: Record<OpsHeartbeatWorkflowKey, number> = {
+  collection: 86_400,
+  summary: 21_600,
+  embedding: 21_600,
+  watchdog: 43_200,
+  catalog_backfill: 86_400,
+};
 
 function degradedHealth(message: string) {
   return NextResponse.json(
@@ -28,7 +36,7 @@ function degradedHealth(message: string) {
       systemId: "worldcons",
       status: "degraded",
       message,
-      version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "0.1.0",
+      version: VERSION,
       metrics: {
         lastCollectionAt: null,
         lastSuccessfulCollectionAt: null,
@@ -72,75 +80,142 @@ function degradedHealth(message: string) {
   );
 }
 
+async function queryRows<T extends Record<string, unknown>>(binding: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const statement = binding.prepare(sql).bind(...values);
+  if (!statement.all) throw new Error("masterdash_health_d1.read_unavailable");
+  const result = await statement.all<T>();
+  if (!result || result.success === false || result.error || !Array.isArray(result.results)) {
+    throw new Error(result?.error || "masterdash_health_d1.read_failed");
+  }
+  return result.results;
+}
+
+function parseMetadata(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function runRow(row: Record<string, unknown> | undefined): CollectionHealthRunRow | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    source_key: row.source_key,
+    status: row.status,
+    started_at: row.started_at,
+    finished_at: row.finished_at,
+    fetched_count: row.fetched_count,
+    failed_count: row.failed_count,
+    error_message: row.error_message,
+    metadata: parseMetadata(row.metadata),
+  };
+}
+
+async function loadCollectionHealthRows() {
+  const ingest = getRuntimeD1Binding("worldcons_ingest");
+  if (!ingest) return null;
+  const columns = "id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata";
+  const [recent, successful] = await Promise.all([
+    queryRows<Record<string, unknown>>(ingest, `SELECT ${columns} FROM ingestion_runs ORDER BY started_at DESC LIMIT 40`),
+    queryRows<Record<string, unknown>>(ingest, `SELECT ${columns} FROM ingestion_runs WHERE status = 'completed' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1`),
+  ]);
+  return {
+    latest: runRow(recent[0]),
+    successful: runRow(successful[0]),
+    recent: recent.map(runRow).filter((row): row is CollectionHealthRunRow => row !== null),
+  };
+}
+
+async function loadAdminJobCounts() {
+  const ops = getRuntimeD1Binding("worldcons_ops");
+  if (!ops) return null;
+  const [row] = await queryRows<Record<string, unknown>>(
+    ops,
+    [
+      "SELECT",
+      "SUM(CASE WHEN status IN ('queued','running','cancel_requested') THEN 1 ELSE 0 END) AS pending_count,",
+      "SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count",
+      "FROM admin_jobs",
+    ].join(" "),
+  );
+  return {
+    pending: Number(row?.pending_count ?? 0),
+    failed: Number(row?.failed_count ?? 0),
+  };
+}
+
+async function loadSummaryBacklog() {
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) return null;
+  const [row] = await queryRows<Record<string, unknown>>(
+    core,
+    [
+      "SELECT COUNT(*) AS count, MIN(created_at) AS oldest_created_at",
+      "FROM articles",
+      "WHERE status IN (?, ?)",
+      "AND lower(CAST(json_extract(source_metadata, '$.collection.publishable') AS TEXT)) = 'true'",
+    ].join(" "),
+    [...SUMMARY_BACKLOG_STATUSES],
+  );
+  const count = Number(row?.count ?? 0);
+  return {
+    count: Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0,
+    oldestAt: typeof row?.oldest_created_at === "string" ? row.oldest_created_at : null,
+  };
+}
+
+async function loadWorkflowHeartbeats() {
+  const ops = getRuntimeD1Binding("worldcons_ops");
+  return ops ? readOpsHeartbeatsFromD1(ops) : null;
+}
+
+function workflowHeartbeatIsStale(record: OpsHeartbeatReadRecord | null | undefined, now = Date.now()) {
+  if (!record || record.lastStatus === "failed") return true;
+  const observedAt = record.lastCompletedAt ?? record.lastStartedAt;
+  const observedMs = Date.parse(observedAt);
+  if (!Number.isFinite(observedMs)) return true;
+  return now - observedMs > WORKFLOW_EXPECTED_INTERVAL_SECONDS[record.workflowKey] * 2.5 * 1_000;
+}
+
 export async function GET() {
   try {
-    const supabase = getSupabaseAdmin();
-    if (!supabase) return degradedHealth("Collector database is not configured.");
-
-    // Collection freshness alone cannot reveal a stalled summariser: source text can keep
-    // arriving while nothing reaches the public listing. Report that backlog as its own axis.
-    const [latest, successful, recent, pending, failed, candidateMetrics, control, summaryBacklog, oldestSummaryBacklog, embeddingReadiness, heartbeats] = await Promise.all([
-      supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("ingestion_runs").select("source_key, finished_at, metadata").eq("status", "completed").order("finished_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle(),
-      supabase.from("ingestion_runs").select("id, source_key, status, started_at, finished_at, fetched_count, failed_count, error_message, metadata").order("started_at", { ascending: false }).limit(40),
-      supabase.from("admin_jobs").select("id", { count: "exact", head: true }).in("status", ["queued", "running", "cancel_requested"]),
-      supabase.from("admin_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
+    const [collection, jobs, candidateMetrics, control, summaryBacklog, embeddingReadiness, heartbeats] = await Promise.all([
+      loadCollectionHealthRows().catch(() => null),
+      loadAdminJobCounts().catch(() => null),
       getSourceUrlCandidateHealthMetrics().catch(() => null),
       getCollectionControlState(),
-      supabase
-        .from("articles")
-        .select("id", { count: "exact", head: true })
-        .in("status", [...SUMMARY_BACKLOG_STATUSES])
-        .contains("source_metadata", { collection: { publishable: true } }),
-      supabase
-        .from("articles")
-        .select("created_at")
-        .in("status", [...SUMMARY_BACKLOG_STATUSES])
-        .contains("source_metadata", { collection: { publishable: true } })
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
+      loadSummaryBacklog().catch(() => null),
       getEmbeddingReadiness().catch(() => null),
-      getWorkflowHeartbeats().catch(() => null),
+      loadWorkflowHeartbeats().catch(() => null),
     ]);
-    const queryFailed = Boolean(
-      latest.error ||
-        successful.error ||
-        recent.error ||
-        pending.error ||
-        failed.error ||
-        summaryBacklog.error ||
-        oldestSummaryBacklog.error ||
-        candidateMetrics === null ||
-        embeddingReadiness === null ||
-        heartbeats === null,
-    );
+    const queryFailed = collection === null || jobs === null || candidateMetrics === null || summaryBacklog === null || embeddingReadiness === null || heartbeats === null;
     const controlRequired = Boolean(process.env.MASTERDASH_CONTROL_SECRET?.trim());
     const paused = control.available && control.paused;
     const metrics = collectionHealthMetrics({
-      latest: latest.data,
-      successful: successful.data,
-      recentRuns: recent.data ?? [],
-      pendingItems: (pending.count ?? 0) + (candidateMetrics?.openCandidateCount ?? 0),
-      pendingAdminJobs: pending.error ? null : pending.count ?? 0,
+      latest: collection?.latest ?? null,
+      successful: collection?.successful ?? null,
+      recentRuns: collection?.recent ?? [],
+      pendingItems: (jobs?.pending ?? 0) + (candidateMetrics?.openCandidateCount ?? 0),
+      pendingAdminJobs: jobs?.pending ?? null,
       openCandidateCount: candidateMetrics?.openCandidateCount ?? null,
       retryableCandidateCount: candidateMetrics?.retryableCandidateCount ?? null,
       exhaustedCandidateCount: candidateMetrics?.exhaustedCandidateCount ?? null,
       oldestOpenCandidateAt: candidateMetrics?.oldestOpenCandidateAt ?? null,
-      summaryBacklogCount: summaryBacklog.error ? null : summaryBacklog.count ?? 0,
-      oldestSummaryBacklogAt: (oldestSummaryBacklog.data?.created_at as string | undefined) ?? null,
-      failedJobCount: failed.count ?? null,
+      summaryBacklogCount: summaryBacklog?.count ?? null,
+      oldestSummaryBacklogAt: summaryBacklog?.oldestAt ?? null,
+      failedJobCount: jobs?.failed ?? null,
     });
-    // Age the per-source signal the same way as failureTarget: once collection stops the
-    // newest run stays failed forever and would pin this system to degraded permanently.
     const recencyCutoffMs = Date.now() - FAILURE_RECENCY_WINDOW_HOURS * 3_600_000;
     const sourceUnhealthy = metrics.bySource.some((source) => {
       if (source.lastRunStatus !== "degraded" && source.lastRunStatus !== "failed") return false;
       const observedMs = source.lastCollectionAt ? Date.parse(source.lastCollectionAt) : Number.NaN;
       return !Number.isFinite(observedMs) || observedMs >= recencyCutoffMs;
     });
-    // A stalled summariser keeps articles out of the public listing even while collection
-    // looks healthy, so it has to be able to move the status on its own.
     const summaryStalled = summaryBacklogIsStale(metrics.summaryBacklogCount, metrics.oldestSummaryBacklogAt);
     const heartbeatByKey = new Map((heartbeats ?? []).map((heartbeat) => [heartbeat.workflowKey, heartbeat]));
     const stalledWorkflows = ([
@@ -176,10 +251,10 @@ export async function GET() {
                 ? `Scheduled workflow heartbeat is stale or missing: ${stalledWorkflows.join(", ")}.`
                 : embeddingIncomplete
                   ? "Gemini embedding corpus or published P3 artifact coverage is incomplete."
-              : paused
-                ? "Collector is ready; new collection starts are paused."
-                : "Collector is ready.",
-        version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || "0.1.0",
+                  : paused
+                    ? "Collector is ready; new collection starts are paused."
+                    : "Collector is ready.",
+        version: VERSION,
         metrics: {
           ...metrics,
           freshnessSeconds,
@@ -199,11 +274,11 @@ export async function GET() {
 }
 
 function workflowHealthFields(
-  heartbeats: Map<WorkflowKey, WorkflowHeartbeatRecord>,
-  stalledWorkflows: WorkflowKey[],
+  heartbeats: Map<OpsHeartbeatWorkflowKey, OpsHeartbeatReadRecord>,
+  stalledWorkflows: OpsHeartbeatWorkflowKey[],
 ) {
-  const value = (key: WorkflowKey) => heartbeats.get(key);
-  const observedAt = (key: WorkflowKey) => value(key)?.lastCompletedAt ?? value(key)?.lastStartedAt ?? null;
+  const value = (key: OpsHeartbeatWorkflowKey) => heartbeats.get(key);
+  const observedAt = (key: OpsHeartbeatWorkflowKey) => value(key)?.lastCompletedAt ?? value(key)?.lastStartedAt ?? null;
   return {
     collectionWorkflowLastRunAt: observedAt("collection"),
     collectionWorkflowLastStatus: value("collection")?.lastStatus ?? null,

@@ -24,7 +24,7 @@ test("guide explains direct no-auth installation without claiming OpenAI listing
 
   assert.match(guide, /헌법판례요약시스템/u);
   assert.match(guide, /OpenAI 플러그인 디렉터리에는 게시하지 않습니다/u);
-  assert.match(guide, /worldcons\.soltera\.dev\/api\/mcp/u);
+  assert.match(guide, /worldcons\.cclib\.workers\.dev\/api\/mcp/u);
   assert.match(guide, /설정 → 보안 및 로그인/u);
   assert.match(guide, /플러그인 추가/u);
   assert.match(guide, /연결 만들기/u);

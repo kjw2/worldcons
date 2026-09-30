@@ -296,35 +296,25 @@ test("infers degraded status from legacy uncollected runs that have no outcome f
 test("enables SSO-only administrator access only on production deployments", () => {
   const mutableEnv = process.env as unknown as Record<string, string | undefined>;
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalVercelEnv = process.env.VERCEL_ENV;
 
   try {
     mutableEnv.NODE_ENV = "production";
-    mutableEnv.VERCEL_ENV = "production";
     assert.equal(isMasterdashSsoOnly(), true);
 
-    mutableEnv.VERCEL_ENV = "preview";
-    assert.equal(isMasterdashSsoOnly(), false);
-
     mutableEnv.NODE_ENV = "test";
-    delete mutableEnv.VERCEL_ENV;
     assert.equal(isMasterdashSsoOnly(), false);
   } finally {
     if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
     else mutableEnv.NODE_ENV = originalNodeEnv;
-    if (originalVercelEnv === undefined) delete mutableEnv.VERCEL_ENV;
-    else mutableEnv.VERCEL_ENV = originalVercelEnv;
   }
 });
 
 test("blocks the direct administrator login API in production", async () => {
   const mutableEnv = process.env as unknown as Record<string, string | undefined>;
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalVercelEnv = process.env.VERCEL_ENV;
 
   try {
     mutableEnv.NODE_ENV = "production";
-    mutableEnv.VERCEL_ENV = "production";
     const response = await loginAdmin(
       new Request("https://worldcons.example/api/admin/login", {
         method: "POST",
@@ -339,8 +329,6 @@ test("blocks the direct administrator login API in production", async () => {
   } finally {
     if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
     else mutableEnv.NODE_ENV = originalNodeEnv;
-    if (originalVercelEnv === undefined) delete mutableEnv.VERCEL_ENV;
-    else mutableEnv.VERCEL_ENV = originalVercelEnv;
   }
 });
 

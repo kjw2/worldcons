@@ -179,7 +179,7 @@ function parseRobots(text: string, url: string) {
 
 async function getRobots(url: string, fetcher: typeof fetch) {
   const robotsUrl = `${new URL(url).origin}/robots.txt`;
-  const response = await boundedFetch(fetcher, robotsUrl, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" } });
+  const response = await boundedFetch(fetcher, robotsUrl, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" } });
   return response.ok ? response.text() : "";
 }
 
@@ -212,7 +212,7 @@ async function fetchHtml(source: NativeCrawlerSource, url: string, bindings: Nat
   const elapsed = Date.now() - (previousRequest.get(origin) ?? 0);
   if (elapsed < delay) await new Promise((resolve) => setTimeout(resolve, delay - elapsed));
   previousRequest.set(origin, Date.now());
-  const response = await boundedFetch(fetcher, url, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)", accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5" }, redirect: "follow" });
+  const response = await boundedFetch(fetcher, url, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)", accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5" }, redirect: "follow" });
   const finalUrl = response.url || url;
   if (!officialHost(source, finalUrl)) throw new Error("crawler.redirect_non_official_host");
   if (response.ok) {
@@ -223,7 +223,7 @@ async function fetchHtml(source: NativeCrawlerSource, url: string, bindings: Nat
   if (allowBrowser && [403, 429].includes(response.status)) {
     let rendered: { html: string; finalUrl: string; status: number; headers: Record<string, string> };
     if (!browserNavigate) throw new Error("crawler.browser_navigation_unavailable");
-    rendered = await browserNavigate({ url, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" });
+    rendered = await browserNavigate({ url, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" });
     if (new TextEncoder().encode(rendered.html).byteLength > 3_000_000) throw new Error("crawler.response_too_large");
     if (!officialHost(source, rendered.finalUrl)) throw new Error("crawler.redirect_non_official_host");
     return { html: rendered.html, status: rendered.status, finalUrl: rendered.finalUrl, contentType: rendered.headers["content-type"] ?? "text/html" };
@@ -291,7 +291,7 @@ async function discoverBverfgOpenLegalData(fetcher: typeof fetch, rangeStart: nu
   let next: string | null = BVERFG_OPENLEGALDATA_URL;
   for (let page = 0; page < 4 && next && candidates.length < limit; page += 1) {
     const response = await boundedFetch(fetcher, next, {
-      headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" },
+      headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" },
       redirect: "follow",
     });
     if (!response.ok) throw new Error(`crawler.bverfg_index_http_${response.status}`);
@@ -367,7 +367,7 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
     const indexUrl = `${base}${path}`;
     try {
       await waitForSourcePermit("es-tribunal-constitucional", indexUrl, fetcher, robotsCache, lastRequest);
-      const response = await boundedFetch(fetcher, indexUrl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+      const response = await boundedFetch(fetcher, indexUrl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" }, redirect: "follow" });
       if (!response.ok) continue;
       const cookies = new Map<string, string>();
       mergeCookies(cookies, headerSetCookies(response.headers));
@@ -403,7 +403,7 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
       for (const ajaxUrl of [...new Set(session.ajaxUrls)]) {
         try {
           await waitForSourcePermit("es-tribunal-constitucional", ajaxUrl, fetcher, robotsCache, lastRequest);
-          const response = await boundedFetch(fetcher, ajaxUrl, { method: "POST", headers: { accept: "application/json,text/plain,*/*", "accept-language": "es,en;q=0.8,ko;q=0.5", "content-type": "application/x-www-form-urlencoded; charset=UTF-8", cookie: cookieHeader(session.cookies), origin: base, referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, body, redirect: "follow" });
+          const response = await boundedFetch(fetcher, ajaxUrl, { method: "POST", headers: { accept: "application/json,text/plain,*/*", "accept-language": "es,en;q=0.8,ko;q=0.5", "content-type": "application/x-www-form-urlencoded; charset=UTF-8", cookie: cookieHeader(session.cookies), origin: base, referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" }, body, redirect: "follow" });
           mergeCookies(session.cookies, headerSetCookies(response.headers));
           const text = await response.text();
           if (response.ok && /"success"\s*:\s*"1"/.test(text)) { hasResults = true; break; }
@@ -420,7 +420,7 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
           try {
             const url = `${listUrl}?page=${page}`;
             await waitForSourcePermit("es-tribunal-constitucional", url, fetcher, robotsCache, lastRequest);
-            const response = await boundedFetch(fetcher, url, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", cookie: cookieHeader(session.cookies), referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+            const response = await boundedFetch(fetcher, url, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", cookie: cookieHeader(session.cookies), referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" }, redirect: "follow" });
             mergeCookies(session.cookies, headerSetCookies(response.headers));
             if (!response.ok) continue;
             const html = await response.text();
@@ -493,7 +493,7 @@ async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBind
     await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
     let response: Response | null = null;
     try {
-      response = await boundedFetch(fetcher, api, { headers: { accept: "application/json,text/plain;q=0.8,*/*;q=0.5", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+      response = await boundedFetch(fetcher, api, { headers: { accept: "application/json,text/plain;q=0.8,*/*;q=0.5", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" }, redirect: "follow" });
     } catch {
       response = null;
     }
@@ -509,7 +509,7 @@ async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBind
     }
     if (!browserNavigate) continue;
     try {
-      const rendered = await browserNavigate({ url: api, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" });
+      const rendered = await browserNavigate({ url: api, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" });
       if (!officialHost("es-tribunal-constitucional", rendered.finalUrl || api)) throw new Error("crawler.redirect_non_official_host");
       const body = htmlText(rendered.html);
       const start = body.indexOf("{");

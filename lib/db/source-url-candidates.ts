@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, getSupabaseServiceRoleAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { boundedInteger } from "@/lib/utils/numbers";
 
 export const SOURCE_URL_CANDIDATE_STATUSES = ["pending", "retrying", "fetched", "failed", "ignored"] as const;
@@ -65,7 +65,7 @@ export interface SourceUrlCandidateHealthMetrics {
   oldestOpenCandidateAt: string | null;
 }
 
-interface SourceUrlCandidateRow {
+interface SourceUrlCandidateRow extends Record<string, unknown> {
   id: string;
   source_key: string;
   url: string;
@@ -78,6 +78,28 @@ interface SourceUrlCandidateRow {
   last_error_message?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+const CANDIDATE_COLUMNS = "id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at";
+
+function candidateD1() {
+  return getRuntimeD1Binding("worldcons_ingest");
+}
+
+function requireCandidateD1(): D1RuntimeDatabase {
+  const binding = candidateD1();
+  if (!binding) throw new Error("candidate_store_unavailable");
+  return binding;
+}
+
+async function rows<T extends Record<string, unknown>>(binding: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const statement = binding.prepare(sql).bind(...values);
+  if (!statement.all) throw new Error("candidate_store_read_unavailable");
+  const result = await statement.all<T>();
+  if (!result || result.success === false || result.error || !Array.isArray(result.results)) {
+    throw new Error(result?.error || "candidate_store_read_failed");
+  }
+  return result.results;
 }
 
 function isSourceUrlCandidateStatus(value?: string | null): value is SourceUrlCandidateStatus {
@@ -105,28 +127,35 @@ function normalizeCandidateRow(row: SourceUrlCandidateRow): SourceUrlCandidateRe
   };
 }
 
-function firstRpcRow(value: unknown) {
-  const row = Array.isArray(value) ? value[0] : value;
-  return typeof row === "object" && row !== null ? row as Record<string, unknown> : null;
+function trimmed(value?: string | null) {
+  const next = value?.trim();
+  return next || undefined;
+}
+
+function firstNumber(value: unknown, fallback = 0) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;
 }
 
 export async function beginSourceUrlCandidateRetry(candidateId: string): Promise<SourceUrlCandidateRetryClaim> {
-  const supabase = getSupabaseServiceRoleAdmin();
-  if (!supabase) throw new Error("candidate_store_unavailable");
-  const { data, error } = await supabase.rpc("admin_begin_source_url_candidate_retry_p1", { p_candidate_id: candidateId });
-  if (error) throw new Error(error.message);
-  const row = firstRpcRow(data);
+  const binding = requireCandidateD1();
+  const now = new Date().toISOString();
+  const updated = await rows<SourceUrlCandidateRow>(
+    binding,
+    `UPDATE source_url_candidates SET status = 'retrying', last_attempt_at = ?, attempt_count = attempt_count + 1, updated_at = ? WHERE id = ? AND status NOT IN ('fetched', 'ignored') RETURNING ${CANDIDATE_COLUMNS}`,
+    [now, now, candidateId],
+  );
+  const row = updated[0] ?? (await rows<SourceUrlCandidateRow>(binding, `SELECT ${CANDIDATE_COLUMNS} FROM source_url_candidates WHERE id = ? LIMIT 1`, [candidateId]))[0];
   if (!row) throw new Error("candidate_not_found");
-  const status = parseSourceUrlCandidateStatus(typeof row.candidate_status === "string" ? row.candidate_status : null);
-  if (!status) throw new Error("candidate_status_invalid");
+  const normalized = normalizeCandidateRow(row);
   return {
-    candidateId: String(row.candidate_id ?? ""),
-    sourceKey: String(row.source_key ?? ""),
-    url: String(row.candidate_url ?? ""),
-    candidateType: String(row.candidate_type ?? ""),
-    status,
-    attemptCount: Number(row.attempt_count ?? 0),
-    shouldFetch: row.should_fetch === true,
+    candidateId: normalized.id,
+    sourceKey: normalized.sourceKey,
+    url: normalized.url,
+    candidateType: normalized.candidateType,
+    status: normalized.status,
+    attemptCount: normalized.attemptCount,
+    shouldFetch: updated.length === 1,
   };
 }
 
@@ -137,228 +166,163 @@ export async function finishSourceUrlCandidateRetry(input: {
   errorCode?: string;
   errorMessage?: string;
 }) {
-  const supabase = getSupabaseServiceRoleAdmin();
-  if (!supabase) throw new Error("candidate_store_unavailable");
-  const { data, error } = await supabase.rpc("admin_finish_source_url_candidate_retry_p1", {
-    p_candidate_id: input.candidateId,
-    p_attempt_count: input.attemptCount,
-    p_status: input.status,
-    p_error_code: input.errorCode?.slice(0, 160) ?? null,
-    p_error_message: input.errorMessage?.slice(0, 500) ?? null,
-  });
-  if (error) throw new Error(error.message);
-  const row = firstRpcRow(data);
-  if (!row) throw new Error("candidate_transition_failed");
-  return {
-    candidateId: String(row.candidate_id ?? ""),
-    status: String(row.candidate_status ?? "") as SourceUrlCandidateStatus,
-    attemptCount: Number(row.attempt_count ?? 0),
-  };
-}
-
-function trimmed(value?: string | null) {
-  const next = value?.trim();
-  return next || undefined;
-}
-
-function matchesCandidateSearch(row: SourceUrlCandidateRecord, query: string) {
-  const needle = query.toLowerCase();
-  return [row.sourceKey, row.candidateType, row.status, row.discoveredBy, row.lastErrorCode, row.lastErrorMessage, row.url]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(needle));
+  const binding = requireCandidateD1();
+  if (input.status !== "fetched" && input.status !== "failed") throw new Error("candidate_status_invalid");
+  const errorCode = input.status === "fetched" ? null : trimmed(input.errorCode)?.slice(0, 160) ?? null;
+  const errorMessage = input.status === "fetched" ? null : trimmed(input.errorMessage)?.slice(0, 500) ?? null;
+  const updated = await rows<{ id: string; status: string; attempt_count: number }>(
+    binding,
+    "UPDATE source_url_candidates SET status = ?, last_error_code = ?, last_error_message = ?, updated_at = ? WHERE id = ? AND attempt_count = ? AND status = 'retrying' RETURNING id, status, attempt_count",
+    [input.status, errorCode, errorMessage, new Date().toISOString(), input.candidateId, input.attemptCount],
+  );
+  if (updated[0]) {
+    return { candidateId: updated[0].id, status: updated[0].status as SourceUrlCandidateStatus, attemptCount: Number(updated[0].attempt_count ?? 0) };
+  }
+  const existing = (await rows<{ id: string; status: string; attempt_count: number }>(
+    binding,
+    "SELECT id, status, attempt_count FROM source_url_candidates WHERE id = ? LIMIT 1",
+    [input.candidateId],
+  ))[0];
+  if (!existing) throw new Error("candidate_not_found");
+  if (Number(existing.attempt_count) !== input.attemptCount) throw new Error("candidate_stale_attempt");
+  if (existing.status === input.status) {
+    return { candidateId: existing.id, status: existing.status as SourceUrlCandidateStatus, attemptCount: Number(existing.attempt_count) };
+  }
+  throw new Error("candidate_state_conflict");
 }
 
 export async function upsertSourceUrlCandidates(candidates: SourceUrlCandidateInput[]) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase || candidates.length === 0) return { inserted: 0, skipped: candidates.length };
-
-  const existingCounts = new Map<string, number>();
-  await Promise.all(
-    candidates.map(async (candidate) => {
-      const { data } = await supabase
-        .from("source_url_candidates")
-        .select("attempt_count")
-        .eq("source_key", candidate.sourceKey)
-        .eq("url", candidate.url)
-        .maybeSingle();
-      const count = Number(data?.attempt_count ?? 0);
-      existingCounts.set(`${candidate.sourceKey}\n${candidate.url}`, Number.isFinite(count) && count > 0 ? Math.floor(count) : 0);
-    }),
-  );
-
-  const rows = candidates.map((candidate) => ({
-    source_key: candidate.sourceKey,
-    url: candidate.url,
-    candidate_type: candidate.candidateType,
-    discovered_by: candidate.discoveredBy,
-    status: candidate.status ?? "pending",
-    last_error_code: candidate.lastErrorCode,
-    last_error_message: candidate.lastErrorMessage,
-    last_attempt_at: new Date().toISOString(),
-    attempt_count: (existingCounts.get(`${candidate.sourceKey}\n${candidate.url}`) ?? 0) + 1,
-  }));
-
-  const { error } = await supabase.from("source_url_candidates").upsert(rows, { onConflict: "source_key,url" });
-  if (error) {
-    return { inserted: 0, skipped: candidates.length, error: error.message };
+  if (candidates.length === 0) return { inserted: 0, skipped: 0 };
+  const binding = requireCandidateD1();
+  const now = new Date().toISOString();
+  try {
+    for (const candidate of candidates) {
+      await rows<{ id: string }>(
+        binding,
+        [
+          "INSERT INTO source_url_candidates",
+          "(id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+          "ON CONFLICT(source_key, url) DO UPDATE SET",
+          "candidate_type = excluded.candidate_type, discovered_by = excluded.discovered_by, status = excluded.status,",
+          "last_attempt_at = excluded.last_attempt_at, attempt_count = source_url_candidates.attempt_count + 1,",
+          "last_error_code = excluded.last_error_code, last_error_message = excluded.last_error_message, updated_at = excluded.updated_at",
+          "RETURNING id",
+        ].join(" "),
+        [crypto.randomUUID(), candidate.sourceKey, candidate.url, candidate.candidateType, candidate.discoveredBy, candidate.status ?? "pending", now, candidate.lastErrorCode ?? null, candidate.lastErrorMessage ?? null, now, now],
+      );
+    }
+    return { inserted: candidates.length, skipped: 0 };
+  } catch (error) {
+    return { inserted: 0, skipped: candidates.length, error: error instanceof Error ? error.message : String(error) };
   }
-
-  return { inserted: rows.length, skipped: 0 };
 }
 
 export async function findSourceUrlCandidatesByUrls(sourceKey: string, urls: string[]) {
-  const supabase = getSupabaseAdmin();
   const uniqueUrls = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
-  if (!supabase || uniqueUrls.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from("source_url_candidates")
-    .select("id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at")
-    .eq("source_key", sourceKey)
-    .in("url", uniqueUrls);
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow);
+  if (uniqueUrls.length === 0) return [];
+  const binding = requireCandidateD1();
+  const placeholders = uniqueUrls.map(() => "?").join(", ");
+  const result = await rows<SourceUrlCandidateRow>(binding, `SELECT ${CANDIDATE_COLUMNS} FROM source_url_candidates WHERE source_key = ? AND url IN (${placeholders})`, [sourceKey, ...uniqueUrls]);
+  return result.map(normalizeCandidateRow);
 }
 
 export async function countOpenSourceUrlCandidates(sourceKey?: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return 0;
-  let query = supabase
-    .from("source_url_candidates")
-    .select("id", { count: "exact", head: true })
-    .in("status", ["pending", "retrying"]);
-  if (sourceKey) query = query.eq("source_key", sourceKey);
-  const { count, error } = await query;
-  if (error) throw new Error(error.message);
-  return count ?? 0;
+  const binding = requireCandidateD1();
+  const where = sourceKey ? " AND source_key = ?" : "";
+  const result = await rows<{ count: number | string }>(binding, `SELECT COUNT(*) AS count FROM source_url_candidates WHERE status IN ('pending', 'retrying')${where}`, sourceKey ? [sourceKey] : []);
+  return firstNumber(result[0]?.count);
 }
 
 export async function getSourceUrlCandidateHealthMetrics(): Promise<SourceUrlCandidateHealthMetrics | null> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-
-  const [open, retryable, exhausted, oldest] = await Promise.all([
-    supabase.from("source_url_candidates").select("id", { count: "exact", head: true }).in("status", ["pending", "retrying"]),
-    supabase.from("source_url_candidates").select("id", { count: "exact", head: true }).eq("status", "retrying"),
-    supabase.from("source_url_candidates").select("id", { count: "exact", head: true }).eq("status", "failed"),
-    supabase
-      .from("source_url_candidates")
-      .select("created_at")
-      .in("status", ["pending", "retrying"])
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-  const error = open.error ?? retryable.error ?? exhausted.error ?? oldest.error;
-  if (error) throw new Error(error.message);
-
+  const binding = candidateD1();
+  if (!binding) return null;
+  const [row] = await rows<Record<string, unknown>>(
+    binding,
+    [
+      "SELECT",
+      "SUM(CASE WHEN status IN ('pending','retrying') THEN 1 ELSE 0 END) AS open_count,",
+      "SUM(CASE WHEN status = 'retrying' THEN 1 ELSE 0 END) AS retryable_count,",
+      "SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS exhausted_count,",
+      "MIN(CASE WHEN status IN ('pending','retrying') THEN created_at ELSE NULL END) AS oldest_open_at",
+      "FROM source_url_candidates",
+    ].join(" "),
+  );
   return {
-    openCandidateCount: open.count ?? 0,
-    retryableCandidateCount: retryable.count ?? 0,
-    exhaustedCandidateCount: exhausted.count ?? 0,
-    oldestOpenCandidateAt: typeof oldest.data?.created_at === "string" ? oldest.data.created_at : null,
+    openCandidateCount: firstNumber(row?.open_count),
+    retryableCandidateCount: firstNumber(row?.retryable_count),
+    exhaustedCandidateCount: firstNumber(row?.exhausted_count),
+    oldestOpenCandidateAt: typeof row?.oldest_open_at === "string" ? row.oldest_open_at : null,
   };
 }
 
 export async function listSourceUrlCandidatesForRetry(sourceKey: string, limit = 100) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return [] as SourceUrlCandidateRecord[];
+  const binding = requireCandidateD1();
   const boundedLimit = boundedInteger(limit, 100, { min: 1, max: 500 });
-  const { data, error } = await supabase
-    .from("source_url_candidates")
-    .select("id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at")
-    .eq("source_key", sourceKey)
-    .eq("status", "retrying")
-    .order("last_attempt_at", { ascending: true, nullsFirst: true })
-    .limit(boundedLimit);
-
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow);
+  const result = await rows<SourceUrlCandidateRow>(
+    binding,
+    `SELECT ${CANDIDATE_COLUMNS} FROM source_url_candidates WHERE source_key = ? AND status = 'retrying' ORDER BY CASE WHEN last_attempt_at IS NULL THEN 0 ELSE 1 END, last_attempt_at ASC LIMIT ?`,
+    [sourceKey, boundedLimit],
+  );
+  return result.map(normalizeCandidateRow);
 }
 
 export async function markSourceUrlCandidatesFetched(sourceKey: string, urls: string[]) {
-  const supabase = getSupabaseAdmin();
   const uniqueUrls = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
-  if (!supabase || uniqueUrls.length === 0) return { updated: 0 };
-
-  const { data, error } = await supabase
-    .from("source_url_candidates")
-    .update({
-      status: "fetched",
-      last_attempt_at: new Date().toISOString(),
-      last_error_code: null,
-      last_error_message: null,
-    })
-    .eq("source_key", sourceKey)
-    .in("url", uniqueUrls)
-    .neq("status", "fetched")
-    .select("id");
-  if (error) return { updated: 0, error: error.message };
-  return { updated: data?.length ?? 0 };
+  if (uniqueUrls.length === 0) return { updated: 0 };
+  const binding = requireCandidateD1();
+  const placeholders = uniqueUrls.map(() => "?").join(", ");
+  try {
+    const result = await rows<{ id: string }>(
+      binding,
+      `UPDATE source_url_candidates SET status = 'fetched', last_attempt_at = ?, last_error_code = NULL, last_error_message = NULL, updated_at = ? WHERE source_key = ? AND url IN (${placeholders}) AND status != 'fetched' RETURNING id`,
+      [new Date().toISOString(), new Date().toISOString(), sourceKey, ...uniqueUrls],
+    );
+    return { updated: result.length };
+  } catch (error) {
+    return { updated: 0, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 export async function listSourceUrlCandidates(input: ListSourceUrlCandidatesInput = {}): Promise<ListSourceUrlCandidatesResult> {
-  const supabase = getSupabaseAdmin();
+  const binding = requireCandidateD1();
   const page = boundedInteger(input.page, 1, { min: 1, max: 10_000 });
   const pageSize = boundedInteger(input.pageSize, 50, { min: 1, max: 100 });
   const sourceKey = trimmed(input.sourceKey);
   const candidateType = trimmed(input.candidateType);
   const status = parseSourceUrlCandidateStatus(trimmed(input.status));
-  const q = trimmed(input.q);
-
-  if (!supabase) {
-    return { items: [], pageInfo: { page, pageSize, total: 0, totalIsExact: true } };
-  }
-
-  const selectColumns =
-    "id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at";
-
+  const q = trimmed(input.q)?.toLowerCase();
+  const predicates: string[] = [];
+  const values: unknown[] = [];
+  if (sourceKey) { predicates.push("source_key = ?"); values.push(sourceKey); }
+  if (status) { predicates.push("status = ?"); values.push(status); }
+  if (candidateType) { predicates.push("candidate_type = ?"); values.push(candidateType); }
   if (q) {
-    let query = supabase.from("source_url_candidates").select(selectColumns);
-    if (sourceKey) query = query.eq("source_key", sourceKey);
-    if (status) query = query.eq("status", status);
-    if (candidateType) query = query.eq("candidate_type", candidateType);
-
-    const { data, error } = await query.order("updated_at", { ascending: false }).limit(5000);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as SourceUrlCandidateRow[];
-    const filtered = rows.map(normalizeCandidateRow).filter((row) => matchesCandidateSearch(row, q));
-    const start = (page - 1) * pageSize;
-    return {
-      items: filtered.slice(start, start + pageSize),
-      pageInfo: { page, pageSize, total: filtered.length, totalIsExact: rows.length < 5000 },
-    };
+    const columns = ["source_key", "candidate_type", "status", "discovered_by", "last_error_code", "last_error_message", "url"];
+    predicates.push(`(${columns.map((column) => `instr(lower(coalesce(${column}, '')), ?) > 0`).join(" OR ")})`);
+    values.push(...columns.map(() => q));
   }
-
+  const where = predicates.length ? ` WHERE ${predicates.join(" AND ")}` : "";
+  const [countRow] = await rows<{ count: number | string }>(binding, `SELECT COUNT(*) AS count FROM source_url_candidates${where}`, values);
+  const total = firstNumber(countRow?.count);
   const start = (page - 1) * pageSize;
-  let query = supabase.from("source_url_candidates").select(selectColumns, { count: "exact" });
-  if (sourceKey) query = query.eq("source_key", sourceKey);
-  if (status) query = query.eq("status", status);
-  if (candidateType) query = query.eq("candidate_type", candidateType);
-
-  const { data, count, error } = await query.order("updated_at", { ascending: false }).range(start, start + pageSize - 1);
-  if (error) throw new Error(error.message);
-
-  return {
-    items: ((data ?? []) as SourceUrlCandidateRow[]).map(normalizeCandidateRow),
-    pageInfo: { page, pageSize, total: count ?? 0, totalIsExact: true },
-  };
+  const result = await rows<SourceUrlCandidateRow>(binding, `SELECT ${CANDIDATE_COLUMNS} FROM source_url_candidates${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`, [...values, pageSize, start]);
+  return { items: result.map(normalizeCandidateRow), pageInfo: { page, pageSize, total, totalIsExact: true } };
 }
 
 export async function updateSourceUrlCandidateStatus(id: string, status: SourceUrlCandidateStatus) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return { ok: false, error: "Source URL candidate store is not configured." };
-  const updates: { status: SourceUrlCandidateStatus; last_attempt_at?: string } = { status };
-  if (status === "retrying") updates.last_attempt_at = new Date().toISOString();
-
-  const { data, error } = await supabase
-    .from("source_url_candidates")
-    .update(updates)
-    .eq("id", id)
-    .select("id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at")
-    .maybeSingle();
-
-  if (error) return { ok: false, error: error.message };
-  if (!data) return { ok: false, error: "Candidate not found." };
-  return { ok: true, item: normalizeCandidateRow(data as SourceUrlCandidateRow) };
+  const binding = candidateD1();
+  if (!binding) return { ok: false, error: "Source URL candidate D1 binding is not configured." };
+  try {
+    const now = new Date().toISOString();
+    const result = await rows<SourceUrlCandidateRow>(
+      binding,
+      `UPDATE source_url_candidates SET status = ?, last_attempt_at = CASE WHEN ? = 'retrying' THEN ? ELSE last_attempt_at END, updated_at = ? WHERE id = ? RETURNING ${CANDIDATE_COLUMNS}`,
+      [status, status, now, now, id],
+    );
+    const row = result[0];
+    return row ? { ok: true, item: normalizeCandidateRow(row) } : { ok: false, error: "Candidate not found." };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }

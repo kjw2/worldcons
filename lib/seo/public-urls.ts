@@ -1,4 +1,5 @@
-const DEFAULT_BASE_URL = "http://localhost:3000";
+const LOCAL_BASE_URL = "http://localhost:3000";
+const PRODUCTION_BASE_URL = "https://worldcons.cclib.workers.dev";
 export const LEGACY_PUBLIC_PREFIX = "/v2";
 export const MIN_INDEXABLE_TAG_ARTICLE_COUNT = 3;
 
@@ -10,13 +11,7 @@ export function getAppBaseUrl() {
   if (process.env.APP_BASE_URL) {
     return normalizeBaseUrl(process.env.APP_BASE_URL);
   }
-
-  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  if (vercelUrl) {
-    return normalizeBaseUrl(vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`);
-  }
-
-  return DEFAULT_BASE_URL;
+  return process.env.NODE_ENV === "production" ? PRODUCTION_BASE_URL : LOCAL_BASE_URL;
 }
 
 export function publicPath(path = "/") {

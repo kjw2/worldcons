@@ -1,4 +1,4 @@
-import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import type { P5CompatibilityObservation } from "@/lib/admin/p5/types";
 
 export const ADMIN_P5_COMPATIBILITY_OBSERVATION_FLAG = "ADMIN_P5_COMPATIBILITY_OBSERVATION_ENABLED";
@@ -29,17 +29,25 @@ function observationKey(observation: P5CompatibilityObservation) {
 
 async function writeObservation(observation: P5CompatibilityObservation) {
   if (testWriter) return testWriter(observation);
-  const supabase = getSupabaseServiceRoleAdmin();
-  if (!supabase) return;
-  const { error } = await supabase.rpc("admin_record_compatibility_observation_p5", {
-    p_surface: observation.surface,
-    p_domain: observation.domain,
-    p_direction: observation.direction,
-    p_authority: observation.authority,
-    p_outcome: observation.outcome,
-    p_count: observation.count ?? 1,
-  });
-  if (error) throw error;
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  if (!binding) return;
+  const now = new Date();
+  const bucket = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours())).toISOString();
+  const count = Math.min(10_000, Math.max(1, Math.trunc(observation.count ?? 1)));
+  const unexplained = observation.authority === "legacy" || observation.authority === "fallback" ? count : 0;
+  const statement = binding.prepare([
+    "INSERT INTO admin_compatibility_observations_p5",
+    "(bucket_started_at,surface,domain,direction,authority,outcome,observation_count,unexplained_count,first_observed_at,last_observed_at)",
+    "VALUES (?,?,?,?,?,?,CAST(? AS TEXT),CAST(? AS TEXT),?,?)",
+    "ON CONFLICT(bucket_started_at,surface,domain,direction,authority,outcome) DO UPDATE SET",
+    "observation_count=CAST(MIN(9223372036854775807,CAST(admin_compatibility_observations_p5.observation_count AS INTEGER)+CAST(excluded.observation_count AS INTEGER)) AS TEXT),",
+    "unexplained_count=CAST(MIN(9223372036854775807,CAST(admin_compatibility_observations_p5.unexplained_count AS INTEGER)+CAST(excluded.unexplained_count AS INTEGER)) AS TEXT),",
+    "first_observed_at=MIN(admin_compatibility_observations_p5.first_observed_at,excluded.first_observed_at),",
+    "last_observed_at=MAX(admin_compatibility_observations_p5.last_observed_at,excluded.last_observed_at)",
+  ].join(" ")).bind(bucket,observation.surface,observation.domain,observation.direction,observation.authority,observation.outcome,count,unexplained,now.toISOString(),now.toISOString());
+  if (!statement.run) throw new Error("admin_p5_observation.d1_write_unavailable");
+  const result = await statement.run();
+  if (result.success === false || result.error) throw new Error(result.error || "admin_p5_observation.d1_write_failed");
 }
 
 export function compatibilityObservationEnabled(env: Record<string, string | undefined> = process.env) {

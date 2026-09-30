@@ -208,6 +208,15 @@ async function syncTags(articleId: string, summary: SummaryJson, originalPublish
   return { upsertedTags: desiredIds.length };
 }
 
+export async function runD1SyncSummaryTags(
+  articleId: string,
+  summary: SummaryJson,
+  originalPublishedAt?: string | null,
+  options: { replace?: boolean } = {},
+) {
+  return syncTags(articleId, summary, originalPublishedAt ?? null, options.replace !== false);
+}
+
 async function refreshTagCounts() {
   const core = d1();
   const result = await statementRun(core.prepare(`
@@ -261,6 +270,44 @@ async function refreshTagCounts() {
     if (writes.some((write) => write.success === false || write.error)) throw new Error("summary_d1.glossary_candidate_write_failed");
   }
   return { refreshed: true, updatedTags: Number(result.meta?.changes ?? 0), glossaryCandidates: candidates.length };
+}
+
+export async function runD1RefreshTagCounts() {
+  return refreshTagCounts();
+}
+
+export async function runD1SummarizeArticle(input: {
+  articleId?: string;
+  slug?: string;
+  apiKeys: string[];
+  model?: string;
+  summarize?: typeof summarizeArticle;
+  createEmbedding?: typeof createEmbeddingArtifact;
+}) {
+  const articleId = input.articleId?.trim();
+  const slug = input.slug?.trim();
+  if (!articleId && !slug) throw new Error("summary_d1.article_identifier_required");
+  const core = d1();
+  const where = articleId ? "id = ?" : "slug = ?";
+  const value = articleId ?? slug!;
+  const rows = ensureSuccess(await core.prepare(
+    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at FROM articles WHERE ${where} LIMIT 1`,
+  ).bind(value).all<SummaryCandidateRow>());
+  const row = rows[0];
+  if (!row) throw new Error("summary_d1.article_not_found");
+  const keys = input.apiKeys.map((key) => key.trim()).filter(Boolean);
+  if (keys.length === 0) throw new Error("summary_d1.api_key_missing");
+  const result = await summarizeCandidate(row, {
+    apiKeys: keys,
+    model: input.model,
+    summarize: input.summarize,
+    createEmbedding: input.createEmbedding,
+  });
+  if (result.status === "failed") throw new Error(result.errorMessage);
+  const runId = ingestionRunIdFromSourceMetadata(row.source_metadata);
+  const ingestionRunSummaryCounts = runId ? await syncIngestionRunCounts([runId]) : {};
+  const tagRefresh = result.status === "summarized" ? await refreshTagCounts() : undefined;
+  return { mode: "database" as const, articleId: row.id, slug: row.slug, result, ingestionRunSummaryCounts, tagRefresh };
 }
 
 async function syncIngestionRunCounts(runIds: Iterable<string>) {

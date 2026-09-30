@@ -277,25 +277,18 @@ export function createD1AdminOpsReadRepository(dependencies: D1AdminOpsReadDepen
     }));
   }
 
-  /**
-   * Exact bounded count for a catalog table by reading only the authored primary
-   * key column(s) at `maxRows + 1`. The authoritative exact count is honored only
-   * when D1 proves the whole set fits within the bound; otherwise the wrapper
-   * skips rather than reporting an approximate count.
-   */
+  /** Exact head count for the two catalog tables used by the admin dashboard. */
   async function countTableRows(table: AdminOpsCountTable): Promise<number> {
-    if (table === "tags") {
-      const rows = await read(requireCore(dependencies), "tags", { select: ["id"], orderBy: ["id"], limit: maxRows + 1 });
-      if (rows.length > maxRows) throw new D1ShadowTruncatedError("countTableRows:tags");
-      return rows.length;
+    const binding = table === "tags" ? requireCore(dependencies) : requireIngest(dependencies);
+    const relation = table === "tags" ? "tags" : "source_url_candidates";
+    const result = await binding.prepare(`select count(*) as count from ${relation}`).bind().all<{ count?: number | string }>();
+    if (result.success === false || result.error || !Array.isArray(result.results)) {
+      throw new Error(result.error || `D1 count failed for ${relation}`);
     }
-    const rows = await read(requireIngest(dependencies), "source_url_candidates", {
-      select: ["id"],
-      orderBy: ["id"],
-      limit: maxRows + 1,
-    });
-    if (rows.length > maxRows) throw new D1ShadowTruncatedError("countTableRows:source_url_candidates");
-    return rows.length;
+    const raw = result.results[0]?.count;
+    const count = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(count) || count < 0) throw new Error(`D1 count returned an invalid value for ${relation}`);
+    return Math.trunc(count);
   }
 
   /**

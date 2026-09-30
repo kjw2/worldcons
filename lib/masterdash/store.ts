@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding, type D1RuntimeDatabase, type D1RuntimeResult } from "@/lib/cloudflare/d1/runtime-binding";
 import { sha256Base64Url, type MasterdashAction } from "@/lib/masterdash/security";
 
 export interface CollectionControlState {
@@ -18,46 +18,74 @@ export class CollectionPausedError extends Error {
   }
 }
 
-function errorCode(error: unknown) {
-  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" ? error.code : null;
+function opsBinding(): D1RuntimeDatabase | null {
+  return getRuntimeD1Binding("worldcons_ops");
 }
 
-function errorMessage(error: unknown) {
-  return typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-    ? error.message
-    : String(error);
+function resultOk(result: D1RuntimeResult) {
+  return result.success !== false && !result.error;
+}
+
+function resultChanges(result: D1RuntimeResult) {
+  return Number(result.meta?.changes ?? 0);
+}
+
+async function runD1(binding: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const statement = binding.prepare(sql).bind(...values);
+  if (!statement.run) throw new Error("MasterDash D1 write is unavailable.");
+  const result = await statement.run();
+  if (!resultOk(result)) throw new Error(result.error || "MasterDash D1 write failed.");
+  return result;
+}
+
+async function rowsD1<T extends Record<string, unknown>>(binding: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const result = await binding.prepare(sql).bind(...values).all<T>();
+  if (!resultOk(result)) throw new Error(result.error || "MasterDash D1 read failed.");
+  return result.results ?? [];
 }
 
 export async function consumeMasterdashJti(jti: string, expiresAtSeconds: number) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return { ok: false as const, unavailable: true, error: "Supabase is not configured." };
+  const binding = opsBinding();
+  if (!binding) return { ok: false as const, unavailable: true, error: "worldcons_ops D1 is not configured." };
+
   const now = new Date().toISOString();
-  await supabase.from("masterdash_sso_jtis").delete().lt("expires_at", now);
-  const { error } = await supabase.from("masterdash_sso_jtis").insert({
-    jti_hash: sha256Base64Url(jti),
-    system_id: "worldcons",
-    expires_at: new Date(expiresAtSeconds * 1000).toISOString(),
-  });
-  if (!error) return { ok: true as const };
-  if (errorCode(error) === "23505") return { ok: false as const, replay: true, error: "MasterDash token was already used." };
-  return { ok: false as const, unavailable: true, error: errorMessage(error) };
+  const expiresAt = new Date(expiresAtSeconds * 1000).toISOString();
+  const jtiHash = sha256Base64Url(jti);
+
+  try {
+    await runD1(binding, "DELETE FROM masterdash_sso_jtis WHERE expires_at < ?", [now]);
+    const inserted = await runD1(
+      binding,
+      "INSERT OR IGNORE INTO masterdash_sso_jtis (jti_hash, system_id, expires_at, created_at) VALUES (?, 'worldcons', ?, ?)",
+      [jtiHash, expiresAt, now],
+    );
+    if (resultChanges(inserted) === 1) return { ok: true as const };
+    if (resultChanges(inserted) === 0) return { ok: false as const, replay: true, error: "MasterDash token was already used." };
+    return { ok: false as const, unavailable: true, error: "Unexpected MasterDash JTI write result." };
+  } catch (error) {
+    return { ok: false as const, unavailable: true, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 export async function getCollectionControlState(): Promise<CollectionControlState> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return { available: false, paused: false, updatedAt: null, lastRequestId: null, error: "Supabase is not configured." };
-  const { data, error } = await supabase
-    .from("masterdash_collection_control")
-    .select("paused, updated_at, last_request_id")
-    .eq("system_id", "worldcons")
-    .maybeSingle();
-  if (error) return { available: false, paused: false, updatedAt: null, lastRequestId: null, error: error.message };
-  return {
-    available: true,
-    paused: data?.paused === true,
-    updatedAt: typeof data?.updated_at === "string" ? data.updated_at : null,
-    lastRequestId: typeof data?.last_request_id === "string" ? data.last_request_id : null,
-  };
+  const binding = opsBinding();
+  if (!binding) return { available: false, paused: false, updatedAt: null, lastRequestId: null, error: "worldcons_ops D1 is not configured." };
+
+  try {
+    const [row] = await rowsD1<{
+      paused?: number | boolean;
+      updated_at?: string | null;
+      last_request_id?: string | null;
+    }>(binding, "SELECT paused, updated_at, last_request_id FROM masterdash_collection_control WHERE system_id = 'worldcons' LIMIT 1");
+    return {
+      available: true,
+      paused: row?.paused === true || row?.paused === 1,
+      updatedAt: typeof row?.updated_at === "string" ? row.updated_at : null,
+      lastRequestId: typeof row?.last_request_id === "string" ? row.last_request_id : null,
+    };
+  } catch (error) {
+    return { available: false, paused: false, updatedAt: null, lastRequestId: null, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 export async function assertCollectionCanStart() {
@@ -72,18 +100,19 @@ export async function assertCollectionCanStart() {
 }
 
 export async function setCollectionPaused(paused: boolean, requestId: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error("Supabase is not configured for MasterDash collection control.");
-  const { error } = await supabase.from("masterdash_collection_control").upsert(
-    {
-      system_id: "worldcons",
-      paused,
-      updated_at: new Date().toISOString(),
-      last_request_id: requestId,
-    },
-    { onConflict: "system_id" },
+  const binding = opsBinding();
+  if (!binding) throw new Error("worldcons_ops D1 is not configured for MasterDash collection control.");
+  const now = new Date().toISOString();
+  await runD1(
+    binding,
+    [
+      "INSERT INTO masterdash_collection_control (system_id, paused, updated_at, last_request_id)",
+      "VALUES ('worldcons', ?, ?, ?)",
+      "ON CONFLICT(system_id) DO UPDATE SET",
+      "paused = excluded.paused, updated_at = excluded.updated_at, last_request_id = excluded.last_request_id",
+    ].join(" "),
+    [paused ? 1 : 0, now, requestId],
   );
-  if (error) throw new Error(error.message);
   return getCollectionControlState();
 }
 
@@ -100,46 +129,56 @@ export async function claimControlRequest(input: {
   requestedAt: string;
   bodyHash: string;
 }): Promise<ClaimedControlRequest> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error("Supabase is not configured for MasterDash control requests.");
-  const { error } = await supabase.from("masterdash_control_requests").insert({
-    request_id: input.requestId,
-    system_id: "worldcons",
-    action: input.action,
-    requested_at: input.requestedAt,
-    body_sha256: input.bodyHash,
-    status: "processing",
-  });
-  if (!error) return { kind: "claimed" };
-  if (errorCode(error) !== "23505") throw new Error(error.message);
+  const binding = opsBinding();
+  if (!binding) throw new Error("worldcons_ops D1 is not configured for MasterDash control requests.");
 
-  const existing = await supabase
-    .from("masterdash_control_requests")
-    .select("action, requested_at, body_sha256, status, response_status, response_message")
-    .eq("request_id", input.requestId)
-    .maybeSingle();
-  if (existing.error || !existing.data) throw new Error(existing.error?.message ?? "Existing control request could not be read.");
+  const createdAt = new Date().toISOString();
+  const inserted = await runD1(
+    binding,
+    [
+      "INSERT OR IGNORE INTO masterdash_control_requests",
+      "(request_id, system_id, action, requested_at, body_sha256, status, created_at)",
+      "VALUES (?, 'worldcons', ?, ?, ?, 'processing', ?)",
+    ].join(" "),
+    [input.requestId, input.action, input.requestedAt, input.bodyHash, createdAt],
+  );
+  if (resultChanges(inserted) === 1) return { kind: "claimed" };
+
+  const [existing] = await rowsD1<{
+    action?: string;
+    requested_at?: string;
+    body_sha256?: string;
+    status?: string;
+    response_status?: number | null;
+    response_message?: string | null;
+  }>(
+    binding,
+    "SELECT action, requested_at, body_sha256, status, response_status, response_message FROM masterdash_control_requests WHERE request_id = ? LIMIT 1",
+    [input.requestId],
+  );
+  if (!existing) throw new Error("Existing control request could not be read.");
   if (
-    existing.data.action !== input.action ||
-    Date.parse(existing.data.requested_at) !== Date.parse(input.requestedAt) ||
-    existing.data.body_sha256 !== input.bodyHash
+    existing.action !== input.action ||
+    typeof existing.requested_at !== "string" ||
+    Date.parse(existing.requested_at) !== Date.parse(input.requestedAt) ||
+    existing.body_sha256 !== input.bodyHash
   ) {
     throw new Error("requestId was already used for a different MasterDash control request.");
   }
   return {
     kind: "duplicate",
-    status: existing.data.status as ClaimedControlRequest["status"],
-    httpStatus: typeof existing.data.response_status === "number" ? existing.data.response_status : null,
-    message: typeof existing.data.response_message === "string" ? existing.data.response_message : null,
+    status: existing.status as ClaimedControlRequest["status"],
+    httpStatus: typeof existing.response_status === "number" ? existing.response_status : null,
+    message: typeof existing.response_message === "string" ? existing.response_message : null,
   };
 }
 
 export async function completeControlRequest(requestId: string, status: "succeeded" | "failed", httpStatus: number, message: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error("Supabase is not configured for MasterDash control requests.");
-  const { error } = await supabase
-    .from("masterdash_control_requests")
-    .update({ status, response_status: httpStatus, response_message: message.slice(0, 500), completed_at: new Date().toISOString() })
-    .eq("request_id", requestId);
-  if (error) throw new Error(error.message);
+  const binding = opsBinding();
+  if (!binding) throw new Error("worldcons_ops D1 is not configured for MasterDash control requests.");
+  await runD1(
+    binding,
+    "UPDATE masterdash_control_requests SET status = ?, response_status = ?, response_message = ?, completed_at = ? WHERE request_id = ?",
+    [status, httpStatus, message.slice(0, 500), new Date().toISOString(), requestId],
+  );
 }

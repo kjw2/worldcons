@@ -10,8 +10,8 @@ function deploymentMetadata() {
     return { deployment: "cloudflare-workers", version: "worker" };
   }
   return {
-    deployment: process.env.VERCEL ? "vercel" : "node",
-    version: process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
+    deployment: "node",
+    version: process.env.WORLDCONS_VERSION ?? "local",
   };
 }
 

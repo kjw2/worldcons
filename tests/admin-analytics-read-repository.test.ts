@@ -6,9 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminAuditLogData, getAnalyticsDashboardData } from "../lib/db/analytics";
 import {
   adminAnalyticsReads,
-  createSupabaseAdminAnalyticsReadRepository,
   failClosedAdminAnalyticsReads,
 } from "../lib/admin/analytics-read-repository";
+import { createSupabaseAdminAnalyticsReadRepository } from "../lib/admin/analytics-read-repository/supabase-repository";
 import { setCompatibilityObservationWriterForTests } from "../lib/admin/p5/observations";
 
 const ADMIN_AUDIT_SELECT = "id, occurred_at, event_type, path, article_slug, source_key, metadata";

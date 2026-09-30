@@ -15,6 +15,7 @@ import {
 } from "../../../lib/cloudflare/async-pipeline/native-executor";
 import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
 import { handleBrowserNavigate } from "./browser-navigate";
+import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { launch } from "@cloudflare/playwright";
 
@@ -56,6 +57,17 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         reason: policy.schedulerEnabled ? "kind_not_allowed" : "scheduler_disabled",
       }));
       return { dispatched: false, kind: event.payload.kind, idempotencyKey: event.payload.idempotencyKey };
+    }
+    if (event.payload.kind === "admin-job-drain") {
+      return step.do("native-admin-job-drain", {
+        retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+      }, () => runNativeAdminJobDrain({
+        env: this.env,
+        idempotencyKey: event.payload.idempotencyKey,
+        maxJobs: 2,
+        leaseSeconds: 1200,
+        browserNavigate: (input) => browserNavigate(input, this.env.BROWSER),
+      }));
     }
     if (event.payload.kind === "crawler-daily") {
       const results = [];

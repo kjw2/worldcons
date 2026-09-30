@@ -30,7 +30,7 @@ export interface WorldconsSearchServiceEnv {
   WORLDCONS_SEARCH_VECTOR?: VectorizeIndexBinding;
 }
 
-const DEFAULT_PUBLIC_BASE_URL = "https://worldcons.soltera.dev/api/cclrag2";
+const DEFAULT_PUBLIC_BASE_URL = "https://worldcons.cclib.workers.dev/api/cclrag2";
 
 interface RuntimeWorldconsSearchServiceGlobal {
   __worldconsSearchServiceEnvV1?: WorldconsSearchServiceEnv;
@@ -116,7 +116,7 @@ export function createWorldconsSearchServiceApp(
       const page = dependencies.cclMetasearchSearch
         ? await dependencies.cclMetasearchSearch(input, c.env)
         : await searchCclMetasearchWithEnv(input, {
-          PUBLIC_SITE_BASE_URL: c.env.PUBLIC_SITE_BASE_URL?.trim() || "https://worldcons.soltera.dev",
+          PUBLIC_SITE_BASE_URL: c.env.PUBLIC_SITE_BASE_URL?.trim() || "https://worldcons.cclib.workers.dev",
           CORE_BINDING: c.env.WORLDCONS_CORE,
           SEARCH_BINDING: c.env.WORLDCONS_SEARCH,
           CCL_METASEARCH_DB_TIMEOUT_MS: c.env.CCL_METASEARCH_DB_TIMEOUT_MS,

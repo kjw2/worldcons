@@ -10,16 +10,6 @@ export interface M8NativeEnvironment {
   WORLDCONS_CORE: D1RuntimeDatabase;
   WORLDCONS_INGEST: D1RuntimeDatabase;
   WORLDCONS_APP_SERVICE: {
-    runAdminJobDrain(input: { idempotencyKey: string; maxJobs?: number; leaseSeconds?: number }): Promise<{
-      mode: "worker";
-      workerId: string;
-      processed: number;
-      claimed: number;
-      succeeded: number;
-      failed: number;
-      jobs: unknown[];
-      error?: string;
-    }>;
     runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }): Promise<{
       status: "completed" | "deferred" | "unavailable";
       passes: number;
@@ -46,6 +36,8 @@ export interface M8NativeEnvironment {
       limitReached: boolean;
       stoppedReason?: string;
     }>;
+    runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }): Promise<unknown>;
+    runRefreshTagCounts(): Promise<unknown>;
   };
 }
 
@@ -60,14 +52,6 @@ export async function executeM8TaskNative(
     worldcons_ingest: env.WORLDCONS_INGEST,
   });
   const execute = async () => {
-    if (message.kind === "admin-job-drain") {
-      const result = await env.WORLDCONS_APP_SERVICE.runAdminJobDrain({
-        idempotencyKey: message.idempotencyKey,
-        maxJobs: 2,
-        leaseSeconds: 1200,
-      });
-      return { kind: message.kind, ...result };
-    }
     if (message.kind === "embedding-backfill") {
       const result = await env.WORLDCONS_APP_SERVICE.runEmbeddingBackfill({
         limit: 8,

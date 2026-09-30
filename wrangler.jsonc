@@ -7,12 +7,6 @@
   ],
   "workers_dev": true,
   "preview_urls": false,
-  "routes": [
-    {
-      "pattern": "worldcons.soltera.dev",
-      "custom_domain": true
-    }
-  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
@@ -29,8 +23,9 @@
     }
   },
   "vars": {
-    "APP_BASE_URL": "https://worldcons.soltera.dev",
-    "WORLDCONS_BASE_URL": "https://worldcons.soltera.dev",
+    "APP_BASE_URL": "https://worldcons.cclib.workers.dev",
+    "WORLDCONS_BASE_URL": "https://worldcons.cclib.workers.dev",
+    "MASTERDASH_ADMIN_IDENTITIES": "admin,admin2",
     "WORLDCONS_M13_AUTHORITY_PROFILE": "d1",
     "WORLDCONS_CORE_WRITE_AUTHORITY": "d1",
     "WORLDCONS_RATE_LIMIT_AUTHORITY": "d1",
@@ -42,8 +37,8 @@
     "WORLDCONS_D1_SHADOW_MAX_IN_FLIGHT": "2",
     "WORLDCONS_D1_SHADOW_SAMPLE_RATE": "0.1",
     "ENVIRONMENT": "production",
-    "PUBLIC_BASE_URL": "https://worldcons.soltera.dev/api/cclrag2",
-    "PUBLIC_SITE_BASE_URL": "https://worldcons.soltera.dev",
+    "PUBLIC_BASE_URL": "https://worldcons.cclib.workers.dev/api/cclrag2",
+    "PUBLIC_SITE_BASE_URL": "https://worldcons.cclib.workers.dev",
     "EMBEDDING_PROVIDER": "gemini",
     "SEMANTIC_SEARCH_ENABLED": "true",
     "GEMINI_EMBEDDING_MODEL": "gemini-embedding-001",

@@ -16,7 +16,7 @@ function productionEnvironment(overrides: Record<string, string> = {}) {
     ADMIN_SESSION_SECRET: "a".repeat(32),
     CRON_SECRET: "b".repeat(32),
     LLM_SETTINGS_SECRET: "c".repeat(32),
-    SUPABASE_SERVICE_ROLE_KEY: "d".repeat(32),
+    MASTERDASH_SSO_SECRET: "d".repeat(32),
     ...overrides,
   };
 }
@@ -35,7 +35,7 @@ test("production still rejects reused or publicly exposed secrets", () => {
   assert.ok(reused.errors.some((error) => /must not reuse the same value/u.test(error)));
 
   const leaked = validateProductionSecurityConfig(
-    productionEnvironment({ NEXT_PUBLIC_SUPABASE_SERVICE_ROLE: "d".repeat(32) }),
+    productionEnvironment({ NEXT_PUBLIC_MASTERDASH_SSO_SECRET: "d".repeat(32) }),
   );
   assert.equal(leaked.ok, false);
 });

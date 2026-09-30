@@ -36,7 +36,7 @@ test("runtime R2 binding store forces the binding transport without S3 credentia
   };
 
   const store = createR2BindingRuntimeArtifactBlobStore(bucket, {
-    [ARTIFACT_BLOB_PROVIDER_ENV]: "vercel",
+    [ARTIFACT_BLOB_PROVIDER_ENV]: "legacy",
   });
   const bytes = new TextEncoder().encode('{"ok":true}');
   const uploaded = await store.put({ kind: "fetch", sourceKey: "us-scotus", bytes });
@@ -51,7 +51,7 @@ test("runtime R2 factory fails closed when a Cloudflare binding is absent", asyn
   const { setRuntimePlatform } = await import("../lib/runtime/platform");
   setRuntimePlatform("cloudflare-worker");
   try {
-    assert.throws(() => createRuntimeArtifactBlobStore({ [ARTIFACT_BLOB_PROVIDER_ENV]: "supabase" }), /r2_binding_unavailable/u);
+    assert.throws(() => createRuntimeArtifactBlobStore({ [ARTIFACT_BLOB_PROVIDER_ENV]: "legacy" }), /r2_binding_unavailable/u);
   } finally {
     setRuntimePlatform(null);
   }
@@ -84,7 +84,7 @@ test("runtime slot selects the Worker binding and can be cleared back to the hos
 
   setRuntimeArtifactBlobR2Binding(bucket);
   try {
-    const store = createRuntimeArtifactBlobStore({ [ARTIFACT_BLOB_PROVIDER_ENV]: "vercel" });
+    const store = createRuntimeArtifactBlobStore({ [ARTIFACT_BLOB_PROVIDER_ENV]: "r2" });
     const bytes = new TextEncoder().encode('{"worker":true}');
     const uploaded = await store.put({ kind: "normalization", sourceKey: "de-bverfg", bytes });
     assert.equal(objects.has(uploaded.storageRef), true);

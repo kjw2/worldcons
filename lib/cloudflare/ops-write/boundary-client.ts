@@ -72,11 +72,10 @@ export function resolveOpsHeartbeatBoundaryConfig(
   environment: OpsHeartbeatBoundaryEnvironment = process.env as OpsHeartbeatBoundaryEnvironment,
 ): OpsHeartbeatBoundaryConfig {
   const authority = resolveOpsHeartbeatWriteAuthorityConfig(environment).authority;
-  const enabled = authority !== "supabase";
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
   return {
     authority,
-    enabled,
+    enabled: true,
     baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null,
     token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
   };
@@ -161,7 +160,7 @@ export function resolveOpsHeartbeatReadBoundaryConfig(
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
   return {
     authority,
-    enabled: authority === "d1",
+    enabled: true,
     baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null,
     token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
   };

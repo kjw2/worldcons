@@ -660,15 +660,13 @@ test("M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails c
   }
 });
 
-test("M11.4 watchdog source uses the authority seam and keeps the resting Supabase path", () => {
+test("M13 watchdog source uses Cloudflare D1/boundary only", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "lib/ops/watchdog.ts"), "utf8");
-  assert.match(source, /resolveEffectiveAdminOpsEventsReadAuthorityConfig/u);
-  assert.match(source, /shouldReadAdminOpsEventsFromD1/u);
-  assert.match(source, /shouldWriteAdminOpsEventsToD1/u);
+  assert.match(source, /getRuntimeD1Binding\("worldcons_ops"\)/u);
+  assert.match(source, /listAdminOpsEventsFromD1/u);
+  assert.match(source, /listAdminOpsEventsViaBoundary/u);
   assert.match(source, /resolveAdminOpsEventsCanaryMarker/u);
-  // The resting path still uses the existing Supabase table client.
-  assert.match(source, /\.from\("admin_ops_events"\)\.insert/u);
-  assert.match(source, /\.from\("admin_ops_events"\)\.delete\(\)\.lt\("created_at", cutoff\)/u);
+  assert.doesNotMatch(source, /getSupabase|\.from\("admin_ops_events"\)/u);
 });
 
 test("M13 admin ops events authority is Cloudflare-owned and GitHub has no watchdog workflow", () => {

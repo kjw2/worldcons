@@ -5,6 +5,6 @@
 - 인증, 계정, API 키가 필요하지 않습니다.
 - 판례 검색과 조회만 제공하며 데이터를 생성·수정·삭제하지 않습니다.
 - 한국어 번역·요약은 참고용입니다. 법적 판단과 인용은 반드시 법원 공식 원문으로 확인해야 합니다.
-- 설치와 이용 방법은 [홈페이지 안내](https://worldcons.soltera.dev/guide/chatgpt-plugin)를 확인하세요.
+- 설치와 이용 방법은 [홈페이지 안내](https://worldcons.cclib.workers.dev/guide/chatgpt-plugin)를 확인하세요.
 
-MCP 엔드포인트는 `https://worldcons.soltera.dev/api/mcp`입니다. WorldCons Cloudflare Workers production endpoint에서 운영되며 운영·관리 API는 플러그인에 포함되지 않습니다.
+MCP 엔드포인트는 `https://worldcons.cclib.workers.dev/api/mcp`입니다. WorldCons Cloudflare Workers production endpoint에서 운영되며 운영·관리 API는 플러그인에 포함되지 않습니다.

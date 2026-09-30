@@ -229,7 +229,7 @@ export default async function AdminAuditPage({ searchParams }: { searchParams?: 
       </section>
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-rule bg-white px-4 py-3 text-sm text-ink/64 shadow-sm">
-        <span>데이터 기준: {data.hasDatabase ? (data.schemaReady ? "Supabase site_events" : "Supabase, 마이그레이션 확인 필요") : "DB 미연결"}</span>
+        <span>데이터 기준: {data.hasDatabase ? (data.schemaReady ? "Cloudflare D1 site_events" : "Cloudflare D1 스키마 확인 필요") : "DB 미연결"}</span>
         <span>갱신 시각: {formatDateTime(data.generatedAt)}</span>
         <span className="inline-flex items-center gap-2 font-semibold text-ink/72">
           <ClipboardList className="size-4 text-court" aria-hidden="true" />

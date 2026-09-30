@@ -23,9 +23,9 @@ import { adminOpsReadShadowCoveredMethods, withAdminOpsReadShadow } from "../lib
 import { createD1AdminOpsReadRepository } from "../lib/admin/ops-read-repository/d1-read-repository";
 import {
   adminOpsReads,
-  createSupabaseAdminOpsReadRepository,
   mockAdminOpsReads,
 } from "../lib/admin/ops-read-repository";
+import { createSupabaseAdminOpsReadRepository } from "../lib/admin/ops-read-repository/supabase-repository";
 import type {
   AdminOpsArticleListPage,
   AdminOpsArticleListRow,
@@ -54,6 +54,9 @@ function evaluate(sql: string, params: unknown[], tables: Record<string, Record<
   const fromMatch = new RegExp(` from (${IDENT})`).exec(sql);
   const table = fromMatch?.[1] ?? "";
   let rows = (tables[table] ?? []).map((row) => ({ ...row }));
+  if (/^select count\(\*\) as count from /i.test(sql)) {
+    return { table, rows: [{ count: rows.length }] };
+  }
   let p = 0;
   const whereMatch = new RegExp(` where (.*?)(?= order by | limit | offset |$)`).exec(sql);
   if (whereMatch) {
@@ -423,7 +426,7 @@ test("countTableRows routes tags to core and candidates to ingest and compares t
   assert.equal(ingest.calls[0].table, "source_url_candidates");
 });
 
-test("countTableRows overflow is a shadow_truncated skip, never an approximate count", async () => {
+test("countTableRows remains exact even when the row count exceeds the shadow row bound", async () => {
   resetShadowInFlight();
   const core = createFakeD1({ tags: [{ id: "t1" }, { id: "t2" }] });
   const collector = createCollectorScheduler();
@@ -435,11 +438,10 @@ test("countTableRows overflow is a shadow_truncated skip, never an approximate c
     sink,
   });
 
-  await repository.countTableRows("tags", 77);
+  await repository.countTableRows("tags", 2);
   await collector.flush();
-  assert.equal(events[0].outcome, "skipped");
-  assert.equal(events[0].reason, "shadow_truncated");
-  assert.equal(events[0].compared, false);
+  assert.equal(events[0].outcome, "matched");
+  assert.equal(events[0].compared, true);
 });
 
 test("listAdminArticles q is M7 and makes zero D1 calls", async () => {
@@ -661,14 +663,14 @@ test("per-isolate max in-flight applies backpressure to a second read", async ()
   assert.equal(d1.calls.length, 1, "the backpressured read must not touch D1");
 });
 
-test("the D1 adapter routes countTableRows by exact table binding and reads only PK columns", async () => {
+test("the D1 adapter routes countTableRows by exact table binding and uses COUNT(*)", async () => {
   const core = createFakeD1({ tags: [{ id: "t1" }] });
   const ingest = createFakeD1({ source_url_candidates: [{ id: "c1" }, { id: "c2" }] });
   const repository = createD1AdminOpsReadRepository({ binding: core.database, ingestBinding: ingest.database, maxRows: 100 });
   assert.equal(await repository.countTableRows("tags"), 1);
   assert.equal(await repository.countTableRows("source_url_candidates"), 2);
-  assert.match(core.calls[0].sql, /select id from tags/);
-  assert.match(ingest.calls[0].sql, /select id from source_url_candidates/);
+  assert.match(core.calls[0].sql, /select count\(\*\) as count from tags/);
+  assert.match(ingest.calls[0].sql, /select count\(\*\) as count from source_url_candidates/);
 });
 
 test("the D1 adapter listAdminArticles applies publishable/hasSummary/status filters and orders nulls last", async () => {

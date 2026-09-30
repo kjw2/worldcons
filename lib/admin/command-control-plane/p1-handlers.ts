@@ -81,7 +81,7 @@ export interface AdminP1HandlerDependencies {
 
 async function revalidatePublicCaches(signal: AbortSignal) {
   const secret = process.env.CRON_SECRET?.trim();
-  const baseUrl = (process.env.WORLDCONS_BASE_URL || process.env.APP_BASE_URL || "https://worldcons.soltera.dev").trim();
+  const baseUrl = (process.env.WORLDCONS_BASE_URL || process.env.APP_BASE_URL || "https://worldcons.cclib.workers.dev").trim();
   if (!secret || !baseUrl) throw new AdminP1HandlerError("cache.configuration_missing", "terminal");
   let endpoint: URL;
   try {

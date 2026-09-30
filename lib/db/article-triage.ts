@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { redactAdminAuditMetadata, redactAdminAuditText } from "@/lib/security/audit-redaction";
 
 export const ARTICLE_ERROR_CLASS = {
@@ -99,23 +99,34 @@ export function fallbackReviewStateForArticleStatus(status?: string | null): Art
 }
 
 export async function updateArticleTriageFields(input: ArticleTriageUpdateInput) {
-  const supabase = getSupabaseAdmin();
+  const core = getRuntimeD1Binding("worldcons_core");
   const ids = Array.from(new Set([...(input.articleIds ?? []), input.articleId].filter(Boolean) as string[]));
-  if (!supabase || ids.length === 0) return false;
+  if (!core || ids.length === 0) return false;
 
-  const update: Record<string, unknown> = {};
-  if (input.errorClass !== undefined) update.error_class = input.errorClass;
-  if (input.errorContext !== undefined) update.error_context = input.errorContext ? redactAdminAuditMetadata(input.errorContext) : null;
-  if (input.reviewState !== undefined) update.review_state = input.reviewState ? redactAdminAuditText(input.reviewState, 80) : null;
-  if (Object.keys(update).length === 0) return true;
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (input.errorClass !== undefined) {
+    assignments.push("error_class=?");
+    values.push(input.errorClass);
+  }
+  if (input.errorContext !== undefined) {
+    assignments.push("error_context=?");
+    values.push(input.errorContext ? JSON.stringify(redactAdminAuditMetadata(input.errorContext)) : null);
+  }
+  if (input.reviewState !== undefined) {
+    assignments.push("review_state=?");
+    values.push(input.reviewState ? redactAdminAuditText(input.reviewState, 80) : null);
+  }
+  if (assignments.length === 0) return true;
+  assignments.push("updated_at=?");
+  values.push(new Date().toISOString());
 
   try {
-    const query = supabase.from("articles").update(update);
-    const { error } = ids.length === 1 ? await query.eq("id", ids[0]) : await query.in("id", ids);
-    if (error) {
-      logOptionalTriageFailure(error.message);
-      return false;
-    }
+    const placeholders = ids.map(() => "?").join(",");
+    const statement = core.prepare(`UPDATE articles SET ${assignments.join(",")} WHERE id IN (${placeholders})`).bind(...values, ...ids);
+    if (!statement.run) throw new Error("article_triage.d1_write_unavailable");
+    const result = await statement.run();
+    if (result.success === false || result.error) throw new Error(result.error || "article_triage.d1_write_failed");
     return true;
   } catch (error) {
     logOptionalTriageFailure(error);

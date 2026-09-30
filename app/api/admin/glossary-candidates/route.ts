@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { executeAdminCompatibilityCommand } from "@/lib/admin/command-control-plane/compatibility";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import {
   approveGlossaryCandidate,
   generateGlossaryCandidates,
-  glossaryCandidateRefreshSucceeded,
   ignoreGlossaryCandidate,
 } from "@/lib/glossary/candidates";
 import { adminMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -37,12 +35,7 @@ export async function POST(request: Request) {
   const action = stringValue(formData, "action");
 
   if (action === "refresh") {
-    const compatibility = await executeAdminCompatibilityCommand(
-      { commandType: "admin.glossary.refresh", payloadRef: { persist: true }, request },
-      () => generateGlossaryCandidates({ persist: true }),
-      { isLegacySuccess: glossaryCandidateRefreshSucceeded },
-    );
-    const result = compatibility.value;
+    const result = await generateGlossaryCandidates({ persist: true });
     await recordAdminSiteEvent(
       {
         eventType: "admin_action",
@@ -57,11 +50,7 @@ export async function POST(request: Request) {
   if (action === "ignore") {
     const candidateId = stringValue(formData, "candidateId");
     if (!candidateId) return NextResponse.json({ error: "candidateId is required" }, { status: 400 });
-    await executeAdminCompatibilityCommand(
-      { commandType: "admin.glossary.ignore", payloadRef: { candidateId }, request },
-      () => ignoreGlossaryCandidate(candidateId),
-      { isLegacySuccess: (result) => result.mode === "database" && result.status === "ignored" },
-    );
+    await ignoreGlossaryCandidate(candidateId);
     return redirectBack(request, "ignored");
   }
 
@@ -78,16 +67,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "slug, term, and definition are required" }, { status: 400 });
     }
 
-    const compatibility = await executeAdminCompatibilityCommand(
-      {
-        commandType: "admin.glossary.approve",
-        payloadRef: { candidateId, slug, jurisdiction, relatedTagCount: relatedTags.length },
-        request,
-      },
-      () => approveGlossaryCandidate({ candidateId, slug, term, koreanTerm, definition, jurisdiction, relatedTags }),
-      { isLegacySuccess: (result) => result.mode === "database" && result.status === "approved" },
-    );
-    const result = compatibility.value;
+    const result = await approveGlossaryCandidate({ candidateId, slug, term, koreanTerm, definition, jurisdiction, relatedTags });
     await recordAdminSiteEvent(
       {
         eventType: "admin_action",

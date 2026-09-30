@@ -54,7 +54,7 @@ export function resolveAdminOpsEventsBoundaryConfig(
 ): AdminOpsEventsBoundaryConfig {
   const authority = resolveEffectiveAdminOpsEventsWriteAuthorityConfig(environment).authority;
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
-  return { authority, enabled: authority !== "supabase", baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null };
+  return { authority, enabled: true, baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null };
 }
 
 async function boundaryAuthorization(
@@ -197,7 +197,7 @@ export function resolveAdminOpsEventsReadBoundaryConfig(
 ): AdminOpsEventsReadBoundaryConfig {
   const authority = resolveAdminOpsEventsReadAuthorityConfig(environment).authority;
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
-  return { authority, enabled: authority === "d1", baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null };
+  return { authority, enabled: true, baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null };
 }
 
 export function adminOpsEventsMaxListLimit() {

@@ -1,8 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
-import { countOpenSourceUrlCandidates } from "@/lib/db/source-url-candidates";
-import { getCollectionControlState } from "@/lib/masterdash/store";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
-import { getP5HealthEvidence } from "@/lib/admin/p5/repository";
 import { getP5HealthEvidenceFromD1 } from "@/lib/admin/p5/d1-health-repository";
 import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";
 import { INCREMENTAL_SOURCE_KEYS } from "@/lib/ingest/incremental";
@@ -14,9 +10,6 @@ import {
   pruneAdminOpsEventsInD1,
   readLatestAdminOpsEventFromD1,
   resolveAdminOpsEventsCanaryMarker,
-  resolveEffectiveAdminOpsEventsReadAuthorityConfig,
-  shouldReadAdminOpsEventsFromD1,
-  shouldWriteAdminOpsEventsToD1,
   type AdminOpsEventRecord,
   type AdminOpsEventType as CloudflareAdminOpsEventType,
   type AdminOpsEventSeverity as CloudflareAdminOpsEventSeverity,
@@ -191,40 +184,6 @@ async function getSummaryBacklogBySource(): Promise<Map<string, SummaryBacklogSt
     }
     return backlog;
   }
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return backlog;
-
-  for (const sourceKey of INCREMENTAL_SOURCE_KEYS) {
-    try {
-      const { count, error } = await supabase
-        .from("articles")
-        .select("id", { count: "exact", head: true })
-        .eq("source_key", sourceKey)
-        .in("status", [...SUMMARY_BACKLOG_STATUSES])
-        .contains("source_metadata", { collection: { publishable: true } });
-      if (error) continue;
-
-      const pendingCount = count ?? 0;
-      let oldestCreatedAt: string | null = null;
-      if (pendingCount > 0) {
-        const { data: oldest } = await supabase
-          .from("articles")
-          .select("created_at")
-          .eq("source_key", sourceKey)
-          .in("status", [...SUMMARY_BACKLOG_STATUSES])
-          .contains("source_metadata", { collection: { publishable: true } })
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        oldestCreatedAt = textValue(oldest?.created_at as string | null | undefined);
-      }
-
-      backlog.set(sourceKey, { count: pendingCount, oldestCreatedAt });
-    } catch {
-      // Backlog metrics are best-effort and must not fail the whole evaluation.
-    }
-  }
-
   return backlog;
 }
 
@@ -275,23 +234,23 @@ async function getD1CollectionControlState() {
 export async function evaluateWatchdog(now = new Date(), nativeRuntime = false): Promise<WatchdogEvaluation> {
   const ingestBinding = getRuntimeD1Binding("worldcons_ingest");
   const nativeD1 = Boolean(ingestBinding && getRuntimeD1Binding("worldcons_core") && getRuntimeD1Binding("worldcons_ops"));
-  const supabase = nativeD1 ? null : getSupabaseAdmin();
+  void nativeRuntime;
   const generatedAt = now.toISOString();
   const policy = resolveP5OperationalPolicy();
   const freshnessWarningSeconds = policy.sourceFreshnessSeconds.warning;
   const freshnessCriticalSeconds = policy.sourceFreshnessSeconds.critical;
 
   const violations: WatchdogViolation[] = [];
-  const control = nativeD1 ? await getD1CollectionControlState() : await getCollectionControlState();
+  const control = await getD1CollectionControlState();
   const paused = control.available && control.paused;
 
-  if (!nativeD1 && !supabase) {
+  if (!nativeD1) {
     return {
       ok: false,
       generatedAt,
       paused: false,
       controlAvailable: false,
-      violations: [{ key: "watchdog-unavailable", severity: "critical", summary: "Supabase가 구성되지 않아 수집 운영 상태를 평가할 수 없습니다." }],
+      violations: [{ key: "watchdog-unavailable", severity: "critical", summary: "Cloudflare D1 바인딩이 없어 수집 운영 상태를 평가할 수 없습니다." }],
       sources: [],
       lastCompletedRunAt: null,
       pendingCandidateCount: 0,
@@ -305,7 +264,7 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
   let runRows: IngestionRunRow[] = [];
   let runError: { message: string } | null = null;
   try {
-    if (nativeD1 && ingestBinding) {
+    if (ingestBinding) {
       runRows = (await watchdogD1Rows(ingestBinding, "SELECT source_key, status, started_at, finished_at, discovered_count, fetched_count, metadata FROM ingestion_runs WHERE started_at >= ? ORDER BY started_at DESC", [lookbackStart])).map((row) => ({
         source_key: String(row.source_key ?? ""),
         status: textValue(row.status),
@@ -315,10 +274,6 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
         fetched_count: nullableNumberValue(row.fetched_count),
         metadata: jsonValue(row.metadata),
       }));
-    } else if (supabase) {
-      const result = await supabase.from("ingestion_runs").select("source_key, status, started_at, finished_at, discovered_count, fetched_count, metadata").gte("started_at", lookbackStart).order("started_at", { ascending: false });
-      if (result.error) runError = { message: result.error.message };
-      else runRows = (result.data ?? []) as IngestionRunRow[];
     }
   } catch (error) {
     runError = { message: error instanceof Error ? error.message : String(error) };
@@ -441,18 +396,7 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
     }
   }
 
-  const workflowHeartbeats = nativeRuntime && nativeD1 && getRuntimeD1Binding("worldcons_ops")
-    ? await (async () => {
-      const rows = await watchdogD1Rows(getRuntimeD1Binding("worldcons_ops")!, "SELECT workflow_key, last_started_at, last_completed_at, last_status, run_id FROM ops_workflow_heartbeats WHERE workflow_key IN (?, ?, ?, ?, ?)", [...WORKFLOW_KEYS]);
-      return rows.flatMap((row) => {
-        const workflowKey = textValue(row.workflow_key);
-        const lastStartedAt = textValue(row.last_started_at);
-        const lastStatus = textValue(row.last_status);
-        if (!workflowKey || !WORKFLOW_KEYS.includes(workflowKey as (typeof WORKFLOW_KEYS)[number]) || !lastStartedAt || !["running", "success", "failed", "deferred"].includes(lastStatus ?? "")) return [];
-        return [{ workflowKey: workflowKey as (typeof WORKFLOW_KEYS)[number], lastStartedAt, lastCompletedAt: textValue(row.last_completed_at), lastStatus: lastStatus as "running" | "success" | "failed" | "deferred", runId: textValue(row.run_id) }];
-      });
-    })().catch(() => null)
-    : await getWorkflowHeartbeats().catch(() => null);
+  const workflowHeartbeats = await getWorkflowHeartbeats().catch(() => null);
   if (workflowHeartbeats === null) {
     violations.push({
       key: "workflow-heartbeat-unavailable",
@@ -474,19 +418,12 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
     }
   }
 
-  const evidence = nativeD1
-    ? await getP5HealthEvidenceFromD1({
-      observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
-      observationEnd: generatedAt,
-      now,
-      policy,
-    })
-    : await getP5HealthEvidence({
-      observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
-      observationEnd: generatedAt,
-      now,
-      policy,
-    });
+  const evidence = await getP5HealthEvidenceFromD1({
+    observationStart: new Date(now.getTime() - P5_OBSERVATION_HOURS * 3_600_000).toISOString(),
+    observationEnd: generatedAt,
+    now,
+    policy,
+  });
   if (!evidence.available) {
     violations.push({
       key: "p5-evidence-unavailable",
@@ -516,20 +453,10 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
   let pendingCandidateCount = 0;
   let oldestOpenCandidateAt: string | null = null;
   try {
-    if (nativeD1 && ingestBinding) {
+    if (ingestBinding) {
       const [counts] = await watchdogD1Rows(ingestBinding, "SELECT COUNT(*) AS count, MIN(created_at) AS oldest_created_at FROM source_url_candidates WHERE status IN ('pending', 'retrying')");
       pendingCandidateCount = nullableNumberValue(counts?.count) ?? 0;
       oldestOpenCandidateAt = textValue(counts?.oldest_created_at);
-    } else if (supabase) {
-      pendingCandidateCount = await countOpenSourceUrlCandidates();
-      const { data: oldest, error: oldestError } = await supabase
-        .from("source_url_candidates")
-        .select("created_at")
-        .in("status", ["pending", "retrying"])
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (!oldestError && oldest?.created_at) oldestOpenCandidateAt = oldest.created_at as string;
     }
   } catch {
     // Candidate queue metrics are best-effort; do not fail the evaluation.
@@ -564,88 +491,27 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
 }
 
 export async function listAdminOpsEvents(limit = 20): Promise<AdminOpsEvent[]> {
-  // M11.4R read-authority seam. The admin list projection resolves independently
-  // from the write authority, exactly as M11.3R separated the heartbeat read
-  // authority. The resting `supabase` keeps the existing read byte-for-byte.
-  // When `d1` is selected the runtime binding is used inside Cloudflare and the
-  // authenticated boundary is used from Node/GitHub; both fail closed rather
-  // than silently falling back to Supabase.
-  const readConfig = resolveEffectiveAdminOpsEventsReadAuthorityConfig(
-    process.env as Record<string, string | undefined>,
-  );
-  if (shouldReadAdminOpsEventsFromD1(readConfig)) {
-    const binding = getRuntimeD1Binding("worldcons_ops");
-    const records: AdminOpsEventRecord[] = binding
-      ? await listAdminOpsEventsFromD1(binding, limit)
-      : await (async () => {
-        const listed = await listAdminOpsEventsViaBoundary(limit);
-        if (listed === null) throw new Error("admin_ops_events_read_boundary.not_enabled");
-        return listed;
-      })();
-    return records.map((record) => ({
-      id: record.id,
-      event_type: record.event_type as AdminOpsEventType,
-      severity: record.severity as WatchdogSeverity,
-      source_key: record.source_key,
-      summary: record.summary,
-      detail: record.detail,
-      created_at: record.created_at,
-    }));
-  }
-
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("admin_ops_events")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) return [];
-  return (data ?? []).map((row) => ({
-    id: String(row.id),
-    event_type: row.event_type as AdminOpsEventType,
-    severity: row.severity as WatchdogSeverity,
-    source_key: row.source_key as string | null,
-    summary: String(row.summary),
-    detail: record(row.detail) ?? {},
-    created_at: String(row.created_at),
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  const records: AdminOpsEventRecord[] = binding
+    ? await listAdminOpsEventsFromD1(binding, limit)
+    : await (async () => {
+      const listed = await listAdminOpsEventsViaBoundary(limit);
+      if (listed === null) throw new Error("admin_ops_events_read_boundary.not_enabled");
+      return listed;
+    })();
+  return records.map((entry) => ({
+    id: entry.id,
+    event_type: entry.event_type as AdminOpsEventType,
+    severity: entry.severity as WatchdogSeverity,
+    source_key: entry.source_key,
+    summary: entry.summary,
+    detail: entry.detail,
+    created_at: entry.created_at,
   }));
 }
 
-/**
- * M11.4R read-only canonical Supabase list projection.
- *
- * Extracted so the read-parity probe can compare the D1/boundary list against
- * the authoritative Supabase projection regardless of the currently selected
- * read authority. It issues exactly the resting `listAdminOpsEvents` Supabase
- * SELECT (`select("*")`, `order("created_at", desc)`, `limit(limit)`) and the
- * same defensive row mapping, so the compared left node is the canonical admin
- * list projection. Returns `null` only when the Supabase client is not
- * configured; a query error throws rather than masquerading as an empty list.
- */
-export async function readAdminOpsEventsFromSupabase(limit = 20): Promise<AdminOpsEvent[] | null> {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("admin_ops_events")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({
-    id: String(row.id),
-    event_type: row.event_type as AdminOpsEventType,
-    severity: row.severity as WatchdogSeverity,
-    source_key: row.source_key as string | null,
-    summary: String(row.summary),
-    detail: record(row.detail) ?? {},
-    created_at: String(row.created_at),
-  }));
-}
-
-/** The write route: the runtime D1 binding, the Node/GitHub boundary, or resting Supabase. */
-function adminOpsEventsWriteRoute(): "d1-runtime" | "d1-boundary" | "supabase" {
-  if (!shouldWriteAdminOpsEventsToD1(process.env as Record<string, string | undefined>)) return "supabase";
+/** The write route: runtime D1 binding or the authenticated Cloudflare boundary. */
+function adminOpsEventsWriteRoute(): "d1-runtime" | "d1-boundary" {
   return getRuntimeD1Binding("worldcons_ops") ? "d1-runtime" : "d1-boundary";
 }
 
@@ -664,8 +530,7 @@ function adminOpsEventRow(
   // resting authority, add the bounded marker so the boundary's `d1-canary`
   // selector can pick this run. Ordinary events are byte-for-byte unchanged.
   if (
-    adminOpsEventsWriteRoute() !== "supabase"
-    && resolveAdminOpsEventsCanaryMarker(process.env as Record<string, string | undefined>)
+    resolveAdminOpsEventsCanaryMarker(process.env as Record<string, string | undefined>)
   ) {
     detail[ADMIN_OPS_EVENTS_CANARY_DETAIL_KEY] = true;
   }
@@ -692,9 +557,6 @@ async function pruneAdminOpsEvents(now: Date) {
     await pruneAdminOpsEventsViaBoundary(cutoff);
     return;
   }
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-  await supabase.from("admin_ops_events").delete().lt("created_at", cutoff);
 }
 
 export async function recordAdminOpsEvent(input: {
@@ -717,25 +579,13 @@ export async function recordAdminOpsEvent(input: {
     await writeAdminOpsEventViaBoundary(row);
     return;
   }
-
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-  await supabase.from("admin_ops_events").insert({
-    event_type: input.eventType,
-    severity: input.severity,
-    source_key: input.sourceKey ?? null,
-    summary: input.summary,
-    detail: input.detail ?? {},
-  });
 }
 
 /**
  * The dedupe read: the latest event's `detail`, or `null` when none exists.
- * Returns `unavailable` only for a resting Supabase read error (which preserves
- * the existing "proceed to write" behavior). The selected D1 authority fails
- * closed (throws) instead of silently treating a read failure as "no latest".
+ * D1/boundary failures fail closed instead of being treated as "no latest".
  */
-async function readLatestAdminOpsEventDetail(): Promise<Record<string, unknown> | null | "unavailable"> {
+async function readLatestAdminOpsEventDetail(): Promise<Record<string, unknown> | null> {
   const route = adminOpsEventsWriteRoute();
   if (route === "d1-runtime") {
     const binding = getRuntimeD1Binding("worldcons_ops");
@@ -747,15 +597,7 @@ async function readLatestAdminOpsEventDetail(): Promise<Record<string, unknown> 
     const latest = await readLatestAdminOpsEventViaBoundary();
     return latest.enabled ? latest.event?.detail ?? null : null;
   }
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return "unavailable";
-  const { data, error } = await supabase
-    .from("admin_ops_events")
-    .select("event_type, detail")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (error) return "unavailable";
-  return record(data?.[0]?.detail);
+  return null;
 }
 
 /** Writes a state-change event (deduplicated by violation signature) and prunes old events. */
@@ -789,12 +631,9 @@ export async function recordWatchdogEventsToD1(evaluation: WatchdogEvaluation, n
 }
 
 export async function recordWatchdogEvents(evaluation: WatchdogEvaluation, now = new Date()) {
-  const route = adminOpsEventsWriteRoute();
-  if (route === "supabase" && !getSupabaseAdmin()) return;
-
   const signature = evaluationViolationSignature(evaluation);
   const latestDetail = await readLatestAdminOpsEventDetail();
-  if (latestDetail !== "unavailable" && latestDetail?.signature === signature) {
+  if (latestDetail?.signature === signature) {
     await pruneAdminOpsEvents(now);
     return;
   }

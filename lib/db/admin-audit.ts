@@ -1,4 +1,3 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
 import type { SummaryJson } from "@/lib/db/types";
 import { redactAdminAuditEventInput, redactAdminAuditMetadata, redactAdminAuditText } from "@/lib/security/audit-redaction";
 import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
@@ -28,12 +27,6 @@ interface AdminArticleEditHistoryInput {
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function logOptionalWriteFailure(scope: string, error: unknown) {
-  if (process.env.NODE_ENV === "production") return;
-  const message = error instanceof Error ? error.message : String(error);
-  console.warn(`${scope} skipped: ${message}`);
-}
 
 function textValue(value: unknown, max = 300) {
   if (typeof value === "string" && value.trim()) return redactAdminAuditText(value, max);
@@ -143,16 +136,6 @@ export async function recordAdminAuditLog(input: AdminSiteEventInput, headers?: 
     }
     return;
   }
-
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
-  try {
-    const { error } = await supabase.from("admin_audit_logs").insert(payload);
-    if (error) logOptionalWriteFailure("admin audit dual-write", error.message);
-  } catch (error) {
-    logOptionalWriteFailure("admin audit dual-write", error);
-  }
 }
 
 function summaryHash(summary?: SummaryJson | null) {
@@ -200,15 +183,5 @@ export async function recordAdminArticleEditHistory(input: AdminArticleEditHisto
       }));
     }
     return;
-  }
-
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
-  try {
-    const { error } = await supabase.from("admin_article_edit_history").insert(payload);
-    if (error) logOptionalWriteFailure("admin article edit history", error.message);
-  } catch (error) {
-    logOptionalWriteFailure("admin article edit history", error);
   }
 }

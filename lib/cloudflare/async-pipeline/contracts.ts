@@ -37,7 +37,7 @@ export interface M8TaskMessage {
 
 const CRON_TASKS: Readonly<Record<string, readonly M8TaskKind[]>> = {
   "*/15 * * * *": ["admin-job-drain", "watchdog"],
-  "0 0 * * *": ["crawler-daily"],
+  "0 21 * * *": ["crawler-daily"],
   "30 1 * * *": ["embedding-backfill"],
   "30 3,9,15,21 * * *": ["summary-drain"],
   "17 20 * * *": ["admin-health"],

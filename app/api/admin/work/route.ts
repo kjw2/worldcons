@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseAdminWorkFilters } from "@/lib/admin/p4/filters";
-import { getAdminWorkQueueSnapshot } from "@/lib/admin/p4/repository";
+import { getD1AdminWorkQueueSnapshot } from "@/lib/admin/p4/d1-repository";
 import { isAuthorizedRequest } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   }
   const searchParams = new URL(request.url).searchParams;
   const filters = parseAdminWorkFilters(Object.fromEntries(searchParams.entries()));
-  return NextResponse.json(await getAdminWorkQueueSnapshot(filters));
+  return NextResponse.json(await getD1AdminWorkQueueSnapshot(filters));
 }
 
 export function POST() {

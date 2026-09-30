@@ -1,4 +1,3 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
 import { recordAdminAuditLog } from "@/lib/db/admin-audit";
 import { redactAdminAuditEventInput } from "@/lib/security/audit-redaction";
 import { getClientIp, hashRequestValue, type HeaderLike } from "@/lib/security/request-client";
@@ -50,7 +49,6 @@ const BOT_MARKERS = [
   "duckduckbot",
   "ahrefs",
   "semrush",
-  "vercelbot",
 ];
 const SEARCH_EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const SEARCH_URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/gi;
@@ -145,19 +143,6 @@ function sanitizedMetadata(metadata?: Record<string, unknown>) {
   );
 }
 
-function legacyPayload(payload: Record<string, unknown>) {
-  const legacy = { ...payload };
-  delete legacy.client_ip;
-  delete legacy.client_ip_hash;
-  delete legacy.user_agent;
-  delete legacy.accept_language;
-  delete legacy.client_country;
-  delete legacy.client_region;
-  delete legacy.client_city;
-  delete legacy.is_bot;
-  return legacy;
-}
-
 export function isPublicClientEventType(value: string): value is SiteEventType {
   return PUBLIC_CLIENT_EVENT_TYPES.has(value as SiteEventType);
 }
@@ -185,7 +170,7 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
     device_type: deviceType(headers),
     client_ip_hash: analyticsClientIdentifier(headers),
     accept_language: primaryAcceptLanguage(headers),
-    client_country: headerText(headers, "x-vercel-ip-country", 20) ?? headerText(headers, "cf-ipcountry", 20),
+    client_country: headerText(headers, "cf-ipcountry", 20),
     is_bot: isBot(headers),
     metadata: sanitizedMetadata(safeInput.metadata),
   };
@@ -206,23 +191,6 @@ export async function recordSiteEvent(input: SiteEventInput, headers?: HeaderLik
       }));
     }
     return;
-  }
-
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return;
-
-  const { error } = await supabase.from("site_events").insert(payload);
-  if (error) {
-    const retry = await supabase.from("site_events").insert(legacyPayload(payload));
-    if (!retry.error) return;
-  }
-
-  if (input.eventType === "security_event" && error?.message?.includes("site_events_event_type_check")) {
-    return;
-  }
-
-  if (error && process.env.NODE_ENV !== "production") {
-    console.warn(`site analytics skipped: ${error.message}`);
   }
 }
 

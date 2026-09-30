@@ -35,8 +35,8 @@ export const M13_AUTHORITY_ENV_VARS = {
   rateLimit: "WORLDCONS_RATE_LIMIT_AUTHORITY",
 } as const;
 
-export const M13_AUTHORITY_PROFILES = ["supabase", "d1"] as const;
-export type M13AuthorityProfile = (typeof M13_AUTHORITY_PROFILES)[number];
+export const M13_AUTHORITY_PROFILES = ["d1"] as const;
+export type M13AuthorityProfile = "d1" | "supabase";
 
 export type M13AuthorityEnvironment = Record<string, string | undefined>;
 
@@ -57,13 +57,13 @@ export function resolveM13AuthorityProfile(
 ): M13AuthorityProfileResolution {
   const raw = environment[M13_AUTHORITY_PROFILE_ENV];
   if (raw === undefined || raw.trim() === "") {
-    return { profile: "supabase", source: "default", error: null };
+    return { profile: "d1", source: "default", error: null };
   }
   const normalized = raw.trim().toLowerCase();
-  if (normalized === "supabase" || normalized === "d1") {
-    return { profile: normalized, source: "env", error: null };
+  if (normalized === "d1") {
+    return { profile: "d1", source: "env", error: null };
   }
-  return { profile: "supabase", source: "fail_closed", error: "invalid_authority_profile" };
+  return { profile: "d1", source: "fail_closed", error: "invalid_authority_profile" };
 }
 
 export function m13OwnsEnvVar(envVar: string): boolean {
@@ -91,5 +91,5 @@ export function m13ProfileValueForEnvVar(
   if (resolution.source === "fail_closed") {
     throw new Error(`m13_authority_profile.${resolution.error ?? "invalid_authority_profile"}`);
   }
-  return resolution.profile === "d1" ? "d1" : null;
+  return resolution.source === "env" ? "d1" : null;
 }

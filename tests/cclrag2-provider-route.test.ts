@@ -51,18 +51,18 @@ const embeddingEnv = {
   GEMINI_EMBEDDING_MODEL: "gemini-embedding-001",
 } satisfies Cclrag2ProviderEnv;
 
-test("Vercel catch-all route preserves the provider contract and applies public rate limiting", () => {
+test("Cloudflare provider route preserves the provider contract and applies public rate limiting", () => {
   const route = fs.readFileSync(providerRoutePath, "utf8");
 
-  assert.match(route, /https:\/\/worldcons\.soltera\.dev\/api\/cclrag2/u);
+  assert.match(route, /https:\/\/worldcons\.cclib\.workers\.dev\/api\/cclrag2/u);
   assert.match(route, /consumeRateLimit\(request, "publicApi"\)/u);
   assert.match(route, /providerRateLimitExceededResponse/u);
   assert.match(route, /replace\(\/\^\\\/api\\\/cclrag2/u);
   assert.match(route, /handleWorldconsSearchRequest/u);
-  assert.doesNotMatch(route, /Fetcher|ExecutionContext|workers\.dev|wrangler/iu);
+  assert.doesNotMatch(route, /VERCEL_|vercel\.app/iu);
 });
 
-test("Vercel provider accepts the cclrag2 contract and returns the Neubauer case first", async () => {
+test("Cloudflare provider accepts the cclrag2 contract and returns the Neubauer case first", async () => {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const response = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/search?q=1%20BvR%202656%2F18%20climate&mode=hybrid&pageSize=10&count=none&jurisdiction=Germany&source=de-bverfg", {
@@ -78,7 +78,7 @@ test("Vercel provider accepts the cclrag2 contract and returns the Neubauer case
   assert.equal(response.headers.get("x-request-id"), "cclrag2-neubauer-test");
   assert.equal(payload.contractVersion, "2.0");
   assert.equal(payload.requestId, "cclrag2-neubauer-test");
-  assert.equal(payload.transport, "vercel-route-handler");
+  assert.equal(payload.transport, "cloudflare-worker");
   assert.equal(payload.requestedMode, "hybrid");
   assert.equal(payload.effectiveMode, "hybrid", "the requested retrieval mode is retained for exact-case orchestration");
   assert.equal(payload.mode, "hybrid");

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { P5_OWNER_ROLES, type P5OwnerRole } from "@/lib/admin/p5/types";
-import { getP5HealthEvidence, recordP5OwnerApproval } from "@/lib/admin/p5/repository";
+import { getP5HealthEvidenceFromD1 } from "@/lib/admin/p5/d1-health-repository";
+import { recordP5OwnerApprovalD1 } from "@/lib/admin/p5/d1-governance";
 import { p5GovernanceActorHash, resolveP5OwnerRoleBindings } from "@/lib/admin/p5/owner-bindings";
 import { evaluateP5RetirementReadiness, P5_RETIREMENT_FLAG_ORDER } from "@/lib/admin/p5/evaluator";
 import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";
@@ -27,12 +28,12 @@ export async function POST(request: Request) {
   if (!bindings.valid) return NextResponse.json({ error: "Owner binding configuration is invalid" }, { status: 503 });
   if (!bindings.permittedRoles.includes(role as P5OwnerRole)) return NextResponse.json({ error: "Role is not permitted for this session" }, { status: 403 });
   const policy = resolveP5OperationalPolicy();
-  const evidence = await getP5HealthEvidence({ observationStart: start.toISOString(), observationEnd: end.toISOString(), policy });
+  const evidence = await getP5HealthEvidenceFromD1({ observationStart: start.toISOString(), observationEnd: end.toISOString(), policy });
   const flags = Object.fromEntries(P5_RETIREMENT_FLAG_ORDER.map(([name]) => [name, process.env[name]?.trim().toLowerCase() === "true"]));
   const observationSampleRate = Number(process.env.ADMIN_P5_COMPATIBILITY_OBSERVATION_SAMPLE_RATE ?? "0");
   const readiness = evaluateP5RetirementReadiness({ evidence, policy, observationStart: start.toISOString(), observationEnd: end.toISOString(), flags, observationSampleRate });
   if (evidenceDigest !== readiness.evidenceDigest) return NextResponse.json({ error: "Evidence digest is stale", code: "stale_evidence_digest" }, { status: 409 });
-  const result = await recordP5OwnerApproval({
+  const result = await recordP5OwnerApprovalD1({
     role: role as P5OwnerRole,
     actorHash: p5GovernanceActorHash(identity),
     evidenceDigest,

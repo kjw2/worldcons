@@ -1,6 +1,6 @@
 import { redactAdminAuditMetadata, redactAdminAuditText } from "@/lib/security/audit-redaction";
 import { adminCommandError } from "@/lib/admin/command-control-plane/errors";
-import { postgresAdminCommandRepository } from "@/lib/admin/command-control-plane/repository";
+import { d1AdminCommandRepository } from "@/lib/admin/command-control-plane/d1-repository";
 import type {
   AbortAdminCommandRunInput,
   AdminCommandRepository,
@@ -37,7 +37,7 @@ function observeNewQueue<T extends { ok: boolean }>(promise: Promise<T>, directi
   });
 }
 
-export function createAdminCommandService(repository: AdminCommandRepository = postgresAdminCommandRepository) {
+export function createAdminCommandService(repository: AdminCommandRepository = d1AdminCommandRepository) {
   return {
     submit(input: SubmitAdminCommandInput) {
       if (

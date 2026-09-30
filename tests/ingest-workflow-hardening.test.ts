@@ -100,7 +100,7 @@ test("Crawlee failures preserve HTTP status for BVerfG block classification", ()
 
 test("crawler defaults identify the bot and send browser-compatible request headers", () => {
   assert.match(DEFAULT_CRAWLER_USER_AGENT, /ConstitutionalCourtCurationBot/);
-  assert.match(DEFAULT_CRAWLER_USER_AGENT, /worldcons\.soltera\.dev/);
+  assert.match(DEFAULT_CRAWLER_USER_AGENT, /worldcons\.cclib\.workers\.dev/);
   const headers = crawlerHeaders({ "User-Agent": DEFAULT_CRAWLER_USER_AGENT });
   assert.equal(headers["User-Agent"], DEFAULT_CRAWLER_USER_AGENT);
   assert.match(headers.Accept, /text\/html/);
@@ -359,7 +359,6 @@ test("SCOTUS revision dates are independently eligible from the opinion date win
 test("ingestion CLIs and native source collectors retain hardening controls", () => {
   const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
   const scheduledCli = read("scripts/crawlee-worker.ts");
-  const secondaryCli = read("workers/crawler/src/cli.ts");
   const directCli = read("scripts/ingest.ts");
   const spainSpider = read("lib/crawlee/spain-tribunal-constitucional-spider.ts");
   const sitemap = read("lib/crawler/sitemap.ts");
@@ -367,12 +366,14 @@ test("ingestion CLIs and native source collectors retain hardening controls", ()
   const summary = read("lib/ingest/summary.ts");
 
   assert.equal(fs.existsSync(path.join(process.cwd(), ".github/workflows")) ? fs.readdirSync(path.join(process.cwd(), ".github/workflows")).length : 0, 0);
-  for (const cli of [scheduledCli, secondaryCli, directCli]) {
+  assert.equal(fs.existsSync(path.join(process.cwd(), "workers/crawler/src/cli.ts")), false);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "workers/crawler/src/diagnose.ts")), false);
+  for (const cli of [scheduledCli, directCli]) {
     assert.match(cli, /ingestProcessExitCode/);
     assert.match(cli, /ingestResultFailureMessage/);
     assert.match(cli, /ingestSourceOutcomeLine/);
   }
-  for (const cli of [scheduledCli, secondaryCli, directCli]) {
+  for (const cli of [scheduledCli, directCli]) {
     assert.match(cli, /range-days/);
     assert.match(cli, /refresh-existing/);
   }

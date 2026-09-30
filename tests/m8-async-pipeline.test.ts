@@ -36,7 +36,7 @@ const root = process.cwd();
 test("M8 cron inventory maps every retired schedule to stable messages", () => {
   assert.deepEqual(M8_CRON_EXPRESSIONS, [
     "*/15 * * * *",
-    "0 0 * * *",
+    "0 21 * * *",
     "30 1 * * *",
     "30 3,9,15,21 * * *",
     "17 20 * * *",
@@ -52,8 +52,8 @@ test("M8 cron inventory maps every retired schedule to stable messages", () => {
 });
 
 test("queue replay yields the same Workflow and executor identities", () => {
-  const [message] = messagesForM8Cron("0 0 * * *", Date.parse("2026-09-26T00:00:00Z"));
-  assert.equal(workflowInstanceId(message), "m8-crawler-daily-2026-09-26T00-00-00-000Z");
+  const [message] = messagesForM8Cron("0 21 * * *", Date.parse("2026-09-26T21:00:00Z"));
+  assert.equal(workflowInstanceId(message), "m8-crawler-daily-2026-09-26T21-00-00-000Z");
   assert.match(workflowInstanceId(message), /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
   assert.ok(workflowInstanceId(message).length <= 100);
   assert.equal(workflowInstanceId(structuredClone(message)), workflowInstanceId(message));
@@ -89,6 +89,13 @@ test("every M8 task kind is native and crawler-daily fans out by source", () => 
   assert.match(source, /launch\(binding/);
   assert.match(source, /this\.env\.BROWSER/);
   assert.match(source, /native-analytics-retention/);
+  assert.match(source, /setRuntimeD1Bindings[\s\S]*event\.payload\.kind === "admin-job-drain"/u);
+  assert.match(source, /runNativeAdminJobDrain/u);
+  const drain = fs.readFileSync(path.join(root, "workers/async-pipeline/src/admin-job-drain.ts"), "utf8");
+  assert.match(drain, /claimAdminJob/u);
+  assert.match(drain, /getAdminJob\(job\.id\)/u);
+  assert.match(drain, /markAdminJobSucceeded/u);
+  assert.match(drain, /finalizeCancellation/u);
   assert.doesNotMatch(source, /dispatchGitHubWorkflow|GITHUB_ACTIONS_TOKEN|GITHUB_REPOSITORY|GITHUB_REF/u);
   assert.doesNotMatch(fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/contracts.ts"), "utf8"), /githubDispatchForM8Task|dispatchGitHubWorkflow/u);
 });
@@ -103,7 +110,6 @@ test("summary native executor invokes the main Worker RPC with workflow defaults
     WORLDCONS_CORE: {} as never,
     WORLDCONS_INGEST: {} as never,
     WORLDCONS_APP_SERVICE: {
-      async runAdminJobDrain() { throw new Error("not expected"); },
       async runEmbeddingBackfill() { throw new Error("not expected"); },
       async runSummaryDrain(input) {
         call = input;
@@ -112,6 +118,8 @@ test("summary native executor invokes the main Worker RPC with workflow defaults
           deferredCount: 0, candidateCount: 2, attemptedCount: 2, retryCount: 0, passes: 1, limitReached: false,
         };
       },
+      async runSummaryArticle() { throw new Error("not expected"); },
+      async runRefreshTagCounts() { throw new Error("not expected"); },
     },
   }, message, {
     async do<T>(name: string, options: unknown, callback: () => Promise<T>) {
@@ -139,7 +147,6 @@ test("embedding native executor invokes WorldconsOpsService RPC without GitHub d
     WORLDCONS_CORE: {} as never,
     WORLDCONS_INGEST: {} as never,
     WORLDCONS_APP_SERVICE: {
-      async runAdminJobDrain() { throw new Error("not expected"); },
       async runEmbeddingBackfill(input) {
         calls.push(input);
         return {
@@ -148,6 +155,8 @@ test("embedding native executor invokes WorldconsOpsService RPC without GitHub d
         };
       },
       async runSummaryDrain() { throw new Error("not expected"); },
+      async runSummaryArticle() { throw new Error("not expected"); },
+      async runRefreshTagCounts() { throw new Error("not expected"); },
     },
   }, message, {
     async do<T>(name: string, options: unknown, callback: () => Promise<T>) {

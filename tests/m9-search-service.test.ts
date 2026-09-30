@@ -21,7 +21,7 @@ function healthyD1(): D1RuntimeDatabase {
 
 const workerEnv = {
   ENVIRONMENT: "test",
-  PUBLIC_BASE_URL: "https://worldcons.soltera.dev/api/cclrag2",
+  PUBLIC_BASE_URL: "https://worldcons.cclib.workers.dev/api/cclrag2",
   WORLDCONS_CORE: healthyD1(),
   WORLDCONS_SEARCH: healthyD1(),
   WORLDCONS_SEARCH_VECTOR: { async query() { return { matches: [] }; } },

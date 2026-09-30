@@ -1,11 +1,6 @@
 import type { NextConfig } from "next";
-import { assertProductionSecurityConfig } from "./lib/security/production-config";
 
-if (process.env.VERCEL_ENV === "production") {
-  assertProductionSecurityConfig(process.env);
-}
-
-const productionRuntime = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+const productionRuntime = process.env.NODE_ENV === "production";
 const cspReportOnly = !productionRuntime || process.env.CSP_REPORT_ONLY_ENABLED?.trim().toLowerCase() === "true";
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -38,19 +33,11 @@ const legacyV2Redirects = [
   { source: "/v2/:path*", destination: "/:path*" },
 ] as const;
 
-const cloudflareProductionRedirect = {
-  source: "/:path*",
-  has: [{ type: "host" as const, value: "worldcons.vercel.app" }],
-  destination: "https://worldcons.soltera.dev/:path*",
-  permanent: false,
-};
-
 const nextConfig: NextConfig = {
   typedRoutes: false,
   async redirects() {
     return [
       ...legacyV2Redirects.map((route) => ({ ...route, permanent: true })),
-      cloudflareProductionRedirect,
     ];
   },
   async headers() {

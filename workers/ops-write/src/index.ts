@@ -152,11 +152,9 @@ export async function handleOpsHeartbeatBoundary(
   }
 
   // M11.3R: bearer-authenticated read of the current heartbeat projection. The
-  // read authority is resolved independently from the write authority. Unlike a
-  // write, a read has no safe local fallback: when the boundary is not selected
-  // for D1 reads it returns a fail-closed 503 instead of relaying Supabase, so a
-  // caller that selected the D1 read authority can never be silently served a
-  // Supabase row. There is no unauthenticated diagnostic surface.
+  // read authority is resolved independently from the write authority. Reads are
+  // D1-only and fail closed when the D1 binding is unavailable. There is no
+  // unauthenticated diagnostic surface.
   if (request.method === "GET" && url.pathname === OPS_HEARTBEAT_BOUNDARY_READ_PATH) {
     if (!(await opsWriteAuthorized(request, env, "read"))) {
       return json({ error: "unauthorized" }, 401);
@@ -346,9 +344,8 @@ export async function handleOpsHeartbeatBoundary(
 
   // M11.4R admin_ops_events list projection. This reader resolves independently
   // from the write authority, exactly as M11.3R separated the heartbeat read
-  // authority. The resting `supabase` has no read to serve and returns a
-  // fail-closed 503 instead of relaying Supabase, so a caller that selected the
-  // D1 read authority can never be silently served a Supabase list.
+  // authority. The D1 read fails closed when its binding is unavailable, so no
+  // alternate database can silently serve the list.
   if (request.method === "GET" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_LIST_PATH) {
     if (!(await opsWriteAuthorized(request, env, "read"))) {
       return json({ error: "unauthorized" }, 401);

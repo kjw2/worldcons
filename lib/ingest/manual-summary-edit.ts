@@ -2,19 +2,16 @@ import { z } from "zod";
 import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
 import { normalizeSummaryCandidate, SummarySchema } from "@/lib/ai/schema";
 import { canonicalizeTerminologyValue } from "@/lib/ai/terminology";
+import { articleLifecycleService } from "@/lib/article-lifecycle/service";
+import { articlePublicationService } from "@/lib/article-publication/service";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { runD1RefreshTagCounts, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
 import { recordAdminArticleEditHistory } from "@/lib/db/admin-audit";
-import { ARTICLE_REVIEW_STATE, updateArticleTriageFields } from "@/lib/db/article-triage";
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { ARTICLE_REVIEW_STATE } from "@/lib/db/article-triage";
 import type { SummaryJson } from "@/lib/db/types";
-import { runRefreshTagCounts } from "@/lib/ingest/summary";
-import { syncSummaryTags } from "@/lib/ingest/summary-tags";
 import { ensureJudicialComplaintTags } from "@/lib/tags/judicial-complaint";
-import {
-  ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
-  shadowArticleLifecycleTransition,
-} from "@/lib/article-lifecycle";
-import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
-import { EMPTY_EMBEDDING_FIELDS, tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
+import { ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES } from "@/lib/article-lifecycle/compatibility";
+import { tryPersistArticleEmbedding } from "@/lib/ingest/embedding-store";
 
 const MAX_NOTE_LENGTH = 1_000;
 const MAX_TITLE_LENGTH = 500;
@@ -183,23 +180,36 @@ function reviewMetadata(row: ManualSummaryEditRow, note: string | undefined, fie
 }
 
 async function findArticle(articleId?: string, slug?: string) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return { supabase: null, row: null };
-  if (!articleId && !slug) return { supabase, row: null };
-
-  let query = supabase
-    .from("articles")
-    .select("id, slug, source_key, canonical_url, cleaned_text, status, korean_title, original_published_at, summarized_at, summary_json, source_metadata");
-  query = articleId ? query.eq("id", articleId) : query.eq("slug", slug);
-  const { data, error } = await query.maybeSingle();
-  if (error) throw new Error(error.message);
-  return { supabase, row: data ? (data as ManualSummaryEditRow) : null };
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) return { core: null, row: null };
+  if (!articleId && !slug) return { core, row: null };
+  const where = articleId ? "id=?" : "slug=?";
+  const value = articleId ?? slug!;
+  const result = await core.prepare(
+    `SELECT id,slug,source_key,canonical_url,cleaned_text,status,korean_title,original_published_at,summarized_at,summary_json,source_metadata FROM articles WHERE ${where} LIMIT 1`,
+  ).bind(value).all<Record<string, unknown>>();
+  if (result.success === false || result.error) throw new Error(result.error || "manual_summary_edit.d1_read_failed");
+  const raw = result.results?.[0];
+  if (!raw) return { core, row: null };
+  const parse = (value: unknown) => {
+    if (value && typeof value === "object") return value;
+    if (typeof value !== "string" || !value.trim()) return null;
+    try { return JSON.parse(value) as unknown; } catch { return null; }
+  };
+  return {
+    core,
+    row: {
+      ...raw,
+      summary_json: parse(raw.summary_json) as SummaryJson | null,
+      source_metadata: parse(raw.source_metadata),
+    } as ManualSummaryEditRow,
+  };
 }
 
 export async function updateArticleSummaryManually(options: ManualSummaryEditOptions) {
-  const { supabase, row } = await findArticle(options.articleId, options.slug);
-  if (!supabase) {
-    return { mode: "no-database" as const, status: "skipped" as const, reason: "Supabase 환경변수가 없어 상세내용을 저장할 수 없습니다." };
+  const { core, row } = await findArticle(options.articleId, options.slug);
+  if (!core) {
+    return { mode: "no-database" as const, status: "skipped" as const, reason: "worldcons_core D1 바인딩이 없어 상세내용을 저장할 수 없습니다." };
   }
   if (!row) {
     return { mode: "database" as const, status: "not_found" as const, reason: "자료를 찾을 수 없습니다." };
@@ -227,46 +237,54 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
 
   const embedding = hasSummaryChange ? await createEmbeddingArtifact(nextSummary).catch(() => null) : undefined;
   const sourceMetadata = reviewMetadata(row, parsed.data.note, fields, Boolean(embedding));
-  const updatePayload: Record<string, unknown> = {
-    korean_title: nextSummary.koreanTitle,
-    summary_json: nextSummary,
-    summarized_at: new Date().toISOString(),
-    source_metadata: sourceMetadata,
-    error_metadata: null,
-  };
-  if (hasSummaryChange) {
-    Object.assign(updatePayload, EMPTY_EMBEDDING_FIELDS);
+  const now = new Date().toISOString();
+  const statement = hasSummaryChange
+    ? core.prepare([
+        "UPDATE articles SET korean_title=?,summary_json=?,summarized_at=?,source_metadata=?,error_metadata=NULL,",
+        "embedding_provider=NULL,embedding_model=NULL,embedding_dimensions=NULL,embedding_input_hash=NULL,embedding_generated_at=NULL,updated_at=? WHERE id=?",
+      ].join(" ")).bind(nextSummary.koreanTitle, JSON.stringify(nextSummary), now, JSON.stringify(sourceMetadata), now, row.id)
+    : core.prepare("UPDATE articles SET korean_title=?,summary_json=?,summarized_at=?,source_metadata=?,error_metadata=NULL,updated_at=? WHERE id=?")
+        .bind(nextSummary.koreanTitle, JSON.stringify(nextSummary), now, JSON.stringify(sourceMetadata), now, row.id);
+  if (!statement.run) throw new Error("manual_summary_edit.d1_write_unavailable");
+  const saved = await statement.run();
+  if (saved.success === false || saved.error || Number(saved.meta?.changes ?? 0) !== 1) throw new Error(saved.error || "manual_summary_edit.d1_write_failed");
+  await tryPersistArticleEmbedding(row.id, embedding);
+
+  const lifecycle = await articleLifecycleService.get(row.id);
+  if (lifecycle.ok) {
+    await articleLifecycleService.transition({
+      articleId: row.id,
+      expectedRevision: lifecycle.data.revision,
+      idempotencyKey: `admin-summary-edit:${row.id}:${lifecycle.data.revision}`,
+      actorType: "admin",
+      actorId: "admin",
+      source: "admin.summary_edit",
+      reasonCode: "review.summary_edited",
+      processingState: "complete",
+      reviewState: "approved",
+      attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+    });
   }
 
-  const { error: updateError } = await supabase.from("articles").update(updatePayload).eq("id", row.id);
-  if (updateError) throw new Error(updateError.message);
-  await tryPersistArticleEmbedding(row.id, embedding);
-
-  const triageUpdated = await updateArticleTriageFields({
-    articleId: row.id,
-    errorClass: null,
-    errorContext: null,
-    reviewState: ARTICLE_REVIEW_STATE.MANUAL_SUMMARY_EDIT,
-  });
-  await shadowArticleLifecycleTransition({
-    articleId: row.id,
-    cohort: "review",
-    actorType: "admin",
-    source: "admin.summary_edit",
-    reasonCode: triageUpdated ? "legacy.review.summary_edited" : "legacy.review.summary_content_edited",
-    processingState: "complete",
-    attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
-  });
-  await shadowConfirmedLegacyArticleMutation({
-    articleId: row.id,
-    succeeded: true,
-    reason: "Legacy manual summary edit persisted.",
-    provenanceActorType: "human",
-    provenanceActorId: "admin",
-    modelRef: nextSummary.aiMetadata?.model ?? null,
-    safeMetadata: { changedFields: fields.slice(0, 40), notePresent: Boolean(parsed.data.note) },
-  });
-  await tryPersistArticleEmbedding(row.id, embedding);
+  const publication = await articlePublicationService.getSnapshot(row.id);
+  if (publication.ok) {
+    await articlePublicationService.transition({
+      articleId: row.id,
+      expectedVersionRevision: publication.data.versionRevision,
+      expectedPublicationRevision: publication.data.publicationRevision,
+      expectedLegacyUpdatedAt: publication.data.legacyUpdatedAt,
+      idempotencyKey: `admin-summary-edit-publication:${row.id}:${publication.data.publicationRevision}`,
+      targetState: publication.data.publicationState ?? "draft",
+      captureLegacy: true,
+      actorType: "human",
+      actorId: "admin",
+      reason: "Manual summary edit persisted in Cloudflare D1.",
+      provenanceActorType: "human",
+      provenanceActorId: "admin",
+      modelRef: nextSummary.aiMetadata?.model ?? null,
+      safeMetadata: { changedFields: fields.slice(0, 40), notePresent: Boolean(parsed.data.note) },
+    });
+  }
 
   await recordAdminArticleEditHistory({
     articleId: row.id,
@@ -278,9 +296,9 @@ export async function updateArticleSummaryManually(options: ManualSummaryEditOpt
   });
 
   const tagSync = hasSummaryChange
-    ? await syncSummaryTags(row.id, nextSummary, row.original_published_at, { replace: true })
+    ? await runD1SyncSummaryTags(row.id, nextSummary, row.original_published_at, { replace: true })
     : { synced: false, upsertedTags: 0, removedArticleTags: 0 };
-  const tagRefresh = hasSummaryChange ? await runRefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
+  const tagRefresh = hasSummaryChange ? await runD1RefreshTagCounts().catch((error) => ({ refreshed: false, errorMessage: error instanceof Error ? error.message : String(error) })) : undefined;
 
   return {
     mode: "database" as const,

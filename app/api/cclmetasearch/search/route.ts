@@ -12,7 +12,7 @@ const handler = createCclMetasearchSearchHandler({
     const searchBinding = getRuntimeD1Binding("worldcons_search");
     if (coreBinding && searchBinding) {
       return searchCclMetasearchWithEnv(input, {
-        PUBLIC_SITE_BASE_URL: "https://worldcons.soltera.dev",
+        PUBLIC_SITE_BASE_URL: "https://worldcons.cclib.workers.dev",
         CORE_BINDING: coreBinding,
         SEARCH_BINDING: searchBinding,
       });

@@ -253,23 +253,30 @@ test("compatibility shadow exceptions cannot change the legacy response", async 
   }
 });
 
-test("all administrator execution ingress uses auth and the compatibility adapter", () => {
-  const mutationRoutes = [
+test("administrator execution ingress uses auth and the selected Cloudflare authority", () => {
+  const cloudflareNativeMutationRoutes = [
     "app/api/admin/review/route.ts",
     "app/api/admin/ingest/route.ts",
+    "app/api/admin/jobs/run/route.ts",
+    "app/api/admin/articles/[articleRef]/summary/route.ts",
     "app/api/admin/glossary-candidates/route.ts",
+  ];
+  const compatibilityMutationRoutes = [
     "app/api/admin/candidates/route.ts",
     "app/api/admin/public-content/revalidate/route.ts",
     "app/api/admin/llm-settings/test/route.ts",
     "app/api/admin/llm-settings/route.ts",
     "app/api/admin/articles/bulk/route.ts",
-    "app/api/admin/articles/[articleRef]/summary/route.ts",
     "app/api/admin/jobs/[jobId]/route.ts",
-    "app/api/admin/jobs/run/route.ts",
   ];
   const cronRoutes = ["app/api/admin/cron/ingest/route.ts", "app/api/admin/cron/jobs/route.ts"];
 
-  for (const route of mutationRoutes) {
+  for (const route of cloudflareNativeMutationRoutes) {
+    const source = fs.readFileSync(path.join(process.cwd(), route), "utf8");
+    assert.match(source, /adminMutationAuthFailureStatus/, `${route} must enforce mutation auth`);
+    assert.doesNotMatch(source, /executeAdminCompatibilityCommand/, `${route} must not route through the retired legacy authority`);
+  }
+  for (const route of compatibilityMutationRoutes) {
     const source = fs.readFileSync(path.join(process.cwd(), route), "utf8");
     assert.match(source, /adminMutationAuthFailureStatus/, `${route} must enforce mutation auth`);
     assert.match(source, /executeAdminCompatibilityCommand/, `${route} must use the compatibility adapter`);
@@ -278,8 +285,8 @@ test("all administrator execution ingress uses auth and the compatibility adapte
   for (const route of cronRoutes) {
     const source = fs.readFileSync(path.join(process.cwd(), route), "utf8");
     assert.match(source, /isAuthorizedSecretRequest/, `${route} must retain distinct cron auth`);
-    assert.match(source, /executeAdminCompatibilityCommand/, `${route} must use the compatibility adapter`);
-    assert.match(source, /isLegacySuccess/, `${route} must define command shadow success explicitly`);
+    assert.match(source, /cloudflare_scheduler/, `${route} must delegate execution to Cloudflare Scheduler`);
+    assert.doesNotMatch(source, /executeAdminCompatibilityCommand/, `${route} must not run retired legacy execution`);
     assert.doesNotMatch(source, /adminMutationAuthFailureStatus/, `${route} must not use session mutation auth`);
   }
 });

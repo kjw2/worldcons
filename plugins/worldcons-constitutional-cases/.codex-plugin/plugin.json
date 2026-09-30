@@ -4,9 +4,9 @@
   "description": "헌법판례요약시스템의 공개 판례와 공식 사건 정보를 ChatGPT 대화에서 검색하고 공식 원문과 함께 확인합니다.",
   "author": {
     "name": "헌법판례요약시스템 운영팀",
-    "url": "https://worldcons.soltera.dev"
+    "url": "https://worldcons.cclib.workers.dev"
   },
-  "homepage": "https://worldcons.soltera.dev/guide/chatgpt-plugin",
+  "homepage": "https://worldcons.cclib.workers.dev/guide/chatgpt-plugin",
   "repository": "https://github.com/kjw2/worldcons",
   "keywords": [
     "constitutional-law",
@@ -27,7 +27,7 @@
       "Korean case summaries",
       "Official-source citations"
     ],
-    "websiteURL": "https://worldcons.soltera.dev/guide/chatgpt-plugin",
+    "websiteURL": "https://worldcons.cclib.workers.dev/guide/chatgpt-plugin",
     "defaultPrompt": [
       "최근 독일 연방헌법재판소 판례를 핵심 쟁점별로 찾아줘.",
       "게리맨더링 관련 판례를 여러 나라 법률용어까지 포함해 비교해줘.",

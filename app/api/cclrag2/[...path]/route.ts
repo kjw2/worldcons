@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const maxDuration = 30;
 
-const PUBLIC_BASE_URL = "https://worldcons.soltera.dev/api/cclrag2";
+const PUBLIC_BASE_URL = "https://worldcons.cclib.workers.dev/api/cclrag2";
 
 export async function GET(request: Request) {
   const rateLimit = await consumeRateLimit(request, "publicApi");
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 
 function providerEnv(): Cclrag2ProviderEnv {
   return {
-    ENVIRONMENT: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
+    ENVIRONMENT: process.env.NODE_ENV ?? "development",
     PUBLIC_BASE_URL,
     EMBEDDING_PROVIDER: process.env.EMBEDDING_PROVIDER,
     SEMANTIC_SEARCH_ENABLED: process.env.SEMANTIC_SEARCH_ENABLED,

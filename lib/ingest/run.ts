@@ -110,7 +110,6 @@ export interface RunIngestOptions {
   debug?: boolean;
   strategy?: CrawlStrategyOption;
   usePlaywright?: boolean;
-  allowVercelCrawling?: boolean;
   rangeDays?: number;
   refreshExisting?: boolean;
   signal?: AbortSignal;
@@ -198,11 +197,8 @@ function inlineCrawlerBlockReason(options: RunIngestOptions = {}) {
   if (isCloudflareWorkerRuntime() && process.env.CRAWLEE_WORKER !== "true") {
     return "Cloudflare Workers에서는 Node 전용 인라인 수집이 차단되어 있습니다. 외부 수집 worker를 사용하세요.";
   }
-  if (process.env.VERCEL !== "1") return null;
-  if (process.env.CRAWLEE_WORKER === "true") return null;
-  if (process.env.ENABLE_VERCEL_CRAWLING === "true") return null;
-  if (options.allowVercelCrawling === true) return null;
-  return "Vercel 함수에서는 인라인 수집이 기본 차단되어 있습니다. 관리자 화면에서 Vercel 직접 수집 허용을 켜거나 GitHub Actions Crawlee worker를 실행하세요.";
+  void options;
+  return null;
 }
 
 function optionalPositiveInteger(value: unknown) {
@@ -1402,7 +1398,6 @@ async function runSingleSource(adapter: SourceAdapter, limit: number, options: R
     revisionRecheckLimit: adapter.sourceKey === "us-scotus" ? scotusRevisionRecheckLimit() : null,
     strategy: discoveryOptions.strategy,
     usePlaywright: discoveryOptions.usePlaywright ?? null,
-    allowVercelCrawling: options.allowVercelCrawling === true,
     refreshExisting,
   };
 

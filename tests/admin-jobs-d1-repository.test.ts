@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { claimAdminJob, createAdminJob } from "@/lib/db/admin-jobs";
+import { claimAdminJob, createAdminJob, markAdminJobSucceeded } from "@/lib/db/admin-jobs";
 import { clearRuntimeD1Bindings, setRuntimeD1Binding, type D1RuntimePreparedStatement, type D1RuntimeResult } from "@/lib/cloudflare/d1/runtime-binding";
 
 function bindingFor(responses: Array<Record<string, unknown>[]>) {
@@ -95,10 +95,24 @@ test("admin job D1 claim atomically prioritizes expired leases and binds job typ
     if (!result.ok) return;
     assert.equal(result.data?.status, "running");
     assert.equal(result.data?.workerId, "worker-a");
-    assert.match(statements[0].sql, /UPDATE admin_jobs SET status = 'running'/u);
-    assert.match(statements[0].sql, /lease_until < \?/u);
-    assert.match(statements[0].sql, /ORDER BY CASE WHEN status = 'running' THEN 0 ELSE 1 END, priority DESC, requested_at ASC/u);
-    assert.deepEqual(statements[0].values.slice(-2), ["summarize", "retry-summary"]);
+    assert.match(statements[0].sql, /UPDATE admin_jobs SET status = CASE WHEN status = 'cancel_requested'/u);
+  assert.match(statements[0].sql, /status = 'cancel_requested'/u);
+  assert.match(statements[0].sql, /CASE WHEN status = 'cancel_requested' THEN 'cancel_requested' ELSE 'running' END/u);
+  assert.match(statements[0].sql, /lease_until < \?/u);
+  assert.match(statements[0].sql, /ORDER BY CASE WHEN status = 'cancel_requested' THEN 0 WHEN status = 'running' THEN 1 ELSE 2 END/u);
+  assert.deepEqual(statements[0].values.slice(-2), ["summarize", "retry-summary"]);
+  } finally {
+    clearRuntimeD1Bindings();
+  }
+});
+
+test("admin job success transition cannot overwrite a cancellation request", async () => {
+  const { binding, statements } = bindingFor([[]]);
+  setRuntimeD1Binding("worldcons_ops", binding);
+  try {
+    const result = await markAdminJobSucceeded({ jobId: "11111111-1111-4111-8111-111111111111", resultSummary: { ok: true } });
+    assert.equal(result.ok, false);
+    assert.match(statements[0].sql, /status = 'running' AND cancel_requested_at IS NULL/u);
   } finally {
     clearRuntimeD1Bindings();
   }

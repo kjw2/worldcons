@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
-import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import {
   LLM_PROVIDER_IDS,
   type AdminLlmSettingsInput,
@@ -225,37 +225,48 @@ function mergeStoredSettings(settings?: StoredLlmSettings | null): StoredLlmSett
 }
 
 async function readStoredSettings() {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  if (!binding) {
     return {
       hasDatabase: false,
       storageAvailable: false,
       settings: null,
-      error: hasSupabaseConfig() ? "Supabase client is unavailable." : "Supabase 환경변수가 없어 설정 저장소를 사용할 수 없습니다.",
+      error: "worldcons_ops D1 바인딩이 없어 설정 저장소를 사용할 수 없습니다.",
     };
   }
 
-  const { data, error } = await supabase
-    .from("llm_settings")
-    .select("settings")
-    .eq("id", SETTINGS_ID)
-    .maybeSingle();
-
-  if (error) {
+  try {
+    const statement = binding.prepare("SELECT settings FROM llm_settings WHERE id = ? LIMIT 1").bind(SETTINGS_ID);
+    if (!statement.all) throw new Error("llm_settings.d1_read_unavailable");
+    const result = await statement.all<{ settings?: unknown }>();
+    if (!result || result.success === false || result.error || !Array.isArray(result.results)) {
+      throw new Error(result?.error || "llm_settings.d1_read_failed");
+    }
+    const raw = result.results[0]?.settings;
+    let settings: StoredLlmSettings | null = null;
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        settings = JSON.parse(raw) as StoredLlmSettings;
+      } catch {
+        throw new Error("llm_settings.invalid_json");
+      }
+    } else if (raw && typeof raw === "object") {
+      settings = raw as StoredLlmSettings;
+    }
+    return {
+      hasDatabase: true,
+      storageAvailable: true,
+      settings,
+      error: null,
+    };
+  } catch (error) {
     return {
       hasDatabase: true,
       storageAvailable: false,
       settings: null,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
-
-  return {
-    hasDatabase: true,
-    storageAvailable: true,
-    settings: (data?.settings as StoredLlmSettings | null) ?? null,
-    error: null,
-  };
 }
 
 function providerView(provider: ConfigurableLlmProvider, settings: StoredProviderSettings): LlmProviderSettingsView {
@@ -328,8 +339,8 @@ function normalizeStoredKeys(existing: StoredLlmKey[], inputs: LlmKeyInput[] | u
 }
 
 export async function saveAdminLlmSettings(input: AdminLlmSettingsInput) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) throw new Error("Supabase 설정이 없어 LLM 설정을 저장할 수 없습니다.");
+  const binding = getRuntimeD1Binding("worldcons_ops");
+  if (!binding) throw new Error("worldcons_ops D1 바인딩이 없어 LLM 설정을 저장할 수 없습니다.");
   if (!encryptionSecret()) throw new Error("LLM_SETTINGS_SECRET is required to store LLM API keys.");
 
   const read = await readStoredSettings();
@@ -363,16 +374,15 @@ export async function saveAdminLlmSettings(input: AdminLlmSettingsInput) {
     providers,
   };
 
-  const { error } = await supabase.from("llm_settings").upsert(
-    {
-      id: SETTINGS_ID,
-      settings: nextSettings,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" },
-  );
-
-  if (error) throw new Error(error.message);
+  const now = new Date().toISOString();
+  const statement = binding.prepare([
+    "INSERT INTO llm_settings (id, settings, created_at, updated_at)",
+    "VALUES (?, ?, ?, ?)",
+    "ON CONFLICT(id) DO UPDATE SET settings = excluded.settings, updated_at = excluded.updated_at",
+  ].join(" ")).bind(SETTINGS_ID, JSON.stringify(nextSettings), now, now);
+  if (!statement.run) throw new Error("llm_settings.d1_write_unavailable");
+  const result = await statement.run();
+  if (result.success === false || result.error) throw new Error(result.error || "llm_settings.d1_write_failed");
   return getAdminLlmSettingsView();
 }
 

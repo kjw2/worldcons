@@ -7,12 +7,8 @@ export const ARTIFACT_BLOB_MAX_BYTES = 4 * 1024 * 1024;
 
 export const ARTIFACT_BLOB_PROVIDER_ENV = "ARTIFACT_BLOB_PROVIDER";
 export const ARTIFACT_BLOB_BUCKET_ENV = "ARTIFACT_BLOB_BUCKET";
-export const ARTIFACT_BLOB_READ_FALLBACK_ENV = "ARTIFACT_BLOB_READ_FALLBACK_ENABLED";
-export const ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS_ENV = "ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS";
-export const ARTIFACT_BLOB_PROVIDER_VERCEL = "vercel" as const;
-export const ARTIFACT_BLOB_PROVIDER_SUPABASE = "supabase" as const;
 export const ARTIFACT_BLOB_PROVIDER_R2 = "r2" as const;
-export const ARTIFACT_BLOB_SUPABASE_BUCKET_DEFAULT = "worldcons-artifacts";
+export const ARTIFACT_BLOB_BUCKET_DEFAULT = "worldcons-artifacts";
 export const ARTIFACT_BLOB_R2_ACCOUNT_ID_ENV = "R2_ACCOUNT_ID";
 export const ARTIFACT_BLOB_R2_ENDPOINT_ENV = "R2_ENDPOINT";
 export const ARTIFACT_BLOB_R2_ACCESS_KEY_ID_ENV = "R2_ACCESS_KEY_ID";
@@ -20,10 +16,7 @@ export const ARTIFACT_BLOB_R2_SECRET_ACCESS_KEY_ENV = "R2_SECRET_ACCESS_KEY";
 export const ARTIFACT_BLOB_R2_REGION_ENV = "R2_REGION";
 
 export type ArtifactBlobKind = "fetch" | "normalization" | "article_raw";
-export type ArtifactBlobProvider =
-  | typeof ARTIFACT_BLOB_PROVIDER_VERCEL
-  | typeof ARTIFACT_BLOB_PROVIDER_SUPABASE
-  | typeof ARTIFACT_BLOB_PROVIDER_R2;
+export type ArtifactBlobProvider = typeof ARTIFACT_BLOB_PROVIDER_R2;
 
 const SOURCE_KEY_PATTERN = /^[a-z][a-z0-9._-]{0,79}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -78,27 +71,6 @@ export interface ArtifactBlobTransport {
   put(pathname: string, body: Buffer, options: ArtifactBlobPutOptions): Promise<ArtifactBlobPutResult>;
   get(pathname: string, options: ArtifactBlobGetOptions): Promise<ArtifactBlobGetResult | null>;
   head(pathname: string): Promise<ArtifactBlobHeadResult>;
-}
-
-/**
- * Minimal structural slice of `@supabase/supabase-js` storage that the artifact
- * transport needs. Keeping it structural lets tests inject a fake client while the
- * server-only factory below supplies the real service-role client.
- */
-export interface ArtifactBlobSupabaseBucket {
-  upload(
-    pathname: string,
-    body: Buffer,
-    options: { contentType: string; upsert: boolean },
-  ): Promise<{ data: { path: string } | null; error: unknown }>;
-  download(pathname: string): PromiseLike<{ data: Blob | null; error: unknown }>;
-  info(pathname: string): Promise<{ data: { size?: number } | null; error: unknown }>;
-}
-
-export interface ArtifactBlobSupabaseClient {
-  storage: {
-    from(bucket: string): ArtifactBlobSupabaseBucket;
-  };
 }
 
 export interface ArtifactBlobR2Object {
@@ -202,194 +174,22 @@ function isArtifactBlobHeadHit(result: ArtifactBlobHeadResult | null | undefined
   return result !== null && result !== undefined && result.pathname === pathname;
 }
 
-function explicitTrue(value?: string) {
-  return value?.trim().toLowerCase() === "true";
-}
-
-function errorStatus(error: unknown): number | null {
-  if (!error || typeof error !== "object") return null;
-  const record = error as Record<string, unknown>;
-  for (const field of ["status", "statusCode", "httpStatusCode"]) {
-    const value = record[field];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
-  }
-  return null;
-}
-
-/**
- * True only for a genuine "this object does not exist" signal. Auth, bucket
- * configuration, provider, and network failures are deliberately excluded so the
- * read fallback never masks an operational error.
- */
-export function isSupabaseObjectNotFound(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const record = error as Record<string, unknown>;
-  const message = typeof record.message === "string" ? record.message.trim().toLowerCase() : "";
-  const code = typeof record.code === "string" ? record.code.trim().toLowerCase() : "";
-  if (message !== "object not found" && code !== "object_not_found" && code !== "objectnotfound") return false;
-  const status = errorStatus(error);
-  return status === null || status === 404;
-}
-
-function isVercelBlobNotFound(error: unknown): boolean {
-  return (error as { name?: unknown })?.name === "BlobNotFoundError";
-}
-
-/**
- * Primary artifact transport selection. Vercel stays the default so existing
- * deployments are unchanged; Supabase is used only when `ARTIFACT_BLOB_PROVIDER`
- * explicitly selects it. When primary is Supabase and the read fallback is enabled,
- * `get`/`head` try Supabase first and fall through to Vercel only on not-found.
- */
+/** Cloudflare R2 is the sole artifact persistence authority. */
 export function resolveArtifactBlobProvider(
   environment: Record<string, string | undefined> = process.env,
 ): ArtifactBlobProvider {
   const raw = environment[ARTIFACT_BLOB_PROVIDER_ENV]?.trim().toLowerCase();
-  if (!raw || raw === ARTIFACT_BLOB_PROVIDER_VERCEL) return ARTIFACT_BLOB_PROVIDER_VERCEL;
-  if (raw === ARTIFACT_BLOB_PROVIDER_SUPABASE) return ARTIFACT_BLOB_PROVIDER_SUPABASE;
-  if (raw === ARTIFACT_BLOB_PROVIDER_R2) return ARTIFACT_BLOB_PROVIDER_R2;
+  if (!raw || raw === ARTIFACT_BLOB_PROVIDER_R2) return ARTIFACT_BLOB_PROVIDER_R2;
   throw new Error("artifact_blob.invalid_provider");
-}
-
-export function artifactBlobReadFallbackEnabled(
-  environment: Record<string, string | undefined> = process.env,
-): boolean {
-  return explicitTrue(environment[ARTIFACT_BLOB_READ_FALLBACK_ENV]);
-}
-
-function parseArtifactBlobProvider(value: string, errorCode: string): ArtifactBlobProvider {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === ARTIFACT_BLOB_PROVIDER_VERCEL) return ARTIFACT_BLOB_PROVIDER_VERCEL;
-  if (normalized === ARTIFACT_BLOB_PROVIDER_SUPABASE) return ARTIFACT_BLOB_PROVIDER_SUPABASE;
-  if (normalized === ARTIFACT_BLOB_PROVIDER_R2) return ARTIFACT_BLOB_PROVIDER_R2;
-  throw new Error(errorCode);
-}
-
-export function resolveArtifactBlobFallbackProviders(
-  environment: Record<string, string | undefined> = process.env,
-  primary: ArtifactBlobProvider = resolveArtifactBlobProvider(environment),
-): ArtifactBlobProvider[] {
-  const raw = environment[ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS_ENV]?.trim();
-  const providers = raw
-    ? raw.split(",").map((value) => parseArtifactBlobProvider(value, "artifact_blob.invalid_fallback_provider"))
-    : artifactBlobReadFallbackEnabled(environment) && primary !== ARTIFACT_BLOB_PROVIDER_VERCEL
-      ? [ARTIFACT_BLOB_PROVIDER_VERCEL]
-      : [];
-  const seen = new Set<ArtifactBlobProvider>();
-  for (const provider of providers) {
-    if (provider === primary || seen.has(provider)) throw new Error("artifact_blob.invalid_fallback");
-    seen.add(provider);
-  }
-  return providers;
 }
 
 export function resolveArtifactBlobBucket(
   environment: Record<string, string | undefined> = process.env,
 ): string {
   const raw = environment[ARTIFACT_BLOB_BUCKET_ENV]?.trim();
-  const bucket = raw && raw.length > 0 ? raw : ARTIFACT_BLOB_SUPABASE_BUCKET_DEFAULT;
+  const bucket = raw && raw.length > 0 ? raw : ARTIFACT_BLOB_BUCKET_DEFAULT;
   if (!BUCKET_PATTERN.test(bucket)) throw new Error("artifact_blob.invalid_bucket");
   return bucket;
-}
-
-export function createVercelArtifactBlobTransport(): ArtifactBlobTransport {
-  if (typeof window !== "undefined") throw new Error("artifact_blob.server_only");
-  return {
-    async put(pathname, body, options) {
-      const { put } = await import("@vercel/blob");
-      const result = await put(pathname, body, options);
-      return { pathname: result.pathname };
-    },
-    async get(pathname, options) {
-      const { get } = await import("@vercel/blob");
-      const result = await get(pathname, options);
-      if (!result) return null;
-      return {
-        statusCode: result.statusCode,
-        stream: result.stream,
-        size: result.statusCode === 200 ? result.blob.size : null,
-      };
-    },
-    async head(pathname) {
-      try {
-        const { head } = await import("@vercel/blob");
-        const result = await head(pathname);
-        return { pathname: result.pathname, size: result.size };
-      } catch (error) {
-        if (isVercelBlobNotFound(error)) return missingHeadResult(pathname);
-        throw error;
-      }
-    },
-  };
-}
-
-export interface SupabaseArtifactBlobTransportOptions {
-  client: ArtifactBlobSupabaseClient;
-  bucket?: string;
-}
-
-export function createSupabaseArtifactBlobTransport(
-  options: SupabaseArtifactBlobTransportOptions,
-): ArtifactBlobTransport {
-  if (typeof window !== "undefined") throw new Error("artifact_blob.server_only");
-  const bucket = options.bucket?.trim() && options.bucket.trim().length > 0
-    ? options.bucket.trim()
-    : ARTIFACT_BLOB_SUPABASE_BUCKET_DEFAULT;
-  if (!BUCKET_PATTERN.test(bucket)) throw new Error("artifact_blob.invalid_bucket");
-  const objects = options.client.storage.from(bucket);
-
-  return {
-    async put(pathname, body, putOptions) {
-      let uploaded: { data: { path: string } | null; error: unknown };
-      try {
-        uploaded = await objects.upload(pathname, body, {
-          contentType: putOptions.contentType,
-          upsert: true,
-        });
-      } catch {
-        throw new Error("artifact_blob.supabase_put_failed");
-      }
-      if (uploaded.error) throw new Error("artifact_blob.supabase_put_failed");
-      if (!uploaded.data || typeof uploaded.data.path !== "string") {
-        throw new Error("artifact_blob.supabase_put_failed");
-      }
-      return { pathname: uploaded.data.path };
-    },
-    async get(pathname) {
-      let downloaded: { data: Blob | null; error: unknown };
-      try {
-        downloaded = await objects.download(pathname);
-      } catch {
-        throw new Error("artifact_blob.supabase_get_failed");
-      }
-      if (downloaded.error) {
-        if (isSupabaseObjectNotFound(downloaded.error)) return null;
-        throw new Error("artifact_blob.supabase_get_failed");
-      }
-      if (!downloaded.data) return null;
-      return {
-        statusCode: 200,
-        stream: downloaded.data.stream() as ReadableStream<Uint8Array>,
-        size: downloaded.data.size,
-      };
-    },
-    async head(pathname) {
-      let info: { data: { size?: number } | null; error: unknown };
-      try {
-        info = await objects.info(pathname);
-      } catch {
-        throw new Error("artifact_blob.supabase_head_failed");
-      }
-      if (info.error) {
-        if (isSupabaseObjectNotFound(info.error)) return missingHeadResult(pathname);
-        throw new Error("artifact_blob.supabase_head_failed");
-      }
-      const size = info.data?.size;
-      if (typeof size !== "number" || !Number.isFinite(size) || size < 0) return missingHeadResult(pathname);
-      return { pathname, size };
-    },
-  };
 }
 
 export interface R2BindingArtifactBlobTransportOptions {
@@ -553,7 +353,7 @@ export function createR2S3ArtifactBlobTransport(
   options: R2S3ArtifactBlobTransportOptions,
 ): ArtifactBlobTransport {
   if (typeof window !== "undefined") throw new Error("artifact_blob.server_only");
-  const bucket = options.bucket?.trim() || ARTIFACT_BLOB_SUPABASE_BUCKET_DEFAULT;
+  const bucket = options.bucket?.trim() || ARTIFACT_BLOB_BUCKET_DEFAULT;
   if (!BUCKET_PATTERN.test(bucket)) throw new Error("artifact_blob.invalid_bucket");
   if (!options.accessKeyId.trim() || !options.secretAccessKey.trim()) {
     throw new Error("artifact_blob.r2_not_configured");
@@ -637,82 +437,18 @@ function createR2S3TransportFromEnvironment(
   });
 }
 
-/**
- * Wraps a primary transport with read-only fallbacks. Writes go only to the
- * primary; `get`/`head` consult fallbacks in order only when the preceding
- * provider reports
- * not-found, so operational errors surface unchanged.
- */
-export function createArtifactBlobFallbackTransport(options: {
-  primary: ArtifactBlobTransport;
-  fallback?: ArtifactBlobTransport;
-  fallbacks?: ArtifactBlobTransport[];
-}): ArtifactBlobTransport {
-  const { primary } = options;
-  const fallbacks = options.fallbacks ?? (options.fallback ? [options.fallback] : []);
-  return {
-    async put(pathname, body, putOptions) {
-      return primary.put(pathname, body, putOptions);
-    },
-    async get(pathname, getOptions) {
-      let result = await primary.get(pathname, getOptions);
-      if (result) return result;
-      for (const fallback of fallbacks) {
-        result = await fallback.get(pathname, getOptions);
-        if (result) return result;
-      }
-      return null;
-    },
-    async head(pathname) {
-      let result = await primary.head(pathname);
-      if (isArtifactBlobHeadHit(result, pathname)) return result;
-      for (const fallback of fallbacks) {
-        result = await fallback.head(pathname);
-        if (isArtifactBlobHeadHit(result, pathname)) return result;
-      }
-      return result;
-    },
-  };
-}
-
 export interface ArtifactBlobTransportDependencies {
-  vercelTransport?: () => ArtifactBlobTransport;
-  supabaseClient?: (environment: Record<string, string | undefined>) => ArtifactBlobSupabaseClient;
   r2Binding?: ArtifactBlobR2Bucket;
   r2Transport?: (environment: Record<string, string | undefined>) => ArtifactBlobTransport;
-}
-
-function createProviderTransport(
-  provider: ArtifactBlobProvider,
-  environment: Record<string, string | undefined>,
-  dependencies: ArtifactBlobTransportDependencies,
-): ArtifactBlobTransport {
-  if (provider === ARTIFACT_BLOB_PROVIDER_VERCEL) {
-    return (dependencies.vercelTransport ?? createVercelArtifactBlobTransport)();
-  }
-  if (provider === ARTIFACT_BLOB_PROVIDER_SUPABASE) {
-    if (!dependencies.supabaseClient) throw new Error("artifact_blob.supabase_transport_unavailable");
-    return createSupabaseArtifactBlobTransport({
-      client: dependencies.supabaseClient(environment),
-      bucket: resolveArtifactBlobBucket(environment),
-    });
-  }
-  if (dependencies.r2Binding) return createR2BindingArtifactBlobTransport({ bucket: dependencies.r2Binding });
-  return (dependencies.r2Transport ?? createR2S3TransportFromEnvironment)(environment);
 }
 
 export function createArtifactBlobTransport(
   environment: Record<string, string | undefined> = process.env,
   dependencies: ArtifactBlobTransportDependencies = {},
 ): ArtifactBlobTransport {
-  const provider = resolveArtifactBlobProvider(environment);
-  const primary = createProviderTransport(provider, environment, dependencies);
-  const fallbackProviders = resolveArtifactBlobFallbackProviders(environment, provider);
-  if (fallbackProviders.length === 0) return primary;
-  const fallbacks = fallbackProviders.map((fallbackProvider) =>
-    createProviderTransport(fallbackProvider, environment, dependencies)
-  );
-  return createArtifactBlobFallbackTransport({ primary, fallbacks });
+  resolveArtifactBlobProvider(environment);
+  if (dependencies.r2Binding) return createR2BindingArtifactBlobTransport({ bucket: dependencies.r2Binding });
+  return (dependencies.r2Transport ?? createR2S3TransportFromEnvironment)(environment);
 }
 
 export function createArtifactBlobStore(

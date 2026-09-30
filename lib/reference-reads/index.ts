@@ -1,43 +1,25 @@
-import { publicProjectionReadsEnabled } from "@/lib/article-publication";
-import { getSupabaseAdmin } from "@/lib/db/client";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
-import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 import { createD1ReferenceReadRepository } from "@/lib/reference-reads/d1-repository";
 import { mockReferenceReads } from "@/lib/reference-reads/mock-repository";
-import { withReferenceReadShadow } from "@/lib/reference-reads/shadow";
-import { createSupabaseReferenceReadRepository } from "@/lib/reference-reads/supabase-repository";
 import type { ReferenceReadRepository } from "@/lib/reference-reads/types";
 
 export * from "@/lib/reference-reads/mock-repository";
 export * from "@/lib/reference-reads/shared";
-export * from "@/lib/reference-reads/supabase-repository";
 export * from "@/lib/reference-reads/types";
 export * from "@/lib/reference-reads/d1-repository";
-export * from "@/lib/reference-reads/shadow";
 
 /**
- * Selection point for the public reference-read domain. Supabase remains
- * authoritative whenever configuration is present; without it the in-memory
- * mock adapter is used, preserving the pre-extraction fallback.
- *
- * When Supabase is authoritative the repository is wrapped with the M6.1/M6.2
- * reference-read shadow. The wrapper is a pure pass-through by default (all
- * shadow flags off) and can only schedule a background D1 read, never replace
- * the authoritative result. The projection decision is injected so the shadow
- * matches the authoritative adapter: `public_tag_projection_p3` is not migrated
- * to D1, so tag/count shadows skip in projection mode.
+ * Cloudflare D1 is the only persistent reference-read authority. Local
+ * environments without bindings use the in-memory fixture adapter.
  */
 export function referenceReads(): ReferenceReadRepository {
-  if (isCloudflareWorkerRuntime()) {
+  const core = getRuntimeD1Binding("worldcons_core");
+  const ingest = getRuntimeD1Binding("worldcons_ingest");
+  if (core && ingest) {
     return createD1ReferenceReadRepository({
-      binding: getRuntimeD1Binding("worldcons_core"),
-      ingestBinding: getRuntimeD1Binding("worldcons_ingest"),
+      binding: core,
+      ingestBinding: ingest,
     });
   }
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return mockReferenceReads;
-  const adminClient = supabase;
-  return withReferenceReadShadow(createSupabaseReferenceReadRepository({ client: () => adminClient }), {
-    projection: publicProjectionReadsEnabled(false),
-  });
+  return mockReferenceReads;
 }

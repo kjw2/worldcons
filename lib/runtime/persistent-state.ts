@@ -1,12 +1,11 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 
 /**
  * Runtime-neutral persistent JSON state.
  *
- * The Node/Vercel runtime keeps its existing filesystem-backed behaviour (with an
+ * The local Node runtime keeps its filesystem-backed behaviour (with an
  * in-process fallback when the filesystem is unwritable). The Cloudflare Worker
  * runtime has no reliable request-time filesystem, so it uses an isolate-scoped
  * in-memory store instead of resolving `process.cwd()`/`os.tmpdir()` paths.
@@ -70,7 +69,6 @@ export function createMemoryRuntimeJsonStateStore(): RuntimeJsonStateStore {
 }
 
 function defaultCacheDir() {
-  if (process.env.VERCEL === "1" || process.env.VERCEL_ENV) return path.join(os.tmpdir(), "worldcons");
   return path.resolve(process.cwd(), ".cache");
 }
 

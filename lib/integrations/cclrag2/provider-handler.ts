@@ -352,7 +352,7 @@ async function searchResponse(
     requestId,
     query: input.query,
     service: "worldcons",
-    transport: "vercel-route-handler",
+    transport: "cloudflare-worker",
     mode: retrieval.effectiveMode,
     requestedMode: retrieval.requestedMode,
     effectiveMode: retrieval.effectiveMode,
@@ -565,7 +565,7 @@ async function sourcesResponse(binding: D1RuntimeDatabase | null | undefined, re
     schemaVersion: 1,
     requestId,
     service: "worldcons",
-    transport: "vercel-route-handler",
+    transport: "cloudflare-worker",
     items: sources.map((source) => {
       const sourceKey = requiredString(source.sourceKey, "sourceKey");
       const context = sourceContextFor(sourceKey);

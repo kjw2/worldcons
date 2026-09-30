@@ -190,12 +190,15 @@ test("every P4 action uses session-only CSRF auth and revalidates authoritative 
   const readRoute = source("app/api/admin/work/route.ts");
   assert.match(readRoute, /isAuthorizedRequest\(request\)/);
   assert.match(readRoute, /parseAdminWorkFilters/);
-  assert.match(readRoute, /getAdminWorkQueueSnapshot/);
+  assert.match(readRoute, /getD1AdminWorkQueueSnapshot/);
   assert.match(route, /adminSessionMutationAuthFailureStatus\(request\)/);
   assert.match(route, /adminSessionIdentityFromRequest\(request\)/);
   assert.doesNotMatch(route, /adminMutationAuthFailureStatus|isAuthorizedSecretRequest|process\.env\.ADMIN_USERNAME/);
-  assert.match(route, /source_url_candidates[\s\S]*select\("id,status"\)/);
-  assert.match(route, /article_publications_p3[\s\S]*select\("article_id,state,revision,version_id"\)/);
+  assert.match(route, /getRuntimeD1Binding\("worldcons_ingest"\)/);
+  assert.match(route, /SELECT id,status FROM source_url_candidates/);
+  assert.match(route, /getRuntimeD1Binding\("worldcons_core"\)/);
+  assert.match(route, /FROM article_publications_p3 p/);
+  assert.match(route, /JOIN article_version_heads_p3 h/);
   assert.match(route, /\["in_review", "withdrawn"\]\.includes\(currentState\)/);
   assert.match(route, /currentState !== "published"/);
   assert.match(route, /adminCommandService\.abort/);

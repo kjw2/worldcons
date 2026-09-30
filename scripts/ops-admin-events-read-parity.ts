@@ -20,7 +20,6 @@ import { listAdminOpsEventsViaBoundary } from "@/lib/cloudflare/ops-write/admin-
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
 } from "@/lib/cloudflare/ops-write/boundary-client";
-import { readAdminOpsEventsFromSupabase } from "@/lib/ops/watchdog";
 import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query";
 import { resolveWorldconsOpsDatabaseId } from "@/scripts/ops-heartbeat-read-parity";
 
@@ -29,26 +28,18 @@ import { resolveWorldconsOpsDatabaseId } from "@/scripts/ops-heartbeat-read-pari
  *
  * Manual/local operators authenticate
  * `GET /v1/ops/admin-events/list?limit=20` on the `worldcons-ops-write`
- * boundary with `WORLDCONS_OPS_WRITE_TOKEN` and compare the returned records against:
- *
- *   1. the canonical Supabase `listAdminOpsEvents(limit=20)` projection (the
- *      resting authoritative read the admin ops page consumes); and
- *   2. an independent direct D1 read of the same descending projection through
- *      the D1 HTTP query API.
+ * boundary with `WORLDCONS_OPS_WRITE_TOKEN` and compare the returned records
+ * against an independent direct D1 read of the same descending projection.
  *
  * It performs NO write of any kind: every statement is a SELECT and the only
- * network calls are the boundary GET and the two reads. It never
+ * network calls are the boundary GET and direct D1 read. It never
  * invokes `recordAdminOpsEvent`/`recordWatchdogEvents`, the watchdog, the
  * insert, the prune, or any heartbeat path, and it mutates no authority. It
  * prints no credential and no token, and the persisted evidence contains only
  * the compared records (with `detail` as canonical JSON), booleans and counts.
  *
- * The probe forces the admin read authority to `d1` ONLY inside its own request
- * environment, so it can prove the D1 read path without changing any repository
- * or Worker authority. The boundary still resolves its OWN read authority from
- * its own `env`; when that is `supabase` the boundary returns the fail-closed
- * `503 READ_AUTHORITY_UNAVAILABLE` and the probe reports the mismatch rather
- * than a false pass.
+ * The probe forces the admin read authority to `d1` only inside its own request
+ * environment and never changes Worker authority.
  */
 
 const REPORT_DIR = path.join("artifacts", "cloudflare-m11");
@@ -95,7 +86,7 @@ function differenceSummary(differences: readonly AdminOpsEventParityDifference[]
 function printDryRun(): void {
   console.log("WorldCons M11.4R live admin_ops_events list read parity (dry-run)");
   console.log(`  boundary: GET /v1/ops/admin-events/list?limit=${LIST_LIMIT} at $${OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV}`);
-  console.log("  compares the list projection against Supabase and direct D1");
+  console.log("  compares the list projection against direct D1");
   console.log("  read-only: no insert, no prune, no watchdog, no heartbeat, no authority change");
 }
 
@@ -124,9 +115,6 @@ async function main(): Promise<void> {
   const boundaryRecords = await listAdminOpsEventsViaBoundary(LIST_LIMIT, { environment: probeEnvironment });
   if (boundaryRecords === null) throw new Error("admin_ops_events_read_parity.boundary_not_selected");
 
-  const supabaseRecords = await readAdminOpsEventsFromSupabase(LIST_LIMIT);
-  if (supabaseRecords === null) throw new Error("admin_ops_events_read_parity.supabase_not_configured");
-
   let directD1Records: AdminOpsEventRecord[] | null = null;
   let directD1Error: string | null = null;
   if (!skipDirectD1) {
@@ -145,12 +133,11 @@ async function main(): Promise<void> {
     }
   }
 
-  const boundaryVsSupabase = compareAdminOpsEventsReadParity(boundaryRecords, supabaseRecords);
   const boundaryVsDirectD1 = directD1Records === null
     ? null
     : compareAdminOpsEventsReadParity(boundaryRecords, directD1Records);
   const directD1Holds = boundaryVsDirectD1 === null ? null : boundaryVsDirectD1.length === 0;
-  const ok = adminOpsEventsReadParityHolds(boundaryRecords, supabaseRecords) && directD1Holds !== false;
+  const ok = directD1Records !== null && adminOpsEventsReadParityHolds(boundaryRecords, directD1Records);
 
   const evidence = {
     schemaVersion: 1,
@@ -175,18 +162,10 @@ async function main(): Promise<void> {
       count: boundaryRecords.length,
       records: boundaryRecords.map(recordSnapshot),
     },
-    supabase: {
-      count: supabaseRecords.length,
-      records: supabaseRecords.map(recordSnapshot),
-    },
     directD1: directD1Records === null
       ? { enabled: false, error: directD1Error }
       : { enabled: true, count: directD1Records.length, records: directD1Records.map(recordSnapshot) },
     comparison: {
-      boundaryVsSupabase: {
-        holds: boundaryVsSupabase.length === 0,
-        differences: differenceSummary(boundaryVsSupabase),
-      },
       boundaryVsDirectD1: boundaryVsDirectD1 === null
         ? null
         : { holds: boundaryVsDirectD1.length === 0, differences: differenceSummary(boundaryVsDirectD1) },
@@ -201,8 +180,7 @@ async function main(): Promise<void> {
   if (asJson) process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
   else {
     console.log("WorldCons M11.4R live admin_ops_events list read parity (read-only)");
-    console.log(`  boundary: ${evidence.boundary.count} rows; supabase: ${evidence.supabase.count} rows`);
-    console.log(`  boundary vs supabase: ${evidence.comparison.boundaryVsSupabase.holds ? "PARITY" : `${evidence.comparison.boundaryVsSupabase.differences.length} difference(s)`}`);
+    console.log(`  boundary: ${evidence.boundary.count} rows`);
     console.log(`  boundary vs direct D1: ${directD1Holds === null ? "skipped" : directD1Holds ? "PARITY" : "MISMATCH"}`);
     if (writeReport) console.log(`  wrote ${path.join(REPORT_DIR, REPORT_JSON)}`);
     console.log(ok ? "M11.4R admin_ops_events list read parity: OK" : "M11.4R admin_ops_events list read parity: FAILED");

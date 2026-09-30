@@ -15,7 +15,6 @@ import {
   readOpsHeartbeatsViaBoundary,
 } from "@/lib/cloudflare/ops-write/boundary-client";
 import { OPS_HEARTBEAT_READ_AUTHORITY_ENV, type OpsHeartbeatReadRecord } from "@/lib/cloudflare/ops-write/heartbeat";
-import { readWorkflowHeartbeatsFromSupabase } from "@/lib/ops/workflow-heartbeat";
 import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query";
 
 /**
@@ -23,15 +22,11 @@ import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query
  *
  * Manual/local operators authenticate `GET /v1/ops/heartbeats` on the
  * `worldcons-ops-write` boundary with `WORLDCONS_OPS_WRITE_TOKEN` and compare
- * the returned five-field records against:
- *
- *   1. the authoritative Supabase projection (the resting reader), read through
- *      the service-role client with a plain SELECT; and
- *   2. an independent direct D1 read of the same projection through the D1 HTTP
- *      query API.
+ * the returned five-field records against an independent direct D1 read of the
+ * same projection through the D1 HTTP query API.
  *
  * It performs NO write of any kind: every statement is a SELECT and the only
- * network calls are the boundary GET and the two reads. It never
+ * network calls are the boundary GET and direct D1 read. It never
  * invokes `recordWorkflowHeartbeat` or the watchdog. It prints no credential and
  * no token, and the persisted evidence contains only the five-field records,
  * booleans and counts.
@@ -39,9 +34,8 @@ import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query
  * The probe forces the read authority to `d1` ONLY inside its own request
  * environment, so it can prove the D1 read path without changing any repository
  * or Worker authority. The boundary still resolves its OWN read authority from
- * its own `env`; when that is `supabase` the boundary returns the fail-closed
- * `503 READ_AUTHORITY_UNAVAILABLE` and the probe reports the mismatch rather than
- * a false pass.
+ * its own `env`; an unavailable D1 read fails closed rather than reporting a
+ * false pass.
  */
 
 const REPORT_DIR = path.join("artifacts", "cloudflare-m11");
@@ -96,7 +90,7 @@ function differenceSummary(differences: readonly OpsHeartbeatParityDifference[])
 function printDryRun(): void {
   console.log("WorldCons M11.3R live D1 read parity (dry-run)");
   console.log(`  boundary: GET /v1/ops/heartbeats at $${OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV}`);
-  console.log("  compares the five-field projection against Supabase and direct D1");
+  console.log("  compares the five-field projection against direct D1");
   console.log("  read-only: no heartbeat write, no watchdog, no authority change");
 }
 
@@ -125,11 +119,6 @@ async function main(): Promise<void> {
   const boundaryRecords = await readOpsHeartbeatsViaBoundary({ environment: probeEnvironment });
   if (boundaryRecords === null) throw new Error("ops_heartbeat_read_parity.boundary_not_selected");
 
-  const supabaseRecords = await readWorkflowHeartbeatsFromSupabase();
-  if (supabaseRecords === null) {
-    throw new Error("ops_heartbeat_read_parity.supabase_not_configured");
-  }
-
   let directD1Records: OpsHeartbeatReadRecord[] | null = null;
   let directD1Error: string | null = null;
   if (!skipDirectD1) {
@@ -148,12 +137,11 @@ async function main(): Promise<void> {
     }
   }
 
-  const boundaryVsSupabase = compareHeartbeatReadParity(boundaryRecords, supabaseRecords);
   const boundaryVsDirectD1 = directD1Records === null
     ? null
     : compareHeartbeatReadParity(boundaryRecords, directD1Records);
   const directD1Holds = boundaryVsDirectD1 === null ? null : boundaryVsDirectD1.length === 0;
-  const ok = heartbeatReadParityHolds(boundaryRecords, supabaseRecords) && directD1Holds !== false;
+  const ok = directD1Records === null ? false : heartbeatReadParityHolds(boundaryRecords, directD1Records);
 
   const evidence = {
     schemaVersion: 1,
@@ -175,18 +163,10 @@ async function main(): Promise<void> {
       count: boundaryRecords.length,
       records: recordsByKey(boundaryRecords),
     },
-    supabase: {
-      count: supabaseRecords.length,
-      records: recordsByKey(supabaseRecords),
-    },
     directD1: directD1Records === null
       ? { enabled: false, error: directD1Error }
       : { enabled: true, count: directD1Records.length, records: recordsByKey(directD1Records) },
     comparison: {
-      boundaryVsSupabase: {
-        holds: boundaryVsSupabase.length === 0,
-        differences: differenceSummary(boundaryVsSupabase),
-      },
       boundaryVsDirectD1: boundaryVsDirectD1 === null
         ? null
         : { holds: boundaryVsDirectD1.length === 0, differences: differenceSummary(boundaryVsDirectD1) },
@@ -201,8 +181,7 @@ async function main(): Promise<void> {
   if (asJson) process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
   else {
     console.log("WorldCons M11.3R live D1 read parity (read-only)");
-    console.log(`  boundary: ${evidence.boundary.count} rows; supabase: ${evidence.supabase.count} rows`);
-    console.log(`  boundary vs supabase: ${evidence.comparison.boundaryVsSupabase.holds ? "PARITY" : `${evidence.comparison.boundaryVsSupabase.differences.length} difference(s)`}`);
+    console.log(`  boundary: ${evidence.boundary.count} rows`);
     console.log(`  boundary vs direct D1: ${directD1Holds === null ? "skipped" : directD1Holds ? "PARITY" : "MISMATCH"}`);
     if (writeReport) console.log(`  wrote ${path.join(REPORT_DIR, REPORT_JSON)}`);
     console.log(ok ? "M11.3R read parity: OK" : "M11.3R read parity: FAILED");

@@ -1,8 +1,6 @@
 import {
   ARTIFACT_BLOB_PROVIDER_ENV,
   ARTIFACT_BLOB_PROVIDER_R2,
-  ARTIFACT_BLOB_READ_FALLBACK_ENV,
-  ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS_ENV,
   createArtifactBlobStore,
   createArtifactBlobTransport,
   type ArtifactBlobR2Bucket,
@@ -27,8 +25,6 @@ export function createR2BindingRuntimeArtifactBlobStore(
   const runtimeEnvironment = {
     ...environment,
     [ARTIFACT_BLOB_PROVIDER_ENV]: ARTIFACT_BLOB_PROVIDER_R2,
-    [ARTIFACT_BLOB_READ_FALLBACK_ENV]: "false",
-    [ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS_ENV]: "",
   };
   return createArtifactBlobStore(
     createArtifactBlobTransport(runtimeEnvironment, { r2Binding }),

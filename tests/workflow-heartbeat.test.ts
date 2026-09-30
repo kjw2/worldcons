@@ -81,7 +81,7 @@ test("required workflow heartbeat records the complete route lifecycle", async (
   assert.deepEqual(statuses, ["running", "failed"]);
 });
 
-test("Vercel watchdog route authenticates before recording its required heartbeat", () => {
+test("Cloudflare watchdog route authenticates before recording its required heartbeat", () => {
   const source = fs.readFileSync(watchdogRoutePath, "utf8");
   const authBoundary = source.indexOf("if (!isAuthorizedSecretRequest(request))");
   const heartbeat = source.indexOf("runWithRequiredWorkflowHeartbeat(\"watchdog\"");

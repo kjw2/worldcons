@@ -3,7 +3,7 @@ const REQUIRED_PRODUCTION_SECRET_NAMES = [
   "ADMIN_SESSION_SECRET",
   "CRON_SECRET",
   "LLM_SETTINGS_SECRET",
-  "SUPABASE_SERVICE_ROLE_KEY",
+  "MASTERDASH_SSO_SECRET",
 ] as const;
 
 // The admin account can publish content, change LLM settings, and control collection,

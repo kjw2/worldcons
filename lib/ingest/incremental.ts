@@ -53,7 +53,6 @@ export function incrementalJobOptionsForSource(sourceKey: IncrementalSourceKey) 
     summarizeLimit: 20,
     summarize: false,
     refreshTags: false,
-    allowVercelCrawling: false,
     articleId: null,
     slug: null,
   };

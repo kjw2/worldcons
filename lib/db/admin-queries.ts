@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import {
   adminOpsReads,
   collectionFor,
@@ -10,8 +10,9 @@ import { fallbackErrorClassForArticleStatus, fallbackReviewStateForArticleStatus
 import { mockSources, mockTags } from "@/lib/db/mock-data";
 import { listIngestionRuns, listSources } from "@/lib/db/queries";
 import type { ArticleStatus, IngestionRunRecord, SourceRecord } from "@/lib/db/types";
-import { shadowArticleLifecycleTransition } from "@/lib/article-lifecycle";
-import { shadowConfirmedLegacyArticleMutation } from "@/lib/article-publication";
+import { articleLifecycleService } from "@/lib/article-lifecycle/service";
+import { articlePublicationService } from "@/lib/article-publication/service";
+import { createHash } from "@/lib/utils/hash";
 
 const ARTICLE_STATUSES = [
   "discovered",
@@ -248,24 +249,27 @@ export interface AdminArticleBulkRef {
   slug?: string;
 }
 
-export interface AdminArticleBulkResult {
-  mode: "database" | "no-database";
-  action: AdminArticleBulkAction;
-  requestedCount: number;
-  matchedCount: number;
-  updatedCount: number;
-  notFound: AdminArticleBulkRef[];
-}
-
 export interface AdminArticleBulkPersistedOutcome {
   articleId?: string | null;
   persisted: boolean;
 }
 
+/**
+ * Pure compatibility helper retained for unit tests and migration evidence only.
+ * Production bulk actions no longer call the legacy shadow path; they update D1
+ * lifecycle/publication authorities directly in `runAdminArticleBulkAction`.
+ */
 export async function shadowConfirmedAdminBulkArticleOutcomes(
   outcomes: readonly AdminArticleBulkPersistedOutcome[],
   context: { action: AdminArticleBulkAction; notePresent: boolean },
-  shadow: typeof shadowConfirmedLegacyArticleMutation = shadowConfirmedLegacyArticleMutation,
+  shadow: (input: {
+    articleId: string;
+    succeeded: true;
+    reason: string;
+    provenanceActorType: "human";
+    provenanceActorId: string;
+    safeMetadata: Record<string, unknown>;
+  }) => Promise<unknown>,
 ) {
   const articleIds = Array.from(new Set(
     outcomes
@@ -280,6 +284,15 @@ export async function shadowConfirmedAdminBulkArticleOutcomes(
     provenanceActorId: "admin-bulk-review",
     safeMetadata: { action: context.action, notePresent: context.notePresent },
   })));
+}
+
+export interface AdminArticleBulkResult {
+  mode: "database" | "no-database";
+  action: AdminArticleBulkAction;
+  requestedCount: number;
+  matchedCount: number;
+  updatedCount: number;
+  notFound: AdminArticleBulkRef[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -699,20 +712,28 @@ export async function listAdminArticles(filters: AdminArticleListFilters = {}): 
 }
 
 async function loadBulkAdminArticleRows(refs: AdminArticleBulkRef[]) {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) return { supabase: null, rows: [] as AdminArticleRow[] };
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) return { core: null, rows: [] as AdminArticleRow[] };
 
   const ids = Array.from(new Set(refs.map((ref) => ref.id?.trim()).filter(Boolean) as string[]));
   const slugs = Array.from(new Set(refs.map((ref) => ref.slug?.trim()).filter(Boolean) as string[]));
   const rowByKey = new Map<string, AdminArticleRow>();
+  const select = "id,slug,source_key,status,source_metadata";
+  const decode = (row: Record<string, unknown>): AdminArticleRow => ({
+    id: typeof row.id === "string" ? row.id : null,
+    slug: typeof row.slug === "string" ? row.slug : null,
+    source_key: typeof row.source_key === "string" ? row.source_key : "",
+    status: String(row.status ?? "discovered") as ArticleStatus,
+    source_metadata: typeof row.source_metadata === "string"
+      ? (() => { try { return JSON.parse(row.source_metadata) as Record<string, unknown>; } catch { return null; } })()
+      : isRecord(row.source_metadata) ? row.source_metadata : null,
+  } as AdminArticleRow);
 
   if (ids.length > 0) {
-    const { data, error } = await supabase
-      .from("articles")
-      .select("id, slug, source_key, status, source_metadata")
-      .in("id", ids);
-    if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as AdminArticleRow[]) {
+    const result = await core.prepare(`SELECT ${select} FROM articles WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all<Record<string, unknown>>();
+    if (result.success === false || result.error) throw new Error(result.error || "admin_bulk.d1_read_failed");
+    for (const raw of result.results ?? []) {
+      const row = decode(raw);
       if (row.id) rowByKey.set(`id:${row.id}`, row);
       if (row.slug) rowByKey.set(`slug:${row.slug}`, row);
     }
@@ -721,12 +742,10 @@ async function loadBulkAdminArticleRows(refs: AdminArticleBulkRef[]) {
   if (slugs.length > 0) {
     const missingSlugs = slugs.filter((slug) => !rowByKey.has(`slug:${slug}`));
     if (missingSlugs.length > 0) {
-      const { data, error } = await supabase
-        .from("articles")
-        .select("id, slug, source_key, status, source_metadata")
-        .in("slug", missingSlugs);
-      if (error) throw new Error(error.message);
-      for (const row of (data ?? []) as AdminArticleRow[]) {
+      const result = await core.prepare(`SELECT ${select} FROM articles WHERE slug IN (${missingSlugs.map(() => "?").join(",")})`).bind(...missingSlugs).all<Record<string, unknown>>();
+      if (result.success === false || result.error) throw new Error(result.error || "admin_bulk.d1_read_failed");
+      for (const raw of result.results ?? []) {
+        const row = decode(raw);
         if (row.id) rowByKey.set(`id:${row.id}`, row);
         if (row.slug) rowByKey.set(`slug:${row.slug}`, row);
       }
@@ -738,7 +757,41 @@ async function loadBulkAdminArticleRows(refs: AdminArticleBulkRef[]) {
     uniqueRows.set(row.id ?? row.slug ?? `${row.source_key}:${uniqueRows.size}`, row);
   }
 
-  return { supabase, rows: [...uniqueRows.values()] };
+  return { core, rows: [...uniqueRows.values()] };
+}
+
+async function syncBulkLifecycleAndPublication(articleId: string, action: AdminArticleBulkAction, note?: string) {
+  const lifecycle = await articleLifecycleService.get(articleId);
+  if (lifecycle.ok) {
+    await articleLifecycleService.transition({
+      articleId,
+      expectedRevision: lifecycle.data.revision,
+      idempotencyKey: `admin-bulk:${createHash(`${articleId}:${lifecycle.data.revision}:${action}`, 64)}`,
+      actorType: "admin",
+      actorId: "admin-bulk-review",
+      source: "admin.bulk_review",
+      reasonCode: action === "close-private" ? "review.bulk_closed_private" : "review.bulk_needs_review",
+      reviewState: action === "close-private" ? "closed_private" : "needs_review",
+    });
+  }
+
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) return;
+  const publication = await core.prepare("SELECT p.state,p.revision,p.version_id,h.current_revision FROM article_publications_p3 p JOIN article_version_heads_p3 h ON h.article_id=p.article_id WHERE p.article_id=? LIMIT 1").bind(articleId).all<{ state: string; revision: number | string; version_id: string; current_revision: number | string }>();
+  const row = publication.results?.[0];
+  if (publication.success === false || publication.error || !row || row.state !== "published") return;
+  await articlePublicationService.transition({
+    articleId,
+    expectedVersionRevision: Number(row.current_revision),
+    expectedPublicationRevision: Number(row.revision),
+    idempotencyKey: `admin-bulk-withdraw:${createHash(`${articleId}:${row.revision}:${action}`, 64)}`,
+    targetState: "withdrawn",
+    versionId: row.version_id,
+    actorType: "human",
+    actorId: "admin-bulk-review",
+    reason: note?.trim() || "Administrator review removed the article from public publication.",
+    safeMetadata: { action },
+  });
 }
 
 function unresolvedBulkRefs(refs: AdminArticleBulkRef[], rows: AdminArticleRow[]) {
@@ -757,8 +810,8 @@ export async function runAdminArticleBulkAction(input: {
   note?: string;
 }): Promise<AdminArticleBulkResult> {
   const { action, refs, note } = input;
-  const { supabase, rows } = await loadBulkAdminArticleRows(refs);
-  if (!supabase) {
+  const { core, rows } = await loadBulkAdminArticleRows(refs);
+  if (!core) {
     return {
       mode: "no-database",
       action,
@@ -772,33 +825,15 @@ export async function runAdminArticleBulkAction(input: {
   let updatedCount = 0;
   for (const row of rows) {
     if (!row.id) continue;
-    const { data: persisted, error } = await supabase
-      .from("articles")
-      .update({
-        status: "needs_review" satisfies ArticleStatus,
-        source_metadata: reviewMetadataForBulk(row, action, note),
-        error_metadata: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", row.id)
-      .select("id")
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (persisted?.id) {
-      await shadowArticleLifecycleTransition({
-        articleId: row.id,
-        cohort: "review",
-        actorType: "admin",
-        source: "admin.bulk_review",
-        reasonCode: action === "close-private" ? "legacy.review.bulk_closed_private" : "legacy.review.bulk_needs_review",
-        reviewState: action === "close-private" ? "closed_private" : "needs_review",
-      });
-      await shadowConfirmedAdminBulkArticleOutcomes(
-        [{ articleId: persisted.id, persisted: true }],
-        { action, notePresent: Boolean(note) },
-      );
+    const now = new Date().toISOString();
+    const result = await core.prepare("UPDATE articles SET status='needs_review',source_metadata=?,error_metadata=NULL,updated_at=? WHERE id=? RETURNING id")
+      .bind(JSON.stringify(reviewMetadataForBulk(row, action, note)), now, row.id)
+      .all<{ id: string }>();
+    if (result.success === false || result.error) throw new Error(result.error || "admin_bulk.d1_write_failed");
+    if (result.results?.[0]?.id) {
+      await syncBulkLifecycleAndPublication(row.id, action, note);
+      updatedCount += 1;
     }
-    updatedCount += 1;
   }
 
   return {

@@ -2,10 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ARTIFACT_BLOB_PROVIDER_ENV,
-  ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS_ENV,
   ArtifactBlobStore,
   buildArtifactStorageRef,
-  createArtifactBlobFallbackTransport,
   createArtifactBlobTransport,
   createR2BindingArtifactBlobTransport,
   createR2S3ArtifactBlobTransport,
@@ -204,59 +202,9 @@ test("Worker R2 binding transport preserves private content type and object-miss
   await assert.rejects(() => store.head(missing), /artifact_blob\.not_found/);
 });
 
-test("ordered fallback chain stops at first hit and writes only to primary", async () => {
-  const primary = new MemoryTransport();
-  const fallback1 = new MemoryTransport();
-  const fallback2 = new MemoryTransport();
-  fallback2.objects.set(REF, PAYLOAD);
-  const transport = createArtifactBlobFallbackTransport({ primary, fallbacks: [fallback1, fallback2] });
-  const store = new ArtifactBlobStore(transport);
-
-  assert.deepEqual(await store.get(REF), PAYLOAD);
-  assert.deepEqual(primary.gets, [REF]);
-  assert.deepEqual(fallback1.gets, [REF]);
-  assert.deepEqual(fallback2.gets, [REF]);
-
-  await transport.put(REF, PAYLOAD, {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
-  assert.deepEqual(primary.puts, [REF]);
-  assert.deepEqual(fallback1.puts, []);
-  assert.deepEqual(fallback2.puts, []);
-});
-
-test("ordered fallback chain never masks operational errors", async () => {
-  const primary = new MemoryTransport();
-  const fallback1 = new MemoryTransport();
-  const fallback2 = new MemoryTransport();
-  fallback2.objects.set(REF, PAYLOAD);
-  fallback1.getError = new Error("legacy-provider-suspended");
-  const transport = createArtifactBlobFallbackTransport({ primary, fallbacks: [fallback1, fallback2] });
-
-  await assert.rejects(
-    () => transport.get(REF, { access: "private", useCache: false }),
-    /legacy-provider-suspended/,
+test("factory rejects non-R2 providers", () => {
+  assert.throws(
+    () => createArtifactBlobTransport({ [ARTIFACT_BLOB_PROVIDER_ENV]: "legacy" }),
+    /artifact_blob\.invalid_provider/,
   );
-  assert.deepEqual(fallback2.gets, []);
-});
-
-test("factory can select R2 and ordered legacy fallback without provider details in refs", async () => {
-  const r2 = new MemoryTransport();
-  const vercel = new MemoryTransport();
-  vercel.objects.set(REF, PAYLOAD);
-  const transport = createArtifactBlobTransport(
-    {
-      [ARTIFACT_BLOB_PROVIDER_ENV]: "r2",
-      [ARTIFACT_BLOB_READ_FALLBACK_PROVIDERS_ENV]: "vercel",
-    },
-    { r2Transport: () => r2, vercelTransport: () => vercel },
-  );
-  const store = new ArtifactBlobStore(transport);
-  assert.deepEqual(await store.get(REF), PAYLOAD);
-  assert.equal(REF.startsWith("artifacts/fetch/"), true);
-  assert.equal(REF.includes("r2"), false);
-  assert.equal(REF.includes("vercel"), false);
 });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminCommandService } from "@/lib/admin/command-control-plane/service";
 import { articlePublicationService } from "@/lib/article-publication/service";
-import { getSupabaseServiceRoleAdmin } from "@/lib/db/client";
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "@/lib/admin/p4/actions";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { createHash } from "@/lib/utils/hash";
@@ -36,16 +36,13 @@ async function audit(request: Request, input: { kind: string; id: string; action
 }
 
 async function candidateRetry(id: string, idempotencyKey: string, operatorIdentity: string) {
-  const supabase = getSupabaseServiceRoleAdmin();
-  if (!supabase) return { ok: false as const, code: "unavailable" };
-  const { data, error } = await supabase
-    .from("source_url_candidates")
-    .select("id,status")
-    .eq("id", id)
-    .maybeSingle();
-  if (error) return { ok: false as const, code: "unavailable" };
-  if (!data) return { ok: false as const, code: "not_found" };
-  if (!["pending", "failed"].includes(String(data.status))) return { ok: false as const, code: "conflict" };
+  const ingest = getRuntimeD1Binding("worldcons_ingest");
+  if (!ingest) return { ok: false as const, code: "unavailable" };
+  const lookup = await ingest.prepare("SELECT id,status FROM source_url_candidates WHERE id=? LIMIT 1").bind(id).all<{ id: string; status: string }>();
+  if (lookup.success === false || lookup.error) return { ok: false as const, code: "unavailable" };
+  const candidate = lookup.results?.[0];
+  if (!candidate) return { ok: false as const, code: "not_found" };
+  if (!["pending", "failed"].includes(String(candidate.status))) return { ok: false as const, code: "conflict" };
 
   const result = await adminCommandService.submit({
     commandType: "p1.candidate.retry",
@@ -69,34 +66,29 @@ async function publicationAction(
   request: Request,
   operatorIdentity: string,
 ) {
-  const supabase = getSupabaseServiceRoleAdmin();
-  if (!supabase) return { ok: false as const, code: "unavailable" };
-  const [{ data: publication, error: publicationError }, { data: head, error: headError }] = await Promise.all([
-    supabase
-      .from("article_publications_p3")
-      .select("article_id,state,revision,version_id")
-      .eq("article_id", id)
-      .maybeSingle(),
-    supabase
-      .from("article_version_heads_p3")
-      .select("article_id,current_version_id,current_revision")
-      .eq("article_id", id)
-      .maybeSingle(),
-  ]);
-  if (publicationError || headError) return { ok: false as const, code: "unavailable" };
-  if (!publication || !head) return { ok: false as const, code: "not_found" };
-  const currentState = String(publication.state);
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) return { ok: false as const, code: "unavailable" };
+  const lookup = await core.prepare([
+    "SELECT p.state,p.revision,p.version_id,h.current_version_id,h.current_revision",
+    "FROM article_publications_p3 p",
+    "JOIN article_version_heads_p3 h ON h.article_id=p.article_id",
+    "WHERE p.article_id=? LIMIT 1",
+  ].join(" ")).bind(id).all<{ state: string; revision: number | string; version_id: string; current_version_id: string; current_revision: number | string }>();
+  if (lookup.success === false || lookup.error) return { ok: false as const, code: "unavailable" };
+  const row = lookup.results?.[0];
+  if (!row) return { ok: false as const, code: "not_found" };
+  const currentState = String(row.state);
   if (action === "publish" && !["in_review", "withdrawn"].includes(currentState)) return { ok: false as const, code: "illegal_transition" };
   if (action === "withdraw" && currentState !== "published") return { ok: false as const, code: "illegal_transition" };
 
   const requestId = request.headers.get("x-request-id")?.trim().slice(0, 160) || null;
   const result = await articlePublicationService.transition({
     articleId: id,
-    expectedVersionRevision: Number(head.current_revision),
-    expectedPublicationRevision: Number(publication.revision),
+    expectedVersionRevision: Number(row.current_revision),
+    expectedPublicationRevision: Number(row.revision),
     idempotencyKey: `p4:${createHash(`publication:${id}:${action}:${idempotencyKey}`, 64)}`,
     targetState: action === "publish" ? "published" : "withdrawn",
-    versionId: action === "withdraw" ? String(publication.version_id) : String(head.current_version_id),
+    versionId: action === "withdraw" ? String(row.version_id) : String(row.current_version_id),
     actorType: "human",
     actorId: operatorIdentity,
     reason,

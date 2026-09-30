@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { AdminWorkDetail } from "@/components/admin-work-detail";
-import { getAdminWorkItemDetail } from "@/lib/admin/p4/repository";
+import { getD1AdminWorkItemDetail } from "@/lib/admin/p4/d1-repository";
 import { ADMIN_WORK_TYPES, type AdminWorkType } from "@/lib/admin/p4/types";
 import { createAdminCsrfToken, isAuthorizedPageRequest } from "@/lib/utils/auth";
 
@@ -13,7 +13,7 @@ export default async function AdminWorkDetailPage({ params }: { params: Promise<
   if (!(await isAuthorizedPageRequest())) redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`);
   if (!ADMIN_WORK_TYPES.includes(kind as AdminWorkType) || !/^[A-Za-z0-9-]{1,120}$/.test(id)) notFound();
 
-  const [detail, csrfToken] = await Promise.all([getAdminWorkItemDetail(kind as AdminWorkType, id), createAdminCsrfToken()]);
+  const [detail, csrfToken] = await Promise.all([getD1AdminWorkItemDetail(kind as AdminWorkType, id), createAdminCsrfToken()]);
   if (!detail) notFound();
   return <AdminWorkDetail detail={detail} csrfToken={csrfToken ?? ""} />;
 }
