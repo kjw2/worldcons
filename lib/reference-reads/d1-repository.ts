@@ -1,4 +1,3 @@
-import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
 import {
   runD1RuntimeRead,
   type D1RuntimeReadOrder,
@@ -24,6 +23,8 @@ import {
   type SupabaseTagRow,
 } from "@/lib/reference-reads/shared";
 import type { JurisdictionCountOptions, ReferenceReadRepository, TagListOptions } from "@/lib/reference-reads/types";
+
+export const D1_REFERENCE_READ_DEFAULT_MAX_ROWS = 10_000;
 
 /**
  * M6.1 + M6.2 D1-backed reference reads.
@@ -113,7 +114,7 @@ function boundedIngestionLimit(limit: number | undefined, maxRows: number): numb
 export function createD1ReferenceReadRepository(
   dependencies: D1ReferenceReadDependencies = {},
 ): ReferenceReadRepository {
-  const maxRows = dependencies.maxRows ?? D1_SHADOW_DEFAULT_MAX_ROWS;
+  const maxRows = dependencies.maxRows ?? D1_REFERENCE_READ_DEFAULT_MAX_ROWS;
   const tables = tableByName();
 
   function requireTable(name: string): D1TableDefinition {

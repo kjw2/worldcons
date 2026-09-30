@@ -4,7 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { D1RuntimeReadError, buildD1RuntimeReadStatement, runD1RuntimeRead } from "../lib/cloudflare/d1/runtime-read";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import { d1Schema } from "../lib/cloudflare/d1/schema";
-import { createD1ReferenceReadRepository, D1ShadowTruncatedError } from "../lib/reference-reads/d1-repository";
+import {
+  createD1ReferenceReadRepository,
+  D1_REFERENCE_READ_DEFAULT_MAX_ROWS,
+  D1ShadowTruncatedError,
+} from "../lib/reference-reads/d1-repository";
 import { createSupabaseReferenceReadRepository } from "../lib/reference-reads/supabase-repository";
 
 /**
@@ -345,7 +349,7 @@ test("D1 and Supabase source mapping are identical (boolean 0/1 and true/false)"
   assert.deepEqual(shadow, authoritative);
   assert.equal(shadow[0].isActive, true);
   assert.equal(shadow[1].isActive, false);
-  assert.deepEqual(d1.calls[0].params, [2000]);
+  assert.deepEqual(d1.calls[0].params, [D1_REFERENCE_READ_DEFAULT_MAX_ROWS]);
 });
 
 test("D1 and Supabase glossary mapping are identical and keep the Korean-label order", async () => {
@@ -470,6 +474,10 @@ test("D1 listTags safely bounds an omitted limit and getTagBySlug orders by name
   await createD1ReferenceReadRepository({ binding: d1.database }).listTags({ sort: "name", limit: 2 });
   assert.match(d1.calls[1].sql, /order by name asc limit \?/);
   assert.deepEqual(d1.calls[1].params, [2]);
+
+  const defaultBound = createFakeD1({ tags: TAG_ROWS });
+  await createD1ReferenceReadRepository({ binding: defaultBound.database }).listTags({ sort: "name" });
+  assert.deepEqual(defaultBound.calls[0].params, [10_001]);
 });
 
 test("D1 listIngestionRuns uses the ingest binding, revives metadata and truncates overflow", async () => {
@@ -527,7 +535,7 @@ test("D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-
   assert.deepEqual(shadow, { France: 2, Spain: 0 });
 
   assert.match(d1.calls[0].sql, /select jurisdiction, source_metadata from articles where status = \? limit \?/);
-  assert.deepEqual(d1.calls[0].params, ["summarized", 2001]);
+  assert.deepEqual(d1.calls[0].params, ["summarized", D1_REFERENCE_READ_DEFAULT_MAX_ROWS + 1]);
 });
 
 test("D1 listJurisdictionArticleCounts truncates overflow and applies the range lower bound", async () => {
