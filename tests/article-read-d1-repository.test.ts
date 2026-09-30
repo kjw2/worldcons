@@ -86,7 +86,10 @@ function evaluate(sql: string, params: unknown[], tables: Record<string, Record<
   return { table, rows };
 }
 
-function createFakeD1(tables: Record<string, Record<string, unknown>[]>) {
+function createFakeD1(
+  tables: Record<string, Record<string, unknown>[]>,
+  options: { maxBoundParams?: number } = {},
+) {
   const calls: CapturedStatement[] = [];
   const database: D1RuntimeDatabase = {
     prepare(sql: string): D1RuntimePreparedStatement {
@@ -97,6 +100,9 @@ function createFakeD1(tables: Record<string, Record<string, unknown>[]>) {
           return statement;
         },
         async all<T = Record<string, unknown>>() {
+          if (options.maxBoundParams !== undefined && params.length > options.maxBoundParams) {
+            throw new Error(`too many SQL variables: ${params.length}`);
+          }
           const evaluated = evaluate(sql, params, tables);
           calls.push({ sql, params, table: evaluated.table });
           return { success: true, results: evaluated.rows as unknown as T[] };
@@ -283,6 +289,45 @@ test("D1 article adapter listArticles preserves ordering, paging, count and view
   const none = await repository.listArticles({ page: 1, pageSize: 2, count: "none" });
   assert.equal(none.pageInfo.total, 3);
   assert.equal(none.pageInfo.totalIsExact, false);
+});
+
+test("D1 article adapter chunks tag hydration below the D1 bind-parameter ceiling", async () => {
+  const articles = Array.from({ length: 9 }, (_, articleIndex) => d1Article({
+    id: `article-${articleIndex}`,
+    slug: `case-${articleIndex}`,
+    original_published_at: `2026-08-${String(20 - articleIndex).padStart(2, "0")}T00:00:00.000Z`,
+  }));
+  const articleTags: Record<string, unknown>[] = [];
+  const tags: Record<string, unknown>[] = [];
+  for (let tagIndex = 0; tagIndex < 104; tagIndex += 1) {
+    const tagId = `tag-${String(tagIndex).padStart(3, "0")}`;
+    const articleId = `article-${tagIndex % articles.length}`;
+    articleTags.push({ article_id: articleId, tag_id: tagId, confidence: 0.8 });
+    tags.push({
+      id: tagId,
+      slug: `tag-${tagIndex}`,
+      name: `Tag ${tagIndex}`,
+      normalized_name: `Tag ${tagIndex}`,
+      type: "topic",
+      description: null,
+      article_count: 1,
+      latest_article_at: "2026-08-20T00:00:00.000Z",
+    });
+  }
+  const fake = createFakeD1(
+    { articles, article_tags: articleTags, tags, article_view_counts: [] },
+    { maxBoundParams: 100 },
+  );
+  const repository = createD1ArticleReadRepository({ binding: fake.database });
+
+  const result = await repository.listArticles({ pageSize: 9, includeViewCounts: false });
+  assert.equal(result.items.length, 9);
+  assert.equal(result.items.reduce((sum, article) => sum + article.tags.length, 0), 104);
+
+  const tagReads = fake.calls.filter((call) => call.table === "tags");
+  assert.equal(tagReads.length, 2, "104 tag ids must be split into two D1 reads");
+  assert.ok(tagReads.every((call) => call.params.length <= 81), "each tag read keeps IN params plus LIMIT below the safe ceiling");
+  assert.deepEqual(tagReads.map((call) => call.params.length), [81, 25]);
 });
 
 test("D1 article adapter listArticles applies source/jurisdiction/type/language/range/tag filters", async () => {

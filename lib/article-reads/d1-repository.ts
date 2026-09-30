@@ -125,6 +125,20 @@ const LIST_ORDER: D1RuntimeReadOrder[] = [
   { column: "id", direction: "asc" },
 ];
 
+// Cloudflare D1 rejects statements with too many bound parameters. Public
+// article hydration can easily exceed that boundary because a single page of
+// cases may reference hundreds of distinct tags. Keep IN lists deliberately
+// below the platform ceiling; the query limit itself is also a bound parameter.
+const D1_IN_BATCH_SIZE = 80;
+
+function batches<T>(values: readonly T[], size = D1_IN_BATCH_SIZE): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
+}
+
 function tableByName(schema = d1Schema): Map<string, D1TableDefinition> {
   return new Map(schema.tables.map((table) => [table.name, table]));
 }
@@ -236,6 +250,30 @@ export function createD1ArticleReadRepository(
     });
   }
 
+  async function readByInBatches(
+    binding: D1RuntimeDatabase,
+    table: string,
+    column: string,
+    values: readonly string[],
+    request: {
+      select?: readonly string[];
+      where?: readonly D1RuntimeReadPredicate[];
+      orderBy?: readonly (string | D1RuntimeReadOrder)[];
+      limit: number;
+    },
+  ): Promise<Record<string, unknown>[]> {
+    if (values.length === 0) return [];
+    const rows: Record<string, unknown>[] = [];
+    for (const batch of batches(values)) {
+      rows.push(...await read(binding, table, {
+        ...request,
+        where: [...(request.where ?? []), { column, op: "in", value: batch }],
+      }));
+      if (rows.length > maxRows) break;
+    }
+    return rows;
+  }
+
   async function hydrateArticleTags(
     binding: D1RuntimeDatabase,
     rows: Record<string, unknown>[],
@@ -243,9 +281,8 @@ export function createD1ArticleReadRepository(
     const articleIds = uniqueStrings(rows.map((row) => row.id));
     if (articleIds.length === 0) return rows.map((row) => ({ ...row, article_tags: [] }));
 
-    const links = await read(binding, "article_tags", {
+    const links = await readByInBatches(binding, "article_tags", "article_id", articleIds, {
       select: ["article_id", "tag_id", "confidence"],
-      where: [{ column: "article_id", op: "in", value: articleIds }],
       orderBy: [
         { column: "article_id", direction: "asc" },
         { column: "tag_id", direction: "asc" },
@@ -258,9 +295,8 @@ export function createD1ArticleReadRepository(
     const tagRows =
       tagIds.length === 0
         ? []
-        : await read(binding, "tags", {
+        : await readByInBatches(binding, "tags", "id", tagIds, {
             select: [...TAG_COLUMNS],
-            where: [{ column: "id", op: "in", value: tagIds }],
             orderBy: ["id"],
             limit: maxRows + 1,
           });
@@ -294,9 +330,8 @@ export function createD1ArticleReadRepository(
     if (items.length === 0) return items;
     const slugs = uniqueStrings(items.map((item) => item.slug));
     if (slugs.length === 0) return items;
-    const rows = await read(binding, "article_view_counts", {
+    const rows = await readByInBatches(binding, "article_view_counts", "article_slug", slugs, {
       select: ["article_slug", "view_count"],
-      where: [{ column: "article_slug", op: "in", value: slugs }],
       limit: maxRows + 1,
     });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("attachViewCounts");
@@ -325,9 +360,8 @@ export function createD1ArticleReadRepository(
   }
 
   async function articleIdsForTagIds(binding: D1RuntimeDatabase, tagIds: string[]): Promise<string[]> {
-    const rows = await read(binding, "article_tags", {
+    const rows = await readByInBatches(binding, "article_tags", "tag_id", tagIds, {
       select: ["article_id"],
-      where: [{ column: "tag_id", op: "in", value: tagIds }],
       limit: maxRows + 1,
     });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("articleIdsForTagIds");
