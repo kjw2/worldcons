@@ -60,6 +60,7 @@ const SOURCE_INFO: Record<NativeCrawlerSource, { name: string; jurisdiction: str
 const BVERFG_OPENLEGALDATA_URL = "https://de.openlegaldata.io/api/cases/?court=3&format=json&o=-date";
 const SPAIN_TAIL_PROBE_LIMIT = 30;
 const SPAIN_TAIL_EMPTY_STOP = 3;
+const SPAIN_SEARCH_TYPES = ["SENTENCIA", "AUTO", "DECLARACION"] as const;
 
 const SPANISH_MONTHS: Record<string, string> = { enero: "01", febrero: "02", marzo: "03", abril: "04", mayo: "05", junio: "06", julio: "07", agosto: "08", septiembre: "09", setiembre: "09", octubre: "10", noviembre: "11", diciembre: "12" };
 const FRENCH_MONTHS: Record<string, string> = { janvier: "01", février: "02", fevrier: "02", mars: "03", avril: "04", mai: "05", juin: "06", juillet: "07", août: "08", aout: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12", decembre: "12" };
@@ -320,6 +321,113 @@ function discoverSpain(html: string, base: string): NativeArticleCandidate[] {
   return absoluteLinks(html, base).filter((link) => officialHost("es-tribunal-constitucional", link.url) && /\/Resolucion\/Show\/\d+/i.test(link.url)).map((link) => ({
     sourceKey: "es-tribunal-constitucional", url: link.url, title: link.title || `Resolución HJ ${link.url.match(/Show\/(\d+)/i)?.[1]}`, publishedAt: dateIso(link.context), contentType: /\bAUTO\b/i.test(link.title) ? "order" : "decision", metadata: { hjId: link.url.match(/Show\/(\d+)/i)?.[1], collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: true, sourceTextAvailable: false, strictSourceTextAvailable: true, publishable: false } },
   }));
+}
+
+function headerSetCookies(headers: Headers) {
+  const extended = headers as Headers & { getSetCookie?: () => string[] };
+  const values = extended.getSetCookie?.();
+  if (values?.length) return values;
+  const value = headers.get("set-cookie");
+  return value ? [value] : [];
+}
+
+function mergeCookies(cookies: Map<string, string>, values: string[]) {
+  for (const value of values) {
+    const first = value.split(";")[0];
+    const index = first.indexOf("=");
+    if (index > 0) cookies.set(first.slice(0, index), first.slice(index + 1));
+  }
+}
+
+function cookieHeader(cookies: Map<string, string>) {
+  return [...cookies.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+function ddMmYyyy(value: string) {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, rangeStart: number, limit: number) {
+  const base = SOURCE_INFO["es-tribunal-constitucional"].baseUrl;
+  const indexPaths = ["/HJ/es/Busqueda/Index", "/es/Busqueda/Index"];
+  let session: { indexUrl: string; ajaxUrls: string[]; listUrls: string[]; token: string; cookies: Map<string, string> } | null = null;
+  for (const path of indexPaths) {
+    const indexUrl = `${base}${path}`;
+    try {
+      await waitForSourcePermit("es-tribunal-constitucional", indexUrl, fetcher, robotsCache, lastRequest);
+      const response = await fetcher(indexUrl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+      if (!response.ok) continue;
+      const cookies = new Map<string, string>();
+      mergeCookies(cookies, headerSetCookies(response.headers));
+      const html = await response.text();
+      const token = html.match(/name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)/i)?.[1]
+        ?? html.match(/value=["']([^"']+)["'][^>]*name=["']__RequestVerificationToken/i)?.[1];
+      if (!token) continue;
+      const prefix = path.startsWith("/HJ/") ? "/HJ" : "";
+      session = {
+        indexUrl,
+        ajaxUrls: [`${base}${prefix}/es/Busqueda/BuscarAjax`, `${base}/HJ/es/Busqueda/BuscarAjax`, `${base}/es/Busqueda/BuscarAjax`],
+        listUrls: [`${base}${prefix}/es/Resolucion/List`, `${base}/HJ/es/Resolucion/List`, `${base}/es/Resolucion/List`],
+        token,
+        cookies,
+      };
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!session) return [];
+
+  const from = new Date(rangeStart).toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
+  const fromYear = Number(from.slice(0, 4));
+  const toYear = Number(to.slice(0, 4));
+  const candidates = new Map<string, NativeArticleCandidate>();
+
+  for (const type of SPAIN_SEARCH_TYPES) {
+    for (let year = toYear; year >= fromYear && candidates.size < limit; year -= 1) {
+      const body = new URLSearchParams({ __RequestVerificationToken: session.token, TIPO_RESOLUCION: type, NUMERO_RESOLUCION: "", ANNO_RESOLUCION: String(year), BIS_RESOLUCION: "", FECHA_DESDE: ddMmYyyy(from), FECHA_HASTA: ddMmYyyy(to), BUSQUEDA_LIBRE: "" });
+      let hasResults = false;
+      for (const ajaxUrl of [...new Set(session.ajaxUrls)]) {
+        try {
+          await waitForSourcePermit("es-tribunal-constitucional", ajaxUrl, fetcher, robotsCache, lastRequest);
+          const response = await fetcher(ajaxUrl, { method: "POST", headers: { accept: "application/json,text/plain,*/*", "accept-language": "es,en;q=0.8,ko;q=0.5", "content-type": "application/x-www-form-urlencoded; charset=UTF-8", cookie: cookieHeader(session.cookies), origin: base, referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, body, redirect: "follow" });
+          mergeCookies(session.cookies, headerSetCookies(response.headers));
+          const text = await response.text();
+          if (response.ok && /"success"\s*:\s*"1"/.test(text)) { hasResults = true; break; }
+          if (response.ok && /"success"\s*:\s*"0"/.test(text) && /No se han encontrado resultados/i.test(text)) break;
+        } catch {
+          continue;
+        }
+      }
+      if (!hasResults) continue;
+
+      for (let page = 1; page <= 4 && candidates.size < limit; page += 1) {
+        let pageItems: NativeArticleCandidate[] | null = null;
+        for (const listUrl of [...new Set(session.listUrls)]) {
+          try {
+            const url = `${listUrl}?page=${page}`;
+            await waitForSourcePermit("es-tribunal-constitucional", url, fetcher, robotsCache, lastRequest);
+            const response = await fetcher(url, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", cookie: cookieHeader(session.cookies), referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+            mergeCookies(session.cookies, headerSetCookies(response.headers));
+            if (!response.ok) continue;
+            const html = await response.text();
+            pageItems = discoverSpain(html, base).map((candidate) => ({ ...candidate, metadata: { ...candidate.metadata, discoveryIndex: "official-search", resolutionType: type, collection: { ...(candidate.metadata.collection as Record<string, unknown>), strategy: "api", confidence: "high", sourceUrlVerified: true } } }));
+            break;
+          } catch {
+            continue;
+          }
+        }
+        if (!pageItems?.length) break;
+        for (const candidate of pageItems) {
+          if (withinRange(candidate.publishedAt, rangeStart)) candidates.set(candidate.url, candidate);
+          if (candidates.size >= limit) break;
+        }
+      }
+    }
+  }
+  return [...candidates.values()].slice(0, limit);
 }
 
 function spainPayloadCandidate(payload: Record<string, unknown>, hjId: number): NativeArticleCandidate | null {
@@ -585,10 +693,12 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
     const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
     return discoverFrance(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
   }
-  const url = `${base}/HJ/es/Busqueda/Index`;
-  const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-  const candidates = discoverSpain(result.html, url);
-  if (candidates.length > 0) return candidates.filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
+  const indexUrl = `${base}/HJ/es/Busqueda/Index`;
+  const indexResult = await fetchHtml(source, indexUrl, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+  const direct = discoverSpain(indexResult.html, indexUrl).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
+  if (direct.length > 0) return direct;
+  const searched = await discoverSpainSearch(fetcher, robotsCache, lastRequest, rangeStart, limit);
+  if (searched.length > 0) return searched;
   return discoverSpainTail(bindings, fetcher, robotsCache, lastRequest, rangeStart, limit, browserNavigate);
 }
 
@@ -642,6 +752,12 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
         return { text: sufficient ? text : `${candidate.title}\n${candidate.url}`, status: 200, fetched: true };
       }
     }
+    candidate.metadata.review = { required: true, reason: "official_json_unavailable" };
+    const collection = candidate.metadata.collection as Record<string, unknown>;
+    collection.strictSourceTextAvailable = true;
+    collection.sourceTextAvailable = false;
+    collection.publishable = false;
+    return { text: `${candidate.title}\n${candidate.publishedAt ?? ""}\n${candidate.url}`, status: 0, fetched: false };
   }
   const result = await fetchHtml(candidate.sourceKey, candidate.url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
   (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified = true;
@@ -698,10 +814,12 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
         const collection = candidate.metadata.collection as Record<string, unknown>;
         if (!fetched.fetched) {
           uncollectedCount += 1;
-          const unavailableCode = source === "de-bverfg" ? "BVERFG_OFFICIAL_VARIANTS_404" : "PDF_TEXT_EXTRACTION_UNAVAILABLE";
+          const unavailableCode = source === "de-bverfg" ? "BVERFG_OFFICIAL_VARIANTS_404" : source === "es-tribunal-constitucional" ? "SPAIN_SOURCE_TEXT_UNAVAILABLE" : "PDF_TEXT_EXTRACTION_UNAVAILABLE";
           const unavailableMessage = source === "de-bverfg"
             ? "Official BVerfG URL variants are not published yet; keep the discovery candidate for bounded recheck."
-            : "Official PDF metadata preserved; source text awaits review.";
+            : source === "es-tribunal-constitucional"
+              ? "Official Spain HJ listing metadata is preserved; JSON source text is temporarily unavailable."
+              : "Official PDF metadata preserved; source text awaits review.";
           await upsertCandidate(bindings.WORLDCONS_INGEST, source, candidate.url, unavailableCode, unavailableMessage, false);
           if (source === "de-bverfg") continue;
         } else {
