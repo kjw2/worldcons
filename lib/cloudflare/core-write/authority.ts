@@ -338,16 +338,16 @@ export async function transitionArticleLifecycleInD1(
         "UPDATE articles SET lifecycle_collection_state=?,lifecycle_processing_state=?,lifecycle_review_state=?,lifecycle_attention_state=?,lifecycle_attention_code=?,lifecycle_attention_retryable=?,lifecycle_attention_severity=?,lifecycle_attention_source=?,lifecycle_attention_raised_at=?,lifecycle_attention_cleared_at=?,lifecycle_revision=?,lifecycle_changed_at=?,lifecycle_collection_changed_at=CASE WHEN lifecycle_collection_state IS NOT ? THEN ? ELSE lifecycle_collection_changed_at END,lifecycle_processing_changed_at=CASE WHEN lifecycle_processing_state IS NOT ? THEN ? ELSE lifecycle_processing_changed_at END,lifecycle_review_changed_at=CASE WHEN lifecycle_review_state IS NOT ? THEN ? ELSE lifecycle_review_changed_at END,lifecycle_attention_changed_at=CASE WHEN lifecycle_attention_state IS NOT ? OR lifecycle_attention_code IS NOT ? THEN ? ELSE lifecycle_attention_changed_at END WHERE id=? AND CAST(lifecycle_revision AS INTEGER)=?",
       ).bind(
         collectionState, processingState, reviewState, attentionState, attentionCode,
-        attentionRetryable, attentionSeverity, attentionSource, attentionRaisedAt, attentionClearedAt,
+        attentionRetryable === null ? null : Number(attentionRetryable), attentionSeverity, attentionSource, attentionRaisedAt, attentionClearedAt,
         revision, now, collectionState, now, processingState, now, reviewState, now,
         attentionState, attentionCode, now, input.articleId, current.revision,
       ));
     }
     const eventValues = [
       decimalIdentity(), input.articleId, input.idempotencyKey, String(current.revision), String(revision),
-      input.actorType, input.actorId ?? null, input.source, input.reasonCode, applied,
+      input.actorType, input.actorId ?? null, input.source, input.reasonCode, Number(applied),
       collectionState, processingState, reviewState, attentionState, attentionCode,
-      attentionRetryable, attentionSeverity, attentionSource, now,
+      attentionRetryable === null ? null : Number(attentionRetryable), attentionSeverity, attentionSource, now,
     ];
     statements.push(applied
       ? binding.prepare(
@@ -555,7 +555,6 @@ export async function transitionArticlePublicationInD1(
         discoveredAt: article.discovered_at,
         fetchedAt: article.fetched_at,
         summarizedAt: article.summarized_at,
-        rawText: article.raw_text,
         cleanedText: article.cleaned_text,
         summaryJson: jsonObject(article.summary_json),
         sourceMetadata,
@@ -596,7 +595,7 @@ export async function transitionArticlePublicationInD1(
           error_metadata: JSON.stringify(errorMetadata),
         };
         versionInsert = binding.prepare(
-          "INSERT INTO article_content_versions_p3 (id,article_id,revision,parent_version_id,content_hash,provenance_actor_type,provenance_actor_id,model_ref,prompt_ref,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,korean_title,original_published_at,discovered_at,fetched_at,summarized_at,raw_text,cleaned_text,summary_json,source_metadata,error_metadata,created_at,case_key,version_document_schema,raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO article_content_versions_p3 (id,article_id,revision,parent_version_id,content_hash,provenance_actor_type,provenance_actor_id,model_ref,prompt_ref,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,korean_title,original_published_at,discovered_at,fetched_at,summarized_at,cleaned_text,summary_json,source_metadata,error_metadata,created_at,case_key,version_document_schema,raw_text_storage_ref,raw_text_blob_hash,raw_text_blob_size,raw_text_externalized_at,raw_text_blob_contract_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ).bind(
           versionId, input.articleId, String(versionRevision), head?.current_version_id ?? null, contentHash,
           input.provenanceActorType ?? "human", input.provenanceActorId ?? null, input.modelRef ?? null,
@@ -604,7 +603,7 @@ export async function transitionArticlePublicationInD1(
           article.institution_name, article.content_type, article.original_url, article.canonical_url,
           article.original_language, article.original_title ?? null, article.korean_title ?? null,
           article.original_published_at ?? null, article.discovered_at ?? null, article.fetched_at ?? null,
-          article.summarized_at ?? null, article.raw_text ?? null, article.cleaned_text ?? null,
+          article.summarized_at ?? null, article.cleaned_text ?? null,
           JSON.stringify(versionDocument.summaryJson), JSON.stringify(sourceMetadata), JSON.stringify(errorMetadata),
           now, article.case_key ?? null, "p3.article.v1", article.raw_text_storage_ref ?? null,
           article.raw_text_blob_hash ?? null, article.raw_text_blob_size ?? null,
@@ -741,7 +740,7 @@ export async function transitionArticlePublicationInD1(
       "INSERT INTO article_publication_requests_p3 (id,article_id,idempotency_key,publication_id,publication_revision,version_id,version_revision,state,version_created,publication_applied,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
     ).bind(
       decimalIdentity(), input.articleId, input.idempotencyKey, publicationId, String(publicationRevision),
-      versionId, String(versionRevision), input.targetState, versionCreated, publicationApplied, now,
+      versionId, String(versionRevision), input.targetState, Number(versionCreated), Number(publicationApplied), now,
     ));
     await batch(binding, statements);
     return {

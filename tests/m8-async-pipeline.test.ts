@@ -111,11 +111,51 @@ test("native M8 kinds bypass GitHub dispatch while legacy kinds keep compatibili
   const embedding = buildM8TaskMessage("embedding-backfill", Date.parse("2026-09-26T08:45:00Z"));
   assert.equal(isM8NativeTaskKind(embedding.kind), true);
   assert.equal(await routeM8Task(embedding, async (task) => { nativeCalls.push(task.kind); return "native"; }, async () => { githubDispatchCount += 1; return "github"; }), "native");
+  const summary = buildM8TaskMessage("summary-drain", Date.parse("2026-09-26T08:45:00Z"));
+  assert.equal(isM8NativeTaskKind(summary.kind), true);
+  assert.equal(await routeM8Task(summary, async (task) => { nativeCalls.push(task.kind); return "native"; }, async () => { githubDispatchCount += 1; return "github"; }), "native");
   assert.equal(githubDispatchCount, 0);
-  assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health", "embedding-backfill"]);
+  assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health", "embedding-backfill", "summary-drain"]);
+  assert.throws(() => githubDispatchForM8Task(summary), /m8\.github_dispatch_unsupported:summary-drain/u);
   const legacy = buildM8TaskMessage("crawler-daily", Date.parse("2026-09-26T08:45:00Z"));
   assert.equal(await routeM8Task<string>(legacy, async () => "native", async () => { githubDispatchCount += 1; return "github"; }), "github");
   assert.equal(githubDispatchCount, 1);
+});
+
+test("summary native executor invokes the main Worker RPC with workflow defaults", async () => {
+  const message = buildM8TaskMessage("summary-drain", Date.parse("2026-09-26T08:45:00Z"));
+  let call: unknown;
+  let stepName = "";
+  let stepOptions: unknown;
+  const result = await executeM8TaskNative({
+    WORLDCONS_OPS: {} as never,
+    WORLDCONS_CORE: {} as never,
+    WORLDCONS_INGEST: {} as never,
+    WORLDCONS_APP_SERVICE: {
+      async runAdminJobDrain() { throw new Error("not expected"); },
+      async runEmbeddingBackfill() { throw new Error("not expected"); },
+      async runSummaryDrain(input) {
+        call = input;
+        return {
+          mode: "database", status: "completed", summarizedCount: 2, failedCount: 0, skippedCount: 0,
+          deferredCount: 0, candidateCount: 2, attemptedCount: 2, retryCount: 0, passes: 1, limitReached: false,
+        };
+      },
+    },
+  }, message, {
+    async do<T>(name: string, options: unknown, callback: () => Promise<T>) {
+      stepName = name;
+      stepOptions = options;
+      return callback();
+    },
+  });
+  assert.equal(stepName, "native-summary-drain");
+  assert.equal((stepOptions as { timeout: string }).timeout, "50 minutes");
+  assert.deepEqual(call, { limit: 60, maxPasses: 6, retryAttempts: 1, retryDelayMs: 65_000 });
+  assert.equal((result as { kind: string }).kind, "summary-drain");
+  const executor = fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/native-executor.ts"), "utf8");
+  assert.match(executor, /runSummaryDrain\(/u);
+  assert.doesNotMatch(executor, /githubDispatchForM8Task/u);
 });
 
 test("embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch", async () => {
@@ -136,6 +176,7 @@ test("embedding native executor invokes WorldconsOpsService RPC without GitHub d
           missingBefore: 0, missingAfter: 0, readiness: null,
         };
       },
+      async runSummaryDrain() { throw new Error("not expected"); },
     },
   }, message, {
     async do<T>(name: string, options: unknown, callback: () => Promise<T>) {
@@ -153,13 +194,18 @@ test("embedding native executor invokes WorldconsOpsService RPC without GitHub d
   assert.doesNotMatch(executor, /githubDispatchForM8Task/u);
 });
 
-test("github input preserves the original colon-form idempotency key", () => {
+test("GitHub dispatch supports only crawler-daily and preserves its stable idempotency key", () => {
   for (const kind of M8_TASK_KINDS) {
     const message = buildM8TaskMessage(kind, Date.parse("2026-09-26T08:45:00Z"));
-    const dispatch = githubDispatchForM8Task(message);
-    assert.equal(dispatch.inputs.m8_idempotency_key, message.idempotencyKey);
-    assert.match(dispatch.inputs.m8_idempotency_key, /^m8:[a-z-]+:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$/);
-    assert.notEqual(dispatch.inputs.m8_idempotency_key, workflowInstanceId(message));
+    if (kind === "crawler-daily") {
+      const dispatch = githubDispatchForM8Task(message);
+      assert.equal(dispatch.inputs.m8_idempotency_key, message.idempotencyKey);
+      assert.match(dispatch.inputs.m8_idempotency_key, /^m8:[a-z-]+:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$/);
+      assert.notEqual(dispatch.inputs.m8_idempotency_key, workflowInstanceId(message));
+    } else {
+      assert.equal(isM8NativeTaskKind(kind), true);
+      assert.throws(() => githubDispatchForM8Task(message), new RegExp(`m8\\.github_dispatch_unsupported:${kind}`, "u"));
+    }
   }
 });
 
@@ -270,9 +316,9 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
     policy,
   });
   assert.equal(report.workflowInstanceIdValid, true);
-  assert.equal(report.githubDispatch.workflow, "admin-health-p5.yml");
-  assert.equal(report.githubDispatch.inputs.m8_idempotency_key, report.message.idempotencyKey);
-  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,admin-health,embedding-backfill");
+  assert.equal(report.route, "native");
+  assert.equal(report.githubDispatch, null);
+  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,admin-health,embedding-backfill,summary-drain");
   assert.equal(report.enabledKindsValid, true);
   assert.equal(report.kindEnabled, true, "the checked-in enabled scheduler allows admin-health");
 
@@ -289,13 +335,15 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
     policy: enabledPolicy,
   });
   assert.equal(blockedReport.kindEnabled, false);
+  assert.equal(blockedReport.route, "github");
+  assert.equal(blockedReport.githubDispatch?.workflow, "crawlee-worker.yml");
 });
 
 test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, "workers/async-pipeline/wrangler.jsonc"), "utf8"));
   const consumer = config.queues.consumers[0];
   assert.equal(config.vars.M8_SCHEDULER_ENABLED, "true");
-  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,admin-health,embedding-backfill");
+  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,admin-health,embedding-backfill,summary-drain");
   assert.deepEqual(config.triggers.crons, M8_CRON_EXPRESSIONS);
   assert.equal(consumer.max_concurrency, 1);
   assert.equal(consumer.max_retries, 3);

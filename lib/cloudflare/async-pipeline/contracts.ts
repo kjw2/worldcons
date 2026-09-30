@@ -47,13 +47,8 @@ const CRON_TASKS: Readonly<Record<string, readonly M8TaskKind[]>> = {
   "17 20 * * *": ["admin-health"],
 };
 
-const WORKFLOW_BY_KIND: Readonly<Record<M8TaskKind, string>> = {
-  "admin-job-drain": "admin-job-worker.yml",
-  watchdog: "admin-watchdog.yml",
+const WORKFLOW_BY_KIND: Readonly<Partial<Record<M8TaskKind, string>>> = {
   "crawler-daily": "crawlee-worker.yml",
-  "embedding-backfill": "embedding-backfill.yml",
-  "summary-drain": "summary-drain.yml",
-  "admin-health": "admin-health-p5.yml",
 };
 
 function scheduledMinute(scheduledTime: number) {
@@ -283,8 +278,8 @@ export function isM8WorkflowInstanceId(id: string): boolean {
   return id.length > 0 && id.length <= M8_WORKFLOW_INSTANCE_ID_MAX_LENGTH && M8_WORKFLOW_INSTANCE_ID_PATTERN.test(id);
 }
 
-export function isM8NativeTaskKind(kind: M8TaskKind): kind is "admin-job-drain" | "watchdog" | "admin-health" | "embedding-backfill" {
-  return kind === "admin-job-drain" || kind === "watchdog" || kind === "admin-health" || kind === "embedding-backfill";
+export function isM8NativeTaskKind(kind: M8TaskKind): kind is Exclude<M8TaskKind, "crawler-daily"> {
+  return kind !== "crawler-daily";
 }
 
 export async function routeM8Task<T>(
@@ -296,8 +291,10 @@ export async function routeM8Task<T>(
 }
 
 export function githubDispatchForM8Task(message: M8TaskMessage): M8GitHubDispatch {
+  const workflow = WORKFLOW_BY_KIND[message.kind];
+  if (!workflow) throw new Error(`m8.github_dispatch_unsupported:${message.kind}`);
   return {
-    workflow: WORKFLOW_BY_KIND[message.kind],
+    workflow,
     inputs: { m8_idempotency_key: message.idempotencyKey },
   };
 }

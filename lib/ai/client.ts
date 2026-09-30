@@ -13,6 +13,7 @@ export type LlmProvider = ConfigurableLlmProvider | "mock";
 export interface LlmCompletionOptions {
   provider?: Exclude<LlmProvider, "mock">;
   model?: string;
+  apiKeys?: string[];
   signal?: AbortSignal;
 }
 
@@ -195,29 +196,33 @@ async function completeOpenAiLikeJson(
 }
 
 export async function completeJsonWithMetadata(messages: LlmMessage[], options: LlmCompletionOptions = {}): Promise<LlmCompletionResult | null> {
-  const runtime = await getRuntimeLlmSettings();
-  const provider = options.provider ?? runtime.summary.provider ?? "openai";
-
+  const runtime = options.apiKeys
+    ? null
+    : await getRuntimeLlmSettings();
+  const provider = options.provider ?? runtime?.summary.provider ?? "openai";
   if (provider === "gemini") {
-    const gemini = runtime.providers.gemini;
-    const model = selectedModel(provider, gemini, runtime.summary, options.model, "gemini-3.1-flash-lite");
+    const gemini = runtime?.providers.gemini ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
+    const summarySettings = runtime?.summary ?? { provider, model: "" };
+    const model = selectedModel(provider, gemini, summarySettings, options.model, "gemini-3.1-flash-lite");
     const useRouterModelFallbacks = !options.model && process.env.GEMINI_DISABLE_MODEL_FALLBACKS !== "true";
     return completeGeminiJson(messages, {
       ...(useRouterModelFallbacks ? {} : { model }),
-      apiKeys: gemini.apiKeys,
+      apiKeys: options.apiKeys ?? gemini.apiKeys,
       signal: options.signal,
     });
   }
 
   if (provider === "anthropic") {
-    const anthropic = runtime.providers.anthropic;
-    const model = selectedModel(provider, anthropic, runtime.summary, options.model, "claude-3-5-haiku-latest");
+    const anthropic = runtime?.providers.anthropic ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
+    const summarySettings = runtime?.summary ?? { provider, model: "" };
+    const model = selectedModel(provider, anthropic, summarySettings, options.model, "claude-3-5-haiku-latest");
     return completeAnthropicJson(messages, model, firstApiKey(anthropic), options.signal);
   }
 
   if (provider === "openai-compatible") {
-    const compatible = runtime.providers["openai-compatible"];
-    const model = selectedModel(provider, compatible, runtime.summary, options.model, "gpt-4.1-mini");
+    const compatible = runtime?.providers["openai-compatible"] ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
+    const summarySettings = runtime?.summary ?? { provider, model: "" };
+    const model = selectedModel(provider, compatible, summarySettings, options.model, "gpt-4.1-mini");
     if (!compatible.baseUrl) throw new Error("OpenAI compatible base URL is required.");
     return completeOpenAiLikeJson(messages, "openai-compatible", model, firstApiKey(compatible), compatible.baseUrl, options.signal);
   }
@@ -226,8 +231,9 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
     throw new Error(`Unsupported LLM_PROVIDER: ${provider}`);
   }
 
-  const openai = runtime.providers.openai;
-  const model = selectedModel(provider, openai, runtime.summary, options.model, "gpt-4.1-mini");
+  const openai = runtime?.providers.openai ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
+  const summarySettings = runtime?.summary ?? { provider, model: "" };
+  const model = selectedModel(provider, openai, summarySettings, options.model, "gpt-4.1-mini");
   const apiKey = firstApiKey(openai) || process.env.OPENAI_API_KEY || "";
   if (!apiKey && process.env.NODE_ENV !== "production") return null;
   return completeOpenAiLikeJson(messages, "openai", model, apiKey, undefined, options.signal);

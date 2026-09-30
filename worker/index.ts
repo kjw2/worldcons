@@ -73,6 +73,7 @@ import {
 } from "../workers/ops-write/src/index";
 import { runAdminJobWorker } from "@/lib/admin/admin-job-runner";
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
+import { runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -92,6 +93,8 @@ interface WorldconsWorkerEnv {
   GEMINI_API_KEY?: string;
   GEMINI_API_KEYS?: string;
   GEMINI_EMBEDDING_MODEL?: string;
+  GEMINI_SUMMARY_MODEL?: string;
+  GEMINI_PINNED_MODEL?: string;
   CCL_METASEARCH_DB_TIMEOUT_MS?: string;
   WORLDCONS_M13_AUTHORITY_PROFILE?: string;
   WORLDCONS_RATE_LIMIT_AUTHORITY?: string;
@@ -252,6 +255,25 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
       );
     }
     return result;
+  }
+
+  async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
+    setRuntimeD1Bindings({
+      worldcons_core: env.WORLDCONS_CORE,
+      worldcons_ingest: env.WORLDCONS_INGEST,
+    });
+    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
+    const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
+      .map((key) => key?.trim())
+      .filter((key): key is string => Boolean(key));
+    return runD1SummaryDrain({
+      ...input,
+      apiKeys,
+      model: env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+    });
   }
 
   async runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }) {

@@ -32,6 +32,20 @@ export interface M8NativeEnvironment {
       readiness: unknown;
       stoppedReason?: string;
     }>;
+    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }): Promise<{
+      mode: "database";
+      status: "completed" | "deferred" | "failed" | "unavailable";
+      summarizedCount: number;
+      failedCount: number;
+      skippedCount: number;
+      deferredCount: number;
+      candidateCount: number;
+      attemptedCount: number;
+      retryCount: number;
+      passes: number;
+      limitReached: boolean;
+      stoppedReason?: string;
+    }>;
   };
 }
 
@@ -59,6 +73,15 @@ export async function executeM8TaskNative(
         limit: 8,
         maxPasses: 20,
         delayMs: 0,
+      });
+      return { kind: message.kind, ...result };
+    }
+    if (message.kind === "summary-drain") {
+      const result = await env.WORLDCONS_APP_SERVICE.runSummaryDrain({
+        limit: 60,
+        maxPasses: 6,
+        retryAttempts: 1,
+        retryDelayMs: 65_000,
       });
       return { kind: message.kind, ...result };
     }
@@ -94,7 +117,7 @@ export async function executeM8TaskNative(
   return step
     ? step.do(`native-${message.kind}`, {
       retries: { limit: 5, delay: "30 seconds", backoff: "exponential" },
-      timeout: message.kind === "embedding-backfill" ? "50 minutes" : "2 minutes",
+      timeout: message.kind === "embedding-backfill" || message.kind === "summary-drain" ? "50 minutes" : "2 minutes",
     }, execute)
     : execute();
 }

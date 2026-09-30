@@ -19,7 +19,7 @@
   ],
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
-    "M8_ENABLED_KINDS": "admin-job-drain,watchdog,admin-health,embedding-backfill",
+    "M8_ENABLED_KINDS": "admin-job-drain,watchdog,admin-health,embedding-backfill,summary-drain",
     "GITHUB_REPOSITORY": "kjw2/worldcons",
     "GITHUB_REF": "main",
     "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es"
