@@ -1,5 +1,5 @@
 import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
-import { publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication";
+import { publicArticleRelation, publicProjectionReadsEnabled } from "@/lib/article-publication/public-read-authority";
 import { mockArticles } from "@/lib/db/mock-data";
 import type {
   ArticleContentType,

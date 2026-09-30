@@ -1,4 +1,4 @@
-import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication/compatibility";
+import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication/read-compatibility";
 
 export const CASE_CATALOG_WRITE_FLAG = "CASE_CATALOG_WRITE_ENABLED";
 export const CASE_CATALOG_PUBLIC_FLAG = "CASE_CATALOG_PUBLIC_ENABLED";

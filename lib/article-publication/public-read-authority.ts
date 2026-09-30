@@ -1,4 +1,4 @@
-import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication/compatibility";
+import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication/read-compatibility";
 
 export type PublicArticleReadAuthority = "projection" | "legacy";
 

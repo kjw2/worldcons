@@ -8,7 +8,7 @@ import type {
   SourceRecord,
 } from "@/lib/db/types";
 import { expandRelatedTagNames } from "@/lib/glossary/tag-aliases";
-import { observeArticlePublicationReadDecision } from "@/lib/article-publication";
+import { observeArticlePublicationReadDecision } from "@/lib/article-publication/read-compatibility";
 import { hydrateArticleRawText } from "@/lib/article-raw/detail-read";
 import type { ArtifactBlobStore } from "@/lib/storage/blob";
 import { createRuntimeArtifactBlobStore } from "@/lib/storage/runtime-blob";

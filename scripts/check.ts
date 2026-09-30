@@ -742,15 +742,15 @@ else mutableEnv.NODE_ENV = originalNodeEnv;
 
 const originalAppBaseUrl = process.env.APP_BASE_URL;
 const originalBaseUrlNodeEnv = process.env.NODE_ENV;
-delete process.env.APP_BASE_URL;
-process.env.NODE_ENV = "production";
+delete mutableEnv.APP_BASE_URL;
+mutableEnv.NODE_ENV = "production";
 assert(getAppBaseUrl() === "https://worldcons.cclib.workers.dev", "Cloudflare production base URL fallback failed");
-process.env.APP_BASE_URL = "https://library.example.org/";
+mutableEnv.APP_BASE_URL = "https://library.example.org/";
 assert(getAppBaseUrl() === "https://library.example.org", "APP_BASE_URL normalization failed");
-if (originalAppBaseUrl === undefined) delete process.env.APP_BASE_URL;
-else process.env.APP_BASE_URL = originalAppBaseUrl;
-if (originalBaseUrlNodeEnv === undefined) delete process.env.NODE_ENV;
-else process.env.NODE_ENV = originalBaseUrlNodeEnv;
+if (originalAppBaseUrl === undefined) delete mutableEnv.APP_BASE_URL;
+else mutableEnv.APP_BASE_URL = originalAppBaseUrl;
+if (originalBaseUrlNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+else mutableEnv.NODE_ENV = originalBaseUrlNodeEnv;
 
 assert(!supportsOpenAiTemperature("gpt-5.5"), "GPT-5.x chat requests must omit non-default temperature");
 assert(!supportsOpenAiTemperature("gpt-5.4"), "GPT-5.x chat requests must omit non-default temperature");

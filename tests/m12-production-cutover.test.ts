@@ -84,4 +84,14 @@ test("M12 production runtime cannot reacquire Supabase or Vercel credentials", (
   assert.match(retiredClient, /hasSupabaseConfig\(\): false/u);
   assert.match(retiredClient, /return false;/u);
   assert.equal((retiredClient.match(/return null;/gu) ?? []).length, 2, "both retired Supabase client helpers must fail closed");
+
+  for (const file of [
+    "lib/db/queries.ts",
+    "lib/article-reads/shared.ts",
+    "lib/search/ranked-page.ts",
+    "lib/search/vector.ts",
+    "lib/case-catalog/flags.ts",
+  ]) {
+    assert.doesNotMatch(read(file), /from ["']@\/lib\/article-publication["']/u, `${file} must not pull the legacy publication barrel into production reads`);
+  }
 });

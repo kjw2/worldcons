@@ -1,10 +1,8 @@
 import { createTextEmbedding } from "@/lib/ai/embeddings";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
-import {
-  observeArticlePublicationReadDecision,
-  publicProjectionReadsEnabled,
-} from "@/lib/article-publication";
+import { observeArticlePublicationReadDecision } from "@/lib/article-publication/read-compatibility";
+import { publicProjectionReadsEnabled } from "@/lib/article-publication/public-read-authority";
 import { exactCaseSearch } from "@/lib/search/exact-case";
 import { rankedSearchPage, type RankedSearchPage } from "@/lib/search/ranked-page";
 import { caseCatalogSearchEnabled } from "@/lib/case-catalog/flags";

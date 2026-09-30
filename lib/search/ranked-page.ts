@@ -1,4 +1,4 @@
-import { publicProjectionReadsEnabled } from "@/lib/article-publication";
+import { publicProjectionReadsEnabled } from "@/lib/article-publication/public-read-authority";
 import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 import type { ArticleListFilters, PageInfo } from "@/lib/db/types";
 import { searchRepository, type RankedSearchMode } from "@/lib/search/repository";

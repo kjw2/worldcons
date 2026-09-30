@@ -6,10 +6,14 @@ import type {
 } from "@/lib/article-publication/types";
 import { createHash } from "@/lib/utils/hash";
 import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
-import type { P5CompatibilityObservation } from "@/lib/admin/p5/types";
+
+export {
+  ADMIN_PUBLICATION_V4_READ_FLAG,
+  articlePublicationV4ReadsEnabled,
+  observeArticlePublicationReadDecision,
+} from "@/lib/article-publication/read-compatibility";
 
 export const ADMIN_PUBLICATION_V4_SHADOW_WRITE_FLAG = "ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED";
-export const ADMIN_PUBLICATION_V4_READ_FLAG = "ADMIN_PUBLICATION_V4_READ_ENABLED";
 export const ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_FLAG = "ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED";
 
 type PublicationService = Pick<typeof articlePublicationService, "getSnapshot" | "transition">;
@@ -38,21 +42,6 @@ function explicitTrue(value?: string) {
 
 export function articlePublicationV4ShadowWriteEnabled(environment: Record<string, string | undefined> = process.env) {
   return explicitTrue(environment[ADMIN_PUBLICATION_V4_SHADOW_WRITE_FLAG]);
-}
-
-export function articlePublicationV4ReadsEnabled(
-  environment: Record<string, string | undefined> = process.env,
-) {
-  return explicitTrue(environment[ADMIN_PUBLICATION_V4_READ_FLAG]);
-}
-
-export function observeArticlePublicationReadDecision(
-  surface: P5CompatibilityObservation["surface"],
-  environment: Record<string, string | undefined> = process.env,
-) {
-  const selected = articlePublicationV4ReadsEnabled(environment);
-  recordCompatibilityObservation({ surface, domain: "projection", direction: "read", authority: selected ? "new" : "legacy", outcome: "selected" }, { environment });
-  return selected;
 }
 
 export function articlePublicationV4OutboxProcessorEnabled(environment: Record<string, string | undefined> = process.env) {
