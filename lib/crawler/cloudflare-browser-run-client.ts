@@ -1,14 +1,6 @@
 import { crawlerUserAgent } from "@/lib/crawler/user-agents";
 import { withCrawlerRequestPermit } from "@/lib/crawler/request-governor";
 import type { CrawlRequest, CrawlResponse } from "@/lib/crawler/types";
-import {
-  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
-  requestGithubActionsOidcToken,
-} from "@/lib/cloudflare/ops-write/boundary-client";
-import {
-  githubActionsOidcAvailable,
-  WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE,
-} from "@/lib/cloudflare/browser-run/oidc";
 
 interface BrowserRunResponse {
   schemaVersion: 1;
@@ -25,7 +17,7 @@ interface BrowserRunResponse {
 export function cloudflareBrowserRunConfigured(environment: Record<string, string | undefined> = process.env) {
   return Boolean(
     environment.CLOUDFLARE_BROWSER_RUN_URL?.trim()
-      && (environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim() || githubActionsOidcAvailable(environment)),
+      && environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim(),
   );
 }
 
@@ -102,13 +94,6 @@ export async function crawlWithCloudflareBrowserRun(
 }
 
 async function browserRunAuthorization(environment: Record<string, string | undefined>): Promise<string | null> {
-  if (githubActionsOidcAvailable(environment)) {
-    const oidc = await requestGithubActionsOidcToken({
-      ...environment,
-      [OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]: WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE,
-    });
-    if (oidc) return `Bearer ${oidc}`;
-  }
   const token = environment.CLOUDFLARE_BROWSER_RUN_TOKEN?.trim();
   return token ? `Bearer ${token}` : null;
 }

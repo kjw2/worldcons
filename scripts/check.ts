@@ -860,48 +860,18 @@ assert(
   "non-retryable summary failures must be visible to automation",
 );
 
-const scheduledSummaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), ".github/workflows/crawlee-worker.yml"), "utf8");
-for (const requiredFlag of ["--drain", "--strict", "--max-passes=4", "--pass-delay-ms=65000", "--retry-attempts=1", "--retry-delay-ms=65000"]) {
-  assert(scheduledSummaryWorkflowSource.includes(requiredFlag), `scheduled summary workflow must include ${requiredFlag}`);
-}
-for (const requiredCacheRevalidationText of [
-  "Revalidate production public caches",
-  "secrets.CRON_SECRET",
-  "Authorization: Bearer $CRON_SECRET",
-  "/api/admin/public-content/revalidate",
-]) {
-  assert(
-    scheduledSummaryWorkflowSource.includes(requiredCacheRevalidationText),
-    `scheduled summary workflow must include ${requiredCacheRevalidationText}`,
-  );
-}
-
-// The ingest workflow drains only a small summary batch per run, so a dedicated queue
-// drain keeps publication throughput independent of the daily crawl cadence.
-const summaryDrainWorkflowSource = fs.readFileSync(path.join(process.cwd(), ".github/workflows/summary-drain.yml"), "utf8");
-for (const requiredDrainText of [
-  "summarize-pending",
-  "--drain",
-  "--pass-delay-ms=65000",
-  "Revalidate production public caches",
-  "/api/admin/public-content/revalidate",
-]) {
-  assert(summaryDrainWorkflowSource.includes(requiredDrainText), `summary drain workflow must include ${requiredDrainText}`);
-}
-assert(/cron: "[^"]+"/.test(summaryDrainWorkflowSource), "summary drain workflow must run on its own schedule");
-// Inspect executed lines only; a "--strict" mention inside a YAML comment must not trip this.
-const summaryDrainExecutableLines = summaryDrainWorkflowSource
-  .split(/\r?\n/)
-  .filter((line) => !line.trim().startsWith("#"))
-  .join("\n");
+const githubWorkflowDir = path.join(process.cwd(), ".github/workflows");
 assert(
-  !summaryDrainExecutableLines.includes("--strict"),
-  "summary drain must not fail the run on provider quota deferrals",
+  !fs.existsSync(githubWorkflowDir) || fs.readdirSync(githubWorkflowDir).length === 0,
+  "GitHub must remain source-only with no Actions workflows",
 );
-assert(
-  summaryDrainWorkflowSource.includes("group: admin-command-p1"),
-  "summary drain must share the ingest concurrency group so it cannot compete for provider quota",
-);
+const m8NativeExecutorSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/async-pipeline/native-executor.ts"), "utf8");
+assert(m8NativeExecutorSource.includes("runSummaryDrain"), "Cloudflare native executor must own summary drain");
+assert(m8NativeExecutorSource.includes("retryDelayMs: 65_000"), "native summary drain must preserve provider retry spacing");
+assert(m8NativeExecutorSource.includes("runEmbeddingBackfill"), "Cloudflare native executor must own embedding backfill");
+const m8WorkerSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
+assert(m8WorkerSource.includes('event.payload.kind === "crawler-daily"'), "Cloudflare Workflow must own daily crawling");
+assert(m8WorkerSource.includes("NATIVE_CRAWLER_SOURCES"), "native crawler must fan out by official source");
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",
@@ -1918,13 +1888,10 @@ async function assertAdminRouteSecurityControls() {
     assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_LEASE_SECONDS"), "admin job cron route must support bounded lease seconds env");
     assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_TYPES"), "admin job cron route must support optional job type env");
 
-    const adminJobWorkflowPath = path.join(process.cwd(), ".github/workflows/admin-job-worker.yml");
-    assert(fs.existsSync(adminJobWorkflowPath), "admin job worker workflow must exist");
-    const adminJobWorkflowSource = fs.readFileSync(adminJobWorkflowPath, "utf8");
-    assert(adminJobWorkflowSource.includes("pnpm admin:job:worker"), "admin job workflow must run the direct queue worker");
-    assert(adminJobWorkflowSource.includes("CRAWLEE_WORKER: \"true\""), "admin job workflow must allow Crawlee execution outside Vercel");
-    assert(adminJobWorkflowSource.includes("*/15 * * * *"), "admin job workflow must run on a 15 minute schedule");
-    assert(!adminJobWorkflowSource.includes("?secret="), "admin job workflow must not use query string secrets");
+    const asyncPipelineConfig = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/wrangler.jsonc"), "utf8");
+    assert(asyncPipelineConfig.includes("*/15 * * * *"), "Cloudflare async pipeline must run the admin job/watchdog cadence");
+    assert(asyncPipelineConfig.includes("admin-job-drain"), "Cloudflare async pipeline must enable native admin job draining");
+    assert(m8NativeExecutorSource.includes("runAdminJobDrain"), "native executor must invoke the admin job drain service");
 
     const adminJobsPagePath = path.join(process.cwd(), "app/admin/jobs/page.tsx");
     assert(fs.existsSync(adminJobsPagePath), "retired admin jobs route must preserve a redirect");

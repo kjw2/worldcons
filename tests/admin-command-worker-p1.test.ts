@@ -746,29 +746,13 @@ test("candidate retry validates official ownership and records failed/fetched tr
   assert.equal(fetchCalled, false);
 });
 
-test("P1 migration and workflows enforce cohort claims, ordered daily execution, and direct queue draining", () => {
+test("P1 migration and local worker enforce cohort claims and ordered execution", () => {
   const migration = fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260712130000_admin_command_worker_p1.sql"), "utf8");
-  const daily = fs.readFileSync(path.join(process.cwd(), ".github/workflows/crawlee-worker.yml"), "utf8");
-  const direct = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-command-worker-p1.yml"), "utf8");
-  const legacy = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-job-worker.yml"), "utf8");
 
   assert.match(migration, /c\.payload_ref->>'cohort' = any\(p_cohorts\)/);
   assert.match(migration, /r\.status in \('queued', 'retry_wait'\)/);
   assert.doesNotMatch(migration, /r\.status\s*=\s*'shadowed'/);
-  // M8 retired the Cron schedules from GitHub Actions in favour of the
-  // Cron/Queue/Workflow control plane; these workflows are now manual-only
-  // compatibility executors that carry the stable m8_idempotency_key input.
-  assert.doesNotMatch(daily, /^\s*schedule:\s*$/m);
-  assert.match(daily, /^\s*workflow_dispatch:\s*$/m);
-  assert.match(daily, /m8_idempotency_key:/);
-  assert.match(daily, /group: admin-command-p1/);
-  assert.match(direct, /group: admin-command-p1/);
-  assert.match(daily, /ADMIN_QUEUE_V3_WORKER_ENABLED != 'true'/);
-  assert.match(daily, /ADMIN_QUEUE_V3_WORKER_ENABLED == 'true'/);
-  assert.match(daily, /LIMIT_INPUT >= 1 && LIMIT_INPUT <= 100/);
-  assert.match(daily, /RANGE_DAYS_INPUT >= 1 && RANGE_DAYS_INPUT <= 730/);
-  assert.match(daily, /SPAIN_INGEST_RANGE_DAYS: "180"/);
-  assert.match(daily, /BVERFG_INGEST_RANGE_DAYS: "60"/);
+  assert.equal(fs.existsSync(path.join(process.cwd(), ".github/workflows")) ? fs.readdirSync(path.join(process.cwd(), ".github/workflows")).length : 0, 0);
   const workerScript = fs.readFileSync(path.join(process.cwd(), "scripts/admin-command-worker-p1.ts"), "utf8");
   assert.match(workerScript, /execution < 3/);
   assert.match(workerScript, /attemptTimeoutSeconds: 2400/);
@@ -778,12 +762,6 @@ test("P1 migration and workflows enforce cohort claims, ordered daily execution,
     assert(commandIndex > previousIndex, `${command} must follow the previous daily stage`);
     previousIndex = commandIndex;
   }
-  assert.doesNotMatch(legacy, /^\s*schedule:\s*$/m);
-  assert.match(legacy, /^\s*workflow_dispatch:\s*$/m);
-  assert.match(legacy, /m8_idempotency_key:/);
-  assert.match(legacy, /run: pnpm admin:job:worker/);
-  assert.doesNotMatch(legacy, /api\/admin\/cron\/jobs/);
-
   const architecture = fs.readFileSync(path.join(process.cwd(), "docs/admin-redesign-v2-v4-architecture.md"), "utf8");
   const runbook = fs.readFileSync(path.join(process.cwd(), "docs/admin-command-control-plane-p1.md"), "utf8");
   assert.match(architecture, /P1 Direct GitHub Workers/);

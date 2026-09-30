@@ -1,6 +1,4 @@
 import { launch } from "@cloudflare/playwright";
-import { authorizeGithubOidcRequest } from "../../../lib/cloudflare/ops-write/github-oidc";
-import { WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE } from "../../../lib/cloudflare/browser-run/oidc";
 
 export const MAX_HTML_BYTES = 3_000_000;
 export const MAX_TIMEOUT_MS = 60_000;
@@ -30,20 +28,6 @@ async function authorized(request: Request, env: Env) {
   const header = request.headers.get("authorization");
   const supplied = header?.startsWith("Bearer ") ? header.slice(7) : "";
   if (!supplied) return false;
-
-  if (supplied.split(".").length === 3) {
-    const oidc = await authorizeGithubOidcRequest(
-      request,
-      "write",
-      {},
-      { audience: WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE },
-    );
-    if (!oidc.ok) {
-      console.warn(JSON.stringify({ event: "browser_oidc_auth_failed", code: oidc.code }));
-    }
-    return oidc.ok;
-  }
-
   const expected = (env as Env & { BROWSER_RUN_TOKEN?: string }).BROWSER_RUN_TOKEN?.trim();
   if (!expected) return false;
   const [left, right] = await Promise.all([digest(supplied), digest(expected)]);
@@ -89,9 +73,9 @@ function parseBody(value: unknown, env: Env): ParsedNavigateRequest {
 /**
  * Authenticated Browser Rendering navigate endpoint.
  *
- * This was moved verbatim from the retired standalone `worldcons-browser-run`
- * Worker so the existing Node/GitHub crawler caller (`lib/crawler/
- * cloudflare-browser-run-client.ts`) keeps the same bearer-protected
+ * This compatibility endpoint remains for manual/local Node callers after the
+ * standalone `worldcons-browser-run` Worker and GitHub executors were retired.
+ * It keeps the same bearer-protected
  * `POST /v1/navigate` contract: HTTPS-only host allowlist, bounded timeout and
  * HTML size, and fail-closed diagnostics.
  */

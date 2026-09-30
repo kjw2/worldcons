@@ -94,67 +94,12 @@ test("M11.3R database id resolves worldcons_ops by name, not position", () => {
   );
 });
 
-test("M11.3R read-only probe workflow is dispatch-only, read-only and carries no shared token", () => {
-  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/ops-heartbeat-read-parity.yml"), "utf8");
-  assert.match(source, /^on:\s*\n\s*workflow_dispatch:/mu);
-  assert.match(source, /id-token:\s*write/u);
-  assert.ok(source.includes("pnpm ops:heartbeat-read-parity -- --run --no-direct-d1"));
-  assert.ok(source.includes("--no-direct-d1"), "the GitHub job must not require a Cloudflare credential");
-  // No write path, no watchdog, no shared real token value.
-  assert.doesNotMatch(source, /recordWorkflowHeartbeat|ops:watchdog|POST \/v1\/ops\/heartbeat/u);
-  for (const line of source.split(/\r?\n/u)) {
-    if (/^\s*#/u.test(line)) continue;
-    assert.doesNotMatch(line, /WORLDCONS_OPS_WRITE_TOKEN\s*[:=]\s*[^${\s]/u, `must not inline a shared token: ${line.trim()}`);
-  }
-});
-
-test("M11.3R feature-branch dispatch shell exposes a dispatch-only read_parity_only boolean", () => {
-  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
-  // The input is a workflow_dispatch-only boolean defaulting to false, so
-  // scheduled runs and ordinary manual runs never select the read-only mode.
-  assert.match(source, /^\s*read_parity_only:\s*$/mu);
-  assert.match(source, /read_parity_only:[\s\S]{0,240}?type:\s*boolean[\s\S]{0,120}?default:\s*false/u);
-});
-
-test("M11.3R read_parity_only skips the watchdog and runs only the read-only probe", () => {
-  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
-  const lines = source.split(/\r?\n/u);
-
-  // Locate each step block by its leading `- name:` marker.
-  const steps: { name: string; body: string[] }[] = [];
-  for (const line of lines) {
-    const name = /^\s*- name:\s*(.+?)\s*$/u.exec(line);
-    if (name) steps.push({ name: name[1], body: [] });
-    else if (steps.length > 0) steps[steps.length - 1].body.push(line);
-  }
-
-  const watchdog = steps.find((step) => step.body.some((line) => /run:\s*pnpm ops:watchdog/u.test(line)));
-  assert.ok(watchdog, "the watchdog step must remain present for normal runs");
-  // M11.4R added a second dispatch-only read-parity input, so the watchdog step
-  // is now skipped when either read-parity mode is selected. The heartbeat
-  // read_parity_only clause must still be present in the guard.
-  assert.ok(
-    watchdog!.body.some((line) => /if:\s*\$\{\{[^}]*inputs\.read_parity_only != true[^}]*\}\}/u.test(line)),
-    "the watchdog step must be skipped when read_parity_only is true",
-  );
-
-  const probe = steps.find((step) => step.body.some((line) => /pnpm ops:heartbeat-read-parity/u.test(line)));
-  assert.ok(probe, "the read-only probe step must exist in the dispatch shell");
-  assert.ok(
-    probe!.body.some((line) => /if:\s*\$\{\{\s*inputs\.read_parity_only == true\s*\}\}/u.test(line)),
-    "the probe step must run only when read_parity_only is true",
-  );
-  assert.ok(
-    probe!.body.some((line) => line.includes("pnpm ops:heartbeat-read-parity -- --run --no-direct-d1 --report --json")),
-    "the read_parity_only branch must run the exact read-only probe command",
-  );
-
-  // The read-only branch must not add any write path or broaden trust: the
-  // OIDC permission stays id-token: write and no contents/issues write appears.
-  assert.doesNotMatch(source, /contents:\s*write/u);
-  assert.match(source, /id-token:\s*write/u);
-  const executable = lines.filter((line) => !/^\s*#/u.test(line)).join("\n");
-  assert.doesNotMatch(executable, /recordWorkflowHeartbeat/u);
+test("M11.3R read-only parity remains a manual script and GitHub has no executor", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "scripts/ops-heartbeat-read-parity.ts"), "utf8");
+  assert.match(source, /WORLDCONS_OPS_WRITE_TOKEN/u);
+  assert.doesNotMatch(source, /GitHub Actions|OIDC mint|ACTIONS_ID_TOKEN/u);
+  const workflowDir = path.join(process.cwd(), ".github/workflows");
+  assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
 });
 
 test("M11.3R read-parity probe script never writes a heartbeat", () => {

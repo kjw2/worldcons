@@ -39,8 +39,6 @@ test("M12 public production surfaces no longer advertise worldcons.vercel.app", 
     "scripts/ops-watchdog.ts",
     "scripts/smoke-chatgpt-plugin.ts",
     "scripts/validate-chatgpt-plugin.ts",
-    ".github/workflows/crawlee-worker.yml",
-    ".github/workflows/summary-drain.yml",
   ];
   for (const file of files) {
     const source = read(file);

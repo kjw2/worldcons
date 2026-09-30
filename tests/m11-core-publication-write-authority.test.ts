@@ -176,17 +176,6 @@ test("M13 root deployment persists the permanent d1 core write authority for wor
   assert.match(rootConfig, /"WORLDCONS_CORE_WRITE_AUTHORITY": "d1"/u);
   assert.match(rootConfig, /"binding": "WORLDCONS_CORE"/u);
   assert.match(rootConfig, /"database_name": "worldcons_core"/u);
-  for (const file of [
-    ".github/workflows/crawlee-worker.yml",
-    ".github/workflows/summary-drain.yml",
-    ".github/workflows/admin-command-worker-p1.yml",
-    ".github/workflows/admin-job-worker.yml",
-    ".github/workflows/embedding-backfill.yml",
-  ]) {
-    assert.match(
-      fs.readFileSync(path.join(process.cwd(), file), "utf8"),
-      /WORLDCONS_CORE_WRITE_AUTHORITY:/u,
-      file,
-    );
-  }
+  const workflowDir = path.join(process.cwd(), ".github/workflows");
+  assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
 });

@@ -32,13 +32,6 @@ import {
 } from "@/lib/cloudflare/ops-write/admin-ops-events";
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import {
-  resolveGithubOidcTrustConfig,
-  verifyGithubOidcToken,
-  type GithubOidcFailureCode,
-  type GithubOidcTrustConfig,
-  type OpsWriteOperation,
-} from "@/lib/cloudflare/ops-write/github-oidc";
-import {
   INGEST_RUN_BOUNDARY_PATH,
   applyIngestionRunMutationToD1,
   parseIngestionRunMutation,
@@ -62,17 +55,13 @@ import { applyM13AuthorityProfileToEnvironment } from "@/lib/cloudflare/m13/auth
 
 export interface WorldconsOpsWriteWorkerEnv {
   /**
-   * Optional operator/legacy bearer. M11.3-OIDC makes this optional: GitHub
-   * Actions authenticate with a per-job OIDC token instead, so the boundary can
-   * be created and used without any shared repository secret. When set, the
-   * bearer still works for operator canary calls and non-GitHub callers.
+   * Bearer for the public compatibility boundary. Cloudflare-internal service
+   * binding paths do not traverse this HTTP authentication surface.
    */
   OPS_WRITE_TOKEN?: string;
   WORLDCONS_M13_AUTHORITY_PROFILE?: string;
   WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY?: string;
   WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY?: string;
-  WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE?: string;
-  WORLDCONS_OPS_HEARTBEAT_OIDC_ALLOWED_REFS?: string;
   WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY?: string;
   WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY?: string;
   WORLDCONS_INGEST_RUN_WRITE_AUTHORITY?: string;
@@ -83,10 +72,7 @@ export interface WorldconsOpsWriteWorkerEnv {
   [key: string]: unknown;
 }
 
-export interface OpsWriteAuthOptions {
-  /** Test seam for the OIDC trust config. */
-  oidc?: Partial<GithubOidcTrustConfig>;
-}
+export type OpsWriteOperation = "read" | "write";
 
 export interface WorldconsOpsWriteDependencies {
   writeToD1?: (binding: D1RuntimeDatabase, row: OpsHeartbeatWriteRow) => Promise<unknown>;
@@ -100,7 +86,6 @@ export interface WorldconsOpsWriteDependencies {
   transitionArticleLifecycleInD1?: typeof transitionArticleLifecycleInD1;
   readArticlePublicationSnapshotFromD1?: typeof readArticlePublicationSnapshotFromD1;
   transitionArticlePublicationInD1?: typeof transitionArticlePublicationInD1;
-  auth?: OpsWriteAuthOptions;
 }
 
 function json(value: unknown, status = 200) {
@@ -123,65 +108,29 @@ async function opsWriteBearerAuthorized(request: Request, env: WorldconsOpsWrite
   return difference === 0;
 }
 
-/**
- * M11.3-OIDC structured auth-failure diagnostic.
- *
- * Records ONLY the boundary operation and the stable OIDC failure code, plus a
- * boolean `bearerConfigured` that says whether an operator bearer exists
- * without ever revealing its value. It never logs token text, the raw
- * `Authorization` header, any claim value (jti, subject, ref, repo, workflow)
- * or any other caller-identifying material. The OIDC failure is emitted only
- * after the optional bearer has also failed, so a successful bearer fallback is
- * not misreported as an OIDC rejection.
- */
 export function logOpsWriteAuthFailure(
   operation: OpsWriteOperation,
-  code: GithubOidcFailureCode,
   bearerConfigured: boolean,
 ): void {
   console.warn(JSON.stringify({
     event: "worldcons_ops_write_auth_failure",
     operation,
-    code,
     bearerConfigured,
   }));
 }
 
 /**
- * M11.3-OIDC dual trust model.
- *
- * A request is authorized when EITHER:
- *   1. it presents a GitHub Actions OIDC JWT whose signature, issuer,
- *      audience, repository, workflow, ref and time claims all verify against
- *      the strict trust policy (the primary path; no shared secret required), or
- *   2. it presents the optional constant-time `OPS_WRITE_TOKEN` bearer (the
- *      legacy/operator path).
- *
- * The bearer is checked second so OIDC remains the preferred, least-privilege
- * path. If `OPS_WRITE_TOKEN` is unset, bearer auth is simply unavailable and
- * OIDC still works, so the first Worker deploy no longer requires the shared
- * secret. Neither path is optional in the sense of being bypassable: a request
- * that satisfies neither is rejected, and the OIDC failure code is logged only
- * once both paths have failed.
+ * Public HTTP trust model: constant-time bearer only. GitHub Actions/OIDC was
+ * retired when all operational execution moved to Cloudflare.
  */
 export async function opsWriteAuthorized(
   request: Request,
   env: WorldconsOpsWriteWorkerEnv,
   operation: OpsWriteOperation = "write",
-  options: OpsWriteAuthOptions = {},
 ) {
-  const oidc = await verifyGithubOidcToken(
-    (() => {
-      const header = request.headers.get("authorization");
-      return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
-    })(),
-    operation,
-    resolveGithubOidcTrustConfig(env as Record<string, string | undefined>, options.oidc),
-  );
-  if (oidc.ok) return true;
   const authorizedByBearer = await opsWriteBearerAuthorized(request, env);
   if (authorizedByBearer) return true;
-  logOpsWriteAuthFailure(operation, oidc.code, Boolean(env.OPS_WRITE_TOKEN?.trim()));
+  logOpsWriteAuthFailure(operation, Boolean(env.OPS_WRITE_TOKEN?.trim()));
   return false;
 }
 
@@ -196,7 +145,7 @@ export async function handleOpsHeartbeatBoundary(
     // Health is a readiness probe, not an operational action; it accepts either
     // trust path but never exposes data. Use the write operation set because a
     // health check from a trusted heartbeat workflow is as narrow as its write.
-    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "write"))) {
       return json({ error: "unauthorized" }, 401);
     }
     return json({ schemaVersion: 1, service: "worldcons-ops-write", status: "ready" });
@@ -209,7 +158,7 @@ export async function handleOpsHeartbeatBoundary(
   // caller that selected the D1 read authority can never be silently served a
   // Supabase row. There is no unauthenticated diagnostic surface.
   if (request.method === "GET" && url.pathname === OPS_HEARTBEAT_BOUNDARY_READ_PATH) {
-    if (!(await opsWriteAuthorized(request, env, "read", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "read"))) {
       return json({ error: "unauthorized" }, 401);
     }
     const readConfig = resolveOpsHeartbeatReadAuthorityConfig(env as Record<string, string | undefined>);
@@ -237,7 +186,7 @@ export async function handleOpsHeartbeatBoundary(
   }
 
   if (request.method === "POST" && url.pathname === INGEST_RUN_BOUNDARY_PATH) {
-    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "write"))) {
       return json({ error: "unauthorized" }, 401);
     }
     let mutation: IngestionRunMutation;
@@ -274,7 +223,7 @@ export async function handleOpsHeartbeatBoundary(
     request.method === "POST"
     && (url.pathname === CORE_LIFECYCLE_BOUNDARY_PATH || url.pathname === CORE_PUBLICATION_BOUNDARY_PATH)
   ) {
-    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "write"))) {
       return json({ error: "unauthorized" }, 401);
     }
     let body: Record<string, unknown>;
@@ -339,7 +288,7 @@ export async function handleOpsHeartbeatBoundary(
   const adminOpsWriteConfig = resolveAdminOpsEventsWriteAuthorityConfig(env as Record<string, string | undefined>);
 
   if (request.method === "POST" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_PATH) {
-    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "write"))) {
       return json({ error: "unauthorized" }, 401);
     }
     let eventRow: AdminOpsEventWriteRow;
@@ -375,7 +324,7 @@ export async function handleOpsHeartbeatBoundary(
 
   // The dedupe read and retention prune follow the write authority and are D1-only.
   if (request.method === "GET" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_LATEST_PATH) {
-    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "write"))) {
       return json({ error: "unauthorized" }, 401);
     }
     try {
@@ -401,7 +350,7 @@ export async function handleOpsHeartbeatBoundary(
   // fail-closed 503 instead of relaying Supabase, so a caller that selected the
   // D1 read authority can never be silently served a Supabase list.
   if (request.method === "GET" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_LIST_PATH) {
-    if (!(await opsWriteAuthorized(request, env, "read", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "read"))) {
       return json({ error: "unauthorized" }, 401);
     }
     const readConfig = resolveAdminOpsEventsReadAuthorityConfig(env as Record<string, string | undefined>);
@@ -433,7 +382,7 @@ export async function handleOpsHeartbeatBoundary(
   }
 
   if (request.method === "POST" && url.pathname === ADMIN_OPS_EVENTS_BOUNDARY_PRUNE_PATH) {
-    if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+    if (!(await opsWriteAuthorized(request, env, "write"))) {
       return json({ error: "unauthorized" }, 401);
     }
     let cutoff: unknown;
@@ -464,7 +413,7 @@ export async function handleOpsHeartbeatBoundary(
   if (request.method !== "POST" || url.pathname !== OPS_HEARTBEAT_BOUNDARY_PATH) {
     return json({ error: "not_found" }, 404);
   }
-  if (!(await opsWriteAuthorized(request, env, "write", dependencies.auth))) {
+  if (!(await opsWriteAuthorized(request, env, "write"))) {
     return json({ error: "unauthorized" }, 401);
   }
 

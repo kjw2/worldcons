@@ -671,106 +671,20 @@ test("M11.4 watchdog source uses the authority seam and keeps the resting Supaba
   assert.match(source, /\.from\("admin_ops_events"\)\.delete\(\)\.lt\("created_at", cutoff\)/u);
 });
 
-function adminWatchdogWorkflowSource() {
-  return fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
-}
-
-test("M13 admin-watchdog injects both admin ops events authority vars with an explicit d1 fallback", () => {
-  const source = adminWatchdogWorkflowSource();
-
-  const writeAuthority = "WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY || 'd1' }}";
-  assert.equal(
-    source.split(writeAuthority).length - 1,
-    1,
-    "admin-watchdog.yml must wire the admin ops events write authority default exactly once",
-  );
-  const readAuthority = "WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ${{ vars.WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY || 'd1' }}";
-  assert.equal(
-    source.split(readAuthority).length - 1,
-    1,
-    "admin-watchdog.yml must wire the admin ops events read authority default exactly once",
-  );
-
-  // Neither authority may be inlined as a literal value.
-  for (const line of source.split(/\r?\n/u)) {
-    if (/^\s*#/u.test(line)) continue;
-    if (line.includes("WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY:")) {
-      assert.ok(
-        line.includes(writeAuthority.slice("WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY: ".length)),
-        `admin-watchdog.yml must never inline an admin ops events write authority value: ${line.trim()}`,
-      );
-    }
-    if (line.includes("WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY:")) {
-      assert.ok(
-        line.includes(readAuthority.slice("WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY: ".length)),
-        `admin-watchdog.yml must never inline an admin ops events read authority value: ${line.trim()}`,
-      );
-    }
-  }
+test("M13 admin ops events authority is Cloudflare-owned and GitHub has no watchdog workflow", () => {
+  const rootConfig = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
+  assert.match(rootConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY":\s*"d1"/u);
+  assert.match(rootConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY":\s*"d1"/u);
+  const workflowDir = path.join(process.cwd(), ".github/workflows");
+  assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
 });
 
-test("M11.4 admin-watchdog sets the canary marker only for a dispatched boolean and never from a repo var", () => {
-  const source = adminWatchdogWorkflowSource();
-
-  // A workflow_dispatch-only boolean defaulting to false.
-  assert.match(source, /^\s*admin_ops_events_canary:\s*$/mu);
-  assert.match(
-    source,
-    /admin_ops_events_canary:[\s\S]{0,240}?type:\s*boolean[\s\S]{0,120}?default:\s*false/u,
-    "the admin_ops_events canary input must be a boolean defaulting to false",
-  );
-
-  // The marker is true only for a dispatched run with the input set, and empty
-  // otherwise, so scheduled and ordinary manual runs stay unmarked.
-  const marker = "WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.admin_ops_events_canary == true && 'true' || '' }}";
-  assert.equal(
-    source.split(marker).length - 1,
-    1,
-    "admin-watchdog.yml must set the admin ops events canary marker exactly once, gated on the dispatched input",
-  );
-
-  // There must be no persistent repo var fallback for the marker. Only
-  // executable lines count; a comment naming the forbidden fallback is allowed.
-  const executable = source.split(/\r?\n/u).filter((line) => !/^\s*#/u.test(line)).join("\n");
-  assert.doesNotMatch(
-    executable,
-    /vars\.WORLDCONS_ADMIN_OPS_EVENTS_CANARY_MARKER/u,
-    "admin-watchdog.yml must not fall back to a shared admin ops events canary-marker repo var",
-  );
-});
-
-test("M11.4 admin-watchdog keeps the heartbeat canary/read-parity inputs and OIDC unchanged with no shared secret", () => {
-  const source = adminWatchdogWorkflowSource();
-
-  // The M11.3 heartbeat canary input and pin are untouched.
-  assert.match(source, /^\s*ops_heartbeat_canary:\s*$/mu);
-  assert.equal(
-    source.split("WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.ops_heartbeat_canary == true && github.run_id || '' }}").length - 1,
-    1,
-    "admin-watchdog.yml must keep the M11.3 heartbeat canary pin exactly once",
-  );
-  assert.match(source, /^\s*read_parity_only:\s*$/mu);
-
-  // The existing OIDC trust remains and the shared token is never referenced.
-  assert.match(source, /id-token:\s*write/u);
-  for (const line of source.split(/\r?\n/u)) {
-    if (/^\s*#/u.test(line)) continue;
-    assert.doesNotMatch(
-      line,
-      /WORLDCONS_OPS_WRITE_TOKEN/u,
-      `admin-watchdog.yml must not reference the shared WORLDCONS_OPS_WRITE_TOKEN secret: ${line.trim()}`,
-    );
-  }
-});
-
-test("M13 root config persists the permanent d1 admin ops events authority without touching env examples", () => {
+test("M13 root config and env example persist the permanent d1 admin ops events authority", () => {
   const rootConfig = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(rootConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY":\s*"d1"/u);
   assert.match(rootConfig, /"WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY":\s*"d1"/u);
 
-  // `.env.example` keeps the safe/neutral rollback default; it is not the
-  // deployed production resting config.
   const envExample = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
-  assert.match(envExample, /^WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=supabase$/mu);
-  assert.match(envExample, /^WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=supabase$/mu);
+  assert.match(envExample, /^WORLDCONS_ADMIN_OPS_EVENTS_WRITE_AUTHORITY=d1$/mu);
+  assert.match(envExample, /^WORLDCONS_ADMIN_OPS_EVENTS_READ_AUTHORITY=d1$/mu);
 });

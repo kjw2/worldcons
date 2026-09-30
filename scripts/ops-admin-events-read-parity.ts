@@ -19,8 +19,6 @@ import {
 import { listAdminOpsEventsViaBoundary } from "@/lib/cloudflare/ops-write/admin-ops-events-client";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
 } from "@/lib/cloudflare/ops-write/boundary-client";
 import { readAdminOpsEventsFromSupabase } from "@/lib/ops/watchdog";
 import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query";
@@ -29,9 +27,9 @@ import { resolveWorldconsOpsDatabaseId } from "@/scripts/ops-heartbeat-read-pari
 /**
  * M11.4R live `admin_ops_events` list read-parity probe (READ-ONLY).
  *
- * One dedicated GitHub Actions job authenticates
+ * Manual/local operators authenticate
  * `GET /v1/ops/admin-events/list?limit=20` on the `worldcons-ops-write`
- * boundary with its per-job OIDC token and compares the returned records against:
+ * boundary with `WORLDCONS_OPS_WRITE_TOKEN` and compare the returned records against:
  *
  *   1. the canonical Supabase `listAdminOpsEvents(limit=20)` projection (the
  *      resting authoritative read the admin ops page consumes); and
@@ -39,7 +37,7 @@ import { resolveWorldconsOpsDatabaseId } from "@/scripts/ops-heartbeat-read-pari
  *      the D1 HTTP query API.
  *
  * It performs NO write of any kind: every statement is a SELECT and the only
- * network calls are the OIDC mint, the boundary GET and the two reads. It never
+ * network calls are the boundary GET and the two reads. It never
  * invokes `recordAdminOpsEvent`/`recordWatchdogEvents`, the watchdog, the
  * insert, the prune, or any heartbeat path, and it mutates no authority. It
  * prints no credential and no token, and the persisted evidence contains only
@@ -121,8 +119,6 @@ async function main(): Promise<void> {
     ...process.env,
     [ADMIN_OPS_EVENTS_READ_AUTHORITY_ENV]: "d1",
     [OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]: baseUrl,
-    [OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]:
-      nonEmpty(process.env[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]) ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   };
 
   const boundaryRecords = await listAdminOpsEventsViaBoundary(LIST_LIMIT, { environment: probeEnvironment });

@@ -14,7 +14,6 @@ import {
 } from "@/lib/testing/postgres-release-gate";
 
 const root = process.cwd();
-const workflow = fs.readFileSync(path.join(root, ".github/workflows/release-gate.yml"), "utf8");
 const runner = fs.readFileSync(path.join(root, "scripts/run-postgres-release-gate.ts"), "utf8");
 const gateLibrary = fs.readFileSync(path.join(root, "lib/testing/postgres-release-gate.ts"), "utf8");
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {
@@ -101,16 +100,10 @@ test("connection strings are redacted from failure output", () => {
   assert.equal(redactConnectionStrings(`failed at ${url}`, [url]), "failed at [test-database-url]");
 });
 
-test("release workflow uses a disposable pgvector service, PR/push triggers, and no production secrets", () => {
-  assert.match(workflow, /^\s*pull_request:/mu);
-  assert.match(workflow, /^\s*push:/mu);
-  assert.match(workflow, /pgvector\/pgvector:pg16/u);
-  assert.match(workflow, /POSTGRES_RELEASE_ADMIN_URL/u);
-  assert.match(workflow, /P3_TEST_VECTOR_FALLBACK: "false"/u);
-  assert.match(workflow, /pnpm test:postgres:release/u);
-  assert.equal(workflow.includes("${{ secrets."), false, "release gate must not use production secrets");
-  assert.equal(/\bDATABASE_URL\b/u.test(workflow), false, "release gate must not reference a production DATABASE_URL");
-  assert.match(workflow, /health-cmd/u);
+test("release validation is a local command and GitHub has no execution workflow", () => {
+  assert.equal(fs.existsSync(path.join(root, ".github/workflows")) ? fs.readdirSync(path.join(root, ".github/workflows")).length : 0, 0);
+  assert.ok(packageJson.scripts["verify:release"]?.includes("pnpm typecheck"));
+  assert.ok(packageJson.scripts["test:postgres:release"]?.includes("run-postgres-release-gate"));
 });
 
 test("runner mechanically initializes pgvector and fails when any postgres test is skipped", () => {

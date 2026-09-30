@@ -356,9 +356,8 @@ test("SCOTUS revision dates are independently eligible from the opinion date win
   );
 });
 
-test("daily workflow and all ingestion CLIs retain hardening controls", () => {
+test("ingestion CLIs and native source collectors retain hardening controls", () => {
   const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
-  const workflow = read(".github/workflows/crawlee-worker.yml");
   const scheduledCli = read("scripts/crawlee-worker.ts");
   const secondaryCli = read("workers/crawler/src/cli.ts");
   const directCli = read("scripts/ingest.ts");
@@ -367,27 +366,7 @@ test("daily workflow and all ingestion CLIs retain hardening controls", () => {
   const ingest = read("lib/ingest/run.ts");
   const summary = read("lib/ingest/summary.ts");
 
-  assert.match(workflow, /LLM_SETTINGS_SECRET: \$\{\{ secrets\.LLM_SETTINGS_SECRET \}\}/);
-  assert.match(workflow, /matrix:\s+source:/, "daily workflow must isolate each source in its own job");
-  assert.match(workflow, /max-parallel: 4/, "daily workflow must allow independent sources to continue after one source stalls");
-  assert.match(workflow, /BVERFG_PENDING_RECHECK_LIMIT: "3"/, "BVerfG retry work must be bounded per run");
-  assert.match(workflow, /SCOTUS_REVISION_RECHECK_DAYS: "90"/, "SCOTUS revisions must have an independent recheck window");
-  assert.match(workflow, /SCOTUS_REVISION_RECHECK_LIMIT: "100"/, "SCOTUS revision rechecks must be bounded per run");
-  assert.match(workflow, /BVERFG_RETRY_COUNT: "0"/, "BVerfG daily retries must not multiply a slow official endpoint");
-  assert.match(workflow, /BVERFG_SITE_BLOCK_CIRCUIT_THRESHOLD: "3"/);
-  assert.match(workflow, /BVERFG_PLAYWRIGHT_ESCALATE_LIMIT: "3"/);
-  assert.match(workflow, /CRAWLER_USER_AGENT: .*ConstitutionalCourtCurationBot/);
-  assert.match(workflow, /Run isolated BVerfG worker without browser fallback[\s\S]*--no-playwright/, "BVerfG daily detail checks must use bounded HTTP fallback only");
-  assert.match(workflow, /postprocess:[\s\S]*if: always\(\)/, "postprocess must run after partial source failures");
-  assert.match(workflow, /continue-on-error: \$\{\{ vars\.ADMIN_REQUIRE_PUBLICATION_PARITY != 'true' \}\}/, "legacy parity drift must not falsely fail collection by default");
-  assert.match(workflow, /SPAIN_REQUEST_DELAY_MS: "2000"/);
-  assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_WRITE_ENABLED:/);
-  assert.match(workflow, /ARTICLE_LIFECYCLE_P2_SHADOW_COHORTS:/);
-  assert.match(workflow, /ADMIN_PUBLICATION_V4_SHADOW_WRITE_ENABLED:/);
-  assert.match(workflow, /ADMIN_PUBLICATION_V4_OUTBOX_PROCESSOR_ENABLED:/);
-  assert.match(workflow, /admin:publication:p3 -- --outbox --drain/);
-  assert.match(workflow, /admin:lifecycle:p2 --require-parity/);
-  assert.match(workflow, /admin:publication:p3 -- --require-parity/);
+  assert.equal(fs.existsSync(path.join(process.cwd(), ".github/workflows")) ? fs.readdirSync(path.join(process.cwd(), ".github/workflows")).length : 0, 0);
   for (const cli of [scheduledCli, secondaryCli, directCli]) {
     assert.match(cli, /ingestProcessExitCode/);
     assert.match(cli, /ingestResultFailureMessage/);

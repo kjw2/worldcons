@@ -288,16 +288,12 @@ test("governance UI is retired while P5 operational controls remain internal", (
   assert.equal(fs.existsSync(path.join(process.cwd(), "scripts/admin-health-p5.ts")), true);
 });
 
-test("health workflow is disabled by default and emits redacted machine evidence", () => {
-  const workflow = source(".github/workflows/admin-health-p5.yml");
+test("native health task emits redacted machine evidence without GitHub workflow", () => {
   const script = source("scripts/admin-health-p5.ts");
+  const config = source("workers/async-pipeline/wrangler.jsonc");
   assert.match(script, /import "dotenv\/config"/);
-  assert.match(workflow, /if: \$\{\{ vars\.ADMIN_P5_HEALTH_VERIFICATION_ENABLED == 'true' \}\}/);
-  assert.match(workflow, /workflow_dispatch:/);
-  // M8 retired the Cron schedule from GitHub Actions; admin-health-p5 is now a
-  // manual-only compatibility executor carrying the stable m8_idempotency_key.
-  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
-  assert.match(workflow, /m8_idempotency_key:/);
+  assert.match(config, /admin-health/u);
+  assert.equal(fs.existsSync(path.join(process.cwd(), ".github/workflows")) ? fs.readdirSync(path.join(process.cwd(), ".github/workflows")).length : 0, 0);
   assert.match(script, /status: "disabled"/);
   assert.match(script, /hardViolationKeys/);
   assert.doesNotMatch(script, /console\.(?:log|error)\([^\n]*(SUPABASE|SERVICE_ROLE|SIGNING_KEY)/);

@@ -12,8 +12,6 @@ import {
 } from "@/lib/cloudflare/ops-write/read-parity";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   readOpsHeartbeatsViaBoundary,
 } from "@/lib/cloudflare/ops-write/boundary-client";
 import { OPS_HEARTBEAT_READ_AUTHORITY_ENV, type OpsHeartbeatReadRecord } from "@/lib/cloudflare/ops-write/heartbeat";
@@ -23,9 +21,9 @@ import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query
 /**
  * M11.3R live D1 read-parity probe (READ-ONLY).
  *
- * One dedicated GitHub Actions job authenticates `GET /v1/ops/heartbeats` on the
- * `worldcons-ops-write` boundary with its per-job OIDC token and compares the
- * returned five-field records against:
+ * Manual/local operators authenticate `GET /v1/ops/heartbeats` on the
+ * `worldcons-ops-write` boundary with `WORLDCONS_OPS_WRITE_TOKEN` and compare
+ * the returned five-field records against:
  *
  *   1. the authoritative Supabase projection (the resting reader), read through
  *      the service-role client with a plain SELECT; and
@@ -33,7 +31,7 @@ import { createD1HttpQueryExecutor } from "@/lib/cloudflare/d1/remote/http-query
  *      query API.
  *
  * It performs NO write of any kind: every statement is a SELECT and the only
- * network calls are the OIDC mint, the boundary GET and the two reads. It never
+ * network calls are the boundary GET and the two reads. It never
  * invokes `recordWorkflowHeartbeat` or the watchdog. It prints no credential and
  * no token, and the persisted evidence contains only the five-field records,
  * booleans and counts.
@@ -122,8 +120,6 @@ async function main(): Promise<void> {
     ...process.env,
     [OPS_HEARTBEAT_READ_AUTHORITY_ENV]: "d1",
     [OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]: baseUrl,
-    [OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]:
-      nonEmpty(process.env[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]) ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   };
 
   const boundaryRecords = await readOpsHeartbeatsViaBoundary({ environment: probeEnvironment });

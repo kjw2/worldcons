@@ -13,7 +13,7 @@ import {
 } from "@/lib/cloudflare/ops-write/heartbeat";
 
 /**
- * M11.3 Node/GitHub compatibility client seam.
+ * Node/operator compatibility client seam.
  *
  * The Node/GitHub heartbeat writer runs outside the Cloudflare runtime and
  * cannot use a Worker Service Binding. This client lets those callers deliver a
@@ -32,11 +32,6 @@ import {
 
 export const OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV = "WORLDCONS_OPS_WRITE_BASE_URL";
 export const OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV = "WORLDCONS_OPS_WRITE_TOKEN";
-/** Optional explicit GitHub OIDC JWT, useful for tests/operator one-offs. */
-export const OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV = "WORLDCONS_OPS_WRITE_OIDC_TOKEN";
-/** Dedicated OIDC audience; must match the boundary's configured audience. */
-export const OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV = "WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE";
-export const OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE = "worldcons-ops-write";
 const OPS_HEARTBEAT_BOUNDARY_TIMEOUT_MS = 5_000;
 
 export interface OpsHeartbeatBoundaryEnvironment {
@@ -47,11 +42,8 @@ export interface OpsHeartbeatBoundaryConfig {
   authority: "supabase" | "d1-canary" | "d1";
   enabled: boolean;
   baseUrl: string | null;
-  /** Optional operator/legacy shared bearer (the boundary's OPS_WRITE_TOKEN). */
+  /** Operator/manual bearer for the public compatibility boundary. */
   token: string | null;
-  /** Optional explicit OIDC JWT; otherwise one is requested from the Actions runtime. */
-  oidcToken: string | null;
-  oidcAudience: string;
 }
 
 export interface OpsHeartbeatBoundaryInput {
@@ -66,10 +58,7 @@ export interface OpsHeartbeatBoundaryOptions {
   fetcher?: typeof fetch;
   environment?: OpsHeartbeatBoundaryEnvironment;
   /**
-   * Supplies the Authorization header value for the boundary request. When
-   * omitted, an OIDC token is preferred (explicit env, then a live request to
-   * the GitHub Actions OIDC endpoint when `ACTIONS_ID_TOKEN_REQUEST_URL` is
-   * present), and the optional shared bearer is used only as a fallback.
+   * Optional test/operator override for the Authorization header value.
    */
   authTokenProvider?: () => Promise<string | null>;
 }
@@ -85,76 +74,22 @@ export function resolveOpsHeartbeatBoundaryConfig(
   const authority = resolveOpsHeartbeatWriteAuthorityConfig(environment).authority;
   const enabled = authority !== "supabase";
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
-  const audience = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]);
   return {
     authority,
     enabled,
     baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null,
     token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
-    oidcToken: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]),
-    oidcAudience: audience ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   };
 }
 
 /**
- * Requests a short-lived GitHub Actions OIDC JWT for the dedicated audience.
- *
- * The Actions runtime injects `ACTIONS_ID_TOKEN_REQUEST_URL` /
- * `ACTIONS_ID_TOKEN_REQUEST_TOKEN` and only then can a token be minted; the
- * value is returned to the caller and never logged. Returns `null` outside
- * GitHub Actions (or when the workflow lacks `id-token: write`), letting the
- * caller fall back to the optional bearer.
- */
-export async function requestGithubActionsOidcToken(
-  environment: OpsHeartbeatBoundaryEnvironment = process.env as OpsHeartbeatBoundaryEnvironment,
-  fetcher: typeof fetch = fetch,
-): Promise<string | null> {
-  const requestUrl = trimToNull(environment.ACTIONS_ID_TOKEN_REQUEST_URL);
-  const requestToken = trimToNull(environment.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
-  if (!requestUrl || !requestToken) return null;
-  const audience = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV])
-    ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE;
-  let response: Response;
-  try {
-    const url = new URL(requestUrl);
-    url.searchParams.set("audience", audience);
-    response = await fetcher(url.toString(), {
-      headers: { Authorization: `Bearer ${requestToken}`, Accept: "application/json" },
-      signal: AbortSignal.timeout(OPS_HEARTBEAT_BOUNDARY_TIMEOUT_MS),
-    });
-  } catch {
-    return null;
-  }
-  if (!response.ok) {
-    await response.body?.cancel();
-    return null;
-  }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    return null;
-  }
-  if (typeof body !== "object" || body === null) return null;
-  const value = (body as { value?: unknown }).value;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-/**
- * Resolves the Authorization header value for a boundary request. OIDC is the
- * preferred, secret-free path; the optional shared bearer is the fallback.
+ * Resolves the Authorization header value for a boundary request.
  */
 export async function resolveOpsHeartbeatBoundaryAuth(
   config: OpsHeartbeatBoundaryConfig,
   options: OpsHeartbeatBoundaryOptions,
 ): Promise<string | null> {
   if (options.authTokenProvider) return options.authTokenProvider();
-  if (config.oidcToken) return `Bearer ${config.oidcToken}`;
-  const requested = await requestGithubActionsOidcToken(
-    options.environment,
-    options.fetcher ?? fetch,
-  );
-  if (requested) return `Bearer ${requested}`;
   if (config.token) return `Bearer ${config.token}`;
   return null;
 }
@@ -217,8 +152,6 @@ export interface OpsHeartbeatReadBoundaryConfig {
   enabled: boolean;
   baseUrl: string | null;
   token: string | null;
-  oidcToken: string | null;
-  oidcAudience: string;
 }
 
 export function resolveOpsHeartbeatReadBoundaryConfig(
@@ -226,19 +159,16 @@ export function resolveOpsHeartbeatReadBoundaryConfig(
 ): OpsHeartbeatReadBoundaryConfig {
   const authority = resolveOpsHeartbeatReadAuthorityConfig(environment).authority;
   const baseUrl = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV]);
-  const audience = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]);
   return {
     authority,
     enabled: authority === "d1",
     baseUrl: baseUrl ? baseUrl.replace(/\/+$/u, "") : null,
     token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
-    oidcToken: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]),
-    oidcAudience: audience ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
   };
 }
 
 /**
- * M11.3R Node/GitHub read client for the `d1` read authority.
+ * Node/operator read client for the `d1` read authority.
  *
  * Returns `null` only when the read authority is the resting `supabase` (the
  * caller must then keep using its local Supabase read). When `d1` is selected

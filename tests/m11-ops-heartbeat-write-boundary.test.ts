@@ -16,7 +16,6 @@ import {
 } from "@/lib/cloudflare/ops-write/heartbeat";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV,
   OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV,
   resolveOpsHeartbeatBoundaryAuth,
   resolveOpsHeartbeatBoundaryConfig,
@@ -130,27 +129,6 @@ test("M11.3 canary marker resolver accepts only a bounded true/1 or exact run id
   assert.equal(resolveOpsHeartbeatCanaryMarker({ [OPS_HEARTBEAT_CANARY_MARKER_ENV]: "github-2" }, "github-1"), false);
 });
 
-test("M11.3 admin-watchdog pins the canary marker to the dispatched run id only", () => {
-  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
-
-  // The canary marker is derived from the dispatch input and the exact run id,
-  // never from a shared repo var that a later unrelated run could inherit.
-  assert.equal(
-    source.split("WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER: ${{ github.event_name == 'workflow_dispatch' && inputs.ops_heartbeat_canary == true && github.run_id || '' }}").length - 1,
-    1,
-    "admin-watchdog.yml must pin the canary marker to the dispatched run id exactly once",
-  );
-  assert.doesNotMatch(
-    source,
-    /vars\.WORLDCONS_OPS_HEARTBEAT_CANARY_MARKER/u,
-    "admin-watchdog.yml must not fall back to the shared canary-marker repo var",
-  );
-
-  // The explicit dispatch-only boolean input is declared.
-  assert.match(source, /^\s*ops_heartbeat_canary:\s*$/m);
-  assert.match(source, /type:\s*boolean/u);
-});
-
 test("M11.3 boundary validation mirrors the Postgres heartbeat RPC gates", () => {
   assert.equal(parseOpsHeartbeatWriteRow(heartbeatRow()).ok, true);
 
@@ -258,7 +236,7 @@ test("M11.3 boundary rejects unauthenticated heartbeat writes", async () => {
 test("M13 standalone ops-write deployment config is retired", () => {
   assert.equal(fs.existsSync(path.join(process.cwd(), "workers/ops-write/wrangler.jsonc")), false);
   const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
-  assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE":\s*"worldcons-ops-write"/u);
+  assert.doesNotMatch(config, /OIDC_AUDIENCE|ACTIONS_ID_TOKEN/u);
   assert.doesNotMatch(config, /"OPS_WRITE_TOKEN"\s*:/u);
 });
 
@@ -371,8 +349,6 @@ test("M13 Node boundary client defaults to D1 and fails closed when the boundary
       enabled: true,
       baseUrl: null,
       token: null,
-      oidcToken: null,
-      oidcAudience: "worldcons-ops-write",
     },
   );
   await assert.rejects(
@@ -391,8 +367,6 @@ test("M13 Node boundary client defaults to D1 and fails closed when the boundary
     enabled: true,
     baseUrl: "https://ops.example",
     token: "boundary-secret",
-    oidcToken: null,
-    oidcAudience: "worldcons-ops-write",
   });
   assert.equal(await resolveOpsHeartbeatBoundaryAuth(config, { environment: base }), "Bearer boundary-secret");
 
@@ -507,95 +481,16 @@ test("M11.3 Node heartbeat writer emits the bounded canary marker only in a cana
   }
 });
 
-const HEARTBEAT_WORKFLOWS = [
-  {
-    file: ".github/workflows/crawlee-worker.yml",
-    envBlocks: 2,
-    heartbeatScripts: ["summarize-pending"],
-  },
-  {
-    file: ".github/workflows/summary-drain.yml",
-    envBlocks: 1,
-    heartbeatScripts: ["summarize-pending"],
-  },
-  {
-    file: ".github/workflows/embedding-backfill.yml",
-    envBlocks: 1,
-    heartbeatScripts: ["backfill:embeddings"],
-  },
-  {
-    file: ".github/workflows/admin-watchdog.yml",
-    envBlocks: 1,
-    heartbeatScripts: ["ops:watchdog"],
-  },
-  {
-    file: ".github/workflows/admin-command-worker-p1.yml",
-    envBlocks: 1,
-    heartbeatScripts: ["admin:worker:p1"],
-  },
-] as const;
-
-test("M11.3-OIDC heartbeat-producing GitHub workflows wire OIDC and never the shared token", () => {
-  for (const workflow of HEARTBEAT_WORKFLOWS) {
-    const source = fs.readFileSync(path.join(process.cwd(), workflow.file), "utf8");
-
-    // The workflow must actually invoke a heartbeat-producing entrypoint.
-    for (const script of workflow.heartbeatScripts) {
-      assert.ok(source.includes(script), `${workflow.file} must invoke ${script}`);
-    }
-
-    // A short-lived OIDC token is requested at the job/workflow level.
-    assert.match(
-      source,
-      /^permissions:\r?\n(?:[ \t]+\S.*\r?\n)*[ \t]+id-token:\s*write$/mu,
-      `${workflow.file} must grant id-token: write`,
-    );
-
-    // Authority is repo-var driven and defaults to the permanent D1 mode.
-    const authority = "WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY || 'd1' }}";
-    assert.equal(
-      source.split(authority).length - 1,
-      workflow.envBlocks,
-      `${workflow.file} must wire the authority default in every heartbeat env block`,
-    );
-    assert.equal(
-      source.split("WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}").length - 1,
-      workflow.envBlocks,
-      `${workflow.file} must wire the boundary base URL from repo vars`,
-    );
-    assert.equal(
-      source.split("WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}").length - 1,
-      workflow.envBlocks,
-      `${workflow.file} must wire the OIDC audience in every heartbeat env block`,
-    );
-
-    // No inline value is ever written instead of a var reference. Comments may
-    // name the retired secret, but no active line may reference it.
-    for (const line of source.split(/\r?\n/u)) {
-      if (/^\s*#/u.test(line)) continue;
-      assert.doesNotMatch(
-        line,
-        /WORLDCONS_OPS_WRITE_TOKEN/u,
-        `${workflow.file} must not reference the shared WORLDCONS_OPS_WRITE_TOKEN secret: ${line.trim()}`,
-      );
-      if (line.includes("WORLDCONS_OPS_WRITE_BASE_URL:")) {
-        assert.ok(
-          line.includes("WORLDCONS_OPS_WRITE_BASE_URL: ${{ vars.WORLDCONS_OPS_WRITE_BASE_URL }}"),
-          `${workflow.file} must never inline a WORLDCONS_OPS_WRITE_BASE_URL value: ${line.trim()}`,
-        );
-      }
-      if (line.includes("WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE:")) {
-        assert.ok(
-          line.includes("WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE: ${{ vars.WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE || 'worldcons-ops-write' }}"),
-          `${workflow.file} must never inline an OIDC audience value: ${line.trim()}`,
-        );
-      }
-    }
-  }
+test("M11 public ops boundary is bearer-only and GitHub has no operational workflows", () => {
+  const boundary = fs.readFileSync(path.join(process.cwd(), "workers/ops-write/src/index.ts"), "utf8");
+  assert.match(boundary, /OPS_WRITE_TOKEN/u);
+  assert.doesNotMatch(boundary, /GithubOidc|verifyGithubOidcToken|ACTIONS_ID_TOKEN/u);
+  const workflowDir = path.join(process.cwd(), ".github/workflows");
+  assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
 });
 
 test("M11.3 no committed source file contains a WORLDCONS_OPS_WRITE_TOKEN assignment", () => {
-  const searchRoots = [".github/workflows", ".env.example"];
+  const searchRoots = [".env.example"];
   for (const root of searchRoots) {
     const entries = fs.statSync(path.join(process.cwd(), root)).isDirectory()
       ? fs.readdirSync(path.join(process.cwd(), root)).map((name) => path.join(root, name))

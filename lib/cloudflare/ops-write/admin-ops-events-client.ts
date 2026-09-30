@@ -15,23 +15,19 @@ import {
 } from "@/lib/cloudflare/ops-write/admin-ops-events";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV,
   OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV,
   resolveOpsHeartbeatBoundaryAuth,
   type OpsHeartbeatBoundaryOptions,
 } from "@/lib/cloudflare/ops-write/boundary-client";
 
 /**
- * M11.4 Node/GitHub compatibility client seam for `admin_ops_events`.
+ * Node/operator compatibility client seam for `admin_ops_events`.
  *
- * The watchdog writer runs outside the Cloudflare runtime (GitHub Actions
- * `pnpm ops:watchdog` and the Vercel fallback route) and cannot use a Worker
+ * Manual/local callers run outside the Cloudflare runtime and cannot use a Worker
  * Service Binding. This client lets those callers deliver the three writes the
  * contract needs — insert, read-latest dedupe, prune — to the publicly
  * reachable but authenticated `worldcons-ops-write` boundary over HTTPS,
- * reusing the exact M11.3 base URL / bearer / OIDC credential. It adds no new
+ * reusing the exact M11.3 base URL / bearer credential. It adds no new
  * credential, host or unauthenticated surface.
  *
  * Resting behavior is unchanged: with the default `supabase` authority every
@@ -73,9 +69,6 @@ async function boundaryAuthorization(
       enabled: true,
       baseUrl: config.baseUrl,
       token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
-      oidcToken: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]),
-      oidcAudience: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV])
-        ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
     },
     options,
   );
@@ -234,9 +227,6 @@ export async function listAdminOpsEventsViaBoundary(
       enabled: true,
       baseUrl: config.baseUrl,
       token: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]),
-      oidcToken: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]),
-      oidcAudience: trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV])
-        ?? OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
     },
     options,
   );

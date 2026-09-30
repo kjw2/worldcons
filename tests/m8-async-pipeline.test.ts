@@ -33,15 +33,6 @@ import {
 } from "@/lib/admin/command-control-plane/invocation-identity";
 
 const root = process.cwd();
-const scheduledWorkflows = [
-  "admin-health-p5.yml",
-  "admin-job-worker.yml",
-  "admin-watchdog.yml",
-  "crawlee-worker.yml",
-  "embedding-backfill.yml",
-  "summary-drain.yml",
-];
-
 test("M8 cron inventory maps every retired schedule to stable messages", () => {
   assert.deepEqual(M8_CRON_EXPRESSIONS, [
     "*/15 * * * *",
@@ -323,13 +314,9 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   assert.equal(config.preview_urls, false);
 });
 
-test("legacy schedulers are retired while manual compatibility executors remain", () => {
-  for (const workflow of scheduledWorkflows) {
-    const source = fs.readFileSync(path.join(root, ".github/workflows", workflow), "utf8");
-    assert.doesNotMatch(source, /^\s*schedule:\s*$/m, workflow);
-    assert.match(source, /^\s*workflow_dispatch:\s*$/m, workflow);
-    assert.match(source, /m8_idempotency_key:/, workflow);
-  }
+test("GitHub has no operational workflows; Cloudflare owns all schedules", () => {
+  const workflowDir = path.join(root, ".github/workflows");
+  assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
   const vercel = JSON.parse(fs.readFileSync(path.join(root, "vercel.json"), "utf8"));
   assert.equal("crons" in vercel, false);
 });
@@ -386,48 +373,23 @@ test("Browser Run client keeps HTTPS, auth, and result mapping bounded", async (
   }
 });
 
-test("Browser Run client prefers GitHub Actions OIDC when the runtime can mint it", async () => {
+test("Browser Run client ignores GitHub Actions identity variables and requires its bearer", async () => {
   const environment = {
     CLOUDFLARE_BROWSER_RUN_URL: "https://worldcons-ingest.example.workers.dev",
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example/token",
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "actions-request-token",
   };
-  assert.equal(cloudflareBrowserRunConfigured(environment), true);
-
-  const originalFetch = globalThis.fetch;
-  const calls: Array<{ url: string; authorization: string | null }> = [];
-  globalThis.fetch = async (input, init) => {
-    const url = String(input);
-    calls.push({ url, authorization: new Headers(init?.headers).get("authorization") });
-    if (url.startsWith("https://oidc.example/token")) {
-      assert.equal(new URL(url).searchParams.get("audience"), "worldcons-ingest");
-      return Response.json({ value: "oidc.jwt.token" });
-    }
-    return Response.json({
-      schemaVersion: 1,
-      url: "https://www.supremecourt.gov/",
-      finalUrl: "https://www.supremecourt.gov/",
-      status: 200,
-      headers: { "content-type": "text/html" },
-      html: "<html></html>",
-      fetchedAt: "2026-09-29T00:00:00.000Z",
-    });
-  };
-  try {
-    await crawlWithCloudflareBrowserRun({ url: "https://www.supremecourt.gov/" }, environment);
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0]?.authorization, "Bearer actions-request-token");
-    assert.equal(calls[1]?.authorization, "Bearer oidc.jwt.token");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(cloudflareBrowserRunConfigured(environment), false);
+  await assert.rejects(
+    crawlWithCloudflareBrowserRun({ url: "https://www.supremecourt.gov/" }, environment),
+    /authentication is unavailable/u,
+  );
 });
 
-test("consolidated Browser Run endpoint accepts GitHub OIDC without requiring a shared secret", () => {
+test("consolidated Browser Run public endpoint is bearer-only", () => {
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/browser-navigate.ts"), "utf8");
-  assert.match(source, /authorizeGithubOidcRequest/);
-  assert.match(source, /WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE/);
-  assert.match(source, /browser_oidc_auth_failed/);
+  assert.match(source, /BROWSER_RUN_TOKEN/u);
+  assert.doesNotMatch(source, /authorizeGithubOidcRequest|WORLDCONS_BROWSER_RUN_OIDC_AUDIENCE|ACTIONS_ID_TOKEN/u);
 });
 
 test("Browser Run endpoint refuses plaintext transport", async () => {

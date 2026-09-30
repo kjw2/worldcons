@@ -44,35 +44,19 @@ test("an unset embedding provider defaults to Gemini rather than OpenAI", () => 
   assert.doesNotMatch(embeddings, /EMBEDDING_PROVIDER \?\? "openai"/u);
 });
 
-test("scheduled workflows embed with Gemini when the secret is unset", () => {
-  // Every workflow that can write embeddings must agree on the provider, otherwise a
-  // single unset secret reintroduces silently missing vectors.
-  const workflows = [
-    ".github/workflows/embedding-backfill.yml",
-    ".github/workflows/summary-drain.yml",
-    ".github/workflows/crawlee-worker.yml",
-    ".github/workflows/admin-job-worker.yml",
-    ".github/workflows/admin-command-worker-p1.yml",
-  ];
-
-  for (const workflow of workflows) {
-    const source = read(workflow);
-    assert.match(source, /EMBEDDING_PROVIDER: gemini/u, workflow);
-    assert.match(source, /GEMINI_EMBEDDING_MODEL: \$\{\{ vars\.GEMINI_EMBEDDING_MODEL \|\| .gemini-embedding-001. \}\}/u, workflow);
-  }
+test("Cloudflare native embedding executor replaces GitHub scheduled writers", () => {
+  const executor = read("lib/cloudflare/async-pipeline/native-executor.ts");
+  const config = read("workers/async-pipeline/wrangler.jsonc");
+  assert.match(executor, /runEmbeddingBackfill/u);
+  assert.match(config, /embedding-backfill/u);
+  assert.equal(fs.existsSync(path.join(process.cwd(), ".github/workflows")) ? fs.readdirSync(path.join(process.cwd(), ".github/workflows")).length : 0, 0);
 });
 
-test("embedding backfill workflow is quota-bounded and resumable", () => {
-  const workflow = read(".github/workflows/embedding-backfill.yml");
-  // M8 retired the Cron schedule; embedding-backfill is now manual-only and
-  // carries the stable m8_idempotency_key for the Cron/Queue/Workflow plane.
-  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/mu);
-  assert.match(workflow, /m8_idempotency_key:/u);
-  assert.match(workflow, /group: admin-command-p1/u);
-  assert.match(workflow, /--drain --limit=/u);
-  assert.match(workflow, /--max-passes=/u);
-  assert.match(workflow, /--pass-delay-ms=65000/u);
-  assert.match(workflow, /timeout-minutes: 50/u);
+test("native embedding backfill is bounded and resumable", () => {
+  const executor = read("lib/cloudflare/async-pipeline/native-executor.ts");
+  assert.match(executor, /limit:\s*8/u);
+  assert.match(executor, /maxPasses:\s*20/u);
+  assert.match(executor, /embedding-backfill" \|\| message\.kind === "summary-drain" \? "50 minutes"/u);
 });
 
 test("embedding backfill uses D1 provenance persistence and resumes after provider deferral", () => {

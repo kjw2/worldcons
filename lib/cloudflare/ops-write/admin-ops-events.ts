@@ -4,16 +4,12 @@ import { m13ProfileValueForEnvVar } from "@/lib/cloudflare/m13/profile-override"
 /**
  * M11.4 admin_ops_events Cloudflare boundary contract.
  *
- * `worldcons_ops.admin_ops_events` is owned by Node/GitHub callers
- * (`lib/ops/watchdog.ts` via `scripts/ops-watchdog.ts` and the Vercel fallback
- * route `app/api/ops/watchdog/route.ts`). Those callers cannot use a Worker
- * Service Binding, so this contract is the single, runtime-neutral surface
- * shared by:
+ * `worldcons_ops.admin_ops_events` is Cloudflare/D1-owned. Manual/local callers
+ * cannot use a Worker Service Binding, so this contract is the single,
+ * runtime-neutral compatibility surface shared by:
  *
- * - the publicly reachable, bearer/OIDC-authenticated `worldcons-ops-write`
- *   Worker that GitHub/Node call over HTTPS at its workers.dev endpoint;
- * - the Node/GitHub client seam (`admin-ops-events-client.ts`);
- * - the internal Supabase compatibility bridge on `worldcons-search`;
+ * - the publicly reachable, bearer-authenticated `/v1/ops/*` boundary;
+ * - the Node/operator client seam (`admin-ops-events-client.ts`);
  * - the focused tests.
  *
  * Unlike the M11.3 append-only heartbeat, this surface must preserve the

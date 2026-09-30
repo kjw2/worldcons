@@ -234,8 +234,6 @@ test("M13 Node read client defaults to D1 and fails closed when the boundary is 
       enabled: true,
       baseUrl: null,
       token: null,
-      oidcToken: null,
-      oidcAudience: "worldcons-ops-write",
     },
   );
   await assert.rejects(
@@ -253,8 +251,6 @@ test("M13 Node read client defaults to D1 and fails closed when the boundary is 
     enabled: true,
     baseUrl: "https://ops.example",
     token: "boundary-secret",
-    oidcToken: null,
-    oidcAudience: "worldcons-ops-write",
   });
 
   const seen: { url: string; method: string; authorization: string | null }[] = [];
@@ -385,20 +381,6 @@ test("M11.3R Cloudflare runtime reads the D1 binding directly and never calls th
       if (!(key in originalEnv)) delete process.env[key];
     }
     Object.assign(process.env, originalEnv);
-  }
-});
-
-test("M13 watchdog workflow plumbs the read authority from repo vars with a d1 default", () => {
-  const source = fs.readFileSync(path.join(process.cwd(), ".github/workflows/admin-watchdog.yml"), "utf8");
-  assert.equal(
-    source.split("WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY: ${{ vars.WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY || 'd1' }}").length - 1,
-    1,
-    "admin-watchdog.yml must wire the read authority default exactly once",
-  );
-  // No committed read-authority value; only the vars reference may appear.
-  for (const line of source.split(/\r?\n/u)) {
-    if (!/^\s*(?:#\s*)?WORLDCONS_OPS_HEARTBEAT_READ_AUTHORITY\s*=/u.test(line)) continue;
-    assert.fail(`admin-watchdog.yml must not inline a read-authority value: ${line.trim()}`);
   }
 });
 

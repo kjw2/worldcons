@@ -102,20 +102,11 @@ test("M13 Node ingestion client never falls back to Supabase and fails closed wi
   );
 });
 
-test("M11-B deployment and GitHub writers carry the ingest authority seam", () => {
+test("M11-B deployment owns the ingest authority in Cloudflare and GitHub has no writers", () => {
   const config = fs.readFileSync(path.join(process.cwd(), "wrangler.jsonc"), "utf8");
   assert.match(config, /"WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "d1"/u);
   assert.match(config, /"binding": "WORLDCONS_INGEST"/u);
   assert.match(config, /"database_name": "worldcons_ingest"/u);
-
-  for (const file of [
-    ".github/workflows/crawlee-worker.yml",
-    ".github/workflows/summary-drain.yml",
-    ".github/workflows/admin-command-worker-p1.yml",
-    ".github/workflows/admin-job-worker.yml",
-  ]) {
-    const source = fs.readFileSync(path.join(process.cwd(), file), "utf8");
-    assert.match(source, /WORLDCONS_INGEST_RUN_WRITE_AUTHORITY:/u, file);
-    assert.match(source, /WORLDCONS_OPS_WRITE_BASE_URL:/u, file);
-  }
+  const workflowDir = path.join(process.cwd(), ".github/workflows");
+  assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
 });

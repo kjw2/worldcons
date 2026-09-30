@@ -51,7 +51,7 @@ test("M13 production Worker absorbs the authenticated ops-write boundary", () =>
   const config = read("wrangler.jsonc");
   assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_WRITE_AUTHORITY": "d1"/u);
   assert.match(config, /"WORLDCONS_INGEST_RUN_WRITE_AUTHORITY": "d1"/u);
-  assert.match(config, /"WORLDCONS_OPS_HEARTBEAT_OIDC_AUDIENCE": "worldcons-ops-write"/u);
+  assert.doesNotMatch(config, /OIDC_AUDIENCE|ACTIONS_ID_TOKEN/u);
 });
 
 test("M13 shared ops-write handler retains the profile seam", () => {

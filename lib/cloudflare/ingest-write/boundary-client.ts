@@ -8,11 +8,7 @@ import {
 } from "@/lib/cloudflare/ingest-write/ingestion-runs";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV,
   OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV,
-  requestGithubActionsOidcToken,
 } from "@/lib/cloudflare/ops-write/boundary-client";
 
 const INGEST_RUN_BOUNDARY_TIMEOUT_MS = 5_000;
@@ -33,14 +29,10 @@ function trimToNull(value: string | undefined) {
 
 async function authorization(
   environment: IngestRunWriteAuthorityEnvironment,
-  fetcher: typeof fetch,
+  _fetcher: typeof fetch,
   provider?: () => Promise<string | null>,
 ) {
   if (provider) return provider();
-  const explicitOidc = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]);
-  if (explicitOidc) return `Bearer ${explicitOidc}`;
-  const oidc = await requestGithubActionsOidcToken(environment, fetcher);
-  if (oidc) return `Bearer ${oidc}`;
   const token = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]);
   return token ? `Bearer ${token}` : null;
 }
@@ -87,7 +79,5 @@ export async function writeIngestionRunViaBoundary(
 }
 
 export function ingestionRunBoundaryEnvironmentDefaults() {
-  return {
-    [OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]: OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
-  };
+  return {};
 }

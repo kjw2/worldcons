@@ -17,11 +17,7 @@ import {
 } from "@/lib/cloudflare/core-write/authority";
 import {
   OPS_HEARTBEAT_BOUNDARY_BASE_URL_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
-  OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV,
   OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV,
-  requestGithubActionsOidcToken,
 } from "@/lib/cloudflare/ops-write/boundary-client";
 
 const CORE_BOUNDARY_TIMEOUT_MS = 8_000;
@@ -39,14 +35,10 @@ function trimToNull(value: string | undefined) {
 
 async function authorization(
   environment: Record<string, string | undefined>,
-  fetcher: typeof fetch,
+  _fetcher: typeof fetch,
   provider?: () => Promise<string | null>,
 ) {
   if (provider) return provider();
-  const explicitOidc = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_OIDC_TOKEN_ENV]);
-  if (explicitOidc) return `Bearer ${explicitOidc}`;
-  const oidc = await requestGithubActionsOidcToken(environment, fetcher);
-  if (oidc) return `Bearer ${oidc}`;
   const token = trimToNull(environment[OPS_HEARTBEAT_BOUNDARY_TOKEN_ENV]);
   return token ? `Bearer ${token}` : null;
 }
@@ -118,7 +110,5 @@ export function transitionPublicationViaCoreBoundary(
 }
 
 export function coreBoundaryEnvironmentDefaults() {
-  return {
-    [OPS_HEARTBEAT_BOUNDARY_OIDC_AUDIENCE_ENV]: OPS_HEARTBEAT_BOUNDARY_OIDC_DEFAULT_AUDIENCE,
-  };
+  return {};
 }
