@@ -6,6 +6,17 @@ import test from "node:test";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
+function sourceFiles(relativeDir: string): string[] {
+  const absolute = path.join(root, relativeDir);
+  if (!fs.existsSync(absolute)) return [];
+  const entries = fs.readdirSync(absolute, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const relative = path.join(relativeDir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(relative);
+    return /\.(?:ts|tsx|js|jsx)$/u.test(entry.name) ? [relative] : [];
+  });
+}
+
 test("M12 production Worker config uses the workers.dev production origin with observability", () => {
   const config = read("wrangler.jsonc");
   assert.match(config, /"name": "worldcons"/u);
@@ -50,4 +61,27 @@ test("M12 public production surfaces no longer advertise worldcons.vercel.app", 
 test("M12 has no legacy platform hostname redirect", () => {
   const config = read("next.config.ts");
   assert.doesNotMatch(config, /vercel\.app|VERCEL_/u);
+});
+
+test("M12 production runtime cannot reacquire Supabase or Vercel credentials", () => {
+  assert.equal(fs.existsSync(path.join(root, "vercel.json")), false, "Vercel deployment config must stay removed");
+  const runtimeFiles = [
+    ...sourceFiles("app"),
+    ...sourceFiles("components"),
+    ...sourceFiles("worker"),
+    ...sourceFiles("workers"),
+    "lib/reference-reads/index.ts",
+    "lib/article-reads/index.ts",
+    "lib/search/repository/index.ts",
+    "lib/db/client.ts",
+  ];
+  for (const file of runtimeFiles) {
+    const source = read(file);
+    assert.doesNotMatch(source, /SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|VERCEL_URL|BLOB_READ_WRITE_TOKEN/u, file);
+  }
+
+  const retiredClient = read("lib/db/client.ts");
+  assert.match(retiredClient, /hasSupabaseConfig\(\): false/u);
+  assert.match(retiredClient, /return false;/u);
+  assert.equal((retiredClient.match(/return null;/gu) ?? []).length, 2, "both retired Supabase client helpers must fail closed");
 });
