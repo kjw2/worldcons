@@ -329,8 +329,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
 test("GitHub has no operational workflows; Cloudflare owns all schedules", () => {
   const workflowDir = path.join(root, ".github/workflows");
   assert.equal(fs.existsSync(workflowDir) ? fs.readdirSync(workflowDir).length : 0, 0);
-  const vercel = JSON.parse(fs.readFileSync(path.join(root, "vercel.json"), "utf8"));
-  assert.equal("crons" in vercel, false);
+  assert.equal(fs.existsSync(path.join(root, "vercel.json")), false, "Vercel deployment config must remain retired");
 });
 
 test("P1 publication pipeline inherits the stable M8 identity", () => {

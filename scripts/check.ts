@@ -706,7 +706,7 @@ const validProductionEnv = {
   ADMIN_SESSION_SECRET: "b".repeat(32),
   CRON_SECRET: "c".repeat(32),
   LLM_SETTINGS_SECRET: "d".repeat(32),
-  SUPABASE_SERVICE_ROLE_KEY: "e".repeat(32),
+  MASTERDASH_SSO_SECRET: "e".repeat(32),
 };
 assert(validateProductionSecurityConfig(validProductionEnv).ok, "valid production security config should pass");
 assert(!validateProductionSecurityConfig({ ...validProductionEnv, ADMIN_PASSWORD: "short" }).ok, "short admin passwords must fail");
@@ -741,16 +741,16 @@ if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV;
 else mutableEnv.NODE_ENV = originalNodeEnv;
 
 const originalAppBaseUrl = process.env.APP_BASE_URL;
-const originalVercelUrl = process.env.VERCEL_URL;
+const originalBaseUrlNodeEnv = process.env.NODE_ENV;
 delete process.env.APP_BASE_URL;
-process.env.VERCEL_URL = "worldcons.example.vercel.app/";
-assert(getAppBaseUrl() === "https://worldcons.example.vercel.app", "Vercel base URL fallback failed");
+process.env.NODE_ENV = "production";
+assert(getAppBaseUrl() === "https://worldcons.cclib.workers.dev", "Cloudflare production base URL fallback failed");
 process.env.APP_BASE_URL = "https://library.example.org/";
 assert(getAppBaseUrl() === "https://library.example.org", "APP_BASE_URL normalization failed");
 if (originalAppBaseUrl === undefined) delete process.env.APP_BASE_URL;
 else process.env.APP_BASE_URL = originalAppBaseUrl;
-if (originalVercelUrl === undefined) delete process.env.VERCEL_URL;
-else process.env.VERCEL_URL = originalVercelUrl;
+if (originalBaseUrlNodeEnv === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = originalBaseUrlNodeEnv;
 
 assert(!supportsOpenAiTemperature("gpt-5.5"), "GPT-5.x chat requests must omit non-default temperature");
 assert(!supportsOpenAiTemperature("gpt-5.4"), "GPT-5.x chat requests must omit non-default temperature");
@@ -887,8 +887,10 @@ assert(
   !publicContentCacheSource.includes("/v2"),
   "retired /v2 paths must not be revalidated; next.config.ts permanently redirects them to clean public URLs",
 );
-const vercelConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "vercel.json"), "utf8")) as { regions?: string[] };
-assert(vercelConfig.regions?.length === 1 && vercelConfig.regions[0] === "icn1", "Vercel functions must run in the Seoul region");
+assert(
+  !fs.existsSync(path.join(process.cwd(), "vercel.json")),
+  "Vercel deployment config must stay removed after the Cloudflare cutover",
+);
 const articleDetailPageSource = fs.readFileSync(path.join(process.cwd(), "app/articles/[slug]/(detail)/page.tsx"), "utf8");
 assert(articleDetailPageSource.includes("getCachedArticleDetailPageData"), "article detail and metadata must share the persistent detail cache");
 assert(!articleDetailPageSource.includes("searchParams"), "article detail server rendering must not vary by returnTo search params");
@@ -1411,10 +1413,10 @@ async function assertAdminRouteSecurityControls() {
     );
     assert(adminIngestRouteSource.includes("createAdminJob"), "admin ingest route must enqueue admin jobs");
     assert(adminIngestRouteSource.includes("buildAdminJobIdempotencyKey"), "admin ingest route must build stable job idempotency keys");
-    assert(adminIngestRouteSource.includes("executeAdminIngestJobContext"), "admin ingest route inline fallback must use the shared executor");
-    assert(adminIngestRouteSource.includes('mode: "queued"'), "admin ingest route must return queued mode for queued jobs");
-    assert(adminIngestRouteSource.includes("{ status: 202 }"), "admin ingest route must return 202 for queued jobs");
-    assert(adminIngestRouteSource.includes("inlineAdminExecutionAllowed"), "admin ingest route must keep inline execution behind the runtime seam");
+    assert(!adminIngestRouteSource.includes("executeAdminIngestJobContext"), "admin ingest route must not execute ingest work inline");
+    assert(/mode\s*:\s*"queued"/.test(adminIngestRouteSource), "admin ingest route must return queued mode for queued jobs");
+    assert(/status\s*:\s*202/.test(adminIngestRouteSource), "admin ingest route must return 202 for queued jobs");
+    assert(!adminIngestRouteSource.includes("inlineAdminExecutionAllowed"), "admin ingest route must remain queue-only after the Cloudflare cutover");
     assert(adminWorkerExecutionSource.includes('environment.NODE_ENV !== "production"'), "admin ingest runtime seam must not default production to inline fallback");
     assert(adminWorkerExecutionSource.includes("isCloudflareWorkerRuntime()"), "admin ingest runtime seam must block inline execution in Cloudflare Workers");
     const geminiRouterSource = fs.readFileSync(path.join(process.cwd(), "lib/ai/gemini-router.ts"), "utf8");
@@ -1874,24 +1876,25 @@ async function assertAdminRouteSecurityControls() {
 
     const adminJobRunRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/admin/jobs/run/route.ts"), "utf8");
     assert(adminJobRunRouteSource.includes("adminMutationAuthFailureStatus"), "admin job run route must use admin mutation auth");
-    assert(adminJobRunRouteSource.includes("runAdminJobWorkerForRuntime"), "admin job run route must use the runtime-bounded job worker seam");
-    assert(adminJobRunRouteSource.includes('mode === "external_worker_required"'), "admin job run route must fail closed in the Worker runtime");
+    assert(!adminJobRunRouteSource.includes("runAdminJobWorkerForRuntime"), "admin job run route must not execute drain work inside the app Worker");
+    assert(/mode\s*:\s*"cloudflare_scheduler"/.test(adminJobRunRouteSource), "admin job run route must delegate to the Cloudflare scheduler");
+    assert(/managedBy\s*:\s*"worldcons-ingest"/.test(adminJobRunRouteSource), "admin job run route must identify worldcons-ingest as the owner");
+    assert(/status\s*:\s*202/.test(adminJobRunRouteSource), "admin job run route must return 202 for delegated work");
     assert(adminJobRunRouteSource.includes("parseAdminJobRunBody"), "admin job run route must validate worker payloads");
 
     const adminJobCronRoutePath = path.join(process.cwd(), "app/api/admin/cron/jobs/route.ts");
     assert(fs.existsSync(adminJobCronRoutePath), "admin job cron route must exist");
     const adminJobCronRouteSource = fs.readFileSync(adminJobCronRoutePath, "utf8");
     assert(adminJobCronRouteSource.includes("isAuthorizedSecretRequest"), "admin job cron route must use secret-only auth");
-    assert(adminJobCronRouteSource.includes("runAdminJobWorkerForRuntime"), "admin job cron route must use the runtime-bounded job worker seam");
-    assert(adminJobCronRouteSource.includes('mode === "external_worker_required"'), "admin job cron route must fail closed in the Worker runtime");
-    assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_MAX_JOBS"), "admin job cron route must support bounded max jobs env");
-    assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_LEASE_SECONDS"), "admin job cron route must support bounded lease seconds env");
-    assert(adminJobCronRouteSource.includes("ADMIN_JOB_CRON_TYPES"), "admin job cron route must support optional job type env");
+    assert(!adminJobCronRouteSource.includes("runAdminJobWorkerForRuntime"), "admin job cron route must not execute drain work inside the app Worker");
+    assert(/mode\s*:\s*"cloudflare_scheduler"/.test(adminJobCronRouteSource), "admin job cron route must report Cloudflare scheduler ownership");
+    assert(/managedBy\s*:\s*"worldcons-ingest"/.test(adminJobCronRouteSource), "admin job cron route must identify worldcons-ingest as the owner");
 
     const asyncPipelineConfig = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/wrangler.jsonc"), "utf8");
     assert(asyncPipelineConfig.includes("*/15 * * * *"), "Cloudflare async pipeline must run the admin job/watchdog cadence");
     assert(asyncPipelineConfig.includes("admin-job-drain"), "Cloudflare async pipeline must enable native admin job draining");
-    assert(m8NativeExecutorSource.includes("runAdminJobDrain"), "native executor must invoke the admin job drain service");
+    assert(m8WorkerSource.includes("runNativeAdminJobDrain"), "Cloudflare async worker must invoke the native admin job drain service");
+    assert(m8WorkerSource.includes('event.payload.kind === "admin-job-drain"'), "Cloudflare async worker must route admin-job-drain messages natively");
 
     const adminJobsPagePath = path.join(process.cwd(), "app/admin/jobs/page.tsx");
     assert(fs.existsSync(adminJobsPagePath), "retired admin jobs route must preserve a redirect");
