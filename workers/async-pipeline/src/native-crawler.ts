@@ -61,6 +61,7 @@ const BVERFG_OPENLEGALDATA_URL = "https://de.openlegaldata.io/api/cases/?court=3
 const SPAIN_TAIL_PROBE_LIMIT = 30;
 const SPAIN_TAIL_EMPTY_STOP = 3;
 const SPAIN_SEARCH_TYPES = ["SENTENCIA", "AUTO", "DECLARACION"] as const;
+const NATIVE_FETCH_TIMEOUT_MS = 60_000;
 
 const SPANISH_MONTHS: Record<string, string> = { enero: "01", febrero: "02", marzo: "03", abril: "04", mayo: "05", junio: "06", julio: "07", agosto: "08", septiembre: "09", setiembre: "09", octubre: "10", noviembre: "11", diciembre: "12" };
 const FRENCH_MONTHS: Record<string, string> = { janvier: "01", février: "02", fevrier: "02", mars: "03", avril: "04", mai: "05", juin: "06", juillet: "07", août: "08", aout: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12", decembre: "12" };
@@ -137,6 +138,16 @@ function officialHost(source: NativeCrawlerSource, url: string) {
   return allowed[source].some((root) => host === root || host.endsWith(`.${root}`));
 }
 
+async function boundedFetch(fetcher: typeof fetch, input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = NATIVE_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("crawler.fetch_timeout")), timeoutMs);
+  try {
+    return await fetcher(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function parseRobots(text: string, url: string) {
   const target = new URL(url).pathname + new URL(url).search;
   let matching = false;
@@ -168,7 +179,7 @@ function parseRobots(text: string, url: string) {
 
 async function getRobots(url: string, fetcher: typeof fetch) {
   const robotsUrl = `${new URL(url).origin}/robots.txt`;
-  const response = await fetcher(robotsUrl, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" } });
+  const response = await boundedFetch(fetcher, robotsUrl, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" } });
   return response.ok ? response.text() : "";
 }
 
@@ -201,7 +212,7 @@ async function fetchHtml(source: NativeCrawlerSource, url: string, bindings: Nat
   const elapsed = Date.now() - (previousRequest.get(origin) ?? 0);
   if (elapsed < delay) await new Promise((resolve) => setTimeout(resolve, delay - elapsed));
   previousRequest.set(origin, Date.now());
-  const response = await fetcher(url, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)", accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5" }, redirect: "follow" });
+  const response = await boundedFetch(fetcher, url, { headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)", accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.5" }, redirect: "follow" });
   const finalUrl = response.url || url;
   if (!officialHost(source, finalUrl)) throw new Error("crawler.redirect_non_official_host");
   if (response.ok) {
@@ -279,7 +290,7 @@ async function discoverBverfgOpenLegalData(fetcher: typeof fetch, rangeStart: nu
   const candidates: NativeArticleCandidate[] = [];
   let next: string | null = BVERFG_OPENLEGALDATA_URL;
   for (let page = 0; page < 4 && next && candidates.length < limit; page += 1) {
-    const response = await fetcher(next, {
+    const response = await boundedFetch(fetcher, next, {
       headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" },
       redirect: "follow",
     });
@@ -356,7 +367,7 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
     const indexUrl = `${base}${path}`;
     try {
       await waitForSourcePermit("es-tribunal-constitucional", indexUrl, fetcher, robotsCache, lastRequest);
-      const response = await fetcher(indexUrl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+      const response = await boundedFetch(fetcher, indexUrl, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
       if (!response.ok) continue;
       const cookies = new Map<string, string>();
       mergeCookies(cookies, headerSetCookies(response.headers));
@@ -392,7 +403,7 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
       for (const ajaxUrl of [...new Set(session.ajaxUrls)]) {
         try {
           await waitForSourcePermit("es-tribunal-constitucional", ajaxUrl, fetcher, robotsCache, lastRequest);
-          const response = await fetcher(ajaxUrl, { method: "POST", headers: { accept: "application/json,text/plain,*/*", "accept-language": "es,en;q=0.8,ko;q=0.5", "content-type": "application/x-www-form-urlencoded; charset=UTF-8", cookie: cookieHeader(session.cookies), origin: base, referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, body, redirect: "follow" });
+          const response = await boundedFetch(fetcher, ajaxUrl, { method: "POST", headers: { accept: "application/json,text/plain,*/*", "accept-language": "es,en;q=0.8,ko;q=0.5", "content-type": "application/x-www-form-urlencoded; charset=UTF-8", cookie: cookieHeader(session.cookies), origin: base, referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, body, redirect: "follow" });
           mergeCookies(session.cookies, headerSetCookies(response.headers));
           const text = await response.text();
           if (response.ok && /"success"\s*:\s*"1"/.test(text)) { hasResults = true; break; }
@@ -409,7 +420,7 @@ async function discoverSpainSearch(fetcher: typeof fetch, robotsCache: Map<strin
           try {
             const url = `${listUrl}?page=${page}`;
             await waitForSourcePermit("es-tribunal-constitucional", url, fetcher, robotsCache, lastRequest);
-            const response = await fetcher(url, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", cookie: cookieHeader(session.cookies), referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+            const response = await boundedFetch(fetcher, url, { headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "accept-language": "es,en;q=0.8,ko;q=0.5", cookie: cookieHeader(session.cookies), referer: session.indexUrl, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
             mergeCookies(session.cookies, headerSetCookies(response.headers));
             if (!response.ok) continue;
             const html = await response.text();
@@ -478,7 +489,7 @@ async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBind
     await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
     let response: Response | null = null;
     try {
-      response = await fetcher(api, { headers: { accept: "application/json,text/plain;q=0.8,*/*;q=0.5", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+      response = await boundedFetch(fetcher, api, { headers: { accept: "application/json,text/plain;q=0.8,*/*;q=0.5", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
     } catch {
       response = null;
     }
