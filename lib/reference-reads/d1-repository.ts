@@ -156,16 +156,16 @@ export function createD1ReferenceReadRepository(
 
   async function listTags(options: TagListOptions = {}): Promise<TagSummary[]> {
     const { type, sort, limit, minArticleCount } = normalizeTagListOptions(options);
-    if (!limit) throw new Error("D1 listTags shadow requires an explicit bounded limit");
     const where: D1RuntimeReadPredicate[] = [];
     if (type) where.push({ column: "type", value: type });
     if (minArticleCount) where.push({ column: "article_count", op: "gte", value: minArticleCount });
+    const boundedLimit = limit ? Math.min(limit, maxRows + 1) : maxRows + 1;
     const rows = await runD1RuntimeRead({
       binding: requireCore(dependencies),
       table: requireTable("tags"),
       where,
       orderBy: tagOrder(sort),
-      limit: Math.min(limit, maxRows + 1),
+      limit: boundedLimit,
     });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listTags");
     return rows.map((row) => tagRowToSummary(row as unknown as SupabaseTagRow));

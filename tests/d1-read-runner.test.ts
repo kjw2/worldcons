@@ -461,15 +461,15 @@ test("D1 listTags/getTagBySlug map identically to Supabase and bound the query",
   assert.deepEqual(slugCall.params, ["missing", 1]);
 });
 
-test("D1 listTags rejects an unbounded read and getTagBySlug orders by name ascending", async () => {
+test("D1 listTags safely bounds an omitted limit and getTagBySlug orders by name ascending", async () => {
   const d1 = createFakeD1({ tags: TAG_ROWS });
-  await assert.rejects(
-    () => createD1ReferenceReadRepository({ binding: d1.database }).listTags({ sort: "name" }),
-    /explicit bounded limit/,
-  );
+  await createD1ReferenceReadRepository({ binding: d1.database, maxRows: 5 }).listTags({ sort: "name" });
+  assert.match(d1.calls[0].sql, /order by name asc limit \?/);
+  assert.deepEqual(d1.calls[0].params, [6]);
 
   await createD1ReferenceReadRepository({ binding: d1.database }).listTags({ sort: "name", limit: 2 });
-  assert.match(d1.calls[0].sql, /order by name asc limit \?/);
+  assert.match(d1.calls[1].sql, /order by name asc limit \?/);
+  assert.deepEqual(d1.calls[1].params, [2]);
 });
 
 test("D1 listIngestionRuns uses the ingest binding, revives metadata and truncates overflow", async () => {
