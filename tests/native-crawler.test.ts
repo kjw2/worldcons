@@ -265,7 +265,8 @@ test("BVerfG native discovery falls back to OpenLegalData candidates but fetches
   let tick = 0;
   Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
   try {
-    const officialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+    const firstOfficialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+    const officialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260917_2bvr170226.html";
     const officialText = "Verified official BVerfG decision text on constitutional rights. ".repeat(20);
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
@@ -273,6 +274,7 @@ test("BVerfG native discovery falls back to OpenLegalData candidates but fetches
       if (url.endsWith("/robots.txt")) return response(robots);
       if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links on landing page</main></html>");
       if (url.startsWith("https://de.openlegaldata.io/api/cases/")) return response(JSON.stringify({ next: null, results: [{ file_number: "2 BvR 1702/26", date: "2026-09-17", type: "Einstweilige Anordnung", ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" }] }), 200, "application/json");
+      if (url === firstOfficialUrl) return response("not published", 404);
       if (url === officialUrl) return response(`<html><main>${officialText}</main></html>`);
       throw new Error(`unexpected fetch ${url}`);
     };
@@ -281,6 +283,7 @@ test("BVerfG native discovery falls back to OpenLegalData candidates but fetches
     assert.equal(result.fetchedCount, 1);
     assert.equal(result.failedCount, 0);
     assert.ok(requested.some((url) => url.startsWith("https://de.openlegaldata.io/api/cases/")));
+    assert.ok(requested.includes(firstOfficialUrl));
     assert.ok(requested.includes(officialUrl));
     const article = [...store.articles.values()][0];
     assert.equal(article.canonical_url, officialUrl);
@@ -288,6 +291,33 @@ test("BVerfG native discovery falls back to OpenLegalData candidates but fetches
     assert.equal(metadata.discoveryIndex, "openlegaldata");
     assert.equal(metadata.collection.sourceUrlVerified, true);
     assert.equal(metadata.collection.publishable, true);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("BVerfG unpublished official variants remain a bounded retry candidate instead of failing the source run", async () => {
+  const store = memoryBindings();
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
+  try {
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links</main></html>");
+      if (url.startsWith("https://de.openlegaldata.io/api/cases/")) return response(JSON.stringify({ next: null, results: [{ file_number: "2 BvR 1702/26", date: "2026-09-17", type: "Einstweilige Anordnung", ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" }] }), 200, "application/json");
+      if (/\/SharedDocs\/Entscheidungen\/DE\/2026\/09\/(?:rk|rs)20260917_2bvr170226\.html$/.test(url)) return response("not published", 404);
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, { now, limit: 20, fetch: fetcher, idempotencyKey: "m8:crawler-daily:bverfg-unpublished" });
+    assert.equal(result.status, "completed");
+    assert.equal(result.discoveredCount, 1);
+    assert.equal(result.fetchedCount, 0);
+    assert.equal(result.uncollectedCount, 1);
+    assert.equal(result.failedCount, 0);
+    assert.equal(store.articles.size, 0);
+    assert.equal([...store.candidates.values()][0].last_error_code, "BVERFG_OFFICIAL_VARIANTS_404");
   } finally {
     Date.now = originalNow;
   }

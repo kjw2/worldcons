@@ -238,7 +238,14 @@ function bverfgCandidateFromOpenLegalData(record: Record<string, unknown>): Nati
   const match = ecli.match(/^ECLI:DE:BVerfG:(20\d{2}):([a-z]{2})(20\d{2})(\d{2})(\d{2})\.([a-z0-9]+)$/i);
   if (!match || match[1] !== match[3]) return null;
   const [, , prefix, year, month, day, casePart] = match;
-  const url = `${SOURCE_INFO["de-bverfg"].baseUrl}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix.toLowerCase()}${year}${month}${day}_${casePart.toLowerCase()}.html`;
+  const primaryPrefix = prefix.toLowerCase();
+  const variantPrefixes = primaryPrefix === "rk" || primaryPrefix === "rs"
+    ? [primaryPrefix, primaryPrefix === "rk" ? "rs" : "rk"]
+    : primaryPrefix === "qk" || primaryPrefix === "qs"
+      ? [primaryPrefix, primaryPrefix === "qk" ? "qs" : "qk"]
+      : [primaryPrefix];
+  const officialUrlCandidates = variantPrefixes.map((candidatePrefix) => `${SOURCE_INFO["de-bverfg"].baseUrl}/SharedDocs/Entscheidungen/DE/${year}/${month}/${candidatePrefix}${year}${month}${day}_${casePart.toLowerCase()}.html`);
+  const url = officialUrlCandidates[0];
   const publishedAt = dateIso(typeof record.date === "string" ? record.date : `${year}-${month}-${day}`);
   const caseNumber = typeof record.file_number === "string" ? record.file_number.trim() : undefined;
   const decisionType = typeof record.type === "string" ? record.type.trim() : undefined;
@@ -251,6 +258,8 @@ function bverfgCandidateFromOpenLegalData(record: Record<string, unknown>): Nati
     metadata: {
       caseNumber,
       ecli,
+      officialUrlCandidates,
+      officialUrlResolverVersion: 2,
       discoveryIndex: "openlegaldata",
       discoveryIndexUrl: BVERFG_OPENLEGALDATA_URL,
       collection: {
@@ -352,17 +361,27 @@ function spainPayloadText(payload: Record<string, unknown>) {
     : []).filter(Boolean).join("\n\n");
 }
 
-async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBindings, robotsCache: Map<string, string>, lastRequest: Map<string, number>, hjId: number) {
+async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBindings, robotsCache: Map<string, string>, lastRequest: Map<string, number>, hjId: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   const api = `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/Resolucion/Api/json/${hjId}`;
   await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
   const response = await fetcher(api, { headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
   if (!officialHost("es-tribunal-constitucional", response.url || api)) throw new Error("crawler.redirect_non_official_host");
-  if (!response.ok) return null;
-  const payload = await response.json().catch(() => null);
+  if (response.ok) {
+    const payload = await response.json().catch(() => null);
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload as Record<string, unknown>;
+  }
+  if (!browserNavigate) return null;
+  const rendered = await browserNavigate({ url: api, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" });
+  if (!officialHost("es-tribunal-constitucional", rendered.finalUrl || api)) throw new Error("crawler.redirect_non_official_host");
+  const body = htmlText(rendered.html);
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  const payload = JSON.parse(body.slice(start, end + 1)) as unknown;
   return payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
 }
 
-async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, rangeStart: number, limit: number) {
+async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, rangeStart: number, limit: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   const row = await bindings.WORLDCONS_CORE.prepare("SELECT MAX(CAST(json_extract(source_metadata,'$.hjId') AS INTEGER)) AS max_hj_id FROM articles WHERE source_key='es-tribunal-constitucional'").first<{ max_hj_id: number | string | null }>();
   const maxId = Number(row?.max_hj_id ?? 0);
   if (!Number.isFinite(maxId) || maxId <= 0) return [];
@@ -370,7 +389,7 @@ async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeo
   let empty = 0;
   for (let offset = 1; offset <= SPAIN_TAIL_PROBE_LIMIT && candidates.length < limit && empty < SPAIN_TAIL_EMPTY_STOP; offset += 1) {
     const hjId = Math.trunc(maxId) + offset;
-    const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, hjId).catch(() => null);
+    const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, hjId, browserNavigate).catch(() => null);
     const candidate = payload ? spainPayloadCandidate(payload, hjId) : null;
     if (!candidate) {
       empty += 1;
@@ -550,15 +569,32 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
   const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
   const candidates = discoverSpain(result.html, url);
   if (candidates.length > 0) return candidates.filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
-  return discoverSpainTail(bindings, fetcher, robotsCache, lastRequest, rangeStart, limit);
+  return discoverSpainTail(bindings, fetcher, robotsCache, lastRequest, rangeStart, limit, browserNavigate);
 }
 
 async function fetchCandidate(candidate: NativeArticleCandidate, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   if (candidate.sourceKey === "us-scotus") return { text: `${candidate.title}\n${candidate.publishedAt ?? ""}\n${candidate.url}`, status: 200, fetched: false };
+  if (candidate.sourceKey === "de-bverfg" && candidate.metadata.discoveryIndex === "openlegaldata") {
+    const configured = Array.isArray(candidate.metadata.officialUrlCandidates)
+      ? candidate.metadata.officialUrlCandidates.filter((value): value is string => typeof value === "string" && officialHost("de-bverfg", value))
+      : [candidate.url];
+    for (const officialUrl of configured) {
+      try {
+        const result = await fetchHtml(candidate.sourceKey, officialUrl, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+        candidate.url = officialUrl;
+        (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified = true;
+        return { text: extractOfficialText(result.html, candidate.sourceKey), status: result.status, fetched: true };
+      } catch (error) {
+        if (error instanceof Error && error.message === "crawler.http_404") continue;
+        throw error;
+      }
+    }
+    return { text: "", status: 404, fetched: false };
+  }
   if (candidate.sourceKey === "es-tribunal-constitucional") {
     const jsonId = candidate.metadata.hjId;
     if (typeof jsonId === "string" && /^\d+$/.test(jsonId)) {
-      const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, Number(jsonId));
+      const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, Number(jsonId), browserNavigate);
       if (payload) {
         const refreshed = spainPayloadCandidate(payload, Number(jsonId));
         if (refreshed) {
@@ -642,7 +678,12 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
         const collection = candidate.metadata.collection as Record<string, unknown>;
         if (!fetched.fetched) {
           uncollectedCount += 1;
-          await upsertCandidate(bindings.WORLDCONS_INGEST, source, candidate.url, "PDF_TEXT_EXTRACTION_UNAVAILABLE", "Official PDF metadata preserved; source text awaits review.", false);
+          const unavailableCode = source === "de-bverfg" ? "BVERFG_OFFICIAL_VARIANTS_404" : "PDF_TEXT_EXTRACTION_UNAVAILABLE";
+          const unavailableMessage = source === "de-bverfg"
+            ? "Official BVerfG URL variants are not published yet; keep the discovery candidate for bounded recheck."
+            : "Official PDF metadata preserved; source text awaits review.";
+          await upsertCandidate(bindings.WORLDCONS_INGEST, source, candidate.url, unavailableCode, unavailableMessage, false);
+          if (source === "de-bverfg") continue;
         } else {
           fetchedCount += 1;
           await upsertCandidate(bindings.WORLDCONS_INGEST, source, candidate.url, null, null, true);
