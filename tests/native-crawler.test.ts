@@ -77,6 +77,7 @@ function memoryBindings() {
           if (sql.includes("SELECT id FROM articles WHERE content_hash")) return null;
           if (sql.includes("SELECT id FROM sources")) return { id: "source-id" } as T;
           if (sql.includes("SELECT status, metadata FROM ingestion_runs")) return (runs.get(String(values[0])) ?? null) as T | null;
+          if (sql.includes("MAX(CAST(json_extract(source_metadata,'$.hjId') AS INTEGER))")) return { max_hj_id: 32140 } as T;
           return null;
         },
         async all<T>() {
@@ -251,6 +252,78 @@ test("native collection keeps source-specific publication and review gates", asy
         assert.equal([...store.candidates.values()][0].status, "fetched", source);
       }
       assert.equal(typeof article.raw_text_blob_size, "string", "D1 bigint values use decimal text");
+    }
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("BVerfG native discovery falls back to OpenLegalData candidates but fetches only official source text", async () => {
+  const store = memoryBindings();
+  const requested: string[] = [];
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
+  try {
+    const officialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+    const officialText = "Verified official BVerfG decision text on constitutional rights. ".repeat(20);
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links on landing page</main></html>");
+      if (url.startsWith("https://de.openlegaldata.io/api/cases/")) return response(JSON.stringify({ next: null, results: [{ file_number: "2 BvR 1702/26", date: "2026-09-17", type: "Einstweilige Anordnung", ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" }] }), 200, "application/json");
+      if (url === officialUrl) return response(`<html><main>${officialText}</main></html>`);
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, { now, limit: 20, fetch: fetcher, idempotencyKey: "m8:crawler-daily:bverfg-live-fallback" });
+    assert.equal(result.discoveredCount, 1);
+    assert.equal(result.fetchedCount, 1);
+    assert.equal(result.failedCount, 0);
+    assert.ok(requested.some((url) => url.startsWith("https://de.openlegaldata.io/api/cases/")));
+    assert.ok(requested.includes(officialUrl));
+    const article = [...store.articles.values()][0];
+    assert.equal(article.canonical_url, officialUrl);
+    const metadata = JSON.parse(String(article.source_metadata)) as { discoveryIndex?: string; collection: { sourceUrlVerified: boolean; publishable: boolean } };
+    assert.equal(metadata.discoveryIndex, "openlegaldata");
+    assert.equal(metadata.collection.sourceUrlVerified, true);
+    assert.equal(metadata.collection.publishable, true);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids", async () => {
+  const store = memoryBindings();
+  const requestedIds: number[] = [];
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
+  const substantive = "Texto oficial de la resolución constitucional. ".repeat(60);
+  try {
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://hj.tribunalconstitucional.es/HJ/es/Busqueda/Index") return response("<html><main>search shell without result links</main></html>");
+      const idMatch = url.match(/\/HJ\/Resolucion\/Api\/json\/(\d+)$/);
+      if (idMatch) {
+        const id = Number(idMatch[1]);
+        requestedIds.push(id);
+        if (id === 32141 || id === 32142) return response(JSON.stringify({ TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: id - 32080, ANNO_RESOLUCION: 2026, FECHA_REGISTRO: id === 32141 ? "29/09/2026" : "30/09/2026", RESOLUCIONES_FUNDAMENTOS: [{ TEXTO: substantive }] }), 200, "application/json");
+        return response("{}", 404, "application/json");
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const result = await runNativeSourceCollection("es-tribunal-constitucional", store.bindings, { now, limit: 20, fetch: fetcher, idempotencyKey: "m8:crawler-daily:spain-tail" });
+    assert.equal(result.discoveredCount, 2);
+    assert.equal(result.fetchedCount, 2);
+    assert.equal(result.failedCount, 0);
+    assert.deepEqual([...new Set(requestedIds)].slice(0, 5), [32141, 32142, 32143, 32144, 32145]);
+    assert.equal(store.articles.size, 2);
+    for (const article of store.articles.values()) {
+      const metadata = JSON.parse(String(article.source_metadata)) as { collection: { publishable: boolean; sourceTextAvailable: boolean } };
+      assert.equal(metadata.collection.publishable, true);
+      assert.equal(metadata.collection.sourceTextAvailable, true);
     }
   } finally {
     Date.now = originalNow;

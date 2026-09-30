@@ -57,6 +57,10 @@ const SOURCE_INFO: Record<NativeCrawlerSource, { name: string; jurisdiction: str
   "es-tribunal-constitucional": { name: "Tribunal Constitucional de España", jurisdiction: "Spain", language: "es", baseUrl: "https://hj.tribunalconstitucional.es", delayMs: 2_000, rangeDays: 180 },
 };
 
+const BVERFG_OPENLEGALDATA_URL = "https://de.openlegaldata.io/api/cases/?court=3&format=json&o=-date";
+const SPAIN_TAIL_PROBE_LIMIT = 30;
+const SPAIN_TAIL_EMPTY_STOP = 3;
+
 const SPANISH_MONTHS: Record<string, string> = { enero: "01", febrero: "02", marzo: "03", abril: "04", mayo: "05", junio: "06", julio: "07", agosto: "08", septiembre: "09", setiembre: "09", octubre: "10", noviembre: "11", diciembre: "12" };
 const FRENCH_MONTHS: Record<string, string> = { janvier: "01", février: "02", fevrier: "02", mars: "03", avril: "04", mai: "05", juin: "06", juillet: "07", août: "08", aout: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12", decembre: "12" };
 const GERMAN_MONTHS: Record<string, string> = { januar: "01", februar: "02", märz: "03", marz: "03", april: "04", mai: "05", juni: "06", juli: "07", august: "08", september: "09", oktober: "10", november: "11", dezember: "12" };
@@ -93,6 +97,13 @@ function dateIso(value?: string) {
   const us = trimmed.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
   if (us) return `${us[3].length === 2 ? `20${us[3]}` : us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}T00:00:00.000Z`;
   return undefined;
+}
+
+function spainDateIso(value?: string) {
+  if (!value) return undefined;
+  const slash = value.trim().match(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/);
+  if (slash) return `${slash[3]}-${slash[2].padStart(2, "0")}-${slash[1].padStart(2, "0")}T00:00:00.000Z`;
+  return dateIso(value);
 }
 
 function withinRange(value: string | undefined, rangeStart: number) {
@@ -222,6 +233,61 @@ function discoverBverfg(html: string, base: string): NativeArticleCandidate[] {
   });
 }
 
+function bverfgCandidateFromOpenLegalData(record: Record<string, unknown>): NativeArticleCandidate | null {
+  const ecli = typeof record.ecli === "string" ? record.ecli.trim() : "";
+  const match = ecli.match(/^ECLI:DE:BVerfG:(20\d{2}):([a-z]{2})(20\d{2})(\d{2})(\d{2})\.([a-z0-9]+)$/i);
+  if (!match || match[1] !== match[3]) return null;
+  const [, , prefix, year, month, day, casePart] = match;
+  const url = `${SOURCE_INFO["de-bverfg"].baseUrl}/SharedDocs/Entscheidungen/DE/${year}/${month}/${prefix.toLowerCase()}${year}${month}${day}_${casePart.toLowerCase()}.html`;
+  const publishedAt = dateIso(typeof record.date === "string" ? record.date : `${year}-${month}-${day}`);
+  const caseNumber = typeof record.file_number === "string" ? record.file_number.trim() : undefined;
+  const decisionType = typeof record.type === "string" ? record.type.trim() : undefined;
+  return {
+    sourceKey: "de-bverfg",
+    url,
+    title: [decisionType, caseNumber, publishedAt?.slice(0, 10)].filter(Boolean).join(" - ") || caseNumber || "BVerfG decision",
+    publishedAt,
+    contentType: "decision",
+    metadata: {
+      caseNumber,
+      ecli,
+      discoveryIndex: "openlegaldata",
+      discoveryIndexUrl: BVERFG_OPENLEGALDATA_URL,
+      collection: {
+        strategy: "api",
+        confidence: "medium",
+        sourceUrlVerified: false,
+        sourceTextAvailable: false,
+        publishable: false,
+        reason: "Candidate discovered through OpenLegalData; publication requires successful fetch from the official BVerfG URL.",
+      },
+    },
+  };
+}
+
+async function discoverBverfgOpenLegalData(fetcher: typeof fetch, rangeStart: number, limit: number) {
+  const candidates: NativeArticleCandidate[] = [];
+  let next: string | null = BVERFG_OPENLEGALDATA_URL;
+  for (let page = 0; page < 4 && next && candidates.length < limit; page += 1) {
+    const response = await fetcher(next, {
+      headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" },
+      redirect: "follow",
+    });
+    if (!response.ok) throw new Error(`crawler.bverfg_index_http_${response.status}`);
+    const payload = await response.json() as { next?: unknown; results?: unknown };
+    const rows = Array.isArray(payload.results) ? payload.results : [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+      const candidate = bverfgCandidateFromOpenLegalData(row as Record<string, unknown>);
+      if (!candidate || !withinRange(candidate.publishedAt, rangeStart)) continue;
+      candidates.push(candidate);
+      if (candidates.length >= limit) break;
+    }
+    next = typeof payload.next === "string" && payload.next.startsWith("https://de.openlegaldata.io/") ? payload.next : null;
+  }
+  return candidates;
+}
+
 function discoverFrance(html: string, base: string): NativeArticleCandidate[] {
   return absoluteLinks(html, base).filter((link) => officialHost("fr-conseil-constitutionnel", link.url) && (/^\/decision\/20\d{2}\/[^/]+\.html?$/i.test(new URL(link.url).pathname) || /^\/20\d{2}-\d{2}-\d{2}\/decision-/i.test(new URL(link.url).pathname))).map((link) => ({
     sourceKey: "fr-conseil-constitutionnel", url: link.url, title: link.title || link.url.split("/").at(-1) || "Décision", publishedAt: dateIso(`${link.context} ${link.url}`), contentType: "decision", metadata: { decisionNumber: link.context.match(/\bn[°ºo]?\s*[0-9]{4}-[0-9]+\s*(?:QPC|DC|AN|SEN)?/i)?.[0], collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false } },
@@ -245,6 +311,75 @@ function discoverSpain(html: string, base: string): NativeArticleCandidate[] {
   return absoluteLinks(html, base).filter((link) => officialHost("es-tribunal-constitucional", link.url) && /\/Resolucion\/Show\/\d+/i.test(link.url)).map((link) => ({
     sourceKey: "es-tribunal-constitucional", url: link.url, title: link.title || `Resolución HJ ${link.url.match(/Show\/(\d+)/i)?.[1]}`, publishedAt: dateIso(link.context), contentType: /\bAUTO\b/i.test(link.title) ? "order" : "decision", metadata: { hjId: link.url.match(/Show\/(\d+)/i)?.[1], collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: true, sourceTextAvailable: false, strictSourceTextAvailable: true, publishable: false } },
   }));
+}
+
+function spainPayloadCandidate(payload: Record<string, unknown>, hjId: number): NativeArticleCandidate | null {
+  const resolutionType = typeof payload.TIPO_RESOLUCION === "string" ? payload.TIPO_RESOLUCION.trim().toUpperCase() : "";
+  if (!new Set(["SENTENCIA", "AUTO", "DECLARACION", "DECLARACIÓN"]).has(resolutionType)) return null;
+  const publishedAt = spainDateIso(typeof payload.FECHA_REGISTRO === "string" ? payload.FECHA_REGISTRO : undefined);
+  const number = payload.NUMERO_RESOLUCION === undefined || payload.NUMERO_RESOLUCION === null ? "" : String(payload.NUMERO_RESOLUCION);
+  const year = payload.ANNO_RESOLUCION === undefined || payload.ANNO_RESOLUCION === null ? "" : String(payload.ANNO_RESOLUCION);
+  const title = `${resolutionType}${number ? ` ${number}${year ? `/${year}` : ""}` : ""}${publishedAt ? `, ${publishedAt.slice(0, 10)}` : ""}`;
+  const irrelevant = payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true
+    || /no incorpora doctrina constitucional|no contiene doctrina constitucional/i.test(String(payload.AVISO ?? ""));
+  return {
+    sourceKey: "es-tribunal-constitucional",
+    url: `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/es/Resolucion/Show/${hjId}`,
+    title,
+    publishedAt,
+    contentType: resolutionType === "AUTO" ? "order" : "decision",
+    metadata: {
+      hjId: String(hjId),
+      resolutionType,
+      notice: typeof payload.AVISO === "string" ? payload.AVISO : undefined,
+      ...(irrelevant ? { review: { required: true, reason: "official_metadata_requires_review" } } : {}),
+      collection: {
+        strategy: "api",
+        confidence: "high",
+        sourceUrlVerified: true,
+        sourceTextAvailable: false,
+        strictSourceTextAvailable: true,
+        publishable: false,
+      },
+    },
+  };
+}
+
+function spainPayloadText(payload: Record<string, unknown>) {
+  const sections = ["RESOLUCIONES_ANTECEDENTES", "RESOLUCIONES_FUNDAMENTOS", "RESOLUCIONES_DICTAMEN", "RESOLUCIONES_VOTOS_PARTICULARES"];
+  return sections.flatMap((key) => Array.isArray(payload[key])
+    ? (payload[key] as Array<Record<string, unknown>>).map((entry) => htmlText(String(entry.TEXTO ?? "")))
+    : []).filter(Boolean).join("\n\n");
+}
+
+async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBindings, robotsCache: Map<string, string>, lastRequest: Map<string, number>, hjId: number) {
+  const api = `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/Resolucion/Api/json/${hjId}`;
+  await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
+  const response = await fetcher(api, { headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+  if (!officialHost("es-tribunal-constitucional", response.url || api)) throw new Error("crawler.redirect_non_official_host");
+  if (!response.ok) return null;
+  const payload = await response.json().catch(() => null);
+  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
+}
+
+async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, rangeStart: number, limit: number) {
+  const row = await bindings.WORLDCONS_CORE.prepare("SELECT MAX(CAST(json_extract(source_metadata,'$.hjId') AS INTEGER)) AS max_hj_id FROM articles WHERE source_key='es-tribunal-constitucional'").first<{ max_hj_id: number | string | null }>();
+  const maxId = Number(row?.max_hj_id ?? 0);
+  if (!Number.isFinite(maxId) || maxId <= 0) return [];
+  const candidates: NativeArticleCandidate[] = [];
+  let empty = 0;
+  for (let offset = 1; offset <= SPAIN_TAIL_PROBE_LIMIT && candidates.length < limit && empty < SPAIN_TAIL_EMPTY_STOP; offset += 1) {
+    const hjId = Math.trunc(maxId) + offset;
+    const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, hjId).catch(() => null);
+    const candidate = payload ? spainPayloadCandidate(payload, hjId) : null;
+    if (!candidate) {
+      empty += 1;
+      continue;
+    }
+    empty = 0;
+    if (withinRange(candidate.publishedAt, rangeStart)) candidates.push(candidate);
+  }
+  return candidates;
 }
 
 function extractOfficialText(html: string, source: NativeCrawlerSource) {
@@ -402,7 +537,9 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
   if (source === "de-bverfg") {
     const url = `${base}/DE/Entscheidungen/entscheidungen_node.html`;
     const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-    return discoverBverfg(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
+    const officialListing = discoverBverfg(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
+    if (officialListing.length > 0) return officialListing;
+    return discoverBverfgOpenLegalData(fetcher, rangeStart, limit);
   }
   if (source === "fr-conseil-constitutionnel") {
     const url = `${base}/les-decisions`;
@@ -413,57 +550,45 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
   const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
   const candidates = discoverSpain(result.html, url);
   if (candidates.length > 0) return candidates.filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
-  const token = result.html.match(/name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)/i)?.[1]
-    ?? result.html.match(/value=["']([^"']+)["'][^>]*name=["']__RequestVerificationToken/i)?.[1];
-  if (!token) return [];
-  const today = new Date().toISOString().slice(0, 10);
-  const from = new Date(rangeStart).toISOString().slice(0, 10);
-  const body = new URLSearchParams({ __RequestVerificationToken: token, TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: "", ANNO_RESOLUCION: today.slice(0, 4), BIS_RESOLUCION: "", FECHA_DESDE: from.split("-").reverse().join("/"), FECHA_HASTA: today.split("-").reverse().join("/"), BUSQUEDA_LIBRE: "" });
-  const searchUrl = `${base}/HJ/es/Busqueda/BuscarAjax`;
-  const searchRobots = parseRobots(robotsCache.get(new URL(searchUrl).origin) ?? "", searchUrl);
-  if (!searchRobots.allowed) throw new Error("crawler.robots_disallowed");
-  const searchDelay = Math.max(SOURCE_INFO[source].delayMs, searchRobots.delayMs);
-  const searchElapsed = Date.now() - (lastRequest.get(new URL(searchUrl).origin) ?? 0);
-  if (searchElapsed < searchDelay) await new Promise((resolve) => setTimeout(resolve, searchDelay - searchElapsed));
-  lastRequest.set(new URL(searchUrl).origin, Date.now());
-  const response = await fetcher(searchUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", accept: "application/json,text/plain,*/*", origin: base, referer: url, "x-requested-with": "XMLHttpRequest", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, body });
-  if (!response.ok) throw new Error(`crawler.spain_search_http_${response.status}`);
-  const resultHtml = await response.text();
-  const pageLinks = discoverSpain(resultHtml, base);
-  return pageLinks.filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
+  return discoverSpainTail(bindings, fetcher, robotsCache, lastRequest, rangeStart, limit);
 }
 
 async function fetchCandidate(candidate: NativeArticleCandidate, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   if (candidate.sourceKey === "us-scotus") return { text: `${candidate.title}\n${candidate.publishedAt ?? ""}\n${candidate.url}`, status: 200, fetched: false };
-  const result = await fetchHtml(candidate.sourceKey, candidate.url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
   if (candidate.sourceKey === "es-tribunal-constitucional") {
     const jsonId = candidate.metadata.hjId;
     if (typeof jsonId === "string" && /^\d+$/.test(jsonId)) {
-      const api = `${SOURCE_INFO[candidate.sourceKey].baseUrl}/HJ/Resolucion/Api/json/${jsonId}`;
-      await waitForSourcePermit(candidate.sourceKey, api, fetcher, robotsCache, lastRequest);
-      const response = await fetcher(api, { headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
-      if (!officialHost(candidate.sourceKey, response.url || api)) throw new Error("crawler.redirect_non_official_host");
-      if (response.ok) {
-        const payload = await response.json() as Record<string, unknown>;
-        const sections = ["RESOLUCIONES_ANTECEDENTES", "RESOLUCIONES_FUNDAMENTOS", "RESOLUCIONES_DICTAMEN", "RESOLUCIONES_VOTOS_PARTICULARES"];
-        const text = sections.flatMap((key) => Array.isArray(payload[key]) ? (payload[key] as Array<Record<string, unknown>>).map((entry) => htmlText(String(entry.TEXTO ?? ""))) : []).filter(Boolean).join("\n\n");
-        const title = String(payload.TIPO_RESOLUCION ?? candidate.title);
-        candidate.title = `${title}${payload.NUMERO_RESOLUCION ? ` ${payload.NUMERO_RESOLUCION}/${payload.ANNO_RESOLUCION ?? ""}` : ""}`;
-        if (typeof payload.FECHA_REGISTRO === "string") candidate.publishedAt = dateIso(payload.FECHA_REGISTRO) ?? candidate.publishedAt;
-        if (payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true || /no incorpora doctrina constitucional|no contiene doctrina constitucional/i.test(String(payload.AVISO ?? ""))) {
+      const payload = await fetchSpainJson(fetcher, bindings, robotsCache, lastRequest, Number(jsonId));
+      if (payload) {
+        const refreshed = spainPayloadCandidate(payload, Number(jsonId));
+        if (refreshed) {
+          candidate.title = refreshed.title;
+          candidate.publishedAt = refreshed.publishedAt ?? candidate.publishedAt;
+          candidate.contentType = refreshed.contentType;
+          candidate.metadata = { ...candidate.metadata, ...refreshed.metadata };
+        }
+        const text = spainPayloadText(payload);
+        const irrelevant = payload.CONTENIDO_IRRELEVANTE_PARA_INTERNET === true
+          || /no incorpora doctrina constitucional|no contiene doctrina constitucional/i.test(String(payload.AVISO ?? ""));
+        const collection = candidate.metadata.collection as Record<string, unknown>;
+        collection.sourceUrlVerified = true;
+        collection.strictSourceTextAvailable = true;
+        if (irrelevant) {
           candidate.metadata.review = { required: true, reason: "official_metadata_requires_review" };
-          (candidate.metadata.collection as Record<string, unknown>).sourceTextAvailable = false;
+          collection.sourceTextAvailable = false;
+          collection.publishable = false;
           return { text: `${candidate.title}\n${candidate.url}`, status: 200, fetched: true };
         }
         const sufficient = text.length >= 2_000;
-        (candidate.metadata.collection as Record<string, unknown>).strictSourceTextAvailable = true;
-        (candidate.metadata.collection as Record<string, unknown>).sourceTextAvailable = sufficient;
-        (candidate.metadata.collection as Record<string, unknown>).publishable = sufficient;
+        collection.sourceTextAvailable = sufficient;
+        collection.publishable = sufficient;
         if (!sufficient) candidate.metadata.review = { required: true, reason: "strict_source_text_gate_failed" };
         return { text: sufficient ? text : `${candidate.title}\n${candidate.url}`, status: 200, fetched: true };
       }
     }
   }
+  const result = await fetchHtml(candidate.sourceKey, candidate.url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+  (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified = true;
   return { text: extractOfficialText(result.html, candidate.sourceKey), status: result.status, fetched: true };
 }
 
