@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { recordSearchEvent } from "@/lib/analytics/events";
-import { listArticles } from "@/lib/db/queries";
-import { semanticSearch, hybridSearch } from "@/lib/search/vector";
+import { fullTextSearch, semanticSearch, hybridSearch } from "@/lib/search/vector";
 import { parseSearchApiParams, publicApiValidationErrorResponse } from "@/lib/security/public-api-validation";
 import { consumeRateLimit, rateLimitExceededResponse } from "@/lib/security/rate-limit";
 import { getAppBaseUrl } from "@/lib/seo/metadata";
@@ -36,7 +35,7 @@ export async function GET(request: Request) {
         ? await semanticSearch(filters)
         : mode === "hybrid"
           ? await hybridSearch(filters)
-          : await listArticles(filters);
+          : await fullTextSearch(filters);
     await recordSearchEvent({
       query: filters.q,
       mode,

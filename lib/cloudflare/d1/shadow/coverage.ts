@@ -14,9 +14,9 @@ import { adminAnalyticsReadShadowCoveredMethods } from "@/lib/admin/analytics-re
  *
  * The comparable surface/method set is derived from the same
  * `*ShadowCoveredMethods()` exports the M6 wrappers own, so the report cannot
- * silently drift from the implemented shadow code. Deferred obligations (M7
- * search and the two admin RPC snapshots) are declared separately and can
- * never satisfy M6 parity coverage.
+ * silently drift from the implemented shadow code. Search is now permanently
+ * Cloudflare-native; only the two deferred admin RPC snapshots remain global
+ * blockers and can never satisfy M6 parity coverage.
  */
 export interface D1ShadowMethodCoverage {
   method: string;
@@ -38,10 +38,6 @@ export interface D1ShadowGlobalBlocker {
 
 /** Explicit obligations that keep the global `GO-D1-READ` gate blocked in M6.5. */
 export const D1_SHADOW_GLOBAL_BLOCKERS: readonly D1ShadowGlobalBlocker[] = [
-  {
-    id: "search_m7",
-    description: "M7 search/FTS5/Vectorize projection is not implemented or parity-tested",
-  },
   {
     id: "rpc_admin_dashboard_snapshot",
     description: "`loadDashboardSnapshot` admin RPC has no migrated D1 equivalent (rpc_deferred)",

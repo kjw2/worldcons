@@ -66,6 +66,13 @@ test("public search rejects offsets beyond the shared 10,000-row deep-pagination
   assert.equal(rejected.ok, false);
 });
 
+test("public fulltext route uses the ranked D1 search path instead of an unfiltered article list", () => {
+  const source = readFileSync("app/api/search/route.ts", "utf8");
+  assert.match(source, /fullTextSearch/);
+  assert.match(source, /mode === "hybrid"[\s\S]*hybridSearch\(filters\)[\s\S]*fullTextSearch\(filters\)/);
+  assert.doesNotMatch(source, /import \{ listArticles \} from "@\/lib\/db\/queries"/);
+});
+
 test("BVerfG compact official URLs preserve the docket number during collection", () => {
   assert.equal(
     bverfgCaseNumberFromText(
@@ -134,6 +141,12 @@ test("hybrid candidate windows grow with the requested page without exceeding bo
   assert.equal(rankedSearchWindow({ page: 2, pageSize: 20 }, 50), 60);
   assert.equal(rankedSearchWindow({ page: 3, pageSize: 20 }, 50), 80);
   assert.equal(rankedSearchWindow({ page: 8, pageSize: 20 }, 50), 100);
+});
+
+test("ranked materialization keeps D1 article-id batches below the bind ceiling", () => {
+  const source = readFileSync("lib/search/vector.ts", "utf8");
+  assert.match(source, /D1_RANKED_MATERIALIZE_BATCH_SIZE = 80/);
+  assert.match(source, /uniqueIds\.slice\(index, index \+ D1_RANKED_MATERIALIZE_BATCH_SIZE\)/);
 });
 
 test("legal search normalization removes only generic research-intent noise", () => {

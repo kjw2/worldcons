@@ -504,15 +504,15 @@ test("the projection library stays runtime-neutral (no Node builtins)", () => {
   assert.ok(!barrel.includes("require("), "the runtime barrel must not require()");
 });
 
-test("the SearchRepository stays Supabase-authoritative and search_m7 stays a blocker", () => {
+test("the SearchRepository is Cloudflare D1-authoritative and search_m7 is retired", () => {
   const selection = fs.readFileSync(path.join(rootDir, "lib", "search", "repository", "index.ts"), "utf8");
-  assert.ok(selection.includes("createSupabaseSearchRepository"));
+  assert.ok(selection.includes("getRuntimeD1Binding"));
+  assert.ok(selection.includes("runVectorRankedSearchPage"));
   assert.ok(selection.includes("failClosedSearchRepository"));
-  assert.ok(!/d1/i.test(selection), "no D1 search adapter may be selected in M7.1");
-  assert.ok(!fs.existsSync(path.join(rootDir, "lib", "search", "repository", "d1-repository.ts")));
+  assert.ok(!selection.includes("createSupabaseSearchRepository"));
 
   const coverage = fs.readFileSync(path.join(rootDir, "lib", "cloudflare", "d1", "shadow", "coverage.ts"), "utf8");
-  assert.ok(coverage.includes("search_m7"), "M6.5 must keep the search_m7 blocker");
+  assert.ok(!coverage.includes('id: "search_m7"'));
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")) as {
     scripts: Record<string, string>;

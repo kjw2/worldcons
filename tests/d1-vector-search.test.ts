@@ -797,16 +797,16 @@ test("hybrid candidate metadata lookups are fully parameterized and never interp
 // D. Repository authority + runtime neutrality
 // ---------------------------------------------------------------------------
 
-test("SearchRepository stays Supabase-authoritative and search_m7 stays a blocker", () => {
+test("SearchRepository is Cloudflare D1/Vectorize-authoritative and search_m7 is retired", () => {
   const selection = fs.readFileSync(path.join(rootDir, "lib", "search", "repository", "index.ts"), "utf8");
-  assert.ok(selection.includes("createSupabaseSearchRepository"));
+  assert.ok(selection.includes("getRuntimeD1Binding"));
+  assert.ok(selection.includes("getRuntimeSearchVectorBinding"));
+  assert.ok(selection.includes("runVectorRankedSearchPage"));
   assert.ok(selection.includes("failClosedSearchRepository"));
-  assert.ok(!/vector/i.test(selection), "no Vectorize adapter may be selected");
-  assert.ok(!/d1/i.test(selection), "no D1 search adapter may be selected");
-  assert.ok(!fs.existsSync(path.join(rootDir, "lib", "search", "repository", "d1-repository.ts")));
+  assert.ok(!selection.includes("createSupabaseSearchRepository"));
 
   const coverage = fs.readFileSync(path.join(rootDir, "lib", "cloudflare", "d1", "shadow", "coverage.ts"), "utf8");
-  assert.ok(coverage.includes("search_m7"), "M6.5 must keep the search_m7 blocker");
+  assert.ok(!coverage.includes('id: "search_m7"'));
 });
 
 test("the search-vector and search-ranked libraries stay runtime-neutral with no remote mutation", () => {

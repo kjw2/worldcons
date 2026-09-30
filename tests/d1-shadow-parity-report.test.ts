@@ -82,7 +82,7 @@ test("all-green comparable fixture reaches m6 go_candidate while global GO-D1-RE
   assert.equal(reportValue.globalGoD1Read.status, "blocked");
   assert.equal(reportValue.globalGoD1Read.ready, false);
   const blockers = reportValue.globalGoD1Read.blockers.map((blocker) => blocker.id);
-  assert.deepEqual(blockers, ["search_m7", "rpc_admin_dashboard_snapshot", "rpc_admin_analytics_health_snapshot"]);
+  assert.deepEqual(blockers, ["rpc_admin_dashboard_snapshot", "rpc_admin_analytics_health_snapshot"]);
   assert.equal(reportValue.totals.compared, d1ShadowGateComparableMethods().length * MIN_PER_METHOD);
   assert.equal(reportValue.totals.mismatched, 0);
   assert.equal(reportValue.totals.errors, 0);
@@ -240,11 +240,10 @@ test("unsafe reason and error codes are sanitized instead of emitted", () => {
   assert.equal(stats.errorCodeCounts.unsanitized_code, 1);
 });
 
-test("global GO-D1-READ remains blocked by all three obligations even with green M6 data", () => {
+test("global GO-D1-READ remains blocked by the two deferred admin RPC obligations even with green M6 data", () => {
   const reportValue = report(allGreenEvents());
   assert.equal(reportValue.m6EvidenceGate.status, "go_candidate");
   assert.deepEqual(reportValue.globalGoD1Read.reasons, [
-    "search_m7",
     "rpc_admin_dashboard_snapshot",
     "rpc_admin_analytics_health_snapshot",
   ]);
@@ -296,7 +295,8 @@ test("CLI writes a markdown report and honors strict scope", async () => {
   assert.equal(exitCode, 1);
   assert.match(stdout, /WorldCons D1 shadow parity report/);
   assert.match(stdout, /insufficient_evidence/);
-  assert.match(stdout, /search_m7/);
+  assert.match(stdout, /rpc_admin_dashboard_snapshot/);
+  assert.doesNotMatch(stdout, /search_m7/);
   assert.equal(stderr, "");
 });
 

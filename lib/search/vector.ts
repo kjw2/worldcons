@@ -28,6 +28,7 @@ interface FullTextRankRow {
 }
 
 const MAX_RANKED_LOOKUP_BATCH_SIZE = 100;
+const D1_RANKED_MATERIALIZE_BATCH_SIZE = 80;
 const RECIPROCAL_RANK_FUSION_K = 60;
 
 export function rankedSearchWindow(filters: Pick<ArticleListFilters, "page" | "pageSize">, minimum = 0) {
@@ -115,8 +116,8 @@ async function rankedItemsByIds(filters: ArticleListFilters, ids: string[]) {
   if (uniqueIds.length === 0) return [];
 
   const batches: string[][] = [];
-  for (let index = 0; index < uniqueIds.length; index += MAX_RANKED_LOOKUP_BATCH_SIZE) {
-    batches.push(uniqueIds.slice(index, index + MAX_RANKED_LOOKUP_BATCH_SIZE));
+  for (let index = 0; index < uniqueIds.length; index += D1_RANKED_MATERIALIZE_BATCH_SIZE) {
+    batches.push(uniqueIds.slice(index, index + D1_RANKED_MATERIALIZE_BATCH_SIZE));
   }
 
   const results = await Promise.all(
@@ -146,9 +147,14 @@ async function materializeRankedPage(filters: ArticleListFilters, page: RankedSe
 async function rankedFullTextCandidates(filters: ArticleListFilters): Promise<ArticleListResult> {
   const page = filters.page ?? 1;
   const pageSize = Math.min(Math.max(filters.pageSize ?? 20, 1), MAX_RANKED_LOOKUP_BATCH_SIZE);
-  if (!filters.q || filters.includeUnpublished || filters.tag || filters.ids || !publicProjectionReadsEnabled()) {
+  if (!filters.q || filters.includeUnpublished || filters.ids) {
     return listArticles(filters);
   }
+
+  const databasePage = await rankedSearchPage(filters, "fulltext", null);
+  if (databasePage) return materializeRankedPage(filters, databasePage);
+
+  if (filters.tag || !publicProjectionReadsEnabled()) return listArticles(filters);
 
   const data = await searchRepository().fullTextRankedIdsRpc({
     query: filters.q,
@@ -182,6 +188,10 @@ async function rankedFullTextCandidates(filters: ArticleListFilters): Promise<Ar
       totalIsExact: false,
     },
   };
+}
+
+export async function fullTextSearch(filters: ArticleListFilters): Promise<ArticleListResult> {
+  return rankedFullTextCandidates(filters);
 }
 
 async function localSemanticSearch(filters: ArticleListFilters, embedding: number[], matchCount: number) {
