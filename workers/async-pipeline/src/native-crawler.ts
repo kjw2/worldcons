@@ -362,30 +362,43 @@ function spainPayloadText(payload: Record<string, unknown>) {
 }
 
 async function fetchSpainJson(fetcher: typeof fetch, bindings: NativeCrawlerBindings, robotsCache: Map<string, string>, lastRequest: Map<string, number>, hjId: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
-  const api = `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/Resolucion/Api/json/${hjId}`;
-  await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
-  let response: Response | null = null;
-  try {
-    response = await fetcher(api, { headers: { accept: "application/json", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
-  } catch {
-    response = null;
-  }
-  if (response) {
-    if (!officialHost("es-tribunal-constitucional", response.url || api)) throw new Error("crawler.redirect_non_official_host");
-    if (response.ok) {
-      const payload = await response.json().catch(() => null);
+  const apis = [
+    `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/HJ/Resolucion/Api/json/${hjId}`,
+    `${SOURCE_INFO["es-tribunal-constitucional"].baseUrl}/Resolucion/Api/json/${hjId}`,
+  ];
+  for (const api of apis) {
+    await waitForSourcePermit("es-tribunal-constitucional", api, fetcher, robotsCache, lastRequest);
+    let response: Response | null = null;
+    try {
+      response = await fetcher(api, { headers: { accept: "application/json,text/plain;q=0.8,*/*;q=0.5", "accept-language": "es,en;q=0.8,ko;q=0.5", "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" }, redirect: "follow" });
+    } catch {
+      response = null;
+    }
+    if (response) {
+      if (!officialHost("es-tribunal-constitucional", response.url || api)) throw new Error("crawler.redirect_non_official_host");
+      if (response.ok) {
+        const body = await response.text().catch(() => "");
+        if (body.trim()) {
+          const payload = JSON.parse(body) as unknown;
+          if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload as Record<string, unknown>;
+        }
+      }
+    }
+    if (!browserNavigate) continue;
+    try {
+      const rendered = await browserNavigate({ url: api, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" });
+      if (!officialHost("es-tribunal-constitucional", rendered.finalUrl || api)) throw new Error("crawler.redirect_non_official_host");
+      const body = htmlText(rendered.html);
+      const start = body.indexOf("{");
+      const end = body.lastIndexOf("}");
+      if (start < 0 || end <= start) continue;
+      const payload = JSON.parse(body.slice(start, end + 1)) as unknown;
       if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload as Record<string, unknown>;
+    } catch {
+      // Fall through to the alternate official API path.
     }
   }
-  if (!browserNavigate) return null;
-  const rendered = await browserNavigate({ url: api, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.soltera.dev/)" });
-  if (!officialHost("es-tribunal-constitucional", rendered.finalUrl || api)) throw new Error("crawler.redirect_non_official_host");
-  const body = htmlText(rendered.html);
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  const payload = JSON.parse(body.slice(start, end + 1)) as unknown;
-  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
+  return null;
 }
 
 async function discoverSpainTail(bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, rangeStart: number, limit: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
