@@ -4,9 +4,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import {
   buildM8TaskMessage,
-  githubDispatchForM8Task,
   isM8KindEnabled,
-  isM8NativeTaskKind,
   isM8TaskMessage,
   isM8WorkflowInstanceId,
   M8_TASK_KINDS,
@@ -151,11 +149,10 @@ export interface CanaryReport {
   reason: string | null;
   kind: M8TaskKind;
   kindEnabled: boolean;
-  route: "native" | "github";
+  route: "native";
   message: ReturnType<typeof buildM8TaskMessage>;
   workflowInstanceId: string;
   workflowInstanceIdValid: boolean;
-  githubDispatch: ReturnType<typeof githubDispatchForM8Task> | null;
 }
 
 export function buildCanaryReport(options: {
@@ -177,11 +174,10 @@ export function buildCanaryReport(options: {
     reason: gate.policy.reason ?? null,
     kind: options.kind,
     kindEnabled: isM8KindEnabled(gate, options.kind),
-    route: isM8NativeTaskKind(options.kind) ? "native" : "github",
+    route: "native",
     message,
     workflowInstanceId: instanceId,
     workflowInstanceIdValid: isM8WorkflowInstanceId(instanceId),
-    githubDispatch: isM8NativeTaskKind(options.kind) ? null : githubDispatchForM8Task(message),
   };
 }
 
@@ -195,11 +191,7 @@ function printReport(report: CanaryReport): void {
   console.log(`  kind: ${report.kind} -> enabled=${report.kindEnabled}`);
   console.log(`  idempotencyKey: ${report.message.idempotencyKey}`);
   console.log(`  workflowInstanceId: ${report.workflowInstanceId} (valid=${report.workflowInstanceIdValid})`);
-  if (report.githubDispatch) {
-    console.log(`  github: ${report.githubDispatch.workflow} inputs.m8_idempotency_key=${report.githubDispatch.inputs.m8_idempotency_key}`);
-  } else {
-    console.log("  route: native (Cloudflare Worker RPC)");
-  }
+  console.log("  route: native (Cloudflare Worker Workflow)");
   if (!report.message || !isM8TaskMessage(report.message)) console.error("  error: message failed schema validation");
   if (!report.workflowInstanceIdValid) console.error("  error: workflow instance id is not Cloudflare-valid");
 }

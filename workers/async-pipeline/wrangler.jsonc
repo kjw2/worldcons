@@ -7,10 +7,12 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
-  "secrets": { "required": ["GITHUB_ACTIONS_TOKEN"] },
   "browser": { "binding": "BROWSER" },
   "services": [
     { "binding": "WORLDCONS_APP_SERVICE", "service": "worldcons", "entrypoint": "WorldconsOpsService" }
+  ],
+  "r2_buckets": [
+    { "binding": "WORLDCONS_RAW", "bucket_name": "worldcons-artifacts" }
   ],
   "d1_databases": [
     { "binding": "WORLDCONS_OPS", "database_name": "worldcons_ops", "database_id": "6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4" },
@@ -19,10 +21,9 @@
   ],
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
-    "M8_ENABLED_KINDS": "admin-job-drain,watchdog,admin-health,embedding-backfill,summary-drain",
-    "GITHUB_REPOSITORY": "kjw2/worldcons",
-    "GITHUB_REF": "main",
-    "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es"
+    "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,admin-health,embedding-backfill,summary-drain,analytics-retention",
+    "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es",
+    "SITE_ANALYTICS_RETENTION_DAYS": "90"
   },
   "triggers": {
     "crons": [
@@ -30,7 +31,8 @@
       "0 0 * * *",
       "30 1 * * *",
       "30 3,9,15,21 * * *",
-      "17 20 * * *"
+      "17 20 * * *",
+      "0 2 * * *"
     ]
   },
   "queues": {

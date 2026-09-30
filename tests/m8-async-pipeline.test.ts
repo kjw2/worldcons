@@ -9,16 +9,13 @@ import {
   M8_TASK_KINDS,
   buildM8TaskMessage,
   dedupeM8WorkflowCreates,
-  githubDispatchForM8Task,
   isM8KindEnabled,
-  isM8NativeTaskKind,
   isM8TaskMessage,
   isM8WorkflowInstanceId,
   messagesForM8Cron,
   parseM8EnabledKinds,
   partitionM8QueueBatch,
   planM8QueueBatch,
-  routeM8Task,
   resolveM8RolloutGate,
   workflowInstanceId,
   type M8TaskKind,
@@ -52,6 +49,7 @@ test("M8 cron inventory maps every retired schedule to stable messages", () => {
     "30 1 * * *",
     "30 3,9,15,21 * * *",
     "17 20 * * *",
+    "0 2 * * *",
   ]);
   const scheduledAt = Date.parse("2026-09-26T12:34:56.789Z");
   const frequent = messagesForM8Cron("*/15 * * * *", scheduledAt);
@@ -59,6 +57,7 @@ test("M8 cron inventory maps every retired schedule to stable messages", () => {
   assert.equal(frequent[0].scheduledFor, "2026-09-26T12:34:00.000Z");
   assert.ok(frequent.every(isM8TaskMessage));
   assert.deepEqual(messagesForM8Cron("unknown", scheduledAt), []);
+  assert.deepEqual(messagesForM8Cron("0 2 * * *", scheduledAt).map((message) => message.kind), ["analytics-retention"]);
 });
 
 test("queue replay yields the same Workflow and executor identities", () => {
@@ -66,10 +65,6 @@ test("queue replay yields the same Workflow and executor identities", () => {
   assert.equal(workflowInstanceId(message), "m8-crawler-daily-2026-09-26T00-00-00-000Z");
   assert.match(workflowInstanceId(message), /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/);
   assert.ok(workflowInstanceId(message).length <= 100);
-  assert.deepEqual(githubDispatchForM8Task(message), {
-    workflow: "crawlee-worker.yml",
-    inputs: { m8_idempotency_key: "m8:crawler-daily:2026-09-26T00:00:00.000Z" },
-  });
   assert.equal(workflowInstanceId(structuredClone(message)), workflowInstanceId(message));
   assert.equal(isM8TaskMessage({ ...message, idempotencyKey: "forged" }), false);
 });
@@ -95,31 +90,16 @@ test("workflow instance ids are Cloudflare-valid and collision-safe for represen
   assert.equal(keys.size, samples.length * 3);
 });
 
-test("native M8 kinds bypass GitHub dispatch while legacy kinds keep compatibility dispatch", async () => {
-  const nativeCalls: string[] = [];
-  let githubDispatchCount = 0;
-  for (const kind of ["admin-job-drain", "watchdog", "admin-health"] as const) {
-    const message = buildM8TaskMessage(kind, Date.parse("2026-09-26T08:45:00Z"));
-    const result = await routeM8Task(
-      message,
-      async (task) => { nativeCalls.push(task.kind); return "native"; },
-      async () => { githubDispatchCount += 1; return "github"; },
-    );
-    assert.equal(result, "native");
-  }
-  assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health"]);
-  const embedding = buildM8TaskMessage("embedding-backfill", Date.parse("2026-09-26T08:45:00Z"));
-  assert.equal(isM8NativeTaskKind(embedding.kind), true);
-  assert.equal(await routeM8Task(embedding, async (task) => { nativeCalls.push(task.kind); return "native"; }, async () => { githubDispatchCount += 1; return "github"; }), "native");
-  const summary = buildM8TaskMessage("summary-drain", Date.parse("2026-09-26T08:45:00Z"));
-  assert.equal(isM8NativeTaskKind(summary.kind), true);
-  assert.equal(await routeM8Task(summary, async (task) => { nativeCalls.push(task.kind); return "native"; }, async () => { githubDispatchCount += 1; return "github"; }), "native");
-  assert.equal(githubDispatchCount, 0);
-  assert.deepEqual(nativeCalls, ["admin-job-drain", "watchdog", "admin-health", "embedding-backfill", "summary-drain"]);
-  assert.throws(() => githubDispatchForM8Task(summary), /m8\.github_dispatch_unsupported:summary-drain/u);
-  const legacy = buildM8TaskMessage("crawler-daily", Date.parse("2026-09-26T08:45:00Z"));
-  assert.equal(await routeM8Task<string>(legacy, async () => "native", async () => { githubDispatchCount += 1; return "github"; }), "github");
-  assert.equal(githubDispatchCount, 1);
+test("every M8 task kind is native and crawler-daily fans out by source", () => {
+  assert.deepEqual(M8_TASK_KINDS, ["admin-job-drain", "watchdog", "crawler-daily", "embedding-backfill", "summary-drain", "admin-health", "analytics-retention"]);
+  const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
+  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*for \(const source of NATIVE_CRAWLER_SOURCES\)/u);
+  assert.match(source, /native-crawler-\$\{source\}/u);
+  assert.match(source, /launch\(binding/);
+  assert.match(source, /this\.env\.BROWSER/);
+  assert.match(source, /native-analytics-retention/);
+  assert.doesNotMatch(source, /dispatchGitHubWorkflow|GITHUB_ACTIONS_TOKEN|GITHUB_REPOSITORY|GITHUB_REF/u);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/contracts.ts"), "utf8"), /githubDispatchForM8Task|dispatchGitHubWorkflow/u);
 });
 
 test("summary native executor invokes the main Worker RPC with workflow defaults", async () => {
@@ -192,21 +172,6 @@ test("embedding native executor invokes WorldconsOpsService RPC without GitHub d
   const executor = fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/native-executor.ts"), "utf8");
   assert.match(executor, /runEmbeddingBackfill\(/u);
   assert.doesNotMatch(executor, /githubDispatchForM8Task/u);
-});
-
-test("GitHub dispatch supports only crawler-daily and preserves its stable idempotency key", () => {
-  for (const kind of M8_TASK_KINDS) {
-    const message = buildM8TaskMessage(kind, Date.parse("2026-09-26T08:45:00Z"));
-    if (kind === "crawler-daily") {
-      const dispatch = githubDispatchForM8Task(message);
-      assert.equal(dispatch.inputs.m8_idempotency_key, message.idempotencyKey);
-      assert.match(dispatch.inputs.m8_idempotency_key, /^m8:[a-z-]+:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$/);
-      assert.notEqual(dispatch.inputs.m8_idempotency_key, workflowInstanceId(message));
-    } else {
-      assert.equal(isM8NativeTaskKind(kind), true);
-      assert.throws(() => githubDispatchForM8Task(message), new RegExp(`m8\\.github_dispatch_unsupported:${kind}`, "u"));
-    }
-  }
 });
 
 test("M8_ENABLED_KINDS parser fails closed and honors exact kinds", () => {
@@ -308,7 +273,7 @@ test("queue partition acks blocked kinds, retries invalid, dispatches eligible",
   assert.deepEqual(invalidGate.blocked.map((m) => m.id), ["a", "b"]);
 });
 
-test("canary operator report stays off GitHub and refuses disabled kinds", () => {
+test("canary operator report routes every eligible kind natively", () => {
   const policy = readCanaryPolicy({});
   const report = buildCanaryReport({
     kind: "admin-health",
@@ -317,8 +282,7 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
   });
   assert.equal(report.workflowInstanceIdValid, true);
   assert.equal(report.route, "native");
-  assert.equal(report.githubDispatch, null);
-  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,admin-health,embedding-backfill,summary-drain");
+  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,crawler-daily,admin-health,embedding-backfill,summary-drain,analytics-retention");
   assert.equal(report.enabledKindsValid, true);
   assert.equal(report.kindEnabled, true, "the checked-in enabled scheduler allows admin-health");
 
@@ -334,24 +298,27 @@ test("canary operator report stays off GitHub and refuses disabled kinds", () =>
     scheduledFor: Date.parse("2026-09-26T08:45:00Z"),
     policy: enabledPolicy,
   });
-  assert.equal(blockedReport.kindEnabled, false);
-  assert.equal(blockedReport.route, "github");
-  assert.equal(blockedReport.githubDispatch?.workflow, "crawlee-worker.yml");
+  assert.equal(blockedReport.kindEnabled, true);
+  assert.equal(blockedReport.route, "native");
 });
 
 test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, "workers/async-pipeline/wrangler.jsonc"), "utf8"));
   const consumer = config.queues.consumers[0];
   assert.equal(config.vars.M8_SCHEDULER_ENABLED, "true");
-  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,admin-health,embedding-backfill,summary-drain");
+  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,crawler-daily,admin-health,embedding-backfill,summary-drain,analytics-retention");
   assert.deepEqual(config.triggers.crons, M8_CRON_EXPRESSIONS);
   assert.equal(consumer.max_concurrency, 1);
   assert.equal(consumer.max_retries, 3);
   assert.equal(consumer.retry_delay, 60);
   assert.equal(consumer.dead_letter_queue, "worldcons-async-dlq-v1");
-  assert.deepEqual(config.secrets.required, ["GITHUB_ACTIONS_TOKEN"]);
+  assert.equal("secrets" in config, false);
   assert.equal(config.browser.binding, "BROWSER");
-  assert.deepEqual(config.services, [{ binding: "WORLDCONS_APP_SERVICE", service: "worldcons", entrypoint: "WorldconsOpsService" }]);
+  assert.equal(config.r2_buckets[0].binding, "WORLDCONS_RAW");
+  assert.deepEqual(config.services, [
+    { binding: "WORLDCONS_APP_SERVICE", service: "worldcons", entrypoint: "WorldconsOpsService" },
+  ]);
+  assert.doesNotMatch(JSON.stringify(config), /GITHUB_ACTIONS_TOKEN|GITHUB_REPOSITORY|GITHUB_REF/u);
   assert.equal(config.workers_dev, true);
   assert.equal(config.preview_urls, false);
 });

@@ -1,12 +1,10 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import {
-  githubDispatchForM8Task,
   isM8KindEnabled,
   isM8TaskMessage,
   M8_INVALID_RETRY_DELAY_SECONDS,
   messagesForM8Cron,
   planM8QueueBatch,
-  routeM8Task,
   resolveM8RolloutGate,
   type M8RolloutGate,
   type M8TaskMessage,
@@ -17,6 +15,19 @@ import {
 } from "../../../lib/cloudflare/async-pipeline/native-executor";
 import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
 import { handleBrowserNavigate } from "./browser-navigate";
+import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
+import { launch } from "@cloudflare/playwright";
+
+async function browserNavigate(input: { url: string; timeoutMs: number; waitUntil: "domcontentloaded"; userAgent: string }, binding: BrowserRun) {
+  const browser = await launch(binding, { keep_alive: 60_000 });
+  try {
+    const page = await browser.newPage({ userAgent: input.userAgent });
+    const response = await page.goto(input.url, { waitUntil: input.waitUntil, timeout: input.timeoutMs });
+    return { html: await page.content(), finalUrl: page.url(), status: response?.status() ?? 200, headers: response?.headers() ?? {} };
+  } finally {
+    await browser.close();
+  }
+}
 
 function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -24,28 +35,6 @@ function json(value: unknown, status = 200) {
 
 function gate(env: Env): M8RolloutGate {
   return resolveM8RolloutGate(env.M8_SCHEDULER_ENABLED === "true", env.M8_ENABLED_KINDS);
-}
-
-async function dispatchGitHubWorkflow(env: Env, message: M8TaskMessage) {
-  const dispatch = githubDispatchForM8Task(message);
-  const response = await fetch(
-    `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/actions/workflows/${dispatch.workflow}/dispatches`,
-    {
-      method: "POST",
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${env.GITHUB_ACTIONS_TOKEN}`,
-        "content-type": "application/json",
-        "user-agent": "worldcons-m8-async-pipeline",
-        "x-github-api-version": "2022-11-28",
-      },
-      body: JSON.stringify({ ref: env.GITHUB_REF, inputs: dispatch.inputs }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`m8.github_dispatch_failed:${response.status}`);
-  }
-  return { workflow: dispatch.workflow, status: response.status, idempotencyKey: message.idempotencyKey };
 }
 
 export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessage> {
@@ -68,15 +57,28 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       }));
       return { dispatched: false, kind: event.payload.kind, idempotencyKey: event.payload.idempotencyKey };
     }
-    return routeM8Task<unknown>(
-      event.payload,
-      (message) => executeM8TaskNative(this.env as unknown as M8NativeEnvironment, message, step),
-      (message) => step.do(
-        "dispatch-compatible-executor",
-        { retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes" },
-        () => dispatchGitHubWorkflow(this.env, message),
-      ),
-    );
+    if (event.payload.kind === "crawler-daily") {
+      const results = [];
+      for (const source of NATIVE_CRAWLER_SOURCES) {
+        results.push(await step.do(
+          `native-crawler-${source}`,
+          { retries: { limit: 3, delay: "2 minutes", backoff: "exponential" }, timeout: "25 minutes" },
+          () => runNativeSourceCollection(source, this.env, { limit: 20, idempotencyKey: event.payload.idempotencyKey, browserNavigate: (input) => browserNavigate(input, this.env.BROWSER) }),
+        ));
+      }
+      return results;
+    }
+    if (event.payload.kind === "analytics-retention") {
+      return step.do("native-analytics-retention", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes",
+      }, async () => {
+        const retentionDays = Math.min(365, Math.max(30, Number.parseInt(this.env.SITE_ANALYTICS_RETENTION_DAYS ?? "90", 10) || 90));
+        const cutoff = new Date(Date.parse(event.payload.scheduledFor) - retentionDays * 86_400_000).toISOString();
+        const result = await this.env.WORLDCONS_OPS.prepare("DELETE FROM site_events WHERE occurred_at < ?").bind(cutoff).run();
+        return { kind: event.payload.kind, retentionDays, deleted: result.meta.changes ?? 0 };
+      });
+    }
+    return executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);
   }
 }
 
@@ -94,6 +96,7 @@ export default {
         enabledKindsValid: policy.policy.valid,
         enabledKindsReason: policy.policy.reason ?? null,
         browserNavigate: true,
+        browserRpc: true,
       });
     }
     // Authenticated Browser Rendering transport, merged in from the retired

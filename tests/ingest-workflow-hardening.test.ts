@@ -100,8 +100,8 @@ test("Crawlee failures preserve HTTP status for BVerfG block classification", ()
 
 test("crawler defaults identify the bot and send browser-compatible request headers", () => {
   assert.match(DEFAULT_CRAWLER_USER_AGENT, /ConstitutionalCourtCurationBot/);
-  assert.match(DEFAULT_CRAWLER_USER_AGENT, /worldcons\.vercel\.app/);
-  const headers = crawlerHeaders();
+  assert.match(DEFAULT_CRAWLER_USER_AGENT, /worldcons\.soltera\.dev/);
+  const headers = crawlerHeaders({ "User-Agent": DEFAULT_CRAWLER_USER_AGENT });
   assert.equal(headers["User-Agent"], DEFAULT_CRAWLER_USER_AGENT);
   assert.match(headers.Accept, /text\/html/);
   assert.match(headers["Accept-Language"], /de/);
