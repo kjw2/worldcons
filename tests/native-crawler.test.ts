@@ -369,6 +369,44 @@ test("BVerfG transient official 5xx falls back to discovery and remains uncollec
   }
 });
 
+test("BVerfG OpenLegalData 429 records degraded discovery without failing the daily source step", async () => {
+  const store = memoryBindings();
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => Date.parse(now.toISOString()) + tick++ * 10_000;
+  try {
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") {
+        return response("temporary tls/origin failure", 525);
+      }
+      if (url.startsWith("https://de.openlegaldata.io/api/cases/")) {
+        return response("rate limited", 429, "application/json");
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, {
+      now,
+      limit: 20,
+      fetch: fetcher,
+      idempotencyKey: "m8:crawler-daily:bverfg-discovery-429",
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(result.discoveredCount, 0);
+    assert.equal(result.fetchedCount, 0);
+    assert.equal(result.uncollectedCount, 0);
+    assert.equal(result.failedCount, 0);
+    const run = [...store.runs.values()][0];
+    assert.equal(run.error_message, "BVERFG_DISCOVERY_RATE_LIMITED_429");
+    const metadata = JSON.parse(String(run.metadata)) as { outcome?: string; discoveryUnavailableCode?: string | null };
+    assert.equal(metadata.outcome, "degraded");
+    assert.equal(metadata.discoveryUnavailableCode, "BVERFG_DISCOVERY_RATE_LIMITED_429");
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test("Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids", async () => {
   const store = memoryBindings();
   const requestedIds: number[] = [];

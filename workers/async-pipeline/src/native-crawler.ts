@@ -817,6 +817,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
   let unchangedCount = 0;
   let uncollectedCount = 0;
   let lastVerifiedPublishedAt: string | null = null;
+  let discoveryUnavailableCode: string | null = null;
   const failures: Array<{ url: string; code: string }> = [];
   const existingRun = options.idempotencyKey
     ? await bindings.WORLDCONS_INGEST.prepare("SELECT status, metadata FROM ingestion_runs WHERE id=?").bind(runId).first<{ status: string; metadata: string | null }>()
@@ -831,7 +832,15 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     const latest = priorRuns.results?.[0];
     const incrementalDays = latest?.finished_at ? Math.max(rangeDays, Math.min(365, Math.ceil((Date.parse(startedAt) - Date.parse(latest.finished_at)) / 86_400_000) + 2)) : rangeDays;
     const effectiveStart = Date.parse(startedAt) - incrementalDays * 86_400_000;
-    discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.browserNavigate);
+    try {
+      discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.browserNavigate);
+    } catch (error) {
+      if (source === "de-bverfg" && error instanceof Error && error.message === "crawler.bverfg_index_http_429") {
+        discoveryUnavailableCode = "BVERFG_DISCOVERY_RATE_LIMITED_429";
+      } else {
+        throw error;
+      }
+    }
     const primary = discovered.filter((item) => withinRange(item.publishedAt, effectiveStart)
       || (item.sourceKey === "es-tribunal-constitucional" && item.metadata.discoveryIndex === "official-search"));
     const revisions = source === "us-scotus"
@@ -874,10 +883,16 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
         await upsertCandidate(bindings.WORLDCONS_INGEST, source, candidate.url, code, code, false).catch(() => undefined);
       }
     }
-    const status = failedCount > 0 && fetchedCount === 0 && uncollectedCount === 0 ? "failed" : "completed";
-    const outcome = failedCount === 0 && uncollectedCount === 0 ? "success" : fetchedCount + insertedCount + refreshedCount > 0 ? "partial" : "degraded";
-    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, uncollectedCount, failedCount, outcome, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
-    await bindings.WORLDCONS_INGEST.prepare("UPDATE ingestion_runs SET finished_at=?, status=?, discovered_count=?, fetched_count=?, failed_count=?, error_message=?, metadata=? WHERE id=?").bind(new Date().toISOString(), status, bounded.length, fetchedCount, failedCount, failures.length ? failures.slice(0, 5).map((failure) => `${failure.code}`).join("; ").slice(0, 2_000) : null, JSON.stringify(metadata), runId).run();
+    const status = discoveryUnavailableCode
+      ? "completed"
+      : failedCount > 0 && fetchedCount === 0 && uncollectedCount === 0 ? "failed" : "completed";
+    const outcome = discoveryUnavailableCode
+      ? "degraded"
+      : failedCount === 0 && uncollectedCount === 0 ? "success" : fetchedCount + insertedCount + refreshedCount > 0 ? "partial" : "degraded";
+    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
+    const errorMessage = discoveryUnavailableCode
+      ?? (failures.length ? failures.slice(0, 5).map((failure) => `${failure.code}`).join("; ").slice(0, 2_000) : null);
+    await bindings.WORLDCONS_INGEST.prepare("UPDATE ingestion_runs SET finished_at=?, status=?, discovered_count=?, fetched_count=?, failed_count=?, error_message=?, metadata=? WHERE id=?").bind(new Date().toISOString(), status, bounded.length, fetchedCount, failedCount, errorMessage, JSON.stringify(metadata), runId).run();
     return { sourceKey: source, runId, status, discoveredCount: bounded.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, uncollectedCount, failedCount, rangeDays, lastVerifiedPublishedAt };
   } catch (error) {
     failedCount += 1;
