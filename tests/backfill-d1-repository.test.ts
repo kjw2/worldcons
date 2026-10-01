@@ -70,16 +70,60 @@ function createDatabases() {
 
   core.exec(`
     CREATE TABLE source_corpus_policies (
-      source_key TEXT, policy_version TEXT, normalize_replay_policy TEXT, bounded_replay_fields TEXT,
+      source_key TEXT, policy_version TEXT, normalize_replay_policy TEXT, bounded_replay_fields TEXT, default_text_access_policy TEXT,
       min_request_delay_ms INTEGER, max_concurrency INTEGER, review_due_at TEXT,
       authority_hosts TEXT, redirect_hosts TEXT, external_index_hosts TEXT
     );
+    CREATE TABLE sources (id TEXT PRIMARY KEY,source_key TEXT,name TEXT,jurisdiction TEXT,base_url TEXT,language TEXT,is_active INTEGER,created_at TEXT,updated_at TEXT);
+    CREATE TABLE articles (
+      id TEXT PRIMARY KEY,source_id TEXT,source_key TEXT,jurisdiction TEXT,institution_name TEXT,content_type TEXT,original_url TEXT,canonical_url TEXT,
+      original_language TEXT,original_title TEXT,korean_title TEXT,original_published_at TEXT,discovered_at TEXT,fetched_at TEXT,summarized_at TEXT,status TEXT,
+      slug TEXT,raw_text TEXT,cleaned_text TEXT,summary_json TEXT,source_metadata TEXT,error_metadata TEXT,created_at TEXT,updated_at TEXT,catalog_ai_stale_v4 INTEGER DEFAULT 0
+    );
+    CREATE UNIQUE INDEX articles_slug_key ON articles(slug);
+    CREATE UNIQUE INDEX articles_canonical_url_key ON articles(canonical_url);
+    CREATE TABLE case_identifiers_v1 (
+      id TEXT PRIMARY KEY,article_id TEXT,source_key TEXT,identifier_type TEXT,identifier_scope TEXT,raw_value TEXT,normalized_value TEXT,
+      normalization_version INTEGER,is_primary INTEGER,provenance_url TEXT,created_at TEXT
+    );
+    CREATE TABLE case_metadata_v1 (
+      article_id TEXT PRIMARY KEY,source_key TEXT,authority_status TEXT,authority_evidence TEXT,constitutional_relevance_status TEXT,enrichment_status TEXT,
+      enrichment_freshness TEXT,freshness_basis TEXT,text_access_policy TEXT,source_policy_version TEXT,discovery_source TEXT,authority_source TEXT,
+      source_last_modified_at TEXT,source_etag TEXT,source_snapshot_hash TEXT,ai_priority INTEGER,created_at TEXT,updated_at TEXT
+    );
+    CREATE TABLE article_content_versions_p3 (
+      id TEXT PRIMARY KEY,article_id TEXT,revision TEXT,parent_version_id TEXT,content_hash TEXT,provenance_actor_type TEXT,provenance_actor_id TEXT,
+      slug TEXT,source_key TEXT,jurisdiction TEXT,institution_name TEXT,content_type TEXT,original_url TEXT,canonical_url TEXT,original_language TEXT,
+      original_title TEXT,original_published_at TEXT,discovered_at TEXT,fetched_at TEXT,cleaned_text TEXT,summary_json TEXT,source_metadata TEXT,error_metadata TEXT,
+      created_at TEXT,version_document_schema TEXT,version_role TEXT,case_metadata_snapshot TEXT,case_identifiers_snapshot TEXT,authority_evidence_hash TEXT,
+      source_snapshot_id TEXT,source_snapshot_hash TEXT,source_content_hash TEXT,source_anchor_version_id TEXT,enrichment_source_content_hash TEXT
+    );
+    CREATE UNIQUE INDEX article_content_versions_p3_article_hash_key ON article_content_versions_p3(article_id,content_hash);
+    CREATE TABLE article_revision_heads_v4 (article_id TEXT PRIMARY KEY,current_version_id TEXT,current_revision TEXT,updated_at TEXT);
+    CREATE TABLE case_catalog_publications_v1 (
+      id TEXT PRIMARY KEY,article_id TEXT,state TEXT,source_anchor_version_id TEXT,revision TEXT,source_policy_version TEXT,decided_by_type TEXT,
+      decided_by_id TEXT,reason TEXT,published_at TEXT,withdrawn_at TEXT,created_at TEXT,updated_at TEXT
+    );
+    CREATE UNIQUE INDEX case_catalog_publications_v1_article_id_key ON case_catalog_publications_v1(article_id);
+    CREATE TABLE case_catalog_publication_events_v1 (
+      id TEXT PRIMARY KEY,publication_id TEXT,article_id TEXT,publication_revision TEXT,from_state TEXT,to_state TEXT,previous_source_anchor_version_id TEXT,
+      next_source_anchor_version_id TEXT,idempotency_key TEXT,actor_type TEXT,actor_id TEXT,reason TEXT,occurred_at TEXT
+    );
+    CREATE UNIQUE INDEX case_catalog_publication_events_v1_article_key ON case_catalog_publication_events_v1(article_id,idempotency_key);
+    CREATE TABLE case_catalog_cache_outbox_v1 (
+      id TEXT PRIMARY KEY,event_key TEXT,article_id TEXT,publication_id TEXT,publication_revision TEXT,source_anchor_version_id TEXT,article_slug TEXT,created_at TEXT
+    );
+    CREATE UNIQUE INDEX case_catalog_cache_outbox_v1_event_key_key ON case_catalog_cache_outbox_v1(event_key);
   `);
-  core.prepare(`INSERT INTO source_corpus_policies VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+  core.prepare(`INSERT INTO source_corpus_policies VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
     "de-bverfg", "bverfg-unattended-canary-v2", "bounded_evidence",
     JSON.stringify(["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"]),
-    30_000, 1, "2027-03-15T00:00:00.000Z",
+    "metadata_only",30_000, 1, "2027-03-15T00:00:00.000Z",
     JSON.stringify(["www.bundesverfassungsgericht.de"]), JSON.stringify(["www.bverfg.de"]), JSON.stringify(["dejure.org"]),
+  );
+  core.prepare(`INSERT INTO sources VALUES (?,?,?,?,?,?,?,?,?)`).run(
+    "source-de-bverfg","de-bverfg","Federal Constitutional Court of Germany","Germany","https://www.bundesverfassungsgericht.de","de",1,
+    new Date().toISOString(),new Date().toISOString(),
   );
 
   ops.exec(`
@@ -438,6 +482,144 @@ test("D1 verify claim transitions the current normalization artifact to verified
     assert.equal(item.verified_normalization_artifact_id, normalizationArtifactId);
     assert.equal(item.claimed_attempt_id, null);
     await d1CaseBackfillRepository.finishRun({ runId, authority: authority(), status: "succeeded", claimed: 1, succeeded: 1, retryableFailed: 0, terminalFailed: 0 });
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 publish claim leases a verified item without mutating its public state", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  const now = new Date().toISOString();
+  const fetchArtifactId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const normalizationArtifactId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  databases.ingest.prepare(`INSERT INTO source_fetch_artifacts
+    (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,payload_size,replayability,
+     bounded_replay_payload,fetched_at,fetch_contract_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    fetchArtifactId, ITEM_ID, "bverfg-unattended-canary-v2",
+    "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2023/06/rk20230620_2bvr016616.html",
+    200, "{}", "3".repeat(64), "42", "bounded_evidence", JSON.stringify({ sourceKey: "de-bverfg" }), now, FETCH_CONTRACT, now,
+  );
+  databases.ingest.prepare(`INSERT INTO source_normalization_artifacts
+    (id,item_id,fetch_artifact_id,parser_version,normalization_contract_version,normalized_output,normalized_output_hash,validation_status,validation_errors,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    normalizationArtifactId, ITEM_ID, fetchArtifactId, "bverfg-official-normalize-v2", "case-normalized-v1",
+    JSON.stringify({ sourceKey: "de-bverfg", canonicalUrl: "https://example.test" }), "4".repeat(64), "valid", "[]", now,
+  );
+  databases.ingest.prepare(`UPDATE source_backfill_items
+    SET status='verified',current_fetch_artifact_id=?,current_normalization_artifact_id=?,verified_normalization_artifact_id=?,parser_version=? WHERE id=?`).run(
+    fetchArtifactId, normalizationArtifactId, normalizationArtifactId, "bverfg-official-normalize-v2", ITEM_ID,
+  );
+  databases.ops.prepare("UPDATE admin_commands SET command_type=?,payload_ref=? WHERE id=?").run(
+    "p1.case-backfill.publish",
+    JSON.stringify({ cohort: "catalog-backfill", snapshotId: SNAPSHOT_ID, passNumber: 1, batchLimit: 1 }),
+    COMMAND_ID,
+  );
+  configure(databases);
+  try {
+    const input = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "publish" as const, passNumber: 1, batchLimit: 1 };
+    await d1CaseBackfillRepository.beginRun(input, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(input, authority());
+    assert.ok(claimed);
+    assert.equal(claimed.resolutionStatus, "verified");
+    assert.equal(claimed.verifiedNormalizationArtifactId, normalizationArtifactId);
+    const item = databases.ingest.prepare("SELECT status,claimed_phase,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(item.status, "verified");
+    assert.equal(item.claimed_phase, "publish");
+    assert.equal(item.claimed_attempt_id, ATTEMPT_ID);
+    assert.equal(await d1CaseBackfillRepository.countBacklog(input), 1);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 publish commits the verified source anchor and settles the ingest item", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  const now = new Date().toISOString();
+  const fetchArtifactId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const normalizationArtifactId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const canonicalUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2023/01/rk20230110_1bvr000123.html";
+  const normalizedOutput = {
+    sourceKey: "de-bverfg", jurisdiction: "Germany", institutionName: "Federal Constitutional Court of Germany",
+    contentType: "decision" as const, originalUrl: canonicalUrl, canonicalUrl, originalLanguage: "de",
+    originalTitle: "1 BvR 1/23", originalPublishedAt: "2023-01-10T00:00:00.000Z", cleanedText: "Entscheidungstext",
+    metadata: { caseNumber: "1 BvR 1/23", collection: { sourceUrlVerified: true, sourceTextAvailable: true, publishable: true } },
+  };
+  databases.ingest.prepare(`INSERT INTO source_fetch_artifacts
+    (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,payload_size,replayability,
+     bounded_replay_payload,fetched_at,fetch_contract_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    fetchArtifactId, ITEM_ID, "bverfg-unattended-canary-v2", canonicalUrl, 200, "{}", "5".repeat(64), "42",
+    "bounded_evidence", JSON.stringify({ sourceKey: "de-bverfg" }), now, FETCH_CONTRACT, now,
+  );
+  databases.ingest.prepare(`INSERT INTO source_normalization_artifacts
+    (id,item_id,fetch_artifact_id,parser_version,normalization_contract_version,normalized_output,normalized_output_hash,validation_status,validation_errors,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    normalizationArtifactId, ITEM_ID, fetchArtifactId, "bverfg-official-normalize-v2", "case-normalized-v1",
+    JSON.stringify(normalizedOutput), "6".repeat(64), "valid", "[]", now,
+  );
+  databases.ingest.prepare(`UPDATE source_backfill_items
+    SET status='verified',current_fetch_artifact_id=?,current_normalization_artifact_id=?,verified_normalization_artifact_id=?,parser_version=? WHERE id=?`).run(
+    fetchArtifactId, normalizationArtifactId, normalizationArtifactId, "bverfg-official-normalize-v2", ITEM_ID,
+  );
+  databases.ops.prepare("UPDATE admin_commands SET command_type=?,payload_ref=? WHERE id=?").run(
+    "p1.case-backfill.publish",
+    JSON.stringify({ cohort: "catalog-backfill", snapshotId: SNAPSHOT_ID, passNumber: 1, batchLimit: 1 }),
+    COMMAND_ID,
+  );
+  configure(databases);
+  try {
+    const pass = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "publish" as const, passNumber: 1, batchLimit: 1 };
+    await d1CaseBackfillRepository.beginRun(pass, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(pass, authority());
+    assert.ok(claimed);
+    const publication = await d1CaseBackfillRepository.publishItem({
+      itemId: ITEM_ID, authority: authority(), actorId: "test-publisher", normalizedOutput,
+    });
+    assert.ok(publication.articleId);
+    assert.ok(publication.versionId);
+    assert.equal(publication.versionRevision, 1);
+    assert.equal(publication.publicationRevision, 1);
+    const item = databases.ingest.prepare("SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(item.status, "published");
+    assert.equal(item.article_id, publication.articleId);
+    assert.equal(item.published_normalization_artifact_id, normalizationArtifactId);
+    assert.equal(item.claimed_attempt_id, null);
+    const article = databases.core.prepare("SELECT source_key,canonical_url,slug,status FROM articles WHERE id=?").get(publication.articleId) as Record<string, unknown>;
+    assert.equal(article.source_key, "de-bverfg");
+    assert.equal(article.canonical_url, canonicalUrl);
+    assert.equal(article.slug, publication.articleSlug);
+    assert.equal(article.status, "cleaned");
+    const version = databases.core.prepare("SELECT version_role,source_anchor_version_id,source_content_hash FROM article_content_versions_p3 WHERE id=?").get(publication.versionId) as Record<string, unknown>;
+    assert.equal(version.version_role, "authoritative_source");
+    assert.equal(version.source_anchor_version_id, publication.versionId);
+    assert.equal(version.source_content_hash, "6".repeat(64));
+    const catalog = databases.core.prepare("SELECT state,source_anchor_version_id,revision FROM case_catalog_publications_v1 WHERE article_id=?").get(publication.articleId) as Record<string, unknown>;
+    assert.equal(catalog.state, "published");
+    assert.equal(catalog.source_anchor_version_id, publication.versionId);
+    assert.equal(catalog.revision, "1");
+    assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_publication_events_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
+    assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_cache_outbox_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
+
+    databases.ingest.prepare(`UPDATE source_backfill_items SET
+      status='verified',article_id=NULL,published_normalization_artifact_id=NULL,
+      claimed_attempt_id=?,claimed_fencing_token=?,claimed_phase='publish',lease_expires_at=?,updated_at=?
+      WHERE id=?`).run(
+      ATTEMPT_ID,FENCE,new Date(Date.now() + 120_000).toISOString(),new Date().toISOString(),ITEM_ID,
+    );
+    const recovered = await d1CaseBackfillRepository.publishItem({
+      itemId: ITEM_ID, authority: authority(), actorId: "test-publisher-recovery", normalizedOutput,
+    });
+    assert.deepEqual(recovered, publication);
+    const recoveredItem = databases.ingest.prepare("SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(recoveredItem.status, "published");
+    assert.equal(recoveredItem.article_id, publication.articleId);
+    assert.equal(recoveredItem.published_normalization_artifact_id, normalizationArtifactId);
+    assert.equal(recoveredItem.claimed_attempt_id, null);
+    assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_publication_events_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
+    assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_cache_outbox_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
   } finally {
     databases.core.close(); databases.ingest.close(); databases.ops.close();
   }

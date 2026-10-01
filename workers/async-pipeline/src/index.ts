@@ -35,6 +35,11 @@ import {
   runGermanyBackfillVerifyPass,
   type GermanyBackfillVerifyPayload,
 } from "./backfill-verify";
+import {
+  parseGermanyBackfillPublishPayload,
+  runGermanyBackfillPublishPass,
+  type GermanyBackfillPublishPayload,
+} from "./backfill-publish";
 
 async function browserNavigate(input: { url: string; timeoutMs: number; waitUntil: "domcontentloaded"; userAgent: string }, binding: BrowserRun) {
   const browser = await launch(binding, { keep_alive: 60_000 });
@@ -238,6 +243,43 @@ export class WorldconsBackfillVerifyWorkflow extends WorkflowEntrypoint<Env, Bac
       schemaVersion: 1, snapshotId: payload.snapshotId, startPassNumber: payload.passNumber,
       lastPassNumber: last?.passNumber ?? payload.passNumber, completedPasses: results.length,
       batchLimit: payload.batchLimit ?? 25,
+      claimed: results.reduce((sum, result) => sum + result.claimed, 0),
+      succeeded: results.reduce((sum, result) => sum + result.succeeded, 0),
+      retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),
+      terminalFailed: results.reduce((sum, result) => sum + result.terminalFailed, 0),
+      backlogRemaining: last?.backlogRemaining ?? true,
+    };
+  }
+}
+
+type BackfillPublishWorkflowPayload = GermanyBackfillPublishPayload | string;
+
+export class WorldconsBackfillPublishWorkflow extends WorkflowEntrypoint<Env, BackfillPublishWorkflowPayload> {
+  async run(event: WorkflowEvent<BackfillPublishWorkflowPayload>, step: WorkflowStep) {
+    const payload = parseGermanyBackfillPublishPayload(event.payload);
+    if (!payload) throw new Error("case_backfill.invalid_publish_workflow_payload");
+    const maxPasses = payload.maxPasses ?? 1;
+    const results: Awaited<ReturnType<typeof runGermanyBackfillPublishPass>>[] = [];
+    for (let index = 0; index < maxPasses; index += 1) {
+      const passNumber = payload.passNumber + index;
+      const result = await step.do(`run-bounded-publish-pass-${passNumber}`, { timeout: "10 minutes" }, async () => {
+        try {
+          return await runGermanyBackfillPublishPass(
+            this.env as unknown as Parameters<typeof runGermanyBackfillPublishPass>[0],
+            { ...payload, passNumber, maxPasses: undefined },
+          );
+        } catch (error) {
+          throw new NonRetryableError(error instanceof Error ? error.message : String(error));
+        }
+      });
+      results.push(result);
+      if (!result.backlogRemaining) break;
+    }
+    const last = results.at(-1);
+    return {
+      schemaVersion: 1, snapshotId: payload.snapshotId, startPassNumber: payload.passNumber,
+      lastPassNumber: last?.passNumber ?? payload.passNumber, completedPasses: results.length,
+      batchLimit: payload.batchLimit ?? 10,
       claimed: results.reduce((sum, result) => sum + result.claimed, 0),
       succeeded: results.reduce((sum, result) => sum + result.succeeded, 0),
       retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),

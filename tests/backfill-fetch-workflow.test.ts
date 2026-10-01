@@ -20,6 +20,7 @@ import {
   runGermanyBackfillVerifyPass,
   type GermanyBackfillVerifyEnv,
 } from "../workers/async-pipeline/src/backfill-verify";
+import { parseGermanyBackfillPublishPayload } from "../workers/async-pipeline/src/backfill-publish";
 import type { ArtifactBlobR2Bucket } from "../lib/storage/blob";
 
 function d1(database: DatabaseSync): D1RuntimeDatabase {
@@ -484,6 +485,23 @@ test("verify Workflow payload accepts bounded Germany verify passes only", () =>
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, phase: "publish" })), null);
+});
+
+test("publish Workflow payload keeps Germany publication batches tightly bounded", () => {
+  const parsed = parseGermanyBackfillPublishPayload(JSON.stringify({
+    snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+    phase: "publish",
+    passNumber: 1,
+    batchLimit: 10,
+    maxPasses: 2,
+    requestedBy: "test-publish",
+  }));
+  assert.ok(parsed);
+  assert.equal(parsed.batchLimit, 10);
+  assert.equal(parsed.maxPasses, 2);
+  assert.equal(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, batchLimit: 26 })), null);
+  assert.equal(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
+  assert.equal(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, phase: "verify" })), null);
 });
 
 test("Germany verify executor validates R2 normalization evidence and transitions normalized to verified", async () => {

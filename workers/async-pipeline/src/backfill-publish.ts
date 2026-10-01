@@ -1,0 +1,209 @@
+import { d1AdminCommandRepository } from "../../../lib/admin/command-control-plane/d1-repository";
+import { d1CaseBackfillRepository } from "../../../lib/backfill/d1-repository";
+import type { CaseBackfillAttemptAuthority, CaseBackfillNormalizationArtifact } from "../../../lib/backfill/types";
+import { setRuntimeD1Bindings, type D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
+import {
+  ARTIFACT_BLOB_CONTRACT_VERSION,
+  ArtifactBlobStore,
+  createR2BindingArtifactBlobTransport,
+  sha256Hex,
+  type ArtifactBlobR2Bucket,
+} from "../../../lib/storage/blob";
+import type { NormalizedArticle } from "../../../lib/sources/types";
+import { GERMANY_2023_BACKFILL_SNAPSHOT_ID } from "./backfill-fetch";
+
+const SOURCE_KEY = "de-bverfg";
+const SOURCE_POLICY_VERSION = "bverfg-unattended-canary-v2";
+
+export interface GermanyBackfillPublishPayload {
+  snapshotId: string;
+  phase: "publish";
+  passNumber: number;
+  batchLimit?: number;
+  maxPasses?: number;
+  requestedBy?: string;
+}
+
+export interface GermanyBackfillPublishEnv {
+  WORLDCONS_OPS: D1RuntimeDatabase;
+  WORLDCONS_CORE: D1RuntimeDatabase;
+  WORLDCONS_INGEST: D1RuntimeDatabase;
+  WORLDCONS_SEARCH?: D1RuntimeDatabase;
+  WORLDCONS_RAW: ArtifactBlobR2Bucket;
+  CASE_CATALOG_GERMANY_HISTORY_ENABLED?: string;
+}
+
+type Row = Record<string, unknown>;
+
+function retryable(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /r2_get_failed|artifact_blob\.not_found|timeout|network|temporar|d1_(?:read|write|batch)_failed|database.*(?:busy|locked)/i.test(message);
+}
+
+function boundedErrorCode(error: unknown) {
+  const value = error instanceof Error ? error.message : String(error);
+  return /^[a-z][a-z0-9._-]{0,159}$/.test(value) ? value : "case_backfill.publish_failed";
+}
+
+function boundedErrorSummary(error: unknown) {
+  return (error instanceof Error ? error.message : String(error)).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 500);
+}
+
+async function queryRows<T extends Row>(db: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const result = await db.prepare(sql).bind(...values).all<T>();
+  if (!result || result.success === false || result.error || !Array.isArray(result.results)) {
+    throw new Error(result?.error || "case_backfill.workflow_d1_read_failed");
+  }
+  return result.results;
+}
+
+async function heartbeat(authority: CaseBackfillAttemptAuthority) {
+  const result = await d1AdminCommandRepository.heartbeat(authority.attemptId, authority.fencingToken, 900);
+  if (!result.ok) throw new Error(`case_backfill.${result.error.code}`);
+  authority.leaseExpiresAt = result.data.leaseExpiresAt;
+}
+
+async function normalizedOutput(artifact: CaseBackfillNormalizationArtifact, store: ArtifactBlobStore): Promise<NormalizedArticle> {
+  if (artifact.normalizedOutput) return artifact.normalizedOutput;
+  if (!artifact.normalizedOutputStorageRef) throw new Error("case_backfill.normalization_artifact_not_found");
+  if (artifact.externalizationContractVersion !== ARTIFACT_BLOB_CONTRACT_VERSION) {
+    throw new Error("case_backfill.artifact_blob_contract_unsupported");
+  }
+  const bytes = await store.get(artifact.normalizedOutputStorageRef);
+  if (artifact.normalizedOutputSize !== null && artifact.normalizedOutputSize !== undefined && bytes.byteLength !== artifact.normalizedOutputSize) {
+    throw new Error("case_backfill.artifact_blob_integrity_mismatch");
+  }
+  if (sha256Hex(bytes) !== artifact.normalizedOutputHash) throw new Error("case_backfill.artifact_blob_integrity_mismatch");
+  let parsed: unknown;
+  try { parsed = JSON.parse(bytes.toString("utf8")); } catch { throw new Error("case_backfill.artifact_blob_invalid_document"); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("case_backfill.artifact_blob_invalid_document");
+  return parsed as NormalizedArticle;
+}
+
+export function parseGermanyBackfillPublishPayload(value: unknown): GermanyBackfillPublishPayload | null {
+  let candidate = value;
+  if (typeof candidate === "string") { try { candidate = JSON.parse(candidate); } catch { return null; } }
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+  const payload = candidate as Record<string, unknown>;
+  const keys = Object.keys(payload);
+  if (keys.some((key) => !["snapshotId","phase","passNumber","batchLimit","maxPasses","requestedBy"].includes(key))) return null;
+  if (
+    payload.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID || payload.phase !== "publish"
+    || !Number.isInteger(payload.passNumber) || Number(payload.passNumber) < 1 || Number(payload.passNumber) > 2_147_483_647
+    || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 25))
+    || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 10))
+    || (payload.requestedBy !== undefined && (typeof payload.requestedBy !== "string" || payload.requestedBy.trim().length < 1 || payload.requestedBy.length > 160))
+  ) return null;
+  return payload as unknown as GermanyBackfillPublishPayload;
+}
+
+export async function runGermanyBackfillPublishPass(env: GermanyBackfillPublishEnv, input: GermanyBackfillPublishPayload) {
+  if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
+  if (input.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID) throw new Error("case_backfill.germany_snapshot_not_approved");
+  const batchLimit = Math.max(1, Math.min(input.batchLimit ?? 10, 25));
+  const requestedBy = input.requestedBy?.trim() || "worldcons-backfill-publish-workflow";
+  setRuntimeD1Bindings({
+    worldcons_ops: env.WORLDCONS_OPS, worldcons_core: env.WORLDCONS_CORE,
+    worldcons_ingest: env.WORLDCONS_INGEST, worldcons_search: env.WORLDCONS_SEARCH,
+  });
+  const store = new ArtifactBlobStore(createR2BindingArtifactBlobTransport({ bucket: env.WORLDCONS_RAW }));
+  const snapshot = await d1CaseBackfillRepository.getSnapshot(input.snapshotId);
+  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== SOURCE_POLICY_VERSION) {
+    throw new Error("case_backfill.germany_snapshot_contract_mismatch");
+  }
+  const active = await queryRows(env.WORLDCONS_OPS, `
+    SELECT r.id FROM admin_command_runs r JOIN admin_commands c ON c.id=r.command_id
+    WHERE c.command_type='p1.case-backfill.publish' AND r.status IN ('queued','running','retry_wait') LIMIT 1
+  `);
+  if (active.length > 0) throw new Error("case_backfill.publish_command_already_active");
+  if ((await d1CaseBackfillRepository.listNonTerminalRuns(input.snapshotId, "publish")).length > 0) {
+    throw new Error("case_backfill.publish_run_already_active");
+  }
+  if (await d1CaseBackfillRepository.countResidualClaims(input.snapshotId) > 0) throw new Error("case_backfill.residual_claims_present");
+  const passRow = (await queryRows(env.WORLDCONS_INGEST, `
+    SELECT COALESCE(MAX(pass_number),0)+1 AS next_pass FROM source_backfill_runs WHERE snapshot_id=? AND phase='publish'
+  `, [input.snapshotId]))[0];
+  const nextPass = Number(passRow?.next_pass ?? 1);
+  if (input.passNumber !== nextPass) throw new Error(`case_backfill.expected_pass_${nextPass}`);
+
+  const payloadRef = { cohort: "catalog-backfill", snapshotId: input.snapshotId, passNumber: input.passNumber, batchLimit };
+  const submitted = await d1AdminCommandRepository.submit({
+    commandType: "p1.case-backfill.publish", payloadRef,
+    idempotencyKey: `backfill-pass:${input.snapshotId}:publish:${input.passNumber}`,
+    dedupeKey: `backfill-active:${input.snapshotId}:publish`, requestedBy,
+    priority: 70, maxAttempts: 1, retryBackoffBaseSeconds: 60, retryBackoffCapSeconds: 60, shadowOnly: false,
+  });
+  if (!submitted.ok) throw new Error(`case_backfill.command_submit_failed.${submitted.error.code}`);
+  const claimedCommand = await d1AdminCommandRepository.claim({
+    workerId: `cloudflare-backfill-publish:${input.snapshotId}:${input.passNumber}`,
+    commandTypes: ["p1.case-backfill.publish"], cohorts: ["catalog-backfill"], leaseSeconds: 900,
+  });
+  if (!claimedCommand.ok) throw new Error(`case_backfill.command_claim_failed.${claimedCommand.error.code}`);
+  if (!claimedCommand.data || claimedCommand.data.runId !== submitted.data.runId) {
+    await d1AdminCommandRepository.abort({ runId: submitted.data.runId, requestedBy, reason: "exact publish pass claim failed" });
+    throw new Error("case_backfill.command_claim_mismatch");
+  }
+  const attempt = claimedCommand.data;
+  const authority: CaseBackfillAttemptAuthority = {
+    attemptId: attempt.attemptId, runId: attempt.runId, fencingToken: attempt.fencingToken, leaseExpiresAt: attempt.leaseExpiresAt,
+  };
+  const passInput = { cohort: "catalog-backfill" as const, snapshotId: input.snapshotId, phase: "publish" as const, passNumber: input.passNumber, batchLimit };
+  const runId = await d1CaseBackfillRepository.beginRun(passInput, authority);
+  let claimed = 0, succeeded = 0, retryableFailed = 0, terminalFailed = 0;
+  try {
+    while (claimed < batchLimit) {
+      await heartbeat(authority);
+      const [item] = await d1CaseBackfillRepository.claimItems({ ...passInput, batchLimit: 1 }, authority);
+      if (!item) break;
+      claimed += 1;
+      try {
+        if (!item.verifiedNormalizationArtifactId) throw new Error("case_backfill.catalog_verified_normalization_required");
+        const artifact = await d1CaseBackfillRepository.getNormalizationArtifact(item.verifiedNormalizationArtifactId, item.itemId);
+        const normalized = await normalizedOutput(artifact, store);
+        await d1CaseBackfillRepository.publishItem({
+          itemId: item.itemId, authority, actorId: requestedBy, normalizedOutput: normalized,
+        });
+        succeeded += 1;
+      } catch (error) {
+        const isRetryable = retryable(error);
+        try {
+          await d1CaseBackfillRepository.failItem({
+            itemId: item.itemId, phase: "publish", authority,
+            disposition: isRetryable ? "retryable" : "terminal",
+            errorCode: boundedErrorCode(error), errorSummary: boundedErrorSummary(error),
+            retryAt: isRetryable ? new Date(Date.now() + 5 * 60_000).toISOString() : null,
+          });
+        } catch (settleError) {
+          if (!String(settleError).includes("item_lease_lost")) throw settleError;
+        }
+        if (isRetryable) retryableFailed += 1; else terminalFailed += 1;
+      }
+    }
+    const backlogRemaining = await d1CaseBackfillRepository.countBacklog(passInput) > 0;
+    await d1CaseBackfillRepository.finishRun({
+      runId, authority, status: retryableFailed > 0 || terminalFailed > 0 ? "degraded" : "succeeded",
+      claimed, succeeded, retryableFailed, terminalFailed,
+    });
+    const transition = await d1AdminCommandRepository.complete(authority.attemptId, authority.fencingToken, {
+      snapshotId: input.snapshotId, passNumber: input.passNumber, claimed, succeeded, retryableFailed, terminalFailed, backlogRemaining,
+    });
+    if (!transition.ok) throw new Error(`case_backfill.command_complete_failed.${transition.error.code}`);
+    return { schemaVersion: 1, snapshotId: input.snapshotId, passNumber: input.passNumber, claimed, succeeded, retryableFailed, terminalFailed, backlogRemaining };
+  } catch (error) {
+    try {
+      if (await d1CaseBackfillRepository.countResidualClaims(input.snapshotId) === 0) {
+        await d1CaseBackfillRepository.finishRun({
+          runId, authority, status: "failed", claimed, succeeded, retryableFailed, terminalFailed,
+          lastErrorCode: boundedErrorCode(error), lastErrorSummary: boundedErrorSummary(error),
+        });
+      }
+    } catch { /* preserve original */ }
+    await d1AdminCommandRepository.fail({
+      attemptId: authority.attemptId, fencingToken: authority.fencingToken, disposition: "terminal",
+      errorCode: boundedErrorCode(error), errorMessage: boundedErrorSummary(error),
+      resultSummary: { snapshotId: input.snapshotId, passNumber: input.passNumber, claimed, succeeded, retryableFailed, terminalFailed },
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+

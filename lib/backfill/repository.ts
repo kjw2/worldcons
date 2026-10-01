@@ -24,6 +24,7 @@ import type {
   RestoreArtifactInlineInput,
   RestoreArtifactInlineResult,
 } from "@/lib/backfill/types";
+import type { NormalizedArticle } from "@/lib/sources/types";
 
 type Row = Record<string, unknown>;
 
@@ -293,6 +294,7 @@ export interface CaseBackfillRepository {
     itemId: string;
     authority: CaseBackfillAttemptAuthority;
     actorId?: string;
+    normalizedOutput?: NormalizedArticle | null;
   }): Promise<CaseBackfillPublicationResult>;
   completeItem(input: {
     itemId: string;

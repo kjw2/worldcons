@@ -19,6 +19,7 @@ import type {
   CaseBackfillItemPhase,
   CaseBackfillNormalizationArtifact,
   CaseBackfillPassInput,
+  CaseBackfillPublicationResult,
   CaseBackfillSnapshot,
   CaseBackfillSnapshotStatus,
   CaseBackfillSourcePolicy,
@@ -108,6 +109,25 @@ async function batch(db: D1RuntimeDatabase, statements: D1RuntimePreparedStateme
 function decimalId() {
   const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
   return (BigInt(Date.now()) * 10_000_000n + BigInt(random)).toString();
+}
+
+async function sha256Hex(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...digest].map((entry) => entry.toString(16).padStart(2, "0")).join("");
+}
+
+async function deterministicVersionId(articleId: string, contentHash: string) {
+  const hash = await sha256Hex(`${articleId}:${contentHash}`);
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+function normalizedIdentifier(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function slugPart(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 }
 
 function itemEvent(
@@ -256,7 +276,9 @@ function targetVersion(input: CaseBackfillPassInput) {
 }
 
 function assertSupportedD1Phase(phase: string) {
-  if (phase !== "fetch" && phase !== "normalize" && phase !== "verify") throw new Error("case_backfill.d1_phase_unsupported");
+  if (phase !== "fetch" && phase !== "normalize" && phase !== "verify" && phase !== "publish") {
+    throw new Error("case_backfill.d1_phase_unsupported");
+  }
 }
 
 async function claimOne(
@@ -316,10 +338,16 @@ async function claimOne(
             OR (i.status='published' AND i.current_normalization_artifact_id IS NOT NULL
               AND i.current_normalization_artifact_id IS NOT i.verified_normalization_artifact_id)
           ))
+          OR (?='publish' AND (
+            i.status='verified'
+            OR (i.status='retry_wait' AND i.retry_phase='publish')
+            OR (i.status='published' AND i.verified_normalization_artifact_id IS NOT NULL
+              AND i.verified_normalization_artifact_id IS NOT i.published_normalization_artifact_id)
+          ))
         )
       ORDER BY i.first_seen_at,i.id
       LIMIT 1
-    `, [input.snapshotId, nowIso, nowIso, input.phase, version, version, input.phase, version, version, input.phase]))[0];
+    `, [input.snapshotId, nowIso, nowIso, input.phase, version, version, input.phase, version, version, input.phase, input.phase]))[0];
     if (!candidate) return null;
     const result = await run(db, `
       UPDATE source_backfill_items
@@ -334,8 +362,9 @@ async function claimOne(
           (?='fetch' AND (status IN ('discovered','queued') OR (status='retry_wait' AND retry_phase='fetch') OR status='published'))
           OR (?='normalize' AND (status='fetched' OR (status='retry_wait' AND retry_phase='normalize') OR status='published'))
           OR (?='verify' AND (status='normalized' OR (status='retry_wait' AND retry_phase='verify') OR status='published'))
+          OR (?='publish' AND (status='verified' OR (status='retry_wait' AND retry_phase='publish') OR status='published'))
         )
-    `, [input.phase, authority.attemptId, authority.fencingToken, input.phase, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso, input.phase, input.phase, input.phase]);
+    `, [input.phase, authority.attemptId, authority.fencingToken, input.phase, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso, input.phase, input.phase, input.phase, input.phase]);
     if (changes(result) !== 1) continue;
     await run(db, `
       INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
@@ -629,8 +658,11 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
           OR (?='verify' AND (i.status='normalized' OR (i.status='retry_wait' AND i.retry_phase='verify')
             OR (i.status='published' AND i.current_normalization_artifact_id IS NOT NULL
               AND i.current_normalization_artifact_id IS NOT i.verified_normalization_artifact_id)))
+          OR (?='publish' AND (i.status='verified' OR (i.status='retry_wait' AND i.retry_phase='publish')
+            OR (i.status='published' AND i.verified_normalization_artifact_id IS NOT NULL
+              AND i.verified_normalization_artifact_id IS NOT i.published_normalization_artifact_id)))
         )
-    `, [input.snapshotId, now, input.phase, version, version, input.phase, version, version, input.phase]))[0];
+    `, [input.snapshotId, now, input.phase, version, version, input.phase, version, version, input.phase, input.phase]))[0];
     return numberValue(row?.count);
   },
 
@@ -801,7 +833,251 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         JSON.stringify({ artifactId: id, normalizedOutputHash: input.normalizedOutputHash, validationStatus: input.validationStatus }), now]);
     return id;
   },
-  publishItem: unsupported,
+  async publishItem(input): Promise<CaseBackfillPublicationResult> {
+    const item = await itemForMutation(input.itemId, "publish", input.authority);
+    const normalizationArtifactId = text(item.verified_normalization_artifact_id);
+    if (!normalizationArtifactId || normalizationArtifactId !== text(item.current_normalization_artifact_id)) {
+      throw new Error("case_backfill.catalog_verified_normalization_required");
+    }
+    const normalized = input.normalizedOutput;
+    if (!normalized || !normalized.sourceKey || !normalized.canonicalUrl || !normalized.originalUrl
+      || !normalized.jurisdiction || !normalized.institutionName || !normalized.originalLanguage || !normalized.originalTitle) {
+      throw new Error("case_backfill.catalog_normalized_output_invalid");
+    }
+
+    const ingest = requiredBinding("worldcons_ingest");
+    const core = requiredBinding("worldcons_core");
+    const normalization = (await rows<Row>(ingest, `
+      SELECT id,item_id,normalized_output_hash,validation_status
+      FROM source_normalization_artifacts WHERE id=? AND item_id=? LIMIT 1
+    `, [normalizationArtifactId, input.itemId]))[0];
+    if (!normalization || text(normalization.validation_status) !== "valid") {
+      throw new Error("case_backfill.catalog_verified_normalization_required");
+    }
+    const snapshotRow = (await rows<Row>(ingest, `
+      SELECT id,source_key,source_policy_version,status,manifest_hash,discovery_method
+      FROM source_inventory_snapshots WHERE id=? LIMIT 1
+    `, [text(item.snapshot_id)]))[0];
+    if (!snapshotRow || text(snapshotRow.status) !== "closed" || !text(snapshotRow.manifest_hash)) {
+      throw new Error("case_backfill.catalog_closed_manifest_required");
+    }
+    if (normalized.sourceKey !== text(snapshotRow.source_key)) throw new Error("case_backfill.catalog_normalized_output_invalid");
+    const policy = (await rows<Row>(core, `
+      SELECT default_text_access_policy,review_due_at
+      FROM source_corpus_policies WHERE source_key=? AND policy_version=? LIMIT 1
+    `, [text(snapshotRow.source_key), text(snapshotRow.source_policy_version)]))[0];
+    if (!policy || Date.parse(text(policy.review_due_at)) <= Date.now()) throw new Error("case_backfill.policy_review_expired");
+
+    const idempotencyKey = `case-backfill:${input.itemId}:${normalizationArtifactId}`;
+    const priorEvent = (await rows<Row>(core, `
+      SELECT e.publication_id,e.publication_revision,e.next_source_anchor_version_id,p.article_id,a.slug,v.revision AS version_revision
+      FROM case_catalog_publication_events_v1 e
+      JOIN case_catalog_publications_v1 p ON p.id=e.publication_id
+      JOIN articles a ON a.id=p.article_id
+      JOIN article_content_versions_p3 v ON v.id=e.next_source_anchor_version_id AND v.article_id=p.article_id
+      WHERE e.idempotency_key=? LIMIT 1
+    `, [idempotencyKey]))[0];
+    if (priorEvent) {
+      const recoveryNow = new Date().toISOString();
+      const recovery = await run(ingest, `UPDATE source_backfill_items SET article_id=?,status='published',published_normalization_artifact_id=?,
+        claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,next_attempt_at=NULL,retry_phase=NULL,
+        error_code=NULL,error_summary=NULL,updated_at=?
+        WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='publish' AND lease_expires_at>?`, [
+        text(priorEvent.article_id),normalizationArtifactId,recoveryNow,input.itemId,input.authority.attemptId,input.authority.fencingToken,recoveryNow,
+      ]);
+      if (changes(recovery) !== 1) throw new Error("case_backfill.item_lease_lost_after_catalog_commit");
+      await run(ingest, `INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`, [
+        decimalId(),input.itemId,input.authority.attemptId,"catalog_published","publish",
+        JSON.stringify({ articleId: text(priorEvent.article_id),versionId: text(priorEvent.next_source_anchor_version_id),publicationRevision: numberValue(priorEvent.publication_revision),recovered: true }),recoveryNow,
+      ]);
+      return {
+        articleId: text(priorEvent.article_id),
+        versionId: text(priorEvent.next_source_anchor_version_id),
+        versionRevision: numberValue(priorEvent.version_revision),
+        publicationRevision: numberValue(priorEvent.publication_revision),
+        articleSlug: text(priorEvent.slug),
+      };
+    }
+
+    const recordId = text(item.source_record_id) || text(item.stable_item_key);
+    const normalizedRecordId = normalizedIdentifier(recordId);
+    if (!normalizedRecordId) throw new Error("case_backfill.catalog_identifier_invalid");
+    const byIdentifier = (await rows<Row>(core, `
+      SELECT a.id,a.slug,a.source_key FROM case_identifiers_v1 ci JOIN articles a ON a.id=ci.article_id
+      WHERE ci.source_key=? AND ci.identifier_type='source_record_id' AND ci.normalized_value=? LIMIT 2
+    `, [normalized.sourceKey, normalizedRecordId]));
+    if (byIdentifier.length > 1) throw new Error("case_backfill.catalog_identity_conflict");
+    const byCanonical = await rows<Row>(core, "SELECT id,slug,source_key FROM articles WHERE canonical_url=? LIMIT 2", [normalized.canonicalUrl]);
+    if (byCanonical.length > 1) throw new Error("case_backfill.catalog_identity_conflict");
+    if (byIdentifier[0] && byCanonical[0] && text(byIdentifier[0].id) !== text(byCanonical[0].id)) {
+      throw new Error("case_backfill.catalog_identity_conflict");
+    }
+    const existingArticle = byIdentifier[0] ?? byCanonical[0] ?? null;
+    if (existingArticle && text(existingArticle.source_key) !== normalized.sourceKey) throw new Error("case_backfill.catalog_identity_conflict");
+    const articleId = existingArticle ? text(existingArticle.id) : crypto.randomUUID();
+    const articleSlug = existingArticle
+      ? text(existingArticle.slug)
+      : `${slugPart(normalized.sourceKey)}-${slugPart(recordId)}`;
+    if (!articleSlug) throw new Error("case_backfill.catalog_identifier_invalid");
+    if (!existingArticle) {
+      const slugConflict = (await rows<Row>(core, "SELECT id FROM articles WHERE slug=? LIMIT 1", [articleSlug]))[0];
+      if (slugConflict) throw new Error("case_backfill.catalog_identity_conflict");
+    }
+    const source = (await rows<Row>(core, "SELECT id FROM sources WHERE source_key=? LIMIT 1", [normalized.sourceKey]))[0];
+    if (!source) throw new Error("case_backfill.catalog_source_missing");
+    const identifierConflict = (await rows<Row>(core, `
+      SELECT article_id FROM case_identifiers_v1
+      WHERE source_key=? AND identifier_type='source_record_id' AND normalized_value=? AND article_id<>? LIMIT 1
+    `, [normalized.sourceKey, normalizedRecordId, articleId]))[0];
+    if (identifierConflict) throw new Error("case_backfill.catalog_identifier_conflict");
+
+    const now = new Date().toISOString();
+    const authorityEvidence = {
+      authorityUrl: normalized.canonicalUrl,
+      snapshotId: text(snapshotRow.id),
+      manifestHash: text(snapshotRow.manifest_hash),
+      normalizationArtifactId,
+    };
+    const authorityHash = await sha256Hex(JSON.stringify(authorityEvidence));
+    const existingIdentifiers = await rows<Row>(core, `
+      SELECT identifier_type,identifier_scope,raw_value,normalized_value,normalization_version,is_primary
+      FROM case_identifiers_v1 WHERE article_id=? ORDER BY identifier_type,normalized_value
+    `, [articleId]);
+    const hasSourceRecordIdentifier = existingIdentifiers.some(
+      (entry) => text(entry.identifier_type) === "source_record_id" && text(entry.normalized_value) === normalizedRecordId,
+    );
+    const sourceRecordPrimary = !existingIdentifiers.some((entry) => numberValue(entry.is_primary) === 1);
+    const identifierSnapshot = [
+      ...existingIdentifiers.map((entry) => ({
+        type: entry.identifier_type, scope: entry.identifier_scope, value: entry.raw_value,
+        normalizedValue: entry.normalized_value, normalizationVersion: numberValue(entry.normalization_version), primary: numberValue(entry.is_primary) === 1,
+      })),
+      ...(!hasSourceRecordIdentifier ? [{
+        type: "source_record_id", scope: "decision", value: recordId, normalizedValue: normalizedRecordId,
+        normalizationVersion: 1, primary: sourceRecordPrimary,
+      }] : []),
+    ].sort((left, right) => `${left.type}:${left.normalizedValue}`.localeCompare(`${right.type}:${right.normalizedValue}`));
+    const caseSnapshot = {
+      authorityStatus: "verified",
+      constitutionalRelevanceStatus: "verified",
+      textAccessPolicy: text(policy.default_text_access_policy),
+      sourcePolicyVersion: text(snapshotRow.source_policy_version),
+      sourceMetadata: normalized.metadata ?? {},
+    };
+    const currentHead = (await rows<Row>(core, "SELECT current_version_id,current_revision FROM article_revision_heads_v4 WHERE article_id=? LIMIT 1", [articleId]))[0];
+    const currentRevision = numberValue(currentHead?.current_revision);
+    const versionDocument = {
+      schema: "v4.article-case.v1", articleId, role: "authoritative_source", sourceAnchorVersionId: "SELF",
+      sourceContentHash: text(normalization.normalized_output_hash), enrichmentSourceContentHash: null,
+      slug: articleSlug, sourceKey: normalized.sourceKey, jurisdiction: normalized.jurisdiction,
+      institutionName: normalized.institutionName, contentType: normalized.contentType,
+      originalUrl: normalized.originalUrl, canonicalUrl: normalized.canonicalUrl,
+      originalLanguage: normalized.originalLanguage, originalTitle: normalized.originalTitle,
+      koreanTitle: null, originalPublishedAt: normalized.originalPublishedAt ?? null,
+      cleanedText: normalized.cleanedText ?? null, summary: null,
+      caseMetadata: caseSnapshot, caseIdentifiers: identifierSnapshot,
+      authorityEvidenceHash: authorityHash, sourceSnapshotId: text(snapshotRow.id), sourceSnapshotHash: text(snapshotRow.manifest_hash),
+    };
+    const contentHash = await sha256Hex(JSON.stringify(versionDocument));
+    let version = (await rows<Row>(core, "SELECT id,revision FROM article_content_versions_p3 WHERE article_id=? AND content_hash=? LIMIT 1", [articleId, contentHash]))[0];
+    const versionCreated = !version;
+    const versionId = version ? text(version.id) : await deterministicVersionId(articleId, contentHash);
+    const versionRevision = version ? numberValue(version.revision) : currentRevision + 1;
+    const publication = (await rows<Row>(core, "SELECT * FROM case_catalog_publications_v1 WHERE article_id=? LIMIT 1", [articleId]))[0];
+    const publicationId = publication ? text(publication.id) : crypto.randomUUID();
+    const publicationRevision = publication ? numberValue(publication.revision) + 1 : 1;
+    const statements: D1RuntimePreparedStatement[] = [];
+    if (!existingArticle) {
+      statements.push(core.prepare(`INSERT INTO articles
+        (id,source_id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,
+         original_published_at,discovered_at,fetched_at,status,slug,raw_text,cleaned_text,summary_json,source_metadata,error_metadata,created_at,updated_at,catalog_ai_stale_v4)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        articleId,text(source.id),normalized.sourceKey,normalized.jurisdiction,normalized.institutionName,normalized.contentType,
+        normalized.originalUrl,normalized.canonicalUrl,normalized.originalLanguage,normalized.originalTitle,normalized.originalPublishedAt ?? null,
+        now,now,normalized.cleanedText?.trim() ? "cleaned" : "metadata_only",articleSlug,null,normalized.cleanedText ?? null,null,
+        JSON.stringify({ catalog: { sourceOnly: true }, case: normalized.metadata ?? {} }),null,now,now,0,
+      ));
+    }
+    if (!hasSourceRecordIdentifier) {
+      statements.push(core.prepare(`INSERT INTO case_identifiers_v1
+        (id,article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value,normalization_version,is_primary,provenance_url,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        crypto.randomUUID(),articleId,normalized.sourceKey,"source_record_id","decision",recordId,normalizedRecordId,1,
+        sourceRecordPrimary ? 1 : 0,normalized.canonicalUrl,now,
+      ));
+    }
+    statements.push(core.prepare(`INSERT INTO case_metadata_v1
+      (article_id,source_key,authority_status,authority_evidence,constitutional_relevance_status,enrichment_status,enrichment_freshness,freshness_basis,
+       text_access_policy,source_policy_version,discovery_source,authority_source,source_last_modified_at,source_etag,source_snapshot_hash,ai_priority,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(article_id) DO UPDATE SET source_key=excluded.source_key,authority_status=excluded.authority_status,
+       authority_evidence=excluded.authority_evidence,constitutional_relevance_status=excluded.constitutional_relevance_status,
+       enrichment_status=excluded.enrichment_status,enrichment_freshness=NULL,freshness_basis=NULL,text_access_policy=excluded.text_access_policy,
+       source_policy_version=excluded.source_policy_version,discovery_source=excluded.discovery_source,authority_source=excluded.authority_source,
+       source_last_modified_at=excluded.source_last_modified_at,source_etag=excluded.source_etag,source_snapshot_hash=excluded.source_snapshot_hash,updated_at=excluded.updated_at`).bind(
+      articleId,normalized.sourceKey,"verified",JSON.stringify(authorityEvidence),"verified","source_only",null,null,
+      text(policy.default_text_access_policy),text(snapshotRow.source_policy_version),text(snapshotRow.discovery_method),normalized.canonicalUrl,
+      nullableText(item.source_last_modified_at),nullableText(item.source_etag),text(snapshotRow.manifest_hash),0,now,now,
+    ));
+    if (versionCreated) {
+      statements.push(core.prepare(`INSERT INTO article_content_versions_p3
+        (id,article_id,revision,parent_version_id,content_hash,provenance_actor_type,provenance_actor_id,slug,source_key,jurisdiction,institution_name,
+         content_type,original_url,canonical_url,original_language,original_title,original_published_at,discovered_at,fetched_at,cleaned_text,summary_json,
+         source_metadata,error_metadata,created_at,version_document_schema,version_role,case_metadata_snapshot,case_identifiers_snapshot,authority_evidence_hash,
+         source_snapshot_id,source_snapshot_hash,source_content_hash,source_anchor_version_id,enrichment_source_content_hash)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        versionId,articleId,String(versionRevision),currentHead?.current_version_id ?? null,contentHash,"import",input.actorId ?? "case-backfill-worker",
+        articleSlug,normalized.sourceKey,normalized.jurisdiction,normalized.institutionName,normalized.contentType,normalized.originalUrl,normalized.canonicalUrl,
+        normalized.originalLanguage,normalized.originalTitle,normalized.originalPublishedAt ?? null,now,now,normalized.cleanedText ?? null,null,
+        JSON.stringify(normalized.metadata ?? {}),null,now,"v4.article-case.v1","authoritative_source",JSON.stringify(caseSnapshot),JSON.stringify(identifierSnapshot),
+        authorityHash,text(snapshotRow.id),text(snapshotRow.manifest_hash),text(normalization.normalized_output_hash),versionId,null,
+      ));
+      statements.push(core.prepare(`INSERT INTO article_revision_heads_v4(article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?)
+        ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at`).bind(
+        articleId,versionId,String(versionRevision),now,
+      ));
+    }
+    if (!publication) {
+      statements.push(core.prepare(`INSERT INTO case_catalog_publications_v1
+        (id,article_id,state,source_anchor_version_id,revision,source_policy_version,decided_by_type,decided_by_id,reason,published_at,withdrawn_at,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        publicationId,articleId,"published",versionId,String(publicationRevision),text(snapshotRow.source_policy_version),"backfill",
+        input.actorId ?? "case-backfill-worker","Verified constitutional case Catalog publication.",now,null,now,now,
+      ));
+    } else {
+      statements.push(core.prepare(`UPDATE case_catalog_publications_v1 SET state='published',source_anchor_version_id=?,revision=?,source_policy_version=?,
+        decided_by_type='backfill',decided_by_id=?,reason=?,published_at=COALESCE(published_at,?),withdrawn_at=NULL,updated_at=? WHERE id=? AND CAST(revision AS INTEGER)=?`).bind(
+        versionId,String(publicationRevision),text(snapshotRow.source_policy_version),input.actorId ?? "case-backfill-worker",
+        "Verified constitutional case Catalog publication.",now,now,publicationId,numberValue(publication.revision),
+      ));
+    }
+    statements.push(core.prepare(`INSERT INTO case_catalog_publication_events_v1
+      (id,publication_id,article_id,publication_revision,from_state,to_state,previous_source_anchor_version_id,next_source_anchor_version_id,idempotency_key,actor_type,actor_id,reason,occurred_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+      decimalId(),publicationId,articleId,String(publicationRevision),publication ? nullableText(publication.state) : null,"published",
+      publication ? nullableText(publication.source_anchor_version_id) : null,versionId,idempotencyKey,"backfill",input.actorId ?? "case-backfill-worker",
+      "Verified constitutional case Catalog publication.",now,
+    ));
+    statements.push(core.prepare(`INSERT INTO case_catalog_cache_outbox_v1
+      (id,event_key,article_id,publication_id,publication_revision,source_anchor_version_id,article_slug,created_at)
+      VALUES (?,?,?,?,?,?,?,?)`).bind(
+      crypto.randomUUID(),`case-catalog:${publicationId}:${publicationRevision}`,articleId,publicationId,String(publicationRevision),versionId,articleSlug,now,
+    ));
+    await batch(core, statements);
+
+    const complete = await run(ingest, `UPDATE source_backfill_items SET article_id=?,status='published',published_normalization_artifact_id=?,
+      claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,next_attempt_at=NULL,retry_phase=NULL,
+      error_code=NULL,error_summary=NULL,updated_at=?
+      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='publish' AND lease_expires_at>?`, [
+      articleId,normalizationArtifactId,now,input.itemId,input.authority.attemptId,input.authority.fencingToken,now,
+    ]);
+    if (changes(complete) !== 1) throw new Error("case_backfill.item_lease_lost_after_catalog_commit");
+    await run(ingest, `INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`, [
+      decimalId(),input.itemId,input.authority.attemptId,"catalog_published","publish",
+      JSON.stringify({ articleId,versionId,publicationRevision }),now,
+    ]);
+    return { articleId,versionId,versionRevision,publicationRevision,articleSlug };
+  },
 
   async completeItem(input) {
     assertSupportedD1Phase(input.phase);
@@ -841,7 +1117,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='normalize' AND lease_expires_at>?
       `, [input.nextStatus, artifactId, artifact.parser_version, now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
       workState = "needs_reverify";
-    } else {
+    } else if (input.phase === "verify") {
       if (artifactId !== text(item.current_normalization_artifact_id)) throw new Error("case_backfill.invalid_verify_transition");
       const expectedStatus = text(item.status) === "published" ? "published" : "verified";
       if (input.nextStatus !== expectedStatus) throw new Error("case_backfill.invalid_verify_transition");
@@ -869,6 +1145,8 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
           [decimalId(), input.itemId, input.authority.attemptId, "verification_noop", "verify", JSON.stringify({ artifactId }), now]);
       }
+    } else {
+      throw new Error("case_backfill.publish_completion_requires_catalog_commit");
     }
     if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
     await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
