@@ -9,6 +9,7 @@ import type {
   CaseBackfillOpenRun,
   CaseBackfillRepository,
   RecordFetchArtifactInput,
+  RecordNormalizationArtifactInput,
   SourceRequestPermitResult,
 } from "@/lib/backfill/repository";
 import type {
@@ -16,11 +17,13 @@ import type {
   CaseBackfillClaimedItem,
   CaseBackfillFetchArtifact,
   CaseBackfillItemPhase,
+  CaseBackfillNormalizationArtifact,
   CaseBackfillPassInput,
   CaseBackfillSnapshot,
   CaseBackfillSnapshotStatus,
   CaseBackfillSourcePolicy,
 } from "@/lib/backfill/types";
+import type { NormalizedArticle } from "@/lib/sources/types";
 
 type Row = Record<string, unknown>;
 
@@ -252,20 +255,23 @@ function targetVersion(input: CaseBackfillPassInput) {
   return null;
 }
 
-function assertFetchOnly(phase: string) {
-  if (phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
+function assertSupportedD1Phase(phase: string) {
+  if (phase !== "fetch" && phase !== "normalize") throw new Error("case_backfill.d1_phase_unsupported");
 }
 
 async function claimOne(
   input: CaseBackfillPassInput,
   authority: CaseBackfillAttemptAuthority,
 ): Promise<CaseBackfillClaimedItem | null> {
-  assertFetchOnly(input.phase);
+  assertSupportedD1Phase(input.phase);
   const live = await assertLiveAttempt(authority, input.snapshotId, input.phase);
   const payloadBatchLimit = numberValue(live.payload.batchLimit ?? 50);
   if (input.batchLimit > payloadBatchLimit) throw new Error("case_backfill.item_scope_mismatch");
   const version = targetVersion(input);
-  if ((live.payload.fetchContractVersion ?? "spain-hj-fetch-v1") !== version) {
+  const liveVersion = input.phase === "fetch"
+    ? (live.payload.fetchContractVersion ?? "spain-hj-fetch-v1")
+    : `${live.payload.parserVersion ?? "spain-hj-normalize-v1"}:${live.payload.normalizationContractVersion ?? "case-normalized-v1"}`;
+  if (liveVersion !== version) {
     throw new Error("case_backfill.item_scope_mismatch");
   }
   const db = requiredBinding("worldcons_ingest");
@@ -280,37 +286,52 @@ async function claimOne(
 
   for (let scan = 0; scan < 8; scan += 1) {
     const candidate = (await rows<Row>(db, `
-      SELECT i.*,f.fetch_contract_version
+      SELECT i.*,f.fetch_contract_version,n.fetch_artifact_id AS normalization_fetch_artifact_id,
+             n.parser_version AS normalization_parser_version,n.normalization_contract_version AS normalization_contract_version
       FROM source_backfill_items i
       LEFT JOIN source_fetch_artifacts f ON f.id=i.current_fetch_artifact_id
+      LEFT JOIN source_normalization_artifacts n ON n.id=i.current_normalization_artifact_id
       WHERE i.snapshot_id=?
         AND (i.claimed_attempt_id IS NULL OR i.lease_expires_at<=?)
         AND (i.next_attempt_at IS NULL OR i.next_attempt_at<=?)
         AND (
-          i.status IN ('discovered','queued')
-          OR (i.status='retry_wait' AND i.retry_phase='fetch')
-          OR (i.status='published' AND ? IS NOT NULL AND COALESCE(f.fetch_contract_version,'')<>?)
+          (?='fetch' AND (
+            i.status IN ('discovered','queued')
+            OR (i.status='retry_wait' AND i.retry_phase='fetch')
+            OR (i.status='published' AND ? IS NOT NULL AND COALESCE(f.fetch_contract_version,'')<>?)
+          ))
+          OR (?='normalize' AND (
+            i.status='fetched'
+            OR (i.status='retry_wait' AND i.retry_phase='normalize')
+            OR (i.status='published' AND i.current_fetch_artifact_id IS NOT NULL AND (
+              n.fetch_artifact_id IS NULL OR n.fetch_artifact_id<>i.current_fetch_artifact_id
+              OR (? IS NOT NULL AND COALESCE(n.parser_version || ':' || n.normalization_contract_version,'')<>?)
+            ))
+          ))
         )
       ORDER BY i.first_seen_at,i.id
       LIMIT 1
-    `, [input.snapshotId, nowIso, nowIso, version, version]))[0];
+    `, [input.snapshotId, nowIso, nowIso, input.phase, version, version, input.phase, version, version]))[0];
     if (!candidate) return null;
     const result = await run(db, `
       UPDATE source_backfill_items
-      SET status=CASE WHEN status='published' THEN status ELSE 'fetching' END,
+      SET status=CASE WHEN ?='fetch' AND status<>'published' THEN 'fetching' ELSE status END,
           attempt_count=attempt_count+1,
-          claimed_attempt_id=?,claimed_fencing_token=?,claimed_phase='fetch',lease_expires_at=?,
+          claimed_attempt_id=?,claimed_fencing_token=?,claimed_phase=?,lease_expires_at=?,
           retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
       WHERE id=? AND snapshot_id=?
         AND (claimed_attempt_id IS NULL OR lease_expires_at<=?)
         AND (next_attempt_at IS NULL OR next_attempt_at<=?)
-        AND (status IN ('discovered','queued') OR (status='retry_wait' AND retry_phase='fetch') OR status='published')
-    `, [authority.attemptId, authority.fencingToken, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso]);
+        AND (
+          (?='fetch' AND (status IN ('discovered','queued') OR (status='retry_wait' AND retry_phase='fetch') OR status='published'))
+          OR (?='normalize' AND (status='fetched' OR (status='retry_wait' AND retry_phase='normalize') OR status='published'))
+        )
+    `, [input.phase, authority.attemptId, authority.fencingToken, input.phase, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso, input.phase, input.phase]);
     if (changes(result) !== 1) continue;
     await run(db, `
       INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
       VALUES (?,?,?,?,?,?,?)
-    `, [decimalId(), candidate.id, authority.attemptId, "item_claimed", "fetch", JSON.stringify({ leaseExpiresAt, fencingToken: authority.fencingToken }), nowIso]);
+    `, [decimalId(), candidate.id, authority.attemptId, "item_claimed", input.phase, JSON.stringify({ leaseExpiresAt, fencingToken: authority.fencingToken }), nowIso]);
     return {
       itemId: text(candidate.id),
       stableItemKey: text(candidate.stable_item_key),
@@ -320,7 +341,7 @@ async function claimOne(
       documentType: nullableText(candidate.document_type),
       decisionDateHint: nullableText(candidate.discovered_decision_date_hint),
       inventoryMetadata: jsonObject(candidate.inventory_metadata),
-      resolutionStatus: text(candidate.status) === "published" ? "published" : "fetching",
+      resolutionStatus: text(candidate.status) === "published" ? "published" : (input.phase === "fetch" ? "fetching" : text(candidate.status)),
       currentFetchArtifactId: nullableText(candidate.current_fetch_artifact_id),
       currentNormalizationArtifactId: nullableText(candidate.current_normalization_artifact_id),
       verifiedNormalizationArtifactId: nullableText(candidate.verified_normalization_artifact_id),
@@ -447,7 +468,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async acquireSourceRequestPermit(input: AcquireSourceRequestPermitInput): Promise<SourceRequestPermitResult> {
-    assertFetchOnly(input.phase);
+    if (input.phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
     const live = await assertLiveAttempt(input.authority, input.snapshotId, input.phase);
     const currentSnapshot = await snapshot(input.snapshotId);
     const policyRow = await sourcePolicyRow(currentSnapshot.sourceKey, currentSnapshot.sourcePolicyVersion);
@@ -519,7 +540,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async beginRun(input, authority) {
-    assertFetchOnly(input.phase);
+    assertSupportedD1Phase(input.phase);
     const live = await assertLiveAttempt(authority, input.snapshotId, input.phase);
     if (numberValue(live.payload.passNumber) !== input.passNumber) throw new Error("case_backfill.pass_scope_mismatch");
     const db = requiredBinding("worldcons_ingest");
@@ -551,7 +572,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async allocatePass(snapshotId, phase) {
-    assertFetchOnly(phase);
+    assertSupportedD1Phase(phase);
     const db = requiredBinding("worldcons_ingest");
     const currentSnapshot = await snapshot(snapshotId);
     if (currentSnapshot.status !== "closed") throw new Error("case_backfill.snapshot_phase_mismatch");
@@ -560,7 +581,10 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async finishRun(input) {
-    await assertLiveAttempt(input.authority, text((await rows<Row>(requiredBinding("worldcons_ingest"), "SELECT snapshot_id FROM source_backfill_runs WHERE id=? LIMIT 1", [input.runId]))[0]?.snapshot_id), "fetch");
+    const runRow = (await rows<Row>(requiredBinding("worldcons_ingest"), "SELECT snapshot_id,phase FROM source_backfill_runs WHERE id=? LIMIT 1", [input.runId]))[0];
+    if (!runRow) throw new Error("case_backfill.run_not_found");
+    assertSupportedD1Phase(text(runRow.phase));
+    await assertLiveAttempt(input.authority, text(runRow.snapshot_id), text(runRow.phase) as CaseBackfillPassInput["phase"]);
     if (input.claimed !== input.succeeded + input.retryableFailed + input.terminalFailed) throw new Error("case_backfill.invalid_run_result");
     const db = requiredBinding("worldcons_ingest");
     const active = (await rows<Row>(db, "SELECT COUNT(*) AS count FROM source_backfill_items WHERE claimed_attempt_id=?", [input.authority.attemptId]))[0];
@@ -575,7 +599,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async countBacklog(input) {
-    assertFetchOnly(input.phase);
+    assertSupportedD1Phase(input.phase);
     const db = requiredBinding("worldcons_ingest");
     const now = new Date().toISOString();
     const version = targetVersion(input);
@@ -583,10 +607,18 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       SELECT COUNT(*) AS count
       FROM source_backfill_items i
       LEFT JOIN source_fetch_artifacts f ON f.id=i.current_fetch_artifact_id
+      LEFT JOIN source_normalization_artifacts n ON n.id=i.current_normalization_artifact_id
       WHERE i.snapshot_id=? AND (i.next_attempt_at IS NULL OR i.next_attempt_at<=?)
-        AND (i.status IN ('discovered','queued') OR (i.status='retry_wait' AND i.retry_phase='fetch')
-          OR (i.status='published' AND ? IS NOT NULL AND COALESCE(f.fetch_contract_version,'')<>?))
-    `, [input.snapshotId, now, version, version]))[0];
+        AND (
+          (?='fetch' AND (i.status IN ('discovered','queued') OR (i.status='retry_wait' AND i.retry_phase='fetch')
+            OR (i.status='published' AND ? IS NOT NULL AND COALESCE(f.fetch_contract_version,'')<>?)))
+          OR (?='normalize' AND (i.status='fetched' OR (i.status='retry_wait' AND i.retry_phase='normalize')
+            OR (i.status='published' AND i.current_fetch_artifact_id IS NOT NULL AND (
+              n.fetch_artifact_id IS NULL OR n.fetch_artifact_id<>i.current_fetch_artifact_id
+              OR (? IS NOT NULL AND COALESCE(n.parser_version || ':' || n.normalization_contract_version,'')<>?)
+            ))))
+        )
+    `, [input.snapshotId, now, input.phase, version, version, input.phase, version, version]))[0];
     return numberValue(row?.count);
   },
 
@@ -622,7 +654,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async claimItems(input, authority) {
-    assertFetchOnly(input.phase);
+    assertSupportedD1Phase(input.phase);
     const result: CaseBackfillClaimedItem[] = [];
     for (let index = 0; index < input.batchLimit; index += 1) {
       const item = await claimOne({ ...input, batchLimit: 1 }, authority);
@@ -633,7 +665,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async extendItems(itemIds, phase, authority) {
-    assertFetchOnly(phase);
+    assertSupportedD1Phase(phase);
     if (itemIds.length < 1 || itemIds.length > 100) throw new Error("case_backfill.invalid_extend");
     const db = requiredBinding("worldcons_ingest");
     const placeholders = itemIds.map(() => "?").join(",");
@@ -702,38 +734,130 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
     };
   },
 
-  getNormalizationArtifact: unsupported,
-  recordNormalizationArtifact: unsupported,
+  async getNormalizationArtifact(artifactId, itemId): Promise<CaseBackfillNormalizationArtifact> {
+    const db = requiredBinding("worldcons_ingest");
+    const values: unknown[] = [artifactId];
+    let sql = "SELECT * FROM source_normalization_artifacts WHERE id=?";
+    if (itemId) {
+      sql += " AND item_id=?";
+      values.push(itemId);
+    }
+    sql += " LIMIT 1";
+    const row = (await rows<Row>(db, sql, values))[0];
+    if (!row) throw new Error("case_backfill.normalization_artifact_not_found");
+    const validationStatus = text(row.validation_status);
+    if (validationStatus !== "valid" && validationStatus !== "invalid") throw new Error("case_backfill.normalization_artifact_invalid");
+    return {
+      id: text(row.id), itemId: text(row.item_id), fetchArtifactId: text(row.fetch_artifact_id),
+      parserVersion: text(row.parser_version), normalizationContractVersion: text(row.normalization_contract_version),
+      normalizedOutput: row.normalized_output ? jsonObject(row.normalized_output) as unknown as NormalizedArticle : null,
+      normalizedOutputHash: text(row.normalized_output_hash),
+      normalizedOutputStorageRef: nullableText(row.normalized_output_storage_ref),
+      normalizedOutputSize: row.normalized_output_size === null ? null : numberValue(row.normalized_output_size),
+      externalizationContractVersion: nullableText(row.externalization_contract_version),
+      validationStatus,
+    };
+  },
+
+  async recordNormalizationArtifact(input: RecordNormalizationArtifactInput) {
+    const item = await itemForMutation(input.itemId, "normalize", input.authority);
+    if (text(item.current_fetch_artifact_id) !== input.fetchArtifactId) throw new Error("case_backfill.item_lease_lost");
+    if (!input.normalizedOutput && !input.normalizedOutputStorageRef) throw new Error("case_backfill.invalid_normalization_artifact");
+    const db = requiredBinding("worldcons_ingest");
+    const existing = (await rows<Row>(db, `
+      SELECT id FROM source_normalization_artifacts
+      WHERE fetch_artifact_id=? AND parser_version=? AND normalization_contract_version=?
+      LIMIT 1
+    `, [input.fetchArtifactId, input.parserVersion, input.normalizationContractVersion]))[0];
+    const id = existing ? text(existing.id) : crypto.randomUUID();
+    const now = new Date().toISOString();
+    if (!existing) {
+      await run(db, `
+        INSERT INTO source_normalization_artifacts
+          (id,item_id,fetch_artifact_id,parser_version,normalization_contract_version,normalized_output,
+           normalized_output_hash,validation_status,validation_errors,created_at,normalized_output_storage_ref,
+           normalized_output_size,externalization_contract_version)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `, [id,input.itemId,input.fetchArtifactId,input.parserVersion,input.normalizationContractVersion,
+        input.normalizedOutput ? JSON.stringify(input.normalizedOutput) : null,input.normalizedOutputHash,input.validationStatus,
+        JSON.stringify(input.validationErrors ?? []),now,input.normalizedOutputStorageRef ?? null,
+        input.normalizedOutputSize === undefined || input.normalizedOutputSize === null ? null : String(input.normalizedOutputSize),
+        input.externalizationContractVersion ?? null]);
+    }
+    await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
+      [decimalId(), input.itemId, input.authority.attemptId, "normalization_recorded", "normalize",
+        JSON.stringify({ artifactId: id, normalizedOutputHash: input.normalizedOutputHash, validationStatus: input.validationStatus }), now]);
+    return id;
+  },
   publishItem: unsupported,
 
   async completeItem(input) {
-    assertFetchOnly(input.phase);
+    assertSupportedD1Phase(input.phase);
     const item = await itemForMutation(input.itemId, input.phase, input.authority);
     const artifactId = typeof input.resultMetadata.artifactId === "string" ? input.resultMetadata.artifactId : "";
     if (!artifactId) throw new Error("case_backfill.invalid_artifact");
     const db = requiredBinding("worldcons_ingest");
-    const artifact = (await rows<Row>(db, "SELECT * FROM source_fetch_artifacts WHERE id=? AND item_id=? LIMIT 1", [artifactId, input.itemId]))[0];
-    if (!artifact) throw new Error("case_backfill.invalid_fetch_transition");
-    const expectedStatus = text(item.status) === "published" ? "published" : "fetched";
-    if (input.nextStatus !== expectedStatus) throw new Error("case_backfill.invalid_fetch_transition");
+    const now = new Date().toISOString();
+    let result: D1RuntimeResult;
+    let workState: string;
+    if (input.phase === "fetch") {
+      const artifact = (await rows<Row>(db, "SELECT * FROM source_fetch_artifacts WHERE id=? AND item_id=? LIMIT 1", [artifactId, input.itemId]))[0];
+      if (!artifact) throw new Error("case_backfill.invalid_fetch_transition");
+      const expectedStatus = text(item.status) === "published" ? "published" : "fetched";
+      if (input.nextStatus !== expectedStatus) throw new Error("case_backfill.invalid_fetch_transition");
+      result = await run(db, `
+        UPDATE source_backfill_items
+        SET status=?,current_fetch_artifact_id=?,http_status=?,source_etag=?,source_last_modified_at=?,payload_hash=?,authority_url=?,
+            claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
+            next_attempt_at=NULL,retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
+        WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='fetch' AND lease_expires_at>?
+      `, [input.nextStatus, artifactId, artifact.http_status, artifact.source_etag, artifact.source_last_modified_at, artifact.payload_hash, artifact.authority_url,
+        now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
+      workState = "needs_normalize";
+    } else {
+      const artifact = (await rows<Row>(db, `
+        SELECT * FROM source_normalization_artifacts WHERE id=? AND item_id=? AND validation_status='valid' LIMIT 1
+      `, [artifactId, input.itemId]))[0];
+      if (!artifact) throw new Error("case_backfill.invalid_normalize_transition");
+      const expectedStatus = text(item.status) === "published" ? "published" : "normalized";
+      if (input.nextStatus !== expectedStatus) throw new Error("case_backfill.invalid_normalize_transition");
+      result = await run(db, `
+        UPDATE source_backfill_items
+        SET status=?,current_normalization_artifact_id=?,parser_version=?,
+            claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
+            next_attempt_at=NULL,retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
+        WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='normalize' AND lease_expires_at>?
+      `, [input.nextStatus, artifactId, artifact.parser_version, now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
+      workState = "needs_reverify";
+    }
+    if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
+    await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
+      [decimalId(), input.itemId, input.authority.attemptId, "item_completed", input.phase, JSON.stringify({ status: input.nextStatus, workState }), now]);
+  },
+
+  async excludeItem(input) {
+    if (input.phase !== "normalize") throw new Error("case_backfill.d1_phase_unsupported");
+    if (!/^[a-z][a-z0-9._-]{2,79}$/.test(input.exclusionCode)) throw new Error("case_backfill.invalid_exclusion_code");
+    const item = await itemForMutation(input.itemId, input.phase, input.authority);
+    if (!["fetched","normalized","retry_wait"].includes(text(item.status)) || !item.current_fetch_artifact_id) {
+      throw new Error("case_backfill.invalid_exclusion_transition");
+    }
+    const db = requiredBinding("worldcons_ingest");
     const now = new Date().toISOString();
     const result = await run(db, `
       UPDATE source_backfill_items
-      SET status=?,current_fetch_artifact_id=?,http_status=?,source_etag=?,source_last_modified_at=?,payload_hash=?,authority_url=?,
-          claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
+      SET status='excluded',exclusion_code=?,claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
           next_attempt_at=NULL,retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
-      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='fetch' AND lease_expires_at>?
-    `, [input.nextStatus, artifactId, artifact.http_status, artifact.source_etag, artifact.source_last_modified_at, artifact.payload_hash, artifact.authority_url,
-      now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
+      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='normalize' AND lease_expires_at>?
+    `, [input.exclusionCode.trim().slice(0,80),now,input.itemId,input.authority.attemptId,input.authority.fencingToken,now]);
     if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
     await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
-      [decimalId(), input.itemId, input.authority.attemptId, "item_completed", "fetch", JSON.stringify({ status: input.nextStatus, workState: "needs_normalize" }), now]);
+      [decimalId(), input.itemId, input.authority.attemptId, "item_excluded", "normalize",
+        JSON.stringify({ status: "excluded", exclusionCode: input.exclusionCode, fetchArtifactId: item.current_fetch_artifact_id }), now]);
   },
 
-  excludeItem: unsupported,
-
   async failItem(input) {
-    assertFetchOnly(input.phase);
+    assertSupportedD1Phase(input.phase);
     const item = await itemForMutation(input.itemId, input.phase, input.authority);
     if (input.disposition !== "retryable" && input.disposition !== "terminal") throw new Error("case_backfill.invalid_failure");
     if (input.disposition === "retryable" && !input.retryAt) throw new Error("case_backfill.invalid_failure");
@@ -744,10 +868,10 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       UPDATE source_backfill_items
       SET status=?,next_attempt_at=?,retry_phase=?,error_code=?,error_summary=?,
           claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,updated_at=?
-      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='fetch' AND lease_expires_at>?
+      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase=? AND lease_expires_at>?
     `, [nextStatus, input.disposition === "retryable" ? input.retryAt : null, input.disposition === "retryable" ? input.phase : null,
       input.errorCode.trim().slice(0,160), input.errorSummary.trim().slice(0,500) || null, now,
-      input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
+      input.itemId, input.authority.attemptId, input.authority.fencingToken, input.phase, now]);
     if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
     await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
       [decimalId(), input.itemId, input.authority.attemptId, "item_failed", input.phase, JSON.stringify({ disposition: input.disposition, errorCode: input.errorCode }), now]);

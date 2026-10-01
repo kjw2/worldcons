@@ -55,6 +55,7 @@
   },
   "workflows": [
     { "binding": "ASYNC_WORKFLOW", "name": "worldcons-async-v1", "class_name": "WorldconsAsyncWorkflow" },
-    { "binding": "BACKFILL_WORKFLOW", "name": "worldcons-backfill-v1", "class_name": "WorldconsBackfillWorkflow" }
+    { "binding": "BACKFILL_WORKFLOW", "name": "worldcons-backfill-v1", "class_name": "WorldconsBackfillWorkflow" },
+    { "binding": "BACKFILL_NORMALIZE_WORKFLOW", "name": "worldcons-backfill-normalize-v1", "class_name": "WorldconsBackfillNormalizeWorkflow" }
   ]
 }

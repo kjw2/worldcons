@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { afterEach, test } from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { clearRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
@@ -9,6 +10,12 @@ import {
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchEnv,
 } from "../workers/async-pipeline/src/backfill-fetch";
+import {
+  parseGermanyBackfillNormalizePayload,
+  runGermanyBackfillNormalizePass,
+  type GermanyBackfillNormalizeEnv,
+} from "../workers/async-pipeline/src/backfill-normalize";
+import type { ArtifactBlobR2Bucket } from "../lib/storage/blob";
 
 function d1(database: DatabaseSync): D1RuntimeDatabase {
   return {
@@ -176,6 +183,57 @@ function databases() {
   return { core, ingest, ops, env, officialUrl };
 }
 
+function memoryR2(): ArtifactBlobR2Bucket & { objects: Map<string, Uint8Array> } {
+  const objects = new Map<string, Uint8Array>();
+  return {
+    objects,
+    async put(key, value) {
+      objects.set(key, new Uint8Array(value));
+      return {};
+    },
+    async get(key) {
+      const value = objects.get(key);
+      if (!value) return null;
+      return {
+        size: value.byteLength,
+        body: new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(value); controller.close(); } }),
+      };
+    },
+    async head(key) {
+      const value = objects.get(key);
+      return value ? { size: value.byteLength } : null;
+    },
+  };
+}
+
+function seedFetchedForNormalize(state: ReturnType<typeof databases>, sourceUrlVerified = true) {
+  const now = new Date().toISOString();
+  const fetchArtifactId = "normalize-fetch-artifact-1";
+  const raw = {
+    sourceKey: "de-bverfg",
+    url: state.officialUrl,
+    canonicalUrl: state.officialUrl,
+    title: "2 BvR 166/16",
+    publishedAt: "2023-06-20T00:00:00.000Z",
+    contentType: "decision",
+    text: "Entscheidungstext ".repeat(80),
+    metadata: {
+      collection: { sourceUrlVerified, publishable: sourceUrlVerified, sourceTextAvailable: sourceUrlVerified },
+      sourceInventory: { decisionDate: "2023-06-20", docket: "2 BvR 166/16" },
+    },
+  };
+  const document = JSON.stringify(raw);
+  const hash = createHash("sha256").update(document).digest("hex");
+  state.ingest.prepare(`INSERT INTO source_fetch_artifacts
+    (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,payload_size,replayability,
+     bounded_replay_payload,fetched_at,fetch_contract_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    fetchArtifactId, "item-1", "bverfg-unattended-canary-v2", state.officialUrl, 200, "{}", hash, String(Buffer.byteLength(document)),
+    "bounded_evidence", document, now, "bverfg-official-fetch-v1", now,
+  );
+  state.ingest.prepare("UPDATE source_backfill_items SET status='fetched',current_fetch_artifact_id=? WHERE id='item-1'").run(fetchArtifactId);
+}
+
 afterEach(() => clearRuntimeD1Bindings());
 
 test("Workflow payload normalization accepts Cloudflare API JSON-string params and rejects extra fields", () => {
@@ -328,6 +386,79 @@ test("Germany fetch does not spend another governed request on the BVerfG error 
     const artifact = state.ingest.prepare("SELECT bounded_replay_payload FROM source_fetch_artifacts LIMIT 1").get() as Record<string, unknown>;
     const replay = JSON.parse(String(artifact.bounded_replay_payload)) as { metadata: { authorityFetchError: string } };
     assert.equal(replay.metadata.authorityFetchError, "case_backfill.bverfg_error_redirect");
+  } finally {
+    state.core.close(); state.ingest.close(); state.ops.close();
+  }
+});
+
+test("normalize Workflow payload accepts bounded Germany normalize passes only", () => {
+  const parsed = parseGermanyBackfillNormalizePayload(JSON.stringify({
+    snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+    phase: "normalize",
+    passNumber: 1,
+    batchLimit: 25,
+    maxPasses: 4,
+    parserVersion: "bverfg-official-normalize-v2",
+    normalizationContractVersion: "case-normalized-v1",
+  }));
+  assert.ok(parsed);
+  assert.equal(parsed.batchLimit, 25);
+  assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
+  assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, parserVersion: "other" })), null);
+});
+
+test("Germany normalize executor externalizes a valid normalized artifact to R2", async () => {
+  const state = databases();
+  const bucket = memoryR2();
+  seedFetchedForNormalize(state, true);
+  try {
+    const env: GermanyBackfillNormalizeEnv = { ...state.env, WORLDCONS_RAW: bucket };
+    const result = await runGermanyBackfillNormalizePass(env, {
+      snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+      phase: "normalize",
+      passNumber: 1,
+      batchLimit: 1,
+      parserVersion: "bverfg-official-normalize-v2",
+      normalizationContractVersion: "case-normalized-v1",
+      requestedBy: "test-normalize",
+    });
+    assert.equal(result.claimed, 1);
+    assert.equal(result.succeeded, 1);
+    assert.equal(result.terminalFailed, 0);
+    const item = state.ingest.prepare("SELECT status,current_normalization_artifact_id,parser_version,claimed_attempt_id FROM source_backfill_items WHERE id='item-1'").get() as Record<string, unknown>;
+    assert.equal(item.status, "normalized");
+    assert.equal(item.parser_version, "bverfg-official-normalize-v2");
+    assert.equal(item.claimed_attempt_id, null);
+    const artifact = state.ingest.prepare("SELECT normalized_output,normalized_output_storage_ref,externalization_contract_version,validation_status FROM source_normalization_artifacts WHERE id=?").get(String(item.current_normalization_artifact_id)) as Record<string, unknown>;
+    assert.equal(artifact.normalized_output, null);
+    assert.match(String(artifact.normalized_output_storage_ref), /^artifacts\/normalization\/de-bverfg\/[0-9a-f]{64}\.json$/);
+    assert.equal(artifact.externalization_contract_version, "worldcons-artifact-blob-v1");
+    assert.equal(artifact.validation_status, "valid");
+    assert.equal(bucket.objects.size, 1);
+  } finally {
+    state.core.close(); state.ingest.close(); state.ops.close();
+  }
+});
+
+test("Germany normalize executor explicitly excludes metadata-only official source failures", async () => {
+  const state = databases();
+  const bucket = memoryR2();
+  seedFetchedForNormalize(state, false);
+  try {
+    const env: GermanyBackfillNormalizeEnv = { ...state.env, WORLDCONS_RAW: bucket };
+    const result = await runGermanyBackfillNormalizePass(env, {
+      snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+      phase: "normalize",
+      passNumber: 1,
+      batchLimit: 1,
+      requestedBy: "test-normalize-exclusion",
+    });
+    assert.equal(result.succeeded, 1);
+    const item = state.ingest.prepare("SELECT status,exclusion_code,current_normalization_artifact_id FROM source_backfill_items WHERE id='item-1'").get() as Record<string, unknown>;
+    assert.equal(item.status, "excluded");
+    assert.equal(item.exclusion_code, "official_source_unavailable");
+    assert.equal(item.current_normalization_artifact_id, null);
+    assert.equal(bucket.objects.size, 0);
   } finally {
     state.core.close(); state.ingest.close(); state.ops.close();
   }

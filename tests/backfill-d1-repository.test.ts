@@ -296,3 +296,101 @@ test("D1 mutations fail closed after the P1 fence is reclaimed", async () => {
   }
 });
 
+test("D1 normalize claim records a valid artifact and transitions fetched to normalized", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  const now = new Date().toISOString();
+  const fetchArtifactId = "66666666-6666-4666-8666-666666666666";
+  databases.ingest.prepare(`INSERT INTO source_fetch_artifacts
+    (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,payload_size,replayability,
+     bounded_replay_payload,fetched_at,fetch_contract_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    fetchArtifactId, ITEM_ID, "bverfg-unattended-canary-v2",
+    "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2023/06/rk20230620_2bvr016616.html",
+    200, "{}", "d".repeat(64), "42", "bounded_evidence",
+    JSON.stringify({ sourceKey: "de-bverfg", url: "https://example.test", canonicalUrl: "https://example.test", contentType: "decision", text: "body" }),
+    now, FETCH_CONTRACT, now,
+  );
+  databases.ingest.prepare("UPDATE source_backfill_items SET status='fetched',current_fetch_artifact_id=? WHERE id=?").run(fetchArtifactId, ITEM_ID);
+  databases.ops.prepare("UPDATE admin_commands SET command_type=?,payload_ref=? WHERE id=?").run(
+    "p1.case-backfill.normalize",
+    JSON.stringify({ cohort: "catalog-backfill", snapshotId: SNAPSHOT_ID, passNumber: 1, batchLimit: 1, parserVersion: "bverfg-official-normalize-v2", normalizationContractVersion: "case-normalized-v1" }),
+    COMMAND_ID,
+  );
+  configure(databases);
+  try {
+    const input = {
+      cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "normalize" as const, passNumber: 1, batchLimit: 1,
+      parserVersion: "bverfg-official-normalize-v2", normalizationContractVersion: "case-normalized-v1",
+    };
+    const runId = await d1CaseBackfillRepository.beginRun(input, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(input, authority());
+    assert.ok(claimed);
+    assert.equal(claimed.currentFetchArtifactId, fetchArtifactId);
+    assert.equal(claimed.resolutionStatus, "fetched");
+    const artifactId = await d1CaseBackfillRepository.recordNormalizationArtifact({
+      itemId: ITEM_ID, authority: authority(), fetchArtifactId,
+      parserVersion: "bverfg-official-normalize-v2", normalizationContractVersion: "case-normalized-v1",
+      normalizedOutput: {
+        sourceKey: "de-bverfg", jurisdiction: "Germany", institutionName: "Federal Constitutional Court of Germany",
+        contentType: "decision", originalUrl: "https://example.test", canonicalUrl: "https://example.test", originalLanguage: "de",
+        cleanedText: "body", metadata: { sourceInventory: { docket: "1 BvR 1/23" } },
+      },
+      normalizedOutputHash: "e".repeat(64), validationStatus: "valid", validationErrors: [],
+    });
+    await d1CaseBackfillRepository.completeItem({
+      itemId: ITEM_ID, phase: "normalize", authority: authority(), nextStatus: "normalized", resultMetadata: { artifactId },
+    });
+    const item = databases.ingest.prepare("SELECT status,current_normalization_artifact_id,parser_version,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(item.status, "normalized");
+    assert.equal(item.current_normalization_artifact_id, artifactId);
+    assert.equal(item.parser_version, "bverfg-official-normalize-v2");
+    assert.equal(item.claimed_attempt_id, null);
+    await d1CaseBackfillRepository.finishRun({
+      runId, authority: authority(), status: "succeeded", claimed: 1, succeeded: 1, retryableFailed: 0, terminalFailed: 0,
+    });
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 normalize exclusion closes an unavailable official source without a normalization artifact", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  const now = new Date().toISOString();
+  const fetchArtifactId = "77777777-7777-4777-8777-777777777777";
+  databases.ingest.prepare(`INSERT INTO source_fetch_artifacts
+    (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,payload_size,replayability,
+     bounded_replay_payload,fetched_at,fetch_contract_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    fetchArtifactId, ITEM_ID, "bverfg-unattended-canary-v2",
+    "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2023/06/rk20230620_2bvr016616.html",
+    200, "{}", "f".repeat(64), "42", "bounded_evidence", JSON.stringify({ sourceKey: "de-bverfg" }), now, FETCH_CONTRACT, now,
+  );
+  databases.ingest.prepare("UPDATE source_backfill_items SET status='fetched',current_fetch_artifact_id=? WHERE id=?").run(fetchArtifactId, ITEM_ID);
+  databases.ops.prepare("UPDATE admin_commands SET command_type=?,payload_ref=? WHERE id=?").run(
+    "p1.case-backfill.normalize",
+    JSON.stringify({ cohort: "catalog-backfill", snapshotId: SNAPSHOT_ID, passNumber: 1, batchLimit: 1, parserVersion: "bverfg-official-normalize-v2", normalizationContractVersion: "case-normalized-v1" }),
+    COMMAND_ID,
+  );
+  configure(databases);
+  try {
+    const input = {
+      cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "normalize" as const, passNumber: 1, batchLimit: 1,
+      parserVersion: "bverfg-official-normalize-v2", normalizationContractVersion: "case-normalized-v1",
+    };
+    await d1CaseBackfillRepository.beginRun(input, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(input, authority());
+    assert.ok(claimed);
+    await d1CaseBackfillRepository.excludeItem({
+      itemId: ITEM_ID, phase: "normalize", authority: authority(), exclusionCode: "official_source_unavailable",
+    });
+    const item = databases.ingest.prepare("SELECT status,exclusion_code,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(item.status, "excluded");
+    assert.equal(item.exclusion_code, "official_source_unavailable");
+    assert.equal(item.claimed_attempt_id, null);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+

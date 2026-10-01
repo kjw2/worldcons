@@ -25,6 +25,11 @@ import {
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchPayload,
 } from "./backfill-fetch";
+import {
+  parseGermanyBackfillNormalizePayload,
+  runGermanyBackfillNormalizePass,
+  type GermanyBackfillNormalizePayload,
+} from "./backfill-normalize";
 
 async function browserNavigate(input: { url: string; timeoutMs: number; waitUntil: "domcontentloaded"; userAgent: string }, binding: BrowserRun) {
   const browser = await launch(binding, { keep_alive: 60_000 });
@@ -153,6 +158,44 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
       lastPassNumber: last?.passNumber ?? payload.passNumber,
       completedPasses: results.length,
       batchLimit: payload.batchLimit ?? 1,
+      claimed: results.reduce((sum, result) => sum + result.claimed, 0),
+      succeeded: results.reduce((sum, result) => sum + result.succeeded, 0),
+      retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),
+      terminalFailed: results.reduce((sum, result) => sum + result.terminalFailed, 0),
+      backlogRemaining: last?.backlogRemaining ?? true,
+    };
+  }
+}
+
+type BackfillNormalizeWorkflowPayload = GermanyBackfillNormalizePayload | string;
+
+export class WorldconsBackfillNormalizeWorkflow extends WorkflowEntrypoint<Env, BackfillNormalizeWorkflowPayload> {
+  async run(event: WorkflowEvent<BackfillNormalizeWorkflowPayload>, step: WorkflowStep) {
+    const payload = parseGermanyBackfillNormalizePayload(event.payload);
+    if (!payload) throw new Error("case_backfill.invalid_normalize_workflow_payload");
+    const maxPasses = payload.maxPasses ?? 1;
+    const results: Awaited<ReturnType<typeof runGermanyBackfillNormalizePass>>[] = [];
+    for (let index = 0; index < maxPasses; index += 1) {
+      const passNumber = payload.passNumber + index;
+      const passPayload = { ...payload, passNumber, maxPasses: undefined };
+      const result = await step.do(`run-bounded-normalize-pass-${passNumber}`, { timeout: "10 minutes" }, async () => {
+        try {
+          return await runGermanyBackfillNormalizePass(
+            this.env as unknown as Parameters<typeof runGermanyBackfillNormalizePass>[0],
+            passPayload,
+          );
+        } catch (error) {
+          throw new NonRetryableError(error instanceof Error ? error.message : String(error));
+        }
+      });
+      results.push(result);
+      if (!result.backlogRemaining) break;
+    }
+    const last = results.at(-1);
+    return {
+      schemaVersion: 1, snapshotId: payload.snapshotId, startPassNumber: payload.passNumber,
+      lastPassNumber: last?.passNumber ?? payload.passNumber, completedPasses: results.length,
+      batchLimit: payload.batchLimit ?? 25,
       claimed: results.reduce((sum, result) => sum + result.claimed, 0),
       succeeded: results.reduce((sum, result) => sum + result.succeeded, 0),
       retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),
