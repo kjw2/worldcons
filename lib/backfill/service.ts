@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import {
-  postgresCaseBackfillRepository,
   type CaseBackfillRepository,
 } from "@/lib/backfill/repository";
+import { d1CaseBackfillRepository } from "@/lib/backfill/d1-repository";
 import type {
   CaseBackfillAttemptAuthority,
   CaseBackfillClaimedItem,
@@ -67,7 +67,7 @@ interface CaseBackfillArtifactBlobContext {
 }
 
 function resolveArtifactBlobContext(dependencies: CaseBackfillDependencies): CaseBackfillArtifactBlobContext {
-  const environment = dependencies.environment ?? process.env;
+  const environment = environmentFor(dependencies);
   const writeEnabled = caseBackfillArtifactBlobWriteReady(environment);
   const readEnabled = caseBackfillArtifactBlobReadReady(environment);
   if (!writeEnabled && !readEnabled) return { writeEnabled: false, readEnabled: false, store: null };
@@ -201,13 +201,28 @@ async function uploadNormalizedOutput(
 }
 
 const defaultDependencies: CaseBackfillDependencies = {
-  repository: postgresCaseBackfillRepository,
+  repository: d1CaseBackfillRepository,
   loadAdapter: loadSourceAdapter,
   now: () => new Date(),
   discoverSpainTcInventory,
   discoverFranceDilaConstitInventory,
-  environment: process.env,
 };
+
+let runtimeCaseBackfillEnvironment: Record<string, string | undefined> | null = null;
+
+export function setRuntimeCaseBackfillEnvironment(environment: Record<string, unknown> | null | undefined) {
+  if (!environment) {
+    runtimeCaseBackfillEnvironment = null;
+    return;
+  }
+  runtimeCaseBackfillEnvironment = Object.fromEntries(
+    Object.entries(environment).flatMap(([key, value]) => typeof value === "string" ? [[key, value]] : []),
+  );
+}
+
+function environmentFor(dependencies: CaseBackfillDependencies) {
+  return dependencies.environment ?? runtimeCaseBackfillEnvironment ?? process.env;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -497,7 +512,7 @@ function assertRolloutAuthorized(snapshot: CaseBackfillSnapshot, dependencies: C
     year: Number(snapshot.scopeFrom?.slice(0, 4)),
     documentType: snapshot.documentType,
   }, {
-    environment: dependencies.environment ?? process.env,
+    environment: environmentFor(dependencies),
     currentYear: dependencies.now().getUTCFullYear(),
     franceHistorySourcePolicyApproved: dependencies.franceHistorySourcePolicyApproved,
     spainHistorySourcePolicyApproved: dependencies.spainHistorySourcePolicyApproved,
@@ -524,7 +539,7 @@ export async function runCaseBackfillPass(
       spainHistorySourcePolicyApproved: dependencies.spainHistorySourcePolicyApproved,
       franceHistorySourcePolicyApproved: dependencies.franceHistorySourcePolicyApproved,
     });
-    strategy.assertDiscoveryScope(snapshot, dependencies.environment ?? process.env);
+    strategy.assertDiscoveryScope(snapshot, environmentFor(dependencies));
     if (!strategy.governedNetworkPhases.includes("discover")) {
       throw new Error("case_backfill.source_request_governor_not_supported");
     }
@@ -542,7 +557,7 @@ export async function runCaseBackfillPass(
     let written = 0;
     try {
       const inventory = await strategy.discover(snapshot, {
-        environment: dependencies.environment ?? process.env,
+        environment: environmentFor(dependencies),
         signal: context.signal,
         checkpoint: context.checkpoint,
         requestGovernor,
@@ -614,7 +629,7 @@ export async function runCaseBackfillPass(
 
   if (snapshot.status !== "closed") throw new Error("case_backfill.snapshot_not_closed");
   assertHistoricalSnapshotBoundary(snapshot);
-  if (input.phase === "publish" && !caseCatalogWriteEnabled(dependencies.environment ?? process.env)) {
+  if (input.phase === "publish" && !caseCatalogWriteEnabled(environmentFor(dependencies))) {
     throw new Error("case_backfill.catalog_write_disabled");
   }
   const strategy = loadCaseBackfillSourceStrategy(snapshot.sourceKey, {

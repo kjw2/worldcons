@@ -1,0 +1,761 @@
+import {
+  getRuntimeD1Binding,
+  type D1RuntimeDatabase,
+  type D1RuntimePreparedStatement,
+  type D1RuntimeResult,
+} from "@/lib/cloudflare/d1/runtime-binding";
+import type {
+  AcquireSourceRequestPermitInput,
+  CaseBackfillOpenRun,
+  CaseBackfillRepository,
+  RecordFetchArtifactInput,
+  SourceRequestPermitResult,
+} from "@/lib/backfill/repository";
+import type {
+  CaseBackfillAttemptAuthority,
+  CaseBackfillClaimedItem,
+  CaseBackfillFetchArtifact,
+  CaseBackfillItemPhase,
+  CaseBackfillPassInput,
+  CaseBackfillSnapshot,
+  CaseBackfillSnapshotStatus,
+  CaseBackfillSourcePolicy,
+} from "@/lib/backfill/types";
+
+type Row = Record<string, unknown>;
+
+function text(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function nullableText(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function numberValue(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function jsonArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
+  if (typeof value !== "string") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function changes(result: D1RuntimeResult) {
+  return numberValue(result.meta?.changes);
+}
+
+function requiredBinding(name: "worldcons_core" | "worldcons_ingest" | "worldcons_ops") {
+  const binding = getRuntimeD1Binding(name);
+  if (!binding) throw new Error(`case_backfill.d1_${name}_unavailable`);
+  return binding;
+}
+
+async function rows<T extends Row>(db: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const result = await db.prepare(sql).bind(...values).all<T>();
+  if (!result || result.success === false || result.error || !Array.isArray(result.results)) {
+    throw new Error(result?.error || "case_backfill.d1_read_failed");
+  }
+  return result.results;
+}
+
+async function run(db: D1RuntimeDatabase, sql: string, values: unknown[] = []) {
+  const statement = db.prepare(sql).bind(...values);
+  if (!statement.run) throw new Error("case_backfill.d1_write_unavailable");
+  const result = await statement.run();
+  if (!result || result.success === false || result.error) throw new Error(result?.error || "case_backfill.d1_write_failed");
+  return result;
+}
+
+async function batch(db: D1RuntimeDatabase, statements: D1RuntimePreparedStatement[]) {
+  if (!db.batch) {
+    for (const statement of statements) {
+      if (!statement.run) throw new Error("case_backfill.d1_batch_unavailable");
+      const result = await statement.run();
+      if (!result || result.success === false || result.error) throw new Error(result?.error || "case_backfill.d1_batch_failed");
+    }
+    return;
+  }
+  const results = await db.batch(statements);
+  if (results.some((result) => !result || result.success === false || result.error)) {
+    throw new Error("case_backfill.d1_batch_failed");
+  }
+}
+
+function decimalId() {
+  const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
+  return (BigInt(Date.now()) * 10_000_000n + BigInt(random)).toString();
+}
+
+function itemEvent(
+  db: D1RuntimeDatabase,
+  input: { itemId: string; attemptId: string | null; eventType: string; phase: string | null; details?: Record<string, unknown> },
+) {
+  return db.prepare(
+    "INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)",
+  ).bind(
+    decimalId(),
+    input.itemId,
+    input.attemptId,
+    input.eventType,
+    input.phase,
+    JSON.stringify(input.details ?? {}),
+    new Date().toISOString(),
+  );
+}
+
+interface LiveAttempt {
+  leaseExpiresAt: string;
+  commandRunId: string;
+  payload: Record<string, unknown>;
+}
+
+async function assertLiveAttempt(
+  authority: CaseBackfillAttemptAuthority,
+  snapshotId: string,
+  phase: CaseBackfillPassInput["phase"],
+): Promise<LiveAttempt> {
+  const db = requiredBinding("worldcons_ops");
+  const row = (await rows<Row>(db, `
+    SELECT
+      a.id AS attempt_id,
+      a.run_id AS run_id,
+      a.status AS attempt_status,
+      a.fencing_token AS fencing_token,
+      a.lease_expires_at AS lease_expires_at,
+      r.status AS run_status,
+      r.current_attempt_id AS current_attempt_id,
+      r.abort_requested_at AS abort_requested_at,
+      c.command_type AS command_type,
+      c.payload_ref AS payload_ref
+    FROM admin_command_attempts a
+    JOIN admin_command_runs r ON r.id = a.run_id
+    JOIN admin_commands c ON c.id = r.command_id
+    WHERE a.id = ?
+    LIMIT 1
+  `, [authority.attemptId]))[0];
+  if (!row) throw new Error("case_backfill.attempt_not_found");
+  if (
+    text(row.run_id) !== authority.runId
+    || text(row.fencing_token) !== authority.fencingToken
+    || text(row.current_attempt_id) !== authority.attemptId
+  ) {
+    throw new Error("case_backfill.stale_fence");
+  }
+  if (
+    text(row.attempt_status) !== "running"
+    || text(row.run_status) !== "running"
+    || Date.parse(text(row.lease_expires_at)) <= Date.now()
+  ) {
+    throw new Error("case_backfill.lease_lost");
+  }
+  if (row.abort_requested_at) throw new Error("case_backfill.aborted");
+  const payload = jsonObject(row.payload_ref);
+  if (
+    text(row.command_type) !== `p1.case-backfill.${phase}`
+    || payload.cohort !== "catalog-backfill"
+    || payload.snapshotId !== snapshotId
+  ) {
+    throw new Error("case_backfill.attempt_scope_mismatch");
+  }
+  return { leaseExpiresAt: text(row.lease_expires_at), commandRunId: text(row.run_id), payload };
+}
+
+async function snapshot(snapshotId: string): Promise<CaseBackfillSnapshot> {
+  const db = requiredBinding("worldcons_ingest");
+  const row = (await rows<Row>(db, `
+    SELECT id,source_key,scope_from,scope_to,document_type,parser_version,source_policy_version,status
+    FROM source_inventory_snapshots WHERE id=? LIMIT 1
+  `, [snapshotId]))[0];
+  if (!row) throw new Error("case_backfill.snapshot_not_found");
+  return {
+    id: text(row.id),
+    sourceKey: text(row.source_key),
+    scopeFrom: nullableText(row.scope_from),
+    scopeTo: nullableText(row.scope_to),
+    documentType: text(row.document_type),
+    parserVersion: text(row.parser_version),
+    sourcePolicyVersion: text(row.source_policy_version),
+    status: text(row.status),
+  };
+}
+
+interface PolicyRow extends Row {
+  source_key: unknown;
+  policy_version: unknown;
+  normalize_replay_policy: unknown;
+  bounded_replay_fields: unknown;
+  min_request_delay_ms: unknown;
+  max_concurrency: unknown;
+  review_due_at: unknown;
+  authority_hosts: unknown;
+  redirect_hosts: unknown;
+  external_index_hosts: unknown;
+}
+
+async function sourcePolicyRow(sourceKey: string, policyVersion: string) {
+  const db = requiredBinding("worldcons_core");
+  const row = (await rows<PolicyRow>(db, `
+    SELECT source_key,policy_version,normalize_replay_policy,bounded_replay_fields,
+           min_request_delay_ms,max_concurrency,review_due_at,
+           authority_hosts,redirect_hosts,external_index_hosts
+    FROM source_corpus_policies
+    WHERE source_key=? AND policy_version=?
+    LIMIT 1
+  `, [sourceKey, policyVersion]))[0];
+  if (!row) throw new Error("case_backfill.policy_not_found");
+  if (Date.parse(text(row.review_due_at)) <= Date.now()) throw new Error("case_backfill.policy_review_expired");
+  return row;
+}
+
+function mapPolicy(row: PolicyRow): CaseBackfillSourcePolicy {
+  const replay = text(row.normalize_replay_policy);
+  if (replay !== "full_snapshot" && replay !== "bounded_evidence" && replay !== "non_replayable") {
+    throw new Error("case_backfill.policy_invalid");
+  }
+  return {
+    sourceKey: text(row.source_key),
+    policyVersion: text(row.policy_version),
+    normalizeReplayPolicy: replay,
+    boundedReplayFields: jsonArray(row.bounded_replay_fields),
+    minRequestDelayMs: numberValue(row.min_request_delay_ms),
+    maxConcurrency: numberValue(row.max_concurrency),
+    reviewDueAt: text(row.review_due_at),
+  };
+}
+
+function targetVersion(input: CaseBackfillPassInput) {
+  if (input.phase === "fetch") return input.fetchContractVersion ?? "spain-hj-fetch-v1";
+  if (input.phase === "normalize") {
+    return `${input.parserVersion ?? "spain-hj-normalize-v1"}:${input.normalizationContractVersion ?? "case-normalized-v1"}`;
+  }
+  return null;
+}
+
+function assertFetchOnly(phase: string) {
+  if (phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
+}
+
+async function claimOne(
+  input: CaseBackfillPassInput,
+  authority: CaseBackfillAttemptAuthority,
+): Promise<CaseBackfillClaimedItem | null> {
+  assertFetchOnly(input.phase);
+  const live = await assertLiveAttempt(authority, input.snapshotId, input.phase);
+  const payloadBatchLimit = numberValue(live.payload.batchLimit ?? 50);
+  if (input.batchLimit > payloadBatchLimit) throw new Error("case_backfill.item_scope_mismatch");
+  const version = targetVersion(input);
+  if ((live.payload.fetchContractVersion ?? "spain-hj-fetch-v1") !== version) {
+    throw new Error("case_backfill.item_scope_mismatch");
+  }
+  const db = requiredBinding("worldcons_ingest");
+  const currentSnapshot = await snapshot(input.snapshotId);
+  if (currentSnapshot.status !== "closed") throw new Error("case_backfill.snapshot_not_closed");
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const leaseExpiresAt = new Date(Math.min(
+    Date.parse(live.leaseExpiresAt),
+    now.getTime() + 180_000,
+  )).toISOString();
+
+  for (let scan = 0; scan < 8; scan += 1) {
+    const candidate = (await rows<Row>(db, `
+      SELECT i.*,f.fetch_contract_version
+      FROM source_backfill_items i
+      LEFT JOIN source_fetch_artifacts f ON f.id=i.current_fetch_artifact_id
+      WHERE i.snapshot_id=?
+        AND (i.claimed_attempt_id IS NULL OR i.lease_expires_at<=?)
+        AND (i.next_attempt_at IS NULL OR i.next_attempt_at<=?)
+        AND (
+          i.status IN ('discovered','queued')
+          OR (i.status='retry_wait' AND i.retry_phase='fetch')
+          OR (i.status='published' AND ? IS NOT NULL AND COALESCE(f.fetch_contract_version,'')<>?)
+        )
+      ORDER BY i.first_seen_at,i.id
+      LIMIT 1
+    `, [input.snapshotId, nowIso, nowIso, version, version]))[0];
+    if (!candidate) return null;
+    const result = await run(db, `
+      UPDATE source_backfill_items
+      SET status=CASE WHEN status='published' THEN status ELSE 'fetching' END,
+          attempt_count=attempt_count+1,
+          claimed_attempt_id=?,claimed_fencing_token=?,claimed_phase='fetch',lease_expires_at=?,
+          retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
+      WHERE id=? AND snapshot_id=?
+        AND (claimed_attempt_id IS NULL OR lease_expires_at<=?)
+        AND (next_attempt_at IS NULL OR next_attempt_at<=?)
+        AND (status IN ('discovered','queued') OR (status='retry_wait' AND retry_phase='fetch') OR status='published')
+    `, [authority.attemptId, authority.fencingToken, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso]);
+    if (changes(result) !== 1) continue;
+    await run(db, `
+      INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
+      VALUES (?,?,?,?,?,?,?)
+    `, [decimalId(), candidate.id, authority.attemptId, "item_claimed", "fetch", JSON.stringify({ leaseExpiresAt, fencingToken: authority.fencingToken }), nowIso]);
+    return {
+      itemId: text(candidate.id),
+      stableItemKey: text(candidate.stable_item_key),
+      sourceRecordId: nullableText(candidate.source_record_id),
+      discoveredUrl: text(candidate.discovered_url),
+      authorityUrl: nullableText(candidate.authority_url),
+      documentType: nullableText(candidate.document_type),
+      decisionDateHint: nullableText(candidate.discovered_decision_date_hint),
+      inventoryMetadata: jsonObject(candidate.inventory_metadata),
+      resolutionStatus: text(candidate.status) === "published" ? "published" : "fetching",
+      currentFetchArtifactId: nullableText(candidate.current_fetch_artifact_id),
+      currentNormalizationArtifactId: nullableText(candidate.current_normalization_artifact_id),
+      verifiedNormalizationArtifactId: nullableText(candidate.verified_normalization_artifact_id),
+      publishedNormalizationArtifactId: nullableText(candidate.published_normalization_artifact_id),
+      itemLeaseExpiresAt: leaseExpiresAt,
+    };
+  }
+  throw new Error("case_backfill.claim_contention");
+}
+
+async function itemForMutation(itemId: string, phase: CaseBackfillItemPhase, authority: CaseBackfillAttemptAuthority) {
+  const db = requiredBinding("worldcons_ingest");
+  const row = (await rows<Row>(db, "SELECT * FROM source_backfill_items WHERE id=? LIMIT 1", [itemId]))[0];
+  if (!row) throw new Error("case_backfill.item_not_found");
+  await assertLiveAttempt(authority, text(row.snapshot_id), phase);
+  if (
+    text(row.claimed_attempt_id) !== authority.attemptId
+    || text(row.claimed_fencing_token) !== authority.fencingToken
+    || text(row.claimed_phase) !== phase
+    || Date.parse(text(row.lease_expires_at)) <= Date.now()
+  ) {
+    throw new Error("case_backfill.item_lease_lost");
+  }
+  return row;
+}
+
+async function unsupported(): Promise<never> {
+  throw new Error("case_backfill.d1_phase_unsupported");
+}
+
+export const d1CaseBackfillRepository: CaseBackfillRepository = {
+  openSnapshot: unsupported,
+  upsertInventoryItem: unsupported,
+  recordEnumerationArtifact: unsupported,
+  updateSnapshotEvidence: unsupported,
+  closeSnapshot: unsupported,
+
+  async getSnapshot(snapshotId) {
+    return snapshot(snapshotId);
+  },
+
+  async getSourcePolicy(sourceKey, policyVersion) {
+    return mapPolicy(await sourcePolicyRow(sourceKey, policyVersion));
+  },
+
+  async getSnapshotStatus(snapshotId): Promise<CaseBackfillSnapshotStatus> {
+    const db = requiredBinding("worldcons_ingest");
+    const snap = (await rows<Row>(db, `
+      SELECT id,source_key,status,expected_count,coverage_assurance,manifest_hash,parser_version,source_policy_version
+      FROM source_inventory_snapshots WHERE id=? LIMIT 1
+    `, [snapshotId]))[0];
+    if (!snap) throw new Error("case_backfill.snapshot_not_found");
+    const items = await rows<Row>(db, `
+      SELECT i.*,
+             cf.fetch_contract_version AS current_fetch_contract_version,
+             cn.fetch_artifact_id AS current_normalization_fetch_id,
+             pn.parser_version AS published_parser_version,
+             pf.source_policy_version AS published_source_policy_version
+      FROM source_backfill_items i
+      LEFT JOIN source_fetch_artifacts cf ON cf.id=i.current_fetch_artifact_id
+      LEFT JOIN source_normalization_artifacts cn ON cn.id=i.current_normalization_artifact_id
+      LEFT JOIN source_normalization_artifacts pn ON pn.id=i.published_normalization_artifact_id
+      LEFT JOIN source_fetch_artifacts pf ON pf.id=pn.fetch_artifact_id
+      WHERE i.snapshot_id=?
+    `, [snapshotId]);
+    const now = Date.now();
+    const terminalStatuses = new Set(["published", "excluded", "duplicate", "withdrawn", "waived_failure"]);
+    let terminalTotal = 0;
+    let claimed = 0;
+    let retryWait = 0;
+    let needsNormalize = 0;
+    let needsReverify = 0;
+    let needsRepublish = 0;
+    let failed = 0;
+    let currentConformant = 0;
+    for (const item of items) {
+      const status = text(item.status);
+      const terminal = terminalStatuses.has(status);
+      if (terminal) terminalTotal += 1;
+      const isClaimed = Boolean(item.claimed_attempt_id) && Date.parse(text(item.lease_expires_at)) > now;
+      const retry = status === "retry_wait" || (item.retry_phase && item.next_attempt_at);
+      const normalize = Boolean(item.current_fetch_artifact_id)
+        && (!item.current_normalization_artifact_id || item.current_normalization_fetch_id !== item.current_fetch_artifact_id);
+      const reverify = Boolean(item.current_normalization_artifact_id)
+        && item.current_normalization_artifact_id !== item.verified_normalization_artifact_id;
+      const republish = status === "published" && Boolean(item.verified_normalization_artifact_id)
+        && item.verified_normalization_artifact_id !== item.published_normalization_artifact_id;
+      if (isClaimed) claimed += 1;
+      else if (retry) retryWait += 1;
+      else if (normalize) needsNormalize += 1;
+      else if (reverify) needsReverify += 1;
+      else if (republish) needsRepublish += 1;
+      else if (status === "terminal_failure" || status === "waived_failure") failed += 1;
+      if (
+        terminal && !normalize && !reverify && !republish
+        && (status !== "published" || (
+          text(item.published_parser_version) === text(snap.parser_version)
+          && text(item.published_source_policy_version) === text(snap.source_policy_version)
+        ))
+      ) currentConformant += 1;
+    }
+    const discoveredTotal = items.length;
+    const expectedCount = snap.expected_count === null || snap.expected_count === undefined ? null : numberValue(snap.expected_count);
+    return {
+      snapshotId: text(snap.id),
+      sourceKey: text(snap.source_key),
+      snapshotStatus: text(snap.status),
+      discoveredTotal,
+      terminalTotal,
+      processingCompletion: discoveredTotal === 0 ? 0 : Number((terminalTotal / discoveredTotal).toFixed(6)),
+      expectedCount,
+      coverageAssurance: text(snap.coverage_assurance) as CaseBackfillSnapshotStatus["coverageAssurance"],
+      corpusCoverage: expectedCount && expectedCount > 0 ? Number((discoveredTotal / expectedCount).toFixed(6)) : null,
+      claimed,
+      retryWait,
+      needsNormalize,
+      needsReverify,
+      needsRepublish,
+      failed,
+      currentConformant,
+      currentConformance: terminalTotal === 0 ? 0 : Number((currentConformant / terminalTotal).toFixed(6)),
+      manifestHash: nullableText(snap.manifest_hash),
+    };
+  },
+
+  async acquireSourceRequestPermit(input: AcquireSourceRequestPermitInput): Promise<SourceRequestPermitResult> {
+    assertFetchOnly(input.phase);
+    const live = await assertLiveAttempt(input.authority, input.snapshotId, input.phase);
+    const currentSnapshot = await snapshot(input.snapshotId);
+    const policyRow = await sourcePolicyRow(currentSnapshot.sourceKey, currentSnapshot.sourcePolicyVersion);
+    const policy = mapPolicy(policyRow);
+    let origin: URL;
+    try { origin = new URL(input.requestOrigin); } catch { throw new Error("case_backfill.request_origin_invalid"); }
+    if (origin.protocol !== "https:" || origin.origin.toLowerCase() !== input.requestOrigin.toLowerCase()) {
+      throw new Error("case_backfill.request_origin_invalid");
+    }
+    const allowedHosts = new Set([...jsonArray(policyRow.authority_hosts), ...jsonArray(policyRow.redirect_hosts)]);
+    if (!allowedHosts.has(origin.hostname.toLowerCase())) throw new Error("case_backfill.request_host_not_allowed");
+    const db = requiredBinding("worldcons_ingest");
+    const now = new Date();
+    const nowIso = now.toISOString();
+    await run(db, `
+      INSERT OR IGNORE INTO source_request_governor_states
+        (source_key,last_request_started_at,next_request_not_before,updated_at)
+      VALUES (?,NULL,'1970-01-01T00:00:00.000Z',?)
+    `, [currentSnapshot.sourceKey, nowIso]);
+    const nextNotBefore = new Date(now.getTime() + Math.max(0, policy.minRequestDelayMs)).toISOString();
+    const lock = await run(db, `
+      UPDATE source_request_governor_states
+      SET last_request_started_at=?,next_request_not_before=?,updated_at=?
+      WHERE source_key=? AND next_request_not_before<=?
+        AND (
+          SELECT COUNT(*) FROM source_request_permits p
+          WHERE p.source_key=? AND p.released_at IS NULL AND p.lease_expires_at>?
+        ) < ?
+    `, [nowIso, nextNotBefore, nowIso, currentSnapshot.sourceKey, nowIso, currentSnapshot.sourceKey, nowIso, policy.maxConcurrency]);
+    if (changes(lock) !== 1) {
+      const state = (await rows<Row>(db, "SELECT next_request_not_before FROM source_request_governor_states WHERE source_key=? LIMIT 1", [currentSnapshot.sourceKey]))[0];
+      const active = await rows<Row>(db, `
+        SELECT lease_expires_at FROM source_request_permits
+        WHERE source_key=? AND released_at IS NULL AND lease_expires_at>?
+        ORDER BY lease_expires_at ASC LIMIT 1
+      `, [currentSnapshot.sourceKey, nowIso]);
+      const candidates = [
+        state ? Date.parse(text(state.next_request_not_before)) - now.getTime() : 1_000,
+        active[0] ? Date.parse(text(active[0].lease_expires_at)) - now.getTime() : 1_000,
+      ].filter((value) => Number.isFinite(value) && value > 0);
+      return { granted: false, permitId: null, retryAfterMs: Math.max(25, Math.min(...candidates, 5_000)), permitLeaseExpiresAt: null };
+    }
+    const permitId = crypto.randomUUID();
+    const permitLeaseExpiresAt = new Date(Math.min(
+      Date.parse(live.leaseExpiresAt),
+      now.getTime() + Math.max(1, Math.min(input.requestedLeaseSeconds, 86_400)) * 1000,
+    )).toISOString();
+    await run(db, `
+      INSERT INTO source_request_permits
+        (id,source_key,source_policy_version,snapshot_id,phase,p1_attempt_id,p1_fencing_token,request_origin,acquired_at,lease_expires_at,released_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,NULL)
+    `, [permitId, currentSnapshot.sourceKey, currentSnapshot.sourcePolicyVersion, input.snapshotId, input.phase, input.authority.attemptId, input.authority.fencingToken, input.requestOrigin, nowIso, permitLeaseExpiresAt]);
+    return { granted: true, permitId, retryAfterMs: 0, permitLeaseExpiresAt };
+  },
+
+  async releaseSourceRequestPermit(input) {
+    const db = requiredBinding("worldcons_ingest");
+    const permit = (await rows<Row>(db, "SELECT * FROM source_request_permits WHERE id=? LIMIT 1", [input.permitId]))[0];
+    if (!permit) throw new Error("case_backfill.request_permit_not_found");
+    await assertLiveAttempt(input.authority, text(permit.snapshot_id), text(permit.phase) as CaseBackfillPassInput["phase"]);
+    const result = await run(db, `
+      UPDATE source_request_permits SET released_at=?
+      WHERE id=? AND released_at IS NULL AND p1_attempt_id=? AND p1_fencing_token=?
+    `, [new Date().toISOString(), input.permitId, input.authority.attemptId, input.authority.fencingToken]);
+    if (changes(result) !== 1) throw new Error("case_backfill.request_permit_release_failed");
+  },
+
+  async beginRun(input, authority) {
+    assertFetchOnly(input.phase);
+    const live = await assertLiveAttempt(authority, input.snapshotId, input.phase);
+    if (numberValue(live.payload.passNumber) !== input.passNumber) throw new Error("case_backfill.pass_scope_mismatch");
+    const db = requiredBinding("worldcons_ingest");
+    const currentSnapshot = await snapshot(input.snapshotId);
+    if (currentSnapshot.status !== "closed") throw new Error("case_backfill.snapshot_phase_mismatch");
+    const existing = await rows<Row>(db, `
+      SELECT id FROM source_backfill_runs WHERE snapshot_id=? AND phase=? AND pass_number=? ORDER BY started_at LIMIT 2
+    `, [input.snapshotId, input.phase, input.passNumber]);
+    if (existing.length > 1) throw new Error("case_backfill.run_duplicate");
+    const now = new Date().toISOString();
+    if (existing[0]) {
+      await run(db, `
+        UPDATE source_backfill_runs
+        SET command_run_id=?,p1_attempt_id=?,p1_fencing_token=?,status='running',
+            claimed_count=0,succeeded_count=0,retryable_failed_count=0,terminal_failed_count=0,
+            heartbeat_at=?,completed_at=NULL,last_error_code=NULL,last_error_summary=NULL
+        WHERE id=?
+      `, [live.commandRunId, authority.attemptId, authority.fencingToken, now, existing[0].id]);
+      return text(existing[0].id);
+    }
+    const id = crypto.randomUUID();
+    await run(db, `
+      INSERT INTO source_backfill_runs
+        (id,snapshot_id,command_run_id,p1_attempt_id,p1_fencing_token,phase,pass_number,status,
+         claimed_count,succeeded_count,retryable_failed_count,terminal_failed_count,heartbeat_at,started_at)
+      VALUES (?,?,?,?,?,?,?,'running',0,0,0,0,?,?)
+    `, [id, input.snapshotId, live.commandRunId, authority.attemptId, authority.fencingToken, input.phase, input.passNumber, now, now]);
+    return id;
+  },
+
+  async allocatePass(snapshotId, phase) {
+    assertFetchOnly(phase);
+    const db = requiredBinding("worldcons_ingest");
+    const currentSnapshot = await snapshot(snapshotId);
+    if (currentSnapshot.status !== "closed") throw new Error("case_backfill.snapshot_phase_mismatch");
+    const row = (await rows<Row>(db, "SELECT COALESCE(MAX(pass_number),0)+1 AS next_pass FROM source_backfill_runs WHERE snapshot_id=? AND phase=?", [snapshotId, phase]))[0];
+    return Math.max(1, numberValue(row?.next_pass));
+  },
+
+  async finishRun(input) {
+    await assertLiveAttempt(input.authority, text((await rows<Row>(requiredBinding("worldcons_ingest"), "SELECT snapshot_id FROM source_backfill_runs WHERE id=? LIMIT 1", [input.runId]))[0]?.snapshot_id), "fetch");
+    if (input.claimed !== input.succeeded + input.retryableFailed + input.terminalFailed) throw new Error("case_backfill.invalid_run_result");
+    const db = requiredBinding("worldcons_ingest");
+    const active = (await rows<Row>(db, "SELECT COUNT(*) AS count FROM source_backfill_items WHERE claimed_attempt_id=?", [input.authority.attemptId]))[0];
+    if (numberValue(active?.count) !== 0) throw new Error("case_backfill.active_item_claims");
+    const now = new Date().toISOString();
+    const result = await run(db, `
+      UPDATE source_backfill_runs SET status=?,claimed_count=?,succeeded_count=?,retryable_failed_count=?,terminal_failed_count=?,
+        heartbeat_at=?,completed_at=?,last_error_code=?,last_error_summary=?
+      WHERE id=? AND p1_attempt_id=? AND p1_fencing_token=? AND status='running'
+    `, [input.status, input.claimed, input.succeeded, input.retryableFailed, input.terminalFailed, now, now, input.lastErrorCode ?? null, input.lastErrorSummary ?? null, input.runId, input.authority.attemptId, input.authority.fencingToken]);
+    if (changes(result) !== 1) throw new Error("case_backfill.run_fence_lost");
+  },
+
+  async countBacklog(input) {
+    assertFetchOnly(input.phase);
+    const db = requiredBinding("worldcons_ingest");
+    const now = new Date().toISOString();
+    const version = targetVersion(input);
+    const row = (await rows<Row>(db, `
+      SELECT COUNT(*) AS count
+      FROM source_backfill_items i
+      LEFT JOIN source_fetch_artifacts f ON f.id=i.current_fetch_artifact_id
+      WHERE i.snapshot_id=? AND (i.next_attempt_at IS NULL OR i.next_attempt_at<=?)
+        AND (i.status IN ('discovered','queued') OR (i.status='retry_wait' AND i.retry_phase='fetch')
+          OR (i.status='published' AND ? IS NOT NULL AND COALESCE(f.fetch_contract_version,'')<>?))
+    `, [input.snapshotId, now, version, version]))[0];
+    return numberValue(row?.count);
+  },
+
+  async countResidualClaims(snapshotId) {
+    const db = requiredBinding("worldcons_ingest");
+    const row = (await rows<Row>(db, "SELECT COUNT(*) AS count FROM source_backfill_items WHERE snapshot_id=? AND claimed_attempt_id IS NOT NULL", [snapshotId]))[0];
+    return numberValue(row?.count);
+  },
+
+  async listNonTerminalRuns(snapshotId, phase): Promise<CaseBackfillOpenRun[]> {
+    const ingest = requiredBinding("worldcons_ingest");
+    const ops = requiredBinding("worldcons_ops");
+    const runRows = await rows<Row>(ingest, `
+      SELECT id,pass_number,status,p1_attempt_id,p1_fencing_token,command_run_id
+      FROM source_backfill_runs
+      WHERE snapshot_id=? AND phase=? AND status IN ('queued','running','deferred')
+      ORDER BY pass_number
+    `, [snapshotId, phase]);
+    const output: CaseBackfillOpenRun[] = [];
+    for (const row of runRows) {
+      const attemptId = nullableText(row.p1_attempt_id);
+      const attempt = attemptId
+        ? (await rows<Row>(ops, "SELECT status,lease_expires_at FROM admin_command_attempts WHERE id=? LIMIT 1", [attemptId]))[0]
+        : null;
+      output.push({
+        runId: text(row.id), passNumber: numberValue(row.pass_number), status: text(row.status),
+        p1AttemptId: attemptId, p1FencingToken: nullableText(row.p1_fencing_token), commandRunId: nullableText(row.command_run_id),
+        attemptStatus: attempt ? text(attempt.status) : null,
+        attemptLeaseExpiresAt: attempt ? nullableText(attempt.lease_expires_at) : null,
+      });
+    }
+    return output;
+  },
+
+  async claimItems(input, authority) {
+    assertFetchOnly(input.phase);
+    const result: CaseBackfillClaimedItem[] = [];
+    for (let index = 0; index < input.batchLimit; index += 1) {
+      const item = await claimOne({ ...input, batchLimit: 1 }, authority);
+      if (!item) break;
+      result.push(item);
+    }
+    return result;
+  },
+
+  async extendItems(itemIds, phase, authority) {
+    assertFetchOnly(phase);
+    if (itemIds.length < 1 || itemIds.length > 100) throw new Error("case_backfill.invalid_extend");
+    const db = requiredBinding("worldcons_ingest");
+    const placeholders = itemIds.map(() => "?").join(",");
+    const scope = await rows<Row>(db, `SELECT DISTINCT snapshot_id FROM source_backfill_items WHERE id IN (${placeholders})`, itemIds);
+    if (scope.length !== 1) throw new Error("case_backfill.item_scope_mismatch");
+    const live = await assertLiveAttempt(authority, text(scope[0].snapshot_id), phase);
+    const now = new Date();
+    const lease = new Date(Math.min(Date.parse(live.leaseExpiresAt), now.getTime() + 180_000)).toISOString();
+    let updated = 0;
+    for (const itemId of itemIds) {
+      const result = await run(db, `
+        UPDATE source_backfill_items SET lease_expires_at=?,updated_at=?
+        WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase=? AND lease_expires_at>?
+      `, [lease, now.toISOString(), itemId, authority.attemptId, authority.fencingToken, phase, now.toISOString()]);
+      if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
+      updated += 1;
+      await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
+        [decimalId(), itemId, authority.attemptId, "item_lease_extended", phase, JSON.stringify({ leaseExpiresAt: lease }), now.toISOString()]);
+    }
+    return updated;
+  },
+
+  async recordFetchArtifact(input: RecordFetchArtifactInput) {
+    const item = await itemForMutation(input.itemId, "fetch", input.authority);
+    const currentSnapshot = await snapshot(text(item.snapshot_id));
+    if (input.sourcePolicyVersion !== currentSnapshot.sourcePolicyVersion) throw new Error("case_backfill.fetch_policy_mismatch");
+    if (input.httpStatus < 100 || input.httpStatus > 599) throw new Error("case_backfill.invalid_fetch_artifact");
+    if (input.replayability === "bounded_evidence" && !input.boundedReplayPayload && !input.boundedReplayStorageRef) {
+      throw new Error("case_backfill.invalid_fetch_artifact");
+    }
+    const db = requiredBinding("worldcons_ingest");
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await batch(db, [
+      db.prepare(`
+        INSERT INTO source_fetch_artifacts
+          (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,source_etag,source_last_modified_at,
+           payload_hash,payload_size,replayability,immutable_storage_ref,bounded_replay_payload,fetched_at,fetch_contract_version,created_at,
+           bounded_replay_storage_ref,externalization_contract_version)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).bind(
+        id,input.itemId,input.sourcePolicyVersion,input.authorityUrl,input.httpStatus,JSON.stringify(input.responseHeaders),input.sourceEtag,
+        input.sourceLastModifiedAt,input.payloadHash,String(input.payloadSize),input.replayability,input.immutableStorageRef,
+        input.boundedReplayPayload ? JSON.stringify(input.boundedReplayPayload) : null,now,input.fetchContractVersion,now,
+        input.boundedReplayStorageRef ?? null,input.externalizationContractVersion ?? null,
+      ),
+      itemEvent(db,{ itemId: input.itemId, attemptId: input.authority.attemptId, eventType: "fetch_recorded", phase: "fetch", details: { artifactId: id, payloadHash: input.payloadHash } }),
+    ]);
+    return id;
+  },
+
+  async getFetchArtifact(artifactId): Promise<CaseBackfillFetchArtifact> {
+    const db = requiredBinding("worldcons_ingest");
+    const row = (await rows<Row>(db, "SELECT * FROM source_fetch_artifacts WHERE id=? LIMIT 1", [artifactId]))[0];
+    if (!row) throw new Error("case_backfill.fetch_artifact_not_found");
+    const replayability = text(row.replayability);
+    if (replayability !== "full_snapshot" && replayability !== "bounded_evidence" && replayability !== "non_replayable") {
+      throw new Error("case_backfill.fetch_artifact_invalid");
+    }
+    return {
+      id: text(row.id), itemId: text(row.item_id), sourcePolicyVersion: text(row.source_policy_version), authorityUrl: text(row.authority_url),
+      payloadHash: text(row.payload_hash), payloadSize: row.payload_size === null ? null : numberValue(row.payload_size), replayability,
+      immutableStorageRef: nullableText(row.immutable_storage_ref), boundedReplayPayload: row.bounded_replay_payload ? jsonObject(row.bounded_replay_payload) : null,
+      boundedReplayStorageRef: nullableText(row.bounded_replay_storage_ref), externalizationContractVersion: nullableText(row.externalization_contract_version),
+      fetchContractVersion: text(row.fetch_contract_version),
+    };
+  },
+
+  getNormalizationArtifact: unsupported,
+  recordNormalizationArtifact: unsupported,
+  publishItem: unsupported,
+
+  async completeItem(input) {
+    assertFetchOnly(input.phase);
+    const item = await itemForMutation(input.itemId, input.phase, input.authority);
+    const artifactId = typeof input.resultMetadata.artifactId === "string" ? input.resultMetadata.artifactId : "";
+    if (!artifactId) throw new Error("case_backfill.invalid_artifact");
+    const db = requiredBinding("worldcons_ingest");
+    const artifact = (await rows<Row>(db, "SELECT * FROM source_fetch_artifacts WHERE id=? AND item_id=? LIMIT 1", [artifactId, input.itemId]))[0];
+    if (!artifact) throw new Error("case_backfill.invalid_fetch_transition");
+    const expectedStatus = text(item.status) === "published" ? "published" : "fetched";
+    if (input.nextStatus !== expectedStatus) throw new Error("case_backfill.invalid_fetch_transition");
+    const now = new Date().toISOString();
+    const result = await run(db, `
+      UPDATE source_backfill_items
+      SET status=?,current_fetch_artifact_id=?,http_status=?,source_etag=?,source_last_modified_at=?,payload_hash=?,authority_url=?,
+          claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
+          next_attempt_at=NULL,retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
+      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='fetch' AND lease_expires_at>?
+    `, [input.nextStatus, artifactId, artifact.http_status, artifact.source_etag, artifact.source_last_modified_at, artifact.payload_hash, artifact.authority_url,
+      now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
+    if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
+    await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
+      [decimalId(), input.itemId, input.authority.attemptId, "item_completed", "fetch", JSON.stringify({ status: input.nextStatus, workState: "needs_normalize" }), now]);
+  },
+
+  excludeItem: unsupported,
+
+  async failItem(input) {
+    assertFetchOnly(input.phase);
+    const item = await itemForMutation(input.itemId, input.phase, input.authority);
+    if (input.disposition !== "retryable" && input.disposition !== "terminal") throw new Error("case_backfill.invalid_failure");
+    if (input.disposition === "retryable" && !input.retryAt) throw new Error("case_backfill.invalid_failure");
+    const db = requiredBinding("worldcons_ingest");
+    const now = new Date().toISOString();
+    const nextStatus = text(item.status) === "published" ? "published" : input.disposition === "retryable" ? "retry_wait" : "terminal_failure";
+    const result = await run(db, `
+      UPDATE source_backfill_items
+      SET status=?,next_attempt_at=?,retry_phase=?,error_code=?,error_summary=?,
+          claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,updated_at=?
+      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='fetch' AND lease_expires_at>?
+    `, [nextStatus, input.disposition === "retryable" ? input.retryAt : null, input.disposition === "retryable" ? input.phase : null,
+      input.errorCode.trim().slice(0,160), input.errorSummary.trim().slice(0,500) || null, now,
+      input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
+    if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
+    await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
+      [decimalId(), input.itemId, input.authority.attemptId, "item_failed", input.phase, JSON.stringify({ disposition: input.disposition, errorCode: input.errorCode }), now]);
+  },
+
+  listArtifactExternalizationCandidates: unsupported,
+  attachArtifactExternalization: unsupported,
+  listArtifactInlineClearCandidates: unsupported,
+  clearArtifactInline: unsupported,
+  listArtifactInlineRestoreCandidates: unsupported,
+  restoreArtifactInline: unsupported,
+  listArtifactReadinessRows: unsupported,
+};
+

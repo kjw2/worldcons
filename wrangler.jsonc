@@ -25,6 +25,7 @@
   "vars": {
     "APP_BASE_URL": "https://worldcons.cclib.workers.dev",
     "WORLDCONS_BASE_URL": "https://worldcons.cclib.workers.dev",
+    "CASE_CATALOG_GERMANY_HISTORY_ENABLED": "true",
     "NAVER_SITE_VERIFICATION": "9132ae77a99225643173e78f78ec7d2bfaa3d485",
     "MASTERDASH_ADMIN_IDENTITIES": "admin,admin2",
     "WORLDCONS_M13_AUTHORITY_PROFILE": "d1",

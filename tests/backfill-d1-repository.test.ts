@@ -1,0 +1,293 @@
+import assert from "node:assert/strict";
+import { afterEach, test } from "node:test";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { d1CaseBackfillRepository } from "../lib/backfill/d1-repository";
+import {
+  clearRuntimeD1Bindings,
+  setRuntimeD1Bindings,
+  type D1RuntimeDatabase,
+  type D1RuntimePreparedStatement,
+} from "../lib/cloudflare/d1/runtime-binding";
+
+const SNAPSHOT_ID = "57948d51-1300-4ff1-86db-be00a6572bc9";
+const ATTEMPT_ID = "11111111-1111-4111-8111-111111111111";
+const COMMAND_RUN_ID = "22222222-2222-4222-8222-222222222222";
+const COMMAND_ID = "33333333-3333-4333-8333-333333333333";
+const ITEM_ID = "44444444-4444-4444-8444-444444444444";
+const FENCE = "9001";
+const FETCH_CONTRACT = "bverfg-official-fetch-v1";
+
+function binding(database: DatabaseSync): D1RuntimeDatabase {
+  return {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      let values: unknown[] = [];
+      const prepared: D1RuntimePreparedStatement = {
+        bind(...next: unknown[]) {
+          values = next;
+          return prepared;
+        },
+        async all<T>() {
+          try {
+            const rows = database.prepare(sql).all(...values as SQLInputValue[]) as T[];
+            return { success: true, results: rows, meta: { changes: 0 } };
+          } catch (error) {
+            return { success: false, results: [], error: error instanceof Error ? error.message : String(error) };
+          }
+        },
+        async run() {
+          try {
+            const result = database.prepare(sql).run(...values as SQLInputValue[]);
+            return { success: true, results: [], meta: { changes: Number(result.changes) } };
+          } catch (error) {
+            return { success: false, results: [], error: error instanceof Error ? error.message : String(error) };
+          }
+        },
+      };
+      return prepared;
+    },
+    async batch(statements) {
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        const results = [];
+        for (const statement of statements) {
+          if (!statement.run) throw new Error("missing run");
+          results.push(await statement.run());
+        }
+        database.exec("COMMIT");
+        return results;
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+    },
+  };
+}
+
+function createDatabases() {
+  const core = new DatabaseSync(":memory:");
+  const ingest = new DatabaseSync(":memory:");
+  const ops = new DatabaseSync(":memory:");
+
+  core.exec(`
+    CREATE TABLE source_corpus_policies (
+      source_key TEXT, policy_version TEXT, normalize_replay_policy TEXT, bounded_replay_fields TEXT,
+      min_request_delay_ms INTEGER, max_concurrency INTEGER, review_due_at TEXT,
+      authority_hosts TEXT, redirect_hosts TEXT, external_index_hosts TEXT
+    );
+  `);
+  core.prepare(`INSERT INTO source_corpus_policies VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    "de-bverfg", "bverfg-unattended-canary-v2", "bounded_evidence",
+    JSON.stringify(["sourceKey", "url", "canonicalUrl", "title", "publishedAt", "contentType", "text", "metadata"]),
+    30_000, 1, "2027-03-15T00:00:00.000Z",
+    JSON.stringify(["www.bundesverfassungsgericht.de"]), JSON.stringify(["www.bverfg.de"]), JSON.stringify(["dejure.org"]),
+  );
+
+  ops.exec(`
+    CREATE TABLE admin_commands (id TEXT PRIMARY KEY,command_type TEXT,payload_ref TEXT);
+    CREATE TABLE admin_command_runs (id TEXT PRIMARY KEY,command_id TEXT,status TEXT,current_attempt_id TEXT,abort_requested_at TEXT);
+    CREATE TABLE admin_command_attempts (id TEXT PRIMARY KEY,run_id TEXT,status TEXT,fencing_token TEXT,lease_expires_at TEXT);
+  `);
+
+  ingest.exec(`
+    CREATE TABLE source_inventory_snapshots (
+      id TEXT PRIMARY KEY,source_key TEXT,scope_from TEXT,scope_to TEXT,document_type TEXT,discovery_method TEXT,
+      parser_version TEXT,source_policy_version TEXT,coverage_assurance TEXT,expected_count INTEGER,expected_count_basis TEXT,
+      coverage_evidence TEXT,discovered_count INTEGER,manifest_hash TEXT,status TEXT,exclusions TEXT,opened_at TEXT,closed_at TEXT,
+      created_by TEXT,enumeration_manifest_hash TEXT
+    );
+    CREATE TABLE source_backfill_runs (
+      id TEXT PRIMARY KEY,snapshot_id TEXT,command_run_id TEXT,p1_attempt_id TEXT,p1_fencing_token TEXT,phase TEXT,pass_number INTEGER,
+      status TEXT,claimed_count INTEGER DEFAULT 0,succeeded_count INTEGER DEFAULT 0,retryable_failed_count INTEGER DEFAULT 0,
+      terminal_failed_count INTEGER DEFAULT 0,cursor_in TEXT,cursor_out TEXT,page_manifest_hash TEXT,heartbeat_at TEXT,started_at TEXT,
+      completed_at TEXT,last_error_code TEXT,last_error_summary TEXT
+    );
+    CREATE TABLE source_backfill_items (
+      id TEXT PRIMARY KEY,snapshot_id TEXT,source_key TEXT,stable_item_key TEXT,source_record_id TEXT,discovered_url TEXT,authority_url TEXT,
+      document_type TEXT,discovered_decision_date_hint TEXT,status TEXT,attempt_count INTEGER DEFAULT 0,next_attempt_at TEXT,retry_phase TEXT,
+      claimed_attempt_id TEXT,claimed_fencing_token TEXT,claimed_phase TEXT,lease_expires_at TEXT,http_status INTEGER,source_etag TEXT,
+      source_last_modified_at TEXT,payload_hash TEXT,parser_version TEXT,current_fetch_artifact_id TEXT,current_normalization_artifact_id TEXT,
+      verified_normalization_artifact_id TEXT,published_normalization_artifact_id TEXT,article_id TEXT,duplicate_of_item_id TEXT,exclusion_code TEXT,
+      error_code TEXT,error_summary TEXT,waived_by TEXT,waived_at TEXT,waiver_reason TEXT,waiver_expires_at TEXT,first_seen_at TEXT,last_seen_at TEXT,
+      updated_at TEXT,inventory_metadata TEXT DEFAULT '{}'
+    );
+    CREATE TABLE source_fetch_artifacts (
+      id TEXT PRIMARY KEY,item_id TEXT,source_policy_version TEXT,authority_url TEXT,http_status INTEGER,response_headers_allowlist TEXT,
+      source_etag TEXT,source_last_modified_at TEXT,payload_hash TEXT,payload_size TEXT,replayability TEXT,immutable_storage_ref TEXT,
+      bounded_replay_payload TEXT,fetched_at TEXT,fetch_contract_version TEXT,created_at TEXT,bounded_replay_storage_ref TEXT,
+      externalized_at TEXT,externalization_contract_version TEXT
+    );
+    CREATE TABLE source_normalization_artifacts (
+      id TEXT PRIMARY KEY,item_id TEXT,fetch_artifact_id TEXT,parser_version TEXT,normalization_contract_version TEXT,normalized_output TEXT,
+      normalized_output_hash TEXT,validation_status TEXT,validation_errors TEXT,created_at TEXT,normalized_output_storage_ref TEXT,
+      normalized_output_size TEXT,externalized_at TEXT,externalization_contract_version TEXT
+    );
+    CREATE TABLE source_backfill_item_events (
+      id TEXT PRIMARY KEY,item_id TEXT,attempt_id TEXT,event_type TEXT,phase TEXT,safe_details TEXT,occurred_at TEXT
+    );
+    CREATE TABLE source_request_governor_states (
+      source_key TEXT PRIMARY KEY,last_request_started_at TEXT,next_request_not_before TEXT,updated_at TEXT
+    );
+    CREATE TABLE source_request_permits (
+      id TEXT PRIMARY KEY,source_key TEXT,source_policy_version TEXT,snapshot_id TEXT,phase TEXT,p1_attempt_id TEXT,p1_fencing_token TEXT,
+      request_origin TEXT,acquired_at TEXT,lease_expires_at TEXT,released_at TEXT
+    );
+  `);
+
+  return { core, ingest, ops };
+}
+
+function seed({ ingest, ops }: ReturnType<typeof createDatabases>, options: { attemptLeaseMs?: number } = {}) {
+  const now = Date.now();
+  const attemptLease = new Date(now + (options.attemptLeaseMs ?? 600_000)).toISOString();
+  ops.prepare("INSERT INTO admin_commands VALUES (?,?,?)").run(
+    COMMAND_ID,
+    "p1.case-backfill.fetch",
+    JSON.stringify({ cohort: "catalog-backfill", snapshotId: SNAPSHOT_ID, passNumber: 90, batchLimit: 1, fetchContractVersion: FETCH_CONTRACT }),
+  );
+  ops.prepare("INSERT INTO admin_command_runs VALUES (?,?,?,?,?)").run(COMMAND_RUN_ID, COMMAND_ID, "running", ATTEMPT_ID, null);
+  ops.prepare("INSERT INTO admin_command_attempts VALUES (?,?,?,?,?)").run(ATTEMPT_ID, COMMAND_RUN_ID, "running", FENCE, attemptLease);
+
+  ingest.prepare(`INSERT INTO source_inventory_snapshots
+    (id,source_key,scope_from,scope_to,document_type,discovery_method,parser_version,source_policy_version,coverage_assurance,expected_count,
+     expected_count_basis,coverage_evidence,discovered_count,manifest_hash,status,exclusions,opened_at,closed_at,created_by,enumeration_manifest_hash)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    SNAPSHOT_ID,"de-bverfg","2022-12-31T15:00:00.000Z","2023-12-30T15:00:00.000Z","DECISION","external_index_dejure_paged_listing",
+    "bverfg-normalize-v1","bverfg-unattended-canary-v2","external_index_assisted",null,null,"{}",1,"a".repeat(64),"closed","[]",
+    new Date(now - 1000).toISOString(),new Date(now - 500).toISOString(),"test","b".repeat(64),
+  );
+  ingest.prepare(`INSERT INTO source_backfill_items
+    (id,snapshot_id,source_key,stable_item_key,source_record_id,discovered_url,document_type,discovered_decision_date_hint,status,attempt_count,
+     first_seen_at,last_seen_at,updated_at,inventory_metadata)
+    VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?)`).run(
+    ITEM_ID,SNAPSHOT_ID,"de-bverfg","stable-1","record-1","https://dejure.org/example","DECISION","2023-01-10","discovered",
+    new Date(now - 1000).toISOString(),new Date(now - 1000).toISOString(),new Date(now - 1000).toISOString(),JSON.stringify({ docket: "1 BvR 1/23" }),
+  );
+  return { attemptLease };
+}
+
+function configure(databases: ReturnType<typeof createDatabases>) {
+  setRuntimeD1Bindings({
+    worldcons_core: binding(databases.core),
+    worldcons_ingest: binding(databases.ingest),
+    worldcons_ops: binding(databases.ops),
+  });
+}
+
+function authority() {
+  return { attemptId: ATTEMPT_ID, runId: COMMAND_RUN_ID, fencingToken: FENCE, leaseExpiresAt: new Date(Date.now() + 600_000).toISOString() };
+}
+
+afterEach(() => clearRuntimeD1Bindings());
+
+test("D1 backfill snapshot/status reads preserve the existing metric semantics", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  configure(databases);
+  try {
+    const snapshot = await d1CaseBackfillRepository.getSnapshot(SNAPSHOT_ID);
+    assert.equal(snapshot.sourceKey, "de-bverfg");
+    assert.equal(snapshot.status, "closed");
+    const status = await d1CaseBackfillRepository.getSnapshotStatus(SNAPSHOT_ID);
+    assert.equal(status.discoveredTotal, 1);
+    assert.equal(status.terminalTotal, 0);
+    assert.equal(status.processingCompletion, 0);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 fetch claim is fenced and caps the item lease to the live P1 attempt", async () => {
+  const databases = createDatabases();
+  const { attemptLease } = seed(databases, { attemptLeaseMs: 45_000 });
+  configure(databases);
+  try {
+    const input = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "fetch" as const, passNumber: 90, batchLimit: 1, fetchContractVersion: FETCH_CONTRACT };
+    await d1CaseBackfillRepository.beginRun(input, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(input, authority());
+    assert.ok(claimed);
+    assert.equal(claimed.itemId, ITEM_ID);
+    assert.ok(Date.parse(claimed.itemLeaseExpiresAt) <= Date.parse(attemptLease));
+    const stored = databases.ingest.prepare("SELECT claimed_attempt_id,claimed_fencing_token,status FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(stored.claimed_attempt_id, ATTEMPT_ID);
+    assert.equal(stored.claimed_fencing_token, FENCE);
+    assert.equal(stored.status, "fetching");
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 request governor enforces approved host, concurrency and 30-second start spacing", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  configure(databases);
+  try {
+    const input = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "fetch" as const, passNumber: 90, batchLimit: 1, fetchContractVersion: FETCH_CONTRACT };
+    await d1CaseBackfillRepository.beginRun(input, authority());
+    const first = await d1CaseBackfillRepository.acquireSourceRequestPermit({
+      snapshotId: SNAPSHOT_ID, phase: "fetch", authority: authority(), requestOrigin: "https://www.bundesverfassungsgericht.de", requestedLeaseSeconds: 90,
+    });
+    assert.equal(first.granted, true);
+    const second = await d1CaseBackfillRepository.acquireSourceRequestPermit({
+      snapshotId: SNAPSHOT_ID, phase: "fetch", authority: authority(), requestOrigin: "https://www.bundesverfassungsgericht.de", requestedLeaseSeconds: 90,
+    });
+    assert.equal(second.granted, false);
+    assert.ok(second.retryAfterMs > 0);
+    await assert.rejects(() => d1CaseBackfillRepository.acquireSourceRequestPermit({
+      snapshotId: SNAPSHOT_ID, phase: "fetch", authority: authority(), requestOrigin: "https://dejure.org", requestedLeaseSeconds: 90,
+    }), /request_host_not_allowed/);
+    await d1CaseBackfillRepository.releaseSourceRequestPermit({ permitId: first.permitId!, authority: authority() });
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 fetch artifact and completion transition clear the claim and preserve provenance", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  configure(databases);
+  try {
+    const input = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "fetch" as const, passNumber: 90, batchLimit: 1, fetchContractVersion: FETCH_CONTRACT };
+    await d1CaseBackfillRepository.beginRun(input, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(input, authority());
+    assert.ok(claimed);
+    const artifactId = await d1CaseBackfillRepository.recordFetchArtifact({
+      itemId: ITEM_ID, authority: authority(), sourcePolicyVersion: "bverfg-unattended-canary-v2",
+      authorityUrl: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/example.html", httpStatus: 200,
+      responseHeaders: {}, sourceEtag: null, sourceLastModifiedAt: null, payloadHash: "c".repeat(64), payloadSize: 42,
+      replayability: "bounded_evidence", immutableStorageRef: null, boundedReplayPayload: { sourceKey: "de-bverfg", url: "https://example.test" },
+      fetchContractVersion: FETCH_CONTRACT,
+    });
+    await d1CaseBackfillRepository.completeItem({ itemId: ITEM_ID, phase: "fetch", authority: authority(), nextStatus: "fetched", resultMetadata: { artifactId } });
+    const item = databases.ingest.prepare("SELECT status,current_fetch_artifact_id,claimed_attempt_id,payload_hash FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(item.status, "fetched");
+    assert.equal(item.current_fetch_artifact_id, artifactId);
+    assert.equal(item.claimed_attempt_id, null);
+    assert.equal(item.payload_hash, "c".repeat(64));
+    assert.equal(databases.ingest.prepare("SELECT COUNT(*) AS count FROM source_backfill_item_events WHERE item_id=? AND event_type='item_completed'").get(ITEM_ID)?.count, 1);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 mutations fail closed after the P1 fence is reclaimed", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  configure(databases);
+  try {
+    const input = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "fetch" as const, passNumber: 90, batchLimit: 1, fetchContractVersion: FETCH_CONTRACT };
+    await d1CaseBackfillRepository.beginRun(input, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(input, authority());
+    assert.ok(claimed);
+    databases.ops.prepare("UPDATE admin_command_runs SET current_attempt_id=? WHERE id=?").run("55555555-5555-4555-8555-555555555555", COMMAND_RUN_ID);
+    await assert.rejects(
+      () => d1CaseBackfillRepository.extendItems([ITEM_ID], "fetch", authority()),
+      /stale_fence/,
+    );
+    const item = databases.ingest.prepare("SELECT claimed_attempt_id,claimed_fencing_token FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
+    assert.equal(item.claimed_attempt_id, ATTEMPT_ID);
+    assert.equal(item.claimed_fencing_token, FENCE);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+

@@ -110,6 +110,51 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
   }
 }
 
+interface BackfillWorkflowPayload {
+  snapshotId: string;
+  phase: "fetch";
+  passNumber: number;
+  batchLimit?: number;
+  fetchContractVersion?: string;
+  requestedBy?: string;
+}
+
+interface BackfillOpsServiceBinding {
+  runBackfillPass(input: BackfillWorkflowPayload): Promise<unknown>;
+}
+
+function validBackfillWorkflowPayload(value: unknown): value is BackfillWorkflowPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const payload = value as Record<string, unknown>;
+  const keys = Object.keys(payload);
+  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "fetchContractVersion", "requestedBy"].includes(key))) return false;
+  return typeof payload.snapshotId === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.snapshotId)
+    && payload.phase === "fetch"
+    && Number.isInteger(payload.passNumber) && Number(payload.passNumber) >= 1 && Number(payload.passNumber) <= 2_147_483_647
+    && (payload.batchLimit === undefined || (Number.isInteger(payload.batchLimit) && Number(payload.batchLimit) >= 1 && Number(payload.batchLimit) <= 10))
+    && (payload.fetchContractVersion === undefined || (typeof payload.fetchContractVersion === "string" && payload.fetchContractVersion.trim().length >= 1 && payload.fetchContractVersion.length <= 120))
+    && (payload.requestedBy === undefined || (typeof payload.requestedBy === "string" && payload.requestedBy.trim().length >= 1 && payload.requestedBy.length <= 160));
+}
+
+export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillWorkflowPayload> {
+  async run(event: WorkflowEvent<BackfillWorkflowPayload>, step: WorkflowStep) {
+    if (!validBackfillWorkflowPayload(event.payload)) throw new Error("case_backfill.invalid_workflow_payload");
+    if (event.payload.fetchContractVersion && event.payload.fetchContractVersion !== "bverfg-official-fetch-v1") {
+      throw new Error("case_backfill.fetch_contract_not_approved");
+    }
+    return step.do("run-bounded-backfill-pass", {
+      retries: { limit: 0 },
+      timeout: "25 minutes",
+    }, () => (this.env.WORLDCONS_APP_SERVICE as unknown as BackfillOpsServiceBinding).runBackfillPass({
+      ...event.payload,
+      batchLimit: event.payload.batchLimit ?? 1,
+      fetchContractVersion: event.payload.fetchContractVersion ?? "bverfg-official-fetch-v1",
+      requestedBy: event.payload.requestedBy ?? "worldcons-backfill-workflow",
+    }));
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);

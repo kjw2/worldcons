@@ -53,6 +53,7 @@
     ]
   },
   "workflows": [
-    { "binding": "ASYNC_WORKFLOW", "name": "worldcons-async-v1", "class_name": "WorldconsAsyncWorkflow" }
+    { "binding": "ASYNC_WORKFLOW", "name": "worldcons-async-v1", "class_name": "WorldconsAsyncWorkflow" },
+    { "binding": "BACKFILL_WORKFLOW", "name": "worldcons-backfill-v1", "class_name": "WorldconsBackfillWorkflow" }
   ]
 }
