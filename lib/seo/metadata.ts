@@ -4,9 +4,11 @@ import { isIndexablePublicTag, publicAbsoluteUrl } from "@/lib/seo/public-urls";
 
 export { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "@/lib/seo/public-urls";
 
-export function siteVerificationMetadata(): Pick<Metadata, "verification"> {
-  const google = process.env.GOOGLE_SITE_VERIFICATION?.trim();
-  const naver = process.env.NAVER_SITE_VERIFICATION?.trim();
+export function siteVerificationMetadata(
+  environment: Record<string, string | undefined> = process.env,
+): Pick<Metadata, "verification"> {
+  const google = environment.GOOGLE_SITE_VERIFICATION?.trim();
+  const naver = environment.NAVER_SITE_VERIFICATION?.trim();
   if (!google && !naver) return {};
   return {
     verification: {

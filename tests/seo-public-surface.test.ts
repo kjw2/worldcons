@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "../lib/seo/public-urls";
-import { articleMetadata, tagMetadata } from "../lib/seo/metadata";
+import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/seo/metadata";
 import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
 
 test("public paths strip the legacy /v2 prefix and keep clean URLs", () => {
@@ -13,6 +13,25 @@ test("public paths strip the legacy /v2 prefix and keep clean URLs", () => {
   assert.equal(publicPath("/v2/list"), "/list");
   assert.equal(publicPath("/articles/example"), "/articles/example");
   assert.equal(publicAbsoluteUrl("/v2/articles/example"), `${getAppBaseUrl()}/articles/example`);
+});
+
+test("Google and Naver ownership verification surfaces stay deployable on the Workers host", () => {
+  const metadata = siteVerificationMetadata({
+    GOOGLE_SITE_VERIFICATION: "google-meta-token",
+    NAVER_SITE_VERIFICATION: "naver-meta-token",
+  });
+  assert.deepEqual(metadata.verification, {
+    google: "google-meta-token",
+    other: { "naver-site-verification": "naver-meta-token" },
+  });
+
+  const googleRoute = fs.readFileSync(
+    path.join(process.cwd(), "app/googlebc13342811fc3fd7.html/route.ts"),
+    "utf8",
+  );
+  assert.match(googleRoute, /google-site-verification: googlebc13342811fc3fd7[.]html\\n/u);
+  assert.match(googleRoute, /status:\s*200/u);
+  assert.equal(fs.existsSync(path.join(process.cwd(), "public/googlebc13342811fc3fd7.html")), false);
 });
 
 test("thin tags are not indexable and do not advertise themselves as sitemap targets", () => {
