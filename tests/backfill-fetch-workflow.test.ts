@@ -184,12 +184,16 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
     phase: "fetch",
     passNumber: 90,
     batchLimit: 1,
+    maxPasses: 4,
     fetchContractVersion: "bverfg-official-fetch-v1",
     requestedBy: "api",
   }));
   assert.ok(parsed);
   assert.equal(parsed.passNumber, 90);
+  assert.equal(parsed.maxPasses, 4);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, unexpected: true })), null);
+  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 0 })), null);
+  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
 });
 
 test("permit wait exhaustion is retryable rather than terminal", () => {
@@ -292,6 +296,38 @@ test("Germany fetch records metadata-only evidence instead of terminal failure f
     const replay = JSON.parse(String(artifact.bounded_replay_payload)) as { metadata: { collection: { sourceUrlVerified: boolean; publishable: boolean } } };
     assert.equal(replay.metadata.collection.sourceUrlVerified, false);
     assert.equal(replay.metadata.collection.publishable, false);
+  } finally {
+    state.core.close(); state.ingest.close(); state.ops.close();
+  }
+});
+
+test("Germany fetch does not spend another governed request on the BVerfG error redirect", async () => {
+  const state = databases();
+  let calls = 0;
+  try {
+    const result = await runGermanyBackfillFetchPass(state.env, {
+      snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+      phase: "fetch",
+      passNumber: 1,
+      batchLimit: 1,
+      fetchContractVersion: "bverfg-official-fetch-v1",
+      requestedBy: "test-error-redirect",
+    }, {
+      sleep: async () => undefined,
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(null, {
+          status: 303,
+          headers: { location: "https://www.bundesverfassungsgericht.de/error_path/400.html?test=1" },
+        });
+      },
+    });
+    assert.equal(result.succeeded, 1);
+    assert.equal(result.terminalFailed, 0);
+    assert.equal(calls, 1);
+    const artifact = state.ingest.prepare("SELECT bounded_replay_payload FROM source_fetch_artifacts LIMIT 1").get() as Record<string, unknown>;
+    const replay = JSON.parse(String(artifact.bounded_replay_payload)) as { metadata: { authorityFetchError: string } };
+    assert.equal(replay.metadata.authorityFetchError, "case_backfill.bverfg_error_redirect");
   } finally {
     state.core.close(); state.ingest.close(); state.ops.close();
   }

@@ -125,18 +125,40 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
     if (payload.fetchContractVersion && payload.fetchContractVersion !== "bverfg-official-fetch-v1") {
       throw new Error("case_backfill.fetch_contract_not_approved");
     }
-    return step.do("run-bounded-backfill-pass", {
-      timeout: "25 minutes",
-    }, async () => {
-      try {
-        return await runGermanyBackfillFetchPass(
-          this.env as unknown as Parameters<typeof runGermanyBackfillFetchPass>[0],
-          payload,
-        );
-      } catch (error) {
-        throw new NonRetryableError(error instanceof Error ? error.message : String(error));
-      }
-    });
+    const maxPasses = payload.maxPasses ?? 1;
+    const results: Awaited<ReturnType<typeof runGermanyBackfillFetchPass>>[] = [];
+    for (let index = 0; index < maxPasses; index += 1) {
+      const passNumber = payload.passNumber + index;
+      const passPayload = { ...payload, passNumber, maxPasses: undefined };
+      const result = await step.do(`run-bounded-backfill-pass-${passNumber}`, {
+        timeout: "25 minutes",
+      }, async () => {
+        try {
+          return await runGermanyBackfillFetchPass(
+            this.env as unknown as Parameters<typeof runGermanyBackfillFetchPass>[0],
+            passPayload,
+          );
+        } catch (error) {
+          throw new NonRetryableError(error instanceof Error ? error.message : String(error));
+        }
+      });
+      results.push(result);
+      if (!result.backlogRemaining) break;
+    }
+    const last = results.at(-1);
+    return {
+      schemaVersion: 1,
+      snapshotId: payload.snapshotId,
+      startPassNumber: payload.passNumber,
+      lastPassNumber: last?.passNumber ?? payload.passNumber,
+      completedPasses: results.length,
+      batchLimit: payload.batchLimit ?? 1,
+      claimed: results.reduce((sum, result) => sum + result.claimed, 0),
+      succeeded: results.reduce((sum, result) => sum + result.succeeded, 0),
+      retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),
+      terminalFailed: results.reduce((sum, result) => sum + result.terminalFailed, 0),
+      backlogRemaining: last?.backlogRemaining ?? true,
+    };
   }
 }
 

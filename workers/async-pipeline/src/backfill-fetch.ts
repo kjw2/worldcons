@@ -16,6 +16,7 @@ export interface GermanyBackfillFetchPayload {
   phase: "fetch";
   passNumber: number;
   batchLimit?: number;
+  maxPasses?: number;
   fetchContractVersion?: string;
   requestedBy?: string;
 }
@@ -32,7 +33,7 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const payload = candidate as Record<string, unknown>;
   const keys = Object.keys(payload);
-  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "fetchContractVersion", "requestedBy"].includes(key))) return null;
+  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "maxPasses", "fetchContractVersion", "requestedBy"].includes(key))) return null;
   if (
     typeof payload.snapshotId !== "string"
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.snapshotId)
@@ -41,6 +42,7 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
     || Number(payload.passNumber) < 1
     || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 10))
+    || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 25))
     || (payload.fetchContractVersion !== undefined && (typeof payload.fetchContractVersion !== "string" || payload.fetchContractVersion.trim().length < 1 || payload.fetchContractVersion.length > 120))
     || (payload.requestedBy !== undefined && (typeof payload.requestedBy !== "string" || payload.requestedBy.trim().length < 1 || payload.requestedBy.length > 160))
   ) return null;
@@ -192,7 +194,11 @@ async function governedRequest(
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       if (!location) throw new Error("case_backfill.bverfg_redirect_missing_location");
-      current = new URL(location, current).toString();
+      const redirected = new URL(location, current);
+      if (/^\/error_path\//i.test(redirected.pathname)) {
+        throw new Error("case_backfill.bverfg_error_redirect");
+      }
+      current = redirected.toString();
       continue;
     }
     return { response, finalUrl: current };
