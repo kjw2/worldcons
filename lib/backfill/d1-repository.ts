@@ -256,7 +256,7 @@ function targetVersion(input: CaseBackfillPassInput) {
 }
 
 function assertSupportedD1Phase(phase: string) {
-  if (phase !== "fetch" && phase !== "normalize") throw new Error("case_backfill.d1_phase_unsupported");
+  if (phase !== "fetch" && phase !== "normalize" && phase !== "verify") throw new Error("case_backfill.d1_phase_unsupported");
 }
 
 async function claimOne(
@@ -270,7 +270,9 @@ async function claimOne(
   const version = targetVersion(input);
   const liveVersion = input.phase === "fetch"
     ? (live.payload.fetchContractVersion ?? "spain-hj-fetch-v1")
-    : `${live.payload.parserVersion ?? "spain-hj-normalize-v1"}:${live.payload.normalizationContractVersion ?? "case-normalized-v1"}`;
+    : input.phase === "normalize"
+      ? `${live.payload.parserVersion ?? "spain-hj-normalize-v1"}:${live.payload.normalizationContractVersion ?? "case-normalized-v1"}`
+      : null;
   if (liveVersion !== version) {
     throw new Error("case_backfill.item_scope_mismatch");
   }
@@ -308,10 +310,16 @@ async function claimOne(
               OR (? IS NOT NULL AND COALESCE(n.parser_version || ':' || n.normalization_contract_version,'')<>?)
             ))
           ))
+          OR (?='verify' AND (
+            i.status='normalized'
+            OR (i.status='retry_wait' AND i.retry_phase='verify')
+            OR (i.status='published' AND i.current_normalization_artifact_id IS NOT NULL
+              AND i.current_normalization_artifact_id IS NOT i.verified_normalization_artifact_id)
+          ))
         )
       ORDER BY i.first_seen_at,i.id
       LIMIT 1
-    `, [input.snapshotId, nowIso, nowIso, input.phase, version, version, input.phase, version, version]))[0];
+    `, [input.snapshotId, nowIso, nowIso, input.phase, version, version, input.phase, version, version, input.phase]))[0];
     if (!candidate) return null;
     const result = await run(db, `
       UPDATE source_backfill_items
@@ -325,8 +333,9 @@ async function claimOne(
         AND (
           (?='fetch' AND (status IN ('discovered','queued') OR (status='retry_wait' AND retry_phase='fetch') OR status='published'))
           OR (?='normalize' AND (status='fetched' OR (status='retry_wait' AND retry_phase='normalize') OR status='published'))
+          OR (?='verify' AND (status='normalized' OR (status='retry_wait' AND retry_phase='verify') OR status='published'))
         )
-    `, [input.phase, authority.attemptId, authority.fencingToken, input.phase, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso, input.phase, input.phase]);
+    `, [input.phase, authority.attemptId, authority.fencingToken, input.phase, leaseExpiresAt, nowIso, candidate.id, input.snapshotId, nowIso, nowIso, input.phase, input.phase, input.phase]);
     if (changes(result) !== 1) continue;
     await run(db, `
       INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
@@ -617,8 +626,11 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
               n.fetch_artifact_id IS NULL OR n.fetch_artifact_id<>i.current_fetch_artifact_id
               OR (? IS NOT NULL AND COALESCE(n.parser_version || ':' || n.normalization_contract_version,'')<>?)
             ))))
+          OR (?='verify' AND (i.status='normalized' OR (i.status='retry_wait' AND i.retry_phase='verify')
+            OR (i.status='published' AND i.current_normalization_artifact_id IS NOT NULL
+              AND i.current_normalization_artifact_id IS NOT i.verified_normalization_artifact_id)))
         )
-    `, [input.snapshotId, now, input.phase, version, version, input.phase, version, version]))[0];
+    `, [input.snapshotId, now, input.phase, version, version, input.phase, version, version, input.phase]))[0];
     return numberValue(row?.count);
   },
 
@@ -814,7 +826,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       `, [input.nextStatus, artifactId, artifact.http_status, artifact.source_etag, artifact.source_last_modified_at, artifact.payload_hash, artifact.authority_url,
         now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
       workState = "needs_normalize";
-    } else {
+    } else if (input.phase === "normalize") {
       const artifact = (await rows<Row>(db, `
         SELECT * FROM source_normalization_artifacts WHERE id=? AND item_id=? AND validation_status='valid' LIMIT 1
       `, [artifactId, input.itemId]))[0];
@@ -829,6 +841,34 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='normalize' AND lease_expires_at>?
       `, [input.nextStatus, artifactId, artifact.parser_version, now, input.itemId, input.authority.attemptId, input.authority.fencingToken, now]);
       workState = "needs_reverify";
+    } else {
+      if (artifactId !== text(item.current_normalization_artifact_id)) throw new Error("case_backfill.invalid_verify_transition");
+      const expectedStatus = text(item.status) === "published" ? "published" : "verified";
+      if (input.nextStatus !== expectedStatus) throw new Error("case_backfill.invalid_verify_transition");
+      const noop = input.resultMetadata.noop === true;
+      if (noop) {
+        if (text(item.status) !== "published" || !item.published_normalization_artifact_id) {
+          throw new Error("case_backfill.invalid_verification_noop");
+        }
+        const currentArtifact = (await rows<Row>(db, "SELECT normalized_output_hash FROM source_normalization_artifacts WHERE id=? AND item_id=? LIMIT 1", [artifactId, input.itemId]))[0];
+        const publishedArtifact = (await rows<Row>(db, "SELECT normalized_output_hash FROM source_normalization_artifacts WHERE id=? AND item_id=? LIMIT 1", [item.published_normalization_artifact_id, input.itemId]))[0];
+        if (!currentArtifact || !publishedArtifact || text(currentArtifact.normalized_output_hash) !== text(publishedArtifact.normalized_output_hash)) {
+          throw new Error("case_backfill.invalid_verification_noop");
+        }
+      }
+      result = await run(db, `
+        UPDATE source_backfill_items
+        SET status=?,verified_normalization_artifact_id=?,
+            published_normalization_artifact_id=CASE WHEN ?=1 THEN ? ELSE published_normalization_artifact_id END,
+            claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
+            next_attempt_at=NULL,retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
+        WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='verify' AND lease_expires_at>?
+      `, [input.nextStatus,artifactId,noop ? 1 : 0,artifactId,now,input.itemId,input.authority.attemptId,input.authority.fencingToken,now]);
+      workState = text(item.status) === "published" && !noop ? "needs_republish" : "idle";
+      if (noop) {
+        await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
+          [decimalId(), input.itemId, input.authority.attemptId, "verification_noop", "verify", JSON.stringify({ artifactId }), now]);
+      }
     }
     if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
     await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
@@ -836,7 +876,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async excludeItem(input) {
-    if (input.phase !== "normalize") throw new Error("case_backfill.d1_phase_unsupported");
+    if (input.phase !== "normalize" && input.phase !== "verify") throw new Error("case_backfill.d1_phase_unsupported");
     if (!/^[a-z][a-z0-9._-]{2,79}$/.test(input.exclusionCode)) throw new Error("case_backfill.invalid_exclusion_code");
     const item = await itemForMutation(input.itemId, input.phase, input.authority);
     if (!["fetched","normalized","retry_wait"].includes(text(item.status)) || !item.current_fetch_artifact_id) {
@@ -848,11 +888,11 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       UPDATE source_backfill_items
       SET status='excluded',exclusion_code=?,claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,
           next_attempt_at=NULL,retry_phase=NULL,error_code=NULL,error_summary=NULL,updated_at=?
-      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='normalize' AND lease_expires_at>?
-    `, [input.exclusionCode.trim().slice(0,80),now,input.itemId,input.authority.attemptId,input.authority.fencingToken,now]);
+      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase=? AND lease_expires_at>?
+    `, [input.exclusionCode.trim().slice(0,80),now,input.itemId,input.authority.attemptId,input.authority.fencingToken,input.phase,now]);
     if (changes(result) !== 1) throw new Error("case_backfill.item_lease_lost");
     await run(db, `INSERT INTO source_backfill_item_events (id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`,
-      [decimalId(), input.itemId, input.authority.attemptId, "item_excluded", "normalize",
+      [decimalId(), input.itemId, input.authority.attemptId, "item_excluded", input.phase,
         JSON.stringify({ status: "excluded", exclusionCode: input.exclusionCode, fetchArtifactId: item.current_fetch_artifact_id }), now]);
   },
 

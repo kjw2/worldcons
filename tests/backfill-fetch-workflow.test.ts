@@ -15,6 +15,11 @@ import {
   runGermanyBackfillNormalizePass,
   type GermanyBackfillNormalizeEnv,
 } from "../workers/async-pipeline/src/backfill-normalize";
+import {
+  parseGermanyBackfillVerifyPayload,
+  runGermanyBackfillVerifyPass,
+  type GermanyBackfillVerifyEnv,
+} from "../workers/async-pipeline/src/backfill-verify";
 import type { ArtifactBlobR2Bucket } from "../lib/storage/blob";
 
 function d1(database: DatabaseSync): D1RuntimeDatabase {
@@ -459,6 +464,68 @@ test("Germany normalize executor explicitly excludes metadata-only official sour
     assert.equal(item.exclusion_code, "official_source_unavailable");
     assert.equal(item.current_normalization_artifact_id, null);
     assert.equal(bucket.objects.size, 0);
+  } finally {
+    state.core.close(); state.ingest.close(); state.ops.close();
+  }
+});
+
+test("verify Workflow payload accepts bounded Germany verify passes only", () => {
+  const parsed = parseGermanyBackfillVerifyPayload(JSON.stringify({
+    snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+    phase: "verify",
+    passNumber: 1,
+    batchLimit: 25,
+    maxPasses: 4,
+    requestedBy: "test-verify",
+  }));
+  assert.ok(parsed);
+  assert.equal(parsed.batchLimit, 25);
+  assert.equal(parsed.maxPasses, 4);
+  assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
+  assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
+  assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, phase: "publish" })), null);
+});
+
+test("Germany verify executor validates R2 normalization evidence and transitions normalized to verified", async () => {
+  const state = databases();
+  const bucket = memoryR2();
+  seedFetchedForNormalize(state, true);
+  try {
+    const normalizeEnv: GermanyBackfillNormalizeEnv = { ...state.env, WORLDCONS_RAW: bucket };
+    const normalized = await runGermanyBackfillNormalizePass(normalizeEnv, {
+      snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+      phase: "normalize",
+      passNumber: 1,
+      batchLimit: 1,
+      requestedBy: "test-normalize-before-verify",
+    });
+    assert.equal(normalized.succeeded, 1);
+
+    const verifyEnv: GermanyBackfillVerifyEnv = { ...state.env, WORLDCONS_RAW: bucket };
+    const verified = await runGermanyBackfillVerifyPass(verifyEnv, {
+      snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+      phase: "verify",
+      passNumber: 1,
+      batchLimit: 1,
+      requestedBy: "test-verify",
+    });
+    assert.equal(verified.claimed, 1);
+    assert.equal(verified.succeeded, 1);
+    assert.equal(verified.retryableFailed, 0);
+    assert.equal(verified.terminalFailed, 0);
+    assert.equal(verified.backlogRemaining, false);
+
+    const item = state.ingest.prepare(`
+      SELECT status,current_normalization_artifact_id,verified_normalization_artifact_id,claimed_attempt_id
+      FROM source_backfill_items WHERE id='item-1'
+    `).get() as Record<string, unknown>;
+    assert.equal(item.status, "verified");
+    assert.equal(item.verified_normalization_artifact_id, item.current_normalization_artifact_id);
+    assert.equal(item.claimed_attempt_id, null);
+    const verifyRun = state.ingest.prepare("SELECT status,claimed_count,succeeded_count FROM source_backfill_runs WHERE phase='verify' LIMIT 1").get() as Record<string, unknown>;
+    assert.equal(verifyRun.status, "succeeded");
+    assert.equal(verifyRun.claimed_count, 1);
+    assert.equal(verifyRun.succeeded_count, 1);
   } finally {
     state.core.close(); state.ingest.close(); state.ops.close();
   }
