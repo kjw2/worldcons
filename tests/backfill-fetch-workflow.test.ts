@@ -4,6 +4,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { clearRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import {
   GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+  parseGermanyBackfillFetchPayload,
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchEnv,
 } from "../workers/async-pipeline/src/backfill-fetch";
@@ -175,6 +176,20 @@ function databases() {
 }
 
 afterEach(() => clearRuntimeD1Bindings());
+
+test("Workflow payload normalization accepts Cloudflare API JSON-string params and rejects extra fields", () => {
+  const parsed = parseGermanyBackfillFetchPayload(JSON.stringify({
+    snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+    phase: "fetch",
+    passNumber: 90,
+    batchLimit: 1,
+    fetchContractVersion: "bverfg-official-fetch-v1",
+    requestedBy: "api",
+  }));
+  assert.ok(parsed);
+  assert.equal(parsed.passNumber, 90);
+  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, unexpected: true })), null);
+});
 
 test("Germany 2023 Workflow executor closes one bounded D1 fetch pass end-to-end", async () => {
   const state = databases();

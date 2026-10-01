@@ -20,6 +20,33 @@ export interface GermanyBackfillFetchPayload {
   requestedBy?: string;
 }
 
+export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfillFetchPayload | null {
+  let candidate = value;
+  if (typeof candidate === "string") {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  }
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+  const payload = candidate as Record<string, unknown>;
+  const keys = Object.keys(payload);
+  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "fetchContractVersion", "requestedBy"].includes(key))) return null;
+  if (
+    typeof payload.snapshotId !== "string"
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.snapshotId)
+    || payload.phase !== "fetch"
+    || !Number.isInteger(payload.passNumber)
+    || Number(payload.passNumber) < 1
+    || Number(payload.passNumber) > 2_147_483_647
+    || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 10))
+    || (payload.fetchContractVersion !== undefined && (typeof payload.fetchContractVersion !== "string" || payload.fetchContractVersion.trim().length < 1 || payload.fetchContractVersion.length > 120))
+    || (payload.requestedBy !== undefined && (typeof payload.requestedBy !== "string" || payload.requestedBy.trim().length < 1 || payload.requestedBy.length > 160))
+  ) return null;
+  return payload as unknown as GermanyBackfillFetchPayload;
+}
+
 export interface GermanyBackfillFetchEnv {
   WORLDCONS_OPS: D1RuntimeDatabase;
   WORLDCONS_CORE: D1RuntimeDatabase;
