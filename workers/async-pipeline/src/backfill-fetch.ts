@@ -77,8 +77,8 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function retryable(error: unknown) {
-  return /timeout|network|fetch|429|502|503|504|rate|unresolved/i.test(errorText(error));
+export function isGermanyBackfillRetryableError(error: unknown) {
+  return /timeout|network|fetch|429|502|503|504|rate|request_permit/i.test(errorText(error));
 }
 
 function boundedErrorCode(error: unknown) {
@@ -208,7 +208,35 @@ async function fetchOfficialDecision(
   sleepImpl: (milliseconds: number) => Promise<void>,
 ) {
   const candidates = candidateUrls(item);
-  if (candidates.length === 0) throw new Error("case_backfill.bverfg_official_url_unresolved");
+  const decisionDate = text(item.inventoryMetadata.decisionDate) || item.decisionDateHint?.slice(0, 10) || "";
+  const metadataOnly = (reason: string) => {
+    const canonicalUrl = candidates[0] ?? item.discoveredUrl;
+    const docket = text(item.inventoryMetadata.docket) || item.sourceRecordId || item.stableItemKey;
+    return {
+      sourceKey: SOURCE_KEY,
+      url: canonicalUrl,
+      canonicalUrl,
+      title: docket,
+      publishedAt: /^\d{4}-\d{2}-\d{2}$/.test(decisionDate) ? `${decisionDate}T00:00:00.000Z` : undefined,
+      contentType: "decision",
+      text: [docket, decisionDate, canonicalUrl].filter(Boolean).join("\n"),
+      metadata: {
+        ...(item.sourceRecordId ? { sourceRecordId: item.sourceRecordId } : {}),
+        sourceInventory: item.inventoryMetadata,
+        collection: {
+          strategy: "official-listing",
+          confidence: "low",
+          sourceUrlVerified: false,
+          publishable: false,
+          sourceTextAvailable: false,
+          reason,
+        },
+        authorityFetchError: reason,
+        extraction: "metadata-only-backfill-d1",
+      },
+    };
+  };
+  if (candidates.length === 0) return metadataOnly("Official BVerfG decision URL could not be resolved from the sealed inventory.");
   let lastError: Error | null = null;
   for (const candidate of candidates) {
     try {
@@ -226,7 +254,6 @@ async function fetchOfficialDecision(
       const html = await response.text();
       const extracted = htmlText(html);
       if (extracted.length < 200) throw new Error("case_backfill.bverfg_source_text_too_short");
-      const decisionDate = text(item.inventoryMetadata.decisionDate) || item.decisionDateHint?.slice(0, 10) || "";
       const raw = {
         sourceKey: SOURCE_KEY,
         url: finalUrl,
@@ -253,11 +280,11 @@ async function fetchOfficialDecision(
       };
       return raw;
     } catch (error) {
-      if (retryable(error)) throw error;
+      if (isGermanyBackfillRetryableError(error)) throw error;
       lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
-  throw lastError ?? new Error("case_backfill.bverfg_authority_fetch_failed");
+  return metadataOnly(lastError?.message ?? "Official BVerfG source text could not be verified.");
 }
 
 function boundedReplayPayload(raw: Record<string, unknown>, allowedFields: string[], inventoryMetadata: Record<string, unknown>) {
@@ -403,7 +430,7 @@ export async function runGermanyBackfillFetchPass(
         });
         succeeded += 1;
       } catch (error) {
-        const isRetryable = retryable(error);
+        const isRetryable = isGermanyBackfillRetryableError(error);
         await d1CaseBackfillRepository.failItem({
           itemId: item.itemId,
           phase: "fetch",

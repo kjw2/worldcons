@@ -485,10 +485,13 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         ORDER BY lease_expires_at ASC LIMIT 1
       `, [currentSnapshot.sourceKey, nowIso]);
       const candidates = [
-        state ? Date.parse(text(state.next_request_not_before)) - now.getTime() : 1_000,
-        active[0] ? Date.parse(text(active[0].lease_expires_at)) - now.getTime() : 1_000,
-      ].filter((value) => Number.isFinite(value) && value > 0);
-      return { granted: false, permitId: null, retryAfterMs: Math.max(25, Math.min(...candidates, 5_000)), permitLeaseExpiresAt: null };
+        state ? Date.parse(text(state.next_request_not_before)) - now.getTime() : null,
+        active[0] ? Date.parse(text(active[0].lease_expires_at)) - now.getTime() : null,
+      ].filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+      const retryAfterMs = candidates.length > 0
+        ? Math.max(25, Math.min(Math.max(...candidates), 5_000))
+        : 250;
+      return { granted: false, permitId: null, retryAfterMs, permitLeaseExpiresAt: null };
     }
     const permitId = crypto.randomUUID();
     const permitLeaseExpiresAt = new Date(Math.min(

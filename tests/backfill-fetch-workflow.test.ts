@@ -4,6 +4,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { clearRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import {
   GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+  isGermanyBackfillRetryableError,
   parseGermanyBackfillFetchPayload,
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchEnv,
@@ -191,6 +192,10 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, unexpected: true })), null);
 });
 
+test("permit wait exhaustion is retryable rather than terminal", () => {
+  assert.equal(isGermanyBackfillRetryableError(new Error("case_backfill.request_permit_wait_exhausted")), true);
+});
+
 test("Germany 2023 Workflow executor closes one bounded D1 fetch pass end-to-end", async () => {
   const state = databases();
   try {
@@ -259,6 +264,34 @@ test("Germany fetch Workflow fails closed outside the approved 2023 snapshot", a
       passNumber: 1,
     }), /germany_snapshot_not_approved/);
     assert.equal((state.ops.prepare("SELECT COUNT(*) AS count FROM admin_commands").get() as { count: number }).count, 0);
+  } finally {
+    state.core.close(); state.ingest.close(); state.ops.close();
+  }
+});
+
+test("Germany fetch records metadata-only evidence instead of terminal failure for an unavailable official detail", async () => {
+  const state = databases();
+  try {
+    const result = await runGermanyBackfillFetchPass(state.env, {
+      snapshotId: GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+      phase: "fetch",
+      passNumber: 1,
+      batchLimit: 1,
+      fetchContractVersion: "bverfg-official-fetch-v1",
+      requestedBy: "test-metadata-only",
+    }, {
+      sleep: async () => undefined,
+      fetchImpl: async () => new Response("blocked", { status: 400, headers: { "content-type": "text/html" } }),
+    });
+    assert.equal(result.succeeded, 1);
+    assert.equal(result.terminalFailed, 0);
+    const item = state.ingest.prepare("SELECT status,error_code,current_fetch_artifact_id FROM source_backfill_items WHERE id='item-1'").get() as Record<string, unknown>;
+    assert.equal(item.status, "fetched");
+    assert.equal(item.error_code, null);
+    const artifact = state.ingest.prepare("SELECT bounded_replay_payload FROM source_fetch_artifacts WHERE id=?").get(String(item.current_fetch_artifact_id)) as Record<string, unknown>;
+    const replay = JSON.parse(String(artifact.bounded_replay_payload)) as { metadata: { collection: { sourceUrlVerified: boolean; publishable: boolean } } };
+    assert.equal(replay.metadata.collection.sourceUrlVerified, false);
+    assert.equal(replay.metadata.collection.publishable, false);
   } finally {
     state.core.close(); state.ingest.close(); state.ops.close();
   }

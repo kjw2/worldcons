@@ -236,6 +236,11 @@ test("D1 request governor enforces approved host, concurrency and 30-second star
       snapshotId: SNAPSHOT_ID, phase: "fetch", authority: authority(), requestOrigin: "https://dejure.org", requestedLeaseSeconds: 90,
     }), /request_host_not_allowed/);
     await d1CaseBackfillRepository.releaseSourceRequestPermit({ permitId: first.permitId!, authority: authority() });
+    const spacingOnly = await d1CaseBackfillRepository.acquireSourceRequestPermit({
+      snapshotId: SNAPSHOT_ID, phase: "fetch", authority: authority(), requestOrigin: "https://www.bundesverfassungsgericht.de", requestedLeaseSeconds: 90,
+    });
+    assert.equal(spacingOnly.granted, false);
+    assert.ok(spacingOnly.retryAfterMs >= 4_000, `expected spacing retry near the 5s poll cap, got ${spacingOnly.retryAfterMs}`);
   } finally {
     databases.core.close(); databases.ingest.close(); databases.ops.close();
   }
