@@ -73,9 +73,6 @@ import {
 } from "../workers/ops-write/src/index";
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
-import { adminCommandService } from "@/lib/admin/command-control-plane/service";
-import { runAdminCommandWorkerP1 } from "@/lib/admin/command-control-plane/p1-worker";
-import { setRuntimeCaseBackfillEnvironment } from "@/lib/backfill/service";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -233,95 +230,6 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
 }
 
 export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
-  async runBackfillPass(input: {
-    snapshotId: string;
-    phase: "fetch";
-    passNumber: number;
-    batchLimit?: number;
-    fetchContractVersion?: string;
-    requestedBy?: string;
-  }) {
-    const env = this.env;
-    if (input.phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.snapshotId)) {
-      throw new Error("case_backfill.invalid_snapshot_id");
-    }
-    if (!Number.isInteger(input.passNumber) || input.passNumber < 1 || input.passNumber > 2_147_483_647) {
-      throw new Error("case_backfill.invalid_pass_number");
-    }
-    const batchLimit = Math.max(1, Math.min(Number.isInteger(input.batchLimit) ? input.batchLimit! : 1, 10));
-    const fetchContractVersion = input.fetchContractVersion?.trim() || "bverfg-official-fetch-v1";
-    const requestedBy = input.requestedBy?.trim() || "cloudflare-backfill-workflow";
-
-    setRuntimePlatform("cloudflare-worker");
-    setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
-    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
-    setRuntimeD1Bindings({
-      worldcons_core: env.WORLDCONS_CORE,
-      worldcons_ingest: env.WORLDCONS_INGEST,
-      worldcons_ops: env.WORLDCONS_OPS,
-      worldcons_search: env.WORLDCONS_SEARCH,
-    });
-    setRuntimeCaseBackfillEnvironment(env);
-
-    if (!env.WORLDCONS_OPS) throw new Error("case_backfill.d1_worldcons_ops_unavailable");
-    const activeResult = await env.WORLDCONS_OPS.prepare(`
-      SELECT r.id,c.payload_ref
-      FROM admin_command_runs r
-      JOIN admin_commands c ON c.id=r.command_id
-      WHERE c.command_type='p1.case-backfill.fetch'
-        AND r.status IN ('queued','running','retry_wait')
-      LIMIT 2
-    `).all<Record<string, unknown>>();
-    if (activeResult.success === false || activeResult.error) throw new Error("case_backfill.active_command_check_failed");
-    if ((activeResult.results ?? []).length > 0) throw new Error("case_backfill.fetch_command_already_active");
-
-    const payloadRef = {
-      cohort: "catalog-backfill" as const,
-      snapshotId: input.snapshotId,
-      passNumber: input.passNumber,
-      batchLimit,
-      fetchContractVersion,
-    };
-    const submitted = await adminCommandService.submit({
-      commandType: "p1.case-backfill.fetch",
-      payloadRef,
-      idempotencyKey: `backfill-pass:${input.snapshotId}:fetch:${input.passNumber}`,
-      dedupeKey: `backfill-active:${input.snapshotId}:fetch`,
-      requestedBy,
-      priority: 100,
-      maxAttempts: 1,
-      retryBackoffBaseSeconds: 60,
-      retryBackoffCapSeconds: 60,
-      shadowOnly: false,
-    });
-    if (!submitted.ok) throw new Error(`case_backfill.command_submit_failed.${submitted.error.code}`);
-    if (submitted.data.runStatus !== "queued") throw new Error("case_backfill.command_not_queued");
-
-    const worker = await runAdminCommandWorkerP1({
-      authority: {
-        enabled: true,
-        commandTypes: ["p1.case-backfill.fetch"],
-        cohorts: ["catalog-backfill"],
-      },
-      workerId: `cloudflare-backfill:${input.snapshotId}:${input.passNumber}`,
-      maxCommands: 1,
-      leaseSeconds: 900,
-      heartbeatSeconds: 120,
-      attemptTimeoutSeconds: 3500,
-    });
-    return {
-      schemaVersion: 1,
-      snapshotId: input.snapshotId,
-      phase: input.phase,
-      passNumber: input.passNumber,
-      batchLimit,
-      commandId: submitted.data.commandId,
-      commandRunId: submitted.data.runId,
-      worker,
-    };
-  }
-
   async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");

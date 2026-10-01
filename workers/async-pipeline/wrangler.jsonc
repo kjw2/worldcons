@@ -23,6 +23,7 @@
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
     "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,summary-drain,analytics-retention",
+    "CASE_CATALOG_GERMANY_HISTORY_ENABLED": "true",
     "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es",
     "SITE_ANALYTICS_RETENTION_DAYS": "90"
   },

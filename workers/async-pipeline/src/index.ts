@@ -19,6 +19,10 @@ import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { runNativeSearchProjectionSync } from "./search-projection-sync";
 import { launch } from "@cloudflare/playwright";
+import {
+  runGermanyBackfillFetchPass,
+  type GermanyBackfillFetchPayload,
+} from "./backfill-fetch";
 
 async function browserNavigate(input: { url: string; timeoutMs: number; waitUntil: "domcontentloaded"; userAgent: string }, binding: BrowserRun) {
   const browser = await launch(binding, { keep_alive: 60_000 });
@@ -110,18 +114,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
   }
 }
 
-interface BackfillWorkflowPayload {
-  snapshotId: string;
-  phase: "fetch";
-  passNumber: number;
-  batchLimit?: number;
-  fetchContractVersion?: string;
-  requestedBy?: string;
-}
-
-interface BackfillOpsServiceBinding {
-  runBackfillPass(input: BackfillWorkflowPayload): Promise<unknown>;
-}
+type BackfillWorkflowPayload = GermanyBackfillFetchPayload;
 
 function validBackfillWorkflowPayload(value: unknown): value is BackfillWorkflowPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -146,12 +139,7 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
     return step.do("run-bounded-backfill-pass", {
       retries: { limit: 0 },
       timeout: "25 minutes",
-    }, () => (this.env.WORLDCONS_APP_SERVICE as unknown as BackfillOpsServiceBinding).runBackfillPass({
-      ...event.payload,
-      batchLimit: event.payload.batchLimit ?? 1,
-      fetchContractVersion: event.payload.fetchContractVersion ?? "bverfg-official-fetch-v1",
-      requestedBy: event.payload.requestedBy ?? "worldcons-backfill-workflow",
-    }));
+    }, () => runGermanyBackfillFetchPass(this.env as unknown as Parameters<typeof runGermanyBackfillFetchPass>[0], event.payload));
   }
 }
 
