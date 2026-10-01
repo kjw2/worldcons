@@ -1,4 +1,5 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
 import {
   isM8KindEnabled,
   isM8TaskMessage,
@@ -125,9 +126,17 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
       throw new Error("case_backfill.fetch_contract_not_approved");
     }
     return step.do("run-bounded-backfill-pass", {
-      retries: { limit: 0 },
       timeout: "25 minutes",
-    }, () => runGermanyBackfillFetchPass(this.env as unknown as Parameters<typeof runGermanyBackfillFetchPass>[0], payload));
+    }, async () => {
+      try {
+        return await runGermanyBackfillFetchPass(
+          this.env as unknown as Parameters<typeof runGermanyBackfillFetchPass>[0],
+          payload,
+        );
+      } catch (error) {
+        throw new NonRetryableError(error instanceof Error ? error.message : String(error));
+      }
+    });
   }
 }
 
