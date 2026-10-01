@@ -166,7 +166,9 @@ function createDatabases() {
       normalized_output_size TEXT,externalized_at TEXT,externalization_contract_version TEXT
     );
     CREATE TABLE source_backfill_item_events (
-      id TEXT PRIMARY KEY,item_id TEXT,attempt_id TEXT,event_type TEXT,phase TEXT,safe_details TEXT,occurred_at TEXT
+      id TEXT PRIMARY KEY,item_id TEXT,attempt_id TEXT,
+      event_type TEXT CHECK (event_type IN ('item_discovered','item_claimed','item_lease_extended','fetch_recorded','normalization_recorded','item_completed','item_failed','claim_released','verification_noop','item_excluded','catalog_published')),
+      phase TEXT,safe_details TEXT,occurred_at TEXT
     );
     CREATE TABLE source_request_governor_states (
       source_key TEXT PRIMARY KEY,last_request_started_at TEXT,next_request_not_before TEXT,updated_at TEXT

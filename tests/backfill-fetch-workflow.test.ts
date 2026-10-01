@@ -154,7 +154,9 @@ function databases() {
       externalized_at TEXT, externalization_contract_version TEXT
     );
     CREATE TABLE source_backfill_item_events (
-      id TEXT PRIMARY KEY, item_id TEXT NOT NULL, attempt_id TEXT, event_type TEXT NOT NULL, phase TEXT, safe_details TEXT NOT NULL DEFAULT '{}', occurred_at TEXT NOT NULL
+      id TEXT PRIMARY KEY, item_id TEXT NOT NULL, attempt_id TEXT,
+      event_type TEXT NOT NULL CHECK (event_type IN ('item_discovered','item_claimed','item_lease_extended','fetch_recorded','normalization_recorded','item_completed','item_failed','claim_released','verification_noop','item_excluded','catalog_published')),
+      phase TEXT, safe_details TEXT NOT NULL DEFAULT '{}', occurred_at TEXT NOT NULL
     );
     CREATE TABLE source_request_governor_states (
       source_key TEXT PRIMARY KEY, last_request_started_at TEXT, next_request_not_before TEXT NOT NULL, updated_at TEXT NOT NULL

@@ -106,6 +106,56 @@ async function batch(db: D1RuntimeDatabase, statements: D1RuntimePreparedStateme
   }
 }
 
+async function finalizePublishedItem(
+  db: D1RuntimeDatabase,
+  input: {
+    itemId: string;
+    authority: CaseBackfillAttemptAuthority;
+    articleId: string;
+    normalizationArtifactId: string;
+    versionId: string;
+    publicationRevision: number;
+    recovered?: boolean;
+  },
+) {
+  const now = new Date().toISOString();
+  const eventId = decimalId();
+  const details = JSON.stringify({
+    articleId: input.articleId,
+    versionId: input.versionId,
+    publicationRevision: input.publicationRevision,
+    ...(input.recovered ? { recovered: true } : {}),
+  });
+  const claimWhere = `id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='publish' AND lease_expires_at>?`;
+  await batch(db, [
+    db.prepare(`INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
+      SELECT ?,id,?,'catalog_published','publish',?,? FROM source_backfill_items WHERE ${claimWhere}`).bind(
+      eventId,input.authority.attemptId,details,now,
+      input.itemId,input.authority.attemptId,input.authority.fencingToken,now,
+    ),
+    db.prepare(`UPDATE source_backfill_items SET article_id=?,status='published',published_normalization_artifact_id=?,
+      claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,next_attempt_at=NULL,retry_phase=NULL,
+      error_code=NULL,error_summary=NULL,updated_at=? WHERE ${claimWhere}`).bind(
+      input.articleId,input.normalizationArtifactId,now,
+      input.itemId,input.authority.attemptId,input.authority.fencingToken,now,
+    ),
+  ]);
+  const item = (await rows<Row>(db, `SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id
+    FROM source_backfill_items WHERE id=? LIMIT 1`, [input.itemId]))[0];
+  const event = (await rows<Row>(db, `SELECT id FROM source_backfill_item_events
+    WHERE id=? AND item_id=? AND event_type='catalog_published' LIMIT 1`, [eventId,input.itemId]))[0];
+  if (
+    !item
+    || text(item.status) !== "published"
+    || text(item.article_id) !== input.articleId
+    || text(item.published_normalization_artifact_id) !== input.normalizationArtifactId
+    || item.claimed_attempt_id !== null
+    || !event
+  ) {
+    throw new Error("case_backfill.item_lease_lost_after_catalog_commit");
+  }
+}
+
 function decimalId() {
   const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
   return (BigInt(Date.now()) * 10_000_000n + BigInt(random)).toString();
@@ -878,18 +928,15 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       WHERE e.idempotency_key=? LIMIT 1
     `, [idempotencyKey]))[0];
     if (priorEvent) {
-      const recoveryNow = new Date().toISOString();
-      const recovery = await run(ingest, `UPDATE source_backfill_items SET article_id=?,status='published',published_normalization_artifact_id=?,
-        claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,next_attempt_at=NULL,retry_phase=NULL,
-        error_code=NULL,error_summary=NULL,updated_at=?
-        WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='publish' AND lease_expires_at>?`, [
-        text(priorEvent.article_id),normalizationArtifactId,recoveryNow,input.itemId,input.authority.attemptId,input.authority.fencingToken,recoveryNow,
-      ]);
-      if (changes(recovery) !== 1) throw new Error("case_backfill.item_lease_lost_after_catalog_commit");
-      await run(ingest, `INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`, [
-        decimalId(),input.itemId,input.authority.attemptId,"catalog_published","publish",
-        JSON.stringify({ articleId: text(priorEvent.article_id),versionId: text(priorEvent.next_source_anchor_version_id),publicationRevision: numberValue(priorEvent.publication_revision),recovered: true }),recoveryNow,
-      ]);
+      await finalizePublishedItem(ingest, {
+        itemId: input.itemId,
+        authority: input.authority,
+        articleId: text(priorEvent.article_id),
+        normalizationArtifactId,
+        versionId: text(priorEvent.next_source_anchor_version_id),
+        publicationRevision: numberValue(priorEvent.publication_revision),
+        recovered: true,
+      });
       return {
         articleId: text(priorEvent.article_id),
         versionId: text(priorEvent.next_source_anchor_version_id),
@@ -1064,18 +1111,14 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       crypto.randomUUID(),`case-catalog:${publicationId}:${publicationRevision}`,articleId,publicationId,String(publicationRevision),versionId,articleSlug,now,
     ));
     await batch(core, statements);
-
-    const complete = await run(ingest, `UPDATE source_backfill_items SET article_id=?,status='published',published_normalization_artifact_id=?,
-      claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,next_attempt_at=NULL,retry_phase=NULL,
-      error_code=NULL,error_summary=NULL,updated_at=?
-      WHERE id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='publish' AND lease_expires_at>?`, [
-      articleId,normalizationArtifactId,now,input.itemId,input.authority.attemptId,input.authority.fencingToken,now,
-    ]);
-    if (changes(complete) !== 1) throw new Error("case_backfill.item_lease_lost_after_catalog_commit");
-    await run(ingest, `INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?)`, [
-      decimalId(),input.itemId,input.authority.attemptId,"catalog_published","publish",
-      JSON.stringify({ articleId,versionId,publicationRevision }),now,
-    ]);
+    await finalizePublishedItem(ingest, {
+      itemId: input.itemId,
+      authority: input.authority,
+      articleId,
+      normalizationArtifactId,
+      versionId,
+      publicationRevision,
+    });
     return { articleId,versionId,versionRevision,publicationRevision,articleSlug };
   },
 
