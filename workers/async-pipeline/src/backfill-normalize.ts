@@ -12,10 +12,9 @@ import {
   type ArtifactBlobR2Bucket,
 } from "../../../lib/storage/blob";
 import type { NormalizedArticle } from "../../../lib/sources/types";
-import { GERMANY_2023_BACKFILL_SNAPSHOT_ID } from "./backfill-fetch";
+import { germanyBackfillSourcePolicyVersion, isApprovedGermanyBackfillSnapshotId } from "./backfill-fetch";
 
 const SOURCE_KEY = "de-bverfg";
-const SOURCE_POLICY_VERSION = "bverfg-unattended-canary-v2";
 const PARSER_VERSION = "bverfg-official-normalize-v2";
 const NORMALIZATION_CONTRACT_VERSION = "case-normalized-v1";
 
@@ -158,7 +157,7 @@ export function parseGermanyBackfillNormalizePayload(value: unknown): GermanyBac
   const keys = Object.keys(payload);
   if (keys.some((key) => !["snapshotId","phase","passNumber","batchLimit","maxPasses","parserVersion","normalizationContractVersion","requestedBy"].includes(key))) return null;
   if (
-    payload.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID
+    !isApprovedGermanyBackfillSnapshotId(payload.snapshotId)
     || payload.phase !== "normalize"
     || !Number.isInteger(payload.passNumber) || Number(payload.passNumber) < 1 || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 50))
@@ -172,7 +171,8 @@ export function parseGermanyBackfillNormalizePayload(value: unknown): GermanyBac
 
 export async function runGermanyBackfillNormalizePass(env: GermanyBackfillNormalizeEnv, input: GermanyBackfillNormalizePayload) {
   if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
-  if (input.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID) throw new Error("case_backfill.germany_snapshot_not_approved");
+  const expectedSourcePolicyVersion = germanyBackfillSourcePolicyVersion(input.snapshotId);
+  if (!expectedSourcePolicyVersion) throw new Error("case_backfill.germany_snapshot_not_approved");
   if (input.phase !== "normalize") throw new Error("case_backfill.d1_phase_unsupported");
   const parserVersion = input.parserVersion ?? PARSER_VERSION;
   const normalizationContractVersion = input.normalizationContractVersion ?? NORMALIZATION_CONTRACT_VERSION;
@@ -185,7 +185,7 @@ export async function runGermanyBackfillNormalizePass(env: GermanyBackfillNormal
   const store = new ArtifactBlobStore(createR2BindingArtifactBlobTransport({ bucket: env.WORLDCONS_RAW }));
 
   const snapshot = await d1CaseBackfillRepository.getSnapshot(input.snapshotId);
-  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== SOURCE_POLICY_VERSION) {
+  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== expectedSourcePolicyVersion) {
     throw new Error("case_backfill.germany_snapshot_contract_mismatch");
   }
   const activeCommands = await queryRows(env.WORLDCONS_OPS, `

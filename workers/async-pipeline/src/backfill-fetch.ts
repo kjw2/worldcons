@@ -7,8 +7,19 @@ import type { CaseBackfillAttemptAuthority, CaseBackfillClaimedItem } from "../.
 import { setRuntimeD1Bindings, type D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 
 export const GERMANY_2023_BACKFILL_SNAPSHOT_ID = "57948d51-1300-4ff1-86db-be00a6572bc9";
+export const GERMANY_2024_BACKFILL_SNAPSHOT_ID = "d6c7b404-2252-4369-a719-8e17d2dfaba2";
+
+export function germanyBackfillSourcePolicyVersion(value: unknown): string | null {
+  if (value === GERMANY_2023_BACKFILL_SNAPSHOT_ID) return "bverfg-unattended-canary-v2";
+  if (value === GERMANY_2024_BACKFILL_SNAPSHOT_ID) return "bverfg-unattended-canary-v1";
+  return null;
+}
+
+export function isApprovedGermanyBackfillSnapshotId(value: unknown): value is string {
+  return germanyBackfillSourcePolicyVersion(value) !== null;
+}
+
 const FETCH_CONTRACT_VERSION = "bverfg-official-fetch-v1";
-const SOURCE_POLICY_VERSION = "bverfg-unattended-canary-v2";
 const SOURCE_KEY = "de-bverfg";
 
 export interface GermanyBackfillFetchPayload {
@@ -35,8 +46,7 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
   const keys = Object.keys(payload);
   if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "maxPasses", "fetchContractVersion", "requestedBy"].includes(key))) return null;
   if (
-    typeof payload.snapshotId !== "string"
-    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.snapshotId)
+    !isApprovedGermanyBackfillSnapshotId(payload.snapshotId)
     || payload.phase !== "fetch"
     || !Number.isInteger(payload.passNumber)
     || Number(payload.passNumber) < 1
@@ -310,7 +320,8 @@ export async function runGermanyBackfillFetchPass(
   dependencies: ExecutorDependencies = {},
 ) {
   if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
-  if (input.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID) throw new Error("case_backfill.germany_snapshot_not_approved");
+  const expectedSourcePolicyVersion = germanyBackfillSourcePolicyVersion(input.snapshotId);
+  if (!expectedSourcePolicyVersion) throw new Error("case_backfill.germany_snapshot_not_approved");
   if (input.phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
   if ((input.fetchContractVersion ?? FETCH_CONTRACT_VERSION) !== FETCH_CONTRACT_VERSION) throw new Error("case_backfill.fetch_contract_not_approved");
   const batchLimit = Math.max(1, Math.min(input.batchLimit ?? 1, 10));
@@ -327,7 +338,7 @@ export async function runGermanyBackfillFetchPass(
   });
 
   const snapshot = await d1CaseBackfillRepository.getSnapshot(input.snapshotId);
-  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== SOURCE_POLICY_VERSION) {
+  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== expectedSourcePolicyVersion) {
     throw new Error("case_backfill.germany_snapshot_contract_mismatch");
   }
   const policy = await d1CaseBackfillRepository.getSourcePolicy(snapshot.sourceKey, snapshot.sourcePolicyVersion);

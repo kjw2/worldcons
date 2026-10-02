@@ -10,10 +10,9 @@ import {
   type ArtifactBlobR2Bucket,
 } from "../../../lib/storage/blob";
 import type { NormalizedArticle } from "../../../lib/sources/types";
-import { GERMANY_2023_BACKFILL_SNAPSHOT_ID } from "./backfill-fetch";
+import { germanyBackfillSourcePolicyVersion, isApprovedGermanyBackfillSnapshotId } from "./backfill-fetch";
 
 const SOURCE_KEY = "de-bverfg";
-const SOURCE_POLICY_VERSION = "bverfg-unattended-canary-v2";
 
 export interface GermanyBackfillVerifyPayload {
   snapshotId: string;
@@ -144,7 +143,7 @@ export function parseGermanyBackfillVerifyPayload(value: unknown): GermanyBackfi
   const keys = Object.keys(payload);
   if (keys.some((key) => !["snapshotId","phase","passNumber","batchLimit","maxPasses","requestedBy"].includes(key))) return null;
   if (
-    payload.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID || payload.phase !== "verify"
+    !isApprovedGermanyBackfillSnapshotId(payload.snapshotId) || payload.phase !== "verify"
     || !Number.isInteger(payload.passNumber) || Number(payload.passNumber) < 1 || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 50))
     || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 25))
@@ -155,13 +154,14 @@ export function parseGermanyBackfillVerifyPayload(value: unknown): GermanyBackfi
 
 export async function runGermanyBackfillVerifyPass(env: GermanyBackfillVerifyEnv, input: GermanyBackfillVerifyPayload) {
   if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
-  if (input.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID) throw new Error("case_backfill.germany_snapshot_not_approved");
+  const expectedSourcePolicyVersion = germanyBackfillSourcePolicyVersion(input.snapshotId);
+  if (!expectedSourcePolicyVersion) throw new Error("case_backfill.germany_snapshot_not_approved");
   const batchLimit = Math.max(1, Math.min(input.batchLimit ?? 25, 50));
   const requestedBy = input.requestedBy?.trim() || "worldcons-backfill-verify-workflow";
   setRuntimeD1Bindings({ worldcons_ops: env.WORLDCONS_OPS, worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST, worldcons_search: env.WORLDCONS_SEARCH });
   const store = new ArtifactBlobStore(createR2BindingArtifactBlobTransport({ bucket: env.WORLDCONS_RAW }));
   const snapshot = await d1CaseBackfillRepository.getSnapshot(input.snapshotId);
-  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== SOURCE_POLICY_VERSION) throw new Error("case_backfill.germany_snapshot_contract_mismatch");
+  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== expectedSourcePolicyVersion) throw new Error("case_backfill.germany_snapshot_contract_mismatch");
   const active = await queryRows(env.WORLDCONS_OPS, `SELECT r.id FROM admin_command_runs r JOIN admin_commands c ON c.id=r.command_id WHERE c.command_type='p1.case-backfill.verify' AND r.status IN ('queued','running','retry_wait') LIMIT 1`);
   if (active.length > 0) throw new Error("case_backfill.verify_command_already_active");
   if ((await d1CaseBackfillRepository.listNonTerminalRuns(input.snapshotId, "verify")).length > 0) throw new Error("case_backfill.verify_run_already_active");

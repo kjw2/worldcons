@@ -5,6 +5,8 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { clearRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import {
   GERMANY_2023_BACKFILL_SNAPSHOT_ID,
+  GERMANY_2024_BACKFILL_SNAPSHOT_ID,
+  germanyBackfillSourcePolicyVersion,
   isGermanyBackfillRetryableError,
   parseGermanyBackfillFetchPayload,
   runGermanyBackfillFetchPass,
@@ -260,10 +262,17 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, unexpected: true })), null);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 0 })), null);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
+  assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
 });
 
 test("permit wait exhaustion is retryable rather than terminal", () => {
   assert.equal(isGermanyBackfillRetryableError(new Error("case_backfill.request_permit_wait_exhausted")), true);
+});
+
+test("Germany backfill snapshot policy mapping preserves historical snapshot policy versions", () => {
+  assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2023_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v2");
+  assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2024_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v1");
+  assert.equal(germanyBackfillSourcePolicyVersion("11111111-1111-4111-8111-111111111111"), null);
 });
 
 test("Germany 2023 Workflow executor closes one bounded D1 fetch pass end-to-end", async () => {
@@ -325,11 +334,11 @@ test("Germany 2023 Workflow executor closes one bounded D1 fetch pass end-to-end
   }
 });
 
-test("Germany fetch Workflow fails closed outside the approved 2023 snapshot", async () => {
+test("Germany fetch Workflow fails closed outside the approved Germany snapshots", async () => {
   const state = databases();
   try {
     await assert.rejects(() => runGermanyBackfillFetchPass(state.env, {
-      snapshotId: "d6c7b404-2252-4369-a719-8e17d2dfaba2",
+      snapshotId: "11111111-1111-4111-8111-111111111111",
       phase: "fetch",
       passNumber: 1,
     }), /germany_snapshot_not_approved/);
@@ -411,6 +420,7 @@ test("normalize Workflow payload accepts bounded Germany normalize passes only",
   }));
   assert.ok(parsed);
   assert.equal(parsed.batchLimit, 25);
+  assert.ok(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
   assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, parserVersion: "other" })), null);
 });
@@ -484,6 +494,7 @@ test("verify Workflow payload accepts bounded Germany verify passes only", () =>
   assert.ok(parsed);
   assert.equal(parsed.batchLimit, 25);
   assert.equal(parsed.maxPasses, 4);
+  assert.ok(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, phase: "publish" })), null);
@@ -501,6 +512,7 @@ test("publish Workflow payload keeps Germany publication batches tightly bounded
   assert.ok(parsed);
   assert.equal(parsed.batchLimit, 10);
   assert.equal(parsed.maxPasses, 2);
+  assert.ok(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.equal(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, batchLimit: 26 })), null);
   assert.equal(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
   assert.equal(parseGermanyBackfillPublishPayload(JSON.stringify({ ...parsed, phase: "verify" })), null);

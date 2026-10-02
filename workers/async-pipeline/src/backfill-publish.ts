@@ -10,10 +10,9 @@ import {
   type ArtifactBlobR2Bucket,
 } from "../../../lib/storage/blob";
 import type { NormalizedArticle } from "../../../lib/sources/types";
-import { GERMANY_2023_BACKFILL_SNAPSHOT_ID } from "./backfill-fetch";
+import { germanyBackfillSourcePolicyVersion, isApprovedGermanyBackfillSnapshotId } from "./backfill-fetch";
 
 const SOURCE_KEY = "de-bverfg";
-const SOURCE_POLICY_VERSION = "bverfg-unattended-canary-v2";
 
 export interface GermanyBackfillPublishPayload {
   snapshotId: string;
@@ -88,7 +87,7 @@ export function parseGermanyBackfillPublishPayload(value: unknown): GermanyBackf
   const keys = Object.keys(payload);
   if (keys.some((key) => !["snapshotId","phase","passNumber","batchLimit","maxPasses","requestedBy"].includes(key))) return null;
   if (
-    payload.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID || payload.phase !== "publish"
+    !isApprovedGermanyBackfillSnapshotId(payload.snapshotId) || payload.phase !== "publish"
     || !Number.isInteger(payload.passNumber) || Number(payload.passNumber) < 1 || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 25))
     || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 10))
@@ -99,7 +98,8 @@ export function parseGermanyBackfillPublishPayload(value: unknown): GermanyBackf
 
 export async function runGermanyBackfillPublishPass(env: GermanyBackfillPublishEnv, input: GermanyBackfillPublishPayload) {
   if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
-  if (input.snapshotId !== GERMANY_2023_BACKFILL_SNAPSHOT_ID) throw new Error("case_backfill.germany_snapshot_not_approved");
+  const expectedSourcePolicyVersion = germanyBackfillSourcePolicyVersion(input.snapshotId);
+  if (!expectedSourcePolicyVersion) throw new Error("case_backfill.germany_snapshot_not_approved");
   const batchLimit = Math.max(1, Math.min(input.batchLimit ?? 10, 25));
   const requestedBy = input.requestedBy?.trim() || "worldcons-backfill-publish-workflow";
   setRuntimeD1Bindings({
@@ -108,7 +108,7 @@ export async function runGermanyBackfillPublishPass(env: GermanyBackfillPublishE
   });
   const store = new ArtifactBlobStore(createR2BindingArtifactBlobTransport({ bucket: env.WORLDCONS_RAW }));
   const snapshot = await d1CaseBackfillRepository.getSnapshot(input.snapshotId);
-  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== SOURCE_POLICY_VERSION) {
+  if (snapshot.sourceKey !== SOURCE_KEY || snapshot.status !== "closed" || snapshot.sourcePolicyVersion !== expectedSourcePolicyVersion) {
     throw new Error("case_backfill.germany_snapshot_contract_mismatch");
   }
   const active = await queryRows(env.WORLDCONS_OPS, `
