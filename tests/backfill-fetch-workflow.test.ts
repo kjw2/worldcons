@@ -9,6 +9,7 @@ import {
   germanyBackfillSourcePolicyVersion,
   isGermanyBackfillRetryableError,
   parseGermanyBackfillFetchPayload,
+  recoverGermanyBackfillMissingArtifactsForRefetch,
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchEnv,
 } from "../workers/async-pipeline/src/backfill-fetch";
@@ -263,6 +264,12 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 0 })), null);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
+  assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({
+    ...parsed,
+    snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID,
+    recoverMissingArtifacts: true,
+  })));
+  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, recoverMissingArtifacts: true })), null);
 });
 
 test("permit wait exhaustion is retryable rather than terminal", () => {
@@ -273,6 +280,82 @@ test("Germany backfill snapshot policy mapping preserves historical snapshot pol
   assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2023_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v2");
   assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2024_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v1");
   assert.equal(germanyBackfillSourcePolicyVersion("11111111-1111-4111-8111-111111111111"), null);
+});
+
+test("Germany 2024 missing-artifact recovery requeues only normalization blobs confirmed absent from R2", async () => {
+  const state = databases();
+  const bucket = memoryR2();
+  const now = new Date().toISOString();
+  const missingRef = "artifacts/normalization/de-bverfg/" + "a".repeat(64) + ".json";
+  const presentRef = "artifacts/normalization/de-bverfg/" + "b".repeat(64) + ".json";
+  bucket.objects.set(presentRef, new Uint8Array(17));
+  state.ingest.prepare(
+    "INSERT INTO source_inventory_snapshots "
+      + "(id,source_key,scope_from,scope_to,document_type,discovery_method,parser_version,source_policy_version,coverage_assurance,"
+      + "coverage_evidence,discovered_count,status,exclusions,opened_at,closed_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  ).run(
+    GERMANY_2024_BACKFILL_SNAPSHOT_ID, "de-bverfg", "2024-01-01", "2024-12-31", "DECISION",
+    "external_index_dejure_paged_listing", "bverfg-normalize-v1", "bverfg-unattended-canary-v1",
+    "external_index_assisted", "{}", 2, "closed", "[]", now, now, "test",
+  );
+  const itemSql = "INSERT INTO source_backfill_items "
+    + "(id,snapshot_id,source_key,stable_item_key,discovered_url,document_type,status,current_normalization_artifact_id,"
+    + "verified_normalization_artifact_id,first_seen_at,last_seen_at,updated_at,inventory_metadata) "
+    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
+  const artifactSql = "INSERT INTO source_normalization_artifacts "
+    + "(id,item_id,fetch_artifact_id,parser_version,normalization_contract_version,normalized_output,normalized_output_hash,"
+    + "validation_status,validation_errors,created_at,normalized_output_storage_ref,normalized_output_size,externalized_at,externalization_contract_version) "
+    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+  for (const row of [
+    ["recovery-missing", "recovery-norm-missing", missingRef, 19, "a".repeat(64)],
+    ["recovery-present", "recovery-norm-present", presentRef, 17, "b".repeat(64)],
+  ] as const) {
+    const [itemId, artifactId, storageRef, size, hash] = row;
+    state.ingest.prepare(itemSql).run(
+      itemId, GERMANY_2024_BACKFILL_SNAPSHOT_ID, "de-bverfg", itemId,
+      "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2024/01/rk20240110_1bvr239723.html",
+      "DECISION", "verified", artifactId, artifactId, now, now, now, "{}",
+    );
+    state.ingest.prepare(artifactSql).run(
+      artifactId, itemId, "fetch-" + itemId, "bverfg-official-normalize-v2", "case-normalized-v1", null,
+      hash, "valid", "[]", now, storageRef, String(size), now, "worldcons-artifact-blob-v1",
+    );
+  }
+  try {
+    const result = await recoverGermanyBackfillMissingArtifactsForRefetch(
+      { ...state.env, WORLDCONS_RAW: bucket },
+      GERMANY_2024_BACKFILL_SNAPSHOT_ID,
+    );
+    assert.deepEqual(result, {
+      snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID,
+      scanned: 2,
+      available: 1,
+      missing: 1,
+      requeued: 1,
+    });
+    const missing = state.ingest.prepare(
+      "SELECT status,retry_phase,error_code FROM source_backfill_items WHERE id='recovery-missing'",
+    ).get() as Record<string, unknown>;
+    assert.equal(missing.status, "retry_wait");
+    assert.equal(missing.retry_phase, "fetch");
+    assert.equal(missing.error_code, "artifact_recovery.refetch_required");
+    const present = state.ingest.prepare(
+      "SELECT status,retry_phase,error_code FROM source_backfill_items WHERE id='recovery-present'",
+    ).get() as Record<string, unknown>;
+    assert.equal(present.status, "verified");
+    assert.equal(present.retry_phase, null);
+    assert.equal(present.error_code, null);
+    const event = state.ingest.prepare(
+      "SELECT event_type,phase,safe_details FROM source_backfill_item_events WHERE item_id='recovery-missing'",
+    ).get() as Record<string, unknown>;
+    assert.equal(event.event_type, "item_failed");
+    assert.equal(event.phase, "fetch");
+    assert.equal(JSON.parse(String(event.safe_details)).recovery, true);
+  } finally {
+    state.core.close();
+    state.ingest.close();
+    state.ops.close();
+  }
 });
 
 test("Germany 2023 Workflow executor closes one bounded D1 fetch pass end-to-end", async () => {

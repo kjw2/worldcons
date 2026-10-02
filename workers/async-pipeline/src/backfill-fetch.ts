@@ -1,10 +1,20 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { load } from "cheerio";
 import { d1AdminCommandRepository } from "../../../lib/admin/command-control-plane/d1-repository";
 import { canonicalJson } from "../../../lib/backfill/canonical-json";
 import { d1CaseBackfillRepository } from "../../../lib/backfill/d1-repository";
 import type { CaseBackfillAttemptAuthority, CaseBackfillClaimedItem } from "../../../lib/backfill/types";
-import { setRuntimeD1Bindings, type D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
+import {
+  setRuntimeD1Bindings,
+  type D1RuntimeDatabase,
+  type D1RuntimePreparedStatement,
+} from "../../../lib/cloudflare/d1/runtime-binding";
+import {
+  ARTIFACT_BLOB_CONTRACT_VERSION,
+  ArtifactBlobStore,
+  createR2BindingArtifactBlobTransport,
+  type ArtifactBlobR2Bucket,
+} from "../../../lib/storage/blob";
 
 export const GERMANY_2023_BACKFILL_SNAPSHOT_ID = "57948d51-1300-4ff1-86db-be00a6572bc9";
 export const GERMANY_2024_BACKFILL_SNAPSHOT_ID = "d6c7b404-2252-4369-a719-8e17d2dfaba2";
@@ -29,6 +39,7 @@ export interface GermanyBackfillFetchPayload {
   batchLimit?: number;
   maxPasses?: number;
   fetchContractVersion?: string;
+  recoverMissingArtifacts?: true;
   requestedBy?: string;
 }
 
@@ -44,7 +55,7 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const payload = candidate as Record<string, unknown>;
   const keys = Object.keys(payload);
-  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "maxPasses", "fetchContractVersion", "requestedBy"].includes(key))) return null;
+  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "maxPasses", "fetchContractVersion", "recoverMissingArtifacts", "requestedBy"].includes(key))) return null;
   if (
     !isApprovedGermanyBackfillSnapshotId(payload.snapshotId)
     || payload.phase !== "fetch"
@@ -54,6 +65,8 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 10))
     || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 25))
     || (payload.fetchContractVersion !== undefined && (typeof payload.fetchContractVersion !== "string" || payload.fetchContractVersion.trim().length < 1 || payload.fetchContractVersion.length > 120))
+    || (payload.recoverMissingArtifacts !== undefined && payload.recoverMissingArtifacts !== true)
+    || (payload.recoverMissingArtifacts === true && payload.snapshotId !== GERMANY_2024_BACKFILL_SNAPSHOT_ID)
     || (payload.requestedBy !== undefined && (typeof payload.requestedBy !== "string" || payload.requestedBy.trim().length < 1 || payload.requestedBy.length > 160))
   ) return null;
   return payload as unknown as GermanyBackfillFetchPayload;
@@ -64,6 +77,7 @@ export interface GermanyBackfillFetchEnv {
   WORLDCONS_CORE: D1RuntimeDatabase;
   WORLDCONS_INGEST: D1RuntimeDatabase;
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
+  WORLDCONS_RAW?: ArtifactBlobR2Bucket;
   CASE_CATALOG_GERMANY_HISTORY_ENABLED?: string;
 }
 
@@ -108,6 +122,136 @@ async function queryRows<T extends Record<string, unknown>>(db: D1RuntimeDatabas
     throw new Error(result?.error || "case_backfill.workflow_d1_read_failed");
   }
   return result.results;
+}
+
+function d1Changes(value: unknown) {
+  if (!value || typeof value !== "object") return 0;
+  const meta = (value as { meta?: { changes?: unknown } }).meta;
+  const changes = typeof meta?.changes === "number" ? meta.changes : Number(meta?.changes ?? 0);
+  return Number.isFinite(changes) ? changes : 0;
+}
+
+export interface GermanyBackfillMissingArtifactRecoveryResult {
+  snapshotId: string;
+  scanned: number;
+  available: number;
+  missing: number;
+  requeued: number;
+}
+
+export async function recoverGermanyBackfillMissingArtifactsForRefetch(
+  env: GermanyBackfillFetchEnv,
+  snapshotId: string,
+): Promise<GermanyBackfillMissingArtifactRecoveryResult> {
+  if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
+  if (snapshotId !== GERMANY_2024_BACKFILL_SNAPSHOT_ID) throw new Error("case_backfill.artifact_recovery_snapshot_not_approved");
+  if (!env.WORLDCONS_RAW) throw new Error("case_backfill.artifact_recovery_r2_unavailable");
+  if (!env.WORLDCONS_INGEST.batch) throw new Error("case_backfill.artifact_recovery_d1_batch_unavailable");
+
+  const expectedSourcePolicyVersion = germanyBackfillSourcePolicyVersion(snapshotId);
+  const snapshots = await queryRows<Record<string, unknown>>(
+    env.WORLDCONS_INGEST,
+    "SELECT source_key,status,source_policy_version FROM source_inventory_snapshots WHERE id=? LIMIT 1",
+    [snapshotId],
+  );
+  const snapshot = snapshots[0];
+  if (
+    !snapshot
+    || text(snapshot.source_key) !== SOURCE_KEY
+    || text(snapshot.status) !== "closed"
+    || text(snapshot.source_policy_version) !== expectedSourcePolicyVersion
+  ) {
+    throw new Error("case_backfill.germany_snapshot_contract_mismatch");
+  }
+
+  const activeCommands = await queryRows(
+    env.WORLDCONS_OPS,
+    "SELECT r.id FROM admin_command_runs r JOIN admin_commands c ON c.id=r.command_id "
+      + "WHERE c.command_type LIKE 'p1.case-backfill.%' AND r.status IN ('queued','running','retry_wait') LIMIT 1",
+  );
+  if (activeCommands.length > 0) throw new Error("case_backfill.artifact_recovery_command_already_active");
+
+  const claims = await queryRows<{ count: number }>(
+    env.WORLDCONS_INGEST,
+    "SELECT COUNT(*) AS count FROM source_backfill_items WHERE snapshot_id=? AND claimed_attempt_id IS NOT NULL",
+    [snapshotId],
+  );
+  if (Number(claims[0]?.count ?? 0) > 0) throw new Error("case_backfill.residual_claims_present");
+
+  const candidates = await queryRows<Record<string, unknown>>(
+    env.WORLDCONS_INGEST,
+    "SELECT i.id,i.status,i.retry_phase,i.error_code,i.current_normalization_artifact_id,"
+      + "i.verified_normalization_artifact_id,i.published_normalization_artifact_id,"
+      + "n.normalized_output,n.normalized_output_storage_ref,n.normalized_output_size,n.externalization_contract_version "
+      + "FROM source_backfill_items i "
+      + "JOIN source_normalization_artifacts n ON n.id=i.current_normalization_artifact_id AND n.item_id=i.id "
+      + "WHERE i.snapshot_id=? AND i.published_normalization_artifact_id IS NULL "
+      + "AND i.current_normalization_artifact_id=i.verified_normalization_artifact_id "
+      + "AND (i.status='verified' OR (i.status='retry_wait' AND i.retry_phase='publish' AND i.error_code='artifact_blob.not_found')) "
+      + "ORDER BY i.first_seen_at,i.id LIMIT 301",
+    [snapshotId],
+  );
+  if (candidates.length > 300) throw new Error("case_backfill.artifact_recovery_scope_too_large");
+
+  const store = new ArtifactBlobStore(createR2BindingArtifactBlobTransport({ bucket: env.WORLDCONS_RAW }));
+  const missing: Record<string, unknown>[] = [];
+  let available = 0;
+  for (const candidate of candidates) {
+    if (candidate.normalized_output !== null && candidate.normalized_output !== undefined) {
+      available += 1;
+      continue;
+    }
+    const storageRef = text(candidate.normalized_output_storage_ref);
+    const contractVersion = text(candidate.externalization_contract_version);
+    const expectedSize = Number(candidate.normalized_output_size);
+    if (!storageRef || contractVersion !== ARTIFACT_BLOB_CONTRACT_VERSION || !Number.isFinite(expectedSize) || expectedSize < 1) {
+      throw new Error("case_backfill.artifact_recovery_metadata_invalid");
+    }
+    try {
+      const head = await store.head(storageRef);
+      if (head.size !== expectedSize) throw new Error("case_backfill.artifact_recovery_size_mismatch");
+      available += 1;
+    } catch (error) {
+      if (errorText(error) !== "artifact_blob.not_found") throw error;
+      missing.push(candidate);
+    }
+  }
+
+  let requeued = 0;
+  const now = new Date().toISOString();
+  const eligible = "id=? AND snapshot_id=? AND claimed_attempt_id IS NULL AND published_normalization_artifact_id IS NULL "
+    + "AND current_normalization_artifact_id=? AND verified_normalization_artifact_id=? "
+    + "AND (status='verified' OR (status='retry_wait' AND retry_phase='publish' AND error_code='artifact_blob.not_found'))";
+  for (let offset = 0; offset < missing.length; offset += 40) {
+    const statements: D1RuntimePreparedStatement[] = [];
+    for (const candidate of missing.slice(offset, offset + 40)) {
+      const itemId = text(candidate.id);
+      const artifactId = text(candidate.current_normalization_artifact_id);
+      const eventDetails = JSON.stringify({
+        disposition: "recovery",
+        errorCode: "artifact_recovery.refetch_required",
+        recovery: true,
+        reason: "missing_r2_normalization_blob",
+        normalizationArtifactId: artifactId,
+      });
+      statements.push(
+        env.WORLDCONS_INGEST.prepare(
+          "INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at) "
+            + "SELECT ?,id,NULL,'item_failed','fetch',?,? FROM source_backfill_items WHERE " + eligible,
+        ).bind(randomUUID(), eventDetails, now, itemId, snapshotId, artifactId, artifactId),
+        env.WORLDCONS_INGEST.prepare(
+          "UPDATE source_backfill_items SET status='retry_wait',next_attempt_at=?,retry_phase='fetch',"
+            + "error_code='artifact_recovery.refetch_required',"
+            + "error_summary='verified normalization artifact missing from R2; authoritative refetch required',updated_at=? "
+            + "WHERE " + eligible,
+        ).bind(now, now, itemId, snapshotId, artifactId, artifactId),
+      );
+    }
+    const results = await env.WORLDCONS_INGEST.batch(statements);
+    for (let index = 1; index < results.length; index += 2) requeued += d1Changes(results[index]);
+  }
+  if (requeued !== missing.length) throw new Error("case_backfill.artifact_recovery_requeue_incomplete");
+  return { snapshotId, scanned: candidates.length, available, missing: missing.length, requeued };
 }
 
 function officialDecisionUrl(value: string) {

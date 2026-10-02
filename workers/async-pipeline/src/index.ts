@@ -22,6 +22,7 @@ import { runNativeSearchProjectionSync } from "./search-projection-sync";
 import { launch } from "@cloudflare/playwright";
 import {
   parseGermanyBackfillFetchPayload,
+  recoverGermanyBackfillMissingArtifactsForRefetch,
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchPayload,
 } from "./backfill-fetch";
@@ -140,11 +141,25 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
     if (payload.fetchContractVersion && payload.fetchContractVersion !== "bverfg-official-fetch-v1") {
       throw new Error("case_backfill.fetch_contract_not_approved");
     }
+    const recovery = payload.recoverMissingArtifacts
+      ? await step.do("recover-missing-artifacts-for-refetch", {
+          timeout: "10 minutes",
+        }, async () => {
+          try {
+            return await recoverGermanyBackfillMissingArtifactsForRefetch(
+              this.env as unknown as Parameters<typeof recoverGermanyBackfillMissingArtifactsForRefetch>[0],
+              payload.snapshotId,
+            );
+          } catch (error) {
+            throw new NonRetryableError(error instanceof Error ? error.message : String(error));
+          }
+        })
+      : null;
     const maxPasses = payload.maxPasses ?? 1;
     const results: Awaited<ReturnType<typeof runGermanyBackfillFetchPass>>[] = [];
     for (let index = 0; index < maxPasses; index += 1) {
       const passNumber = payload.passNumber + index;
-      const passPayload = { ...payload, passNumber, maxPasses: undefined };
+      const passPayload = { ...payload, passNumber, maxPasses: undefined, recoverMissingArtifacts: undefined };
       const result = await step.do(`run-bounded-backfill-pass-${passNumber}`, {
         timeout: "25 minutes",
       }, async () => {
@@ -164,6 +179,7 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
     return {
       schemaVersion: 1,
       snapshotId: payload.snapshotId,
+      recovery,
       startPassNumber: payload.passNumber,
       lastPassNumber: last?.passNumber ?? payload.passNumber,
       completedPasses: results.length,
