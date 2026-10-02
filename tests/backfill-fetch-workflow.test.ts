@@ -262,7 +262,7 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
   assert.equal(parsed.maxPasses, 4);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, unexpected: true })), null);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 0 })), null);
-  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
+  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({
     ...parsed,
@@ -505,6 +505,7 @@ test("normalize Workflow payload accepts bounded Germany normalize passes only",
   assert.equal(parsed.batchLimit, 25);
   assert.ok(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
+  assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
   assert.equal(parseGermanyBackfillNormalizePayload(JSON.stringify({ ...parsed, parserVersion: "other" })), null);
 });
 
@@ -579,7 +580,7 @@ test("verify Workflow payload accepts bounded Germany verify passes only", () =>
   assert.equal(parsed.maxPasses, 4);
   assert.ok(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, batchLimit: 51 })), null);
-  assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, maxPasses: 26 })), null);
+  assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
   assert.equal(parseGermanyBackfillVerifyPayload(JSON.stringify({ ...parsed, phase: "publish" })), null);
 });
 

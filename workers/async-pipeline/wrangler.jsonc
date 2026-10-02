@@ -7,6 +7,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": { "enabled": true },
+  "limits": { "subrequests": 50000 },
   "browser": { "binding": "BROWSER" },
   "services": [
     { "binding": "WORLDCONS_APP_SERVICE", "service": "worldcons", "entrypoint": "WorldconsOpsService" }

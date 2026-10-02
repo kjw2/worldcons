@@ -63,7 +63,7 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
     || Number(payload.passNumber) < 1
     || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 10))
-    || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 25))
+    || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 10))
     || (payload.fetchContractVersion !== undefined && (typeof payload.fetchContractVersion !== "string" || payload.fetchContractVersion.trim().length < 1 || payload.fetchContractVersion.length > 120))
     || (payload.recoverMissingArtifacts !== undefined && payload.recoverMissingArtifacts !== true)
     || (payload.recoverMissingArtifacts === true && payload.snapshotId !== GERMANY_2024_BACKFILL_SNAPSHOT_ID)

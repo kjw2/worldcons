@@ -161,7 +161,7 @@ export function parseGermanyBackfillNormalizePayload(value: unknown): GermanyBac
     || payload.phase !== "normalize"
     || !Number.isInteger(payload.passNumber) || Number(payload.passNumber) < 1 || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 50))
-    || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 25))
+    || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 10))
     || (payload.parserVersion !== undefined && payload.parserVersion !== PARSER_VERSION)
     || (payload.normalizationContractVersion !== undefined && payload.normalizationContractVersion !== NORMALIZATION_CONTRACT_VERSION)
     || (payload.requestedBy !== undefined && (typeof payload.requestedBy !== "string" || payload.requestedBy.trim().length < 1 || payload.requestedBy.length > 160))
