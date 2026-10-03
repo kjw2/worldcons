@@ -41,6 +41,16 @@ import {
   runGermanyBackfillPublishPass,
   type GermanyBackfillPublishPayload,
 } from "./backfill-publish";
+import {
+  discoverGermanyBackfillInventoryWithLoader,
+  fetchGermanyBackfillInventoryPage,
+  fetchGermanyBackfillRobots,
+  openGermanyBackfill2022Snapshot,
+  parseGermanyBackfillDiscoverPayload,
+  persistGermanyBackfillInventory,
+  startGermanyBackfill2022DiscoverRun,
+  type GermanyBackfillDiscoverPayload,
+} from "./backfill-discover";
 
 async function browserNavigate(input: { url: string; timeoutMs: number; waitUntil: "domcontentloaded"; userAgent: string }, binding: BrowserRun) {
   const browser = await launch(binding, { keep_alive: 60_000 });
@@ -133,6 +143,44 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
 }
 
 type BackfillWorkflowPayload = GermanyBackfillFetchPayload | string;
+
+type BackfillDiscoverWorkflowPayload = GermanyBackfillDiscoverPayload | string;
+
+export class WorldconsBackfillDiscoverWorkflow extends WorkflowEntrypoint<Env, BackfillDiscoverWorkflowPayload> {
+  async run(event: WorkflowEvent<BackfillDiscoverWorkflowPayload>, step: WorkflowStep) {
+    const payload = parseGermanyBackfillDiscoverPayload(event.payload);
+    if (!payload) throw new Error("case_backfill.invalid_discover_workflow_payload");
+    const opened = await step.do("open-or-resume-2022-snapshot", { timeout: "2 minutes" }, () => (
+      openGermanyBackfill2022Snapshot(this.env as unknown as Parameters<typeof openGermanyBackfill2022Snapshot>[0], payload)
+    ));
+    if (opened.alreadyClosed) return { schemaVersion: 1, snapshotId: opened.snapshotId, alreadyClosed: true };
+    const context = await step.do("start-discovery-command", { timeout: "2 minutes" }, () => (
+      startGermanyBackfill2022DiscoverRun(
+        this.env as unknown as Parameters<typeof startGermanyBackfill2022DiscoverRun>[0],payload,opened.snapshotId,
+      )
+    ));
+    const robots = await step.do("discover-robots", { timeout: "5 minutes" }, () => (
+      fetchGermanyBackfillRobots(this.env as unknown as Parameters<typeof fetchGermanyBackfillRobots>[0], context)
+    ));
+    if (!robots.allowed) throw new NonRetryableError("case_backfill.dejure_robots_disallowed");
+    const pageCalls = new Map<number, number>();
+    const inventory = await discoverGermanyBackfillInventoryWithLoader(payload, async (url, page) => {
+      const call = (pageCalls.get(page) ?? 0) + 1;
+      pageCalls.set(page, call);
+      return step.do(`discover-page-${page}-${call}`, { timeout: "5 minutes" }, () => (
+        fetchGermanyBackfillInventoryPage(
+          this.env as unknown as Parameters<typeof fetchGermanyBackfillInventoryPage>[0],context,url,page,
+        )
+      ));
+    });
+    const persisted = await step.do("persist-discovery-manifest", { timeout: "20 minutes" }, () => (
+      persistGermanyBackfillInventory(
+        this.env as unknown as Parameters<typeof persistGermanyBackfillInventory>[0],context,inventory,
+      )
+    ));
+    return { schemaVersion: 1, ...persisted, pageCount: inventory.pageCount, requestCount: inventory.requestCount };
+  }
+}
 
 export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillWorkflowPayload> {
   async run(event: WorkflowEvent<BackfillWorkflowPayload>, step: WorkflowStep) {

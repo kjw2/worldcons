@@ -50,6 +50,11 @@ export interface BverfgInventoryResult {
   coverageEvidence: Record<string, unknown>;
 }
 
+export interface BverfgInventoryLoadedPage {
+  parsed: BverfgInventoryPage;
+  responseHash: string;
+}
+
 function envNumber(name: string, fallback: number) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
@@ -101,7 +106,7 @@ function indexPageUrl(page: number) {
 }
 
 function enumerationArtifact(
-  html: string,
+  responseHash: string,
   parsed: BverfgInventoryPage,
   page: number,
   artifactKind: CaseBackfillEnumerationArtifact["artifactKind"],
@@ -116,7 +121,7 @@ function enumerationArtifact(
     artifactKind,
     sequenceNumber: page,
     requestUrl: indexPageUrl(page),
-    responseHash: createHash(html, 64),
+    responseHash,
     recordManifestHash: parsed.listingFingerprint,
     recordCount: parsed.items.length,
     newestDecisionDate: parsed.newestDecisionDate,
@@ -273,6 +278,7 @@ export async function discoverBverfgInventory(input: {
   checkpoint?: () => Promise<void>;
   requestGovernor?: CrawlerExecutionHooks["requestGovernor"];
   fetchPage?: (url: string, page: number) => Promise<string>;
+  loadPage?: (url: string, page: number) => Promise<BverfgInventoryLoadedPage>;
 }): Promise<BverfgInventoryResult> {
   const scope = germanyBverfgYearScope(input.year, input.currentYear);
   const maxPages = input.maxPages ?? envNumber("BVERFG_BACKFILL_MAX_INDEX_PAGES", 500);
@@ -286,19 +292,25 @@ export async function discoverBverfgInventory(input: {
     requestGovernor: input.requestGovernor,
   };
   const fetchPage = input.fetchPage;
+  const suppliedPageLoader = input.loadPage;
   let robots: RobotsResult | null = null;
   const loadPage = async (page: number) => {
     const url = indexPageUrl(page);
-    if (fetchPage) return fetchPage(url, page);
+    if (suppliedPageLoader) return suppliedPageLoader(url, page);
+    if (fetchPage) {
+      const html = await fetchPage(url, page);
+      return { parsed: parseBverfgDejureInventoryPage(html, page), responseHash: createHash(html, 64) };
+    }
     robots ??= await checkRobotsAllowed(url, hooks);
     if (!robots.allowed) throw new Error("dejure.org robots policy disallows the BVerfG listing.");
-    return fetchInventoryPage(url, robots, diagnostics, hooks);
+    const html = await fetchInventoryPage(url, robots, diagnostics, hooks);
+    return { parsed: parseBverfgDejureInventoryPage(html, page), responseHash: createHash(html, 64) };
   };
 
   const inventory = new Map<string, BverfgInventoryItem>();
   const enumerationArtifacts: CaseBackfillEnumerationArtifact[] = [];
-  const firstPageHtml = await loadPage(1);
-  const firstPage = parseBverfgDejureInventoryPage(firstPageHtml, 1);
+  const firstPageLoaded = await loadPage(1);
+  const firstPage = firstPageLoaded.parsed;
   if (firstPage.items.length === 0) throw new Error("BVerfG external index first page is empty.");
   let pageCount = 0;
   let requestCount = 1;
@@ -310,11 +322,11 @@ export async function discoverBverfgInventory(input: {
 
   for (let page = 1; page <= maxPages; page += 1) {
     assertCrawlerExecution(hooks);
-    const html = page === 1 ? firstPageHtml : await loadPage(page);
-    const parsed = page === 1 ? firstPage : parseBverfgDejureInventoryPage(html, page);
+    const loaded = page === 1 ? firstPageLoaded : await loadPage(page);
+    const parsed = loaded.parsed;
     if (page > 1) requestCount += 1;
     enumerationArtifacts.push(enumerationArtifact(
-      html,
+      loaded.responseHash,
       parsed,
       page,
       "page",
@@ -350,8 +362,8 @@ export async function discoverBverfgInventory(input: {
     throw new Error("BVerfG external index crossed the annual boundary without a scoped decision.");
   }
 
-  const firstPageProbeHtml = await loadPage(1);
-  const firstPageProbe = parseBverfgDejureInventoryPage(firstPageProbeHtml, 1);
+  const firstPageProbeLoaded = await loadPage(1);
+  const firstPageProbe = firstPageProbeLoaded.parsed;
   requestCount += 1;
   if (
     firstPageProbe.listingFingerprint !== firstPage.listingFingerprint
@@ -360,7 +372,7 @@ export async function discoverBverfgInventory(input: {
     throw new Error("BVerfG external index changed during pagination.");
   }
   enumerationArtifacts.push(enumerationArtifact(
-    firstPageProbeHtml,
+    firstPageProbeLoaded.responseHash,
     firstPageProbe,
     1,
     "boundary_probe",

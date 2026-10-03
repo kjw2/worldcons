@@ -358,6 +358,45 @@ test("D1 request governor enforces approved host, concurrency and 30-second star
   }
 });
 
+test("D1 discover request governor accepts the approved external index and rejects other hosts", async () => {
+  const databases = createDatabases();
+  const now = Date.now();
+  const snapshotId = "66666666-6666-4666-8666-666666666666";
+  databases.ingest.prepare(`INSERT INTO source_inventory_snapshots
+    (id,source_key,scope_from,scope_to,document_type,discovery_method,parser_version,source_policy_version,coverage_assurance,expected_count,
+     expected_count_basis,coverage_evidence,discovered_count,manifest_hash,status,exclusions,opened_at,closed_at,created_by,enumeration_manifest_hash)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    snapshotId,"de-bverfg","2022-01-01","2022-12-31","DECISION","external_index_dejure_paged_listing",
+    "bverfg-official-normalize-v2","bverfg-unattended-canary-v2","external_index_assisted",null,null,"{}",0,null,"open","[]",
+    new Date(now - 1000).toISOString(),null,"test",null,
+  );
+  databases.ops.prepare("INSERT INTO admin_commands VALUES (?,?,?)").run(
+    COMMAND_ID,"p1.case-backfill.discover",JSON.stringify({ cohort: "catalog-backfill", snapshotId, passNumber: 1, batchLimit: 100 }),
+  );
+  databases.ops.prepare("INSERT INTO admin_command_runs VALUES (?,?,?,?,?)").run(COMMAND_RUN_ID,COMMAND_ID,"running",ATTEMPT_ID,null);
+  databases.ops.prepare("INSERT INTO admin_command_attempts VALUES (?,?,?,?,?)").run(
+    ATTEMPT_ID,COMMAND_RUN_ID,"running",FENCE,new Date(now + 600_000).toISOString(),
+  );
+  configure(databases);
+  try {
+    const discoverAuthority = authority();
+    const runId = await d1CaseBackfillRepository.beginRun({
+      cohort: "catalog-backfill",snapshotId,phase: "discover",passNumber: 1,batchLimit: 100,
+    }, discoverAuthority);
+    assert.ok(runId);
+    const granted = await d1CaseBackfillRepository.acquireSourceRequestPermit({
+      snapshotId,phase: "discover",authority: discoverAuthority,requestOrigin: "https://dejure.org",requestedLeaseSeconds: 90,
+    });
+    assert.equal(granted.granted, true);
+    await d1CaseBackfillRepository.releaseSourceRequestPermit({ permitId: granted.permitId!, authority: discoverAuthority });
+    await assert.rejects(() => d1CaseBackfillRepository.acquireSourceRequestPermit({
+      snapshotId,phase: "discover",authority: discoverAuthority,requestOrigin: "https://example.com",requestedLeaseSeconds: 90,
+    }), /request_host_not_allowed/);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
 test("D1 fetch artifact and completion transition clear the claim and preserve provenance", async () => {
   const databases = createDatabases();
   seed(databases);

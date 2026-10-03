@@ -368,6 +368,10 @@ function assertSupportedD1Phase(phase: string) {
   }
 }
 
+function assertSupportedD1RunPhase(phase: string) {
+  if (phase !== "discover") assertSupportedD1Phase(phase);
+}
+
 async function claimOne(
   input: CaseBackfillPassInput,
   authority: CaseBackfillAttemptAuthority,
@@ -747,7 +751,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async acquireSourceRequestPermit(input: AcquireSourceRequestPermitInput): Promise<SourceRequestPermitResult> {
-    if (input.phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
+    if (input.phase !== "discover" && input.phase !== "fetch") throw new Error("case_backfill.d1_phase_unsupported");
     const live = await assertLiveAttempt(input.authority, input.snapshotId, input.phase);
     const currentSnapshot = await snapshot(input.snapshotId);
     const policyRow = await sourcePolicyRow(currentSnapshot.sourceKey, currentSnapshot.sourcePolicyVersion);
@@ -757,7 +761,11 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
     if (origin.protocol !== "https:" || origin.origin.toLowerCase() !== input.requestOrigin.toLowerCase()) {
       throw new Error("case_backfill.request_origin_invalid");
     }
-    const allowedHosts = new Set([...jsonArray(policyRow.authority_hosts), ...jsonArray(policyRow.redirect_hosts)]);
+    const allowedHosts = new Set([
+      ...jsonArray(policyRow.authority_hosts),
+      ...jsonArray(policyRow.redirect_hosts),
+      ...(input.phase === "discover" ? jsonArray(policyRow.external_index_hosts) : []),
+    ]);
     if (!allowedHosts.has(origin.hostname.toLowerCase())) throw new Error("case_backfill.request_host_not_allowed");
     const db = requiredBinding("worldcons_ingest");
     const now = new Date();
@@ -819,12 +827,15 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async beginRun(input, authority) {
-    assertSupportedD1Phase(input.phase);
+    assertSupportedD1RunPhase(input.phase);
     const live = await assertLiveAttempt(authority, input.snapshotId, input.phase);
     if (numberValue(live.payload.passNumber) !== input.passNumber) throw new Error("case_backfill.pass_scope_mismatch");
     const db = requiredBinding("worldcons_ingest");
     const currentSnapshot = await snapshot(input.snapshotId);
-    if (currentSnapshot.status !== "closed") throw new Error("case_backfill.snapshot_phase_mismatch");
+    if (
+      (input.phase === "discover" && currentSnapshot.status !== "open")
+      || (input.phase !== "discover" && currentSnapshot.status !== "closed")
+    ) throw new Error("case_backfill.snapshot_phase_mismatch");
     const existing = await rows<Row>(db, `
       SELECT id FROM source_backfill_runs WHERE snapshot_id=? AND phase=? AND pass_number=? ORDER BY started_at LIMIT 2
     `, [input.snapshotId, input.phase, input.passNumber]);
@@ -851,10 +862,13 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   },
 
   async allocatePass(snapshotId, phase) {
-    assertSupportedD1Phase(phase);
+    assertSupportedD1RunPhase(phase);
     const db = requiredBinding("worldcons_ingest");
     const currentSnapshot = await snapshot(snapshotId);
-    if (currentSnapshot.status !== "closed") throw new Error("case_backfill.snapshot_phase_mismatch");
+    if (
+      (phase === "discover" && currentSnapshot.status !== "open")
+      || (phase !== "discover" && currentSnapshot.status !== "closed")
+    ) throw new Error("case_backfill.snapshot_phase_mismatch");
     const row = (await rows<Row>(db, "SELECT COALESCE(MAX(pass_number),0)+1 AS next_pass FROM source_backfill_runs WHERE snapshot_id=? AND phase=?", [snapshotId, phase]))[0];
     return Math.max(1, numberValue(row?.next_pass));
   },
@@ -862,7 +876,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
   async finishRun(input) {
     const runRow = (await rows<Row>(requiredBinding("worldcons_ingest"), "SELECT snapshot_id,phase FROM source_backfill_runs WHERE id=? LIMIT 1", [input.runId]))[0];
     if (!runRow) throw new Error("case_backfill.run_not_found");
-    assertSupportedD1Phase(text(runRow.phase));
+    assertSupportedD1RunPhase(text(runRow.phase));
     await assertLiveAttempt(input.authority, text(runRow.snapshot_id), text(runRow.phase) as CaseBackfillPassInput["phase"]);
     if (input.claimed !== input.succeeded + input.retryableFailed + input.terminalFailed) throw new Error("case_backfill.invalid_run_result");
     const db = requiredBinding("worldcons_ingest");
