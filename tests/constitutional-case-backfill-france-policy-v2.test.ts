@@ -902,5 +902,5 @@ test("France v2 rollout readiness stays disabled by default with zero Catalog wr
   assert.equal(report.catalogWriteEnabled, false);
   assert.equal(report.publicCatalogEnabled, false);
   assert.equal(report.geminiCalls, 0);
-  assert.equal(report.approvedSelectionCount, 32);
+  assert.equal(report.approvedSelectionCount, 33);
 });

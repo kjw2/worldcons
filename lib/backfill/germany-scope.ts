@@ -11,23 +11,28 @@ export const GERMANY_BVERFG_DOCUMENT_TYPE = "DECISION" as const;
  * The 2024 private-shadow canary is the pre-existing baseline approval.
  * `bverfg-unattended-canary-v2` is an additive, immutable successor recorded by
  * migration `20260916110000_constitutional_case_germany_2023_policy_approval.sql`
- * that extends the exact same reviewed source-policy assumptions to one
- * additional year, 2023 only. The successor never widens document type, hosts,
- * robots/terms, discovery method, coverage assurance, or public/AI posture, and
- * 2022 and older remain blocked under the existing expansion guard.
+ * extended the exact same reviewed source-policy assumptions to 2023. The
+ * additive v3 successor recorded on 2026-10-03 extends them to the NEXT SINGLE
+ * YEAR, 2022 only, after re-verifying the official decisions page, Impressum,
+ * and the unchanged robots hash/crawl-delay. The successor never widens
+ * document type, hosts, discovery method, coverage assurance, or public/AI
+ * posture, and 2021 and older remain blocked under the expansion guard.
  */
 export const GERMANY_BVERFG_2024_BASELINE_POLICY_VERSION = "bverfg-unattended-canary-v1";
 export const GERMANY_BVERFG_2023_POLICY_VERSION = "bverfg-unattended-canary-v2";
-export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION = GERMANY_BVERFG_2023_POLICY_VERSION;
-export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_REVIEW_DUE_AT = "2027-03-15";
+export const GERMANY_BVERFG_2022_POLICY_VERSION = "bverfg-unattended-canary-v3";
+export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION = GERMANY_BVERFG_2022_POLICY_VERSION;
+export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_REVIEW_DUE_AT = "2027-04-01";
 export const GERMANY_BVERFG_APPROVED_CANARY_YEAR = 2024;
 export const GERMANY_BVERFG_APPROVED_SHADOW_YEARS: readonly number[] = Object.freeze([
   GERMANY_BVERFG_APPROVED_CANARY_YEAR,
   2023,
+  2022,
 ]);
 export const GERMANY_BVERFG_APPROVED_POLICY_BY_YEAR: Readonly<Record<number, string>> = Object.freeze({
   [GERMANY_BVERFG_APPROVED_CANARY_YEAR]: GERMANY_BVERFG_2024_BASELINE_POLICY_VERSION,
   2023: GERMANY_BVERFG_2023_POLICY_VERSION,
+  2022: GERMANY_BVERFG_2022_POLICY_VERSION,
 });
 
 function explicitTrue(value?: string) {
@@ -47,10 +52,11 @@ export function germanyBverfgYearSupported(
 }
 
 /**
- * Only the two owner-approved private-shadow years are authorized for
+ * Only the three owner-approved private-shadow years are authorized for
  * unattended execution: the pre-existing 2024 canary (`bverfg-unattended-canary-v1`)
- * and the additive 2023 successor (`bverfg-unattended-canary-v2`, review due
- * 2027-03-15). Every other supported year (1998-2022) is an M5 expansion that
+ * plus additive 2023 (`bverfg-unattended-canary-v2`) and 2022
+ * (`bverfg-unattended-canary-v3`, review due 2027-04-01). Every other supported
+ * year (1998-2021) is an M5 expansion that
  * needs another owner-approved policy version. The guard stays fail-closed even
  * when the history flag is true.
  */

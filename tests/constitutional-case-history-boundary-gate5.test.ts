@@ -56,9 +56,9 @@ test("country expansion order is machine-readable and readiness-ordered", () => 
       [7, "United States", "candidate_graph_only"],
     ],
   );
-  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyVersion, "bverfg-unattended-canary-v2");
-  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyReviewDueAt, "2027-03-15");
-  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].approvedYearFrom, 2023);
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyVersion, "bverfg-unattended-canary-v3");
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].policyReviewDueAt, "2027-04-01");
+  assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].approvedYearFrom, 2022);
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[0].approvedYearTo, 2024);
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyVersion, "france-dila-constit-2026-09-v2");
   assert.equal(caseHistoryBoundaryDescriptor().expansionOrder[1].policyReviewDueAt, "2027-03-15");

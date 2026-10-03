@@ -405,7 +405,7 @@ function approvedYearsForTranche(
 
 /**
  * Machine-readable tranche readiness for the whole Gate 5 historical scope.
- * Only the already-recorded Germany 2024 private-shadow canary is approved;
+ * Only the already-recorded Germany 2022-2024 private-shadow tranche is approved;
  * every other tranche is pending or blocked and stays fail-closed.
  */
 export function caseBackfillRolloutReadiness(
