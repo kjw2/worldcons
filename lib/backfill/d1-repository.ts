@@ -25,6 +25,7 @@ import type {
   CaseBackfillSourcePolicy,
 } from "@/lib/backfill/types";
 import type { NormalizedArticle } from "@/lib/sources/types";
+import { canonicalJson } from "@/lib/backfill/canonical-json";
 
 type Row = Record<string, unknown>;
 
@@ -62,6 +63,42 @@ function jsonArray(value: unknown): string[] {
     return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
   } catch {
     return [];
+  }
+}
+
+const SECRET_KEY_PATTERN = /(authorization|cookie|credential|password|private.?key|secret|signature|token)/i;
+const SECRET_VALUE_PATTERN = /(^|[^a-z0-9])(bearer\s+[a-z0-9._~-]{12,}|sk-[a-z0-9_-]{16,}|AIza[a-z0-9_-]{20,})/i;
+
+function jsonHasSecret(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(jsonHasSecret);
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(([key, child]) => (
+      SECRET_KEY_PATTERN.test(key) || jsonHasSecret(child)
+    ));
+  }
+  return typeof value === "string" && SECRET_VALUE_PATTERN.test(value);
+}
+
+function boundedJsonObject(value: unknown, maxBytes: number, code: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
+  const serialized = canonicalJson(value);
+  if (new TextEncoder().encode(serialized).byteLength > maxBytes || jsonHasSecret(value)) throw new Error(code);
+  return serialized;
+}
+
+function validHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function hostname(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
   }
 }
 
@@ -461,11 +498,165 @@ async function unsupported(): Promise<never> {
 }
 
 export const d1CaseBackfillRepository: CaseBackfillRepository = {
-  openSnapshot: unsupported,
-  upsertInventoryItem: unsupported,
-  recordEnumerationArtifact: unsupported,
-  updateSnapshotEvidence: unsupported,
-  closeSnapshot: unsupported,
+  async openSnapshot(input) {
+    if (
+      !/^[a-z][a-z0-9._-]{0,79}$/.test(input.sourceKey)
+      || input.documentType.trim().length < 1 || input.documentType.trim().length > 80
+      || input.discoveryMethod.trim().length < 1 || input.discoveryMethod.trim().length > 120
+      || input.parserVersion.trim().length < 1 || input.parserVersion.trim().length > 120
+      || input.createdBy.trim().length < 1 || input.createdBy.trim().length > 160
+      || !["authoritative_enumerated","authoritative_counted","authoritative_crosschecked","external_index_assisted","best_effort"].includes(input.coverageAssurance)
+      || (input.expectedCount !== null && (!Number.isInteger(input.expectedCount) || input.expectedCount < 0))
+      || ((input.expectedCount === null) !== (input.expectedCountBasis === null))
+    ) throw new Error("case_backfill.invalid_snapshot");
+    await sourcePolicyRow(input.sourceKey, input.sourcePolicyVersion);
+    const coverageEvidence = boundedJsonObject(input.coverageEvidence ?? {}, 16_384, "case_backfill.invalid_coverage_evidence");
+    const exclusions = canonicalJson(input.exclusions ?? []);
+    if (new TextEncoder().encode(exclusions).byteLength > 16_384) throw new Error("case_backfill.invalid_snapshot");
+    const db = requiredBinding("worldcons_ingest");
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await run(db, `INSERT INTO source_inventory_snapshots(
+      id,source_key,scope_from,scope_to,document_type,discovery_method,parser_version,source_policy_version,
+      coverage_assurance,expected_count,expected_count_basis,coverage_evidence,discovered_count,manifest_hash,status,
+      exclusions,opened_at,closed_at,created_by,enumeration_manifest_hash
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,NULL,'open',?,?,NULL,?,NULL)`, [
+      id,input.sourceKey,input.scopeFrom,input.scopeTo,input.documentType.trim(),input.discoveryMethod.trim(),
+      input.parserVersion.trim(),input.sourcePolicyVersion,input.coverageAssurance,input.expectedCount,
+      input.expectedCountBasis?.trim() || null,coverageEvidence,exclusions,now,input.createdBy.trim(),
+    ]);
+    return id;
+  },
+
+  async upsertInventoryItem(input) {
+    const db = requiredBinding("worldcons_ingest");
+    const current = await snapshot(input.snapshotId);
+    if (current.status !== "open") throw new Error("case_backfill.manifest_closed");
+    if (
+      input.stableItemKey.trim().length < 1 || input.stableItemKey.trim().length > 300
+      || !validHttpsUrl(input.discoveredUrl)
+      || input.documentType.trim().length < 1 || input.documentType.trim().length > 80
+    ) throw new Error("case_backfill.invalid_item");
+    const metadata = boundedJsonObject(input.inventoryMetadata ?? {}, 32_768, "case_backfill.invalid_inventory_metadata");
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    await run(db, `INSERT INTO source_backfill_items(
+      id,snapshot_id,source_key,stable_item_key,source_record_id,discovered_url,document_type,discovered_decision_date_hint,
+      status,attempt_count,first_seen_at,last_seen_at,updated_at,inventory_metadata
+    ) VALUES (?,?,?,?,?,?,?,?, 'discovered',0,?,?,?,?)
+    ON CONFLICT(snapshot_id,stable_item_key) DO UPDATE SET
+      source_record_id=excluded.source_record_id,discovered_url=excluded.discovered_url,document_type=excluded.document_type,
+      discovered_decision_date_hint=excluded.discovered_decision_date_hint,last_seen_at=excluded.last_seen_at,
+      updated_at=excluded.updated_at,inventory_metadata=excluded.inventory_metadata`, [
+      id,input.snapshotId,current.sourceKey,input.stableItemKey.trim(),input.sourceRecordId?.trim() || null,input.discoveredUrl,
+      input.documentType.trim(),input.decisionDateHint,now,now,now,metadata,
+    ]);
+    const item = (await rows<Row>(db, `SELECT id FROM source_backfill_items WHERE snapshot_id=? AND stable_item_key=? LIMIT 1`, [
+      input.snapshotId,input.stableItemKey.trim(),
+    ]))[0];
+    if (!item) throw new Error("case_backfill.inventory_write_failed");
+    await run(db, `INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
+      VALUES (?,?,NULL,'item_discovered','discover',?,?)`, [
+      decimalId(),text(item.id),JSON.stringify({ snapshotId: input.snapshotId }),now,
+    ]);
+    return text(item.id);
+  },
+
+  async recordEnumerationArtifact(input) {
+    await assertLiveAttempt(input.authority, input.snapshotId, "discover");
+    const db = requiredBinding("worldcons_ingest");
+    const current = await snapshot(input.snapshotId);
+    if (current.status !== "open") throw new Error("case_backfill.manifest_closed");
+    const policy = await sourcePolicyRow(current.sourceKey, current.sourcePolicyVersion);
+    const artifact = input.artifact;
+    const provider = artifact.providerKey.trim().toLowerCase();
+    const requestHost = hostname(artifact.requestUrl);
+    const allowedHosts = new Set([
+      ...jsonArray(policy.authority_hosts),...jsonArray(policy.redirect_hosts),...jsonArray(policy.external_index_hosts),
+    ].map((entry) => entry.toLowerCase()));
+    if (
+      provider !== requestHost || !allowedHosts.has(requestHost) || !validHttpsUrl(artifact.requestUrl)
+      || !["page","boundary_probe","crosscheck"].includes(artifact.artifactKind)
+      || !Number.isInteger(artifact.sequenceNumber) || artifact.sequenceNumber < 1
+      || !/^[0-9a-f]{64}$/.test(artifact.responseHash) || !/^[0-9a-f]{64}$/.test(artifact.recordManifestHash)
+      || !Number.isInteger(artifact.recordCount) || artifact.recordCount < 0 || artifact.recordCount > 100_000
+      || (artifact.observedLastPage !== null && (!Number.isInteger(artifact.observedLastPage) || artifact.observedLastPage < 1 || artifact.observedLastPage > 100_000))
+    ) throw new Error("case_backfill.invalid_enumeration_artifact");
+    const details = boundedJsonObject(artifact.safeDetails ?? {}, 16_384, "case_backfill.invalid_enumeration_artifact");
+    const existing = (await rows<Row>(db, `SELECT * FROM source_inventory_enumeration_artifacts
+      WHERE snapshot_id=? AND provider_key=? AND artifact_kind=? AND sequence_no=? LIMIT 1`, [
+      input.snapshotId,provider,artifact.artifactKind,artifact.sequenceNumber,
+    ]))[0];
+    const comparable = {
+      request_url: artifact.requestUrl,response_hash: artifact.responseHash,record_manifest_hash: artifact.recordManifestHash,
+      record_count: artifact.recordCount,newest_decision_date: artifact.newestDecisionDate,oldest_decision_date: artifact.oldestDecisionDate,
+      observed_last_page: artifact.observedLastPage,safe_details: details,
+    };
+    if (existing) {
+      for (const [key, value] of Object.entries(comparable)) {
+        if ((existing[key] ?? null) !== (value ?? null)) throw new Error("case_backfill.enumeration_artifact_conflict");
+      }
+      return text(existing.id);
+    }
+    const id = crypto.randomUUID();
+    await run(db, `INSERT INTO source_inventory_enumeration_artifacts(
+      id,snapshot_id,source_key,provider_key,artifact_kind,sequence_no,request_url,response_hash,record_manifest_hash,
+      record_count,newest_decision_date,oldest_decision_date,observed_last_page,safe_details,observed_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
+      id,input.snapshotId,current.sourceKey,provider,artifact.artifactKind,artifact.sequenceNumber,artifact.requestUrl,
+      artifact.responseHash,artifact.recordManifestHash,artifact.recordCount,artifact.newestDecisionDate,artifact.oldestDecisionDate,
+      artifact.observedLastPage,details,new Date().toISOString(),
+    ]);
+    return id;
+  },
+
+  async updateSnapshotEvidence(snapshotId, coverageEvidence, expectedCount = null, expectedCountBasis = null) {
+    if (
+      (expectedCount !== null && (!Number.isInteger(expectedCount) || expectedCount < 0))
+      || ((expectedCount === null) !== (expectedCountBasis === null))
+      || (expectedCountBasis !== null && (expectedCountBasis.trim().length < 1 || expectedCountBasis.trim().length > 200))
+    ) throw new Error("case_backfill.invalid_coverage_evidence");
+    const evidence = boundedJsonObject(coverageEvidence ?? {}, 16_384, "case_backfill.invalid_coverage_evidence");
+    const db = requiredBinding("worldcons_ingest");
+    const result = await run(db, `UPDATE source_inventory_snapshots
+      SET coverage_evidence=?,expected_count=?,expected_count_basis=? WHERE id=? AND status='open'`, [
+      evidence,expectedCount,expectedCountBasis?.trim() || null,snapshotId,
+    ]);
+    if (changes(result) !== 1) throw new Error("case_backfill.snapshot_not_open");
+  },
+
+  async closeSnapshot(snapshotId) {
+    const db = requiredBinding("worldcons_ingest");
+    const snap = (await rows<Row>(db, `SELECT * FROM source_inventory_snapshots WHERE id=? LIMIT 1`, [snapshotId]))[0];
+    if (!snap) throw new Error("case_backfill.snapshot_not_found");
+    if (text(snap.status) === "closed") return this.getSnapshotStatus(snapshotId);
+    if (text(snap.status) !== "open") throw new Error("case_backfill.snapshot_not_open");
+    const items = await rows<Row>(db, `SELECT stable_item_key,source_record_id,discovered_url,document_type,
+      discovered_decision_date_hint,inventory_metadata FROM source_backfill_items WHERE snapshot_id=? ORDER BY stable_item_key`, [snapshotId]);
+    const artifacts = await rows<Row>(db, `SELECT provider_key,artifact_kind,sequence_no,request_url,response_hash,record_manifest_hash,
+      record_count,newest_decision_date,oldest_decision_date,observed_last_page,safe_details
+      FROM source_inventory_enumeration_artifacts WHERE snapshot_id=? ORDER BY provider_key,artifact_kind,sequence_no`, [snapshotId]);
+    const expectedCount = snap.expected_count === null || snap.expected_count === undefined ? null : numberValue(snap.expected_count);
+    if (expectedCount !== null && expectedCount !== items.length) throw new Error("case_backfill.expected_count_mismatch");
+    if (text(snap.coverage_assurance) === "external_index_assisted" && artifacts.length === 0) {
+      throw new Error("case_backfill.enumeration_evidence_required");
+    }
+    const itemManifestHash = await sha256Hex(canonicalJson(items.map((item) => [
+      item.stable_item_key,item.source_record_id,item.discovered_url,item.document_type,item.discovered_decision_date_hint,jsonObject(item.inventory_metadata),
+    ])));
+    const enumerationManifestHash = artifacts.length === 0 ? null : await sha256Hex(canonicalJson(artifacts.map((artifact) => [
+      artifact.provider_key,artifact.artifact_kind,artifact.sequence_no,artifact.request_url,artifact.response_hash,
+      artifact.record_manifest_hash,artifact.record_count,artifact.newest_decision_date,artifact.oldest_decision_date,
+      artifact.observed_last_page,jsonObject(artifact.safe_details),
+    ])));
+    const manifestHash = await sha256Hex(canonicalJson({ itemManifestHash, enumerationManifestHash }));
+    const result = await run(db, `UPDATE source_inventory_snapshots SET discovered_count=?,manifest_hash=?,enumeration_manifest_hash=?,
+      status='closed',closed_at=? WHERE id=? AND status='open'`, [
+      items.length,manifestHash,enumerationManifestHash,new Date().toISOString(),snapshotId,
+    ]);
+    if (changes(result) !== 1) throw new Error("case_backfill.snapshot_close_failed");
+    return this.getSnapshotStatus(snapshotId);
+  },
 
   async getSnapshot(snapshotId) {
     return snapshot(snapshotId);

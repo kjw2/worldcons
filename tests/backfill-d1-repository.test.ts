@@ -139,6 +139,11 @@ function createDatabases() {
       coverage_evidence TEXT,discovered_count INTEGER,manifest_hash TEXT,status TEXT,exclusions TEXT,opened_at TEXT,closed_at TEXT,
       created_by TEXT,enumeration_manifest_hash TEXT
     );
+    CREATE TABLE source_inventory_enumeration_artifacts (
+      id TEXT PRIMARY KEY,snapshot_id TEXT,source_key TEXT,provider_key TEXT,artifact_kind TEXT,sequence_no INTEGER,request_url TEXT,
+      response_hash TEXT,record_manifest_hash TEXT,record_count INTEGER,newest_decision_date TEXT,oldest_decision_date TEXT,
+      observed_last_page INTEGER,safe_details TEXT,observed_at TEXT
+    );
     CREATE TABLE source_backfill_runs (
       id TEXT PRIMARY KEY,snapshot_id TEXT,command_run_id TEXT,p1_attempt_id TEXT,p1_fencing_token TEXT,phase TEXT,pass_number INTEGER,
       status TEXT,claimed_count INTEGER DEFAULT 0,succeeded_count INTEGER DEFAULT 0,retryable_failed_count INTEGER DEFAULT 0,
@@ -154,6 +159,9 @@ function createDatabases() {
       error_code TEXT,error_summary TEXT,waived_by TEXT,waived_at TEXT,waiver_reason TEXT,waiver_expires_at TEXT,first_seen_at TEXT,last_seen_at TEXT,
       updated_at TEXT,inventory_metadata TEXT DEFAULT '{}'
     );
+    CREATE UNIQUE INDEX source_backfill_items_snapshot_stable_key_uidx ON source_backfill_items(snapshot_id,stable_item_key);
+    CREATE UNIQUE INDEX source_inventory_enumeration_artifacts_identity_uidx
+      ON source_inventory_enumeration_artifacts(snapshot_id,provider_key,artifact_kind,sequence_no);
     CREATE TABLE source_fetch_artifacts (
       id TEXT PRIMARY KEY,item_id TEXT,source_policy_version TEXT,authority_url TEXT,http_status INTEGER,response_headers_allowlist TEXT,
       source_etag TEXT,source_last_modified_at TEXT,payload_hash TEXT,payload_size TEXT,replayability TEXT,immutable_storage_ref TEXT,
@@ -237,6 +245,64 @@ test("D1 backfill snapshot/status reads preserve the existing metric semantics",
     assert.equal(status.discoveredTotal, 1);
     assert.equal(status.terminalTotal, 0);
     assert.equal(status.processingCompletion, 0);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 discovery opens, idempotently records inventory evidence, and closes a deterministic snapshot", async () => {
+  const databases = createDatabases();
+  const now = Date.now();
+  const discoverSnapshotId = "55555555-5555-4555-8555-555555555555";
+  databases.ops.prepare("INSERT INTO admin_commands VALUES (?,?,?)").run(
+    COMMAND_ID,"p1.case-backfill.discover",JSON.stringify({ cohort: "catalog-backfill", snapshotId: discoverSnapshotId, passNumber: 1, batchLimit: 100 }),
+  );
+  databases.ops.prepare("INSERT INTO admin_command_runs VALUES (?,?,?,?,?)").run(COMMAND_RUN_ID,COMMAND_ID,"running",ATTEMPT_ID,null);
+  databases.ops.prepare("INSERT INTO admin_command_attempts VALUES (?,?,?,?,?)").run(
+    ATTEMPT_ID,COMMAND_RUN_ID,"running",FENCE,new Date(now + 600_000).toISOString(),
+  );
+  configure(databases);
+  try {
+    const snapshotId = await d1CaseBackfillRepository.openSnapshot({
+      sourceKey: "de-bverfg",scopeFrom: "2023-01-01",scopeTo: "2023-12-31",documentType: "DECISION",
+      discoveryMethod: "external_index_dejure_paged_listing",parserVersion: "bverfg-official-normalize-v2",
+      sourcePolicyVersion: "bverfg-unattended-canary-v2",coverageAssurance: "external_index_assisted",
+      expectedCount: null,expectedCountBasis: null,coverageEvidence: {},exclusions: [],createdBy: "test",
+    });
+    assert.notEqual(snapshotId, discoverSnapshotId);
+    // Scope the live discover command to the generated snapshot, mirroring the control plane submit path.
+    databases.ops.prepare("UPDATE admin_commands SET payload_ref=? WHERE id=?").run(
+      JSON.stringify({ cohort: "catalog-backfill", snapshotId, passNumber: 1, batchLimit: 100 }),COMMAND_ID,
+    );
+    const itemId1 = await d1CaseBackfillRepository.upsertInventoryItem({
+      snapshotId,stableItemKey: "dejure:2023-01-10:1bvr123",sourceRecordId: null,discoveredUrl: "https://dejure.org/dienste/vernetzung/rechtsprechung?Text=1%20BvR%201%2F23",
+      documentType: "DECISION",decisionDateHint: "2023-01-10",inventoryMetadata: { docket: "1 BvR 1/23", officialUrlCandidates: [] },
+    });
+    const itemId2 = await d1CaseBackfillRepository.upsertInventoryItem({
+      snapshotId,stableItemKey: "dejure:2023-01-10:1bvr123",sourceRecordId: null,discoveredUrl: "https://dejure.org/dienste/vernetzung/rechtsprechung?Text=1%20BvR%201%2F23",
+      documentType: "DECISION",decisionDateHint: "2023-01-10",inventoryMetadata: { docket: "1 BvR 1/23", officialUrlCandidates: [] },
+    });
+    assert.equal(itemId2, itemId1);
+    const authority = { attemptId: ATTEMPT_ID, runId: COMMAND_RUN_ID, fencingToken: FENCE, leaseExpiresAt: new Date(now + 600_000).toISOString() };
+    const artifact = {
+      providerKey: "dejure.org",artifactKind: "page" as const,sequenceNumber: 1,requestUrl: "https://dejure.org/dienste/vernetzung/rechtsprechung?gericht=BVerfG&jahr=2023",
+      responseHash: "a".repeat(64),recordManifestHash: "b".repeat(64),recordCount: 1,newestDecisionDate: "2023-01-10",
+      oldestDecisionDate: "2023-01-10",observedLastPage: 1,safeDetails: { page: 1, storesExternalText: false },
+    };
+    const artifactId1 = await d1CaseBackfillRepository.recordEnumerationArtifact({ snapshotId, authority, artifact });
+    const artifactId2 = await d1CaseBackfillRepository.recordEnumerationArtifact({ snapshotId, authority, artifact });
+    assert.equal(artifactId2, artifactId1);
+    await d1CaseBackfillRepository.updateSnapshotEvidence(snapshotId, { method: "external_index_dejure_paged_listing" }, 1, "closed inventory count");
+    const closed = await d1CaseBackfillRepository.closeSnapshot(snapshotId);
+    assert.equal(closed.snapshotStatus, "closed");
+    assert.equal(closed.discoveredTotal, 1);
+    assert.match(closed.manifestHash ?? "", /^[0-9a-f]{64}$/);
+    const row = databases.ingest.prepare("SELECT enumeration_manifest_hash FROM source_inventory_snapshots WHERE id=?").get(snapshotId) as Record<string, unknown>;
+    assert.match(String(row.enumeration_manifest_hash), /^[0-9a-f]{64}$/);
+    await assert.rejects(() => d1CaseBackfillRepository.upsertInventoryItem({
+      snapshotId,stableItemKey: "new",sourceRecordId: null,discoveredUrl: "https://dejure.org/new",documentType: "DECISION",
+      decisionDateHint: "2023-02-01",inventoryMetadata: {},
+    }), /manifest_closed/);
   } finally {
     databases.core.close(); databases.ingest.close(); databases.ops.close();
   }
