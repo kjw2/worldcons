@@ -18,8 +18,10 @@ import {
 
 export const GERMANY_2023_BACKFILL_SNAPSHOT_ID = "57948d51-1300-4ff1-86db-be00a6572bc9";
 export const GERMANY_2024_BACKFILL_SNAPSHOT_ID = "d6c7b404-2252-4369-a719-8e17d2dfaba2";
+export const GERMANY_2022_BACKFILL_SNAPSHOT_ID = "57120515-fb62-4868-a897-8d6d1df8a6b7";
 
 export function germanyBackfillSourcePolicyVersion(value: unknown): string | null {
+  if (value === GERMANY_2022_BACKFILL_SNAPSHOT_ID) return "bverfg-unattended-canary-v3";
   if (value === GERMANY_2023_BACKFILL_SNAPSHOT_ID) return "bverfg-unattended-canary-v2";
   if (value === GERMANY_2024_BACKFILL_SNAPSHOT_ID) return "bverfg-unattended-canary-v1";
   return null;
