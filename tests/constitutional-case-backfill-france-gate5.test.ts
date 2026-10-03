@@ -420,6 +420,32 @@ test("bounded governed fetch rejects declared and streamed overflow and releases
   }
 });
 
+test("bounded governed fetch blocks redirects with manual redirect handling and releases the permit", async () => {
+  const server = createServer((_request, response) => {
+    response.statusCode = 302;
+    response.setHeader("location", "/target");
+    response.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  let released = 0;
+  const governor = {
+    async acquire() {
+      return { async release() { released += 1; } };
+    },
+  };
+  try {
+    await assert.rejects(
+      governedBoundedFetch(`http://127.0.0.1:${address.port}/redirect`, {}, 1024, { requestGovernor: governor }),
+      /crawler\.request_governor_redirect_blocked/,
+    );
+    assert.equal(released, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("France governed fetch is Cheerio-only and declares both network phases", () => {
   const governor = { acquire: async () => ({ release: async () => undefined }) };
   assert.deepEqual(franceSpiderTransportOptions({

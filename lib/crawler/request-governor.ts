@@ -93,7 +93,11 @@ export async function governedBufferedFetch(
 ) {
   if (!hooks?.requestGovernor) return fetch(url, init);
   return withCrawlerRequestPermit(url, hooks, async () => {
-    const response = await fetch(url, { ...init, redirect: "error" });
+    const response = await fetch(url, { ...init, redirect: "manual" });
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw new Error("crawler.request_governor_redirect_blocked");
+    }
     const body = await response.arrayBuffer();
     return bufferedResponse(response, body);
   });
@@ -146,8 +150,12 @@ export async function governedBoundedFetch(
   return withCrawlerRequestPermit(url, hooks, async () => {
     const response = await fetch(url, {
       ...init,
-      redirect: hooks?.requestGovernor ? "error" : init.redirect,
+      redirect: hooks?.requestGovernor ? "manual" : init.redirect,
     });
+    if (hooks?.requestGovernor && response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      throw new Error("crawler.request_governor_redirect_blocked");
+    }
     const body = await boundedResponseBody(response, maxResponseBytes);
     return bufferedResponse(response, body);
   });
