@@ -27,7 +27,7 @@ import {
   discoverBverfgInventory,
   type BverfgInventoryResult,
 } from "@/lib/crawlee/bverfg-inventory";
-import { isBverfgOfficialDecisionUrl } from "@/lib/crawlee/bverfg-spider";
+import { isBverfgOfficialDecisionUrl } from "@/lib/crawlee/bverfg-url";
 import type { CrawlerRequestGovernor } from "@/lib/crawler/types";
 import { canonicalizeUrl } from "@/lib/utils/canonical-url";
 

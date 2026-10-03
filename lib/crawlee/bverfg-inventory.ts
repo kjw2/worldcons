@@ -10,7 +10,7 @@ import { germanyBverfgYearScope } from "@/lib/backfill/germany-scope";
 import {
   BVERFG_BASE_URL,
   bverfgOfficialUrlCandidatesFromDocket,
-} from "@/lib/crawlee/bverfg-spider";
+} from "@/lib/crawlee/bverfg-url";
 import { createHash } from "@/lib/utils/hash";
 import type { CaseBackfillEnumerationArtifact } from "@/lib/backfill/types";
 

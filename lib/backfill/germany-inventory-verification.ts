@@ -3,7 +3,7 @@ import {
   discoverBverfgInventory,
   type BverfgInventoryResult,
 } from "@/lib/crawlee/bverfg-inventory";
-import { isBverfgOfficialDecisionUrl } from "@/lib/crawlee/bverfg-spider";
+import { isBverfgOfficialDecisionUrl } from "@/lib/crawlee/bverfg-url";
 import { createHash } from "@/lib/utils/hash";
 
 const SAFE_DETAIL_KEYS = new Set([
