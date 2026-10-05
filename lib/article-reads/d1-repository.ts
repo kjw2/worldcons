@@ -17,6 +17,8 @@ import {
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { D1ShadowTruncatedError } from "@/lib/reference-reads/d1-repository";
 import type { SupabaseTagRow } from "@/lib/reference-reads/shared";
+import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
+import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication/read-compatibility";
 import { rangeStartIso } from "@/lib/utils/dates";
 import type { ArticleDetail, ArticleListItem, ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import type {
@@ -62,6 +64,11 @@ export interface D1ArticleReadDependencies {
   binding?: D1RuntimeDatabase | null;
   /** Bounded shadow read limit. */
   maxRows?: number;
+  /**
+   * Environment used for the source-only Case Catalog visibility flags. Defaults
+   * to `process.env`, matching every other flag reader in the runtime.
+   */
+  environment?: Record<string, string | undefined>;
 }
 
 const LIST_COLUMNS = [
@@ -232,6 +239,16 @@ export function createD1ArticleReadRepository(
 ): ArticleReadRepository {
   const maxRows = dependencies.maxRows ?? D1_SHADOW_DEFAULT_MAX_ROWS;
   const tables = tableByName();
+  const environment = dependencies.environment ?? process.env;
+
+  /**
+   * Source-only Case Catalog visibility. Requires both the P3 V4 read switch
+   * and the public Catalog switch; when either is off the legacy `articles`
+   * behavior is preserved exactly.
+   */
+  function catalogSourceOnlyEnabled() {
+    return articlePublicationV4ReadsEnabled(environment) && caseCatalogPublicReadsEnabled(environment);
+  }
 
   function requireTable(name: string): D1TableDefinition {
     const table = tables.get(name);
@@ -283,6 +300,119 @@ export function createD1ArticleReadRepository(
       if (rows.length > maxRows) break;
     }
     return rows;
+  }
+
+  /**
+   * Reads the published Catalog publication anchors keyed by article id. The
+   * Catalog schema permits at most one publication head per article, so the
+   * first published row wins; an overflow is a fail-closed skip, never a
+   * partial result.
+   */
+  async function publishedCatalogAnchors(
+    binding: D1RuntimeDatabase,
+  ): Promise<Map<string, Record<string, unknown>>> {
+    const rows = await read(binding, "case_catalog_publications_v1", {
+      select: ["article_id", "source_anchor_version_id"],
+      where: [{ column: "state", value: "published" }],
+      limit: maxRows + 1,
+    });
+    if (rows.length > maxRows) throw new D1ShadowTruncatedError("publishedCatalogAnchors");
+    const anchors = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      const articleId = typeof row.article_id === "string" ? row.article_id : null;
+      if (articleId && !anchors.has(articleId)) anchors.set(articleId, row);
+    }
+    return anchors;
+  }
+
+  /**
+   * Derives the fail-closed V4 state for a published source-only Catalog row
+   * from its `case_metadata_v1` policy and its authoritative anchor snapshot.
+   * It never invents a summary, never claims `summarized`, and never exposes
+   * text the policy does not allow.
+   */
+  async function annotateCatalogRows(
+    binding: D1RuntimeDatabase,
+    rows: Record<string, unknown>[],
+    anchors: Map<string, Record<string, unknown>>,
+  ): Promise<Record<string, unknown>[]> {
+    if (rows.length === 0) return [];
+    const articleIds = uniqueStrings(rows.map((row) => row.id));
+
+    const metadataRows = await readByInBatches(binding, "case_metadata_v1", "article_id", articleIds, {
+      select: ["article_id", "text_access_policy", "enrichment_status", "enrichment_freshness"],
+      limit: maxRows + 1,
+    });
+    if (metadataRows.length > maxRows) throw new D1ShadowTruncatedError("annotateCatalogRows");
+    const metadataByArticle = new Map(metadataRows.map((row) => [String(row.article_id), row]));
+
+    const anchorIds = uniqueStrings(
+      articleIds.map((articleId) => {
+        const anchor = anchors.get(articleId);
+        return anchor?.source_anchor_version_id;
+      }),
+    );
+    const versionRows = await readByInBatches(binding, "article_content_versions_p3", "id", anchorIds, {
+      select: ["id", "case_metadata_snapshot"],
+      limit: maxRows + 1,
+    });
+    if (versionRows.length > maxRows) throw new D1ShadowTruncatedError("annotateCatalogRows");
+    const snapshotById = new Map(versionRows.map((row) => [String(row.id), asRecord(row.case_metadata_snapshot)]));
+
+    const reprocessingRows = await readByInBatches(binding, "article_publications_p3", "article_id", articleIds, {
+      select: ["article_id"],
+      where: [{ column: "state", value: "published" }],
+      limit: maxRows + 1,
+    });
+    if (reprocessingRows.length > maxRows) throw new D1ShadowTruncatedError("annotateCatalogRows");
+    const reprocessing = new Set(
+      reprocessingRows.filter((row) => typeof row.article_id === "string").map((row) => String(row.article_id)),
+    );
+
+    return rows.map((row) => {
+      const articleId = typeof row.id === "string" ? row.id : "";
+      const metadata = metadataByArticle.get(articleId);
+      const anchorId = String(anchors.get(articleId)?.source_anchor_version_id ?? "");
+      const snapshot = snapshotById.get(anchorId) ?? null;
+
+      const policy = typeof metadata?.text_access_policy === "string" ? metadata.text_access_policy : "metadata_only";
+      const cleaned = typeof row.cleaned_text === "string" ? row.cleaned_text : "";
+      const exposesText = policy === "full" || policy === "excerpt";
+      const cleanedText =
+        policy === "full" ? (cleaned || null) : policy === "excerpt" ? (cleaned ? cleaned.slice(0, 2000) : null) : null;
+
+      const snapshotSource = asRecord(snapshot?.sourceMetadata);
+      const baseMetadata = asRecord(row.source_metadata) ?? {};
+      const sourceMetadata = {
+        ...(snapshotSource ?? baseMetadata),
+        collection: {
+          publishable: true,
+          sourceTextAvailable: exposesText && cleaned.length > 0,
+          sourceUrlVerified: true,
+          robotsDisallowed: false,
+          strategy: "catalog",
+        },
+        catalog: { sourceOnly: true, authorityVerified: true, sourceAnchorVersionId: anchorId || null },
+      };
+
+      const stale = row.catalog_ai_stale_v4 === true || row.catalog_ai_stale_v4 === 1 || row.catalog_ai_stale_v4 === "1";
+
+      return {
+        ...row,
+        status: exposesText && cleaned.length > 0 ? "cleaned" : "metadata_only",
+        korean_title: null,
+        summarized_at: null,
+        summary_json: null,
+        raw_text: null,
+        cleaned_text: cleanedText,
+        source_metadata: sourceMetadata,
+        enrichment_status: typeof metadata?.enrichment_status === "string" ? metadata.enrichment_status : "source_only",
+        enrichment_freshness:
+          typeof metadata?.enrichment_freshness === "string" ? metadata.enrichment_freshness : null,
+        summary_status: stale || reprocessing.has(articleId) ? "reprocessing" : "pending",
+        summary_available: false,
+      };
+    });
   }
 
   async function hydrateArticleTags(
@@ -404,17 +534,20 @@ export function createD1ArticleReadRepository(
       if (taggedArticleIds.length === 0) return empty();
     }
 
-    const where: D1RuntimeReadPredicate[] = [];
-    if (!filters.includeUnpublished) {
-      where.push({ column: "status", value: "summarized" });
-      where.push({ column: "catalog_ai_stale_v4", value: 0 });
-    }
-    if (filters.source) where.push({ column: "source_key", value: filters.source });
-    if (filters.jurisdiction) where.push({ column: "jurisdiction", value: filters.jurisdiction });
-    if (filters.type) where.push({ column: "content_type", value: filters.type });
-    if (filters.language) where.push({ column: "original_language", value: filters.language });
+    const baseWhere: D1RuntimeReadPredicate[] = [];
+    if (filters.source) baseWhere.push({ column: "source_key", value: filters.source });
+    if (filters.jurisdiction) baseWhere.push({ column: "jurisdiction", value: filters.jurisdiction });
+    if (filters.type) baseWhere.push({ column: "content_type", value: filters.type });
+    if (filters.language) baseWhere.push({ column: "original_language", value: filters.language });
     const startIso = rangeStartIso(filters.range);
-    if (startIso) where.push({ column: "original_published_at", op: "gte", value: startIso });
+    if (startIso) baseWhere.push({ column: "original_published_at", op: "gte", value: startIso });
+    const where: D1RuntimeReadPredicate[] = filters.includeUnpublished
+      ? [...baseWhere]
+      : [
+          { column: "status", value: "summarized" },
+          { column: "catalog_ai_stale_v4", value: 0 },
+          ...baseWhere,
+        ];
 
     let constrainedArticleIds: string[] | null = null;
     if (taggedArticleIds) {
@@ -439,9 +572,40 @@ export function createD1ArticleReadRepository(
           limit: maxRows + 1,
         });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listArticles");
-    if (constrainedArticleIds) rows.sort(compareListRows);
 
-    const matched = filters.includeUnpublished ? rows : rows.filter((row) => isTextuallyPublishable(row));
+    // Source-only Case Catalog rows are base `articles` rows that are not
+    // summarized but are published through `case_catalog_publications_v1`. They
+    // are only visible when both the P3 V4 read and the public Catalog switches
+    // are on, and they never replace a legacy summarized row for the same id.
+    let catalogRows: Record<string, unknown>[] = [];
+    if (!filters.includeUnpublished && catalogSourceOnlyEnabled()) {
+      const anchors = await publishedCatalogAnchors(binding);
+      if (anchors.size > 0) {
+        let candidateIds = [...anchors.keys()];
+        if (constrainedArticleIds) {
+          const allowed = new Set(constrainedArticleIds);
+          candidateIds = candidateIds.filter((id) => allowed.has(id));
+        }
+        if (candidateIds.length > 0) {
+          const rawCatalog = await readByInBatches(binding, "articles", "id", candidateIds, {
+            select: [...LIST_COLUMNS, "cleaned_text"],
+            where: baseWhere,
+            orderBy: LIST_ORDER,
+            limit: maxRows + 1,
+          });
+          if (rawCatalog.length > maxRows) throw new D1ShadowTruncatedError("listArticles");
+          catalogRows = await annotateCatalogRows(binding, rawCatalog, anchors);
+        }
+      }
+    }
+
+    const legacyMatched = filters.includeUnpublished ? rows : rows.filter((row) => isTextuallyPublishable(row));
+    const legacyIds = new Set(legacyMatched.map((row) => (typeof row.id === "string" ? row.id : "")));
+    const matched = filters.includeUnpublished
+      ? rows
+      : [...legacyMatched, ...catalogRows.filter((row) => !legacyIds.has(typeof row.id === "string" ? row.id : ""))];
+    matched.sort(compareListRows);
+
     const from = (page - 1) * pageSize;
     const pageRows = matched.slice(from, from + pageSize);
     const hydrated = await hydrateArticleTags(binding, pageRows);
@@ -465,16 +629,38 @@ export function createD1ArticleReadRepository(
     options: ArticleReadOptions = {},
   ): Promise<ArticleDetail | null> {
     const binding = requireCore(dependencies);
-    const where: D1RuntimeReadPredicate[] = [{ column: "slug", value: slug }];
-    if (!options.includeUnpublished) {
-      where.push({ column: "status", value: "summarized" });
-      where.push({ column: "catalog_ai_stale_v4", value: 0 });
-    }
     const columns = select === "detail" ? DETAIL_COLUMNS : select === "page" ? PAGE_COLUMNS : LIST_COLUMNS;
-    const rows = await read(binding, "articles", { select: [...columns], where, limit: 1 });
-    const row = rows[0];
+    const publicWhere: D1RuntimeReadPredicate[] = options.includeUnpublished
+      ? []
+      : [
+          { column: "status", value: "summarized" },
+          { column: "catalog_ai_stale_v4", value: 0 },
+        ];
+    const rows = await read(binding, "articles", {
+      select: [...columns],
+      where: [{ column: "slug", value: slug }, ...publicWhere],
+      limit: 1,
+    });
+    let row = rows[0];
+    let catalogDerived = false;
+    if (!row && !options.includeUnpublished && catalogSourceOnlyEnabled()) {
+      const candidateRows = await read(binding, "articles", {
+        select: [...columns, "cleaned_text"],
+        where: [{ column: "slug", value: slug }],
+        limit: 1,
+      });
+      const candidate = candidateRows[0];
+      if (candidate && typeof candidate.id === "string") {
+        const anchors = await publishedCatalogAnchors(binding);
+        if (anchors.has(candidate.id)) {
+          const annotated = await annotateCatalogRows(binding, [candidate], anchors);
+          row = annotated[0];
+          catalogDerived = true;
+        }
+      }
+    }
     if (!row) return null;
-    if (!options.includeUnpublished) {
+    if (!options.includeUnpublished && !catalogDerived) {
       if (!isTextuallyPublishable(row)) return null;
       if (row.source_metadata !== undefined && !isPublishableListItem(row as unknown as SupabaseArticleRow)) return null;
     }
@@ -487,15 +673,37 @@ export function createD1ArticleReadRepository(
     options: ArticleReadOptions = {},
   ): Promise<ArticleSourceTextRecord | null> {
     const binding = requireCore(dependencies);
-    const where: D1RuntimeReadPredicate[] = [{ column: "slug", value: slug }];
-    if (!options.includeUnpublished) {
-      where.push({ column: "status", value: "summarized" });
-      where.push({ column: "catalog_ai_stale_v4", value: 0 });
+    const publicWhere: D1RuntimeReadPredicate[] = options.includeUnpublished
+      ? []
+      : [
+          { column: "status", value: "summarized" },
+          { column: "catalog_ai_stale_v4", value: 0 },
+        ];
+    const rows = await read(binding, "articles", {
+      select: [...SOURCE_TEXT_COLUMNS],
+      where: [{ column: "slug", value: slug }, ...publicWhere],
+      limit: 1,
+    });
+    let row = rows[0];
+    let catalogDerived = false;
+    if (!row && !options.includeUnpublished && catalogSourceOnlyEnabled()) {
+      const candidateRows = await read(binding, "articles", {
+        select: ["id", ...SOURCE_TEXT_COLUMNS],
+        where: [{ column: "slug", value: slug }],
+        limit: 1,
+      });
+      const candidate = candidateRows[0];
+      if (candidate && typeof candidate.id === "string") {
+        const anchors = await publishedCatalogAnchors(binding);
+        if (anchors.has(candidate.id)) {
+          const annotated = await annotateCatalogRows(binding, [candidate], anchors);
+          row = annotated[0];
+          catalogDerived = true;
+        }
+      }
     }
-    const rows = await read(binding, "articles", { select: [...SOURCE_TEXT_COLUMNS], where, limit: 1 });
-    const row = rows[0];
     if (!row) return null;
-    if (!options.includeUnpublished) {
+    if (!options.includeUnpublished && !catalogDerived) {
       if (!isTextuallyPublishable(row)) return null;
       if (row.source_metadata !== undefined && !isPublishableListItem(row as unknown as SupabaseArticleRow)) return null;
     }

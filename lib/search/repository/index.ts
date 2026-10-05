@@ -1,7 +1,9 @@
 import { getRuntimeD1Binding, getRuntimeSearchVectorBinding } from "@/lib/cloudflare/d1/runtime-binding";
+import { runD1CaseCatalogSearch } from "@/lib/cloudflare/search-catalog/case-catalog-search";
 import { runVectorRankedSearchPage } from "@/lib/cloudflare/search-vector/ranked";
 import { failClosedSearchRepository } from "@/lib/search/repository/fail-closed-repository";
 import type {
+  CatalogCaseSearchRpcRequest,
   ExactCaseArticleIdRequest,
   SearchRepository,
   RankedSearchPageRpcRequest,
@@ -15,7 +17,7 @@ export * from "@/lib/search/repository/types";
  * Cloudflare D1/Vectorize are the only search authority. Missing bindings fail
  * closed rather than selecting another database backend.
  */
-function createD1SearchRepository(): SearchRepository {
+export function createD1SearchRepository(): SearchRepository {
   const search = getRuntimeD1Binding("worldcons_search");
   const core = getRuntimeD1Binding("worldcons_core");
   const vector = getRuntimeSearchVectorBinding();
@@ -33,8 +35,9 @@ function createD1SearchRepository(): SearchRepository {
         },
       });
     },
-    async catalogCaseSearchRpc() {
-      return { status: "unavailable" };
+    async catalogCaseSearchRpc(request: CatalogCaseSearchRpcRequest) {
+      if (!core) return { status: "unavailable" };
+      return runD1CaseCatalogSearch({ binding: core, request });
     },
     async fullTextRankedIdsRpc() {
       return null;

@@ -1,0 +1,611 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  clearRuntimeD1Bindings,
+  setRuntimeD1Bindings,
+  type D1RuntimeDatabase,
+  type D1RuntimePreparedStatement,
+} from "../lib/cloudflare/d1/runtime-binding";
+import { runD1CaseCatalogSearch } from "../lib/cloudflare/search-catalog/case-catalog-search";
+import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
+import { catalogCaseSearch, isCatalogSearchCursorError } from "../lib/search/case-catalog";
+import type { CatalogCaseSearchRpcRequest } from "../lib/search/repository/types";
+
+/**
+ * Focused regression coverage for the source-only Case Catalog D1 visibility
+ * slice:
+ *
+ * - D1 article reads expose published `case_catalog_publications_v1` rows that
+ *   are not summarized only when the P3 V4 read and public Catalog flags are on;
+ * - the derived V4 state never fakes `summarized` or an AI summary;
+ * - `SearchRepository.catalogCaseSearchRpc` serves the `schemaVersion=2`
+ *   payload with exact-identity/lexical/latest modes, filters, and an
+ *   invalid/mismatch/expired keyset cursor.
+ *
+ * The fake D1 evaluates the guarded SQL `runD1RuntimeRead` emits (eq/neq/gte/in,
+ * order by, limit, offset).
+ */
+
+const IDENT = "[a-z_][a-z0-9_]*";
+
+function evaluate(sql: string, params: unknown[], tables: Record<string, Record<string, unknown>[]>) {
+  const fromMatch = new RegExp(` from (${IDENT})`).exec(sql);
+  const table = fromMatch?.[1] ?? "";
+  let rows = (tables[table] ?? []).map((row) => ({ ...row }));
+  let p = 0;
+
+  const whereMatch = new RegExp(` where (.*?)(?= order by | limit | offset |$)`).exec(sql);
+  if (whereMatch) {
+    for (const predicate of whereMatch[1].split(" and ")) {
+      const inMatch = new RegExp(`^(${IDENT}) in \\(([?](, \\?)*)\\)$`).exec(predicate);
+      const cmpMatch = new RegExp(`^(${IDENT}) (=|>=|!=) \\?$`).exec(predicate);
+      if (inMatch) {
+        const values = params.slice(p, p + inMatch[2].split(",").length);
+        p += values.length;
+        rows = rows.filter((row) => values.includes(row[inMatch[1]]));
+      } else if (cmpMatch) {
+        const value = params[p];
+        p += 1;
+        const [, column, op] = cmpMatch;
+        rows = rows.filter((row) => {
+          if (op === "=") return row[column] === value;
+          if (op === "!=") return row[column] !== value;
+          return row[column] != null && String(row[column]) >= String(value);
+        });
+      } else {
+        throw new Error(`fake D1 cannot evaluate predicate: ${predicate}`);
+      }
+    }
+  }
+
+  const orderMatch = new RegExp(` order by (.*?)(?= limit | offset |$)`).exec(sql);
+  if (orderMatch) {
+    const clauses = orderMatch[1].split(", ").map((clause) => {
+      const [column, direction, nulls, placement] = clause.split(" ");
+      return { column, direction: direction ?? "asc", nulls: nulls === "nulls" ? placement : undefined };
+    });
+    rows.sort((left, right) => {
+      for (const clause of clauses) {
+        const a = left[clause.column] ?? null;
+        const b = right[clause.column] ?? null;
+        if (a === null || b === null) {
+          if (a === null && b === null) continue;
+          const nullLast = clause.nulls !== "first";
+          return a === null ? (nullLast ? 1 : -1) : nullLast ? -1 : 1;
+        }
+        if (a === b) continue;
+        const cmp = a < b ? -1 : 1;
+        return clause.direction === "desc" ? -cmp : cmp;
+      }
+      return 0;
+    });
+  }
+
+  const limit = / limit \?/.test(sql) ? Number(params[p++]) : undefined;
+  const offset = / offset \?/.test(sql) ? Number(params[p++]) : 0;
+  if (offset) rows = rows.slice(offset);
+  if (limit !== undefined) rows = rows.slice(0, limit);
+  return { table, rows };
+}
+
+function createFakeD1(tables: Record<string, Record<string, unknown>[]>) {
+  const calls: Array<{ sql: string; params: unknown[]; table: string }> = [];
+  const database: D1RuntimeDatabase = {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      let params: unknown[] = [];
+      const statement: D1RuntimePreparedStatement = {
+        bind(...values: unknown[]) {
+          params = values;
+          return statement;
+        },
+        async all<T = Record<string, unknown>>() {
+          const evaluated = evaluate(sql, params, tables);
+          calls.push({ sql, params, table: evaluated.table });
+          return { success: true, results: evaluated.rows as unknown as T[] };
+        },
+      };
+      return statement;
+    },
+  };
+  return { database, calls };
+}
+
+function baseArticle(overrides: Record<string, unknown>) {
+  return {
+    id: "case-a",
+    slug: "us-a",
+    source_key: "us-scotus",
+    jurisdiction: "United States",
+    institution_name: "Supreme Court",
+    content_type: "opinion",
+    original_url: "https://example.test/a",
+    canonical_url: "https://example.test/a",
+    original_language: "en",
+    original_title: "Freedom of Speech Case",
+    korean_title: null,
+    original_published_at: "2026-04-29T00:00:00.000Z",
+    discovered_at: "2026-04-30T00:00:00.000Z",
+    fetched_at: "2026-04-30T00:10:00.000Z",
+    summarized_at: null,
+    status: "cleaned",
+    raw_text: null,
+    cleaned_text: "alpha beta gamma delta",
+    content_hash: "hash-a",
+    summary_json: null,
+    source_metadata: { catalog: { sourceOnly: true }, case: {} },
+    error_metadata: null,
+    catalog_ai_stale_v4: 0,
+    raw_text_storage_ref: null,
+    raw_text_blob_hash: null,
+    raw_text_blob_size: null,
+    raw_text_externalized_at: null,
+    raw_text_blob_contract_version: null,
+    ...overrides,
+  };
+}
+
+function anchorVersion(overrides: Record<string, unknown>) {
+  return {
+    id: "ver-a",
+    article_id: "case-a",
+    slug: "us-a",
+    source_key: "us-scotus",
+    jurisdiction: "United States",
+    institution_name: "Supreme Court",
+    content_type: "opinion",
+    original_language: "en",
+    original_title: "Freedom of Speech Case",
+    korean_title: null,
+    cleaned_text: "alpha beta gamma delta",
+    case_key: "23123",
+    original_published_at: "2026-04-29T00:00:00.000Z",
+    version_role: "authoritative_source",
+    source_anchor_version_id: "ver-a",
+    case_metadata_snapshot: { sourceMetadata: { court: "SCOTUS" } },
+    ...overrides,
+  };
+}
+
+function catalogTables(overrides: Record<string, Record<string, unknown>[]> = {}) {
+  const tables: Record<string, Record<string, unknown>[]> = {
+    articles: [
+      baseArticle({}),
+      baseArticle({
+        id: "case-b",
+        slug: "us-b",
+        content_type: "order",
+        original_title: "Equal Protection Matter",
+        cleaned_text: "delta epsilon",
+        original_published_at: "2026-03-01T00:00:00.000Z",
+        status: "metadata_only",
+        source_metadata: { catalog: { sourceOnly: true }, case: {} },
+      }),
+    ],
+    case_catalog_publications_v1: [
+      { id: "pub-a", article_id: "case-a", state: "published", source_anchor_version_id: "ver-a", revision: 1 },
+      { id: "pub-b", article_id: "case-b", state: "published", source_anchor_version_id: "ver-b", revision: 1 },
+    ],
+    case_metadata_v1: [
+      {
+        article_id: "case-a",
+        authority_status: "verified",
+        constitutional_relevance_status: "verified",
+        enrichment_status: "source_only",
+        enrichment_freshness: null,
+        text_access_policy: "full",
+      },
+      {
+        article_id: "case-b",
+        authority_status: "verified",
+        constitutional_relevance_status: "verified",
+        enrichment_status: "source_only",
+        enrichment_freshness: null,
+        text_access_policy: "metadata_only",
+      },
+    ],
+    article_content_versions_p3: [
+      anchorVersion({}),
+      anchorVersion({
+        id: "ver-b",
+        article_id: "case-b",
+        content_type: "order",
+        original_title: "Equal Protection Matter",
+        cleaned_text: "delta epsilon",
+        case_key: "22100",
+        original_published_at: "2026-03-01T00:00:00.000Z",
+        source_anchor_version_id: "ver-b",
+        case_metadata_snapshot: { sourceMetadata: { court: "SCOTUS" } },
+      }),
+    ],
+    case_identifiers_v1: [
+      { article_id: "case-a", identifier_type: "docket", normalized_value: "23123" },
+      { article_id: "case-b", identifier_type: "source_record_id", normalized_value: "abc123" },
+    ],
+    tags: [{ id: "tag-1", slug: "speech", name: "Speech" }],
+    article_tags: [{ article_id: "case-a", tag_id: "tag-1" }],
+    article_publications_p3: [],
+    article_view_counts: [],
+  };
+  return { ...tables, ...overrides };
+}
+
+function catalogRequest(overrides: Partial<CatalogCaseSearchRpcRequest> = {}): CatalogCaseSearchRpcRequest {
+  return {
+    query: "",
+    limit: 20,
+    cursor: null,
+    source: null,
+    jurisdiction: null,
+    contentType: null,
+    language: null,
+    tag: null,
+    range: "latest",
+    ...overrides,
+  };
+}
+
+const FLAGS_ON = {
+  ADMIN_PUBLICATION_V4_READ_ENABLED: "true",
+  CASE_CATALOG_PUBLIC_ENABLED: "true",
+};
+
+async function withEnv<T>(values: Record<string, string | undefined>, run: () => Promise<T> | T): Promise<T> {
+  const keys = [
+    "ADMIN_PUBLICATION_V4_READ_ENABLED",
+    "CASE_CATALOG_PUBLIC_ENABLED",
+    "CASE_CATALOG_SEARCH_ENABLED",
+    "CASE_CATALOG_PLUGIN_ENABLED",
+    "CASE_CATALOG_SEMANTIC_ENABLED",
+  ];
+  const original = new Map(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  for (const [key, value] of Object.entries(values)) process.env[key] = value;
+  try {
+    return await run();
+  } finally {
+    for (const key of keys) {
+      const value = original.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test("D1 article list exposes published source-only Catalog rows only when both flags are on", async () => {
+  const fake = createFakeD1(catalogTables());
+
+  const off = createD1ArticleReadRepository({ binding: fake.database, environment: {} });
+  const offResult = await off.listArticles({});
+  assert.deepEqual(offResult.items, [], "flags off must preserve the legacy summarized-only behavior");
+
+  const on = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
+  const onResult = await on.listArticles({ includeViewCounts: false });
+  assert.deepEqual(onResult.items.map((item) => item.slug), ["us-a", "us-b"]);
+  assert.equal(onResult.pageInfo.total, 2);
+  assert.equal(onResult.pageInfo.hasMore, false);
+
+  const first = onResult.items[0];
+  assert.equal(first.status, "cleaned", "the full text policy exposes a cleaned status, not summarized");
+  assert.equal(first.enrichmentStatus, "source_only");
+  assert.equal(first.enrichmentFreshness, null);
+  assert.equal(first.summaryStatus, "pending");
+  assert.equal(first.summaryAvailable, false, "a source-only catalog row never claims an available summary");
+  assert.equal(first.summarizedAt, null);
+  assert.equal(first.koreanTitle, "Freedom of Speech Case", "a missing Korean title falls back to the original title, never an AI translation");
+  assert.equal(first.oneLineSummary, "요약이 아직 생성되지 않았습니다.");
+  assert.equal(first.tags.length, 1, "catalog rows still hydrate their reviewed tags");
+});
+
+test("D1 article detail and source-text reads expose the authoritative source without an AI summary", async () => {
+  const fake = createFakeD1(catalogTables());
+  const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
+
+  const detail = await repository.getArticleBySelect("us-a", "detail");
+  assert.ok(detail);
+  assert.equal(detail.enrichmentStatus, "source_only");
+  assert.equal(detail.summaryAvailable, false);
+  assert.equal(detail.summaryJson, null, "no AI summary may be synthesized");
+  assert.equal(detail.rawText, null);
+  assert.equal(detail.cleanedText, "alpha beta gamma delta", "the full policy exposes the source text");
+  assert.deepEqual(detail.sourceMetadata?.catalog, {
+    sourceOnly: true,
+    authorityVerified: true,
+    sourceAnchorVersionId: "ver-a",
+  });
+
+  const sourceText = await repository.getArticleSourceTextBySlug("us-a");
+  assert.equal(sourceText?.cleanedText, "alpha beta gamma delta");
+  assert.equal(sourceText?.sourceKey, "us-scotus");
+
+  const off = createD1ArticleReadRepository({ binding: fake.database, environment: {} });
+  assert.equal(await off.getArticleBySelect("us-a", "detail"), null);
+  assert.equal(await off.getArticleSourceTextBySlug("us-a"), null);
+});
+
+test("D1 article reads never expose text the Catalog policy forbids and derive reprocessing", async () => {
+  const fake = createFakeD1(catalogTables());
+  const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
+
+  const metadataOnly = await repository.getArticleBySelect("us-b", "detail");
+  assert.equal(metadataOnly?.status, "metadata_only");
+  assert.equal(metadataOnly?.cleanedText, null, "a metadata_only policy must not expose cleaned text");
+
+  const longText = "x".repeat(2500);
+  const excerpt = createFakeD1(catalogTables({
+    articles: [
+      baseArticle({ cleaned_text: longText }),
+      baseArticle({ id: "case-b", slug: "us-b", status: "metadata_only" }),
+    ],
+    case_metadata_v1: [
+      {
+        article_id: "case-a",
+        authority_status: "verified",
+        constitutional_relevance_status: "verified",
+        enrichment_status: "source_only",
+        enrichment_freshness: null,
+        text_access_policy: "excerpt",
+      },
+      {
+        article_id: "case-b",
+        authority_status: "verified",
+        constitutional_relevance_status: "verified",
+        enrichment_status: "source_only",
+        enrichment_freshness: null,
+        text_access_policy: "metadata_only",
+      },
+    ],
+  }));
+  const excerptRepository = createD1ArticleReadRepository({ binding: excerpt.database, environment: FLAGS_ON });
+  const excerpted = await excerptRepository.getArticleBySelect("us-a", "detail");
+  assert.equal(excerpted?.cleanedText?.length, 2000, "an excerpt is capped at 2000 characters");
+
+  const reprocessing = createFakeD1(catalogTables({
+    articles: [
+      baseArticle({ catalog_ai_stale_v4: 1 }),
+      baseArticle({ id: "case-b", slug: "us-b", status: "metadata_only" }),
+    ],
+  }));
+  const reprocessingRepository = createD1ArticleReadRepository({ binding: reprocessing.database, environment: FLAGS_ON });
+  const stale = await reprocessingRepository.getArticleBySelect("us-a", "detail");
+  assert.equal(stale?.summaryStatus, "reprocessing");
+});
+
+test("D1 listArticles merges summarized legacy rows without letting Catalog replace them", async () => {
+  const fake = createFakeD1(catalogTables({
+    articles: [
+      baseArticle({
+        id: "legacy-1",
+        slug: "legacy-1",
+        status: "summarized",
+        original_published_at: "2026-05-02T00:00:00.000Z",
+        summarized_at: "2026-05-02T00:00:00.000Z",
+        source_metadata: { collection: { publishable: true } },
+      }),
+      baseArticle({}),
+      baseArticle({
+        id: "case-c",
+        slug: "us-c",
+        status: "summarized",
+        original_published_at: "2026-05-01T00:00:00.000Z",
+        summarized_at: "2026-05-01T00:00:00.000Z",
+        source_metadata: { collection: { publishable: true } },
+      }),
+    ],
+    case_catalog_publications_v1: [
+      { id: "pub-a", article_id: "case-a", state: "published", source_anchor_version_id: "ver-a", revision: 1 },
+      { id: "pub-c", article_id: "case-c", state: "published", source_anchor_version_id: "ver-c", revision: 1 },
+    ],
+    article_content_versions_p3: [
+      anchorVersion({}),
+      anchorVersion({
+        id: "ver-c",
+        article_id: "case-c",
+        case_key: "99999",
+        original_published_at: "2026-05-01T00:00:00.000Z",
+        source_anchor_version_id: "ver-c",
+      }),
+    ],
+  }));
+  const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
+  const result = await repository.listArticles({ includeViewCounts: false });
+
+  assert.deepEqual(
+    result.items.map((item) => item.slug),
+    ["legacy-1", "us-c", "us-a"],
+    "the merged list is ordered by published date desc",
+  );
+  const legacyFirst = result.items.find((item) => item.slug === "legacy-1");
+  assert.equal(legacyFirst?.status, "summarized");
+  assert.equal(legacyFirst?.enrichmentStatus, undefined);
+  const alsoPublished = result.items.find((item) => item.slug === "us-c");
+  assert.equal(alsoPublished?.status, "summarized", "a summarized row wins over its Catalog publication");
+  assert.equal(alsoPublished?.enrichmentStatus, undefined);
+  const sourceOnly = result.items.find((item) => item.slug === "us-a");
+  assert.equal(sourceOnly?.enrichmentStatus, "source_only");
+});
+
+test("D1 listArticles filters source-only Catalog rows by source/type/language/range/tag", async () => {
+  const fake = createFakeD1(catalogTables());
+  const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
+
+  assert.deepEqual((await repository.listArticles({ source: "us-scotus", includeViewCounts: false })).items.map((i) => i.slug), ["us-a", "us-b"]);
+  assert.deepEqual((await repository.listArticles({ type: "order", includeViewCounts: false })).items.map((i) => i.slug), ["us-b"]);
+  assert.deepEqual((await repository.listArticles({ language: "en", includeViewCounts: false })).items.map((i) => i.slug), ["us-a", "us-b"]);
+  assert.deepEqual((await repository.listArticles({ source: "de-bverfg", includeViewCounts: false })).items, []);
+  assert.deepEqual((await repository.listArticles({ tag: "speech", includeViewCounts: false })).items.map((i) => i.slug), ["us-a"]);
+});
+
+test("D1 catalog search returns the schemaVersion=2 latest/lexical/exact payload shape", async () => {
+  const fake = createFakeD1(catalogTables());
+
+  const latest = await runD1CaseCatalogSearch({ binding: fake.database, request: catalogRequest() });
+  assert.equal(latest.status, "ok");
+  if (latest.status !== "ok") return;
+  const payload = latest.data as Record<string, unknown>;
+  assert.equal(payload.schemaVersion, 2);
+  assert.equal(payload.rankingVersion, "gate3-exact-lexical-v1");
+  assert.equal(payload.retrievalMode, "latest");
+  assert.deepEqual((payload.entries as Array<{ id: string }>).map((entry) => entry.id), ["case-a", "case-b"]);
+  assert.equal(payload.hasMore, false);
+  assert.equal(payload.totalIsExact, true);
+  assert.equal(payload.total, 2);
+
+  const lexical = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ query: "Freedom of Speech" }),
+  });
+  assert.equal(lexical.status, "ok");
+  if (lexical.status !== "ok") return;
+  const lexicalPayload = lexical.data as Record<string, unknown>;
+  assert.equal(lexicalPayload.retrievalMode, "lexical");
+  assert.deepEqual((lexicalPayload.entries as Array<{ id: string }>).map((entry) => entry.id), ["case-a"]);
+
+  const exactNumber = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ query: "23-123" }),
+  });
+  assert.equal(exactNumber.status, "ok");
+  if (exactNumber.status !== "ok") return;
+  assert.equal((exactNumber.data as Record<string, unknown>).retrievalMode, "exact-identity");
+  assert.deepEqual((exactNumber.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id), ["case-a"]);
+
+  const exactIdentifier = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ query: "abc123" }),
+  });
+  assert.equal(exactIdentifier.status, "ok");
+  if (exactIdentifier.status !== "ok") return;
+  assert.equal((exactIdentifier.data as Record<string, unknown>).retrievalMode, "exact-identity");
+  assert.deepEqual((exactIdentifier.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id), ["case-b"]);
+});
+
+test("D1 catalog search applies filters and a stable keyset cursor across pages", async () => {
+  const fake = createFakeD1(catalogTables());
+
+  const filtered = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ jurisdiction: "United States", tag: "speech" }),
+  });
+  assert.equal(filtered.status, "ok");
+  if (filtered.status !== "ok") return;
+  assert.deepEqual((filtered.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id), ["case-a"]);
+
+  const week = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ range: "week" }),
+    now: new Date("2026-05-01T00:00:00.000Z"),
+  });
+  assert.equal(week.status, "ok");
+  if (week.status !== "ok") return;
+  assert.deepEqual((week.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id), ["case-a"]);
+
+  const firstPage = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ limit: 1 }),
+  });
+  assert.equal(firstPage.status, "ok");
+  if (firstPage.status !== "ok") return;
+  const firstPayload = firstPage.data as { entries: Array<{ id: string }>; nextCursor: string | null; hasMore: boolean };
+  assert.deepEqual(firstPayload.entries.map((entry) => entry.id), ["case-a"]);
+  assert.equal(firstPayload.hasMore, true);
+  assert.ok(firstPayload.nextCursor);
+
+  const secondPage = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ limit: 1, cursor: firstPayload.nextCursor }),
+  });
+  assert.equal(secondPage.status, "ok");
+  if (secondPage.status !== "ok") return;
+  const secondPayload = secondPage.data as { entries: Array<{ id: string }>; nextCursor: string | null; hasMore: boolean; total: number };
+  assert.deepEqual(secondPayload.entries.map((entry) => entry.id), ["case-b"]);
+  assert.equal(secondPayload.hasMore, false);
+  assert.equal(secondPayload.nextCursor, null);
+  assert.equal(secondPayload.total, 2);
+});
+
+test("D1 catalog search surfaces invalid, mismatch, and expired cursor evidence", async () => {
+  const fake = createFakeD1(catalogTables());
+
+  const invalid = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ cursor: "not a cursor!" }),
+  });
+  assert.deepEqual(invalid, { status: "error", error: { code: "22023", message: "WORLDCONS_CASE_SEARCH_INVALID_CURSOR" } });
+
+  const firstPage = await runD1CaseCatalogSearch({ binding: fake.database, request: catalogRequest({ limit: 1 }) });
+  assert.equal(firstPage.status, "ok");
+  if (firstPage.status !== "ok") return;
+  const cursor = (firstPage.data as { nextCursor: string | null }).nextCursor;
+  assert.ok(cursor);
+
+  const mismatch = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ limit: 1, cursor, jurisdiction: "Germany" }),
+  });
+  assert.deepEqual(mismatch, { status: "error", error: { code: "22023", message: "WORLDCONS_CASE_SEARCH_CURSOR_MISMATCH" } });
+
+  const expiredCursor = btoa(JSON.stringify({
+    rankingVersion: "gate3-exact-lexical-v0",
+    fingerprint: "deadbeef",
+    mode: "latest",
+    score: 0,
+    sortDate: "2026-04-29T00:00:00.000Z",
+    articleId: "case-a",
+    position: 1,
+  })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const expired = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ limit: 1, cursor: expiredCursor }),
+  });
+  assert.deepEqual(expired, { status: "error", error: { code: "22023", message: "WORLDCONS_CASE_SEARCH_CURSOR_RANKING_VERSION_EXPIRED" } });
+});
+
+test("catalogCaseSearch runs end-to-end on D1 without Supabase and maps cursor errors", async () => {
+  const fake = createFakeD1(catalogTables());
+  clearRuntimeD1Bindings();
+  setRuntimeD1Bindings({ worldcons_core: fake.database, worldcons_search: fake.database });
+  try {
+    await withEnv({ ...FLAGS_ON, CASE_CATALOG_SEARCH_ENABLED: "true" }, async () => {
+      const result = await catalogCaseSearch({ q: "", pageSize: 20, includeViewCounts: false });
+      assert.deepEqual(result.items.map((item) => item.slug), ["us-a", "us-b"]);
+      assert.equal(result.retrievalMode, "latest");
+      assert.equal(result.rankingVersion, "gate3-exact-lexical-v1");
+      assert.equal(result.pageInfo.total, 2);
+      assert.deepEqual(result.items[0].enrichmentStatus, "source_only");
+
+      const firstPage = await catalogCaseSearch({ q: "", pageSize: 1, includeViewCounts: false });
+      assert.equal(firstPage.pageInfo.hasMore, true);
+      assert.ok(firstPage.pageInfo.nextCursor);
+      const secondPage = await catalogCaseSearch({
+        q: "",
+        pageSize: 1,
+        cursor: firstPage.pageInfo.nextCursor ?? undefined,
+        includeViewCounts: false,
+      });
+      assert.deepEqual(secondPage.items.map((item) => item.slug), ["us-b"]);
+
+      await assert.rejects(
+        () => catalogCaseSearch({ q: "", pageSize: 1, cursor: "***" }),
+        (error: unknown) => isCatalogSearchCursorError(error) && error.reason === "invalid",
+      );
+    });
+  } finally {
+    clearRuntimeD1Bindings();
+  }
+});
+
+test("source-only catalog visibility stays off without either flag", async () => {
+  const fake = createFakeD1(catalogTables());
+  const onlyPublic = createD1ArticleReadRepository({
+    binding: fake.database,
+    environment: { CASE_CATALOG_PUBLIC_ENABLED: "true" },
+  });
+  assert.deepEqual((await onlyPublic.listArticles({ includeViewCounts: false })).items, [], "the P3 V4 read flag is required");
+
+  const onlyP3 = createD1ArticleReadRepository({
+    binding: fake.database,
+    environment: { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
+  });
+  assert.deepEqual((await onlyP3.listArticles({ includeViewCounts: false })).items, [], "the public Catalog flag is required");
+});
+
