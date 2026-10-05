@@ -10,7 +10,7 @@ import type {
   CatalogCaseSearchRpcRequest,
   CatalogCaseSearchRpcResult,
 } from "@/lib/search/repository/types";
-import type { ExactCaseReference } from "@/lib/search/case-number";
+import { authoritativeCaseMetadata, type ExactCaseReference } from "@/lib/search/case-number";
 import { primaryCaseReference } from "@/lib/cloudflare/search-ranked/reference";
 import { isWithinRange, type TimeRange } from "@/lib/utils/dates";
 
@@ -269,6 +269,30 @@ function scoreLexical(query: string, candidate: CatalogCandidate): number {
   return score;
 }
 
+/**
+ * Recovers the canonical BVerfG case key for a source-only catalog row whose
+ * immutable `article_content_versions_p3.case_key` was never populated (legacy
+ * or D1-backfilled rows). It reads only the authoritative, pipeline-owned
+ * metadata payloads - the version's `case_metadata_snapshot` (whose
+ * `sourceMetadata` carries the sealed `sourceInventory`) and `source_metadata`,
+ * then the article's `source_metadata` - never arbitrary article text. D1 JSON
+ * text and revived objects are both accepted.
+ */
+function authoritativeVersionCaseKey(
+  sourceKey: string,
+  caseMetadataSnapshot: unknown,
+  versionSourceMetadata: unknown,
+  articleSourceMetadata: unknown,
+): string | null {
+  if (sourceKey !== "de-bverfg") return null;
+  return authoritativeCaseMetadata(
+    sourceKey,
+    caseMetadataSnapshot,
+    versionSourceMetadata,
+    articleSourceMetadata,
+  )?.caseKey ?? null;
+}
+
 function identityScore(reference: ExactCaseReference | null, candidate: CatalogCandidate, normalizedQuery: string) {
   let penalty: number | null = null;
   if (normalizedQuery) {
@@ -434,6 +458,8 @@ export async function runD1CaseCatalogSearch(
         "korean_title",
         "cleaned_text",
         "case_key",
+        "case_metadata_snapshot",
+        "source_metadata",
         "original_published_at",
         "version_role",
         "source_anchor_version_id",
@@ -443,7 +469,7 @@ export async function runD1CaseCatalogSearch(
     const versionById = new Map(versionRows.map((row) => [String(row.id), row]));
 
     const baseRows = await readInBatches("articles", "id", articleIds, {
-      select: ["id", "catalog_ai_stale_v4"],
+      select: ["id", "catalog_ai_stale_v4", "source_metadata"],
       limit: CASE_CATALOG_SEARCH_MAX_ROWS + 1,
     });
     const baseById = new Map(baseRows.map((row) => [String(row.id), row]));
@@ -506,17 +532,25 @@ export async function runD1CaseCatalogSearch(
 
       const base = baseById.get(articleId);
       const stale = base ? asBoolean(base.catalog_ai_stale_v4) : false;
+      const sourceKey = asString(version.source_key) ?? "";
+      const caseKey = asString(version.case_key)
+        ?? authoritativeVersionCaseKey(
+          sourceKey,
+          version.case_metadata_snapshot,
+          version.source_metadata,
+          base?.source_metadata,
+        );
       candidates.push({
         articleId,
         publicationId: String(publication.id ?? ""),
-        sourceKey: asString(version.source_key) ?? "",
+        sourceKey,
         jurisdiction: asString(version.jurisdiction),
         contentType: asString(version.content_type),
         language: asString(version.original_language),
         originalTitle: asString(version.original_title),
         koreanTitle: asString(version.korean_title),
         cleanedText: asString(version.cleaned_text),
-        caseKey: asString(version.case_key),
+        caseKey,
         originalPublishedAt: publishedAt,
         enrichmentStatus: asString(metadata.enrichment_status),
         enrichmentFreshness: asString(metadata.enrichment_freshness),

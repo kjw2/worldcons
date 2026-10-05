@@ -25,6 +25,7 @@ import type {
   CaseBackfillSourcePolicy,
 } from "@/lib/backfill/types";
 import type { NormalizedArticle } from "@/lib/sources/types";
+import { authoritativeCaseMetadata } from "@/lib/search/case-number";
 import { canonicalJson } from "@/lib/backfill/canonical-json";
 
 type Row = Record<string, unknown>;
@@ -1199,6 +1200,18 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       (entry) => text(entry.identifier_type) === "source_record_id" && text(entry.normalized_value) === normalizedRecordId,
     );
     const sourceRecordPrimary = !existingIdentifiers.some((entry) => numberValue(entry.is_primary) === 1);
+    // Future authoritative_source publications persist the canonical docket
+    // identifier and version case_key from the sealed authoritative metadata, so
+    // source-only Catalog rows match primaryCaseReference without a backfill.
+    const authoritativeCase = normalized.sourceKey === "de-bverfg"
+      ? authoritativeCaseMetadata(normalized.sourceKey, normalized.metadata)
+      : undefined;
+    const derivedCaseKey = authoritativeCase?.caseKey ?? null;
+    const hasDocketIdentifier = authoritativeCase
+      ? existingIdentifiers.some(
+          (entry) => text(entry.identifier_type) === "docket" && text(entry.normalized_value) === authoritativeCase.caseKey,
+        )
+      : false;
     const identifierSnapshot = [
       ...existingIdentifiers.map((entry) => ({
         type: entry.identifier_type, scope: entry.identifier_scope, value: entry.raw_value,
@@ -1207,6 +1220,10 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       ...(!hasSourceRecordIdentifier ? [{
         type: "source_record_id", scope: "decision", value: recordId, normalizedValue: normalizedRecordId,
         normalizationVersion: 1, primary: sourceRecordPrimary,
+      }] : []),
+      ...(authoritativeCase && !hasDocketIdentifier ? [{
+        type: "docket", scope: "decision", value: authoritativeCase.caseNumber,
+        normalizedValue: authoritativeCase.caseKey, normalizationVersion: 1, primary: false,
       }] : []),
     ].sort((left, right) => `${left.type}:${left.normalizedValue}`.localeCompare(`${right.type}:${right.normalizedValue}`));
     const caseSnapshot = {
@@ -1227,11 +1244,12 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       originalLanguage: normalized.originalLanguage, originalTitle: normalized.originalTitle,
       koreanTitle: null, originalPublishedAt: normalized.originalPublishedAt ?? null,
       cleanedText: normalized.cleanedText ?? null, summary: null,
+      ...(derivedCaseKey ? { caseKey: derivedCaseKey } : {}),
       caseMetadata: caseSnapshot, caseIdentifiers: identifierSnapshot,
       authorityEvidenceHash: authorityHash, sourceSnapshotId: text(snapshotRow.id), sourceSnapshotHash: text(snapshotRow.manifest_hash),
     };
     const contentHash = await sha256Hex(JSON.stringify(versionDocument));
-    let version = (await rows<Row>(core, "SELECT id,revision FROM article_content_versions_p3 WHERE article_id=? AND content_hash=? LIMIT 1", [articleId, contentHash]))[0];
+    const version = (await rows<Row>(core, "SELECT id,revision FROM article_content_versions_p3 WHERE article_id=? AND content_hash=? LIMIT 1", [articleId, contentHash]))[0];
     const versionCreated = !version;
     const versionId = version ? text(version.id) : await deterministicVersionId(articleId, contentHash);
     const versionRevision = version ? numberValue(version.revision) : currentRevision + 1;
@@ -1258,6 +1276,14 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         sourceRecordPrimary ? 1 : 0,normalized.canonicalUrl,now,
       ));
     }
+    if (authoritativeCase && !hasDocketIdentifier) {
+      statements.push(core.prepare(`INSERT INTO case_identifiers_v1
+        (id,article_id,source_key,identifier_type,identifier_scope,raw_value,normalized_value,normalization_version,is_primary,provenance_url,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        crypto.randomUUID(),articleId,normalized.sourceKey,"docket","decision",authoritativeCase.caseNumber,
+        authoritativeCase.caseKey,1,0,normalized.canonicalUrl,now,
+      ));
+    }
     statements.push(core.prepare(`INSERT INTO case_metadata_v1
       (article_id,source_key,authority_status,authority_evidence,constitutional_relevance_status,enrichment_status,enrichment_freshness,freshness_basis,
        text_access_policy,source_policy_version,discovery_source,authority_source,source_last_modified_at,source_etag,source_snapshot_hash,ai_priority,created_at,updated_at)
@@ -1275,13 +1301,13 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       statements.push(core.prepare(`INSERT INTO article_content_versions_p3
         (id,article_id,revision,parent_version_id,content_hash,provenance_actor_type,provenance_actor_id,slug,source_key,jurisdiction,institution_name,
          content_type,original_url,canonical_url,original_language,original_title,original_published_at,discovered_at,fetched_at,cleaned_text,summary_json,
-         source_metadata,error_metadata,created_at,version_document_schema,version_role,case_metadata_snapshot,case_identifiers_snapshot,authority_evidence_hash,
+         source_metadata,error_metadata,created_at,case_key,version_document_schema,version_role,case_metadata_snapshot,case_identifiers_snapshot,authority_evidence_hash,
          source_snapshot_id,source_snapshot_hash,source_content_hash,source_anchor_version_id,enrichment_source_content_hash)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
         versionId,articleId,String(versionRevision),currentHead?.current_version_id ?? null,contentHash,"import",input.actorId ?? "case-backfill-worker",
         articleSlug,normalized.sourceKey,normalized.jurisdiction,normalized.institutionName,normalized.contentType,normalized.originalUrl,normalized.canonicalUrl,
         normalized.originalLanguage,normalized.originalTitle,normalized.originalPublishedAt ?? null,now,now,normalized.cleanedText ?? null,null,
-        JSON.stringify(normalized.metadata ?? {}),null,now,"v4.article-case.v1","authoritative_source",JSON.stringify(caseSnapshot),JSON.stringify(identifierSnapshot),
+        JSON.stringify(normalized.metadata ?? {}),null,now,derivedCaseKey,"v4.article-case.v1","authoritative_source",JSON.stringify(caseSnapshot),JSON.stringify(identifierSnapshot),
         authorityHash,text(snapshotRow.id),text(snapshotRow.manifest_hash),text(normalization.normalized_output_hash),versionId,null,
       ));
       statements.push(core.prepare(`INSERT INTO article_revision_heads_v4(article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?)

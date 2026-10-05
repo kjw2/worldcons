@@ -479,6 +479,76 @@ test("D1 catalog search returns the schemaVersion=2 latest/lexical/exact payload
   assert.deepEqual((exactIdentifier.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id), ["case-b"]);
 });
 
+test("D1 catalog exact BVerfG search recovers the docket from authoritative metadata when legacy case_key is null", async () => {
+  const docket = "2 BvR 1216/21";
+  const sourceMetadata = {
+    caseNumber: docket,
+    sourceInventory: { docket, docketKey: "2bvr121621" },
+  };
+  const fake = createFakeD1(catalogTables({
+    articles: [baseArticle({
+      id: "case-de",
+      slug: "de-bverfg-dejure-2022-12-29-2bvr121621",
+      source_key: "de-bverfg",
+      jurisdiction: "Germany",
+      institution_name: "Federal Constitutional Court of Germany",
+      content_type: "decision",
+      original_language: "de",
+      original_title: "Beschluss vom 29. Dezember 2022",
+      original_published_at: "2022-12-29T00:00:00.000Z",
+      status: "metadata_only",
+      cleaned_text: null,
+      source_metadata: { catalog: { sourceOnly: true }, case: sourceMetadata },
+    })],
+    case_catalog_publications_v1: [
+      { id: "pub-de", article_id: "case-de", state: "published", source_anchor_version_id: "ver-de", revision: 1 },
+    ],
+    case_metadata_v1: [
+      {
+        article_id: "case-de",
+        authority_status: "verified",
+        constitutional_relevance_status: "verified",
+        enrichment_status: "source_only",
+        enrichment_freshness: null,
+        text_access_policy: "metadata_only",
+      },
+    ],
+    article_content_versions_p3: [anchorVersion({
+      id: "ver-de",
+      article_id: "case-de",
+      slug: "de-bverfg-dejure-2022-12-29-2bvr121621",
+      source_key: "de-bverfg",
+      jurisdiction: "Germany",
+      institution_name: "Federal Constitutional Court of Germany",
+      content_type: "decision",
+      original_language: "de",
+      original_title: "Beschluss vom 29. Dezember 2022",
+      cleaned_text: null,
+      case_key: null,
+      original_published_at: "2022-12-29T00:00:00.000Z",
+      source_anchor_version_id: "ver-de",
+      case_metadata_snapshot: { sourceMetadata },
+      source_metadata: sourceMetadata,
+    })],
+    case_identifiers_v1: [
+      { article_id: "case-de", identifier_type: "source_record_id", normalized_value: "dejure202212292bvr121621" },
+    ],
+    tags: [],
+    article_tags: [],
+    article_publications_p3: [],
+    article_view_counts: [],
+  }));
+
+  const exact = await runD1CaseCatalogSearch({
+    binding: fake.database,
+    request: catalogRequest({ query: docket, source: "de-bverfg" }),
+  });
+  assert.equal(exact.status, "ok");
+  if (exact.status !== "ok") return;
+  assert.equal((exact.data as Record<string, unknown>).retrievalMode, "exact-identity");
+  assert.deepEqual((exact.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id), ["case-de"]);
+});
+
 test("D1 catalog search applies filters and a stable keyset cursor across pages", async () => {
   const fake = createFakeD1(catalogTables());
 
@@ -592,6 +662,79 @@ test("catalogCaseSearch runs end-to-end on D1 without Supabase and maps cursor e
   } finally {
     clearRuntimeD1Bindings();
   }
+});
+
+test("D1 catalog search derives the exact BVerfG case key from authoritative metadata when version.case_key is null", async () => {
+  const exactCatalog = (caseMetadataSnapshot: unknown, articleCase: unknown) => createFakeD1(catalogTables({
+    articles: [
+      baseArticle({
+        id: "de-1", slug: "de-1", source_key: "de-bverfg", jurisdiction: "Germany",
+        institution_name: "Federal Constitutional Court of Germany", content_type: "decision",
+        original_title: "Beschluss der 2. Kammer", original_language: "de",
+        cleaned_text: "Text ohne Docket",
+        source_metadata: articleCase === undefined
+          ? { catalog: { sourceOnly: true } }
+          : { catalog: { sourceOnly: true }, case: articleCase },
+      }),
+    ],
+    case_catalog_publications_v1: [
+      { id: "pub-de", article_id: "de-1", state: "published", source_anchor_version_id: "ver-de", revision: 1 },
+    ],
+    case_metadata_v1: [
+      {
+        article_id: "de-1",
+        authority_status: "verified",
+        constitutional_relevance_status: "verified",
+        enrichment_status: "source_only",
+        enrichment_freshness: null,
+        text_access_policy: "full",
+      },
+    ],
+    article_content_versions_p3: [
+      anchorVersion({
+        id: "ver-de", article_id: "de-1", slug: "de-1", source_key: "de-bverfg", jurisdiction: "Germany",
+        institution_name: "Federal Constitutional Court of Germany", content_type: "decision",
+        original_language: "de", original_title: "Beschluss der 2. Kammer", cleaned_text: "Text ohne Docket",
+        case_key: null, source_anchor_version_id: "ver-de", case_metadata_snapshot: caseMetadataSnapshot,
+      }),
+    ],
+    case_identifiers_v1: [
+      { article_id: "de-1", identifier_type: "source_record_id", normalized_value: "record-1" },
+    ],
+    tags: [],
+    article_tags: [],
+  }));
+
+  // Authoritative sealed snapshot stored as D1 canonical JSON text.
+  const snapshotFake = exactCatalog(
+    JSON.stringify({ sourceMetadata: { sourceInventory: { docket: "2 BvR 1216/21" } } }),
+    undefined,
+  );
+  const snapshotResult = await runD1CaseCatalogSearch({
+    binding: snapshotFake.database,
+    request: catalogRequest({ query: "2 BvR 1216/21" }),
+  });
+  assert.equal(snapshotResult.status, "ok");
+  if (snapshotResult.status !== "ok") return;
+  assert.equal((snapshotResult.data as Record<string, unknown>).retrievalMode, "exact-identity");
+  assert.deepEqual(
+    (snapshotResult.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id),
+    ["de-1"],
+  );
+
+  // Article source_metadata.case fallback when the version snapshot is absent.
+  const articleFake = exactCatalog(null, { sourceInventory: { docket: "2 BvR 1216/21" } });
+  const articleResult = await runD1CaseCatalogSearch({
+    binding: articleFake.database,
+    request: catalogRequest({ query: "2 BvR 1216/21" }),
+  });
+  assert.equal(articleResult.status, "ok");
+  if (articleResult.status !== "ok") return;
+  assert.equal((articleResult.data as Record<string, unknown>).retrievalMode, "exact-identity");
+  assert.deepEqual(
+    (articleResult.data as { entries: Array<{ id: string }> }).entries.map((entry) => entry.id),
+    ["de-1"],
+  );
 });
 
 test("source-only catalog visibility stays off without either flag", async () => {

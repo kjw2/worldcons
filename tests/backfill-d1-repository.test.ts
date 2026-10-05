@@ -95,7 +95,7 @@ function createDatabases() {
       id TEXT PRIMARY KEY,article_id TEXT,revision TEXT,parent_version_id TEXT,content_hash TEXT,provenance_actor_type TEXT,provenance_actor_id TEXT,
       slug TEXT,source_key TEXT,jurisdiction TEXT,institution_name TEXT,content_type TEXT,original_url TEXT,canonical_url TEXT,original_language TEXT,
       original_title TEXT,original_published_at TEXT,discovered_at TEXT,fetched_at TEXT,cleaned_text TEXT,summary_json TEXT,source_metadata TEXT,error_metadata TEXT,
-      created_at TEXT,version_document_schema TEXT,version_role TEXT,case_metadata_snapshot TEXT,case_identifiers_snapshot TEXT,authority_evidence_hash TEXT,
+      created_at TEXT,case_key TEXT,version_document_schema TEXT,version_role TEXT,case_metadata_snapshot TEXT,case_identifiers_snapshot TEXT,authority_evidence_hash TEXT,
       source_snapshot_id TEXT,source_snapshot_hash TEXT,source_content_hash TEXT,source_anchor_version_id TEXT,enrichment_source_content_hash TEXT
     );
     CREATE UNIQUE INDEX article_content_versions_p3_article_hash_key ON article_content_versions_p3(article_id,content_hash);
@@ -727,6 +727,94 @@ test("D1 publish commits the verified source anchor and settles the ingest item"
     assert.equal(recoveredItem.claimed_attempt_id, null);
     assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_publication_events_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
     assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_cache_outbox_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
+  } finally {
+    databases.core.close(); databases.ingest.close(); databases.ops.close();
+  }
+});
+
+test("D1 publish persists the canonical BVerfG docket identifier and version case_key without duplicates", async () => {
+  const databases = createDatabases();
+  seed(databases);
+  const now = new Date().toISOString();
+  const fetchArtifactId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const normalizationArtifactId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const canonicalUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2023/12/rk20231220_2bvr121621.html";
+  const normalizedOutput = {
+    sourceKey: "de-bverfg", jurisdiction: "Germany", institutionName: "Federal Constitutional Court of Germany",
+    contentType: "decision" as const, originalUrl: canonicalUrl, canonicalUrl, originalLanguage: "de",
+    originalTitle: "Beschluss der 2. Kammer", originalPublishedAt: "2023-12-20T00:00:00.000Z", cleanedText: "Entscheidungstext",
+    metadata: {
+      caseNumber: "2 BvR 1216/21",
+      sourceInventory: { docket: "2 BvR 1216/21", docketKey: "2bvr121621" },
+      collection: { sourceUrlVerified: true, sourceTextAvailable: true, publishable: true },
+    },
+  };
+  databases.ingest.prepare(`INSERT INTO source_fetch_artifacts
+    (id,item_id,source_policy_version,authority_url,http_status,response_headers_allowlist,payload_hash,payload_size,replayability,
+     bounded_replay_payload,fetched_at,fetch_contract_version,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    fetchArtifactId, ITEM_ID, "bverfg-unattended-canary-v2", canonicalUrl, 200, "{}", "7".repeat(64), "42",
+    "bounded_evidence", JSON.stringify({ sourceKey: "de-bverfg" }), now, FETCH_CONTRACT, now,
+  );
+  databases.ingest.prepare(`INSERT INTO source_normalization_artifacts
+    (id,item_id,fetch_artifact_id,parser_version,normalization_contract_version,normalized_output,normalized_output_hash,validation_status,validation_errors,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    normalizationArtifactId, ITEM_ID, fetchArtifactId, "bverfg-official-normalize-v2", "case-normalized-v1",
+    JSON.stringify(normalizedOutput), "8".repeat(64), "valid", "[]", now,
+  );
+  databases.ingest.prepare(`UPDATE source_backfill_items
+    SET status='verified',current_fetch_artifact_id=?,current_normalization_artifact_id=?,verified_normalization_artifact_id=?,parser_version=? WHERE id=?`).run(
+    fetchArtifactId, normalizationArtifactId, normalizationArtifactId, "bverfg-official-normalize-v2", ITEM_ID,
+  );
+  databases.ops.prepare("UPDATE admin_commands SET command_type=?,payload_ref=? WHERE id=?").run(
+    "p1.case-backfill.publish",
+    JSON.stringify({ cohort: "catalog-backfill", snapshotId: SNAPSHOT_ID, passNumber: 1, batchLimit: 1 }),
+    COMMAND_ID,
+  );
+  configure(databases);
+  try {
+    const pass = { cohort: "catalog-backfill" as const, snapshotId: SNAPSHOT_ID, phase: "publish" as const, passNumber: 1, batchLimit: 1 };
+    await d1CaseBackfillRepository.beginRun(pass, authority());
+    const [claimed] = await d1CaseBackfillRepository.claimItems(pass, authority());
+    assert.ok(claimed);
+    const publication = await d1CaseBackfillRepository.publishItem({
+      itemId: ITEM_ID, authority: authority(), actorId: "test-publisher", normalizedOutput,
+    });
+
+    const version = databases.core.prepare("SELECT case_key,case_identifiers_snapshot FROM article_content_versions_p3 WHERE id=?").get(publication.versionId) as Record<string, unknown>;
+    assert.equal(version.case_key, "2bvr121621");
+    const snapshot = JSON.parse(String(version.case_identifiers_snapshot)) as Array<Record<string, unknown>>;
+    assert.ok(snapshot.some((entry) => entry.type === "docket" && entry.normalizedValue === "2bvr121621"));
+
+    const dockets = databases.core.prepare(
+      "SELECT identifier_type,identifier_scope,raw_value,normalized_value,normalization_version,is_primary FROM case_identifiers_v1 WHERE article_id=? AND identifier_type='docket'",
+    ).all(publication.articleId) as Record<string, unknown>[];
+    assert.equal(dockets.length, 1, "exactly one docket identifier is persisted");
+    assert.equal(dockets[0].identifier_scope, "decision");
+    assert.equal(dockets[0].raw_value, "2 BvR 1216/21");
+    assert.equal(dockets[0].normalized_value, "2bvr121621");
+    assert.equal(dockets[0].normalization_version, 1);
+    assert.equal(dockets[0].is_primary, 0);
+
+    const sourceRecords = databases.core.prepare(
+      "SELECT COUNT(*) AS count FROM case_identifiers_v1 WHERE article_id=? AND identifier_type='source_record_id'",
+    ).get(publication.articleId) as Record<string, unknown>;
+    assert.equal(sourceRecords.count, 1, "the source_record_id identifier is preserved");
+
+    databases.ingest.prepare(`UPDATE source_backfill_items SET
+      status='verified',article_id=NULL,published_normalization_artifact_id=NULL,
+      claimed_attempt_id=?,claimed_fencing_token=?,claimed_phase='publish',lease_expires_at=?,updated_at=?
+      WHERE id=?`).run(
+      ATTEMPT_ID,FENCE,new Date(Date.now() + 120_000).toISOString(),new Date().toISOString(),ITEM_ID,
+    );
+    const recovered = await d1CaseBackfillRepository.publishItem({
+      itemId: ITEM_ID, authority: authority(), actorId: "test-publisher-recovery", normalizedOutput,
+    });
+    assert.deepEqual(recovered, publication);
+    const docketsAfterRecovery = databases.core.prepare(
+      "SELECT COUNT(*) AS count FROM case_identifiers_v1 WHERE article_id=? AND identifier_type='docket'",
+    ).get(publication.articleId) as Record<string, unknown>;
+    assert.equal(docketsAfterRecovery.count, 1, "recovery never duplicates the docket identifier");
   } finally {
     databases.core.close(); databases.ingest.close(); databases.ops.close();
   }

@@ -72,6 +72,93 @@ export function caseNumberKey(sourceKey: string, value?: string | null) {
   return canonical.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/gu, "");
 }
 
+type CaseMetadataRecord = Record<string, unknown>;
+
+/**
+ * Keys the ingest/backfill pipeline owns for a case number. They mirror the
+ * Postgres generated `case_key` expression and the sourceInventory payload, so
+ * only these fields are treated as authoritative.
+ */
+const AUTHORITATIVE_CASE_NUMBER_KEYS = [
+  "caseNumber",
+  "case_number",
+  "docketNumber",
+  "docket_number",
+  "docket",
+  "decisionNumber",
+  "resolutionNumber",
+] as const;
+
+function toCaseMetadataRecord(value: unknown): CaseMetadataRecord | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as CaseMetadataRecord)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as CaseMetadataRecord)
+    : null;
+}
+
+function firstMetadataCaseNumber(record: CaseMetadataRecord): string | undefined {
+  const inventory = toCaseMetadataRecord(record.sourceInventory);
+  const candidates: unknown[] = AUTHORITATIVE_CASE_NUMBER_KEYS.map((key) => record[key]);
+  if (inventory) candidates.push(...AUTHORITATIVE_CASE_NUMBER_KEYS.map((key) => inventory[key]));
+  for (const value of candidates) {
+    if (typeof value !== "string") continue;
+    const candidate = value.trim();
+    if (candidate) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Canonical case number from one authoritative metadata payload. `metadata` may
+ * be D1 canonical JSON text or an already-revived object; only the
+ * pipeline-owned case keys (and their `sourceInventory` copies) are read, never
+ * arbitrary article body text.
+ */
+export function canonicalCaseNumberFromMetadata(sourceKey: string, metadata: unknown): string | undefined {
+  const record = toCaseMetadataRecord(metadata);
+  if (!record) return undefined;
+  const raw = firstMetadataCaseNumber(record);
+  return raw ? normalizeCaseNumber(sourceKey, raw) : undefined;
+}
+
+/**
+ * Derives the canonical `{ caseNumber, caseKey }` from the first authoritative
+ * metadata container that carries a recognizable case number. Each container may
+ * itself be the metadata object or wrap it under `sourceMetadata`/`case`.
+ */
+export function authoritativeCaseMetadata(
+  sourceKey: string,
+  ...containers: readonly unknown[]
+): { caseNumber: string; caseKey: string } | undefined {
+  for (const container of containers) {
+    const record = toCaseMetadataRecord(container);
+    if (!record) continue;
+    const candidates = [
+      record,
+      toCaseMetadataRecord(record.sourceMetadata),
+      toCaseMetadataRecord(record.case),
+    ];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const caseNumber = canonicalCaseNumberFromMetadata(sourceKey, candidate);
+      const caseKey = caseNumberKey(sourceKey, caseNumber);
+      if (caseNumber && caseKey) return { caseNumber, caseKey };
+    }
+  }
+  return undefined;
+}
+
 function reference(sourceKey: ConstitutionalSourceKey, raw: string): ExactCaseReference | null {
   const caseNumber = normalizeCaseNumber(sourceKey, raw);
   const caseKey = caseNumberKey(sourceKey, raw);
