@@ -189,6 +189,9 @@ async function rankedFullTextCandidates(filters: ArticleListFilters): Promise<Ar
 }
 
 export async function fullTextSearch(filters: ArticleListFilters): Promise<ArticleListResult> {
+  if (caseCatalogSearchEnabled()) {
+    return catalogCaseSearch(filters);
+  }
   return rankedFullTextCandidates(filters);
 }
 

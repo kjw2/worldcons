@@ -9,6 +9,7 @@ import {
 import { runD1CaseCatalogSearch } from "../lib/cloudflare/search-catalog/case-catalog-search";
 import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
 import { catalogCaseSearch, isCatalogSearchCursorError } from "../lib/search/case-catalog";
+import { fullTextSearch } from "../lib/search/vector";
 import type { CatalogCaseSearchRpcRequest } from "../lib/search/repository/types";
 
 /**
@@ -658,6 +659,22 @@ test("catalogCaseSearch runs end-to-end on D1 without Supabase and maps cursor e
         () => catalogCaseSearch({ q: "", pageSize: 1, cursor: "***" }),
         (error: unknown) => isCatalogSearchCursorError(error) && error.reason === "invalid",
       );
+    });
+  } finally {
+    clearRuntimeD1Bindings();
+  }
+});
+
+test("fullTextSearch routes through the D1 Case Catalog when Catalog search is enabled", async () => {
+  const fake = createFakeD1(catalogTables());
+  clearRuntimeD1Bindings();
+  setRuntimeD1Bindings({ worldcons_core: fake.database, worldcons_search: fake.database });
+  try {
+    await withEnv({ ...FLAGS_ON, CASE_CATALOG_SEARCH_ENABLED: "true" }, async () => {
+      const result = await fullTextSearch({ q: "23-123", pageSize: 20, includeViewCounts: false });
+      assert.deepEqual(result.items.map((item) => item.slug), ["us-a"]);
+      assert.equal(result.retrievalMode, "exact-identity");
+      assert.equal(result.rankingVersion, "gate3-exact-lexical-v1");
     });
   } finally {
     clearRuntimeD1Bindings();
