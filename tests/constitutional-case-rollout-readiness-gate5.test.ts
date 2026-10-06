@@ -49,10 +49,10 @@ test("M5 readiness reports the approved Germany canary and the owner-approved Fr
   );
 
   const germany = report.tranches[0];
-  assert.deepEqual(germany.approvedYears, [2022, 2023, 2024]);
+  assert.deepEqual(germany.approvedYears, [2021, 2022, 2023, 2024]);
   assert.equal(germany.policyAuthorized, true);
   assert.equal(germany.executionEnabled, false);
-  assert.equal(germany.policyVersion, "bverfg-unattended-canary-v3");
+  assert.equal(germany.policyVersion, "bverfg-unattended-canary-v4");
   assert.equal(germany.policyReviewDueAt, "2027-04-01");
 
   const approvedYears: number[] = [];
@@ -71,8 +71,16 @@ test("M5 readiness reports the approved Germany canary and the owner-approved Fr
   assert.equal(franceOther.policyVersion, null);
   assert.deepEqual(franceOther.blocking, ["owner_source_policy_not_approved", "deferred_after_qpc_dc"]);
 
-  assert.equal(report.approvedSelectionCount, 33);
+  assert.equal(report.approvedSelectionCount, 34);
   assert.deepEqual(report.approvedSelections[0], {
+    sourceKey: "de-bverfg",
+    country: "Germany",
+    year: 2021,
+    documentType: "DECISION",
+    policyVersion: "bverfg-unattended-canary-v4",
+    policyReviewDueAt: "2027-04-01",
+  });
+  assert.deepEqual(report.approvedSelections[1], {
     sourceKey: "de-bverfg",
     country: "Germany",
     year: 2022,
@@ -80,20 +88,20 @@ test("M5 readiness reports the approved Germany canary and the owner-approved Fr
     policyVersion: "bverfg-unattended-canary-v3",
     policyReviewDueAt: "2027-04-01",
   });
-  assert.deepEqual(report.approvedSelections[1], {
+  assert.deepEqual(report.approvedSelections[2], {
     sourceKey: "de-bverfg",
     country: "Germany",
     year: 2023,
     documentType: "DECISION",
-    policyVersion: "bverfg-unattended-canary-v3",
+    policyVersion: "bverfg-unattended-canary-v2",
     policyReviewDueAt: "2027-04-01",
   });
-  assert.deepEqual(report.approvedSelections[2], {
+  assert.deepEqual(report.approvedSelections[3], {
     sourceKey: "de-bverfg",
     country: "Germany",
     year: 2024,
     documentType: "DECISION",
-    policyVersion: "bverfg-unattended-canary-v3",
+    policyVersion: "bverfg-unattended-canary-v1",
     policyReviewDueAt: "2027-04-01",
   });
   const franceSelections = report.approvedSelections.filter((entry) => entry.sourceKey === "fr-conseil-constitutionnel");
@@ -109,7 +117,7 @@ test("M5 readiness reports the approved Germany canary and the owner-approved Fr
   assert.equal(franceSelections.some((entry) => entry.year === 2024 && entry.documentType === "DC"), true);
   assert.equal(franceSelections.every((entry) => entry.documentType === "QPC" || entry.documentType === "DC"), true);
 
-  assert.equal(report.newlyAuthorizedSelectionCount, 32);
+  assert.equal(report.newlyAuthorizedSelectionCount, 33);
   assert.equal(report.m5ExpansionExecutionReady, false);
   assert.equal(report.tranches.filter((tranche) => !tranche.policyAuthorized).length, 5);
   assert.deepEqual(report.nextApprovalRequired, {
@@ -144,8 +152,8 @@ test("Germany 2024 is authorized only when the approved policy and history flag 
   assert.equal(disabled.errorCode, "case_backfill.germany_history_disabled");
 });
 
-test("Germany 1998-2021 expansion stays unapproved even with the history flag on, while 2022-2024 are approved", () => {
-  for (const year of [1998, 2010, 2021]) {
+test("Germany 1998-2020 expansion stays unapproved even with the history flag on, while 2021-2024 are approved", () => {
+  for (const year of [1998, 2010, 2020]) {
     const result = selectCaseBackfillRollout(
       { sourceKey: "de-bverfg", year, documentType: "DECISION" },
       { environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, currentYear: 2026 },
@@ -156,12 +164,12 @@ test("Germany 1998-2021 expansion stays unapproved even with the history flag on
   }
   assert.throws(
     () => assertCaseBackfillRolloutPreflight(
-      { sourceKey: "de-bverfg", year: 2021, documentType: "DECISION" },
+      { sourceKey: "de-bverfg", year: 2020, documentType: "DECISION" },
       { environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, currentYear: 2026 },
     ),
     /case_backfill\.germany_expansion_not_approved/,
   );
-  for (const year of [2022, 2023, 2024]) {
+  for (const year of [2021, 2022, 2023, 2024]) {
     const approved = selectCaseBackfillRollout(
       { sourceKey: "de-bverfg", year, documentType: "DECISION" },
       { environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, currentYear: 2026 },
@@ -312,7 +320,7 @@ test("2025+ selections are rejected before any source-specific policy path", () 
 
 test("fail-closed preflight rejects every unapproved selection and proves zero public/AI effects", () => {
   const cases: Array<[Parameters<typeof selectCaseBackfillRollout>[0], string]> = [
-    [{ sourceKey: "de-bverfg", year: 2021, documentType: "DECISION" }, "case_backfill.germany_expansion_not_approved"],
+    [{ sourceKey: "de-bverfg", year: 2020, documentType: "DECISION" }, "case_backfill.germany_expansion_not_approved"],
     [{ sourceKey: "fr-conseil-constitutionnel", year: 2024, documentType: "L" }, "case_backfill.france_history_source_policy_not_approved"],
     [{ sourceKey: "es-tribunal-constitucional", year: 2024, documentType: "SENTENCIA" }, "case_backfill.spain_history_source_blocked"],
     [{ sourceKey: "us-constitution-annotated", year: 2024, documentType: "CONSTITUTION_ANNOTATED_TABLE_CITATION" }, "us_conan.candidate_graph_not_verified_corpus"],
@@ -342,7 +350,7 @@ test("readiness stays catalog-write aware without enabling publication or AI", (
 
 test("M5 expansion execution readiness requires an executionEnabled newly approved tranche", () => {
   const off = caseBackfillRolloutReadiness({ environment: {}, currentYear: 2026, now: NOW });
-  assert.equal(off.newlyAuthorizedSelectionCount, 32);
+  assert.equal(off.newlyAuthorizedSelectionCount, 33);
   assert.equal(off.m5ExpansionExecutionReady, false);
 
   const franceOn = caseBackfillRolloutReadiness({
@@ -350,7 +358,7 @@ test("M5 expansion execution readiness requires an executionEnabled newly approv
     currentYear: 2026,
     now: NOW,
   });
-  assert.equal(franceOn.newlyAuthorizedSelectionCount, 32);
+  assert.equal(franceOn.newlyAuthorizedSelectionCount, 33);
   assert.equal(franceOn.m5ExpansionExecutionReady, true);
   const franceQpcDc = franceOn.tranches[1];
   assert.equal(franceQpcDc.policyAuthorized, true);
@@ -367,17 +375,17 @@ test("M5 expansion execution readiness requires an executionEnabled newly approv
   );
 
   // The Germany 2024 canary alone is the baseline and cannot make M5 expansion
-  // ready, but the additive 2023 and 2022 successors are newly authorized
+  // ready, but the additive 2023, 2022 and 2021 successors are newly authorized
   // selections and do make it execution-ready when the Germany history flag is on.
   const germanyOn = caseBackfillRolloutReadiness({
     environment: { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
     currentYear: 2026,
     now: NOW,
   });
-  assert.equal(germanyOn.newlyAuthorizedSelectionCount, 32);
+  assert.equal(germanyOn.newlyAuthorizedSelectionCount, 33);
   assert.equal(germanyOn.m5ExpansionExecutionReady, true);
   const germany = germanyOn.tranches[0];
-  assert.deepEqual(germany.approvedYears, [2022, 2023, 2024]);
+  assert.deepEqual(germany.approvedYears, [2021, 2022, 2023, 2024]);
   assert.equal(germany.executionEnabled, true);
 });
 
@@ -505,7 +513,7 @@ async function expectNoRun(
 
 test("service defense blocks unapproved tranches in non-discover phases before beginRun", async () => {
   await expectNoRun(
-    defenseSnapshot({ sourceKey: "de-bverfg", scopeFrom: "2021-01-01", scopeTo: "2021-12-31" }),
+    defenseSnapshot({ sourceKey: "de-bverfg", scopeFrom: "2020-01-01", scopeTo: "2020-12-31" }),
     "fetch",
     { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
     /case_backfill\.germany_expansion_not_approved/,
@@ -533,7 +541,7 @@ test("service defense blocks unapproved tranches in non-discover phases before b
 
 test("service defense blocks unapproved tranches in discover phases before beginRun", async () => {
   await expectNoRun(
-    defenseSnapshot({ sourceKey: "de-bverfg", scopeFrom: "2021-01-01", scopeTo: "2021-12-31", status: "open" }),
+    defenseSnapshot({ sourceKey: "de-bverfg", scopeFrom: "2020-01-01", scopeTo: "2020-12-31", status: "open" }),
     "discover",
     { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" },
     /case_backfill\.germany_expansion_not_approved/,

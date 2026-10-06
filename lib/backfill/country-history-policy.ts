@@ -51,7 +51,7 @@ export interface CountryHistoryStage {
 /**
  * Country expansion order is machine-readable so the CLI plan/discover output
  * and the P1 worker share one ordering. The order is readiness-based:
- * Germany first (approved 2022-2024 private-shadow tranche), then the pending-owner
+ * Germany first (approved 2021-2024 private-shadow tranche), then the pending-owner
  * sources, and finally the U.S. candidate graph which is explicitly not a
  * verified SCOTUS corpus.
  */
@@ -63,11 +63,11 @@ export const COUNTRY_HISTORY_EXPANSION_ORDER: readonly CountryHistoryStage[] = O
     documentTypes: ["DECISION"],
     yearFrom: 1998,
     yearTo: 2024,
-    approvedYearFrom: 2022,
+    approvedYearFrom: 2021,
     approvedYearTo: 2024,
     status: "approved_private_shadow",
     blocking: [],
-    policyVersion: "bverfg-unattended-canary-v3",
+    policyVersion: "bverfg-unattended-canary-v4",
     policyReviewDueAt: "2027-04-01",
   }),
   Object.freeze({

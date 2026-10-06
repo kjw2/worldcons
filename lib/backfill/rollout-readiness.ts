@@ -11,6 +11,7 @@ import {
   CASE_CATALOG_GERMANY_HISTORY_FLAG,
   GERMANY_BVERFG_APPROVED_CANARY_YEAR,
   GERMANY_BVERFG_HISTORY_START_YEAR,
+  germanyBverfgApprovedPolicyVersionForYear,
   germanyBverfgExpansionGuard,
 } from "@/lib/backfill/germany-scope";
 import {
@@ -448,7 +449,9 @@ export function caseBackfillRolloutReadiness(
       country: tranche.country,
       year,
       documentType,
-      policyVersion: tranche.policyVersion,
+      policyVersion: tranche.sourceKey === "de-bverfg"
+        ? germanyBverfgApprovedPolicyVersionForYear(year)
+        : tranche.policyVersion,
       policyReviewDueAt: tranche.policyReviewDueAt,
     })))
   ));

@@ -1,6 +1,12 @@
 import { d1AdminCommandRepository } from "../../../lib/admin/command-control-plane/d1-repository";
 import { d1CaseBackfillRepository } from "../../../lib/backfill/d1-repository";
-import { germanyBverfgYearScope } from "../../../lib/backfill/germany-scope";
+import {
+  assertGermanyBverfgYearEnabled,
+  CASE_CATALOG_GERMANY_HISTORY_FLAG,
+  germanyBverfgApprovedPolicyVersionForYear,
+  germanyBverfgVerifiedInventoryExpectation,
+  germanyBverfgYearScope,
+} from "../../../lib/backfill/germany-scope";
 import type { CaseBackfillAttemptAuthority } from "../../../lib/backfill/types";
 import {
   BVERFG_DEJURE_INDEX_URL,
@@ -18,11 +24,10 @@ const SOURCE_KEY = "de-bverfg";
 const DOCUMENT_TYPE = "DECISION";
 const DISCOVERY_METHOD = "external_index_dejure_paged_listing";
 const PARSER_VERSION = "bverfg-official-normalize-v2";
-const POLICY_VERSION_2022 = "bverfg-unattended-canary-v3";
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export interface GermanyBackfillDiscoverPayload {
-  year: 2022;
+  year: 2021 | 2022;
   phase: "discover";
   passNumber: 1;
   maxPages?: number;
@@ -64,7 +69,7 @@ export function parseGermanyBackfillDiscoverPayload(value: unknown): GermanyBack
   const payload = candidate as Record<string, unknown>;
   if (Object.keys(payload).some((key) => !["year","phase","passNumber","maxPages","requestedBy"].includes(key))) return null;
   if (
-    payload.year !== 2022
+    (payload.year !== 2021 && payload.year !== 2022)
     || payload.phase !== "discover"
     || payload.passNumber !== 1
     || (payload.maxPages !== undefined && (!Number.isInteger(payload.maxPages) || Number(payload.maxPages) < 1 || Number(payload.maxPages) > 500))
@@ -82,24 +87,31 @@ function configureBindings(env: GermanyBackfillDiscoverEnv) {
   });
 }
 
-export async function openGermanyBackfill2022Snapshot(
+export async function openGermanyBackfillDiscoverSnapshot(
   env: GermanyBackfillDiscoverEnv,
   input: GermanyBackfillDiscoverPayload,
 ) {
-  if (env.CASE_CATALOG_GERMANY_HISTORY_ENABLED !== "true") throw new Error("case_backfill.germany_history_disabled");
+  assertGermanyBverfgYearEnabled(input.year, {
+    [CASE_CATALOG_GERMANY_HISTORY_FLAG]: env.CASE_CATALOG_GERMANY_HISTORY_ENABLED,
+  }, new Date().getUTCFullYear());
   configureBindings(env);
   const scope = germanyBverfgYearScope(input.year, new Date().getUTCFullYear());
+  const sourcePolicyVersion = germanyBverfgApprovedPolicyVersionForYear(input.year);
+  if (!sourcePolicyVersion || (input.year !== 2021 && input.year !== 2022)) {
+    throw new Error("case_backfill.germany_expansion_not_approved");
+  }
+  const expectation = germanyBverfgVerifiedInventoryExpectation(input.year);
   const existing = await rows<Record<string, unknown>>(env.WORLDCONS_INGEST, `
     SELECT id,status,source_policy_version,parser_version FROM source_inventory_snapshots
     WHERE source_key=? AND document_type=? AND scope_from=? AND scope_to=?
     ORDER BY opened_at DESC LIMIT 3
   `, [SOURCE_KEY,DOCUMENT_TYPE,scope.scopeFrom,scope.scopeTo]);
-  const exactClosed = existing.find((row) => row.status === "closed" && row.source_policy_version === POLICY_VERSION_2022 && row.parser_version === PARSER_VERSION);
+  const exactClosed = existing.find((row) => row.status === "closed" && row.source_policy_version === sourcePolicyVersion && row.parser_version === PARSER_VERSION);
   if (exactClosed) return { snapshotId: text(exactClosed.id), alreadyClosed: true };
   const open = existing.filter((row) => row.status === "open");
   if (open.length > 1) throw new Error("case_backfill.multiple_open_snapshots");
   if (open[0]) {
-    if (open[0].source_policy_version !== POLICY_VERSION_2022 || open[0].parser_version !== PARSER_VERSION) {
+    if (open[0].source_policy_version !== sourcePolicyVersion || open[0].parser_version !== PARSER_VERSION) {
       throw new Error("case_backfill.open_snapshot_contract_mismatch");
     }
     return { snapshotId: text(open[0].id), alreadyClosed: false };
@@ -111,18 +123,18 @@ export async function openGermanyBackfill2022Snapshot(
     documentType: DOCUMENT_TYPE,
     discoveryMethod: DISCOVERY_METHOD,
     parserVersion: PARSER_VERSION,
-    sourcePolicyVersion: POLICY_VERSION_2022,
+    sourcePolicyVersion,
     coverageAssurance: "external_index_assisted",
-    expectedCount: null,
-    expectedCountBasis: null,
-    coverageEvidence: {},
+    expectedCount: expectation?.expectedCount ?? null,
+    expectedCountBasis: expectation?.expectedCountBasis ?? null,
+    coverageEvidence: expectation ? { verifiedInventoryAudit: expectation.evidence } : {},
     exclusions: [],
     createdBy: input.requestedBy?.trim() || "worldcons-backfill-discover-workflow",
   });
   return { snapshotId, alreadyClosed: false };
 }
 
-export async function startGermanyBackfill2022DiscoverRun(
+export async function startGermanyBackfillDiscoverRun(
   env: GermanyBackfillDiscoverEnv,
   input: GermanyBackfillDiscoverPayload,
   snapshotId: string,
@@ -145,7 +157,7 @@ export async function startGermanyBackfill2022DiscoverRun(
   if (!submitted.ok) throw new Error(`case_backfill.command_submit_failed.${submitted.error.code}`);
   let targetRunId = submitted.data.runId;
   if (submitted.data.runStatus === "failed" || submitted.data.runStatus === "aborted") {
-    const retried = await d1AdminCommandRepository.retry(submitted.data.runId, requestedBy, "resume Germany 2022 discovery");
+    const retried = await d1AdminCommandRepository.retry(submitted.data.runId, requestedBy, `resume Germany ${input.year} discovery`);
     if (!retried.ok) throw new Error(`case_backfill.command_retry_failed.${retried.error.code}`);
     targetRunId = retried.data.runId;
   } else if (submitted.data.runStatus === "succeeded") {
@@ -308,5 +320,16 @@ export async function discoverGermanyBackfillInventoryWithLoader(
   input: GermanyBackfillDiscoverPayload,
   loadPage: (url: string, page: number) => Promise<BverfgInventoryLoadedPage>,
 ) {
-  return discoverBverfgInventory({ year: input.year, currentYear: new Date().getUTCFullYear(), maxPages: input.maxPages ?? 500, loadPage });
+  const inventory = await discoverBverfgInventory({ year: input.year, currentYear: new Date().getUTCFullYear(), maxPages: input.maxPages ?? 500, loadPage });
+  const expectation = germanyBverfgVerifiedInventoryExpectation(input.year);
+  if (!expectation) return inventory;
+  return {
+    ...inventory,
+    expectedCount: expectation.expectedCount,
+    expectedCountBasis: expectation.expectedCountBasis,
+    coverageEvidence: {
+      ...inventory.coverageEvidence,
+      verifiedInventoryAudit: expectation.evidence,
+    },
+  };
 }

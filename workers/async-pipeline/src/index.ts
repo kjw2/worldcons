@@ -45,10 +45,10 @@ import {
   discoverGermanyBackfillInventoryWithLoader,
   fetchGermanyBackfillInventoryPage,
   fetchGermanyBackfillRobots,
-  openGermanyBackfill2022Snapshot,
+  openGermanyBackfillDiscoverSnapshot,
   parseGermanyBackfillDiscoverPayload,
   persistGermanyBackfillInventory,
-  startGermanyBackfill2022DiscoverRun,
+  startGermanyBackfillDiscoverRun,
   type GermanyBackfillDiscoverPayload,
 } from "./backfill-discover";
 
@@ -150,13 +150,13 @@ export class WorldconsBackfillDiscoverWorkflow extends WorkflowEntrypoint<Env, B
   async run(event: WorkflowEvent<BackfillDiscoverWorkflowPayload>, step: WorkflowStep) {
     const payload = parseGermanyBackfillDiscoverPayload(event.payload);
     if (!payload) throw new Error("case_backfill.invalid_discover_workflow_payload");
-    const opened = await step.do("open-or-resume-2022-snapshot", { timeout: "2 minutes" }, () => (
-      openGermanyBackfill2022Snapshot(this.env as unknown as Parameters<typeof openGermanyBackfill2022Snapshot>[0], payload)
+    const opened = await step.do(`open-or-resume-${payload.year}-snapshot`, { timeout: "2 minutes" }, () => (
+      openGermanyBackfillDiscoverSnapshot(this.env as unknown as Parameters<typeof openGermanyBackfillDiscoverSnapshot>[0], payload)
     ));
     if (opened.alreadyClosed) return { schemaVersion: 1, snapshotId: opened.snapshotId, alreadyClosed: true };
     const context = await step.do("start-discovery-command", { timeout: "2 minutes" }, () => (
-      startGermanyBackfill2022DiscoverRun(
-        this.env as unknown as Parameters<typeof startGermanyBackfill2022DiscoverRun>[0],payload,opened.snapshotId,
+      startGermanyBackfillDiscoverRun(
+        this.env as unknown as Parameters<typeof startGermanyBackfillDiscoverRun>[0],payload,opened.snapshotId,
       )
     ));
     const robots = await step.do("discover-robots", { timeout: "5 minutes" }, () => (

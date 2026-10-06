@@ -6,6 +6,8 @@ import {
   assertGermanyBverfgYearEnabled,
   CASE_CATALOG_GERMANY_HISTORY_FLAG,
   GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION,
+  GERMANY_BVERFG_2021_EXPECTED_COUNT,
+  GERMANY_BVERFG_2021_POLICY_VERSION,
   GERMANY_BVERFG_HISTORY_START_YEAR,
   germanyBverfgApprovedPolicyDescriptor,
   germanyBverfgExpansionGuard,
@@ -88,12 +90,15 @@ test("Germany BVerfG scope is annual, 1998-bounded, pre-2025, and disabled by de
   assert.equal(plan.every((entry) => !entry.enabled), true);
 });
 
-test("Germany expansion guard authorizes the 2022-2024 tranche and blocks 2021", () => {
-  assert.equal(GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION, "bverfg-unattended-canary-v3");
+test("Germany expansion guard authorizes the 2021-2024 tranche and blocks 2020", () => {
+  assert.equal(GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION, "bverfg-unattended-canary-v4");
+  assert.equal(GERMANY_BVERFG_2021_POLICY_VERSION, "bverfg-unattended-canary-v4");
+  assert.equal(GERMANY_BVERFG_2021_EXPECTED_COUNT, 412);
   assert.deepEqual(germanyBverfgExpansionGuard(2024), { allowed: true, reason: null });
   assert.deepEqual(germanyBverfgExpansionGuard(2023), { allowed: true, reason: null });
   assert.deepEqual(germanyBverfgExpansionGuard(2022), { allowed: true, reason: null });
-  assert.deepEqual(germanyBverfgExpansionGuard(2021), {
+  assert.deepEqual(germanyBverfgExpansionGuard(2021), { allowed: true, reason: null });
+  assert.deepEqual(germanyBverfgExpansionGuard(2020), {
     allowed: false,
     reason: "case_backfill.germany_expansion_not_approved",
   });
@@ -102,17 +107,18 @@ test("Germany expansion guard authorizes the 2022-2024 tranche and blocks 2021",
     () => assertGermanyBverfgYearEnabled(2022, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026),
   );
   assert.throws(
-    () => assertGermanyBverfgYearEnabled(2021, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026),
+    () => assertGermanyBverfgYearEnabled(2020, { [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026),
     /germany_expansion_not_approved/,
   );
   const plan = germanyBverfgExpansionPlan({ [CASE_CATALOG_GERMANY_HISTORY_FLAG]: "true" }, 2026);
-  assert.deepEqual(plan.filter((entry) => entry.enabled).map((entry) => entry.year), [2024, 2023, 2022]);
+  assert.deepEqual(plan.filter((entry) => entry.enabled).map((entry) => entry.year), [2024, 2023, 2022, 2021]);
   const descriptor = germanyBverfgApprovedPolicyDescriptor();
-  assert.deepEqual(descriptor.approvedYears, [2024, 2023, 2022]);
+  assert.deepEqual(descriptor.approvedYears, [2024, 2023, 2022, 2021]);
   assert.deepEqual(descriptor.approvedPolicyVersions, {
     2024: "bverfg-unattended-canary-v1",
     2023: "bverfg-unattended-canary-v2",
     2022: "bverfg-unattended-canary-v3",
+    2021: "bverfg-unattended-canary-v4",
   });
 });
 

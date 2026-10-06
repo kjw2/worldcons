@@ -12,28 +12,58 @@ export const GERMANY_BVERFG_DOCUMENT_TYPE = "DECISION" as const;
  * `bverfg-unattended-canary-v2` is an additive, immutable successor recorded by
  * migration `20260916110000_constitutional_case_germany_2023_policy_approval.sql`
  * extended the exact same reviewed source-policy assumptions to 2023. The
- * additive v3 successor recorded on 2026-10-03 extends them to the NEXT SINGLE
- * YEAR, 2022 only, after re-verifying the official decisions page, Impressum,
- * and the unchanged robots hash/crawl-delay. The successor never widens
- * document type, hosts, discovery method, coverage assurance, or public/AI
- * posture, and 2021 and older remain blocked under the expansion guard.
+ * additive v3 successor recorded on 2026-10-03 extends them to 2022. The
+ * additive v4 successor approved on 2026-10-06 extends the exact same reviewed
+ * source-policy assumptions to the NEXT SINGLE YEAR, 2021, after a read-only
+ * Dejure inventory audit found exactly 412 unique date+docket targets and a
+ * 2022 cross-check reproduced the sealed 366-target snapshot exactly. The
+ * successor never widens document type, hosts, discovery method, coverage
+ * assurance, or public/AI posture, and 2020 and older remain blocked.
  */
 export const GERMANY_BVERFG_2024_BASELINE_POLICY_VERSION = "bverfg-unattended-canary-v1";
 export const GERMANY_BVERFG_2023_POLICY_VERSION = "bverfg-unattended-canary-v2";
 export const GERMANY_BVERFG_2022_POLICY_VERSION = "bverfg-unattended-canary-v3";
-export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION = GERMANY_BVERFG_2022_POLICY_VERSION;
+export const GERMANY_BVERFG_2021_POLICY_VERSION = "bverfg-unattended-canary-v4";
+export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_VERSION = GERMANY_BVERFG_2021_POLICY_VERSION;
 export const GERMANY_BVERFG_APPROVED_SHADOW_POLICY_REVIEW_DUE_AT = "2027-04-01";
+export const GERMANY_BVERFG_2021_EXPECTED_COUNT = 412;
+export const GERMANY_BVERFG_2021_EXPECTED_COUNT_BASIS = "dejure_listing_date_docket_audit_2026-10-06";
 export const GERMANY_BVERFG_APPROVED_CANARY_YEAR = 2024;
 export const GERMANY_BVERFG_APPROVED_SHADOW_YEARS: readonly number[] = Object.freeze([
   GERMANY_BVERFG_APPROVED_CANARY_YEAR,
   2023,
   2022,
+  2021,
 ]);
 export const GERMANY_BVERFG_APPROVED_POLICY_BY_YEAR: Readonly<Record<number, string>> = Object.freeze({
   [GERMANY_BVERFG_APPROVED_CANARY_YEAR]: GERMANY_BVERFG_2024_BASELINE_POLICY_VERSION,
   2023: GERMANY_BVERFG_2023_POLICY_VERSION,
   2022: GERMANY_BVERFG_2022_POLICY_VERSION,
+  2021: GERMANY_BVERFG_2021_POLICY_VERSION,
 });
+
+export function germanyBverfgVerifiedInventoryExpectation(year: number) {
+  if (year !== 2021) return null;
+  return {
+    expectedCount: GERMANY_BVERFG_2021_EXPECTED_COUNT,
+    expectedCountBasis: GERMANY_BVERFG_2021_EXPECTED_COUNT_BASIS,
+    evidence: {
+      auditedAt: "2026-10-06",
+      providerKey: "dejure.org",
+      stableIdentity: "decision_date_plus_docket_key",
+      firstPage: 33,
+      lastPage: 43,
+      pageCount: 11,
+      earliestDecisionDate: "2021-01-04",
+      latestDecisionDate: "2021-12-23",
+      crossPageDuplicates: 0,
+      boundaryStable: true,
+      crosscheckYear: 2022,
+      crosscheckExpectedCount: 366,
+      crosscheckObservedCount: 366,
+    },
+  } as const;
+}
 
 function explicitTrue(value?: string) {
   return value?.trim().toLowerCase() === "true";
@@ -52,11 +82,11 @@ export function germanyBverfgYearSupported(
 }
 
 /**
- * Only the three owner-approved private-shadow years are authorized for
+ * Only the four owner-approved private-shadow years are authorized for
  * unattended execution: the pre-existing 2024 canary (`bverfg-unattended-canary-v1`)
  * plus additive 2023 (`bverfg-unattended-canary-v2`) and 2022
- * (`bverfg-unattended-canary-v3`, review due 2027-04-01). Every other supported
- * year (1998-2021) is an M5 expansion that
+ * (`bverfg-unattended-canary-v3`) and 2021 (`bverfg-unattended-canary-v4`,
+ * review due 2027-04-01). Every other supported year (1998-2020) is an M5 expansion that
  * needs another owner-approved policy version. The guard stays fail-closed even
  * when the history flag is true.
  */
