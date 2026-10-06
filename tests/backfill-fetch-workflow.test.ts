@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { clearRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 import {
+  GERMANY_2021_BACKFILL_SNAPSHOT_ID,
   GERMANY_2022_BACKFILL_SNAPSHOT_ID,
   GERMANY_2023_BACKFILL_SNAPSHOT_ID,
   GERMANY_2024_BACKFILL_SNAPSHOT_ID,
@@ -266,6 +267,7 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2022_BACKFILL_SNAPSHOT_ID })));
+  assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2021_BACKFILL_SNAPSHOT_ID })));
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({
     ...parsed,
     snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID,
@@ -279,6 +281,7 @@ test("permit wait exhaustion is retryable rather than terminal", () => {
 });
 
 test("Germany backfill snapshot policy mapping preserves historical snapshot policy versions", () => {
+  assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2021_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v4");
   assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2022_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v3");
   assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2023_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v2");
   assert.equal(germanyBackfillSourcePolicyVersion(GERMANY_2024_BACKFILL_SNAPSHOT_ID), "bverfg-unattended-canary-v1");
