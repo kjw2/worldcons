@@ -155,6 +155,14 @@ test("translation workflow publishes and refreshes search immediately after succ
   assert.match(source, /publication\.publishedCount > 0/u);
 });
 
+test("watchdog probes publication backlog and only then recovers publication plus search", () => {
+  const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
+  assert.match(source, /event\.payload\.kind === "watchdog"[\s\S]*hasPendingP3Publication/u);
+  assert.match(source, /if \(!pending\) return/u);
+  assert.match(source, /watchdog-recover-pending-publication[\s\S]*runPublicationDrain/u);
+  assert.match(source, /watchdog-sync-search-after-recovery[\s\S]*runNativeSearchProjectionSync/u);
+});
+
 test("embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch", async () => {
   const message = buildM8TaskMessage("embedding-backfill", Date.parse("2026-09-26T08:45:00Z"));
   const calls: unknown[] = [];

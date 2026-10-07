@@ -19,6 +19,7 @@ import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { runNativeSearchProjectionSync } from "./search-projection-sync";
+import { hasPendingP3Publication } from "./publication-recovery";
 import { launch } from "@cloudflare/playwright";
 import {
   parseGermanyBackfillFetchPayload,
@@ -111,6 +112,27 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         WORLDCONS_CORE: this.env.WORLDCONS_CORE,
         WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
       }));
+    }
+    if (event.payload.kind === "watchdog") {
+      const watchdog = await executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);
+      const pending = await step.do("probe-unpublished-translations", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "1 minute",
+      }, () => hasPendingP3Publication(this.env.WORLDCONS_CORE));
+      if (!pending) return { kind: event.payload.kind, watchdog, publication: null, searchProjection: null };
+      const limit = Math.max(1, Math.min(Number(this.env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
+      const appService = (this.env as unknown as M8NativeEnvironment).WORLDCONS_APP_SERVICE;
+      const publication = await step.do("watchdog-recover-pending-publication", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
+      }, () => appService.runPublicationDrain({ limit }));
+      const searchProjection = publication.publishedCount > 0
+        ? await step.do("watchdog-sync-search-after-recovery", {
+            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+          }, () => runNativeSearchProjectionSync({
+            WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+            WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
+          }))
+        : null;
+      return { kind: event.payload.kind, watchdog, publication, searchProjection };
     }
     if (event.payload.kind === "translation-drain") {
       const translation = await executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);
