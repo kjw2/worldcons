@@ -359,7 +359,12 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
       originalPublishedAt: row.original_published_at ?? undefined,
       cleanedText: row.cleaned_text ?? undefined,
       metadata: sourceMetadata,
-    }, { provider: "gemini", model: options.model, apiKeys: options.apiKeys });
+    }, {
+      provider: "gemini",
+      model: options.model,
+      providerApiKeys: { gemini: options.apiKeys },
+      allowProviderFallback: true,
+    });
     const createEmbedding = options.createEmbedding ?? createEmbeddingArtifact;
     embedding = await createEmbedding(summary, { apiKeys: options.apiKeys, provider: "gemini" }).catch(() => null);
   } catch (error) {

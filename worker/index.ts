@@ -260,6 +260,7 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     setRuntimeD1Bindings({
       worldcons_core: env.WORLDCONS_CORE,
       worldcons_ingest: env.WORLDCONS_INGEST,
+      worldcons_ops: env.WORLDCONS_OPS,
     });
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
     const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
@@ -268,7 +269,10 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
     return runD1SummaryDrain({
       ...input,
       apiKeys,
-      model: env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+      // Scheduled drains should follow Gemini's live model catalog and retain
+      // model failover by default. Only GEMINI_PINNED_MODEL is an explicit
+      // operational override that intentionally disables automatic selection.
+      model: env.GEMINI_PINNED_MODEL?.trim() || undefined,
     });
   }
 

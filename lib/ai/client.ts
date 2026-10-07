@@ -1,6 +1,10 @@
 import OpenAI from "openai";
 import { completeGeminiJson } from "@/lib/ai/gemini-router";
-import { getRuntimeLlmSettings, type RuntimeLlmProviderSettings } from "@/lib/ai/llm-settings";
+import {
+  getRuntimeLlmSettings,
+  type RuntimeLlmProviderSettings,
+  type RuntimeLlmSettings,
+} from "@/lib/ai/llm-settings";
 import type { ConfigurableLlmProvider } from "@/lib/ai/llm-settings-types";
 
 export type LlmMessage = {
@@ -14,6 +18,8 @@ export interface LlmCompletionOptions {
   provider?: Exclude<LlmProvider, "mock">;
   model?: string;
   apiKeys?: string[];
+  providerApiKeys?: Partial<Record<ConfigurableLlmProvider, string[]>>;
+  allowProviderFallback?: boolean;
   signal?: AbortSignal;
 }
 
@@ -195,11 +201,46 @@ async function completeOpenAiLikeJson(
   };
 }
 
-export async function completeJsonWithMetadata(messages: LlmMessage[], options: LlmCompletionOptions = {}): Promise<LlmCompletionResult | null> {
-  const runtime = options.apiKeys
-    ? null
-    : await getRuntimeLlmSettings();
-  const provider = options.provider ?? runtime?.summary.provider ?? "openai";
+const PROVIDER_FALLBACK_ORDER: ConfigurableLlmProvider[] = ["gemini", "openai", "anthropic", "openai-compatible"];
+
+function providerKeys(
+  provider: ConfigurableLlmProvider,
+  settings: RuntimeLlmProviderSettings,
+  options: LlmCompletionOptions,
+) {
+  const override = options.providerApiKeys?.[provider]?.map((key) => key.trim()).filter(Boolean);
+  if (override?.length) return override;
+  if (options.apiKeys?.length) return options.apiKeys.map((key) => key.trim()).filter(Boolean);
+  return settings.apiKeys;
+}
+
+function providerAvailable(
+  provider: ConfigurableLlmProvider,
+  runtime: RuntimeLlmSettings,
+  options: LlmCompletionOptions,
+) {
+  const settings = runtime.providers[provider];
+  const explicitKeys = options.providerApiKeys?.[provider]?.map((key) => key.trim()).filter(Boolean) ?? [];
+  if (!settings.enabled && explicitKeys.length === 0) return false;
+  if (providerKeys(provider, settings, options).length === 0) return false;
+  if (provider === "openai-compatible" && !settings.baseUrl) return false;
+  return true;
+}
+
+function providerFailureSummary(error: unknown) {
+  const typed = error as Error & { status?: number };
+  return {
+    status: typeof typed?.status === "number" ? typed.status : null,
+    message: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+  };
+}
+
+async function completeWithProvider(
+  messages: LlmMessage[],
+  provider: ConfigurableLlmProvider,
+  options: LlmCompletionOptions,
+  runtime: RuntimeLlmSettings | null,
+): Promise<LlmCompletionResult | null> {
   if (provider === "gemini") {
     const gemini = runtime?.providers.gemini ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
     const summarySettings = runtime?.summary ?? { provider, model: "" };
@@ -207,7 +248,7 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
     const useRouterModelFallbacks = !options.model && process.env.GEMINI_DISABLE_MODEL_FALLBACKS !== "true";
     return completeGeminiJson(messages, {
       ...(useRouterModelFallbacks ? {} : { model }),
-      apiKeys: options.apiKeys ?? gemini.apiKeys,
+      apiKeys: providerKeys(provider, gemini, options),
       signal: options.signal,
     });
   }
@@ -216,7 +257,8 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
     const anthropic = runtime?.providers.anthropic ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
     const summarySettings = runtime?.summary ?? { provider, model: "" };
     const model = selectedModel(provider, anthropic, summarySettings, options.model, "claude-3-5-haiku-latest");
-    return completeAnthropicJson(messages, model, firstApiKey(anthropic), options.signal);
+    const keys = providerKeys(provider, anthropic, options);
+    return completeAnthropicJson(messages, model, keys[0] ?? "", options.signal);
   }
 
   if (provider === "openai-compatible") {
@@ -224,7 +266,8 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
     const summarySettings = runtime?.summary ?? { provider, model: "" };
     const model = selectedModel(provider, compatible, summarySettings, options.model, "gpt-4.1-mini");
     if (!compatible.baseUrl) throw new Error("OpenAI compatible base URL is required.");
-    return completeOpenAiLikeJson(messages, "openai-compatible", model, firstApiKey(compatible), compatible.baseUrl, options.signal);
+    const keys = providerKeys(provider, compatible, options);
+    return completeOpenAiLikeJson(messages, "openai-compatible", model, keys[0] ?? "", compatible.baseUrl, options.signal);
   }
 
   if (provider !== "openai") {
@@ -234,9 +277,46 @@ export async function completeJsonWithMetadata(messages: LlmMessage[], options: 
   const openai = runtime?.providers.openai ?? { enabled: true, defaultModel: "", apiKeys: options.apiKeys ?? [] };
   const summarySettings = runtime?.summary ?? { provider, model: "" };
   const model = selectedModel(provider, openai, summarySettings, options.model, "gpt-4.1-mini");
-  const apiKey = firstApiKey(openai) || process.env.OPENAI_API_KEY || "";
+  const keys = providerKeys(provider, openai, options);
+  const apiKey = keys[0] || process.env.OPENAI_API_KEY || "";
   if (!apiKey && process.env.NODE_ENV !== "production") return null;
   return completeOpenAiLikeJson(messages, "openai", model, apiKey, undefined, options.signal);
+}
+
+export async function completeJsonWithMetadata(messages: LlmMessage[], options: LlmCompletionOptions = {}): Promise<LlmCompletionResult | null> {
+  const runtime = options.apiKeys ? null : await getRuntimeLlmSettings();
+  const provider = options.provider ?? runtime?.summary.provider ?? "openai";
+  const providerFallbackEnabled = Boolean(runtime)
+    && options.allowProviderFallback !== false
+    && process.env.LLM_PROVIDER_FALLBACKS !== "false";
+
+  if (!runtime || !providerFallbackEnabled) {
+    return completeWithProvider(messages, provider, options, runtime);
+  }
+
+  const order = [provider, ...PROVIDER_FALLBACK_ORDER.filter((candidate) => candidate !== provider)];
+  const failures: Array<{ provider: ConfigurableLlmProvider; status: number | null; message: string }> = [];
+  for (const candidate of order) {
+    if (!providerAvailable(candidate, runtime, options)) continue;
+    const candidateOptions: LlmCompletionOptions = candidate === provider
+      ? options
+      : { ...options, provider: candidate, model: undefined, apiKeys: undefined };
+    try {
+      const result = await completeWithProvider(messages, candidate, candidateOptions, runtime);
+      if (result) return result;
+    } catch (error) {
+      const failure = providerFailureSummary(error);
+      failures.push({ provider: candidate, ...failure });
+      console.warn(JSON.stringify({
+        event: "llm_provider_failover",
+        provider: candidate,
+        status: failure.status,
+        message: failure.message,
+      }));
+    }
+  }
+
+  throw new Error(`All configured LLM providers failed: ${JSON.stringify(failures)}`);
 }
 
 export async function completeJson(messages: LlmMessage[], options: LlmCompletionOptions = {}) {

@@ -24,7 +24,7 @@
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
     "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention",
-    "TRANSLATION_DRAIN_LIMIT": "5",
+    "TRANSLATION_DRAIN_LIMIT": "10",
     "TRANSLATION_DRAIN_MAX_PASSES": "1",
     "PUBLICATION_DRAIN_LIMIT": "100",
     "CASE_CATALOG_GERMANY_HISTORY_ENABLED": "true",
