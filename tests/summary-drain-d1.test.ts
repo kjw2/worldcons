@@ -23,7 +23,7 @@ const goodSummary = {
   aiMetadata: { provider: "gemini", model: "gemini-test-model", generatedAt: "2026-09-29T00:00:00.000Z" },
 };
 
-function setup(options: { status?: string; metadata?: unknown; createdAt?: string; updatedAt?: string } = {}) {
+function setup(options: { status?: string; metadata?: unknown; createdAt?: string; updatedAt?: string; lifecycleMissing?: boolean } = {}) {
   const core = new DatabaseSync(":memory:");
   const ingest = new DatabaseSync(":memory:");
   core.exec(`
@@ -65,7 +65,7 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
   `);
   const metadata = JSON.stringify(options.metadata ?? { collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } });
   const insert = core.prepare(`INSERT INTO articles (id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,discovered_at,summarized_at,status,cleaned_text,source_metadata,created_at,updated_at,lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-    insert.run("11111111-1111-4111-8111-111111111111", "article-1", "scotus", "United States", "Supreme Court", "opinion", "https://example.test/1", "https://example.test/1", "en", "Decision", "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z", null, options.status ?? "cleaned", "x".repeat(600), metadata, options.createdAt ?? "2026-09-01T00:00:00.000Z", options.updatedAt ?? "2026-09-01T00:00:00.000Z", "source_text_ready", "ready", "unreviewed", "clear");
+    insert.run("11111111-1111-4111-8111-111111111111", "article-1", "scotus", "United States", "Supreme Court", "opinion", "https://example.test/1", "https://example.test/1", "en", "Decision", "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z", null, options.status ?? "cleaned", "x".repeat(600), metadata, options.createdAt ?? "2026-09-01T00:00:00.000Z", options.updatedAt ?? "2026-09-01T00:00:00.000Z", options.lifecycleMissing ? null : "source_text_ready", options.lifecycleMissing ? null : "ready", options.lifecycleMissing ? null : "unreviewed", options.lifecycleMissing ? null : "clear");
   const tag = core.prepare("INSERT INTO tags VALUES ('tag-1','existing','Existing','Existing','topic',NULL,1,NULL,'now','now')");
   tag.run();
   core.prepare("INSERT INTO article_tags VALUES ('11111111-1111-4111-8111-111111111111','tag-1',0.8,'now')").run();
@@ -126,6 +126,38 @@ test("D1 summary candidate selection accepts legacy backfill metadata nested und
   assert.equal(selected.candidateCount, 1);
   assert.equal(selected.status, "unavailable");
   close(db);
+});
+
+test("D1 translation drain hydrates missing lifecycle axes on legacy backfill rows", async () => {
+  const db = setup({
+    lifecycleMissing: true,
+    metadata: {
+      catalog: { sourceOnly: true },
+      case: { collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } },
+    },
+  });
+  try {
+    const result = await runD1SummaryDrain({
+      limit: 1,
+      maxPasses: 1,
+      apiKeys: ["test-key"],
+      summarize: async () => goodSummary as never,
+      createEmbedding: async () => null,
+    });
+    assert.equal(result.summarizedCount, 1);
+    assert.equal(result.failedCount, 0);
+    assert.deepEqual(
+      { ...db.core.prepare("SELECT lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get() as Record<string, unknown> },
+      {
+        lifecycle_collection_state: "source_text_ready",
+        lifecycle_processing_state: "complete",
+        lifecycle_review_state: "unreviewed",
+        lifecycle_attention_state: "clear",
+      },
+    );
+  } finally {
+    close(db);
+  }
 });
 
 test("D1 stale summary recovery persists failure triage and lifecycle attention", async () => {

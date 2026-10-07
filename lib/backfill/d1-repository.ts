@@ -1267,19 +1267,26 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
     const statements: D1RuntimePreparedStatement[] = [];
     if (!existingArticle) {
       const translationStatus = normalized.cleanedText?.trim() && normalized.originalLanguage.toLowerCase() !== "ko" ? "pending" : "not_required";
+      const hasSourceText = Boolean(normalized.cleanedText?.trim());
       statements.push(core.prepare(`INSERT INTO articles
         (id,source_id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,
-         original_published_at,discovered_at,fetched_at,status,slug,translation_status,raw_text,cleaned_text,summary_json,source_metadata,error_metadata,created_at,updated_at,catalog_ai_stale_v4)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+         original_published_at,discovered_at,fetched_at,status,slug,translation_status,raw_text,cleaned_text,summary_json,source_metadata,error_metadata,created_at,updated_at,catalog_ai_stale_v4,
+         lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
         articleId,text(source.id),normalized.sourceKey,normalized.jurisdiction,normalized.institutionName,normalized.contentType,
         normalized.originalUrl,normalized.canonicalUrl,normalized.originalLanguage,normalized.originalTitle,normalized.originalPublishedAt ?? null,
-        now,now,normalized.cleanedText?.trim() ? "cleaned" : "metadata_only",articleSlug,translationStatus,null,normalized.cleanedText ?? null,null,
+        now,now,hasSourceText ? "cleaned" : "metadata_only",articleSlug,translationStatus,null,normalized.cleanedText ?? null,null,
         JSON.stringify({ ...(normalized.metadata ?? {}), catalog: { sourceOnly: true }, case: normalized.metadata ?? {} }),null,now,now,0,
+        hasSourceText ? "source_text_ready" : "metadata_only",hasSourceText ? "ready" : "not_ready","unreviewed","clear",
       ));
     } else if (text(existingArticle.status) !== "summarized" && normalized.cleanedText?.trim()) {
       statements.push(core.prepare(`UPDATE articles SET translation_status=CASE WHEN lower(COALESCE(original_language,''))='ko' THEN 'not_required' ELSE 'pending' END,
         translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
-        translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,updated_at=? WHERE id=?`).bind(now, articleId));
+        translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
+        lifecycle_collection_state=COALESCE(lifecycle_collection_state,'source_text_ready'),
+        lifecycle_processing_state=COALESCE(lifecycle_processing_state,'ready'),
+        lifecycle_review_state=COALESCE(lifecycle_review_state,'unreviewed'),
+        lifecycle_attention_state=COALESCE(lifecycle_attention_state,'clear'),updated_at=? WHERE id=?`).bind(now, articleId));
     }
     if (!hasSourceRecordIdentifier) {
       statements.push(core.prepare(`INSERT INTO case_identifiers_v1

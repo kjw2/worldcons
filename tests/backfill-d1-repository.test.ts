@@ -80,7 +80,8 @@ function createDatabases() {
       original_language TEXT,original_title TEXT,korean_title TEXT,original_published_at TEXT,discovered_at TEXT,fetched_at TEXT,summarized_at TEXT,status TEXT,
       slug TEXT,raw_text TEXT,cleaned_text TEXT,summary_json TEXT,source_metadata TEXT,error_metadata TEXT,created_at TEXT,updated_at TEXT,catalog_ai_stale_v4 INTEGER DEFAULT 0,
       translation_status TEXT NOT NULL DEFAULT 'not_required',translation_started_at TEXT,translated_at TEXT,translation_provider TEXT,translation_model TEXT,
-      translation_attempt_count INTEGER NOT NULL DEFAULT 0,translation_error_code TEXT,translation_error_summary TEXT,translation_next_attempt_at TEXT
+      translation_attempt_count INTEGER NOT NULL DEFAULT 0,translation_error_code TEXT,translation_error_summary TEXT,translation_next_attempt_at TEXT,
+      lifecycle_collection_state TEXT,lifecycle_processing_state TEXT,lifecycle_review_state TEXT,lifecycle_attention_state TEXT
     );
     CREATE UNIQUE INDEX articles_slug_key ON articles(slug);
     CREATE UNIQUE INDEX articles_canonical_url_key ON articles(canonical_url);
@@ -696,11 +697,15 @@ test("D1 backfill stage preserves verified corpus state and keeps the Catalog wi
     assert.equal(item.article_id, publication.articleId);
     assert.equal(item.published_normalization_artifact_id, null);
     assert.equal(item.claimed_attempt_id, null);
-    const article = databases.core.prepare("SELECT source_key,canonical_url,slug,status,source_metadata FROM articles WHERE id=?").get(publication.articleId) as Record<string, unknown>;
+    const article = databases.core.prepare("SELECT source_key,canonical_url,slug,status,source_metadata,lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state FROM articles WHERE id=?").get(publication.articleId) as Record<string, unknown>;
     assert.equal(article.source_key, "de-bverfg");
     assert.equal(article.canonical_url, canonicalUrl);
     assert.equal(article.slug, publication.articleSlug);
     assert.equal(article.status, "cleaned");
+    assert.equal(article.lifecycle_collection_state, "source_text_ready");
+    assert.equal(article.lifecycle_processing_state, "ready");
+    assert.equal(article.lifecycle_review_state, "unreviewed");
+    assert.equal(article.lifecycle_attention_state, "clear");
     const sourceMetadata = JSON.parse(String(article.source_metadata)) as Record<string, unknown>;
     assert.equal((sourceMetadata.collection as Record<string, unknown>).publishable, true);
     assert.equal(((sourceMetadata.case as Record<string, unknown>).collection as Record<string, unknown>).publishable, true);

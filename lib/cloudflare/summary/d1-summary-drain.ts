@@ -97,8 +97,24 @@ function transitionKey(articleId: string, operation: string, revision: number) {
 async function lifecycle(articleId: string, input: Omit<ArticleLifecycleTransitionInput, "articleId" | "expectedRevision" | "idempotencyKey" | "actorType" | "actorId">) {
   const current = await articleLifecycleService.get(articleId);
   if (!current.ok) throw new Error(`summary_lifecycle_read:${current.error.code}`);
-  const result = await articleLifecycleService.transition({
+  // Backfill-staged articles created before the translation/publication split can
+  // legitimately have no P2 lifecycle axes yet. Summary work is only selected
+  // for source-text-ready rows, so hydrate the missing axes on first transition
+  // instead of attempting an incomplete processing-only transition.
+  const hydratedInput = {
     ...input,
+    ...(current.data.collectionState === null && input.collectionState === undefined
+      ? { collectionState: "source_text_ready" as const }
+      : {}),
+    ...(current.data.processingState === null && input.processingState === undefined
+      ? { processingState: "ready" as const }
+      : {}),
+    ...(current.data.reviewState === null && input.reviewState === undefined
+      ? { reviewState: "unreviewed" as const }
+      : {}),
+  };
+  const result = await articleLifecycleService.transition({
+    ...hydratedInput,
     articleId,
     expectedRevision: current.data.revision,
     idempotencyKey: transitionKey(articleId, input.reasonCode, current.data.revision),
