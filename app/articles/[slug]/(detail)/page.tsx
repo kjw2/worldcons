@@ -30,9 +30,9 @@ import { displayJurisdictionLabel, displaySourceLabel } from "@/lib/ui/source-la
 import { formatDisplayDate } from "@/lib/utils/dates";
 import { safeExternalUrl } from "@/lib/utils/safe-url";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 export const dynamicParams = true;
-export const revalidate = 3_600;
+export const revalidate = 0;
 
 export function generateStaticParams() {
   return [];
