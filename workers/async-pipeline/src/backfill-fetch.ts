@@ -42,6 +42,7 @@ export interface GermanyBackfillFetchPayload {
   passNumber: number;
   batchLimit?: number;
   maxPasses?: number;
+  autoContinueUntilPass?: number;
   fetchContractVersion?: string;
   recoverMissingArtifacts?: true;
   requestedBy?: string;
@@ -59,7 +60,7 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const payload = candidate as Record<string, unknown>;
   const keys = Object.keys(payload);
-  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "maxPasses", "fetchContractVersion", "recoverMissingArtifacts", "requestedBy"].includes(key))) return null;
+  if (keys.some((key) => !["snapshotId", "phase", "passNumber", "batchLimit", "maxPasses", "autoContinueUntilPass", "fetchContractVersion", "recoverMissingArtifacts", "requestedBy"].includes(key))) return null;
   if (
     !isApprovedGermanyBackfillSnapshotId(payload.snapshotId)
     || payload.phase !== "fetch"
@@ -68,12 +69,44 @@ export function parseGermanyBackfillFetchPayload(value: unknown): GermanyBackfil
     || Number(payload.passNumber) > 2_147_483_647
     || (payload.batchLimit !== undefined && (!Number.isInteger(payload.batchLimit) || Number(payload.batchLimit) < 1 || Number(payload.batchLimit) > 10))
     || (payload.maxPasses !== undefined && (!Number.isInteger(payload.maxPasses) || Number(payload.maxPasses) < 1 || Number(payload.maxPasses) > 10))
+    || (payload.autoContinueUntilPass !== undefined && (
+      !Number.isInteger(payload.autoContinueUntilPass)
+      || Number(payload.autoContinueUntilPass) < Number(payload.passNumber)
+      || Number(payload.autoContinueUntilPass) > 2_147_483_647
+    ))
     || (payload.fetchContractVersion !== undefined && (typeof payload.fetchContractVersion !== "string" || payload.fetchContractVersion.trim().length < 1 || payload.fetchContractVersion.length > 120))
     || (payload.recoverMissingArtifacts !== undefined && payload.recoverMissingArtifacts !== true)
     || (payload.recoverMissingArtifacts === true && payload.snapshotId !== GERMANY_2024_BACKFILL_SNAPSHOT_ID)
     || (payload.requestedBy !== undefined && (typeof payload.requestedBy !== "string" || payload.requestedBy.trim().length < 1 || payload.requestedBy.length > 160))
   ) return null;
   return payload as unknown as GermanyBackfillFetchPayload;
+}
+
+export interface GermanyBackfillContinuationPlan {
+  id: string;
+  payload: GermanyBackfillFetchPayload;
+}
+
+export function planGermanyBackfillContinuation(
+  payload: GermanyBackfillFetchPayload,
+  lastPassNumber: number,
+  backlogRemaining: boolean,
+): GermanyBackfillContinuationPlan | null {
+  const until = payload.autoContinueUntilPass;
+  if (!until || !backlogRemaining || lastPassNumber >= until) return null;
+  const passNumber = lastPassNumber + 1;
+  const maxPasses = Math.min(10, until - lastPassNumber);
+  const batchLimit = payload.batchLimit ?? 1;
+  return {
+    id: `germany-fetch-${payload.snapshotId.slice(0, 8)}-pass${passNumber}-batch${batchLimit}-auto-to${until}`,
+    payload: {
+      ...payload,
+      passNumber,
+      maxPasses,
+      recoverMissingArtifacts: undefined,
+      autoContinueUntilPass: until,
+    },
+  };
 }
 
 export interface GermanyBackfillFetchEnv {

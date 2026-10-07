@@ -22,6 +22,7 @@ import { runNativeSearchProjectionSync } from "./search-projection-sync";
 import { launch } from "@cloudflare/playwright";
 import {
   parseGermanyBackfillFetchPayload,
+  planGermanyBackfillContinuation,
   recoverGermanyBackfillMissingArtifactsForRefetch,
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchPayload,
@@ -144,6 +145,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
 
 type BackfillWorkflowPayload = GermanyBackfillFetchPayload | string;
 
+interface BackfillWorkflowCreateBinding {
+  create(options: { id: string; params: BackfillWorkflowPayload }): Promise<unknown>;
+}
+
 type BackfillDiscoverWorkflowPayload = GermanyBackfillDiscoverPayload | string;
 
 export class WorldconsBackfillDiscoverWorkflow extends WorkflowEntrypoint<Env, BackfillDiscoverWorkflowPayload> {
@@ -224,6 +229,26 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
       if (!result.backlogRemaining) break;
     }
     const last = results.at(-1);
+    const continuation = planGermanyBackfillContinuation(
+      payload,
+      last?.passNumber ?? payload.passNumber,
+      last?.backlogRemaining ?? true,
+    );
+    const scheduledContinuation = continuation
+      ? await step.do(`schedule-next-fetch-chain-${continuation.payload.passNumber}`, { timeout: "2 minutes" }, async () => {
+          const binding = (this.env as Env & { BACKFILL_WORKFLOW: BackfillWorkflowCreateBinding }).BACKFILL_WORKFLOW;
+          try {
+            await binding.create({ id: continuation.id, params: continuation.payload });
+            return { created: true, id: continuation.id, passNumber: continuation.payload.passNumber };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (/already exists|already_exists|instance.*exists/i.test(message)) {
+              return { created: false, alreadyExists: true, id: continuation.id, passNumber: continuation.payload.passNumber };
+            }
+            throw error;
+          }
+        })
+      : null;
     return {
       schemaVersion: 1,
       snapshotId: payload.snapshotId,
@@ -237,6 +262,8 @@ export class WorldconsBackfillWorkflow extends WorkflowEntrypoint<Env, BackfillW
       retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),
       terminalFailed: results.reduce((sum, result) => sum + result.terminalFailed, 0),
       backlogRemaining: last?.backlogRemaining ?? true,
+      autoContinueUntilPass: payload.autoContinueUntilPass ?? null,
+      scheduledContinuation,
     };
   }
 }

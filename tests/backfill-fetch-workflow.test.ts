@@ -11,6 +11,7 @@ import {
   germanyBackfillSourcePolicyVersion,
   isGermanyBackfillRetryableError,
   parseGermanyBackfillFetchPayload,
+  planGermanyBackfillContinuation,
   recoverGermanyBackfillMissingArtifactsForRefetch,
   runGermanyBackfillFetchPass,
   type GermanyBackfillFetchEnv,
@@ -265,6 +266,8 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, unexpected: true })), null);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 0 })), null);
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, maxPasses: 11 })), null);
+  assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, autoContinueUntilPass: 103 })));
+  assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, passNumber: 104, autoContinueUntilPass: 103 })), null);
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2024_BACKFILL_SNAPSHOT_ID })));
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2022_BACKFILL_SNAPSHOT_ID })));
   assert.ok(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, snapshotId: GERMANY_2021_BACKFILL_SNAPSHOT_ID })));
@@ -274,6 +277,32 @@ test("Workflow payload normalization accepts Cloudflare API JSON-string params a
     recoverMissingArtifacts: true,
   })));
   assert.equal(parseGermanyBackfillFetchPayload(JSON.stringify({ ...parsed, recoverMissingArtifacts: true })), null);
+});
+
+test("Germany fetch auto-continuation chains bounded 10-pass Workflow instances through a final partial chain", () => {
+  const base = parseGermanyBackfillFetchPayload({
+    snapshotId: GERMANY_2021_BACKFILL_SNAPSHOT_ID,
+    phase: "fetch",
+    passNumber: 41,
+    batchLimit: 4,
+    maxPasses: 10,
+    autoContinueUntilPass: 103,
+    requestedBy: "test",
+  });
+  assert.ok(base);
+  const after50 = planGermanyBackfillContinuation(base, 50, true);
+  assert.ok(after50);
+  assert.equal(after50.payload.passNumber, 51);
+  assert.equal(after50.payload.maxPasses, 10);
+  assert.equal(after50.payload.autoContinueUntilPass, 103);
+
+  const after100 = planGermanyBackfillContinuation(base, 100, true);
+  assert.ok(after100);
+  assert.equal(after100.payload.passNumber, 101);
+  assert.equal(after100.payload.maxPasses, 3);
+
+  assert.equal(planGermanyBackfillContinuation(base, 103, true), null);
+  assert.equal(planGermanyBackfillContinuation(base, 50, false), null);
 });
 
 test("permit wait exhaustion is retryable rather than terminal", () => {
