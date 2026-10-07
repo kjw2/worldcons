@@ -75,6 +75,7 @@ import {
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
 import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
+import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
 
@@ -246,6 +247,11 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
 }
 
 export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
+  async revalidatePublicContentCache() {
+    const outcome = invalidatePublicContentCaches();
+    return {revalidated:outcome.revalidated,tagCount:outcome.tags.length,pathCount:outcome.paths.length};
+  }
+
   async runPublicationDrain(input: { limit?: number }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");

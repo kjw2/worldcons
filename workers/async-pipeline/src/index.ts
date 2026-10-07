@@ -20,6 +20,7 @@ import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { runNativeSearchProjectionSync } from "./search-projection-sync";
 import { hasPendingP3Publication } from "./publication-recovery";
+import { runD1CacheOutboxDrain } from "./cache-outbox-drain";
 import { launch } from "@cloudflare/playwright";
 import {
   parseGermanyBackfillFetchPayload,
@@ -118,21 +119,30 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       const pending = await step.do("probe-unpublished-translations", {
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "1 minute",
       }, () => hasPendingP3Publication(this.env.WORLDCONS_CORE));
-      if (!pending) return { kind: event.payload.kind, watchdog, publication: null, searchProjection: null };
+      let publication:Awaited<ReturnType<M8NativeEnvironment["WORLDCONS_APP_SERVICE"]["runPublicationDrain"]>> | null=null;
+      let searchProjection:Awaited<ReturnType<typeof runNativeSearchProjectionSync>> | null=null;
+      if (pending) {
       const limit = Math.max(1, Math.min(Number(this.env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
       const appService = (this.env as unknown as M8NativeEnvironment).WORLDCONS_APP_SERVICE;
-      const publication = await step.do("watchdog-recover-pending-publication", {
+      publication = await step.do("watchdog-recover-pending-publication", {
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
       }, () => appService.runPublicationDrain({ limit }));
-      const searchProjection = publication.publishedCount > 0
-        ? await step.do("watchdog-sync-search-after-recovery", {
+      if (publication.publishedCount > 0) {
+        searchProjection = await step.do("watchdog-sync-search-after-recovery", {
             retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
           }, () => runNativeSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }))
-        : null;
-      return { kind: event.payload.kind, watchdog, publication, searchProjection };
+          }));
+      }
+      }
+      const outbox = await step.do("watchdog-deliver-publication-cache-outbox", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "5 minutes",
+      }, () => runD1CacheOutboxDrain(this.env.WORLDCONS_CORE, () =>
+        (this.env as unknown as M8NativeEnvironment).WORLDCONS_APP_SERVICE.revalidatePublicContentCache(),
+        {limit:25,workerId:`watchdog:${event.payload.scheduledFor}`}
+      ));
+      return {kind:event.payload.kind,watchdog,publication,searchProjection,outbox};
     }
     if (event.payload.kind === "translation-drain") {
       const translation = await executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);

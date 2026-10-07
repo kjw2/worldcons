@@ -13,6 +13,7 @@ export interface M8NativeEnvironment {
   TRANSLATION_DRAIN_MAX_PASSES?: string;
   PUBLICATION_DRAIN_LIMIT?: string;
   WORLDCONS_APP_SERVICE: {
+    revalidatePublicContentCache(): Promise<{revalidated:boolean;tagCount:number;pathCount:number}>;
     runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }): Promise<{
       status: "completed" | "deferred" | "unavailable";
       passes: number;
