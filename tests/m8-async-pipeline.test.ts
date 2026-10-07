@@ -147,6 +147,14 @@ test("publication workflow refreshes the search projection after release", () =>
   assert.match(source, /native-search-projection-sync-after-publication[\s\S]*runNativeSearchProjectionSync/u);
 });
 
+test("translation workflow publishes and refreshes search immediately after successful translation", () => {
+  const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
+  assert.match(source, /event\.payload\.kind === "translation-drain"[\s\S]*executeM8TaskNative/u);
+  assert.match(source, /native-publication-drain-after-translation[\s\S]*runPublicationDrain/u);
+  assert.match(source, /native-search-projection-sync-after-translation[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /publication\.publishedCount > 0/u);
+});
+
 test("embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch", async () => {
   const message = buildM8TaskMessage("embedding-backfill", Date.parse("2026-09-26T08:45:00Z"));
   const calls: unknown[] = [];

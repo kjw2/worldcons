@@ -112,6 +112,27 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
       }));
     }
+    if (event.payload.kind === "translation-drain") {
+      const translation = await executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);
+      const summarizedCount = "summarizedCount" in translation ? Number(translation.summarizedCount ?? 0) : 0;
+      if (summarizedCount <= 0) {
+        return { kind: event.payload.kind, translation, publication: null, searchProjection: null };
+      }
+      const limit = Math.max(1, Math.min(Number(this.env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
+      const appService = (this.env as unknown as M8NativeEnvironment).WORLDCONS_APP_SERVICE;
+      const publication = await step.do("native-publication-drain-after-translation", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
+      }, () => appService.runPublicationDrain({ limit }));
+      const searchProjection = publication.publishedCount > 0
+        ? await step.do("native-search-projection-sync-after-translation", {
+            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+          }, () => runNativeSearchProjectionSync({
+            WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+            WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
+          }))
+        : null;
+      return { kind: event.payload.kind, translation, publication, searchProjection };
+    }
     if (event.payload.kind === "publication-drain") {
       const limit = Math.max(1, Math.min(Number(this.env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
       const appService = (this.env as unknown as M8NativeEnvironment).WORLDCONS_APP_SERVICE;
