@@ -3,6 +3,8 @@ import { createD1AdminOpsReadRepository } from "@/lib/admin/ops-read-repository/
 import { mockAdminOpsReads } from "@/lib/admin/ops-read-repository/mock-repository";
 import type { AdminOpsReadRepository } from "@/lib/admin/ops-read-repository/types";
 
+const ADMIN_PRIVILEGED_MAX_ROWS = 10_000;
+
 export * from "@/lib/admin/ops-read-repository/mock-repository";
 export * from "@/lib/admin/ops-read-repository/shared";
 export * from "@/lib/admin/ops-read-repository/d1-read-repository";
@@ -18,6 +20,7 @@ export function adminOpsReads(): AdminOpsReadRepository {
     const d1 = createD1AdminOpsReadRepository({
       binding: core,
       ingestBinding: ingest,
+      maxRows: ADMIN_PRIVILEGED_MAX_ROWS,
     });
     return {
       ...d1,

@@ -1,4 +1,5 @@
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { D1ShadowTruncatedError } from "@/lib/reference-reads/d1-repository";
 import {
   adminOpsReads,
   collectionFor,
@@ -653,14 +654,20 @@ async function loadAdminDashboardSnapshot(): Promise<AdminDashboardData | null> 
 
 async function loadAdminDashboardLegacyData(): Promise<AdminDashboardData> {
   const repository = adminOpsReads();
-  const [sources, rows, candidateRows, latestRuns, tagCount, candidateCount] = await Promise.all([
+  const [sources, articleRowsResult, candidateRows, latestRuns, tagCount, candidateCount] = await Promise.all([
     listSources(),
-    repository.loadArticleRows(),
+    repository.loadArticleRows()
+      .then((rows) => ({ rows, truncated: false }))
+      .catch((error) => {
+        if (error instanceof D1ShadowTruncatedError) return { rows: [] as AdminArticleRow[], truncated: true };
+        throw error;
+      }),
     repository.loadCandidateRows(),
     listIngestionRuns(12),
     repository.countTableRows("tags", mockTags.length),
     repository.countTableRows("source_url_candidates", 0),
   ]);
+  const rows = articleRowsResult.rows;
 
   const statusMap = new Map<string, number>();
   ARTICLE_STATUSES.forEach((status) => statusMap.set(status, 0));
@@ -676,7 +683,7 @@ async function loadAdminDashboardLegacyData(): Promise<AdminDashboardData> {
 
   return {
     generatedAt: new Date().toISOString(),
-    hasDatabase: repository.isConfigured(),
+    hasDatabase: repository.isConfigured() && !articleRowsResult.truncated,
     totals: {
       sources: sources.length || mockSources.length,
       articles: rows.length,
