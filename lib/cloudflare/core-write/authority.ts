@@ -444,7 +444,18 @@ export async function readArticlePublicationSnapshotFromD1(
   try {
     const row = await one<Row>(
       binding,
-      "SELECT a.id AS article_id,a.updated_at AS legacy_updated_at,COALESCE(h.current_revision,0) AS version_revision,COALESCE(p.revision,0) AS publication_revision,p.state AS publication_state FROM articles a LEFT JOIN article_version_heads_p3 h ON h.article_id=a.id LEFT JOIN article_publications_p3 p ON p.article_id=a.id WHERE a.id=?",
+      `SELECT a.id AS article_id,a.updated_at AS legacy_updated_at,
+        CASE
+          WHEN CAST(COALESCE(v4.current_revision,'0') AS INTEGER) > CAST(COALESCE(h.current_revision,'0') AS INTEGER)
+            THEN v4.current_revision
+          ELSE COALESCE(h.current_revision,'0')
+        END AS version_revision,
+        COALESCE(p.revision,0) AS publication_revision,p.state AS publication_state
+       FROM articles a
+       LEFT JOIN article_version_heads_p3 h ON h.article_id=a.id
+       LEFT JOIN article_revision_heads_v4 v4 ON v4.article_id=a.id
+       LEFT JOIN article_publications_p3 p ON p.article_id=a.id
+       WHERE a.id=?`,
       [articleId],
     );
     return row ? { ok: true, data: publicationSnapshot(row) } : { ok: false, error: articlePublicationError("not_found") };
@@ -531,8 +542,15 @@ export async function transitionArticlePublicationInD1(
     if (input.expectedLegacyUpdatedAt && String(article.updated_at ?? "") !== input.expectedLegacyUpdatedAt) {
       return { ok: false, error: articlePublicationError("stale_revision") };
     }
-    const head = await one<Row>(binding, "SELECT * FROM article_version_heads_p3 WHERE article_id=?", [input.articleId]);
-    const currentVersionRevision = asNumber(head?.current_revision);
+    const p3Head = await one<Row>(binding, "SELECT * FROM article_version_heads_p3 WHERE article_id=?", [input.articleId]);
+    const v4Head = await one<Row>(binding, "SELECT * FROM article_revision_heads_v4 WHERE article_id=?", [input.articleId]);
+    const p3Revision = asNumber(p3Head?.current_revision);
+    const v4Revision = asNumber(v4Head?.current_revision);
+    // article_revision_heads_v4 is the global revision allocator used by the
+    // authoritative backfill path. Legacy/P3-only articles may not have it yet,
+    // so fall back to the P3 head; when both exist, never allocate below either.
+    const head = v4Head && v4Revision >= p3Revision ? v4Head : p3Head;
+    const currentVersionRevision = Math.max(p3Revision, v4Revision);
     if (currentVersionRevision !== input.expectedVersionRevision) {
       return { ok: false, error: articlePublicationError("stale_revision") };
     }
@@ -542,6 +560,7 @@ export async function transitionArticlePublicationInD1(
     let versionRevision = currentVersionRevision;
     let versionInsert: D1RuntimePreparedStatement | null = null;
     let headUpsert: D1RuntimePreparedStatement | null = null;
+    let globalHeadUpsert: D1RuntimePreparedStatement | null = null;
     const now = new Date().toISOString();
     if (input.captureLegacy === true) {
       const sourceMetadata = safeSourceMetadata(article.source_metadata);
@@ -618,6 +637,9 @@ export async function transitionArticlePublicationInD1(
         headUpsert = binding.prepare(
           "INSERT INTO article_version_heads_p3 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at",
         ).bind(input.articleId, versionId, String(versionRevision), now);
+        globalHeadUpsert = binding.prepare(
+          "INSERT INTO article_revision_heads_v4 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at",
+        ).bind(input.articleId, versionId, String(versionRevision), now);
         versionCreated = true;
       } else {
         versionId = String(version.id);
@@ -661,6 +683,7 @@ export async function transitionArticlePublicationInD1(
     const statements: D1RuntimePreparedStatement[] = [];
     if (versionInsert) statements.push(versionInsert);
     if (headUpsert) statements.push(headUpsert);
+    if (globalHeadUpsert) statements.push(globalHeadUpsert);
     if (!publication) {
       statements.push(binding.prepare(
         "INSERT INTO article_publications_p3 (id,article_id,state,version_id,revision,decided_by_type,decided_by_id,reason,published_at,withdrawn_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",

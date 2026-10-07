@@ -116,6 +116,10 @@ test("M11-C publication transition batches publication/history/audit/outbox/requ
     if (sql.includes("SELECT * FROM articles")) {
       return [{
         id: articleId,
+        status: "summarized",
+        translation_status: "translated",
+        original_language: "en",
+        summary_json: "{}",
         lifecycle_collection_state: "source_text_ready",
         lifecycle_processing_state: "complete",
         lifecycle_review_state: "approved",
@@ -169,6 +173,54 @@ test("M11-C publication transition batches publication/history/audit/outbox/requ
   assert.match(sql, /INSERT OR IGNORE INTO article_cache_outbox_p3/u);
   assert.match(sql, /INSERT INTO article_publication_requests_p3/u);
   assert.ok(db.batches[0].every((statement) => !statement.sql.includes(articleId)));
+});
+
+test("M11-C publication capture uses the v4 global head and advances both heads", async () => {
+  const articleId = "55555555-5555-4555-a555-555555555555";
+  const sourceVersionId = "66666666-6666-4666-a666-666666666666";
+  const db = new FakeD1((sql) => {
+    if (sql.includes("FROM article_publication_requests_p3")) return [];
+    if (sql.includes("SELECT * FROM articles")) {
+      return [{
+        id: articleId, slug: "v4-backed", source_key: "de-bverfg", jurisdiction: "Germany", institution_name: "BVerfG",
+        status: "summarized", translation_status: "translated",
+        content_type: "decision", original_url: "https://example.test/original", canonical_url: "https://example.test/canonical",
+        original_language: "de", original_title: "Entscheidung", korean_title: "결정", discovered_at: "2026-10-07T00:00:00.000Z",
+        fetched_at: "2026-10-07T00:00:00.000Z", summarized_at: "2026-10-07T01:00:00.000Z", cleaned_text: "x".repeat(600),
+        summary_json: JSON.stringify({ coreSummary: ["요약"] }), source_metadata: JSON.stringify({ collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } }),
+        lifecycle_collection_state: "source_text_ready", lifecycle_processing_state: "complete", lifecycle_review_state: "unreviewed", lifecycle_attention_state: "clear",
+        updated_at: "2026-10-07T01:00:00.000Z",
+      }];
+    }
+    if (sql.includes("FROM article_version_heads_p3")) return [];
+    if (sql.includes("FROM article_revision_heads_v4")) return [{ article_id: articleId, current_version_id: sourceVersionId, current_revision: "1" }];
+    if (sql.includes("FROM article_content_versions_p3 WHERE article_id=? AND content_hash=?")) return [];
+    if (sql.includes("FROM article_publications_p3")) return [];
+    if (sql.includes("FROM article_audit_ledger_p3")) return [];
+    return [];
+  });
+  const result = await transitionArticlePublicationInD1(db, {
+    articleId,
+    expectedVersionRevision: 1,
+    expectedPublicationRevision: 0,
+    idempotencyKey: "m11c-v4-head-publication",
+    targetState: "published",
+    captureLegacy: true,
+    actorType: "compatibility",
+    actorId: "m8-publication-drain",
+    provenanceActorType: "llm",
+    provenanceActorId: "m8-translation-drain",
+    reason: "Publish completed translation after authoritative source staging.",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.versionRevision, 2);
+  const sql = db.batches[0].map((statement) => statement.sql);
+  const versionInsert = db.batches[0].find((statement) => statement.sql.includes("INSERT INTO article_content_versions_p3"));
+  assert.ok(versionInsert);
+  assert.equal(versionInsert.values[3], sourceVersionId);
+  assert.equal(sql.filter((statement) => statement.includes("article_version_heads_p3")).length, 1);
+  assert.equal(sql.filter((statement) => statement.includes("article_revision_heads_v4")).length, 1);
 });
 
 test("M13 root deployment persists the permanent d1 core write authority for worldcons_core", () => {

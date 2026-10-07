@@ -52,6 +52,7 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
     CREATE TABLE article_tags (article_id TEXT, tag_id TEXT, confidence REAL, created_at TEXT, PRIMARY KEY(article_id,tag_id));
     CREATE TABLE article_lifecycle_events_p2 (id TEXT PRIMARY KEY, article_id TEXT, idempotency_key TEXT, from_revision TEXT, to_revision TEXT, actor_type TEXT, actor_id TEXT, transition_source TEXT, reason_code TEXT, applied INTEGER, collection_state TEXT, processing_state TEXT, review_state TEXT, attention_state TEXT, attention_code TEXT, attention_retryable INTEGER, attention_severity TEXT, attention_source TEXT, occurred_at TEXT, UNIQUE(article_id,idempotency_key));
     CREATE TABLE article_version_heads_p3 (article_id TEXT PRIMARY KEY, current_version_id TEXT, current_revision TEXT, updated_at TEXT);
+    CREATE TABLE article_revision_heads_v4 (article_id TEXT PRIMARY KEY, current_version_id TEXT, current_revision TEXT, updated_at TEXT);
     CREATE TABLE article_content_versions_p3 (id TEXT PRIMARY KEY, article_id TEXT, revision TEXT, parent_version_id TEXT, content_hash TEXT, provenance_actor_type TEXT, provenance_actor_id TEXT, model_ref TEXT, prompt_ref TEXT, slug TEXT, source_key TEXT, jurisdiction TEXT, institution_name TEXT, content_type TEXT, original_url TEXT, canonical_url TEXT, original_language TEXT, original_title TEXT, korean_title TEXT, original_published_at TEXT, discovered_at TEXT, fetched_at TEXT, summarized_at TEXT, cleaned_text TEXT, summary_json TEXT, source_metadata TEXT, error_metadata TEXT, created_at TEXT, case_key TEXT, version_document_schema TEXT, version_role TEXT, raw_text_storage_ref TEXT, raw_text_blob_hash TEXT, raw_text_blob_size TEXT, raw_text_externalized_at TEXT, raw_text_blob_contract_version TEXT);
     CREATE TABLE article_publications_p3 (id TEXT PRIMARY KEY, article_id TEXT UNIQUE, state TEXT, version_id TEXT, revision TEXT, decided_by_type TEXT, decided_by_id TEXT, reason TEXT, published_at TEXT, withdrawn_at TEXT, created_at TEXT, updated_at TEXT);
     CREATE TABLE article_publication_requests_p3 (id TEXT PRIMARY KEY, article_id TEXT, idempotency_key TEXT, publication_id TEXT, publication_revision TEXT, version_id TEXT, version_revision TEXT, state TEXT, version_created INTEGER, publication_applied INTEGER, created_at TEXT, UNIQUE(article_id,idempotency_key));
@@ -216,6 +217,44 @@ test("D1 translation/enrichment completion stays private until the separate publ
       { ...db.ingest.prepare("SELECT status,published_normalization_artifact_id FROM source_backfill_items WHERE id='backfill-1'").get() as Record<string, unknown> },
       { status: "published", published_normalization_artifact_id: "artifact-1" },
     );
+  } finally {
+    close(db);
+  }
+});
+
+test("D1 publication allocates enrichment after an authoritative v4 source revision", async () => {
+  const db = setup({ metadata: { collection: { diagnosticsId: "11111111-1111-4111-8111-111111111111", publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } } });
+  try {
+    await runD1SummaryDrain({
+      limit: 1,
+      maxPasses: 1,
+      apiKeys: ["test-key"],
+      summarize: async () => goodSummary as never,
+      createEmbedding: async () => null,
+    });
+    db.core.prepare(`INSERT INTO article_content_versions_p3
+      (id,article_id,revision,parent_version_id,content_hash,provenance_actor_type,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,discovered_at,cleaned_text,summary_json,source_metadata,error_metadata,created_at,version_document_schema,version_role)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      "22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111", "1", null, "a".repeat(64), "import",
+      "article-1", "scotus", "United States", "Supreme Court", "opinion", "https://example.test/1", "https://example.test/1", "en", "Decision",
+      "2026-09-01T00:00:00.000Z", "x".repeat(600), null, JSON.stringify({ collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } }), "{}",
+      "2026-09-01T00:00:00.000Z", "v4.article-case.v1", "authoritative_source",
+    );
+    db.core.prepare("INSERT INTO article_revision_heads_v4 VALUES (?,?,?,?)").run(
+      "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "1", "2026-09-01T00:00:00.000Z",
+    );
+
+    const publication = await runD1PublicationDrain({ limit: 10 });
+    assert.equal(publication.publishedCount, 1);
+    assert.equal(publication.failedCount, 0);
+    const versions = db.core.prepare("SELECT revision,parent_version_id,version_role FROM article_content_versions_p3 WHERE article_id=? ORDER BY CAST(revision AS INTEGER)").all("11111111-1111-4111-8111-111111111111") as Array<Record<string, unknown>>;
+    assert.equal(versions.length, 2);
+    assert.equal(versions[1].revision, "2");
+    assert.equal(versions[1].parent_version_id, "22222222-2222-4222-8222-222222222222");
+    const p3Head = db.core.prepare("SELECT current_revision FROM article_version_heads_p3 WHERE article_id=?").get("11111111-1111-4111-8111-111111111111") as Record<string, unknown>;
+    const v4Head = db.core.prepare("SELECT current_revision FROM article_revision_heads_v4 WHERE article_id=?").get("11111111-1111-4111-8111-111111111111") as Record<string, unknown>;
+    assert.equal(p3Head.current_revision, "2");
+    assert.equal(v4Head.current_revision, "2");
   } finally {
     close(db);
   }
