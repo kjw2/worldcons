@@ -135,6 +135,18 @@ export function createAdminSession(username = configuredAdminUsername()) {
   return `${encodedPayload}.${signature}`;
 }
 
+export function adminSessionCookieHeader(sessionValue: string, secure = true) {
+  const parts = [
+    `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionValue)}`,
+    "Path=/",
+    `Max-Age=${ADMIN_SESSION_MAX_AGE_SECONDS}`,
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
 export function createAdminCsrfTokenForSession(sessionValue: string) {
   if (!verifyAdminSession(sessionValue)) {
     return null;

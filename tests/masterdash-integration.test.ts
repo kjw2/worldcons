@@ -10,7 +10,13 @@ import {
 import { GET as exchangeMasterdashSso } from "../app/api/auth/masterdash/route";
 import { POST as loginAdmin } from "../app/api/admin/login/route";
 import { GET as getMasterdashHealth } from "../app/api/masterdash/health/route";
-import { isMasterdashSsoOnly, resolveExistingAdminSessionIdentityForMasterdash } from "../lib/utils/auth";
+import {
+  adminSessionCookieHeader,
+  createAdminSession,
+  isMasterdashSsoOnly,
+  resolveExistingAdminSessionIdentityForMasterdash,
+  verifyAdminSession,
+} from "../lib/utils/auth";
 import {
   collectionHealthMetrics,
   FAILURE_RECENCY_WINDOW_HOURS,
@@ -22,6 +28,7 @@ const originalSsoSecret = process.env.MASTERDASH_SSO_SECRET;
 const originalControlSecret = process.env.MASTERDASH_CONTROL_SECRET;
 const originalAdminUsername = process.env.ADMIN_USERNAME;
 const originalAdminPassword = process.env.ADMIN_PASSWORD;
+const originalAdminSessionSecret = process.env.ADMIN_SESSION_SECRET;
 const originalMasterdashAdminIdentities = process.env.MASTERDASH_ADMIN_IDENTITIES;
 const ssoSecret = "worldcons-masterdash-sso-secret-for-tests-0001";
 const controlSecret = "worldcons-masterdash-control-secret-tests-0001";
@@ -32,6 +39,7 @@ before(() => {
   process.env.MASTERDASH_CONTROL_SECRET = controlSecret;
   process.env.ADMIN_USERNAME = adminUsername;
   process.env.ADMIN_PASSWORD = "active-local-admin-password";
+  process.env.ADMIN_SESSION_SECRET = "worldcons-admin-session-secret-for-tests-0001";
   process.env.MASTERDASH_ADMIN_IDENTITIES = " admin , , ADMIN2 ";
 });
 
@@ -44,6 +52,8 @@ after(() => {
   else process.env.ADMIN_USERNAME = originalAdminUsername;
   if (originalAdminPassword === undefined) delete process.env.ADMIN_PASSWORD;
   else process.env.ADMIN_PASSWORD = originalAdminPassword;
+  if (originalAdminSessionSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+  else process.env.ADMIN_SESSION_SECRET = originalAdminSessionSecret;
   if (originalMasterdashAdminIdentities === undefined) delete process.env.MASTERDASH_ADMIN_IDENTITIES;
   else process.env.MASTERDASH_ADMIN_IDENTITIES = originalMasterdashAdminIdentities;
 });
@@ -60,6 +70,20 @@ test("requires exactly one token for the SSO exchange", async () => {
   assert.equal(response.status, 401);
   assert.equal(response.headers.get("set-cookie"), null);
   assert.equal(response.headers.get("location"), null);
+});
+
+test("serializes a redirect-safe admin session cookie that verifies with the active session secret", () => {
+  const session = createAdminSession(adminUsername);
+  const header = adminSessionCookieHeader(session, true);
+  assert.match(header, /^worldcons_admin_session=/);
+  assert.match(header, /; Path=\//);
+  assert.match(header, /; Max-Age=43200/);
+  assert.match(header, /; HttpOnly/);
+  assert.match(header, /; SameSite=Lax/);
+  assert.match(header, /; Secure$/);
+  const encodedValue = header.split(";", 1)[0]?.split("=", 2)[1];
+  assert.ok(encodedValue);
+  assert.equal(verifyAdminSession(decodeURIComponent(encodedValue)), true);
 });
 
 test("maps only owner or admin identities to the existing active local administrator", () => {

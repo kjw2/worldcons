@@ -3,16 +3,16 @@ import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { consumeMasterdashJti } from "@/lib/masterdash/store";
 import { MasterdashSecurityError, sha256Base64Url, verifyMasterdashSsoToken } from "@/lib/masterdash/security";
 import {
-  ADMIN_SESSION_COOKIE,
-  ADMIN_SESSION_MAX_AGE_SECONDS,
+  adminSessionCookieHeader,
   createAdminSession,
+  isSecureRequest,
   resolveExistingAdminSessionIdentityForMasterdash,
 } from "@/lib/utils/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function secured(response: NextResponse) {
+function secured<T extends Response>(response: T) {
   response.headers.set("Cache-Control", "no-store");
   response.headers.set("Referrer-Policy", "no-referrer");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -47,15 +47,12 @@ export async function GET(request: Request) {
       return secured(NextResponse.json({ error: consumed.replay ? "MasterDash token was already used." : "SSO replay protection is unavailable." }, { status }));
     }
 
-    const response = NextResponse.redirect(new URL("/admin", request.url), { status: 303 });
-    response.cookies.set({
-      name: ADMIN_SESSION_COOKIE,
-      value: sessionValue,
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: ADMIN_SESSION_MAX_AGE_SECONDS,
+    const response = new Response(null, {
+      status: 303,
+      headers: {
+        Location: new URL("/admin", request.url).toString(),
+        "Set-Cookie": adminSessionCookieHeader(sessionValue, isSecureRequest(request)),
+      },
     });
     await recordAdminSiteEvent(
       {
