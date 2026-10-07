@@ -66,6 +66,8 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
   core.prepare("INSERT INTO article_tags VALUES ('11111111-1111-4111-8111-111111111111','tag-1',0.8,'now')").run();
   ingest.exec("CREATE TABLE ingestion_runs (id TEXT PRIMARY KEY, summarized_count INTEGER NOT NULL DEFAULT 0)");
   ingest.prepare("INSERT INTO ingestion_runs VALUES ('11111111-1111-4111-8111-111111111111',0)").run();
+  ingest.exec("CREATE TABLE source_backfill_items (id TEXT PRIMARY KEY,article_id TEXT,status TEXT,verified_normalization_artifact_id TEXT,published_normalization_artifact_id TEXT,updated_at TEXT)");
+  ingest.prepare("INSERT INTO source_backfill_items VALUES ('backfill-1','11111111-1111-4111-8111-111111111111','withdrawn','artifact-1',NULL,'now')").run();
   const toBinding = (database: DatabaseSync): D1RuntimeDatabase => ({
     prepare(sql) {
       const statement = database.prepare(sql);
@@ -146,6 +148,10 @@ test("D1 summary success persists summary, tags, publication outbox, tag counts,
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_publications_p3 WHERE state='published'").get()?.count, 1);
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_cache_outbox_p3 WHERE status='pending'").get()?.count, 1);
     assert.equal(db.ingest.prepare("SELECT summarized_count FROM ingestion_runs WHERE id='11111111-1111-4111-8111-111111111111'").get()?.summarized_count, 1);
+    assert.deepEqual(
+      { ...db.ingest.prepare("SELECT status,published_normalization_artifact_id FROM source_backfill_items WHERE id='backfill-1'").get() as Record<string, unknown> },
+      { status: "published", published_normalization_artifact_id: "artifact-1" },
+    );
   } finally {
     close(db);
   }

@@ -641,7 +641,7 @@ test("D1 publish claim leases a verified item without mutating its public state"
   }
 });
 
-test("D1 publish commits the verified source anchor and settles the ingest item", async () => {
+test("D1 publish stages an unsummarized verified source anchor as withdrawn", async () => {
   const databases = createDatabases();
   seed(databases);
   const now = new Date().toISOString();
@@ -690,9 +690,9 @@ test("D1 publish commits the verified source anchor and settles the ingest item"
     assert.equal(publication.versionRevision, 1);
     assert.equal(publication.publicationRevision, 1);
     const item = databases.ingest.prepare("SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
-    assert.equal(item.status, "published");
+    assert.equal(item.status, "withdrawn");
     assert.equal(item.article_id, publication.articleId);
-    assert.equal(item.published_normalization_artifact_id, normalizationArtifactId);
+    assert.equal(item.published_normalization_artifact_id, null);
     assert.equal(item.claimed_attempt_id, null);
     const article = databases.core.prepare("SELECT source_key,canonical_url,slug,status FROM articles WHERE id=?").get(publication.articleId) as Record<string, unknown>;
     assert.equal(article.source_key, "de-bverfg");
@@ -704,7 +704,7 @@ test("D1 publish commits the verified source anchor and settles the ingest item"
     assert.equal(version.source_anchor_version_id, publication.versionId);
     assert.equal(version.source_content_hash, "6".repeat(64));
     const catalog = databases.core.prepare("SELECT state,source_anchor_version_id,revision FROM case_catalog_publications_v1 WHERE article_id=?").get(publication.articleId) as Record<string, unknown>;
-    assert.equal(catalog.state, "published");
+    assert.equal(catalog.state, "withdrawn");
     assert.equal(catalog.source_anchor_version_id, publication.versionId);
     assert.equal(catalog.revision, "1");
     assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_publication_events_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
@@ -721,9 +721,9 @@ test("D1 publish commits the verified source anchor and settles the ingest item"
     });
     assert.deepEqual(recovered, publication);
     const recoveredItem = databases.ingest.prepare("SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
-    assert.equal(recoveredItem.status, "published");
+    assert.equal(recoveredItem.status, "withdrawn");
     assert.equal(recoveredItem.article_id, publication.articleId);
-    assert.equal(recoveredItem.published_normalization_artifact_id, normalizationArtifactId);
+    assert.equal(recoveredItem.published_normalization_artifact_id, null);
     assert.equal(recoveredItem.claimed_attempt_id, null);
     assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_publication_events_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);
     assert.equal(databases.core.prepare("SELECT COUNT(*) AS count FROM case_catalog_cache_outbox_v1 WHERE article_id=?").get(publication.articleId)?.count, 1);

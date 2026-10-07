@@ -144,7 +144,7 @@ async function batch(db: D1RuntimeDatabase, statements: D1RuntimePreparedStateme
   }
 }
 
-async function finalizePublishedItem(
+async function finalizeCatalogItem(
   db: D1RuntimeDatabase,
   input: {
     itemId: string;
@@ -153,6 +153,7 @@ async function finalizePublishedItem(
     normalizationArtifactId: string;
     versionId: string;
     publicationRevision: number;
+    publicationState: "published" | "withdrawn";
     recovered?: boolean;
   },
 ) {
@@ -162,31 +163,34 @@ async function finalizePublishedItem(
     articleId: input.articleId,
     versionId: input.versionId,
     publicationRevision: input.publicationRevision,
+    publicationState: input.publicationState,
     ...(input.recovered ? { recovered: true } : {}),
   });
+  const eventType = input.publicationState === "published" ? "catalog_published" : "item_completed";
   const claimWhere = `id=? AND claimed_attempt_id=? AND claimed_fencing_token=? AND claimed_phase='publish' AND lease_expires_at>?`;
   await batch(db, [
     db.prepare(`INSERT INTO source_backfill_item_events(id,item_id,attempt_id,event_type,phase,safe_details,occurred_at)
-      SELECT ?,id,?,'catalog_published','publish',?,? FROM source_backfill_items WHERE ${claimWhere}`).bind(
-      eventId,input.authority.attemptId,details,now,
+      SELECT ?,id,?,?,'publish',?,? FROM source_backfill_items WHERE ${claimWhere}`).bind(
+      eventId,input.authority.attemptId,eventType,details,now,
       input.itemId,input.authority.attemptId,input.authority.fencingToken,now,
     ),
-    db.prepare(`UPDATE source_backfill_items SET article_id=?,status='published',published_normalization_artifact_id=?,
+    db.prepare(`UPDATE source_backfill_items SET article_id=?,status=?,published_normalization_artifact_id=CASE WHEN ?='published' THEN ? ELSE NULL END,
       claimed_attempt_id=NULL,claimed_fencing_token=NULL,claimed_phase=NULL,lease_expires_at=NULL,next_attempt_at=NULL,retry_phase=NULL,
       error_code=NULL,error_summary=NULL,updated_at=? WHERE ${claimWhere}`).bind(
-      input.articleId,input.normalizationArtifactId,now,
+      input.articleId,input.publicationState,input.publicationState,input.normalizationArtifactId,now,
       input.itemId,input.authority.attemptId,input.authority.fencingToken,now,
     ),
   ]);
   const item = (await rows<Row>(db, `SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id
     FROM source_backfill_items WHERE id=? LIMIT 1`, [input.itemId]))[0];
   const event = (await rows<Row>(db, `SELECT id FROM source_backfill_item_events
-    WHERE id=? AND item_id=? AND event_type='catalog_published' LIMIT 1`, [eventId,input.itemId]))[0];
+    WHERE id=? AND item_id=? AND event_type=? LIMIT 1`, [eventId,input.itemId,eventType]))[0];
   if (
     !item
-    || text(item.status) !== "published"
+    || text(item.status) !== input.publicationState
     || text(item.article_id) !== input.articleId
-    || text(item.published_normalization_artifact_id) !== input.normalizationArtifactId
+    || (input.publicationState === "published" && text(item.published_normalization_artifact_id) !== input.normalizationArtifactId)
+    || (input.publicationState === "withdrawn" && item.published_normalization_artifact_id !== null)
     || item.claimed_attempt_id !== null
     || !event
   ) {
@@ -1126,7 +1130,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
 
     const idempotencyKey = `case-backfill:${input.itemId}:${normalizationArtifactId}`;
     const priorEvent = (await rows<Row>(core, `
-      SELECT e.publication_id,e.publication_revision,e.next_source_anchor_version_id,p.article_id,a.slug,v.revision AS version_revision
+      SELECT e.publication_id,e.publication_revision,e.next_source_anchor_version_id,e.to_state,p.article_id,a.slug,v.revision AS version_revision
       FROM case_catalog_publication_events_v1 e
       JOIN case_catalog_publications_v1 p ON p.id=e.publication_id
       JOIN articles a ON a.id=p.article_id
@@ -1134,13 +1138,15 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       WHERE e.idempotency_key=? LIMIT 1
     `, [idempotencyKey]))[0];
     if (priorEvent) {
-      await finalizePublishedItem(ingest, {
+      const priorState = text(priorEvent.to_state) === "published" ? "published" : "withdrawn";
+      await finalizeCatalogItem(ingest, {
         itemId: input.itemId,
         authority: input.authority,
         articleId: text(priorEvent.article_id),
         normalizationArtifactId,
         versionId: text(priorEvent.next_source_anchor_version_id),
         publicationRevision: numberValue(priorEvent.publication_revision),
+        publicationState: priorState,
         recovered: true,
       });
       return {
@@ -1156,11 +1162,11 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
     const normalizedRecordId = normalizedIdentifier(recordId);
     if (!normalizedRecordId) throw new Error("case_backfill.catalog_identifier_invalid");
     const byIdentifier = (await rows<Row>(core, `
-      SELECT a.id,a.slug,a.source_key FROM case_identifiers_v1 ci JOIN articles a ON a.id=ci.article_id
+      SELECT a.id,a.slug,a.source_key,a.status,a.summary_json FROM case_identifiers_v1 ci JOIN articles a ON a.id=ci.article_id
       WHERE ci.source_key=? AND ci.identifier_type='source_record_id' AND ci.normalized_value=? LIMIT 2
     `, [normalized.sourceKey, normalizedRecordId]));
     if (byIdentifier.length > 1) throw new Error("case_backfill.catalog_identity_conflict");
-    const byCanonical = await rows<Row>(core, "SELECT id,slug,source_key FROM articles WHERE canonical_url=? LIMIT 2", [normalized.canonicalUrl]);
+    const byCanonical = await rows<Row>(core, "SELECT id,slug,source_key,status,summary_json FROM articles WHERE canonical_url=? LIMIT 2", [normalized.canonicalUrl]);
     if (byCanonical.length > 1) throw new Error("case_backfill.catalog_identity_conflict");
     if (byIdentifier[0] && byCanonical[0] && text(byIdentifier[0].id) !== text(byCanonical[0].id)) {
       throw new Error("case_backfill.catalog_identity_conflict");
@@ -1172,6 +1178,16 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       ? text(existingArticle.slug)
       : `${slugPart(normalized.sourceKey)}-${slugPart(recordId)}`;
     if (!articleSlug) throw new Error("case_backfill.catalog_identifier_invalid");
+    const summaryReady = Boolean(
+      existingArticle
+      && text(existingArticle.status) === "summarized"
+      && existingArticle.summary_json !== null
+      && existingArticle.summary_json !== undefined,
+    );
+    const publicationState = summaryReady ? "published" as const : "withdrawn" as const;
+    const publicationReason = summaryReady
+      ? "Verified constitutional case publication with completed summary."
+      : "Authoritative case staged; public publication awaits completed summary.";
     if (!existingArticle) {
       const slugConflict = (await rows<Row>(core, "SELECT id FROM articles WHERE slug=? LIMIT 1", [articleSlug]))[0];
       if (slugConflict) throw new Error("case_backfill.catalog_identity_conflict");
@@ -1319,22 +1335,24 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       statements.push(core.prepare(`INSERT INTO case_catalog_publications_v1
         (id,article_id,state,source_anchor_version_id,revision,source_policy_version,decided_by_type,decided_by_id,reason,published_at,withdrawn_at,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
-        publicationId,articleId,"published",versionId,String(publicationRevision),text(snapshotRow.source_policy_version),"backfill",
-        input.actorId ?? "case-backfill-worker","Verified constitutional case Catalog publication.",now,null,now,now,
+        publicationId,articleId,publicationState,versionId,String(publicationRevision),text(snapshotRow.source_policy_version),"backfill",
+        input.actorId ?? "case-backfill-worker",publicationReason,publicationState === "published" ? now : null,publicationState === "withdrawn" ? now : null,now,now,
       ));
     } else {
-      statements.push(core.prepare(`UPDATE case_catalog_publications_v1 SET state='published',source_anchor_version_id=?,revision=?,source_policy_version=?,
-        decided_by_type='backfill',decided_by_id=?,reason=?,published_at=COALESCE(published_at,?),withdrawn_at=NULL,updated_at=? WHERE id=? AND CAST(revision AS INTEGER)=?`).bind(
-        versionId,String(publicationRevision),text(snapshotRow.source_policy_version),input.actorId ?? "case-backfill-worker",
-        "Verified constitutional case Catalog publication.",now,now,publicationId,numberValue(publication.revision),
+      statements.push(core.prepare(`UPDATE case_catalog_publications_v1 SET state=?,source_anchor_version_id=?,revision=?,source_policy_version=?,
+        decided_by_type='backfill',decided_by_id=?,reason=?,
+        published_at=CASE WHEN ?='published' THEN COALESCE(published_at,?) ELSE published_at END,
+        withdrawn_at=CASE WHEN ?='withdrawn' THEN ? ELSE NULL END,updated_at=? WHERE id=? AND CAST(revision AS INTEGER)=?`).bind(
+        publicationState,versionId,String(publicationRevision),text(snapshotRow.source_policy_version),input.actorId ?? "case-backfill-worker",
+        publicationReason,publicationState,now,publicationState,now,now,publicationId,numberValue(publication.revision),
       ));
     }
     statements.push(core.prepare(`INSERT INTO case_catalog_publication_events_v1
       (id,publication_id,article_id,publication_revision,from_state,to_state,previous_source_anchor_version_id,next_source_anchor_version_id,idempotency_key,actor_type,actor_id,reason,occurred_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
-      decimalId(),publicationId,articleId,String(publicationRevision),publication ? nullableText(publication.state) : null,"published",
+      decimalId(),publicationId,articleId,String(publicationRevision),publication ? nullableText(publication.state) : null,publicationState,
       publication ? nullableText(publication.source_anchor_version_id) : null,versionId,idempotencyKey,"backfill",input.actorId ?? "case-backfill-worker",
-      "Verified constitutional case Catalog publication.",now,
+      publicationReason,now,
     ));
     statements.push(core.prepare(`INSERT INTO case_catalog_cache_outbox_v1
       (id,event_key,article_id,publication_id,publication_revision,source_anchor_version_id,article_slug,created_at)
@@ -1342,13 +1360,14 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
       crypto.randomUUID(),`case-catalog:${publicationId}:${publicationRevision}`,articleId,publicationId,String(publicationRevision),versionId,articleSlug,now,
     ));
     await batch(core, statements);
-    await finalizePublishedItem(ingest, {
+    await finalizeCatalogItem(ingest, {
       itemId: input.itemId,
       authority: input.authority,
       articleId,
       normalizationArtifactId,
       versionId,
       publicationRevision,
+      publicationState,
     });
     return { articleId,versionId,versionRevision,publicationRevision,articleSlug };
   },

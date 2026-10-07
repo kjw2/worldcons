@@ -1,5 +1,5 @@
 import type { SummaryJson, ArticleContentType } from "@/lib/db/types";
-import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
+import type { D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { summarizeArticle } from "@/lib/ai/summarize";
 import { createEmbeddingArtifact } from "@/lib/ai/embeddings";
@@ -126,6 +126,17 @@ async function persistPublication(articleId: string, provider: string, model: st
   } satisfies ArticlePublicationTransitionInput);
   if (!result.ok) throw new Error(`summary_publication_transition:${result.error.code}`);
   return result.data;
+}
+
+async function markBackfillItemsPublishedAfterSummary(articleId: string) {
+  const ingest = getRuntimeD1Binding("worldcons_ingest");
+  if (!ingest) return 0;
+  const now = new Date().toISOString();
+  const result = await statementRun(ingest.prepare(
+    "UPDATE source_backfill_items SET status='published',published_normalization_artifact_id=COALESCE(published_normalization_artifact_id,verified_normalization_artifact_id),updated_at=? WHERE article_id=? AND status='withdrawn'",
+  ).bind(now, articleId));
+  if (result.success === false || result.error) throw new Error("summary_d1.backfill_publication_sync_failed");
+  return Number(result.meta?.changes ?? 0);
 }
 
 async function recoverStaleSummarizing(options: { limit: number; sourceKey?: string }, now = Date.now()) {
@@ -402,6 +413,7 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
   const provider = summary.aiMetadata?.provider ?? "gemini";
   const model = summary.aiMetadata?.model ?? options.model ?? null;
   await persistPublication(row.id, provider, model, forceAllowed ? "Legacy re-summary persisted and remained public." : "Legacy summary persisted and became public.");
+  await markBackfillItemsPublishedAfterSummary(row.id);
   const tagResult = await syncTags(row.id, summary, row.original_published_at);
   return { status: "summarized" as const, summary, provider, model, tagResult };
 }
