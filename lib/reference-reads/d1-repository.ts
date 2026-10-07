@@ -99,8 +99,16 @@ function tagOrder(sort: NormalizedTagListOptions["sort"]): D1RuntimeReadOrder[] 
  * JSON boolean `true` and the string `"true"` both count.
  */
 function isPublishableMetadata(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const collection = (value as Record<string, unknown>).collection;
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return false;
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const collection = (parsed as Record<string, unknown>).collection;
   if (!collection || typeof collection !== "object" || Array.isArray(collection)) return false;
   const publishable = (collection as Record<string, unknown>).publishable;
   return publishable === true || publishable === "true";

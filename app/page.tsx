@@ -95,7 +95,7 @@ const getHomePortalData = unstable_cache(
       latestArticles,
     };
   },
-  ["home-country-portal-v4"],
+  ["home-country-portal-v5"],
   { revalidate: 60, tags: [PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG, PUBLIC_TAGS_CACHE_TAG] },
 );
 

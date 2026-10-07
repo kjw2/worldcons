@@ -45,8 +45,21 @@ function createFakeD1(
         async all<T = Record<string, unknown>>() {
           if (options.failEnvelope) return { success: false, error: "d1 boom" } as { results?: T[] };
           if (options.resultsNotArray) return { success: true } as { results?: T[] };
-          const table = Object.keys(rowsByTable).find((name) => query.includes(` from ${name}`));
+          const normalizedQuery = query.toLowerCase();
+          const table = Object.keys(rowsByTable).find((name) => normalizedQuery.includes(` from ${name}`));
           let rows = table ? rowsByTable[table] : [];
+          if (normalizedQuery.includes("join article_publications_p3")) {
+            const publications = rowsByTable.article_publications_p3 ?? [];
+            const publishedIds = new Set(
+              publications
+                .filter((row) => row.state === "published")
+                .map((row) => row.article_id),
+            );
+            rows = rows.filter((row) => publishedIds.has(row.id));
+            if (normalizedQuery.includes("a.status='summarized'")) {
+              rows = rows.filter((row) => row.status === "summarized");
+            }
+          }
           const where = / where ([a-z_][a-z0-9_]*) = \?/.exec(query);
           if (where) rows = rows.filter((row) => row[where[1]] === record.params[0]);
           if (options.nonObjectRow) {
@@ -514,7 +527,10 @@ test("D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-
     { id: "a5", status: "discovered", jurisdiction: "Spain", source_metadata: { collection: { publishable: true } } },
     { id: "a6", status: "summarized", jurisdiction: "  ", source_metadata: { collection: { publishable: true } } },
   ];
-  const d1 = createFakeD1({ articles: articleRows });
+  const d1 = createFakeD1({
+    articles: articleRows,
+    article_publications_p3: articleRows.map((row) => ({ article_id: row.id, state: row.id === "a3" ? "withdrawn" : "published" })),
+  });
   const supabase = createFakeSupabase({}, () => ({
     data: [
       { jurisdiction: "France", article_count: "2" },
@@ -534,8 +550,8 @@ test("D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-
   assert.deepEqual(shadow, authoritative);
   assert.deepEqual(shadow, { France: 2, Spain: 0 });
 
-  assert.match(d1.calls[0].sql, /select jurisdiction, source_metadata from articles where status = \? limit \?/);
-  assert.deepEqual(d1.calls[0].params, ["summarized", D1_REFERENCE_READ_DEFAULT_MAX_ROWS + 1]);
+  assert.match(d1.calls[0].sql.toLowerCase(), /select a\.jurisdiction,a\.source_metadata[\s\S]*join article_publications_p3[\s\S]*a\.status='summarized'/);
+  assert.deepEqual(d1.calls[0].params, [D1_REFERENCE_READ_DEFAULT_MAX_ROWS + 1]);
 });
 
 test("D1 listJurisdictionArticleCounts truncates overflow and applies the range lower bound", async () => {
@@ -544,16 +560,20 @@ test("D1 listJurisdictionArticleCounts truncates overflow and applies the range 
       { id: "a1", status: "summarized", jurisdiction: "France", source_metadata: { collection: { publishable: true } } },
       { id: "a2", status: "summarized", jurisdiction: "France", source_metadata: { collection: { publishable: true } } },
     ],
+    article_publications_p3: [
+      { article_id: "a1", state: "published" },
+      { article_id: "a2", state: "published" },
+    ],
   });
   await assert.rejects(
     () => createD1ReferenceReadRepository({ binding: d1.database, maxRows: 1 }).listJurisdictionArticleCounts(["France"]),
     (error: unknown) => error instanceof D1ShadowTruncatedError,
   );
 
-  const ranged = createFakeD1({ articles: [] });
+  const ranged = createFakeD1({ articles: [], article_publications_p3: [] });
   await createD1ReferenceReadRepository({ binding: ranged.database }).listJurisdictionArticleCounts(["France"], {
     range: "week",
   });
-  assert.match(ranged.calls[0].sql, /where status = \? and original_published_at >= \? limit \?/);
-  assert.equal(typeof ranged.calls[0].params[1], "string");
+  assert.match(ranged.calls[0].sql.toLowerCase(), /a\.status='summarized'[\s\S]*a\.original_published_at>=\?/);
+  assert.equal(typeof ranged.calls[0].params[0], "string");
 });
