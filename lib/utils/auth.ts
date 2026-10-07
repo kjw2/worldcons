@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { timingSafeStringEqual as safeEqual } from "@/lib/security/constant-time";
+import { getRuntimeAuthEnvironment, type RuntimeAuthEnvironment } from "@/lib/runtime/auth-environment";
 export { validateProductionSecurityConfig } from "@/lib/security/production-config";
 
 export const ADMIN_SESSION_COOKIE = "worldcons_admin_session";
@@ -11,23 +12,29 @@ export const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const DEFAULT_ADMIN_USERNAME = "ap570@naver.com";
 const CSRF_TOKEN_BYTES = 32;
 
+function authEnvironmentValue(name: keyof RuntimeAuthEnvironment) {
+  const runtime = getRuntimeAuthEnvironment();
+  if (runtime) return runtime[name];
+  return process.env[name];
+}
+
 interface AdminSessionPayload {
   username: string;
   expiresAt: number;
 }
 
 function configuredSecret() {
-  const secret = process.env.CRON_SECRET?.trim();
+  const secret = authEnvironmentValue("CRON_SECRET")?.trim();
   return secret || null;
 }
 
 function configuredPortalToken() {
-  const secret = process.env.WORLDCONS_PORTAL_TOKEN?.trim();
+  const secret = authEnvironmentValue("WORLDCONS_PORTAL_TOKEN")?.trim();
   return secret || null;
 }
 
 function configuredAdminUsername() {
-  return process.env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME;
+  return authEnvironmentValue("ADMIN_USERNAME")?.trim() || DEFAULT_ADMIN_USERNAME;
 }
 
 function normalizeMasterdashIdentity(value?: string) {
@@ -36,7 +43,7 @@ function normalizeMasterdashIdentity(value?: string) {
 }
 
 function configuredMasterdashAdminIdentities() {
-  const identities = (process.env.MASTERDASH_ADMIN_IDENTITIES ?? "")
+  const identities = (authEnvironmentValue("MASTERDASH_ADMIN_IDENTITIES") ?? "")
     .split(",")
     .map((value) => normalizeMasterdashIdentity(value))
     .filter((value): value is string => Boolean(value));
@@ -46,15 +53,15 @@ function configuredMasterdashAdminIdentities() {
 }
 
 function configuredAdminPassword() {
-  const password = process.env.ADMIN_PASSWORD?.trim();
+  const password = authEnvironmentValue("ADMIN_PASSWORD")?.trim();
   return password || null;
 }
 
 function configuredSessionSecret() {
-  const secret = process.env.ADMIN_SESSION_SECRET?.trim();
+  const secret = authEnvironmentValue("ADMIN_SESSION_SECRET")?.trim();
   if (secret) return secret;
   if (process.env.NODE_ENV !== "production") {
-    return process.env.ADMIN_PASSWORD?.trim() || "worldcons-local-admin-session-secret";
+    return authEnvironmentValue("ADMIN_PASSWORD")?.trim() || "worldcons-local-admin-session-secret";
   }
   return null;
 }

@@ -17,6 +17,7 @@ import {
   resolveExistingAdminSessionIdentityForMasterdash,
   verifyAdminSession,
 } from "../lib/utils/auth";
+import { clearRuntimeAuthEnvironment, setRuntimeAuthEnvironment } from "../lib/runtime/auth-environment";
 import {
   collectionHealthMetrics,
   FAILURE_RECENCY_WINDOW_HOURS,
@@ -44,6 +45,7 @@ before(() => {
 });
 
 after(() => {
+  clearRuntimeAuthEnvironment();
   if (originalSsoSecret === undefined) delete process.env.MASTERDASH_SSO_SECRET;
   else process.env.MASTERDASH_SSO_SECRET = originalSsoSecret;
   if (originalControlSecret === undefined) delete process.env.MASTERDASH_CONTROL_SECRET;
@@ -84,6 +86,29 @@ test("serializes a redirect-safe admin session cookie that verifies with the act
   const encodedValue = header.split(";", 1)[0]?.split("=", 2)[1];
   assert.ok(encodedValue);
   assert.equal(verifyAdminSession(decodeURIComponent(encodedValue)), true);
+});
+
+test("admin session creation and verification prefer the Worker runtime auth environment", () => {
+  const processSecret = process.env.ADMIN_SESSION_SECRET;
+  const processUsername = process.env.ADMIN_USERNAME;
+  try {
+    process.env.ADMIN_SESSION_SECRET = "process-session-secret-that-must-not-be-used-0001";
+    process.env.ADMIN_USERNAME = "process-admin@example.invalid";
+    setRuntimeAuthEnvironment({
+      ADMIN_SESSION_SECRET: "runtime-session-secret-that-is-authoritative-0001",
+      ADMIN_USERNAME: adminUsername,
+      ADMIN_PASSWORD: "runtime-admin-password",
+      MASTERDASH_ADMIN_IDENTITIES: "admin,admin2",
+    });
+    const session = createAdminSession(adminUsername);
+    assert.equal(verifyAdminSession(session), true);
+  } finally {
+    clearRuntimeAuthEnvironment();
+    if (processSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+    else process.env.ADMIN_SESSION_SECRET = processSecret;
+    if (processUsername === undefined) delete process.env.ADMIN_USERNAME;
+    else process.env.ADMIN_USERNAME = processUsername;
+  }
 });
 
 test("maps only owner or admin identities to the existing active local administrator", () => {

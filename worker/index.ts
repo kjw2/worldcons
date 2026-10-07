@@ -4,6 +4,7 @@ import type { ArtifactBlobR2Bucket } from "@/lib/storage/blob";
 import { setRuntimeArtifactBlobR2Binding } from "@/lib/storage/runtime-binding";
 import { createMemoryRuntimeJsonStateStore, setRuntimeJsonStateStore } from "@/lib/runtime/persistent-state";
 import { setRuntimePlatform } from "@/lib/runtime/platform";
+import { setRuntimeAuthEnvironment } from "@/lib/runtime/auth-environment";
 import { createWaitUntilBackgroundScheduler, setRuntimeBackgroundScheduler } from "@/lib/runtime/background";
 import {
   setRuntimeD1Bindings,
@@ -95,6 +96,12 @@ interface WorldconsWorkerEnv {
   GEMINI_SUMMARY_MODEL?: string;
   GEMINI_PINNED_MODEL?: string;
   CCL_METASEARCH_DB_TIMEOUT_MS?: string;
+  ADMIN_USERNAME?: string;
+  ADMIN_PASSWORD?: string;
+  ADMIN_SESSION_SECRET?: string;
+  CRON_SECRET?: string;
+  WORLDCONS_PORTAL_TOKEN?: string;
+  MASTERDASH_ADMIN_IDENTITIES?: string;
   WORLDCONS_M13_AUTHORITY_PROFILE?: string;
   WORLDCONS_RATE_LIMIT_AUTHORITY?: string;
   WORLDCONS_SITE_EVENTS_WRITE_AUTHORITY?: string;
@@ -145,6 +152,14 @@ export default {
       env as Record<string, string | undefined>,
     ) as WorldconsWorkerEnv;
     setRuntimePlatform("cloudflare-worker");
+    setRuntimeAuthEnvironment({
+      ADMIN_USERNAME: env.ADMIN_USERNAME,
+      ADMIN_PASSWORD: env.ADMIN_PASSWORD,
+      ADMIN_SESSION_SECRET: env.ADMIN_SESSION_SECRET,
+      CRON_SECRET: env.CRON_SECRET,
+      WORLDCONS_PORTAL_TOKEN: env.WORLDCONS_PORTAL_TOKEN,
+      MASTERDASH_ADMIN_IDENTITIES: env.MASTERDASH_ADMIN_IDENTITIES,
+    });
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW);
     setRuntimeD1Bindings({
