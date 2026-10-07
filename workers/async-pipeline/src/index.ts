@@ -114,9 +114,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
     }
     if (event.payload.kind === "publication-drain") {
       const limit = Math.max(1, Math.min(Number(this.env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
+      const appService = (this.env as unknown as M8NativeEnvironment).WORLDCONS_APP_SERVICE;
       const publication = await step.do("native-publication-drain", {
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
-      }, () => this.env.WORLDCONS_APP_SERVICE.runPublicationDrain({ limit }));
+      }, () => appService.runPublicationDrain({ limit }));
       const searchProjection = await step.do("native-search-projection-sync-after-publication", {
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
       }, () => runNativeSearchProjectionSync({
@@ -185,11 +186,12 @@ export class WorldconsBackfillDiscoverWorkflow extends WorkflowEntrypoint<Env, B
     const inventory = await discoverGermanyBackfillInventoryWithLoader(payload, async (url, page) => {
       const call = (pageCalls.get(page) ?? 0) + 1;
       pageCalls.set(page, call);
-      return step.do(`discover-page-${page}-${call}`, { timeout: "5 minutes" }, () => (
-        fetchGermanyBackfillInventoryPage(
+      const serialized = await step.do<string>(`discover-page-${page}-${call}`, { timeout: "5 minutes" }, async () => (
+        JSON.stringify(await fetchGermanyBackfillInventoryPage(
           this.env as unknown as Parameters<typeof fetchGermanyBackfillInventoryPage>[0],context,url,page,
-        )
+        ))
       ));
+      return JSON.parse(serialized) as Awaited<ReturnType<typeof fetchGermanyBackfillInventoryPage>>;
     });
     const persisted = await step.do("persist-discovery-manifest", { timeout: "20 minutes" }, () => (
       persistGermanyBackfillInventory(

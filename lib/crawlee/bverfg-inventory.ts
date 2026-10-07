@@ -44,8 +44,8 @@ export interface BverfgInventoryResult {
   items: BverfgInventoryItem[];
   pageCount: number;
   requestCount: number;
-  expectedCount: null;
-  expectedCountBasis: null;
+  expectedCount: number | null;
+  expectedCountBasis: string | null;
   enumerationArtifacts: CaseBackfillEnumerationArtifact[];
   coverageEvidence: Record<string, unknown>;
 }
