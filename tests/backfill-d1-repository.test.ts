@@ -694,11 +694,14 @@ test("D1 publish stages an unsummarized verified source anchor as withdrawn", as
     assert.equal(item.article_id, publication.articleId);
     assert.equal(item.published_normalization_artifact_id, null);
     assert.equal(item.claimed_attempt_id, null);
-    const article = databases.core.prepare("SELECT source_key,canonical_url,slug,status FROM articles WHERE id=?").get(publication.articleId) as Record<string, unknown>;
+    const article = databases.core.prepare("SELECT source_key,canonical_url,slug,status,source_metadata FROM articles WHERE id=?").get(publication.articleId) as Record<string, unknown>;
     assert.equal(article.source_key, "de-bverfg");
     assert.equal(article.canonical_url, canonicalUrl);
     assert.equal(article.slug, publication.articleSlug);
     assert.equal(article.status, "cleaned");
+    const sourceMetadata = JSON.parse(String(article.source_metadata)) as Record<string, unknown>;
+    assert.equal((sourceMetadata.collection as Record<string, unknown>).publishable, true);
+    assert.equal(((sourceMetadata.case as Record<string, unknown>).collection as Record<string, unknown>).publishable, true);
     const version = databases.core.prepare("SELECT version_role,source_anchor_version_id,source_content_hash FROM article_content_versions_p3 WHERE id=?").get(publication.versionId) as Record<string, unknown>;
     assert.equal(version.version_role, "authoritative_source");
     assert.equal(version.source_anchor_version_id, publication.versionId);

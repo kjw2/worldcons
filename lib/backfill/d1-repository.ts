@@ -1281,7 +1281,7 @@ export const d1CaseBackfillRepository: CaseBackfillRepository = {
         articleId,text(source.id),normalized.sourceKey,normalized.jurisdiction,normalized.institutionName,normalized.contentType,
         normalized.originalUrl,normalized.canonicalUrl,normalized.originalLanguage,normalized.originalTitle,normalized.originalPublishedAt ?? null,
         now,now,normalized.cleanedText?.trim() ? "cleaned" : "metadata_only",articleSlug,null,normalized.cleanedText ?? null,null,
-        JSON.stringify({ catalog: { sourceOnly: true }, case: normalized.metadata ?? {} }),null,now,now,0,
+        JSON.stringify({ ...(normalized.metadata ?? {}), catalog: { sourceOnly: true }, case: normalized.metadata ?? {} }),null,now,now,0,
       ));
     }
     if (!hasSourceRecordIdentifier) {

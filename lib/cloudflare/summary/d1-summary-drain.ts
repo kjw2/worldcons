@@ -60,8 +60,17 @@ function parseJson(value: unknown): Record<string, unknown> {
   }
 }
 
-function sourceCollection(value: unknown) {
+function normalizeSourceMetadata(value: unknown) {
   const source = parseJson(value);
+  if (Object.keys(parseJson(source.collection)).length > 0) return source;
+  const nestedCase = parseJson(source.case);
+  const nestedCollection = parseJson(nestedCase.collection);
+  if (Object.keys(nestedCollection).length === 0) return source;
+  return { ...nestedCase, ...source, collection: nestedCollection };
+}
+
+function sourceCollection(value: unknown) {
+  const source = normalizeSourceMetadata(value);
   return parseJson(source.collection);
 }
 
@@ -179,7 +188,7 @@ async function recoverStaleSummarizing(options: { limit: number; sourceKey?: str
 async function selectCandidates(options: { limit: number; sourceKey?: string; fetchLimit: number }) {
   const sourceFilter = options.sourceKey ? " AND source_key = ?" : "";
   const rows = ensureSuccess(await d1().prepare(
-    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND json_valid(source_metadata) AND json_extract(source_metadata,'$.collection.publishable')=1${sourceFilter} ORDER BY created_at ASC,id ASC LIMIT ?`,
+    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY created_at ASC,id ASC LIMIT ?`,
   ).bind(...(options.sourceKey ? [options.sourceKey, options.fetchLimit] : [options.fetchLimit])).all<SummaryCandidateRow>());
   return orderSummaryCandidatesRoundRobin(rows);
 }
@@ -339,7 +348,7 @@ async function syncIngestionRunCounts(runIds: Iterable<string>) {
 }
 
 async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: string[]; model?: string; summarize?: typeof summarizeArticle; createEmbedding?: typeof createEmbeddingArtifact }) {
-  const sourceMetadata = parseJson(row.source_metadata);
+  const sourceMetadata = normalizeSourceMetadata(row.source_metadata);
   const collection = sourceCollection(sourceMetadata);
   const forceAllowed = row.status === "summarized"
     && typeof row.cleaned_text === "string"

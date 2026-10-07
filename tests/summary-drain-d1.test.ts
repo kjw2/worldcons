@@ -110,6 +110,19 @@ test("D1 summary candidate selection enforces publishability, source, and round-
   close(db);
 });
 
+test("D1 summary candidate selection accepts legacy backfill metadata nested under case.collection", async () => {
+  const db = setup({
+    metadata: {
+      catalog: { sourceOnly: true },
+      case: { collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } },
+    },
+  });
+  const selected = await runD1SummaryDrain({ limit: 1, maxPasses: 1, apiKeys: [] });
+  assert.equal(selected.candidateCount, 1);
+  assert.equal(selected.status, "unavailable");
+  close(db);
+});
+
 test("D1 stale summary recovery persists failure triage and lifecycle attention", async () => {
   const db = setup({ status: "summarizing", updatedAt: "2000-01-01T00:00:00.000Z" });
   const result = await runD1SummaryDrain({ limit: 1, maxPasses: 1, apiKeys: [] });
