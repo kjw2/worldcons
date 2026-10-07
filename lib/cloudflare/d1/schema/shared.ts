@@ -25,6 +25,8 @@ export interface ColumnSpec {
   relocate?: D1RelocatedTarget;
   /** Derived projection column with no single Postgres source table. */
   derived?: boolean;
+  /** D1-native persisted column introduced after the historical Postgres-derived baseline. */
+  native?: boolean;
 }
 
 export interface TableSpec {
@@ -57,6 +59,7 @@ export function buildTable(spec: TableSpec): D1TableDefinition {
   const derivedProjection = spec.columns.length > 0 && spec.columns.every((column) => column.derived);
   const sourceTable = spec.sourceTable ?? spec.name;
   for (const column of spec.columns) {
+    if (column.derived && column.native) throw new Error(`${spec.name}.${column.name}: column cannot be both derived and native`);
     const source: PostgresColumnRef = { table: sourceTable, column: column.name, postgresType: column.type };
     if (column.relocate) {
       relocated.push({ source, target: column.relocate, note: column.note ?? "" });
@@ -74,7 +77,8 @@ export function buildTable(spec: TableSpec): D1TableDefinition {
       notNull: column.nn ?? false,
       defaultSql: column.def ?? null,
       enumValues: column.enum ? [...column.enum] : null,
-      source: column.derived ? null : source,
+      source: column.derived || column.native ? null : source,
+      origin: column.native ? "native" : column.derived ? "derived" : "postgres",
       note: column.note ?? null,
     });
   }

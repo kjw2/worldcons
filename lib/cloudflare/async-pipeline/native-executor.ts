@@ -9,6 +9,9 @@ export interface M8NativeEnvironment {
   WORLDCONS_OPS: D1RuntimeDatabase;
   WORLDCONS_CORE: D1RuntimeDatabase;
   WORLDCONS_INGEST: D1RuntimeDatabase;
+  TRANSLATION_DRAIN_LIMIT?: string;
+  TRANSLATION_DRAIN_MAX_PASSES?: string;
+  PUBLICATION_DRAIN_LIMIT?: string;
   WORLDCONS_APP_SERVICE: {
     runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }): Promise<{
       status: "completed" | "deferred" | "unavailable";
@@ -36,6 +39,15 @@ export interface M8NativeEnvironment {
       limitReached: boolean;
       stoppedReason?: string;
     }>;
+    runPublicationDrain(input: { limit?: number }): Promise<{
+      mode: "database";
+      status: "completed" | "degraded";
+      selectedCount: number;
+      publishedCount: number;
+      failedCount: number;
+      remainingCount: number;
+      failures: Array<{ articleId: string; error: string }>;
+    }>;
     runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }): Promise<unknown>;
     runRefreshTagCounts(): Promise<unknown>;
   };
@@ -60,13 +72,20 @@ export async function executeM8TaskNative(
       });
       return { kind: message.kind, ...result };
     }
-    if (message.kind === "summary-drain") {
+    if (message.kind === "translation-drain") {
+      const limit = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_LIMIT ?? 5) || 5, 50));
+      const maxPasses = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_MAX_PASSES ?? 1) || 1, 10));
       const result = await env.WORLDCONS_APP_SERVICE.runSummaryDrain({
-        limit: 60,
-        maxPasses: 6,
+        limit,
+        maxPasses,
         retryAttempts: 1,
         retryDelayMs: 65_000,
       });
+      return { kind: message.kind, ...result };
+    }
+    if (message.kind === "publication-drain") {
+      const limit = Math.max(1, Math.min(Number(env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
+      const result = await env.WORLDCONS_APP_SERVICE.runPublicationDrain({ limit });
       return { kind: message.kind, ...result };
     }
     if (message.kind === "watchdog") {
@@ -101,7 +120,7 @@ export async function executeM8TaskNative(
   return step
     ? step.do(`native-${message.kind}`, {
       retries: { limit: 5, delay: "30 seconds", backoff: "exponential" },
-      timeout: message.kind === "embedding-backfill" || message.kind === "summary-drain" ? "50 minutes" : "2 minutes",
+      timeout: message.kind === "embedding-backfill" || message.kind === "translation-drain" ? "50 minutes" : "2 minutes",
     }, execute)
     : execute();
 }

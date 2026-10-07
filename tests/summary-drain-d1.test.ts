@@ -3,6 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { setRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
+import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 
 const goodSummary = {
   koreanTitle: "결정 요약",
@@ -32,6 +33,9 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
       canonical_url TEXT NOT NULL, original_language TEXT NOT NULL, original_title TEXT,
       korean_title TEXT, original_published_at TEXT, discovered_at TEXT NOT NULL, fetched_at TEXT,
       summarized_at TEXT, status TEXT NOT NULL, cleaned_text TEXT, summary_json TEXT,
+      translation_status TEXT NOT NULL DEFAULT 'pending', translation_started_at TEXT, translated_at TEXT,
+      translation_provider TEXT, translation_model TEXT, translation_attempt_count INTEGER NOT NULL DEFAULT 0,
+      translation_error_code TEXT, translation_error_summary TEXT, translation_next_attempt_at TEXT,
       content_hash TEXT, source_metadata TEXT, error_metadata TEXT, created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL, error_class TEXT, error_context TEXT, review_state TEXT,
       lifecycle_collection_state TEXT, lifecycle_processing_state TEXT, lifecycle_review_state TEXT,
@@ -48,12 +52,13 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
     CREATE TABLE article_tags (article_id TEXT, tag_id TEXT, confidence REAL, created_at TEXT, PRIMARY KEY(article_id,tag_id));
     CREATE TABLE article_lifecycle_events_p2 (id TEXT PRIMARY KEY, article_id TEXT, idempotency_key TEXT, from_revision TEXT, to_revision TEXT, actor_type TEXT, actor_id TEXT, transition_source TEXT, reason_code TEXT, applied INTEGER, collection_state TEXT, processing_state TEXT, review_state TEXT, attention_state TEXT, attention_code TEXT, attention_retryable INTEGER, attention_severity TEXT, attention_source TEXT, occurred_at TEXT, UNIQUE(article_id,idempotency_key));
     CREATE TABLE article_version_heads_p3 (article_id TEXT PRIMARY KEY, current_version_id TEXT, current_revision TEXT, updated_at TEXT);
-    CREATE TABLE article_content_versions_p3 (id TEXT PRIMARY KEY, article_id TEXT, revision TEXT, parent_version_id TEXT, content_hash TEXT, provenance_actor_type TEXT, provenance_actor_id TEXT, model_ref TEXT, prompt_ref TEXT, slug TEXT, source_key TEXT, jurisdiction TEXT, institution_name TEXT, content_type TEXT, original_url TEXT, canonical_url TEXT, original_language TEXT, original_title TEXT, korean_title TEXT, original_published_at TEXT, discovered_at TEXT, fetched_at TEXT, summarized_at TEXT, cleaned_text TEXT, summary_json TEXT, source_metadata TEXT, error_metadata TEXT, created_at TEXT, case_key TEXT, version_document_schema TEXT, raw_text_storage_ref TEXT, raw_text_blob_hash TEXT, raw_text_blob_size TEXT, raw_text_externalized_at TEXT, raw_text_blob_contract_version TEXT);
+    CREATE TABLE article_content_versions_p3 (id TEXT PRIMARY KEY, article_id TEXT, revision TEXT, parent_version_id TEXT, content_hash TEXT, provenance_actor_type TEXT, provenance_actor_id TEXT, model_ref TEXT, prompt_ref TEXT, slug TEXT, source_key TEXT, jurisdiction TEXT, institution_name TEXT, content_type TEXT, original_url TEXT, canonical_url TEXT, original_language TEXT, original_title TEXT, korean_title TEXT, original_published_at TEXT, discovered_at TEXT, fetched_at TEXT, summarized_at TEXT, cleaned_text TEXT, summary_json TEXT, source_metadata TEXT, error_metadata TEXT, created_at TEXT, case_key TEXT, version_document_schema TEXT, version_role TEXT, raw_text_storage_ref TEXT, raw_text_blob_hash TEXT, raw_text_blob_size TEXT, raw_text_externalized_at TEXT, raw_text_blob_contract_version TEXT);
     CREATE TABLE article_publications_p3 (id TEXT PRIMARY KEY, article_id TEXT UNIQUE, state TEXT, version_id TEXT, revision TEXT, decided_by_type TEXT, decided_by_id TEXT, reason TEXT, published_at TEXT, withdrawn_at TEXT, created_at TEXT, updated_at TEXT);
     CREATE TABLE article_publication_requests_p3 (id TEXT PRIMARY KEY, article_id TEXT, idempotency_key TEXT, publication_id TEXT, publication_revision TEXT, version_id TEXT, version_revision TEXT, state TEXT, version_created INTEGER, publication_applied INTEGER, created_at TEXT, UNIQUE(article_id,idempotency_key));
     CREATE TABLE article_publication_history_p3 (id TEXT PRIMARY KEY, publication_id TEXT, article_id TEXT, publication_revision TEXT, from_state TEXT, to_state TEXT, from_version_id TEXT, to_version_id TEXT, idempotency_key TEXT, actor_type TEXT, actor_id TEXT, reason TEXT, request_id TEXT, correlation_id TEXT, occurred_at TEXT, UNIQUE(article_id,idempotency_key));
     CREATE TABLE article_audit_ledger_p3 (id TEXT PRIMARY KEY, article_id TEXT, ledger_revision TEXT, event_type TEXT, article_version_id TEXT, publication_id TEXT, publication_revision TEXT, actor_type TEXT, actor_id TEXT, reason TEXT, request_id TEXT, correlation_id TEXT, safe_metadata TEXT, previous_entry_hash TEXT, entry_hash TEXT, occurred_at TEXT, UNIQUE(article_id,ledger_revision));
     CREATE TABLE article_cache_outbox_p3 (id TEXT PRIMARY KEY, event_key TEXT UNIQUE, event_type TEXT, article_id TEXT, publication_id TEXT, publication_revision TEXT, version_id TEXT, publication_state TEXT, article_slug TEXT, status TEXT, attempt_count INTEGER, max_attempts INTEGER, available_at TEXT, created_at TEXT, updated_at TEXT, UNIQUE(publication_id,publication_revision));
+    CREATE TABLE legacy_version_freshness_classifications_v4 (version_id TEXT PRIMARY KEY, article_id TEXT, freshness TEXT, freshness_basis TEXT, source_anchor_version_id TEXT, source_content_hash TEXT, evidence TEXT, classified_at TEXT, classified_by TEXT);
     CREATE TABLE article_embedding_artifacts (article_version_id TEXT PRIMARY KEY, article_id TEXT, content_hash TEXT, provider TEXT, model TEXT, dimensions INTEGER, input_hash TEXT, generated_at TEXT, updated_at TEXT);
     CREATE TABLE glossary_terms (id TEXT PRIMARY KEY, slug TEXT, term TEXT, korean_term TEXT, definition TEXT, jurisdiction TEXT, related_tags TEXT, created_at TEXT, updated_at TEXT);
     CREATE TABLE glossary_candidates (id TEXT PRIMARY KEY, tag_slug TEXT UNIQUE, tag_name TEXT, tag_type TEXT, article_count INTEGER, suggested_slug TEXT, source_languages TEXT, status TEXT, generated_at TEXT, reviewed_at TEXT, created_at TEXT, updated_at TEXT);
@@ -67,7 +72,7 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
   ingest.exec("CREATE TABLE ingestion_runs (id TEXT PRIMARY KEY, summarized_count INTEGER NOT NULL DEFAULT 0)");
   ingest.prepare("INSERT INTO ingestion_runs VALUES ('11111111-1111-4111-8111-111111111111',0)").run();
   ingest.exec("CREATE TABLE source_backfill_items (id TEXT PRIMARY KEY,article_id TEXT,status TEXT,verified_normalization_artifact_id TEXT,published_normalization_artifact_id TEXT,updated_at TEXT)");
-  ingest.prepare("INSERT INTO source_backfill_items VALUES ('backfill-1','11111111-1111-4111-8111-111111111111','withdrawn','artifact-1',NULL,'now')").run();
+  ingest.prepare("INSERT INTO source_backfill_items VALUES ('backfill-1','11111111-1111-4111-8111-111111111111','verified','artifact-1',NULL,'now')").run();
   const toBinding = (database: DatabaseSync): D1RuntimeDatabase => ({
     prepare(sql) {
       const statement = database.prepare(sql);
@@ -133,7 +138,7 @@ test("D1 stale summary recovery persists failure triage and lifecycle attention"
   close(db);
 });
 
-test("D1 summary success persists summary, tags, publication outbox, tag counts, and ingestion-run count", async () => {
+test("D1 translation/enrichment completion stays private until the separate publication drain runs", async () => {
   const db = setup({ metadata: { collection: { diagnosticsId: "11111111-1111-4111-8111-111111111111", publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } } });
   try {
     let summaryCalls = 0;
@@ -154,13 +159,27 @@ test("D1 summary success persists summary, tags, publication outbox, tag counts,
     assert.equal(result.retryCount, 1);
     assert.equal(result.summarizedCount, 1);
     assert.equal(result.status, "completed");
-    assert.equal(db.core.prepare("SELECT status FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get()?.status, "summarized");
+    assert.deepEqual(
+      { ...db.core.prepare("SELECT status,translation_status FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get() as Record<string, unknown> },
+      { status: "summarized", translation_status: "translated" },
+    );
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_tags WHERE article_id='11111111-1111-4111-8111-111111111111'").get()?.count, 2);
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM tags t JOIN article_tags at ON at.tag_id=t.id WHERE at.article_id='11111111-1111-4111-8111-111111111111' AND t.article_count=1").get()?.count, 2);
     assert.equal(db.core.prepare("SELECT article_count FROM tags WHERE slug='existing'").get()?.article_count, 0);
+    assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_publications_p3 WHERE state='published'").get()?.count, 0, "translation completion alone must not publish");
+    assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_cache_outbox_p3 WHERE status='pending'").get()?.count, 0, "translation completion must not emit a public outbox event");
+    assert.equal(db.ingest.prepare("SELECT summarized_count FROM ingestion_runs WHERE id='11111111-1111-4111-8111-111111111111'").get()?.summarized_count, 1);
+    assert.deepEqual(
+      { ...db.ingest.prepare("SELECT status,published_normalization_artifact_id FROM source_backfill_items WHERE id='backfill-1'").get() as Record<string, unknown> },
+      { status: "verified", published_normalization_artifact_id: null },
+    );
+
+    const publication = await runD1PublicationDrain({ limit: 10 });
+    assert.equal(publication.publishedCount, 1);
+    assert.equal(publication.failedCount, 0);
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_publications_p3 WHERE state='published'").get()?.count, 1);
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_cache_outbox_p3 WHERE status='pending'").get()?.count, 1);
-    assert.equal(db.ingest.prepare("SELECT summarized_count FROM ingestion_runs WHERE id='11111111-1111-4111-8111-111111111111'").get()?.summarized_count, 1);
+    assert.equal(db.core.prepare("SELECT COUNT(*) count FROM legacy_version_freshness_classifications_v4 WHERE freshness='current'").get()?.count, 1);
     assert.deepEqual(
       { ...db.ingest.prepare("SELECT status,published_normalization_artifact_id FROM source_backfill_items WHERE id='backfill-1'").get() as Record<string, unknown> },
       { status: "published", published_normalization_artifact_id: "artifact-1" },
@@ -181,8 +200,8 @@ test("D1 summary failure persists status, structured triage, and lifecycle atten
     });
     assert.equal(result.failedCount, 1);
     assert.equal(result.status, "failed");
-    const article = db.core.prepare("SELECT status,error_class,review_state FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get();
-    assert.deepEqual({ ...article }, { status: "failed_summary", error_class: "summary.model_error", review_state: "needs_triage" });
+    const article = db.core.prepare("SELECT status,translation_status,error_class,review_state FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get();
+    assert.deepEqual({ ...article }, { status: "failed_summary", translation_status: "failed", error_class: "summary.model_error", review_state: "needs_triage" });
     assert.equal(db.core.prepare("SELECT COUNT(*) count FROM article_lifecycle_events_p2 WHERE reason_code='legacy.summary.failed'").get()?.count, 1);
   } finally {
     close(db);

@@ -17,8 +17,6 @@ import {
 import { isPublishableListItem } from "@/lib/ingest/publishability";
 import { D1ShadowTruncatedError } from "@/lib/reference-reads/d1-repository";
 import type { SupabaseTagRow } from "@/lib/reference-reads/shared";
-import { caseCatalogPublicReadsEnabled } from "@/lib/case-catalog/flags";
-import { articlePublicationV4ReadsEnabled } from "@/lib/article-publication/read-compatibility";
 import { rangeStartIso } from "@/lib/utils/dates";
 import type { ArticleDetail, ArticleListItem, ArticleListFilters, ArticleListResult } from "@/lib/db/types";
 import type {
@@ -106,6 +104,7 @@ const DETAIL_COLUMNS = [
 ] as const;
 
 const SOURCE_TEXT_COLUMNS = [
+  "id",
   "slug",
   "status",
   "source_key",
@@ -239,15 +238,31 @@ export function createD1ArticleReadRepository(
 ): ArticleReadRepository {
   const maxRows = dependencies.maxRows ?? D1_SHADOW_DEFAULT_MAX_ROWS;
   const tables = tableByName();
-  const environment = dependencies.environment ?? process.env;
-
   /**
    * Source-only Case Catalog visibility. Requires both the P3 V4 read switch
    * and the public Catalog switch; when either is off the legacy `articles`
    * behavior is preserved exactly.
    */
   function catalogSourceOnlyEnabled() {
-    return articlePublicationV4ReadsEnabled(environment) && caseCatalogPublicReadsEnabled(environment);
+    return false;
+  }
+
+  async function p3PublishedArticleIds(binding: D1RuntimeDatabase, candidateIds?: readonly string[]) {
+    const ids = candidateIds ? uniqueStrings(candidateIds) : null;
+    const rows = ids
+      ? await readByInBatches(binding, "article_publications_p3", "article_id", ids, {
+          select: ["article_id"],
+          where: [{ column: "state", value: "published" }],
+          limit: maxRows + 1,
+        })
+      : await read(binding, "article_publications_p3", {
+          select: ["article_id"],
+          where: [{ column: "state", value: "published" }],
+          orderBy: [],
+          limit: maxRows + 1,
+        });
+    if (rows.length > maxRows) throw new D1ShadowTruncatedError("p3PublishedArticleIds");
+    return uniqueStrings(rows.map((row) => row.article_id));
   }
 
   function requireTable(name: string): D1TableDefinition {
@@ -558,6 +573,12 @@ export function createD1ArticleReadRepository(
     }
     if (constrainedArticleIds && constrainedArticleIds.length === 0) return empty();
 
+    if (!filters.includeUnpublished) {
+      const publishedIds = await p3PublishedArticleIds(binding, constrainedArticleIds ?? undefined);
+      if (publishedIds.length === 0) return empty();
+      constrainedArticleIds = publishedIds;
+    }
+
     const rows = constrainedArticleIds
       ? await readByInBatches(binding, "articles", "id", constrainedArticleIds, {
           select: [...LIST_COLUMNS],
@@ -661,6 +682,7 @@ export function createD1ArticleReadRepository(
     }
     if (!row) return null;
     if (!options.includeUnpublished && !catalogDerived) {
+      if (typeof row.id !== "string" || (await p3PublishedArticleIds(binding, [row.id])).length === 0) return null;
       if (!isTextuallyPublishable(row)) return null;
       if (row.source_metadata !== undefined && !isPublishableListItem(row as unknown as SupabaseArticleRow)) return null;
     }
@@ -704,6 +726,7 @@ export function createD1ArticleReadRepository(
     }
     if (!row) return null;
     if (!options.includeUnpublished && !catalogDerived) {
+      if (typeof row.id !== "string" || (await p3PublishedArticleIds(binding, [row.id])).length === 0) return null;
       if (!isTextuallyPublishable(row)) return null;
       if (row.source_metadata !== undefined && !isPublishableListItem(row as unknown as SupabaseArticleRow)) return null;
     }
@@ -719,7 +742,9 @@ export function createD1ArticleReadRepository(
 
   async function listPublicSitemapArticles(): Promise<SitemapArticleEntry[]> {
     const binding = requireCore(dependencies);
-    const rows = await read(binding, "articles", {
+    const publishedIds = await p3PublishedArticleIds(binding);
+    if (publishedIds.length === 0) return [];
+    const rows = await readByInBatches(binding, "articles", "id", publishedIds, {
       select: ["slug", "summarized_at", "fetched_at", "discovered_at", "status", "catalog_ai_stale_v4", "source_metadata"],
       where: [
         { column: "status", value: "summarized" },
@@ -801,7 +826,8 @@ export function createD1ArticleReadRepository(
     if (articleRows.length > slugs.length || articleRows.length > maxRows) {
       throw new D1ShadowTruncatedError("listTopViewedArticles");
     }
-    const publishable = articleRows.filter((row) => isTextuallyPublishable(row));
+    const p3Published = new Set(await p3PublishedArticleIds(binding, uniqueStrings(articleRows.map((row) => row.id))));
+    const publishable = articleRows.filter((row) => typeof row.id === "string" && p3Published.has(row.id) && isTextuallyPublishable(row));
     if (publishable.length === 0) return fallback();
 
     const hydrated = await hydrateArticleTags(binding, publishable);

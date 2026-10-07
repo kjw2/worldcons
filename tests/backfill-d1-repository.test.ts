@@ -78,7 +78,9 @@ function createDatabases() {
     CREATE TABLE articles (
       id TEXT PRIMARY KEY,source_id TEXT,source_key TEXT,jurisdiction TEXT,institution_name TEXT,content_type TEXT,original_url TEXT,canonical_url TEXT,
       original_language TEXT,original_title TEXT,korean_title TEXT,original_published_at TEXT,discovered_at TEXT,fetched_at TEXT,summarized_at TEXT,status TEXT,
-      slug TEXT,raw_text TEXT,cleaned_text TEXT,summary_json TEXT,source_metadata TEXT,error_metadata TEXT,created_at TEXT,updated_at TEXT,catalog_ai_stale_v4 INTEGER DEFAULT 0
+      slug TEXT,raw_text TEXT,cleaned_text TEXT,summary_json TEXT,source_metadata TEXT,error_metadata TEXT,created_at TEXT,updated_at TEXT,catalog_ai_stale_v4 INTEGER DEFAULT 0,
+      translation_status TEXT NOT NULL DEFAULT 'not_required',translation_started_at TEXT,translated_at TEXT,translation_provider TEXT,translation_model TEXT,
+      translation_attempt_count INTEGER NOT NULL DEFAULT 0,translation_error_code TEXT,translation_error_summary TEXT,translation_next_attempt_at TEXT
     );
     CREATE UNIQUE INDEX articles_slug_key ON articles(slug);
     CREATE UNIQUE INDEX articles_canonical_url_key ON articles(canonical_url);
@@ -175,7 +177,7 @@ function createDatabases() {
     );
     CREATE TABLE source_backfill_item_events (
       id TEXT PRIMARY KEY,item_id TEXT,attempt_id TEXT,
-      event_type TEXT CHECK (event_type IN ('item_discovered','item_claimed','item_lease_extended','fetch_recorded','normalization_recorded','item_completed','item_failed','claim_released','verification_noop','item_excluded','catalog_published')),
+      event_type TEXT CHECK (event_type IN ('item_discovered','item_claimed','item_lease_extended','fetch_recorded','normalization_recorded','item_completed','item_failed','claim_released','verification_noop','item_excluded')),
       phase TEXT,safe_details TEXT,occurred_at TEXT
     );
     CREATE TABLE source_request_governor_states (
@@ -641,7 +643,7 @@ test("D1 publish claim leases a verified item without mutating its public state"
   }
 });
 
-test("D1 publish stages an unsummarized verified source anchor as withdrawn", async () => {
+test("D1 backfill stage preserves verified corpus state and keeps the Catalog withdrawn", async () => {
   const databases = createDatabases();
   seed(databases);
   const now = new Date().toISOString();
@@ -690,7 +692,7 @@ test("D1 publish stages an unsummarized verified source anchor as withdrawn", as
     assert.equal(publication.versionRevision, 1);
     assert.equal(publication.publicationRevision, 1);
     const item = databases.ingest.prepare("SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
-    assert.equal(item.status, "withdrawn");
+    assert.equal(item.status, "verified");
     assert.equal(item.article_id, publication.articleId);
     assert.equal(item.published_normalization_artifact_id, null);
     assert.equal(item.claimed_attempt_id, null);
@@ -724,7 +726,7 @@ test("D1 publish stages an unsummarized verified source anchor as withdrawn", as
     });
     assert.deepEqual(recovered, publication);
     const recoveredItem = databases.ingest.prepare("SELECT status,article_id,published_normalization_artifact_id,claimed_attempt_id FROM source_backfill_items WHERE id=?").get(ITEM_ID) as Record<string, unknown>;
-    assert.equal(recoveredItem.status, "withdrawn");
+    assert.equal(recoveredItem.status, "verified");
     assert.equal(recoveredItem.article_id, publication.articleId);
     assert.equal(recoveredItem.published_normalization_artifact_id, null);
     assert.equal(recoveredItem.claimed_attempt_id, null);

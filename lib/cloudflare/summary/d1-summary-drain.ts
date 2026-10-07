@@ -12,10 +12,8 @@ import type { GlossaryTerm, TagType } from "@/lib/db/types";
 import { classifySummaryError, ARTICLE_ERROR_CLASS, ARTICLE_REVIEW_STATE } from "@/lib/db/article-triage";
 import { ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES } from "@/lib/article-lifecycle/compatibility";
 import { articleLifecycleService } from "@/lib/article-lifecycle/service";
-import { articlePublicationService } from "@/lib/article-publication/service";
 import { boundedInteger } from "@/lib/utils/numbers";
 import type { ArticleLifecycleTransitionInput } from "@/lib/article-lifecycle/types";
-import type { ArticlePublicationTransitionInput } from "@/lib/article-publication/types";
 
 interface SummaryCandidateRow {
   id: string;
@@ -38,6 +36,7 @@ interface SummaryCandidateRow {
   review_state: string | null;
   created_at: string;
   updated_at: string;
+  translation_status?: string | null;
 }
 
 function ensureSuccess<T>(result: { success?: boolean; error?: string | null; results?: T[] }) {
@@ -110,44 +109,6 @@ async function lifecycle(articleId: string, input: Omit<ArticleLifecycleTransiti
   return result.data;
 }
 
-async function persistPublication(articleId: string, provider: string, model: string | null, reason: string) {
-  const current = await articlePublicationService.getSnapshot(articleId);
-  if (!current.ok) throw new Error(`summary_publication_read:${current.error.code}`);
-  const articleResult = await d1().prepare("SELECT status,source_metadata FROM articles WHERE id=?").bind(articleId).all<{ status: string; source_metadata: unknown }>();
-  const article = ensureSuccess(articleResult)[0];
-  if (!article) throw new Error("summary_publication_article_missing");
-  const isPublic = article.status === "summarized" && sourceCollection(article.source_metadata).publishable === true;
-  const targetState = isPublic ? "published" : current.data.publicationState === "published" ? "withdrawn" : current.data.publicationState ?? "draft";
-  const result = await articlePublicationService.transition({
-    articleId,
-    expectedVersionRevision: current.data.versionRevision,
-    expectedPublicationRevision: current.data.publicationRevision,
-    expectedLegacyUpdatedAt: current.data.legacyUpdatedAt,
-    idempotencyKey: transitionKey(articleId, "publication", current.data.publicationRevision),
-    targetState,
-    captureLegacy: true,
-    actorType: "compatibility",
-    actorId: "m8-summary-drain",
-    reason,
-    provenanceActorType: "llm",
-    provenanceActorId: provider,
-    modelRef: model,
-  } satisfies ArticlePublicationTransitionInput);
-  if (!result.ok) throw new Error(`summary_publication_transition:${result.error.code}`);
-  return result.data;
-}
-
-async function markBackfillItemsPublishedAfterSummary(articleId: string) {
-  const ingest = getRuntimeD1Binding("worldcons_ingest");
-  if (!ingest) return 0;
-  const now = new Date().toISOString();
-  const result = await statementRun(ingest.prepare(
-    "UPDATE source_backfill_items SET status='published',published_normalization_artifact_id=COALESCE(published_normalization_artifact_id,verified_normalization_artifact_id),updated_at=? WHERE article_id=? AND status='withdrawn'",
-  ).bind(now, articleId));
-  if (result.success === false || result.error) throw new Error("summary_d1.backfill_publication_sync_failed");
-  return Number(result.meta?.changes ?? 0);
-}
-
 async function recoverStaleSummarizing(options: { limit: number; sourceKey?: string }, now = Date.now()) {
   const core = d1();
   const cutoff = new Date(now - staleMinutes() * 60_000).toISOString();
@@ -158,8 +119,10 @@ async function recoverStaleSummarizing(options: { limit: number; sourceKey?: str
   if (rows.length === 0) return { mode: "database" as const, recoveredCount: 0, cutoff };
   const nowIso = new Date(now).toISOString();
   const statements = rows.map((id) => core.prepare(
-    "UPDATE articles SET status='failed_summary', error_metadata=?, error_class=?, error_context=?, review_state=?, updated_at=? WHERE id=? AND status='summarizing' AND updated_at < ?",
+    "UPDATE articles SET status='failed_summary',translation_status='pending',translation_error_code='job.stale_running',translation_error_summary=?,translation_next_attempt_at=?, error_metadata=?, error_class=?, error_context=?, review_state=?, updated_at=? WHERE id=? AND status='summarizing' AND updated_at < ?",
   ).bind(
+    `Stale translation/enrichment state recovered after ${staleMinutes()} minutes.`,
+    nowIso,
     JSON.stringify({ message: `Stale summarizing state recovered after ${staleMinutes()} minutes.` }),
     ARTICLE_ERROR_CLASS.JOB_STALE_RUNNING,
     JSON.stringify({ message: `Stale summarizing state recovered after ${staleMinutes()} minutes.` }),
@@ -179,17 +142,14 @@ async function recoverStaleSummarizing(options: { limit: number; sourceKey?: str
       attention: { operation: "raise", code: "job.stale_running", retryable: true, severity: "high", source: "processing" },
     });
   }
-  for (const id of rows) {
-    await persistPublication(id, "import", null, "Legacy stale-summary recovery persisted.");
-  }
   return { mode: "database" as const, recoveredCount: rows.length, cutoff };
 }
 
 async function selectCandidates(options: { limit: number; sourceKey?: string; fetchLimit: number }) {
   const sourceFilter = options.sourceKey ? " AND source_key = ?" : "";
   const rows = ensureSuccess(await d1().prepare(
-    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY created_at ASC,id ASC LIMIT ?`,
-  ).bind(...(options.sourceKey ? [options.sourceKey, options.fetchLimit] : [options.fetchLimit])).all<SummaryCandidateRow>());
+    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at,translation_status FROM articles WHERE status IN ('cleaned','failed_summary') AND summarized_at IS NULL AND translation_status IN ('pending','failed') AND (translation_next_attempt_at IS NULL OR translation_next_attempt_at<=?) AND json_valid(source_metadata) AND COALESCE(json_extract(source_metadata,'$.collection.publishable'),json_extract(source_metadata,'$.case.collection.publishable'))=1${sourceFilter} ORDER BY CASE WHEN COALESCE(json_extract(source_metadata,'$.catalog.sourceOnly'),0)=1 THEN 1 ELSE 0 END ASC,created_at ASC,id ASC LIMIT ?`,
+  ).bind(...(options.sourceKey ? [new Date().toISOString(), options.sourceKey, options.fetchLimit] : [new Date().toISOString(), options.fetchLimit])).all<SummaryCandidateRow>());
   return orderSummaryCandidatesRoundRobin(rows);
 }
 
@@ -311,7 +271,7 @@ export async function runD1SummarizeArticle(input: {
   const where = articleId ? "id = ?" : "slug = ?";
   const value = articleId ?? slug!;
   const rows = ensureSuccess(await core.prepare(
-    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at FROM articles WHERE ${where} LIMIT 1`,
+    `SELECT id,slug,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,original_published_at,cleaned_text,summary_json,status,source_metadata,error_class,error_context,review_state,created_at,updated_at,translation_status FROM articles WHERE ${where} LIMIT 1`,
   ).bind(value).all<SummaryCandidateRow>());
   const row = rows[0];
   if (!row) throw new Error("summary_d1.article_not_found");
@@ -359,8 +319,8 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
   }
   const core = d1();
   const started = await statementRun(core.prepare(
-    "UPDATE articles SET status=CASE WHEN ? THEN status ELSE 'summarizing' END,error_metadata=NULL,error_class=NULL,error_context=NULL,updated_at=? WHERE id=? AND status IN ('cleaned','failed_summary','summarized')",
-  ).bind(forceAllowed ? 1 : 0, new Date().toISOString(), row.id));
+    "UPDATE articles SET status=CASE WHEN ? THEN status ELSE 'summarizing' END,translation_status=CASE WHEN ? THEN translation_status ELSE 'running' END,translation_started_at=CASE WHEN ? THEN translation_started_at ELSE ? END,translation_attempt_count=translation_attempt_count+CASE WHEN ? THEN 0 ELSE 1 END,translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,error_metadata=NULL,error_class=NULL,error_context=NULL,updated_at=? WHERE id=? AND status IN ('cleaned','failed_summary','summarized')",
+  ).bind(forceAllowed ? 1 : 0, forceAllowed ? 1 : 0, forceAllowed ? 1 : 0, new Date().toISOString(), forceAllowed ? 1 : 0, new Date().toISOString(), row.id));
   if (started.success === false || started.error) throw new Error("summary_d1.start_write_failed");
   await lifecycle(row.id, {
     source: forceAllowed ? "summary.resummary" : "summary.generate",
@@ -393,9 +353,11 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
     const errorMetadata = { message, retryable, requestedProvider: "gemini", requestedModel: options.model ?? null };
     const status = forceAllowed || retryable ? row.status : "failed_summary";
     const now = new Date().toISOString();
+    const translationStatus = forceAllowed ? row.translation_status ?? "translated" : retryable ? "pending" : "failed";
+    const nextAttemptAt = retryable ? new Date(Date.now() + 15 * 60_000).toISOString() : null;
     const saved = await statementRun(core.prepare(
-      "UPDATE articles SET status=?,error_metadata=?,error_class=?,error_context=?,review_state=?,updated_at=? WHERE id=?",
-    ).bind(status, JSON.stringify(errorMetadata), errorClass, JSON.stringify(errorMetadata), retryable ? ARTICLE_REVIEW_STATE.RETRY_LATER : ARTICLE_REVIEW_STATE.NEEDS_TRIAGE, now, row.id));
+      "UPDATE articles SET status=?,translation_status=?,translation_error_code=?,translation_error_summary=?,translation_next_attempt_at=?,error_metadata=?,error_class=?,error_context=?,review_state=?,updated_at=? WHERE id=?",
+    ).bind(status, translationStatus, errorClass, message.slice(0,500), nextAttemptAt, JSON.stringify(errorMetadata), errorClass, JSON.stringify(errorMetadata), retryable ? ARTICLE_REVIEW_STATE.RETRY_LATER : ARTICLE_REVIEW_STATE.NEEDS_TRIAGE, now, row.id));
     if (saved.success === false || saved.error) throw new Error("summary_d1.failure_write_failed");
     await lifecycle(row.id, {
       source: forceAllowed ? "summary.resummary" : "summary.generate",
@@ -407,9 +369,11 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
     return { status: "failed" as const, errorMessage: message, retryable };
   }
   const now = new Date().toISOString();
+  const provider = summary.aiMetadata?.provider ?? "gemini";
+  const model = summary.aiMetadata?.model ?? options.model ?? null;
   const saved = await statementRun(core.prepare(
-    "UPDATE articles SET status='summarized',summarized_at=?,summary_json=?,korean_title=?,error_metadata=NULL,error_class=NULL,error_context=NULL,review_state=?,embedding_provider=NULL,embedding_model=NULL,embedding_dimensions=NULL,embedding_input_hash=NULL,embedding_generated_at=NULL,updated_at=? WHERE id=?",
-  ).bind(now, JSON.stringify(summary), summary.koreanTitle, ARTICLE_REVIEW_STATE.SUMMARIZED, now, row.id));
+    "UPDATE articles SET status='summarized',translation_status=CASE WHEN lower(COALESCE(original_language,''))='ko' THEN 'not_required' ELSE 'translated' END,translated_at=?,translation_provider=?,translation_model=?,translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,summarized_at=?,summary_json=?,korean_title=?,error_metadata=NULL,error_class=NULL,error_context=NULL,review_state=?,embedding_provider=NULL,embedding_model=NULL,embedding_dimensions=NULL,embedding_input_hash=NULL,embedding_generated_at=NULL,updated_at=? WHERE id=?",
+  ).bind(now, provider, model, now, JSON.stringify(summary), summary.koreanTitle, ARTICLE_REVIEW_STATE.SUMMARIZED, now, row.id));
   if (saved.success === false || saved.error || Number(saved.meta?.changes ?? 0) !== 1) throw new Error("summary_d1.success_write_failed");
   await tryPersistArticleEmbedding(row.id, embedding);
   await lifecycle(row.id, {
@@ -419,10 +383,6 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
     processingState: "complete",
     attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
   });
-  const provider = summary.aiMetadata?.provider ?? "gemini";
-  const model = summary.aiMetadata?.model ?? options.model ?? null;
-  await persistPublication(row.id, provider, model, forceAllowed ? "Legacy re-summary persisted and remained public." : "Legacy summary persisted and became public.");
-  await markBackfillItemsPublishedAfterSummary(row.id);
   const tagResult = await syncTags(row.id, summary, row.original_published_at);
   return { status: "summarized" as const, summary, provider, model, tagResult };
 }

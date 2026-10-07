@@ -101,7 +101,6 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const boeMetadata = article.sourceKey === "es-tribunal-constitucional" ? spainBoeMetadata(article.sourceMetadata) : null;
   const sourceTextAvailable = isRecord(article.sourceMetadata?.collection) && article.sourceMetadata.collection.sourceTextAvailable === true;
   const summaryReprocessing = article.summaryStatus === "reprocessing";
-  const sourceOnly = article.enrichmentStatus === "source_only";
   const sourceAttribution = publicSourceAttribution(article.sourceKey, article.sourceMetadata, article.originalUrl);
   const caseNumber = articleCaseNumber(article);
   const title = articleTitleForDisplay(article);
@@ -195,7 +194,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
             </>
           ) : (
             <EmptyState
-              title={sourceOnly ? "검증된 공식 판례가 먼저 공개되었습니다" : "AI 요약이 아직 준비되지 않았습니다"}
+              title="AI 요약이 아직 준비되지 않았습니다"
               description={summaryReprocessing
                 ? "최신 공식 원문을 기준으로 한국어 요약을 다시 생성하고 있습니다. 그동안에는 공식 원문과 사건 정보를 확인해 주세요."
                 : "한국어 요약이 준비되면 핵심 쟁점과 배경, 시사점이 이 영역에 추가됩니다."}

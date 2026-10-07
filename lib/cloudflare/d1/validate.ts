@@ -94,7 +94,8 @@ function validateAgainstPostgres(table: D1TableDefinition, registry: PostgresSch
     }
   }
   for (const column of table.columns) {
-    const pgCheck = pgTable.enumChecks[column.source?.column ?? column.name];
+    if (!column.source) continue;
+    const pgCheck = pgTable.enumChecks[column.source.column];
     if (pgCheck && !column.enumValues) {
       warn("unmodeled-enum-check", `${table.name}.${column.name} has a Postgres check list the D1 model does not declare`);
     }

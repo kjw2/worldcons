@@ -41,7 +41,6 @@ export const BACKFILL_ITEM_EVENT_TYPE_VALUES = [
   "claim_released",
   "verification_noop",
   "item_excluded",
-  "catalog_published",
 ] as const;
 /** Postgres `source_inventory_enumeration_artifacts_kind_check` values. */
 export const INVENTORY_ARTIFACT_KIND_VALUES = ["page", "boundary_probe", "crosscheck"] as const;

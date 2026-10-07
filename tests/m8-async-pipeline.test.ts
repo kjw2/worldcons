@@ -39,6 +39,7 @@ test("M8 cron inventory maps every retired schedule to stable messages", () => {
     "0 21 * * *",
     "30 1 * * *",
     "30 3,9,15,21 * * *",
+    "50 3,9,15,21 * * *",
     "17 20 * * *",
     "0 2 * * *",
   ]);
@@ -82,7 +83,7 @@ test("workflow instance ids are Cloudflare-valid and collision-safe for represen
 });
 
 test("every M8 task kind is native and crawler-daily fans out by source", () => {
-  assert.deepEqual(M8_TASK_KINDS, ["admin-job-drain", "watchdog", "crawler-daily", "search-projection-sync", "embedding-backfill", "summary-drain", "admin-health", "analytics-retention"]);
+  assert.deepEqual(M8_TASK_KINDS, ["admin-job-drain", "watchdog", "crawler-daily", "search-projection-sync", "embedding-backfill", "summary-drain", "translation-drain", "publication-drain", "admin-health", "analytics-retention"]);
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*for \(const source of NATIVE_CRAWLER_SOURCES\)/u);
   assert.match(source, /native-crawler-\$\{source\}/u);
@@ -102,8 +103,8 @@ test("every M8 task kind is native and crawler-daily fans out by source", () => 
   assert.doesNotMatch(fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/contracts.ts"), "utf8"), /githubDispatchForM8Task|dispatchGitHubWorkflow/u);
 });
 
-test("summary native executor invokes the main Worker RPC with workflow defaults", async () => {
-  const message = buildM8TaskMessage("summary-drain", Date.parse("2026-09-26T08:45:00Z"));
+test("translation native executor invokes the main Worker RPC with quota-paced defaults", async () => {
+  const message = buildM8TaskMessage("translation-drain", Date.parse("2026-09-26T08:45:00Z"));
   let call: unknown;
   let stepName = "";
   let stepOptions: unknown;
@@ -113,6 +114,7 @@ test("summary native executor invokes the main Worker RPC with workflow defaults
     WORLDCONS_INGEST: {} as never,
     WORLDCONS_APP_SERVICE: {
       async runEmbeddingBackfill() { throw new Error("not expected"); },
+      async runPublicationDrain() { throw new Error("not expected"); },
       async runSummaryDrain(input) {
         call = input;
         return {
@@ -130,13 +132,19 @@ test("summary native executor invokes the main Worker RPC with workflow defaults
       return callback();
     },
   });
-  assert.equal(stepName, "native-summary-drain");
+  assert.equal(stepName, "native-translation-drain");
   assert.equal((stepOptions as { timeout: string }).timeout, "50 minutes");
-  assert.deepEqual(call, { limit: 60, maxPasses: 6, retryAttempts: 1, retryDelayMs: 65_000 });
-  assert.equal((result as { kind: string }).kind, "summary-drain");
+  assert.deepEqual(call, { limit: 5, maxPasses: 1, retryAttempts: 1, retryDelayMs: 65_000 });
+  assert.equal((result as { kind: string }).kind, "translation-drain");
   const executor = fs.readFileSync(path.join(root, "lib/cloudflare/async-pipeline/native-executor.ts"), "utf8");
   assert.match(executor, /runSummaryDrain\(/u);
   assert.doesNotMatch(executor, /githubDispatchForM8Task/u);
+});
+
+test("publication workflow refreshes the search projection after release", () => {
+  const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
+  assert.match(source, /event\.payload\.kind === "publication-drain"[\s\S]*runPublicationDrain/u);
+  assert.match(source, /native-search-projection-sync-after-publication[\s\S]*runNativeSearchProjectionSync/u);
 });
 
 test("embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch", async () => {
@@ -157,6 +165,7 @@ test("embedding native executor invokes WorldconsOpsService RPC without GitHub d
         };
       },
       async runSummaryDrain() { throw new Error("not expected"); },
+      async runPublicationDrain() { throw new Error("not expected"); },
       async runSummaryArticle() { throw new Error("not expected"); },
       async runRefreshTagCounts() { throw new Error("not expected"); },
     },
@@ -284,7 +293,7 @@ test("canary operator report routes every eligible kind natively", () => {
   });
   assert.equal(report.workflowInstanceIdValid, true);
   assert.equal(report.route, "native");
-  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,summary-drain,analytics-retention");
+  assert.equal(report.enabledKindsRaw, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention");
   assert.equal(report.enabledKindsValid, true);
   assert.equal(report.kindEnabled, true, "the checked-in enabled scheduler allows admin-health");
 
@@ -308,7 +317,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, "workers/async-pipeline/wrangler.jsonc"), "utf8"));
   const consumer = config.queues.consumers[0];
   assert.equal(config.vars.M8_SCHEDULER_ENABLED, "true");
-  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,summary-drain,analytics-retention");
+  assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention");
   assert.deepEqual(config.triggers.crons, M8_CRON_EXPRESSIONS);
   assert.equal(consumer.max_concurrency, 1);
   assert.equal(consumer.max_retries, 3);

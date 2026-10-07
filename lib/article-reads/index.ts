@@ -14,5 +14,5 @@ export * from "@/lib/article-reads/d1-repository";
  */
 export function articleReads(): ArticleReadRepository {
   const binding = getRuntimeD1Binding("worldcons_core");
-  return binding ? createD1ArticleReadRepository({ binding }) : mockArticleReads;
+  return binding ? createD1ArticleReadRepository({ binding, maxRows: 10_000 }) : mockArticleReads;
 }

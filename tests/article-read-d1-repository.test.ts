@@ -90,6 +90,21 @@ function createFakeD1(
   tables: Record<string, Record<string, unknown>[]>,
   options: { maxBoundParams?: number } = {},
 ) {
+  const materializedTables = { ...tables };
+  if (!("article_publications_p3" in materializedTables)) {
+    materializedTables.article_publications_p3 = (materializedTables.articles ?? [])
+      .filter((row) => {
+        const metadata = row.source_metadata as { collection?: { publishable?: unknown } } | undefined;
+        return row.status === "summarized" && metadata?.collection?.publishable === true;
+      })
+      .map((row, index) => ({
+        id: `publication-${index + 1}`,
+        article_id: row.id,
+        state: "published",
+        version_id: `version-${index + 1}`,
+        revision: "1",
+      }));
+  }
   const calls: CapturedStatement[] = [];
   const database: D1RuntimeDatabase = {
     prepare(sql: string): D1RuntimePreparedStatement {
@@ -103,7 +118,7 @@ function createFakeD1(
           if (options.maxBoundParams !== undefined && params.length > options.maxBoundParams) {
             throw new Error(`too many SQL variables: ${params.length}`);
           }
-          const evaluated = evaluate(sql, params, tables);
+          const evaluated = evaluate(sql, params, materializedTables);
           calls.push({ sql, params, table: evaluated.table });
           return { success: true, results: evaluated.rows as unknown as T[] };
         },

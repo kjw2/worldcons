@@ -112,6 +112,19 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
       }));
     }
+    if (event.payload.kind === "publication-drain") {
+      const limit = Math.max(1, Math.min(Number(this.env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));
+      const publication = await step.do("native-publication-drain", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
+      }, () => this.env.WORLDCONS_APP_SERVICE.runPublicationDrain({ limit }));
+      const searchProjection = await step.do("native-search-projection-sync-after-publication", {
+        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+      }, () => runNativeSearchProjectionSync({
+        WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+        WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
+      }));
+      return { kind: event.payload.kind, publication, searchProjection };
+    }
     if (event.payload.kind === "crawler-daily") {
       const results = [];
       for (const source of NATIVE_CRAWLER_SOURCES) {

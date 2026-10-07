@@ -26,6 +26,7 @@ export interface AdminOpsArticleRow {
   fetched_at?: string | null;
   summarized_at?: string | null;
   status: string;
+  translation_status?: string | null;
   source_metadata?: Record<string, unknown> | null;
   error_metadata?: Record<string, unknown> | null;
   error_class?: string | null;

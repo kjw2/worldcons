@@ -210,16 +210,18 @@ export function createD1ReferenceReadRepository(
   ): Promise<Record<string, number>> {
     const normalizedJurisdictions = normalizeJurisdictions(jurisdictions);
     const startIso = rangeStartIso(options.range);
-    const where: D1RuntimeReadPredicate[] = [{ column: "status", value: "summarized" }];
-    if (startIso) where.push({ column: "original_published_at", op: "gte", value: startIso });
-    const rows = await runD1RuntimeRead({
-      binding: requireCore(dependencies),
-      table: requireTable("articles"),
-      select: ["jurisdiction", "source_metadata"],
-      where,
-      orderBy: [],
-      limit: maxRows + 1,
-    });
+    const db = requireCore(dependencies);
+    const sql = `
+      SELECT a.jurisdiction,a.source_metadata
+      FROM articles a
+      JOIN article_publications_p3 p ON p.article_id=a.id AND p.state='published'
+      WHERE a.status='summarized'
+      ${startIso ? "AND a.original_published_at>=?" : ""}
+      LIMIT ?
+    `;
+    const result = await db.prepare(sql).bind(...(startIso ? [startIso, maxRows + 1] : [maxRows + 1])).all<Record<string, unknown>>();
+    if (result.success === false || result.error || !Array.isArray(result.results)) throw new Error(result.error || "D1 jurisdiction count failed");
+    const rows = result.results;
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listJurisdictionArticleCounts");
 
     const counts: Record<string, number> = {};

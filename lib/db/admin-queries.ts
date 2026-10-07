@@ -56,6 +56,7 @@ interface AdminArticleRow {
   fetched_at?: string | null;
   summarized_at?: string | null;
   status: string;
+  translation_status?: string | null;
   source_metadata?: Record<string, unknown> | null;
   error_metadata?: Record<string, unknown> | null;
   error_class?: string | null;
@@ -227,6 +228,7 @@ export interface AdminArticleListItem {
   institutionName: string;
   jurisdiction: string;
   status: string;
+  translationStatus?: string | null;
   publishable: boolean;
   hasSummary: boolean;
   originalPublishedAt?: string | null;
@@ -368,6 +370,7 @@ function adminArticleRowToListItem(row: AdminArticleListRow): AdminArticleListIt
     institutionName: row.institution_name ?? row.source_key,
     jurisdiction: row.jurisdiction ?? "Unknown",
     status: row.status,
+    translationStatus: row.translation_status ?? null,
     publishable: isPublishableArticle(row),
     hasSummary: Boolean(row.summary_json),
     originalPublishedAt: row.original_published_at,

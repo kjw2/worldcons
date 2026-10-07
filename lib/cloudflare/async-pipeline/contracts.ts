@@ -7,6 +7,8 @@ export const M8_TASK_KINDS = [
   "search-projection-sync",
   "embedding-backfill",
   "summary-drain",
+  "translation-drain",
+  "publication-drain",
   "admin-health",
   "analytics-retention",
 ] as const;
@@ -40,7 +42,8 @@ const CRON_TASKS: Readonly<Record<string, readonly M8TaskKind[]>> = {
   "*/15 * * * *": ["admin-job-drain", "watchdog"],
   "0 21 * * *": ["crawler-daily"],
   "30 1 * * *": ["embedding-backfill"],
-  "30 3,9,15,21 * * *": ["summary-drain"],
+  "30 3,9,15,21 * * *": ["translation-drain"],
+  "50 3,9,15,21 * * *": ["publication-drain"],
   "17 20 * * *": ["admin-health"],
   "0 2 * * *": ["analytics-retention"],
 };

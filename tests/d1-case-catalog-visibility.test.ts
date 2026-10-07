@@ -8,7 +8,7 @@ import {
 } from "../lib/cloudflare/d1/runtime-binding";
 import { runD1CaseCatalogSearch } from "../lib/cloudflare/search-catalog/case-catalog-search";
 import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
-import { catalogCaseSearch, isCatalogSearchCursorError } from "../lib/search/case-catalog";
+import { catalogCaseSearch } from "../lib/search/case-catalog";
 import { fullTextSearch } from "../lib/search/vector";
 import type { CatalogCaseSearchRpcRequest } from "../lib/search/repository/types";
 
@@ -227,7 +227,13 @@ function catalogTables(overrides: Record<string, Record<string, unknown>[]> = {}
     article_publications_p3: [],
     article_view_counts: [],
   };
-  return { ...tables, ...overrides };
+  const merged = { ...tables, ...overrides };
+  if (!("article_publications_p3" in overrides)) {
+    merged.article_publications_p3 = (merged.articles ?? [])
+      .filter((row) => row.status === "summarized" && (row.source_metadata as { collection?: { publishable?: unknown } } | undefined)?.collection?.publishable === true)
+      .map((row, index) => ({ id: `p3-${index + 1}`, article_id: row.id, state: "published", version_id: `legacy-${index + 1}`, revision: "1" }));
+  }
+  return merged;
 }
 
 function catalogRequest(overrides: Partial<CatalogCaseSearchRpcRequest> = {}): CatalogCaseSearchRpcRequest {
@@ -272,7 +278,7 @@ async function withEnv<T>(values: Record<string, string | undefined>, run: () =>
   }
 }
 
-test("D1 article list exposes published source-only Catalog rows only when both flags are on", async () => {
+test("D1 article list never exposes source-only Catalog rows, even when legacy flags are on", async () => {
   const fake = createFakeD1(catalogTables());
 
   const off = createD1ArticleReadRepository({ binding: fake.database, environment: {} });
@@ -281,55 +287,29 @@ test("D1 article list exposes published source-only Catalog rows only when both 
 
   const on = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
   const onResult = await on.listArticles({ includeViewCounts: false });
-  assert.deepEqual(onResult.items.map((item) => item.slug), ["us-a", "us-b"]);
-  assert.equal(onResult.pageInfo.total, 2);
+  assert.deepEqual(onResult.items, []);
+  assert.equal(onResult.pageInfo.total, 0);
   assert.equal(onResult.pageInfo.hasMore, false);
-
-  const first = onResult.items[0];
-  assert.equal(first.status, "cleaned", "the full text policy exposes a cleaned status, not summarized");
-  assert.equal(first.enrichmentStatus, "source_only");
-  assert.equal(first.enrichmentFreshness, null);
-  assert.equal(first.summaryStatus, "pending");
-  assert.equal(first.summaryAvailable, false, "a source-only catalog row never claims an available summary");
-  assert.equal(first.summarizedAt, null);
-  assert.equal(first.koreanTitle, "Freedom of Speech Case", "a missing Korean title falls back to the original title, never an AI translation");
-  assert.equal(first.oneLineSummary, "요약이 아직 생성되지 않았습니다.");
-  assert.equal(first.tags.length, 1, "catalog rows still hydrate their reviewed tags");
 });
 
-test("D1 article detail and source-text reads expose the authoritative source without an AI summary", async () => {
+test("D1 article detail and source-text reads keep source-only Catalog rows private", async () => {
   const fake = createFakeD1(catalogTables());
   const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
 
-  const detail = await repository.getArticleBySelect("us-a", "detail");
-  assert.ok(detail);
-  assert.equal(detail.enrichmentStatus, "source_only");
-  assert.equal(detail.summaryAvailable, false);
-  assert.equal(detail.summaryJson, null, "no AI summary may be synthesized");
-  assert.equal(detail.rawText, null);
-  assert.equal(detail.cleanedText, "alpha beta gamma delta", "the full policy exposes the source text");
-  assert.deepEqual(detail.sourceMetadata?.catalog, {
-    sourceOnly: true,
-    authorityVerified: true,
-    sourceAnchorVersionId: "ver-a",
-  });
-
-  const sourceText = await repository.getArticleSourceTextBySlug("us-a");
-  assert.equal(sourceText?.cleanedText, "alpha beta gamma delta");
-  assert.equal(sourceText?.sourceKey, "us-scotus");
+  assert.equal(await repository.getArticleBySelect("us-a", "detail"), null);
+  assert.equal(await repository.getArticleSourceTextBySlug("us-a"), null);
 
   const off = createD1ArticleReadRepository({ binding: fake.database, environment: {} });
   assert.equal(await off.getArticleBySelect("us-a", "detail"), null);
   assert.equal(await off.getArticleSourceTextBySlug("us-a"), null);
 });
 
-test("D1 article reads never expose text the Catalog policy forbids and derive reprocessing", async () => {
+test("D1 article reads never expose source-only Catalog text regardless of Catalog text policy", async () => {
   const fake = createFakeD1(catalogTables());
   const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
 
   const metadataOnly = await repository.getArticleBySelect("us-b", "detail");
-  assert.equal(metadataOnly?.status, "metadata_only");
-  assert.equal(metadataOnly?.cleanedText, null, "a metadata_only policy must not expose cleaned text");
+  assert.equal(metadataOnly, null);
 
   const longText = "x".repeat(2500);
   const excerpt = createFakeD1(catalogTables({
@@ -358,7 +338,7 @@ test("D1 article reads never expose text the Catalog policy forbids and derive r
   }));
   const excerptRepository = createD1ArticleReadRepository({ binding: excerpt.database, environment: FLAGS_ON });
   const excerpted = await excerptRepository.getArticleBySelect("us-a", "detail");
-  assert.equal(excerpted?.cleanedText?.length, 2000, "an excerpt is capped at 2000 characters");
+  assert.equal(excerpted, null);
 
   const reprocessing = createFakeD1(catalogTables({
     articles: [
@@ -368,7 +348,7 @@ test("D1 article reads never expose text the Catalog policy forbids and derive r
   }));
   const reprocessingRepository = createD1ArticleReadRepository({ binding: reprocessing.database, environment: FLAGS_ON });
   const stale = await reprocessingRepository.getArticleBySelect("us-a", "detail");
-  assert.equal(stale?.summaryStatus, "reprocessing");
+  assert.equal(stale, null);
 });
 
 test("D1 listArticles merges summarized legacy rows without letting Catalog replace them", async () => {
@@ -412,8 +392,8 @@ test("D1 listArticles merges summarized legacy rows without letting Catalog repl
 
   assert.deepEqual(
     result.items.map((item) => item.slug),
-    ["legacy-1", "us-c", "us-a"],
-    "the merged list is ordered by published date desc",
+    ["legacy-1", "us-c"],
+    "only P3-published summarized rows are public",
   );
   const legacyFirst = result.items.find((item) => item.slug === "legacy-1");
   assert.equal(legacyFirst?.status, "summarized");
@@ -421,19 +401,18 @@ test("D1 listArticles merges summarized legacy rows without letting Catalog repl
   const alsoPublished = result.items.find((item) => item.slug === "us-c");
   assert.equal(alsoPublished?.status, "summarized", "a summarized row wins over its Catalog publication");
   assert.equal(alsoPublished?.enrichmentStatus, undefined);
-  const sourceOnly = result.items.find((item) => item.slug === "us-a");
-  assert.equal(sourceOnly?.enrichmentStatus, "source_only");
+  assert.equal(result.items.some((item) => item.slug === "us-a"), false);
 });
 
-test("D1 listArticles filters source-only Catalog rows by source/type/language/range/tag", async () => {
+test("D1 listArticles never materializes source-only Catalog rows through public filters", async () => {
   const fake = createFakeD1(catalogTables());
   const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });
 
-  assert.deepEqual((await repository.listArticles({ source: "us-scotus", includeViewCounts: false })).items.map((i) => i.slug), ["us-a", "us-b"]);
-  assert.deepEqual((await repository.listArticles({ type: "order", includeViewCounts: false })).items.map((i) => i.slug), ["us-b"]);
-  assert.deepEqual((await repository.listArticles({ language: "en", includeViewCounts: false })).items.map((i) => i.slug), ["us-a", "us-b"]);
+  assert.deepEqual((await repository.listArticles({ source: "us-scotus", includeViewCounts: false })).items, []);
+  assert.deepEqual((await repository.listArticles({ type: "order", includeViewCounts: false })).items, []);
+  assert.deepEqual((await repository.listArticles({ language: "en", includeViewCounts: false })).items, []);
   assert.deepEqual((await repository.listArticles({ source: "de-bverfg", includeViewCounts: false })).items, []);
-  assert.deepEqual((await repository.listArticles({ tag: "speech", includeViewCounts: false })).items.map((i) => i.slug), ["us-a"]);
+  assert.deepEqual((await repository.listArticles({ tag: "speech", includeViewCounts: false })).items, []);
 });
 
 test("D1 catalog search returns the schemaVersion=2 latest/lexical/exact payload shape", async () => {
@@ -631,50 +610,27 @@ test("D1 catalog search surfaces invalid, mismatch, and expired cursor evidence"
   assert.deepEqual(expired, { status: "error", error: { code: "22023", message: "WORLDCONS_CASE_SEARCH_CURSOR_RANKING_VERSION_EXPIRED" } });
 });
 
-test("catalogCaseSearch runs end-to-end on D1 without Supabase and maps cursor errors", async () => {
+test("catalogCaseSearch public wrapper stays disabled for source-only Catalog data", async () => {
   const fake = createFakeD1(catalogTables());
   clearRuntimeD1Bindings();
   setRuntimeD1Bindings({ worldcons_core: fake.database, worldcons_search: fake.database });
   try {
     await withEnv({ ...FLAGS_ON, CASE_CATALOG_SEARCH_ENABLED: "true" }, async () => {
-      const result = await catalogCaseSearch({ q: "", pageSize: 20, includeViewCounts: false });
-      assert.deepEqual(result.items.map((item) => item.slug), ["us-a", "us-b"]);
-      assert.equal(result.retrievalMode, "latest");
-      assert.equal(result.rankingVersion, "gate3-exact-lexical-v1");
-      assert.equal(result.pageInfo.total, 2);
-      assert.deepEqual(result.items[0].enrichmentStatus, "source_only");
-
-      const firstPage = await catalogCaseSearch({ q: "", pageSize: 1, includeViewCounts: false });
-      assert.equal(firstPage.pageInfo.hasMore, true);
-      assert.ok(firstPage.pageInfo.nextCursor);
-      const secondPage = await catalogCaseSearch({
-        q: "",
-        pageSize: 1,
-        cursor: firstPage.pageInfo.nextCursor ?? undefined,
-        includeViewCounts: false,
-      });
-      assert.deepEqual(secondPage.items.map((item) => item.slug), ["us-b"]);
-
-      await assert.rejects(
-        () => catalogCaseSearch({ q: "", pageSize: 1, cursor: "***" }),
-        (error: unknown) => isCatalogSearchCursorError(error) && error.reason === "invalid",
-      );
+      await assert.rejects(() => catalogCaseSearch({ q: "", pageSize: 20, includeViewCounts: false }), /case_catalog\.search_disabled/);
     });
   } finally {
     clearRuntimeD1Bindings();
   }
 });
 
-test("fullTextSearch routes through the D1 Case Catalog when Catalog search is enabled", async () => {
+test("fullTextSearch does not route through the retired source-only Catalog public search", async () => {
   const fake = createFakeD1(catalogTables());
   clearRuntimeD1Bindings();
   setRuntimeD1Bindings({ worldcons_core: fake.database, worldcons_search: fake.database });
   try {
     await withEnv({ ...FLAGS_ON, CASE_CATALOG_SEARCH_ENABLED: "true" }, async () => {
       const result = await fullTextSearch({ q: "23-123", pageSize: 20, includeViewCounts: false });
-      assert.deepEqual(result.items.map((item) => item.slug), ["us-a"]);
-      assert.equal(result.retrievalMode, "exact-identity");
-      assert.equal(result.rankingVersion, "gate3-exact-lexical-v1");
+      assert.deepEqual(result.items, []);
     });
   } finally {
     clearRuntimeD1Bindings();

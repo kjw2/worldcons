@@ -632,6 +632,9 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const datePart = candidate.publishedAt ? candidate.publishedAt.slice(0, 10) : "undated";
   const slug = existing?.slug ? String(existing.slug) : `${slugify(SOURCE_INFO[candidate.sourceKey].jurisdiction)}-${slugify(candidate.sourceKey)}-${datePart}-${titleSlug}-${(await sha256(canonical)).slice(0, 6)}`;
   const legacyStatus = status === "needs_review" ? "metadata_only" : status;
+  const translationStatus = status === "cleaned" && SOURCE_INFO[candidate.sourceKey].language.toLowerCase() !== "ko"
+    ? "pending"
+    : "not_required";
   if (existing) {
     if (!lifecycleBefore?.ok) throw new Error("crawler.lifecycle_read_failed");
     const before = lifecycleBefore.data;
@@ -660,15 +663,18 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
       });
       if (!after.ok) return "preserved";
     }
-    await core.prepare(`UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, summarized_at=NULL, status=?, korean_title=NULL, summary_json=NULL, cleaned_text=?, content_hash=?, source_metadata=?, raw_text_storage_ref=?, raw_text_blob_hash=?, raw_text_blob_size=?, raw_text_externalized_at=?, raw_text_blob_contract_version=?, review_state=?, updated_at=? WHERE id=?`)
-      .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, legacyStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id).run();
+    await core.prepare(`UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, summarized_at=NULL, status=?, korean_title=NULL, summary_json=NULL,
+      translation_status=?,translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
+      translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
+      cleaned_text=?, content_hash=?, source_metadata=?, raw_text_storage_ref=?, raw_text_blob_hash=?, raw_text_blob_size=?, raw_text_externalized_at=?, raw_text_blob_contract_version=?, review_state=?, updated_at=? WHERE id=?`)
+      .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, legacyStatus, translationStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id).run();
     return "refreshed";
   }
   const id = crypto.randomUUID();
   const source = await core.prepare("SELECT id FROM sources WHERE source_key=? LIMIT 1").bind(candidate.sourceKey).first<{ id: string }>();
-  await core.prepare(`INSERT INTO articles (id, source_id, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, discovered_at, fetched_at, status, slug, cleaned_text, content_hash, source_metadata, created_at, updated_at, review_state, raw_text_storage_ref, raw_text_blob_hash, raw_text_blob_size, raw_text_externalized_at, raw_text_blob_contract_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, source?.id ?? null, candidate.sourceKey, SOURCE_INFO[candidate.sourceKey].jurisdiction, SOURCE_INFO[candidate.sourceKey].name, candidate.contentType, candidate.url, canonical, SOURCE_INFO[candidate.sourceKey].language, candidate.title, candidate.publishedAt ?? null, fetchedAt, fetchedAt, legacyStatus, slug, clean, contentHash, data, fetchedAt, fetchedAt, null, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1").run();
+  await core.prepare(`INSERT INTO articles (id, source_id, source_key, jurisdiction, institution_name, content_type, original_url, canonical_url, original_language, original_title, original_published_at, discovered_at, fetched_at, status, slug, translation_status, cleaned_text, content_hash, source_metadata, created_at, updated_at, review_state, raw_text_storage_ref, raw_text_blob_hash, raw_text_blob_size, raw_text_externalized_at, raw_text_blob_contract_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, source?.id ?? null, candidate.sourceKey, SOURCE_INFO[candidate.sourceKey].jurisdiction, SOURCE_INFO[candidate.sourceKey].name, candidate.contentType, candidate.url, canonical, SOURCE_INFO[candidate.sourceKey].language, candidate.title, candidate.publishedAt ?? null, fetchedAt, fetchedAt, legacyStatus, slug, translationStatus, clean, contentHash, data, fetchedAt, fetchedAt, null, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1").run();
   const lifecycle = await transitionArticleLifecycleInD1(core as unknown as D1RuntimeDatabase, {
     articleId: id,
     expectedRevision: 0,

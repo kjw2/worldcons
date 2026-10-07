@@ -23,7 +23,10 @@
   ],
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
-    "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,summary-drain,analytics-retention",
+    "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention",
+    "TRANSLATION_DRAIN_LIMIT": "5",
+    "TRANSLATION_DRAIN_MAX_PASSES": "1",
+    "PUBLICATION_DRAIN_LIMIT": "100",
     "CASE_CATALOG_GERMANY_HISTORY_ENABLED": "true",
     "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es",
     "SITE_ANALYTICS_RETENTION_DAYS": "90"
@@ -34,6 +37,7 @@
       "0 21 * * *",
       "30 1 * * *",
       "30 3,9,15,21 * * *",
+      "50 3,9,15,21 * * *",
       "17 20 * * *",
       "0 2 * * *"
     ]
@@ -60,6 +64,6 @@
     { "binding": "BACKFILL_WORKFLOW", "name": "worldcons-backfill-v1", "class_name": "WorldconsBackfillWorkflow" },
     { "binding": "BACKFILL_NORMALIZE_WORKFLOW", "name": "worldcons-backfill-normalize-v1", "class_name": "WorldconsBackfillNormalizeWorkflow" },
     { "binding": "BACKFILL_VERIFY_WORKFLOW", "name": "worldcons-backfill-verify-v1", "class_name": "WorldconsBackfillVerifyWorkflow" },
-    { "binding": "BACKFILL_PUBLISH_WORKFLOW", "name": "worldcons-backfill-publish-v1", "class_name": "WorldconsBackfillPublishWorkflow" }
+    { "binding": "BACKFILL_STAGE_WORKFLOW", "name": "worldcons-backfill-publish-v1", "class_name": "WorldconsBackfillPublishWorkflow" }
   ]
 }

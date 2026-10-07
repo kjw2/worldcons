@@ -46,12 +46,12 @@ test("Catalog publication remains Gemini-free and cannot expose AI fields from a
   assert.doesNotMatch(publisher, /update articles set\s+jurisdiction=/);
 });
 
-test("Catalog rollout flags enforce the P3 -> public -> search -> plugin dependency chain", () => {
+test("Catalog source-only public/search surfaces remain retired even if legacy flags are supplied", () => {
   assert.equal(caseCatalogWriteEnabled({ CASE_CATALOG_WRITE_ENABLED: "true" }), true);
   assert.equal(caseCatalogPublicReadsEnabled({
     ADMIN_PUBLICATION_V4_READ_ENABLED: "true",
     CASE_CATALOG_PUBLIC_ENABLED: "true",
-  }), true);
+  }), false);
   assert.deepEqual(caseCatalogFlagErrors({ CASE_CATALOG_PUBLIC_ENABLED: "true" }), [
     "CASE_CATALOG_PUBLIC_ENABLED requires ADMIN_PUBLICATION_V4_READ_ENABLED",
   ]);
@@ -67,8 +67,8 @@ test("public detail renders source-only and stale-reprocessing states while admi
   const adminRoute = fs.readFileSync(path.join(process.cwd(), "app/api/admin/work/[kind]/[id]/route.ts"), "utf8");
   const queries = fs.readFileSync(path.join(process.cwd(), "lib/article-reads/shared.ts"), "utf8");
   assert.match(detailPage, /공식 원문이 갱신되어 한국어 요약을 재처리하고 있습니다/);
-  assert.match(detailPage, /검증된 공식 판례가 먼저 공개되었습니다/);
-  assert.match(adminRoute, /action === "withdraw" \? String\(publication\.version_id\) : String\(head\.current_version_id\)/);
+  assert.doesNotMatch(detailPage, /검증된 공식 판례가 먼저 공개되었습니다/);
+  assert.match(adminRoute, /action === "withdraw" \? String\(row\.version_id\) : String\(row\.current_version_id\)/);
   assert.match(queries, /public_article_detail_v4/);
   assert.match(queries, /summaryAvailable/);
 });

@@ -121,7 +121,7 @@ test("the live D1 schema validates against the scanned Postgres DDL", () => {
   const articles = report.tables.find((table) => table.name === "articles");
   assert.ok(articles);
   assert.deepEqual(articles.primaryKey, ["id"]);
-  assert.equal(articles.columns, 55);
+  assert.equal(articles.columns, 64);
   assert.deepEqual(articles.relocated, ["raw_text->r2", "search_vector->fts5", "embedding->vectorize"]);
 
   const searchFts = report.tables.find((table) => table.name === "search_fts");
@@ -156,14 +156,15 @@ test("the live D1 schema validates against the scanned Postgres DDL", () => {
   assert.ok(compatibility);
   assert.equal(compatibility.primaryKey.length, 6);
 });
-test("the checked-in d1/<database>/0001_init.sql matches the emitter", () => {
-  const emitted = emitAllDatabaseDdl(d1Schema);
+test("the checked-in d1/<database>/0001_init.sql matches the historical baseline emitter", () => {
+  const emitted = emitAllDatabaseDdl(d1Schema, { baseline: true });
   assert.deepEqual(Object.keys(emitted).sort(), [...D1_DATABASES].sort());
   for (const database of D1_DATABASES) {
     const file = path.join(rootDir, "d1", database, "0001_init.sql");
     assert.ok(fs.existsSync(file), `d1/${database}/0001_init.sql must be committed`);
-    assert.equal(fs.readFileSync(file, "utf8"), emitted[database], `d1/${database}/0001_init.sql must match the emitter`);
-    assert.equal(emitDatabaseDdl(database, d1Schema), emitted[database]);
+    const normalizeNewlines = (value: string) => value.replace(/\r\n/g, "\n");
+    assert.equal(normalizeNewlines(fs.readFileSync(file, "utf8")), normalizeNewlines(emitted[database]), `d1/${database}/0001_init.sql must match the emitter`);
+    assert.equal(normalizeNewlines(emitDatabaseDdl(database, d1Schema, { baseline: true })), normalizeNewlines(emitted[database]));
     assert.ok(emitted[database].includes("LOCAL ONLY"), `${database} DDL must stay local-only`);
   }
 });
@@ -603,8 +604,8 @@ test("buildD1SchemaReport emits a machine-readable, sorted M5.1c report", () => 
 
   assert.equal(report.version, 1);
   assert.deepEqual(report.mappingRules, POSTGRES_TYPE_MAPPING_RULES);
-  assert.equal(report.generatedFrom.migrations, 92);
-  assert.equal(report.generatedFrom.statements, 1174);
+  assert.equal(report.generatedFrom.migrations, 96);
+  assert.equal(report.generatedFrom.statements, 1199);
 
   const sorted = [...report.tables].sort(
     (left, right) => left.database.localeCompare(right.database) || left.name.localeCompare(right.name),
@@ -628,8 +629,8 @@ test("the Postgres scanner is read-only, deterministic and finds the source tabl
   const second = scanPostgresSchema({ rootDir });
 
   assert.deepEqual(first, second, "scanning the same tree twice must be deterministic");
-  assert.equal(first.filesScanned, 92);
-  assert.equal(first.statementsScanned, 1174);
+  assert.equal(first.filesScanned, 96);
+  assert.equal(first.statementsScanned, 1199);
   assert.equal(Object.keys(first.tables).length, 75);
 
   const articles = first.tables.articles;

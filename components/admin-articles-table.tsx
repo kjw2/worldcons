@@ -14,13 +14,28 @@ const statusLabels: Record<string, string> = {
   blocked: "접근 차단",
   timeout: "시간 초과",
   fetched: "수집됨",
-  cleaned: "요약 대기",
-  summarizing: "요약 중",
-  summarized: "공개",
+  cleaned: "AI 처리 대기",
+  summarizing: "AI 처리 중",
+  summarized: "요약완료",
   failed_fetch: "수집 실패",
   failed_summary: "요약 실패",
   needs_review: "검토 필요",
 };
+
+const translationStatusLabels: Record<string, string> = {
+  not_required: "번역 불필요",
+  pending: "번역 대기",
+  running: "번역 중",
+  translated: "번역완료",
+  failed: "번역 실패",
+};
+
+function translationStatusClass(status?: string | null) {
+  if (status === "translated" || status === "not_required") return "border-mint/25 bg-mint/10 text-mint";
+  if (status === "pending" || status === "running") return "border-amber-400/40 bg-amber-50 text-amber-800";
+  if (status === "failed") return "border-court/25 bg-court/5 text-court";
+  return "border-rule bg-white text-ink/64";
+}
 
 function articleStatusLabel(status: string, sourceKey: string) {
   if (status === "metadata_only" && sourceKey === "es-tribunal-constitucional") return "HJ 원문 공개 대기";
@@ -223,6 +238,9 @@ export function AdminArticlesTable({
                   <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(article.status)}`}>
                     {articleStatusLabel(article.status, article.sourceKey)}
                   </span>
+                  <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${translationStatusClass(article.translationStatus)}`}>
+                    {translationStatusLabels[article.translationStatus ?? ""] ?? "번역 상태 없음"}
+                  </span>
                   <span className="inline-flex min-h-7 items-center rounded-md border border-rule bg-white px-2.5 text-xs font-semibold text-ink/68">
                     {article.publishable ? "공개 가능" : "공개 불가"}
                   </span>
@@ -281,6 +299,7 @@ export function AdminArticlesTable({
               <th className="px-4 py-3">기관</th>
               <th className="px-4 py-3">국가</th>
               <th className="px-4 py-3">상태</th>
+              <th className="px-4 py-3">번역</th>
               <th className="px-4 py-3">공개 가능</th>
               <th className="px-4 py-3">요약</th>
               <th className="px-4 py-3">기준일</th>
@@ -291,7 +310,7 @@ export function AdminArticlesTable({
           <tbody className="divide-y divide-rule">
             {articles.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-sm text-ink/58">
+                <td colSpan={11} className="px-4 py-10 text-center text-sm text-ink/58">
                   조건에 맞는 기사가 없습니다.
                 </td>
               </tr>
@@ -326,6 +345,11 @@ export function AdminArticlesTable({
                     <td className="px-4 py-3">
                       <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${statusClass(article.status)}`}>
                         {articleStatusLabel(article.status, article.sourceKey)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex min-h-7 items-center rounded-md border px-2.5 text-xs font-semibold ${translationStatusClass(article.translationStatus)}`}>
+                        {translationStatusLabels[article.translationStatus ?? ""] ?? "상태 없음"}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-semibold">{article.publishable ? "가능" : "불가"}</td>

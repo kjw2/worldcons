@@ -51,8 +51,10 @@ export interface D1ColumnDefinition {
   defaultSql: string | null;
   /** Canonical CHECK values for an enum-like Postgres column, or null when unconstrained. */
   enumValues: string[] | null;
-  /** Postgres origin, or null for a derived projection column with no Postgres source. */
+  /** Postgres origin, or null for a derived/native D1 column with no Postgres source. */
   source: PostgresColumnRef | null;
+  /** Column provenance used to separate the historical 0001 baseline from D1-native additive columns. */
+  origin?: "postgres" | "derived" | "native";
   note: string | null;
 }
 

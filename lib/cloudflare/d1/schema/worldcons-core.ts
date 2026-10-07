@@ -17,6 +17,8 @@ export const ARTICLE_STATUS_VALUES = [
   "needs_review",
 ] as const;
 
+export const ARTICLE_TRANSLATION_STATUS_VALUES = ["not_required", "pending", "running", "translated", "failed"] as const;
+
 /** Postgres `articles_content_type_check` values. */
 export const ARTICLE_CONTENT_TYPE_VALUES = ["news", "press_release", "decision", "opinion", "order", "other"] as const;
 
@@ -45,6 +47,7 @@ const articles: TableSpec = {
     uniqueIndex("articles_slug_key", ["slug"]),
     uniqueIndex("articles_canonical_url_key", ["canonical_url"]),
     uniqueIndex("articles_id_source_key_v4_key", ["id", "source_key"]),
+    index("articles_translation_queue_idx", ["translation_status", "translation_next_attempt_at", "created_at", "id"]),
   ],
   columns: [
     { name: "id", type: "uuid", nn: true, note: "application-generated UUID" },
@@ -64,6 +67,15 @@ const articles: TableSpec = {
     { name: "summarized_at", type: "timestamptz" },
     { name: "status", type: "text", nn: true, def: "'discovered'", enum: ARTICLE_STATUS_VALUES },
     { name: "slug", type: "text", nn: true },
+    { name: "translation_status", type: "text", nn: true, def: "'not_required'", enum: ARTICLE_TRANSLATION_STATUS_VALUES, native: true },
+    { name: "translation_started_at", type: "timestamptz", native: true },
+    { name: "translated_at", type: "timestamptz", native: true },
+    { name: "translation_provider", type: "text", native: true },
+    { name: "translation_model", type: "text", native: true },
+    { name: "translation_attempt_count", type: "integer", nn: true, def: "0", native: true },
+    { name: "translation_error_code", type: "text", native: true },
+    { name: "translation_error_summary", type: "text", native: true },
+    { name: "translation_next_attempt_at", type: "timestamptz", native: true },
     {
       name: "raw_text",
       type: "text",

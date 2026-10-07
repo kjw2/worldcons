@@ -410,7 +410,13 @@ function publicationTransitionAllowed(
 function publicationEligible(article: Row, version: Row) {
   const metadata = jsonObject(version.source_metadata);
   const collection = jsonObject(metadata.collection);
-  return article.lifecycle_collection_state === "source_text_ready"
+  const language = String(article.original_language ?? version.original_language ?? "").trim().toLowerCase();
+  const translationStatus = nullableText(article.translation_status);
+  const translationReady = language === "ko"
+    ? translationStatus === null || translationStatus === "not_required" || translationStatus === "translated"
+    : translationStatus === "translated" || (translationStatus === null && article.status === "summarized" && Boolean(article.summary_json));
+  return translationReady
+    && article.lifecycle_collection_state === "source_text_ready"
     && article.lifecycle_processing_state === "complete"
     && ["unreviewed", "approved"].includes(String(article.lifecycle_review_state ?? ""))
     && article.lifecycle_attention_state === "clear"

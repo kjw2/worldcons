@@ -11,7 +11,7 @@ const REPORT_PATH = path.join("artifacts", "cloudflare-m5", "d1-schema-report.js
  *
  *   pnpm d1:schema            validate the schema against the scanned Postgres DDL
  *   pnpm d1:schema --json     print the machine-readable schema report
- *   pnpm d1:schema --emit     write the local DDL to d1/<database>/0001_init.sql
+ *   pnpm d1:schema --emit     rewrite the historical Postgres-derived 0001 baseline only
  *   pnpm d1:schema --report   write the report to artifacts/cloudflare-m5/d1-schema-report.json
  *
  * Local only: this never creates a remote database or deploys anything.
@@ -24,7 +24,7 @@ function main() {
   const bundle = buildD1SchemaReport(process.cwd());
 
   if (emit) {
-    const ddl = emitAllDatabaseDdl(d1Schema);
+    const ddl = emitAllDatabaseDdl(d1Schema, { baseline: true });
     for (const [database, sql] of Object.entries(ddl)) {
       const dir = path.join(D1_DIR, database);
       fs.mkdirSync(dir, { recursive: true });

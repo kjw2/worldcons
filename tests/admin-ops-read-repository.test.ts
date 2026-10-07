@@ -182,13 +182,13 @@ test("adminOpsReads selects the mock adapter without Supabase config", async () 
   });
 });
 
-test("adminOpsReads selects the Supabase adapter when Supabase config is present", async () => {
+test("adminOpsReads ignores legacy Supabase config and stays D1-or-mock only", async () => {
   await withSupabaseEnv(
     { SUPABASE_URL: "https://admin-ops.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
     () => {
       const repository = adminOpsReads();
-      assert.notEqual(repository, mockAdminOpsReads, "configured Supabase must select the Supabase adapter");
-      assert.equal(repository.isConfigured(), true, "the Supabase adapter must report config");
+      assert.equal(repository, mockAdminOpsReads, "Supabase configuration must not become an admin authority");
+      assert.equal(repository.isConfigured(), false, "without D1 bindings the repository stays unconfigured");
     },
   );
 });
@@ -306,7 +306,7 @@ test("getAdminDashboardData uses the mock dashboard without Supabase config", as
   });
 });
 
-test("getAdminDashboardData returns the mapped snapshot when the RPC succeeds", async () => {
+test("getAdminDashboardData ignores a legacy Supabase snapshot when D1 is unavailable", async () => {
   const snapshotPayload = {
     totals: { sources: 3, articles: 120, publicArticles: 100, pendingSummaries: 5, failedArticles: 2, attentionArticles: 4, tags: 77, candidates: 9 },
     statusCounts: [{ status: "summarized", count: 100 }, { status: "needs_review", count: 4 }],
@@ -320,21 +320,15 @@ test("getAdminDashboardData returns the mapped snapshot when the RPC succeeds", 
       { SUPABASE_URL: "https://admin-ops-snapshot.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
       async () => {
         const dashboard = await getAdminDashboardData();
-        assert.equal(dashboard.hasDatabase, true);
-        assert.equal(dashboard.totals.articles, 120);
-        assert.equal(dashboard.totals.tags, 77);
-        assert.equal(dashboard.totals.publicArticles, 100);
-        assert.equal(dashboard.statusCounts.find((entry) => entry.status === "summarized")?.count, 100);
-        assert.equal(dashboard.statusCounts.find((entry) => entry.status === "needs_review")?.count, 4);
-        assert.equal(dashboard.sourceSummaries[0].sourceKey, "de-bverfg");
-        assert.equal(dashboard.candidateSummaries[0].sourceKey, "de-bverfg");
-        assert.equal(dashboard.attentionArticles.length, 1);
+        assert.equal(dashboard.hasDatabase, false);
+        assert.equal(dashboard.totals.articles, mockArticles.length);
+        assert.equal(dashboard.totals.tags, mockTags.length);
       },
     );
   });
 });
 
-test("getAdminDashboardData falls back to the legacy aggregation on snapshot error, null, or invalid payload", async () => {
+test("getAdminDashboardData remains on the D1/mock path regardless of legacy Supabase snapshot responses", async () => {
   const cases: Array<() => Response> = [
     () => jsonResponse({ message: "snapshot failed", code: "XX000" }, 500),
     () => jsonResponse(null),
@@ -357,30 +351,9 @@ test("getAdminDashboardData falls back to the legacy aggregation on snapshot err
           { SUPABASE_URL: "https://admin-ops-legacy.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
           async () => {
             const dashboard = await getAdminDashboardData();
-            assert.equal(dashboard.hasDatabase, true, "a configured database must report hasDatabase even on fallback");
-            assert.equal(dashboard.totals.articles, LEGACY_ARTICLES.length);
-            assert.equal(dashboard.totals.publicArticles, 1);
-            assert.equal(dashboard.totals.pendingSummaries, 1);
-            assert.equal(dashboard.totals.failedArticles, 1);
-            assert.equal(dashboard.totals.attentionArticles, 2);
-            assert.equal(dashboard.totals.tags, 77, "the exact head count must flow into the legacy totals");
-            assert.equal(dashboard.totals.candidates, 9, "the exact candidate count must win over the row count");
-            assert.equal(dashboard.statusCounts.find((entry) => entry.status === "summarized")?.count, 2);
-            assert.equal(dashboard.statusCounts.find((entry) => entry.status === "needs_review")?.count, 1);
-
-            const deSummary = dashboard.sourceSummaries.find((summary) => summary.sourceKey === "de-bverfg");
-            assert.equal(deSummary?.totalCount, 2);
-            assert.equal(deSummary?.publicCount, 1);
-            assert.equal(deSummary?.pendingSummaryCount, 1);
-            const usSummary = dashboard.sourceSummaries.find((summary) => summary.sourceKey === "us-scotus");
-            assert.equal(usSummary?.totalCount, 3);
-            assert.equal(usSummary?.failedCount, 1);
-            assert.equal(usSummary?.attentionCount, 2);
-
-            const candidateSummary = dashboard.candidateSummaries.find((summary) => summary.sourceKey === "de-bverfg");
-            assert.equal(candidateSummary?.pendingCount, 1);
-            assert.equal(candidateSummary?.failedCount, 1);
-            assert.equal(dashboard.attentionArticles.length, 2, "the attention list must stay capped and ordered");
+            assert.equal(dashboard.hasDatabase, false, "legacy Supabase config must not become a configured authority");
+            assert.equal(dashboard.totals.articles, mockArticles.length);
+            assert.equal(dashboard.totals.tags, mockTags.length);
           },
         );
       },
@@ -408,7 +381,7 @@ test("getAdminDashboardData records the compatibility observation for new and fa
         },
       );
     });
-    assert.deepEqual(observations, [{ surface: "admin_dashboard", authority: "new", outcome: "succeeded" }]);
+    assert.deepEqual(observations, [{ surface: "admin_dashboard", authority: "fallback", outcome: "fallback" }]);
 
     await withFetch(dashboardFetch({ snapshot: () => jsonResponse({ message: "down" }, 500) }), async () => {
       await withSupabaseEnv(
@@ -423,7 +396,7 @@ test("getAdminDashboardData records the compatibility observation for new and fa
         },
       );
     });
-    assert.deepEqual(observations[1], { surface: "admin_dashboard", authority: "fallback", outcome: "fallback" });
+    assert.equal(observations.length, 1, "repeated fallback observations are coalesced within the compatibility window");
   } finally {
     setCompatibilityObservationWriterForTests(null);
   }
@@ -566,7 +539,7 @@ test("Supabase admin/ops adapter throws on list error and falls back to the rang
   assert.equal(page.pageInfo.hasMore, false);
 });
 
-test("exported listAdminArticles delegates to the configured Supabase adapter", async () => {
+test("exported listAdminArticles ignores legacy Supabase config without D1 bindings", async () => {
   await withFetch(
     (url) => {
       if (url.includes("/rest/v1/articles")) {
@@ -584,10 +557,9 @@ test("exported listAdminArticles delegates to the configured Supabase adapter", 
         { SUPABASE_URL: "https://admin-ops-list.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
         async () => {
           const result = await listAdminArticles({ page: 1, pageSize: 25 });
-          assert.equal(result.items.length, 1);
-          assert.equal(result.items[0].slug, "a");
-          assert.equal(result.items[0].hasSummary, true);
-          assert.equal(result.pageInfo.total, 1);
+          assert.equal(result.items.length, mockArticles.length);
+          assert.equal(result.items.some((item) => item.slug === "a"), false);
+          assert.equal(result.pageInfo.total, mockArticles.length);
           assert.equal(result.pageInfo.hasMore, false);
         },
       );
@@ -595,7 +567,7 @@ test("exported listAdminArticles delegates to the configured Supabase adapter", 
   );
 });
 
-test("listAdminArticles carries no direct Supabase coupling while bulk write coupling remains", () => {
+test("admin article list and bulk operations carry no direct Supabase coupling", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "lib/db/admin-queries.ts"), "utf8");
   const listStart = source.indexOf("export async function listAdminArticles");
   const bulkStart = source.indexOf("async function loadBulkAdminArticleRows");
@@ -612,9 +584,11 @@ test("listAdminArticles carries no direct Supabase coupling while bulk write cou
   assert.ok(listSource.includes("adminOpsReads().listAdminArticles"), "listAdminArticles must delegate to the privileged repository");
 
   const bulkReadSource = source.slice(bulkStart, bulkEnd);
-  assert.ok(bulkReadSource.includes("getSupabaseAdmin"), "bulk article reads must keep their direct Supabase access");
-  assert.ok(bulkReadSource.includes('.from("articles")'), "bulk article reads must keep querying the articles table");
+  assert.ok(!bulkReadSource.includes("getSupabaseAdmin"), "bulk article reads must not resolve a Supabase client");
+  assert.ok(!bulkReadSource.includes('.from("articles")'), "bulk article reads must not call Supabase table builders");
+  assert.ok(bulkReadSource.includes('getRuntimeD1Binding("worldcons_core")'), "bulk article reads must use worldcons_core D1");
 
   const bulkWriteSource = source.slice(bulkEnd);
-  assert.ok(bulkWriteSource.includes('.from("articles")'), "bulk article writes must keep querying the articles table");
+  assert.ok(!bulkWriteSource.includes('.from("articles")'), "bulk article writes must not call Supabase table builders");
+  assert.ok(bulkWriteSource.includes("UPDATE articles SET status='needs_review'"), "bulk article writes must update D1 articles directly");
 });
