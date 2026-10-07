@@ -96,7 +96,15 @@ export async function getRelatedArticles(article: ArticleListItem, limit = 3) {
 export async function getArticleDetailPageData(slug: string) {
   const article = await getArticleBySlug(slug, { includeSourceText: false });
   if (!article) return null;
-  const related = await getRelatedArticles(article);
+  // Related recommendations are a non-critical enhancement. Never let a
+  // secondary tag/recommendation read take down the article detail page (or
+  // generateMetadata, which shares this cached payload).
+  let related: ArticleListItem[] = [];
+  try {
+    related = await getRelatedArticles(article);
+  } catch {
+    related = [];
+  }
   return { article, related };
 }
 

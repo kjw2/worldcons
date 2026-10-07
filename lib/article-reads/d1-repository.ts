@@ -856,11 +856,9 @@ export function createD1ArticleReadRepository(
         { column: "tag_id", value: tagId },
         { column: "article_id", op: "neq", value: options.excludeArticleId ?? "" },
       ],
-      limit: (limit as number) + 1,
+      orderBy: ["article_id", "tag_id"],
+      limit: limit as number,
     });
-    if (rows.length > (limit as number)) {
-      throw new D1ArticleShadowSkipError("ambiguous_limit", "listRelatedArticleIds");
-    }
     return uniqueStrings(rows.map((row) => row.article_id));
   }
 

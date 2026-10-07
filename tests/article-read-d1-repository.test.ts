@@ -462,7 +462,7 @@ test("D1 article adapter top-viewed ranks by view_count, honors filters and fall
   assert.deepEqual(fallback.map((item) => item.slug), ["a"], "an empty view table must fall back to the list path");
 });
 
-test("D1 article adapter related ids apply tag/exclude/limit and skip an ambiguous overflow", async () => {
+test("D1 article adapter related ids apply tag/exclude/limit without treating normal overflow as an error", async () => {
   const fake = createFakeD1({
     article_tags: [
       { article_id: "b", tag_id: "tag-9", confidence: null },
@@ -476,11 +476,12 @@ test("D1 article adapter related ids apply tag/exclude/limit and skip an ambiguo
 
   const call = fake.calls[0];
   assert.match(call.sql, /from article_tags where tag_id = \? and article_id != \? order by article_id, tag_id limit \?/);
-  assert.deepEqual(call.params, ["tag-9", "a", 13]);
+  assert.deepEqual(call.params, ["tag-9", "a", 12]);
 
-  await assert.rejects(
-    () => repository.listRelatedArticleIds("tag-9", { excludeArticleId: "a", limit: 1 }),
-    (error: unknown) => error instanceof D1ArticleShadowSkipError && error.reason === "ambiguous_limit",
+  assert.deepEqual(
+    await repository.listRelatedArticleIds("tag-9", { excludeArticleId: "a", limit: 1 }),
+    ["b"],
+    "a common tag with more than the requested limit must return a bounded slice instead of failing the page",
   );
   await assert.rejects(
     () => repository.listRelatedArticleIds("tag-9", { limit: 0 }),
