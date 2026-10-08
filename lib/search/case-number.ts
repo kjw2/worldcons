@@ -12,7 +12,7 @@ export type ExactCaseReference = {
 
 const BVERFG_DISPLAY_PATTERN = /\b(\d{1,2})\s+Bv([A-Za-z]+)\s+(\d{1,7})\s*\/\s*(\d{2,4})\b/iu;
 const BVERFG_URL_PATTERN = /(?:^|[_./])([12])bv([a-z]+)(\d{4})(\d{2})(?:\.html)?(?:$|[?#])/iu;
-const FRANCE_PATTERN = /\b(\d{4}-\d+(?:[/_-]\d+)*(?:\s+(?:QPC|DC|AN|SEN))?)\b/iu;
+const FRANCE_PATTERN = /\b(\d{4}-\d+(?:[/_-]\d+)*(?:\s+(?:QPC|DC|L|AN|SEN))?)\b/iu;
 const SPAIN_PATTERN = /\b(\d{1,4})\s*\/\s*(\d{4})\b/iu;
 const US_PATTERN = /\b(?:No\.\s*)?(\d{2,3})\s*-\s*(\d+)\b/iu;
 
@@ -41,7 +41,7 @@ function normalizeFrance(value: string) {
     .replace(/_/g, "/")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/\s+(qpc|dc|an|sen)$/iu, (_, suffix: string) => ` ${suffix.toUpperCase()}`);
+    .replace(/\s+(qpc|dc|l|an|sen)$/iu, (_, suffix: string) => ` ${suffix.toUpperCase()}`);
 }
 
 function normalizeSpain(value: string) {

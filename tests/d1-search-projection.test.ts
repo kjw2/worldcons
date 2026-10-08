@@ -203,6 +203,21 @@ test("title, case, search and tag mapping is deterministic and input-order indep
   );
 });
 
+test("French Conseil L decisions retain exact-case tokens in the search projection", () => {
+  const document = singleDocument({
+    publications: [publication()],
+    versions: [version({
+      source_key: "fr-conseil-constitutionnel",
+      original_title: "Décision n° 2026-335 L du 8 octobre 2026",
+      korean_title: "프랑스 헌법위원회 2026년 10월 8일 결정 제2026-335 L호",
+      source_metadata: { decisionNumber: "n° 2026-335 " },
+      case_key: null,
+    })],
+    articles: [{ id: ARTICLE_A, review_state: null }],
+  });
+  assert.equal(document.case_numbers, "2026-335 L\n2026335l");
+});
+
 test("tag hydration is slug-ordered, deduped, and never reads URLs or raw text", () => {
   const url = "https://example.test/secret/path?token=abc";
   const document = singleDocument({

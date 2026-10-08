@@ -318,7 +318,7 @@ function isTransientCrawlerHttpError(error: unknown) {
 
 function discoverFrance(html: string, base: string): NativeArticleCandidate[] {
   return absoluteLinks(html, base).filter((link) => officialHost("fr-conseil-constitutionnel", link.url) && (/^\/decision\/20\d{2}\/[^/]+\.html?$/i.test(new URL(link.url).pathname) || /^\/20\d{2}-\d{2}-\d{2}\/decision-/i.test(new URL(link.url).pathname))).map((link) => ({
-    sourceKey: "fr-conseil-constitutionnel", url: link.url, title: link.title || link.url.split("/").at(-1) || "Décision", publishedAt: dateIso(`${link.context} ${link.url}`), contentType: "decision", metadata: { decisionNumber: link.context.match(/\bn[°ºo]?\s*[0-9]{4}-[0-9]+\s*(?:QPC|DC|AN|SEN)?/i)?.[0], collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false } },
+    sourceKey: "fr-conseil-constitutionnel", url: link.url, title: link.title || link.url.split("/").at(-1) || "Décision", publishedAt: dateIso(`${link.context} ${link.url}`), contentType: "decision", metadata: { decisionNumber: link.context.match(/\bn[°ºo]?\s*[0-9]{4}-[0-9]+\s*(?:QPC|DC|L|AN|SEN)?/i)?.[0], collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false } },
   }));
 }
 

@@ -182,6 +182,9 @@ test("native source parser discovers only official records for all four sources"
   const france = parseNativeSourceListing("fr-conseil-constitutionnel", `<a href="/decision/2026/2026912QPC.htm">Décision n° 2026-912 QPC du 28 septembre 2026</a><a href="https://example.net/decision/2026/2026913DC.htm">other</a>`);
   assert.equal(france.length, 1);
   assert.equal(france[0].metadata.decisionNumber, "n° 2026-912 QPC");
+  const franceL = parseNativeSourceListing("fr-conseil-constitutionnel", `<a href="/decision/2026/2026335L.htm">Décision n° 2026-335 L du 8 octobre 2026</a>`);
+  assert.equal(franceL.length, 1);
+  assert.equal(franceL[0].metadata.decisionNumber, "n° 2026-335 L");
 
   const spain = parseNativeSourceListing("es-tribunal-constitucional", `<a href="/HJ/es/Resolucion/Show/32117">SENTENCIA 4/2026 de 28 septiembre 2026</a>`);
   assert.equal(spain.length, 1);

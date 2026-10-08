@@ -1,5 +1,22 @@
 # Progress
 
+## 2026-10-09 staged-ingest production E2E canary
+
+- First real France canary completed all seven production stages:
+  discovery -> crawl -> normalize -> translate -> public-judgment -> publish -> search.
+  Every stage succeeded on attempt 1; no stage errors, dead letters, or redrives.
+- Canary article: Conseil constitutionnel decision 2026-335 L
+  (article id 16b4fc11-d9cc-4e5b-b8e5-acf687ab760e).
+- Cross-check confirmed Core publication state=published and Search projection row exists.
+- Found one real indexing defect during the cross-check: the France native crawler
+  did not recognize the "L" decision-number suffix, so legacy metadata stored
+  "n° 2026-335 " and the first search projection had empty case_numbers.
+- Local fix adds the France L suffix to native discovery/exact-case normalization
+  and lets the authoritative original title repair a truncated France metadata
+  number during search projection. Regression tests added for crawler,
+  search projection, and exact case search.
+- France one-source / one-item canary limits and M8 scheduler settings remain unchanged.
+
 ## 2026-10-08 staged-ingest per-stage observability: oldest pending age (local code only)
 
 Selected as the next highest-priority unfinished local reliability item after M6/M7, from the documented remaining M6/M7 pre-production gate: *"Implement audited, permissioned dead-letter redrive and observability reporting (per-stage counts, **oldest pending** and oldest lease)"* (`docs/worldcons-staged-ingest-m6-m7-local-verification-20261008.md:90-91`). The dead-letter redrive and per-stage counts/oldest-lease were already complete (commit `3b819ac`, `lib/cloudflare/ingest-stages/redrive.ts`); the missing bounded piece was the oldest **pending** job (queue-depth stall age). No previously completed item (dead-letter redrive, France source allowlist canary, stale regression stabilization) was redone.

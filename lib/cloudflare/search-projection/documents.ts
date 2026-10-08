@@ -70,6 +70,18 @@ export function projectionCaseNumbers(version: SearchVersionP3Row): string[] {
       if (canonical) tokens.add(canonical);
     }
   }
+  // Historical France rows may have been collected with a truncated
+  // decisionNumber metadata value (for example "2026-335" instead of
+  // "2026-335 L"). The authoritative P3 snapshot still retains the official
+  // original title. Use that title only as a France-specific fallback when no
+  // metadata/case_key token was recovered; never scrape a URL or body text.
+  if (version.source_key === "fr-conseil-constitutionnel" && isNonBlankString(version.original_title)) {
+    const normalized = normalizeCaseNumber(version.source_key, version.original_title);
+    if (normalized) tokens.clear();
+    if (normalized) tokens.add(normalized);
+    const canonical = caseNumberKey(version.source_key, version.original_title);
+    if (canonical) tokens.add(canonical);
+  }
   return [...tokens].sort();
 }
 

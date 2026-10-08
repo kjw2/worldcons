@@ -39,6 +39,9 @@ test("exact case extraction recognizes French, Spanish, and US case numbers", ()
   assert.deepEqual(extractExactCaseReferences("2026-912 QPC"), [
     { sourceKey: "fr-conseil-constitutionnel", caseNumber: "2026-912 QPC", caseKey: "2026912qpc" },
   ]);
+  assert.deepEqual(extractExactCaseReferences("2026-335 L"), [
+    { sourceKey: "fr-conseil-constitutionnel", caseNumber: "2026-335 L", caseKey: "2026335l" },
+  ]);
   assert.deepEqual(extractExactCaseReferences("SENTENCIA 53/2025"), [
     { sourceKey: "es-tribunal-constitucional", caseNumber: "53/2025", caseKey: "532025" },
   ]);
@@ -52,6 +55,8 @@ test("source-aware case normalization produces the same canonical key across dis
   assert.equal(caseNumberKey("de-bverfg", "1 BvR 2656/18"), "1bvr265618");
   assert.equal(normalizeCaseNumber("fr-conseil-constitutionnel", "Décision n° 2026-912 qpc"), "2026-912 QPC");
   assert.equal(caseNumberKey("fr-conseil-constitutionnel", "2026-912 QPC"), "2026912qpc");
+  assert.equal(normalizeCaseNumber("fr-conseil-constitutionnel", "Décision n° 2026-335 l du 8 octobre 2026"), "2026-335 L");
+  assert.equal(caseNumberKey("fr-conseil-constitutionnel", "2026-335 L"), "2026335l");
   assert.equal(normalizeCaseNumber("es-tribunal-constitucional", "SENTENCIA 053/2025"), "53/2025");
   assert.equal(caseNumberKey("es-tribunal-constitucional", "53/2025"), "532025");
   assert.equal(normalizeCaseNumber("us-scotus", "No. 24-0109"), "24-109");
