@@ -1,5 +1,21 @@
 # Progress
 
+## 2026-10-08 operator dead-letter redrive + baseline check stabilization (local code only)
+
+- Implemented audited, operator-safe dead-letter diagnosis/redrive for the staged pipeline:
+  - `d1/worldcons_ingest/0004_ingest_stage_redrive.sql`: additive append-only redrive transition ledger.
+  - `lib/cloudflare/ingest-stages/redrive.ts`: stage-bounded diagnosis (status counts + oldest lease) and a fenced, reasoned, rate-limited, ledger-audited `redriveIngestStageDeadLetter`. A redrive only returns a job to `pending`; it never completes/publishes and never bypasses a blocked/publication gate.
+  - `app/api/admin/ingest/dead-letter/route.ts`: authenticated operator route; no public/unauthenticated redrive route.
+  - `tests/ingest-stage-redrive.test.ts` 7/7: 404/429, repeated retries, denied invalid redrive, double-redrive, cross-stage, nonterminal conflict, transition ledger.
+- Stabilized the four prior baseline failures verified against the current D1 authority:
+  - `test:p3`: bulk path assertion updated to the D1 `RETURNING id` write (`.select("id")`/`persisted?.id` retired); mutation-surface assertion accepts the D1 native writer.
+  - `test:d1-case-catalog`: stale fake now includes the P3 enrichment_full/anchor rows the real gate2 predicate reads.
+  - `test:reference-reads`: Supabase-env selection test updated to assert Supabase is never re-selected (D1-only authority).
+  - `pnpm check`: article-detail assertion updated to the runtime-D1 `force-dynamic` contract.
+- Fixed the pre-existing `native-crawler.ts` prefer-const lint error (base commit).
+- Verified: typecheck, `pnpm check`, M8 types/typecheck/dry-run, `test:ingest-stages` 49/49, `test:p3` 8/8, `test:d1-case-catalog` 13/13, `test:reference-reads` 10/10, `test:m8` 40/40, `test:m11` 89/89, `test:m13` 61/61, `test:d1-migrate` 18/18. No deploy/commit/push/remote DB write.
+- Residual (pre-existing on base, not caused by this change): test:m12 (ops-watchdog soltera URL), test:d1-shadow-all, test:rpc-ledger, test:admin-analytics-reads, test:search-repository, test:article-reads, test:p2, cloudflare-runtime-boundary.
+
 ## 2026-10-08 staged pipeline M6 / M7 local reliability (partial)
 
 ### 2026-10-08 production deployment and bounded activation

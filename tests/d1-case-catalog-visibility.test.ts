@@ -384,7 +384,27 @@ test("D1 listArticles merges summarized legacy rows without letting Catalog repl
         case_key: "99999",
         original_published_at: "2026-05-01T00:00:00.000Z",
         source_anchor_version_id: "ver-c",
+        version_role: "authoritative_source",
+        source_content_hash: "hash-c",
       }),
+      // A `summarized` row whose Catalog anchor has been re-published is only
+      // public again when its P3 enrichment_full version is anchored to the
+      // current Catalog anchor AND matches that anchor's authoritative source
+      // hash (the exact `public_article_projection_p3` gate2 predicate). The
+      // P3 row's `version_id` below points at this enrichment_full version.
+      anchorVersion({
+        id: "enrich-c",
+        article_id: "case-c",
+        version_role: "enrichment_full",
+        source_anchor_version_id: "ver-c",
+        enrichment_source_content_hash: "hash-c",
+      }),
+    ],
+    // Explicit P3 publications: the fake D1 cannot auto-link a version_id, so
+    // pass the exact rows the read path checks.
+    article_publications_p3: [
+      { id: "p3-1", article_id: "legacy-1", state: "published", version_id: "legacy-pub-1", revision: "1" },
+      { id: "p3-2", article_id: "case-c", state: "published", version_id: "enrich-c", revision: "1" },
     ],
   }));
   const repository = createD1ArticleReadRepository({ binding: fake.database, environment: FLAGS_ON });

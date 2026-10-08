@@ -894,9 +894,9 @@ assert(
 const articleDetailPageSource = fs.readFileSync(path.join(process.cwd(), "app/articles/[slug]/(detail)/page.tsx"), "utf8");
 assert(articleDetailPageSource.includes("getCachedArticleDetailPageData"), "article detail and metadata must share the persistent detail cache");
 assert(!articleDetailPageSource.includes("searchParams"), "article detail server rendering must not vary by returnTo search params");
-assert(articleDetailPageSource.includes('dynamic = "force-static"') && articleDetailPageSource.includes("generateStaticParams"), "article detail HTML must use on-demand ISR");
+assert(articleDetailPageSource.includes('dynamic = "force-dynamic"') && articleDetailPageSource.includes("revalidate = 0"), "article detail HTML must render through runtime D1, not build-time static caching");
 const articleDetailCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-article-detail-cache.ts"), "utf8");
-assert(articleDetailCacheSource.includes("unstable_cache") && articleDetailCacheSource.includes("PUBLIC_ARTICLES_CACHE_TAG"), "article detail cache must be tag invalidated");
+assert(articleDetailCacheSource.includes("cache(") && articleDetailCacheSource.includes("getArticleDetailPageData"), "article detail and metadata must share the per-request detail cache helper");
 const detailNavigationSource = fs.readFileSync(path.join(process.cwd(), "components/article-detail-navigation.tsx"), "utf8");
 assert(detailNavigationSource.includes("window.location.hash") && detailNavigationSource.includes("safeArticleReturnPath"), "returnTo must be resolved safely from a client-only fragment");
 const intentPrefetchSource = fs.readFileSync(path.join(process.cwd(), "components/intent-prefetch-link.tsx"), "utf8");

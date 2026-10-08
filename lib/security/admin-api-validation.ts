@@ -317,6 +317,51 @@ const adminJobActionBodySchema = z
 
 export type AdminJobActionBody = z.infer<typeof adminJobActionBodySchema>;
 
+const INGEST_STAGE_NAMES_FOR_REDRIVE = [
+  "discovery",
+  "crawl",
+  "normalize",
+  "translate",
+  "public-judgment",
+  "publish",
+  "search",
+] as const;
+
+/**
+ * Operator dead-letter redrive request. A redrive is deliberately explicit: the
+ * operator must name the exact stage, the job id, the fencing token they
+ * observed, and a reason. The optional `confirmation` must equal `redrive` so an
+ * accidental POST cannot requeue a job.
+ */
+const adminIngestStageRedriveBodySchema = z
+  .object({
+    stage: z.enum(INGEST_STAGE_NAMES_FOR_REDRIVE),
+    jobId: optionalText(ADMIN_REF_MAX_LENGTH),
+    fencingToken: optionalText(ADMIN_REF_MAX_LENGTH),
+    reason: optionalText(ADMIN_JOB_REASON_MAX_LENGTH),
+    confirmation: optionalText(ADMIN_REF_MAX_LENGTH),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.jobId) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["jobId"], message: "jobId is required" });
+    }
+    if (!value.reason) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "reason is required" });
+    }
+    if (value.confirmation !== "redrive") {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["confirmation"], message: "confirmation must equal redrive" });
+    }
+  })
+  .transform((value) => ({
+    stage: value.stage,
+    jobId: value.jobId as string,
+    fencingToken: value.fencingToken ?? null,
+    reason: value.reason as string,
+  }));
+
+export type AdminIngestStageRedriveBody = z.infer<typeof adminIngestStageRedriveBodySchema>;
+
 function searchParamsObject(searchParams: URLSearchParams) {
   return Object.fromEntries(searchParams.entries());
 }
@@ -355,4 +400,8 @@ export function parseAdminJobRunBody(body: unknown): ValidationResult<AdminJobRu
 
 export function parseAdminJobActionBody(body: unknown): ValidationResult<AdminJobActionBody> {
   return validationResult(adminJobActionBodySchema.safeParse(body));
+}
+
+export function parseAdminIngestStageRedriveBody(body: unknown): ValidationResult<AdminIngestStageRedriveBody> {
+  return validationResult(adminIngestStageRedriveBodySchema.safeParse(body));
 }

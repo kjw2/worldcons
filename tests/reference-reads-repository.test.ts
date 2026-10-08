@@ -118,7 +118,7 @@ test("referenceReads selects the mock adapter and preserves mock fallback withou
   });
 });
 
-test("referenceReads selects the Supabase adapter when Supabase config is present", async () => {
+test("Supabase env alone never re-selects a Supabase runtime adapter; D1 remains the only persistent authority", async () => {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -130,22 +130,15 @@ test("referenceReads selects the Supabase adapter when Supabase config is presen
     await withSupabaseEnv(
       { SUPABASE_URL: "https://reference-reads.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
       async () => {
+        // The runtime cutover retired Supabase: with no D1 binding the runtime
+        // resolves to the mock fixture, never a Supabase adapter.
         const repository = referenceReads();
-        assert.notEqual(repository, mockReferenceReads, "configured Supabase must select the Supabase adapter");
-        assert.deepEqual(await repository.listSources(), []);
-        assert.deepEqual(await listSources(), [], "exported listSources must delegate to the selected adapter");
-        assert.deepEqual(await listGlossaryTerms(), [], "exported listGlossaryTerms must delegate to the selected adapter");
-        assert.deepEqual(await getGlossaryTerm("qpc"), null, "exported getGlossaryTerm must delegate to the selected adapter");
-        assert.deepEqual(await listIngestionRuns(), [], "exported listIngestionRuns must delegate to the selected adapter");
-        assert.ok(requests.some((url) => url.includes("/rest/v1/sources")), "Supabase adapter must query the sources table");
-        assert.ok(
-          requests.some((url) => url.includes("/rest/v1/glossary_terms")),
-          "Supabase adapter must query the glossary_terms table",
-        );
-        assert.ok(
-          requests.some((url) => url.includes("/rest/v1/ingestion_runs")),
-          "Supabase adapter must query the ingestion_runs table",
-        );
+        assert.equal(repository, mockReferenceReads, "configured Supabase must not select a runtime Supabase adapter");
+        assert.deepEqual(await repository.listSources(), mockSources);
+        assert.deepEqual(await listSources(), mockSources, "exported listSources must keep the mock fallback");
+        assert.deepEqual(await listGlossaryTerms(), await repository.listGlossaryTerms(), "exported listGlossaryTerms must delegate to the same mock fallback");
+        assert.equal((await listGlossaryTerms()).length, mockGlossaryTerms.length, "exported listGlossaryTerms must keep the full mock seed");
+        assert.equal(requests.length, 0, "no Supabase REST call may be issued for runtime reads");
       },
     );
   } finally {

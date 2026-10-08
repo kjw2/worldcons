@@ -223,9 +223,8 @@ async function fetchHtml(source: NativeCrawlerSource, url: string, bindings: Nat
     return { html: body, status: response.status, finalUrl, contentType: response.headers.get("content-type") ?? "" };
   }
   if (allowBrowser && [403, 429].includes(response.status)) {
-    let rendered: { html: string; finalUrl: string; status: number; headers: Record<string, string> };
     if (!browserNavigate) throw new Error("crawler.browser_navigation_unavailable");
-    rendered = await browserNavigate({ url, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" });
+    const rendered = await browserNavigate({ url, timeoutMs: 45_000, waitUntil: "domcontentloaded", userAgent: "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" });
     if (new TextEncoder().encode(rendered.html).byteLength > 3_000_000) throw new Error("crawler.response_too_large");
     if (!officialHost(source, rendered.finalUrl)) throw new Error("crawler.redirect_non_official_host");
     return { html: rendered.html, status: rendered.status, finalUrl: rendered.finalUrl, contentType: rendered.headers["content-type"] ?? "text/html" };

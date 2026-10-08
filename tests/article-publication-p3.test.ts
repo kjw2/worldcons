@@ -259,8 +259,11 @@ test("migration and application contracts cover immutable authority, projection,
   assert.ok(reviewEligibility.includes("from article_publication_transition_p3("));
   assert.ok(reviewEligibility.includes("'quarantineResolvedCount'"));
   assert.ok(adminQueries.includes("shadowConfirmedAdminBulkArticleOutcomes"));
-  assert.ok(adminQueries.includes('.select("id")'));
-  assert.ok(adminQueries.includes("if (persisted?.id)"));
+  // The production bulk path is now Cloudflare-D1-native: it uses a conditional
+  // `RETURNING id` write and only shadows rows whose write actually returned an
+  // id. The retired Supabase `.select("id")` / `persisted?.id` chain is gone.
+  assert.ok(adminQueries.includes("RETURNING id"));
+  assert.ok(adminQueries.includes("result.results?.[0]?.id"));
   assert.ok(!adminQueries.includes("updatedCount === refs.length"));
 
   assert.ok(publicReadAuthoritySource.includes("public_article_projection_p3"));
@@ -298,6 +301,9 @@ test("migration and application contracts cover immutable authority, projection,
     assert.ok(source.includes("@/lib/db/queries") || source.includes("@/lib/search/vector"), `${surface} must use the shared P3-aware repository`);
   }
 
+  // Every legacy mutation path writes through the P3-aware authority: either the
+  // P3 compatibility shadow or, after the Cloudflare-native cutover, a direct
+  // `worldcons_core` D1 write.
   for (const mutationPath of [
     "lib/ingest/run.ts",
     "lib/ingest/summary.ts",
@@ -305,6 +311,10 @@ test("migration and application contracts cover immutable authority, projection,
     "lib/ingest/manual-summary-edit.ts",
     "lib/db/admin-queries.ts",
   ]) {
-    assert.ok(fs.readFileSync(path.join(process.cwd(), mutationPath), "utf8").includes("shadowConfirmedLegacyArticleMutation"));
+    const source = fs.readFileSync(path.join(process.cwd(), mutationPath), "utf8");
+    assert.ok(
+      source.includes("shadowConfirmedLegacyArticleMutation") || source.includes('getRuntimeD1Binding("worldcons_core")'),
+      `${mutationPath} must write through the P3-aware D1 authority`,
+    );
   }
 });
