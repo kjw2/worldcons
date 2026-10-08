@@ -116,7 +116,11 @@ export async function getP5HealthEvidenceFromD1(input: {
         (SELECT COUNT(*) FROM legacy_public) AS legacy_public_count,
         (SELECT COUNT(*) FROM explicit_public) AS explicit_public_count,
         (SELECT COUNT(*) FROM mismatch) AS parity_mismatch_count,
-        (SELECT COUNT(*) FROM article_publication_quarantine_p3) AS quarantine_count,
+        (SELECT COUNT(*) FROM article_publication_quarantine_p3 q
+          WHERE NOT EXISTS (
+            SELECT 1 FROM article_publication_quarantine_resolutions_p3 r
+            WHERE r.article_id = q.article_id AND r.anomaly_code = q.anomaly_code
+          )) AS quarantine_count,
         (SELECT COUNT(*) || ':' || COALESCE((SELECT group_concat(article_id, ',') FROM (SELECT article_id FROM legacy_public ORDER BY article_id)), '') FROM legacy_public) AS legacy_digest,
         (SELECT COUNT(*) || ':' || COALESCE((SELECT group_concat(article_id, ',') FROM (SELECT article_id FROM explicit_public ORDER BY article_id)), '') FROM explicit_public) AS explicit_digest`),
       query(core, `SELECT
