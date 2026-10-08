@@ -74,7 +74,8 @@ import {
 } from "../workers/ops-write/src/index";
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
-import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
+import { runD1PublishArticle, runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
+import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
 
 export { RateLimitBucketDurableObject } from "@/lib/cloudflare/rate-limit/durable-object";
@@ -295,6 +296,38 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
       apiKeys,
       model: input.model?.trim() || env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
     });
+  }
+
+  /**
+   * Per-article publish primitive for the staged pipeline. Unlike
+   * `runPublicationDrain` (an all-pending global batch), this touches exactly
+   * the one article id the caller names, so unrelated pending publications are
+   * never swept up. Idempotent through the P3 request ledger.
+   */
+  async runPublishArticle(input: { articleId: string; actorId?: string }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST });
+    return runD1PublishArticle({ articleId: input.articleId, actorId: input.actorId });
+  }
+
+  /**
+   * Per-article search projection primitive. Unlike `runSearchProjectionSync`
+   * (a full-corpus scan with substantial D1 reads), this updates exactly the
+   * named article's `search_documents`/`search_fts` rows using the same gate2
+   * eligibility and integrity checks.
+   */
+  async runProjectArticle(input: { articleId: string }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_search: env.WORLDCONS_SEARCH });
+    return syncSearchProjectionForArticle(
+      {
+        WORLDCONS_CORE: env.WORLDCONS_CORE as unknown as Parameters<typeof syncSearchProjectionForArticle>[0]["WORLDCONS_CORE"],
+        WORLDCONS_SEARCH: env.WORLDCONS_SEARCH as unknown as Parameters<typeof syncSearchProjectionForArticle>[0]["WORLDCONS_SEARCH"],
+      },
+      input.articleId,
+    );
   }
 
   async runRefreshTagCounts() {

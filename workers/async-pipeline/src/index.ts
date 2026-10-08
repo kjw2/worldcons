@@ -15,6 +15,12 @@ import {
   type M8NativeEnvironment,
 } from "../../../lib/cloudflare/async-pipeline/native-executor";
 import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
+import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../../../lib/cloudflare/ingest-stages/contracts";
+import { ingestStageGateFromEnvironment, isIngestStageEnabled } from "../../../lib/cloudflare/ingest-stages/flags";
+import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
+import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
+import { createIngestStageHandlers, enqueueIngestStageDiscovery } from "./ingest-stage-handlers";
+import type { NativeCrawlerBindings, NativeCrawlerSource } from "./native-crawler";
 import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
@@ -448,6 +454,194 @@ export class WorldconsBackfillPublishWorkflow extends WorkflowEntrypoint<Env, Ba
   }
 }
 
+const STAGE_QUEUE_TO_STAGE: Readonly<Record<string, IngestStage>> = Object.freeze(
+  Object.fromEntries(Object.entries(INGEST_STAGE_QUEUES).map(([stage, queue]) => [queue, stage as IngestStage])),
+);
+
+const STAGE_TO_QUEUE_BINDING: Readonly<Record<IngestStage, keyof Env>> = Object.freeze({
+  discovery: "STAGE_QUEUE_DISCOVERY",
+  crawl: "STAGE_QUEUE_CRAWL",
+  normalize: "STAGE_QUEUE_NORMALIZE",
+  translate: "STAGE_QUEUE_TRANSLATE",
+  "public-judgment": "STAGE_QUEUE_PUBLIC_JUDGMENT",
+  publish: "STAGE_QUEUE_PUBLISH",
+  search: "STAGE_QUEUE_SEARCH",
+});
+
+function stageForQueue(queue: string): IngestStage | null {
+  return STAGE_QUEUE_TO_STAGE[queue] ?? null;
+}
+
+/** The physical stage queue sender for a stage, from the Worker's bindings. */
+function stageQueueSender(env: Env, stage: IngestStage): IngestStageQueueSender {
+  const bindingName = STAGE_TO_QUEUE_BINDING[stage];
+  const binding = env[bindingName] as unknown as IngestStageQueueSender;
+  if (!binding) throw new Error(`ingest_stage.queue_binding_missing:${stage}`);
+  return binding;
+}
+
+function stageCrawlerBindings(env: Env): NativeCrawlerBindings {
+  return {
+    WORLDCONS_CORE: env.WORLDCONS_CORE as unknown as NativeCrawlerBindings["WORLDCONS_CORE"],
+    WORLDCONS_INGEST: env.WORLDCONS_INGEST as unknown as NativeCrawlerBindings["WORLDCONS_INGEST"],
+    WORLDCONS_RAW: env.WORLDCONS_RAW as unknown as NativeCrawlerBindings["WORLDCONS_RAW"],
+  };
+}
+
+/**
+ * Builds the per-stage handler registry for this Worker invocation. Only the
+ * stages with a real implementation are registered; `translate`,
+ * `public-judgment`, `publish` and `search` stay absent (fail closed) until a
+ * real translation / publication / projection adapter is provided. The consumer
+ * then blocks those stages explicitly instead of faking completion.
+ */
+/**
+ * The `worldcons` Worker's `WorldconsOpsService` methods the staged handlers
+ * call per item. Every method is scoped to exactly one article id.
+ */
+interface WorldconsOpsStageService {
+  runSummaryArticle(input: { articleId: string; model?: string }): Promise<{
+    result?: { status?: "summarized" | "failed" | "skipped"; retryable?: boolean; errorMessage?: string; reason?: string };
+  }>;
+  runPublishArticle(input: { articleId: string; actorId?: string }): Promise<{
+    published: boolean;
+    skippedReason?: "not_found" | "ineligible" | null;
+    versionId?: string | null;
+    state?: string | null;
+  }>;
+  runProjectArticle(input: { articleId: string }): Promise<{ desiredEligible: boolean; documentCount: number; ftsCount: number }>;
+}
+
+/**
+ * Builds the per-stage handler registry for this Worker invocation.
+ *
+ * `discovery`/`crawl`/`normalize` reuse the audited native crawler path.
+ * `translate`/`publish`/`search` are backed by the `worldcons` Worker service
+ * binding, which runs the real per-item `runSummaryArticle`, per-article P3
+ * publication and per-article search projection — never a whole-queue drain.
+ * `public-judgment` is a local fail-closed authority gate over the core DB.
+ * A stage whose adapter is genuinely absent stays unregistered so the consumer
+ * fails closed rather than faking completion.
+ */
+function ingestStageHandlersFor(env: Env): IngestStageHandlerRegistry {
+  const appService = env.WORLDCONS_APP_SERVICE as unknown as WorldconsOpsStageService;
+  return createIngestStageHandlers({
+    crawlerBindings: stageCrawlerBindings(env),
+    rawBucket: env.WORLDCONS_RAW as unknown as Parameters<typeof createIngestStageHandlers>[0]["rawBucket"],
+    browserNavigate: (input) => browserNavigate(input, env.BROWSER),
+    translation: {
+      async summarize(articleId) {
+        const response = await appService.runSummaryArticle({ articleId });
+        const result = response?.result;
+        const status = result?.status;
+        if (status === "summarized") return { status: "summarized" };
+        if (status === "skipped") return { status: "skipped", errorCode: "ingest_stage.translate_skipped", errorSummary: result?.reason ?? null };
+        if (status === "failed") return { status: "failed", retryable: result?.retryable, errorCode: "ingest_stage.translate_failed", errorSummary: result?.errorMessage ?? null };
+        // An unrecognised response is treated as an unavailable service, not a
+        // success; the caller then fails closed instead of fabricating work.
+        return { status: "unavailable", errorCode: "ingest_stage.translate_unavailable", errorSummary: "Summary service returned no recognized result." };
+      },
+    },
+    publication: {
+      async publish(articleId) {
+        const response = await appService.runPublishArticle({ articleId, actorId: "ingest-stage-publish" });
+        if (!response.published) return { published: false, skippedReason: response.skippedReason ?? "ineligible" };
+        return { published: true, versionId: response.versionId ?? null, state: response.state ?? null };
+      },
+    },
+    search: {
+      async project(articleId) {
+        const response = await appService.runProjectArticle({ articleId });
+        if (!response.desiredEligible) {
+          return { projected: false, errorCode: "ingest_stage.search_article_not_eligible", errorSummary: "Article is not an eligible published search source." };
+        }
+        return { projected: true, documentCount: response.documentCount, ftsCount: response.ftsCount };
+      },
+    },
+  });
+}
+
+function boundedStageInteger(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+/**
+ * The staged-pipeline scheduled tick. It is a no-op unless the stage rollout
+ * gate explicitly enables at least one stage (default OFF). When enabled it:
+ *   1. reconciles bounded pending dispatch-outbox rows (a crash between the D1
+ *      commit and the Queue send is replayed here), then
+ *   2. runs one bounded dispatch pass per enabled stage.
+ *
+ * It never completes a job and never touches the legacy M8 path.
+ */
+async function runIngestStageScheduled(controller: ScheduledController, env: Env): Promise<void> {
+  const gate = ingestStageGateFromEnvironment(env as unknown as Record<string, string | undefined>);
+  const enabled = INGEST_STAGE_NAMES.filter((stage) => isIngestStageEnabled(gate, stage));
+  if (enabled.length === 0) return;
+  setRuntimeD1Bindings({
+    worldcons_core: env.WORLDCONS_CORE,
+    worldcons_ingest: env.WORLDCONS_INGEST,
+    worldcons_ops: env.WORLDCONS_OPS,
+    worldcons_search: env.WORLDCONS_SEARCH,
+  });
+  const now = new Date(controller.scheduledTime).toISOString();
+  const limit = boundedStageInteger(env.WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT, 25, 1, 100);
+  const leaseSeconds = boundedStageInteger(env.WORLDCONS_INGEST_STAGE_LEASE_SECONDS, 300, 30, 3600);
+  const workerId = `worldcons-ingest:${controller.cron}:${now}`;
+  try {
+    const reconciliation = await reconcileIngestStageDispatch({
+      ingestDb: env.WORLDCONS_INGEST,
+      queueFor: (stage) => stageQueueSender(env, stage),
+      limit: Math.min(limit * 4, 200),
+      now,
+    });
+    const passes = [];
+    for (const stage of enabled) {
+      passes.push(await dispatchIngestStagePass({
+        ingestDb: env.WORLDCONS_INGEST,
+        queue: stageQueueSender(env, stage),
+        stage,
+        workerId,
+        limit,
+        leaseSeconds,
+        now,
+      }));
+    }
+    console.log(JSON.stringify({ event: "ingest_stage_dispatch", cron: controller.cron, reconciliation, passes }));
+  } catch (error) {
+    console.error(JSON.stringify({ event: "ingest_stage_dispatch_failed", cron: controller.cron, error: error instanceof Error ? error.message.slice(0, 300) : String(error) }));
+  }
+}
+
+/**
+ * Seeds durable discovery jobs for the configured sources. Runs only on the
+ * dedicated stage-bootstrap cron and only when the `discovery` stage is enabled.
+ * The dispatcher then fans the actual crawl work out; this function performs no
+ * network collection itself.
+ */
+async function runIngestStageDiscoveryBootstrap(controller: ScheduledController, env: Env): Promise<void> {
+  const gate = ingestStageGateFromEnvironment(env as unknown as Record<string, string | undefined>);
+  if (!isIngestStageEnabled(gate, "discovery")) return;
+  const now = new Date(controller.scheduledTime).toISOString();
+  try {
+    const enqueued: Array<{ sourceKey: string; created: boolean }> = [];
+    const rawBucket = env.WORLDCONS_RAW as unknown as Parameters<typeof enqueueIngestStageDiscovery>[1];
+    for (const sourceKey of NATIVE_CRAWLER_SOURCES) {
+      const { created } = await enqueueIngestStageDiscovery(env.WORLDCONS_INGEST, rawBucket, {
+        sourceKey: sourceKey as NativeCrawlerSource,
+        limit: 20,
+        now,
+      });
+      enqueued.push({ sourceKey, created });
+    }
+    console.log(JSON.stringify({ event: "ingest_stage_discovery_bootstrap", cron: controller.cron, enqueued }));
+  } catch (error) {
+    console.error(JSON.stringify({ event: "ingest_stage_discovery_bootstrap_failed", cron: controller.cron, error: error instanceof Error ? error.message.slice(0, 300) : String(error) }));
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
@@ -475,6 +669,17 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env) {
+    // Staged-ingestion pipeline entries. These are ownership-separated from the
+    // M8 gate: they are no-ops unless the stage rollout gate (default OFF)
+    // enables the relevant stage, and they never complete a job or touch the
+    // legacy M8 path. The frequent cron drives dispatch/reconciliation; the
+    // daily crawler cron seeds discovery requests.
+    if (controller.cron === "*/15 * * * *") {
+      await runIngestStageScheduled(controller, env);
+    }
+    if (controller.cron === "0 21 * * *") {
+      await runIngestStageDiscoveryBootstrap(controller, env);
+    }
     const policy = gate(env);
     if (!policy.schedulerEnabled) {
       console.log(JSON.stringify({ event: "m8_schedule_skipped", reason: "disabled", cron: controller.cron }));
@@ -509,6 +714,19 @@ export default {
   },
 
   async queue(batch: MessageBatch<M8TaskMessage>, env: Env) {
+    const stage = stageForQueue(batch.queue);
+    if (stage) {
+      await consumeIngestStageBatch(batch, {
+        gate: ingestStageGateFromEnvironment(env as unknown as Record<string, string | undefined>),
+        ingestDb: env.WORLDCONS_INGEST as unknown as Parameters<typeof consumeIngestStageBatch>[1]["ingestDb"],
+        coreDb: env.WORLDCONS_CORE as unknown as Parameters<typeof consumeIngestStageBatch>[1]["coreDb"],
+        now: new Date().toISOString(),
+        handlers: ingestStageHandlersFor(env),
+        env,
+        invalidRetryDelaySeconds: M8_INVALID_RETRY_DELAY_SECONDS,
+      });
+      return;
+    }
     const policy = gate(env);
     const reason = policy.schedulerEnabled ? (policy.policy.reason ?? "kind_not_allowed") : "scheduler_disabled";
     const plan = planM8QueueBatch<Message<M8TaskMessage>>(

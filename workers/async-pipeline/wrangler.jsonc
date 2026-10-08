@@ -29,7 +29,12 @@
     "PUBLICATION_DRAIN_LIMIT": "100",
     "CASE_CATALOG_GERMANY_HISTORY_ENABLED": "true",
     "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es",
-    "SITE_ANALYTICS_RETENTION_DAYS": "90"
+    "SITE_ANALYTICS_RETENTION_DAYS": "90",
+    "WORLDCONS_INGEST_STAGES_ENABLED": "false",
+    "WORLDCONS_INGEST_STAGE_ENVIRONMENT": "production",
+    "WORLDCONS_INGEST_STAGE_ALLOWLIST": "",
+    "WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT": "25",
+    "WORLDCONS_INGEST_STAGE_LEASE_SECONDS": "300"
   },
   "triggers": {
     "crons": [
@@ -44,7 +49,14 @@
   },
   "queues": {
     "producers": [
-      { "binding": "ASYNC_QUEUE", "queue": "worldcons-async-v1" }
+      { "binding": "ASYNC_QUEUE", "queue": "worldcons-async-v1" },
+      { "binding": "STAGE_QUEUE_DISCOVERY", "queue": "worldcons-stage-discovery-v1" },
+      { "binding": "STAGE_QUEUE_CRAWL", "queue": "worldcons-stage-crawl-v1" },
+      { "binding": "STAGE_QUEUE_NORMALIZE", "queue": "worldcons-stage-normalize-v1" },
+      { "binding": "STAGE_QUEUE_TRANSLATE", "queue": "worldcons-stage-translate-v1" },
+      { "binding": "STAGE_QUEUE_PUBLIC_JUDGMENT", "queue": "worldcons-stage-public-judgment-v1" },
+      { "binding": "STAGE_QUEUE_PUBLISH", "queue": "worldcons-stage-publish-v1" },
+      { "binding": "STAGE_QUEUE_SEARCH", "queue": "worldcons-stage-search-v1" }
     ],
     "consumers": [
       {
@@ -54,6 +66,69 @@
         "max_retries": 3,
         "retry_delay": 60,
         "dead_letter_queue": "worldcons-async-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-discovery-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-discovery-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-crawl-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-crawl-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-normalize-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-normalize-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-translate-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-translate-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-public-judgment-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-public-judgment-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-publish-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-publish-dlq-v1",
+        "max_concurrency": 1
+      },
+      {
+        "queue": "worldcons-stage-search-v1",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "worldcons-stage-search-dlq-v1",
         "max_concurrency": 1
       }
     ]

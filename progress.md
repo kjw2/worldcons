@@ -1,6 +1,78 @@
 # Progress
 
-프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX, DB 기반 이용 통계 화면, 접속 정보 수집, 기본 rate limit까지 완료했다. 2026-05-24 재전수 조사에서 자동 수집/요약 무인운영, 7일 범위 재수집, 기존 원문 리프레시, 미국/독일/프랑스 수집원별 주의사항, 태그 갱신 CLI 종료 오류까지 완료했다.
+## 2026-10-08 staged pipeline M6 / M7 local reliability (partial)
+
+- M6 implemented: transactional D1 batch for parent-success + next-stage job
+  registration + stage events; stale/expired leases cannot complete;
+  exhausted crashed leases become dead_letter on bounded scan; daily discovery
+  and per-record crawl seed a new identity on each UTC day. Physical Queue
+  message IDs use the SHA-256 of the full job key to avoid 100-char collisions.
+- Fake full-chain test plus crash-injected handoff, stale-fence and budget
+  tests: pnpm test:ingest-stages 41/41. M8 40/40, native-crawler 10/10,
+  ingest-workflow 16/16, root and Worker TS checks, Wrangler types check and
+  dry-run all pass.
+- Still blocked: four unrelated baseline release checks
+  (test:p3, test:d1-case-catalog, test:reference-reads, pnpm check).
+  Permissioned DLQ redrive and remote production verification not done.
+- No commit, push, remote DB write, queue creation or deployment. Staged
+  feature flags remain disabled. See
+  docs/worldcons-staged-ingest-m6-m7-local-verification-20261008.md.
+
+프로젝트 전수 조사 기준으로 발견한 미구현, 부분 구현, 미연결, 오류 가능성, 개선 사항을 모두 처리했다. 이후 긴급 수집 파이프라인 수정 기준으로 공개 가능성 정책을 재정의했고, seed/blocked/timeout/robots_disallowed 데이터가 요약 또는 홈 노출되지 않도록 추가 보강했다. 2026-05-10 재감사에서 빌드/린트 멈춤, 빌드 시점 DB 고정, article diagnostics 오염, 문서상 미완성 표현을 해소했다. 2026-05-16 재전수 조사에서 검색 API 500, Crawlee robots 준수 미연결, lint 루트 스캔 지연, 상세 페이지 캐시 잔존, QPC360 canonical 중복 가능성, JSON-LD script escape 누락, Gemini route false exhaustion, 공개 자료 수동 재요약 UX, DB 기반 이용 통계 화면, 접속 정보 수집, 기본 rate limit까지 완료했다. 2026-05-24 재전수 조사에서 자동 수집/요약 무인운영, 7일 범위 재수집, 기존 원문 리프레시, 미국/독일/프랑스 수집원별 주의사항, 태그 갱신 CLI 종료 오류까지 완료했다. 2026-10-08 단계별 수집 파이프라인 M0~M2(durable stage job schema, stable contract, request validation, indexed dispatcher claim+enqueue/outbox, cross-D1 bridge, stage queue consumer scaffolding)를 로컬 구현·검증했다.
+
+## 2026-10-08 Staged Ingestion Pipeline M0-M2 (local code only)
+
+| ID | Priority | Area | Requirement | 처리 내용 | Status | Progress |
+| --- | --- | --- | --- | --- | --- | --- |
+| SP-01 | P0 | Durable stage schema | stages discovery→crawl→normalize→translate→public-judgment→publish→search를 durable DB source-of-truth로 | `d1/worldcons_ingest/0003_ingest_stage_jobs.sql`에 `ingest_stage_jobs`, `ingest_stage_job_events`, `ingest_stage_dispatch_outbox`, `ingest_core_bridge_outbox` 추가 | Done | 100% |
+| SP-02 | P0 | Cross-D1 bridge | 물리적으로 다른 D1 간 transaction 불가 → idempotent/safe bridge | `d1/worldcons_core/0003_ingest_core_bridge_ledger.sql`의 `unique(bridge_key)` ledger + `applyIngestCoreBridgeOnCore` 재적용 no-op | Done | 100% |
+| SP-03 | P0 | Stable contract | idempotency key(articleId,stage,sourceVersion,contentHash), ID-only Queue body, request validation | `lib/cloudflare/ingest-stages/contracts.ts` + `flags.ts`(기본 OFF, Production-only, allowlist fail-closed) | Done | 100% |
+| SP-04 | P0 | Dispatcher claim | 단일 dispatcher가 단계별 pending/expired-lease만 per-status index/bounded LIMIT으로 claim | `repository.ts` indexed claim + conditional UPDATE fencing, `dispatcher.ts` pass | Done | 100% |
+| SP-05 | P0 | Durable outbox | D1→Queue 비원자 enqueue를 outbox로 보존/replay | `outbox.ts` + `reconcileIngestStageDispatch` | Done | 100% |
+| SP-06 | P1 | Queue consumers | 단계별 queue bindings + consumer entrypoint scaffolding | `workers/async-pipeline/wrangler.jsonc` 7 stage queue + `ingest-stage-consumer.ts` + Worker `queue` 분기 | Done | 100% |
+| SP-07 | P1 | Unit tests | 계약/claim/outbox/bridge/dispatcher/consumer 검증 | `tests/ingest-stage-pipeline.test.ts` 18/18 pass | Done | 100% |
+
+Verification: `tsc --noEmit` pass, `pnpm m8:typecheck` pass, `pnpm m8:types:check` pass, `pnpm m8:dry-run` pass(stage queue 7개 bound), `pnpm test:ingest-stages` 18/18, 기존 `test:m8`, `test:native-crawler`, D1 schema/migrate/apply/provision, `d1-convert/import`, `search-projection-sync`, `summary-drain` 회귀 pass. 기존 M8 consumer/Queue/Cron/데이터/권위는 미변경. `pnpm check`/`pnpm lint` 실패는 base commit에 이미 존재하는 `native-crawler.ts` prefer-const 및 article detail ISR 검사로 이번 변경과 무관함을 stash 비교로 확인.
+
+## 2026-10-08 Staged Ingestion Pipeline M3-M5 (local code only)
+
+M0-M2 감사 결과 발견한 안전성 결함을 수정하고, 실제 단계별 비즈니스 핸들러(Discovery→Crawl→Normalize)와 scheduler/outbox 연결을 구현했다. Feature flag는 기본 OFF 유지, 배포/원격 DB 쓰기/실결제 AI 호출 없음.
+
+| ID | Priority | Area | 발견/요구 | 처리 내용 | Status | Progress |
+| --- | --- | --- | --- | --- | --- | --- |
+| SM-01 | P0 | Fencing token | claim된 job의 Queue 메시지에 fencing token 부재 → stale worker가 완료 가능 | `IngestStageQueueMessage`에 `fencingToken` 추가·검증, dispatcher가 claim token을 payload에 실어 보냄 | Done | 100% |
+| SM-02 | P0 | False-complete | dispatcher가 outbox가 dispatched라는 이유만으로 job을 완료 처리 | dispatcher는 절대 job을 `succeeded`로 만들지 않음. outbox가 현재 fence로 dispatched면 skip, 이전 fence면 re-arm 후 재전송. consumer만 durable completion 수행 | Done | 100% |
+| SM-03 | P0 | Lease ownership | consumer가 handler/job 부재·stale token 시 live pending job을 조용히 ack | consumer가 `leased` + 정확한 token일 때만 완료. pending/미소유는 retry, terminal은 ack, token 불일치는 ack(stale), handler 부재는 `handler_missing`으로 명시적 dead_letter | Done | 100% |
+| SM-04 | P0 | Next-job fail-closed | 다음 단계 핸들러 미배선인데도 next job을 생성 | `completeStageAndRegisterNext(registerNext)` 추가, consumer는 handle이 있는 다음 단계만 등록. `translate`/`public-judgment`는 무핸들러 → 명시적 block | Done | 100% |
+| SM-05 | P0 | Real handlers | 더미 ack/no-op 파이프라인 | `ingest-stage-handlers.ts`: discovery는 공식 listing parser로 후보 fan-out, crawl은 단일 레코드 targeted fetch(전체 국가 크롤 아님), normalize는 audited `persistNativeStageRecord` 경로로 정확히 1건 정규화. metadata_only/unverified origin 자동공개 불가 | Done | 100% |
+| SM-06 | P0 | Scheduler wiring | dispatcher scheduled entry/outbox reconciliation 미연결 | `runIngestStageScheduled`(기존 `*/15` cron) + `runIngestStageDiscoveryBootstrap`(기존 `0 21` crawler cron). 신규 cron 미추가(M8 cron 계약 유지), gate OFF면 no-op | Done | 100% |
+| SM-07 | P0 | Reconcile queue routing | reconcile가 항상 단일 queue를 사용해 stage 오배송 가능 | `reconcileIngestStageDispatch`가 payload stage별 `queueFor(stage)`로 정확한 물리 queue 선택 | Done | 100% |
+| SM-08 | P1 | Targeted crawl | 국가 전체 크롤러를 단일 레코드에 재사용 | `discoverNativeStageCandidates`/`crawlNativeStageCandidate`/`persistNativeStageRecord`를 native-crawler에서 export, crawl handler는 정확히 1개 후보만 fetch. 404/429/5xx/timeout은 bounded retry, robots 불허는 explicit block | Done | 100% |
+| SM-09 | P1 | Fake E2E tests | 단계별 isolated fake E2E 필요 | `tests/ingest-stage-handlers.test.ts` 9/9: discovery→crawl→normalize 실제 서비스 연결, duplicate-delivery, handler-missing, lease-expiry/fencing, outbox retry, bootstrap no-network | Done | 100% |
+| SM-10 | P2 | Publish/Search adapters | publish/search 핸들러는 실제 adapter 주입 시에만 배선 | `createIngestStageHandlers({publication,search})` 옵션. Worker는 미주입 → fail-closed. 번역/공개 판단은 미배선(의도적) | Partial | 40% |
+
+Verification: `pnpm exec tsc --noEmit` pass, `pnpm m8:typecheck` pass, `pnpm m8:types:check` pass(재생성), `pnpm m8:dry-run` pass(stage queue 7개 bound), `pnpm test:ingest-stages` 27/27(기존 18 + 신규 9), `pnpm test:native-crawler` 10/10, `pnpm test:m8` 40/40, `pnpm test:ingest-workflow` 16/16, D1 schema/migrate/convert/import 회귀 pass. `pnpm exec eslint` 신규 파일 경고 0(잔여 `native-crawler.ts` prefer-const/미사용 경고는 base commit에 이미 존재).
+
+Blocked/Partial: (1) `translate`/`public-judgment` 실제 핸들러는 미배선 — 기존 P3 publication/translation 서비스와의 정확한 per-article 통합 및 실 LLM 없이 검증 가능한 계약 확정 후 진행 필요, 현재는 명시적 dead_letter로 fail-closed. (2) `publish`/`search` 핸들러는 adapter 인터페이스만 제공(Worker 미주입). 이는 무결성 보호를 위한 의도적 fail-closed이며 거짓 완료가 아님. (3) 배포/원격 DB/실 AI 호출은 요구대로 수행하지 않음.
+
+## 2026-10-08 Staged Ingestion Pipeline M4-M5 (translate → public-judgment → publish → search, local code only)
+
+M3까지의 discovery→crawl→normalize 위에 translate→public-judgment→publish→search 단계를 실제 per-article 서비스로 연결했다. Feature flag는 기본 OFF 유지, 원격 DB 쓰기/실 LLM 호출/배포/푸시 없음. 모든 완료 판정은 durable effect 재확인 기반이며, 어느 단계도 거짓 succeeded를 만들지 않는다.
+
+| ID | Priority | Area | 발견/요구 | 처리 내용 | Status | Progress |
+| --- | --- | --- | --- | --- | --- | --- |
+| SM4-01 | P0 | Canonical identity | normalize가 sourceVersion/hash만 바꾸고 canonical core articleId를 하류로 전달하지 않아 translate 이후가 `native:` 후보 ID를 참조할 수 있음 | `IngestStageHandlerOutcome.nextArticleId` + dispatcher `completeStageAndRegisterNext`/consumer 배선. normalize가 audited persist가 돌려준 verified core UUID를 채택하고, advance 이벤트에 `resolvedArticleId`/`fromArticleId` provenance 기록. persist가 id를 못 풀면 explicit block | Done | 100% |
+| SM4-02 | P0 | Translate durable effect | 성공 API 응답만으로는 부족 | worker 서비스 `runSummaryArticle({articleId})` per-item 호출 후 core DB에서 status='summarized'/summary_json/korean_title/translated + verified provenance(content_hash) 재확인. 429/timeout/5xx는 bounded retry, source_only/metadata_only/robots/미검증/비가역 실패는 blocked | Done | 100% |
+| SM4-03 | P0 | Public gate | P3/CaseCatalog 권위·공개 gate 우회 금지, partial publication 금지 | `evaluatePublicJudgment`가 summarized+summary+korean title+translation+publishable/verified source text+review state+catalog.sourceOnly를 fail-closed로 검사하고, Case Catalog published head 존재 시 anchor `source_content_hash`==enrichment_full `enrichment_source_content_hash` gate2 조건까지 재사용. 불일치/누락은 dead_letter block | Done | 100% |
+| SM4-04 | P0 | Per-article publish | `runD1PublicationDrain(limit 1)`은 전역 all-pending batch라 다른 판례 side effect 위험 | `runD1PublishArticle({articleId})` 추출: 공유 `P3_PUBLICATION_ELIGIBLE_PREDICATE` + 동일 `articlePublicationService.transition`으로 정확히 1건만 published 전이. versionId/state/revision 확정 검증, idempotent(이미 published면 idempotent success), 타 판례 무영향 | Done | 100% |
+| SM4-05 | P0 | Per-article search | full `runNativeSearchProjectionSync`는 전체 D1 read | `syncSearchProjectionForArticle`가 동일 gate2 predicate/build/incremental plan/page verify 재사용, 정확히 1 articleId의 search_documents/search_fts를 원자 갱신. eligible 1건/제외 시 0건 무결성 assert, 변경 없으면 no-op. 구현은 `lib/cloudflare/search-projection/d1-sync.ts`로 이동(공유) | Done | 100% |
+| SM4-06 | P0 | Worker 배선 | worker가 publish/search adapter 미주입이었음 | `WorldconsOpsService`에 `runPublishArticle`/`runProjectArticle` 추가, `workers/async-pipeline/src/index.ts`가 `WORLDCONS_APP_SERVICE`로 translate/publish/search per-item adapter 주입. public-judgment는 core DB 로컬 gate. 미배선 단계는 여전히 fail-closed | Done | 100% |
+| SM4-07 | P1 | Tests | 실제 per-item 서비스 fake SQLite D1/R2 + mock LLM 검증 | `tests/ingest-stage-handlers.test.ts` J~P: 7단계 전 구간 1-case, durable effect 누락 block, metadata_only/미검증 거부, Catalog anchor hash mismatch 차단, ineligible publish block, per-article isolation, duplicate publish idempotent. `tests/ingest-stage-article-services.test.ts`: `runD1PublishArticle` 1건 격리/멱등/ineligible, `syncSearchProjectionForArticle` 1건 projection/멱등/withdraw 제거. 총 37/37 | Done | 100% |
+| SM4-08 | P1 | Crash/lease/fencing | dispatcher/consumer fencing·lease·outbox·bridge crash window 유지 검증 | M3 계약 유지: dispatcher는 job을 succeeded로 만들지 않고, consumer만 정확한 fence에서 durable completion. outbox reconcile/next-articleId 재사용 | Done | 100% |
+
+Verification: `pnpm exec tsc --noEmit` pass, `pnpm m8:typecheck` pass, `pnpm m8:types:check` up to date(재생성), `pnpm m8:dry-run` pass(stage queue 7개 + WORLDCONS_APP_SERVICE bound), `pnpm test:ingest-stages` 37/37(J~P 7 추가), `pnpm test:m8` 40/40, `pnpm test:native-crawler` 10/10, `pnpm test:ingest-workflow` 16/16, `summary-drain-d1` 8/8, `m9-search-service`/`m8-async-pipeline` 34/34, `search-projection-sync` 2/2, `test:d1-schema` 19, `test:d1-convert` 10, `test:d1-migrate` 18, `test:d1-provision` 20, `test:d1-apply-schema` 15, `test:d1-search-projection` 15 pass. 신규/변경 파일 eslint error 0(잔여 `native-crawler.ts` prefer-const/미사용 경고는 base HEAD에 이미 존재).
+
+Blocked/Partial: (1) 실 LLM/원격 DB/배포/푸시는 요구대로 미수행 — 실 Gemini·프로덕션 D1/R2 없이 fake service binding + fake SQLite로만 검증. (2) translate는 worker 서비스 응답의 `result.status`를 신뢰하되 반드시 core 재확인으로 이중 검증하며, 실 LLM quota 상황의 실제 retry 타이밍은 배포 환경에서만 관측 가능. (3) `pnpm test:p3`의 `article-publication-p3.test.ts` 1건, `test:d1-case-catalog`, `test:reference-reads`의 실패는 base commit(`git stash` 비교)에 이미 존재하며 이번 변경과 무관함을 확인.
 
 ## 2026-05-24 Full Audit Remediation
 

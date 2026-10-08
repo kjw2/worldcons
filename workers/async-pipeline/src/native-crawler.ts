@@ -19,6 +19,8 @@ type NativeArticleCandidate = {
   metadata: Record<string, unknown>;
 };
 
+export type { NativeArticleCandidate };
+
 type NativeCrawlerPreparedStatement = {
   bind(...values: unknown[]): NativeCrawlerPreparedStatement;
   first<T = unknown>(): Promise<T | null>;
@@ -601,7 +603,17 @@ async function upsertCandidate(db: NativeCrawlerDatabase, source: NativeCrawlerS
     .bind(crypto.randomUUID(), source, url, success ? "fetched" : "retrying", now, code, message?.slice(0, 500) ?? null, now, now).run();
 }
 
-async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string) {
+export type NativePersistOutcome = "duplicate" | "preserved" | "unchanged" | "refreshed" | "inserted";
+
+export interface NativePersistResult {
+  outcome: NativePersistOutcome;
+  articleId: string | null;
+  canonicalUrl: string;
+  contentHash: string;
+  status: string;
+}
+
+async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string): Promise<NativePersistResult> {
   const core = bindings.WORLDCONS_CORE;
   const canonical = canonicalUrl(candidate.url, candidate.url);
   const clean = cleanText(text);
@@ -611,18 +623,18 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const lifecycleBefore = existing ? await readArticleLifecycleFromD1(core as unknown as D1RuntimeDatabase, String(existing.id)) : null;
   if (lifecycleBefore && !lifecycleBefore.ok) throw new Error("crawler.lifecycle_read_failed");
   const duplicate = existing ? null : await core.prepare("SELECT id FROM articles WHERE content_hash = ? LIMIT 1").bind(contentHash).first<{ id: string }>();
-  if (duplicate) return "duplicate";
+  if (duplicate) return { outcome: "duplicate", articleId: duplicate.id, canonicalUrl: canonical, contentHash, status };
   const oldMetadata = (() => { try { return JSON.parse(String(existing?.source_metadata ?? "{}")) as Record<string, unknown>; } catch { return {}; } })();
   const metadata = { ...oldMetadata, ...candidate.metadata, collection: { ...(oldMetadata.collection as Record<string, unknown> ?? {}), ...(candidate.metadata.collection as Record<string, unknown>), diagnosticsId: runId, source: SOURCE_INFO[candidate.sourceKey].baseUrl }, ingestion: { runId, crawler: "worldcons-ingest-native-v1", fetchedAt } };
   const data = JSON.stringify(metadata);
   const oldTextLength = String(existing?.cleaned_text ?? "").trim().length;
   const publicWasPublishable = existing?.status === "summarized" && (oldMetadata.collection as Record<string, unknown> | undefined)?.publishable === true;
   const regression = Boolean(existing && publicWasPublishable && (status !== "cleaned" || clean.length < Math.max(500, Math.floor(oldTextLength * 0.6))));
-  if (regression) return "preserved";
+  if (regression) return { outcome: "preserved", articleId: String(existing?.id ?? ""), canonicalUrl: canonical, contentHash, status };
   if (existing && existing.content_hash === contentHash) {
     await core.prepare("UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, source_metadata=?, updated_at=? WHERE id=?")
       .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, data, fetchedAt, existing.id).run();
-    return "unchanged";
+    return { outcome: "unchanged", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
   }
   const rawBytes = new TextEncoder().encode(JSON.stringify(text));
   const rawHash = await sha256(rawBytes);
@@ -640,7 +652,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
     const before = lifecycleBefore.data;
     const collectionState = status === "cleaned" ? "source_text_ready" : "metadata_only";
     const processingState = status === "cleaned" ? "ready" : "not_ready";
-    if (status !== "cleaned" && before.processingState === "complete") return "preserved";
+    if (status !== "cleaned" && before.processingState === "complete") return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
     const lifecycleChanged = before.collectionState !== collectionState
       || before.processingState !== processingState
       || (status === "needs_review" && before.reviewState !== "closed_private" && before.reviewState !== "needs_review")
@@ -661,14 +673,14 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
         ...(status === "cleaned" && before.attentionState === "active" && before.attentionCode === "collection.metadata_only" ? { attention: { operation: "clear" as const, resolvesCodes: ["collection.metadata_only"] } } : {}),
         ...(status === "metadata_only" ? { attention: { operation: "raise" as const, code: "collection.metadata_only", retryable: true, severity: "low" as const, source: "collection" as const } } : {}),
       });
-      if (!after.ok) return "preserved";
+      if (!after.ok) return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
     }
     await core.prepare(`UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, summarized_at=NULL, status=?, korean_title=NULL, summary_json=NULL,
       translation_status=?,translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
       translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
       cleaned_text=?, content_hash=?, source_metadata=?, raw_text_storage_ref=?, raw_text_blob_hash=?, raw_text_blob_size=?, raw_text_externalized_at=?, raw_text_blob_contract_version=?, review_state=?, updated_at=? WHERE id=?`)
       .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, legacyStatus, translationStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id).run();
-    return "refreshed";
+    return { outcome: "refreshed", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
   }
   const id = crypto.randomUUID();
   const source = await core.prepare("SELECT id FROM sources WHERE source_key=? LIMIT 1").bind(candidate.sourceKey).first<{ id: string }>();
@@ -690,7 +702,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   });
   if (!lifecycle.ok) throw new Error(`crawler.lifecycle_transition_failed:${lifecycle.error.code}`);
   if (status === "needs_review") await core.prepare("UPDATE articles SET review_state=? WHERE id=?").bind("needs_triage", id).run();
-  return "inserted";
+  return { outcome: "inserted", articleId: id, canonicalUrl: canonical, contentHash, status };
 }
 
 function effectiveRange(source: NativeCrawlerSource, now: Date, configured?: number) {
@@ -878,7 +890,8 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
           fetchedCount += 1;
           await upsertCandidate(bindings.WORLDCONS_INGEST, source, candidate.url, null, null, true);
         }
-        const outcome = await persistArticle(bindings, candidate, fetched.text, runId, fetchedAt);
+        const persisted = await persistArticle(bindings, candidate, fetched.text, runId, fetchedAt);
+        const outcome = persisted.outcome;
         if (outcome === "inserted") insertedCount += 1;
         else if (outcome === "refreshed") refreshedCount += 1;
         else if (outcome === "unchanged") unchangedCount += 1;
@@ -920,4 +933,136 @@ export function parseNativeSourceListing(source: NativeCrawlerSource, html: stri
   if (source === "fr-conseil-constitutionnel") return discoverFrance(html, baseUrl);
   if (source === "us-scotus") return discoverScotus(html, baseUrl);
   return discoverSpain(html, baseUrl);
+}
+
+/** A compact, serializable description of one discovered target record. */
+export interface NativeStageCandidate {
+  sourceKey: NativeCrawlerSource;
+  url: string;
+  title: string;
+  publishedAt?: string;
+  contentType: NativeArticleCandidate["contentType"];
+  metadata: Record<string, unknown>;
+}
+
+export interface NativeStageCrawlResult {
+  fetched: boolean;
+  status: number;
+  text: string;
+  canonicalUrl: string;
+  candidate: NativeStageCandidate;
+}
+
+/** Stable per-record identity used as the durable stage-job article id. */
+export async function nativeStageCandidateId(sourceKey: string, canonicalUrl: string): Promise<string> {
+  return `native:${(await sha256(`${sourceKey}\u001f${canonicalUrl}`)).slice(0, 32)}`;
+}
+
+/** Deterministic R2 key for the crawl stage's raw fetched artifact. */
+export function nativeStageCrawlArtifactKey(sourceKey: string, contentHash: string): string {
+  return `stages/ingest-crawl/${sourceKey}/${contentHash}.json`;
+}
+
+export function parseNativeStageCandidate(value: unknown): NativeStageCandidate | null {
+  let candidate = value;
+  if (typeof candidate === "string") {
+    try { candidate = JSON.parse(candidate); } catch { return null; }
+  }
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+  const record = candidate as Record<string, unknown>;
+  if (typeof record.sourceKey !== "string" || !(NATIVE_CRAWLER_SOURCES as readonly string[]).includes(record.sourceKey)) return null;
+  if (typeof record.url !== "string" || !record.url) return null;
+  if (typeof record.title !== "string") return null;
+  if (record.contentType !== "decision" && record.contentType !== "opinion" && record.contentType !== "order") return null;
+  if (record.publishedAt !== undefined && typeof record.publishedAt !== "string") return null;
+  if (record.metadata !== undefined && (typeof record.metadata !== "object" || record.metadata === null || Array.isArray(record.metadata))) return null;
+  return {
+    sourceKey: record.sourceKey as NativeCrawlerSource,
+    url: record.url,
+    title: record.title,
+    ...(record.publishedAt ? { publishedAt: record.publishedAt } : {}),
+    contentType: record.contentType,
+    metadata: (record.metadata as Record<string, unknown> | undefined) ?? {},
+  };
+}
+
+/**
+ * Discovers the bounded set of candidate records for one source using the real
+ * official listing parsers. This is the *discovery stage* input: it returns
+ * candidates to be fetched one-by-one by the crawl stage, and never fetches the
+ * article bodies itself.
+ */
+export async function discoverNativeStageCandidates(
+  source: NativeCrawlerSource,
+  bindings: NativeCrawlerBindings,
+  options: { fetch?: typeof fetch; now?: Date; limit?: number; rangeDays?: number; browserNavigate?: CrawlerOptions["browserNavigate"] },
+): Promise<NativeStageCandidate[]> {
+  const fetcher = options.fetch ?? fetch;
+  const now = options.now ?? new Date();
+  const limit = Math.max(1, Math.min(20, Math.trunc(options.limit ?? 20)));
+  const rangeDays = effectiveRange(source, now, options.rangeDays);
+  const rangeStart = now.getTime() - rangeDays * 86_400_000;
+  const robotsCache = new Map<string, string>();
+  const lastRequest = new Map<string, number>();
+  const discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, rangeStart, now, options.browserNavigate);
+  const primary = discovered.filter((item) => withinRange(item.publishedAt, rangeStart)
+    || (item.sourceKey === "es-tribunal-constitucional" && item.metadata.discoveryIndex === "official-search"));
+  return primary.slice(0, limit).map((candidate) => ({
+    sourceKey: candidate.sourceKey,
+    url: candidate.url,
+    title: candidate.title,
+    ...(candidate.publishedAt ? { publishedAt: candidate.publishedAt } : {}),
+    contentType: candidate.contentType,
+    metadata: candidate.metadata,
+  }));
+}
+
+/**
+ * Fetches exactly one discovered candidate from its official URL. This is the
+ * crawl stage: it performs a targeted single-record fetch (never a whole-source
+ * crawl) and returns the raw text for the normalize stage to clean and persist.
+ */
+export async function crawlNativeStageCandidate(
+  candidate: NativeStageCandidate,
+  bindings: NativeCrawlerBindings,
+  options: { fetch?: typeof fetch; now?: Date; browserNavigate?: CrawlerOptions["browserNavigate"] } = {},
+): Promise<NativeStageCrawlResult> {
+  const fetcher = options.fetch ?? fetch;
+  const robotsCache = new Map<string, string>();
+  const lastRequest = new Map<string, number>();
+  const internal: NativeArticleCandidate = {
+    sourceKey: candidate.sourceKey,
+    url: candidate.url,
+    title: candidate.title,
+    ...(candidate.publishedAt ? { publishedAt: candidate.publishedAt } : {}),
+    contentType: candidate.contentType,
+    metadata: candidate.metadata,
+  };
+  if (!officialHost(candidate.sourceKey, candidate.url)) throw new Error("crawler.non_official_host");
+  const fetched = await fetchCandidate(internal, bindings, fetcher, robotsCache, lastRequest, true, options.browserNavigate);
+  const canonical = canonicalUrl(internal.url, internal.url);
+  return { fetched: fetched.fetched, status: fetched.status, text: fetched.text, canonicalUrl: canonical, candidate };
+}
+
+/**
+ * Cleans and persists one crawled record into the core DB. This is the normalize
+ * stage's durable write: it reuses the exact audited `persistArticle` path
+ * (status derivation, publishability gates, lifecycle, R2 raw snapshot) so the
+ * staged pipeline can never diverge from the legacy collection semantics.
+ */
+export async function persistNativeStageRecord(
+  candidate: NativeStageCandidate,
+  text: string,
+  bindings: NativeCrawlerBindings,
+  options: { runId: string; fetchedAt: string },
+): Promise<NativePersistResult> {
+  const internal: NativeArticleCandidate = {
+    sourceKey: candidate.sourceKey,
+    url: candidate.url,
+    title: candidate.title,
+    ...(candidate.publishedAt ? { publishedAt: candidate.publishedAt } : {}),
+    contentType: candidate.contentType,
+    metadata: candidate.metadata,
+  };
+  return persistArticle(bindings, internal, text, options.runId, options.fetchedAt);
 }
