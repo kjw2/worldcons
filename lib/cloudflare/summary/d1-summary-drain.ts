@@ -13,6 +13,7 @@ import { classifySummaryError, ARTICLE_ERROR_CLASS, ARTICLE_REVIEW_STATE } from 
 import { ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES } from "@/lib/article-lifecycle/compatibility";
 import { articleLifecycleService } from "@/lib/article-lifecycle/service";
 import { boundedInteger } from "@/lib/utils/numbers";
+import { refreshD1TagCountMetrics } from "./d1-tag-count-refresh";
 import type { ArticleLifecycleTransitionInput } from "@/lib/article-lifecycle/types";
 
 interface SummaryCandidateRow {
@@ -215,15 +216,7 @@ export async function runD1SyncSummaryTags(
 
 async function refreshTagCounts() {
   const core = d1();
-  const result = await statementRun(core.prepare(`
-    UPDATE tags SET
-      article_count=(SELECT COUNT(*) FROM article_tags at JOIN articles a ON a.id=at.article_id WHERE at.tag_id=tags.id AND a.status='summarized' AND json_valid(a.source_metadata) AND json_extract(a.source_metadata,'$.collection.publishable')=1),
-      latest_article_at=(SELECT MAX(a.original_published_at) FROM article_tags at JOIN articles a ON a.id=at.article_id WHERE at.tag_id=tags.id AND a.status='summarized' AND json_valid(a.source_metadata) AND json_extract(a.source_metadata,'$.collection.publishable')=1),
-      updated_at=?
-    WHERE article_count IS NOT (SELECT COUNT(*) FROM article_tags at JOIN articles a ON a.id=at.article_id WHERE at.tag_id=tags.id AND a.status='summarized' AND json_valid(a.source_metadata) AND json_extract(a.source_metadata,'$.collection.publishable')=1)
-       OR latest_article_at IS NOT (SELECT MAX(a.original_published_at) FROM article_tags at JOIN articles a ON a.id=at.article_id WHERE at.tag_id=tags.id AND a.status='summarized' AND json_valid(a.source_metadata) AND json_extract(a.source_metadata,'$.collection.publishable')=1)
-  `).bind(new Date().toISOString()));
-  if (result.success === false || result.error) throw new Error("summary_d1.tag_count_refresh_failed");
+  const updatedTags = await refreshD1TagCountMetrics(core);
   const minCount = boundedInteger(process.env.GLOSSARY_CANDIDATE_MIN_COUNT, 5, { min: 1, max: 1000 });
   const limit = boundedInteger(process.env.GLOSSARY_CANDIDATE_LIMIT, 50, { min: 1, max: 500 });
   const [termsResult, existingResult, tagsResult] = await Promise.all([
@@ -265,7 +258,7 @@ async function refreshTagCounts() {
     const writes = await core.batch(statements);
     if (writes.some((write) => write.success === false || write.error)) throw new Error("summary_d1.glossary_candidate_write_failed");
   }
-  return { refreshed: true, updatedTags: Number(result.meta?.changes ?? 0), glossaryCandidates: candidates.length };
+  return { refreshed: true, updatedTags, glossaryCandidates: candidates.length };
 }
 
 export async function runD1RefreshTagCounts() {
