@@ -224,6 +224,17 @@ export function createD1ReferenceReadRepository(
       FROM articles a
       JOIN article_publications_p3 p ON p.article_id=a.id AND p.state='published'
       WHERE a.status='summarized'
+        AND COALESCE(a.catalog_ai_stale_v4,0)=0
+        AND NOT EXISTS (
+          SELECT 1 FROM case_catalog_publications_v1 c
+          JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id
+          LEFT JOIN article_content_versions_p3 anchor ON anchor.id=c.source_anchor_version_id
+          WHERE c.article_id=a.id AND c.state='published'
+            AND NOT (COALESCE(v.version_role,'')='enrichment_full'
+              AND COALESCE(v.source_anchor_version_id,'')=c.source_anchor_version_id
+              AND COALESCE(anchor.source_content_hash,'')<>''
+              AND anchor.source_content_hash=v.enrichment_source_content_hash)
+        )
       ${startIso ? "AND a.original_published_at>=?" : ""}
       LIMIT ?
     `;

@@ -51,6 +51,8 @@ test("P5 D1 adapter reads each owning database and returns the P5 evidence contr
     assert.equal(evidence.queue.staleLeaseCount, 0);
     assert.ok(calls.ops.some((sql) => sql.includes("admin_compatibility_observations_p5")));
     assert.ok(calls.core.some((sql) => sql.includes("article_publication_quarantine_p3")));
+    assert.ok(calls.core.some((sql) => sql.includes("COALESCE(catalog_ai_stale_v4,0)=0")), "P5 legacy public must exclude stale Catalog AI");
+    assert.ok(calls.core.some((sql) => sql.includes("anchor.source_content_hash=v.enrichment_source_content_hash")), "P5 public parity must keep full enrichment anchored to its current authority");
     assert.ok(calls.core.some((sql) => /FROM article_publication_quarantine_p3 q[\s\S]*WHERE NOT EXISTS[\s\S]*article_publication_quarantine_resolutions_p3 r/u.test(sql)), "P5 must exclude historically resolved quarantine rows without deleting the audit trail");
     assert.ok(calls.core.some((sql) => /r\.article_id\s*=\s*q\.article_id\s+AND\s+r\.anomaly_code\s*=\s*q\.anomaly_code/u.test(sql)), "resolution must match article and anomaly identity");
     assert.ok(calls.ingest.some((sql) => sql.includes("FROM ingestion_runs")));

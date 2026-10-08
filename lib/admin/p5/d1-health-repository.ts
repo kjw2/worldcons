@@ -92,7 +92,19 @@ export async function getP5HealthEvidenceFromD1(input: {
         FROM articles WHERE lifecycle_attention_state IN ('active', 'anomaly') OR lifecycle_review_state = 'needs_review'`, [nowIso]),
       query(core, `WITH legacy_public AS (
         SELECT id AS article_id FROM articles
-        WHERE status = 'summarized' AND json_extract(source_metadata, '$.collection.publishable') = 1
+        WHERE status = 'summarized' AND COALESCE(catalog_ai_stale_v4,0)=0
+          AND json_extract(source_metadata, '$.collection.publishable') = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM case_catalog_publications_v1 c
+            JOIN article_publications_p3 p ON p.article_id=articles.id AND p.state='published'
+            JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id
+            LEFT JOIN article_content_versions_p3 anchor ON anchor.id=c.source_anchor_version_id
+            WHERE c.article_id=articles.id AND c.state='published'
+              AND NOT (COALESCE(v.version_role,'')='enrichment_full'
+                AND COALESCE(v.source_anchor_version_id,'')=c.source_anchor_version_id
+                AND COALESCE(anchor.source_content_hash,'')<>''
+                AND anchor.source_content_hash=v.enrichment_source_content_hash)
+          )
       ), explicit_public AS (
         SELECT p.article_id FROM article_publications_p3 p
         JOIN article_content_versions_p3 v ON v.id = p.version_id AND v.article_id = p.article_id

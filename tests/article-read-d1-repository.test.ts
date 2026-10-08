@@ -219,6 +219,52 @@ test("D1 article adapter reads worldcons_core and maps a detail row through the 
   assert.ok(fake.calls.some((call) => call.table === "tags"));
 });
 
+test("Catalog source correction blocks old P3 summary, source text and sitemap until anchored enrichment is published", async () => {
+  const original = d1Article();
+  const fake = createFakeD1({
+    articles: [original],
+    article_publications_p3: [{article_id:"article-1",state:"published",version_id:"legacy-v1"}],
+    article_content_versions_p3: [
+      {id:"legacy-v1",version_role:null,source_anchor_version_id:null,enrichment_source_content_hash:null},
+      {id:"official-v2",version_role:"authoritative_source",source_content_hash:"official-hash"},
+    ],
+    case_catalog_publications_v1: [{article_id:"article-1",state:"published",source_anchor_version_id:"official-v2"}],
+    article_tags: [],tags: [],
+  });
+  const repo = createD1ArticleReadRepository({binding:fake.database});
+  assert.equal(await repo.getArticleBySelect("case-1","detail"),null);
+  assert.equal(await repo.getArticleSourceTextBySlug("case-1"),null);
+  assert.deepEqual((await repo.listArticles()).items,[]);
+  assert.deepEqual(await repo.listPublicSitemapArticles(),[]);
+  assert.ok(await repo.getArticleBySelect("case-1","detail",{includeUnpublished:true}),"private admin read remains available");
+
+  const fresh = createFakeD1({
+    articles:[original],
+    article_publications_p3:[{article_id:"article-1",state:"published",version_id:"enrichment-v3"}],
+    article_content_versions_p3:[
+      {id:"enrichment-v3",version_role:"enrichment_full",source_anchor_version_id:"official-v2",enrichment_source_content_hash:"official-hash"},
+      {id:"official-v2",version_role:"authoritative_source",source_content_hash:"official-hash"},
+    ],
+    case_catalog_publications_v1:[{article_id:"article-1",state:"published",source_anchor_version_id:"official-v2"}],
+    article_tags:[],tags:[],
+  });
+  const freshRepo = createD1ArticleReadRepository({binding:fresh.database});
+  assert.equal((await freshRepo.getArticleBySelect("case-1","detail"))?.slug,"case-1");
+
+  const wrongHash = createFakeD1({
+    articles:[original],
+    article_publications_p3:[{article_id:"article-1",state:"published",version_id:"enrichment-v3"}],
+    article_content_versions_p3:[
+      {id:"enrichment-v3",version_role:"enrichment_full",source_anchor_version_id:"official-v2",enrichment_source_content_hash:"obsolete-hash"},
+      {id:"official-v2",version_role:"authoritative_source",source_content_hash:"official-hash"},
+    ],
+    case_catalog_publications_v1:[{article_id:"article-1",state:"published",source_anchor_version_id:"official-v2"}],
+    article_tags:[],tags:[],
+  });
+  assert.equal(await createD1ArticleReadRepository({binding:wrongHash.database}).getArticleBySelect("case-1","detail"),null,
+    "a full enrichment tied to a different source hash must never be published");
+});
+
 test("D1 article adapter list projection drops summary_json/source_metadata and computes aliases", async () => {
   const fake = createFakeD1({ articles: [d1Article()], article_tags: [], tags: [] });
   const repository = createD1ArticleReadRepository({ binding: fake.database });

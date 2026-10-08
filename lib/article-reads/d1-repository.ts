@@ -251,18 +251,58 @@ export function createD1ArticleReadRepository(
     const ids = candidateIds ? uniqueStrings(candidateIds) : null;
     const rows = ids
       ? await readByInBatches(binding, "article_publications_p3", "article_id", ids, {
-          select: ["article_id"],
+          select: ["article_id", "version_id"],
           where: [{ column: "state", value: "published" }],
           limit: maxRows + 1,
         })
       : await read(binding, "article_publications_p3", {
-          select: ["article_id"],
+          select: ["article_id", "version_id"],
           where: [{ column: "state", value: "published" }],
           orderBy: [],
           limit: maxRows + 1,
         });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("p3PublishedArticleIds");
-    return uniqueStrings(rows.map((row) => row.article_id));
+    const publicIds = uniqueStrings(rows.map((row) => row.article_id));
+    if (publicIds.length === 0) return publicIds;
+    // A Catalog correction supersedes the legacy translation. A published P3
+    // row is public again ONLY when its enrichment_full snapshot points to the
+    // current Catalog anchor and matches the authoritative source hash.
+    // Do not fallback to a stale translated summary when source-only Catalog
+    // reads are disabled. The private includeUnpublished path remains unchanged.
+    const catalog = await readByInBatches(binding, "case_catalog_publications_v1", "article_id", publicIds, {
+      select: ["article_id", "source_anchor_version_id"],
+      where: [{ column: "state", value: "published" }],
+      limit: maxRows + 1,
+    });
+    if (catalog.length > maxRows) throw new D1ShadowTruncatedError("p3PublishedArticleIds");
+    if (catalog.length === 0) return publicIds;
+    const catalogByArticle = new Map(catalog.map((row) => [String(row.article_id), String(row.source_anchor_version_id)]));
+    const catalogP3Versions = uniqueStrings(rows
+      .filter((row) => catalogByArticle.has(String(row.article_id)))
+      .map((row) => row.version_id));
+    const versions = await readByInBatches(binding, "article_content_versions_p3", "id", catalogP3Versions, {
+      select: ["id", "version_role", "source_anchor_version_id", "enrichment_source_content_hash"],
+      limit: maxRows + 1,
+    });
+    const anchors = await readByInBatches(binding, "article_content_versions_p3", "id", uniqueStrings(catalog.map((row) => row.source_anchor_version_id)), {
+      select: ["id", "version_role", "source_content_hash"],
+      limit: maxRows + 1,
+    });
+    if (versions.length > maxRows || anchors.length > maxRows) throw new D1ShadowTruncatedError("p3PublishedArticleIds");
+    const versionById = new Map(versions.map((row) => [String(row.id), row]));
+    const anchorById = new Map(anchors.map((row) => [String(row.id), row]));
+    return uniqueStrings(rows.filter((row) => {
+      const currentAnchorId = catalogByArticle.get(String(row.article_id));
+      if (!currentAnchorId) return true;
+      const version = versionById.get(String(row.version_id));
+      const anchor = anchorById.get(currentAnchorId);
+      return version?.version_role === "enrichment_full"
+        && version.source_anchor_version_id === currentAnchorId
+        && anchor?.version_role === "authoritative_source"
+        && typeof anchor.source_content_hash === "string"
+        && anchor.source_content_hash.length > 0
+        && version.enrichment_source_content_hash === anchor.source_content_hash;
+    }).map((row) => row.article_id));
   }
 
   function requireTable(name: string): D1TableDefinition {
