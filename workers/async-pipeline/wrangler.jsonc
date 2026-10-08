@@ -30,10 +30,12 @@
     "CASE_CATALOG_GERMANY_HISTORY_ENABLED": "true",
     "BROWSER_ALLOWED_HOSTS": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es",
     "SITE_ANALYTICS_RETENTION_DAYS": "90",
-    "WORLDCONS_INGEST_STAGES_ENABLED": "false",
+    "WORLDCONS_INGEST_STAGES_ENABLED": "true",
     "WORLDCONS_INGEST_STAGE_ENVIRONMENT": "production",
-    "WORLDCONS_INGEST_STAGE_ALLOWLIST": "",
-    "WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT": "25",
+    "WORLDCONS_INGEST_STAGE_ALLOWLIST": "discovery,crawl,normalize,translate,public-judgment,publish,search",
+    "WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST": "fr-conseil-constitutionnel",
+    "WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT": "1",
+    "WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT": "1",
     "WORLDCONS_INGEST_STAGE_LEASE_SECONDS": "300"
   },
   "triggers": {

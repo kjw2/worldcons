@@ -16,7 +16,7 @@ import {
 } from "../../../lib/cloudflare/async-pipeline/native-executor";
 import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
 import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../../../lib/cloudflare/ingest-stages/contracts";
-import { ingestStageGateFromEnvironment, isIngestStageEnabled } from "../../../lib/cloudflare/ingest-stages/flags";
+import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBootstrapSources } from "../../../lib/cloudflare/ingest-stages/flags";
 import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
 import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
 import { createIngestStageHandlers, enqueueIngestStageDiscovery } from "./ingest-stage-handlers";
@@ -628,15 +628,20 @@ async function runIngestStageDiscoveryBootstrap(controller: ScheduledController,
   try {
     const enqueued: Array<{ sourceKey: string; created: boolean }> = [];
     const rawBucket = env.WORLDCONS_RAW as unknown as Parameters<typeof enqueueIngestStageDiscovery>[1];
-    for (const sourceKey of NATIVE_CRAWLER_SOURCES) {
+    const allowedSources = resolveIngestBootstrapSources(
+      env.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST,
+      NATIVE_CRAWLER_SOURCES,
+    );
+    const bootstrapLimit = boundedStageInteger(env.WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT, 1, 1, 20);
+    for (const sourceKey of allowedSources) {
       const { created } = await enqueueIngestStageDiscovery(env.WORLDCONS_INGEST, rawBucket, {
         sourceKey: sourceKey as NativeCrawlerSource,
-        limit: 20,
+        limit: bootstrapLimit,
         now,
       });
       enqueued.push({ sourceKey, created });
     }
-    console.log(JSON.stringify({ event: "ingest_stage_discovery_bootstrap", cron: controller.cron, enqueued }));
+    console.log(JSON.stringify({ event: "ingest_stage_discovery_bootstrap", cron: controller.cron, sourceAllowlistCount: allowedSources.length, bootstrapLimit, enqueued }));
   } catch (error) {
     console.error(JSON.stringify({ event: "ingest_stage_discovery_bootstrap_failed", cron: controller.cron, error: error instanceof Error ? error.message.slice(0, 300) : String(error) }));
   }
@@ -647,6 +652,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
       const policy = gate(env);
+      const stageGate = ingestStageGateFromEnvironment(env as unknown as Record<string, string | undefined>);
       return json({
         schemaVersion: 1,
         service: "worldcons-ingest",
@@ -657,6 +663,13 @@ export default {
         enabledKindsReason: policy.policy.reason ?? null,
         browserNavigate: true,
         browserRpc: true,
+        ingestStages: {
+          enabled: stageGate.masterEnabled && stageGate.productionEnvironment && stageGate.policy.valid,
+          stages: stageGate.policy.valid ? stageGate.policy.stages : [],
+          bootstrapSources: resolveIngestBootstrapSources(env.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST, NATIVE_CRAWLER_SOURCES),
+          bootstrapLimit: boundedStageInteger(env.WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT, 1, 1, 20),
+          dispatchLimit: boundedStageInteger(env.WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT, 25, 1, 100),
+        },
       });
     }
     // Authenticated Browser Rendering transport, merged in from the retired

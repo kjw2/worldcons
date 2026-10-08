@@ -24,6 +24,20 @@ export const INGEST_STAGES_ENABLED_FLAG = "WORLDCONS_INGEST_STAGES_ENABLED";
 export const INGEST_STAGE_ALLOWLIST_FLAG = "WORLDCONS_INGEST_STAGE_ALLOWLIST";
 export const INGEST_STAGE_ENVIRONMENT_FLAG = "WORLDCONS_INGEST_STAGE_ENVIRONMENT";
 
+/**
+ * Safe canary bootstrap: only explicitly named, recognized source adapters
+ * are permitted. Missing/unknown names seed nothing (fail closed). The stage
+ * dispatcher can still process previously registered jobs independently.
+ */
+export function resolveIngestBootstrapSources(
+  raw: string | null | undefined,
+  supported: readonly string[],
+): string[] {
+  const names = (raw ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+  if (!names.length || names.some((item) => !supported.includes(item))) return [];
+  return [...new Set(names)];
+}
+
 /** Sentinel used by the allowlist to opt into every known stage. */
 export const INGEST_STAGE_ALLOWLIST_ANY = "*" as const;
 

@@ -2,6 +2,16 @@
 
 ## 2026-10-08 staged pipeline M6 / M7 local reliability (partial)
 
+### 2026-10-08 production deployment and bounded activation
+
+- Pushed 392d850 to main. Deployed worldcons and worldcons-ingest.
+- Added seven production stage queues and seven DLQs; applied additive remote ingest/core 0003 migrations.
+- Production canary configuration: all seven stages allowed, France as sole scheduled bootstrap source,
+  one candidate per daily bootstrap, per-stage dispatch limit one per 15-minute tick. M8 remains active.
+- Canary tests 42/42, M8 tests 40/40, Worker typecheck, generated types check and deployment dry-run passed.
+- Not a full-volume cutover; baseline release checks and manual DLQ redrive remain outstanding.
+- Details: docs/worldcons-staged-ingest-production-canary-20261008.md.
+
 - M6 implemented: transactional D1 batch for parent-success + next-stage job
   registration + stage events; stale/expired leases cannot complete;
   exhausted crashed leases become dead_letter on bounded scan; daily discovery

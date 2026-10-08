@@ -18,6 +18,7 @@ import {
   isIngestStageEnabled,
   parseIngestStageAllowlist,
   resolveIngestStageRolloutGate,
+  resolveIngestBootstrapSources,
 } from "../lib/cloudflare/ingest-stages/flags";
 import {
   claimIngestStageJobs,
@@ -228,6 +229,15 @@ test("feature flags default OFF and fail closed", () => {
     }).length,
     0,
   );
+});
+
+test("production stage bootstrap is restricted to explicit verified canary sources", () => {
+  const sources = ["us-scotus", "fr-conseil-constitutionnel"];
+  assert.deepEqual(resolveIngestBootstrapSources(undefined, sources), []);
+  assert.deepEqual(resolveIngestBootstrapSources("", sources), []);
+  assert.deepEqual(resolveIngestBootstrapSources("invalid-source", sources), []);
+  assert.deepEqual(resolveIngestBootstrapSources("fr-conseil-constitutionnel,invalid-source", sources), []);
+  assert.deepEqual(resolveIngestBootstrapSources("fr-conseil-constitutionnel,fr-conseil-constitutionnel", sources), ["fr-conseil-constitutionnel"]);
 });
 
 test("register is idempotent by idempotency key", async () => {
@@ -583,11 +593,14 @@ test("stage migrations are additive, verified, and have no destructive statement
   assert.match(CORE_SCHEMA, /create table if not exists ingest_core_bridge_ledger\b/);
 });
 
-test("feature flags are declared OFF in the checked-in Worker config", () => {
+test("production canary config bounds stages to one source and one item per dispatch", () => {
   const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "workers", "async-pipeline", "wrangler.jsonc"), "utf8"));
-  assert.equal(config.vars.WORLDCONS_INGEST_STAGES_ENABLED, "false");
+  assert.equal(config.vars.WORLDCONS_INGEST_STAGES_ENABLED, "true");
   assert.equal(config.vars.WORLDCONS_INGEST_STAGE_ENVIRONMENT, "production");
-  assert.equal(config.vars.WORLDCONS_INGEST_STAGE_ALLOWLIST, "");
+  assert.equal(config.vars.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST, "fr-conseil-constitutionnel");
+  assert.equal(config.vars.WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT, "1");
+  assert.equal(config.vars.WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT, "1");
+  assert.ok(parseIngestStageAllowlist(config.vars.WORLDCONS_INGEST_STAGE_ALLOWLIST).valid);
   const stageQueues = config.queues.producers.map((producer: { queue: string }) => producer.queue).filter((queue: string) => queue.startsWith("worldcons-stage-"));
   assert.equal(stageQueues.length, 7);
   const consumers = config.queues.consumers.map((consumer: { queue: string }) => consumer.queue);
