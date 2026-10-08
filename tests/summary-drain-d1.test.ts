@@ -222,6 +222,30 @@ test("D1 translation/enrichment completion stays private until the separate publ
   }
 });
 
+test("one fake collected item can traverse D1 translation then P3 publication after two separate scheduler actions", async () => {
+  const db = setup({status:"metadata_only",metadata:{collection:{publishable:false,sourceTextAvailable:false,sourceUrlVerified:false,strategy:"fetch"}}});
+  try {
+    // This is the sole synthetic collection request's completed D1 write.
+    // No real network, Gemini API, R2, or production/public DB is touched.
+    db.core.prepare("UPDATE articles SET status='cleaned',translation_status='pending',source_metadata=?,updated_at=? WHERE id=?")
+      .run(JSON.stringify({collection:{publishable:true,sourceTextAvailable:true,sourceUrlVerified:true,strategy:"fetch"}}),
+        "2026-10-08T00:00:00.000Z","11111111-1111-4111-8111-111111111111");
+    assert.equal(db.core.prepare("SELECT COUNT(*) AS n FROM article_publications_p3").get()?.n,0,
+      "ingest is not an event-driven translation or publication trigger");
+    const translation=await runD1SummaryDrain({limit:1,maxPasses:1,apiKeys:["synthetic-test-key"],
+      summarize:async()=>goodSummary as never,createEmbedding:async()=>null});
+    assert.equal(translation.summarizedCount,1);
+    assert.equal(db.core.prepare("SELECT translation_status FROM articles").get()?.translation_status,"translated");
+    assert.equal(db.core.prepare("SELECT COUNT(*) AS n FROM article_publications_p3").get()?.n,0,
+      "translation requires a separate publication step to make data public");
+    const publication=await runD1PublicationDrain({limit:1});
+    assert.equal(publication.publishedCount,1);
+    assert.equal(publication.failedCount,0);
+    assert.equal(db.core.prepare("SELECT COUNT(*) AS n FROM article_publications_p3 WHERE state='published'").get()?.n,1);
+    assert.equal(db.core.prepare("SELECT COUNT(*) AS n FROM article_cache_outbox_p3 WHERE status='pending'").get()?.n,1);
+  } finally {close(db);}
+});
+
 test("D1 publication allocates enrichment after an authoritative v4 source revision", async () => {
   const db = setup({ metadata: { collection: { diagnosticsId: "11111111-1111-4111-8111-111111111111", publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } } });
   try {

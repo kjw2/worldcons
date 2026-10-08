@@ -107,8 +107,8 @@ function memoryBindings() {
           statements.push({ sql, values });
           if (kind === "core" && sql.includes("INSERT INTO articles")) {
             articles.set(String(values[7]), {
-              id: values[0], canonical_url: values[7], content_hash: values[16], status: values[13], slug: values[14],
-              cleaned_text: values[15], source_metadata: values[17], review_state: values[20],
+              id: values[0], canonical_url: values[7], content_hash: values[17], status: values[13], slug: values[14],
+              translation_status: values[15], cleaned_text: values[16], source_metadata: values[18], review_state: values[21],
               lifecycle_revision: 0, raw_text_blob_size: values[24],
             });
           }
@@ -194,6 +194,44 @@ test("native range floors and Spain cap match collection policy", () => {
   assert.equal(effectiveNativeRangeDays("fr-conseil-constitutionnel", 7), 14);
   assert.equal(effectiveNativeRangeDays("es-tribunal-constitucional", 14), 180);
   assert.equal(effectiveNativeRangeDays("es-tribunal-constitucional", 900), 730);
+});
+
+test("one synthetic collection request persists one pending case but DOES NOT automatically translate or publish", async () => {
+  const source = "fr-conseil-constitutionnel";
+  const data = fixture(source);
+  const store = memoryBindings();
+  const requested: string[] = [];
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => now.getTime() + tick++ * 10_000;
+  try {
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === data.listingUrl) return response(data.listing);
+      if (url.endsWith(data.detailPath)) return response(data.detail);
+      throw new Error(`unexpected mocked fetch ${url}`);
+    };
+    const requestId = "fake-collection-one-france-20260930";
+    const run = await runNativeSourceCollection(source, store.bindings, {
+      now, limit: 1, fetch: fetcher, idempotencyKey: requestId,
+    });
+    assert.deepEqual({discovered:run.discoveredCount,fetched:run.fetchedCount,inserted:run.insertedCount,failed:run.failedCount},
+      {discovered:1,fetched:1,inserted:1,failed:0});
+    assert.equal(run.outcome,"success");
+    assert.equal(store.articles.size,1);
+    assert.equal(store.blobs.size,1,"raw source must be persisted in R2 (mock)");
+    const [article] = store.articles.values();
+    assert.equal(article.status,"cleaned","collection stops at cleaned");
+    assert.equal(article.translation_status,"pending","separate translation cron is still required");
+    assert.equal(store.statements.some(x=>/INSERT INTO article_publications_p3|UPDATE articles SET status='summarized'/u.test(x.sql)),false,
+      "crawler must not secretly publish or translate via an implicit write");
+    const replay = await runNativeSourceCollection(source,store.bindings,{now,limit:1,fetch:fetcher,idempotencyKey:requestId});
+    assert.equal(replay.replayed,true,"same fake request must be idempotent");
+    assert.equal(store.articles.size,1);
+    assert.ok(requested.every(x=>x.startsWith("https://www.conseil-constitutionnel.fr/")),"fake transport must stay on the simulated official domain");
+  } finally { Date.now=originalNow; }
 });
 
 test("native collection keeps source-specific publication and review gates", async () => {
@@ -316,6 +354,7 @@ test("BVerfG unpublished official variants remain a bounded retry candidate inst
     assert.equal(result.fetchedCount, 0);
     assert.equal(result.uncollectedCount, 1);
     assert.equal(result.failedCount, 0);
+    assert.equal(result.outcome,"degraded","a successful Workflow envelope must not conceal an official-source 404");
     assert.equal(store.articles.size, 0);
     assert.equal([...store.candidates.values()][0].last_error_code, "BVERFG_OFFICIAL_VARIANTS_404");
   } finally {

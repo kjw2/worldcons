@@ -699,14 +699,13 @@ function effectiveRange(source: NativeCrawlerSource, now: Date, configured?: num
   return Math.max(floor, configured ?? 0);
 }
 
-async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, limit: number, rangeStart: number, browserNavigate?: CrawlerOptions["browserNavigate"]) {
+async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, limit: number, rangeStart: number, now: Date, browserNavigate?: CrawlerOptions["browserNavigate"]) {
   const base = SOURCE_INFO[source].baseUrl;
   if (source === "us-scotus") {
-    const now = new Date();
     const term = String(now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1).slice(-2);
     const url = `${base}/opinions/slipopinion/${term}`;
     const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-    return discoverScotus(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart) || withinRange(typeof item.metadata.revisionDate === "string" ? item.metadata.revisionDate : undefined, Date.now() - 90 * 86_400_000)).slice(0, limit + 100);
+    return discoverScotus(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart) || withinRange(typeof item.metadata.revisionDate === "string" ? item.metadata.revisionDate : undefined, now.getTime() - 90 * 86_400_000)).slice(0, limit + 100);
   }
   if (source === "de-bverfg") {
     const url = `${base}/DE/Entscheidungen/entscheidungen_node.html`;
@@ -821,6 +820,8 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
   let insertedCount = 0;
   let refreshedCount = 0;
   let unchangedCount = 0;
+  let preservedCount = 0;
+  let duplicateCount = 0;
   let uncollectedCount = 0;
   let lastVerifiedPublishedAt: string | null = null;
   let discoveryUnavailableCode: string | null = null;
@@ -830,7 +831,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     : null;
   if (existingRun?.status === "completed") {
     const metadata = JSON.parse(existingRun.metadata ?? "{}") as Record<string, unknown>;
-    return { sourceKey: source, runId, status: existingRun.status, discoveredCount: Number(metadata.discoveredCount ?? 0), fetchedCount: Number(metadata.fetchedCount ?? 0), insertedCount: Number(metadata.insertedCount ?? 0), refreshedCount: Number(metadata.refreshedCount ?? 0), unchangedCount: Number(metadata.unchangedCount ?? 0), uncollectedCount: Number(metadata.uncollectedCount ?? 0), failedCount: Number(metadata.failedCount ?? 0), rangeDays, lastVerifiedPublishedAt: typeof metadata.lastVerifiedPublishedAt === "string" ? metadata.lastVerifiedPublishedAt : null, replayed: true };
+    return { sourceKey: source, runId, status: existingRun.status, outcome: metadata.outcome === "success" || metadata.outcome === "partial" ? metadata.outcome : "degraded", discoveredCount: Number(metadata.discoveredCount ?? 0), fetchedCount: Number(metadata.fetchedCount ?? 0), insertedCount: Number(metadata.insertedCount ?? 0), refreshedCount: Number(metadata.refreshedCount ?? 0), unchangedCount: Number(metadata.unchangedCount ?? 0), preservedCount: Number(metadata.preservedCount ?? 0), duplicateCount: Number(metadata.duplicateCount ?? 0), uncollectedCount: Number(metadata.uncollectedCount ?? 0), failedCount: Number(metadata.failedCount ?? 0), rangeDays, lastVerifiedPublishedAt: typeof metadata.lastVerifiedPublishedAt === "string" ? metadata.lastVerifiedPublishedAt : null, replayed: true };
   }
   await bindings.WORLDCONS_INGEST.prepare("INSERT INTO ingestion_runs (id, source_key, started_at, status, discovered_count, fetched_count, summarized_count, failed_count, metadata) VALUES (?, ?, ?, 'running', 0, 0, 0, 0, ?) ON CONFLICT(id) DO NOTHING").bind(runId, source, startedAt, JSON.stringify({ crawler: "worldcons-ingest-native-v1", rangeDays, limit, refreshExisting: true, idempotencyKey: options.idempotencyKey ?? null })).run();
   try {
@@ -839,7 +840,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     const incrementalDays = latest?.finished_at ? Math.max(rangeDays, Math.min(365, Math.ceil((Date.parse(startedAt) - Date.parse(latest.finished_at)) / 86_400_000) + 2)) : rangeDays;
     const effectiveStart = Date.parse(startedAt) - incrementalDays * 86_400_000;
     try {
-      discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.browserNavigate);
+      discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.now ?? new Date(), options.browserNavigate);
     } catch (error) {
       if (source === "de-bverfg" && error instanceof Error && error.message === "crawler.bverfg_index_http_429") {
         discoveryUnavailableCode = "BVERFG_DISCOVERY_RATE_LIMITED_429";
@@ -881,6 +882,8 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
         if (outcome === "inserted") insertedCount += 1;
         else if (outcome === "refreshed") refreshedCount += 1;
         else if (outcome === "unchanged") unchangedCount += 1;
+        else if (outcome === "preserved") preservedCount += 1;
+        else if (outcome === "duplicate") duplicateCount += 1;
         if (collection.sourceTextAvailable === true && candidate.publishedAt && (!lastVerifiedPublishedAt || candidate.publishedAt > lastVerifiedPublishedAt)) lastVerifiedPublishedAt = candidate.publishedAt;
       } catch (error) {
         failedCount += 1;
@@ -895,11 +898,11 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     const outcome = discoveryUnavailableCode
       ? "degraded"
       : failedCount === 0 && uncollectedCount === 0 ? "success" : fetchedCount + insertedCount + refreshedCount > 0 ? "partial" : "degraded";
-    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
+    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, duplicateCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
     const errorMessage = discoveryUnavailableCode
       ?? (failures.length ? failures.slice(0, 5).map((failure) => `${failure.code}`).join("; ").slice(0, 2_000) : null);
     await bindings.WORLDCONS_INGEST.prepare("UPDATE ingestion_runs SET finished_at=?, status=?, discovered_count=?, fetched_count=?, failed_count=?, error_message=?, metadata=? WHERE id=?").bind(new Date().toISOString(), status, bounded.length, fetchedCount, failedCount, errorMessage, JSON.stringify(metadata), runId).run();
-    return { sourceKey: source, runId, status, discoveredCount: bounded.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, uncollectedCount, failedCount, rangeDays, lastVerifiedPublishedAt };
+    return { sourceKey: source, runId, status, outcome, discoveredCount: bounded.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, duplicateCount, uncollectedCount, failedCount, discoveryUnavailableCode, failures, rangeDays, lastVerifiedPublishedAt };
   } catch (error) {
     failedCount += 1;
     const message = error instanceof Error ? error.message.slice(0, 2_000) : String(error).slice(0, 2_000);
