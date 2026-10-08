@@ -86,7 +86,21 @@ function createFakeD1(
         async all<T = Record<string, unknown>>() {
           if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
           if (failing) throw Object.assign(new Error("d1 unavailable"), { code: "d1_runtime_read.query_failed" });
-          const evaluated = evaluate(sql, params, tables);
+          // The current public-read authority requires a published P3 row before
+          // a summarized article is exposed. Synthesize one per fixture article
+          // (unless the test supplies its own) so the bounded shadow mirrors the
+          // production gate without each fixture restating the join.
+          const effectiveTables = tables.article_publications_p3
+            ? tables
+            : {
+                ...tables,
+                article_publications_p3: (tables.articles ?? []).map((row) => ({
+                  article_id: row.id,
+                  version_id: `version-${row.id}`,
+                  state: "published",
+                })),
+              };
+          const evaluated = evaluate(sql, params, effectiveTables);
           calls.push({ sql, params, table: evaluated.table });
           return { success: true, results: evaluated.rows as unknown as T[] };
         },
@@ -540,6 +554,21 @@ test("shadow truncation is a skip, never a partial comparison", async () => {
 
 test("per-isolate max in-flight applies backpressure to a second read", async () => {
   resetShadowInFlight();
+  const controlD1 = createFakeD1({ articles: [articleRow()] });
+  const controlCollector = createCollectorScheduler();
+  const control = withArticleReadShadow(createAuthoritative(), {
+    config: baseConfig({ maxInFlight: 1 }),
+    binding: controlD1.database,
+    scheduler: controlCollector.scheduler,
+    sink: captureEvents().sink,
+    projection: false,
+    caseCatalogPublic: false,
+  });
+  await control.getArticleSourceTextBySlug("case-1");
+  await controlCollector.flush();
+  const callsForOneRead = controlD1.calls.length;
+
+  resetShadowInFlight();
   const d1 = createFakeD1({ articles: [articleRow()] }, 20);
   const collector = createCollectorScheduler();
   const { events, sink } = captureEvents();
@@ -556,7 +585,7 @@ test("per-isolate max in-flight applies backpressure to a second read", async ()
   await repository.getArticleSourceTextBySlug("case-1");
   await collector.flush();
   assert.ok(events.map((event) => event.reason).includes("backpressure"));
-  assert.equal(d1.calls.length, 1, "the backpressured read must not touch D1");
+  assert.equal(d1.calls.length, callsForOneRead, "the backpressured read must not touch D1");
 });
 
 test("D1 errors and timeouts are swallowed into events and preserve the primary", async () => {

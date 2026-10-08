@@ -3,7 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { catalogCaseSearch, isCatalogSearchCursorError } from "../lib/search/case-catalog";
+import {
+  clearRuntimeD1Bindings,
+  setRuntimeD1Bindings,
+  type D1RuntimeDatabase,
+  type D1RuntimePreparedStatement,
+} from "../lib/cloudflare/d1/runtime-binding";
+import { catalogCaseSearch } from "../lib/search/case-catalog";
 import { exactCaseSearch } from "../lib/search/exact-case";
 import { rankedSearchPage } from "../lib/search/ranked-page";
 import { searchRepository } from "../lib/search/repository";
@@ -102,6 +108,147 @@ function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 }
 
+/**
+ * A minimal D1 search binding for the exported search wrappers. The pubic
+ * authority is `worldcons_search`; this fake returns an authored ranked page for
+ * any `search_fts`/`search_documents` read and resolves exact-case lookups from
+ * `search_documents`. It intentionally does not re-implement FTS5 ranking.
+ */
+function createFakeD1Search(options: {
+  pageRows?: Array<{ article_id: string; score?: number }>;
+  count?: number;
+  exactIds?: string[];
+} = {}) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  // The D1 ranked reader executes `search_fts`/`search_documents` SQL and
+  // assembles the RPC payload; the fake returns the authored `article_id` rows.
+  const pageRows = options.pageRows ?? [{ article_id: "a" }];
+  const database: D1RuntimeDatabase = {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      let params: unknown[] = [];
+      const statement = {
+        bind(...values: unknown[]) {
+          params = values;
+          return statement;
+        },
+        async all<T = Record<string, unknown>>() {
+          calls.push({ sql, params });
+          const normalized = sql.toLowerCase();
+          if (normalized.includes("count(*)")) return { success: true, results: [{ total: options.count ?? pageRows.length } as unknown as T] };
+          // The exact-case lookup is a `search_documents` read guarded by the
+          // `instr(char(10) || case_numbers ...)` line-token predicate.
+          if (normalized.includes("from search_documents") && normalized.includes("instr(char(10)")) {
+            return {
+              success: true,
+              results: (options.exactIds ?? []).map((id) => ({ article_id: id }) as unknown as T),
+            };
+          }
+          return { success: true, results: pageRows as unknown as T[] };
+        },
+      };
+      return statement;
+    },
+  };
+  return { database, calls };
+}
+
+async function withD1Search<T>(search: D1RuntimeDatabase, run: () => Promise<T> | T): Promise<T> {
+  setRuntimeD1Bindings({ worldcons_search: search, worldcons_core: search });
+  try {
+    return await run();
+  } finally {
+    clearRuntimeD1Bindings();
+  }
+}
+
+const IDENT = "[a-z_][a-z0-9_]*";
+
+function evaluateRead(sql: string, params: unknown[], tables: Record<string, Record<string, unknown>[]>) {
+  const fromMatch = new RegExp(` from (${IDENT})`).exec(sql);
+  const table = fromMatch?.[1] ?? "";
+  let rows = (tables[table] ?? []).map((row) => ({ ...row }));
+  let p = 0;
+  const whereMatch = new RegExp(` where (.*?)(?= order by | limit | offset |$)`).exec(sql);
+  if (whereMatch) {
+    for (const predicate of whereMatch[1].split(" and ")) {
+      const inMatch = new RegExp(`^(${IDENT}) in \\(([?](, \\?)*)\\)$`).exec(predicate);
+      const cmpMatch = new RegExp(`^(${IDENT}) (=|>=|!=) \\?$`).exec(predicate);
+      if (inMatch) {
+        const values = params.slice(p, p + inMatch[2].split(",").length);
+        p += values.length;
+        rows = rows.filter((row) => values.includes(row[inMatch[1]]));
+      } else if (cmpMatch) {
+        const value = params[p];
+        p += 1;
+        rows = rows.filter((row) => {
+          if (cmpMatch[2] === "=") return row[cmpMatch[1]] === value;
+          if (cmpMatch[2] === "!=") return row[cmpMatch[1]] !== value;
+          return row[cmpMatch[1]] != null && String(row[cmpMatch[1]]) >= String(value);
+        });
+      }
+    }
+  }
+  const limit = / limit \?/.test(sql) ? Number(params[p++]) : undefined;
+  if (limit !== undefined) rows = rows.slice(0, limit);
+  return { table, rows };
+}
+
+/**
+ * A D1 authority fake for the exported `exactCaseSearch` path: it resolves the
+ * per-reference `search_documents` exact-case probes by source key, serves the
+ * materialization reads from a supplied article corpus, and synthesizes the
+ * published P3 gate row for each article.
+ */
+function createFakeD1ExactCase(options: {
+  exactIdsBySource?: Record<string, string[]>;
+  articles?: Record<string, unknown>[];
+} = {}) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const articles: Record<string, unknown>[] = (options.articles ?? []).map((row) => ({
+    source_metadata: { collection: { publishable: true } },
+    catalog_ai_stale_v4: 0,
+    ...row,
+  }));
+  const tables: Record<string, Record<string, unknown>[]> = {
+    articles,
+    article_publications_p3: articles.map((row) => ({
+      article_id: row.id,
+      version_id: `version-${row.id}`,
+      state: "published",
+    })),
+    article_tags: [],
+    tags: [],
+    article_view_counts: [],
+  };
+  const database: D1RuntimeDatabase = {
+    prepare(sql: string): D1RuntimePreparedStatement {
+      let params: unknown[] = [];
+      const statement = {
+        bind(...values: unknown[]) {
+          params = values;
+          return statement;
+        },
+        async all<T = Record<string, unknown>>() {
+          calls.push({ sql, params });
+          const normalized = sql.toLowerCase();
+          if (normalized.includes("from search_documents")) {
+            const sourceKey = typeof params[0] === "string" ? params[0] : "";
+            return {
+              success: true,
+              results: (options.exactIdsBySource?.[sourceKey] ?? []).map((id) => ({ article_id: id }) as unknown as T),
+            };
+          }
+          const { rows } = evaluateRead(sql, params, tables);
+          return { success: true, results: rows as unknown as T[] };
+        },
+      };
+      return statement;
+    },
+  };
+  return { database, calls };
+}
+
+
 async function withFetch<T>(
   handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
   run: () => Promise<T>,
@@ -162,7 +309,7 @@ test("searchRepository selects the fail-closed adapter without Supabase config",
   });
 });
 
-test("searchRepository selects the Supabase adapter when Supabase config is present", async () => {
+test("searchRepository ignores legacy Supabase config and selects the D1 adapter only with bindings", async () => {
   await withFetch(
     (url) => (url.includes("/rest/v1/rpc/worldcons_ranked_search_page_v1") ? jsonResponse({ entries: [] }) : jsonResponse([])),
     async () => {
@@ -170,13 +317,21 @@ test("searchRepository selects the Supabase adapter when Supabase config is pres
         { SUPABASE_URL: "https://search.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key", ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
         async () => {
           const repository = searchRepository();
-          assert.notEqual(repository, failClosedSearchRepository, "configured Supabase must select the Supabase adapter");
-          assert.equal(repository.isConfigured(), true, "the Supabase adapter must report config");
-          assert.deepEqual(await repository.rankedSearchPageRpc(request()), { entries: [] });
+          assert.equal(repository, failClosedSearchRepository, "legacy Supabase config must not select a search adapter");
+          assert.equal(repository.isConfigured(), false, "without D1 bindings the repository stays unconfigured");
         },
       );
     },
   );
+
+  const d1 = createFakeD1Search({ pageRows: [{ article_id: "a" }] });
+  await withD1Search(d1.database, async () => {
+    const repository = searchRepository();
+    assert.notEqual(repository, failClosedSearchRepository, "with D1 bindings the D1 search adapter is selected");
+    assert.equal(repository.isConfigured(), true);
+    const payload = await repository.rankedSearchPageRpc(request()) as { entries: Array<{ id: string }> };
+    assert.deepEqual(payload.entries.map((entry) => entry.id), ["a"]);
+  });
 });
 
 function request() {
@@ -289,74 +444,52 @@ test("Supabase search adapter issues the ranked page RPC with the exact argument
 
 test("rankedSearchPage gates on projection, unpublished reads, and the 10k offset guard", async () => {
   await withSupabaseEnv({}, async () => {
-    assert.equal(await rankedSearchPage({ q: "표현 자유" }, "fulltext", null), null, "projection-disabled reads must not reach the RPC");
+    assert.equal(await rankedSearchPage({ q: "표현 자유" }, "fulltext", null), null, "projection-disabled reads must not reach the search authority");
   });
 
   await withSupabaseEnv({ ADMIN_PUBLICATION_V4_READ_ENABLED: "true" }, async () => {
     assert.equal(await rankedSearchPage({ q: "표현 자유", includeUnpublished: true }, "fulltext", null), null, "unpublished reads must not use the ranked page");
   });
 
-  let rpcRequests = 0;
-  await withFetch((url) => {
-    if (url.includes("/rest/v1/rpc/worldcons_ranked_search_page_v1")) {
-      rpcRequests += 1;
-      return jsonResponse({ entries: [], retrievalMode: "fulltext", total: 0, hasMore: false, totalIsExact: true });
-    }
-    return jsonResponse([]);
-  }, async () => {
+  const d1 = createFakeD1Search({ pageRows: [{ article_id: "a", score: 1 }] });
+  await withD1Search(d1.database, async () => {
     await withSupabaseEnv(
-      { SUPABASE_URL: "https://ranked-guard.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key", ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
+      { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
       async () => {
-        assert.equal(await rankedSearchPage({ q: "표현 자유", page: 502, pageSize: 20 }, "fulltext", null), null, "offset over 10k must be rejected before the RPC");
-        assert.equal(rpcRequests, 0, "the offset guard must short-circuit before the database call");
+        const before = d1.calls.length;
+        assert.equal(await rankedSearchPage({ q: "표현 자유", page: 502, pageSize: 20 }, "fulltext", null), null, "offset over 10k must be rejected before the query");
+        assert.equal(d1.calls.length, before, "the offset guard must short-circuit before the database call");
         assert.notEqual(await rankedSearchPage({ q: "표현 자유", page: 501, pageSize: 20 }, "fulltext", null), null, "offset exactly 10k must still query");
-        assert.equal(rpcRequests, 1);
+        assert.ok(d1.calls.length > before);
       },
     );
   });
 });
 
-test("rankedSearchPage parses the RPC payload and applies the page-info lower bound", async () => {
-  await withFetch(
-    () => jsonResponse({
-      entries: [{ id: "a" }, { id: "b" }, { id: "" }, { nope: true }],
-      retrievalMode: "hybrid",
-      total: 1,
-      hasMore: true,
-      totalIsExact: false,
-    }),
+test("rankedSearchPage parses the D1 ranked payload and applies the page-info lower bound", async () => {
+  const d1 = createFakeD1Search({
+    pageRows: [{ article_id: "a", score: 1 }, { article_id: "b", score: 2 }, { article_id: "c", score: 3 }],
+  });
+  await withD1Search(d1.database, async () => {
+    await withSupabaseEnv(
+      { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
+      async () => {
+        const page = await rankedSearchPage({ q: "표현 자유", page: 1, pageSize: 2 }, "fulltext", null);
+        assert.deepEqual(page?.ids, ["a", "b"], "the +1 window must be trimmed to the requested page size");
+        assert.equal(page?.retrievalMode, "fulltext");
+        assert.deepEqual(page?.pageInfo, { page: 1, pageSize: 2, total: 3, hasMore: true, totalIsExact: false }, "total must be bounded below by offset + ids + hasMore");
+      },
+    );
+  });
+});
+
+test("rankedSearchPage returns null when the search binding is absent", async () => {
+  await withSupabaseEnv(
+    { ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
     async () => {
-      await withSupabaseEnv(
-        { SUPABASE_URL: "https://ranked-parse.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key", ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
-        async () => {
-          const page = await rankedSearchPage({ q: "표현 자유", page: 1, pageSize: 2 }, "hybrid", null);
-          assert.deepEqual(page?.ids, ["a", "b"], "only non-empty string ids must survive");
-          assert.equal(page?.retrievalMode, "hybrid");
-          assert.deepEqual(page?.pageInfo, { page: 1, pageSize: 2, total: 3, hasMore: true, totalIsExact: false }, "total must be bounded below by offset + ids + hasMore");
-        },
-      );
+      assert.equal(await rankedSearchPage({ q: "표현 자유" }, "fulltext", null), null, "no D1 search binding must fail closed");
     },
   );
-});
-
-test("rankedSearchPage falls back to the requested mode and returns null on invalid payloads", async () => {
-  let body: unknown = { entries: [{ id: "a" }] };
-  await withFetch(() => jsonResponse(body), async () => {
-    await withSupabaseEnv(
-      { SUPABASE_URL: "https://ranked-invalid.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key", ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
-      async () => {
-        const page = await rankedSearchPage({ q: "표현 자유" }, "fulltext", null);
-        assert.equal(page?.retrievalMode, "fulltext", "a missing retrievalMode must fall back to the requested mode");
-
-        body = [1, 2, 3];
-        assert.equal(await rankedSearchPage({ q: "표현 자유" }, "fulltext", null), null, "an array payload must be rejected");
-        body = "nope";
-        assert.equal(await rankedSearchPage({ q: "표현 자유" }, "fulltext", null), null, "a non-object payload must be rejected");
-        body = null;
-        assert.equal(await rankedSearchPage({ q: "표현 자유" }, "fulltext", null), null, "an empty payload must be rejected");
-      },
-    );
-  });
 });
 
 test("Supabase search adapter preserves the indexed exact-case lookup, order, dedupe, and filters", async () => {
@@ -467,67 +600,30 @@ test("Supabase search adapter builds the url fallback token per source and skips
 });
 
 test("exported exactCaseSearch materializes indexed ids in reference order and slices the page", async () => {
-  await withFetch((url) => {
-    if (url.includes("/rest/v1/article_view_counts")) return jsonResponse([]);
-    if (url.includes("case_key")) return jsonResponse([{ id: "a" }, { id: "b" }]);
-    if (url.includes("/rest/v1/articles")) return jsonResponse([listRow("b"), listRow("a")]);
-    return jsonResponse([]);
-  }, async () => {
-    await withSupabaseEnv(
-      { SUPABASE_URL: "https://exact-case.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
-      async () => {
-        const result = await exactCaseSearch({ q: "1 BvR 2656/18", source: "de-bverfg", page: 1, pageSize: 1 });
-        assert.deepEqual(result.items.map((item) => item.id), ["a"], "the page slice must follow the reference id order");
-        assert.deepEqual(result.pageInfo, { page: 1, pageSize: 1, total: 2, hasMore: true, totalIsExact: true });
-      },
-    );
+  const d1 = createFakeD1ExactCase({
+    exactIdsBySource: { "de-bverfg": ["a", "b"] },
+    articles: [listRow("a"), listRow("b", { original_published_at: "2026-04-28T00:00:00.000Z" })],
+  });
+  await withD1Search(d1.database, async () => {
+    const result = await exactCaseSearch({ q: "1 BvR 2656/18", source: "de-bverfg", page: 1, pageSize: 1 });
+    assert.deepEqual(result.items.map((item) => item.id), ["a"], "the page slice must follow the reference id order");
+    assert.deepEqual(result.pageInfo, { page: 1, pageSize: 1, total: 2, hasMore: true, totalIsExact: true });
   });
 });
 
 test("exported exactCaseSearch keeps reference order and dedupe across sources", async () => {
-  await withFetch((url) => {
-    if (url.includes("/rest/v1/article_view_counts")) return jsonResponse([]);
-    if (url.includes("source_key=eq.de-bverfg")) return jsonResponse([{ id: "shared" }]);
-    if (url.includes("source_key=eq.fr-conseil-constitutionnel")) return jsonResponse([{ id: "shared" }, { id: "fr" }]);
-    if (url.includes("/rest/v1/articles")) return jsonResponse([listRow("fr"), listRow("shared")]);
-    return jsonResponse([]);
-  }, async () => {
-    await withSupabaseEnv(
-      { SUPABASE_URL: "https://exact-case-order.test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "service-role-key" },
-      async () => {
-        const result = await exactCaseSearch({ q: "1 BvR 2656/18 2024-1115 QPC" });
-        assert.deepEqual(result.items.map((item) => item.id), ["shared", "fr"], "ids must follow reference order with cross-reference dedupe");
-        assert.equal(result.pageInfo.total, 2);
-      },
-    );
+  const d1 = createFakeD1ExactCase({
+    exactIdsBySource: {
+      "de-bverfg": ["shared"],
+      "fr-conseil-constitutionnel": ["shared", "fr"],
+    },
+    articles: [listRow("shared"), listRow("fr")],
   });
-});
-
-test("exported exactCaseSearch uses the projected relation when projection reads are enabled", async () => {
-  const urls: string[] = [];
-  await withFetch((url) => {
-    urls.push(url);
-    if (url.includes("/rest/v1/article_view_counts")) return jsonResponse([]);
-    if (url.includes("case_key")) return jsonResponse([{ id: "p1" }]);
-    if (url.includes("/rest/v1/public_article_projection_p3")) return jsonResponse([listRow("p1")]);
-    return jsonResponse([]);
-  }, async () => {
-    await withSupabaseEnv(
-      {
-        SUPABASE_URL: "https://exact-case-projection.test.supabase.co",
-        SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-        ADMIN_PUBLICATION_V4_READ_ENABLED: "true",
-      },
-      async () => {
-        const result = await exactCaseSearch({ q: "1 BvR 2656/18", source: "de-bverfg" });
-        assert.deepEqual(result.items.map((item) => item.id), ["p1"]);
-      },
-    );
+  await withD1Search(d1.database, async () => {
+    const result = await exactCaseSearch({ q: "1 BvR 2656/18 2024-1115 QPC" });
+    assert.deepEqual(result.items.map((item) => item.id), ["shared", "fr"], "ids must follow reference order with cross-reference dedupe");
+    assert.equal(result.pageInfo.total, 2);
   });
-  assert.ok(
-    urls.some((url) => url.includes("/rest/v1/public_article_projection_p3") && url.includes("case_key")),
-    "the exact-case lookup must use the projection relation when enabled",
-  );
 });
 
 test("exported exactCaseSearch returns an empty page without a query or a case reference", async () => {
@@ -587,118 +683,24 @@ test("Supabase search adapter issues the catalog RPC with exact arguments and er
   );
 });
 
-test("catalogCaseSearch keeps the unavailable contract and passes cursor evidence through", async () => {
+test("catalogCaseSearch public wrapper stays disabled after the Cloudflare cutover", async () => {
   await withSupabaseEnv(
     { CASE_CATALOG_SEARCH_ENABLED: "true", CASE_CATALOG_PUBLIC_ENABLED: "true", ADMIN_PUBLICATION_V4_READ_ENABLED: "true" },
     async () => {
       await assert.rejects(
         () => catalogCaseSearch({ q: "표현", pageSize: 20 }),
-        /case_catalog\.search_database_unavailable/,
-        "no config must keep the exact unavailable error",
+        /case_catalog\.search_disabled/,
+        "the public catalog wrapper is hard-disabled; the D1-native path is covered by tests/d1-case-catalog-visibility.test.ts",
       );
     },
   );
 
-  const catalogEnv = {
-    CASE_CATALOG_SEARCH_ENABLED: "true",
-    CASE_CATALOG_PUBLIC_ENABLED: "true",
-    ADMIN_PUBLICATION_V4_READ_ENABLED: "true",
-    SUPABASE_URL: "https://catalog-error.test.supabase.co",
-    SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-  };
-
-  const cursorCases: Array<[string, "expired" | "mismatch" | "invalid"]> = [
-    ["WORLDCONS_CASE_SEARCH_CURSOR_RANKING_VERSION_EXPIRED", "expired"],
-    ["WORLDCONS_CASE_SEARCH_CURSOR_MISMATCH", "mismatch"],
-    ["WORLDCONS_CASE_SEARCH_CURSOR_MODE_CHANGED", "mismatch"],
-    ["WORLDCONS_CASE_SEARCH_INVALID_CURSOR", "invalid"],
-  ];
-
-  for (const [evidence, reason] of cursorCases) {
-    await withFetch(
-      (url) => url.includes("/rest/v1/rpc/worldcons_case_search_page_v2")
-        ? new Response(
-            JSON.stringify({ code: "22023", message: evidence, details: "detail", hint: "hint" }),
-            { status: 400, headers: { "content-type": "application/json" } },
-          )
-        : jsonResponse([]),
-      async () => {
-        await withSupabaseEnv(catalogEnv, async () => {
-          await assert.rejects(
-            () => catalogCaseSearch({ q: "표현", pageSize: 20, cursor: "opaque" }),
-            (error: unknown) => isCatalogSearchCursorError(error) && error.reason === reason,
-            `cursor evidence ${evidence} must map to ${reason}`,
-          );
-        });
-      },
-    );
-  }
-
-  await withFetch(
-    () => new Response(
-      JSON.stringify({ code: "XX000", message: "boom", details: null, hint: null }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    ),
-    async () => {
-      await withSupabaseEnv(catalogEnv, async () => {
-        await assert.rejects(
-          () => catalogCaseSearch({ q: "표현", pageSize: 20 }),
-          /case_catalog\.search_failed:XX000/,
-          "a non-cursor database error must keep the search_failed contract",
-        );
-      });
-    },
-  );
-});
-
-test("catalogCaseSearch materializes the RPC page and preserves retrieval metadata and cursors", async () => {
-  const urls: string[] = [];
-  await withFetch((url) => {
-    urls.push(url);
-    if (url.includes("/rest/v1/rpc/worldcons_case_search_page_v2")) {
-      return jsonResponse({
-        schemaVersion: 2,
-        entries: [{ id: "a" }, { id: "b" }],
-        retrievalMode: "lexical",
-        rankingVersion: "gate4-multilingual-rrf-v1:abc",
-        nextCursor: "next-cursor",
-        total: 5,
-        hasMore: true,
-        totalIsExact: false,
-      });
-    }
-    if (url.includes("article_view_counts")) return jsonResponse([]);
-    if (
-      url.includes("/rest/v1/articles")
-      || url.includes("public_article_projection_p3")
-      || url.includes("public_article_detail_v4")
-    ) {
-      return jsonResponse([listRow("a"), listRow("b")]);
-    }
-    return jsonResponse([]);
-  }, async () => {
-    await withSupabaseEnv(
-      {
-        CASE_CATALOG_SEARCH_ENABLED: "true",
-        CASE_CATALOG_PUBLIC_ENABLED: "true",
-        ADMIN_PUBLICATION_V4_READ_ENABLED: "true",
-        SUPABASE_URL: "https://catalog-ok.test.supabase.co",
-        SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-      },
-      async () => {
-        const result = await catalogCaseSearch({ q: "표현 자유" });
-        assert.deepEqual(result.items.map((item) => item.id), ["a", "b"], urls.join(" | "));
-        assert.equal(result.retrievalMode, "lexical");
-        assert.equal(result.rankingVersion, "gate4-multilingual-rrf-v1:abc");
-        assert.deepEqual(result.pageInfo, {
-          page: 1,
-          pageSize: 20,
-          total: 5,
-          hasMore: true,
-          totalIsExact: false,
-          nextCursor: "next-cursor",
-        });
-      },
+  const d1 = createFakeD1Search({ pageRows: [] });
+  await withD1Search(d1.database, async () => {
+    await assert.rejects(
+      () => catalogCaseSearch({ q: "표현", pageSize: 20, cursor: "opaque" }),
+      /case_catalog\.search_disabled/,
+      "D1 bindings alone may not re-enable the public catalog wrapper",
     );
   });
 });

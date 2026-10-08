@@ -92,6 +92,13 @@ export interface IngestStageJobDiagnosis {
   stage: IngestStage;
   /** Counts of every durable status for exactly this stage. */
   counts: Record<IngestStageJobStatus, number>;
+  /**
+   * The oldest *claimable* pending job for the stage, or `null`. This is the
+   * queue-depth age signal an operator watches for a stalled pipeline (a job that
+   * has sat `pending` since `created_at` far longer than a normal dispatch tick).
+   */
+  oldestPendingCreatedAt: string | null;
+  oldestPendingJobId: string | null;
   /** The oldest *active* (unexpired-past) lease for the stage, or `null`. */
   oldestLeaseExpiresAt: string | null;
   oldestLeaseJobId: string | null;
@@ -100,9 +107,12 @@ export interface IngestStageJobDiagnosis {
 }
 
 /**
- * One bounded, per-stage observation: status counts plus the oldest current
- * lease. Two indexed aggregate queries, each scoped to a single stage, so a
- * diagnosis can never scan another stage or the whole table unbounded.
+ * One bounded, per-stage observation: status counts, the oldest pending job and
+ * the oldest current lease. Three indexed, single-stage-scoped `LIMIT 1`/aggregate
+ * queries, so a diagnosis can never scan another stage or the whole table
+ * unbounded. `pending` rows keep `claimed_fencing_token` NULL (the dispatcher
+ * clears it when it releases a job for retry), so the oldest pending age reflects
+ * work waiting to be dispatched, independent of a failed/in-flight lease.
  */
 export async function diagnoseIngestStageJobs(
   db: D1RuntimeDatabase,
@@ -118,6 +128,16 @@ export async function diagnoseIngestStageJobs(
   for (const row of countRows) {
     if (row.status in counts) counts[row.status] = Number(row.count) || 0;
   }
+  const oldestPending = ensureRows(
+    await db
+      .prepare(
+        `SELECT id, created_at FROM ingest_stage_jobs
+          WHERE stage = ? AND status = 'pending'
+          ORDER BY created_at ASC LIMIT 1`,
+      )
+      .bind(input.stage)
+      .all<{ id: string; created_at: string }>(),
+  )[0];
   const oldest = ensureRows(
     await db
       .prepare(
@@ -131,6 +151,8 @@ export async function diagnoseIngestStageJobs(
   return {
     stage: input.stage,
     counts,
+    oldestPendingCreatedAt: oldestPending?.created_at ?? null,
+    oldestPendingJobId: oldestPending?.id ?? null,
     oldestLeaseExpiresAt: oldest?.lease_expires_at ?? null,
     oldestLeaseJobId: oldest?.id ?? null,
     deadLetterCount: counts.dead_letter,

@@ -24,8 +24,6 @@ import {
   ARTICLE_LIST_WITH_TAG_FILTER_SELECT,
   ARTICLE_P3_DETAIL_SELECT,
   ARTICLE_P3_LIST_SELECT,
-  ARTICLE_V4_DETAIL_SELECT,
-  ARTICLE_V4_LIST_SELECT,
 } from "../lib/article-reads/shared";
 import { createSupabaseArticleReadRepository } from "../lib/article-reads/supabase-repository";
 import { ArtifactBlobStore, type ArtifactBlobTransport } from "../lib/storage/blob";
@@ -318,16 +316,18 @@ test("Supabase adapter switches the projection and detail-v4 relation/select by 
   assert.equal(projected.tableCalls[0].filters.length, 0, "projection reads must not apply the legacy published filter");
   assert.ok(!projected.tableCalls[0].eqs.some(([column]) => column === "catalog_ai_stale_v4"));
 
-  const v4 = createFakeSupabase({ tables: { public_article_detail_v4: () => ({ data: detailRow({ summary_available: undefined }), error: null }) } });
+  // The V4 case-catalog public relation is hard-disabled after the Cloudflare
+  // cutover: even with both flags set the detail read stays on the P3 projection
+  // and never selects `public_article_detail_v4`.
+  const v4 = createFakeSupabase({ tables: { public_article_detail_v4: () => ({ data: detailRow(), error: null }), public_article_projection_p3: () => ({ data: detailRow(), error: null }) } });
   const v4Repository = createSupabaseArticleReadRepository({
     client: () => v4.client,
     environment: { ADMIN_PUBLICATION_V4_READ_ENABLED: "true", CASE_CATALOG_PUBLIC_ENABLED: "true" },
   });
   const v4Article = await v4Repository.getArticleBySelect("case-1", "detail");
-  assert.equal(v4Article?.summaryAvailable, true, "missing summary_available must fall back to the summary presence");
-  assert.deepEqual(v4.tableCalls.map((call) => call.table), ["public_article_detail_v4"]);
-  assert.equal(v4.tableCalls[0].select?.[0], ARTICLE_V4_DETAIL_SELECT);
-  assert.equal(v4.tableCalls[0].filters.length, 0);
+  assert.equal(v4Article?.slug, "case-1");
+  assert.deepEqual(v4.tableCalls.map((call) => call.table), ["public_article_projection_p3"], "the V4 detail relation must stay retired");
+  assert.equal(v4.tableCalls[0].select?.[0], ARTICLE_P3_DETAIL_SELECT);
 
   const listFake = createFakeSupabase({ tables: { articles: () => ({ data: detailRow(), error: null }) } });
   const listRepository = createSupabaseArticleReadRepository({ client: () => listFake.client, environment: {} });
@@ -337,13 +337,14 @@ test("Supabase adapter switches the projection and detail-v4 relation/select by 
   assert.equal(listArticle?.rawText, undefined, "the list projection must omit detail fields");
   assert.equal(listArticle?.rawTextBlob, undefined);
 
-  const v4ListFake = createFakeSupabase({ tables: { public_article_detail_v4: () => ({ data: detailRow(), error: null }) } });
+  const v4ListFake = createFakeSupabase({ tables: { public_article_detail_v4: () => ({ data: detailRow(), error: null }), public_article_projection_p3: () => ({ data: detailRow(), error: null }) } });
   const v4ListRepository = createSupabaseArticleReadRepository({
     client: () => v4ListFake.client,
     environment: { ADMIN_PUBLICATION_V4_READ_ENABLED: "true", CASE_CATALOG_PUBLIC_ENABLED: "true" },
   });
   await v4ListRepository.getArticleBySelect("case-1", "list");
-  assert.equal(v4ListFake.tableCalls[0].select?.[0], ARTICLE_V4_LIST_SELECT);
+  assert.deepEqual(v4ListFake.tableCalls.map((call) => call.table), ["public_article_projection_p3"], "the V4 list relation must stay retired");
+  assert.equal(v4ListFake.tableCalls[0].select?.[0], ARTICLE_P3_LIST_SELECT);
 
   const pageFake = createFakeSupabase({ tables: { articles: () => ({ data: detailRow(), error: null }) } });
   const pageRepository = createSupabaseArticleReadRepository({ client: () => pageFake.client, environment: {} });

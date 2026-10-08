@@ -51,7 +51,25 @@ function createFakeD1(rowsByTable: Record<string, Record<string, unknown>[]>, de
         },
         async all<T = Record<string, unknown>>() {
           if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-          const name = Object.keys(rowsByTable).find((table) => query.includes(` from ${table}`));
+          const normalized = query.toLowerCase();
+          // The D1 `listJurisdictionArticleCounts` uses an authored raw join
+          // (published P3 + Catalog-anchor stale exclusion). The bounded fixture
+          // resolves the authored table names and the summarized predicate so the
+          // adapter's traffic is modelled without reimplementing the join.
+          if (normalized.includes("join article_publications_p3")) {
+            const articles = (rowsByTable.articles ?? []).filter(
+              (row) => !normalized.includes("a.status='summarized'") || row.status === "summarized",
+            );
+            const publications = rowsByTable.article_publications_p3 ?? [];
+            const publishedIds = new Set(
+              publications.filter((row) => row.state === "published").map((row) => row.article_id),
+            );
+            const rows = publications.length === 0
+              ? articles
+              : articles.filter((row) => publishedIds.has(row.id));
+            return { success: true, results: rows as unknown as T[] };
+          }
+          const name = Object.keys(rowsByTable).find((table) => normalized.includes(` from ${table}`));
           let rows = name ? rowsByTable[name] : [];
           const where = / where ([a-z_][a-z0-9_]*) = \?/.exec(query);
           if (where) rows = rows.filter((row) => row[where[1]] === record.params[0]);

@@ -480,9 +480,17 @@ test("all lifecycle write paths use the compatibility boundary and no applicatio
     "lib/ingest/candidate-retry.ts",
     "lib/db/admin-queries.ts",
   ];
+  // The P2 boundary is either the legacy shadow adapter (ingest paths) or the
+  // D1-native `articleLifecycleService` (admin paths migrated by the Cloudflare
+  // runtime cutover). Both are the sanctioned compatibility seam; a raw P2
+  // column write is still forbidden below.
   for (const relative of covered) {
     const source = fs.readFileSync(path.join(process.cwd(), relative), "utf8");
-    assert.match(source, /shadowArticleLifecycleTransition|shadowLegacyArticleLifecycleOutcome|insertNormalizedArticle/, relative);
+    assert.match(
+      source,
+      /shadowArticleLifecycleTransition|shadowLegacyArticleLifecycleOutcome|articleLifecycleService|insertNormalizedArticle/,
+      relative,
+    );
   }
 
   const applicationFiles = ["app", "lib", "scripts", "workers"]

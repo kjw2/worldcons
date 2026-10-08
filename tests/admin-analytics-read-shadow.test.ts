@@ -686,15 +686,15 @@ test("selection point returns the fail-closed adapter unwrapped without Supabase
   }
 });
 
-test("selection point wraps the Supabase adapter (not the fail-closed one) when configured", () => {
+test("selection point ignores legacy Supabase config and stays fail-closed without D1 bindings", () => {
   const keys = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
   const original = new Map(keys.map((key) => [key, process.env[key]]));
   process.env.SUPABASE_URL = "https://admin-analytics-m64.test.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
   try {
     const repository = adminAnalyticsReads();
-    assert.notEqual(repository, failClosedAdminAnalyticsReads);
-    assert.equal(repository.isConfigured(), true);
+    assert.equal(repository, failClosedAdminAnalyticsReads, "legacy Supabase config must not become an admin authority");
+    assert.equal(repository.isConfigured(), false, "without D1 bindings the repository stays unconfigured");
   } finally {
     for (const key of keys) {
       const value = original.get(key);

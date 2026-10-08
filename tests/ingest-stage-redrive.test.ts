@@ -128,6 +128,52 @@ test("diagnosis reports per-stage status counts and the oldest lease without cro
   }
 });
 
+test("diagnosis reports the oldest pending job per stage and excludes terminal/leased rows", async () => {
+  const { ingest, db } = createDb();
+  try {
+    // A leased crawl job created first must NOT be the oldest pending: only
+    // pending rows count toward the queue-depth signal.
+    await registerIngestStageJob(db, { stage: "crawl", articleId: "leased-earlier", sourceVersion: "v1", contentHash: "h0", now: "2026-10-08T00:00:00.000Z" });
+    await claimIngestStageJobs(db, { stage: "crawl", workerId: "w1", limit: 1, leaseSeconds: 300, now: "2026-10-08T00:00:00.000Z" });
+    const { job: newer } = await registerIngestStageJob(db, { stage: "crawl", articleId: "pending-newer", sourceVersion: "v1", contentHash: "h1", now: "2026-10-08T00:10:00.000Z" });
+    const { job: older } = await registerIngestStageJob(db, { stage: "crawl", articleId: "pending-older", sourceVersion: "v1", contentHash: "h2", now: "2026-10-08T00:05:00.000Z" });
+    // A dead-letter row and another stage's pending row must never bleed into the
+    // crawl diagnosis.
+    await deadLetterJob(db, { stage: "normalize", articleId: "n-dead", errorCode: "ingest_stage.normalize_failed" });
+
+    const crawl = await diagnoseIngestStageJobs(db, { stage: "crawl" });
+    assert.equal(crawl.oldestPendingJobId, older.id);
+    assert.equal(crawl.oldestPendingCreatedAt, "2026-10-08T00:05:00.000Z");
+    assert.notEqual(crawl.oldestPendingJobId, newer.id);
+    assert.equal(crawl.counts.pending, 2);
+
+    const normalize = await diagnoseIngestStageJobs(db, { stage: "normalize" });
+    assert.equal(normalize.oldestPendingJobId, null);
+    assert.equal(normalize.oldestPendingCreatedAt, null);
+  } finally {
+    ingest.close();
+  }
+});
+
+test("a redrive clears the oldest pending signal once the job is dispatched again", async () => {
+  const { ingest, db } = createDb();
+  try {
+    const { row } = await deadLetterJob(db, { stage: "translate", articleId: "t-pending-age", errorCode: "ingest_stage.translate_failed" });
+    const before = await diagnoseIngestStageJobs(db, { stage: "translate" });
+    assert.equal(before.oldestPendingJobId, null);
+
+    const redriven = await redriveIngestStageDeadLetter(db, {
+      stage: "translate", jobId: row.id, operatorId: "op", reason: "official source recovered", expectedFencingToken: row.claimed_fencing_token, now: NOW,
+    });
+    assert.equal(redriven.outcome, "redriven");
+    const after = await diagnoseIngestStageJobs(db, { stage: "translate" });
+    assert.equal(after.oldestPendingJobId, row.id);
+    assert.equal(after.oldestPendingCreatedAt, row.created_at);
+  } finally {
+    ingest.close();
+  }
+});
+
 test("a redriven 404 source job returns to pending and is audited in the transition ledger", async () => {
   const { ingest, db } = createDb();
   try {

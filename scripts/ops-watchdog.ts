@@ -11,6 +11,7 @@ import {
   type WatchdogEvaluation,
 } from "@/lib/ops/watchdog";
 import { runWithWorkflowHeartbeats } from "@/lib/ops/workflow-heartbeat";
+import { getAppBaseUrl } from "@/lib/seo/public-urls";
 
 const ISSUE_TITLE_PREFIX = "[무인운영] 수집 경고";
 const COMPENSATION_MIN_INTERVAL_HOURS = 24;
@@ -74,7 +75,8 @@ function issueBody(evaluation: WatchdogEvaluation) {
       lines.push(`- [${violation.severity}] ${violation.key} — ${violation.summary}`);
     }
   }
-  lines.push("", "관리자 페이지: https://worldcons.soltera.dev/admin/ops", "미수집 후보: https://worldcons.soltera.dev/admin/candidates");
+  const baseUrl = getAppBaseUrl();
+  lines.push("", `관리자 페이지: ${baseUrl}/admin/ops`, `미수집 후보: ${baseUrl}/admin/candidates`);
   lines.push(`<!-- ops-signature:${evaluationViolationSignature(evaluation)} -->`);
   return lines.join("\n");
 }

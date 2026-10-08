@@ -165,6 +165,7 @@ const ARTICLE_ROWS: AdminOpsArticleRow[] = [
     fetched_at: "2026-04-01T01:00:00.000Z",
     summarized_at: "2026-04-01T02:00:00.000Z",
     status: "summarized",
+    translation_status: null,
     source_metadata: { collection: { publishable: true } },
     error_metadata: null,
     updated_at: "2026-04-02T00:00:00.000Z",
@@ -182,6 +183,7 @@ const ARTICLE_ROWS: AdminOpsArticleRow[] = [
     fetched_at: null,
     summarized_at: null,
     status: "needs_review",
+    translation_status: null,
     source_metadata: { collection: { publishable: false } },
     error_metadata: { class: "x" },
     updated_at: "2026-04-04T00:00:00.000Z",
@@ -493,6 +495,7 @@ test("listAdminArticles reproduces filters, ordering, paging and exact totals", 
     fetched_at: row.fetched_at,
     summarized_at: row.summarized_at,
     status: row.status,
+    translation_status: row.translation_status ?? null,
     source_metadata: row.source_metadata,
     summary_json: row.summary_json,
     updated_at: row.updated_at,
@@ -714,15 +717,15 @@ test("selection point returns the mock adapter unwrapped without Supabase config
   }
 });
 
-test("selection point wraps the Supabase adapter (not the mock) when configured", () => {
+test("selection point ignores legacy Supabase config and stays D1-or-mock only", () => {
   const keys = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
   const original = new Map(keys.map((key) => [key, process.env[key]]));
   process.env.SUPABASE_URL = "https://admin-ops-m64.test.supabase.co";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
   try {
     const repository = adminOpsReads();
-    assert.notEqual(repository, mockAdminOpsReads);
-    assert.equal(repository.isConfigured(), true);
+    assert.equal(repository, mockAdminOpsReads, "legacy Supabase config must not become an admin authority");
+    assert.equal(repository.isConfigured(), false, "without D1 bindings the repository stays unconfigured");
     const supabaseRepository = createSupabaseAdminOpsReadRepository({ client: () => ({}) as SupabaseClient });
     assert.equal(typeof supabaseRepository.loadArticleRows, "function");
   } finally {

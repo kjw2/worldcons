@@ -41,8 +41,20 @@ test("Worker-facing admin routes keep Node executors behind runtime seams", () =
   assert.doesNotMatch(source("app/api/admin/cron/jobs/route.ts"), /from "@\/lib\/admin\/admin-job-runner"/);
   assert.doesNotMatch(source("app/api/admin/cron/ingest/route.ts"), /import\("@\/lib\/ingest\/run"\)/);
   assert.doesNotMatch(source("app/api/admin/review/route.ts"), /import \{ runAdminReviewAction \} from/);
-  assert.match(source("app/api/admin/ingest/route.ts"), /inlineAdminExecutionAllowed/);
-  assert.match(source("app/api/admin/review/route.ts"), /retry-source-ingest[\s\S]*isCloudflareWorkerRuntime/);
+  // The Cloudflare cutover made these routes queue/scheduler-only: no Node
+  // executor import may reappear on any Worker-facing admin route.
+  for (const route of [
+    "app/api/admin/ingest/route.ts",
+    "app/api/admin/jobs/run/route.ts",
+    "app/api/admin/cron/jobs/route.ts",
+    "app/api/admin/cron/ingest/route.ts",
+    "app/api/admin/review/route.ts",
+  ]) {
+    assert.doesNotMatch(source(route), /from "@\/lib\/admin\/admin-job-runner"/, route);
+    assert.doesNotMatch(source(route), /from "@\/lib\/ingest\/run"/, route);
+    assert.doesNotMatch(source(route), /from "@\/lib\/ingest\/summary"/, route);
+  }
+  assert.match(source("app/api/admin/review/route.ts"), /runD1AdminReviewAction/);
   assert.match(source("worker/index.ts"), /setRuntimePlatform\("cloudflare-worker"\)/);
   assert.match(source("app/api/mcp/health/route.ts"), /isCloudflareWorkerRuntime/);
   assert.match(source("app/api/mcp/health/route.ts"), /cloudflare-workers/);
@@ -74,7 +86,7 @@ test("Worker-facing code stays free of Node filesystem state and Node-only inges
   }
 });
 
-test("admin job drain returns external-worker-required in the Cloudflare runtime", async () => {
+test("admin job drain is delegated to the Cloudflare scheduler in every runtime", async () => {
   const previousCronSecret = process.env.CRON_SECRET;
   const previousShadowWrite = process.env.ADMIN_QUEUE_V3_SHADOW_WRITE_ENABLED;
   process.env.CRON_SECRET = "synthetic-cloudflare-boundary-secret";
@@ -90,10 +102,10 @@ test("admin job drain returns external-worker-required in the Cloudflare runtime
       },
       body: JSON.stringify({ maxJobs: 1, leaseSeconds: 120 }),
     }));
-    assert.equal(response.status, 503);
-    const body = await response.json() as { mode?: string; error?: string };
-    assert.equal(body.mode, "external_worker_required");
-    assert.equal(body.error, ADMIN_EXTERNAL_WORKER_REQUIRED);
+    assert.equal(response.status, 202);
+    const body = await response.json() as { mode?: string; managedBy?: string };
+    assert.equal(body.mode, "cloudflare_scheduler");
+    assert.equal(body.managedBy, "worldcons-ingest");
   } finally {
     setRuntimePlatform(null);
     if (previousCronSecret === undefined) delete process.env.CRON_SECRET;

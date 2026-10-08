@@ -162,11 +162,11 @@ test("adminAnalyticsReads selects the fail-closed adapter without Supabase confi
   });
 });
 
-test("adminAnalyticsReads selects the Supabase adapter when Supabase config is present", async () => {
+test("adminAnalyticsReads ignores legacy Supabase config and stays fail-closed without D1 bindings", async () => {
   await withSupabaseEnv(CONFIGURED_ENV, () => {
     const repository = adminAnalyticsReads();
-    assert.notEqual(repository, failClosedAdminAnalyticsReads, "configured Supabase must select the Supabase adapter");
-    assert.equal(repository.isConfigured(), true, "the Supabase adapter must report config");
+    assert.equal(repository, failClosedAdminAnalyticsReads, "legacy Supabase config must not become an admin authority");
+    assert.equal(repository.isConfigured(), false, "without D1 bindings the repository stays unconfigured");
   });
 });
 
@@ -368,7 +368,7 @@ test("getAdminAuditLogData returns the empty no-config audit page", async () => 
   });
 });
 
-test("getAdminAuditLogData delegates to the audit repository when configured", async () => {
+test("getAdminAuditLogData ignores legacy Supabase config and returns the empty fail-closed page", async () => {
   const events = [
     { id: "e1", occurred_at: "2026-09-01T00:00:00.000Z", event_type: "admin_action", path: "/api/admin/x", metadata: { action: "publish", sourceKey: "de-bverfg" } },
   ];
@@ -376,30 +376,25 @@ test("getAdminAuditLogData delegates to the audit repository when configured", a
   await withFetch(auditFetch(events, 1), async () => {
     await withSupabaseEnv(CONFIGURED_ENV, async () => {
       const filtered = await getAdminAuditLogData({ action: "publish" });
-      assert.equal(filtered.hasDatabase, true);
+      assert.equal(filtered.hasDatabase, false, "legacy Supabase config must not become a configured authority");
       assert.equal(filtered.schemaReady, true);
-      assert.equal(filtered.entries.length, 1);
-      assert.equal(filtered.entries[0].action, "publish");
-      assert.equal(filtered.entries[0].sourceKey, "de-bverfg");
-      assert.deepEqual(filtered.actionOptions, ["publish"]);
-      assert.equal(filtered.pageInfo.total, 1);
+      assert.deepEqual(filtered.entries, []);
 
       const ranged = await getAdminAuditLogData({ page: 1, pageSize: 25 });
-      assert.equal(ranged.entries.length, 1, "the unfiltered branch must map the ranged rows");
-      assert.equal(ranged.pageInfo.total, 1, "the exact count must flow into the page info");
-      assert.equal(ranged.pageInfo.hasMore, false);
+      assert.deepEqual(ranged.entries, []);
+      assert.equal(ranged.pageInfo.total, 0);
     });
   });
 });
 
-test("getAdminAuditLogData reports schemaReady false when the configured audit read errors", async () => {
+test("getAdminAuditLogData stays fail-closed regardless of legacy Supabase audit responses", async () => {
   await withFetch(
     (url) => (url.includes("/rest/v1/site_events") ? jsonResponse({ message: "audit down" }, 500) : jsonResponse([])),
     async () => {
       await withSupabaseEnv(CONFIGURED_ENV, async () => {
         const data = await getAdminAuditLogData({ action: "publish" });
-        assert.equal(data.hasDatabase, true, "a configured database must report hasDatabase even on read error");
-        assert.equal(data.schemaReady, false);
+        assert.equal(data.hasDatabase, false, "legacy Supabase config must not become a configured authority");
+        assert.equal(data.schemaReady, true);
         assert.deepEqual(data.entries, []);
         assert.deepEqual(data.pageInfo, { page: 1, pageSize: 25, total: 0, hasMore: false });
       });
@@ -420,7 +415,7 @@ test("getAnalyticsDashboardData returns the empty no-config dashboard", async ()
   });
 });
 
-test("getAnalyticsDashboardData maps the configured dashboard through the repository", async () => {
+test("getAnalyticsDashboardData ignores legacy Supabase config and returns the fail-closed dashboard", async () => {
   const events = [
     { occurred_at: "2026-09-01T00:00:00.000Z", event_type: "page_view", path: "/" },
     { occurred_at: "2026-09-01T01:00:00.000Z", event_type: "search", search_query: "표현", result_count: 0 },
@@ -434,21 +429,17 @@ test("getAnalyticsDashboardData maps the configured dashboard through the reposi
     async () => {
       await withSupabaseEnv(CONFIGURED_ENV, async () => {
         const dashboard = await getAnalyticsDashboardData({ days: 7 });
-        assert.equal(dashboard.hasDatabase, true);
-        assert.equal(dashboard.schemaReady, true);
+        assert.equal(dashboard.hasDatabase, false, "legacy Supabase config must not become a configured authority");
+        assert.equal(dashboard.schemaReady, false);
         assert.equal(dashboard.days, 7);
-        assert.equal(dashboard.totals.totalEvents, 2);
-        assert.equal(dashboard.totals.pageViews, 1);
-        assert.equal(dashboard.totals.searches, 1);
-        assert.equal(dashboard.totals.zeroResultSearches, 1);
-        assert.equal(dashboard.collectionHealth[0].sourceKey, "de-bverfg");
-        assert.equal(dashboard.collectionHealth[0].fetchRate, 50);
+        assert.equal(dashboard.totals.totalEvents, 0);
+        assert.deepEqual(dashboard.collectionHealth, []);
       });
     },
   );
 });
 
-test("getAnalyticsDashboardData falls back to the legacy health reads when the snapshot fails", async () => {
+test("getAnalyticsDashboardData stays fail-closed regardless of legacy Supabase health responses", async () => {
   const runs = [
     { source_key: "de-bverfg", status: "completed", discovered_count: 10, fetched_count: 5, summarized_count: 5, failed_count: 1, started_at: "2026-09-01T00:00:00.000Z" },
   ];
@@ -462,18 +453,15 @@ test("getAnalyticsDashboardData falls back to the legacy health reads when the s
     async () => {
       await withSupabaseEnv(CONFIGURED_ENV, async () => {
         const dashboard = await getAnalyticsDashboardData();
-        assert.equal(dashboard.hasDatabase, true);
-        const source = dashboard.collectionHealth.find((row) => row.sourceKey === "de-bverfg");
-        assert.equal(source?.runs, 1);
-        assert.equal(source?.fetchRate, 50);
-        assert.ok(dashboard.modelHealth.some((row) => row.model === "claude-x" && row.successes === 1));
-        assert.ok(dashboard.modelHealth.some((row) => row.model === "gemini-x" && row.failures === 1));
+        assert.equal(dashboard.hasDatabase, false, "legacy Supabase config must not become a configured authority");
+        assert.deepEqual(dashboard.collectionHealth, []);
+        assert.deepEqual(dashboard.modelHealth, []);
       });
     },
   );
 });
 
-test("getAnalyticsDashboardData records the analytics compatibility observation for new and fallback authority", async () => {
+test("getAnalyticsDashboardData records only the fail-closed compatibility observation for legacy authority", async () => {
   const observations: Array<{ surface: string; authority: string; outcome: string }> = [];
   setCompatibilityObservationWriterForTests(async (observation) => {
     observations.push({ surface: observation.surface, authority: observation.authority, outcome: observation.outcome });
@@ -492,7 +480,7 @@ test("getAnalyticsDashboardData records the analytics compatibility observation 
         },
       );
     });
-    assert.deepEqual(observations, [{ surface: "admin_analytics", authority: "new", outcome: "succeeded" }]);
+    assert.deepEqual(observations, [{ surface: "admin_analytics", authority: "fallback", outcome: "fallback" }]);
 
     await withFetch(analyticsFetch({ snapshot: () => jsonResponse({ message: "down" }, 500) }), async () => {
       await withSupabaseEnv(
@@ -506,7 +494,7 @@ test("getAnalyticsDashboardData records the analytics compatibility observation 
         },
       );
     });
-    assert.deepEqual(observations[1], { surface: "admin_analytics", authority: "fallback", outcome: "fallback" });
+    assert.equal(observations.length, 1, "repeated fallback observations are coalesced within the compatibility window");
   } finally {
     setCompatibilityObservationWriterForTests(null);
   }
