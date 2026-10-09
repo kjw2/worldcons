@@ -73,6 +73,11 @@ const SPAIN_TAIL_PROBE_LIMIT = 30;
 const SPAIN_TAIL_EMPTY_STOP = 3;
 const SPAIN_SEARCH_TYPES = ["SENTENCIA", "AUTO", "DECLARACION"] as const;
 const NATIVE_FETCH_TIMEOUT_MS = 60_000;
+/** Inspect the previous SCOTUS term during the first 90 days of a new term.
+ * Opinions published late in September and corrections to older opinions may
+ * still live on that official listing after the October term switch.
+ */
+const SCOTUS_TERM_ROLLOVER_DAYS = 90;
 
 const SPANISH_MONTHS: Record<string, string> = { enero: "01", febrero: "02", marzo: "03", abril: "04", mayo: "05", junio: "06", julio: "07", agosto: "08", septiembre: "09", setiembre: "09", octubre: "10", noviembre: "11", diciembre: "12" };
 const FRENCH_MONTHS: Record<string, string> = { janvier: "01", février: "02", fevrier: "02", mars: "03", avril: "04", mai: "05", juin: "06", juillet: "07", août: "08", aout: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12", decembre: "12" };
@@ -952,10 +957,27 @@ function effectiveRange(source: NativeCrawlerSource, now: Date, configured?: num
 async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, limit: number, rangeStart: number, now: Date, browserNavigate?: CrawlerOptions["browserNavigate"], bverfgOutcome?: BverfgDiscoverySelection) {
   const base = SOURCE_INFO[source].baseUrl;
   if (source === "us-scotus") {
-    const term = String(now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1).slice(-2);
-    const url = `${base}/opinions/slipopinion/${term}`;
-    const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-    return discoverScotus(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart) || withinRange(typeof item.metadata.revisionDate === "string" ? item.metadata.revisionDate : undefined, now.getTime() - 90 * 86_400_000)).slice(0, limit + 100);
+    const termYear = now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+    const termYears = [termYear];
+    // The newly opened term can legitimately have no opinions yet. Scan only
+    // the adjacent previous term (two official pages total), and only during
+    // the bounded October rollover window. If either required page is
+    // unavailable, discovery fails closed rather than silently reporting zero.
+    if (now.getTime() >= Date.UTC(termYear, 9, 1)
+      && now.getTime() < Date.UTC(termYear, 9, 1) + SCOTUS_TERM_ROLLOVER_DAYS * 86_400_000) {
+      termYears.push(termYear - 1);
+    }
+    const candidates = new Map<string, NativeArticleCandidate>();
+    for (const year of termYears) {
+      const url = `${base}/opinions/slipopinion/${String(year).slice(-2)}`;
+      const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+      for (const item of discoverScotus(result.html, url)) {
+        if (!withinRange(item.publishedAt, rangeStart)
+          && !withinRange(typeof item.metadata.revisionDate === "string" ? item.metadata.revisionDate : undefined, now.getTime() - 90 * 86_400_000)) continue;
+        if (!candidates.has(item.url)) candidates.set(item.url, item);
+      }
+    }
+    return [...candidates.values()].slice(0, limit + 100);
   }
   if (source === "de-bverfg") {
     const url = `${base}/DE/Entscheidungen/entscheidungen_node.html`;

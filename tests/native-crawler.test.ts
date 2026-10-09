@@ -157,6 +157,71 @@ test("SCOTUS PDF verification failures stay metadata-only and never write PDF to
   }
 });
 
+test("SCOTUS October term rollover still collects a revised prior-term official opinion without publishing it", async () => {
+  const store = memoryBindings();
+  const october = new Date("2026-10-09T00:00:00.000Z");
+  const listing26 = "https://www.supremecourt.gov/opinions/slipopinion/26";
+  const listing25 = "https://www.supremecourt.gov/opinions/slipopinion/25";
+  const pdfUrl = "https://www.supremecourt.gov/opinions/25pdf/26-100.pdf";
+  const requested: string[] = [];
+  const pdf = scotusPdfFixture();
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    requested.push(url);
+    if (url.endsWith("/robots.txt")) return response(robots);
+    if (url === listing26) return response("<table><tr><th>New term: no opinions yet</th></tr></table>");
+    if (url === listing25) return response(`<table><tr><td>Opinion</td><td>6/25/26</td><td>26-100</td><td><a href="/opinions/25pdf/26-100.pdf">Prior term</a></td><td>Revisions: 10/08/26</td></tr></table>`);
+    if (url === pdfUrl) return new Response(pdf, { status: 200, headers: { "content-type": "application/pdf" } });
+    throw new Error(`unexpected official fetch ${url}`);
+  };
+  const run = await runNativeSourceCollection("us-scotus", store.bindings, {
+    now: october, limit: 1, fetch: fetcher, idempotencyKey: "scotus-2026-rollover-revision",
+  });
+  assert.equal(run.discoveredCount, 1);
+  assert.equal(run.fetchedCount, 1);
+  assert.equal(run.insertedCount, 1);
+  assert.equal(run.failedCount, 0);
+  assert.deepEqual(requested.filter((url) => url.includes("/slipopinion/")), [listing26, listing25]);
+  assert.ok(requested.includes(pdfUrl));
+  const [article] = store.articles.values();
+  assert.equal(article.status, "metadata_only");
+  assert.equal(article.lifecycle_review_state, "needs_review");
+  assert.equal(article.translation_status, "not_required");
+  const metadata = JSON.parse(String(article.source_metadata)) as { officialPdf: { url: string; r2Key: string }; collection: { publishable: boolean }; listingUrl: string };
+  assert.equal(metadata.officialPdf.url, pdfUrl);
+  assert.equal(metadata.listingUrl, listing25);
+  assert.equal(metadata.collection.publishable, false);
+  assert.ok(store.blobs.has(metadata.officialPdf.r2Key));
+  assert.equal(store.statements.some((item) => /INSERT INTO article_publications_p3/.test(item.sql)), false);
+});
+
+test("SCOTUS rollover previous listing fails closed and is not fetched after the bounded overlap", async () => {
+  const listing26 = "https://www.supremecourt.gov/opinions/slipopinion/26";
+  const listing25 = "https://www.supremecourt.gov/opinions/slipopinion/25";
+  const requested: string[] = [];
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    requested.push(url);
+    if (url.endsWith("/robots.txt")) return response(robots);
+    if (url === listing26) return response("<table></table>");
+    if (url === listing25) return response("unavailable", 503);
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  await assert.rejects(
+    discoverNativeStageCandidates("us-scotus", memoryBindings().bindings, {
+      now: new Date("2026-10-09T00:00:00.000Z"), limit: 1, fetch: fetcher,
+    }),
+    /crawler\.http_503/,
+  );
+  assert.deepEqual(requested.filter((url) => url.includes("/slipopinion/")), [listing26, listing25]);
+  requested.length = 0;
+  const candidates = await discoverNativeStageCandidates("us-scotus", memoryBindings().bindings, {
+    now: new Date("2027-02-01T00:00:00.000Z"), limit: 1, fetch: fetcher,
+  });
+  assert.deepEqual(candidates, []);
+  assert.deepEqual(requested.filter((url) => url.includes("/slipopinion/")), [listing26]);
+});
+
 function fixture(source: NativeCrawlerSource) {
   const decisionText = "Official judgment text on constitutional rights and the governing legal principles. ".repeat(25);
   if (source === "de-bverfg") {

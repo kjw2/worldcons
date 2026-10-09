@@ -13,7 +13,7 @@
 | P1-2 | 독일 BVerfG 공식 원문 URL/ECLI identity gate | **완료** | `9fa36e2`: 공식 판결 본문·정확한 ECLI·리다이렉트 최종 URL 검증, 잘못된 HTML 및 불일치 차단 |
 | P1-3 | 독일 M8 후보 404 head-of-line/백오프 개선 | **구현·배포 완료, 실운영 효과 미검증** | `4b384be`: D1 상태 기반 bounded 후보 순환, 백오프 중 후보 defer, D1 장애 시 fail-closed, `degraded` 진단. 다음 M8 실행의 실제 fetch를 별도 확인 |
 | **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료, 실원문 E2E 대기** | 코드 `cc6059e`, Worker 버전 `4189c105-43db-4800-b557-9571c8ba6ee7`. `unpdf` Worker-safe 텍스트 추출, 공식 PDF/redirect/robots/docket/용량 검증, R2 원본 SHA-256 및 Core provenance 연결. 미국 M8 소유권 유지·공개 발행 보류. 실제 SCOTUS 판례 원문 처리는 추후 확인 |
-| P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지 |
+| P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지. 미국 term 경계 Discovery 보완은 로컬 검증 중이며 Production 반영과 별개 |
 
 ## 2. 현재 운영 상태의 기준
 
@@ -50,6 +50,15 @@
 - 운영 점검 복구: 2026-10-09 18시 KST 전후 Wrangler `worldcons_ingest` Production SELECT가 일시적으로 Cloudflare API `7403`을 반환했으나, 같은 날 후속 점검에서 `d1 list`·`d1 info`, `worldcons_core` 및 `worldcons_ingest`의 `SELECT 1`, 실제 ingest stage/ingestion_runs SELECT가 모두 성공. OAuth 계정 ID·D1 scope·database ID 일치 확인. **인증 변경 없이 현재 D1 read-only API 접근 정상화; 7403의 정확한 원인은 확인되지 않았으므로 일시적 오류로만 기록.** 대체 자격증명·권한 우회 없음.
 - 복구 후 Production D1 실측: France staged jobs 8/8 `succeeded` (search 2건), events 30건, pending/failed dispatch outbox 0, dead-letter 0, redrive 0. Spain은 첫 2026-10-10 06:00 KST Discovery 전이므로 staged job 아직 없음. 가장 최근 M8 US 2026-10-09 06:02 KST 수집은 discovered/fetched 0/0, 독일은 discovered/fetched 1/0; 두 나라 모두 실원문 완료 아님.
 - 다음 확인 순서: (1) Cloudflare D1 접근 권한 복구, (2) 스페인 stage jobs/events/outbox/DLQ 및 원문→P3→Search 실증, (3) 미국 M8 PDF R2/Core 원문·review 상태 확인, (4) 독일 M8 후보 처리 실증, (5) 검증된 source만 단계적으로 소유권 이관.
+
+### 2026-10-09 후속 운영 진단 및 코드 보완 (현재 로컬, 아직 Production 미반영)
+
+- SCOTUS 공식 `opinions/slipopinion/26`은 새 October Term 2026의 표가 빈 상태다. 따라서 2026-10-09 06:02 KST M8 `discovered=0` 자체는 PDF extractor 장애가 아니라 **현재 term만 보는 Discovery 로직의 예상 결과**다. 이전 October Term `opinions/slipopinion/25`의 최근 원문 또는 revisions를 조회하지 않아 가을 학기 전환기의 누락 가능성이 확인됨.
+- `native-crawler.ts`: 새 term 시작 후 UTC 90일 동안만 공식 current + immediate prior slip-opinion 목록을 각 1회 조회, 원래의 14일 기본 공개일/90일 수정일 필터와 `limit+100` 한도, URL 중복 제거 및 robots/request-governor 유지. 필요한 이전 목록이 실패하면 조용한 성공(0건)으로 처리하지 않음. 기존 미국 M8 ownership·PDF 검증·`publishable=false`·review gate에는 변경 없음.
+- `tests/native-crawler.test.ts`: 새 term 목록이 비어 있고 이전 term 판결이 10월 수정된 사례, 이전 목록 HTTP 503 fail-closed, 90일 겹침 종료 후 1페이지만 조회되는 사례 추가. **이 변경은 로컬 테스트·리뷰 후에만 별도 배포 판단**하고, 실제 미국 PDF Production E2E 완료라고 부르지 않는다.
+- 독일 D1 최신 후보는 `2 BvR 1702/26`, `rk20260917_2bvr170226.html`로 `BVERFG_OFFICIAL_VARIANTS_404`, `retrying` 및 누적 시도 20회. 일부 제3자 색인에는 같은 ECLI가 존재하지만 **공식 원문 URL/본문은 검증되지 않았으므로** M8·review hold 유지. 최신 M8은 1건 발견·원문 0건.
+- 스페인 `0 21 * * *` UTC 최초 cron 전에는 staged jobs 0건이 정상일 수 있다. `worldcons-ingest`에 수동 Discovery POST 운영 API가 없음을 코드로 확인; ad-hoc D1 job 삽입이나 우회 경로로 조기 실행하지 않는다. 2026-10-10 06:00 KST 이후 실제 7단계/DLQ/R2/Core/P3/Search를 확인한다.
+- 요청된 `opencode::hive-ai::deepseek-ai/deepseek-v4.1-flash` 작업 호출은 실행 전 `INVALID_REQUEST`로 실패해 작업 세션 자체가 생성되지 않았으며 Orca는 사용하지 않았다. 보완 코드는 직접 처리하고 테스트 결과를 별도 기록한다.
 
 ### P2-1 구현 검증 메모 (2026-10-09)
 
