@@ -45,6 +45,10 @@ import {
 import { isSpainMetadataOnlyNotice } from "@/lib/crawlee/spain-tribunal-constitucional-spider";
 import { isCloudflareWorkerRuntime } from "@/lib/runtime/platform";
 import { writeIngestionRunViaBoundary } from "@/lib/cloudflare/ingest-write/boundary-client";
+import {
+  bverfgCandidateRetryDelayMs,
+  shouldRetryBverfgCandidates,
+} from "@/lib/ingest/bverfg-candidate-retry";
 
 interface SourceRunResult {
   sourceKey: string;
@@ -584,9 +588,6 @@ function isGenericCourtTitle(article: NormalizedArticle) {
   return /^(?:Beschluss|Urteil)\s+vom\s+\d{1,2}\.\s+[A-Za-zÄÖÜäöüß]+\s+\d{4}$/i.test(title);
 }
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-const BVERFG_RETRY_SCHEDULE_GRACE_MS = 6 * HOUR_MS;
 const DEFAULT_BVERFG_PENDING_RECHECK_LIMIT = 20;
 const DEFAULT_SPAIN_PENDING_RECHECK_LIMIT = 20;
 const DEFAULT_SCOTUS_REVISION_RECHECK_DAYS = 90;
@@ -648,47 +649,7 @@ function bverfgCandidateUrls(metadata: Record<string, unknown> | undefined, fall
   ];
 }
 
-function bverfgRetryErrorClass(errorCode?: string | null) {
-  const code = errorCode ?? "";
-  if (code === BVERFG_OFFICIAL_VARIANTS_404) return "variants-404" as const;
-  if (code === "BVERFG_OFFICIAL_DETAIL_404") return "single-404" as const;
-  if (code === "BVERFG_OFFICIAL_DETAIL_403" || /403|blocked/i.test(code)) return "blocked" as const;
-  if (code === "CRAWLEE_DETAIL_EMPTY") return "empty" as const;
-  if (code === "BVERFG_OFFICIAL_DETAIL_UNVERIFIED" || code === "BVERFG_SITE_BLOCK_CIRCUIT_OPEN") return "blocked" as const;
-  return "none" as const;
-}
-
-export function bverfgCandidateRetryDelayMs(attemptCount: number, errorCode?: string | null) {
-  const kind = bverfgRetryErrorClass(errorCode);
-  if (kind === "none" || kind === "single-404") return 0;
-  if (kind === "variants-404") {
-    if (attemptCount >= 10) return 3 * DAY_MS;
-    if (attemptCount >= 6) return 2 * DAY_MS;
-    if (attemptCount >= 3) return DAY_MS;
-    return 12 * HOUR_MS;
-  }
-  if (kind === "empty") {
-    if (attemptCount >= 6) return DAY_MS;
-    if (attemptCount >= 3) return 12 * HOUR_MS;
-    return 3 * HOUR_MS;
-  }
-  if (attemptCount >= 6) return 3 * DAY_MS;
-  if (attemptCount >= 3) return DAY_MS;
-  return 6 * HOUR_MS;
-}
-
-export function shouldRetryBverfgCandidates(records: SourceUrlCandidateRecord[], now = new Date()) {
-  const retrying = records.filter((record) => record.status === "retrying");
-  if (retrying.length === 0) return true;
-  return retrying.some((record) => {
-    const delay = bverfgCandidateRetryDelayMs(record.attemptCount, record.lastErrorCode);
-    if (delay === 0 || !record.lastAttemptAt) return true;
-    const lastAttempt = Date.parse(record.lastAttemptAt);
-    const grace = bverfgRetryErrorClass(record.lastErrorCode) === "variants-404" ? BVERFG_RETRY_SCHEDULE_GRACE_MS : 0;
-    const effectiveDelay = Math.max(0, delay - grace);
-    return !Number.isFinite(lastAttempt) || now.getTime() - lastAttempt >= effectiveDelay;
-  });
-}
+export { bverfgCandidateRetryDelayMs, shouldRetryBverfgCandidates };
 
 function articleContentType(value?: string | null): ArticleContentType {
   return ARTICLE_CONTENT_TYPES.includes(value as ArticleContentType) ? value as ArticleContentType : "decision";

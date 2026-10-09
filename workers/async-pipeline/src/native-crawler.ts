@@ -1,5 +1,6 @@
 import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../../../lib/cloudflare/core-write/authority";
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
+import { shouldRetryBverfgCandidates, type BverfgTrackedCandidate } from "../../../lib/ingest/bverfg-candidate-retry";
 
 export const NATIVE_CRAWLER_SOURCES = [
   "de-bverfg",
@@ -60,6 +61,13 @@ const SOURCE_INFO: Record<NativeCrawlerSource, { name: string; jurisdiction: str
 };
 
 const BVERFG_OPENLEGALDATA_URL = "https://de.openlegaldata.io/api/cases/?court=3&format=json&o=-date";
+/**
+ * The finite number of most-recent official index candidates scanned per daily
+ * run before D1-due/new selection. Large enough to skip a cooldown-window 404
+ * head candidate, bounded so discovery never paginates or probes unboundedly.
+ */
+const BVERFG_INDEX_SCAN_WINDOW = 60;
+const BVERFG_CANDIDATE_LOOKUP_CHUNK = 40;
 const SPAIN_TAIL_PROBE_LIMIT = 30;
 const SPAIN_TAIL_EMPTY_STOP = 3;
 const SPAIN_SEARCH_TYPES = ["SENTENCIA", "AUTO", "DECLARACION"] as const;
@@ -274,8 +282,9 @@ function acceptBverfgOfficialVerification(candidate: NativeArticleCandidate, htm
   return verified.text;
 }
 
-function discoverBverfg(html: string, base: string): NativeArticleCandidate[] {
-  return absoluteLinks(html, base).filter((link) => officialHost("de-bverfg", link.url) && /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}20\d{6}_[a-z0-9]+\.html/i.test(new URL(link.url).pathname)).map((link) => {
+function discoverBverfg(html: string, base: string, limit = BVERFG_INDEX_SCAN_WINDOW): NativeArticleCandidate[] {
+  const links = absoluteLinks(html, base).filter((link) => officialHost("de-bverfg", link.url) && /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}20\d{6}_[a-z0-9]+\.html/i.test(new URL(link.url).pathname));
+  return links.slice(0, limit).map((link): NativeArticleCandidate => {
     const { date, docket } = bverfgDateContext(link.context, link.url);
     return { sourceKey: "de-bverfg", url: link.url, title: link.title || docket || link.url.split("/").at(-1) || "BVerfG decision", publishedAt: date, contentType: "decision", metadata: { caseNumber: docket, discoveryIndex: "official-listing", collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false } } };
   });
@@ -349,6 +358,106 @@ function isTransientCrawlerHttpError(error: unknown) {
   if (!(error instanceof Error)) return false;
   return /^crawler\.http_5\d\d$/u.test(error.message)
     || /^crawler\.bverfg_index_http_5\d\d$/u.test(error.message);
+}
+
+/** Every canonical URL a discovery candidate could be tracked under. */
+function bverfgCandidateLookupUrls(candidate: NativeArticleCandidate) {
+  const configured = Array.isArray(candidate.metadata.officialUrlCandidates)
+    ? candidate.metadata.officialUrlCandidates.filter((value): value is string => typeof value === "string" && value.length > 0)
+    : [];
+  const urls: string[] = [];
+  for (const value of [candidate.url, ...configured]) {
+    try {
+      urls.push(canonicalUrl(value, value));
+    } catch {
+      continue;
+    }
+  }
+  return [...new Set(urls)];
+}
+
+/**
+ * Loads the durable D1 `source_url_candidates` state for a bounded set of
+ * candidate URLs. An unreadable store must fail closed: treating unknown
+ * candidates as fresh could bypass a durable retry cooldown and send extra
+ * requests to the official court. Reads are chunked and bounded.
+ */
+async function loadBverfgTrackedCandidates(db: NativeCrawlerDatabase, urls: string[]) {
+  const unique = [...new Set(urls.filter(Boolean))];
+  if (unique.length === 0) return new Map<string, BverfgTrackedCandidate>();
+  const tracked = new Map<string, BverfgTrackedCandidate>();
+  for (let index = 0; index < unique.length; index += BVERFG_CANDIDATE_LOOKUP_CHUNK) {
+    const chunk = unique.slice(index, index + BVERFG_CANDIDATE_LOOKUP_CHUNK);
+    const placeholders = chunk.map(() => "?").join(", ");
+    try {
+      const result = await db.prepare(`SELECT url, status, attempt_count, last_attempt_at, last_error_code FROM source_url_candidates WHERE source_key = ? AND url IN (${placeholders})`).bind("de-bverfg", ...chunk).all<{ url: string; status: string; attempt_count: number | string | null; last_attempt_at: string | null; last_error_code: string | null }>();
+      for (const row of result?.results ?? []) {
+        if (!row || typeof row.url !== "string") continue;
+        tracked.set(row.url, {
+          url: row.url,
+          status: String(row.status ?? ""),
+          attemptCount: Number(row.attempt_count ?? 0),
+          lastAttemptAt: row.last_attempt_at,
+          lastErrorCode: row.last_error_code,
+        });
+      }
+    } catch {
+      throw new Error("crawler.bverfg_candidate_state_unavailable");
+    }
+  }
+  return tracked;
+}
+
+export interface BverfgDiscoverySelection {
+  selected: NativeArticleCandidate[];
+  deferred: number;
+  alreadyFetched: number;
+}
+
+/**
+ * Deterministic bounded selection of BVerfG discovery candidates that respects
+ * the established D1 candidate retry/backoff semantics:
+ *
+ * - a candidate with a `retrying` D1 record inside its backoff window is
+ *   deferred (never fetched again early);
+ * - a candidate with a `retrying` record past its delay is due and is selected
+ *   before new candidates;
+ * - new / untracked candidates follow;
+ * - candidates whose URL is already `fetched` are selected last so they can
+ *   never starve new or due candidates.
+ *
+ * Selection preserves discovery order inside each bucket, is capped at `limit`,
+ * and never performs network or D1 work itself.
+ */
+export function selectBverfgDiscoveryCandidates(
+  candidates: NativeArticleCandidate[],
+  tracked: Map<string, BverfgTrackedCandidate>,
+  limit: number,
+  now: Date,
+): BverfgDiscoverySelection {
+  const due: NativeArticleCandidate[] = [];
+  const fresh: NativeArticleCandidate[] = [];
+  const fetched: NativeArticleCandidate[] = [];
+  let deferred = 0;
+  for (const candidate of candidates) {
+    const records = bverfgCandidateLookupUrls(candidate)
+      .map((url) => tracked.get(url))
+      .filter((record): record is BverfgTrackedCandidate => Boolean(record));
+    const retrying = records.filter((record) => record.status === "retrying");
+    if (retrying.length > 0) {
+      if (shouldRetryBverfgCandidates(records, now)) due.push(candidate);
+      else deferred += 1;
+      continue;
+    }
+    if (records.some((record) => record.status === "fetched")) fetched.push(candidate);
+    else fresh.push(candidate);
+  }
+  const boundedLimit = Math.max(0, Math.trunc(limit));
+  return {
+    selected: [...due, ...fresh, ...fetched].slice(0, boundedLimit),
+    deferred,
+    alreadyFetched: fetched.length,
+  };
 }
 
 function discoverFrance(html: string, base: string): NativeArticleCandidate[] {
@@ -749,7 +858,7 @@ function effectiveRange(source: NativeCrawlerSource, now: Date, configured?: num
   return Math.max(floor, configured ?? 0);
 }
 
-async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, limit: number, rangeStart: number, now: Date, browserNavigate?: CrawlerOptions["browserNavigate"]) {
+async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, limit: number, rangeStart: number, now: Date, browserNavigate?: CrawlerOptions["browserNavigate"], bverfgOutcome?: BverfgDiscoverySelection) {
   const base = SOURCE_INFO[source].baseUrl;
   if (source === "us-scotus") {
     const term = String(now.getUTCMonth() >= 9 ? now.getUTCFullYear() : now.getUTCFullYear() - 1).slice(-2);
@@ -759,14 +868,29 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
   }
   if (source === "de-bverfg") {
     const url = `${base}/DE/Entscheidungen/entscheidungen_node.html`;
+    let windowCandidates: NativeArticleCandidate[] | null = null;
     try {
       const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-      const officialListing = discoverBverfg(result.html, url).filter((item) => withinRange(item.publishedAt, rangeStart)).slice(0, limit);
-      if (officialListing.length > 0) return officialListing;
+      const listing = discoverBverfg(result.html, url, BVERFG_INDEX_SCAN_WINDOW).filter((item) => withinRange(item.publishedAt, rangeStart));
+      if (listing.length > 0) windowCandidates = listing;
     } catch (error) {
       if (!isTransientCrawlerHttpError(error)) throw error;
     }
-    return discoverBverfgOpenLegalData(fetcher, rangeStart, limit);
+    if (!windowCandidates) {
+      // Third-party index is discovery-only; scanning its finite newest window
+      // lets D1-aware selection skip a cooldown 404 head candidate. Errors
+      // (including 429) still propagate so the run-level degraded handling is
+      // unchanged.
+      windowCandidates = await discoverBverfgOpenLegalData(fetcher, rangeStart, Math.max(limit, BVERFG_INDEX_SCAN_WINDOW));
+    }
+    const tracked = await loadBverfgTrackedCandidates(bindings.WORLDCONS_INGEST, windowCandidates.flatMap(bverfgCandidateLookupUrls));
+    const selection = selectBverfgDiscoveryCandidates(windowCandidates, tracked, limit, now);
+    if (bverfgOutcome) {
+      bverfgOutcome.selected = selection.selected;
+      bverfgOutcome.deferred = selection.deferred;
+      bverfgOutcome.alreadyFetched = selection.alreadyFetched;
+    }
+    return selection.selected;
   }
   if (source === "fr-conseil-constitutionnel") {
     const url = `${base}/les-decisions`;
@@ -892,14 +1016,18 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     const latest = priorRuns.results?.[0];
     const incrementalDays = latest?.finished_at ? Math.max(rangeDays, Math.min(365, Math.ceil((Date.parse(startedAt) - Date.parse(latest.finished_at)) / 86_400_000) + 2)) : rangeDays;
     const effectiveStart = Date.parse(startedAt) - incrementalDays * 86_400_000;
+    const bverfgDiscovery: BverfgDiscoverySelection = { selected: [], deferred: 0, alreadyFetched: 0 };
     try {
-      discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.now ?? new Date(), options.browserNavigate);
+      discovered = await discoverCandidates(source, bindings, fetcher, robotsCache, lastRequest, true, limit, effectiveStart, options.now ?? new Date(), options.browserNavigate, bverfgDiscovery);
     } catch (error) {
       if (source === "de-bverfg" && error instanceof Error && error.message === "crawler.bverfg_index_http_429") {
         discoveryUnavailableCode = "BVERFG_DISCOVERY_RATE_LIMITED_429";
       } else {
         throw error;
       }
+    }
+    if (source === "de-bverfg" && discovered.length === 0 && bverfgDiscovery.deferred > 0) {
+      discoveryUnavailableCode = "BVERFG_CANDIDATES_DEFERRED_BACKOFF";
     }
     const primary = discovered.filter((item) => withinRange(item.publishedAt, effectiveStart)
       || (item.sourceKey === "es-tribunal-constitucional" && item.metadata.discoveryIndex === "official-search"));
@@ -952,7 +1080,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     const outcome = discoveryUnavailableCode
       ? "degraded"
       : failedCount === 0 && uncollectedCount === 0 ? "success" : fetchedCount + insertedCount + refreshedCount > 0 ? "partial" : "degraded";
-    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, duplicateCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
+    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, ...(source === "de-bverfg" ? { bverfgDiscovery: { scanWindow: BVERFG_INDEX_SCAN_WINDOW, selectedFromWindow: bverfgDiscovery.selected.length, deferredCooldown: bverfgDiscovery.deferred, alreadyFetched: bverfgDiscovery.alreadyFetched } } : {}), fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, duplicateCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
     const errorMessage = discoveryUnavailableCode
       ?? (failures.length ? failures.slice(0, 5).map((failure) => `${failure.code}`).join("; ").slice(0, 2_000) : null);
     await bindings.WORLDCONS_INGEST.prepare("UPDATE ingestion_runs SET finished_at=?, status=?, discovered_count=?, fetched_count=?, failed_count=?, error_message=?, metadata=? WHERE id=?").bind(new Date().toISOString(), status, bounded.length, fetchedCount, failedCount, errorMessage, JSON.stringify(metadata), runId).run();

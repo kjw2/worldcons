@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   effectiveNativeRangeDays,
   crawlNativeStageCandidate,
+  discoverNativeStageCandidates,
   parseNativeSourceListing,
   runNativeSourceCollection,
+  selectBverfgDiscoveryCandidates,
   type NativeCrawlerBindings,
   type NativeCrawlerSource,
 } from "../workers/async-pipeline/src/native-crawler";
@@ -60,11 +62,13 @@ function fixture(source: NativeCrawlerSource) {
   };
 }
 
-function memoryBindings() {
+function memoryBindings(seedTracked: Array<Record<string, unknown>> = [], options: { failBverfgLookup?: boolean } = {}) {
   const runs = new Map<string, Record<string, unknown>>();
   const articles = new Map<string, Record<string, unknown>>();
   const candidates = new Map<string, Record<string, unknown>>();
   const blobs = new Map<string, Uint8Array>();
+  const tracked = new Map<string, Record<string, unknown>>();
+  for (const record of seedTracked) tracked.set(String(record.url), record);
   const statements: Array<{ sql: string; values: unknown[] }> = [];
   const db = (kind: "core" | "ingest") => ({
     prepare(sql: string) {
@@ -100,6 +104,13 @@ function memoryBindings() {
               lifecycle_attention_severity: article.lifecycle_attention_severity ?? null,
               lifecycle_attention_source: article.lifecycle_attention_source ?? null,
             } as T] : [] };
+          }
+          if (kind === "ingest" && sql.includes("SELECT url, status, attempt_count, last_attempt_at, last_error_code FROM source_url_candidates")) {
+            if (options.failBverfgLookup) throw new Error("simulated D1 read failure");
+            const sourceKey = String(values[0]);
+            const urls = new Set(values.slice(1).map((value) => String(value)));
+            const results = [...tracked.values()].filter((row) => row.source_key === sourceKey && urls.has(String(row.url)));
+            return { results: results as T[] };
           }
           return { results: [] as T[] };
         },
@@ -164,6 +175,7 @@ function memoryBindings() {
     candidates,
     blobs,
     statements,
+    tracked,
   };
 }
 
@@ -641,5 +653,243 @@ test("Spain native discovery uses the authenticated official search session befo
     assert.equal(metadata.hjId, "32141");
   } finally {
     Date.now = originalNow;
+  }
+});
+
+function bverfgTrackedRow(input: {
+  url: string;
+  status?: string;
+  attemptCount?: number;
+  lastAttemptAt?: string | null;
+  lastErrorCode?: string | null;
+}) {
+  return {
+    source_key: "de-bverfg",
+    url: input.url,
+    status: input.status ?? "retrying",
+    attempt_count: input.attemptCount ?? 1,
+    last_attempt_at: input.lastAttemptAt ?? null,
+    last_error_code: input.lastErrorCode ?? null,
+  };
+}
+
+function bverfgCandidateFixture(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    sourceKey: "de-bverfg" as const,
+    url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html",
+    title: "BVerfG decision",
+    publishedAt: "2026-09-17T00:00:00.000Z",
+    contentType: "decision" as const,
+    metadata: { discoveryIndex: "official-listing", collection: {} },
+    ...overrides,
+  };
+}
+
+test("BVerfG discovery selection defers a cooldown 404 head and chooses the next eligible candidate for limit 1", () => {
+  const head = bverfgCandidateFixture();
+  const second = bverfgCandidateFixture({ url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260916_2bvr160226.html" });
+  const tracked = new Map([[
+    head.url,
+    { url: head.url, status: "retrying", attemptCount: 1, lastAttemptAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(), lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404" },
+  ]]);
+  const selection = selectBverfgDiscoveryCandidates([head, second], tracked, 1, now);
+  assert.deepEqual(selection.selected.map((item) => item.url), [second.url]);
+  assert.equal(selection.deferred, 1);
+  assert.equal(selection.alreadyFetched, 0);
+});
+
+test("BVerfG discovery selection defers all cooldown candidates with an honest empty selection", () => {
+  const head = bverfgCandidateFixture();
+  const second = bverfgCandidateFixture({ url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260916_2bvr160226.html" });
+  const tracked = new Map([head, second].map((candidate) => [candidate.url, {
+    url: candidate.url, status: "retrying", attemptCount: 1,
+    lastAttemptAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(), lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404",
+  }]));
+  const selection = selectBverfgDiscoveryCandidates([head, second], tracked, 1, now);
+  assert.equal(selection.selected.length, 0);
+  assert.equal(selection.deferred, 2);
+});
+
+test("BVerfG discovery selection re-eligible once the retry backoff window has expired", () => {
+  const head = bverfgCandidateFixture();
+  const second = bverfgCandidateFixture({ url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260916_2bvr160226.html" });
+  const tracked = new Map([[
+    head.url,
+    { url: head.url, status: "retrying", attemptCount: 1, lastAttemptAt: new Date(now.getTime() - 7 * 60 * 60 * 1000).toISOString(), lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404" },
+  ]]);
+  const selection = selectBverfgDiscoveryCandidates([head, second], tracked, 1, now);
+  assert.deepEqual(selection.selected.map((item) => item.url), [head.url], "a due candidate is preferred over a never-seen one");
+  assert.equal(selection.deferred, 0);
+});
+
+test("BVerfG discovery selection never lets already-fetched candidates starve new or due candidates", () => {
+  const fetched = bverfgCandidateFixture();
+  const fresh = bverfgCandidateFixture({ url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260916_2bvr160226.html" });
+  const tracked = new Map([[fetched.url, { url: fetched.url, status: "fetched", attemptCount: 1, lastAttemptAt: null, lastErrorCode: null }]]);
+  const selection = selectBverfgDiscoveryCandidates([fetched, fresh], tracked, 1, now);
+  assert.deepEqual(selection.selected.map((item) => item.url), [fresh.url]);
+  assert.equal(selection.alreadyFetched, 1);
+});
+
+test("BVerfG discovery selection is bounded and deterministic", () => {
+  const candidates = Array.from({ length: 5 }, (_, index) => bverfgCandidateFixture({
+    url: `https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs202609${String(10 + index).padStart(2, "0")}_2bvr${String(100 + index).padStart(4, "0")}26.html`,
+  }));
+  const first = selectBverfgDiscoveryCandidates(candidates, new Map(), 2, now);
+  const second = selectBverfgDiscoveryCandidates(candidates, new Map(), 2, now);
+  assert.equal(first.selected.length, 2);
+  assert.deepEqual(first.selected.map((item) => item.url), second.selected.map((item) => item.url));
+  assert.deepEqual(first.selected.map((item) => item.url), candidates.slice(0, 2).map((item) => item.url));
+});
+
+function bverfgOpenLegalDataFetcher(specs: Array<{ ecli: string; html?: string }>, log?: string[]): typeof fetch {
+  const detailFor = (officialUrl: string) => {
+    for (const spec of specs) {
+      if (!spec.html) continue;
+      const match = spec.ecli.match(/^ECLI:DE:BVerfG:(20\d{2}):([a-z]{2})(20\d{2})(\d{2})(\d{2})\.([a-z0-9]+)$/i);
+      if (!match) continue;
+      const [, , prefix, year, month, day, casePart] = match;
+      const prefixes = prefix.toLowerCase() === "rk" || prefix.toLowerCase() === "rs" ? ["rk", "rs"] : [prefix.toLowerCase()];
+      if (prefixes.some((variant) => officialUrl === `https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/${year}/${month}/${variant}${year}${month}${day}_${casePart.toLowerCase()}.html`)) {
+        return spec.html;
+      }
+    }
+    return null;
+  };
+  return async (input) => {
+    const url = String(input);
+    log?.push(url);
+    if (url.endsWith("/robots.txt")) return response(robots);
+    if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links on landing page</main></html>");
+    if (url.startsWith("https://de.openlegaldata.io/api/cases/")) {
+      const results = specs.map((spec) => {
+        const match = spec.ecli.match(/^ECLI:DE:BVerfG:(20\d{2}):([a-z]{2})(20\d{2})(\d{2})(\d{2})\.([a-z0-9]+)$/i);
+        return { file_number: `2 BvR ${match?.[6]?.replace(/\D/g, "") || "0"}/26`, date: `${match?.[3]}-${match?.[4]}-${match?.[5]}`, type: "Beschluss", ecli: spec.ecli };
+      });
+      return response(JSON.stringify({ next: null, results }), 200, "application/json");
+    }
+    const html = detailFor(url);
+    if (html) return response(html);
+    if (/\/SharedDocs\/Entscheidungen\/DE\/2026\/09\/(?:rk|rs)\d{8}_[a-z0-9]+\.html$/.test(url)) return response("not published", 404);
+    throw new Error(`unexpected fetch ${url}`);
+  };
+}
+
+test("BVerfG daily run skips a cooldown 404 head candidate and fetches the next eligible official decision", async () => {
+  const store = memoryBindings();
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => now.getTime() + tick++ * 10_000;
+  try {
+    const headOfficial = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+    const secondVerified = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260916_2bvr160226.html";
+    store.tracked.set(headOfficial, bverfgTrackedRow({ url: headOfficial, lastAttemptAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(), lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404" }));
+    const log: string[] = [];
+    const fetcher = bverfgOpenLegalDataFetcher([
+      { ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226", html: `<html><main><p>ECLI:DE:BVerfG:2026:rs20260917.2bvr170226</p>${"Verified official head decision text. ".repeat(20)}</main></html>` },
+      { ecli: "ECLI:DE:BVerfG:2026:rs20260916.2bvr160226", html: `<html><main><p>ECLI:DE:BVerfG:2026:rs20260916.2bvr160226</p>${"Verified official second decision text. ".repeat(20)}</main></html>` },
+    ], log);
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, { now, limit: 1, fetch: fetcher, idempotencyKey: "m8:crawler-daily:bverfg-cooldown-skip" });
+    assert.equal(result.discoveredCount, 1);
+    assert.equal(result.fetchedCount, 1);
+    assert.equal(result.failedCount, 0);
+    assert.ok(!log.some((url) => url.startsWith("https://www.bundesverfassungsgericht.de/SharedDocs/") && url.includes("20260917_2bvr170226")), "the deferred 404 head detail must never be probed");
+    assert.ok(log.some((url) => url === secondVerified || url.includes("20260916_2bvr160226")), "the next eligible official decision is fetched");
+    const run = [...store.runs.values()][0];
+    const metadata = JSON.parse(String(run.metadata)) as { bverfgDiscovery?: { deferredCooldown: number; alreadyFetched: number } };
+    assert.equal(metadata.bverfgDiscovery?.deferredCooldown, 1);
+    assert.equal(metadata.bverfgDiscovery?.alreadyFetched, 0);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("BVerfG daily run reports an honest deferred-only outcome without any official detail fetch", async () => {
+  const store = memoryBindings();
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => now.getTime() + tick++ * 10_000;
+  try {
+    const headOfficial = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+    const secondOfficial = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260916_2bvr160226.html";
+    for (const url of [headOfficial, secondOfficial]) {
+      store.tracked.set(url, bverfgTrackedRow({ url, lastAttemptAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(), lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404" }));
+    }
+    const log: string[] = [];
+    const fetcher = bverfgOpenLegalDataFetcher([
+      { ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" },
+      { ecli: "ECLI:DE:BVerfG:2026:rk20260916.2bvr160226" },
+    ], log);
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, { now, limit: 1, fetch: fetcher, idempotencyKey: "m8:crawler-daily:bverfg-all-deferred" });
+    assert.equal(result.discoveredCount, 0);
+    assert.equal(result.fetchedCount, 0);
+    assert.equal(result.uncollectedCount, 0);
+    assert.equal(result.failedCount, 0);
+    assert.ok(!log.some((url) => /\/SharedDocs\/Entscheidungen\//.test(url)), "no official detail probe may occur when every candidate is deferred");
+    assert.equal(result.outcome, "degraded");
+    assert.equal(result.discoveryUnavailableCode, "BVERFG_CANDIDATES_DEFERRED_BACKOFF");
+    const run = [...store.runs.values()][0];
+    const metadata = JSON.parse(String(run.metadata)) as { bverfgDiscovery?: { deferredCooldown: number }; outcome?: string; discoveryUnavailableCode?: string };
+    assert.equal(metadata.bverfgDiscovery?.deferredCooldown, 2);
+    assert.equal(metadata.outcome, "degraded");
+    assert.equal(metadata.discoveryUnavailableCode, "BVERFG_CANDIDATES_DEFERRED_BACKOFF");
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("BVerfG daily run does not let already-fetched candidates starve new official decisions", async () => {
+  const store = memoryBindings();
+  const originalNow = Date.now;
+  let tick = 0;
+  Date.now = () => now.getTime() + tick++ * 10_000;
+  try {
+    const fetchedOfficial = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+    store.tracked.set(fetchedOfficial, bverfgTrackedRow({ url: fetchedOfficial, status: "fetched", lastAttemptAt: null, lastErrorCode: null }));
+    const log: string[] = [];
+    const fetcher = bverfgOpenLegalDataFetcher([
+      { ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" },
+      { ecli: "ECLI:DE:BVerfG:2026:rs20260916.2bvr160226", html: `<html><main><p>ECLI:DE:BVerfG:2026:rs20260916.2bvr160226</p>${"Verified official decision text. ".repeat(20)}</main></html>` },
+    ], log);
+    const result = await runNativeSourceCollection("de-bverfg", store.bindings, { now, limit: 1, fetch: fetcher, idempotencyKey: "m8:crawler-daily:bverfg-fetched-no-starve" });
+    assert.equal(result.discoveredCount, 1);
+    assert.equal(result.fetchedCount, 1);
+    assert.ok(log.some((url) => url.includes("20260916_2bvr160226")), "the new official decision is fetched");
+    const run = [...store.runs.values()][0];
+    const metadata = JSON.parse(String(run.metadata)) as { bverfgDiscovery?: { alreadyFetched: number } };
+    assert.equal(metadata.bverfgDiscovery?.alreadyFetched, 1);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("BVerfG staged discovery shares the same D1-aware selection as the M8 daily run", async () => {
+  const store = memoryBindings();
+  const headOfficial = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+  store.tracked.set(headOfficial, bverfgTrackedRow({ url: headOfficial, lastAttemptAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(), lastErrorCode: "BVERFG_OFFICIAL_VARIANTS_404" }));
+  const log: string[] = [];
+  const fetcher = bverfgOpenLegalDataFetcher([
+    { ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" },
+    { ecli: "ECLI:DE:BVerfG:2026:rs20260916.2bvr160226", html: "<html></html>" },
+  ], log);
+  const candidates = await discoverNativeStageCandidates("de-bverfg", store.bindings, { now, limit: 1, fetch: fetcher });
+  assert.equal(candidates.length, 1);
+  assert.ok(candidates[0].url.includes("20260916_2bvr160226"), "the staged discovery excludes the deferred head just like the daily run");
+});
+
+test("BVerfG M8 and staged discovery fail closed when durable candidate state cannot be read", async () => {
+  const specs = [{ ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" }];
+  for (const mode of ["m8", "staged"] as const) {
+    const store = memoryBindings([], { failBverfgLookup: true });
+    const requests: string[] = [];
+    const fetcher = bverfgOpenLegalDataFetcher(specs, requests);
+    await assert.rejects(
+      mode === "m8"
+        ? runNativeSourceCollection("de-bverfg", store.bindings, { now, limit: 1, fetch: fetcher, idempotencyKey: "m8:bverfg-d1-fail-closed" })
+        : discoverNativeStageCandidates("de-bverfg", store.bindings, { now, limit: 1, fetch: fetcher }),
+      /crawler\.bverfg_candidate_state_unavailable/,
+    );
+    assert.ok(!requests.some((url) => /\/SharedDocs\/Entscheidungen\//.test(url)), `${mode}: must not fetch official article when D1 is unavailable`);
+    assert.equal(store.articles.size, 0);
   }
 });
