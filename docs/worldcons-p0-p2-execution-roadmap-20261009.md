@@ -36,6 +36,20 @@
 
 ## 4. 변경·운영 절대 원칙
 
+### P2-2 국가별 source readiness 중간 감사 (2026-10-09 18:21 KST)
+
+| Source | Discovery / Crawl 공식 원문 | Normalize / Translate | Public Judgment / P3 / Search | 확대 판단 |
+| --- | --- | --- | --- | --- |
+| `fr-conseil-constitutionnel` | 공식 HTML 수집 및 Production 원문 검증 완료 | 실제 E2E 성공 | P3/Search 포함 8/8 jobs 성공 | **staged 운영 확인 완료** |
+| `es-tribunal-constitucional` | 공식 HJ 검색·tail 및 JSON 본문 adapter 구현; `Show/0` 제외 | 공통 Normalize/Translate 연계 구현 | 공통 gate 및 검색 경로 구현, 실제 E2E 미확인 | **bounded staged canary 유지**, 2026-10-10 06:00 KST 이후 실증 필요 |
+| `de-bverfg` | 공식 HTML + 정확한 ECLI identity gate, D1-aware 404 후보 백오프 구현 | 공통 Normalize/Translate 경로 연결 | 공통 gate는 존재하나 독일 판례 실전 P3/Search 미검증 | **M8 유지**, 실제 공식 fetch/번역/발행 readiness 후 staged 전환 |
+| `us-scotus` | 공식 PDF URL·robots·MIME·docket 검증과 R2 원본 보존 구현, 모의 PDF 통과 | 수집 텍스트는 보존하나 `articleStatus`가 의도적으로 `needs_review` 반환 | `collection.publishable=false` 및 review gate로 공개·검색 자동 승격 차단 | **M8 유지**, 실제 PDF E2E 및 별도 공개 정책 검토 전 staged 전환 금지 |
+
+- 공통 staged 핸들러는 7단계를 모두 지원하지만 **핸들러가 존재한다는 것과 해당 국가가 실제 Production 발행까지 검증됐다는 것은 별개**다.
+- 국가별 staged 전환 시 `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` 추가와 `M8_CRAWLER_SOURCE_EXCLUDE` 추가를 같은 검증 배포에서 쌍으로 수행한다. 미검증 상태에서 전체 allowlist를 풀지 않는다.
+- 운영 점검 차단: 2026-10-09 18시 KST 전후 Wrangler `worldcons_ingest` Production read-only SELECT가 Cloudflare API `7403 (account not valid or not authorized)` 반환. `wrangler whoami`는 계정 `c0975029797a404cd3ff402ee6a605b2`와 `d1(write)` OAuth scope를 표시했고 `wrangler.jsonc`의 D1 ID도 이전과 동일. **표시되는 OAuth scope만으로 실제 D1 API 권한을 보증할 수 없으며, 접근 권한 확인·복구 전에는 Production D1 E2E 성공을 단정하지 않는다.** 우회 자격증명·권한 변경 없음.
+- 다음 확인 순서: (1) Cloudflare D1 접근 권한 복구, (2) 스페인 stage jobs/events/outbox/DLQ 및 원문→P3→Search 실증, (3) 미국 M8 PDF R2/Core 원문·review 상태 확인, (4) 독일 M8 후보 처리 실증, (5) 검증된 source만 단계적으로 소유권 이관.
+
 ### P2-1 구현 검증 메모 (2026-10-09)
 
 - `workers/async-pipeline/src/scotus-pdf.ts` 및 `native-crawler.ts`: HTTPS 공식 slip-opinion PDF만 수집, robots 응답 200/허용 필요, 공식 redirect 2회 이하, 8 MiB 파일·80쪽·100만 글자 한도, PDF 시그니처·MIME·정확한 docket 헤더를 검증.
@@ -54,6 +68,8 @@
 
 ## 5. 다음 대화에서 바로 사용할 지시
 
-**`WorldCons P2-1 진행`** = 미국 SCOTUS 공식 PDF 원문 추출 구현. 이 문서를 읽은 뒤 DevSpace `ws_56c65f72be` / `C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b`에서 `git status`, `HEAD`, `origin/main`, Production source ownership을 점검하고, 정확한 Hive DeepSeek Flash에 bounded 구현을 맡겨 안전 게이트·회귀를 독립 검증한다. 이후 명시된 사용자 권한 범위 안에서 커밋·배포를 진행하고, 실제 운영 효과는 별도 확인한다.
+**`WorldCons P2-1 진행`** = 미국 SCOTUS 공식 PDF 원문 추출 **코드·배포는 완료**. 이를 다시 구현하지 말고 실제 SCOTUS 판례 수집 결과의 R2/Core provenance 및 비공개 gate를 검증한다.
 
 **`P1-1 확인`** = 2026-10-10 06:00 KST 이후 스페인 신규 staged E2E를 Production D1/R2/코어/P3/Search까지 판례 단위로 검증한다. France 성공을 Spain 성공으로 대체하지 않는다.
+
+**`다음 진행`** = 정기 실행 시각 전에는 D1 조회 권한을 진단하고 P2-2 국가별 readiness를 검증한다. 실행 시각 이후에는 P1-1 스페인 Production E2E를 최우선으로 추적하고 같은 실행에서 미국 M8 PDF·독일 후보 처리 현황도 확인한다. **권한 오류 7403이 남아 있으면 D1 접근을 우회하지 않고 사용자에게 차단 사실과 필요한 권한 확인을 보고한다.**
