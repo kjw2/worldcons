@@ -47,7 +47,8 @@
 
 - 공통 staged 핸들러는 7단계를 모두 지원하지만 **핸들러가 존재한다는 것과 해당 국가가 실제 Production 발행까지 검증됐다는 것은 별개**다.
 - 국가별 staged 전환 시 `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` 추가와 `M8_CRAWLER_SOURCE_EXCLUDE` 추가를 같은 검증 배포에서 쌍으로 수행한다. 미검증 상태에서 전체 allowlist를 풀지 않는다.
-- 운영 점검 차단: 2026-10-09 18시 KST 전후 Wrangler `worldcons_ingest` Production read-only SELECT가 Cloudflare API `7403 (account not valid or not authorized)` 반환. `wrangler whoami`는 계정 `c0975029797a404cd3ff402ee6a605b2`와 `d1(write)` OAuth scope를 표시했고 `wrangler.jsonc`의 D1 ID도 이전과 동일. **표시되는 OAuth scope만으로 실제 D1 API 권한을 보증할 수 없으며, 접근 권한 확인·복구 전에는 Production D1 E2E 성공을 단정하지 않는다.** 우회 자격증명·권한 변경 없음.
+- 운영 점검 복구: 2026-10-09 18시 KST 전후 Wrangler `worldcons_ingest` Production SELECT가 일시적으로 Cloudflare API `7403`을 반환했으나, 같은 날 후속 점검에서 `d1 list`·`d1 info`, `worldcons_core` 및 `worldcons_ingest`의 `SELECT 1`, 실제 ingest stage/ingestion_runs SELECT가 모두 성공. OAuth 계정 ID·D1 scope·database ID 일치 확인. **인증 변경 없이 현재 D1 read-only API 접근 정상화; 7403의 정확한 원인은 확인되지 않았으므로 일시적 오류로만 기록.** 대체 자격증명·권한 우회 없음.
+- 복구 후 Production D1 실측: France staged jobs 8/8 `succeeded` (search 2건), events 30건, pending/failed dispatch outbox 0, dead-letter 0, redrive 0. Spain은 첫 2026-10-10 06:00 KST Discovery 전이므로 staged job 아직 없음. 가장 최근 M8 US 2026-10-09 06:02 KST 수집은 discovered/fetched 0/0, 독일은 discovered/fetched 1/0; 두 나라 모두 실원문 완료 아님.
 - 다음 확인 순서: (1) Cloudflare D1 접근 권한 복구, (2) 스페인 stage jobs/events/outbox/DLQ 및 원문→P3→Search 실증, (3) 미국 M8 PDF R2/Core 원문·review 상태 확인, (4) 독일 M8 후보 처리 실증, (5) 검증된 source만 단계적으로 소유권 이관.
 
 ### P2-1 구현 검증 메모 (2026-10-09)
