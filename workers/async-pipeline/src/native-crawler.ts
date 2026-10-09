@@ -1,6 +1,7 @@
 import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../../../lib/cloudflare/core-write/authority";
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { shouldRetryBverfgCandidates, type BverfgTrackedCandidate } from "../../../lib/ingest/bverfg-candidate-retry";
+import { extractOfficialScotusPdf, isOfficialScotusPdfUrl, SCOTUS_PDF_MAX_BYTES } from "./scotus-pdf";
 
 export const NATIVE_CRAWLER_SOURCES = [
   "de-bverfg",
@@ -474,7 +475,8 @@ function discoverScotus(html: string, listingUrl: string): NativeArticleCandidat
     const anchor = cells[3].match(/<a\b([^>]*?)href\s*=\s*(["'])(.*?)\2([^>]*)>([\s\S]*?)<\/a>/i);
     if (!anchor || !/\.pdf(?:$|[?#])/i.test(anchor[3])) continue;
     const href = canonicalUrl(anchor[3], "https://www.supremecourt.gov");
-    candidates.push({ sourceKey: "us-scotus", url: href, title: htmlText(anchor[5]) || href.split("/").at(-1) || "SCOTUS opinion", publishedAt: dateIso(htmlText(cells[1])), contentType: "opinion", metadata: { docket: htmlText(cells[2]), revisionDate: htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] ? dateIso(htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1]) : undefined, listingUrl, officialPdfUrlDiscovered: true, collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false, reason: "Official SCOTUS PDF metadata is preserved; no Worker-safe PDF text extraction is configured, so human review is required." }, review: { required: true, reason: "pdf_text_extraction_unavailable" } } });
+    if (!isOfficialScotusPdfUrl(href)) continue;
+    candidates.push({ sourceKey: "us-scotus", url: href, title: htmlText(anchor[5]) || href.split("/").at(-1) || "SCOTUS opinion", publishedAt: dateIso(htmlText(cells[1])), contentType: "opinion", metadata: { docket: htmlText(cells[2]), revisionDate: htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] ? dateIso(htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1]) : undefined, listingUrl, officialPdfUrlDiscovered: true, collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: false, sourceTextAvailable: false, publishable: false, reason: "Official listing discovered; PDF and docket still require verification." }, review: { required: true, reason: "pdf_verification_pending" } } });
   }
   return candidates;
 }
@@ -742,6 +744,88 @@ function articleStatus(candidate: NativeArticleCandidate, text: string) {
   return "cleaned";
 }
 
+/**
+ * Fetch only an official slip-opinion PDF, including every redirect hop.
+ * Stream limits apply even when Content-Length is absent or dishonest.
+ */
+async function fetchScotusPdf(url: string, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>): Promise<{ bytes: Uint8Array; finalUrl: string; status: number }> {
+  async function permitted(target: string) {
+    const origin = new URL(target).origin;
+    // Discovery's generic robots cache may contain an empty string after a 404.
+    // A PDF download needs independent positive robots evidence.
+    const cacheKey = `${origin}:scotus-robots-verified`;
+    let rules = robotsCache.get(cacheKey);
+    if (rules === undefined) {
+      const response = await boundedFetch(fetcher, `${origin}/robots.txt`, {
+        headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)" },
+        redirect: "manual",
+      });
+      if (!response.ok) throw new Error("scotus.robots_unavailable");
+      rules = (await response.text()).slice(0, 100_000);
+      robotsCache.set(cacheKey, rules);
+    }
+    const policy = parseRobots(rules, target);
+    if (!policy.allowed) throw new Error("scotus.robots_disallowed");
+    const delay = Math.max(SOURCE_INFO["us-scotus"].delayMs, policy.delayMs);
+    const elapsed = Date.now() - (lastRequest.get(origin) ?? 0);
+    if (elapsed < delay) await new Promise((resolve) => setTimeout(resolve, delay - elapsed));
+    lastRequest.set(origin, Date.now());
+  }
+  let target = url;
+  for (let hop = 0; hop < 3; hop += 1) {
+    if (!isOfficialScotusPdfUrl(target)) throw new Error("scotus.pdf_url_unverified");
+    await permitted(target);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), NATIVE_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetcher(target, {
+        headers: { "user-agent": "ConstitutionalCourtCurationBot/0.1 (+https://worldcons.cclib.workers.dev/)", accept: "application/pdf" },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) throw new Error("scotus.pdf_redirect_missing");
+        target = new URL(location, target).toString();
+        if (!isOfficialScotusPdfUrl(target)) throw new Error("scotus.pdf_redirect_non_official");
+        continue;
+      }
+      if (!response.ok) throw new Error(`crawler.http_${response.status}`);
+      const finalUrl = response.url || target;
+      if (!isOfficialScotusPdfUrl(finalUrl)) throw new Error("scotus.pdf_final_url_unverified");
+      const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+      if (contentType && !/^(?:application\/pdf|application\/octet-stream)(?:;|$)/.test(contentType)) throw new Error("scotus.pdf_content_type_invalid");
+      const advertised = Number(response.headers.get("content-length") ?? 0);
+      if (advertised > SCOTUS_PDF_MAX_BYTES) throw new Error("scotus.pdf_too_large");
+      if (!response.body) throw new Error("scotus.pdf_body_missing");
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          total += value.byteLength;
+          if (total > SCOTUS_PDF_MAX_BYTES) throw new Error("scotus.pdf_too_large");
+          chunks.push(value);
+        }
+      } catch (error) {
+        await reader.cancel().catch(() => undefined);
+        throw error;
+      } finally {
+        reader.releaseLock();
+      }
+      const bytes = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+      return { bytes, finalUrl, status: response.status };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error("scotus.pdf_redirect_limit");
+}
+
 async function upsertCandidate(db: NativeCrawlerDatabase, source: NativeCrawlerSource, url: string, code: string | null, message: string | null, success: boolean) {
   const now = new Date().toISOString();
   await db.prepare(`INSERT INTO source_url_candidates (id, source_key, url, candidate_type, discovered_by, status, last_attempt_at, attempt_count, last_error_code, last_error_message, created_at, updated_at)
@@ -772,6 +856,13 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const duplicate = existing ? null : await core.prepare("SELECT id FROM articles WHERE content_hash = ? LIMIT 1").bind(contentHash).first<{ id: string }>();
   if (duplicate) return { outcome: "duplicate", articleId: duplicate.id, canonicalUrl: canonical, contentHash, status };
   const oldMetadata = (() => { try { return JSON.parse(String(existing?.source_metadata ?? "{}")) as Record<string, unknown>; } catch { return {}; } })();
+  // A transient PDF/robots/docket failure must not replace an earlier verified
+  // SCOTUS original with the synthetic discovery title/URL fallback text.
+  const previousPdf = oldMetadata.officialPdf as Record<string, unknown> | undefined;
+  const currentPdf = candidate.metadata.officialPdf as Record<string, unknown> | undefined;
+  if (existing && candidate.sourceKey === "us-scotus" && previousPdf?.docketVerified === true && currentPdf?.docketVerified !== true) {
+    return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
+  }
   const metadata = { ...oldMetadata, ...candidate.metadata, collection: { ...(oldMetadata.collection as Record<string, unknown> ?? {}), ...(candidate.metadata.collection as Record<string, unknown>), diagnosticsId: runId, source: SOURCE_INFO[candidate.sourceKey].baseUrl }, ingestion: { runId, crawler: "worldcons-ingest-native-v1", fetchedAt } };
   const data = JSON.stringify(metadata);
   const oldTextLength = String(existing?.cleaned_text ?? "").trim().length;
@@ -907,7 +998,43 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
 }
 
 async function fetchCandidate(candidate: NativeArticleCandidate, bindings: NativeCrawlerBindings, fetcher: typeof fetch, robotsCache: Map<string, string>, lastRequest: Map<string, number>, allowBrowser: boolean, browserNavigate?: CrawlerOptions["browserNavigate"]) {
-  if (candidate.sourceKey === "us-scotus") return { text: `${candidate.title}\n${candidate.publishedAt ?? ""}\n${candidate.url}`, status: 200, fetched: false };
+  if (candidate.sourceKey === "us-scotus") {
+    const collection = candidate.metadata.collection as Record<string, unknown>;
+    const fallback = `${candidate.title}\n${candidate.publishedAt ?? ""}\n${candidate.url}`;
+    try {
+      const docket = candidate.metadata.docket;
+      if (typeof docket !== "string") throw new Error("scotus.docket_unverified");
+      const downloaded = await fetchScotusPdf(candidate.url, fetcher, robotsCache, lastRequest);
+      const document = await extractOfficialScotusPdf(downloaded.bytes, docket);
+      const hash = await sha256(downloaded.bytes);
+      const key = `artifacts/scotus_pdf/${hash}.pdf`;
+      await bindings.WORLDCONS_RAW.put(key, downloaded.bytes, { httpMetadata: { contentType: "application/pdf" } });
+      candidate.metadata.officialPdf = {
+        url: downloaded.finalUrl, r2Key: key, sha256: hash, sizeBytes: downloaded.bytes.byteLength,
+        pageCount: document.pageCount, extractor: "unpdf", docketVerified: true,
+      };
+      collection.strategy = "official-pdf";
+      collection.confidence = "high";
+      collection.sourceUrlVerified = true;
+      collection.strictSourceTextAvailable = true;
+      collection.sourceTextAvailable = true;
+      // P2-1 validates collection and provenance, not SCOTUS public judgment.
+      collection.publishable = false;
+      collection.reason = "Official SCOTUS PDF and docket verified; awaiting separate public-judgment readiness.";
+      candidate.metadata.review = { required: true, reason: "scotus_pdf_human_review_required" };
+      return { text: document.text, status: downloaded.status, fetched: true };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message.slice(0, 120) : "scotus.pdf_extraction_failed";
+      candidate.metadata.pdfExtractionError = reason;
+      candidate.metadata.review = { required: true, reason: "scotus_pdf_extraction_unverified" };
+      collection.sourceUrlVerified = false;
+      collection.sourceTextAvailable = false;
+      collection.strictSourceTextAvailable = true;
+      collection.publishable = false;
+      collection.reason = `SCOTUS PDF verification failed: ${reason}`;
+      return { text: fallback, status: 0, fetched: false };
+    }
+  }
   if (candidate.sourceKey === "de-bverfg" && candidate.metadata.discoveryIndex === "openlegaldata") {
     const configured = Array.isArray(candidate.metadata.officialUrlCandidates)
       ? candidate.metadata.officialUrlCandidates.filter((value): value is string => typeof value === "string" && officialHost("de-bverfg", value))

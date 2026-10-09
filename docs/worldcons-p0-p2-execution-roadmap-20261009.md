@@ -12,7 +12,7 @@
 | P1-1 | **스페인 실제 Production 7단계 E2E 검증** | **대기** | 첫 2026-10-10 06:00 KST 정기 Discovery 이후 stage jobs/events/outbox/DLQ, 공식 HJ ID/JSON 원문(충분한 본문), R2, Core, 번역, Public Judgment, P3, Search를 판례 단위로 추적. 장애 시 false publish 없이 원인 수정 |
 | P1-2 | 독일 BVerfG 공식 원문 URL/ECLI identity gate | **완료** | `9fa36e2`: 공식 판결 본문·정확한 ECLI·리다이렉트 최종 URL 검증, 잘못된 HTML 및 불일치 차단 |
 | P1-3 | 독일 M8 후보 404 head-of-line/백오프 개선 | **구현·배포 완료, 실운영 효과 미검증** | `4b384be`: D1 상태 기반 bounded 후보 순환, 백오프 중 후보 defer, D1 장애 시 fail-closed, `degraded` 진단. 다음 M8 실행의 실제 fetch를 별도 확인 |
-| **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **미완료 — 다음 구현 작업** | Cloudflare Worker에서 공식 PDF의 실제 판결 본문을 안전하게 추출·검증하고 R2/D1 provenance를 연결. 본문 부족/추출 오류/PDF 아닌 응답은 `metadata_only`와 비공개 상태 유지. 단위·모의 E2E·Worker 빌드 검증 후 Production-only 배포. 미국 M8 소유권은 실전 검증 전 유지 |
+| **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·모의 검증 통과, Production 배포·실원문 검증 대기** | `unpdf` Worker-safe 텍스트 추출, 공식 PDF/redirect/robots/docket/용량 검증, R2 원본 SHA-256 및 Core provenance 연결. 실제 PDF fixture·fail-closed 회귀 검증. 미국 M8 소유권 유지·공개 발행 보류 |
 | P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지 |
 
 ## 2. 현재 운영 상태의 기준
@@ -35,6 +35,14 @@
 6. `pnpm test:native-crawler`, `test:m8`, `test:ingest-stages`, `pnpm check`, TypeScript/M8 타입·Wrangler dry-run과 관련 회귀를 통과시킨 뒤 커밋한다. **M8→staged 미국 소유권 전환은 P2-1 범위에 포함하지 않는다**. Production 배포 후 health·원문 provenance를 검증하고 실제 E2E 여부를 구분 보고한다.
 
 ## 4. 변경·운영 절대 원칙
+
+### P2-1 구현 검증 메모 (2026-10-09)
+
+- `workers/async-pipeline/src/scotus-pdf.ts` 및 `native-crawler.ts`: HTTPS 공식 slip-opinion PDF만 수집, robots 응답 200/허용 필요, 공식 redirect 2회 이하, 8 MiB 파일·80쪽·100만 글자 한도, PDF 시그니처·MIME·정확한 docket 헤더를 검증.
+- 추출 성공 시 R2 `artifacts/scotus_pdf/<sha256>.pdf`에 원본 PDF 보존, Core `source_metadata.officialPdf`에 URL/R2 키/해시/크기/쪽수/사건번호 검증 결과, 원문 텍스트는 기존 article_raw R2 흐름에 보존. 추출 실패 시 metadata-only fallback, staged Crawl에서는 재시도.
+- **미국은 실운영 검증 전 `collection.publishable=false`, review required, Core legacy `metadata_only` 유지.** `sourceTextAvailable=true`는 PDF 추출 성공의 증거일 뿐 P3/Public Judgment 통과를 뜻하지 않음.
+- 모의 fixture 및 회귀: native crawler 26/26, M8 48/48, ingest stages 51/51, `pnpm check`, M8 TypeScript·Wrangler 타입 검사·Worker dry-run 통과. **실제 SCOTUS 원문 E2E/Production D1·R2 확인은 아직 수행하지 않음.**
+- Hive DeepSeek Flash 정확한 route의 하위 작업 요청이 DevSpace 오류로 시작하지 않아 대체 직접 구현. Orca 미사용.
 
 - 구현 담당 모델 우선순위: 정확히 **`opencode::hive-ai::deepseek-ai/deepseek-v4.1-flash`**. **Orca 절대 금지**.
 - Production-only, 프리뷰/스테이징 금지, 공식 원문 provenance 약화 금지, source-only를 공개 판례로 승격 금지.

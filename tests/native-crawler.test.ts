@@ -5,6 +5,7 @@ import {
   crawlNativeStageCandidate,
   discoverNativeStageCandidates,
   parseNativeSourceListing,
+  persistNativeStageRecord,
   runNativeSourceCollection,
   selectBverfgDiscoveryCandidates,
   type NativeCrawlerBindings,
@@ -17,6 +18,141 @@ const robots = "User-agent: *\nAllow: /\nCrawl-delay: 0";
 function response(body: string, status = 200, contentType = "text/html") {
   return new Response(body, { status, headers: { "content-type": contentType } });
 }
+
+/** Minimal self-contained text PDF; exercises real unpdf parsing without network fixtures. */
+function scotusPdfFixture(docket = "26-100", paragraphs = 36): Uint8Array {
+  const content = [
+    "BT /F1 12 Tf 50 770 Td",
+    `(No. ${docket}) Tj 0 -18 Td`,
+    ...Array.from({ length: paragraphs }, (_, i) => `(The Court applies constitutional doctrine to the official record in paragraph ${i + 1}.) Tj 0 -18 Td`),
+    "ET",
+  ].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let data = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let i = 0; i < objects.length; i += 1) {
+    offsets.push(data.length);
+    data += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+  const startxref = data.length;
+  data += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) data += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  data += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
+  return new TextEncoder().encode(data);
+}
+
+test("SCOTUS official PDF extraction preserves bytes and hash while holding publication for review", async () => {
+  const store = memoryBindings();
+  const candidate = fixture("us-scotus");
+  const discovered = parseNativeSourceListing("us-scotus", candidate.listing, candidate.listingUrl)[0];
+  const pdf = scotusPdfFixture();
+  const fetched = await crawlNativeStageCandidate(discovered, store.bindings, {
+    fetch: async (input) => String(input).endsWith("/robots.txt")
+      ? response(robots)
+      : new Response(pdf, { status: 200, headers: { "content-type": "application/pdf" } }),
+  });
+  assert.equal(fetched.fetched, true, JSON.stringify(fetched.candidate.metadata));
+  assert.equal(fetched.status, 200);
+  assert.match(fetched.text, /No\. 26-100/);
+  assert.equal((fetched.candidate.metadata.collection as Record<string, unknown>).sourceTextAvailable, true);
+  assert.equal((fetched.candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, true);
+  assert.equal((fetched.candidate.metadata.collection as Record<string, unknown>).publishable, false);
+  const provenance = fetched.candidate.metadata.officialPdf as Record<string, unknown>;
+  assert.equal(provenance.pageCount, 1);
+  assert.equal(provenance.docketVerified, true);
+  const expectedSha = Buffer.from(await crypto.subtle.digest("SHA-256", pdf)).toString("hex");
+  assert.equal(provenance.sha256, expectedSha);
+  assert.match(String(provenance.r2Key), /^artifacts\/scotus_pdf\/[0-9a-f]{64}\.pdf$/);
+  assert.deepEqual(store.blobs.get(String(provenance.r2Key)), pdf);
+  const persisted = await persistNativeStageRecord(fetched.candidate, fetched.text, store.bindings, {
+    runId: "scotus-p2-1-unit", fetchedAt: "2026-10-09T00:00:00.000Z",
+  });
+  assert.equal(persisted.status, "needs_review");
+  const article = [...store.articles.values()][0];
+  const savedProvenance = JSON.parse(String(article.source_metadata)) as { officialPdf: Record<string, unknown> };
+  assert.equal(savedProvenance.officialPdf.sha256, expectedSha);
+  assert.equal(savedProvenance.officialPdf.r2Key, provenance.r2Key);
+  assert.equal(article.status, "metadata_only");
+  assert.equal(article.translation_status, "not_required");
+  assert.equal(article.lifecycle_processing_state, "not_ready");
+  assert.equal(article.review_state, "needs_triage");
+  assert.equal(store.blobs.size, 2, "PDF original and raw text snapshot are separate R2 objects");
+  assert.equal(store.statements.some((item) => /INSERT INTO article_publications_p3/.test(item.sql)), false);
+  const failure = await crawlNativeStageCandidate(
+    parseNativeSourceListing("us-scotus", candidate.listing, candidate.listingUrl)[0],
+    store.bindings,
+    { fetch: async (input) => String(input).endsWith("/robots.txt")
+      ? response(robots)
+      : new Response(scotusPdfFixture("26-999"), { status: 200, headers: { "content-type": "application/pdf" } }) },
+  );
+  assert.equal(failure.fetched, false);
+  const preserved = await persistNativeStageRecord(failure.candidate, failure.text, store.bindings, {
+    runId: "scotus-p2-1-failed-refresh", fetchedAt: "2026-10-10T00:00:00.000Z",
+  });
+  assert.equal(preserved.outcome, "preserved", "an unverified refresh cannot erase previously verified PDF text");
+  assert.equal(store.blobs.size, 2);
+  assert.equal((JSON.parse(String(article.source_metadata)) as { officialPdf: { sha256: string } }).officialPdf.sha256, expectedSha);
+});
+
+test("SCOTUS PDF verification failures stay metadata-only and never write PDF to R2", async () => {
+  const listing = fixture("us-scotus");
+  assert.equal(parseNativeSourceListing("us-scotus", listing.listing.replace("/opinions/25pdf/26-100.pdf", "https://evil.example/opinions/25pdf/26-100.pdf"), listing.listingUrl).length, 0);
+  const checks = [
+    { name: "wrong docket", body: scotusPdfFixture("26-999"), type: "application/pdf" },
+    { name: "no extractable decision body", body: scotusPdfFixture("26-100", 0), type: "application/pdf" },
+    { name: "corrupt PDF", body: new TextEncoder().encode("%PDF-1.4" + "not a valid xref".repeat(30)), type: "application/pdf" },
+    { name: "HTML masquerading as PDF", body: new TextEncoder().encode("<html>unverified</html>"), type: "application/pdf" },
+    { name: "wrong MIME", body: scotusPdfFixture(), type: "text/html" },
+  ];
+  for (const check of checks) {
+    const store = memoryBindings();
+    const candidate = parseNativeSourceListing("us-scotus", listing.listing, listing.listingUrl)[0];
+    const result = await crawlNativeStageCandidate(candidate, store.bindings, {
+      fetch: async (input) => String(input).endsWith("/robots.txt")
+        ? response(robots)
+        : new Response(check.body, { status: 200, headers: { "content-type": check.type } }),
+    });
+    assert.equal(result.fetched, false, check.name);
+    assert.equal(result.status, 0, check.name);
+    assert.equal(store.blobs.size, 0, check.name);
+    assert.equal((result.candidate.metadata.collection as Record<string, unknown>).publishable, false, check.name);
+    assert.equal((result.candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, false, check.name);
+    assert.equal((result.candidate.metadata.review as Record<string, unknown>).required, true, check.name);
+  }
+  const store = memoryBindings();
+  const original = parseNativeSourceListing("us-scotus", listing.listing, listing.listingUrl)[0];
+  const redirected = await crawlNativeStageCandidate(original, store.bindings, {
+    fetch: async (input) => String(input).endsWith("/robots.txt")
+      ? response(robots)
+      : new Response(null, { status: 302, headers: { location: "https://evil.example/untrusted.pdf" } }),
+  });
+  assert.equal(redirected.fetched, false);
+  assert.equal(store.blobs.size, 0);
+  for (const failure of [
+    { name: "robots blocked", robotsBody: "User-agent: *\nDisallow: /opinions/", status: 200, length: undefined },
+    { name: "robots unavailable", robotsBody: "unavailable", status: 503, length: undefined },
+    { name: "oversized body header", robotsBody: robots, status: 200, length: "99999999" },
+  ]) {
+    const current = memoryBindings();
+    const candidate = parseNativeSourceListing("us-scotus", listing.listing, listing.listingUrl)[0];
+    const result = await crawlNativeStageCandidate(candidate, current.bindings, {
+      fetch: async (input) => String(input).endsWith("/robots.txt")
+        ? response(failure.robotsBody, failure.status)
+        : new Response(scotusPdfFixture(), {
+          status: 200, headers: { "content-type": "application/pdf", ...(failure.length ? { "content-length": failure.length } : {}) },
+        }),
+    });
+    assert.equal(result.fetched, false, failure.name);
+    assert.equal(current.blobs.size, 0, failure.name);
+    assert.equal((result.candidate.metadata.collection as Record<string, unknown>).publishable, false, failure.name);
+  }
+});
 
 function fixture(source: NativeCrawlerSource) {
   const decisionText = "Official judgment text on constitutional rights and the governing legal principles. ".repeat(25);
