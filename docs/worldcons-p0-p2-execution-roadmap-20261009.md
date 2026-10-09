@@ -12,7 +12,7 @@
 | P1-1 | **스페인 실제 Production 7단계 E2E 검증** | **대기** | 첫 2026-10-10 06:00 KST 정기 Discovery 이후 stage jobs/events/outbox/DLQ, 공식 HJ ID/JSON 원문(충분한 본문), R2, Core, 번역, Public Judgment, P3, Search를 판례 단위로 추적. 장애 시 false publish 없이 원인 수정 |
 | P1-2 | 독일 BVerfG 공식 원문 URL/ECLI identity gate | **완료** | `9fa36e2`: 공식 판결 본문·정확한 ECLI·리다이렉트 최종 URL 검증, 잘못된 HTML 및 불일치 차단 |
 | P1-3 | 독일 M8 후보 404 head-of-line/백오프 개선 | **구현·배포 완료, 실운영 효과 미검증** | `4b384be`: D1 상태 기반 bounded 후보 순환, 백오프 중 후보 defer, D1 장애 시 fail-closed, `degraded` 진단. 다음 M8 실행의 실제 fetch를 별도 확인 |
-| **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·모의 검증 통과, Production 배포·실원문 검증 대기** | `unpdf` Worker-safe 텍스트 추출, 공식 PDF/redirect/robots/docket/용량 검증, R2 원본 SHA-256 및 Core provenance 연결. 실제 PDF fixture·fail-closed 회귀 검증. 미국 M8 소유권 유지·공개 발행 보류 |
+| **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료, 실원문 E2E 대기** | 코드 `cc6059e`, Worker 버전 `4189c105-43db-4800-b557-9571c8ba6ee7`. `unpdf` Worker-safe 텍스트 추출, 공식 PDF/redirect/robots/docket/용량 검증, R2 원본 SHA-256 및 Core provenance 연결. 미국 M8 소유권 유지·공개 발행 보류. 실제 SCOTUS 판례 원문 처리는 추후 확인 |
 | P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지 |
 
 ## 2. 현재 운영 상태의 기준
@@ -22,7 +22,7 @@
 - staged-ingest 소유: **프랑스+스페인**. `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST=fr-conseil-constitutionnel,es-tribunal-constitucional`.
 - 기존 M8 `crawler-daily` 소유: **독일+미국**. `M8_CRAWLER_SOURCE_EXCLUDE=fr-conseil-constitutionnel,es-tribunal-constitucional`. 나머지 M8 종류는 유지.
 - staged 7단계: Discovery → Crawl → Normalize → Translate → Public Judgment → Publish → Search. Bootstrap **source당 1건**, dispatch **stage당 1건/15분**, 일일 Discovery `0 21 * * *` UTC = 다음날 06:00 KST.
-- 2026-10-09 배포 기준: `worldcons-ingest` version `0ad6bb0c-3fc5-49f8-8ad8-55fe3cdcde52`; GitHub `main` HEAD `4b384bed0a489851ad87dd0b214f419aedf0517d`.
+- 2026-10-09 P2-1 배포 기준: `worldcons-ingest` version `4189c105-43db-4800-b557-9571c8ba6ee7`; P2-1 코드 커밋 `cc6059e401dae6daae530aa0350f72543f64b524`가 GitHub `main`에 반영됨.
 - 프랑스 Production E2E는 성공했지만, **스페인/독일/미국 전체 E2E를 의미하지 않는다**. 프랑스 1개 소스 제한은 원래 사용자의 정책이 아니라 이전 assistant의 임시 카나리였다.
 
 ## 3. P2-1 — SCOTUS PDF 추출 작업 세부 승인 범위
@@ -42,6 +42,7 @@
 - 추출 성공 시 R2 `artifacts/scotus_pdf/<sha256>.pdf`에 원본 PDF 보존, Core `source_metadata.officialPdf`에 URL/R2 키/해시/크기/쪽수/사건번호 검증 결과, 원문 텍스트는 기존 article_raw R2 흐름에 보존. 추출 실패 시 metadata-only fallback, staged Crawl에서는 재시도.
 - **미국은 실운영 검증 전 `collection.publishable=false`, review required, Core legacy `metadata_only` 유지.** `sourceTextAvailable=true`는 PDF 추출 성공의 증거일 뿐 P3/Public Judgment 통과를 뜻하지 않음.
 - 모의 fixture 및 회귀: native crawler 26/26, M8 48/48, ingest stages 51/51, `pnpm check`, M8 TypeScript·Wrangler 타입 검사·Worker dry-run 통과. **실제 SCOTUS 원문 E2E/Production D1·R2 확인은 아직 수행하지 않음.**
+- Production 적용: 2026-10-09 `worldcons-ingest` version `4189c105-43db-4800-b557-9571c8ba6ee7`; `/health` 정상. `crawlerSourceOwnership.effectiveSources=["de-bverfg","us-scotus"]`, staged `bootstrapSources=["fr-conseil-constitutionnel","es-tribunal-constitucional"]` 확인. 미국 공식 PDF 1건의 R2 원본·Core provenance·review/비공개 상태는 다음 M8 실수집 이후 추적 검증할 것.
 - Hive DeepSeek Flash 정확한 route의 하위 작업 요청이 DevSpace 오류로 시작하지 않아 대체 직접 구현. Orca 미사용.
 
 - 구현 담당 모델 우선순위: 정확히 **`opencode::hive-ai::deepseek-ai/deepseek-v4.1-flash`**. **Orca 절대 금지**.
