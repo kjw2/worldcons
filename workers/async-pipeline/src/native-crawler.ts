@@ -239,6 +239,41 @@ function bverfgDateContext(context: string, url: string) {
   return { date: date ? `${date}T00:00:00.000Z` : dateIso(context), docket };
 }
 
+function bverfgDecisionIdentity(url: string) {
+  const pathname = new URL(url).pathname;
+  const match = pathname.match(/^\/SharedDocs\/Entscheidungen\/DE\/(20\d{2})\/(\d{2})\/([a-z]{2})(20\d{2})(\d{2})(\d{2})_([a-z0-9]+)\.html$/i);
+  if (!match || match[1] !== match[4] || match[2] !== match[5]) return null;
+  return {
+    ecli: `ECLI:DE:BVerfG:${match[1]}:${match[3].toLowerCase()}${match[4]}${match[5]}${match[6]}.${match[7].toLowerCase()}`,
+    decisionId: `${match[4]}${match[5]}${match[6]}_${match[7]}`.toLowerCase(),
+    publishedAt: `${match[4]}-${match[5]}-${match[6]}T00:00:00.000Z`,
+  };
+}
+
+function verifyBverfgOfficialText(html: string, finalUrl: string, discoveredUrl: string) {
+  const expected = bverfgDecisionIdentity(finalUrl);
+  const discovered = bverfgDecisionIdentity(discoveredUrl);
+  if (!expected || !discovered || expected.decisionId !== discovered.decisionId) {
+    throw new Error("crawler.bverfg_official_identity_mismatch");
+  }
+  const text = extractOfficialText(html, "de-bverfg");
+  const actual = text.match(/\bECLI:DE:BVerfG:20\d{2}:[a-z]{2}20\d{6}\.[a-z0-9]+\b/i)?.[0].toLowerCase();
+  if (!actual || actual !== expected.ecli.toLowerCase()) throw new Error("crawler.bverfg_official_identity_mismatch");
+  return { text, ecli: expected.ecli, publishedAt: expected.publishedAt };
+}
+
+function acceptBverfgOfficialVerification(candidate: NativeArticleCandidate, html: string, finalUrl: string, requestedUrl: string) {
+  const verified = verifyBverfgOfficialText(html, finalUrl, requestedUrl);
+  const priorEcli = candidate.metadata.ecli;
+  if (typeof priorEcli === "string" && priorEcli.toLowerCase() !== verified.ecli.toLowerCase()) candidate.metadata.discoveryEcli = priorEcli;
+  candidate.metadata.ecli = verified.ecli;
+  candidate.metadata.officialIdentityVerification = "bverfg-ecli-exact-v1";
+  candidate.url = finalUrl;
+  candidate.publishedAt = verified.publishedAt;
+  (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified = true;
+  return verified.text;
+}
+
 function discoverBverfg(html: string, base: string): NativeArticleCandidate[] {
   return absoluteLinks(html, base).filter((link) => officialHost("de-bverfg", link.url) && /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}20\d{6}_[a-z0-9]+\.html/i.test(new URL(link.url).pathname)).map((link) => {
     const { date, docket } = bverfgDateContext(link.context, link.url);
@@ -757,9 +792,8 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
     for (const officialUrl of configured) {
       try {
         const result = await fetchHtml(candidate.sourceKey, officialUrl, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-        candidate.url = officialUrl;
-        (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified = true;
-        return { text: extractOfficialText(result.html, candidate.sourceKey), status: result.status, fetched: true };
+        const verifiedText = acceptBverfgOfficialVerification(candidate, result.html, result.finalUrl, officialUrl);
+        return { text: verifiedText, status: result.status, fetched: true };
       } catch (error) {
         if (error instanceof Error && error.message === "crawler.http_404") continue;
         if (isTransientCrawlerHttpError(error)) {
@@ -811,6 +845,10 @@ async function fetchCandidate(candidate: NativeArticleCandidate, bindings: Nativ
     return { text: `${candidate.title}\n${candidate.publishedAt ?? ""}\n${candidate.url}`, status: 0, fetched: false };
   }
   const result = await fetchHtml(candidate.sourceKey, candidate.url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+  if (candidate.sourceKey === "de-bverfg") {
+    const verifiedText = acceptBverfgOfficialVerification(candidate, result.html, result.finalUrl, candidate.url);
+    return { text: verifiedText, status: result.status, fetched: true };
+  }
   (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified = true;
   return { text: extractOfficialText(result.html, candidate.sourceKey), status: result.status, fetched: true };
 }

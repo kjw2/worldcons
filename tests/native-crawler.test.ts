@@ -23,7 +23,7 @@ function fixture(source: NativeCrawlerSource) {
     return {
       listingUrl: "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html",
       listing,
-      detail: `<html><main><h1>Beschluss 2 BvR 1234/26</h1>${decisionText}</main></html>`,
+      detail: `<html><main><h1>Beschluss 2 BvR 1234/26</h1><p>ECLI:DE:BVerfG:2026:rs20260920.2bvr123426</p>${decisionText}</main></html>`,
       detailPath: "/SharedDocs/Entscheidungen/DE/2026/09/rs20260920_2bvr123426.html",
     };
   }
@@ -206,6 +206,7 @@ test("targeted staged crawl preserves the actually fetched BVerfG official URL v
     contentType: "decision" as const,
     metadata: {
       discoveryIndex: "openlegaldata",
+      ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226",
       officialUrlCandidates: [firstUrl, verifiedUrl],
       collection: { strategy: "api", sourceUrlVerified: false, sourceTextAvailable: false, publishable: false },
     },
@@ -214,13 +215,64 @@ test("targeted staged crawl preserves the actually fetched BVerfG official URL v
     const url = String(input);
     if (url.endsWith("/robots.txt")) return response(robots);
     if (url === firstUrl) return response("not published", 404);
-    if (url === verifiedUrl) return response(`<html><main>${"Official verified decision text. ".repeat(30)}</main></html>`);
+    if (url === verifiedUrl) return response(`<html><main><p>ECLI:DE:BVerfG:2026:rs20260917.2bvr170226</p>${"Official verified decision text. ".repeat(30)}</main></html>`);
     throw new Error(`unexpected fetch ${url}`);
   };
   const result = await crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher });
   assert.equal(result.fetched, true);
   assert.equal(result.canonicalUrl, verifiedUrl);
   assert.equal(result.candidate.url, verifiedUrl);
+  assert.equal((result.candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, true);
+  assert.equal(result.candidate.metadata.ecli, "ECLI:DE:BVerfG:2026:rs20260917.2bvr170226");
+  assert.equal(result.candidate.metadata.discoveryEcli, "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226");
+  assert.equal(result.candidate.publishedAt, "2026-09-17T00:00:00.000Z");
+  assert.equal(result.candidate.metadata.officialIdentityVerification, "bverfg-ecli-exact-v1");
+});
+
+test("BVerfG staged crawl rejects HTTP 200 pages without the exact official decision ECLI", async () => {
+  const store = memoryBindings();
+  const url = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260901_2bvr128625.html";
+  const candidate = {
+    sourceKey: "de-bverfg" as const,
+    url,
+    title: "BVerfG 2 BvR 1286/25",
+    contentType: "decision" as const,
+    metadata: { discoveryIndex: "official-listing", collection: { sourceUrlVerified: false, sourceTextAvailable: false, publishable: false } },
+  };
+  const fetcher: typeof fetch = async (input) => {
+    if (String(input).endsWith("/robots.txt")) return response(robots);
+    if (String(input) === url) return response(`<html><main><p>ECLI:DE:BVerfG:2026:rk20260901.2bvr999925</p>${"Generic court navigation text. ".repeat(60)}</main></html>`);
+    throw new Error(`unexpected fetch ${String(input)}`);
+  };
+  await assert.rejects(crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher }), /crawler\.bverfg_official_identity_mismatch/);
+  assert.equal((candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, false);
+  assert.equal(store.articles.size, 0);
+  assert.equal(store.blobs.size, 0);
+});
+
+test("BVerfG official redirects retain the verified final decision URL and ECLI", async () => {
+  const store = memoryBindings();
+  const originalUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260901_2bvr128625.html";
+  const finalUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260901_2bvr128625.html";
+  const candidate = {
+    sourceKey: "de-bverfg" as const,
+    url: originalUrl,
+    title: "BVerfG 2 BvR 1286/25",
+    contentType: "decision" as const,
+    metadata: { discoveryIndex: "official-listing", collection: { sourceUrlVerified: false, sourceTextAvailable: false, publishable: false } },
+  };
+  const fetcher: typeof fetch = async (input) => {
+    if (String(input).endsWith("/robots.txt")) return response(robots);
+    if (String(input) === originalUrl) {
+      const result = response(`<html><main><p>ECLI:DE:BVerfG:2026:rs20260901.2bvr128625</p>${"Official court decision text. ".repeat(40)}</main></html>`);
+      Object.defineProperty(result, "url", { value: finalUrl });
+      return result;
+    }
+    throw new Error(`unexpected fetch ${String(input)}`);
+  };
+  const result = await crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher });
+  assert.equal(result.canonicalUrl, finalUrl);
+  assert.equal(result.candidate.url, finalUrl);
   assert.equal((result.candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, true);
 });
 
@@ -365,7 +417,7 @@ test("BVerfG native discovery falls back to OpenLegalData candidates but fetches
   try {
     const firstOfficialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
     const officialUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260917_2bvr170226.html";
-    const officialText = "Verified official BVerfG decision text on constitutional rights. ".repeat(20);
+    const officialText = `ECLI:DE:BVerfG:2026:rs20260917.2bvr170226\n${"Verified official BVerfG decision text on constitutional rights. ".repeat(20)}`;
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       requested.push(url);
