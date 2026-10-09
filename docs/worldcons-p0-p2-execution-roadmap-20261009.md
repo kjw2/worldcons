@@ -41,7 +41,7 @@
 - `workers/async-pipeline/src/scotus-pdf.ts` 및 `native-crawler.ts`: HTTPS 공식 slip-opinion PDF만 수집, robots 응답 200/허용 필요, 공식 redirect 2회 이하, 8 MiB 파일·80쪽·100만 글자 한도, PDF 시그니처·MIME·정확한 docket 헤더를 검증.
 - 추출 성공 시 R2 `artifacts/scotus_pdf/<sha256>.pdf`에 원본 PDF 보존, Core `source_metadata.officialPdf`에 URL/R2 키/해시/크기/쪽수/사건번호 검증 결과, 원문 텍스트는 기존 article_raw R2 흐름에 보존. 추출 실패 시 metadata-only fallback, staged Crawl에서는 재시도.
 - **미국은 실운영 검증 전 `collection.publishable=false`, review required, Core legacy `metadata_only` 유지.** `sourceTextAvailable=true`는 PDF 추출 성공의 증거일 뿐 P3/Public Judgment 통과를 뜻하지 않음.
-- 모의 fixture 및 회귀: native crawler 26/26, M8 48/48, ingest stages 51/51, `pnpm check`, M8 TypeScript·Wrangler 타입 검사·Worker dry-run 통과. **실제 SCOTUS 원문 E2E/Production D1·R2 확인은 아직 수행하지 않음.**
+- 모의 fixture 및 회귀: native crawler 26/26, M8 48/48, ingest stages 51/51, `pnpm check`, 저장소 전체 `tsc --noEmit`, M8 TypeScript·Wrangler 타입 검사·Worker dry-run 통과. **실제 SCOTUS 원문 E2E/Production D1·R2 확인은 아직 수행하지 않음.**
 - Production 적용: 2026-10-09 `worldcons-ingest` version `4189c105-43db-4800-b557-9571c8ba6ee7`; `/health` 정상. `crawlerSourceOwnership.effectiveSources=["de-bverfg","us-scotus"]`, staged `bootstrapSources=["fr-conseil-constitutionnel","es-tribunal-constitucional"]` 확인. 미국 공식 PDF 1건의 R2 원본·Core provenance·review/비공개 상태는 다음 M8 실수집 이후 추적 검증할 것.
 - Hive DeepSeek Flash 정확한 route의 하위 작업 요청이 DevSpace 오류로 시작하지 않아 대체 직접 구현. Orca 미사용.
 

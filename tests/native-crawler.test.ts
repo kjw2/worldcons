@@ -20,7 +20,7 @@ function response(body: string, status = 200, contentType = "text/html") {
 }
 
 /** Minimal self-contained text PDF; exercises real unpdf parsing without network fixtures. */
-function scotusPdfFixture(docket = "26-100", paragraphs = 36): Uint8Array {
+function scotusPdfFixture(docket = "26-100", paragraphs = 36): Uint8Array<ArrayBuffer> {
   const content = [
     "BT /F1 12 Tf 50 770 Td",
     `(No. ${docket}) Tj 0 -18 Td`,
@@ -44,7 +44,10 @@ function scotusPdfFixture(docket = "26-100", paragraphs = 36): Uint8Array {
   data += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (const offset of offsets.slice(1)) data += `${String(offset).padStart(10, "0")} 00000 n \n`;
   data += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
-  return new TextEncoder().encode(data);
+  const encoded = new TextEncoder().encode(data);
+  const bytes = new Uint8Array(new ArrayBuffer(encoded.byteLength));
+  bytes.set(encoded);
+  return bytes;
 }
 
 test("SCOTUS official PDF extraction preserves bytes and hash while holding publication for review", async () => {
