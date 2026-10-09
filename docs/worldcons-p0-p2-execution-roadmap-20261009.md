@@ -47,7 +47,7 @@
 
 - 공통 staged 핸들러는 7단계를 모두 지원하지만 **핸들러가 존재한다는 것과 해당 국가가 실제 Production 발행까지 검증됐다는 것은 별개**다.
 - 국가별 staged 전환 시 `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` 추가와 `M8_CRAWLER_SOURCE_EXCLUDE` 추가를 같은 검증 배포에서 쌍으로 수행한다. 미검증 상태에서 전체 allowlist를 풀지 않는다.
-- 운영 점검 복구: 2026-10-09 18시 KST 전후 Wrangler `worldcons_ingest` Production SELECT가 일시적으로 Cloudflare API `7403`을 반환했으나, 같은 날 후속 점검에서 `d1 list`·`d1 info`, `worldcons_core` 및 `worldcons_ingest`의 `SELECT 1`, 실제 ingest stage/ingestion_runs SELECT가 모두 성공. OAuth 계정 ID·D1 scope·database ID 일치 확인. **인증 변경 없이 현재 D1 read-only API 접근 정상화; 7403의 정확한 원인은 확인되지 않았으므로 일시적 오류로만 기록.** 대체 자격증명·권한 우회 없음.
+- 운영 접근 진단: 2026-10-09 18시 KST 전후 Cloudflare D1 REST/CLI가 때때로 `7403`을 반환. 같은 계정의 `d1 list`·`d1 info`, ingest/core SELECT도 성공했으므로 영구 권한 차단으로 단정 불가. **19시 KST 후속 검사에서도 `worldcons_core`의 PRAGMA 성공 직후 SELECT가 `7403`으로 실패했지만, 동일 계정·DB·OAuth scope(`d1:write`)에서 재조회 성공. 즉 간헐 재발하며 근본 원인은 미확정.** credentials 변경/권한 우회 없이 오류 빈도·Cloudflare 장애/지원 경로를 계속 조사한다.
 - 복구 후 Production D1 실측: France staged jobs 8/8 `succeeded` (search 2건), events 30건, pending/failed dispatch outbox 0, dead-letter 0, redrive 0. Spain은 첫 2026-10-10 06:00 KST Discovery 전이므로 staged job 아직 없음. 가장 최근 M8 US 2026-10-09 06:02 KST 수집은 discovered/fetched 0/0, 독일은 discovered/fetched 1/0; 두 나라 모두 실원문 완료 아님.
 - 다음 확인 순서: (1) Cloudflare D1 접근 권한 복구, (2) 스페인 stage jobs/events/outbox/DLQ 및 원문→P3→Search 실증, (3) 미국 M8 PDF R2/Core 원문·review 상태 확인, (4) 독일 M8 후보 처리 실증, (5) 검증된 source만 단계적으로 소유권 이관.
 
@@ -59,6 +59,15 @@
 - 독일 D1 최신 후보는 `2 BvR 1702/26`, `rk20260917_2bvr170226.html`로 `BVERFG_OFFICIAL_VARIANTS_404`, `retrying` 및 누적 시도 20회. 일부 제3자 색인에는 같은 ECLI가 존재하지만 **공식 원문 URL/본문은 검증되지 않았으므로** M8·review hold 유지. 최신 M8은 1건 발견·원문 0건.
 - 스페인 `0 21 * * *` UTC 최초 cron 전에는 staged jobs 0건이 정상일 수 있다. `worldcons-ingest`에 수동 Discovery POST 운영 API가 없음을 코드로 확인; ad-hoc D1 job 삽입이나 우회 경로로 조기 실행하지 않는다. 2026-10-10 06:00 KST 이후 실제 7단계/DLQ/R2/Core/P3/Search를 확인한다.
 - 요청된 `opencode::hive-ai::deepseek-ai/deepseek-v4.1-flash` 작업 호출은 실행 전 `INVALID_REQUEST`로 실패해 작업 세션 자체가 생성되지 않았으며 Orca는 사용하지 않았다. 보완 코드는 직접 처리하고 테스트 결과를 별도 기록한다.
+- SCOTUS term rollover 보완은 2026-10-09 로컬 `42ee7e3`로 커밋 완료. native crawler **28/28**, M8 **48/48**, staged **51/51**, `pnpm check`, `tsc --noEmit`, Worker Wrangler dry-run 통과; 변경 파일 ESLint 오류 0, 기존 경고 2. **GitHub main 푸시 및 Production 배포는 아직 수행하지 않음.**
+
+### 2026-10-09 19시 KST Production 독일 및 P3 공개 안전 추가 감사
+
+- `worldcons_ingest.source_url_candidates` 독일: 과거 `fetched` **40**, `BVERFG_OFFICIAL_VARIANTS_404`로 `retrying` **9**, 같은 코드의 `ignored` **1**. 최신 `2 BvR 1702/26`은 2026-10-09 06:01 KST 시각에 누적 20번째 실패. 재시도 10회 이상 규칙은 3일(-cron grace 6시간)로, 다음 일일 M8 eligibility는 별도 신규 후보가 없다면 **2026-10-12 06:00 KST 이후**. 최신 세 번의 M8 수집은 각 `discovered=1, fetched=0, outcome=degraded`. 공식 사이트는 외부 도구에서 403/접근불가, 현재 URL 변형은 Production에서 404; 제3자 ECLI만으로 원문 verified 처리하지 않음.
+- `worldcons_core.articles` 독일 **1,430**건. 그중 `source_metadata.catalog.sourceOnly=true` **1,101**건(legacy `cleaned` 997, `summarized` 104). 이 중 104건은 P3 `published` 상태라 검증 필요성이 제기됨.
+- 104건 전수 SQL 교차 확인: **104/104 모두** `summary_json` 존재, `translation_status=translated`, source URL verified=true, sourceTextAvailable=true, publishable=true, 별도 `case_catalog_publications_v1`는 withdrawn. 즉 *미처리 source-only 104건이 무조건 발행된 사례*로 단정할 수 없고, legacy enrichment 후 `catalog.sourceOnly` 원본 표식이 남은 상태. 수동 철회·원장 변경은 하지 않음. 향후 `catalog.sourceOnly` 및 `case_metadata_v1.enrichment_status=source_only`의 의미/갱신 시점은 별도 점검.
+- 전체 Production P3 `published` 총 **1,388**건(독일 433, 스페인 424, 프랑스 395, 미국 136): D1 metadata 기준 **각 source 모두 published 전건** `collection.publishable=true`, `sourceUrlVerified=true`, `sourceTextAvailable=true`. `summarized + translated + publishable`인데 source URL/본문 검증 플래그가 아닌 미발행 후보도 **0건**. 단, D1의 자기기록 확인으로 외부 공식 원문 E2E를 대신하지 않으며 미래 gate 강화 필요성을 별도 검토.
+- 감사 중 D1 `7403` 간헐 재발을 다시 관측했으나 `wrangler whoami`는 해당 Cloudflare 계정의 OAuth `d1:write` scope를 확인했고, 재조회는 정상 성공. **권한 문제 완치 판정 금지**, 보안 약화/대체 키 발급 없이 원인 추적을 지속한다.
 
 ### P2-1 구현 검증 메모 (2026-10-09)
 
