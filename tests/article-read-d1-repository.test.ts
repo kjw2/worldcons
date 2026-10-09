@@ -5,8 +5,13 @@ import {
   type D1RuntimeDatabase,
   type D1RuntimePreparedStatement,
 } from "../lib/cloudflare/d1/runtime-binding";
-import { createD1ArticleReadRepository, D1ArticleShadowSkipError } from "../lib/article-reads/d1-repository";
+import {
+  articleRowForSelect,
+  createD1ArticleReadRepository,
+  D1ArticleShadowSkipError,
+} from "../lib/article-reads/d1-repository";
 import { articleRowToItem, type SupabaseArticleTagRow } from "../lib/article-reads/shared";
+import { canonicalArticleCaseNumber } from "../lib/search/case-number";
 import { D1ShadowTruncatedError } from "../lib/reference-reads/d1-repository";
 import type { SupabaseTagRow } from "../lib/reference-reads/shared";
 
@@ -542,4 +547,108 @@ test("runtime D1 binding names are unchanged by M6.3", () => {
     "WORLDCONS_OPS",
     "WORLDCONS_SEARCH",
   ]);
+});
+
+test("D1 list projection derives full/available summary state from summary_json before hiding it", async () => {
+  const fake = createFakeD1({ articles: [d1Article()], article_tags: [], tags: [] });
+  const repository = createD1ArticleReadRepository({ binding: fake.database });
+
+  const item = await repository.getArticleBySelect("case-1", "list");
+  assert.ok(item);
+  assert.equal(item.summaryJson, null, "the list projection must never expose summary_json");
+  assert.equal(item.sourceMetadata, null, "the list projection must never expose source_metadata");
+  assert.equal(item.oneLineSummary, "핵심 요약", "the derived one_line_summary must be preserved");
+  assert.equal(item.summaryAvailable, true);
+  assert.equal(item.summaryStatus, "available");
+  assert.equal(item.enrichmentStatus, "full");
+
+  const listed = await repository.listArticles({ includeViewCounts: false });
+  assert.equal(listed.items.length, 1);
+  assert.equal(listed.items[0].summaryJson, null);
+  assert.equal(listed.items[0].summaryAvailable, true);
+  assert.equal(listed.items[0].summaryStatus, "available");
+  assert.equal(listed.items[0].enrichmentStatus, "full");
+  assert.equal(listed.items[0].oneLineSummary, "핵심 요약");
+});
+
+test("D1 list projection keeps explicit source-only Catalog state over any derived fallback", () => {
+  const projected = articleRowForSelect(
+    {
+      ...d1Article({
+        status: "metadata_only",
+        summarized_at: null,
+        summary_json: null,
+        source_metadata: { catalog: { sourceOnly: true }, collection: { publishable: true } },
+      }),
+      enrichment_status: "source_only",
+      enrichment_freshness: null,
+      summary_status: "pending",
+      summary_available: false,
+    },
+    "list",
+  );
+  const item = articleRowToItem(projected, { includeSummaryJson: false, includeDetailFields: false });
+  assert.equal(item.summaryAvailable, false, "explicit Catalog fail-closed state must win");
+  assert.equal(item.summaryStatus, "pending");
+  assert.equal(item.enrichmentStatus, "source_only");
+  assert.equal(item.summaryJson, null);
+
+  const reprocessing = articleRowToItem(
+    articleRowForSelect(
+      {
+        ...d1Article({ status: "metadata_only", summarized_at: null, summary_json: null }),
+        enrichment_status: "source_only",
+        summary_status: "reprocessing",
+        summary_available: false,
+      },
+      "list",
+    ),
+    { includeSummaryJson: false, includeDetailFields: false },
+  );
+  assert.equal(reprocessing.summaryAvailable, false);
+  assert.equal(reprocessing.summaryStatus, "reprocessing");
+
+  // A row with a real summary but no explicit V4 columns still derives full/available.
+  const legacy = articleRowToItem(
+    articleRowForSelect(d1Article(), "list"),
+    { includeSummaryJson: false, includeDetailFields: false },
+  );
+  assert.equal(legacy.summaryAvailable, true);
+  assert.equal(legacy.summaryStatus, "available");
+  assert.equal(legacy.enrichmentStatus, "full");
+});
+
+test("D1 list projection derives France case_number from the authoritative original title", () => {
+  assert.equal(
+    canonicalArticleCaseNumber({
+      sourceKey: "fr-conseil-constitutionnel",
+      originalTitle: "Décision n° 2026-335 L du 8 octobre 2026",
+      metadata: { decisionNumber: "n° 2026-335 " },
+    }),
+    "2026-335 L",
+    "the official title must repair a truncated France metadata number",
+  );
+
+  const projected = articleRowForSelect(
+    d1Article({
+      source_key: "fr-conseil-constitutionnel",
+      original_title: "Décision n° 2026-335 L du 8 octobre 2026",
+      source_metadata: { decisionNumber: "n° 2026-335 ", collection: { publishable: true } },
+    }),
+    "list",
+  );
+  assert.equal(projected.case_number, "2026-335 L");
+  const item = articleRowToItem(projected, { includeSummaryJson: false, includeDetailFields: false });
+  assert.equal(item.caseNumber, "2026-335 L");
+
+  // A non-France source keeps using authoritative metadata only.
+  const us = articleRowForSelect(
+    d1Article({
+      source_key: "us-scotus",
+      original_title: "Some Opinion",
+      source_metadata: { docketNumber: "No. 24-109", collection: { publishable: true } },
+    }),
+    "list",
+  );
+  assert.equal(us.case_number, "24-109");
 });

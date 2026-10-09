@@ -282,6 +282,35 @@ test("ranked full-text migration uses published projection relevance and service
   assert.match(sql, /p_limit is null or p_limit not between 1 and 100/i);
 });
 
+test("search API mapper surfaces summary/snippet for a summarized list row", () => {
+  const mapped = mapSearchApiArticle(
+    article({
+      summaryAvailable: true,
+      summaryStatus: "available",
+      enrichmentStatus: "full",
+      oneLineSummary: "헌법재판소는 쟁점을 심사했다.",
+    }),
+    "https://worldcons.cclib.workers.dev",
+  );
+  assert.equal(mapped.summary, "헌법재판소는 쟁점을 심사했다.");
+  assert.equal(mapped.snippet, "헌법재판소는 쟁점을 심사했다.");
+  assert.equal(mapped.summaryAvailable, true);
+  assert.equal(mapped.summaryStatus, "available");
+  assert.equal(mapped.enrichmentStatus, "full");
+});
+
+test("search API mapper prefers the caseNumber field over hidden metadata", () => {
+  const mapped = mapSearchApiArticle(
+    article({
+      caseNumber: "2026-335 L",
+      sourceMetadata: null,
+    }),
+    "https://worldcons.cclib.workers.dev",
+  );
+  assert.equal(mapped.caseNumber, "2026-335 L");
+  assert.equal(mapped.metadata.caseNumber, "2026-335 L");
+});
+
 test("source inventory identifies WorldCons records as foreign constitutional material", () => {
   const mapped = mapSearchApiSource({
     sourceKey: "de-bverfg",

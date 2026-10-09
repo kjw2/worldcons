@@ -133,6 +133,27 @@ export function canonicalCaseNumberFromMetadata(sourceKey: string, metadata: unk
 }
 
 /**
+ * Canonical case number for one public article row. Prefers the official
+ * original title for France (whose historical metadata `decisionNumber` may be
+ * truncated, e.g. "n° 2026-335 " missing the "L" suffix), otherwise the
+ * pipeline-owned authoritative metadata keys. Mirrors the `projectionCaseNumbers`
+ * precedence so public reads and the search projection agree. Never reads a URL
+ * or arbitrary body text.
+ */
+export function canonicalArticleCaseNumber(input: {
+  sourceKey?: string | null;
+  originalTitle?: string | null;
+  metadata?: unknown;
+}): string | undefined {
+  const sourceKey = input.sourceKey ?? "";
+  if (sourceKey === "fr-conseil-constitutionnel" && input.originalTitle) {
+    const fromTitle = normalizeCaseNumber(sourceKey, input.originalTitle);
+    if (fromTitle) return fromTitle;
+  }
+  return authoritativeCaseMetadata(sourceKey, input.metadata)?.caseNumber;
+}
+
+/**
  * Derives the canonical `{ caseNumber, caseKey }` from the first authoritative
  * metadata container that carries a recognizable case number. Each container may
  * itself be the metadata object or wrap it under `sourceMetadata`/`case`.

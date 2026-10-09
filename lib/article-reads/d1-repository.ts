@@ -15,6 +15,7 @@ import {
   type SupabaseArticleTagRow,
 } from "@/lib/article-reads/shared";
 import { isPublishableListItem } from "@/lib/ingest/publishability";
+import { canonicalArticleCaseNumber } from "@/lib/search/case-number";
 import { D1ShadowTruncatedError } from "@/lib/reference-reads/d1-repository";
 import type { SupabaseTagRow } from "@/lib/reference-reads/shared";
 import { rangeStartIso } from "@/lib/utils/dates";
@@ -202,18 +203,34 @@ function isTextuallyPublishable(row: { source_metadata?: unknown }): boolean {
  * projection does not select, so the shared `articleRowToItem` mapper produces
  * the exact same shape from a D1 row.
  */
-function articleRowForSelect(row: Record<string, unknown>, select: ArticleReadSelect): SupabaseArticleRow {
+export function articleRowForSelect(row: Record<string, unknown>, select: ArticleReadSelect): SupabaseArticleRow {
   const summary = asRecord(row.summary_json);
   const coreSummary = summary ? asRecord(summary.summary)?.coreSummary : null;
   const oneLine = Array.isArray(coreSummary) && coreSummary.length > 0 ? coreSummary[0] : null;
   const metadata = asRecord(row.source_metadata);
+  const caseNumber =
+    canonicalArticleCaseNumber({
+      sourceKey: typeof row.source_key === "string" ? row.source_key : null,
+      originalTitle: typeof row.original_title === "string" ? row.original_title : null,
+      metadata: row.source_metadata,
+    }) ?? null;
   const projected: Record<string, unknown> = {
     ...row,
     one_line_summary: oneLine ?? null,
     resolution_type: metadata?.resolutionType ?? null,
-    case_number: metadata?.caseNumber ?? null,
+    case_number: caseNumber,
   };
   if (select === "list") {
+    // Preserve any explicit V4/Catalog state on the row (for example the
+    // source-only Catalog `summary_available=false`/`summary_status=pending`),
+    // then derive the public summary state from a real non-null row summary
+    // BEFORE hiding `summary_json` from the projection. The authoritative list
+    // select never exposes `summary_json`/`source_metadata`; D1 reproduces that
+    // shape while keeping the derived fields the API contract depends on.
+    const hasSummary = summary !== null;
+    projected.enrichment_status = row.enrichment_status ?? (hasSummary ? "full" : "source_only");
+    projected.summary_status = row.summary_status ?? (hasSummary ? "available" : "pending");
+    projected.summary_available = row.summary_available ?? hasSummary;
     projected.summary_json = undefined;
     projected.source_metadata = undefined;
   } else if (select === "detail") {

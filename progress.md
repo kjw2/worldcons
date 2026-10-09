@@ -1,5 +1,64 @@
 # Progress
 
+## 2026-10-09 production public search API mapping fix (local code only)
+
+Real production live-canary follow-up to the same 2026-10-09 staged-ingest E2E.
+The article 16b4fc11-d9cc-4e5b-b8e5-acf687ab760e (fr-conseil-constitutionnel,
+2026-335 L) had Core `status=summarized`, `translation_status=translated`,
+non-null `summary_json`, P3 state `published`, and a correct `search_documents`
+row (`case_numbers = "2026-335 L\n2026335l"`), yet
+`GET /api/search?q=2026-335%20L` returned it with `enrichmentStatus=source_only`,
+`summaryStatus=pending`, `summaryAvailable=false`, `summary=null`, and top-level
+`caseNumber=null`.
+
+- Root cause 1 (summary state): `lib/article-reads/d1-repository.ts`
+  `articleRowForSelect` computed `one_line_summary` from `summary_json` but then,
+  for `select=list`, set `summary_json=undefined` and `source_metadata=undefined`
+  before `articleRowToItem` ran, so the mapper lost the state it derives from
+  `summaryJson`/`sourceMetadata`. Fix: for the list projection, derive the public
+  summary state from a real non-null row summary (`enrichment_status=full`,
+  `summary_status=available`, `summary_available=true`) only when the row has no
+  explicit V4/Catalog state, then hide `summary_json`/`source_metadata`. Existing
+  explicit values always win, so the fail-closed source-only Catalog path
+  (`annotateCatalogRows` sets `summary_available=false`,
+  `summary_status=pending|reprocessing`, `enrichment_status=source_only`) is
+  preserved byte-for-byte. Catalog/P3/source-policy gates unchanged.
+- Root cause 2 (case number): the D1 list projection derived `case_number` only
+  from `source_metadata.caseNumber`, which the list projection hides, while
+  `mapSearchApiArticle` derived the API `caseNumber` only from the hidden
+  `sourceMetadata`. Fix: `articleRowForSelect` now sets `case_number` via
+  `canonicalArticleCaseNumber` (new safe helper in `lib/search/case-number.ts`),
+  and `mapSearchApiArticle` prefers `article.caseNumber` before metadata. The
+  helper mirrors the `projectionCaseNumbers` precedence: for
+  `fr-conseil-constitutionnel` it uses the official `original_title` only when it
+  yields a canonical value (repairing the stale truncated metadata
+  `"n° 2026-335 "` to `"2026-335 L"` from
+  `"Décision n° 2026-335 L du 8 octobre 2026"`); every other source uses only the
+  pipeline-owned authoritative metadata keys (`caseNumber`, `docketNumber`,
+  `decisionNumber`, `resolutionNumber`, plus `sourceInventory` copies). No URL or
+  body text is scraped; no production data was mutated.
+- Tests (focused, new): `tests/article-read-d1-repository.test.ts` (+3):
+  summarized list row hides summaryJson/sourceMetadata but reports
+  `summaryAvailable=true`/`summaryStatus=available`/`enrichmentStatus=full` with
+  an intact oneLineSummary; an explicit source-only/reprocessing row keeps
+  false/pending/reprocessing over any fallback; France list `case_number`
+  derives from the official title while US keeps authoritative metadata.
+  `tests/cclrag2-search-api.test.ts` (+2): the search API mapper surfaces
+  summary/snippet for a summarized row and prefers `caseNumber` over hidden
+  metadata. `tests/d1-case-catalog-visibility.test.ts`: the legacy summarized-row
+  expectation was corrected from the buggy `undefined` to the derived
+  `source_only` (those fixtures carry no `summary_json`).
+- Verified: `article-read-d1-repository` + `cclrag2-search-api` +
+  `d1-case-catalog-visibility` 53/53, `test:article-reads` 22/22,
+  `test:search-repository` 19/19, `test:public-regression` 16/16,
+  `test:d1-case-catalog` 13/13, `test:d1-search-projection` 16/16,
+  `test:d1-shadow-all` 141/141, `test:m8` 40/40, `test:catalog` 13/13 (+1 skip),
+  `pnpm check` (All checks passed), `pnpm typecheck`, `pnpm lint` (47 errors are
+  identical pre-existing HEAD errors; 0 in changed files, confirmed by stash
+  comparison), `m8:types:check`, `m8:typecheck`, `m8:dry-run`,
+  `build:vinext`, main `dist/server/wrangler.json` wrangler dry-run.
+- No commit/push/deploy/remote DB write/paid LLM call.
+
 ## 2026-10-09 staged-ingest production E2E canary
 
 - First real France canary completed all seven production stages:

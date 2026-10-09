@@ -9,14 +9,16 @@ export function mapSearchApiArticle(article: ArticleListItem, baseUrl: string) {
   const worldconsUrl = `${normalizedBaseUrl}/articles/${encodedSlug}`;
   const detailApiUrl = `${normalizedBaseUrl}/api/articles/${encodedSlug}`;
   const sourceTextUrl = `${detailApiUrl}/source-text`;
-  const caseNumber = metadataString(article.sourceMetadata, [
-    "caseNumber",
-    "case_number",
-    "docketNumber",
-    "docket_number",
-    "decisionNumber",
-    "resolutionNumber",
-  ]);
+  const caseNumber =
+    (typeof article.caseNumber === "string" && article.caseNumber.trim()) ||
+    metadataString(article.sourceMetadata, [
+      "caseNumber",
+      "case_number",
+      "docketNumber",
+      "docket_number",
+      "decisionNumber",
+      "resolutionNumber",
+    ]);
 
   return {
     ...article,

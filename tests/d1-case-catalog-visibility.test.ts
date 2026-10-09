@@ -417,10 +417,10 @@ test("D1 listArticles merges summarized legacy rows without letting Catalog repl
   );
   const legacyFirst = result.items.find((item) => item.slug === "legacy-1");
   assert.equal(legacyFirst?.status, "summarized");
-  assert.equal(legacyFirst?.enrichmentStatus, undefined);
+  assert.equal(legacyFirst?.enrichmentStatus, "source_only", "no summary_json means a fail-closed source_only list state");
   const alsoPublished = result.items.find((item) => item.slug === "us-c");
   assert.equal(alsoPublished?.status, "summarized", "a summarized row wins over its Catalog publication");
-  assert.equal(alsoPublished?.enrichmentStatus, undefined);
+  assert.equal(alsoPublished?.enrichmentStatus, "source_only");
   assert.equal(result.items.some((item) => item.slug === "us-a"), false);
 });
 
