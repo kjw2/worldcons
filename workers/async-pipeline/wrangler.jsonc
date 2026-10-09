@@ -24,7 +24,7 @@
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
     "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention",
-    "M8_CRAWLER_SOURCE_EXCLUDE": "fr-conseil-constitutionnel",
+    "M8_CRAWLER_SOURCE_EXCLUDE": "fr-conseil-constitutionnel,es-tribunal-constitucional",
     "TRANSLATION_DRAIN_LIMIT": "10",
     "TRANSLATION_DRAIN_MAX_PASSES": "1",
     "PUBLICATION_DRAIN_LIMIT": "100",
@@ -34,7 +34,7 @@
     "WORLDCONS_INGEST_STAGES_ENABLED": "true",
     "WORLDCONS_INGEST_STAGE_ENVIRONMENT": "production",
     "WORLDCONS_INGEST_STAGE_ALLOWLIST": "discovery,crawl,normalize,translate,public-judgment,publish,search",
-    "WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST": "fr-conseil-constitutionnel",
+    "WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST": "fr-conseil-constitutionnel,es-tribunal-constitucional",
     "WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT": "1",
     "WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT": "1",
     "WORLDCONS_INGEST_STAGE_LEASE_SECONDS": "300"

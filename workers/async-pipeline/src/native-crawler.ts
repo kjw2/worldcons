@@ -336,7 +336,11 @@ function discoverScotus(html: string, listingUrl: string): NativeArticleCandidat
 }
 
 function discoverSpain(html: string, base: string): NativeArticleCandidate[] {
-  return absoluteLinks(html, base).filter((link) => officialHost("es-tribunal-constitucional", link.url) && /\/Resolucion\/Show\/\d+/i.test(link.url)).map((link) => ({
+  return absoluteLinks(html, base).filter((link) => {
+    if (!officialHost("es-tribunal-constitucional", link.url)) return false;
+    const id = new URL(link.url).pathname.match(/\/Resolucion\/Show\/(\d+)\/?$/i)?.[1];
+    return id !== undefined && Number.isSafeInteger(Number(id)) && Number(id) > 0;
+  }).map((link) => ({
     sourceKey: "es-tribunal-constitucional", url: link.url, title: link.title || `Resolución HJ ${link.url.match(/Show\/(\d+)/i)?.[1]}`, publishedAt: dateIso(link.context), contentType: /\bAUTO\b/i.test(link.title) ? "order" : "decision", metadata: { hjId: link.url.match(/Show\/(\d+)/i)?.[1], collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: true, sourceTextAvailable: false, strictSourceTextAvailable: true, publishable: false } },
   }));
 }
@@ -1040,7 +1044,16 @@ export async function crawlNativeStageCandidate(
   if (!officialHost(candidate.sourceKey, candidate.url)) throw new Error("crawler.non_official_host");
   const fetched = await fetchCandidate(internal, bindings, fetcher, robotsCache, lastRequest, true, options.browserNavigate);
   const canonical = canonicalUrl(internal.url, internal.url);
-  return { fetched: fetched.fetched, status: fetched.status, text: fetched.text, canonicalUrl: canonical, candidate };
+  // A German fallback may resolve a different official URL, and Spanish JSON
+  // may correct the title/date/provenance. Normalize must persist the verified
+  // candidate, not the stale discovery snapshot.
+  return {
+    fetched: fetched.fetched,
+    status: fetched.status,
+    text: fetched.text,
+    canonicalUrl: canonical,
+    candidate: { ...internal, url: canonical },
+  };
 }
 
 /**

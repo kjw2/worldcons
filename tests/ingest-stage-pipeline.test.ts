@@ -593,11 +593,11 @@ test("stage migrations are additive, verified, and have no destructive statement
   assert.match(CORE_SCHEMA, /create table if not exists ingest_core_bridge_ledger\b/);
 });
 
-test("production canary config bounds stages to one source and one item per dispatch", () => {
+test("production canary config bounds two validated sources to one item per dispatch", () => {
   const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "workers", "async-pipeline", "wrangler.jsonc"), "utf8"));
   assert.equal(config.vars.WORLDCONS_INGEST_STAGES_ENABLED, "true");
   assert.equal(config.vars.WORLDCONS_INGEST_STAGE_ENVIRONMENT, "production");
-  assert.equal(config.vars.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST, "fr-conseil-constitutionnel");
+  assert.equal(config.vars.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST, "fr-conseil-constitutionnel,es-tribunal-constitucional");
   assert.equal(config.vars.WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT, "1");
   assert.equal(config.vars.WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT, "1");
   assert.ok(parseIngestStageAllowlist(config.vars.WORLDCONS_INGEST_STAGE_ALLOWLIST).valid);

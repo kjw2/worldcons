@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   effectiveNativeRangeDays,
+  crawlNativeStageCandidate,
   parseNativeSourceListing,
   runNativeSourceCollection,
   type NativeCrawlerBindings,
@@ -189,6 +190,62 @@ test("native source parser discovers only official records for all four sources"
   const spain = parseNativeSourceListing("es-tribunal-constitucional", `<a href="/HJ/es/Resolucion/Show/32117">SENTENCIA 4/2026 de 28 septiembre 2026</a>`);
   assert.equal(spain.length, 1);
   assert.equal(spain[0].metadata.hjId, "32117");
+  const spainWithPlaceholder = parseNativeSourceListing("es-tribunal-constitucional", `<a href="/HJ/es/Resolucion/Show/0">placeholder</a><a href="/HJ/es/Resolucion/Show/32117">SENTENCIA 4/2026</a>`);
+  assert.equal(spainWithPlaceholder.length, 1, "Show/0 must not consume a one-item staged canary");
+  assert.equal(spainWithPlaceholder[0].metadata.hjId, "32117");
+});
+
+test("targeted staged crawl preserves the actually fetched BVerfG official URL variant", async () => {
+  const store = memoryBindings();
+  const firstUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260917_2bvr170226.html";
+  const verifiedUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rs20260917_2bvr170226.html";
+  const candidate = {
+    sourceKey: "de-bverfg" as const,
+    url: firstUrl,
+    title: "BVerfG 2 BvR 1702/26",
+    contentType: "decision" as const,
+    metadata: {
+      discoveryIndex: "openlegaldata",
+      officialUrlCandidates: [firstUrl, verifiedUrl],
+      collection: { strategy: "api", sourceUrlVerified: false, sourceTextAvailable: false, publishable: false },
+    },
+  };
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/robots.txt")) return response(robots);
+    if (url === firstUrl) return response("not published", 404);
+    if (url === verifiedUrl) return response(`<html><main>${"Official verified decision text. ".repeat(30)}</main></html>`);
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const result = await crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher });
+  assert.equal(result.fetched, true);
+  assert.equal(result.canonicalUrl, verifiedUrl);
+  assert.equal(result.candidate.url, verifiedUrl);
+  assert.equal((result.candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, true);
+});
+
+test("targeted staged crawl carries corrected Spanish official JSON metadata into normalize", async () => {
+  const store = memoryBindings();
+  const candidate = parseNativeSourceListing("es-tribunal-constitucional", `<a href="/HJ/es/Resolucion/Show/32117">Undated listing</a>`)[0];
+  assert.ok(candidate);
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/robots.txt")) return response(robots);
+    if (/\/(?:HJ\/)?Resolucion\/Api\/json\/32117$/.test(url)) {
+      return response(JSON.stringify({
+        TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: 4, ANNO_RESOLUCION: 2026,
+        FECHA_REGISTRO: "28/09/2026", RESOLUCIONES_FUNDAMENTOS: [{ TEXTO: "Official court judgment text. ".repeat(120) }],
+      }), 200, "application/json");
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const result = await crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher });
+  assert.equal(result.fetched, true);
+  assert.match(result.candidate.title, /SENTENCIA 4\/2026/);
+  assert.equal(result.candidate.publishedAt, "2026-09-28T00:00:00.000Z");
+  const collection = result.candidate.metadata.collection as Record<string, unknown>;
+  assert.equal(collection.sourceUrlVerified, true);
+  assert.equal(collection.sourceTextAvailable, true);
 });
 
 test("native range floors and Spain cap match collection policy", () => {

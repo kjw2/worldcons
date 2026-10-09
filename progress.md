@@ -1,5 +1,15 @@
 # Progress
 
+## 2026-10-09 staged-ingest all-source review and bounded Spain expansion
+
+- France-only was an assistant-selected temporary canary, not a user exclusion policy. Native sources: `de-bverfg`, `us-scotus`, `fr-conseil-constitutionnel`, `es-tribunal-constitucional`.
+- Production France E2E: case `2026-335 L` (`16b4fc11-d9cc-4e5b-b8e5-acf687ab760e`) completed all seven stages, with a second successful search repair. Stage jobs 8/8 succeeded; dispatch outbox 8/8 dispatched; failed/dead-letter 0. Three stage R2 artifacts and its externalized original R2 blob were present; Core is translated/summarized, P3 published, Search D1 and FTS projected. Original P3 publication preceded the staged Publish stage because of the initial M8 ownership overlap.
+- Source readiness: France verified. Spain has official JSON full-text precedents (424 translated Core rows), but `Show/0` metadata-only was retrying. Germany has official URL 404 retry candidates and remains M8-owned. US lacks native Worker PDF text extraction and remains M8-owned; no false publish.
+- Fixes: filter invalid Spain `Show/0` listing placeholders, preserve the actual verified German official URL fallback and Spanish JSON-corrected candidate in the targeted Crawl -> Normalize artifact.
+- Ownership phase 2: staged source allowlist and M8 `crawler-daily` exclusions both set to France+Spain; bootstrap limit `1` per source and dispatch limit `1` per stage every 15 minutes. All other M8 kinds stay enabled. The first Spanish staged Production E2E is pending the next 06:00 KST bootstrap; do not claim success in advance.
+- Local checks: `test:native-crawler` 12/12, `test:ingest-stages` 51/51, `test:m8` 48/48, `pnpm check`, `pnpm typecheck`, M8 typecheck/types check/dry-run, and ESLint on touched code all pass. Whole-repository lint includes generated `.wrangler/tmp/deploy-*/index.js` and unrelated legacy test errors; it is not globally green.
+- Roll back both Spain allowlist and M8 exclusion together. Germany/US require separate source readiness work. Production-only; no Orca or legacy authority bypass.
+
 ## 2026-10-09 France source-ownership cutover after verified staged-ingest live E2E (local code only)
 
 - Production evidence. On 2026-10-09 KST the staged pipeline completed

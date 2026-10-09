@@ -414,7 +414,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     const contentHash = await sha256Hex(result.text);
     const artifactKey = nativeStageCrawlArtifactKey(candidate.sourceKey, contentHash);
     const artifact: IngestStageCrawlArtifact = {
-      candidate,
+      candidate: result.candidate,
       text: result.text,
       canonicalUrl: result.canonicalUrl,
       fetchedAt: context.now,
