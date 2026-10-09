@@ -85,7 +85,7 @@ test("workflow instance ids are Cloudflare-valid and collision-safe for represen
 test("every M8 task kind is native and crawler-daily fans out by source", () => {
   assert.deepEqual(M8_TASK_KINDS, ["admin-job-drain", "watchdog", "crawler-daily", "search-projection-sync", "embedding-backfill", "summary-drain", "translation-drain", "publication-drain", "admin-health", "analytics-retention"]);
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
-  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*for \(const source of NATIVE_CRAWLER_SOURCES\)/u);
+  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*for \(const source of sourcePolicy\.effective/u);
   assert.match(source, /native-crawler-\$\{source\}/u);
   assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runNativeSearchProjectionSync/u);
   assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*native-search-projection-sync/u);

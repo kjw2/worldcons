@@ -1,5 +1,48 @@
 # Progress
 
+## 2026-10-09 France source-ownership cutover after verified staged-ingest live E2E (local code only)
+
+- Production evidence. On 2026-10-09 KST the staged pipeline completed
+  discovery -> crawl -> normalize -> translate -> public-judgment -> publish ->
+  search for France case `2026-335 L`
+  (article `16b4fc11-d9cc-4e5b-b8e5-acf687ab760e`). Independently, the legacy M8
+  `crawler-daily` (cron `0 21 * * *`) ran for `fr-conseil-constitutionnel` at
+  `2026-10-08T21:02Z` and discovered/fetched/inserted 10 rows. France collection
+  ownership was therefore duplicated between the legacy daily crawler and the
+  staged pipeline.
+- Fix: explicit, source-specific ownership split via a new production config
+  `M8_CRAWLER_SOURCE_EXCLUDE=fr-conseil-constitutionnel`. The legacy M8
+  `crawler-daily` Workflow now iterates only the *effective* legacy sources
+  (native list minus exclusions); with France excluded it collects
+  `de-bverfg`, `us-scotus`, `es-tribunal-constitucional`. Staged France remains
+  the single owner of `fr-conseil-constitutionnel`.
+- Scope guard. M8 is **not** disabled globally: `M8_ENABLED_KINDS` is unchanged
+  (crawler-daily and every other kind, including admin/watchdog/translation/
+  publication/search-projection/analytics, still run). The exclusion only
+  narrows which sources the daily *crawler* touches.
+- Config semantics (`lib/cloudflare/async-pipeline/crawler-source-ownership.ts`,
+  `resolveM8CrawlerSourcePolicy`): absent/empty => no exclusion (all native
+  sources, safe default); comma-separated exact native keys trimmed + deduped;
+  unknown token or a non-empty value that parses to zero entries => **invalid**
+  and the effective list collapses to empty (fail closed), never a silent
+  ambiguous split.
+- Workflow evidence. `workers/async-pipeline/src/index.ts` crawler-daily returns
+  and logs `effectiveSources`, `excludedSources`, `sourceConfigValid`,
+  `sourceConfigReason`; if no source is effective the loop safely does nothing.
+- `GET /health` now exposes `crawlerSourceOwnership`
+  (`nativeSources`/`effectiveSources`/`excludedSources`/`valid`/`reason`), no
+  secrets.
+- Staged France canary unchanged: `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST=fr-conseil-constitutionnel`,
+  bootstrap limit `1`, dispatch limit `1`.
+- Tests: new `tests/m8-crawler-source-ownership.test.ts` (7) covers default
+  no-exclusion, France exclusion => de-bverfg/us-scotus/es-tribunal-constitucional,
+  trim/dedupe, malformed/unknown fail-closed, crawler-daily effective-source
+  wiring, health contract, and production config. `tests/m8-async-pipeline.test.ts`
+  updated to the effective-source fan-out. `scripts/check.ts` guards the split.
+- Rollback: remove `M8_CRAWLER_SOURCE_EXCLUDE` and redeploy `worldcons-ingest`;
+  D1/queues are untouched.
+- No commit/push/deploy/remote DB write/paid LLM call.
+
 ## 2026-10-09 production public search API mapping fix (local code only)
 
 Real production live-canary follow-up to the same 2026-10-09 staged-ingest E2E.

@@ -14,6 +14,7 @@ import {
   executeM8TaskNative,
   type M8NativeEnvironment,
 } from "../../../lib/cloudflare/async-pipeline/native-executor";
+import { resolveM8CrawlerSourcePolicy } from "../../../lib/cloudflare/async-pipeline/crawler-source-ownership";
 import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
 import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../../../lib/cloudflare/ingest-stages/contracts";
 import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBootstrapSources } from "../../../lib/cloudflare/ingest-stages/flags";
@@ -186,8 +187,17 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       return { kind: event.payload.kind, publication, searchProjection };
     }
     if (event.payload.kind === "crawler-daily") {
+      const sourcePolicy = resolveM8CrawlerSourcePolicy(this.env.M8_CRAWLER_SOURCE_EXCLUDE, NATIVE_CRAWLER_SOURCES);
+      if (!sourcePolicy.valid) {
+        console.error(JSON.stringify({
+          event: "m8_crawler_source_policy_invalid",
+          kind: event.payload.kind,
+          idempotencyKey: event.payload.idempotencyKey,
+          reason: sourcePolicy.reason ?? "m8.crawler_source_exclude_invalid",
+        }));
+      }
       const results = [];
-      for (const source of NATIVE_CRAWLER_SOURCES) {
+      for (const source of sourcePolicy.effective as readonly NativeCrawlerSource[]) {
         results.push(await step.do(
           `native-crawler-${source}`,
           { retries: { limit: 3, delay: "2 minutes", backoff: "exponential" }, timeout: "25 minutes" },
@@ -200,7 +210,14 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         WORLDCONS_CORE: this.env.WORLDCONS_CORE,
         WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
       }));
-      return { crawlers: results, searchProjection };
+      const evidence = {
+        effectiveSources: [...sourcePolicy.effective],
+        excludedSources: [...sourcePolicy.excluded],
+        sourceConfigValid: sourcePolicy.valid,
+        sourceConfigReason: sourcePolicy.reason ?? null,
+      };
+      console.log(JSON.stringify({ event: "m8_crawler_source_policy", kind: event.payload.kind, idempotencyKey: event.payload.idempotencyKey, ...evidence }));
+      return { crawlers: results, searchProjection, ...evidence };
     }
     if (event.payload.kind === "analytics-retention") {
       return step.do("native-analytics-retention", {
@@ -653,6 +670,7 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       const policy = gate(env);
       const stageGate = ingestStageGateFromEnvironment(env as unknown as Record<string, string | undefined>);
+      const crawlerSourcePolicy = resolveM8CrawlerSourcePolicy(env.M8_CRAWLER_SOURCE_EXCLUDE, NATIVE_CRAWLER_SOURCES);
       return json({
         schemaVersion: 1,
         service: "worldcons-ingest",
@@ -661,6 +679,13 @@ export default {
         enabledKindsAny: policy.policy.any,
         enabledKindsValid: policy.policy.valid,
         enabledKindsReason: policy.policy.reason ?? null,
+        crawlerSourceOwnership: {
+          nativeSources: [...NATIVE_CRAWLER_SOURCES],
+          effectiveSources: crawlerSourcePolicy.effective,
+          excludedSources: crawlerSourcePolicy.excluded,
+          valid: crawlerSourcePolicy.valid,
+          reason: crawlerSourcePolicy.reason ?? null,
+        },
         browserNavigate: true,
         browserRpc: true,
         ingestStages: {

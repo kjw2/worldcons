@@ -20,9 +20,25 @@
 - Keep D1 and queues intact; do not purge DLQ or delete persisted jobs during rollback.
 - No source authority or publication eligibility checks are bypassed.
 
+## 2026-10-09 live E2E success and France source-ownership cutover
+
+- First real France staged E2E completed all seven stages on 2026-10-09 KST for
+  case `2026-335 L` (article `16b4fc11-d9cc-4e5b-b8e5-acf687ab760e`):
+  discovery -> crawl -> normalize -> translate -> public-judgment -> publish ->
+  search.
+- Duplication evidence: the legacy M8 `crawler-daily` also ran for
+  `fr-conseil-constitutionnel` at `2026-10-08T21:02Z` and
+  discovered/fetched/inserted 10 rows, i.e. France was collected by two owners.
+- Cutover: `M8_CRAWLER_SOURCE_EXCLUDE=fr-conseil-constitutionnel` makes the
+  legacy daily crawler own only `de-bverfg`, `us-scotus`,
+  `es-tribunal-constitucional`; staged ingestion is the single owner of France.
+  M8 kinds and all other countries are unchanged. `GET /health` reports the
+  effective/excluded source split. Invalid/unknown exclusion tokens fail closed.
+- Rollback: remove the exclusion and redeploy `worldcons-ingest`.
+
 ## Known outstanding gates
 
-- Validate live per-item stage progression and duplicate collection / M8 parity before expanding countries or retiring legacy M8.
+- Validate live per-item stage progression and duplicate collection / M8 parity before expanding countries or retiring legacy M8. France duplication is now resolved by the explicit source-ownership split above.
 - Audited operator dead-letter redrive and per-stage observability reporting (counts, oldest pending, oldest lease) are implemented locally (see below); the production D1 migration 0004 and the operator procedure still need to be applied/verified against the live canary.
 
 ## Operator dead-letter redrive (local, not yet deployed)

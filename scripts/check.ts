@@ -872,6 +872,11 @@ assert(m8NativeExecutorSource.includes("runEmbeddingBackfill"), "Cloudflare nati
 const m8WorkerSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
 assert(m8WorkerSource.includes('event.payload.kind === "crawler-daily"'), "Cloudflare Workflow must own daily crawling");
 assert(m8WorkerSource.includes("NATIVE_CRAWLER_SOURCES"), "native crawler must fan out by official source");
+assert(
+  m8WorkerSource.includes("resolveM8CrawlerSourcePolicy(this.env.M8_CRAWLER_SOURCE_EXCLUDE, NATIVE_CRAWLER_SOURCES)") &&
+    m8WorkerSource.includes("for (const source of sourcePolicy.effective"),
+  "crawler-daily must iterate only effective legacy sources under the source-ownership split",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

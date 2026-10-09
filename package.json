@@ -138,7 +138,7 @@
     "test:m7.8a": "tsx --test tests/m7.8a-semantic-authority-rollout.test.ts",
     "test:m7.8b": "tsx --test tests/m7.8b-rank-policy-decision.test.ts",
     "test:m7.9": "tsx --test tests/m7.9-deployed-search-canary-runtime.test.ts",
-    "test:m8": "tsx --test tests/m8-async-pipeline.test.ts tests/search-projection-sync.test.ts tests/m8-p5-forward-fix.test.ts tests/admin-jobs-d1-repository.test.ts tests/p5-d1-health-repository.test.ts tests/watchdog-d1.test.ts",
+    "test:m8": "tsx --test tests/m8-async-pipeline.test.ts tests/m8-crawler-source-ownership.test.ts tests/search-projection-sync.test.ts tests/m8-p5-forward-fix.test.ts tests/admin-jobs-d1-repository.test.ts tests/p5-d1-health-repository.test.ts tests/watchdog-d1.test.ts",
     "test:m9": "tsx --test tests/m9-search-service.test.ts",
     "test:m10": "tsx --test tests/m10-d1-write-canary.test.ts",
     "test:m11": "tsx --test tests/m11-site-events-write-authority.test.ts tests/m11-admin-audit-write-authority.test.ts tests/m11-admin-article-edit-write-authority.test.ts tests/m11-ops-heartbeat-write-boundary.test.ts tests/m11-ops-heartbeat-read-authority.test.ts tests/m11-ops-heartbeat-read-parity.test.ts tests/m11-admin-ops-events-write-authority.test.ts tests/m11-admin-ops-events-read-parity.test.ts tests/m11-ingest-run-write-authority.test.ts tests/m11-core-publication-write-authority.test.ts",

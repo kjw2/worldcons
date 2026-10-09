@@ -24,6 +24,7 @@
   "vars": {
     "M8_SCHEDULER_ENABLED": "true",
     "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention",
+    "M8_CRAWLER_SOURCE_EXCLUDE": "fr-conseil-constitutionnel",
     "TRANSLATION_DRAIN_LIMIT": "10",
     "TRANSLATION_DRAIN_MAX_PASSES": "1",
     "PUBLICATION_DRAIN_LIMIT": "100",
