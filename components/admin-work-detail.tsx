@@ -4,6 +4,7 @@ import { AdminWorkActionButton } from "@/components/admin-work-action";
 import { AdminWorkState } from "@/components/admin-work-queue";
 import { adminStateText, adminWorkStageText, adminWorkTypeText } from "@/lib/admin/p4/labels";
 import type { AdminWorkItemDetail } from "@/lib/admin/p4/types";
+import { P3_DRIFT_REFRESH_CANARY_IDS } from "@/lib/admin/p4/p3-drift-refresh";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "기록 없음";
@@ -32,7 +33,12 @@ export function AdminWorkDetail({ detail, csrfToken }: { detail: AdminWorkItemDe
             <h1 className="mt-1 max-w-4xl break-words text-2xl font-semibold text-ink">{item.title}</h1>
             <p className="mt-2 break-all text-sm text-ink/52">{item.target}</p>
           </div>
-          <AdminWorkActionButton kind={item.type} id={item.id} action={item.safeAction} csrfToken={csrfToken} disabledReason={item.actionDisabledReason} />
+          <div className="flex flex-wrap items-start gap-2">
+            <AdminWorkActionButton kind={item.type} id={item.id} action={item.safeAction} csrfToken={csrfToken} disabledReason={item.actionDisabledReason} />
+            {item.type === "article" && P3_DRIFT_REFRESH_CANARY_IDS.has(item.id) ? (
+              <AdminWorkActionButton kind="article" id={item.id} action="refresh-p3" csrfToken={csrfToken} />
+            ) : null}
+          </div>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div><p className="mb-1 text-xs font-semibold text-ink/45">실행</p><AdminWorkState title="실행 상태" label={item.execution} /></div>

@@ -3,6 +3,7 @@ import { adminCommandService } from "@/lib/admin/command-control-plane/service";
 import { articlePublicationService } from "@/lib/article-publication/service";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "@/lib/admin/p4/actions";
+import { assessP3RefreshCandidate, P3_DRIFT_REFRESH_CANARY_IDS, type P3RefreshCandidate } from "@/lib/admin/p4/p3-drift-refresh";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { createHash } from "@/lib/utils/hash";
 import { adminSessionIdentityFromRequest, adminSessionMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -100,6 +101,54 @@ async function publicationAction(
     : { ok: false as const, code: result.error.code };
 }
 
+/** Authenticated human-only, four-ID P3 repair. Never changes Core or overwrites a P3 version. */
+async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: string, operatorIdentity: string) {
+  if (!P3_DRIFT_REFRESH_CANARY_IDS.has(id)) return { ok: false as const, code: "forbidden" };
+  const core = getRuntimeD1Binding("worldcons_core");
+  if (!core) return { ok: false as const, code: "unavailable" };
+  const lookup = await core.prepare(`
+    SELECT a.id,a.source_key,a.updated_at,a.status,a.original_language,a.translation_status,
+      a.lifecycle_collection_state,a.lifecycle_processing_state,a.lifecycle_review_state,a.lifecycle_attention_state,
+      a.source_metadata,a.canonical_url,a.cleaned_text,a.summary_json,a.korean_title,
+      p.state AS publication_state,p.version_id,p.revision AS publication_revision,
+      v.cleaned_text AS version_cleaned_text,v.summary_json AS version_summary_json,
+      v.korean_title AS version_korean_title,v.canonical_url AS version_canonical_url
+    FROM articles a JOIN article_publications_p3 p ON p.article_id=a.id
+    JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id
+    WHERE a.id=? LIMIT 1
+  `).bind(id).all<P3RefreshCandidate>();
+  if (lookup.success === false || lookup.error) return { ok: false as const, code: "unavailable" };
+  const candidate = lookup.results?.[0];
+  if (!candidate) return { ok: false as const, code: "not_found" };
+  const decision = assessP3RefreshCandidate(candidate);
+  if (!decision.eligible) return { ok: false as const, code: "ineligible" };
+  // Use authoritative v4/P3 head revision and optimistic legacy timestamp guard.
+  const snapshot = await articlePublicationService.getSnapshot(id);
+  if (!snapshot.ok) return { ok: false as const, code: snapshot.error.code };
+  if (snapshot.data.publicationState !== "published"
+    || snapshot.data.publicationRevision !== Number(candidate.publication_revision)
+    || snapshot.data.legacyUpdatedAt !== candidate.updated_at) {
+    return { ok: false as const, code: "stale_revision" };
+  }
+  const result = await articlePublicationService.transition({
+    articleId: id,
+    expectedVersionRevision: snapshot.data.versionRevision,
+    expectedPublicationRevision: snapshot.data.publicationRevision,
+    expectedLegacyUpdatedAt: candidate.updated_at,
+    idempotencyKey: `p4:refresh-p3:${createHash([id, candidate.updated_at, candidate.version_id, idempotencyKey].join(":"), 64)}`,
+    targetState: "published",
+    captureLegacy: true,
+    actorType: "human",
+    actorId: operatorIdentity,
+    provenanceActorType: "human",
+    provenanceActorId: operatorIdentity,
+    reason,
+    correlationId: idempotencyKey,
+    safeMetadata: { action: "bounded_p3_snapshot_refresh", priorVersionId: candidate.version_id },
+  });
+  return result.ok ? { ok: true as const, data: result.data } : { ok: false as const, code: result.error.code };
+}
+
 export function GET() {
   return NextResponse.json({ error: "Method Not Allowed" }, { status: 405, headers: { allow: "POST" } });
 }
@@ -127,6 +176,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ kin
   let result:
     | Awaited<ReturnType<typeof candidateRetry>>
     | Awaited<ReturnType<typeof publicationAction>>
+    | Awaited<ReturnType<typeof refreshP3Snapshot>>
     | Awaited<ReturnType<typeof adminCommandService.abort>>
     | Awaited<ReturnType<typeof adminCommandService.retry>>;
   if (kind === "execution" && action === "abort") {
@@ -137,6 +187,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ kin
     result = await candidateRetry(id, idempotencyKey, operatorIdentity);
   } else if (kind === "article" && (action === "publish" || action === "withdraw")) {
     result = await publicationAction(id, action, reason, idempotencyKey, request, operatorIdentity);
+  } else if (kind === "article" && action === "refresh-p3") {
+    result = await refreshP3Snapshot(id, reason, idempotencyKey, operatorIdentity);
   } else {
     return NextResponse.json({ error: "Unsupported action" }, { status: 409 });
   }

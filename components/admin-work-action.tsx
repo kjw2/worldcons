@@ -11,6 +11,7 @@ const actionCopy: Record<AdminWorkAction, { label: string; prompt: string; confi
   "candidate-retry": { label: "후보 재등록", prompt: "이 후보를 다시 등록하는 이유를 입력하세요:" },
   publish: { label: "공개", prompt: "공개 사유를 입력하세요:", confirmation: "publish" },
   withdraw: { label: "공개 철회", prompt: "공개 철회 사유를 입력하세요:", confirmation: "withdraw" },
+  "refresh-p3": { label: "P3 버전 갱신", prompt: "공식 원문·요약·번역 검수 결과와 갱신 사유를 입력하세요:", confirmation: "refresh-p3" },
 };
 
 function ActionIcon({ action, pending }: { action: AdminWorkAction; pending: boolean }) {

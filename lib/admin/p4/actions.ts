@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ADMIN_WORK_ACTIONS = ["abort", "retry", "candidate-retry", "publish", "withdraw"] as const;
+export const ADMIN_WORK_ACTIONS = ["abort", "retry", "candidate-retry", "publish", "withdraw", "refresh-p3"] as const;
 export type AdminWorkAction = (typeof ADMIN_WORK_ACTIONS)[number];
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
@@ -11,7 +11,7 @@ const adminWorkActionSchema = z.object({
   confirmation: z.string().trim().max(40),
   idempotencyKey: z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9._:-]+$/),
 }).strict().superRefine((value, context) => {
-  if (["publish", "withdraw"].includes(value.action) && value.confirmation !== value.action) {
+  if (["publish", "withdraw", "refresh-p3"].includes(value.action) && value.confirmation !== value.action) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["confirmation"], message: `${value.action} confirmation is required` });
   }
 });
@@ -28,6 +28,6 @@ export function parseAdminWorkActionBody(value: unknown) {
 export function actionAllowedForKind(kind: string, action: AdminWorkAction) {
   if (kind === "execution") return action === "abort" || action === "retry";
   if (kind === "candidate") return action === "candidate-retry";
-  if (kind === "article") return action === "publish" || action === "withdraw";
+  if (kind === "article") return action === "publish" || action === "withdraw" || action === "refresh-p3";
   return false;
 }

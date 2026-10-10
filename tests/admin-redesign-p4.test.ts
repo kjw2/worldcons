@@ -180,6 +180,7 @@ test("canonical actions require bounded reason, explicit idempotency, and public
   assert.equal(parseAdminWorkActionBody({ action: "retry", reason: "no", confirmation: "acknowledged", idempotencyKey: "short" }).ok, false);
   assert.equal(parseAdminWorkActionBody({ action: "publish", reason: "approved after human review", confirmation: "wrong", idempotencyKey: "p4.publish.123456" }).ok, false);
   assert.equal(parseAdminWorkActionBody({ action: "withdraw", reason: "source correction is required", confirmation: "withdraw", idempotencyKey: "p4.withdraw.123456" }).ok, true);
+  assert.equal(parseAdminWorkActionBody({ action: "refresh-p3", reason: "reviewed official source", confirmation: "refresh-p3", idempotencyKey: "p4.refresh.123456" }).ok, true);
   assert.equal(actionAllowedForKind("execution", "abort"), true);
   assert.equal(actionAllowedForKind("execution", "publish"), false);
   assert.equal(actionAllowedForKind("outbox", "retry"), false);
@@ -224,6 +225,7 @@ test("P4 human mutations reject cron authorization and require a valid session C
       ["execution", "retry"],
       ["article", "publish"],
       ["article", "withdraw"],
+      ["article", "refresh-p3"],
       ["candidate", "candidate-retry"],
     ] as const;
     for (const [kind, action] of actionCases) {
