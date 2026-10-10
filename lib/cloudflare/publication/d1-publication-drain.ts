@@ -36,6 +36,28 @@ function parseSummaryMetadata(value: unknown) {
   }
 }
 
+function verifiedReplayProvenance(value: unknown, reviewState: unknown): boolean {
+  if (typeof value !== "string") return false;
+  try {
+    const metadata = JSON.parse(value) as Record<string, unknown>;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+    const nested = metadata.case && typeof metadata.case === "object" && !Array.isArray(metadata.case)
+      ? metadata.case as Record<string, unknown> : {};
+    const collectionValue = metadata.collection ?? nested.collection;
+    const collection = collectionValue && typeof collectionValue === "object" && !Array.isArray(collectionValue)
+      ? collectionValue as Record<string, unknown> : {};
+    const catalog = metadata.catalog && typeof metadata.catalog === "object" && !Array.isArray(metadata.catalog)
+      ? metadata.catalog as Record<string, unknown> : {};
+    return collection.publishable === true && collection.sourceTextAvailable === true
+      && collection.sourceUrlVerified === true && collection.robotsDisallowed !== true
+      && collection.strategy !== "seed"
+      && catalog.sourceOnly !== true && catalog.sourceOnly !== 1 && catalog.sourceOnly !== "1"
+      && !["needs_review", "needs_triage", "closed_private", "rejected", "blocked"].includes(String(reviewState ?? "").trim().toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The exact public-publication eligibility predicate. A single source of truth
  * shared by the batch drain and the per-article stage handler, so the staged
@@ -194,9 +216,36 @@ export async function runD1PublishArticle(input: { articleId: string; actorId?: 
     // success, not a block: the work is durably done and the pipeline should
     // advance to search.
     const existing = ensureSuccess(await core().prepare(
-      "SELECT state,version_id,revision FROM article_publications_p3 WHERE article_id=? AND state='published' LIMIT 1",
+      `SELECT p.state,p.version_id,p.revision,
+              a.status AS article_status,a.translation_status,a.original_language,a.review_state,
+              a.source_metadata AS current_source_metadata,
+              a.cleaned_text AS current_cleaned_text,a.summary_json AS current_summary_json,
+              a.korean_title AS current_korean_title,a.canonical_url AS current_canonical_url,
+              v.cleaned_text AS published_cleaned_text,v.summary_json AS published_summary_json,
+              v.korean_title AS published_korean_title,v.canonical_url AS published_canonical_url
+         FROM article_publications_p3 p
+         JOIN articles a ON a.id=p.article_id
+         LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id
+        WHERE p.article_id=? AND p.state='published' LIMIT 1`,
     ).bind(articleId).all<Row>())[0];
     if (existing) {
+      // A previously published version is a valid idempotent replay only when
+      // the active immutable P3 snapshot still matches the mutable Core source.
+      // Otherwise do not report a stale publication as a successful fresh one.
+      const sameSnapshot = existing.article_status === "summarized"
+        && (existing.translation_status === "translated" || (String(existing.original_language ?? "").toLowerCase() === "ko" && existing.translation_status === "not_required"))
+        && verifiedReplayProvenance(existing.current_source_metadata, existing.review_state)
+        && typeof existing.published_cleaned_text === "string"
+        && existing.current_cleaned_text === existing.published_cleaned_text
+        && existing.current_summary_json === existing.published_summary_json
+        && existing.current_korean_title === existing.published_korean_title
+        && existing.current_canonical_url === existing.published_canonical_url;
+      if (!sameSnapshot) {
+        return { articleId, published: false, skippedReason: "ineligible", state: "published",
+          versionId: typeof existing.version_id === "string" ? existing.version_id : null,
+          publicationRevision: Number(existing.revision ?? 0) || null,
+          idempotent: false, searchFreshnessReconciled: 0 };
+      }
       const versionId = typeof existing.version_id === "string" ? existing.version_id : null;
       const searchFreshnessReconciled = versionId ? await reconcilePublishedSearchFreshnessForArticle(articleId, versionId) : 0;
       return {

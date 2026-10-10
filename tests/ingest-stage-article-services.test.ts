@@ -126,6 +126,41 @@ test("runD1PublishArticle fail-closes an ineligible row (source_only provenance)
   }
 });
 
+test("runD1PublishArticle never treats stale published content as an idempotent success", async () => {
+  const { core, search } = setup();
+  try {
+    insertArticle(core, ARTICLE_ID, { status: "summarized", summaryJson: JSON.stringify({ koreanTitle: "요약", aiMetadata: { provider: "gemini" } }), translation: "translated", metadata: publishableMetadata() });
+    const first = await runD1PublishArticle({ articleId: ARTICLE_ID });
+    assert.equal(first.published, true);
+    core.prepare("UPDATE articles SET cleaned_text=? WHERE id=?").run("changed text after publication", ARTICLE_ID);
+    const stale = await runD1PublishArticle({ articleId: ARTICLE_ID });
+    assert.equal(stale.published, false);
+    assert.equal(stale.skippedReason, "ineligible");
+    assert.equal(stale.searchFreshnessReconciled, 0);
+    assert.equal(core.prepare("SELECT version_id FROM article_publications_p3 WHERE article_id=?").get(ARTICLE_ID)?.version_id, first.versionId);
+    assert.equal(core.prepare("SELECT COUNT(*) n FROM article_content_versions_p3 WHERE article_id=?").get(ARTICLE_ID)?.n, 1);
+    void search;
+  } finally {
+    core.close(); search.close();
+  }
+});
+
+test("runD1PublishArticle blocks replay after source provenance is withdrawn", async () => {
+  const { core, search } = setup();
+  try {
+    insertArticle(core, ARTICLE_ID, { status: "summarized", summaryJson: JSON.stringify({ koreanTitle: "요약" }), translation: "translated", metadata: publishableMetadata() });
+    const first = await runD1PublishArticle({ articleId: ARTICLE_ID });
+    assert.equal(first.published, true);
+    core.prepare("UPDATE articles SET source_metadata=? WHERE id=?").run(JSON.stringify({ collection: { publishable: false, sourceTextAvailable: false, sourceUrlVerified: true } }), ARTICLE_ID);
+    const stale = await runD1PublishArticle({ articleId: ARTICLE_ID });
+    assert.equal(stale.published, false);
+    assert.equal(stale.skippedReason, "ineligible");
+    assert.equal(stale.searchFreshnessReconciled, 0);
+    assert.equal(core.prepare("SELECT COUNT(*) n FROM article_content_versions_p3 WHERE article_id=?").get(ARTICLE_ID)?.n, 1);
+    void search;
+  } finally { core.close(); search.close(); }
+});
+
 test("syncSearchProjectionForArticle projects exactly one published article and enforces per-article integrity", async () => {
   const { core, search, coreDb, searchDb } = setup();
   try {
