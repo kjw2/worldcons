@@ -5,6 +5,7 @@ import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "@/lib/admin/p4/actions";
 import { assessP3RefreshCandidate, P3_DRIFT_REFRESH_CANARY_IDS, revalidatedSentencia59Metadata, SPAIN_SENTENCIA_59_ID, SPAIN_SENTENCIA_59_OFFICIAL_API, type P3RefreshCandidate } from "@/lib/admin/p4/p3-drift-refresh";
 import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
+import { reconcilePublishedSearchFreshnessForArticle } from "@/lib/cloudflare/publication/d1-publication-drain";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { createHash } from "@/lib/utils/hash";
 import { adminSessionIdentityFromRequest, adminSessionMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -163,6 +164,7 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
     const search = getRuntimeD1Binding("worldcons_search");
     if (!search) return { ok: false as const, code: "unavailable" };
     try {
+      await reconcilePublishedSearchFreshnessForArticle(id, candidate.version_id);
       const synced = await syncSearchProjectionForArticle({ WORLDCONS_CORE: core, WORLDCONS_SEARCH: search }, id);
       return { ok: true as const, data: { articleId: id, alreadyCurrent: true, projectionVerified: synced.verified } };
     } catch { return { ok: false as const, code: "unavailable" }; }
@@ -196,6 +198,7 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
   const search = getRuntimeD1Binding("worldcons_search");
   if (!search) return { ok: false as const, code: "unavailable" };
   try {
+    await reconcilePublishedSearchFreshnessForArticle(id, result.data.versionId);
     const synced = await syncSearchProjectionForArticle({ WORLDCONS_CORE: core, WORLDCONS_SEARCH: search }, id);
     return { ok: true as const, data: { ...result.data, projectionVerified: synced.verified } };
   } catch { return { ok: false as const, code: "unavailable" }; }

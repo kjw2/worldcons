@@ -682,6 +682,23 @@ export async function transitionArticlePublicationInD1(
       : 1;
     const statements: D1RuntimePreparedStatement[] = [];
     if (versionInsert) statements.push(versionInsert);
+    // A newly captured, published legacy snapshot is the authoritative current
+    // Core state (guarded by expectedLegacyUpdatedAt). Search gate2 requires a
+    // current classification for the exact immutable P3 version. Keep that
+    // evidence in the SAME D1 transaction as the publication: a successful
+    // publish must never disappear from Search because freshness was omitted.
+    if (versionCreated && input.captureLegacy === true && input.targetState === "published") {
+      statements.push(binding.prepare(
+        `INSERT INTO legacy_version_freshness_classifications_v4
+          (version_id,article_id,freshness,freshness_basis,source_anchor_version_id,source_content_hash,evidence,classified_at,classified_by)
+         VALUES (?,?,'current','legacy_same_version',NULL,?,?,?,'p3-authority-transition')
+         ON CONFLICT(version_id) DO NOTHING`,
+      ).bind(
+        versionId, input.articleId, version.content_hash ?? null,
+        JSON.stringify({ reason: "fresh_p3_capture", publicationState: "published", guardedLegacyUpdatedAt: input.expectedLegacyUpdatedAt ?? null }),
+        now,
+      ));
+    }
     if (headUpsert) statements.push(headUpsert);
     if (globalHeadUpsert) statements.push(globalHeadUpsert);
     if (!publication) {

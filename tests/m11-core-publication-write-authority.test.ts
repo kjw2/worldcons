@@ -221,6 +221,11 @@ test("M11-C publication capture uses the v4 global head and advances both heads"
   assert.equal(versionInsert.values[3], sourceVersionId);
   assert.equal(sql.filter((statement) => statement.includes("article_version_heads_p3")).length, 1);
   assert.equal(sql.filter((statement) => statement.includes("article_revision_heads_v4")).length, 1);
+  const freshness = db.batches[0].find((statement) =>
+    statement.sql.includes("INSERT INTO legacy_version_freshness_classifications_v4"));
+  assert.ok(freshness, "a freshly published version must be classified in the same D1 batch");
+  assert.equal(freshness.values[0], result.data.versionId);
+  assert.equal(freshness.values[1], articleId);
 });
 
 test("M13 root deployment persists the permanent d1 core write authority for worldcons_core", () => {

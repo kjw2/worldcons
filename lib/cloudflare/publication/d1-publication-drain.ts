@@ -158,7 +158,7 @@ async function reconcilePublishedSearchFreshness(limit: number) {
   return reconciled;
 }
 
-async function reconcilePublishedSearchFreshnessForArticle(articleId: string, versionId: string) {
+export async function reconcilePublishedSearchFreshnessForArticle(articleId: string, versionId: string) {
   const rows = ensureSuccess(await core().prepare(`
     SELECT p.article_id,p.version_id,v.content_hash
     FROM article_publications_p3 p
