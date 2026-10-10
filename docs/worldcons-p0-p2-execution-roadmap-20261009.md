@@ -124,3 +124,11 @@
 - 수집기 Production `worldcons-ingest` 실제 배포 버전 `11702fd8-ed52-497e-99a1-ecd000f675dc`. GitHub `main` 최신 커밋 `4b4e47b46962d66cb836a1f2d3a210db0ffbeb9c` fast-forward 푸시, 원격 SHA 조회 일치, `worldcons-ingest/health` HTTP 200. M8 국가 제외 및 스케줄·Queue 기존 설정 유지.
 - 정식 P3 4건 복구를 위해 임시 보호 Worker를 배포했으나, **인증된 실제 실행 요청이 보안 검사에서 차단**돼 원장에 쓰지 못함. 차단을 우회하지 않았으며 Worker `worldcons-p3-repair-once` 삭제 성공, HTTPS 404 재확인, 임시 비밀 토큰 및 소스 삭제 완료. **기존 P3 4건은 실제 미복구**이므로 정합성 문제를 완료로 표시하지 않는다.
 - 현재 P3 정식 복구는 `P3` 관리자 세션/CSRF를 이용한 별도 4건 명시적 갱신이 남았고, Spain 59/2026은 출처 메타데이터의 과거 충돌을 공식 증거·원문 검증에 따라 우선 교정해야 한다. 공개 원장 직접 UPDATE나 미검증 자동 publish는 금지. 복구 후 Core/P3/Search/FTS 0 drift, audit ledger/history/outbox 및 revision을 실측으로 확인해야 완료로 기록한다.
+
+### 2026-10-10 관리자 단일 경로 P3 복구 보강 (4건)
+
+- 기존 관리자 세션+CSRF의 `POST /api/admin/work/article/{id}` / `refresh-p3`를 유일한 실행 경로로 유지. 작업 상세 화면: `/admin/work/article/{id}`; 신규 외부 인증토큰, 일회성 Worker, D1 수동 SQL 갱신 금지.
+- 스페인 `SENTENCIA 59/2026`의 `provenance_conflict`는 이 관리자 경로에서만 공식 HJ JSON `/HJ/Resolucion/Api/json/32136`을 실시간 조회한 다음 사건 식별자, 공개 제한 여부, 17개 본문 구간의 내용과 현재 Core 전체 텍스트 구간 일치 여부를 확인해 오래된 메타데이터를 낙관적 잠금으로 수정. 이전 안전 플래그를 `sourceRevalidation` 감사 증거로 보존. 실패하면 P3 발행 거부.
+- **읽기 전용 실증:** Production Core 본문 66,952자, 공식 HJ 본문 17개 구간 중 16개가 일치하여 재검증 판정 통과. 이 시뮬레이션만으로 Production DB는 수정되지 않음.
+- 나머지 3건은 기존 source 검증 게이트 사용. 4건 모두 실제 `articlePublicationService.transition(captureLegacy=true,targetState='published')` 성공 후 `syncSearchProjectionForArticle`로 Search/FTS를 같은 관리자 요청에서 확인. 전환 성공 후 검색 실패 시 동일 버튼 재시도가 새 버전 없이 검색만 재검증한다.
+- 현재 도구 실행 컨텍스트에는 WorldCons 관리자 세션+CSRF 인증이 연결되지 않았다. **실제 Production 개정/콘텐츠 불일치 0건 달성은 관리자 계정으로 각 판례의 `P3 버전 갱신`을 승인하고 이후 감사 SQL 실행한 경우에만 판정한다.**

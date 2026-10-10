@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessP3RefreshCandidate, type P3RefreshCandidate } from "@/lib/admin/p4/p3-drift-refresh";
+import { assessP3RefreshCandidate, revalidatedSentencia59Metadata, type P3RefreshCandidate } from "@/lib/admin/p4/p3-drift-refresh";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "@/lib/admin/p4/actions";
 
 function candidate(): P3RefreshCandidate {
@@ -42,4 +42,41 @@ test("P3 refresh requires a human admin confirmation and article kind", () => {
   assert.equal(actionAllowedForKind("execution", "refresh-p3"), false);
   assert.equal(parseAdminWorkActionBody({ action: "refresh-p3", reason: "official source reviewed", confirmation: "wrong", idempotencyKey: "p3.refresh.12345" }).ok, false);
   assert.equal(parseAdminWorkActionBody({ action: "refresh-p3", reason: "official source reviewed", confirmation: "refresh-p3", idempotencyKey: "p3.refresh.12345" }).ok, true);
+});
+
+test("official HJ 59 full-text evidence can safely reconcile contradictory legacy safety metadata", () => {
+  const fragments = Array.from({ length: 16 }, (_, i) =>
+    `Con fecha de 26 de febrero de 2024, fundamento constitucional numero ${i}. `.repeat(75));
+  const row: P3RefreshCandidate = {
+    ...candidate(),
+    id: "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+    source_key: "es-tribunal-constitucional",
+    canonical_url: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32136",
+    cleaned_text: fragments.join("\n"),
+    source_metadata: JSON.stringify({
+      collection: { publishable: true, sourceUrlVerified: true, sourceTextAvailable: true, reason: "source text is intentionally unavailable" },
+      collectionSafety: { publishable: false, contenidoIrrelevanteParaInternet: false },
+      sourceTextStatus: "not_available",
+      cleanedTextSha256: "old-empty-hash",
+      rawTextSha256: "old-empty-hash",
+    }),
+  };
+  const official = {
+    TIPO_RESOLUCION: "SENTENCIA", NUMERO_RESOLUCION: 59, ANNO_RESOLUCION: 2026,
+    CONTENIDO_IRRELEVANTE_PARA_INTERNET: false,
+    RESOLUCIONES_ANTECEDENTES: fragments.slice(0, 8).map((TEXTO) => ({ TEXTO })),
+    RESOLUCIONES_FUNDAMENTOS: fragments.slice(8, 14).map((TEXTO) => ({ TEXTO })),
+    RESOLUCIONES_DICTAMEN: [{ TEXTO: fragments[14] }],
+    RESOLUCIONES_VOTOS_PARTICULARES: [{ TEXTO: fragments[15] }],
+  };
+  const updated = JSON.parse(revalidatedSentencia59Metadata(row, official, "2026-10-10T00:00:00Z"));
+  assert.equal(updated.collectionSafety.publishable, true);
+  assert.equal(updated.sourceTextStatus, "available");
+  assert.equal(updated.sourceTextQuality.cleanedTextLength, row.cleaned_text.length);
+  assert.equal(updated.cleanedTextSha256, undefined);
+  assert.equal(updated.rawTextSha256, undefined);
+  assert.equal(updated.sourceRevalidation.previousCollectionSafety.publishable, false);
+  assert.equal(assessP3RefreshCandidate({ ...row, source_metadata: JSON.stringify(updated) }).eligible, true);
+  assert.throws(() => revalidatedSentencia59Metadata(row, { ...official, CONTENIDO_IRRELEVANTE_PARA_INTERNET: true }, "2026-10-10T00:00:00Z"), /official_identity_or_safety_invalid/);
+  assert.throws(() => revalidatedSentencia59Metadata({ ...row, cleaned_text: "x".repeat(65000) }, official, "2026-10-10T00:00:00Z"), /official_full_text_does_not_match_core/);
 });

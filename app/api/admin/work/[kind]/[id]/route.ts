@@ -3,7 +3,8 @@ import { adminCommandService } from "@/lib/admin/command-control-plane/service";
 import { articlePublicationService } from "@/lib/article-publication/service";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
 import { actionAllowedForKind, parseAdminWorkActionBody } from "@/lib/admin/p4/actions";
-import { assessP3RefreshCandidate, P3_DRIFT_REFRESH_CANARY_IDS, type P3RefreshCandidate } from "@/lib/admin/p4/p3-drift-refresh";
+import { assessP3RefreshCandidate, P3_DRIFT_REFRESH_CANARY_IDS, revalidatedSentencia59Metadata, SPAIN_SENTENCIA_59_ID, SPAIN_SENTENCIA_59_OFFICIAL_API, type P3RefreshCandidate } from "@/lib/admin/p4/p3-drift-refresh";
+import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
 import { recordAdminSiteEvent } from "@/lib/analytics/events";
 import { createHash } from "@/lib/utils/hash";
 import { adminSessionIdentityFromRequest, adminSessionMutationAuthFailureStatus } from "@/lib/utils/auth";
@@ -118,9 +119,54 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
     WHERE a.id=? LIMIT 1
   `).bind(id).all<P3RefreshCandidate>();
   if (lookup.success === false || lookup.error) return { ok: false as const, code: "unavailable" };
-  const candidate = lookup.results?.[0];
+  let candidate = lookup.results?.[0];
   if (!candidate) return { ok: false as const, code: "not_found" };
-  const decision = assessP3RefreshCandidate(candidate);
+  let decision = assessP3RefreshCandidate(candidate);
+  if (!decision.eligible && decision.reason === "provenance_conflict" && id === SPAIN_SENTENCIA_59_ID) {
+    // Official revalidation is part of the existing authenticated, CSRF-protected
+    // administrator action. A separate repair Worker or shared secret is not needed.
+    try {
+      const response = await fetch(SPAIN_SENTENCIA_59_OFFICIAL_API, {
+        headers: { accept: "application/json" }, cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) return { ok: false as const, code: "unavailable" };
+      const validated = revalidatedSentencia59Metadata(candidate, await response.json(), new Date().toISOString());
+      const current = new Date().toISOString();
+      const updated = await core.prepare(
+        "UPDATE articles SET source_metadata=?,updated_at=? WHERE id=? AND updated_at=? AND source_metadata=?",
+      ).bind(validated, current, id, candidate.updated_at, candidate.source_metadata).run?.();
+      if (!updated || updated.success === false || updated.error) return { ok: false as const, code: "unavailable" };
+      if (Number((updated.meta as { changes?: number } | undefined)?.changes ?? 0) !== 1) {
+        return { ok: false as const, code: "stale_revision" };
+      }
+      const refreshed = await core.prepare(`
+        SELECT a.id,a.source_key,a.updated_at,a.status,a.original_language,a.translation_status,
+          a.lifecycle_collection_state,a.lifecycle_processing_state,a.lifecycle_review_state,a.lifecycle_attention_state,
+          a.source_metadata,a.canonical_url,a.cleaned_text,a.summary_json,a.korean_title,
+          p.state AS publication_state,p.version_id,p.revision AS publication_revision,
+          v.cleaned_text AS version_cleaned_text,v.summary_json AS version_summary_json,
+          v.korean_title AS version_korean_title,v.canonical_url AS version_canonical_url
+        FROM articles a JOIN article_publications_p3 p ON p.article_id=a.id
+        JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id WHERE a.id=? LIMIT 1
+      `).bind(id).all<P3RefreshCandidate>();
+      if (refreshed.success === false || refreshed.error || !refreshed.results?.[0]) {
+        return { ok: false as const, code: "unavailable" };
+      }
+      candidate = refreshed.results[0];
+      decision = assessP3RefreshCandidate(candidate);
+    } catch {
+      return { ok: false as const, code: "ineligible" };
+    }
+  }
+  if (!decision.eligible && decision.reason === "no_drift") {
+    const search = getRuntimeD1Binding("worldcons_search");
+    if (!search) return { ok: false as const, code: "unavailable" };
+    try {
+      const synced = await syncSearchProjectionForArticle({ WORLDCONS_CORE: core, WORLDCONS_SEARCH: search }, id);
+      return { ok: true as const, data: { articleId: id, alreadyCurrent: true, projectionVerified: synced.verified } };
+    } catch { return { ok: false as const, code: "unavailable" }; }
+  }
   if (!decision.eligible) return { ok: false as const, code: "ineligible" };
   // Use authoritative v4/P3 head revision and optimistic legacy timestamp guard.
   const snapshot = await articlePublicationService.getSnapshot(id);
@@ -146,7 +192,13 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
     correlationId: idempotencyKey,
     safeMetadata: { action: "bounded_p3_snapshot_refresh", priorVersionId: candidate.version_id },
   });
-  return result.ok ? { ok: true as const, data: result.data } : { ok: false as const, code: result.error.code };
+  if (!result.ok) return { ok: false as const, code: result.error.code };
+  const search = getRuntimeD1Binding("worldcons_search");
+  if (!search) return { ok: false as const, code: "unavailable" };
+  try {
+    const synced = await syncSearchProjectionForArticle({ WORLDCONS_CORE: core, WORLDCONS_SEARCH: search }, id);
+    return { ok: true as const, data: { ...result.data, projectionVerified: synced.verified } };
+  } catch { return { ok: false as const, code: "unavailable" }; }
 }
 
 export function GET() {
