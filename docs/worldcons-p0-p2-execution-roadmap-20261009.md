@@ -9,7 +9,7 @@
 | P0-1 | 프랑스 staged-ingest Production 최초 E2E | **완료** | `2026-335 L`, article `16b4fc11-d9cc-4e5b-b8e5-acf687ab760e`: 7단계 성공, search 재투영 포함 8/8 stage jobs·outbox 성공, 실패/DLQ/redrive 0 |
 | P0-2 | 잔여 회귀 수정 커밋·`main` 푸시·Production 반영 | **완료** | 과거 회귀 검사 복구 및 Production 배포 이력 검증. 이후 변경을 수행할 때도 새 테스트가 통과해야 함 |
 | P0-3 | 스페인 adapter/canary 안전 보완·Production 배포 | **완료** | `Show/0` 제외, 공식 JSON 정규화 연계, 1건 제한, staged 소유권과 M8 제외를 함께 적용 (`0368905` 등) |
-| P1-1 | **스페인 실제 Production 7단계 E2E 검증** | **대기** | 첫 2026-10-10 06:00 KST 정기 Discovery 이후 stage jobs/events/outbox/DLQ, 공식 HJ ID/JSON 원문(충분한 본문), R2, Core, 번역, Public Judgment, P3, Search를 판례 단위로 추적. 장애 시 false publish 없이 원인 수정 |
+| P1-1 | **스페인 실제 Production 7단계 E2E 검증** | **실행 7/7 완료, 콘텐츠 정합성 후속 P0** | 2026-10-10 06:00 KST 자동 실행에서 `SENTENCIA 59/2026`의 Discovery→Search 7/7 jobs succeeded, 공식 HJ JSON, R2, Core, P3와 검색 투영 확인. **이미 발행됐던 P3 버전과 최신 Core의 요약·제목이 달라 재처리 Job 성공과 최신 콘텐츠 공개 성공은 구분한다.** 아래 P3 drift 감사를 따른다. |
 | P1-2 | 독일 BVerfG 공식 원문 URL/ECLI identity gate | **완료** | `9fa36e2`: 공식 판결 본문·정확한 ECLI·리다이렉트 최종 URL 검증, 잘못된 HTML 및 불일치 차단 |
 | P1-3 | 독일 M8 후보 404 head-of-line/백오프 개선 | **구현·배포 완료, 실운영 효과 미검증** | `4b384be`: D1 상태 기반 bounded 후보 순환, 백오프 중 후보 defer, D1 장애 시 fail-closed, `degraded` 진단. 다음 M8 실행의 실제 fetch를 별도 확인 |
 | **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료, 실원문 E2E 대기** | 코드 `cc6059e`, Worker 버전 `4189c105-43db-4800-b557-9571c8ba6ee7`. `unpdf` Worker-safe 텍스트 추출, 공식 PDF/redirect/robots/docket/용량 검증, R2 원본 SHA-256 및 Core provenance 연결. 미국 M8 소유권 유지·공개 발행 보류. 실제 SCOTUS 판례 원문 처리는 추후 확인 |
@@ -92,3 +92,14 @@
 **`P1-1 확인`** = 2026-10-10 06:00 KST 이후 스페인 신규 staged E2E를 Production D1/R2/코어/P3/Search까지 판례 단위로 검증한다. France 성공을 Spain 성공으로 대체하지 않는다.
 
 **`다음 진행`** = 정기 실행 시각 전에는 D1 조회 권한을 진단하고 P2-2 국가별 readiness를 검증한다. 실행 시각 이후에는 P1-1 스페인 Production E2E를 최우선으로 추적하고 같은 실행에서 미국 M8 PDF·독일 후보 처리 현황도 확인한다. **권한 오류 7403이 남아 있으면 D1 접근을 우회하지 않고 사용자에게 차단 사실과 필요한 권한 확인을 보고한다.**
+
+## 6. 2026-10-10 Production P3 snapshot drift 전수 감사 및 다음 작업 (13시 KST)
+
+- Production `worldcons_core` D1의 공개 `article_publications_p3.state='published'` 1,418건 전수 비교: **4건 Core–immutable P3 본문/요약/한국어 제목 불일치**. 국가별 `de-bverfg` 463/0, `us-scotus` 136/0, `fr-conseil-constitutionnel` 395/2, `es-tribunal-constitucional` 424/2 (표기: published/drift). `canonical_url` 불일치는 0건.
+- 프랑스 `2026-1223 QPC` (`0e25c3b4-3449-46b5-9270-fd0e37f9e4b7`): 본문 11,879(Core)/11,831(P3)자, 요약·한글 제목 변경. 프랑스 `2026-335 L` (`16b4fc11-d9cc-4e5b-b8e5-acf687ab760e`): 3,725/3,682자, 요약·한글 제목 변경.
+- 스페인 `AUTO 43/2026` (`15560a96-c510-427c-aaf4-a5d57ef5bd50`): 14,205/14,206자, 요약·한글 제목 변경. 스페인 `SENTENCIA 59/2026` (`d31eecc5-4e74-440f-ba6e-1561911bd68c`): 본문은 일치하나 요약·한글 제목 변경. `SENTENCIA 59/2026`은 과거 `collectionSafety.publishable=false`/`sourceTextStatus=not_available`과 새 `collection.publishable=true`, 공식 HJ API `CONTENIDO_IRRELEVANTE_PARA_INTERNET=false`, 검증된 66,954자 Crawl 본문이 충돌하므로 근거 충돌 해소 전 자동 갱신 금지.
+- 4건 모두 현재 Core lifecycle은 `source_text_ready`/`complete`/`unreviewed`/`clear`, `collection.publishable=true`, `sourceTextAvailable=true`, `sourceUrlVerified=true`. 그러나 **플래그만으로 새 요약의 실질 정확성이나 안전성을 증명하지 못하므로 자동 승격 금지**.
+- 4건 모두 `worldcons_search.search_documents` + FTS 존재. 검색 `display_title`은 현재 Core가 아닌 **기존 P3 immutable 버전**을 따르며, 기존 P3 버전들의 `legacy_version_freshness_classifications_v4`는 모두 `current`/`legacy_same_version`이다. 이 classification은 P3 버전 중심이므로 Core와의 일치 검증과 혼동하지 않는다.
+- 2026-10-10 메인 `worldcons` Production 버전 `21730a06-1736-447c-baf8-0a8439b8b184`: 기존 P3가 있더라도 최신 Core 본문·요약·한글 제목·canonical URL/출처검증이 불일치하면 staged Publish를 `ineligible`로 차단. 코드 커밋 `0f36d07392a1ec012b3165b4f0fdead0b9f7a780` (로컬; GitHub `main`에는 미푸시). main Worker Vinext build 및 생성된 `dist/server/wrangler.json` dry-run 통과, 홈페이지·MCP health·sources API HTTP 200. `worldcons-ingest`는 이 배포에서 변경하지 않음.
+- **다음 P0(4건)**: (1) 본문 차이가 공식 출처의 실제 변경인지 가공/공백 차이인지 증거 비교, 한국어 제목·요약의 정확성 샘플 검수 (2) 레거시 스페인 안전 플래그 충돌 해소 (3) Core/P3 버전·게시 revision을 원장 및 승인 정책으로 재확인 (4) 검증된 판례별로 **정식 `articlePublicationService.transition(captureLegacy=true,targetState='published')`를 통한 신규 immutable version, history, audit ledger, cache outbox** 사용; P3/검색 테이블 직접 UPDATE 금지 (5) 전환 후 D1 Core/P3/Search/FTS 전수 대조. 자동 M8 drain/기존 staged replay로 억지 통과시키지 않는다.
+- 반복 읽기 전용 진단: `pnpm exec tsx scripts/audit-p3-snapshot-drift.ts` (내부 SQL `scripts/sql/worldcons-p3-snapshot-drift-audit.sql`, 2개의 SELECT를 각각 Wrangler `--command`로 조회해 집계+불일치 상세를 JSON으로 출력). **SQL에 UPDATE/DELETE/INSERT 없음.** Wrangler `--file` 모드는 조회 행이 아닌 실행 통계만 반환하므로 진단 도구로 사용할 것. 2026-10-10 최초 SQL file execution은 2 queries / 8,973 rows read / 0 rows written. Cloudflare D1 `7403` 간헐 재발은 별도 인증 문제로 유지; 조회 성공만으로 완치 판정 금지.
