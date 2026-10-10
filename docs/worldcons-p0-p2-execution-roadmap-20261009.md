@@ -109,3 +109,10 @@
 - 네 공식 원문 URL `FR 2026-1223 QPC`, `FR 2026-335 L`, `ES AUTO 43/2026`, `ES SENTENCIA 59/2026` 모두 공식 도메인에서 HTTPS GET 200 확인. **원문 페이지 200은 한국어 번역·요약의 의미적 정확성 승인과 다르다.**
 - 관리자 세션+CSRF 전용 `POST /api/admin/work/article/:id`에 **`action=refresh-p3`, `confirmation=refresh-p3`** 추가. 명시한 4개 Article ID에만 허용하고, 출처 hostname/HTTPS, 검증 플래그, 원문 500자 이상, 최신 요약·번역, lifecycle 및 실제 Core–P3 drift를 재조회하여 차단/허용한다. `collectionSafety.publishable=false`나 `sourceTextStatus=not_available`와 새 출처 플래그가 충돌하면 무조건 차단한다. 독립된 P3 신규 immutable version·revision·history/audit/cache outbox를 만드는 정식 `articlePublicationService.transition(captureLegacy=true, targetState='published')` 경로만 사용하며 SQL 직접 갱신·원본 P3 덮어쓰기는 금지한다. 낡은 버전 또는 source 재편집은 낙관적 revision/updated_at으로 거절한다. 수동 운영자 호출 외에 자동 발행하지 않음.
 - `ES SENTENCIA 59/2026`의 과거 안전 메타데이터 충돌은 별도 출처 재검증·정합성 조치 전 `provenance_conflict`로 차단. 나머지 3건도 공개판례 갱신 전 한글 제목·요약 내용 검수, 관리자 세션의 수동 확인, 원장/검색 동기화가 필요하다.
+
+### 2026-10-10 후속 — GitHub main 동기화와 P3 수동 복구 사전검사
+
+- 로컬 `0898bcb7a38a495a34aaea399aa4810d224494b0`를 `git push origin HEAD:refs/heads/main`으로 **fast-forward GitHub main 푸시 성공**, `git ls-remote`로 원격 SHA 일치 확인. 이전 `main=76e7ce8`, main에 신규 반영된 커밋 **7개**. 별도 로컬 upstream 브랜치 대비 ahead 12와 혼동 금지.
+- 4건 사전검사 도구: `pnpm exec tsx scripts/audit-p3-refresh-readiness.ts`. Production D1 SELECT 하나로 해당 네 ID의 현재 Core/P3 snapshot 및 출처 안전 메타데이터를 읽고 **실제 관리자 `assessP3RefreshCandidate` 판정 함수 재사용**, 데이터 원문 출력 없이 article ID·source·revision·검사 결과만 JSON으로 출력. Production 변경 없음.
+- Production 사전검사 실측: `FR 2026-1223 QPC` (`0e25c3b4`), `FR 2026-335 L` (`16b4fc11`), `ES AUTO 43/2026` (`15560a96`) **3건 `eligible:true`, 실제 drift 존재**. `ES SENTENCIA 59/2026` (`d31eecc5`) **`eligible:false, reason=provenance_conflict`**. 읽기 전용 도구·게이트 회귀 6/6 통과.
+- **운영 금지:** 사전검사 `eligible`은 한국어 번역·요약의 의미적 승인 아님. 실제 P3 버전 갱신은 관리자 로그인+CSRF 수동 승인, 해당 판례별 원문 의미 검수 후에만 수행한다. 이 작업에서 원장 수정/재발행 없음. 갱신 성공 후 `article_publications_p3` revision 및 audit history/cache outbox, search projection/FTS 재확인 필요.
