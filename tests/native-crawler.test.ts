@@ -7,6 +7,7 @@ import {
   parseNativeSourceListing,
   persistNativeStageRecord,
   runNativeSourceCollection,
+  reconcileSpanishOfficialTextMetadata,
   selectBverfgDiscoveryCandidates,
   type NativeCrawlerBindings,
   type NativeCrawlerSource,
@@ -14,6 +15,32 @@ import {
 
 const now = new Date("2026-09-30T00:00:00.000Z");
 const robots = "User-agent: *\nAllow: /\nCrawl-delay: 0";
+
+test("verified HJ full text replaces stale metadata-only safety flags without affecting unverified records", () => {
+  const old = {
+    collection: { reason: "Official source text is intentionally unavailable.", publishable: true, sourceTextAvailable: true, sourceUrlVerified: true },
+    collectionSafety: { publishable: false, contenidoIrrelevanteParaInternet: false },
+    sourceTextStatus: "not_available", sourceTextAvailable: false,
+    sourceTextQuality: { cleanedTextLength: 0, hasSubstantiveSection: false },
+    cleanedTextSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    rawTextSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  };
+  const candidate = {
+    sourceKey: "es-tribunal-constitucional" as const,
+    url: "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32136",
+    title: "SENTENCIA 59/2026", contentType: "decision" as const,
+    metadata: { hjId: "32136", collection: { publishable: true, sourceUrlVerified: true, sourceTextAvailable: true, strictSourceTextAvailable: true } },
+  };
+  const verified = reconcileSpanishOfficialTextMetadata(old, candidate, "a".repeat(66_952));
+  assert.equal((verified.collectionSafety as Record<string, unknown>).publishable, true);
+  assert.equal(verified.sourceTextStatus, "available");
+  assert.equal((verified.sourceTextQuality as Record<string, unknown>).cleanedTextLength, 66_952);
+  assert.equal(verified.cleanedTextSha256, undefined);
+  assert.equal(verified.rawTextSha256, undefined);
+  assert.equal((verified.collection as Record<string, unknown>).reason, undefined);
+  assert.deepEqual(reconcileSpanishOfficialTextMetadata(old, candidate, "a".repeat(300)), old);
+  assert.deepEqual(reconcileSpanishOfficialTextMetadata(old, { ...candidate, metadata: { ...candidate.metadata, collection: { ...candidate.metadata.collection, sourceUrlVerified: false } } }, "a".repeat(66_952)), old);
+});
 
 function response(body: string, status = 200, contentType = "text/html") {
   return new Response(body, { status, headers: { "content-type": contentType } });

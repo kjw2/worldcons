@@ -849,6 +849,38 @@ export interface NativePersistResult {
   status: string;
 }
 
+/** Supersede contradictory metadata-only HJ provenance only after this run
+ * actually fetched sufficient full text from the verified official JSON API.
+ * A failed/partial fetch must retain the old private safety evidence. */
+export function reconcileSpanishOfficialTextMetadata(
+  metadata: Record<string, unknown>,
+  candidate: NativeArticleCandidate,
+  clean: string,
+): Record<string, unknown> {
+  const collection = candidate.metadata.collection as Record<string, unknown> | undefined;
+  if (candidate.sourceKey !== "es-tribunal-constitucional"
+    || collection?.publishable !== true || collection.sourceUrlVerified !== true
+    || collection.sourceTextAvailable !== true || collection.strictSourceTextAvailable !== true
+    || !/^\d+$/.test(String(candidate.metadata.hjId ?? "")) || clean.length < 2_000) return metadata;
+  const corrected = { ...metadata };
+  const oldCollection = corrected.collection as Record<string, unknown> | undefined;
+  const currentCollection = { ...oldCollection };
+  if (typeof currentCollection.reason === "string" && /no constitutional doctrine|source text is intentionally unavailable/i.test(currentCollection.reason)) {
+    delete currentCollection.reason;
+  }
+  corrected.collection = currentCollection;
+  corrected.collectionSafety = { ...((corrected.collectionSafety && typeof corrected.collectionSafety === "object") ? corrected.collectionSafety as Record<string, unknown> : {}),
+    contenidoIrrelevanteParaInternet: false, publishable: true };
+  corrected.sourceTextAvailable = true;
+  corrected.sourceTextStatus = "available";
+  corrected.sourceTextQuality = { cleanedTextLength: clean.length, hasSubstantiveSection: true, minLength: 2000 };
+  // The old metadata-only hashes referred to an empty string and must never
+  // masquerade as verified hashes of the newly captured full source text.
+  delete corrected.cleanedTextSha256;
+  delete corrected.rawTextSha256;
+  return corrected;
+}
+
 async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string): Promise<NativePersistResult> {
   const core = bindings.WORLDCONS_CORE;
   const canonical = canonicalUrl(candidate.url, candidate.url);
@@ -868,7 +900,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   if (existing && candidate.sourceKey === "us-scotus" && previousPdf?.docketVerified === true && currentPdf?.docketVerified !== true) {
     return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
   }
-  const metadata = { ...oldMetadata, ...candidate.metadata, collection: { ...(oldMetadata.collection as Record<string, unknown> ?? {}), ...(candidate.metadata.collection as Record<string, unknown>), diagnosticsId: runId, source: SOURCE_INFO[candidate.sourceKey].baseUrl }, ingestion: { runId, crawler: "worldcons-ingest-native-v1", fetchedAt } };
+  const metadata = reconcileSpanishOfficialTextMetadata({ ...oldMetadata, ...candidate.metadata, collection: { ...(oldMetadata.collection as Record<string, unknown> ?? {}), ...(candidate.metadata.collection as Record<string, unknown>), diagnosticsId: runId, source: SOURCE_INFO[candidate.sourceKey].baseUrl }, ingestion: { runId, crawler: "worldcons-ingest-native-v1", fetchedAt } }, candidate, clean);
   const data = JSON.stringify(metadata);
   const oldTextLength = String(existing?.cleaned_text ?? "").trim().length;
   const publicWasPublishable = existing?.status === "summarized" && (oldMetadata.collection as Record<string, unknown> | undefined)?.publishable === true;
