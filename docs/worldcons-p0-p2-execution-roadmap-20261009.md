@@ -116,3 +116,11 @@
 - 4건 사전검사 도구: `pnpm exec tsx scripts/audit-p3-refresh-readiness.ts`. Production D1 SELECT 하나로 해당 네 ID의 현재 Core/P3 snapshot 및 출처 안전 메타데이터를 읽고 **실제 관리자 `assessP3RefreshCandidate` 판정 함수 재사용**, 데이터 원문 출력 없이 article ID·source·revision·검사 결과만 JSON으로 출력. Production 변경 없음.
 - Production 사전검사 실측: `FR 2026-1223 QPC` (`0e25c3b4`), `FR 2026-335 L` (`16b4fc11`), `ES AUTO 43/2026` (`15560a96`) **3건 `eligible:true`, 실제 drift 존재**. `ES SENTENCIA 59/2026` (`d31eecc5`) **`eligible:false, reason=provenance_conflict`**. 읽기 전용 도구·게이트 회귀 6/6 통과.
 - **운영 금지:** 사전검사 `eligible`은 한국어 번역·요약의 의미적 승인 아님. 실제 P3 버전 갱신은 관리자 로그인+CSRF 수동 승인, 해당 판례별 원문 의미 검수 후에만 수행한다. 이 작업에서 원장 수정/재발행 없음. 갱신 성공 후 `article_publications_p3` revision 및 audit history/cache outbox, search projection/FTS 재확인 필요.
+
+### 2026-10-10 18시 이후 — P3 원인 재확인·재발 방지 운영 반영 (복구 미완료)
+
+- 공식 HJ JSON `https://hj.tribunalconstitucional.es/HJ/Resolucion/Api/json/32136` 직접 검사: `TIPO_RESOLUCION=SENTENCIA`, 번호 `59`, 연도 `2026`, `CONTENIDO_IRRELEVANTE_PARA_INTERNET=false`, `RESOLUCIONES_ANTECEDENTES` 8개·`RESOLUCIONES_FUNDAMENTOS` 6개. Core에는 본문 66,952자이나 과거 메타데이터에 `collectionSafety.publishable=false`, `sourceTextStatus=not_available`, 빈 텍스트 SHA-256 및 본문 0자 판단이 남는 **stale provenance merge 오류** 확인.
+- `workers/async-pipeline/src/native-crawler.ts`의 기존 메타데이터 병합에서 **공식 HJ JSON 재조회 성공, 출처·본문 검증 참 및 2,000자 이상인 경우에만** 과거 `본문 없음` 안전 플래그·길이·해시 오기록을 교정하도록 변경. 충분한 본문 또는 공식 검증이 없는 경우 이전 안전 차단을 그대로 보존. 테스트 `tests/native-crawler.test.ts` 포함 **29/29 통과**, ESLint 오류 0, Wrangler dry-run 통과.
+- 수집기 Production `worldcons-ingest` 실제 배포 버전 `11702fd8-ed52-497e-99a1-ecd000f675dc`. GitHub `main` 최신 커밋 `4b4e47b46962d66cb836a1f2d3a210db0ffbeb9c` fast-forward 푸시, 원격 SHA 조회 일치, `worldcons-ingest/health` HTTP 200. M8 국가 제외 및 스케줄·Queue 기존 설정 유지.
+- 정식 P3 4건 복구를 위해 임시 보호 Worker를 배포했으나, **인증된 실제 실행 요청이 보안 검사에서 차단**돼 원장에 쓰지 못함. 차단을 우회하지 않았으며 Worker `worldcons-p3-repair-once` 삭제 성공, HTTPS 404 재확인, 임시 비밀 토큰 및 소스 삭제 완료. **기존 P3 4건은 실제 미복구**이므로 정합성 문제를 완료로 표시하지 않는다.
+- 현재 P3 정식 복구는 `P3` 관리자 세션/CSRF를 이용한 별도 4건 명시적 갱신이 남았고, Spain 59/2026은 출처 메타데이터의 과거 충돌을 공식 증거·원문 검증에 따라 우선 교정해야 한다. 공개 원장 직접 UPDATE나 미검증 자동 publish는 금지. 복구 후 Core/P3/Search/FTS 0 drift, audit ledger/history/outbox 및 revision을 실측으로 확인해야 완료로 기록한다.
