@@ -1,0 +1,109 @@
+[
+  {
+    "results": [
+      {
+        "documents": 1457
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "KIX",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.5012
+      },
+      "duration": 0.5012,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 184426496,
+      "rows_read": 1457,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "fts": 1457,
+        "distinct_fts": 1457
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "KIX",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 68.3682
+      },
+      "duration": 68.3682,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 184426496,
+      "rows_read": 1457,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "name": "e2e_search_document_insert_guard"
+      },
+      {
+        "name": "e2e_search_document_update_guard"
+      },
+      {
+        "name": "e2e_search_document_delete_guard"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "KIX",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3842
+      },
+      "duration": 0.3842,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 184426496,
+      "rows_read": 18,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "authorizations": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "KIX",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.4179
+      },
+      "duration": 0.4179,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 184426496,
+      "rows_read": 0,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,73 @@
+
+> worldcons@0.1.0 test:m8 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m8-async-pipeline.test.ts tests/m8-crawler-source-ownership.test.ts tests/search-projection-sync.test.ts tests/m8-p5-forward-fix.test.ts tests/admin-jobs-d1-repository.test.ts tests/p5-d1-health-repository.test.ts tests/watchdog-d1.test.ts
+
+✔ admin job D1 creation binds idempotency payload and returns JSON mappings (5.4352ms)
+✔ admin job D1 creation resolves duplicate idempotency keys to the existing row (0.4017ms)
+✔ admin job D1 claim atomically prioritizes expired leases and binds job types (0.5676ms)
+✔ admin job success transition cannot overwrite a cancellation request (0.4843ms)
+✔ M8 cron inventory maps every retired schedule to stable messages (3.7677ms)
+✔ queue replay yields the same Workflow and executor identities (0.4911ms)
+✔ workflow instance ids are Cloudflare-valid and collision-safe for representative keys (0.8479ms)
+✔ every M8 task kind is native and crawler-daily fans out by source (3.6471ms)
+✔ translation native executor invokes the main Worker RPC with quota-paced defaults (2.4299ms)
+✔ publication workflow refreshes the search projection after release (1.9526ms)
+✔ translation workflow publishes and refreshes search immediately after successful translation (2.7926ms)
+✔ watchdog probes publication backlog and only then recovers publication plus search (3.1835ms)
+✔ embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch (0.8252ms)
+✔ M8_ENABLED_KINDS parser fails closed and honors exact kinds (0.6163ms)
+✔ scheduler gate: disabled => no dispatch, enabled => allowlist only (0.3331ms)
+✔ scheduled() gates per kind: only admin-health enqueues under the canary allowlist (0.2602ms)
+✔ queue partition acks blocked kinds, retries invalid, dispatches eligible (0.4467ms)
+✔ canary operator report routes every eligible kind natively (0.6966ms)
+✔ Cloudflare config locks single-consumer retries and a DLQ (0.6229ms)
+✔ GitHub has no operational workflows; Cloudflare owns all schedules (0.3411ms)
+✔ P1 publication pipeline inherits the stable M8 identity (0.9973ms)
+✔ Browser Run client keeps HTTPS, auth, and result mapping bounded (28.6262ms)
+✔ Browser Run client ignores GitHub Actions identity variables and requires its bearer (0.5532ms)
+✔ consolidated Browser Run public endpoint is bearer-only (0.3973ms)
+✔ Browser Run endpoint refuses plaintext transport (0.2604ms)
+✔ request-governor parity: Browser Run navigation acquires and releases a per-source permit (0.7094ms)
+✔ governor propagation: fetchRawItem never drops the per-source request governor on browser escalation (1.7431ms)
+✔ restart/recovery: replay after consumer restart yields the same Workflow id and one create per identity (0.5552ms)
+✔ restart/recovery: gate-closed valid messages ack without dispatch, malformed payloads stay bounded toward DLQ (0.7419ms)
+✔ no-duplicate-publication: two identical M8 identities collapse to one publication command identity (1.9169ms)
+✔ absent/empty exclusion keeps every native source legacy-owned (1.934ms)
+✔ France exclusion yields the remaining three native sources (0.5302ms)
+✔ France and Spain are staged-owned while Germany and US remain M8-owned (0.2347ms)
+✔ exclusion config trims, dedupes, and preserves native order (0.201ms)
+✔ unknown and malformed exclusions fail closed to an empty effective list (0.787ms)
+✔ crawler-daily Workflow iterates only effective sources and reports evidence (1.1465ms)
+✔ /health exposes effective and excluded crawler sources without secrets (1.4638ms)
+✔ production worker config gives staged and M8 mutually exclusive source ownership (0.7305ms)
+✔ M8 P5 forward-fix adds runtime freshness classification without weakening the v4 guard (1.8273ms)
+✔ M8 P5 parity repair captures current legacy content instead of publishing stale draft versions (0.4489ms)
+✔ M8 P5 quarantine resolution is restricted to attention-clear articles already projected (0.3423ms)
+✔ M8 P5 forward-fix never mutates immutable resolution or freshness rows in place (0.695ms)
+✔ P5 D1 adapter reads each owning database and returns the P5 evidence contract (5.8551ms)
+✔ P5 D1 adapter fails closed when an owning D1 read fails (0.6414ms)
+✔ eligible Core rows build and apply a verified 1:1 D1 search projection (20.7795ms)
+✔ sync batch size stays within the bounded D1 batch envelope (1.2698ms)
+✔ native watchdog records and deduplicates events using D1 only (3.5063ms)
+✔ native watchdog dedupe prunes without appending another event (0.3925ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1345.5389
+
+> worldcons@0.1.0 m8:types:check C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> wrangler types workers/async-pipeline/worker-configuration.d.ts --config workers/async-pipeline/wrangler.jsonc --strict-vars=false --check
+
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+
+X [ERROR] Types at workers/async-pipeline/worker-configuration.d.ts are out of date. Run `wrangler types` to regenerate.
+
+
+🪵  Logs were written to "C:\Users\jaeth\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-11_07-17-07_566.log"
+ ELIFECYCLE  Command failed with exit code 1.

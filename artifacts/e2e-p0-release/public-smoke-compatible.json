@@ -1,0 +1,165 @@
+{
+  "at": "2026-10-11T07:19:03.155Z",
+  "version": "03075f82-369b-4f3f-8085-1608351d3696",
+  "probes": [
+    {
+      "status": "fulfilled",
+      "value": {
+        "path": "/",
+        "status": 200,
+        "milliseconds": 3917,
+        "responseHash": "afd27f254418208c7f9eee2855f0d06454fc87b9746b9776f5c8b2f420d9f5eb"
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "path": "/api/cclrag2/search?q=constitution&count=none&pageSize=3",
+        "status": 200,
+        "milliseconds": 2942,
+        "responseHash": "997e4ee0a2c5eb4a6f3ba3d5d6496d8de2c90ea5864a34ec4bec14541a74749b",
+        "items": [
+          {
+            "id": "f52c7de2-1806-4599-9540-db5619516837",
+            "slug": "france-fr-conseil-constitutionnel-2025-07-01-decision-n-2025-888-dc-du-1er-juillet-2025-0ad187",
+            "caseNumber": "2025-888 DC",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/france-fr-conseil-constitutionnel-2025-07-01-decision-n-2025-888-dc-du-1er-juillet-2025-0ad187"
+          },
+          {
+            "id": "a2a3b17f-3e9e-4680-9299-23e03436ca4d",
+            "slug": "france-fr-conseil-constitutionnel-2026-06-18-decision-n-2026-904-dc-du-18-juin-2026-51028f",
+            "caseNumber": "2026-904 DC",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/france-fr-conseil-constitutionnel-2026-06-18-decision-n-2026-904-dc-du-18-juin-2026-51028f"
+          },
+          {
+            "id": "89d41349-6773-4a46-b77e-33db174fa959",
+            "slug": "france-fr-conseil-constitutionnel-2025-05-07-decision-n-2025-880-dc-du-7-mai-2025-42c7b3",
+            "caseNumber": "2025-880 DC",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/france-fr-conseil-constitutionnel-2025-05-07-decision-n-2025-880-dc-du-7-mai-2025-42c7b3"
+          }
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "path": "/api/articles?limit=3",
+        "status": 200,
+        "milliseconds": 7349,
+        "responseHash": "250dec073a96132f214f0612a1dacbc045f9b82e1f62883db696cfd56ff6bcf1",
+        "items": [
+          {
+            "id": "0410fa97-dab1-48d7-a927-eadff73b01e5",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-333-l-du-8-octobre-2026-nature-juridique-de-l-article-l-941-1-du-5f92f4",
+            "caseNumber": "2026-333 L"
+          },
+          {
+            "id": "046ad0d3-8d0d-4caf-919b-cd221708fcc4",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-336-l-du-8-octobre-2026-nature-juridique-de-l-article-l-446-57-d-e44fd4",
+            "caseNumber": "2026-336 L"
+          },
+          {
+            "id": "1217b794-dc41-4213-9ecb-be1b4e2de85c",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-334-l-du-8-octobre-2026-nature-juridique-de-certaines-dispositio-eefd2e",
+            "caseNumber": "2026-334 L"
+          },
+          {
+            "id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-335-l-du-8-octobre-2026-nature-juridique-de-certaines-dispositio-47bcbf",
+            "caseNumber": "2026-335 L"
+          },
+          {
+            "id": "1deeea2e-776f-43fe-85cd-e4dfc266e336",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2019-169-orga-du-8-octobre-2026-nomination-de-rapporteurs-adjoints-au-e18c2e",
+            "caseNumber": "2019-169"
+          },
+          {
+            "id": "3bae8a78-a8a3-4e38-a6d2-6ee26e73a5d4",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-338-l-du-8-octobre-2026-nature-juridique-de-certaines-dispositio-abd468",
+            "caseNumber": "2026-338 L"
+          },
+          {
+            "id": "6f6f955a-fa9d-458a-81d7-96c8cfa05c04",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-339-l-du-8-octobre-2026-nature-juridique-de-certaines-dispositio-5dc9a9",
+            "caseNumber": "2026-339 L"
+          },
+          {
+            "id": "74cccbbd-9100-4d05-aa70-76ece2bc297b",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-1224-qpc-du-8-octobre-2026-sci-26-absence-d-audience-en-cas-de-c-f2e162",
+            "caseNumber": "2026-1224 QPC"
+          },
+          {
+            "id": "7a17caea-4e10-47f1-a32d-f215a6e60ca4",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-337-l-du-8-octobre-2026-nature-juridique-de-certaines-dispositio-0404de",
+            "caseNumber": "2026-337 L"
+          },
+          {
+            "id": "9d750a2f-5263-4c48-ba56-e4e65b78ad12",
+            "slug": "france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-16-lom-du-8-octobre-2026-dispositions-relatives-aux-controles-en-3d0d34",
+            "caseNumber": "2026-16"
+          },
+          {
+            "id": "4b3d5644-2681-449e-8ad5-28ee2defffe8",
+            "slug": "united-states-us-scotus-2026-09-25-people-not-politicians-v-onder-4e0d24",
+            "caseNumber": null
+          },
+          {
+            "id": "cc92e550-d09e-4e54-91fc-8061eb0413b9",
+            "slug": "united-states-us-scotus-2026-09-25-department-of-homeland-security-v-league-of-women-voters-3ae556",
+            "caseNumber": null
+          },
+          {
+            "id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+            "slug": "france-fr-conseil-constitutionnel-2026-09-24-decision-n-2026-1223-qpc-du-1er-octobre-2026-m-magomed-s-composition-du-tribunal-f78f4b",
+            "caseNumber": "2026-1223 QPC"
+          },
+          {
+            "id": "186dc1ad-599e-407c-809c-475b27ca1fa4",
+            "slug": "france-fr-conseil-constitutionnel-2026-09-24-decision-n-2026-1221-qpc-du-24-septembre-2026-0ea0f6",
+            "caseNumber": "2026-1221 QPC"
+          },
+          {
+            "id": "6efcaf22-6266-4b7a-8fa5-b3cc6b1cf8de",
+            "slug": "france-fr-conseil-constitutionnel-2026-09-24-decision-n-2026-1220-qpc-du-24-septembre-2026-d63a53",
+            "caseNumber": "2026-1220 QPC"
+          },
+          {
+            "id": "ce076d2e-c1d5-4850-b9f9-9254b22877c1",
+            "slug": "united-states-us-scotus-2026-09-04-national-republican-congressional-committee-v-brown-b3e626",
+            "caseNumber": null
+          },
+          {
+            "id": "06565df5-1a86-4c46-b5dc-6dd7a36196c5",
+            "slug": "united-states-us-scotus-2026-08-31-national-park-service-v-national-trust-for-historic-preservation-in-the-united-s-ed0f0a",
+            "caseNumber": null
+          },
+          {
+            "id": "d144bdbd-14c9-49d2-9beb-0c381880e2a8",
+            "slug": "united-states-us-scotus-2026-08-24-trump-v-california-b6ba54",
+            "caseNumber": null
+          },
+          {
+            "id": "2af4b7cc-29c8-4189-bfa1-96a02ab07b40",
+            "slug": "france-fr-conseil-constitutionnel-2026-08-14-decision-n-2026-912-dc-du-14-aout-2026-0078ea",
+            "caseNumber": "2026-912 DC"
+          },
+          {
+            "id": "58409177-0de4-434e-93cf-7dd703e5503c",
+            "slug": "france-fr-conseil-constitutionnel-2026-08-14-decision-n-2026-910-dc-du-14-aout-2026-6b4239",
+            "caseNumber": "2026-910 DC"
+          }
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "path": "/api/portal/latest?limit=3",
+        "status": 401,
+        "milliseconds": 249,
+        "responseHash": "3be5b8e53fdc8b0a2996590589456db33504977f3d1ce9bb75016c8a707e1a71",
+        "error": "Unauthorized"
+      }
+    }
+  ]
+}

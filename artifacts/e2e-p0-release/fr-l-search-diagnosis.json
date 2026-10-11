@@ -1,0 +1,17 @@
+[
+  {
+    "query": "q=2026-335+L&mode=fulltext&pageSize=20&count=none",
+    "status": 200,
+    "items": []
+  },
+  {
+    "query": "q=2026-335&mode=fulltext&pageSize=20&count=none",
+    "status": 200,
+    "items": []
+  },
+  {
+    "query": "q=2026-335+L&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none",
+    "status": 200,
+    "items": []
+  }
+]

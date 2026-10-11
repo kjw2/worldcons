@@ -1,0 +1,69 @@
+{
+  "at": "2026-10-11T07:34:29.560Z",
+  "articleId": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+  "versionId": "0f1dabb2-2442-546e-a3ec-d2ed5d443cc5",
+  "versionRevision": "2",
+  "expected": {
+    "documentFingerprint": "3fdd6a1bf54ed0031a3870f4270e004ecd5d497b7b7a58ee82f3a1de2fdcca59",
+    "ftsFingerprint": "a2978b1ed59f43b8515c3ac55e91aa677e31767387b69e0593a58e479d9b4891"
+  },
+  "actual": {
+    "documentFingerprint": "3fdd6a1bf54ed0031a3870f4270e004ecd5d497b7b7a58ee82f3a1de2fdcca59",
+    "ftsFingerprint": "a2978b1ed59f43b8515c3ac55e91aa677e31767387b69e0593a58e479d9b4891"
+  },
+  "checks": {
+    "desiredEligible": true,
+    "countsOneToOne": true,
+    "exactDocument": true,
+    "exactFts": true,
+    "freshnessCurrent": true,
+    "detailIdentity": true,
+    "detailText": true,
+    "detailSummary": true,
+    "exactSearchMembership": true
+  },
+  "freshness": [
+    {
+      "freshness": "current",
+      "freshness_basis": "legacy_same_version",
+      "classified_at": "2026-10-10T15:34:28.326Z",
+      "classified_by": "m8-publication-drain"
+    }
+  ],
+  "recovery": [
+    {
+      "state": "published",
+      "version_id": "0f1dabb2-2442-546e-a3ec-d2ed5d443cc5",
+      "version_revision": "2",
+      "publication_revision": "2",
+      "version_created": 1,
+      "publication_applied": 1,
+      "created_at": "2026-10-10T14:26:51.706Z"
+    },
+    {
+      "state": "published",
+      "version_id": "ab7468e2-1b15-5d1a-a2ec-707020d5bc99",
+      "version_revision": "1",
+      "publication_revision": "1",
+      "version_created": 1,
+      "publication_applied": 1,
+      "created_at": "2026-10-08T21:36:08.175Z"
+    }
+  ],
+  "probes": [
+    {
+      "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/france-fr-conseil-constitutionnel-2026-10-08-decision-n-2026-335-l-du-8-octobre-2026-nature-juridique-de-certaines-dispositio-47bcbf?textLimit=4000",
+      "status": 200,
+      "id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e"
+    },
+    {
+      "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=2026-335+L&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none",
+      "status": 200,
+      "itemIds": [
+        "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e"
+      ]
+    }
+  ],
+  "verified": true,
+  "scope": "existing legacy FR L point-in-time postcheck; no generation or completed_verified fabricated"
+}

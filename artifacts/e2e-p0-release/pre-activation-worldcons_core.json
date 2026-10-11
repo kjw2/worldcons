@@ -1,0 +1,144 @@
+[
+  {
+    "results": [
+      {
+        "managed": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3793
+      },
+      "duration": 0.3793,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 264007680,
+      "rows_read": 0,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "authorizations": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.121
+      },
+      "duration": 0.121,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 264007680,
+      "rows_read": 0,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "name": "e2e_core_article_version_heads_p3_insert_guard"
+      },
+      {
+        "name": "e2e_core_article_version_heads_p3_update_guard"
+      },
+      {
+        "name": "e2e_core_article_version_heads_p3_delete_guard"
+      },
+      {
+        "name": "e2e_core_article_revision_heads_v4_insert_guard"
+      },
+      {
+        "name": "e2e_core_article_revision_heads_v4_update_guard"
+      },
+      {
+        "name": "e2e_core_article_revision_heads_v4_delete_guard"
+      },
+      {
+        "name": "e2e_core_article_publications_p3_insert_guard"
+      },
+      {
+        "name": "e2e_core_article_publications_p3_update_guard"
+      },
+      {
+        "name": "e2e_core_article_publications_p3_delete_guard"
+      },
+      {
+        "name": "e2e_core_e2e_generation_heads_v1_insert_guard"
+      },
+      {
+        "name": "e2e_core_e2e_generation_heads_v1_update_guard"
+      },
+      {
+        "name": "e2e_core_e2e_generation_heads_v1_delete_guard"
+      },
+      {
+        "name": "e2e_core_article_delete_guard"
+      },
+      {
+        "name": "e2e_core_version_update_guard"
+      },
+      {
+        "name": "e2e_core_version_delete_guard"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2159
+      },
+      "duration": 0.2159,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 264007680,
+      "rows_read": 157,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "invalid_p3_reference": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 6.9938
+      },
+      "duration": 6.9938,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 264007680,
+      "rows_read": 2924,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

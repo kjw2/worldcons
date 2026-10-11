@@ -1,0 +1,11 @@
+{
+  "gitRef": "43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+  "verified": [
+    {
+      "path": "dist/server\\_next\\static\\ranked-Bt1ylPV4.js",
+      "sha256": "72f539466aa8f609a0e586e094548ff33992480e02320aeb8d697be4b71229f6",
+      "frenchLSuffix": true
+    }
+  ],
+  "at": "2026-10-11T07:33:59.465Z"
+}

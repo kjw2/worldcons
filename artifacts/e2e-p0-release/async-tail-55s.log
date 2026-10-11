@@ -1,0 +1,27 @@
+{
+    "wallTime": 821,
+    "cpuTime": 1,
+    "truncated": false,
+    "executionModel": "stateless",
+    "outcome": "ok",
+    "scriptVersion": {
+        "id": "cc6b16a3-0a33-4551-bd4c-ccf41cccf0a2"
+    },
+    "scriptName": "worldcons-ingest",
+    "diagnosticsChannelEvents": [],
+    "exceptions": [],
+    "logs": [
+        {
+            "message": [
+                "{\"event\":\"e2e_search_repair_dispatch\",\"reservedCount\":0,\"conflictCount\":0,\"claimedCount\":0,\"sentCount\":0,\"failedCount\":0,\"deadLetterCount\":0,\"fencedCount\":0,\"pendingCount\":0,\"oldestPendingAgeSeconds\":0,\"repeatedFailureCount\":0,\"coreIdentityDriftCount\":0,\"missingReservationCount\":0,\"requiresAttention\":false}"
+            ],
+            "level": "log",
+            "timestamp": 1791704257888
+        }
+    ],
+    "eventTimestamp": 1791704257071,
+    "event": {
+        "cron": "* * * * *",
+        "scheduledTime": 1791704257000
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "status": "fulfilled",
+  "value": {
+    "code": 0,
+    "stdout": "scripts/d1-search-projection.ts:32: * executes the plan. There is no remote `--apply` in M7.1.\r\nscripts/d1-fts-parity.ts:9:  createSupabaseLinkedQueryRunner,\r\nscripts/d1-fts-parity.ts:251:  console.log(\"  dry-run: no Supabase query executed, no artifact written\");\r\nscripts/d1-fts-parity.ts:301:    runner = createSupabaseLinkedQueryRunner();\r\nscripts/d1-fts-parity.ts:523:    console.log(\"  dry-run: no Supabase query executed, no artifact written\");\r\nscripts/d1-fts-parity.ts:663:    runner = createSupabaseLinkedQueryRunner();\r\n",
+    "stderr": ""
+  }
+}

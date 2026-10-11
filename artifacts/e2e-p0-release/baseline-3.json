@@ -1,0 +1,7 @@
+{
+  "status": "fulfilled",
+  "value": {
+    "status": 400,
+    "body": "{\"contractVersion\":\"2.0\",\"schemaVersion\":1,\"requestId\":\"613b4bc8-c732-4e5d-9cf2-8f658b627369\",\"service\":\"worldcons\",\"error\":{\"code\":\"INVALID_REQUEST\",\"message\":\"Unsupported parameter: query\",\"retryable\":false}}"
+  }
+}

@@ -1,0 +1,30 @@
+✔ idempotency key is stable, round-trips, and rejects forgery (3.9751ms)
+✔ queue message validation accepts built messages and rejects forged keys (23.0362ms)
+✔ stage map: every stage has a queue and a well-formed next-stage transition (0.2197ms)
+✔ feature flags default OFF and fail closed (0.5405ms)
+✔ production stage bootstrap is restricted to explicit verified canary sources (0.282ms)
+✔ register is idempotent by idempotency key (2.2216ms)
+✔ claim is bounded, fenced, and rejects a stale fencing token (3.8999ms)
+✔ an expired lease is reclaimable with a bumped fencing token (2.6166ms)
+✔ a repeatedly crashing consumer is dead-lettered at the attempt budget, not re-leased forever (2.3046ms)
+✔ failIngestStageJob retries within budget and dead-letters when exhausted (3.942ms)
+✔ dispatch outbox registration is idempotent by deterministic message id (11.2801ms)
+✔ ingest -> core bridge applies exactly once and is replay-safe (2.4086ms)
+✔ dispatcher claims, enqueues once, and records the dispatch outbox (8.8657ms)
+✔ dispatcher releases the job and marks the outbox failed when the queue is down (5.4112ms)
+✔ dispatch reconciliation replays a durable pending outbox entry (3.6081ms)
+✔ completeStageAndRegisterNext advances through the pipeline by idempotent next-jobs (2.7875ms)
+✔ atomic stage handoff rolls back parent success when child registration fails (3.1516ms)
+✔ stage completion requires an atomic D1 batch and an unexpired lease (2.0286ms)
+✔ stage migrations are additive, verified, and have no destructive statements (3.2985ms)
+✔ production canary config bounds two validated sources to one item per dispatch (0.8086ms)
+✔ the Worker exposes a stage-queue consumer entrypoint without touching the M8 path (1.0155ms)
+✔ planIngestStageBatch routes invalid/blocked/eligible and consume handles ack/retry/no-op (3.0632ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 715.8545

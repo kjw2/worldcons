@@ -1,0 +1,81 @@
+{
+  "at": "2026-10-11T07:45:14.527Z",
+  "probes": [
+    {
+      "url": "https://worldcons-ingest.cclib.workers.dev/health",
+      "status": 200,
+      "body": {
+        "schemaVersion": 1,
+        "service": "worldcons-ingest",
+        "schedulerEnabled": true,
+        "enabledKinds": [
+          "admin-job-drain",
+          "watchdog",
+          "crawler-daily",
+          "search-projection-sync",
+          "admin-health",
+          "embedding-backfill",
+          "translation-drain",
+          "publication-drain",
+          "analytics-retention"
+        ],
+        "enabledKindsAny": false,
+        "enabledKindsValid": true,
+        "enabledKindsReason": null,
+        "crawlerSourceOwnership": {
+          "nativeSources": [
+            "de-bverfg",
+            "us-scotus",
+            "fr-conseil-constitutionnel",
+            "es-tribunal-constitucional"
+          ],
+          "effectiveSources": [
+            "de-bverfg",
+            "us-scotus"
+          ],
+          "excludedSources": [
+            "fr-conseil-constitutionnel",
+            "es-tribunal-constitucional"
+          ],
+          "valid": true,
+          "reason": null
+        },
+        "browserNavigate": true,
+        "browserRpc": true,
+        "ingestStages": {
+          "enabled": true,
+          "stages": [
+            "discovery",
+            "crawl",
+            "normalize",
+            "translate",
+            "public-judgment",
+            "publish",
+            "search"
+          ],
+          "bootstrapSources": [
+            "fr-conseil-constitutionnel",
+            "es-tribunal-constitucional"
+          ],
+          "bootstrapLimit": 1,
+          "dispatchLimit": 1
+        }
+      }
+    },
+    {
+      "url": "https://worldcons.cclib.workers.dev/api/cclrag2/health",
+      "status": 404,
+      "body": {
+        "contractVersion": "2.0",
+        "schemaVersion": 1,
+        "requestId": "8734363d-3c6a-45ee-ad79-3d41cb70dd40",
+        "service": "worldcons",
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "The requested WorldCons endpoint does not exist.",
+          "retryable": false
+        }
+      }
+    }
+  ]
+}

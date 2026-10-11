@@ -1,0 +1,46 @@
+{
+  "mode": "read_only",
+  "canaryCount": 4,
+  "candidates": [
+    {
+      "articleId": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "publicationRevision": 2,
+      "currentCoreUpdatedAt": "2026-10-07T21:32:16.609Z",
+      "verdict": {
+        "eligible": true,
+        "changed": true
+      }
+    },
+    {
+      "articleId": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+      "sourceKey": "es-tribunal-constitucional",
+      "publicationRevision": 30,
+      "currentCoreUpdatedAt": "2026-09-24T03:29:54.177Z",
+      "verdict": {
+        "eligible": true,
+        "changed": true
+      }
+    },
+    {
+      "articleId": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "publicationRevision": 2,
+      "currentCoreUpdatedAt": "2026-10-09T21:45:56.733Z",
+      "verdict": {
+        "eligible": false,
+        "reason": "no_drift"
+      }
+    },
+    {
+      "articleId": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+      "sourceKey": "es-tribunal-constitucional",
+      "publicationRevision": 18,
+      "currentCoreUpdatedAt": "2026-10-09T22:00:48.316Z",
+      "verdict": {
+        "eligible": false,
+        "reason": "provenance_conflict"
+      }
+    }
+  ]
+}

@@ -1,0 +1,574 @@
+
+> worldcons@0.1.0 verify:release C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:native-crawler && pnpm test:ingest-stages && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:reference-reads && pnpm test:article-reads && pnpm test:search-repository && pnpm test:admin-ops-reads && pnpm test:admin-analytics-reads && pnpm test:rpc-ledger && pnpm test:d1-schema && pnpm test:d1-convert && pnpm test:d1-import && pnpm test:d1-provision && pnpm test:d1-apply-schema && pnpm test:d1-migrate && pnpm test:d1-http-query && pnpm test:d1-copy-data && pnpm test:d1-reconcile && pnpm test:d1-supabase-linked-source && pnpm test:d1-shadow-all && pnpm test:d1-case-catalog && pnpm test:d1-search-projection && pnpm test:d1-fts-search && pnpm test:d1-ranked-search && pnpm test:d1-vector-search && pnpm test:d1-search-canary && pnpm test:d1-search-canary-m7.6 && pnpm test:m7.7a && pnpm test:m7.8a && pnpm test:m7.8b && pnpm test:m7.9 && pnpm test:m8 && pnpm m8:types:check && pnpm m8:typecheck && pnpm test:m9 && pnpm m9:types:check && pnpm m9:typecheck && pnpm test:m10 && pnpm test:e2e-p0-m1 && pnpm test:e2e-p0-m2 && pnpm test:e2e-p0-m3 && pnpm test:e2e-p0-m4 && pnpm test:m11 && pnpm test:search-rank-policy && pnpm test:plugin && pnpm plugin:validate && pnpm build
+
+
+> worldcons@0.1.0 typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+
+> worldcons@0.1.0 check C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx scripts/check.ts
+
+{"event":"worldcons_site_events_d1_write_failed","authority":"d1","error":"site_events_d1_authority.binding_unavailable"}
+All checks passed.
+
+> worldcons@0.1.0 lint C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.cjs eslint.config.mjs --ext .ts,.tsx,.js,.mjs,.cjs
+
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\app\api\cclrag2\[...path]\route.ts
+  4:3  warning  'providerServiceUnavailableResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\admin\admin-ingest-jobs.ts
+   2:3   warning  'ADMIN_INGEST_JOB_TYPES' is defined but never used      @typescript-eslint/no-unused-vars
+   3:3   warning  'adminIngestResultSucceeded' is defined but never used  @typescript-eslint/no-unused-vars
+   6:8   warning  'AdminIngestJobType' is defined but never used          @typescript-eslint/no-unused-vars
+  11:10  warning  'ingestResultSucceeded' is defined but never used       @typescript-eslint/no-unused-vars
+  14:37  warning  'AdminIngestBody' is defined but never used             @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ai\client.ts
+  74:10  warning  'firstApiKey' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\core-write\authority.ts
+  115:16  warning  'many' is defined but never used  @typescript-eslint/no-unused-vars
+  132:16  warning  'run' is defined but never used   @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\admin-ops-events.ts
+  141:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\heartbeat.ts
+  160:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\authority.ts
+  47:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\durable-object.ts
+  69:53  warning  '_env' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\db\admin-jobs.ts
+  214:10  warning  'recordValue' is defined but never used  @typescript-eslint/no-unused-vars
+  308:16  warning  'd1Run' is defined but never used        @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ingest\manual-summary-edit.ts
+  10:10  warning  'ARTICLE_REVIEW_STATE' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\search\repository\index.ts
+  47:26  warning  '_request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\storage\blob.ts
+  173:10  warning  'isArtifactBlobHeadHit' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\workers\async-pipeline\src\native-crawler.ts
+   182:38  warning  'specific' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  1172:9   warning  'rangeStart' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 20 problems (0 errors, 20 warnings)
+
+
+> worldcons@0.1.0 test:gate0 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-redesign-gate0.test.ts
+
+✔ Gate 0 SQL contract is aggregate/catalog read-only (2.0759ms)
+✔ Gate 0 redaction removes sensitive keys and values recursively (1.251ms)
+✔ Gate 0 serialization and text rendering are deterministic (0.6821ms)
+✔ Gate 0 manifest hashes the exact deterministic artifact bytes (10.2679ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 395.4896
+
+> worldcons@0.1.0 test:p0 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-command-control-plane.test.ts tests/admin-command-control-plane.postgres.test.ts
+
+﹣ P0 PostgreSQL command control plane transitions (0.7512ms) # SKIP
+✔ P0 migration carries database-enforced queue invariants (3.742ms)
+✔ retry classification and exponential backoff are bounded (0.2605ms)
+✔ ingestion compatibility success rejects blocked, empty, and partial-failure results (0.367ms)
+✔ worker compatibility success rejects empty and incomplete drains (0.1613ms)
+✔ glossary compatibility success rejects empty and partially persisted refreshes (0.2452ms)
+✔ compatibility authority is default-off and preserves legacy results (1.1875ms)
+✔ compatibility shadow writes are terminal, redacted, and non-authoritative (2.159ms)
+✔ resolved legacy failure does not create false-positive shadow evidence (0.2437ms)
+✔ thrown legacy failure propagates without evaluating or shadow-submitting (0.7029ms)
+✔ success predicate failures skip shadowing without changing the legacy value (0.407ms)
+✔ compatibility shadow exceptions cannot change the legacy response (0.4075ms)
+✔ administrator execution ingress uses auth and the selected Cloudflare authority (9.122ms)
+✔ P0 documentation fixes migration order, flag default, evidence, and rollback (2.0924ms)
+✔ unauthorized queue ingress is rejected before execution (86.2389ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3668.0698
+
+> worldcons@0.1.0 test:p1 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-command-worker-p1.test.ts tests/admin-command-worker-p1-crawler.test.ts tests/admin-command-worker-p1.postgres.test.ts
+
+✔ robots parsing checkpoints abort promptly and receive the caller signal (8.5635ms)
+✔ sitemap parsing cancellation stops before later candidates are fetched (10.7162ms)
+✔ late start-request preparation cannot enter queue setup or complete after worker cancellation (137.6972ms)
+✔ crawler helpers preserve no-signal behavior (2.4974ms)
+﹣ P1 PostgreSQL cohort and candidate transitions (0.8273ms) # SKIP
+✔ P1 authority is default-off and requires bounded command and cohort allowlists (1.8042ms)
+✔ claim sends the exact server-side command and cohort authority (1.3497ms)
+✔ claimed work heartbeats and completes with its fencing token (2.5629ms)
+✔ constitutional backfill handler receives the exact claimed attempt authority (3.365ms)
+✔ abort observed between bounded handler steps stops execution without a stale failure commit (1.4646ms)
+✔ persisted abort cancels a hung handler promptly and stops lease renewal (62.2313ms)
+✔ attempt deadline cancels a hung handler, terminalizes retryably, and handles late rejection (133.508ms)
+✔ deadline never retries terminalization after the failure fence is stale (45.3059ms)
+✔ retryable and terminal handler failures use explicit classifications (0.9134ms)
+✔ lost lease or stale completion fence cannot commit success (0.4271ms)
+✔ process stop requests safely yield the claimed attempt as retryable (43.6953ms)
+✔ unsupported claimed command fails terminally and observably (0.7168ms)
+✔ canonical handlers propagate one signal and checkpoints into long-running services (3.004ms)
+✔ candidate retry fetches the stored canonical URL exactly and never discovers broadly (2.167ms)
+✔ candidate retry accepts the verified BVerfG senate variant for a stored chamber URL (0.7901ms)
+✔ candidate retry rejects normalized canonical drift before dedupe or persist (1.9525ms)
+✔ candidate retry validates official ownership and records failed/fetched transitions idempotently (0.481ms)
+✔ P1 migration and local worker enforce cohort claims and ordered execution (3.6282ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 7812.2573
+
+> worldcons@0.1.0 test:p2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-lifecycle-p2.test.ts tests/article-lifecycle-p2.postgres.test.ts
+
+﹣ P2 PostgreSQL lifecycle authority and reconciliation (1.083ms) # SKIP
+✔ P2 maps every existing article status to orthogonal axes (2.5182ms)
+✔ ambiguous and contradictory legacy evidence is quarantined (0.2403ms)
+✔ review and structured attention mapping stay independent (0.2027ms)
+✔ expected terminal metadata-only evidence clears retry attention without approving publication (0.2007ms)
+✔ terminal metadata-only forward-fix is bounded and changes lifecycle attention only (2.812ms)
+✔ workflow-only review labels recover the latest authoritative history decision (0.3275ms)
+✔ short-text reviewed publication quarantines without inventing source-text readiness (0.9569ms)
+✔ persisted review metadata wins over stale optional triage while unrelated attention remains (0.284ms)
+✔ P2 flags and cohorts are false by default and reads remain independent (0.3133ms)
+✔ P2 shadow writes require an enabled cohort and preserve expected revision (0.4997ms)
+✔ P2 shadow failures cannot alter legacy control flow (0.2605ms)
+✔ P2 service enforces actor ownership before repository access (0.5293ms)
+✔ P2 migration is additive, guarded, indexed online, and leaves publication untouched (3.4487ms)
+✔ all lifecycle write paths use the compatibility boundary and no application path writes P2 columns (331.7506ms)
+✔ review and refresh paths use persisted authoritative evidence without triage gates (1.6681ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3385.3005
+
+> worldcons@0.1.0 test:p3 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-publication-p3.test.ts tests/article-publication-p3.postgres.test.ts
+
+﹣ P3 PostgreSQL publication authority (0.7639ms) # SKIP
+[article publication shadow] { event: 'transition_failed', errorCode: 'stale_revision' }
+✔ P3 flags are false unless explicitly true (0.9798ms)
+✔ public read authority centralizes the P3 cutover and legacy rollback boundary (0.2412ms)
+✔ compatibility shadows only confirmed outcomes and builds deterministic persisted-row transitions (2.1893ms)
+✔ shadow authority failures are isolated as data (1.0266ms)
+✔ bulk review shadows each unique persisted row and excludes missing or failed rows (0.5638ms)
+✔ outbox is default-off and batches at-least-once delivery through an idempotent handler (0.5705ms)
+✔ outbox failure retries every claimed logical event without leaking the handler error (0.5069ms)
+✔ migration and application contracts cover immutable authority, projection, and every public surface (16.7915ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 2580.7721
+
+> worldcons@0.1.0 test:p4 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-redesign-p4.test.ts
+
+✔ redesigned administrator UI is the only supported surface (4.6463ms)
+✔ shell navigation covers the new admin surfaces without retired screen links (1.231ms)
+✔ server layout renders the shell only after an authenticated session identity is verified (0.9312ms)
+✔ new pages preserve authentication redirects without legacy UI fallbacks (1.4837ms)
+✔ work filters are bounded, allowlisted, and URL-shareable (0.8477ms)
+✔ stable sort and pagination use deterministic type/id tie breakers (14.9243ms)
+✔ execution, lifecycle, and publication labels remain independent (1.4366ms)
+✔ operational errors redact URLs, queries, tokens, and long values (2.3273ms)
+✔ canonical actions require bounded reason, explicit idempotency, and publication confirmation (2.8728ms)
+✔ every P4 action uses session-only CSRF auth and revalidates authoritative state (2.2862ms)
+✔ P4 human mutations reject cron authorization and require a valid session CSRF pair (16.6977ms)
+✔ queue query contract is bounded and bulk-loads attempts without N+1 (2.9301ms)
+✔ tracked collection candidates are separated from actionable operational backlog (0.6335ms)
+✔ detail lookup remains valid beyond the newest 500 rows and distinguishes absence from query failure (3.3449ms)
+✔ desktop/mobile, loading/empty/error, focus, and overflow states are present (3.4599ms)
+✔ specialized article actions and immutable source snapshot protections remain reachable (5.1482ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 939.7168
+
+> worldcons@0.1.0 test:p5 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-governance-p5.test.ts tests/admin-governance-p5.postgres.test.ts
+
+✔ P5 migration is additive, aggregate-only, secure, indexed, and rerunnable (1.7006ms)
+✔ P5 corrective migration binds approvals to digest and distinct actors (0.4962ms)
+✔ P5 health counts only unresolved publication quarantine (0.1861ms)
+﹣ P5 PostgreSQL full migration chain, ACL, approvals, and fail-closed governance (0.0943ms) # SKIP
+✔ P5 corrective health evidence uses compatibility presence and last-seen (0.317ms)
+✔ P5 immutable and retention SQL preserves authoritative history (0.3225ms)
+✔ P5 policy clamps overrides and SLA boundaries are exact (2.9404ms)
+✔ unavailable aggregate evidence never renders healthy SLA status (0.5378ms)
+✔ aggregate repository uses one bounded RPC and strips payload-shaped extras (1.5135ms)
+✔ feature flag getters are pure and default-off observation writes nothing (6.2449ms)
+✔ same-surface observations coalesce while distinct surfaces and authorities remain (6.4352ms)
+✔ compatibility observation remains bounded and failure-isolated (5.1281ms)
+✔ canonical evidence digest is stable and changes only with canonical gate evidence (16.8483ms)
+✔ approval writes require the current digest and call only the v2 RPC (0.3958ms)
+✔ owner bindings reject unbound roles and cross-role actors without leaking identity material (1.0166ms)
+✔ retirement evaluator passes only when every prerequisite passes (9.9681ms)
+✔ retirement and retention tools never auto-flip flags or delete authority history (2.8612ms)
+✔ governance actions are session-only, CSRF-protected, role-bound, and audited (14.5993ms)
+✔ governance UI is retired while P5 operational controls remain internal (1.5229ms)
+✔ native health task emits redacted machine evidence without GitHub workflow (1.328ms)
+✔ collect command through explicit publication preserves authority boundaries (1.1599ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 1096.9184
+
+> worldcons@0.1.0 test:cclmetasearch C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclmetasearch-api.test.ts
+
+[cclmetasearch] WorldCons search unavailable Error
+✔ search parameter contract accepts q or keyword and applies bounded defaults (2.5803ms)
+✔ search parameter contract rejects ambiguity, unknown keys, and out-of-range pagination (0.8067ms)
+✔ result mapper emits normalized fields and source-specific case numbers (4.0395ms)
+✔ handler enforces shared-token authentication (6.0189ms)
+✔ handler returns a bounded page and exact pagination metadata (2.0753ms)
+✔ handler treats a valid empty page as 200 and malformed input as 400 (1.9159ms)
+✔ handler emits normalized 429 and 503 errors (2.2021ms)
+✔ unknown integration paths use the documented JSON 404 contract (0.4269ms)
+✔ migration searches only the public projection and applies database pagination (1.6521ms)
+✔ production cclmetasearch backend no longer references Supabase (0.5416ms)
+✔ search reads matching ids/rank/date from worldcons_search and hydrates from worldcons_core (22.7088ms)
+✔ latest sort orders the same match set by publication date (8.3262ms)
+✔ exact total is returned even when the page is bounded or empty (6.995ms)
+✔ search fails closed on malformed worldcons_search D1 responses (7.7953ms)
+✔ search fails closed when a D1 binding is not configured (0.2096ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 891.5341
+
+> worldcons@0.1.0 test:cclrag2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclrag2-search-api.test.ts
+
+✔ Neubauer comparison queries resolve the German climate decision reference (3.2183ms)
+✔ exact case extraction recognizes French, Spanish, and US case numbers (1.0106ms)
+✔ source-aware case normalization produces the same canonical key across display variants (0.3289ms)
+✔ public search rejects offsets beyond the shared 10,000-row deep-pagination boundary (2.9245ms)
+✔ public fulltext route uses the ranked D1 search path instead of an unfiltered article list (0.6303ms)
+✔ BVerfG compact official URLs preserve the docket number during collection (0.3962ms)
+✔ exact case matches remain above full-text and semantic results (0.287ms)
+✔ ranked candidate lookup always starts at page one (0.2006ms)
+✔ ranked pagination applies exactly once across consecutive pages (0.4419ms)
+✔ hybrid candidate windows grow with the requested page without exceeding bounded lookup size (0.3559ms)
+✔ ranked materialization keeps D1 article-id batches below the bind ceiling (0.4636ms)
+✔ legal search normalization removes only generic research-intent noise (0.2783ms)
+✔ catalog page reranking promotes exact case identity without changing the candidate set (2.7655ms)
+✔ hybrid RRF rewards agreement between lexical and semantic rankings (1.7021ms)
+✔ exact normalized title remains above RRF score (0.4314ms)
+✔ Korean concept queries can surface semantically retrieved foreign decisions ahead of lower lexical ranks (0.7155ms)
+✔ legal relevance breaks equal RRF ties before recency (0.3494ms)
+✔ recency remains the tie-breaker when RRF and legal relevance are equal (0.3158ms)
+✔ search API items expose cclrag2 normalization and follow-up content URLs (0.3943ms)
+✔ ranked full-text migration uses published projection relevance and service-role-only execution (1.3497ms)
+✔ search API mapper surfaces summary/snippet for a summarized list row (0.1969ms)
+✔ search API mapper prefers the caseNumber field over hidden metadata (0.1315ms)
+✔ source inventory identifies WorldCons records as foreign constitutional material (0.1005ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5788.4987
+
+> worldcons@0.1.0 test:provider:search C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclrag2-provider-route.test.ts
+
+{"event":"worldcons_embedding_unavailable","status":503,"requestId":"ae7d4d5b-ca6f-43ec-b2f1-c8df5f5d6adf"}
+✔ Cloudflare provider route preserves the provider contract and applies public rate limiting (3.7778ms)
+✔ Cloudflare provider accepts the cclrag2 contract and returns the Neubauer case first (35.8304ms)
+✔ Vercel provider preserves the Korean comparison query and source inference (4.1728ms)
+✔ Vercel provider fulltext mode bypasses embeddings and uses D1 lexical retrieval (4.3809ms)
+✔ Vercel provider reports an explicit fulltext fallback when semantic capability is not configured (4.2419ms)
+✔ Vercel provider narrows a generic comparison to German constitutional authority (4.2019ms)
+✔ Vercel provider translates a jurisdiction code into the source-owned search boundary (2.93ms)
+✔ Vercel provider infers a source boundary from a short Korean jurisdiction name (1.3485ms)
+✔ Vercel provider semantic mode creates an embedding and queries Vectorize (13.2528ms)
+✔ Vercel provider hybrid mode uses embeddings and explicitly degrades when embedding fails (7.7883ms)
+✔ Vercel provider exact-case preflight supports France, Spain, and the US without embeddings (5.6089ms)
+✔ Vercel provider preserves exact total semantics from ranked D1 pages (2.7737ms)
+✔ Vercel provider source and article endpoints read bounded Contract V2 evidence from D1 (6.4018ms)
+✔ Vercel provider rejects invalid input and normalizes dependency failures (1.3988ms)
+✔ migration is projection-only, page-bounded, and service-role restricted (2.5533ms)
+✔ Contract V2 migration bounds evidence and preserves paginated source text (1.6358ms)
+✔ Search V3 migration makes retrieval mode real and keeps published projection boundaries (1.5364ms)
+✔ Search V4 migration adds indexed four-country case keys and DB-native deep pagination (1.6699ms)
+✔ provider resilience migration materializes only bounded scalar search fields (1.1195ms)
+✔ Vercel provider truncates a large article body without dropping the preserved text API contract (98.1208ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2574.0462
+
+> worldcons@0.1.0 test:security C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/security-platform-hardening.test.ts
+
+✔ production rejects a short admin password even when machine secrets are strong (1.274ms)
+✔ production still rejects reused or publicly exposed secrets (0.3208ms)
+✔ distributed rate limit migration is atomic, bounded, and service-role-only (1.5251ms)
+✔ rate limiter remains available through an explicit local fallback (4.5265ms)
+✔ production CSP is enforcing by default and removes unsafe-eval (1.1814ms)
+✔ anonymous public-schema access remains closed after least-privilege hardening (1.0374ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 585.6491
+
+> worldcons@0.1.0 test:ops C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ops-summary-backlog.test.ts tests/workflow-heartbeat.test.ts
+
+✔ an empty summary backlog raises nothing (1.0009ms)
+✔ a small and recent backlog is treated as normal throughput (1.5377ms)
+✔ a large backlog is critical and names the public impact (0.4187ms)
+✔ a moderate backlog warns on count alone (0.155ms)
+✔ a small but stale backlog still warns so slow drain cannot hide (0.1566ms)
+✔ a missing oldest timestamp degrades to count-only judgement (0.1488ms)
+✔ workflow heartbeat uses each workflow's 2.5x processing interval (1.0754ms)
+✔ missing, failed, or invalid heartbeat is stale (0.3001ms)
+✔ required workflow heartbeat records the complete route lifecycle (1.6413ms)
+✔ Cloudflare watchdog route authenticates before recording its required heartbeat (1.2226ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 461.2139
+
+> worldcons@0.1.0 test:embeddings C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/embedding-backlog-d1.test.ts tests/embedding-provider.test.ts tests/embedding-vector.test.ts
+
+✔ D1 candidate selection matches summarized/provenance/source/limit semantics (2.259ms)
+✔ embedding candidate read uses D1 summarized provenance predicate and source filter (1.1369ms)
+✔ D1 embedding persistence updates provenance, artifact readiness, and published summary guard (15.9538ms)
+✔ embedding readiness counts D1 article candidates and published provenance parity (0.4665ms)
+✔ embedding persistence upserts matching published vector metadata and provenance (3.0586ms)
+✔ embedding persistence does not match malformed or null-mismatched published summaries (0.5152ms)
+✔ embedding persistence skips artifact/vector when published summary differs (0.5958ms)
+✔ embedding width stays pinned to the articles.embedding column (2.9749ms)
+✔ Gemini embeddings request the pinned output width (1.5402ms)
+✔ embedding provider selection is Gemini-only (1.2271ms)
+✔ an unset embedding provider defaults to Gemini rather than OpenAI (0.9686ms)
+✔ Cloudflare native embedding executor replaces GitHub scheduled writers (1.0178ms)
+✖ native embedding backfill is bounded and resumable (3.1852ms)
+✔ embedding backfill uses D1 provenance persistence and resumes after provider deferral (1.6369ms)
+✔ Gemini provenance preserves immutable P3 versions through a derived artifact (1.1141ms)
+✔ embedding normalization produces a finite unit vector (2.47ms)
+✔ embedding normalization rejects wrong width and invalid vectors (0.713ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 16
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 676.3661
+
+✖ failing tests:
+
+test at tests\embedding-provider.test.ts:1:2215
+✖ native embedding backfill is bounded and resumable (3.1852ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /embedding-backfill" \|\| message\.kind === "summary-drain" \? "50 minutes"/u. Input:
+  
+  'import { getP5HealthEvidenceFromD1 } from "@/lib/admin/p5/d1-health-repository";\r\n' +
+    'import { evaluateP5Slas } from "@/lib/admin/p5/evaluator";\r\n' +
+    'import { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";\r\n' +
+    'import { setRuntimeD1Bindings, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";\r\n' +
+    'import type { M8TaskMessage } from "@/lib/cloudflare/async-pipeline/contracts";\r\n' +
+    'import { evaluateWatchdog, recordWatchdogEventsToD1 } from "@/lib/ops/watchdog";\r\n' +
+    '\r\n' +
+    'export interface M8NativeEnvironment {\r\n' +
+    '  WORLDCONS_OPS: D1RuntimeDatabase;\r\n' +
+    '  WORLDCONS_CORE: D1RuntimeDatabase;\r\n' +
+    '  WORLDCONS_INGEST: D1RuntimeDatabase;\r\n' +
+    '  TRANSLATION_DRAIN_LIMIT?: string;\r\n' +
+    '  TRANSLATION_DRAIN_MAX_PASSES?: string;\r\n' +
+    '  PUBLICATION_DRAIN_LIMIT?: string;\r\n' +
+    '  WORLDCONS_APP_SERVICE: {\r\n' +
+    '    revalidatePublicContentCache(): Promise<{revalidated:boolean;tagCount:number;pathCount:number}>;\r\n' +
+    '    runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }): Promise<{\r\n' +
+    '      status: "completed" | "deferred" | "unavailable";\r\n' +
+    '      passes: number;\r\n' +
+    '      scanned: number;\r\n' +
+    '      embedded: number;\r\n' +
+    '      skipped: number;\r\n' +
+    '      failed: number;\r\n' +
+    '      missingBefore: number | null;\r\n' +
+    '      missingAfter: number | null;\r\n' +
+    '      readiness: unknown;\r\n' +
+    '      stoppedReason?: string;\r\n' +
+    '    }>;\r\n' +
+    '    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }): Promise<{\r\n' +
+    '      mode: "database";\r\n' +
+    '      status: "completed" | "deferred" | "failed" | "unavailable";\r\n' +
+    '      summarizedCount: number;\r\n' +
+    '      failedCount: number;\r\n' +
+    '      skippedCount: number;\r\n' +
+    '      deferredCount: number;\r\n' +
+    '      candidateCount: number;\r\n' +
+    '      attemptedCount: number;\r\n' +
+    '      retryCount: number;\r\n' +
+    '      passes: number;\r\n' +
+    '      limitReached: boolean;\r\n' +
+    '      stoppedReason?: string;\r\n' +
+    '    }>;\r\n' +
+    '    runPublicationDrain(input: { limit?: number }): Promise<{\r\n' +
+    '      mode: "database";\r\n' +
+    '      status: "completed" | "degraded";\r\n' +
+    '      selectedCount: number;\r\n' +
+    '      publishedCount: number;\r\n' +
+    '      failedCount: number;\r\n' +
+    '      remainingCount: number;\r\n' +
+    '      failures: Array<{ articleId: string; error: string }>;\r\n' +
+    '    }>;\r\n' +
+    '    runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }): Promise<unknown>;\r\n' +
+    '    runRefreshTagCounts(): Promise<unknown>;\r\n' +
+    '  };\r\n' +
+    '}\r\n' +
+    '\r\n' +
+    'export async function executeM8TaskNative(\r\n' +
+    '  env: M8NativeEnvironment,\r\n' +
+    '  message: M8TaskMessage,\r\n' +
+    '  step?: { do<T>(name: string, options: unknown, callback: () => Promise<T>): Promise<T> },\r\n' +
+    ') {\r\n' +
+    '  setRuntimeD1Bindings({\r\n' +
+    '    worldcons_ops: env.WORLDCONS_OPS,\r\n' +
+    '    worldcons_core: env.WORLDCONS_CORE,\r\n' +
+    '    worldcons_ingest: env.WORLDCONS_INGEST,\r\n' +
+    '  });\r\n' +
+    '  const execute = async () => {\r\n' +
+    '    if (message.kind === "embedding-backfill") {\r\n' +
+    '      const result = await env.WORLDCONS_APP_SERVICE.runEmbeddingBackfill({\r\n' +
+    '        limit: 8,\r\n' +
+    '        maxPasses: 20,\r\n' +
+    '        delayMs: 0,\r\n' +
+    '      });\r\n' +
+    '      return { kind: message.kind, ...result };\r\n' +
+    '    }\r\n' +
+    '    if (message.kind === "translation-drain") {\r\n' +
+    '      const limit = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_LIMIT ?? 5) || 5, 50));\r\n' +
+    '      const maxPasses = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_MAX_PASSES ?? 1) || 1, 10));\r\n' +
+    '      const result = await env.WORLDCONS_APP_SERVICE.runSummaryDrain({\r\n' +
+    '        limit,\r\n' +
+    '        maxPasses,\r\n' +
+    '        retryAttempts: 1,\r\n' +
+    '        retryDelayMs: 65_000,\r\n' +
+    '      });\r\n' +
+    '      return { kind: message.kind, ...result };\r\n' +
+    '    }\r\n' +
+    '    if (message.kind === "publication-drain") {\r\n' +
+    '      const limit = Math.max(1, Math.min(Number(env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));\r\n' +
+    '      const result = await env.WORLDCONS_APP_SERVICE.runPublicationDrain({ limit });\r\n' +
+    '      return { kind: message.kind, ...result };\r\n' +
+    '    }\r\n' +
+    '    if (message.kind === "watchdog") {\r\n' +
+    '      const evaluation = await evaluateWatchdog(new Date(message.scheduledFor), true);\r\n' +
+    '      await recordWatchdogEventsToD1(evaluation, new Date(message.scheduledFor));\r\n' +
+    '      return { kind: message.kind, evaluation, issueAction: null, compensation: null };\r\n' +
+    '    }\r\n' +
+    '    if (message.kind === "admin-health") {\r\n' +
+    '      const policy = resolveP5OperationalPolicy();\r\n' +
+    '      const end = new Date(message.scheduledFor);\r\n' +
+    '      const start = new Date(end.getTime() - policy.minimumObservationHours * 3_600_000);\r\n' +
+    '      const evidence = await getP5HealthEvidenceFromD1({\r\n' +
+    '        observationStart: start.toISOString(),\r\n' +
+    '        observationEnd: end.toISOString(),\r\n' +
+    '        now: end,\r\n' +
+    '      });\r\n' +
+    '      if (!evidence.available) throw new Error("m8.admin_health_d1_evidence_unavailable");\r\n' +
+    '      const slas = evaluateP5Slas(evidence, policy);\r\n' +
+    '      const hardViolations = slas.filter((item) => item.status === "critical" || item.status === "unknown");\r\n' +
+    '      return {\r\n' +
+    '        schemaVersion: 1,\r\n' +
+    '        generatedAt: end.toISOString(),\r\n' +
+    '        available: evidence.available,\r\n' +
+    '        status: evidence.available && hardViolations.length === 0 ? "passing" : "failing",\r\n' +
+    '        hardViolationKeys: hardViolations.map((item) => item.key),\r\n' +
+    '        slas,\r\n' +
+    '        evidence,\r\n' +
+    '      };\r\n' +
+    '    }\r\n' +
+    '    throw new Error(`m8.native_kind_unsupported:${message.kind}`);\r\n' +
+    '  };\r\n' +
+    '  return step\r\n' +
+    '    ? step.do(`native-${message.kind}`, {\r\n' +
+    '      retries: { limit: 5, delay: "30 seconds", backoff: "exponential" },\r\n' +
+    '      timeout: message.kind === "embedding-backfill" || message.kind === "translation-drain" ? "50 minutes" : "2 minutes",\r\n' +
+    '    }, execute)\r\n' +
+    '    : execute();\r\n' +
+    '}\r\n'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\embedding-provider.test.ts:59:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'import { getP5HealthEvidenceFromD1 } from "@/lib/admin/p5/d1-health-repository";\r\nimport { evaluateP5Slas } from "@/lib/admin/p5/evaluator";\r\nimport { resolveP5OperationalPolicy } from "@/lib/admin/p5/policy";\r\nimport { setRuntimeD1Bindings, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";\r\nimport type { M8TaskMessage } from "@/lib/cloudflare/async-pipeline/contracts";\r\nimport { evaluateWatchdog, recordWatchdogEventsToD1 } from "@/lib/ops/watchdog";\r\n\r\nexport interface M8NativeEnvironment {\r\n  WORLDCONS_OPS: D1RuntimeDatabase;\r\n  WORLDCONS_CORE: D1RuntimeDatabase;\r\n  WORLDCONS_INGEST: D1RuntimeDatabase;\r\n  TRANSLATION_DRAIN_LIMIT?: string;\r\n  TRANSLATION_DRAIN_MAX_PASSES?: string;\r\n  PUBLICATION_DRAIN_LIMIT?: string;\r\n  WORLDCONS_APP_SERVICE: {\r\n    revalidatePublicContentCache(): Promise<{revalidated:boolean;tagCount:number;pathCount:number}>;\r\n    runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }): Promise<{\r\n      status: "completed" | "deferred" | "unavailable";\r\n      passes: number;\r\n      scanned: number;\r\n      embedded: number;\r\n      skipped: number;\r\n      failed: number;\r\n      missingBefore: number | null;\r\n      missingAfter: number | null;\r\n      readiness: unknown;\r\n      stoppedReason?: string;\r\n    }>;\r\n    runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }): Promise<{\r\n      mode: "database";\r\n      status: "completed" | "deferred" | "failed" | "unavailable";\r\n      summarizedCount: number;\r\n      failedCount: number;\r\n      skippedCount: number;\r\n      deferredCount: number;\r\n      candidateCount: number;\r\n      attemptedCount: number;\r\n      retryCount: number;\r\n      passes: number;\r\n      limitReached: boolean;\r\n      stoppedReason?: string;\r\n    }>;\r\n    runPublicationDrain(input: { limit?: number }): Promise<{\r\n      mode: "database";\r\n      status: "completed" | "degraded";\r\n      selectedCount: number;\r\n      publishedCount: number;\r\n      failedCount: number;\r\n      remainingCount: number;\r\n      failures: Array<{ articleId: string; error: string }>;\r\n    }>;\r\n    runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }): Promise<unknown>;\r\n    runRefreshTagCounts(): Promise<unknown>;\r\n  };\r\n}\r\n\r\nexport async function executeM8TaskNative(\r\n  env: M8NativeEnvironment,\r\n  message: M8TaskMessage,\r\n  step?: { do<T>(name: string, options: unknown, callback: () => Promise<T>): Promise<T> },\r\n) {\r\n  setRuntimeD1Bindings({\r\n    worldcons_ops: env.WORLDCONS_OPS,\r\n    worldcons_core: env.WORLDCONS_CORE,\r\n    worldcons_ingest: env.WORLDCONS_INGEST,\r\n  });\r\n  const execute = async () => {\r\n    if (message.kind === "embedding-backfill") {\r\n      const result = await env.WORLDCONS_APP_SERVICE.runEmbeddingBackfill({\r\n        limit: 8,\r\n        maxPasses: 20,\r\n        delayMs: 0,\r\n      });\r\n      return { kind: message.kind, ...result };\r\n    }\r\n    if (message.kind === "translation-drain") {\r\n      const limit = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_LIMIT ?? 5) || 5, 50));\r\n      const maxPasses = Math.max(1, Math.min(Number(env.TRANSLATION_DRAIN_MAX_PASSES ?? 1) || 1, 10));\r\n      const result = await env.WORLDCONS_APP_SERVICE.runSummaryDrain({\r\n        limit,\r\n        maxPasses,\r\n        retryAttempts: 1,\r\n        retryDelayMs: 65_000,\r\n      });\r\n      return { kind: message.kind, ...result };\r\n    }\r\n    if (message.kind === "publication-drain") {\r\n      const limit = Math.max(1, Math.min(Number(env.PUBLICATION_DRAIN_LIMIT ?? 100) || 100, 500));\r\n      const result = await env.WORLDCONS_APP_SERVICE.runPublicationDrain({ limit });\r\n      return { kind: message.kind, ...result };\r\n    }\r\n    if (message.kind === "watchdog") {\r\n      const evaluation = await evaluateWatchdog(new Date(message.scheduledFor), true);\r\n      await recordWatchdogEventsToD1(evaluation, new Date(message.scheduledFor));\r\n      return { kind: message.kind, evaluation, issueAction: null, compensation: null };\r\n    }\r\n    if (message.kind === "admin-health") {\r\n      const policy = resolveP5OperationalPolicy();\r\n      const end = new Date(message.scheduledFor);\r\n      const start = new Date(end.getTime() - policy.minimumObservationHours * 3_600_000);\r\n      const evidence = await getP5HealthEvidenceFromD1({\r\n        observationStart: start.toISOString(),\r\n        observationEnd: end.toISOString(),\r\n        now: end,\r\n      });\r\n      if (!evidence.available) throw new Error("m8.admin_health_d1_evidence_unavailable");\r\n      const slas = evaluateP5Slas(evidence, policy);\r\n      const hardViolations = slas.filter((item) => item.status === "critical" || item.status === "unknown");\r\n      return {\r\n        schemaVersion: 1,\r\n        generatedAt: end.toISOString(),\r\n        available: evidence.available,\r\n        status: evidence.available && hardViolations.length === 0 ? "passing" : "failing",\r\n        hardViolationKeys: hardViolations.map((item) => item.key),\r\n        slas,\r\n        evidence,\r\n      };\r\n    }\r\n    throw new Error(`m8.native_kind_unsupported:${message.kind}`);\r\n  };\r\n  return step\r\n    ? step.do(`native-${message.kind}`, {\r\n      retries: { limit: 5, delay: "30 seconds", backoff: "exponential" },\r\n      timeout: message.kind === "embedding-backfill" || message.kind === "translation-drain" ? "50 minutes" : "2 minutes",\r\n    }, execute)\r\n    : execute();\r\n}\r\n',
+    expected: /embedding-backfill" \|\| message\.kind === "summary-drain" \? "50 minutes"/u,
+    operator: 'match',
+    diff: 'simple'
+  }
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

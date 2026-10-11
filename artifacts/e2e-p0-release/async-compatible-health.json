@@ -1,0 +1,61 @@
+{
+  "at": "2026-10-11T07:19:39.199Z",
+  "status": 200,
+  "body": {
+    "schemaVersion": 1,
+    "service": "worldcons-ingest",
+    "schedulerEnabled": true,
+    "enabledKinds": [
+      "admin-job-drain",
+      "watchdog",
+      "crawler-daily",
+      "search-projection-sync",
+      "admin-health",
+      "embedding-backfill",
+      "translation-drain",
+      "publication-drain",
+      "analytics-retention"
+    ],
+    "enabledKindsAny": false,
+    "enabledKindsValid": true,
+    "enabledKindsReason": null,
+    "crawlerSourceOwnership": {
+      "nativeSources": [
+        "de-bverfg",
+        "us-scotus",
+        "fr-conseil-constitutionnel",
+        "es-tribunal-constitucional"
+      ],
+      "effectiveSources": [
+        "de-bverfg",
+        "us-scotus"
+      ],
+      "excludedSources": [
+        "fr-conseil-constitutionnel",
+        "es-tribunal-constitucional"
+      ],
+      "valid": true,
+      "reason": null
+    },
+    "browserNavigate": true,
+    "browserRpc": true,
+    "ingestStages": {
+      "enabled": true,
+      "stages": [
+        "discovery",
+        "crawl",
+        "normalize",
+        "translate",
+        "public-judgment",
+        "publish",
+        "search"
+      ],
+      "bootstrapSources": [
+        "fr-conseil-constitutionnel",
+        "es-tribunal-constitucional"
+      ],
+      "bootstrapLimit": 1,
+      "dispatchLimit": 1
+    }
+  }
+}

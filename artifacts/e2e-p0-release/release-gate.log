@@ -1,0 +1,588 @@
+
+> worldcons@0.1.0 verify:release C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:native-crawler && pnpm test:ingest-stages && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:reference-reads && pnpm test:article-reads && pnpm test:search-repository && pnpm test:admin-ops-reads && pnpm test:admin-analytics-reads && pnpm test:rpc-ledger && pnpm test:d1-schema && pnpm test:d1-convert && pnpm test:d1-import && pnpm test:d1-provision && pnpm test:d1-apply-schema && pnpm test:d1-migrate && pnpm test:d1-http-query && pnpm test:d1-copy-data && pnpm test:d1-reconcile && pnpm test:d1-supabase-linked-source && pnpm test:d1-shadow-all && pnpm test:d1-case-catalog && pnpm test:d1-search-projection && pnpm test:d1-fts-search && pnpm test:d1-ranked-search && pnpm test:d1-vector-search && pnpm test:d1-search-canary && pnpm test:d1-search-canary-m7.6 && pnpm test:m7.7a && pnpm test:m7.8a && pnpm test:m7.8b && pnpm test:m7.9 && pnpm test:m8 && pnpm m8:types:check && pnpm m8:typecheck && pnpm test:m9 && pnpm m9:types:check && pnpm m9:typecheck && pnpm test:m10 && pnpm test:e2e-p0-m1 && pnpm test:e2e-p0-m2 && pnpm test:e2e-p0-m3 && pnpm test:e2e-p0-m4 && pnpm test:e2e-p0-m5 && pnpm test:m11 && pnpm test:search-rank-policy && pnpm test:plugin && pnpm plugin:validate && pnpm build
+
+
+> worldcons@0.1.0 typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+
+> worldcons@0.1.0 check C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx scripts/check.ts
+
+{"event":"worldcons_site_events_d1_write_failed","authority":"d1","error":"site_events_d1_authority.binding_unavailable"}
+All checks passed.
+
+> worldcons@0.1.0 lint C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.cjs eslint.config.mjs --ext .ts,.tsx,.js,.mjs,.cjs
+
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\app\api\cclrag2\[...path]\route.ts
+  4:3  warning  'providerServiceUnavailableResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\admin\admin-ingest-jobs.ts
+   2:3   warning  'ADMIN_INGEST_JOB_TYPES' is defined but never used      @typescript-eslint/no-unused-vars
+   3:3   warning  'adminIngestResultSucceeded' is defined but never used  @typescript-eslint/no-unused-vars
+   6:8   warning  'AdminIngestJobType' is defined but never used          @typescript-eslint/no-unused-vars
+  11:10  warning  'ingestResultSucceeded' is defined but never used       @typescript-eslint/no-unused-vars
+  14:37  warning  'AdminIngestBody' is defined but never used             @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ai\client.ts
+  74:10  warning  'firstApiKey' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\core-write\authority.ts
+  116:16  warning  'many' is defined but never used  @typescript-eslint/no-unused-vars
+  133:16  warning  'run' is defined but never used   @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\admin-ops-events.ts
+  141:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\heartbeat.ts
+  160:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\authority.ts
+  47:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\durable-object.ts
+  69:53  warning  '_env' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\db\admin-jobs.ts
+  214:10  warning  'recordValue' is defined but never used  @typescript-eslint/no-unused-vars
+  308:16  warning  'd1Run' is defined but never used        @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ingest\manual-summary-edit.ts
+  10:10  warning  'ARTICLE_REVIEW_STATE' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\search\repository\index.ts
+  47:26  warning  '_request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\storage\blob.ts
+  173:10  warning  'isArtifactBlobHeadHit' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\workers\async-pipeline\src\native-crawler.ts
+   182:38  warning  'specific' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  1172:9   warning  'rangeStart' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 20 problems (0 errors, 20 warnings)
+
+
+> worldcons@0.1.0 test:gate0 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-redesign-gate0.test.ts
+
+✔ Gate 0 SQL contract is aggregate/catalog read-only (1.4479ms)
+✔ Gate 0 redaction removes sensitive keys and values recursively (1.1191ms)
+✔ Gate 0 serialization and text rendering are deterministic (0.6496ms)
+✔ Gate 0 manifest hashes the exact deterministic artifact bytes (8.7879ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 367.6539
+
+> worldcons@0.1.0 test:p0 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-command-control-plane.test.ts tests/admin-command-control-plane.postgres.test.ts
+
+﹣ P0 PostgreSQL command control plane transitions (0.7978ms) # SKIP
+✔ P0 migration carries database-enforced queue invariants (3.5796ms)
+✔ retry classification and exponential backoff are bounded (0.2315ms)
+✔ ingestion compatibility success rejects blocked, empty, and partial-failure results (0.3329ms)
+✔ worker compatibility success rejects empty and incomplete drains (0.2764ms)
+✔ glossary compatibility success rejects empty and partially persisted refreshes (0.1672ms)
+✔ compatibility authority is default-off and preserves legacy results (1.1411ms)
+✔ compatibility shadow writes are terminal, redacted, and non-authoritative (2.1093ms)
+✔ resolved legacy failure does not create false-positive shadow evidence (0.2709ms)
+✔ thrown legacy failure propagates without evaluating or shadow-submitting (0.9661ms)
+✔ success predicate failures skip shadowing without changing the legacy value (0.4975ms)
+✔ compatibility shadow exceptions cannot change the legacy response (0.5219ms)
+✔ administrator execution ingress uses auth and the selected Cloudflare authority (6.9079ms)
+✔ P0 documentation fixes migration order, flag default, evidence, and rollback (1.8785ms)
+✔ unauthorized queue ingress is rejected before execution (71.8139ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3617.1931
+
+> worldcons@0.1.0 test:p1 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-command-worker-p1.test.ts tests/admin-command-worker-p1-crawler.test.ts tests/admin-command-worker-p1.postgres.test.ts
+
+✔ robots parsing checkpoints abort promptly and receive the caller signal (8.247ms)
+✔ sitemap parsing cancellation stops before later candidates are fetched (8.7128ms)
+✔ late start-request preparation cannot enter queue setup or complete after worker cancellation (137.237ms)
+✔ crawler helpers preserve no-signal behavior (3.247ms)
+﹣ P1 PostgreSQL cohort and candidate transitions (0.8292ms) # SKIP
+✔ P1 authority is default-off and requires bounded command and cohort allowlists (2.3351ms)
+✔ claim sends the exact server-side command and cohort authority (1.3614ms)
+✔ claimed work heartbeats and completes with its fencing token (2.1409ms)
+✔ constitutional backfill handler receives the exact claimed attempt authority (0.9859ms)
+✔ abort observed between bounded handler steps stops execution without a stale failure commit (1.6651ms)
+✔ persisted abort cancels a hung handler promptly and stops lease renewal (76.7144ms)
+✔ attempt deadline cancels a hung handler, terminalizes retryably, and handles late rejection (124.6015ms)
+✔ deadline never retries terminalization after the failure fence is stale (46.4635ms)
+✔ retryable and terminal handler failures use explicit classifications (0.9042ms)
+✔ lost lease or stale completion fence cannot commit success (0.4436ms)
+✔ process stop requests safely yield the claimed attempt as retryable (43.9996ms)
+✔ unsupported claimed command fails terminally and observably (0.4008ms)
+✔ canonical handlers propagate one signal and checkpoints into long-running services (2.8399ms)
+✔ candidate retry fetches the stored canonical URL exactly and never discovers broadly (1.9069ms)
+✔ candidate retry accepts the verified BVerfG senate variant for a stored chamber URL (0.822ms)
+✔ candidate retry rejects normalized canonical drift before dedupe or persist (1.8205ms)
+✔ candidate retry validates official ownership and records failed/fetched transitions idempotently (0.4316ms)
+✔ P1 migration and local worker enforce cohort claims and ordered execution (3.5045ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 7725.7642
+
+> worldcons@0.1.0 test:p2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-lifecycle-p2.test.ts tests/article-lifecycle-p2.postgres.test.ts
+
+﹣ P2 PostgreSQL lifecycle authority and reconciliation (0.8408ms) # SKIP
+✔ P2 maps every existing article status to orthogonal axes (2.4135ms)
+✔ ambiguous and contradictory legacy evidence is quarantined (0.2273ms)
+✔ review and structured attention mapping stay independent (0.2476ms)
+✔ expected terminal metadata-only evidence clears retry attention without approving publication (0.1827ms)
+✔ terminal metadata-only forward-fix is bounded and changes lifecycle attention only (1.4501ms)
+✔ workflow-only review labels recover the latest authoritative history decision (0.2371ms)
+✔ short-text reviewed publication quarantines without inventing source-text readiness (2.2761ms)
+✔ persisted review metadata wins over stale optional triage while unrelated attention remains (0.515ms)
+✔ P2 flags and cohorts are false by default and reads remain independent (0.408ms)
+✔ P2 shadow writes require an enabled cohort and preserve expected revision (0.5975ms)
+✔ P2 shadow failures cannot alter legacy control flow (0.2789ms)
+✔ P2 service enforces actor ownership before repository access (0.4986ms)
+✔ P2 migration is additive, guarded, indexed online, and leaves publication untouched (3.3901ms)
+✔ all lifecycle write paths use the compatibility boundary and no application path writes P2 columns (320.2489ms)
+✔ review and refresh paths use persisted authoritative evidence without triage gates (2.539ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3327.0766
+
+> worldcons@0.1.0 test:p3 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-publication-p3.test.ts tests/article-publication-p3.postgres.test.ts
+
+﹣ P3 PostgreSQL publication authority (0.8795ms) # SKIP
+[article publication shadow] { event: 'transition_failed', errorCode: 'stale_revision' }
+✔ P3 flags are false unless explicitly true (1.8691ms)
+✔ public read authority centralizes the P3 cutover and legacy rollback boundary (0.2373ms)
+✔ compatibility shadows only confirmed outcomes and builds deterministic persisted-row transitions (2.2013ms)
+✔ shadow authority failures are isolated as data (1.0838ms)
+✔ bulk review shadows each unique persisted row and excludes missing or failed rows (0.6463ms)
+✔ outbox is default-off and batches at-least-once delivery through an idempotent handler (0.5501ms)
+✔ outbox failure retries every claimed logical event without leaking the handler error (0.4716ms)
+✔ migration and application contracts cover immutable authority, projection, and every public surface (16.3052ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3050.7035
+
+> worldcons@0.1.0 test:p4 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-redesign-p4.test.ts
+
+✔ redesigned administrator UI is the only supported surface (3.4031ms)
+✔ shell navigation covers the new admin surfaces without retired screen links (1.048ms)
+✔ server layout renders the shell only after an authenticated session identity is verified (0.8237ms)
+✔ new pages preserve authentication redirects without legacy UI fallbacks (1.3625ms)
+✔ work filters are bounded, allowlisted, and URL-shareable (0.9391ms)
+✔ stable sort and pagination use deterministic type/id tie breakers (13.346ms)
+✔ execution, lifecycle, and publication labels remain independent (1.1964ms)
+✔ operational errors redact URLs, queries, tokens, and long values (1.7413ms)
+✔ canonical actions require bounded reason, explicit idempotency, and publication confirmation (2.7312ms)
+✔ every P4 action uses session-only CSRF auth and revalidates authoritative state (2.3832ms)
+✔ P4 human mutations reject cron authorization and require a valid session CSRF pair (13.8318ms)
+✔ queue query contract is bounded and bulk-loads attempts without N+1 (1.6612ms)
+✔ tracked collection candidates are separated from actionable operational backlog (0.5376ms)
+✔ detail lookup remains valid beyond the newest 500 rows and distinguishes absence from query failure (4.1849ms)
+✔ desktop/mobile, loading/empty/error, focus, and overflow states are present (2.6756ms)
+✔ specialized article actions and immutable source snapshot protections remain reachable (3.3883ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 875.4602
+
+> worldcons@0.1.0 test:p5 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-governance-p5.test.ts tests/admin-governance-p5.postgres.test.ts
+
+✔ P5 migration is additive, aggregate-only, secure, indexed, and rerunnable (1.6162ms)
+✔ P5 corrective migration binds approvals to digest and distinct actors (1.2051ms)
+✔ P5 health counts only unresolved publication quarantine (0.2117ms)
+﹣ P5 PostgreSQL full migration chain, ACL, approvals, and fail-closed governance (0.1716ms) # SKIP
+✔ P5 corrective health evidence uses compatibility presence and last-seen (0.2077ms)
+✔ P5 immutable and retention SQL preserves authoritative history (0.2515ms)
+✔ P5 policy clamps overrides and SLA boundaries are exact (2.6651ms)
+✔ unavailable aggregate evidence never renders healthy SLA status (0.4985ms)
+✔ aggregate repository uses one bounded RPC and strips payload-shaped extras (2.0485ms)
+✔ feature flag getters are pure and default-off observation writes nothing (5.3975ms)
+✔ same-surface observations coalesce while distinct surfaces and authorities remain (4.7706ms)
+✔ compatibility observation remains bounded and failure-isolated (2.2222ms)
+✔ canonical evidence digest is stable and changes only with canonical gate evidence (15.6023ms)
+✔ approval writes require the current digest and call only the v2 RPC (0.3562ms)
+✔ owner bindings reject unbound roles and cross-role actors without leaking identity material (0.7932ms)
+✔ retirement evaluator passes only when every prerequisite passes (8.5226ms)
+✔ retirement and retention tools never auto-flip flags or delete authority history (2.6725ms)
+✔ governance actions are session-only, CSRF-protected, role-bound, and audited (11.5096ms)
+✔ governance UI is retired while P5 operational controls remain internal (1.2854ms)
+✔ native health task emits redacted machine evidence without GitHub workflow (1.0446ms)
+✔ collect command through explicit publication preserves authority boundaries (0.9724ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 950.0493
+
+> worldcons@0.1.0 test:cclmetasearch C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclmetasearch-api.test.ts
+
+[cclmetasearch] WorldCons search unavailable Error
+✔ search parameter contract accepts q or keyword and applies bounded defaults (2.6247ms)
+✔ search parameter contract rejects ambiguity, unknown keys, and out-of-range pagination (0.6068ms)
+✔ result mapper emits normalized fields and source-specific case numbers (3.4712ms)
+✔ handler enforces shared-token authentication (6.7929ms)
+✔ handler returns a bounded page and exact pagination metadata (1.7882ms)
+✔ handler treats a valid empty page as 200 and malformed input as 400 (1.2962ms)
+✔ handler emits normalized 429 and 503 errors (1.8918ms)
+✔ unknown integration paths use the documented JSON 404 contract (0.4376ms)
+✔ migration searches only the public projection and applies database pagination (1.6591ms)
+✔ production cclmetasearch backend no longer references Supabase (0.6282ms)
+✔ search reads matching ids/rank/date from worldcons_search and hydrates from worldcons_core (22.6069ms)
+✔ latest sort orders the same match set by publication date (7.2704ms)
+✔ exact total is returned even when the page is bounded or empty (6.6119ms)
+✔ search fails closed on malformed worldcons_search D1 responses (8.0793ms)
+✔ search fails closed when a D1 binding is not configured (0.181ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 797.5961
+
+> worldcons@0.1.0 test:cclrag2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclrag2-search-api.test.ts
+
+✔ Neubauer comparison queries resolve the German climate decision reference (3.3394ms)
+✔ exact case extraction recognizes French, Spanish, and US case numbers (0.9893ms)
+✔ source-aware case normalization produces the same canonical key across display variants (0.2918ms)
+✔ public search rejects offsets beyond the shared 10,000-row deep-pagination boundary (2.7697ms)
+✔ public fulltext route uses the ranked D1 search path instead of an unfiltered article list (0.5998ms)
+✔ BVerfG compact official URLs preserve the docket number during collection (0.4107ms)
+✔ exact case matches remain above full-text and semantic results (0.3096ms)
+✔ ranked candidate lookup always starts at page one (0.2222ms)
+✔ ranked pagination applies exactly once across consecutive pages (0.8251ms)
+✔ hybrid candidate windows grow with the requested page without exceeding bounded lookup size (0.4781ms)
+✔ ranked materialization keeps D1 article-id batches below the bind ceiling (0.4643ms)
+✔ legal search normalization removes only generic research-intent noise (0.2971ms)
+✔ catalog page reranking promotes exact case identity without changing the candidate set (2.007ms)
+✔ hybrid RRF rewards agreement between lexical and semantic rankings (1.4303ms)
+✔ exact normalized title remains above RRF score (0.3971ms)
+✔ Korean concept queries can surface semantically retrieved foreign decisions ahead of lower lexical ranks (0.8078ms)
+✔ legal relevance breaks equal RRF ties before recency (0.3602ms)
+✔ recency remains the tie-breaker when RRF and legal relevance are equal (0.3965ms)
+✔ search API items expose cclrag2 normalization and follow-up content URLs (0.4171ms)
+✔ ranked full-text migration uses published projection relevance and service-role-only execution (1.4217ms)
+✔ search API mapper surfaces summary/snippet for a summarized list row (0.2825ms)
+✔ search API mapper prefers the caseNumber field over hidden metadata (0.1431ms)
+✔ source inventory identifies WorldCons records as foreign constitutional material (0.1208ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5677.9823
+
+> worldcons@0.1.0 test:provider:search C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclrag2-provider-route.test.ts
+
+{"event":"worldcons_embedding_unavailable","status":503,"requestId":"c6ad3cfc-ceb5-4682-9a33-e807ae2ebfd6"}
+✔ Cloudflare provider route preserves the provider contract and applies public rate limiting (2.3327ms)
+✔ Cloudflare provider accepts the cclrag2 contract and returns the Neubauer case first (39.2838ms)
+✔ Vercel provider preserves the Korean comparison query and source inference (3.905ms)
+✔ Vercel provider fulltext mode bypasses embeddings and uses D1 lexical retrieval (3.8326ms)
+✔ Vercel provider reports an explicit fulltext fallback when semantic capability is not configured (2.311ms)
+✔ Vercel provider narrows a generic comparison to German constitutional authority (3.6967ms)
+✔ Vercel provider translates a jurisdiction code into the source-owned search boundary (2.9196ms)
+✔ Vercel provider infers a source boundary from a short Korean jurisdiction name (1.5065ms)
+✔ Vercel provider semantic mode creates an embedding and queries Vectorize (10.9704ms)
+✔ Vercel provider hybrid mode uses embeddings and explicitly degrades when embedding fails (8.767ms)
+✔ Vercel provider exact-case preflight supports France, Spain, and the US without embeddings (4.6775ms)
+✔ Vercel provider preserves exact total semantics from ranked D1 pages (2.9136ms)
+✔ Vercel provider source and article endpoints read bounded Contract V2 evidence from D1 (7.6061ms)
+✔ Vercel provider rejects invalid input and normalizes dependency failures (1.4901ms)
+✔ migration is projection-only, page-bounded, and service-role restricted (1.5896ms)
+✔ Contract V2 migration bounds evidence and preserves paginated source text (1.1363ms)
+✔ Search V3 migration makes retrieval mode real and keeps published projection boundaries (1.2216ms)
+✔ Search V4 migration adds indexed four-country case keys and DB-native deep pagination (1.3728ms)
+✔ provider resilience migration materializes only bounded scalar search fields (1.292ms)
+✔ Vercel provider truncates a large article body without dropping the preserved text API contract (104.5509ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2732.1655
+
+> worldcons@0.1.0 test:security C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/security-platform-hardening.test.ts
+
+✔ production rejects a short admin password even when machine secrets are strong (1.2205ms)
+✔ production still rejects reused or publicly exposed secrets (0.3739ms)
+✔ distributed rate limit migration is atomic, bounded, and service-role-only (1.5506ms)
+✔ rate limiter remains available through an explicit local fallback (3.2803ms)
+✔ production CSP is enforcing by default and removes unsafe-eval (1.0247ms)
+✔ anonymous public-schema access remains closed after least-privilege hardening (0.9774ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 543.4934
+
+> worldcons@0.1.0 test:ops C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ops-summary-backlog.test.ts tests/workflow-heartbeat.test.ts
+
+✔ an empty summary backlog raises nothing (0.9495ms)
+✔ a small and recent backlog is treated as normal throughput (1.556ms)
+✔ a large backlog is critical and names the public impact (0.2922ms)
+✔ a moderate backlog warns on count alone (0.1289ms)
+✔ a small but stale backlog still warns so slow drain cannot hide (0.1449ms)
+✔ a missing oldest timestamp degrades to count-only judgement (0.1649ms)
+✔ workflow heartbeat uses each workflow's 2.5x processing interval (1.0535ms)
+✔ missing, failed, or invalid heartbeat is stale (0.2067ms)
+✔ required workflow heartbeat records the complete route lifecycle (1.4873ms)
+✔ Cloudflare watchdog route authenticates before recording its required heartbeat (1.1397ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 423.2393
+
+> worldcons@0.1.0 test:embeddings C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/embedding-backlog-d1.test.ts tests/embedding-provider.test.ts tests/embedding-vector.test.ts
+
+✔ D1 candidate selection matches summarized/provenance/source/limit semantics (2.023ms)
+✔ embedding candidate read uses D1 summarized provenance predicate and source filter (1.2664ms)
+✔ D1 embedding persistence updates provenance, artifact readiness, and published summary guard (15.2541ms)
+✔ embedding readiness counts D1 article candidates and published provenance parity (0.326ms)
+✔ embedding persistence upserts matching published vector metadata and provenance (0.8718ms)
+✔ embedding persistence does not match malformed or null-mismatched published summaries (0.3852ms)
+✔ embedding persistence skips artifact/vector when published summary differs (0.3908ms)
+✔ embedding width stays pinned to the articles.embedding column (2.6149ms)
+✔ Gemini embeddings request the pinned output width (2.1836ms)
+✔ embedding provider selection is Gemini-only (1.1453ms)
+✔ an unset embedding provider defaults to Gemini rather than OpenAI (0.9596ms)
+✔ Cloudflare native embedding executor replaces GitHub scheduled writers (0.7176ms)
+✔ native embedding backfill is bounded and resumable (0.4172ms)
+✔ embedding backfill uses D1 provenance persistence and resumes after provider deferral (1.7184ms)
+✔ Gemini provenance preserves immutable P3 versions through a derived artifact (1.0701ms)
+✔ embedding normalization produces a finite unit vector (1.7036ms)
+✔ embedding normalization rejects wrong width and invalid vectors (0.605ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 645.1933
+
+> worldcons@0.1.0 test:ingest-workflow C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ingest-workflow-hardening.test.ts
+
+✔ ingestion success distinguishes a verified empty listing from swallowed discovery failures (1.9902ms)
+✔ ingestion success rejects blocked, no-database, empty, and partial failure results (0.1931ms)
+✔ ingestion treats all-uncollected BVerfG runs as degraded, not success (0.2986ms)
+✔ Crawlee failures preserve HTTP status for BVerfG block classification (0.6155ms)
+✔ crawler defaults identify the bot and send browser-compatible request headers (0.2661ms)
+✔ Spain explicitly metadata-only notices are not retried as missing full text (3.6043ms)
+✔ canonical caseNumber metadata is populated from source-specific aliases (2.5299ms)
+✔ expected empty sitemap and Spain tail probes do not fail a verified listing (0.2779ms)
+✔ incremental range widens from the last verified checkpoint and never shrinks below the floor (0.4394ms)
+✔ worker outcome lines stay compact and omit source URLs (0.3608ms)
+✔ summary accounting only accepts an ingestion run UUID from collection metadata (0.298ms)
+✔ BVerfG URL resolution checks chamber and senate filename variants (1.3363ms)
+✔ BVerfG unresolved variant retries use short bounded backoff with schedule grace (0.4799ms)
+✔ public article refreshes reject incomplete or suspiciously shrunken source text (0.1783ms)
+✔ SCOTUS revision dates are independently eligible from the opinion date window (1.6089ms)
+✔ ingestion CLIs and native source collectors retain hardening controls (5.0837ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6044.2006
+
+> worldcons@0.1.0 test:native-crawler C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/native-crawler.test.ts
+
+✔ verified HJ full text replaces stale metadata-only safety flags without affecting unverified records (2.0054ms)
+Warning: Invalid PDF header version: 1.4not
+Warning: Invalid PDF header version: 1.4not
+Warning: Indexing all PDF objects
+✔ SCOTUS official PDF extraction preserves bytes and hash while holding publication for review (195.6327ms)
+✔ SCOTUS PDF verification failures stay metadata-only and never write PDF to R2 (23.6331ms)
+✔ SCOTUS October term rollover still collects a revised prior-term official opinion without publishing it (4045.453ms)
+✔ SCOTUS rollover previous listing fails closed and is not fetched after the bounded overlap (2016.9649ms)
+✔ native source parser discovers only official records for all four sources (5.4029ms)
+✔ targeted staged crawl preserves the actually fetched BVerfG official URL variant (3006.7479ms)
+✔ BVerfG staged crawl rejects HTTP 200 pages without the exact official decision ECLI (1.6477ms)
+✔ BVerfG official redirects retain the verified final decision URL and ECLI (1.1182ms)
+✔ targeted staged crawl carries corrected Spanish official JSON metadata into normalize (2.6152ms)
+✔ native range floors and Spain cap match collection policy (0.192ms)
+✔ one synthetic collection request persists one pending case but DOES NOT automatically translate or publish (5.8593ms)
+✔ native collection keeps source-specific publication and review gates (12.3731ms)
+✔ BVerfG native discovery falls back to OpenLegalData candidates but fetches only official source text (3.9187ms)
+✔ BVerfG unpublished official variants remain a bounded retry candidate instead of failing the source run (2.9654ms)
+✔ BVerfG transient official 5xx falls back to discovery and remains uncollected instead of failing the source run (3.3232ms)
+✔ BVerfG OpenLegalData 429 records degraded discovery without failing the daily source step (1.2478ms)
+✔ Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids (6.3616ms)
+✔ Spain native discovery uses the authenticated official search session before tail probing (8.232ms)
+✔ BVerfG discovery selection defers a cooldown 404 head and chooses the next eligible candidate for limit 1 (0.5697ms)
+✔ BVerfG discovery selection defers all cooldown candidates with an honest empty selection (0.2079ms)
+✔ BVerfG discovery selection re-eligible once the retry backoff window has expired (0.2139ms)
+✔ BVerfG discovery selection never lets already-fetched candidates starve new or due candidates (0.1913ms)
+✔ BVerfG discovery selection is bounded and deterministic (0.2789ms)
+✔ BVerfG daily run skips a cooldown 404 head candidate and fetches the next eligible official decision (3.7782ms)
+✔ BVerfG daily run reports an honest deferred-only outcome without any official detail fetch (1.617ms)
+✔ BVerfG daily run does not let already-fetched candidates starve new official decisions (2.208ms)
+✔ BVerfG staged discovery shares the same D1-aware selection as the M8 daily run (1.0045ms)
+✔ BVerfG M8 and staged discovery fail closed when durable candidate state cannot be read (2.2212ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9885.2803
+
+> worldcons@0.1.0 test:ingest-stages C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ingest-stage-pipeline.test.ts tests/ingest-stage-handlers.test.ts tests/ingest-stage-article-services.test.ts tests/ingest-stage-redrive.test.ts
+
+✔ runD1PublishArticle publishes exactly the named article and leaves other pending rows untouched (53.4837ms)
+✔ runD1PublishArticle fail-closes an ineligible row (source_only provenance) without publishing (10.5669ms)
+✔ runD1PublishArticle never treats stale published content as an idempotent success (9.161ms)
+✔ runD1PublishArticle blocks replay after source provenance is withdrawn (10.8527ms)
+✔ syncSearchProjectionForArticle projects exactly one published article and enforces per-article integrity (19.1247ms)
+✔ A: discovery -> crawl -> normalize persists exactly one publishable article and stops at translate (fail closed) (95.3618ms)
+✔ B: duplicate delivery of a completed stage message is acked and creates no duplicate work (21.2175ms)
+✔ C: a live job with no registered handler is blocked (dead-lettered), never silently acked or completed (18.1609ms)
+✔ D: an expired lease is reclaimed under a new fence; the stale message cannot complete or ack the live job (16.0418ms)
+✔ E: a live pending job delivered without a fence ack retries to a fresh dispatch rather than acking (12.6312ms)
+✔ F: dispatcher never completes a job and re-arms an outbox row superseded by a newer fence (19.8925ms)
+✔ G: bounded dispatch-outbox reconciliation replays a pending entry to the correct queue (17.6911ms)
+✔ H: the discovery bootstrap producer only enqueues and does no network collection (16.783ms)
+✔ H2: tomorrow's discovery revisits an existing URL without duplicating the same-day job (22.9128ms)
+✔ I: consumer completes only under the exact lease and marks the job durably (15.6808ms)
+✔ J: full chain discovery->crawl->normalize->translate->public-judgment->publish->search adopts the real core article id (48.01ms)
+✔ K: translate blocks and dead-letters when the durable summary effect is missing (28.5876ms)
+✔ L: public-judgment blocks metadata_only / unverified-provenance articles (no false publish) (26.7115ms)
+✔ M: public-judgment blocks an unverified Case Catalog anchor (hash mismatch) (33.2414ms)
+✔ N: publish blocks an ineligible article instead of retrying into a false success (27.8295ms)
+✔ O: per-article isolation - an unrelated pending translate job is never processed (14.6843ms)
+✔ P: duplicate publish delivery is idempotent (one published row, one queue identity) (24.0946ms)
+✔ idempotency key is stable, round-trips, and rejects forgery (2.0174ms)
+✔ queue message validation accepts built messages and rejects forged keys (26.5725ms)
+✔ stage map: every stage has a queue and a well-formed next-stage transition (1.0364ms)
+✔ feature flags default OFF and fail closed (0.6689ms)
+✔ production stage bootstrap is restricted to explicit verified canary sources (0.2981ms)
+✔ register is idempotent by idempotency key (2.6043ms)
+✔ claim is bounded, fenced, and rejects a stale fencing token (3.7142ms)
+✔ an expired lease is reclaimable with a bumped fencing token (5.5205ms)
+✔ a repeatedly crashing consumer is dead-lettered at the attempt budget, not re-leased forever (4.0677ms)
+✔ failIngestStageJob retries within budget and dead-letters when exhausted (3.6134ms)
+✔ dispatch outbox registration is idempotent by deterministic message id (4.8337ms)
+✔ ingest -> core bridge applies exactly once and is replay-safe (3.3693ms)
+✔ dispatcher claims, enqueues once, and records the dispatch outbox (7.723ms)
+✔ dispatcher releases the job and marks the outbox failed when the queue is down (5.6024ms)
+✔ dispatch reconciliation replays a durable pending outbox entry (5.1193ms)
+✔ completeStageAndRegisterNext advances through the pipeline by idempotent next-jobs (3.4102ms)
+✔ atomic stage handoff rolls back parent success when child registration fails (3.8632ms)
+✔ stage completion requires an atomic D1 batch and an unexpired lease (3.2243ms)
+✔ stage migrations are additive, verified, and have no destructive statements (2.6206ms)
+✖ production canary config bounds two validated sources to one item per dispatch (8.7443ms)
+✔ the Worker exposes a stage-queue consumer entrypoint without touching the M8 path (0.7523ms)
+✔ planIngestStageBatch routes invalid/blocked/eligible and consume handles ack/retry/no-op (3.3029ms)
+✔ diagnosis reports per-stage status counts and the oldest lease without cross-stage bleed (8.0831ms)
+✔ diagnosis reports the oldest pending job per stage and excludes terminal/leased rows (3.8584ms)
+✔ a redrive clears the oldest pending signal once the job is dispatched again (3.2371ms)
+✔ a redriven 404 source job returns to pending and is audited in the transition ledger (11.2501ms)
+✔ a 429 retryable failure stays pending (never dead-lettered) and outside the redrive surface (4.422ms)
+✔ redrive denies missing reason, stage mismatch, fencing mismatch and unknown jobs with distinct ledger outcomes (3.7876ms)
+✔ a second redrive of the same job is a nonterminal denial (double-redrive safety) (2.5843ms)
+✔ the per-operator rolling-window rate limit denies a mass redrive and records it (5.2398ms)
+✔ the redrive migration is additive, verified and non-destructive and the route is admin-gated with no public redrive (2.5791ms)
+ℹ tests 53
+ℹ suites 0
+ℹ pass 52
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1351.5567
+
+✖ failing tests:
+
+test at tests\ingest-stage-pipeline.test.ts:1:23516
+✖ production canary config bounds two validated sources to one item per dispatch (8.7443ms)
+  AssertionError [ERR_ASSERTION]: the existing M8 consumer is preserved first
+  + actual - expected
+  
+  + 'worldcons-e2e-search-repair'
+  - 'worldcons-async-v1'
+               ^
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\ingest-stage-pipeline.test.ts:608:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'worldcons-e2e-search-repair',
+    expected: 'worldcons-async-v1',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

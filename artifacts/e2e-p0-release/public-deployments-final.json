@@ -1,0 +1,165 @@
+[
+  {
+    "id": "e1cb441e-7e41-4585-b310-8067fd539496",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e999ea16-9a1c-444f-9a7c-50b725298b05",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-08T22:20:13.902871Z"
+  },
+  {
+    "id": "4ccbb253-9751-4955-a075-9d93859f164c",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "f840478f-9bbd-49da-90ad-d5d064a20b36",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-08T23:49:27.730559Z"
+  },
+  {
+    "id": "1f2484ca-0edd-41fd-bee4-c50f3b2daa56",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "16f9999f-9955-4d25-aea5-6f4b9b5c3e60",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-09T01:48:26.824118Z"
+  },
+  {
+    "id": "e5f3c78a-a52c-4700-a4aa-bf5723feeae4",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "21730a06-1736-447c-baf8-0a8439b8b184",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T03:35:26.792734Z"
+  },
+  {
+    "id": "1750570a-4aca-4c87-b342-7df9649103a4",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "4ddd4cc2-fd11-450e-b5ae-1b6a70150707",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T08:21:20.232955Z"
+  },
+  {
+    "id": "c50acf72-8eb2-4348-b906-3a5eaefad070",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "768b1085-23fc-45ed-889d-72097153bfa1",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T12:32:20.622132Z"
+  },
+  {
+    "id": "2e465c3f-aff1-42d1-b922-81fa82b93deb",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e3dc0a43-1592-4964-971d-d036add50b07",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T14:38:27.837323Z"
+  },
+  {
+    "id": "7f9bd41e-7877-48e3-8aef-324446f5b1c6",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "E2E P0 compatible public/Core worker; git 3317d9b7e1ce01cc6289af45171bf371b53486cb",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "03075f82-369b-4f3f-8085-1608351d3696",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:19:32.261444Z"
+  },
+  {
+    "id": "2cd4d838-52ee-4344-a0d7-f961cc8ea716",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "E2E P0 FR L exact-search fix; release gate passed; git 43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e82cd6e1-a59f-4d13-9aad-7555e1566699",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:32:10.831995Z"
+  },
+  {
+    "id": "7afdb229-2efe-4d47-918a-111741091afb",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "French L parser verified in final bundle; git 43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "0bf0e14d-b4d9-4370-9b1d-34b5098d5644",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:34:59.802831Z"
+  }
+]

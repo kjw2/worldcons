@@ -1,0 +1,407 @@
+
+> worldcons@0.1.0 test:m10 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m10-d1-write-canary.test.ts
+
+✔ M10 site-event canary is explicit, bounded and D1-authoritative (1.7097ms)
+✔ M10 D1 statements bind the canary identity instead of interpolating it (12.8119ms)
+✔ M10 canonical comparison treats SQLite and Postgres storage forms as equivalent (0.455ms)
+✔ M10 canonical comparison fails closed on a field mismatch (0.1767ms)
+✔ M10 canary rejects malformed identity and timestamp (0.5008ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 427.3337
+
+> worldcons@0.1.0 test:e2e-p0-m1 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m1-generations.test.ts
+
+✔ M1 canonical hashes ignore processing timestamps/key order, preserve content/array order/Unicode (14.9168ms)
+✔ M1 preserves legacy P3 hash/ID, adopts current version, then timestamp-only recollection advances nothing (39.6544ms)
+✔ M1 initial opt-in retains legacy content_hash and deterministicVersionId (33.5507ms)
+✔ M1 additive migration reruns without rewriting history; every verify directive matches SQLite DDL (20.6206ms)
+✔ M1 catalog role and legacy hash omission cannot silently approve the wrong P3 snapshot (35.9491ms)
+✔ M1 changed summary advances P3+generation; policy/tags/review advance only generation; history is preserved (42.5591ms)
+✔ M1 duplicate delivery returns recorded generation even after newer generation, rejects changed approval context (27.3451ms)
+✔ M1 p3 changes after pre-read: CHECK aborts the entire batch (26.0507ms)
+✔ M1 v4 changes after pre-read: CHECK aborts the entire batch (27.2886ms)
+✔ M1 publication changes after pre-read: CHECK aborts the entire batch (42.3336ms)
+✔ M1 article changes after pre-read: CHECK aborts the entire batch (25.035ms)
+✔ M1 tags changes after pre-read: CHECK aborts the entire batch (23.5355ms)
+✔ M1 generation changes after pre-read: CHECK aborts the entire batch (24.4512ms)
+✔ M1 two deliveries with the same observed head: one commits, loser retries idempotently (22.0035ms)
+✔ M1 SQL failure at batch end rolls back P3, heads, history, cache outbox, requests and generations (18.9061ms)
+✔ M1 source-only, provenance conflicts, blocked review and non-official automatic URL stay unpublishable (73.9082ms)
+✔ M1 withdrawn/re-published same version has separate generations and never claims completed_verified (23.519ms)
+✔ M1 malformed opt-in is rejected before DB access (14.3116ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 949.8723
+
+> worldcons@0.1.0 test:e2e-p0-m2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m2-search-repair.test.ts tests/e2e-p0-m2-d1-runtime.test.ts
+
+✔ M2 local workerd D1: actual API batch/RETURNING and full publication rollback (8505.4036ms)
+✔ M2 reserves one immutable Search identity in the publication batch; recollection adds no work (51.7687ms)
+✔ M2 withdrawal reserves remove and invalidates old processing and transport fences atomically (22.3766ms)
+✔ M2 commit-before-send recovery sends identity only and cannot record completion (38.1687ms)
+✔ M2 accepted send with lost response retries the same identity without consuming processing attempts (36.2023ms)
+✔ M2 interruption after accepted send preserves transport lease; expiry recovers by duplicate send (23.3849ms)
+✔ M2 simultaneous dispatchers have one owner and one send (21.9199ms)
+✔ M2 late send confirmation cannot overwrite a newer transport owner (25.6432ms)
+✔ M2 new generation while sending supersedes the old row and rejects its late result (25.8397ms)
+✔ M2 transport attempts budget dead-letters without pretending Consumer processing (23.2996ms)
+✔ M2 transport time budget dead-letters without pretending Consumer processing (22.8067ms)
+✔ M2 send failure cannot dead-letter an active Consumer lease (24.552ms)
+✔ M2 jitter is capped at 15 minutes and durable processing delay is respected (23.5932ms)
+✔ M2 Consumer verification during send cannot be undone by transport settlement (21.8464ms)
+✔ M2 SQL failure after progress update rolls back settlement while keeping the durable lease (23.5514ms)
+✔ M2 terminal work and changed Core publication heads never enter Queue (71.2848ms)
+✔ M2 reconciliation repairs an M1 upgrade hole idempotently without new P3/generation (24.0768ms)
+✔ M2 reconciliation snapshot race rolls back stale reservation (23.4447ms)
+{"event":"e2e_search_repair_not_ready","reason":"protected_consumer_or_queue_missing"}
+✔ M2 additive schema rerun preserves work; verified requires durable evidence (21.8984ms)
+{"event":"e2e_search_repair_dispatch","reservedCount":0,"conflictCount":0,"claimedCount":1,"sentCount":1,"failedCount":0,"deadLetterCount":0,"fencedCount":0,"pendingCount":1,"oldestPendingAgeSeconds":0,"repeatedFailureCount":0,"coreIdentityDriftCount":0,"missingReservationCount":0,"requiresAttention":false}
+{"event":"e2e_search_repair_failed","reason":"schema_or_dispatch_unavailable"}
+✔ M2 scheduled dispatcher stays disabled until dedicated protected Consumer is ready (37.0189ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9694.3119
+
+> worldcons@0.1.0 test:e2e-p0-m3 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m3-search-guards.test.ts tests/e2e-p0-m3-d1-runtime.test.ts
+
+✔ M3 local workerd: separated real D1 APIs execute guard/FTS transaction, receipt and withdrawal (13824.3192ms)
+✔ M3 applies exact P3 and both Search sides; duplicate receipt consumes no additional attempts/completion (71.3548ms)
+✔ M3 reverse generation and same-generation stale fence/conflicting identity roll back all Search/FTS (38.1416ms)
+✔ M3 withdrawal persists tombstone and old publish cannot resurrect FTS (36.7809ms)
+✔ M3 legacy plan executor, full rebuild, single sync and raw old document writer cannot overwrite cohort (29.0525ms)
+✔ M3 full sync stale removal snapshot cannot delete a newly published protected B (29.1824ms)
+✔ M3 Core B/Search A gap and immediate withdrawal are hidden from public search (54.4629ms)
+✔ M3 public guard checks are batched and Core failure never falls back to stale Search (36.7247ms)
+✔ M3 mutable drafts never replace approved public P3; withdrawal filters detail/list/source (33.7707ms)
+✔ M3 mutable tag/review drift blocks stale public projection and Consumer (45.2432ms)
+✔ M3 actual document/FTS corruption with unchanged checksum triggers same-generation repair (72.0585ms)
+✔ M3 duplicate concurrent deliveries have one processing owner (55.458ms)
+✔ M3 Search batch late failure leaves no partial guard, document or FTS (38.179ms)
+✔ M3 Search commit before Core receipt interruption resumes without duplicate FTS or new P3 (39.2359ms)
+✔ M3 expired owner cannot record receipt; reclaimed fence repairs and owns outcome (38.9955ms)
+✔ M3 B committed/applied while A is in flight remains unchanged and A gets no receipt (38.3046ms)
+✔ M3 processing budget dead-letters failures; Queue duplicates do not exhaust it (31.0154ms)
+{"event":"e2e_search_repair_consumer","status":"awaiting_verification"}
+✔ M3 dedicated Queue remains disabled; enabled handler ACK follows durable apply receipt (43.6818ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"9e9972a3-9d01-46b4-96cb-7ccada75cee1","error":"Error"}
+✔ M3 real public provider returns approved content/no-store, gap 503 and withdrawn detail 404 (113.0591ms)
+✔ M3 expired final attempt and elapsed failure budget reach dead-letter without an extra attempt (54.6348ms)
+✔ M3 public cache re-reads Core schema and bypasses cached content; unavailable Core fails closed (17.6448ms)
+✔ M3 public check catches first enrollment while Search is being read (28.3893ms)
+✔ M3 Core detail drops A when B commits during immutable version hydration (36.6674ms)
+✔ M3 migration verifier and enabled Consumer reject an incomplete Search trigger deployment (22.1011ms)
+✔ M3 legacy executor reserves guard statements within the D1 100 statement/parameter envelope (21.4789ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15252.943
+
+> worldcons@0.1.0 test:e2e-p0-m4 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m4-verification.test.ts tests/e2e-p0-m4-staged.test.ts tests/e2e-p0-m4-d1-runtime.test.ts
+
+{"event":"m4_local_runtime_evidence","scope":"synthetic_local_workerd","verificationDocument":{"apiChecks":{"approvedBodyPrefixMatches":true,"approvedSummaryMatches":true,"detailTextLimit":4000,"exactArticleIdentity":true,"expectedSearchMembership":true},"appliedFence":1,"approvalEvidenceRef":"core:e2e-approval:bda6be1afa9d7e70cc34518c7b4e372f336f9040d1502db06adbe93712eb294f","approvalKey":"bda6be1afa9d7e70cc34518c7b4e372f336f9040d1502db06adbe93712eb294f","articleId":"11111111-1111-4111-a111-111111111111","caseNumber":"2026-912 QPC","deploymentRef":"fixture:actual-local-workerd","documentFingerprint":"24950d41db1242e2cccfbfd0ebab57349dab8eceadec653c66841a2979d494e9","expected":{"documentCount":1,"documentFingerprint":"24950d41db1242e2cccfbfd0ebab57349dab8eceadec653c66841a2979d494e9","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189"},"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","generationId":"23d35367783fc2ed797b683840ac626efaf7b149a3dd9e867ae7aca95c8f5947","generationSeq":1,"observed":{"documentCount":1,"documentFingerprint":"24950d41db1242e2cccfbfd0ebab57349dab8eceadec653c66841a2979d494e9","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","matches":true},"policyVersion":"worldcons.fr-es-staged-approval.v1","probes":[{"cacheControl":"no-store","observedAt":"2026-10-11T07:22:02.739Z","responseHash":"18eac91db7376e9117ef334087203a5cc323762fd0e8f671f50c02224e4490df","status":200,"url":"https://fixture.example/api/articles/m1-fixture?textLimit=4000"},{"cacheControl":"no-store","observedAt":"2026-10-11T07:22:02.739Z","responseHash":"208a0644ab0fa8c4155bc59c40ca57127747ef80abd2a480f72315778b6e38ed","status":200,"url":"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none"}],"projectionInputHash":"6ddde06d9eb5771469f20c26245d4351412808896659b6197c93924d395ee397","publicationId":"9c8458d4-fba0-4cbb-b6bb-0aef840cd836","publicationRevision":1,"result":"completed_verified","schema":"worldcons.verification.v1","scope":"single_article","sourceEvidenceRef":"stages/ingest-crawl/workerd-m4.json","verificationFence":3,"verifiedAt":"2026-10-11T07:22:02.739Z","versionId":"8b9137e4-6d33-50b6-a33c-cd75ba4742f6","versionRevision":1}}
+✔ M4 real local workerd public Worker and separated D1 APIs verify actual content and atomic completion (21214.8424ms)
+{"event":"m4_local_staged_evidence","scope":"synthetic_local","officialTransport":"fixture","translation":"fixture","generation":{"generation_id":"84ce21faa9cd82bc70b370ce46a6b7d47ad917881c33b1b2382446bb9b17f3b6","article_id":"6d0df164-6da0-4b7e-be15-775074ad2197","generation_seq":1,"source_key":"fr-conseil-constitutionnel","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","approval_key":"f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55","approval_snapshot_hash":"95be474ca395fe0e2f697efc1085523cd297a6f756060625460b0259ac5eec9c","approval_hash_schema":"worldcons.approval.v1","projection_input_hash":"8a3874cef6d7182566fa68cd25e61f8b9c568f5ada699d163d4f211606165465","projection_input_schema":"worldcons.projection-input.v1","expected_version_id":"2a5cba46-6578-56c2-aa60-8d5ca54900b5","expected_version_revision":1,"expected_publication_id":"974e8295-e8fa-4d52-9180-fdf843a8ad21","expected_publication_revision":1,"expected_publication_state":"published","approval_mode":"automatic","policy_version":"worldcons.fr-es-staged-approval.v1","approval_evidence_ref":"core:e2e-approval:f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55","source_evidence_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json","pipeline_run_id":"ingest-stage:8a1413c9-34ed-4da6-915b-957f8155148f","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","created_at":"2026-10-11T07:20:51.144Z"},"approvalProof":{"approval_key":"f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55","article_id":"6d0df164-6da0-4b7e-be15-775074ad2197","approval_snapshot_hash":"95be474ca395fe0e2f697efc1085523cd297a6f756060625460b0259ac5eec9c","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","policy_version":"worldcons.fr-es-staged-approval.v1","evidence_ref":"core:e2e-approval:f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55","source_artifact_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json","source_artifact_hash":"7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","pipeline_run_id":"ingest-stage:8a1413c9-34ed-4da6-915b-957f8155148f","evidence_document":"{\"approvalKey\":\"f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55\",\"approvalSnapshotHash\":\"95be474ca395fe0e2f697efc1085523cd297a6f756060625460b0259ac5eec9c\",\"articleId\":\"6d0df164-6da0-4b7e-be15-775074ad2197\",\"candidateId\":\"native:443d0380339820fc0547a7166948c047\",\"canonicalUrl\":\"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm\",\"caseNumber\":\"2026-912 QPC\",\"checks\":{\"noReviewBlock\":true,\"noRiskFlags\":true,\"officialHost\":true,\"publicPermission\":true,\"sourceTextMatches\":true,\"summarySchema\":true,\"translationPersisted\":true},\"observedAt\":\"2026-10-11T07:20:50.962Z\",\"pipelineRunId\":\"ingest-stage:8a1413c9-34ed-4da6-915b-957f8155148f\",\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"schema\":\"worldcons.automatic-approval.v1\",\"sourceArtifactHash\":\"7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2\",\"sourceArtifactRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json\",\"sourceContentHash\":\"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa\"}","created_at":"2026-10-11T07:20:50.962Z"},"verification":{"evidence_id":"e86554c3be3f826fa10c19aa31120a0c4dd898df66dbf4a69a7e7ea5f6bd4e96","generation_id":"84ce21faa9cd82bc70b370ce46a6b7d47ad917881c33b1b2382446bb9b17f3b6","result":"completed_verified","verification_fence":1,"applied_fence":1,"document_fingerprint":"f12dea19b30d75a0c2f8fd2c5a815a142b6e070eb973c37fc10d48d0dc173d2a","fts_fingerprint":"b623126a0c8923e3d13a98467947ef11d9ec7e37a725fdea6f6147f53a66e9c3","evidence_document":"{\"apiChecks\":{\"approvedBodyPrefixMatches\":true,\"approvedSummaryMatches\":true,\"detailTextLimit\":4000,\"exactArticleIdentity\":true,\"expectedSearchMembership\":true},\"appliedFence\":1,\"approvalEvidenceRef\":\"core:e2e-approval:f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55\",\"approvalKey\":\"f54328cf6688b682c90a8ddbffb153e6deb551ff3816e8ce232a83d14b024b55\",\"articleId\":\"6d0df164-6da0-4b7e-be15-775074ad2197\",\"caseNumber\":\"2026-912 QPC\",\"deploymentRef\":\"fixture:synthetic-local-staged\",\"documentFingerprint\":\"f12dea19b30d75a0c2f8fd2c5a815a142b6e070eb973c37fc10d48d0dc173d2a\",\"expected\":{\"documentCount\":1,\"documentFingerprint\":\"f12dea19b30d75a0c2f8fd2c5a815a142b6e070eb973c37fc10d48d0dc173d2a\",\"ftsCount\":1,\"ftsFingerprint\":\"b623126a0c8923e3d13a98467947ef11d9ec7e37a725fdea6f6147f53a66e9c3\"},\"ftsFingerprint\":\"b623126a0c8923e3d13a98467947ef11d9ec7e37a725fdea6f6147f53a66e9c3\",\"generationId\":\"84ce21faa9cd82bc70b370ce46a6b7d47ad917881c33b1b2382446bb9b17f3b6\",\"generationSeq\":1,\"observed\":{\"documentCount\":1,\"documentFingerprint\":\"f12dea19b30d75a0c2f8fd2c5a815a142b6e070eb973c37fc10d48d0dc173d2a\",\"ftsCount\":1,\"ftsFingerprint\":\"b623126a0c8923e3d13a98467947ef11d9ec7e37a725fdea6f6147f53a66e9c3\",\"matches\":true},\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"probes\":[{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T07:20:51.203Z\",\"responseHash\":\"b7cf1963ac518afba5af145d377dc7747d73811fda47965516366c4a3838a4b0\",\"status\":200,\"url\":\"https://fixture.example/api/articles/france-fr-conseil-constitutionnel-2026-10-10-decision-n-2026-912-qpc-du-10-octobre-2026-1d7526?textLimit=4000\"},{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T07:20:51.232Z\",\"responseHash\":\"45616182d5ef19fe7ddde232061a5d789e86222d723f361a0a287094a2f94f90\",\"status\":200,\"url\":\"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none\"}],\"projectionInputHash\":\"8a3874cef6d7182566fa68cd25e61f8b9c568f5ada699d163d4f211606165465\",\"publicationId\":\"974e8295-e8fa-4d52-9180-fdf843a8ad21\",\"publicationRevision\":1,\"result\":\"completed_verified\",\"schema\":\"worldcons.verification.v1\",\"scope\":\"single_article\",\"sourceEvidenceRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json\",\"verificationFence\":1,\"verifiedAt\":\"2026-10-11T07:20:51.235Z\",\"versionId\":\"2a5cba46-6578-56c2-aa60-8d5ca54900b5\",\"versionRevision\":1}","verified_at":"2026-10-11T07:20:51.235Z"},"stages":[{"id":"961810e0-8438-4f3c-8766-aa323872a085","stage":"discovery","status":"succeeded","articleId":"native-discovery:fr-conseil-constitutionnel:1:default","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery-request/fr-conseil-constitutionnel/7de48f4c1f26460f14d2500e94107453c739d77d13e49b639da240c859815383.json"},{"id":"67440f60-78c2-44ad-93ea-ed56b0a33f30","stage":"crawl","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery/fr-conseil-constitutionnel/1d7526952a00210059c3858e401fb5cbf9e17841186e363cdd33d1b5dbcfb67e.json"},{"id":"e0390ac9-1d63-40c1-8af1-b1e8fa038eac","stage":"normalize","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json"},{"id":"78d226c1-a183-489c-a3e0-f126dbf0cd6b","stage":"translate","status":"succeeded","articleId":"6d0df164-6da0-4b7e-be15-775074ad2197","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json"},{"id":"8a1413c9-34ed-4da6-915b-957f8155148f","stage":"public-judgment","status":"succeeded","articleId":"6d0df164-6da0-4b7e-be15-775074ad2197","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/7b3c94ac4d8d5d70dac8045b0cbfde4d4c6a7775e2010faa5e5ebe6817c852f2.json"},{"id":"a66c28c0-d1c5-46b7-a401-228903fbf404","stage":"publish","status":"succeeded","articleId":"6d0df164-6da0-4b7e-be15-775074ad2197","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-approval/6d0df164-6da0-4b7e-be15-775074ad2197/178078767d4b5551857d90039b1fbd4b6c9ca1397bb1a5cbb8c4cfcb0f1f0e10.json"},{"id":"e7f96c37-7995-4e41-826c-f78996e47f70","stage":"search","status":"succeeded","articleId":"6d0df164-6da0-4b7e-be15-775074ad2197","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-publication/84ce21faa9cd82bc70b370ce46a6b7d47ad917881c33b1b2382446bb9b17f3b6.json"}]}
+✔ M4 new synthetic official FR case flows Discovery-to-Search unattended through real staged handlers and completion ledger (303.5747ms)
+✔ M4 cohort is default off and malformed enabled configuration cannot fall through to legacy publication (2.4043ms)
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (253.3852ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (675.2383ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (1140.3412ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"b1af9f6b-0475-442e-a82d-87eec3ea039e","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (229.7121ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (179.1796ms)
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (166.4522ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (72.6944ms)
+✔ M4 missing approval proof stays fail-closed (34.0978ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (55.3729ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (275.1063ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (338.545ms)
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (224.8949ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (56.7562ms)
+{"event":"e2e_search_verification","status":"retry"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (70.6737ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (64.0265ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23342.0797
+
+> worldcons@0.1.0 test:e2e-p0-m5 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m5-core-writers.test.ts
+
+✔ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (50.769ms)
+✔ M5 Core: human withdrawal without new approval creates generation and durable remove outbox (27.6779ms)
+✔ M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollback protection (10594.7352ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11112.7211
+
+> worldcons@0.1.0 test:m11 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m11-site-events-write-authority.test.ts tests/m11-admin-audit-write-authority.test.ts tests/m11-admin-article-edit-write-authority.test.ts tests/m11-ops-heartbeat-write-boundary.test.ts tests/m11-ops-heartbeat-read-authority.test.ts tests/m11-ops-heartbeat-read-parity.test.ts tests/m11-admin-ops-events-write-authority.test.ts tests/m11-admin-ops-events-read-parity.test.ts tests/m11-ingest-run-write-authority.test.ts tests/m11-core-publication-write-authority.test.ts
+
+✔ M13 admin article edit authority defaults to D1 and supports bounded canary mode (2.1541ms)
+✔ M11.2 d1-canary only selects the explicit canary article slug (0.2948ms)
+✔ M11.2 D1 article edit writer performs one parameterized insert (0.587ms)
+✔ M11.2 selected D1 article edit authority fails closed when the write binding is unavailable (0.6225ms)
+✔ M13 admin audit authority defaults to D1 and supports bounded canary mode (1.742ms)
+✔ M11.1 d1-canary only selects the explicit canary action plus marker (0.3186ms)
+✔ M11.1 D1 audit writer performs one parameterized insert (0.5303ms)
+✔ M11.1 selected D1 audit authority fails closed when the write binding is unavailable (0.5595ms)
+✔ M11.4R list parity holds for identical ordered projections (2.3884ms)
+✔ M11.4R list parity is order-aware and reports a reordering (0.386ms)
+✔ M11.4R list parity compares detail as canonical JSON regardless of key order (0.1941ms)
+✔ M11.4R list parity compares timestamps by instant, not byte representation (0.1644ms)
+✔ M11.4R list parity reports a changed field, a missing row and a differing length (0.2627ms)
+✔ M11.4R canonical JSON sorts object keys recursively and keeps array order (0.1862ms)
+✔ M11.4R direct D1 list read is one parameterized descending projection (2.0342ms)
+✔ M11.4R direct D1 list read fails closed on an invalid limit or a non-object row (0.8246ms)
+✔ M11.4R admin ops read parity remains a manual bearer-authenticated script (1.3006ms)
+✔ M11.4R admin_ops_events read-parity probe script never writes an admin event or heartbeat (1.5416ms)
+✔ M13 admin ops events write authority defaults to D1 and supports bounded canary mode (1.9751ms)
+✔ M13 admin ops events read authority defaults to D1 (0.3234ms)
+✔ M11.4 canary marker resolver accepts only a bounded true/1 (0.157ms)
+✔ M11.4 d1-canary boundary selector only accepts the exact detail marker (0.1727ms)
+✔ M11.4 runtime authority slot wins over the process environment (0.3659ms)
+✔ M11.4 boundary validation mirrors the Postgres admin_ops_events schema (0.7774ms)
+✔ M11.4 D1 insert is one parameterized statement and fails closed (0.9762ms)
+✔ M11.4 D1 dedupe read is one bounded row and list is one parameterized bounded query (0.7891ms)
+✔ M11.4 D1 prune is one parameterized cutoff delete and fails closed (0.4531ms)
+✔ M11.4 read row parsing rejects unrepresentable rows and drops nothing silently (0.3601ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+{"event":"worldcons_ops_write_admin_ops_event_error","authority":"d1","error":"d1 down"}
+✔ M11.4 boundary rejects unauthenticated admin ops events and never downgrades D1 failures (66.7541ms)
+{"event":"worldcons_ops_write_admin_ops_event_list_error","authority":"d1","error":"admin_ops_events_boundary.d1_binding_unavailable"}
+✔ M11.4 boundary list read is fail-closed and independent from the write authority (2.0463ms)
+{"event":"worldcons_ops_write_admin_ops_event_latest_error","authority":"d1","error":"admin_ops_events_boundary.d1_binding_unavailable"}
+{"event":"worldcons_ops_write_admin_ops_event_prune_error","authority":"d1","error":"admin_ops_events_boundary.d1_binding_unavailable"}
+✔ M11.4 boundary dedupe read and prune fail closed when the D1 authority binding is missing (2.8829ms)
+✔ M13 admin ops Node client defaults to D1 and fails closed without a boundary (2.7661ms)
+✔ M13 Node list client defaults to D1 and fails closed when the boundary is not configured (1.2622ms)
+✔ M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails closed without a binding (19.8862ms)
+✔ M13 watchdog source uses Cloudflare D1/boundary only (0.5634ms)
+✔ M13 admin ops events authority is Cloudflare-owned and GitHub has no watchdog workflow (0.4774ms)
+✔ M13 root config and env example persist the permanent d1 admin ops events authority (3.7108ms)
+✔ M13 core authority defaults to D1 and d1-canary remains explicit (2.2795ms)
+✔ M11-C canary marker is bounded to true/1 or exact GitHub run id (0.2836ms)
+✔ M11-C lifecycle transition is a D1 batch with optimistic revision and append-only event (3.6686ms)
+✔ M11-C publication transition batches publication/history/audit/outbox/request atomically (20.1237ms)
+✔ M11-C publication capture uses the v4 global head and advances both heads (6.4192ms)
+✔ M13 root deployment persists the permanent d1 core write authority for worldcons_core (1.1902ms)
+✔ M13 ingestion_runs authority defaults to D1 and keeps bounded canary mode (1.4415ms)
+✔ M11-B canary marker is bounded to true/1 or the exact GitHub run id (0.2407ms)
+✔ M11-B parser rejects malformed mutations (1.5819ms)
+✔ M11-B D1 mutation uses bound statements for start, finish, summary and stale recovery (0.6857ms)
+✔ M13 Node ingestion client never falls back to Supabase and fails closed without the D1 boundary (0.8987ms)
+✔ M11-B deployment owns the ingest authority in Cloudflare and GitHub has no writers (0.5981ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"read","bearerConfigured":true}
+✔ M13 heartbeat read authority defaults to D1 (2.1329ms)
+✔ M11.3R the runtime read-authority slot wins over the process environment (0.3022ms)
+✔ M11.3R heartbeat read row maps to the Supabase record shape and rejects bad rows (0.3498ms)
+✔ M11.3R D1 read is one parameterized IN query over the authored keys with no detail column (0.6618ms)
+✔ M11.3R D1 read fails closed on a failed envelope or non-object row (0.9652ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"read","bearerConfigured":true}
+✔ M11.3R boundary read endpoint requires the bearer and exposes no unauth surface (48.8496ms)
+{"event":"worldcons_ops_write_heartbeat_read_error","authority":"d1","error":"ops_heartbeat_boundary.d1_binding_unavailable"}
+{"event":"worldcons_ops_write_heartbeat_read_error","authority":"d1","error":"d1 down"}
+{"event":"worldcons_ops_write_heartbeat_read_error","authority":"d1","error":"ops_heartbeat_boundary.d1_binding_unavailable"}
+✔ M13 boundary read defaults to D1 and fails closed without a readable binding (10.4202ms)
+✔ M13 Node read client defaults to D1 and fails closed when the boundary is missing (4.2974ms)
+✔ M13 getWorkflowHeartbeats defaults to D1 and fails closed without a configured boundary (3.3211ms)
+✔ M11.3R Cloudflare runtime reads the D1 binding directly and never calls the boundary (3.8223ms)
+✔ M13 root Worker persists the permanent d1 read authority (0.5927ms)
+✔ M11.3R parity holds for identical five-key sets regardless of order (1.878ms)
+✔ M11.3R parity compares timestamps by instant, not byte representation (0.2262ms)
+✔ M11.3R parity reports a missing key, a changed field and a changed run id (0.3442ms)
+✔ M11.3R direct D1 read is one parameterized IN query over the authored keys (0.7096ms)
+✔ M11.3R direct D1 read fails closed on a non-object row (2.4285ms)
+✔ M11.3R database id resolves worldcons_ops by name, not position (0.6313ms)
+✔ M11.3R read-only parity remains a manual script and GitHub has no executor (11.6992ms)
+✔ M11.3R read-parity probe script never writes a heartbeat (3.0406ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+✔ M13 ops heartbeat authority defaults to D1 and supports bounded canary mode (2.9375ms)
+✔ M11.3 d1-canary only selects the explicit canary run id (0.5444ms)
+✔ M11.3 d1-canary also selects the explicit real-run detail marker (0.3971ms)
+✔ M11.3 canary marker resolver accepts only a bounded true/1 or exact run id (0.2311ms)
+✔ M11.3 boundary validation mirrors the Postgres heartbeat RPC gates (1.0143ms)
+✔ M11.3 D1 heartbeat upsert is one parameterized statement with RPC-equivalent semantics (0.5297ms)
+✔ M11.3 D1 heartbeat upsert fails closed on unexpected changes (0.6816ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":false}
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+✔ M11.3 boundary rejects unauthenticated heartbeat writes (53.7511ms)
+✔ M13 standalone ops-write deployment config is retired (0.6565ms)
+✔ M13 shared ops-write handler has no Supabase bridge (0.7243ms)
+✔ M11.3 boundary health endpoint is bearer-protected and exposes no unauth surface (3.7613ms)
+{"event":"worldcons_ops_write_heartbeat_error","authority":"d1","error":"d1 down"}
+✔ M11.3 boundary routes d1 authority to D1 and never downgrades on failure (3.5091ms)
+✔ M13 Node boundary client defaults to D1 and fails closed when the boundary is missing (2.3109ms)
+✔ M11.3 Node heartbeat writer uses the boundary and skips the Supabase RPC when enabled (4.8932ms)
+✔ M11.3 Node heartbeat writer emits the bounded canary marker only in a canary window (3.4151ms)
+✔ M11 public ops boundary is bearer-only and GitHub has no operational workflows (0.5353ms)
+✔ M11.3 no committed source file contains a WORLDCONS_OPS_WRITE_TOKEN assignment (1.298ms)
+✔ M13 site_events authority defaults to D1 and invalid values stay on D1 (1.8488ms)
+✔ M11 d1-canary authority is restricted to the explicit path and marker (0.2787ms)
+✔ M11 runtime D1 writer performs one bound insert and requires one changed row (0.7424ms)
+✔ M11 selected D1 authority fails closed when the write binding is unavailable (0.6889ms)
+ℹ tests 89
+ℹ suites 0
+ℹ pass 89
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2561.4255
+
+> worldcons@0.1.0 test:search-rank-policy C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/search-rank-policy.test.ts
+
+✔ the committed manifest carries a stable corpus hash and reproduces the selected corpus (6.9507ms)
+✔ the corpus hash is order-independent (0.4034ms)
+✔ corpus selection is deterministic and category-complete (0.891ms)
+✔ v1/v2/v3 are archived invalid fixtures while v4 is the active frozen corpus (2.4036ms)
+✔ v4 preserves every v1/v2/v3 informational query unchanged (2.3603ms)
+✔ v4 preserves every v3 query, filter and category unchanged (0.4327ms)
+✔ v4 freezes authoritative exact-case and exact-title target sets (1.2094ms)
+✔ the manifest is content-free and carries only queries/ids/filters/categories (0.7082ms)
+✔ candidate validation rejects a category/invariant mismatch (0.7992ms)
+✔ aggregate metrics are macro means over the compareRankedIds evidence (0.7373ms)
+✔ exact-case and exact-title targets resolve deterministically against the local corpus (14.8977ms)
+✔ frozen strict targets validate against the local projection and fail closed on drift (1.3123ms)
+✔ a non-unique exact title passes for any frozen target-set member and fails outside the set (1.5744ms)
+✔ a multi-id exact-case target passes for any frozen set member and fails outside the set (2.5178ms)
+✔ the frozen preflight must reproduce exactly the frozen target set and fails on set drift (0.577ms)
+✔ an unresolvable strict target is not_applicable, never a silent pass (0.2001ms)
+✔ a strict exact-case/exact-title failure fails the policy (2.0221ms)
+✔ exact-case outcomes are excluded from the FTS aggregate even when metrics are present (1.043ms)
+✔ the production oracle top id must also match a strict target when the oracle window is non-empty (0.2283ms)
+✔ insufficient_evidence when no independently pre-registered threshold exists (0.405ms)
+✔ a pre-registered threshold can make the policy pass or fail (0.3282ms)
+✔ no evaluable strict case is insufficient_evidence with an explicit blocker (0.1742ms)
+✔ the assembled evidence report and markdown never leak a query or document text (0.8824ms)
+✔ the FTS source pager query is SELECT-only, cursor-stable and embedding-free (0.6205ms)
+✔ the FTS source pager rejects an out-of-range page size or empty cursor (0.1966ms)
+✔ FTS source page combination is deterministic, order-independent and de-duplicated (0.8391ms)
+✔ projection scope validation requires an exact production/local id set (0.4043ms)
+✔ a production window below the projection count fails with scope-too-small (0.6102ms)
+✔ the report carries a content-free source scope summary and never leaks ids (0.3818ms)
+✔ the FTS parity harness is read-only, full-scope paged and wires the expected scripts (0.401ms)
+✔ the FTS parity harness routes exact-case through the ranked-page authority, not the fulltext RPC (0.2322ms)
+✔ the FTS source pager is operator-only, selector-only and never writes (0.4938ms)
+✔ the rank-policy library is runtime-neutral with no node builtin or network code (13.2639ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 780.889
+
+> worldcons@0.1.0 test:plugin C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts
+
+✔ homepage and footer introduce the canonical ChatGPT plugin guide (2.8945ms)
+✔ guide explains direct no-auth installation without claiming OpenAI listing (1.9819ms)
+{"event":"worldcons_plugin_mcp_call","requestId":"28bb1b84-4a63-46ba-97b1-8c62b42416a9","toolName":"fetch","status":"ok","durationMs":1}
+{"event":"worldcons_plugin_mcp_call","requestId":"315c1dc8-f93f-4e28-a588-7a0ee3909a83","toolName":"fetch","status":"ok","durationMs":1}
+{"event":"worldcons_plugin_mcp_call","requestId":"bb2bf663-65e8-4ab8-95a5-9eec4cb10f2f","toolName":"fetch_source_text","status":"ok","durationMs":1}
+{"event":"worldcons_plugin_mcp_call","requestId":"97ebe900-12e9-4af7-b1f9-2050c6ecbe3c","toolName":"search","status":"ok","durationMs":0}
+{"event":"worldcons_plugin_mcp_call","requestId":"de66ead8-e3aa-443b-81f8-d17f4e4c66c0","toolName":"fetch","status":"ok","durationMs":0}
+{"event":"worldcons_plugin_mcp_call","requestId":"cff0e3fe-b404-4bc2-887c-a0d2873f4d50","toolName":"fetch","status":"ok","durationMs":0}
+✔ Vercel-integrated case service exposes bounded public evidence and canonical citation URLs (58.2475ms)
+✔ France search, fetch, and source-text responses expose one sealed Korean DILA attribution contract (10.5588ms)
+✔ expired Gate 4 ranking cursors tell ChatGPT to restart without mutating the cursor (0.9717ms)
+✔ ChatGPT can initialize the Vercel MCP endpoint, scan tools, and call search (12.7333ms)
+✔ source-only and stale fetches disclose status without emitting an AI-summary heading or body (3.3719ms)
+✔ light enrichment is labeled as metadata-based guidance rather than a full case summary (3.03ms)
+✔ plugin MCP is a Vercel route with five public read-only tools and no separate edge runtime (2.7318ms)
+✔ ChatGPT plugin package keeps the canonical identity and no-auth endpoint (4.3987ms)
+✔ plugin assets, research skill, and repo marketplace entry are complete (3.1763ms)
+✔ plugin research policy is cursor-aware and fail-closed for unavailable or stale summaries (1.9006ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7550.278
+
+> worldcons@0.1.0 plugin:validate C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx scripts/validate-chatgpt-plugin.ts
+
+{"status":"ok","plugin":"worldcons-constitutional-cases","displayName":"헌법판례요약시스템","endpoint":"https://worldcons.cclib.workers.dev/api/mcp","authentication":"none"}
+
+> worldcons@0.1.0 build C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next build
+
+▲ Next.js 16.3.5 (Turbopack)
+✓ Running next.config.ts took 51ms
+
+  Creating an optimized production build ...
+
+-----
+FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\jaeth\AppData\Local\Temp\next-panic-50c7e3bca92544094b81224f59effe07.log.
+
+To help make Turbopack better, report this error by clicking here: https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20Symlink%20%5Bproject%5D%2Fnode_modules%20is%20invalid%2C%20it%20points%20out%20of%20the%20filesystem%20root&body=Turbopack%20version%3A%20%60ca2c75eb%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0ASymlink%20%5Bproject%5D%2Fnode_modules%20is%20invalid%2C%20it%20points%20out%20of%20the%20filesystem%20root%0A%0ADebug%20info%3A%0A-%20Execution%20of%20get_all_written_entrypoints_with_issues_operation%20failed%0A-%20Execution%20of%20EntrypointsOperation%3A%3Anew%20failed%0A-%20Execution%20of%20all_entrypoints_write_to_disk_operation%20failed%0A-%20Execution%20of%20output_assets_operation%20failed%0A-%20Execution%20of%20Project%3A%3Aget_all_endpoint_groups_with_app_route_filter%20failed%0A-%20Execution%20of%20Project%3A%3Aentrypoints_with_app_route_filter%20failed%0A-%20Execution%20of%20AppProject%3A%3Aroutes_with_filter%20failed%0A-%20Execution%20of%20directory_tree_to_entrypoints_internal%20failed%0A-%20Execution%20of%20directory_tree_to_loader_tree%20failed%0A-%20Execution%20of%20try_get_next_package%20failed%0A-%20Execution%20of%20resolve%20failed%0A-%20Execution%20of%20resolve_internal%20failed%0A-%20Execution%20of%20find_package%20failed%0A-%20Symlink%20%5Bproject%5D%2Fnode_modules%20is%20invalid%2C%20it%20points%20out%20of%20the%20filesystem%20root%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+-----
+
+
+> Build error occurred
+Error [TurbopackInternalError]: Symlink [project]/node_modules is invalid, it points out of the filesystem root
+
+Debug info:
+- Execution of get_all_written_entrypoints_with_issues_operation failed
+- Execution of EntrypointsOperation::new failed
+- Execution of all_entrypoints_write_to_disk_operation failed
+- Execution of output_assets_operation failed
+- Execution of Project::get_all_endpoint_groups_with_app_route_filter failed
+- Execution of Project::entrypoints_with_app_route_filter failed
+- Execution of AppProject::routes_with_filter failed
+- Execution of directory_tree_to_entrypoints_internal failed
+- Execution of directory_tree_to_loader_tree failed
+- Execution of try_get_next_package failed
+- Execution of resolve failed
+- Execution of resolve_internal failed
+- Execution of find_package failed
+- Symlink [project]/node_modules is invalid, it points out of the filesystem root
+    at ignore-listed frames {
+  type: 'TurbopackInternalError',
+  location: undefined
+}
+ ELIFECYCLE  Command failed with exit code 1.

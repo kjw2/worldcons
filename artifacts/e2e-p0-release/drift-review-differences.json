@@ -1,0 +1,620 @@
+[
+  {
+    "articleId": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+    "title": "Décision n° 2026-1223 QPC du 1er octobre 2026\nM. Magomed S. [Composition du tribunal pour enfants II]\nConformité",
+    "url": "https://www.conseil-constitutionnel.fr/decision/2026/20261223QPC.htm",
+    "currentTitle": "프랑스 헌법위원회 결정 제2026-1223호 QPC: 소년법원 구성에 관한 합헌 결정",
+    "priorTitle": "프랑스 헌법위원회 2026년 10월 1일 결정 제2026-1223 QPC (마고메드 S. - 소년법원 구성 II)",
+    "textDifference": {
+      "offset": 486,
+      "prior": "Version PDF de la décision Pdf 135.4 Ko picto Lien stable de la décision \nVidéo de la séance\nLire la vidéo - Affaire n°2026-1223 QPC \nAffaire n°2026-1223 QPC\nVideo Url\nLoad video Affaire n° 2026-1223 QPC \nCode de l'organisation judiciaire | Code de la justice pénale des mineurs\nDispositions des articles L.251-3 du code de l'organisation judiciaire et L. 231-4 du code de la justice pénale des mineurs\nLE CONSEIL CONSTITUTIONNEL A ÉTÉ SAISI le 1 er juillet 2026 par la Cour de cassation (chambre criminelle, arrêt n° 1052 du 24 juin 2026), dans les conditions prévues à l'article 61-1 de la Constitu",
+      "current": "La décision en bref \npicto Version PDF de la décision Pdf 135.4 Ko picto Lien stable de la décision \nVidéo de la séance\nLire la vidéo - Affaire n°2026-1223 QPC \nAffaire n°2026-1223 QPC\nVideo Url\nLoad video Affaire n° 2026-1223 QPC \nCode de l'organisation judiciaire | Code de la justice pénale des mineurs\nDispositions des articles L.251-3 du code de l'organisation judiciaire et L. 231-4 du code de la justice pénale des mineurs\nLE CONSEIL CONSTITUTIONNEL A ÉTÉ SAISI le 1 er juillet 2026 par la Cour de cassation (chambre criminelle, arrêt n° 1052 du 24 juin 2026), dans les conditions prévues à l'"
+    },
+    "summaryCurrent": {
+      "koreanTitle": "프랑스 헌법위원회 결정 제2026-1223호 QPC: 소년법원 구성에 관한 합헌 결정",
+      "originalTitle": "Décision n° 2026-1223 QPC du 1er octobre 2026 - M. Magomed S. [Composition du tribunal pour enfants II]",
+      "summary": {
+        "coreSummary": [
+          "프랑스 헌법위원회는 소년판사가 피해 아동에 대한 교육적 지원 절차를 담당했더라도 해당 아동이 피해자인 형사 사건의 소년법원 재판장을 맡는 것이 법원의 공정성 원칙에 위배되지 않는다고 결정하였습니다.",
+          "헌법위원회는 교육적 지원 절차(민사)가 형사 범죄의 성립 여부나 피고인의 유죄 여부를 판단하는 것이 아니므로 재판관이 사전에 예단했다고 볼 수 없다고 판단하였습니다.",
+          "만약 판사가 교육적 지원 과정에서 예단을 드러낸 예외적인 경우에는 기피 신청이나 자발적 회피 등 다른 법적 구제 수단이 존재하므로 해당 조항은 합헌입니다."
+        ],
+        "referencedProvisions": [
+          {
+            "jurisdiction": "France",
+            "lawName": "프랑스 사법조직법 (Code de l'organisation judiciaire)",
+            "article": "L. 251-3",
+            "description": "소년법원의 구성 및 수사나 기소를 담당한 소년판사의 재판장 취임 금지 규정",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "France",
+            "lawName": "프랑스 소년형사사법전 (Code de la justice pénale des mineurs)",
+            "article": "L. 231-4",
+            "description": "소년법원 심리 시 판사 및 배석판사의 구성 규정",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "France",
+            "lawName": "프랑스 1789년 인간과 시민의 권리선언 (Déclaration des droits de l'homme et du citoyen de 1789)",
+            "article": "제16조",
+            "description": "권리의 보장과 권력 분립을 규정하며 사법의 공정성 원칙의 헌법적 근거가 됨",
+            "confidence": "high"
+          }
+        ],
+        "background": "본 사건은 소년법원 판사가 형사 사건의 피해자인 미성년자에 대해 사전에 교육적 지원(assistance éducative) 조치를 취한 적이 있는 경우, 해당 판사가 그 형사 사건을 심리하는 소년법원의 재판장을 맡을 수 있는지 여부와 관련이 있습니다. 청구인은 이러한 구조가 법원의 공정성 원칙과 무기대등의 원칙, 방어권을 침해한다고 주장하며 위헌법률심판(QPC)을 청구했습니다.",
+        "caseStructure": "파기법원(Cour de cassation)은 2026년 6월 24일 청구인 마고메드 S.의 신청을 받아들여 사법조직법 제L.251-3조 및 소년형사사법전 제L.231-4조의 위헌 여부를 프랑스 헌법위원회에 이송하였습니다. 프랑스 헌법위원회는 2026년 10월 1일 해당 조항들에 대해 합헌 결정을 내렸습니다.",
+        "implications": "이번 결정은 소년판사의 이중적 역할(민사적 보호 조치와 형사 재판)이 사법의 공정성 원칙과 조화를 이룰 수 있는 한계를 명확히 하였습니다. 헌법위원회는 교육적 지원 절차가 본질적으로 형사적 유무죄 판단을 수반하지 않으므로, 동일한 판사가 형사 재판을 주재하더라도 예단이 개입되었다고 단정할 수 없음을 확인하여 소년사법 제도의 효율성과 전문성을 옹호하였습니다.",
+        "practicalNotes": "실무적으로 소년판사가 교육적 지원 과정에서 한계를 넘어 피고인의 유무죄나 범죄 사실에 대해 명시적인 의견을 표명한 경우에는, 사법조직법 제L.111-7조에 따른 자발적 회피나 형사소송법 제668조에 따른 기피 신청을 통해 개별적으로 구제받아야 합니다."
+      },
+      "entities": [
+        {
+          "name": "프랑스 헌법위원회",
+          "type": "court",
+          "normalizedName": "프랑스 헌법위원회"
+        },
+        {
+          "name": "파기법원",
+          "type": "court",
+          "normalizedName": "Cour de cassation"
+        },
+        {
+          "name": "마고메드 S.",
+          "type": "party",
+          "normalizedName": "Magomed S."
+        },
+        {
+          "name": "사법조직법",
+          "type": "law",
+          "normalizedName": "Code de l'organisation judiciaire"
+        },
+        {
+          "name": "소년형사사법전",
+          "type": "law",
+          "normalizedName": "Code de la justice pénale des mineurs"
+        },
+        {
+          "name": "1789년 인간과 시민의 권리선언",
+          "type": "law",
+          "normalizedName": "Déclaration des droits de l'homme et du citoyen de 1789"
+        },
+        {
+          "name": "공정성 원칙",
+          "type": "right",
+          "normalizedName": "Impartiality"
+        },
+        {
+          "name": "우선적 합헌성 제기",
+          "type": "procedure",
+          "normalizedName": "Question prioritaire de constitutionnalité"
+        }
+      ],
+      "tags": [
+        "소년사법",
+        "법원공정성",
+        "소년판사",
+        "교육적지원",
+        "합헌결정"
+      ],
+      "categories": [
+        "Constitutional Law",
+        "Criminal Procedure",
+        "Juvenile Justice"
+      ],
+      "riskFlags": [],
+      "aiMetadata": {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash",
+        "generatedAt": "2026-10-07T21:32:16.321Z"
+      }
+    },
+    "summaryPrior": {
+      "koreanTitle": "프랑스 헌법위원회 2026년 10월 1일 결정 제2026-1223 QPC (마고메드 S. - 소년법원 구성 II)",
+      "originalTitle": "Décision n° 2026-1223 QPC du 1er octobre 2026 M. Magomed S. [Composition du tribunal pour enfants II]",
+      "summary": {
+        "coreSummary": [
+          "프랑스 헌법위원회는 소년법원 판사가 동일 미성년자에 대해 교육조력 절차를 담당했다는 사정만으로 동 판사가 해당 미성년자 피해 사건의 소년법원 재판장을 맡는 것이 재판의 공정성 원칙에 반하지 않는다고 판단했습니다.",
+          "사법조직법 제L. 251-3조 제2항 및 미성년자 형사사법법 제L. 231-4조는 헌법에 합치한다고 결정되었습니다.",
+          "교육조력 절차에서의 판단은 형사 범죄의 성립이나 책임 여부를 심판하는 것이 아니므로 예단이 형성된다고 볼 수 없습니다."
+        ],
+        "referencedProvisions": [
+          {
+            "jurisdiction": "France",
+            "lawName": "프랑스 사법조직법",
+            "article": "제L. 251-3조",
+            "description": "소년법원의 구성과 소년법원 판사의 제척 사유를 규정함",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "France",
+            "lawName": "미성년자 형사사법법",
+            "article": "제L. 231-4조",
+            "description": "소년법원의 구성 및 배심원 참여에 관한 규정",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "France",
+            "lawName": "인권과 시민의 권리 선언",
+            "article": "제16조",
+            "description": "재판의 공정성 및 권리보장 원칙",
+            "confidence": "high"
+          }
+        ],
+        "background": "마고메드 S. 측은 소년법원 판사가 범죄 피해를 입은 미성년자에 대한 교육조력(assistance éducative) 절차를 선행하여 담당한 경우, 해당 판사가 형사 재판장으로 참여할 때 미성년자의 상황을 너무 잘 알아 공정성을 해치고 무기평등의 원칙 및 방어권을 침해한다고 주장하며 우선적 헌법소원(QPC)을 제기했습니다.",
+        "caseStructure": "파기원(형사부)이 2026년 6월 24일 결정으로 헌법위원회에 QPC를 회부하였고, 헌법위원회는 2026년 9월 22일 공판을 거쳐 2026년 10월 1일 합헌 결정을 선고했습니다.",
+        "implications": "소년 보호를 위한 민사적·복지적 성격의 교육조력 절차와 형사적 책임추궁 절차가 동일한 판사에 의해 다뤄지더라도, 직무 성격의 차이로 인해 공정성 원칙에 위배되지 않음을 확인하여 소년사법 시스템의 실무적 운영 안정을 도모했습니다.",
+        "practicalNotes": "재판관이 교육조력 업무 중 범죄의 실체나 책임에 대해 이미 의견을 표명하는 등 직무 범위를 초과한 경우에는 사법조직법 제L. 111-7조에 따른 회피나 형사소송법 제668조에 따른 제척·기피 절차를 활용할 수 있습니다."
+      },
+      "entities": [
+        {
+          "name": "프랑스 헌법위원회",
+          "type": "institution",
+          "normalizedName": "프랑스 헌법위원회"
+        },
+        {
+          "name": "Cour de cassation",
+          "type": "court",
+          "normalizedName": "프랑스 파기원"
+        },
+        {
+          "name": "Magomed S.",
+          "type": "party",
+          "normalizedName": "마고메드 S."
+        },
+        {
+          "name": "Code de l'organisation judiciaire",
+          "type": "law",
+          "normalizedName": "프랑스 사법조직법"
+        },
+        {
+          "name": "Code de la justice pénale des mineurs",
+          "type": "law",
+          "normalizedName": "미성년자 형사사법법"
+        },
+        {
+          "name": "Code civil",
+          "type": "law",
+          "normalizedName": "프랑스 민법"
+        },
+        {
+          "name": "Déclaration des droits de l'homme et du citoyen de 1789",
+          "type": "law",
+          "normalizedName": "인권과 시민의 권리 선언"
+        },
+        {
+          "name": "impartialité",
+          "type": "doctrine",
+          "normalizedName": "재판의 공정성 원칙"
+        },
+        {
+          "name": "question prioritaire de constitutionnalité",
+          "type": "procedure",
+          "normalizedName": "우선적 헌법소원"
+        },
+        {
+          "name": "tribunal pour enfants",
+          "type": "institution",
+          "normalizedName": "소년법원"
+        }
+      ],
+      "tags": [
+        "QPC",
+        "소년법원",
+        "공정성원칙",
+        "교육조력",
+        "사법조직법",
+        "미성년자형사사법법"
+      ],
+      "categories": [
+        "헌법재판",
+        "형사소송",
+        "소년사법"
+      ],
+      "riskFlags": [],
+      "aiMetadata": {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "generatedAt": "2026-10-05T21:30:28.547Z"
+      }
+    }
+  },
+  {
+    "articleId": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+    "title": "AUTO 43/2026, de 7 de julio de 2026",
+    "url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32126",
+    "currentTitle": "스페인 헌법재판소, 헌법재판소 재판관 갱신 절차와 관련된 두 건의 헌법소원 병합 결정에 대한 이의신청 기각 결정",
+    "priorTitle": "스페인 헌법재판소, 재판관 갱신 절차 관련 헌법소원 사건들의 병합 및 주심 재판관 배정 결정에 대한 이의신청 기각",
+    "textDifference": {
+      "offset": 9794,
+      "prior": "v",
+      "current": ""
+    },
+    "summaryCurrent": {
+      "aiMetadata": {
+        "generatedAt": "2026-09-10T03:35:47.122Z",
+        "model": "gemini-3.5-flash-lite",
+        "provider": "gemini"
+      },
+      "categories": [
+        "헌법재판소 결정",
+        "소송절차"
+      ],
+      "entities": [
+        {
+          "name": "Tribunal Constitucional de España",
+          "normalizedName": "Tribunal Constitucional de Espana",
+          "type": "court"
+        },
+        {
+          "name": "Jesús Antonio Álvarez Santos",
+          "normalizedName": "Jesus Antonio Alvarez Santos",
+          "type": "party"
+        },
+        {
+          "name": "Congreso de los Diputados",
+          "normalizedName": "Congreso de los Diputados",
+          "type": "institution"
+        },
+        {
+          "name": "Constitución española",
+          "normalizedName": "Constitucion espanola",
+          "type": "law"
+        },
+        {
+          "name": "Ley Orgánica del Tribunal Constitucional",
+          "normalizedName": "Ley Organica del Tribunal Constitucional",
+          "type": "law"
+        }
+      ],
+      "koreanTitle": "스페인 헌법재판소, 헌법재판소 재판관 갱신 절차와 관련된 두 건의 헌법소원 병합 결정에 대한 이의신청 기각 결정",
+      "originalTitle": "AUTO 43/2026, de 7 de julio de 2026",
+      "riskFlags": [],
+      "summary": {
+        "background": "신청인 헤수스 안토니오 알바레스 산토스는 코로나19 팬데믹 시기인 2021년 11월 국회의 헌법재판소 재판관 갱신을 위한 원격 투표 절차 정보와 헌법재판소 플레넘의 재판관 임명 요건 검증 절차 정보에 대한 정보 공개 청구가 거부되자, 각각 행정소송을 거쳐 헌법소원 제4095-2023호 및 제208-2024호를 제기하였다. 헌법재판소 제2부 대통령은 두 사건이 동일한 프로세스에서 비롯된 객관적 관련성이 있다고 보아 선행 사건의 주심 재판관에게 두 사건의 심리를 병합하는 결정을 내렸고, 신청인은 이에 반발하여 이의신청(수플리카)을 제기하였다.",
+        "caseStructure": "본 사안은 신청인이 헌법재판소 제2부 대통령의 사건 병합 결정에 대해 제기한 이의신청(수플리카) 사건이다. 헌법재판소는 신청인의 이의신청을 비록 법정 용어상 형식의 한계는 있으나 실질적 성격에 비추어 수플리카로 적법하게 접수하였으며, 사건 병합의 근거가 된 플레넘 결정의 공표 필요성 여부와 두 헌법소원 간의 실질적 관련성 유무를 심사하여 최종 기각 결정을 내렸다.",
+        "coreSummary": [
+          "스페인 헌법재판소 제2부는 동일한 절차에서 비롯된 두 건의 헌법소원(누적 사건)을 병합하고 주심 재판관을 일원화한 대통령의 2024년 1월 29자 병합 결정에 대한 신청인의 이의신청(수플리카)을 기각함.",
+          "신청인은 2013년 10월 23일 자 헌법재판소 플레넘(전원재판부) 결정의 미공개 및 두 사건 간의 관련성 부존재를 주장했으나, 재판소는 내부 사무분담 규칙의 공표 의무가 없으며 두 사건이 국회의 재판관 선출 및 헌법재판소의 자격 검증이라는 동일한 복합적 절차에 기인하므로 병합 요건을 충족한다고 판단함.",
+          "이에 따라 병합 결정에 대한 이의신청을 최종 기각함."
+        ],
+        "implications": "이번 결정은 헌법재판소 내부의 사무분담 및 사건 병합(누적) 권한의 적법성을 재확인하고, 동일한 배경을 가진 복합적 국가 기관 구성 절차(국회의 선출 및 헌법재판소의 자격 검증)에서 파생된 다수의 헌법소원이 상호 관련성이 인정될 경우 효율적인 심리를 위해 하나의 주심 재판관 아래 병합될 수 있음을 명백히 하였다.",
+        "practicalNotes": "스페인 헌법재판소의 내부 사무분담 규칙(예: 2013년 10월 23일 자 플레넘 결정)은 별도의 공식 관보 게재 의무가 없으며, 재판소의 내부적 운영 규칙으로서 효력을 가진다. 따라서 관련 소송 당사자는 병합 사유가 명시된 통지를 통해 충분한 방어권을 보장받는다면 규칙 미공개를 이유로 처분의 무효를 주장하기 어렵다.",
+        "referencedProvisions": [
+          {
+            "article": "art. 159",
+            "confidence": "high",
+            "description": "스페인 헌법재판소 재판관의 구성과 임명에 관한 규정",
+            "jurisdiction": "Spain",
+            "lawName": "Constitución española"
+          },
+          {
+            "article": "art. 10.1 i)",
+            "confidence": "high",
+            "description": "헌법재판소 플레넘의 재판관 임명 요건 검증 권한",
+            "jurisdiction": "Spain",
+            "lawName": "Ley Orgánica del Tribunal Constitucional"
+          },
+          {
+            "article": "art. 93.2",
+            "confidence": "high",
+            "description": "헌법재판소 법률상 수플리카(이의신청) 절차에 관한 규정",
+            "jurisdiction": "Spain",
+            "lawName": "Ley Orgánica del Tribunal Constitucional"
+          }
+        ]
+      },
+      "tags": [
+        "사건병합",
+        "이의신청",
+        "수플리카",
+        "사무분담",
+        "정보공개청구",
+        "재판관선출"
+      ]
+    },
+    "summaryPrior": {
+      "aiMetadata": {
+        "generatedAt": "2026-09-02T03:23:25.469Z",
+        "model": "gemini-3.7-flash",
+        "provider": "gemini"
+      },
+      "categories": [
+        "헌법소송",
+        "사법행정",
+        "헌법기관구성"
+      ],
+      "entities": [
+        {
+          "name": "Tribunal Constitucional de España",
+          "normalizedName": "스페인 헌법재판소",
+          "type": "court"
+        },
+        {
+          "name": "Congreso de los Diputados",
+          "normalizedName": "스페인 대의원(하원)",
+          "type": "institution"
+        },
+        {
+          "name": "Jesús Antonio Álvarez Santos",
+          "normalizedName": "헤수스 안토니오 알바레스 산토스",
+          "type": "party"
+        },
+        {
+          "name": "Laura Díez Bueso",
+          "normalizedName": "라우라 디에스 부에소",
+          "type": "party"
+        },
+        {
+          "name": "Ley Orgánica del Tribunal Constitucional",
+          "normalizedName": "스페인 헌법재판소법",
+          "type": "law"
+        },
+        {
+          "name": "recurso de amparo",
+          "normalizedName": "헌법소원",
+          "type": "procedure"
+        },
+        {
+          "name": "recurso de súplica",
+          "normalizedName": "이의신청",
+          "type": "procedure"
+        }
+      ],
+      "koreanTitle": "스페인 헌법재판소, 재판관 갱신 절차 관련 헌법소원 사건들의 병합 및 주심 재판관 배정 결정에 대한 이의신청 기각",
+      "originalTitle": "AUTO 43/2026, de 7 de julio de 2026",
+      "riskFlags": [],
+      "summary": {
+        "background": "청구인 헤수스 안토니오 알바레스 산토스는 2021년 11월 진행된 헌법재판관 갱신 절차와 관련하여 두 건의 헌법소원(amparo)을 제기했습니다. 첫 번째 사건(4095-2023)은 하원의 원격투표 방식 등에 관한 정보공개 거부에 대한 불복이었고, 두 번째 사건(208-2024)은 헌법재판소 전원재판부의 재판관 자격요건 검증 관련 정보공개 거부에 대한 불복이었습니다. 제2부장은 두 사건이 동일한 절차에 기반한다는 객관적 관련성을 인정하여 선행 사건의 주심 재판관에게 두 사건의 심리를 모두 배정하는 병합 결정을 내렸으며, 청구인은 이에 불복하여 이의신청을 제기했습니다.",
+        "caseStructure": "청구인은 병합 배정의 근거가 된 2013년 10월 23일 전원재판부 합의가 대외적으로 공포되지 않았고, 두 사건의 대상 기관 및 침해 주장 권리가 상이하여 객관적 관련성이 없다고 주장했습니다. 검찰(Ministerio Fiscal)은 결정의 절차적 중대성에 비추어 이의신청의 수리는 가능하나, 헌재법상 배분 규칙의 공포 의무가 없고 두 헌법소원이 하나의 헌법재판관 선출·임명 과정에서 파생된 것이므로 기각되어야 한다는 의견을 제출했습니다. 헌법재판소는 검찰의 견해를 수용하여 이의신청을 적법하게 심리한 후 본안 이유 없음으로 기각했습니다.",
+        "coreSummary": [
+          "스페인 헌법재판소 제2부는 동일 청구인이 제기한 두 건의 헌법소원 사건을 병합하여 선행 사건의 주심 재판관에게 배정한 재판부장 결정에 대한 이의신청(recurso de súplica)을 기각했습니다.",
+          "헌법재판소는 내부 사무분담 기준인 전원재판부 합의의 대외적 미공포가 법령 위반이나 방어권 침해에 해당하지 않는다고 판단했습니다.",
+          "두 사건이 각각 하원 전자투표 정보공개 및 헌법재판소 자격심사 정보공개와 관련된 것이라 하더라도, 실질적으로는 2021년 헌법재판관 갱신이라는 '동일한 일련의 절차'에서 비롯되었으므로 객관적 관련성에 따른 사건 병합 배정 요건을 충족한다고 보았습니다."
+        ],
+        "implications": "본 결정은 헌법재판소 내부의 사건 배분 및 병합 관련 처분에 대해서도 소송절차상의 중대한 효력이 있는 경우 비형식주의 원칙에 따라 이의신청(recurso de súplica)의 대상이 될 수 있음을 재확인했습니다. 또한 '동일한 절차'라는 병합 요건을 개별 행정처분이나 소송 단위에 국한하지 않고 헌법 및 헌재법에 따른 포괄적 국가기관 구성 절차 전체로 폭넓게 해석함으로써, 관련 헌법소원 심리의 효율성과 일관성을 도모하는 기준을 명확히 했습니다.",
+        "practicalNotes": "헌법재판소 내부 사건 배당 및 재판관 지정 규칙은 재판소의 원활한 내부 운영을 위한 규율로서 관보 공포 대상이 아니며, 청구인에게 사유가 통지되어 방어권 행사에 지장이 없다면 절차적 위법이 인정되지 않습니다. 복수의 헌법소원을 제기할 때 쟁점이 단일한 헌법적 배경(예: 동일 재판관 선임 절차의 단계별 행위)에 기초하고 있다면 병합되어 선행 사건의 주심 재판관에게 배당될 수 있음을 유의해야 합니다.",
+        "referencedProvisions": [
+          {
+            "article": "art. 159",
+            "confidence": "high",
+            "description": "헌법재판소 재판관의 임명, 구성 및 갱신에 관한 헌법 규정",
+            "jurisdiction": "Spain",
+            "lawName": "Constitución Española"
+          },
+          {
+            "article": "art. 10.1 i)",
+            "confidence": "high",
+            "description": "지명된 재판관 후보자의 법적 자격 요건 충족 여부를 헌법재판소 전원재판부가 검증하는 권한 규정",
+            "jurisdiction": "Spain",
+            "lawName": "Ley Orgánica del Tribunal Constitucional"
+          },
+          {
+            "article": "art. 93.2",
+            "confidence": "high",
+            "description": "헌법재판소 결정에 대한 이의신청(recurso de súplica) 대상 및 절차 규정",
+            "jurisdiction": "Spain",
+            "lawName": "Ley Orgánica del Tribunal Constitucional"
+          }
+        ]
+      },
+      "tags": [
+        "사건병합",
+        "주심재판관배정",
+        "헌법소원",
+        "헌법재판관갱신",
+        "정보공개",
+        "이의신청",
+        "스페인헌법재판소"
+      ]
+    }
+  },
+  {
+    "articleId": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+    "title": "SENTENCIA 59/2026",
+    "url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32136",
+    "currentTitle": "스페인 헌법재판소, 바스크 자치공동체가 제기한 주택법 위헌소송 기각 판결",
+    "priorTitle": "스페인 헌법재판소, 바스크 자치공동체가 제기한 주택법 위헌확확인 소송 판결",
+    "textDifference": {
+      "offset": 66952,
+      "prior": "",
+      "current": ""
+    },
+    "summaryCurrent": {
+      "koreanTitle": "스페인 헌법재판소, 바스크 자치공동체가 제기한 주택법 위헌소송 기각 판결",
+      "originalTitle": "SENTENCIA 59/2026",
+      "summary": {
+        "coreSummary": [
+          "바스크 자치공동체 정부가 국가의 주택법 제12/2023호 주요 조항들에 대해 관할권 침해를 이유로 제기한 위헌소송에서 스페인 헌법재판소는 선행 판례들의 법리에 따라 청구를 기각하거나 일부 각하하였습니다.",
+          "재판소는 이미 다른 헌법소원(STC 79/2024 등)에서 위헌 및 무효로 선언된 제16조 제1항에 대해서는 심판의 대상 이익이 소멸하였다고 보았고, 나머지 쟁점 조항들(제15조, 제17조, 제18조 및 부칙·종결 규정 등)은 국가의 입법 권한(헌법 제149조 제1항 제1호, 제8호, 제13호 등) 범위 내에 적법하게 제정된 것으로 판단하여 합헌성을 확인하였습니다."
+        ],
+        "referencedProvisions": [
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Constitución Española",
+            "article": "Art. 149.1.1",
+            "description": "국가가 규정하는 기본적 조건 및 평등권 보장에 관한 전속적 권한",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Constitución Española",
+            "article": "Art. 149.1.8",
+            "description": "민법의 적용 범위 및 계약 의무의 기초에 관한 국가 권한",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Constitución Española",
+            "article": "Art. 149.1.13",
+            "description": "경제 일반 계획의 기초 및 조정에 관한 국가 권한",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Ley 12/2023",
+            "article": "Art. 3, 10.2, 15, 17, 18",
+            "description": "주택 권리 보장에 관한 스페인 국가 법률",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Estatuto de Autonomía para el País Vasco",
+            "article": "Art. 10.31",
+            "description": "바스크 자치공동체의 주택, 도시계획 및 영토정비 분야 전속적 권한",
+            "confidence": "high"
+          }
+        ],
+        "background": "바스크 자치공동체 정부는 2023년 제정된 국가 주택법(Ley 12/2023)의 다수 조항이 주택, 도시계획, 영토정비 분야의 자치공동체 전속 권한을 침해하고 국가가 부당하게 보충적 규정이나 과도한 기준을 설정하였다며 국가를 상대로 위헌소송을 제기하였습니다.",
+        "caseStructure": "바스크 자치공동체 정부가 국가 주택법 제3조, 제10조 제2항, 제15조, 제16조, 제17조, 제18조 및 각종 부칙과 최종 규정 등에 대해 위헌 확인을 구하였고, 스페인 헌법재판소는 선행 판결들(STC 79/2024, STC 26/2025 등)의 법리를 원용하여 이미 무효가 된 조항은 각하하고 나머지 쟁점에 대해서는 합헌성을 인정하여 청구를 기각하였습니다.",
+        "implications": "이번 판결은 스페인 국가 주택법의 주요 개혁 조치(주거 수요 과열 지역 지정, 임대료 통제, 주택 의무 공급 비율 등)가 자치단체의 권한을 침해하지 않으며 경제 계획 및 기본권 보장을 위한 국가의 기본적 입법 권한에 부합함을 다시 한번 확인해 줍니다.",
+        "practicalNotes": "바스크 자치공동체는 주택법 관련 조항의 무효화를 이끌어내지 못하였으며, 국가 주택법상 규정된 기준과 절차(예: 주택 가격 지수 및 주거 과열 지역 지정 등)를 자치 집행 과정에서 준수해야 할 법적 구속력을 계속 부담하게 됩니다."
+      },
+      "entities": [
+        {
+          "name": "Tribunal Constitucional de España",
+          "type": "court",
+          "normalizedName": "Tribunal Constitucional de España"
+        },
+        {
+          "name": "España",
+          "type": "country",
+          "normalizedName": "Spain"
+        },
+        {
+          "name": "Ley 12/2023",
+          "type": "law",
+          "normalizedName": "Ley 12/2023"
+        },
+        {
+          "name": "Constitución Española",
+          "type": "law",
+          "normalizedName": "Constitución Española"
+        },
+        {
+          "name": "Estatuto de Autonomía para el País Vasco",
+          "type": "law",
+          "normalizedName": "Estatuto de Autonomía para el País Vasco"
+        },
+        {
+          "name": "Consejo de Gobierno de la Comunidad Autónoma del País Vasco",
+          "type": "party",
+          "normalizedName": "Consejo de Gobierno de la Comunidad Autónoma del País Vasco"
+        },
+        {
+          "name": "Abogacía del Estado",
+          "type": "party",
+          "normalizedName": "Abogacía del Estado"
+        }
+      ],
+      "tags": [
+        "스페인 헌법재판소",
+        "주택법",
+        "위헌소송",
+        "바스크 자치공동체",
+        "지방 자치권",
+        "도시계획"
+      ],
+      "categories": [
+        "Constitutional Decision",
+        "Housing Law",
+        "Division of Powers"
+      ],
+      "riskFlags": [],
+      "aiMetadata": {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "generatedAt": "2026-10-09T22:00:48.088Z"
+      }
+    },
+    "summaryPrior": {
+      "koreanTitle": "스페인 헌법재판소, 바스크 자치공동체가 제기한 주택법 위헌확확인 소송 판결",
+      "originalTitle": "SENTENCIA 59/2026",
+      "summary": {
+        "coreSummary": [
+          "바스크 자치공동체 정부는 스페인 국가의 2023년 주택법(Ley 12/2023) 다수 조항이 주택, 도시계획, 토지이용에 관한 자치구의 전속적 권한을 침해하고 국가의 입법 권한을 넘어선다고 주장하며 위헌 소송을 제기하였다.",
+          "스페인 헌법재판소는 이전에 선고된 선례(STC 79/2024 등)에 따라 이미 위헌·무효로 선언된 조항(제16조 제1항 등)에 대해서는 심판의 이익이 상실되었다고 보았다.",
+          "기타 쟁점 조항들에 대해서는 이미 확립된 헌법재판소의 선례와 법리에 근거하여 국가의 경제 계획 및 기본적 권리 보장에 관한 권한(스페인 헌법 제149조 제1항 제1호, 제13호 등)의 정당한 행사로 판단하고 바스크 자치공동체의 청구를 기각하였다."
+        ],
+        "referencedProvisions": [
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Constitución Española",
+            "article": "Art. 149.1.1",
+            "description": "규제 기본권 보장에 관한 국가의 전속적 입법권",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Constitución Española",
+            "article": "Art. 149.1.13",
+            "description": "경제 일반계획의 기획 및 조화에 관한 국가의 권한",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Ley 12/2023, de 24 de mayo, por el derecho a la vivienda",
+            "article": "Art. 3, 10.2, 15.1, 17, 18",
+            "description": "주택법 주요 조항",
+            "confidence": "high"
+          },
+          {
+            "jurisdiction": "Spain",
+            "lawName": "Estatuto de Autonomía para el País Vasco",
+            "article": "Art. 10.31",
+            "description": "바스크 자치공동체의 주택, 도시계획 및 토지이용에 관한 전속 권한",
+            "confidence": "high"
+          }
+        ],
+        "background": "바스크 자치공동체 정부는 2023년 제정된 국가 주택법의 다수 조항들이 자치구의 고유 권한을 침해하고, 국가가 권한 없이 보충적 규정을 제정하려 하거나 횡단적 권한을 남용했다고 주장하며 헌법재판소에 위헌 소송을 제기하였다.",
+        "caseStructure": "바스크 자치공동체가 국가 주택법의 제3조, 제10조 제2항, 제15조 제1항 d) 및 e), 제16조 제1항, 제17조, 제18조 및 부수 조항들에 대해 위헌확인을 청구하였으나, 헌법재판소는 기존 판례를 인용하여 이미 위헌 판결이 난 조항은 각하하고 나머지 조항에 대해서는 합헌성을 인정하여 기각하였다.",
+        "implications": "스페인 국가 주택법의 주요 개혁 내용과 주거 취약지역 지정, 임대차 가격 지수, 주거용지 의무 비율 등에 대한 국가의 규제 권한이 다시 한번 정당함을 확인받음으로써, 국가 전체의 주택 정책 추진에 대한 법적 안정성이 강화되었다.",
+        "practicalNotes": "자율적인 주택 정책을 펴려는 자치공동체들의 권한 주장이 국가의 경제 계획 및 기본권 보장 권한과의 충돌 속에서 제한될 수 있음을 보여주며, 향후 관련 지방 자치단체들은 국가 주택법의 테두리 내에서 정책을 집행해야 한다."
+      },
+      "entities": [
+        {
+          "name": "Tribunal Constitucional de España",
+          "type": "court",
+          "normalizedName": "Tribunal Constitucional de España"
+        },
+        {
+          "name": "Consejo de Gobierno de la Comunidad Autónoma del País Vasco",
+          "type": "party",
+          "normalizedName": "Gobierno del Pais Vasco"
+        },
+        {
+          "name": "Ley 12/2023",
+          "type": "law",
+          "normalizedName": "Ley 12/2023"
+        },
+        {
+          "name": "Constitución Española",
+          "type": "law",
+          "normalizedName": "Constitucion Espanola"
+        },
+        {
+          "name": "Estatuto de Autonomía para el País Vasco",
+          "type": "law",
+          "normalizedName": "Estatuto de Autonomia para el Pais Vasco"
+        }
+      ],
+      "tags": [
+        "주택법",
+        "위헌소송",
+        "지방자치의회",
+        "권한쟁의",
+        "스페인헌법재판소"
+      ],
+      "categories": [
+        "Constitutional Law",
+        "Competence Dispute",
+        "Housing Policy"
+      ],
+      "riskFlags": [],
+      "aiMetadata": {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "generatedAt": "2026-09-30T03:34:15.443Z"
+      }
+    }
+  }
+]

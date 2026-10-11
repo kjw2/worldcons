@@ -1,0 +1,13 @@
+{
+  "command": "pnpm verify:release",
+  "exitCode": 0,
+  "totals": {
+    "tests": 1623,
+    "passed": 1616,
+    "skipped": 7,
+    "failed": 0,
+    "suites": 0
+  },
+  "at": "2026-10-11T07:30:35.351Z",
+  "finalTypecheck": 0
+}

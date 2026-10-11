@@ -1,0 +1,325 @@
+{
+  "id": "cc6b16a3-0a33-4551-bd4c-ccf41cccf0a2",
+  "number": 78,
+  "metadata": {
+    "created_on": "2026-10-11T07:35:45.534259Z",
+    "source": "wrangler",
+    "author_id": "e6f50389eb00650477afb627394be728",
+    "author_email": "jaethis@gmail.com",
+    "has_preview": true
+  },
+  "annotations": {
+    "workers/message": "Protected FR/ES verifier pinned to public 0bf0e14d-b4d9-4370-9b1d-34b5098d5644; git c6d55d5949e367a5e19f80c78d523b2a3d82a9c7",
+    "workers/tag": "e2e-p0-fr-es",
+    "workers/triggered_by": "version_upload"
+  },
+  "resources": {
+    "script": {
+      "etag": "478a2db6070d7845d2e1b13d7f6abb755f97b1782dca0e35362f5b136c97235a",
+      "handlers": [
+        "fetch",
+        "scheduled",
+        "queue"
+      ],
+      "named_handlers": [
+        {
+          "name": "WorldconsAsyncWorkflow",
+          "handlers": [
+            "__workflow_entrypoint",
+            "run"
+          ]
+        },
+        {
+          "name": "WorldconsBackfillDiscoverWorkflow",
+          "handlers": [
+            "__workflow_entrypoint",
+            "run"
+          ]
+        },
+        {
+          "name": "WorldconsBackfillNormalizeWorkflow",
+          "handlers": [
+            "__workflow_entrypoint",
+            "run"
+          ]
+        },
+        {
+          "name": "WorldconsBackfillPublishWorkflow",
+          "handlers": [
+            "__workflow_entrypoint",
+            "run"
+          ]
+        },
+        {
+          "name": "WorldconsBackfillVerifyWorkflow",
+          "handlers": [
+            "__workflow_entrypoint",
+            "run"
+          ]
+        },
+        {
+          "name": "WorldconsBackfillWorkflow",
+          "handlers": [
+            "__workflow_entrypoint",
+            "run"
+          ]
+        }
+      ],
+      "last_deployed_from": "wrangler"
+    },
+    "script_runtime": {
+      "compatibility_date": "2026-09-26",
+      "compatibility_flags": [
+        "nodejs_compat"
+      ],
+      "usage_model": "standard",
+      "limits": {
+        "subrequests": 50000
+      }
+    },
+    "bindings": [
+      {
+        "name": "ASYNC_QUEUE",
+        "queue_name": "worldcons-async-v1",
+        "type": "queue"
+      },
+      {
+        "class_name": "WorldconsAsyncWorkflow",
+        "name": "ASYNC_WORKFLOW",
+        "type": "workflow",
+        "workflow_name": "worldcons-async-v1"
+      },
+      {
+        "class_name": "WorldconsBackfillDiscoverWorkflow",
+        "name": "BACKFILL_DISCOVER_WORKFLOW",
+        "type": "workflow",
+        "workflow_name": "worldcons-backfill-discover-v1"
+      },
+      {
+        "class_name": "WorldconsBackfillNormalizeWorkflow",
+        "name": "BACKFILL_NORMALIZE_WORKFLOW",
+        "type": "workflow",
+        "workflow_name": "worldcons-backfill-normalize-v1"
+      },
+      {
+        "class_name": "WorldconsBackfillPublishWorkflow",
+        "name": "BACKFILL_STAGE_WORKFLOW",
+        "type": "workflow",
+        "workflow_name": "worldcons-backfill-publish-v1"
+      },
+      {
+        "class_name": "WorldconsBackfillVerifyWorkflow",
+        "name": "BACKFILL_VERIFY_WORKFLOW",
+        "type": "workflow",
+        "workflow_name": "worldcons-backfill-verify-v1"
+      },
+      {
+        "class_name": "WorldconsBackfillWorkflow",
+        "name": "BACKFILL_WORKFLOW",
+        "type": "workflow",
+        "workflow_name": "worldcons-backfill-v1"
+      },
+      {
+        "name": "BROWSER",
+        "type": "browser",
+        "version": 2
+      },
+      {
+        "name": "BROWSER_ALLOWED_HOSTS",
+        "text": "bundesverfassungsgericht.de,supremecourt.gov,conseil-constitutionnel.fr,tribunalconstitucional.es",
+        "type": "plain_text"
+      },
+      {
+        "name": "CASE_CATALOG_GERMANY_HISTORY_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "E2E_SEARCH_REPAIR_QUEUE",
+        "queue_name": "worldcons-e2e-search-repair",
+        "type": "queue"
+      },
+      {
+        "name": "M8_CRAWLER_SOURCE_EXCLUDE",
+        "text": "fr-conseil-constitutionnel,es-tribunal-constitucional",
+        "type": "plain_text"
+      },
+      {
+        "name": "M8_ENABLED_KINDS",
+        "text": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention",
+        "type": "plain_text"
+      },
+      {
+        "name": "M8_SCHEDULER_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "PUBLICATION_DRAIN_LIMIT",
+        "text": "100",
+        "type": "plain_text"
+      },
+      {
+        "name": "SITE_ANALYTICS_RETENTION_DAYS",
+        "text": "90",
+        "type": "plain_text"
+      },
+      {
+        "name": "STAGE_QUEUE_CRAWL",
+        "queue_name": "worldcons-stage-crawl-v1",
+        "type": "queue"
+      },
+      {
+        "name": "STAGE_QUEUE_DISCOVERY",
+        "queue_name": "worldcons-stage-discovery-v1",
+        "type": "queue"
+      },
+      {
+        "name": "STAGE_QUEUE_NORMALIZE",
+        "queue_name": "worldcons-stage-normalize-v1",
+        "type": "queue"
+      },
+      {
+        "name": "STAGE_QUEUE_PUBLIC_JUDGMENT",
+        "queue_name": "worldcons-stage-public-judgment-v1",
+        "type": "queue"
+      },
+      {
+        "name": "STAGE_QUEUE_PUBLISH",
+        "queue_name": "worldcons-stage-publish-v1",
+        "type": "queue"
+      },
+      {
+        "name": "STAGE_QUEUE_SEARCH",
+        "queue_name": "worldcons-stage-search-v1",
+        "type": "queue"
+      },
+      {
+        "name": "STAGE_QUEUE_TRANSLATE",
+        "queue_name": "worldcons-stage-translate-v1",
+        "type": "queue"
+      },
+      {
+        "name": "TRANSLATION_DRAIN_LIMIT",
+        "text": "10",
+        "type": "plain_text"
+      },
+      {
+        "name": "TRANSLATION_DRAIN_MAX_PASSES",
+        "text": "1",
+        "type": "plain_text"
+      },
+      {
+        "entrypoint": "WorldconsOpsService",
+        "environment": "production",
+        "name": "WORLDCONS_APP_SERVICE",
+        "service": "worldcons",
+        "type": "service"
+      },
+      {
+        "database_id": "0f4c41f0-778f-4ef4-860e-b0dad05f0984",
+        "id": "0f4c41f0-778f-4ef4-860e-b0dad05f0984",
+        "name": "WORLDCONS_CORE",
+        "type": "d1"
+      },
+      {
+        "name": "WORLDCONS_E2E_DEPLOYMENT_REF",
+        "text": "git:43371c8814e0c56dd65455d1cad4a9a17f48cbc5;worldcons:0bf0e14d-b4d9-4370-9b1d-34b5098d5644",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_SEARCH_CONSUMER_READY",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_SEARCH_DISPATCH_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_STAGED_APPROVAL_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_STAGED_SOURCES",
+        "text": "fr-conseil-constitutionnel,es-tribunal-constitucional",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_VERIFIER_API_BASE_URL",
+        "text": "https://worldcons.cclib.workers.dev/api/cclrag2",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_E2E_VERIFIER_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "database_id": "0ccd27ff-fd16-4071-bc94-616690708c4e",
+        "id": "0ccd27ff-fd16-4071-bc94-616690708c4e",
+        "name": "WORLDCONS_INGEST",
+        "type": "d1"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGE_ALLOWLIST",
+        "text": "discovery,crawl,normalize,translate,public-judgment,publish,search",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT",
+        "text": "1",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT",
+        "text": "1",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGE_ENVIRONMENT",
+        "text": "production",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGE_LEASE_SECONDS",
+        "text": "300",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGES_ENABLED",
+        "text": "true",
+        "type": "plain_text"
+      },
+      {
+        "name": "WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST",
+        "text": "fr-conseil-constitutionnel,es-tribunal-constitucional",
+        "type": "plain_text"
+      },
+      {
+        "database_id": "6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4",
+        "id": "6ecdf64b-d95a-49b2-8fc4-bdd50581a3e4",
+        "name": "WORLDCONS_OPS",
+        "type": "d1"
+      },
+      {
+        "bucket_name": "worldcons-artifacts",
+        "name": "WORLDCONS_RAW",
+        "type": "r2_bucket"
+      },
+      {
+        "database_id": "1d74ebba-918b-4f8c-9c5c-9013479df809",
+        "id": "1d74ebba-918b-4f8c-9c5c-9013479df809",
+        "name": "WORLDCONS_SEARCH",
+        "type": "d1"
+      }
+    ]
+  }
+}

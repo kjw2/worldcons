@@ -1,0 +1,8 @@
+{
+  "status": "fulfilled",
+  "value": {
+    "code": 3221226505,
+    "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/c0975029797a404cd3ff402ee6a605b2/d1/database/0ccd27ff-fd16-4071-bc94-616690708c4e/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"no such table: ingest_stage_jobs_v1: SQLITE_ERROR [code: 7500]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 7500,\n    \"accountTag\": \"c0975029797a404cd3ff402ee6a605b2\"\n  }\n}\n",
+    "stderr": "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 76\r\n"
+  }
+}

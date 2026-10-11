@@ -1,0 +1,29 @@
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+🌀 Creating queue 'worldcons-e2e-search-repair'
+✅ Created queue 'worldcons-e2e-search-repair'
+
+Configure your Worker to send messages to this queue:
+
+{
+  "queues": {
+    "producers": [
+      {
+        "queue": "worldcons-e2e-search-repair",
+        "binding": "worldcons_e2e_search_repair"
+      }
+    ]
+  }
+}
+Configure your Worker to consume messages from this queue:
+
+{
+  "queues": {
+    "consumers": [
+      {
+        "queue": "worldcons-e2e-search-repair"
+      }
+    ]
+  }
+}

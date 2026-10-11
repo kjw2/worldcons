@@ -1,0 +1,18 @@
+{
+  "gitRef": "3317d9b7e1ce01cc6289af45171bf371b53486cb",
+  "publicVersionId": "0bf0e14d-b4d9-4370-9b1d-34b5098d5644",
+  "publicDeployedAt": "2026-10-11T07:34:14.361Z",
+  "asyncCompatibleVersionId": "e49fd6b3-278b-4acc-92bc-004970aa8f6a",
+  "asyncCompatibleDeployedAt": "2026-10-11T07:19:31.691Z",
+  "asyncActiveVersionId": "cc6b16a3-0a33-4551-bd4c-ccf41cccf0a2",
+  "asyncActiveGitRef": "c6d55d5949e367a5e19f80c78d523b2a3d82a9c7",
+  "cohortActivatedAt": "2026-10-11T07:24:00.892Z",
+  "minimumObservationEndsAt": "2026-10-13T07:35:47.515Z",
+  "publicPreviousVersionId": "03075f82-369b-4f3f-8085-1608351d3696",
+  "publicGitRef": "43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+  "cohortLastUpdatedAt": "2026-10-11T07:35:02.671Z",
+  "publicDeploymentId": "7afdb229-2efe-4d47-918a-111741091afb",
+  "asyncDeploymentId": "c661effe-1913-410d-bcbf-886c0573f90a",
+  "publicEffectiveAt": "2026-10-11T07:34:59.802831Z",
+  "asyncEffectiveAt": "2026-10-11T07:35:47.515362Z"
+}

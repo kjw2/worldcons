@@ -1,0 +1,154 @@
+[
+  {
+    "results": [
+      {
+        "source_key": "de-bverfg",
+        "published": 503,
+        "text_drift": 0,
+        "summary_drift": 0,
+        "title_drift": 0,
+        "url_drift": 0,
+        "any_snapshot_drift": 0
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "published": 424,
+        "text_drift": 1,
+        "summary_drift": 2,
+        "title_drift": 2,
+        "url_drift": 0,
+        "any_snapshot_drift": 2
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "published": 395,
+        "text_drift": 1,
+        "summary_drift": 1,
+        "title_drift": 1,
+        "url_drift": 0,
+        "any_snapshot_drift": 1
+      },
+      {
+        "source_key": "us-scotus",
+        "published": 136,
+        "text_drift": 0,
+        "summary_drift": 0,
+        "title_drift": 0,
+        "url_drift": 0,
+        "any_snapshot_drift": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 224.1833
+      },
+      "duration": 224.1833,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 263876608,
+      "rows_read": 5832,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "AUTO 43/2026, de 7 de julio de 2026",
+        "core_updated_at": "2026-09-24T03:29:54.177Z",
+        "p3_updated_at": "2026-09-02T03:23:28.085Z",
+        "version_id": "eebc2367-0f48-5d88-a36a-b4020d5fb0d6",
+        "publication_revision": "30",
+        "review_state": "summarized",
+        "lifecycle_collection_state": "source_text_ready",
+        "lifecycle_processing_state": "complete",
+        "lifecycle_review_state": "unreviewed",
+        "lifecycle_attention_state": "clear",
+        "publishable": 1,
+        "source_text_available": 1,
+        "source_url_verified": 1,
+        "legacy_safety_publishable": 1,
+        "core_text_chars": 14205,
+        "p3_text_chars": 14206,
+        "text_equal": 0,
+        "summary_equal": 0,
+        "title_equal": 0,
+        "url_equal": 1
+      },
+      {
+        "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 59/2026",
+        "core_updated_at": "2026-10-09T22:00:48.316Z",
+        "p3_updated_at": "2026-09-30T03:34:17.654Z",
+        "version_id": "017489d5-62ed-5573-a95a-438ced9bbb59",
+        "publication_revision": "18",
+        "review_state": "summarized",
+        "lifecycle_collection_state": "source_text_ready",
+        "lifecycle_processing_state": "complete",
+        "lifecycle_review_state": "unreviewed",
+        "lifecycle_attention_state": "clear",
+        "publishable": 1,
+        "source_text_available": 1,
+        "source_url_verified": 1,
+        "legacy_safety_publishable": 0,
+        "core_text_chars": 66952,
+        "p3_text_chars": 66952,
+        "text_equal": 1,
+        "summary_equal": 0,
+        "title_equal": 0,
+        "url_equal": 1
+      },
+      {
+        "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+        "source_key": "fr-conseil-constitutionnel",
+        "original_title": "Décision n° 2026-1223 QPC du 1er octobre 2026\nM. Magomed S. [Composition du tribunal pour enfants II]\nConformité",
+        "core_updated_at": "2026-10-07T21:32:16.609Z",
+        "p3_updated_at": "2026-10-05T21:30:30.327Z",
+        "version_id": "c1535ad7-e42a-5add-afa7-b977d3e1225c",
+        "publication_revision": "2",
+        "review_state": "summarized",
+        "lifecycle_collection_state": "source_text_ready",
+        "lifecycle_processing_state": "complete",
+        "lifecycle_review_state": "unreviewed",
+        "lifecycle_attention_state": "clear",
+        "publishable": 1,
+        "source_text_available": 1,
+        "source_url_verified": 1,
+        "legacy_safety_publishable": null,
+        "core_text_chars": 11879,
+        "p3_text_chars": 11831,
+        "text_equal": 0,
+        "summary_equal": 0,
+        "title_equal": 0,
+        "url_equal": 1
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 142.9182
+      },
+      "duration": 142.9182,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 263876608,
+      "rows_read": 4377,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

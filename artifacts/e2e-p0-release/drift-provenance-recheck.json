@@ -1,0 +1,96 @@
+{
+  "schema": "worldcons.drift-provenance-recheck.v1",
+  "mode": "read_only",
+  "articleId": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+  "officialSourceHash": "3f7e093260c8690612c04b9131a3498474b765f318c6a52acfa134f25eff39fe",
+  "proposedSourceMetadata": {
+    "auxiliaryMetadata": {},
+    "boeUsedForFiltering": false,
+    "canonicalSourceUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32136",
+    "caseNumber": "59/2026",
+    "collection": {
+      "confidence": "high",
+      "diagnosticsId": "ingest-stage:4bc3e506-2623-47d4-9a8d-134cec22abb8",
+      "publishable": true,
+      "source": "https://hj.tribunalconstitucional.es",
+      "sourceTextAvailable": true,
+      "sourceTextPolicy": "strict",
+      "sourceUrlVerified": true,
+      "strategy": "fetch",
+      "strictSourceTextAvailable": true,
+      "reason": "Verified official HJ JSON full text, confirmed against current Core."
+    },
+    "collectionSafety": {
+      "contenidoIrrelevanteParaInternet": false,
+      "publishable": true
+    },
+    "dateBasis": "FECHA_REGISTRO",
+    "dateBasisLabel": "HJ FECHA_REGISTRO (decision date)",
+    "datePrecision": "date",
+    "dateValidation": {
+      "checks": [
+        {
+          "matches": true,
+          "source": "FECHA_REGISTRO",
+          "value": "2026-09-08"
+        }
+      ],
+      "ok": true,
+      "warnings": []
+    },
+    "decisionDate": "2026-09-08",
+    "dedupKeys": {
+      "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32136",
+      "textPrefixHash": null,
+      "titleDateHash": "ab27c72d59d43b7b"
+    },
+    "ecli": "ECLI:ES:TC:2026:59",
+    "ecliDerived": true,
+    "externalId": "es-tc-hj-32136",
+    "fetchMethod": "json_api",
+    "hjId": "32136",
+    "jsonApiUrl": "https://hj.tribunalconstitucional.es/HJ/Resolucion/Api/json/32136",
+    "metadataSha256": "8b01150adbe393f39cebeefaa84aa3eaa9ab74a29095c568ad3ef1ca8d0f98cf",
+    "parseConfidence": "high",
+    "publishedAtSource": "FECHA_REGISTRO",
+    "refreshedFromOfficialAt": "2026-09-28T00:37:02.937Z",
+    "resolutionNumber": "59/2026",
+    "resolutionType": "SENTENCIA",
+    "resolutionYear": 2026,
+    "sections": [],
+    "sourceTextAvailable": true,
+    "sourceTextQuality": {
+      "cleanedTextLength": 66952,
+      "hasSubstantiveSection": true,
+      "minLength": 2000,
+      "substantiveSections": [
+        "RESOLUCIONES_ANTECEDENTES",
+        "RESOLUCIONES_FUNDAMENTOS",
+        "RESOLUCIONES_DICTAMEN",
+        "RESOLUCIONES_VOTOS_PARTICULARES"
+      ]
+    },
+    "sourceTextStatus": "available",
+    "discoveryIndex": "official-search",
+    "ingestion": {
+      "runId": "ingest-stage:4bc3e506-2623-47d4-9a8d-134cec22abb8",
+      "crawler": "worldcons-ingest-native-v1",
+      "fetchedAt": "2026-10-09T21:30:38.814Z"
+    },
+    "sourceRevalidation": {
+      "verifiedAt": "2026-10-11T07:47:23.903Z",
+      "source": "https://hj.tribunalconstitucional.es/HJ/Resolucion/Api/json/32136",
+      "previousCollectionSafety": {
+        "contenidoIrrelevanteParaInternet": false,
+        "publishable": false
+      },
+      "previousSourceTextStatus": "not_available",
+      "officialSectionCount": 17,
+      "matchingSections": 16
+    }
+  },
+  "coreUpdated": false,
+  "p3Updated": false,
+  "summaryApproved": false,
+  "note": "Official identity/full-text gate passed. This prepared metadata is not a legal-meaning or summary approval; apply only through an optimistic authorized transition after content review."
+}
