@@ -17,7 +17,7 @@ type HandlerOptions = {
   consumeRateLimit?: RateLimitConsumer;
 };
 
-const SUCCESS_CACHE_CONTROL = "private, max-age=60, stale-while-revalidate=300";
+const SUCCESS_CACHE_CONTROL = "no-store";
 const TOKEN_VARY_HEADER = "X-CCL-Metasearch-Token";
 
 export function createCclMetasearchSearchHandler(options: HandlerOptions = {}) {

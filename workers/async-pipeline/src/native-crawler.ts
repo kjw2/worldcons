@@ -720,7 +720,7 @@ function extractOfficialText(html: string, source: NativeCrawlerSource) {
   return "";
 }
 
-function cleanText(text: string) {
+export function normalizeNativeSourceText(text: string) {
   return text.replace(/[\u00a0\t ]+/g, " ").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -884,7 +884,7 @@ export function reconcileSpanishOfficialTextMetadata(
 async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string): Promise<NativePersistResult> {
   const core = bindings.WORLDCONS_CORE;
   const canonical = canonicalUrl(candidate.url, candidate.url);
-  const clean = cleanText(text);
+  const clean = normalizeNativeSourceText(text);
   const status = articleStatus(candidate, clean);
   const contentHash = await sha256(clean.replace(/\s+/g, " ").trim() || `${candidate.sourceKey}:${canonical}`);
   const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state FROM articles WHERE canonical_url = ? LIMIT 1").bind(canonical).first<Record<string, unknown>>();

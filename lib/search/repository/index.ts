@@ -1,3 +1,4 @@
+import { assertPublicSearchFreshness } from "@/lib/cloudflare/e2e/public-freshness";
 import { getRuntimeD1Binding, getRuntimeSearchVectorBinding } from "@/lib/cloudflare/d1/runtime-binding";
 import { runD1CaseCatalogSearch } from "@/lib/cloudflare/search-catalog/case-catalog-search";
 import { runVectorRankedSearchPage } from "@/lib/cloudflare/search-vector/ranked";
@@ -25,9 +26,10 @@ export function createD1SearchRepository(): SearchRepository {
   return {
     isConfigured: () => Boolean(search && core),
     async rankedSearchPageRpc(request: RankedSearchPageRpcRequest) {
-      if (!search) return null;
+      if (!search || !core) return null;
       return runVectorRankedSearchPage({
         d1: search,
+        core,
         vector,
         input: {
           ...request,
@@ -66,6 +68,8 @@ export function createD1SearchRepository(): SearchRepository {
         if (result.success === false || !Array.isArray(result.results)) throw new Error("D1 exact-case search failed.");
         for (const row of result.results) if (typeof row.article_id === "string" && !found.includes(row.article_id)) found.push(row.article_id);
       }
+      if (!core) throw new Error("e2e.public_core_unavailable");
+      await assertPublicSearchFreshness(core,search,found);
       return found;
     },
   };

@@ -56,7 +56,7 @@ test("native embedding backfill is bounded and resumable", () => {
   const executor = read("lib/cloudflare/async-pipeline/native-executor.ts");
   assert.match(executor, /limit:\s*8/u);
   assert.match(executor, /maxPasses:\s*20/u);
-  assert.match(executor, /embedding-backfill" \|\| message\.kind === "summary-drain" \? "50 minutes"/u);
+  assert.match(executor, /embedding-backfill" \|\| message\.kind === "translation-drain" \? "50 minutes"/u);
 });
 
 test("embedding backfill uses D1 provenance persistence and resumes after provider deferral", () => {

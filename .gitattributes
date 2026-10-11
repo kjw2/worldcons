@@ -3,3 +3,10 @@
 # enabled on a Windows operator checkout.
 supabase/migrations/20260926120000_m7_7a_semantic_authority_projection.sql -text
 artifacts/cloudflare-m7/m7.8a-semantic-authority-rollout.md -text
+
+# E2E incident evidence manifests pin SHA-256 of the exact captured bytes.
+artifacts/e2e-p0-m1/** -text
+artifacts/e2e-p0-m2/** -text
+artifacts/e2e-p0-m3/** -text
+artifacts/e2e-p0-m4/** -text
+artifacts/e2e-p0-release/** -text

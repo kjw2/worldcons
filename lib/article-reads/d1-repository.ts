@@ -1,3 +1,4 @@
+import { overlayPublicGenerationRows } from "@/lib/cloudflare/e2e/public-freshness";
 import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
 import {
   runD1RuntimeRead,
@@ -679,9 +680,10 @@ export function createD1ArticleReadRepository(
 
     const legacyMatched = filters.includeUnpublished ? rows : rows.filter((row) => isTextuallyPublishable(row));
     const legacyIds = new Set(legacyMatched.map((row) => (typeof row.id === "string" ? row.id : "")));
-    const matched = filters.includeUnpublished
+    let matched = filters.includeUnpublished
       ? rows
       : [...legacyMatched, ...catalogRows.filter((row) => !legacyIds.has(typeof row.id === "string" ? row.id : ""))];
+    if (!filters.includeUnpublished) matched=await overlayPublicGenerationRows(binding,matched);
     matched.sort(compareListRows);
 
     const from = (page - 1) * pageSize;
@@ -744,6 +746,11 @@ export function createD1ArticleReadRepository(
       if (row.source_metadata !== undefined && !isPublishableListItem(row as unknown as SupabaseArticleRow)) return null;
     }
     const hydrated = await hydrateArticleTags(binding, [row]);
+    if (!options.includeUnpublished) {
+      const approved=await overlayPublicGenerationRows(binding,hydrated);
+      if (!approved.length) return null;
+      hydrated[0]=approved[0];
+    }
     return articleRowToItem(articleRowForSelect(hydrated[0], select), articleMappingOptions(select));
   }
 
@@ -787,6 +794,11 @@ export function createD1ArticleReadRepository(
       if (!isTextuallyPublishable(row)) return null;
       if (row.source_metadata !== undefined && !isPublishableListItem(row as unknown as SupabaseArticleRow)) return null;
     }
+    if (!options.includeUnpublished) {
+      const approved=await overlayPublicGenerationRows(binding,[row]);
+      if (!approved.length) return null;
+      row=approved[0];
+    }
     return {
       slug: typeof row.slug === "string" ? row.slug : slug,
       sourceKey: (row.source_key as string | null | undefined) ?? null,
@@ -811,7 +823,7 @@ export function createD1ArticleReadRepository(
       limit: maxRows + 1,
     });
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
-    return rows.filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
+    return (await overlayPublicGenerationRows(binding,rows)).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
       if (typeof row.slug !== "string" || row.slug.length === 0) return [];
       const lastModified =
         (row.summarized_at as string | null | undefined) ||
@@ -887,7 +899,7 @@ export function createD1ArticleReadRepository(
     const publishable = articleRows.filter((row) => typeof row.id === "string" && p3Published.has(row.id) && isTextuallyPublishable(row));
     if (publishable.length === 0) return fallback();
 
-    const hydrated = await hydrateArticleTags(binding, publishable);
+    const hydrated = await overlayPublicGenerationRows(binding,await hydrateArticleTags(binding, publishable));
     const order = new Map(slugs.map((slug, index) => [slug, index]));
     return hydrated
       .map((row) => ({

@@ -109,7 +109,7 @@ test("Cloudflare provider accepts the cclrag2 contract and returns the Neubauer 
   assert.equal(payload.items[0].detailApiUrl, "https://worldcons.vercel.app/api/cclrag2/articles/germany-neubauer");
   assert.equal(payload.items[0].summaryJson.summary.background, "기후위기와 미래세대의 자유가 문제 되었다.");
   assert.deepEqual(payload.meta, { limit: 10, offset: 0, total: 1, hasMore: false, totalIsExact: false });
-  assert.equal(calls.length, 1);
+  assert.equal(calls.filter(call => /from search_documents|from search_fts/iu.test(call.sql)).length, 1);
   assert.match(calls[0].sql, /search_documents/u);
   assert.deepEqual(calls[0].params.slice(0, 2), ["de-bverfg", "1bvr265618"]);
   assert.ok(Number(response.headers.get("content-length")) < 1_500_000);
@@ -143,7 +143,7 @@ test("Vercel provider fulltext mode bypasses embeddings and uses D1 lexical retr
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.filter(call => /from search_documents|from search_fts/iu.test(call.sql)).length, 1);
   assert.match(calls[0].sql, /search_fts match \?/u);
   assert.equal(payload.requestedMode, "fulltext");
   assert.equal(payload.effectiveMode, "fulltext");
@@ -161,7 +161,7 @@ test("Vercel provider reports an explicit fulltext fallback when semantic capabi
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.filter(call => /from search_documents|from search_fts/iu.test(call.sql)).length, 1);
   assert.match(calls[0].sql, /search_fts match \?/u);
   assert.equal(payload.requestedMode, "hybrid");
   assert.equal(payload.effectiveMode, "fulltext");
@@ -319,7 +319,7 @@ test("Vercel provider source and article endpoints read bounded Contract V2 evid
   );
 
   assert.equal(sources.status, 200);
-  assert.equal(sources.headers.get("cache-control"), "public, s-maxage=300, stale-while-revalidate=900");
+  assert.equal(sources.headers.get("cache-control"), "no-store");
   const sourcesPayload = await sources.json();
   assert.equal(sourcesPayload.contractVersion, "2.0");
   assert.equal(sourcesPayload.items[0].sourceType, "foreign_constitutional");
@@ -327,7 +327,7 @@ test("Vercel provider source and article endpoints read bounded Contract V2 evid
   assert.equal(sourcesPayload.items[0].officialUri, "https://www.bundesverfassungsgericht.de/");
   assert.equal(sourcesPayload.items.length, 1, "inactive sources are excluded");
   assert.equal(detail.status, 200);
-  assert.equal(detail.headers.get("cache-control"), "public, s-maxage=300, stale-while-revalidate=900");
+  assert.equal(detail.headers.get("cache-control"), "no-store");
   const detailPayload = await detail.json();
   assert.equal(detailPayload.contractVersion, "2.0");
   assert.equal(detailPayload.cleanedText, "공식 원문 스냅샷");
@@ -343,7 +343,7 @@ test("Vercel provider source and article endpoints read bounded Contract V2 evid
   });
   assert.ok(Number(detail.headers.get("content-length")) < 1_900_000);
   assert.equal(sourceText.status, 200);
-  assert.equal(sourceText.headers.get("cache-control"), "public, s-maxage=300, stale-while-revalidate=900");
+  assert.equal(sourceText.headers.get("cache-control"), "no-store");
   const sourceTextPayload = await sourceText.json();
   assert.equal(sourceTextPayload.cleanedText, "공식 원문");
   assert.equal(sourceTextPayload.bodyChecksum, NEUBAUER_CHECKSUM);
@@ -357,7 +357,8 @@ test("Vercel provider source and article endpoints read bounded Contract V2 evid
   });
   assert.ok(calls.some((sql) => /from sources/u.test(sql)));
   assert.ok(calls.some((sql) => /from articles where slug = \? and status = \? and catalog_ai_stale_v4 = \?/u.test(sql)));
-  assert.equal(calls.length, 5, "one sources read plus detail and source-text article/tag reads");
+  assert.equal(calls.filter(sql => /from article_publications_p3/u.test(sql)).length, 2, "detail/source require a public P3 head");
+  assert.ok(calls.length <= 12, "bounded content, public eligibility and schema reads");
 
   const missing = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/articles/not-found"),
@@ -624,6 +625,8 @@ function createProviderFakeD1(
       },
     ],
     articles: options.includeArticle === false ? [] : [article],
+    article_publications_p3: [{ article_id: article.id, version_id: "version-neubauer", state: "published" }],
+    case_catalog_publications_v1: [],
     article_tags: [],
     tags: [],
   };
@@ -638,7 +641,7 @@ function createProviderFakeD1(
         },
         async all<T = Record<string, unknown>>() {
           calls.push(sql);
-          const tableName = / from ([a-z_]+)/u.exec(sql)?.[1] ?? "";
+          const tableName = / from ([a-z_][a-z0-9_]*)/u.exec(sql)?.[1] ?? "";
           const tableRows = (tables[tableName] ?? []).map((row) => ({ ...row }));
           const where = / where (.*?)(?= order by | limit |$)/u.exec(sql)?.[1];
           let paramIndex = 0;

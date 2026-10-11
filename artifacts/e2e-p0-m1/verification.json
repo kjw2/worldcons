@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "milestone": "E2E-P0/M1",
+  "generatedAt": "2026-10-10T23:16:03.413Z",
+  "workspace": "C:/Users/jaeth/.codex/worktrees/e2e-p0-m1/worldcons",
+  "branch": "codex/e2e-p0-m1",
+  "baseCommit": "a415860362877bafef579cab0c18133dcdb877d3",
+  "remoteMainObserved": "a415860362877bafef579cab0c18133dcdb877d3",
+  "implementationStatus": "local_opt_in_foundation_verified",
+  "production": {
+    "deployed": false,
+    "migrationsApplied": false,
+    "cohortActivated": false,
+    "readPerformedThisMilestone": false,
+    "writePerformedThisMilestone": false,
+    "completedVerifiedEvidence": null,
+    "p0Closed": false
+  },
+  "verification": {
+    "regression": {
+      "command": "node node_modules/tsx/dist/cli.mjs --test tests/e2e-p0-m1-generations.test.ts tests/article-publication-p3.test.ts tests/d1-schema.test.ts tests/d1-migrate.test.ts tests/d1-apply-schema.test.ts tests/m11-core-publication-write-authority.test.ts",
+      "exitCode": 0,
+      "tests": 84,
+      "passed": 84,
+      "failed": 0,
+      "skipped": 0,
+      "log": "artifacts/e2e-p0-m1/regression-tests.log"
+    },
+    "rootTypecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    "asyncWorkerTypecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit -p workers/async-pipeline/tsconfig.json",
+      "exitCode": 0
+    },
+    "lint": {
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 2,
+      "warningBaseline": "Existing unused many/run helpers in core-write/authority.ts"
+    },
+    "asyncWorkerBuild": {
+      "command": "node node_modules/wrangler/bin/wrangler.js deploy --dry-run --config workers/async-pipeline/wrangler.jsonc",
+      "exitCode": 0
+    },
+    "coreWorkerBuild": {
+      "entry": "workers/ops-write/src/index.ts",
+      "mode": "wrangler deploy --dry-run with temporary root config, no production bindings",
+      "exitCode": 0,
+      "log": "artifacts/e2e-p0-m1/core-build.log"
+    },
+    "engine": "Node 24.15.0 node:sqlite, native schema/constraints, D1-style batch adapter"
+  },
+  "codeFingerprints": {
+    "lib/article-publication/service.ts": "e2f97496af241c632402ae17baa3a3a8211304a06410b083d29b867bf113431c",
+    "lib/article-publication/types.ts": "d2593752cdf97206f9a6046a6bfc86f27141c3914efd5591d4861e69cbc16df6",
+    "lib/cloudflare/core-write/authority.ts": "9b108582ef264c2449170fd7ebc980596147637395239293c6ba49bcdb68c8df",
+    "lib/cloudflare/e2e/contracts.ts": "0e5eb4417bc87115f6cb4ffe33cc0f2ef4ae05a723912234b6806853f28559bd",
+    "lib/cloudflare/e2e/generation-ledger.ts": "1f5284a89ed954e278379c4c834620011307a842fc27b6f99adc17e20b305b4a",
+    "d1/worldcons_core/0004_e2e_generations.sql": "f3b5ee58fa316649feaa737ef7ddb5e4ab1f16c6605e1125952c6e3a5ed927a1",
+    "tests/e2e-p0-m1-generations.test.ts": "a35afac779193d176bcb3659ff60272eb117c9df06751896b7e830b4bca05277",
+    "package.json": "b8e4a9c212bd9d6b66e736694c40191afa302950f17e101c5c868c13686af784"
+  },
+  "preserved": {
+    "originalWorkspace": "F:/dev/worldcons",
+    "workingTreeStatus": "M app/admin/ops/page.tsx\n M scripts/ops-watchdog.ts\n?? artifacts/incident-analysis/\n?? docs/worldcons-e2e-pipeline-p0-incident-analysis-20261011.md",
+    "approvedPlan": {
+      "path": "F:/dev/worldcons/docs/worldcons-e2e-pipeline-p0-incident-analysis-20261011.md",
+      "sha256": "f7df0023b813c0fb582aac633d83ed8b82c038e95093b82626fb5b5cff5defba"
+    },
+    "priorReadOnlyEvidence": {
+      "path": "F:/dev/worldcons/artifacts/incident-analysis/worldcons-e2e-p0-20261011-read-only.json",
+      "sha256": "52a39acef9554b5975ae10bf91f96bbb7ac47ea52d75af718ea180f9b5d2cbb8"
+    }
+  },
+  "pending": [
+    "M2: atomic Search repair outbox and dispatcher, interruption/replay validation",
+    "M3: all Search writers generation guards/tombstones, batched public latest-generation checks and cache invalidation",
+    "M4: content/API validator and real unattended protected-cohort completed_verified proof",
+    "M5: remaining publication writers/cohorts and 48-hour P0 observation"
+  ]
+}

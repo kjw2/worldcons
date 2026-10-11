@@ -1,3 +1,4 @@
+import { assertPublicSearchFreshness } from "../e2e/public-freshness";
 import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import {
   primaryCaseReference,
@@ -26,11 +27,12 @@ import type { VectorizeIndexBinding } from "./types";
  */
 export interface VectorRankedSearchRequest {
   readonly d1: D1RuntimeDatabase;
+  readonly core?: D1RuntimeDatabase;
   readonly vector?: VectorizeIndexBinding | null;
   readonly input: RankedSearchPageInput;
 }
 
-export async function runVectorRankedSearchPage(request: VectorRankedSearchRequest): Promise<RankedSearchPagePayload> {
+async function runVectorRankedSearchPageUnchecked(request: VectorRankedSearchRequest): Promise<RankedSearchPagePayload> {
   const resolved = resolveRankedSearchInput(request.input);
   const exact = primaryCaseReference(resolved.queryText);
 
@@ -55,4 +57,10 @@ export async function runVectorRankedSearchPage(request: VectorRankedSearchReque
     return runSemanticVectorPage({ binding: vector, resolved, embedding });
   }
   return runHybridVectorPage({ d1: request.d1, vector, resolved, embedding });
+}
+
+export async function runVectorRankedSearchPage(request:VectorRankedSearchRequest):Promise<RankedSearchPagePayload> {
+  const page=await runVectorRankedSearchPageUnchecked(request);
+  if (request.core) await assertPublicSearchFreshness(request.core,request.d1,page.entries.map(entry=>entry.id));
+  return page;
 }

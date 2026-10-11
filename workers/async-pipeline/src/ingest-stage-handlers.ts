@@ -1,3 +1,6 @@
+import { AutomaticApprovalBlocked, recordAutomaticApproval } from "../../../lib/cloudflare/e2e/automatic-approval";
+import { sha256Canonical, type E2EApprovalContext, type E2EGenerationReceipt } from "../../../lib/cloudflare/e2e/contracts";
+import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from "./staged-e2e";
 /**
  * Targeted staged-ingestion business handlers (M3).
  *
@@ -23,16 +26,16 @@
  * - `search`: exposes the existing per-version search projection as a per-article
  *   handler, again only when a real adapter is supplied.
  *
- * `translate` and `public-judgment` intentionally have NO handler here. The
- * consumer treats a missing handler as an explicit terminal block
- * (`ingest_stage.handler_missing`) and, critically, refuses to register a
- * downstream job for a stage with no handler. So a pipeline halts at a real
- * boundary instead of manufacturing work nothing can process.
+ * `translate` requires a real per-article adapter and verifies persisted results.
+ * `public-judgment` checks source/review authority and records opt-in FR/ES
+ * approval proof. Protected publish/search use Core CAS, outbox, and the final
+ * content/API verifier. An absent adapter remains an explicit terminal block.
  */
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { registerIngestStageJob } from "../../../lib/cloudflare/ingest-stages/repository";
 import {
   NATIVE_CRAWLER_SOURCES,
+  normalizeNativeSourceText,
   crawlNativeStageCandidate,
   discoverNativeStageCandidates,
   nativeStageCandidateId,
@@ -106,6 +109,7 @@ export interface IngestStageHandlerDependencies {
   publication?: IngestStagePublicationAdapter;
   search?: IngestStageSearchAdapter;
   now?: () => string;
+  e2e?: StagedE2EOptions;
 }
 
 function isSourceKey(value: unknown): value is NativeCrawlerSource {
@@ -412,13 +416,15 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
       };
     }
     const contentHash = await sha256Hex(result.text);
-    const artifactKey = nativeStageCrawlArtifactKey(candidate.sourceKey, contentHash);
     const artifact: IngestStageCrawlArtifact = {
       candidate: result.candidate,
       text: result.text,
       canonicalUrl: result.canonicalUrl,
       fetchedAt: context.now,
     };
+    // Preserve the exact approval source artifact across timestamp-only recrawls.
+    const artifactKey = nativeStageCrawlArtifactKey(candidate.sourceKey,
+      deps.e2e?.sources.includes(candidate.sourceKey) ? await sha256Canonical(artifact) : contentHash);
     await deps.rawBucket.put(artifactKey, new TextEncoder().encode(JSON.stringify(artifact)), { httpMetadata: { contentType: "application/json" } });
     return {
       status: "succeeded",
@@ -465,6 +471,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         nextArticleId: coreArticleId,
         nextSourceVersion: persisted.contentHash,
         nextContentHash: persisted.contentHash,
+        ...(deps.e2e?.sources.includes(candidate.sourceKey)?{nextPayloadRef:context.job.payload_ref}:{}),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -506,6 +513,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         nextArticleId: articleId,
         nextSourceVersion: verified.contentHash,
         nextContentHash: verified.contentHash,
+        ...(deps.e2e?.sources.includes(context.job.source_key??"")?{nextPayloadRef:context.job.payload_ref}:{}),
       };
     }
     if (outcome.status === "skipped" || outcome.status === "unavailable") {
@@ -538,10 +546,37 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         ? { status: "retry", errorCode: gate.code, errorSummary: gate.summary }
         : { status: "blocked", errorCode: gate.code, errorSummary: gate.summary };
     }
+    if (deps.e2e?.sources.includes(context.job.source_key??"")) {
+      try {
+        const artifact=context.job.payload_ref?await readJsonArtifact(deps.rawBucket,context.job.payload_ref):null;
+        const candidate=parseNativeStageCandidate(artifact?.candidate);
+        if (!artifact||!candidate||candidate.sourceKey!==context.job.source_key||typeof artifact.text!=="string"||typeof artifact.canonicalUrl!=="string") throw new AutomaticApprovalBlocked("e2e.source_artifact_missing");
+        const approval=await recordAutomaticApproval(context.coreDb,{articleId,sourceKey:context.job.source_key!,
+          candidateId:await nativeStageCandidateId(candidate.sourceKey,candidate.url),pipelineRunId:`ingest-stage:${context.job.id}`,
+          sourceArtifactRef:context.job.payload_ref!,sourceArtifactHash:await sha256Canonical(artifact),
+          cleanedSourceText:normalizeNativeSourceText(artifact.text),candidateUrl:candidate.url,canonicalUrl:artifact.canonicalUrl,
+          candidateTitle:candidate.title,now:context.now});
+        const key=`stages/e2e-approval/${articleId}/${await sha256Canonical(approval)}.json`;
+        await deps.rawBucket.put(key,new TextEncoder().encode(JSON.stringify({articleId,approval})),{httpMetadata:{contentType:"application/json"}});
+        return {status:"succeeded",resultRef:approval.evidenceRef,nextArticleId:articleId,nextPayloadRef:key};
+      } catch (error) {
+        return {status:error instanceof AutomaticApprovalBlocked?"blocked":"retry",errorCode:error instanceof AutomaticApprovalBlocked?error.message:"e2e.approval_record_unavailable"};
+      }
+    }
     return { status: "succeeded", resultRef: articleId, nextArticleId: articleId };
   };
 
   const publish: IngestStageHandler = async (context) => {
+    if (deps.e2e?.sources.includes(context.job.source_key??"")) {
+      try {
+        const payload=context.job.payload_ref?await readJsonArtifact(deps.rawBucket,context.job.payload_ref):null;
+        if (payload?.articleId!==context.job.article_id) throw new Error("e2e.staged_approval_missing");
+        const result=await publishStagedApproved(context.coreDb,context.job.article_id,payload.approval as E2EApprovalContext);
+        const key=`stages/e2e-publication/${result.generation!.generationId}.json`;
+        await deps.rawBucket.put(key,new TextEncoder().encode(JSON.stringify({articleId:context.job.article_id,generation:result.generation})),{httpMetadata:{contentType:"application/json"}});
+        return {status:"succeeded",resultRef:`generation:${result.generation!.generationId}`,nextPayloadRef:key};
+      } catch (error) {return {status:"retry",errorCode:"e2e.staged_publication_failed",errorSummary:error instanceof Error?error.message.slice(0,500):null};}
+    }
     if (!deps.publication) {
       return { status: "blocked", errorCode: "ingest_stage.publication_adapter_missing", errorSummary: "Publication adapter is not configured." };
     }
@@ -571,6 +606,15 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
   };
 
   const search: IngestStageHandler = async (context) => {
+    if (deps.e2e?.sources.includes(context.job.source_key??"")) {
+      try {
+        const payload=context.job.payload_ref?await readJsonArtifact(deps.rawBucket,context.job.payload_ref):null;
+        if (payload?.articleId!==context.job.article_id||!payload.generation) throw new Error("e2e.staged_generation_missing");
+        const result=await finishStagedSearch(context.coreDb,deps.e2e,payload.generation as E2EGenerationReceipt);
+        if (result.status==="completed_verified"||result.status==="already_verified") return {status:"succeeded",resultRef:`generation:${(payload.generation as E2EGenerationReceipt).generationId}`};
+        return {status:["dead_letter","blocked","superseded","withdrawal_verified"].includes(result.status)?"blocked":"retry",errorCode:`e2e.staged_${result.status}`};
+      } catch {return {status:"retry",errorCode:"e2e.staged_search_verification_failed"};}
+    }
     if (!deps.search) {
       return { status: "blocked", errorCode: "ingest_stage.search_adapter_missing", errorSummary: "Search projection adapter is not configured." };
     }
@@ -595,8 +639,8 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     normalize,
     ...(deps.translation ? { translate } : {}),
     "public-judgment": publicJudgment,
-    ...(deps.publication ? { publish } : {}),
-    ...(deps.search ? { search } : {}),
+    ...(deps.publication||deps.e2e ? { publish } : {}),
+    ...(deps.search||deps.e2e ? { search } : {}),
   };
   return registry;
 }

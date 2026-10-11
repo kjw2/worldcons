@@ -1,3 +1,4 @@
+import { currentGenerations, e2eRows, hasE2ETable } from "../e2e/generation-state";
 import { buildSearchProjection } from "./build";
 import { planSearchProjectionIncrementalSync } from "./plan";
 import { verifySearchProjection } from "./verify";
@@ -37,7 +38,7 @@ export interface SearchProjectionSyncBindings {
 export const SEARCH_PROJECTION_SYNC_PAGE_SIZE = 50;
 export const SEARCH_PROJECTION_SYNC_BATCH_SIZE = 40;
 
-const ELIGIBLE_PUBLISHED_PREDICATE = `
+export const ELIGIBLE_PUBLISHED_PREDICATE = `
   p.state = 'published'
   AND (
     (
@@ -113,7 +114,7 @@ type EligibleTagRow = {
   type: string | null;
 };
 
-const SOURCE_SQL = `
+export const SOURCE_SQL = `
 SELECT
   p.id AS publication_id,
   p.article_id AS article_id,
@@ -199,7 +200,7 @@ async function readEligibleSourcePage(
   );
 }
 
-async function readTagsForArticleIds(
+export async function readTagsForArticleIds(
   database: SearchProjectionSyncDatabase,
   articleIds: readonly string[],
 ): Promise<EligibleTagRow[]> {
@@ -388,12 +389,23 @@ export async function applySearchProjectionPlan(
 ) {
   if (!database.batch) throw new Error("search_projection.batch_unavailable");
   if (!Number.isInteger(batchSize) || batchSize <= 0 || batchSize > 100) throw new Error("search_projection.invalid_batch_size");
+  const guardedSchema = await hasE2ETable(database,"e2e_search_generation_guards_v1");
   let batches = 0;
-  for (let index = 0; index < plan.statements.length; index += batchSize) {
-    const statements = plan.statements.slice(index, index + batchSize);
+  const effectiveBatchSize = guardedSchema ? Math.min(batchSize,98) : batchSize;
+  for (let index = 0; index < plan.statements.length; index += effectiveBatchSize) {
+    const statements = plan.statements.slice(index, index + effectiveBatchSize);
     const prepared = statements.map((statement) => database.prepare(statement.sql).bind(...statement.params));
+    if (guardedSchema) {
+      const token=crypto.randomUUID();
+      const allRows=statements.some(statement=>statement.params.length===0);
+      const ids=[...new Set(statements.map(statement=>String(statement.params[0]??"")))];
+      const predicate=allRows ? "1=1" : `article_id IN (${ids.map(()=>"?").join(",")})`;
+      prepared.unshift(database.prepare(`INSERT INTO e2e_search_commit_guards_v1 (token,assertion)
+        VALUES (?,CASE WHEN NOT EXISTS (SELECT 1 FROM e2e_search_generation_guards_v1 WHERE ${predicate}) THEN 1 ELSE 0 END)`).bind(token,...(allRows ? [] : ids)));
+      prepared.push(database.prepare("DELETE FROM e2e_search_commit_guards_v1 WHERE token=?").bind(token));
+    }
     const results = await database.batch(prepared);
-    if (!Array.isArray(results) || results.length !== statements.length) {
+    if (!Array.isArray(results) || results.length !== prepared.length) {
       throw new Error("search_projection.batch_result_mismatch");
     }
     if (results.some((result) => result.success === false || result.error)) {
@@ -405,6 +417,10 @@ export async function applySearchProjectionPlan(
 }
 
 export async function runNativeSearchProjectionSync(bindings: SearchProjectionSyncBindings) {
+  const managedIds=new Set<string>();
+  if (await hasE2ETable(bindings.WORLDCONS_CORE,"e2e_generation_heads_v1")) {
+    for (const row of await e2eRows(bindings.WORLDCONS_CORE,"SELECT article_id FROM e2e_generation_heads_v1")) managedIds.add(String(row.article_id));
+  }
   const eligibleCountRows = await readRows<{ count: number | string }>(
     bindings.WORLDCONS_CORE,
     `SELECT COUNT(*) AS count FROM article_publications_p3 p JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id WHERE ${ELIGIBLE_PUBLISHED_PREDICATE}`,
@@ -426,10 +442,11 @@ export async function runNativeSearchProjectionSync(bindings: SearchProjectionSy
       if (desiredIds.has(articleId)) throw new Error(`search_projection.duplicate_eligible_article:${articleId}`);
       desiredIds.add(articleId);
     }
-    const tagRows = await readTagsForArticleIds(bindings.WORLDCONS_CORE, articleIds);
-    const input = buildSearchProjectionInputFromEligibleRows(sourceRows, tagRows);
+    const writableIds=articleIds.filter(id=>!managedIds.has(id));
+    const tagRows = await readTagsForArticleIds(bindings.WORLDCONS_CORE, writableIds);
+    const input = buildSearchProjectionInputFromEligibleRows(sourceRows.filter(row=>!managedIds.has(row.article_id)), tagRows);
     const built = buildSearchProjection(input);
-    const current = await readCurrentIdentitiesForArticleIds(bindings.WORLDCONS_SEARCH, articleIds);
+    const current = await readCurrentIdentitiesForArticleIds(bindings.WORLDCONS_SEARCH, writableIds);
     const plan = planSearchProjectionIncrementalSync(current, built.documents, built.ftsDocuments);
     batchCount += await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, plan);
     statementCount += plan.statements.length;
@@ -450,9 +467,11 @@ export async function runNativeSearchProjectionSync(bindings: SearchProjectionSy
     readPaged<{ article_id: string }>(bindings.WORLDCONS_SEARCH, "SELECT article_id FROM search_fts ORDER BY article_id"),
   ]);
   const staleIds = [...new Set([...currentDocumentIds, ...currentFtsIds].map((row) => row.article_id))]
-    .filter((articleId) => !desiredIds.has(articleId))
+    .filter((articleId) => !desiredIds.has(articleId) && !managedIds.has(articleId))
     .sort();
-  if (staleIds.length > 0) {
+  const newlyManaged = await currentGenerations(bindings.WORLDCONS_CORE,staleIds);
+  const removableIds = staleIds.filter(id=>!newlyManaged.has(id));
+  if (removableIds.length > 0) {
     const removalPlan: SearchProjectionPlan = {
       scope: "worldcons_search",
       operation: "incremental",
@@ -460,15 +479,15 @@ export async function runNativeSearchProjectionSync(bindings: SearchProjectionSy
       atomic: false,
       executionDeferred: true,
       noop: false,
-      changes: { added: 0, changed: 0, removed: staleIds.length, unchanged: 0 },
-      statements: staleIds.flatMap((articleId) => [
+      changes: { added: 0, changed: 0, removed: removableIds.length, unchanged: 0 },
+      statements: removableIds.flatMap((articleId) => [
         { sql: "DELETE FROM search_fts WHERE article_id = ?", params: [articleId] },
         { sql: "DELETE FROM search_documents WHERE article_id = ?", params: [articleId] },
       ]),
     };
     batchCount += await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, removalPlan);
     statementCount += removalPlan.statements.length;
-    changes.removed += staleIds.length;
+    changes.removed += removableIds.length;
   }
 
   const [documentCountRows, ftsCountRows] = await Promise.all([
@@ -497,7 +516,7 @@ export async function runNativeSearchProjectionSync(bindings: SearchProjectionSy
   };
 }
 
-async function readEligibleSourceForArticle(
+export async function readEligibleSourceForArticle(
   database: SearchProjectionSyncDatabase,
   articleId: string,
 ): Promise<EligibleSourceRow[]> {
@@ -538,6 +557,9 @@ export async function syncSearchProjectionForArticle(
 ): Promise<SyncSearchProjectionForArticleResult> {
   if (typeof articleId !== "string" || articleId.length === 0) {
     throw new Error("search_projection.invalid_article_id");
+  }
+  if ((await currentGenerations(bindings.WORLDCONS_CORE,[articleId])).has(articleId)) {
+    throw new Error("search_projection.e2e_managed_article");
   }
   const sourceRows = await readEligibleSourceForArticle(bindings.WORLDCONS_CORE, articleId);
   const desiredEligible = sourceRows.length > 0;

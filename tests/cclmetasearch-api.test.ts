@@ -160,7 +160,7 @@ test("handler returns a bounded page and exact pagination metadata", async () =>
   assert.equal(response.status, 200);
   assert.equal(payload.items.length, 1);
   assert.deepEqual(payload.meta, { limit: 1, offset: 2, total: 4, hasMore: true });
-  assert.equal(response.headers.get("cache-control"), "private, max-age=60, stale-while-revalidate=300");
+  assert.equal(response.headers.get("cache-control"), "no-store");
   assert.equal(response.headers.get("vary"), "X-CCL-Metasearch-Token");
 });
 

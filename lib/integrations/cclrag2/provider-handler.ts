@@ -1,3 +1,5 @@
+import { canonicalArticleCaseNumber } from "@/lib/search/case-number";
+import { assertPublicSearchFreshness, overlayPublicGenerationRows } from "@/lib/cloudflare/e2e/public-freshness";
 import { normalizeEmbeddingVector } from "@/lib/ai/embedding-vector";
 import type { ArticleDetail } from "@/lib/db/types";
 import type { SupabaseArticleTagRow } from "@/lib/article-reads/shared";
@@ -52,8 +54,8 @@ const RANGE_VALUES = new Set(["latest", "today", "week", "month"]);
 const SOURCE_KEY_PATTERN = /^[a-z]{2}(?:-[a-z0-9]+)+$/u;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_FILTER_PATTERN = /^[\p{L}\p{M}\p{N} _./:·°§#-]+$/u;
-const SEARCH_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
-const DETAIL_CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=900";
+const SEARCH_CACHE_CONTROL = "no-store";
+const DETAIL_CACHE_CONTROL = "no-store";
 const CONTRACT_VERSION = "2.0";
 const EMBEDDING_TIMEOUT_MS = 5_000;
 const GEMINI_EMBEDDING_API = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -231,7 +233,7 @@ async function hydrateProviderSearchRows(binding: D1RuntimeDatabase, entries: re
   const tagTable = PROVIDER_TABLES.get("tags");
   if (!articleTable || !articleTagTable || !tagTable) throw new Error("Provider search D1 schema is incomplete.");
 
-  const articles = await runD1RuntimeRead({
+  const articles = await overlayPublicGenerationRows(binding,await runD1RuntimeRead({
     binding,
     table: articleTable,
     select: [...PROVIDER_SEARCH_COLUMNS],
@@ -241,7 +243,7 @@ async function hydrateProviderSearchRows(binding: D1RuntimeDatabase, entries: re
       { column: "catalog_ai_stale_v4", value: 0 },
     ],
     limit: ids.length,
-  });
+  }));
   if (articles.length > ids.length) throw new D1ShadowTruncatedError("hydrateProviderSearchRows");
   if (articles.length === 0) return [];
 
@@ -288,7 +290,7 @@ async function hydrateProviderSearchRows(binding: D1RuntimeDatabase, entries: re
     const row: JsonRecord = {
       ...article,
       article_tags: linksByArticleId.get(String(article.id)) ?? [],
-      case_number: firstString(sourceMetadata, ["caseNumber", "case_number", "docketNumber", "docket_number"]),
+      case_number: canonicalArticleCaseNumber({sourceKey: String(article.source_key), originalTitle: String(article.original_title), metadata: sourceMetadata}) ?? null,
       body_excerpt: Array.from(body).slice(0, MAX_BODY_EXCERPT_CHARS).join(""),
     };
     return [String(article.id), row];
@@ -338,11 +340,13 @@ async function searchResponse(
   };
   const page = await runVectorRankedSearchPage({
     d1: searchBinding,
+    core: coreBinding,
     vector: dependencies.vectorBinding,
     input: rankedInput,
   });
   const hydrated = await hydrateProviderSearchRows(coreBinding, page.entries);
   const items = hydrated.map((row) => mapSearchItem(row, env.PUBLIC_BASE_URL));
+  await assertPublicSearchFreshness(coreBinding,searchBinding,page.entries.map(entry=>entry.id));
   const { hasMore, total, totalIsExact } = page;
   const databaseRetrievalMode = page.retrievalMode;
 
@@ -781,7 +785,7 @@ function mapSearchItem(value: unknown, publicBaseUrl: string) {
   );
   const detailApiUrl = `${normalizedBaseUrl(publicBaseUrl)}/articles/${encodeURIComponent(slug)}`;
   const caseNumber = optionalString(row.case_number)
-    ?? firstString(rawSourceMetadata, ["caseNumber", "case_number", "docketNumber", "docket_number"]);
+    ?? canonicalArticleCaseNumber({sourceKey, originalTitle: optionalString(row.original_title), metadata: rawSourceMetadata}) ?? null;
   const institutionName = requiredString(row.institution_name, "institution_name");
   const jurisdiction = requiredString(row.jurisdiction, "jurisdiction");
   const decisionDate = dateOnly(row.original_published_at);

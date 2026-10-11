@@ -45,7 +45,7 @@ import {
  * `materializeMigration` implementation) or a malformed migration input.
  */
 export const D1_MIGRATION_OBJECT_QUERY =
-  "select type, name, sql from sqlite_master where type in ('table', 'index') order by type, name";
+  "select type, name, sql from sqlite_master where type in ('table', 'index', 'trigger') order by type, name";
 
 /** The single-line comment prefix that carries a migration's verify directive. */
 export const D1_MIGRATION_VERIFY_PREFIX = "-- @d1-verify";
@@ -69,8 +69,8 @@ function normalizeVerification(value: unknown): D1MigrationVerification {
   if (record === null) {
     throw new D1RemoteError("d1_remote.malformed_migration_verify", "a @d1-verify directive is not a JSON object");
   }
-  if (record.type !== "table" && record.type !== "index") {
-    throw new D1RemoteError("d1_remote.malformed_migration_verify", "a @d1-verify type must be table or index");
+  if (record.type !== "table" && record.type !== "index" && record.type !== "trigger") {
+    throw new D1RemoteError("d1_remote.malformed_migration_verify", "a @d1-verify type must be table, index or trigger");
   }
   if (typeof record.name !== "string" || record.name.trim().length === 0) {
     throw new D1RemoteError("d1_remote.malformed_migration_verify", "a @d1-verify name must be a non-empty string");

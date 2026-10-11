@@ -1,0 +1,14 @@
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\core-write\authority.ts
+  115:16  warning  'many' is defined but never used  @typescript-eslint/no-unused-vars
+  132:16  warning  'run' is defined but never used   @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\search\repository\index.ts
+  47:26  warning  '_request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\workers\async-pipeline\src\native-crawler.ts
+   182:38  warning  'specific' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  1172:9   warning  'rangeStart' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 5 problems (0 errors, 5 warnings)
+

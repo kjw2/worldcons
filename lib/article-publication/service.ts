@@ -1,3 +1,4 @@
+import { validE2EApproval } from "@/lib/cloudflare/e2e/contracts";
 import { articlePublicationError } from "@/lib/article-publication/errors";
 import { coreAuthorityArticlePublicationRepository } from "@/lib/cloudflare/core-write/repositories";
 import {
@@ -21,6 +22,7 @@ function validTransition(input: ArticlePublicationTransitionInput) {
     && Number.isSafeInteger(input.expectedVersionRevision) && input.expectedVersionRevision >= 0
     && Number.isSafeInteger(input.expectedPublicationRevision) && input.expectedPublicationRevision >= 0
     && bounded(input.idempotencyKey, 240, true)
+    && (input.e2eApproval === undefined || validE2EApproval(input.e2eApproval))
     && ARTICLE_PUBLICATION_STATES.includes(input.targetState)
     && ARTICLE_PUBLICATION_ACTORS.includes(input.actorType)
     && bounded(input.actorId, 160)

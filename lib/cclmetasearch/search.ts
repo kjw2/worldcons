@@ -1,3 +1,4 @@
+import { assertPublicSearchFreshness } from "@/lib/cloudflare/e2e/public-freshness";
 import type { CclMetasearchSearchInput, CclMetasearchSearchPage } from "@/lib/cclmetasearch/contract";
 import { mapCclMetasearchRow } from "@/lib/cclmetasearch/mapper";
 import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
@@ -112,6 +113,7 @@ export async function searchCclMetasearchWithEnv(
       readExactTotal(searchBinding, compiled.matchExpression),
     ]);
     const items = await hydrateItems(coreBinding, pageRows, baseUrl);
+    await assertPublicSearchFreshness(coreBinding,searchBinding,pageRows.map(row=>row.article_id));
     return { items, total };
   })();
 

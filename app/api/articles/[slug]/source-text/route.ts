@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import { NextResponse } from "next/server";
 import { PUBLIC_ARTICLES_CACHE_TAG } from "@/lib/public-content-cache";
 import { getArticleSourceTextBySlug } from "@/lib/db/queries";
@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     cleanedText: snapshot.cleanedText,
   }, {
     headers: {
-      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      "Cache-Control": "no-store",
     },
   });
 }

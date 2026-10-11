@@ -77,7 +77,7 @@
     "test:admin-analytics-reads": "tsx --test tests/admin-analytics-read-repository.test.ts",
     "test:rpc-ledger": "tsx --test tests/rpc-ledger.test.ts",
     "typecheck": "next typegen && tsc --noEmit",
-    "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:native-crawler && pnpm test:ingest-stages && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:reference-reads && pnpm test:article-reads && pnpm test:search-repository && pnpm test:admin-ops-reads && pnpm test:admin-analytics-reads && pnpm test:rpc-ledger && pnpm test:d1-schema && pnpm test:d1-convert && pnpm test:d1-import && pnpm test:d1-provision && pnpm test:d1-apply-schema && pnpm test:d1-migrate && pnpm test:d1-http-query && pnpm test:d1-copy-data && pnpm test:d1-reconcile && pnpm test:d1-supabase-linked-source && pnpm test:d1-shadow-all && pnpm test:d1-case-catalog && pnpm test:d1-search-projection && pnpm test:d1-fts-search && pnpm test:d1-ranked-search && pnpm test:d1-vector-search && pnpm test:d1-search-canary && pnpm test:d1-search-canary-m7.6 && pnpm test:m7.7a && pnpm test:m7.8a && pnpm test:m7.8b && pnpm test:m7.9 && pnpm test:m8 && pnpm m8:types:check && pnpm m8:typecheck && pnpm test:m9 && pnpm m9:types:check && pnpm m9:typecheck && pnpm test:m10 && pnpm test:m11 && pnpm test:search-rank-policy && pnpm test:plugin && pnpm plugin:validate && pnpm build",
+    "verify:release": "pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:native-crawler && pnpm test:ingest-stages && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:reference-reads && pnpm test:article-reads && pnpm test:search-repository && pnpm test:admin-ops-reads && pnpm test:admin-analytics-reads && pnpm test:rpc-ledger && pnpm test:d1-schema && pnpm test:d1-convert && pnpm test:d1-import && pnpm test:d1-provision && pnpm test:d1-apply-schema && pnpm test:d1-migrate && pnpm test:d1-http-query && pnpm test:d1-copy-data && pnpm test:d1-reconcile && pnpm test:d1-supabase-linked-source && pnpm test:d1-shadow-all && pnpm test:d1-case-catalog && pnpm test:d1-search-projection && pnpm test:d1-fts-search && pnpm test:d1-ranked-search && pnpm test:d1-vector-search && pnpm test:d1-search-canary && pnpm test:d1-search-canary-m7.6 && pnpm test:m7.7a && pnpm test:m7.8a && pnpm test:m7.8b && pnpm test:m7.9 && pnpm test:m8 && pnpm m8:types:check && pnpm m8:typecheck && pnpm test:m9 && pnpm m9:types:check && pnpm m9:typecheck && pnpm test:m10 && pnpm test:e2e-p0-m1 && pnpm test:e2e-p0-m2 && pnpm test:e2e-p0-m3 && pnpm test:e2e-p0-m4 && pnpm test:e2e-p0-m5 && pnpm test:m11 && pnpm test:search-rank-policy && pnpm test:plugin && pnpm plugin:validate && pnpm build",
     "plugin:validate": "tsx scripts/validate-chatgpt-plugin.ts",
     "plugin:smoke": "tsx scripts/smoke-chatgpt-plugin.ts",
     "test:plugin": "tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts",
@@ -174,7 +174,12 @@
     "dev:vinext": "vinext dev --port 3001",
     "build:vinext": "vinext build",
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
-    "check:vinext": "vinext check"
+    "check:vinext": "vinext check",
+    "test:e2e-p0-m1": "tsx --test tests/e2e-p0-m1-generations.test.ts",
+    "test:e2e-p0-m2": "tsx --test tests/e2e-p0-m2-search-repair.test.ts tests/e2e-p0-m2-d1-runtime.test.ts",
+    "test:e2e-p0-m3": "tsx --test tests/e2e-p0-m3-search-guards.test.ts tests/e2e-p0-m3-d1-runtime.test.ts",
+    "test:e2e-p0-m4": "tsx --test tests/e2e-p0-m4-verification.test.ts tests/e2e-p0-m4-staged.test.ts tests/e2e-p0-m4-d1-runtime.test.ts",
+    "test:e2e-p0-m5": "tsx --test tests/e2e-p0-m5-core-writers.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

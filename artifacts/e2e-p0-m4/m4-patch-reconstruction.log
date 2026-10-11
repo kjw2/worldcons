@@ -1,0 +1,79 @@
+{
+  "exitCode": 0,
+  "method": "isolated temporary bare repository with read-only object alternate: main + preserved M3 patch + M4-only patch",
+  "indexUnchanged": true,
+  "steps": [
+    {
+      "args": [
+        "read-tree",
+        "a415860362877bafef579cab0c18133dcdb877d3"
+      ],
+      "code": 0
+    },
+    {
+      "args": [
+        "apply",
+        "--cached",
+        "--whitespace=nowarn",
+        "C:/Users/jaeth/.codex/worktrees/e2e-p0-m1/worldcons/artifacts/e2e-p0-m3/implementation-from-main.diff"
+      ],
+      "code": 0
+    },
+    {
+      "args": [
+        "add",
+        "-N",
+        "--",
+        "d1/worldcons_core/0007_e2e_verification.sql",
+        "lib/cloudflare/e2e/automatic-approval.ts",
+        "lib/cloudflare/e2e/search-verification.ts",
+        "lib/cloudflare/e2e/sql-predicates.ts",
+        "tests/e2e-p0-m4-verification.test.ts",
+        "tests/e2e-p0-m4-staged.test.ts",
+        "tests/e2e-p0-m4-d1-runtime.test.ts",
+        "tests/helpers/e2e-m4-summary.ts",
+        "workers/async-pipeline/src/staged-e2e.ts"
+      ],
+      "code": 0
+    },
+    {
+      "args": [
+        "read-tree",
+        "a415860362877bafef579cab0c18133dcdb877d3"
+      ],
+      "code": 0
+    },
+    {
+      "args": [
+        "apply",
+        "--cached",
+        "--whitespace=nowarn",
+        "C:/Users/jaeth/.codex/worktrees/e2e-p0-m1/worldcons/artifacts/e2e-p0-m3/implementation-from-main.diff"
+      ],
+      "code": 0
+    },
+    {
+      "args": [
+        "apply",
+        "--cached",
+        "--whitespace=nowarn",
+        "C:/Users/jaeth/.codex/worktrees/e2e-p0-m1/worldcons/artifacts/e2e-p0-m4/implementation-m4-only.diff"
+      ],
+      "code": 0
+    },
+    {
+      "args": [
+        "diff",
+        "--exit-code",
+        "--",
+        "app",
+        "lib",
+        "d1",
+        "workers",
+        "tests",
+        "package.json"
+      ],
+      "code": 0
+    }
+  ]
+}

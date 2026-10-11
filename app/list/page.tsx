@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import type { Metadata } from "next";
 import { ChevronRight } from "lucide-react";
 import { ArticleListView } from "@/components/article-list-view";

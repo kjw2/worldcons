@@ -1,3 +1,5 @@
+import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
+import { assertPublicSearchFreshness } from "@/lib/cloudflare/e2e/public-freshness";
 import { createTextEmbedding } from "@/lib/ai/embeddings";
 import { listArticles } from "@/lib/db/queries";
 import type { ArticleListFilters, ArticleListResult } from "@/lib/db/types";
@@ -125,6 +127,11 @@ async function rankedItemsByIds(filters: ArticleListFilters, ids: string[]) {
     items: results.flatMap((result) => result.items),
     pageInfo: { page: 1, pageSize: uniqueIds.length, total: uniqueIds.length },
   };
+  if (!filters.includeUnpublished) {
+    const core = getRuntimeD1Binding("worldcons_core"), search = getRuntimeD1Binding("worldcons_search");
+    if (!core || !search) throw new Error("e2e.public_search_unavailable");
+    await assertPublicSearchFreshness(core, search, combined.items.map(item => item.id).filter((id): id is string => Boolean(id)));
+  }
   return reorderByIds(combined, uniqueIds).items;
 }
 

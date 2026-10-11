@@ -1,3 +1,6 @@
+import { hasE2ETable } from "@/lib/cloudflare/e2e/generation-state";
+import { approvalIdentity, validE2EApproval } from "@/lib/cloudflare/e2e/contracts";
+import { prepareGenerationCommit, readGenerationReplay } from "@/lib/cloudflare/e2e/generation-ledger";
 import { articleLifecycleError } from "@/lib/article-lifecycle/errors";
 import type {
   ArticleAttentionState,
@@ -136,7 +139,10 @@ async function run(binding: D1RuntimeDatabase, sql: string, values: unknown[] = 
 async function batch(binding: D1RuntimeDatabase, statements: D1RuntimePreparedStatement[]) {
   if (!binding.batch) throw new Error("core_d1.batch_unavailable");
   const results = await binding.batch(statements);
-  for (const result of results) ensureSuccess(result, "core_d1.batch_failed");
+  for (const result of results) {
+    if (result.error?.includes("e2e_commit_snapshot_match")) throw new Error("e2e_commit_snapshot_match");
+    ensureSuccess(result, "core_d1.batch_failed");
+  }
   return results;
 }
 
@@ -166,10 +172,15 @@ function jsonObject(value: unknown) {
   }
 }
 
-function safeSourceMetadata(value: unknown) {
+export function approvalSourceMetadata(value: unknown, includeApprovalSafety = false) {
   const source = jsonObject(value);
   const collection = jsonObject(source.collection);
+  const safety = jsonObject(source.collectionSafety);
+  const catalog = jsonObject(source.catalog);
   return {
+    ...(includeApprovalSafety && source.sourceTextStatus !== undefined ? { sourceTextStatus: source.sourceTextStatus } : {}),
+    ...(includeApprovalSafety && safety.publishable !== undefined ? { collectionSafety: { publishable: safety.publishable } } : {}),
+    ...(includeApprovalSafety && catalog.sourceOnly !== undefined ? { catalog: { sourceOnly: catalog.sourceOnly } } : {}),
     ...(source.resolutionType !== undefined ? { resolutionType: source.resolutionType } : {}),
     ...(source.caseNumber !== undefined ? { caseNumber: source.caseNumber } : {}),
     ...(source.boeUsedForFiltering !== undefined ? { boeUsedForFiltering: source.boeUsedForFiltering } : {}),
@@ -516,6 +527,27 @@ export async function transitionArticlePublicationInD1(
   input: ArticlePublicationTransitionInput,
 ): Promise<ArticlePublicationResult<ArticlePublicationTransitionResult>> {
   try {
+    if (input.e2eApproval !== undefined && (!validE2EApproval(input.e2eApproval)
+      || (input.e2eApproval.mode === "human" && input.actorType !== "human"))) {
+      return { ok: false, error: articlePublicationError("invalid_input") };
+    }
+    if (!input.e2eApproval && await hasE2ETable(binding,"e2e_generation_heads_v1")) {
+      const managed = await one<Row>(binding, `SELECT g.* FROM e2e_generation_heads_v1 h
+        JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id WHERE h.article_id=?`, [input.articleId]);
+      if (managed) {
+        // Withdrawal reuses approval of the exact immutable snapshot, never new content.
+        // Legacy publish/refresh must obtain approval through the protected staged path.
+        if (input.targetState!=="withdrawn" || input.actorType!=="human" || input.captureLegacy===true
+          || input.versionId!==managed.expected_version_id) {
+          return { ok:false,error:articlePublicationError("ineligible") };
+        }
+        input = { ...input,e2eApproval:{ mode:String(managed.approval_mode) as "human"|"automatic",
+          policyVersion:String(managed.policy_version),evidenceRef:String(managed.approval_evidence_ref),
+          sourceEvidenceRef:String(managed.source_evidence_ref),
+          ...(managed.pipeline_run_id ? {pipelineRunId:String(managed.pipeline_run_id)} : {}),
+          ...(managed.discovery_candidate_id ? {discoveryCandidateId:String(managed.discovery_candidate_id)} : {}) } };
+      }
+    }
     const previousRequest = await one<Row>(
       binding,
       "SELECT article_id,publication_id,publication_revision,version_id,version_revision,state,version_created,publication_applied FROM article_publication_requests_p3 WHERE article_id=? AND idempotency_key=?",
@@ -534,6 +566,7 @@ export async function transitionArticlePublicationInD1(
           versionCreated: asBool(previousRequest.version_created) === true,
           publicationApplied: asBool(previousRequest.publication_applied) === true,
           idempotent: true,
+          ...(input.e2eApproval ? { generation: await readGenerationReplay(binding, input) } : {}),
         },
       };
     }
@@ -541,6 +574,28 @@ export async function transitionArticlePublicationInD1(
     if (!article) return { ok: false, error: articlePublicationError("not_found") };
     if (input.expectedLegacyUpdatedAt && String(article.updated_at ?? "") !== input.expectedLegacyUpdatedAt) {
       return { ok: false, error: articlePublicationError("stale_revision") };
+    }
+    if (input.e2eApproval && input.targetState === "published") {
+      const metadata = jsonObject(article.source_metadata);
+      const safety = jsonObject(metadata.collectionSafety);
+      const catalog = jsonObject(metadata.catalog);
+      if (safety.publishable === false || metadata.sourceTextStatus === "not_available"
+        || (catalog.sourceOnly === true || catalog.sourceOnly === 1 || catalog.sourceOnly === "1")
+        || ["needs_review", "needs_triage", "closed_private", "rejected", "blocked"].includes(String(article.review_state ?? ""))) {
+        return { ok: false, error: articlePublicationError("ineligible") };
+      }
+      if (input.e2eApproval.mode === "automatic") {
+        // M1 accepts recorded approval evidence only for the initial FR/ES
+        // legacy cohort. Full content/provenance policy validation is M4.
+        const host = article.source_key === "fr-conseil-constitutionnel" ? "www.conseil-constitutionnel.fr"
+          : article.source_key === "es-tribunal-constitucional" ? "hj.tribunalconstitucional.es" : null;
+        let url: URL;
+        try { url = new URL(String(article.canonical_url ?? "")); }
+        catch { return { ok: false, error: articlePublicationError("ineligible") }; }
+        if (!host || url.protocol !== "https:" || url.hostname !== host) {
+          return { ok: false, error: articlePublicationError("ineligible") };
+        }
+      }
     }
     const p3Head = await one<Row>(binding, "SELECT * FROM article_version_heads_p3 WHERE article_id=?", [input.articleId]);
     const v4Head = await one<Row>(binding, "SELECT * FROM article_revision_heads_v4 WHERE article_id=?", [input.articleId]);
@@ -563,7 +618,7 @@ export async function transitionArticlePublicationInD1(
     let globalHeadUpsert: D1RuntimePreparedStatement | null = null;
     const now = new Date().toISOString();
     if (input.captureLegacy === true) {
-      const sourceMetadata = safeSourceMetadata(article.source_metadata);
+      const sourceMetadata = approvalSourceMetadata(article.source_metadata, Boolean(input.e2eApproval));
       const errorMetadata = safeErrorMetadata(article.error_metadata, article.error_class);
       const versionDocument = {
         slug: article.slug,
@@ -586,11 +641,35 @@ export async function transitionArticlePublicationInD1(
         errorMetadata,
       };
       const contentHash = await sha256Hex(JSON.stringify(versionDocument));
-      version = await one<Row>(
+      // Preserve legacy content_hash/deterministicVersionId. M1 uses a separate
+      // semantic approval hash to reuse the CURRENT version on timestamp-only
+      // recollection (including the first opt-in of a legacy P3 publication).
+      const candidate = { ...article, source_metadata: sourceMetadata };
+      const candidateApproval = input.e2eApproval
+        ? await approvalIdentity(input.articleId, candidate, input.e2eApproval.policyVersion) : null;
+      if (input.e2eApproval && head?.current_version_id) {
+        const active = await one<Row>(binding,
+          "SELECT * FROM article_content_versions_p3 WHERE id=? AND article_id=?",
+          [head.current_version_id, input.articleId]);
+        // Catalog/anchor captures keep their existing owner until M5 coverage.
+        if (active?.version_role != null) return { ok: false, error: articlePublicationError("ineligible") };
+        if (active && (await approvalIdentity(input.articleId, active, input.e2eApproval.policyVersion)).approvalSnapshotHash
+          === candidateApproval!.approvalSnapshotHash) version = active;
+      }
+      if (!version) version = await one<Row>(
         binding,
         "SELECT * FROM article_content_versions_p3 WHERE article_id=? AND content_hash=?",
         [input.articleId, contentHash],
       );
+      if (input.e2eApproval && version) {
+        // A historical hash match must not move publication behind the head.
+        // Also fail closed if legacy content_hash omits a changed semantic field.
+        if (version.id !== head?.current_version_id
+          || (await approvalIdentity(input.articleId, version, input.e2eApproval.policyVersion)).approvalSnapshotHash
+            !== candidateApproval!.approvalSnapshotHash) {
+          return { ok: false, error: articlePublicationError("ineligible") };
+        }
+      }
       if (!version) {
         versionRevision = currentVersionRevision + 1;
         versionId = await deterministicVersionId(input.articleId, contentHash);
@@ -599,6 +678,7 @@ export async function transitionArticlePublicationInD1(
           article_id: input.articleId,
           revision: String(versionRevision),
           content_hash: contentHash,
+          case_key: article.case_key ?? null,
           slug: article.slug,
           source_key: article.source_key,
           jurisdiction: article.jurisdiction,
@@ -635,11 +715,15 @@ export async function transitionArticlePublicationInD1(
           article.raw_text_externalized_at ?? null, article.raw_text_blob_contract_version ?? null,
         );
         headUpsert = binding.prepare(
-          "INSERT INTO article_version_heads_p3 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at",
-        ).bind(input.articleId, versionId, String(versionRevision), now);
+          "INSERT INTO article_version_heads_p3 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at"
+          + (input.e2eApproval ? " WHERE article_version_heads_p3.current_version_id=? AND article_version_heads_p3.current_revision=?" : ""),
+        ).bind(input.articleId, versionId, String(versionRevision), now,
+          ...(input.e2eApproval ? [p3Head?.current_version_id ?? "", p3Head?.current_revision ?? "0"] : []));
         globalHeadUpsert = binding.prepare(
-          "INSERT INTO article_revision_heads_v4 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at",
-        ).bind(input.articleId, versionId, String(versionRevision), now);
+          "INSERT INTO article_revision_heads_v4 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at"
+          + (input.e2eApproval ? " WHERE article_revision_heads_v4.current_version_id=? AND article_revision_heads_v4.current_revision=?" : ""),
+        ).bind(input.articleId, versionId, String(versionRevision), now,
+          ...(input.e2eApproval ? [v4Head?.current_version_id ?? "", v4Head?.current_revision ?? "0"] : []));
         versionCreated = true;
       } else {
         versionId = String(version.id);
@@ -680,7 +764,15 @@ export async function transitionArticlePublicationInD1(
     const publicationRevision = publication
       ? currentPublicationRevision + (publicationApplied ? 1 : 0)
       : 1;
+    const generationCommit = input.e2eApproval ? await prepareGenerationCommit(binding, input,
+      { article, p3Head, v4Head, publication }, { version, publicationId, publicationRevision, now }) : null;
     const statements: D1RuntimePreparedStatement[] = [];
+    // CHECK failure aborts the ENTIRE D1 batch before any P3/outbox/audit write.
+    // Checking UPDATE changes after batch() would leave other writes committed.
+    if (generationCommit) {
+      statements.push(generationCommit.guard);
+      if (generationCommit.authorization) statements.push(generationCommit.authorization);
+    }
     if (versionInsert) statements.push(versionInsert);
     // A newly captured, published legacy snapshot is the authoritative current
     // Core state (guarded by expectedLegacyUpdatedAt). Search gate2 requires a
@@ -788,6 +880,7 @@ export async function transitionArticlePublicationInD1(
       decimalIdentity(), input.articleId, input.idempotencyKey, publicationId, String(publicationRevision),
       versionId, String(versionRevision), input.targetState, Number(versionCreated), Number(publicationApplied), now,
     ));
+    if (generationCommit) statements.push(...generationCommit.statements, generationCommit.cleanup);
     await batch(binding, statements);
     return {
       ok: true,
@@ -801,10 +894,14 @@ export async function transitionArticlePublicationInD1(
         versionCreated,
         publicationApplied,
         idempotent: false,
+        ...(generationCommit ? { generation: generationCommit.result } : {}),
       },
     };
-  } catch {
-    return { ok: false, error: articlePublicationError("unavailable") };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = message.includes("e2e_commit_snapshot_match") ? "stale_revision"
+      : message.includes("e2e.invalid_replay") ? "invalid_input" : "unavailable";
+    return { ok: false, error: articlePublicationError(code) };
   }
 }
 

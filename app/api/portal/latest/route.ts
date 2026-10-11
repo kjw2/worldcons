@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import { NextResponse } from "next/server";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_PORTAL_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles } from "@/lib/db/queries";
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     await getLatestPortalPayload(limit),
     {
       headers: {
-        "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+        "Cache-Control": "no-store",
       },
     },
   );

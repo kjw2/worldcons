@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "milestone": "E2E-P0/M2",
+  "generatedAt": "2026-10-11T01:09:35.297Z",
+  "workspace": "C:/Users/jaeth/.codex/worktrees/e2e-p0-m1/worldcons",
+  "branch": "codex/e2e-p0-m1",
+  "baseCommit": "a415860362877bafef579cab0c18133dcdb877d3",
+  "remoteMainObserved": "a415860362877bafef579cab0c18133dcdb877d3",
+  "implementationStatus": "local_atomic_search_reservation_and_dispatch_verified",
+  "commitCreated": false,
+  "pushed": false,
+  "production": {
+    "deployed": false,
+    "migrationsApplied": false,
+    "cohortActivated": false,
+    "readPerformedThisMilestone": false,
+    "writePerformedThisMilestone": false,
+    "completedVerifiedEvidence": null,
+    "p0Closed": false
+  },
+  "verification": {
+    "regression": {
+      "command": "node node_modules/tsx/dist/cli.mjs --test tests/e2e-p0-m1-generations.test.ts tests/e2e-p0-m2-search-repair.test.ts tests/e2e-p0-m2-d1-runtime.test.ts tests/article-publication-p3.test.ts tests/d1-schema.test.ts tests/d1-migrate.test.ts tests/d1-apply-schema.test.ts tests/m11-core-publication-write-authority.test.ts tests/m8-async-pipeline.test.ts tests/ingest-stage-pipeline.test.ts tests/ingest-stage-handlers.test.ts tests/ingest-stage-article-services.test.ts tests/ingest-stage-redrive.test.ts",
+      "exitCode": 0,
+      "tests": 183,
+      "passed": 183,
+      "failed": 0,
+      "skipped": 0,
+      "m1Tests": 18,
+      "m2Tests": 20,
+      "log": "artifacts/e2e-p0-m2/regression-tests.log"
+    },
+    "rootTypecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    "asyncWorkerTypecheck": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit -p workers/async-pipeline/tsconfig.json",
+      "exitCode": 0
+    },
+    "lint": {
+      "command": "node node_modules/eslint/bin/eslint.js lib/cloudflare/e2e lib/cloudflare/core-write/authority.ts lib/article-publication/types.ts lib/article-publication/service.ts workers/async-pipeline/src/index.ts workers/async-pipeline/src/e2e-search-repair-scheduled.ts tests/e2e-p0-m1-generations.test.ts tests/e2e-p0-m2-search-repair.test.ts tests/e2e-p0-m2-d1-runtime.test.ts tests/helpers/e2e-core-fixture.ts",
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 2,
+      "baseline": "Existing unused many/run helpers in authority.ts"
+    },
+    "asyncWorkerBuild": {
+      "command": "node node_modules/wrangler/bin/wrangler.js deploy --dry-run --config workers/async-pipeline/wrangler.jsonc",
+      "exitCode": 0,
+      "mode": "dry-run"
+    },
+    "coreWorkerBuild": {
+      "entry": "workers/ops-write/src/index.ts",
+      "mode": "temporary root config, no Production binding, deploy --dry-run",
+      "exitCode": 0
+    },
+    "diffWhitespace": {
+      "command": "git -c core.whitespace=cr-at-eol diff --check",
+      "exitCode": 0
+    },
+    "engines": [
+      "Node 24.15.0 node:sqlite with actual schema/constraints and D1-style batch",
+      "Wrangler-owned Miniflare/workerd local D1 API; isolated ephemeral database; no Production credentials/config"
+    ],
+    "runtimeDefectFixed": {
+      "code": "D1 expression tree maximum depth 100",
+      "cause": "flat AND chain in M1 article snapshot guard",
+      "fix": "balanced AND tree retaining all comparisons/binding order",
+      "validated": "actual local D1 publication/RETURNING/full transaction rollback"
+    }
+  },
+  "activation": {
+    "dispatcherDefault": "off",
+    "enabledFlag": "WORLDCONS_E2E_SEARCH_DISPATCH_ENABLED",
+    "consumerReadyFlag": "WORLDCONS_E2E_SEARCH_CONSUMER_READY",
+    "dedicatedQueue": "E2E_SEARCH_REPAIR_QUEUE",
+    "queueProvisioned": false,
+    "wranglerConfigChanged": false,
+    "consumerImplemented": false,
+    "existingCronMinutes": 15,
+    "durableRetryStartSeconds": 60,
+    "actual60SecondCadenceGuaranteed": false,
+    "externalAlertRoutingImplemented": false
+  },
+  "codeFingerprints": {
+    "lib/article-publication/service.ts": "e2f97496af241c632402ae17baa3a3a8211304a06410b083d29b867bf113431c",
+    "lib/article-publication/types.ts": "d2593752cdf97206f9a6046a6bfc86f27141c3914efd5591d4861e69cbc16df6",
+    "lib/cloudflare/core-write/authority.ts": "9b108582ef264c2449170fd7ebc980596147637395239293c6ba49bcdb68c8df",
+    "lib/cloudflare/e2e/contracts.ts": "e2559d625ab686bc421719cfeac70333288830e62055a5394dc69167f2b5cf29",
+    "lib/cloudflare/e2e/generation-ledger.ts": "1405f508794244e506f3e4988c284f1f4762ca2af0d6842aecf9e116e6f888a4",
+    "d1/worldcons_core/0004_e2e_generations.sql": "f3b5ee58fa316649feaa737ef7ddb5e4ab1f16c6605e1125952c6e3a5ed927a1",
+    "tests/e2e-p0-m1-generations.test.ts": "de367503660ceb71af0ddf96db51eb97616797cb3028acfcd6bedc2372436488",
+    "package.json": "f13429d7dfc5df65fc0eed31f251935c4a2c993ce095773d2a6ae91ff5564133",
+    "workers/async-pipeline/src/index.ts": "e283aac18e5ac39b7cf18e4cb9da92fadb68afc6184b2d0a2590730b36a57a20",
+    "d1/worldcons_core/0005_e2e_search_repair_outbox.sql": "8c6cf16ac2d89a4ee7f22b658f9f4c4b925078730a6b28d805acb27e7f542557",
+    "lib/cloudflare/e2e/search-repair-dispatcher.ts": "ae779e21347450cd021c1a13e0c92aa523f80a8fb0d96d0ff9cdb1480a9770d4",
+    "lib/cloudflare/e2e/search-repair-reservation.ts": "e6555f68760fac755f1c5526410f0d8356a879847ad538d9a84d0849c77b2f93",
+    "tests/e2e-p0-m2-search-repair.test.ts": "82bec6e34b1423c703c2f9341b971468852f5897300d93ed40c6a1ad3c2fb167",
+    "tests/e2e-p0-m2-d1-runtime.test.ts": "4b543c079b8a2d23cb3f29cac92479f891e707505ba338228889e144db673227",
+    "tests/helpers/e2e-core-fixture.ts": "1ea7c15279cb2675c55e36fc67cdccb482409fc6fc9e61884909034042718385",
+    "workers/async-pipeline/src/e2e-search-repair-scheduled.ts": "6d81d8ca780a729737a99bfcd4184d6a1140e6dfd9512540d494aca13a231cc7"
+  },
+  "artifactFingerprints": {
+    "regression-tests.log": "791c325ff5fd5ab72f5b60062b83f6d08b9c9565eb46f7d56dc14fe1782a5f93",
+    "local-d1-runtime.log": "8f6ff1a8d02237336e9fc99c2d2d773a643504475a8896759ba080c4c63759ff",
+    "root-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "async-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lint.log": "7010f498e5c0e844808f1bc4bd72834d79de9061cd104e99729673b2349da3ab",
+    "async-build.log": "d360912210df8bc99f23bfdc68a6900d0f8d99d2518f42fd45b46144d524cfca",
+    "core-build.log": "0cc286cff121223958ddee678a0743f83babd0907efcc1190e0b77184ed8eb4e",
+    "diff-check.log": "16e3edbe92d848d09637b5ec0801d01a735a0deb44c99bc4c374f0865de6acd8",
+    "implementation-from-main.diff": "f7a35ebf2eaaddaa5c388e2810fbedea21dd74fd01a401cb58128cd70a944c49"
+  },
+  "diff": {
+    "path": "artifacts/e2e-p0-m2/implementation-from-main.diff",
+    "scope": "cumulative M1+M2 from baseCommit, not M2-only"
+  },
+  "preserved": {
+    "originalWorkspace": "F:/dev/worldcons",
+    "workingTreeStatus": "M app/admin/ops/page.tsx\n M scripts/ops-watchdog.ts\n?? artifacts/incident-analysis/\n?? docs/worldcons-e2e-pipeline-p0-incident-analysis-20261011.md",
+    "approvedPlan": {
+      "path": "F:/dev/worldcons/docs/worldcons-e2e-pipeline-p0-incident-analysis-20261011.md",
+      "sha256": "f7df0023b813c0fb582aac633d83ed8b82c038e95093b82626fb5b5cff5defba"
+    },
+    "priorReadOnlyEvidence": {
+      "path": "F:/dev/worldcons/artifacts/incident-analysis/worldcons-e2e-p0-20261011-read-only.json",
+      "sha256": "52a39acef9554b5975ae10bf91f96bbb7ac47ea52d75af718ea180f9b5d2cbb8"
+    },
+    "planAndIncidentHashesMatchM1": true,
+    "m1HistoricalEvidence": {
+      "docs/worldcons-e2e-p0-m1-implementation-20261011.md": "c2e5e409639995860aff4f37992069dd75d3af828a2b149c99d94f0776976f85",
+      "artifacts/e2e-p0-m1/verification.json": "9de55703ce4d7c18fac03dcfa2dbd263ecb5f150439fbbbbb234d57fd63a90d8",
+      "artifacts/e2e-p0-m1/implementation.diff": "0cbb522b68d36ce69b77561f8951f312b4d2fdd9cd8c11993cc98171462a43ae"
+    }
+  },
+  "pending": [
+    "M3: protected Consumer/retry ownership, all Search writers guard/FTS transaction, tombstones and batched public freshness/cache checks",
+    "M3 activation: dedicated Queue/cadence/readiness and operational alert/redrive integration",
+    "M4: content/FTS/API verification and current-generation conditional completed_verified; new unattended FR/ES case evidence",
+    "M5: remaining Core/Catalog/staged/M8/admin/delete writers, rollout/rollback compatibility and 48-hour observation"
+  ]
+}

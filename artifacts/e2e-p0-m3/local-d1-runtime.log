@@ -1,0 +1,2 @@
+✔ M2 local workerd D1: actual API batch/RETURNING and full publication rollback (8487.4081ms)
+✔ M3 local workerd: separated real D1 APIs execute guard/FTS transaction, receipt and withdrawal (12808.4372ms)

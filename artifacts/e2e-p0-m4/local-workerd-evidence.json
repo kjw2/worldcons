@@ -1,0 +1,64 @@
+{
+  "event": "m4_local_runtime_evidence",
+  "scope": "synthetic_local_workerd",
+  "verificationDocument": {
+    "apiChecks": {
+      "approvedBodyPrefixMatches": true,
+      "approvedSummaryMatches": true,
+      "detailTextLimit": 4000,
+      "exactArticleIdentity": true,
+      "expectedSearchMembership": true
+    },
+    "appliedFence": 1,
+    "approvalEvidenceRef": "core:e2e-approval:bda6be1afa9d7e70cc34518c7b4e372f336f9040d1502db06adbe93712eb294f",
+    "approvalKey": "bda6be1afa9d7e70cc34518c7b4e372f336f9040d1502db06adbe93712eb294f",
+    "articleId": "11111111-1111-4111-a111-111111111111",
+    "caseNumber": "2026-912 QPC",
+    "deploymentRef": "fixture:actual-local-workerd",
+    "documentFingerprint": "d57415a6b0884e0826e7464d1a45515cd84420131876335627d0bf76a390ee65",
+    "expected": {
+      "documentCount": 1,
+      "documentFingerprint": "d57415a6b0884e0826e7464d1a45515cd84420131876335627d0bf76a390ee65",
+      "ftsCount": 1,
+      "ftsFingerprint": "dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189"
+    },
+    "ftsFingerprint": "dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189",
+    "generationId": "a259fe2d38f8befbeb0c8cb4a07060e547cebe379065914b62b70f5eaa86c697",
+    "generationSeq": 1,
+    "observed": {
+      "documentCount": 1,
+      "documentFingerprint": "d57415a6b0884e0826e7464d1a45515cd84420131876335627d0bf76a390ee65",
+      "ftsCount": 1,
+      "ftsFingerprint": "dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189",
+      "matches": true
+    },
+    "policyVersion": "worldcons.fr-es-staged-approval.v1",
+    "probes": [
+      {
+        "cacheControl": "no-store",
+        "observedAt": "2026-10-11T05:58:06.502Z",
+        "responseHash": "d017a46917bbfa0f9c97e7865ddc7f9bc520f12e66e1cac97d7197308140a03b",
+        "status": 200,
+        "url": "https://fixture.example/api/articles/m1-fixture?textLimit=4000"
+      },
+      {
+        "cacheControl": "no-store",
+        "observedAt": "2026-10-11T05:58:06.502Z",
+        "responseHash": "aa11ee49c17a6f9edeeecf06f0a02894469389f58990e8fecd7f854ed5bc0f71",
+        "status": 200,
+        "url": "https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none"
+      }
+    ],
+    "projectionInputHash": "a11e21d19d34ce1cdc98f4b7d41b7ccc850a18afd9178f6365b0c4382b3037b8",
+    "publicationId": "ecff1230-7d86-4501-82c3-cf1b247bbad0",
+    "publicationRevision": 1,
+    "result": "completed_verified",
+    "schema": "worldcons.verification.v1",
+    "scope": "single_article",
+    "sourceEvidenceRef": "stages/ingest-crawl/workerd-m4.json",
+    "verificationFence": 3,
+    "verifiedAt": "2026-10-11T05:58:06.502Z",
+    "versionId": "8b9137e4-6d33-50b6-a33c-cd75ba4742f6",
+    "versionRevision": 1
+  }
+}

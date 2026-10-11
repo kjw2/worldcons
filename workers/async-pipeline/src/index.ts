@@ -1,3 +1,6 @@
+import { stagedE2EOptionsFromEnvironment } from "./staged-e2e";
+import { consumeE2ESearchRepairBatch, E2E_SEARCH_REPAIR_QUEUE_NAME, type E2ESearchConsumerEnvironment } from "./e2e-search-repair-queue";
+import { runE2ESearchRepairScheduled, type E2ESearchRepairEnvironment } from "./e2e-search-repair-scheduled";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import {
@@ -543,6 +546,7 @@ interface WorldconsOpsStageService {
 function ingestStageHandlersFor(env: Env): IngestStageHandlerRegistry {
   const appService = env.WORLDCONS_APP_SERVICE as unknown as WorldconsOpsStageService;
   return createIngestStageHandlers({
+    e2e: stagedE2EOptionsFromEnvironment(env as unknown as E2ESearchConsumerEnvironment & {WORLDCONS_SEARCH:Env["WORLDCONS_SEARCH"]}),
     crawlerBindings: stageCrawlerBindings(env),
     rawBucket: env.WORLDCONS_RAW as unknown as Parameters<typeof createIngestStageHandlers>[0]["rawBucket"],
     browserNavigate: (input) => browserNavigate(input, env.BROWSER),
@@ -712,6 +716,10 @@ export default {
     // enables the relevant stage, and they never complete a job or touch the
     // legacy M8 path. The frequent cron drives dispatch/reconciliation; the
     // daily crawler cron seeds discovery requests.
+    if (controller.cron === "* * * * *") {
+      await runE2ESearchRepairScheduled(env as unknown as E2ESearchRepairEnvironment);
+      return; // Dedicated tick must never fan out legacy M8 work.
+    }
     if (controller.cron === "*/15 * * * *") {
       await runIngestStageScheduled(controller, env);
     }
@@ -752,6 +760,10 @@ export default {
   },
 
   async queue(batch: MessageBatch<M8TaskMessage>, env: Env) {
+    if (batch.queue===E2E_SEARCH_REPAIR_QUEUE_NAME) {
+      await consumeE2ESearchRepairBatch(batch.messages,env as unknown as E2ESearchConsumerEnvironment);
+      return;
+    }
     const stage = stageForQueue(batch.queue);
     if (stage) {
       await consumeIngestStageBatch(batch, {

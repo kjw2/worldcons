@@ -287,7 +287,7 @@ export const D1_REMOTE_MIGRATION_APPLY_VERSION = 1 as const;
  * `WHERE status IN ('queued','running','retry_wait')`.
  */
 export interface D1MigrationVerification {
-  type: "table" | "index";
+  type: "table" | "index" | "trigger";
   name: string;
   /** Fragments that must all appear in the object's `sqlite_master.sql`. */
   sqlIncludes: string[];

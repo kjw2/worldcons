@@ -1,0 +1,113 @@
+{
+  "event": "m4_local_staged_evidence",
+  "scope": "synthetic_local",
+  "officialTransport": "fixture",
+  "translation": "fixture",
+  "generation": {
+    "generation_id": "2fb550ddacd0df911e39098eef862911686042fb11f57f869c10b399def807b6",
+    "article_id": "5d9a12c6-d993-4ef9-aa3a-079634e23fb8",
+    "generation_seq": 1,
+    "source_key": "fr-conseil-constitutionnel",
+    "source_content_hash": "6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa",
+    "approval_key": "647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad",
+    "approval_snapshot_hash": "f87c6872a3a4fc6502dfe2c3c0cbb45a4d97c4c4a63d7ae44f326f6c18c6ffeb",
+    "approval_hash_schema": "worldcons.approval.v1",
+    "projection_input_hash": "3f9842ae84389b0f32b9323564f1094d8988b4ee6f54f4da2c6722b0119b592a",
+    "projection_input_schema": "worldcons.projection-input.v1",
+    "expected_version_id": "8fd31646-74ec-5047-a2f2-c9012ea9340b",
+    "expected_version_revision": 1,
+    "expected_publication_id": "35429ad8-8519-4594-ad80-2181567c0156",
+    "expected_publication_revision": 1,
+    "expected_publication_state": "published",
+    "approval_mode": "automatic",
+    "policy_version": "worldcons.fr-es-staged-approval.v1",
+    "approval_evidence_ref": "core:e2e-approval:647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad",
+    "source_evidence_ref": "stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json",
+    "pipeline_run_id": "ingest-stage:a041a14e-b40c-4645-b011-f7df6d00d730",
+    "discovery_candidate_id": "native:443d0380339820fc0547a7166948c047",
+    "created_at": "2026-10-11T05:56:57.614Z"
+  },
+  "approvalProof": {
+    "approval_key": "647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad",
+    "article_id": "5d9a12c6-d993-4ef9-aa3a-079634e23fb8",
+    "approval_snapshot_hash": "f87c6872a3a4fc6502dfe2c3c0cbb45a4d97c4c4a63d7ae44f326f6c18c6ffeb",
+    "source_content_hash": "6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa",
+    "policy_version": "worldcons.fr-es-staged-approval.v1",
+    "evidence_ref": "core:e2e-approval:647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad",
+    "source_artifact_ref": "stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json",
+    "source_artifact_hash": "d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594",
+    "discovery_candidate_id": "native:443d0380339820fc0547a7166948c047",
+    "pipeline_run_id": "ingest-stage:a041a14e-b40c-4645-b011-f7df6d00d730",
+    "evidence_document": "{\"approvalKey\":\"647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad\",\"approvalSnapshotHash\":\"f87c6872a3a4fc6502dfe2c3c0cbb45a4d97c4c4a63d7ae44f326f6c18c6ffeb\",\"articleId\":\"5d9a12c6-d993-4ef9-aa3a-079634e23fb8\",\"candidateId\":\"native:443d0380339820fc0547a7166948c047\",\"canonicalUrl\":\"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm\",\"caseNumber\":\"2026-912 QPC\",\"checks\":{\"noReviewBlock\":true,\"noRiskFlags\":true,\"officialHost\":true,\"publicPermission\":true,\"sourceTextMatches\":true,\"summarySchema\":true,\"translationPersisted\":true},\"observedAt\":\"2026-10-11T05:56:57.539Z\",\"pipelineRunId\":\"ingest-stage:a041a14e-b40c-4645-b011-f7df6d00d730\",\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"schema\":\"worldcons.automatic-approval.v1\",\"sourceArtifactHash\":\"d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594\",\"sourceArtifactRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json\",\"sourceContentHash\":\"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa\"}",
+    "created_at": "2026-10-11T05:56:57.539Z"
+  },
+  "verification": {
+    "evidence_id": "f63afcd8092c3ae916c7866c51f49f3631d0be8ba90b3d892a005a7bf93550d7",
+    "generation_id": "2fb550ddacd0df911e39098eef862911686042fb11f57f869c10b399def807b6",
+    "result": "completed_verified",
+    "verification_fence": 1,
+    "applied_fence": 1,
+    "document_fingerprint": "df81c8860a2a88e659fc2d6427c78c17d75deb43978d33e95cd9dc37b6c66d49",
+    "fts_fingerprint": "ed9d3efbe6183ebcb82b003f8cbae6bf0f970e1d0070ba5ebb643b9839e01d65",
+    "evidence_document": "{\"apiChecks\":{\"approvedBodyPrefixMatches\":true,\"approvedSummaryMatches\":true,\"detailTextLimit\":4000,\"exactArticleIdentity\":true,\"expectedSearchMembership\":true},\"appliedFence\":1,\"approvalEvidenceRef\":\"core:e2e-approval:647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad\",\"approvalKey\":\"647471fbdfdcec10e13aef56a4d82c2b6b14083845f53b3792e6e5401b5f11ad\",\"articleId\":\"5d9a12c6-d993-4ef9-aa3a-079634e23fb8\",\"caseNumber\":\"2026-912 QPC\",\"deploymentRef\":\"fixture:synthetic-local-staged\",\"documentFingerprint\":\"df81c8860a2a88e659fc2d6427c78c17d75deb43978d33e95cd9dc37b6c66d49\",\"expected\":{\"documentCount\":1,\"documentFingerprint\":\"df81c8860a2a88e659fc2d6427c78c17d75deb43978d33e95cd9dc37b6c66d49\",\"ftsCount\":1,\"ftsFingerprint\":\"ed9d3efbe6183ebcb82b003f8cbae6bf0f970e1d0070ba5ebb643b9839e01d65\"},\"ftsFingerprint\":\"ed9d3efbe6183ebcb82b003f8cbae6bf0f970e1d0070ba5ebb643b9839e01d65\",\"generationId\":\"2fb550ddacd0df911e39098eef862911686042fb11f57f869c10b399def807b6\",\"generationSeq\":1,\"observed\":{\"documentCount\":1,\"documentFingerprint\":\"df81c8860a2a88e659fc2d6427c78c17d75deb43978d33e95cd9dc37b6c66d49\",\"ftsCount\":1,\"ftsFingerprint\":\"ed9d3efbe6183ebcb82b003f8cbae6bf0f970e1d0070ba5ebb643b9839e01d65\",\"matches\":true},\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"probes\":[{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T05:56:57.661Z\",\"responseHash\":\"3fe0467037abdac99b24855063c45da5bd6b7ba4d410f6a1f499edf3d23277d7\",\"status\":200,\"url\":\"https://fixture.example/api/articles/france-fr-conseil-constitutionnel-2026-10-10-decision-n-2026-912-qpc-du-10-octobre-2026-1d7526?textLimit=4000\"},{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T05:56:57.680Z\",\"responseHash\":\"8de31cf365ffa3698736c40522ddda68350f138ea226fbfe15bfb2ab36928b1d\",\"status\":200,\"url\":\"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none\"}],\"projectionInputHash\":\"3f9842ae84389b0f32b9323564f1094d8988b4ee6f54f4da2c6722b0119b592a\",\"publicationId\":\"35429ad8-8519-4594-ad80-2181567c0156\",\"publicationRevision\":1,\"result\":\"completed_verified\",\"schema\":\"worldcons.verification.v1\",\"scope\":\"single_article\",\"sourceEvidenceRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json\",\"verificationFence\":1,\"verifiedAt\":\"2026-10-11T05:56:57.682Z\",\"versionId\":\"8fd31646-74ec-5047-a2f2-c9012ea9340b\",\"versionRevision\":1}",
+    "verified_at": "2026-10-11T05:56:57.682Z"
+  },
+  "stages": [
+    {
+      "id": "d087cdb3-79d9-4313-8b1e-64efec683c9e",
+      "stage": "discovery",
+      "status": "succeeded",
+      "articleId": "native-discovery:fr-conseil-constitutionnel:1:default",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/ingest-discovery-request/fr-conseil-constitutionnel/7de48f4c1f26460f14d2500e94107453c739d77d13e49b639da240c859815383.json"
+    },
+    {
+      "id": "d64e5892-34f2-4a06-a533-e74c7e063611",
+      "stage": "crawl",
+      "status": "succeeded",
+      "articleId": "native:443d0380339820fc0547a7166948c047",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/ingest-discovery/fr-conseil-constitutionnel/1d7526952a00210059c3858e401fb5cbf9e17841186e363cdd33d1b5dbcfb67e.json"
+    },
+    {
+      "id": "b190f9d2-840b-404a-90a8-f4f4b4223923",
+      "stage": "normalize",
+      "status": "succeeded",
+      "articleId": "native:443d0380339820fc0547a7166948c047",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json"
+    },
+    {
+      "id": "5f0a844a-4591-424b-b000-bece18ea37df",
+      "stage": "translate",
+      "status": "succeeded",
+      "articleId": "5d9a12c6-d993-4ef9-aa3a-079634e23fb8",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json"
+    },
+    {
+      "id": "a041a14e-b40c-4645-b011-f7df6d00d730",
+      "stage": "public-judgment",
+      "status": "succeeded",
+      "articleId": "5d9a12c6-d993-4ef9-aa3a-079634e23fb8",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/ingest-crawl/fr-conseil-constitutionnel/d1b5dbf90a86c22f21ce238622a25cf7d052711b24aec3efa8633943c6e17594.json"
+    },
+    {
+      "id": "9911c920-1be1-4767-adbd-d42fbfd41c4d",
+      "stage": "publish",
+      "status": "succeeded",
+      "articleId": "5d9a12c6-d993-4ef9-aa3a-079634e23fb8",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/e2e-approval/5d9a12c6-d993-4ef9-aa3a-079634e23fb8/6f2edd3d7eea13fc78dc78a515ff82adcc11d626ca3cceaef2dea96a1b3a1239.json"
+    },
+    {
+      "id": "b4641cb3-b076-44df-8219-e96bfd918ba2",
+      "stage": "search",
+      "status": "succeeded",
+      "articleId": "5d9a12c6-d993-4ef9-aa3a-079634e23fb8",
+      "sourceKey": "fr-conseil-constitutionnel",
+      "payloadRef": "stages/e2e-publication/2fb550ddacd0df911e39098eef862911686042fb11f57f869c10b399def807b6.json"
+    }
+  ]
+}

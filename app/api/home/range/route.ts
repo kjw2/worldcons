@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { freshnessAwarePublicCache as unstable_cache } from "@/lib/public-freshness-cache";
 import { NextResponse } from "next/server";
 import { PUBLIC_ARTICLES_CACHE_TAG, PUBLIC_ARTICLE_COUNTS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listJurisdictionArticleCounts } from "@/lib/db/queries";
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json(payload, {
     headers: {
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+      "Cache-Control": "no-store",
     },
   });
 }

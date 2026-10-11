@@ -1,0 +1,2 @@
+Extracted from the final 183-test regression run; full log: regression-tests.log
+✔ M2 local workerd D1: actual API batch/RETURNING and full publication rollback (9199.963ms)

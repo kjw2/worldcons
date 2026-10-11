@@ -1,3 +1,5 @@
+import type { E2EApprovalContext, E2EGenerationReceipt } from "@/lib/cloudflare/e2e/contracts";
+
 export const ARTICLE_PUBLICATION_STATES = ["draft", "in_review", "published", "withdrawn"] as const;
 export type ArticlePublicationState = (typeof ARTICLE_PUBLICATION_STATES)[number];
 
@@ -34,6 +36,8 @@ export interface ArticlePublicationTransitionInput {
   promptRef?: string | null;
   safeMetadata?: Record<string, unknown>;
   expectedLegacyUpdatedAt?: string | null;
+  /** Core-only M1 opt-in; requires migration 0004. Legacy callers stay unchanged. */
+  e2eApproval?: E2EApprovalContext;
 }
 
 export interface ArticlePublicationTransitionResult {
@@ -46,6 +50,7 @@ export interface ArticlePublicationTransitionResult {
   versionCreated: boolean;
   publicationApplied: boolean;
   idempotent: boolean;
+  generation?: E2EGenerationReceipt;
 }
 
 export type ArticlePublicationErrorCode =
