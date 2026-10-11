@@ -22,6 +22,9 @@ import {
  * differ). `caseNumberKey`/`normalizeCaseNumber` are reused for key derivation so
  * the keys stay identical to the rest of the search domain.
  *
+ * French L decisions use the complete source-owned case number. The legacy
+ * SQL parser omitted L and could not find the canonical 2026335l line token.
+ *
  * Documented divergence: the raw query is NFKC-normalized before matching
  * (Postgres matches the raw trimmed text) and JS `\b` word boundaries are
  * ASCII-oriented. Both are deterministic and only affect pathological inputs.
@@ -29,7 +32,7 @@ import {
 
 const ALIAS_PATTERN = /\b(neubauer|klimabeschluss)\b/iu;
 const BVERFG_DISPLAY_PATTERN = /\b([12]\s+Bv[A-Za-z]+\s+[0-9]+\s*\/\s*[0-9]{2,4})\b/iu;
-const FRANCE_PATTERN = /\b([0-9]{4}-[0-9]+(?:[/_-][0-9]+)*(?:\s+(?:QPC|DC|AN|SEN))?)\b/iu;
+const FRANCE_PATTERN = /\b([0-9]{4}-[0-9]+(?:[/_-][0-9]+)*(?:\s+(?:QPC|DC|L|AN|SEN))?)\b/iu;
 const SPAIN_PATTERN = /\b([0-9]{1,4}\s*\/\s*[0-9]{4})\b/u;
 const US_PATTERN = /\b(?:No\.\s*)?([0-9]{2,3}\s*-\s*[0-9]+)\b/iu;
 

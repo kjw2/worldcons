@@ -747,3 +747,15 @@ test("SearchRepository is Cloudflare D1/Vectorize-authoritative and search_m7 is
   const verifyRelease = packageJson.scripts["verify:release"];
   assert.equal(verifyRelease.split("test:d1-ranked-search").length - 1, 1, "test:d1-ranked-search must run exactly once in verify:release");
 });
+
+test("French L exact search preserves the suffix and retrieves its canonical line token",async(t)=>{
+  const row={...CORPUS[2],originalTitle:"Décision n° 2026-335 L du 8 octobre 2026",caseNumber:"2026-335 L",caseKey:"2026335l"};
+  const projection=buildSearchProjection({publications:[publication(11)],versions:[version(row,11)],articles:[],tags:[],articleTags:[]});
+  const db=databaseFor(projection.documents,projection.ftsDocuments);t.after(()=>db.close());
+  for(const query of ["2026-335 L","2026-335 l","Décision n° 2026-335 L"]) {
+    assert.equal(primaryCaseReference(query)?.caseKey,"2026335l");
+    const result=await run(db,{query,source:"fr-conseil-constitutionnel",count:"exact"});
+    assert.deepEqual(ids(result),[articleId(11)]);assert.equal(result.total,1);
+  }
+  assert.deepEqual(ids(await run(db,{query:"2026-335 L",source:"es-tribunal-constitucional"})),[]);
+});
