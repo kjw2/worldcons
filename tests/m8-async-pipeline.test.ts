@@ -336,7 +336,12 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   const consumer = config.queues.consumers[0];
   assert.equal(config.vars.M8_SCHEDULER_ENABLED, "true");
   assert.equal(config.vars.M8_ENABLED_KINDS, "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention");
-  assert.deepEqual(config.triggers.crons, M8_CRON_EXPRESSIONS);
+  assert.deepEqual(config.triggers.crons.filter((cron: string) => cron !== "* * * * *"), M8_CRON_EXPRESSIONS);
+  assert.equal(config.triggers.crons.filter((cron: string) => cron === "* * * * *").length, 1);
+  const repair = config.queues.consumers.find((entry: {queue: string}) => entry.queue === "worldcons-e2e-search-repair");
+  assert.equal(repair.dead_letter_queue, "worldcons-e2e-search-repair-dlq");
+  assert.equal(repair.max_concurrency, 1);
+  assert.equal(repair.retry_delay, 60);
   assert.equal(consumer.max_concurrency, 1);
   assert.equal(consumer.max_retries, 3);
   assert.equal(consumer.retry_delay, 60);
