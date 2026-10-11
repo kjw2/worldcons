@@ -179,7 +179,7 @@
     "test:e2e-p0-m2": "tsx --test tests/e2e-p0-m2-search-repair.test.ts tests/e2e-p0-m2-d1-runtime.test.ts",
     "test:e2e-p0-m3": "tsx --test tests/e2e-p0-m3-search-guards.test.ts tests/e2e-p0-m3-d1-runtime.test.ts",
     "test:e2e-p0-m4": "tsx --test tests/e2e-p0-m4-verification.test.ts tests/e2e-p0-m4-staged.test.ts tests/e2e-p0-m4-d1-runtime.test.ts",
-    "test:e2e-p0-m5": "tsx --test tests/e2e-p0-m5-core-writers.test.ts"
+    "test:e2e-p0-m5": "tsx --test tests/e2e-p0-m5-core-writers.test.ts tests/e2e-p0-m5-discovery.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

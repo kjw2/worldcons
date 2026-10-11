@@ -9,6 +9,7 @@ import { resolveIngestStageRolloutGate } from "@/lib/cloudflare/ingest-stages/fl
 import { INGEST_STAGE_QUEUES,type IngestStage,type IngestStageQueueMessage } from "@/lib/cloudflare/ingest-stages/contracts";
 import { handleWorldconsSearchRequest } from "@/lib/integrations/cclrag2/provider-handler";
 import type { NativeCrawlerBindings } from "../workers/async-pipeline/src/native-crawler";
+import {reserveDiscoveryCandidates} from "../lib/cloudflare/ingest-stages/discovery-coverage";
 import { stagedE2EOptionsFromEnvironment } from "../workers/async-pipeline/src/staged-e2e";
 
 test("M4 new synthetic official FR case flows Discovery-to-Search unattended through real staged handlers and completion ledger",async(t)=>{
@@ -45,6 +46,7 @@ test("M4 new synthetic official FR case flows Discovery-to-Search unattended thr
       {gate,ingestDb:ingest,coreDb:core,now,handlers,env:{},invalidRetryDelaySeconds:60});
     assert.equal(result.completed,1,`${stage}: ${JSON.stringify(result)}; ${JSON.stringify(ingest.rows("ingest_stage_jobs").map(r=>({stage:r.stage,error:r.last_error_code,summary:r.last_error_summary})))}`);
     assert.equal(ack,1);
+    if(stage==="discovery")await reserveDiscoveryCandidates(ingest,bucket,{sources:[source],now,owner:"fixture-reservation",limit:20});
     if (stage==="search") {
       const duplicate=await consumeIngestStageBatch({queue:INGEST_STAGE_QUEUES[stage],messages:sent.map(body=>({body,ack:()=>{},retry:()=>{}}))},
         {gate,ingestDb:ingest,coreDb:core,now,handlers,env:{},invalidRetryDelaySeconds:60});assert.equal(duplicate.completed,0);

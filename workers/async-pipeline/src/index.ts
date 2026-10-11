@@ -1,3 +1,4 @@
+import {runDiscoveryCoverageScheduled,type DiscoveryCoverageEnvironment} from "./discovery-coverage-scheduled";
 import { stagedE2EOptionsFromEnvironment } from "./staged-e2e";
 import { consumeE2ESearchRepairBatch, E2E_SEARCH_REPAIR_QUEUE_NAME, type E2ESearchConsumerEnvironment } from "./e2e-search-repair-queue";
 import { runE2ESearchRepairScheduled, type E2ESearchRepairEnvironment } from "./e2e-search-repair-scheduled";
@@ -718,6 +719,7 @@ export default {
     // daily crawler cron seeds discovery requests.
     if (controller.cron === "* * * * *") {
       await runE2ESearchRepairScheduled(env as unknown as E2ESearchRepairEnvironment);
+      await runDiscoveryCoverageScheduled(env as unknown as DiscoveryCoverageEnvironment);
       return; // Dedicated tick must never fan out legacy M8 work.
     }
     if (controller.cron === "*/15 * * * *") {

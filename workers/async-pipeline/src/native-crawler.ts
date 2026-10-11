@@ -1345,11 +1345,13 @@ export function parseNativeStageCandidate(value: unknown): NativeStageCandidate 
 export async function discoverNativeStageCandidates(
   source: NativeCrawlerSource,
   bindings: NativeCrawlerBindings,
-  options: { fetch?: typeof fetch; now?: Date; limit?: number; rangeDays?: number; browserNavigate?: CrawlerOptions["browserNavigate"] },
+  options: { fetch?: typeof fetch; now?: Date; limit?: number; rangeDays?: number; browserNavigate?: CrawlerOptions["browserNavigate"]; retainAllObserved?: boolean },
 ): Promise<NativeStageCandidate[]> {
   const fetcher = options.fetch ?? fetch;
   const now = options.now ?? new Date();
-  const limit = Math.max(1, Math.min(20, Math.trunc(options.limit ?? 20)));
+  // Source HTML/search pages and tail probes remain bounded. Dispatch limit must not discard observed candidates.
+  const retain = options.retainAllObserved === true && ["fr-conseil-constitutionnel","es-tribunal-constitucional"].includes(source);
+  const limit = retain ? Number.MAX_SAFE_INTEGER : Math.max(1, Math.min(20, Math.trunc(options.limit ?? 20)));
   const rangeDays = effectiveRange(source, now, options.rangeDays);
   const rangeStart = now.getTime() - rangeDays * 86_400_000;
   const robotsCache = new Map<string, string>();

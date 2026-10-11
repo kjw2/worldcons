@@ -1,3 +1,4 @@
+import {captureDiscoverySnapshot,readDiscoverySnapshot} from "../../../lib/cloudflare/ingest-stages/discovery-coverage";
 import { AutomaticApprovalBlocked, recordAutomaticApproval } from "../../../lib/cloudflare/e2e/automatic-approval";
 import { sha256Canonical, type E2EApprovalContext, type E2EGenerationReceipt } from "../../../lib/cloudflare/e2e/contracts";
 import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from "./staged-e2e";
@@ -348,6 +349,17 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     if (!request) {
       return { status: "blocked", errorCode: "ingest_stage.discovery_request_invalid", errorSummary: "Discovery job payload_ref must reference a {sourceKey,limit?,rangeDays?} JSON artifact." };
     }
+    const protectedSource=deps.e2e?.sources.includes(request.sourceKey)===true;
+    const clock=deps.now??(()=>new Date().toISOString());
+    const owner={jobId:context.job.id,fencingToken:context.message.fencingToken,now:context.now,clock};
+    const capture=async(candidates:NativeStageCandidate[])=>{
+      const snapshot=await captureDiscoverySnapshot(context.ingestDb,context.coreDb,deps.rawBucket,owner,
+        {sourceKey:request.sourceKey,candidates,recheckLimit:request.limit??1,
+          rangeDays:request.sourceKey==="fr-conseil-constitutionnel"?Math.max(14,request.rangeDays??14):Math.min(730,Math.max(180,request.rangeDays??180))});
+      return {status:"succeeded" as const,resultRef:"discovery-snapshot:"+snapshot.jobId+":"+snapshot.items.length,registerNext:false};
+    };
+    // A retry resumes the committed snapshot even if the official page has changed.
+    if(protectedSource&&await readDiscoverySnapshot(context.ingestDb,deps.rawBucket,context.job.id))return capture([]);
     let candidates: NativeStageCandidate[];
     try {
       candidates = await discoverNativeStageCandidates(request.sourceKey, deps.crawlerBindings, {
@@ -355,11 +367,13 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         now: new Date(context.now),
         limit: request.limit,
         rangeDays: request.rangeDays,
+        retainAllObserved: protectedSource,
         browserNavigate: deps.browserNavigate,
       });
     } catch (error) {
       return { status: "retry", errorCode: "ingest_stage.discovery_failed", errorSummary: (error instanceof Error ? error.message : String(error)).slice(0, 500) };
     }
+    if(protectedSource)return capture(candidates);
     // Fan out exactly one durable crawl job per discovered target record. The
     // candidate JSON is stored in R2 and referenced by the crawl job's payload.
     let fanned = 0;
