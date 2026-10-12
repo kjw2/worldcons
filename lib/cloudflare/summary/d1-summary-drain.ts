@@ -184,9 +184,13 @@ async function syncTags(articleId: string, summary: SummaryJson, originalPublish
   });
   const now = new Date().toISOString();
   const desiredIds: string[] = [];
+  // Shared labels are created once. A translation may attach an existing tag,
+  // but must not rename it across every linked article without a reviewed
+  // metadata change and corresponding Search invalidation. Count/date metrics
+  // are refreshed separately by refreshD1TagCountMetrics.
   for (const tag of unique) {
     const result = await core.prepare(
-      "INSERT INTO tags (id,slug,name,normalized_name,type,article_count,latest_article_at,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?,?) ON CONFLICT(slug) DO UPDATE SET name=excluded.name,normalized_name=excluded.normalized_name,type=excluded.type,latest_article_at=excluded.latest_article_at,updated_at=excluded.updated_at RETURNING id",
+      "INSERT INTO tags (id,slug,name,normalized_name,type,article_count,latest_article_at,created_at,updated_at) VALUES (?,?,?,?,?,0,?,?,?) ON CONFLICT(slug) DO UPDATE SET id=tags.id RETURNING id",
     ).bind(crypto.randomUUID(), tag.slug, tag.name, tag.normalizedName, tag.type, originalPublishedAt, now, now).all<{ id: string }>();
     desiredIds.push(...ensureSuccess(result).map((row) => row.id));
   }

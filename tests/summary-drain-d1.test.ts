@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { setRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
-import { runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
+import { runD1SummaryDrain, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
 import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 
 const goodSummary = {
@@ -301,4 +301,22 @@ test("D1 summary failure persists status, structured triage, and lifecycle atten
   } finally {
     close(db);
   }
+});
+
+test("summary tag collisions preserve shared display fields and other article links", async () => {
+  const db = setup();
+  try {
+    db.core.prepare("INSERT INTO article_tags VALUES ('other-article','tag-1',0.9,'original')").run();
+    const before = { ...db.core.prepare("SELECT * FROM tags WHERE id='tag-1'").get() };
+    const summary = { ...goodSummary, entities: [{ name: "Nombre cambiado", normalizedName: "existing", type: "law" }], tags: [] };
+    for (const date of ["2030-01-01", "2020-01-01", null]) {
+      await runD1SyncSummaryTags("11111111-1111-4111-8111-111111111111", summary as never, date);
+      assert.deepEqual({ ...db.core.prepare("SELECT * FROM tags WHERE id='tag-1'").get() }, before);
+    }
+    assert.equal(db.core.prepare("SELECT COUNT(*) n FROM tags WHERE slug='existing'").get()?.n, 1);
+    assert.deepEqual({ ...db.core.prepare("SELECT * FROM article_tags WHERE article_id='other-article'").get() }, { article_id: "other-article", tag_id: "tag-1", confidence: 0.9, created_at: "original" });
+    assert.equal(db.core.prepare("SELECT tag_id FROM article_tags WHERE article_id='11111111-1111-4111-8111-111111111111'").get()?.tag_id, "tag-1");
+    await runD1SyncSummaryTags("11111111-1111-4111-8111-111111111111", goodSummary as never);
+    assert.equal(db.core.prepare("SELECT COUNT(*) n FROM tags WHERE name='헌법재판소'").get()?.n, 1, "new tag creation still works");
+  } finally { close(db); }
 });
