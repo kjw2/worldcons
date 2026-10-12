@@ -1236,6 +1236,107 @@ async function assertGeminiRouterSurvivesUnwritableStorage() {
   }
 }
 
+function assertGeminiModelAliasNormalization() {
+  const keysToRestore = [
+    "GEMINI_API_KEY",
+    "GEMINI_API_KEYS",
+    "GEMINI_AUTO_DISCOVER_MODELS",
+    "GEMINI_MODEL_CATALOG_PATH",
+    "GEMINI_MODEL_CATALOG_TTL_MS",
+    "GEMINI_ROUTER_STATE_PATH",
+    "GEMINI_PINNED_MODEL",
+    "GEMINI_ALLOW_MODEL_OVERRIDE",
+    "GEMINI_SUMMARY_MODEL",
+    "GEMINI_SUMMARY_MODELS",
+  ];
+  const originalEnv = new Map(keysToRestore.map((key) => [key, process.env[key]]));
+  const catalogPath = path.join(os.tmpdir(), `worldcons-gemini-alias-catalog-${process.pid}.json`);
+  const statePath = path.join(os.tmpdir(), `worldcons-gemini-alias-state-${process.pid}.json`);
+
+  try {
+    // Synthetic fresh catalog exposes both the retired and the native identifier plus an
+    // unrelated lite variant and the embedding model, so aliases must collapse exactly one-to-one
+    // without disturbing gemini-3.5-flash-lite or gemini-embedding-001.
+    fs.writeFileSync(
+      catalogPath,
+      JSON.stringify({
+        version: 1,
+        fetchedAt: Date.now(),
+        models: [
+          { name: "models/gemini-3.5-flash", baseModelId: "gemini-3.5-flash", supportedGenerationMethods: ["generateContent"] },
+          { name: "models/gemini-3.6-flash", baseModelId: "gemini-3.6-flash", supportedGenerationMethods: ["generateContent"] },
+          { name: "models/gemini-3.5-flash-lite", baseModelId: "gemini-3.5-flash-lite", supportedGenerationMethods: ["generateContent"] },
+          { name: "models/gemini-embedding-001", baseModelId: "gemini-embedding-001", supportedGenerationMethods: ["embedContent"] },
+        ],
+      }),
+      "utf8",
+    );
+    fs.writeFileSync(statePath, JSON.stringify({ version: 1, day: pacificDayForCheck(), routes: {} }), "utf8");
+    process.env.GEMINI_API_KEYS = "one";
+    delete process.env.GEMINI_API_KEY;
+    process.env.GEMINI_AUTO_DISCOVER_MODELS = "true";
+    process.env.GEMINI_MODEL_CATALOG_PATH = catalogPath;
+    process.env.GEMINI_MODEL_CATALOG_TTL_MS = "86400000";
+    process.env.GEMINI_ROUTER_STATE_PATH = statePath;
+    delete process.env.GEMINI_ALLOW_MODEL_OVERRIDE;
+    delete process.env.GEMINI_SUMMARY_MODEL;
+    delete process.env.GEMINI_SUMMARY_MODELS;
+
+    const aliasExplicitRoute = getGeminiRoutes("Summarize", { model: "gemini-3.5-flash" });
+    assert(aliasExplicitRoute.length === 1 && aliasExplicitRoute[0].model === "gemini-3.6-flash", "explicit 3.5-flash alias must route to gemini-3.6-flash");
+
+    const explicitModels = getGeminiModels("Summarize", { models: ["gemini-3.5-flash", "gemini-3.6-flash"] });
+    assert(
+      explicitModels.join(",") === "gemini-3.6-flash",
+      "explicit 3.5/3.6 models must normalize before dedup so the shared native model appears once",
+    );
+
+    process.env.GEMINI_PINNED_MODEL = "gemini-3.5-flash";
+    const pinnedModels = getGeminiModels("Summarize");
+    assert(pinnedModels.length === 1 && pinnedModels[0] === "gemini-3.6-flash", "pinned 3.5-flash alias must normalize to gemini-3.6-flash");
+    delete process.env.GEMINI_PINNED_MODEL;
+
+    process.env.GEMINI_ALLOW_MODEL_OVERRIDE = "true";
+    process.env.GEMINI_SUMMARY_MODELS = "gemini-3.5-flash,gemini-3.6-flash";
+    const summaryOverrideModels = getGeminiModels("Summarize");
+    assert(
+      summaryOverrideModels.join(",") === "gemini-3.6-flash",
+      "summary model override list must normalize aliases before dedup",
+    );
+
+    delete process.env.GEMINI_SUMMARY_MODELS;
+    process.env.GEMINI_SUMMARY_MODEL = "gemini-3.5-flash";
+    const summaryPrimaryModels = getGeminiModels("Summarize");
+    assert(summaryPrimaryModels[0] === "gemini-3.6-flash", "summary primary env alias must normalize to gemini-3.6-flash");
+    delete process.env.GEMINI_ALLOW_MODEL_OVERRIDE;
+    delete process.env.GEMINI_SUMMARY_MODEL;
+
+    const catalogModels = getGeminiModels("Summarize");
+    assert(
+      catalogModels.includes("gemini-3.6-flash") && !catalogModels.includes("gemini-3.5-flash"),
+      "cached discovery catalog must select the native 3.6-flash identifier, never the retired alias",
+    );
+    assert(catalogModels.filter((model) => model === "gemini-3.6-flash").length === 1, "discovered 3.5/3.6 catalog entries must collapse to one native model");
+    assert(catalogModels.includes("gemini-3.5-flash-lite"), "gemini-3.5-flash-lite must remain unchanged by the alias cutover");
+    assert(getGeminiModels("Embedding").includes("gemini-embedding-001"), "embedding model must remain unchanged by the alias cutover");
+
+    const catalogRoutes = getGeminiRoutes("Summarize");
+    assert(
+      catalogRoutes.filter((route) => route.model === "gemini-3.6-flash").length === 1,
+      "route generation must emit exactly one 3.6-flash route for aliased catalog models",
+    );
+    assert(!catalogRoutes.some((route) => route.model === "gemini-3.5-flash"), "route generation must never emit the retired 3.5-flash alias");
+  } finally {
+    fs.rmSync(catalogPath, { force: true });
+    fs.rmSync(statePath, { force: true });
+    for (const key of keysToRestore) {
+      const value = originalEnv.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 async function assertAdminRouteSecurityControls() {
   const keysToRestore = ["NODE_ENV", "ADMIN_USERNAME", "ADMIN_PASSWORD", "ADMIN_SESSION_SECRET", "CRON_SECRET", "LLM_SETTINGS_SECRET"] as const;
   const originalEnv = new Map(keysToRestore.map((key) => [key, process.env[key]]));
@@ -2136,6 +2237,7 @@ async function main() {
   await assertCspReportEndpointControls();
   await assertPublicApiRouteValidationControls();
   await assertAdminRouteSecurityControls();
+  assertGeminiModelAliasNormalization();
   await assertGeminiRouterSurvivesUnwritableStorage();
 
   const franceSeedOnly = await withTimeout(runFranceSpider({ limit: 1, strategy: "seed", usePlaywright: false }), 10_000, {
