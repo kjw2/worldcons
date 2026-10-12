@@ -123,6 +123,13 @@ const GEMINI_25_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2
 const GEMINI_2_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash"];
 const DEFAULT_TEXT_MODELS = [...GEMINI_3_MODELS, ...GEMINI_25_MODELS, ...GEMINI_2_MODELS];
 
+// Phase 2 alias cutover: the retired gemini-3.5-flash identifier must resolve to its native
+// replacement so the old alias and the new identifier never double-call the same model. Only the
+// exact flash identifier is remapped; gemini-3.5-flash-lite and the embedding model are untouched.
+const EXACT_GEMINI_MODEL_ALIASES: Record<string, string> = {
+  "gemini-3.5-flash": "gemini-3.6-flash",
+};
+
 const MODEL_CONFIGS: Record<string, GeminiModelConfig> = {
   "gemini-3.1-flash-lite": { model: "gemini-3.1-flash-lite", rpd: 200, priority: 10, stable: true, rpm: DEFAULT_RPM },
   "gemini-3.1-flash-lite-preview": { model: "gemini-3.1-flash-lite-preview", rpd: 200, priority: 11, stable: false, rpm: DEFAULT_RPM },
@@ -198,8 +205,13 @@ function saveModelCatalog(catalog: GeminiModelCatalog) {
   writeRuntimeJsonState(modelCatalogStateRef(), catalog);
 }
 
+function normalizeGeminiModelAlias(model: string) {
+  const trimmed = model.trim();
+  return EXACT_GEMINI_MODEL_ALIASES[trimmed] ?? trimmed;
+}
+
 function normalizeCatalogModelName(model: GeminiCatalogModel) {
-  return (model.baseModelId || model.name || "").replace(/^models\//, "").trim();
+  return normalizeGeminiModelAlias((model.baseModelId || model.name || "").replace(/^models\//, ""));
 }
 
 function supportsGenerationMethod(model: GeminiCatalogModel, method: string) {
@@ -359,21 +371,21 @@ interface GeminiRouteOptions {
 
 export function getGeminiModels(taskType: GeminiTaskType = "Summarize", options: GeminiRouteOptions = {}) {
   const explicitModel = options.model?.trim();
-  if (explicitModel) return [explicitModel];
-  if (options.models?.length) return unique(options.models.map((model) => model.trim()).filter(Boolean));
+  if (explicitModel) return [normalizeGeminiModelAlias(explicitModel)];
+  if (options.models?.length) return unique(options.models.map((model) => normalizeGeminiModelAlias(model)).filter(Boolean));
 
   const pinnedModel = process.env.GEMINI_PINNED_MODEL?.trim();
-  if (pinnedModel) return [pinnedModel];
+  if (pinnedModel) return [normalizeGeminiModelAlias(pinnedModel)];
 
   const allowModelOverride = process.env.GEMINI_ALLOW_MODEL_OVERRIDE === "true";
-  const explicitModels = parseCsvEnv(process.env.GEMINI_SUMMARY_MODELS);
+  const explicitModels = parseCsvEnv(process.env.GEMINI_SUMMARY_MODELS).map(normalizeGeminiModelAlias);
   const primaryModel = process.env.GEMINI_SUMMARY_MODEL?.trim();
   const fallbackModels = TASK_CANDIDATES[taskType] ?? TASK_CANDIDATES.General;
   const discoveredModels = taskType === "Embedding" ? [] : discoveredTextModels(taskType);
   const taskModels = discoveredModels.length > 0 ? unique([...discoveredModels, ...fallbackModels.filter((model) => discoveredModels.includes(model))]) : fallbackModels;
 
   if (allowModelOverride && explicitModels.length > 0) return unique(explicitModels);
-  if (allowModelOverride && primaryModel) return unique([primaryModel, ...taskModels]);
+  if (allowModelOverride && primaryModel) return unique([normalizeGeminiModelAlias(primaryModel), ...taskModels]);
   return unique(taskModels);
 }
 
