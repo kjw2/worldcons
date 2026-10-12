@@ -43,7 +43,7 @@ export async function consumeSearchRepair(core:D1RuntimeDatabase,search:D1Runtim
   if (!row) return { status:"missing" } as const;
   if (["verified","superseded","dead_letter"].includes(String(row.status))) return { status:"terminal" } as const;
   if (row.status==="leased"&&String(row.lease_expires_at)>now) return { status:"retry" } as const;
-  if (String(row.next_attempt_at)>now) return { status:"retry" } as const;
+  if (String(row.next_attempt_at)>now) {console.log(JSON.stringify({event:"e2e_consumer_claim_wait",phase:"not_due",observedAt:now,dueAt:row.next_attempt_at,outboxId:row.outbox_id}));return { status:"retry" } as const;}
   const g=(await currentGenerations(core,[String(row.article_id)])).get(String(row.article_id));
   if (!g||g.generation_id!==row.generation_id) return { status:"superseded" } as const;
   if (!g.input_current) return { status:"blocked" } as const;
@@ -84,7 +84,7 @@ export async function consumeSearchRepair(core:D1RuntimeDatabase,search:D1Runtim
     WHERE outbox_id=? AND fencing_token=? AND attempt_count<max_attempts AND next_attempt_at<=?
       AND (status IN ('pending','retry_wait') OR (status='leased' AND lease_expires_at<=?)) AND ${CURRENT_OUTBOX_SQL}
     RETURNING *`,owner,after(now,300),now,row.outbox_id,row.fencing_token,now,now))[0];
-  if (!claimed) return { status:"retry" } as const;
+  if (!claimed) {console.log(JSON.stringify({event:"e2e_consumer_claim_wait",phase:"claim_lost",observedAt:now,fencingToken:row.fencing_token,outboxId:row.outbox_id}));return { status:"retry" } as const;}
   const ownership=`o.outbox_id=? AND o.status='leased' AND o.claimed_by=? AND o.fencing_token=?
     AND o.lease_expires_at>? AND ${CURRENT_OUTBOX_SQL}`;
   const ownershipValues=(at:string)=>[row.outbox_id,owner,claimed.fencing_token,at];
