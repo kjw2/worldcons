@@ -77,3 +77,16 @@ test("M4 real local workerd public Worker and separated D1 APIs verify actual co
   assert.equal((await core.prepare("SELECT COUNT(*) AS count FROM e2e_commit_guards_v1").all()).results![0].count,0);
   assert.equal((await verifySearchRepair(core,search,message,options)).status,"already_verified");
 });
+
+test("M5 verifier probe runs inside workerd, uses supported manual redirects and rejects redirects before reading a body",async t=>{
+ const root=path.resolve(import.meta.dirname,".."),parent=path.resolve(tmpdir()),dir=mkdtempSync(path.join(parent,"worldcons-probe-runtime-"));
+ const wrapper=path.join(root,'.e2e-probe-runtime-'+crypto.randomUUID()+'.ts'),config=wrapper+'.json',output=path.join(dir,'bundle');
+ t.after(()=>{assert.equal(path.dirname(path.resolve(dir)),parent);assert.ok(path.basename(dir).startsWith('worldcons-probe-runtime-'));rmSync(dir,{recursive:true,force:true});for(const file of [wrapper,config]){assert.equal(path.dirname(file),root);rmSync(file,{force:true});}});
+ writeFileSync(wrapper,`import {probeVerificationApi} from './lib/cloudflare/e2e/search-verification';export default {async fetch(request,env){try{const url='https://fixture.example'+new URL(request.url).pathname;const result=await probeVerificationApi(url,{apiBaseUrl:'https://fixture.example/api',deploymentRef:'fixture:worker-probe',fetch:(url,init)=>env.PUBLIC.fetch(url,init)},()=>new Date().toISOString());return Response.json(result);}catch(error){return Response.json({error:error.message},{status:502});}}}`);
+ writeFileSync(config,JSON.stringify({name:'worldcons-probe-runtime',main:wrapper,compatibility_date:'2026-09-20',compatibility_flags:['nodejs_compat'],tsconfig:path.join(root,'tsconfig.json')}));
+ execFileSync(process.execPath,[path.join(root,'node_modules/wrangler/bin/wrangler.js'),'deploy','--dry-run','--config',config,'--outdir',output],{cwd:root,encoding:'utf8',timeout:60000,stdio:'pipe'});
+ const script=readFileSync(path.join(output,readdirSync(output).find(x=>x.endsWith('.js'))!),'utf8');
+ const runtime=new Miniflare(convertV4MiniflareOptions({workers:[{name:'verifier',modules:true,script,compatibilityDate:'2026-09-20',compatibilityFlags:['nodejs_compat'],serviceBindings:{PUBLIC:'public'}},{name:'public',modules:true,script:`export default {fetch(request){return new URL(request.url).pathname==='/redirect'?new Response(null,{status:302,headers:{location:'https://unexpected.example/'}}):Response.json({items:[]});}}`,compatibilityDate:'2026-09-20'}],cf:false,unsafeRegisterWorker:false}));t.after(async()=>runtime.dispose());
+ const ok=await runtime.dispatchFetch('https://fixture.example/api');assert.equal(ok.status,200);assert.equal((await ok.json()).status,200);
+ const redirect=await runtime.dispatchFetch('https://fixture.example/redirect');assert.equal(redirect.status,502);assert.equal((await redirect.json()).error,'e2e.api_redirect_rejected');
+});

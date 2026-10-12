@@ -26,9 +26,10 @@ function record(value:unknown):GenerationRow {
   if (!value||typeof value!=="object"||Array.isArray(value)) throw new Error("e2e.api_contract_mismatch");
   return value as GenerationRow;
 }
-async function probe(url:string,options:SearchVerificationOptions,clock:()=>string) {
-  const response=await (options.fetch??fetch)(url,{redirect:"error",cache:"no-store",signal:AbortSignal.timeout(8000),
+export async function probeVerificationApi(url:string,options:SearchVerificationOptions,clock:()=>string) {
+  const response=await (options.fetch??fetch)(url,{redirect:"manual",cache:"no-store",signal:AbortSignal.timeout(8000),
     headers:{"cache-control":"no-cache","x-request-id":crypto.randomUUID()}});
+  if(response.status>=300&&response.status<400)throw new Error("e2e.api_redirect_rejected");
   const reader=response.body?.getReader(),chunks:Uint8Array[]=[]; let size=0;
   if (reader) try {
     for (;;) { const part=await reader.read(); if (part.done) break; size+=part.value.byteLength;
@@ -150,14 +151,14 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
     if (fingerprints.documentFingerprint!==receipt.document_fingerprint||fingerprints.ftsFingerprint!==receipt.fts_fingerprint
       || !await projectionMatches(search,searchIdentity(g,Number(receipt.fencing_token)),projection.document,projection.fts))
       throw new Error("e2e.search_content_mismatch");
-    const detail=await probe(`${base}/articles/${encodeURIComponent(String(version.slug))}?textLimit=4000`,options,clock);
+    const detail=await probeVerificationApi(`${base}/articles/${encodeURIComponent(String(version.slug))}?textLimit=4000`,options,clock);
     const caseNumber=canonicalArticleCaseNumber({sourceKey:String(version.source_key),originalTitle:String(version.original_title),
       metadata:typeof version.source_metadata==="string"?JSON.parse(version.source_metadata):version.source_metadata})
       ??(removal?normalizeCaseNumber(String(version.source_key),String(version.original_title)):undefined);
     if (!caseNumber) throw new Error("e2e.verification_case_number_missing");
     const searchUrl=new URL(`${base}/search`);
     searchUrl.search=new URLSearchParams({q:caseNumber,mode:"fulltext",source:String(version.source_key),pageSize:"20",count:"none"}).toString();
-    const result=await probe(searchUrl.href,options,clock);
+    const result=await probeVerificationApi(searchUrl.href,options,clock);
     const items=result.body.items;
     if (g.expected_publication_state==="published") {
       if (detail.status!==200||result.status!==200||!Array.isArray(items)) throw new Error("e2e.public_api_unavailable");
