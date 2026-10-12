@@ -18,7 +18,7 @@
     "binding": "BROWSER"
   },
   "services": [
-    { "binding": "E2E_PUBLIC_API", "service": "worldcons" },
+    { "binding": "E2E_PUBLIC_API", "service": "worldcons", "entrypoint": "WorldconsSearchService" },
     {
       "binding": "WORLDCONS_APP_SERVICE",
       "service": "worldcons",
