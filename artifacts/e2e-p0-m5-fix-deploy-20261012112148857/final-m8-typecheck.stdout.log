@@ -1,0 +1,4 @@
+
+> worldcons@0.1.0 m8:typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsc --noEmit -p workers/async-pipeline/tsconfig.json
+

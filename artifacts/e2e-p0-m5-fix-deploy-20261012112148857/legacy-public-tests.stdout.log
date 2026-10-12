@@ -1,0 +1,111 @@
+✔ D1 article adapter reads worldcons_core and maps a detail row through the shared mapper (7.956ms)
+✔ Catalog source correction blocks old P3 summary, source text and sitemap until anchored enrichment is published (4.5869ms)
+✔ D1 article adapter list projection drops summary_json/source_metadata and computes aliases (1.0076ms)
+✔ D1 article adapter enforces legacy public publishability and includeUnpublished (2.9668ms)
+✔ D1 article adapter source-text snapshot maps the legacy fields (0.6934ms)
+✔ D1 article adapter listArticles preserves ordering, paging, count and view counts (3.6932ms)
+✔ D1 article adapter chunks tag hydration below the D1 bind-parameter ceiling (12.6316ms)
+✔ D1 article adapter listArticles applies source/jurisdiction/type/language/range/tag filters (6.0264ms)
+✔ D1 article adapter batches large tag article-id filters below the bind ceiling (3.0628ms)
+✔ D1 article adapter is bounded: overflow and unsupported count are skips (1.1346ms)
+✔ D1 article adapter sitemap preserves lastModified precedence and truncates overflow (0.6739ms)
+✔ D1 article adapter top-viewed ranks by view_count, honors filters and falls back (1.7582ms)
+✔ D1 article adapter related ids apply tag/exclude/limit without treating normal overflow as an error (0.5435ms)
+✔ runtime D1 binding names are unchanged by M6.3 (0.1007ms)
+✔ D1 list projection derives full/available summary state from summary_json before hiding it (0.7385ms)
+✔ D1 list projection keeps explicit source-only Catalog state over any derived fallback (0.2957ms)
+✔ D1 list projection derives France case_number from the authoritative original title (1.0355ms)
+{"event":"worldcons_embedding_unavailable","status":503,"requestId":"26303a41-b8ed-4f3e-b5cb-19bafd4cbc31"}
+✔ Cloudflare provider route preserves the provider contract and applies public rate limiting (1.6574ms)
+✔ Cloudflare provider accepts the cclrag2 contract and returns the Neubauer case first (40.6855ms)
+✔ Vercel provider preserves the Korean comparison query and source inference (4.2056ms)
+✔ Vercel provider fulltext mode bypasses embeddings and uses D1 lexical retrieval (3.7648ms)
+✔ Vercel provider reports an explicit fulltext fallback when semantic capability is not configured (2.405ms)
+✔ Vercel provider narrows a generic comparison to German constitutional authority (4.0919ms)
+✔ Vercel provider translates a jurisdiction code into the source-owned search boundary (2.2824ms)
+✔ Vercel provider infers a source boundary from a short Korean jurisdiction name (1.2679ms)
+✔ Vercel provider semantic mode creates an embedding and queries Vectorize (15.1069ms)
+✔ Vercel provider hybrid mode uses embeddings and explicitly degrades when embedding fails (6.83ms)
+✔ Vercel provider exact-case preflight supports France, Spain, and the US without embeddings (4.7128ms)
+✔ Vercel provider preserves exact total semantics from ranked D1 pages (1.07ms)
+✖ Vercel provider source and article endpoints read bounded Contract V2 evidence from D1 (5.8773ms)
+✔ Vercel provider rejects invalid input and normalizes dependency failures (2.028ms)
+✔ migration is projection-only, page-bounded, and service-role restricted (1.3395ms)
+✔ Contract V2 migration bounds evidence and preserves paginated source text (1.2547ms)
+✔ Search V3 migration makes retrieval mode real and keeps published projection boundaries (1.4547ms)
+✔ Search V4 migration adds indexed four-country case keys and DB-native deep pagination (2.0376ms)
+✔ provider resilience migration materializes only bounded scalar search fields (1.0416ms)
+✔ Vercel provider truncates a large article body without dropping the preserved text API contract (76.0441ms)
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (206.9015ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (325.1772ms)
+{"event":"e2e_verification_failure","errorName":"TypeError","errorSummary":"Invalid URL"}
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (712.8259ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"0fdc4b8c-8d92-41a3-aa3d-ceeb5dc33c9e","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (197.4933ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (88.6161ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (186.5114ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (100.3162ms)
+✔ M4 missing approval proof stays fail-closed (49.6858ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (60.8726ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (394.4833ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (245.9977ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (283.6697ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (70.1629ms)
+{"event":"e2e_search_verification","status":"retry","errorCode":"e2e.public_api_unavailable"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (134.8493ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (79.0815ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (97.9167ms)
+{"event":"e2e_consumer_claim_wait","phase":"not_due","observedAt":"2026-10-12T11:42:56.428Z","dueAt":"2026-10-12T11:43:56.423Z","outboxId":"704eeb5fec0c6da9c529b0b1e9d5a28de20e7e31ed4191a88c93bb2ae85d485d"}
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (58.3037ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 production Queue verifier requires the actual public Worker binding before processing (69.8601ms)
+✔ M5 dispatcher waits for durable verifier backoff and active verification lease without multiplying Queue messages (55.1319ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 Root binding receives internal /api paths while evidence and response URLs retain external /api/cclrag2 contract (88.0813ms)
+✔ M5 verifier redrive preserves exhausted history, rejects stale fence and does not change P3, generation or Search budget (218.8011ms)
+✔ M5 official URL alias verifies: https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114?ACTION=print (98.753ms)
+✔ M5 official URL alias verifies: https://hj.tribunalconstitucional.es/en/Resolucion/Show/32114 (56.5593ms)
+✔ M5 different official identity rejected: https://evil.example/HJ/es/Resolucion/Show/32114 (59.6411ms)
+✔ M5 different official identity rejected: https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32115 (46.7207ms)
+✔ metadata journal is atomic with tags and repair survives Worker restart without P3 or generation changes (66.5196ms)
+✔ metadata B then stale A cannot overwrite documents or FTS and stale completion cannot acknowledge B (48.0854ms)
+✔ Core mutation during Search batch keeps public reads closed and next durable repair converges (31.4918ms)
+✔ legacy full sync respects persisted metadata guards and repairs FTS corruption independently of document checksum (41.985ms)
+✔ metadata guard yields to true approved E2E generation; old legacy attempts cannot return (55.4525ms)
+✔ metadata failures retain attempt history and bounded retry budget (19.7029ms)
+✔ legacy private review change withdraws via Core authority without approving or rewriting the body (34.6953ms)
+{"event":"search_metadata_requires_attention","deadLetterCount":1,"pendingCount":0,"oldestPendingAgeSeconds":0}
+✔ expired final metadata lease becomes visible dead-letter and additive replay preserves active read policy (25.9709ms)
+✔ legacy cascade deletion preserves repair tombstone without a dangling freshness trigger blocking deletion (54.9383ms)
+✔ metadata-protected legacy public content comes from immutable published P3 while mutable Core drafts keep changing (34.3994ms)
+ℹ tests 72
+ℹ suites 0
+ℹ pass 71
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9330.1892
+
+✖ failing tests:
+
+test at tests\cclrag2-provider-route.test.ts:1:12873
+✖ Vercel provider source and article endpoints read bounded Contract V2 evidence from D1 (5.8773ms)
+  AssertionError [ERR_ASSERTION]: bounded content, public eligibility and schema reads
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\cclrag2-provider-route.test.ts:361:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

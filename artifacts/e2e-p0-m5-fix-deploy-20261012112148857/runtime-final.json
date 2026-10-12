@@ -1,0 +1,1223 @@
+{
+  "at": "2026-10-12T11:39:22.016Z",
+  "generations": [
+    {
+      "article_id": "02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:31.000Z",
+      "outbox_id": "3b41cdcfe66fb5e69d5aa5eb58f18a6c7b9b84b8c49d8470b23bdee6928d57b4",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:32.000Z",
+      "outbox_id": "0488fa53349d6f2bdb87274c2c95747dc7bc5927c9c6df84f3d8ae8e44e962c4",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 14,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:34.000Z",
+      "outbox_id": "f0c3d05bcf0ebcb76ab394c991b24fb4d33ad7dd5d9b93ac4134a2f4de556795",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "22682a3a-09a5-4d1d-a1c9-f0205ff5375a",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "e294a24a845f90b5eeecb473f2283b2a89e20189836316651f8a92bfe2646014",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 3,
+      "verification_fence": 5,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:35:30.475Z",
+      "outbox_id": "e8dfb3cacdcaee98dca182aedc14830da08aa960093b0cb7b4a61e0f41d901e3",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "23450418-153b-455b-8aa6-1d750db0da96",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "99374e446b8b231e0774ba61574b9043c0cccc0f7252151636dc144b57e0d50c",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:08.000Z",
+      "outbox_id": "f2247a65615be5398d042df2737ebd1261b87adaf7a15f44d5d4776550fbd352",
+      "outbox_status": "verified",
+      "fencing_token": 2
+    },
+    {
+      "article_id": "2ffd5274-9469-4a89-9617-9dd9feed2c7e",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "881617f8f1706694dc1db9b7ca435595fbda0ffd727c90fe6d1268bf43976cd0",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:11.000Z",
+      "outbox_id": "416965e951932fb5f3ec701cd6a67010de75ebc21f3a9361040dc0d7bd99d389",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "4989743b-b2df-41c8-a082-eb0212265d9e",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "2fc7450b3baa4dfbc487422bc4abeee29fd3d9ce528842d37e885e67655dd02e",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:09.000Z",
+      "outbox_id": "de4c8a716e6084ac2c0a5c6994949ab9810e04e1c77a96d5d50cbc24b986c267",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "4b139529-3431-4794-82e0-e552e91ee195",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "74f13373c5773ef753a9529c3b054b359252126c1c25394927bad7909ba415d5",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:04.000Z",
+      "outbox_id": "ca7699abfc6dadde89c52832c163437abcdaae4c95d13956b7c87c122d97ad3d",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "4c80e563-7dbc-4db1-8101-34d14adbe1fb",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "e7d50a82d0647daa0d1e3d248dd312b221ff8c60be87de2bb9cdaa240186be62",
+      "generation_seq": 2,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 1,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T07:44:28.471Z",
+      "outbox_id": "5af69b0afc1012a22361250770bf6c9444828c5786e913d18dd6d1aa5ce6f129",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:29.000Z",
+      "outbox_id": "823526a3f7231687afba68a9fb26da3b6eb39679225eea0160a8e3906cf370b2",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "5f158de3-8033-4a79-b59a-d89452063bee",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "27ca58ed13849470105355f8d5bfcfb3e8466db1eea61e634abe109ccfecb620",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:02.000Z",
+      "outbox_id": "e278d0352ea3a07ece49fdbca798160a180f312fd4ce1083a9558306f1d2dd28",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "724d57d3-723d-4450-ad01-0a049688fc6a",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:26.000Z",
+      "outbox_id": "228b6ebe8a18f5f8e83ba5ab0d4b2883aa5e809a34449e8507f4ff7ba63cd53c",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:30.000Z",
+      "outbox_id": "db8f92d207160399ad9b0f67f7eb5c1be2996caeb473ee22666a724eebe6a1eb",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "8b828790-1c70-4038-b90b-ee3774147c1a",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "ccfec9d1f8ef6367a791278c42144332345ea0650433d269e5570bc12f3e6937",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 3,
+      "verification_fence": 5,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T04:40:39.639Z",
+      "outbox_id": "a3d3d9a577c33e0b1237187f048c0533219d59d3d807286addc14ffa185fe07e",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "8ba82d90-0f28-4731-963b-760805af100d",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 16,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:33.000Z",
+      "outbox_id": "49c3e3b0b5d05bf9f28ec55307345a3e9c8edbcdbd1427a8c1632be6f2536831",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "8f70d967-250d-4935-858f-5b91304b709f",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "5b84b876edb0b90c4e4f122c24a868d5a9693ca0bfab2ec777ec8ec754b46fa9",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 5,
+      "verification_fence": 9,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:34:31.325Z",
+      "outbox_id": "704a314e44d11ee2b4ef63dd4590be65139b7fa110b8b7c77f11a84caa32944d",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:28.000Z",
+      "outbox_id": "2cae5e7d0ee93fc949d6812d29c5b0709cd73a42ca184e47c5c380036231ac6e",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "911de19f-a80d-4702-a2e7-7dfb39b84875",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "f76b3cf815414bcfd9ce12d46398223591a02295a93beba29715767d055415ce",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:03.000Z",
+      "outbox_id": "80f7a64cebf46cf031f398f98449518b604429a2d18dbe0670fd6c93c1e860a1",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "a314a607-112d-4c52-912f-b7ff51489c0e",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "7fac1630da86c2ef6b5078fcab6936b29e982c5884d3d04e9a1f1a25fc0a178c",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:05.000Z",
+      "outbox_id": "bd1a2d51ac438d87b2b16ccf900fd7610fef2f9262a069e77b1da4a20933107e",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "bac3c408-6e60-4cdb-b489-c3ed06146b71",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "2435d938d215256ba4a177a112ca1cbf667d30f4c909231fd414391760028eae",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:07.000Z",
+      "outbox_id": "c0b906c96d159ba86d2be76e14a8bf9f7edffc3712fa0522c243729300d12c7f",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "cbe99053-ee25-4596-93bf-b949b10d0bdc",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "01188e66c399c7a60d1cdd66aab2d85130e40e346ae28b9c63bce60a6a629e11",
+      "generation_seq": 2,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 1,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T07:44:36.269Z",
+      "outbox_id": "f32af132a76b6ae370017afe8ba7c2cb15475d5c5ae19e2cb8a6564c9be872b3",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "d2234568-87a8-4059-b5d7-8d5e6219a4fc",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "ddc421e4e9adac26e7daffac1d7bd14e3a20ad24ea4d58e0480f5c22c23c85c1",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 1,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T09:46:23.776Z",
+      "outbox_id": "ff8cbf035c591fe4cb6944bdc84bf129df6ab7e3b0b49fd952c83b43bee22d60",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "generation_seq": 1,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T11:36:27.000Z",
+      "outbox_id": "f8c7a1b5b24246f31833fb4076058e53a7ffa443aed09e49f5359cbf9176ffe9",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "e5f4ef7f2925118dddf31b68a30d09f85744db21d4747e3e5d9500087f3236c1",
+      "generation_seq": 2,
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 1,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T07:44:44.091Z",
+      "outbox_id": "db8b13f85edf6e0c750c2473365470209b76d5d68ebf34b4c122a1b9820a7a0e",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "156e661ebc58987c95b71a6544e7d4a98a18410459dc149a5e4612f302963095",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:06.000Z",
+      "outbox_id": "5e3d62549abd427b035e06059118d861bed8f9729b318b103acc48ce02035b1a",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    },
+    {
+      "article_id": "fb1d6f9a-aedf-46fd-9f90-e69df37b19c1",
+      "source_key": "es-tribunal-constitucional",
+      "generation_id": "edcfe85733f463ae77eefa4dcacf734323eeb4b599d9b509d37a2b2fbc007ed5",
+      "generation_seq": 1,
+      "state": "blocked",
+      "verification_status": "verified",
+      "attempt_count": 1,
+      "verification_fence": 18,
+      "last_error_code": null,
+      "next_attempt_at": "2026-10-12T06:00:10.000Z",
+      "outbox_id": "5f470508d26cd81e7e1ff82bf4d8833de1fa06c908e21ce3dc0d1847f5792545",
+      "outbox_status": "verified",
+      "fencing_token": 1
+    }
+  ],
+  "metadata": [
+    {
+      "article_id": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:34:44.449Z",
+      "verified_at": "2026-10-12T11:34:44.449Z"
+    },
+    {
+      "article_id": "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:38:00.619Z",
+      "verified_at": "2026-10-12T11:38:00.619Z"
+    },
+    {
+      "article_id": "8ba82d90-0f28-4731-963b-760805af100d",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:34:46.838Z",
+      "verified_at": "2026-10-12T11:34:46.838Z"
+    },
+    {
+      "article_id": "8f70d967-250d-4935-858f-5b91304b709f",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:34:49.427Z",
+      "verified_at": "2026-10-12T11:34:49.427Z"
+    },
+    {
+      "article_id": "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:38:03.270Z",
+      "verified_at": "2026-10-12T11:38:03.270Z"
+    },
+    {
+      "article_id": "dfb04619-3a7f-4b82-8405-24d171b2abd3",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:34:52.329Z",
+      "verified_at": "2026-10-12T11:34:52.329Z"
+    },
+    {
+      "article_id": "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:38:05.740Z",
+      "verified_at": "2026-10-12T11:38:05.740Z"
+    },
+    {
+      "article_id": "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:38:08.673Z",
+      "verified_at": "2026-10-12T11:38:08.673Z"
+    },
+    {
+      "article_id": "eccd7fae-7606-42e0-808a-2ade103ca0c9",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:34:55.026Z",
+      "verified_at": "2026-10-12T11:34:55.026Z"
+    },
+    {
+      "article_id": "f665503a-3d14-424a-b138-7ea4ac5240d5",
+      "revision": 1,
+      "applied_revision": 1,
+      "status": "verified",
+      "fencing_token": 1,
+      "lease_until": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "first_failure_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12T11:38:11.439Z",
+      "verified_at": "2026-10-12T11:38:11.439Z"
+    }
+  ],
+  "policy": [
+    {
+      "id": 1,
+      "public_read_required": 1
+    }
+  ],
+  "sourcePolicy": [
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "required": 1,
+      "updated_at": "2026-10-12T04:27:03.762Z"
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "required": 1,
+      "updated_at": "2026-10-12T04:27:03.762Z"
+    }
+  ],
+  "history": [
+    {
+      "id": "0a3f53c5-477f-4dad-8fd2-c19cec2e604b",
+      "generation_id": "27ca58ed13849470105355f8d5bfcfb3e8466db1eea61e634abe109ccfecb620",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"e278d0352ea3a07ece49fdbca798160a180f312fd4ce1083a9558306f1d2dd28\",\"article_id\":\"5f158de3-8033-4a79-b59a-d89452063bee\",\"generation_id\":\"27ca58ed13849470105355f8d5bfcfb3e8466db1eea61e634abe109ccfecb620\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"31a4eeca-8c01-533e-aa5a-c9a84d5778a0\",\"expected_version_revision\":1,\"expected_publication_id\":\"ed41a240-d3c2-4ce3-aed3-5c926fa7ad8f\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"2d927047dec6ecea916c43fb31f92ca7992108b0ce8fda84fbbac4903092ac24\",\"payload_evidence_ref\":\"core:e2e-approval:eb65d03bf225816d4b938212803e0c0e0fa1fde660af051f00b882e454917d74\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:27.519Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:43.936Z\",\"dispatched_at\":\"2026-10-12T05:40:43.936Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:41.693Z\",\"updated_at\":\"2026-10-12T05:40:49.357Z\"},\"verificationJob\":{\"generation_id\":\"27ca58ed13849470105355f8d5bfcfb3e8466db1eea61e634abe109ccfecb620\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:55:49.357Z\",\"first_failure_at\":\"2026-10-12T04:37:29.212Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:40:49.357Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:02.000Z"
+    },
+    {
+      "id": "b1d6ad27-8dcc-41dd-8cc9-e17fe9a477da",
+      "generation_id": "f76b3cf815414bcfd9ce12d46398223591a02295a93beba29715767d055415ce",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"80f7a64cebf46cf031f398f98449518b604429a2d18dbe0670fd6c93c1e860a1\",\"article_id\":\"911de19f-a80d-4702-a2e7-7dfb39b84875\",\"generation_id\":\"f76b3cf815414bcfd9ce12d46398223591a02295a93beba29715767d055415ce\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"6f2fc2b5-c878-569e-adaa-c061b38c75a9\",\"expected_version_revision\":1,\"expected_publication_id\":\"fab9df4e-2f7b-4430-a6e3-9059c18d664f\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"29ee30239ed51294043ddaa174106f2c860125b0a717f882c7f41f80ad59fbbd\",\"payload_evidence_ref\":\"core:e2e-approval:32a8e839ce7b4a777018c3ce6ebdef58a135ea0af92ae7b204f5130066be3193\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:30.718Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:44.514Z\",\"dispatched_at\":\"2026-10-12T05:40:44.514Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:44.642Z\",\"updated_at\":\"2026-10-12T05:40:51.673Z\"},\"verificationJob\":{\"generation_id\":\"f76b3cf815414bcfd9ce12d46398223591a02295a93beba29715767d055415ce\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:55:51.673Z\",\"first_failure_at\":\"2026-10-12T04:37:32.564Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:40:51.673Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:03.000Z"
+    },
+    {
+      "id": "3e6a47be-1fe1-423f-b751-1b1e28019b05",
+      "generation_id": "74f13373c5773ef753a9529c3b054b359252126c1c25394927bad7909ba415d5",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"ca7699abfc6dadde89c52832c163437abcdaae4c95d13956b7c87c122d97ad3d\",\"article_id\":\"4b139529-3431-4794-82e0-e552e91ee195\",\"generation_id\":\"74f13373c5773ef753a9529c3b054b359252126c1c25394927bad7909ba415d5\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"f9949304-b763-56f2-a893-a81af6ffe586\",\"expected_version_revision\":1,\"expected_publication_id\":\"c7defef7-a51a-45f5-95eb-1ecf50367e76\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"c2527017d24350a3750dd1c355a1c9c07c9e07fae87c0b952ca5acff13a33f9b\",\"payload_evidence_ref\":\"core:e2e-approval:729884524addc9b33180e242d5245242cd3bd4f527a29fc01cca028058caf1cf\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:34.114Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:45.062Z\",\"dispatched_at\":\"2026-10-12T05:40:45.062Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:47.727Z\",\"updated_at\":\"2026-10-12T05:40:54.501Z\"},\"verificationJob\":{\"generation_id\":\"74f13373c5773ef753a9529c3b054b359252126c1c25394927bad7909ba415d5\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:55:54.501Z\",\"first_failure_at\":\"2026-10-12T04:37:36.000Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:40:54.501Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:04.000Z"
+    },
+    {
+      "id": "61fea3c1-2e97-4e74-b0e2-6f7817590f1c",
+      "generation_id": "7fac1630da86c2ef6b5078fcab6936b29e982c5884d3d04e9a1f1a25fc0a178c",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"bd1a2d51ac438d87b2b16ccf900fd7610fef2f9262a069e77b1da4a20933107e\",\"article_id\":\"a314a607-112d-4c52-912f-b7ff51489c0e\",\"generation_id\":\"7fac1630da86c2ef6b5078fcab6936b29e982c5884d3d04e9a1f1a25fc0a178c\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"969c85b0-9881-5f83-aec0-4c06256faa12\",\"expected_version_revision\":1,\"expected_publication_id\":\"b0bf1edf-602f-4589-bc9f-08679fb17338\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"cecad16995380e8d71c93a498ffbc22961b4a218cb67235383b837a9b687e493\",\"payload_evidence_ref\":\"core:e2e-approval:ae93c9115c7ea85e0447d49b00c88f9a3ee5c98871557f831a67ba8928c4bead\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:38.747Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:40:20.003Z\",\"dispatched_at\":\"2026-10-12T05:39:20.003Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:50.855Z\",\"updated_at\":\"2026-10-12T05:39:24.858Z\"},\"verificationJob\":{\"generation_id\":\"7fac1630da86c2ef6b5078fcab6936b29e982c5884d3d04e9a1f1a25fc0a178c\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:54:24.858Z\",\"first_failure_at\":\"2026-10-12T04:37:40.525Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:39:24.858Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:05.000Z"
+    },
+    {
+      "id": "13a75f8d-2a3d-4b28-894a-41f4b633d688",
+      "generation_id": "156e661ebc58987c95b71a6544e7d4a98a18410459dc149a5e4612f302963095",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"5e3d62549abd427b035e06059118d861bed8f9729b318b103acc48ce02035b1a\",\"article_id\":\"facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c\",\"generation_id\":\"156e661ebc58987c95b71a6544e7d4a98a18410459dc149a5e4612f302963095\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"2daf69f6-8d02-5e4f-a9e1-fad6bea6f0b9\",\"expected_version_revision\":1,\"expected_publication_id\":\"c05b3db5-18ed-4225-96ee-ff9b3a002ef8\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"a8c4023287f1592daeb82d20de043938664215d297d1e8d32b30c8659518eada\",\"payload_evidence_ref\":\"core:e2e-approval:a977cb04260a2c697e801a6bb24f2b848d8036c286a49cba28d3388ec511b9aa\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:42.022Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:45.610Z\",\"dispatched_at\":\"2026-10-12T05:40:45.610Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:53.965Z\",\"updated_at\":\"2026-10-12T05:40:56.676Z\"},\"verificationJob\":{\"generation_id\":\"156e661ebc58987c95b71a6544e7d4a98a18410459dc149a5e4612f302963095\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:55:56.676Z\",\"first_failure_at\":\"2026-10-12T04:37:43.648Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:40:56.676Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:06.000Z"
+    },
+    {
+      "id": "a5f6de19-c262-4573-9467-364e837006be",
+      "generation_id": "2435d938d215256ba4a177a112ca1cbf667d30f4c909231fd414391760028eae",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"c0b906c96d159ba86d2be76e14a8bf9f7edffc3712fa0522c243729300d12c7f\",\"article_id\":\"bac3c408-6e60-4cdb-b489-c3ed06146b71\",\"generation_id\":\"2435d938d215256ba4a177a112ca1cbf667d30f4c909231fd414391760028eae\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"3a546105-0621-5a3c-a981-0702d980f998\",\"expected_version_revision\":1,\"expected_publication_id\":\"7611f335-910f-47a0-aded-7b678e44f9c1\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"a38906714397f04c79010861c29d7023cad1dfa7261eaa9e8e9505b1a0c142b4\",\"payload_evidence_ref\":\"core:e2e-approval:4e94bee15878614af3d58f5a2ad6d83a7a135b067196185eb0fda3bc99d8481b\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:45.155Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:46.171Z\",\"dispatched_at\":\"2026-10-12T05:40:46.171Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:56.772Z\",\"updated_at\":\"2026-10-12T05:40:59.904Z\"},\"verificationJob\":{\"generation_id\":\"2435d938d215256ba4a177a112ca1cbf667d30f4c909231fd414391760028eae\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:55:59.904Z\",\"first_failure_at\":\"2026-10-12T04:37:46.806Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:40:59.904Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:07.000Z"
+    },
+    {
+      "id": "12588176-95c3-4b3b-9b09-ce063d874714",
+      "generation_id": "99374e446b8b231e0774ba61574b9043c0cccc0f7252151636dc144b57e0d50c",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"f2247a65615be5398d042df2737ebd1261b87adaf7a15f44d5d4776550fbd352\",\"article_id\":\"23450418-153b-455b-8aa6-1d750db0da96\",\"generation_id\":\"99374e446b8b231e0774ba61574b9043c0cccc0f7252151636dc144b57e0d50c\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"8216a1f2-46aa-51fb-acfe-cdbed620c670\",\"expected_version_revision\":1,\"expected_publication_id\":\"0c68f29b-da5e-4254-9fc1-6178ef1dac14\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"eb61ec71bcebfea84702e298553e5c86e6896d633a072b037f8bad2e3a769703\",\"payload_evidence_ref\":\"core:e2e-approval:ad2e4e623a4c269eb8216323eb47da5aabaf15d481b31ff09b2be2d3bab83f72\",\"status\":\"dead_letter\",\"attempt_count\":2,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:10:51.782Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":2,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:47.856Z\",\"dispatched_at\":\"2026-10-12T05:40:47.856Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:35:59.638Z\",\"updated_at\":\"2026-10-12T05:41:06.425Z\"},\"verificationJob\":{\"generation_id\":\"99374e446b8b231e0774ba61574b9043c0cccc0f7252151636dc144b57e0d50c\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":2,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:56:06.425Z\",\"first_failure_at\":\"2026-10-12T04:37:49.892Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:41:06.425Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:08.000Z"
+    },
+    {
+      "id": "70a117c5-dd8e-4e66-a71d-8092edbff8cd",
+      "generation_id": "2fc7450b3baa4dfbc487422bc4abeee29fd3d9ce528842d37e885e67655dd02e",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"de4c8a716e6084ac2c0a5c6994949ab9810e04e1c77a96d5d50cbc24b986c267\",\"article_id\":\"4989743b-b2df-41c8-a082-eb0212265d9e\",\"generation_id\":\"2fc7450b3baa4dfbc487422bc4abeee29fd3d9ce528842d37e885e67655dd02e\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"08d75c0c-321c-5ec7-a12b-8ac525cf8e41\",\"expected_version_revision\":1,\"expected_publication_id\":\"aede2bca-2a42-4ae4-937a-7ac3eda466c4\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"01e43e3b260bfb3ca8471988c89acc379bc79e087f11ab534ccaa8b97160fb4c\",\"payload_evidence_ref\":\"core:e2e-approval:c715d81e675a3b617e392b16860b1025202575c8ee1f64ce08d24eefb627f350\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:51.403Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:40:20.570Z\",\"dispatched_at\":\"2026-10-12T05:39:20.570Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:36:02.717Z\",\"updated_at\":\"2026-10-12T05:39:27.311Z\"},\"verificationJob\":{\"generation_id\":\"2fc7450b3baa4dfbc487422bc4abeee29fd3d9ce528842d37e885e67655dd02e\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:54:27.311Z\",\"first_failure_at\":\"2026-10-12T04:37:53.325Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:39:27.311Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:09.000Z"
+    },
+    {
+      "id": "454cd6d0-0c06-4cbc-acb0-7cae33bd6260",
+      "generation_id": "edcfe85733f463ae77eefa4dcacf734323eeb4b599d9b509d37a2b2fbc007ed5",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"5f470508d26cd81e7e1ff82bf4d8833de1fa06c908e21ce3dc0d1847f5792545\",\"article_id\":\"fb1d6f9a-aedf-46fd-9f90-e69df37b19c1\",\"generation_id\":\"edcfe85733f463ae77eefa4dcacf734323eeb4b599d9b509d37a2b2fbc007ed5\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"8a92223d-b0fe-5c96-a30c-a63354f59292\",\"expected_version_revision\":1,\"expected_publication_id\":\"9262674e-991a-4afa-8476-a56196426940\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"583997897c43b216ed6a4a1e0d4bac21104c1e51e85159aba2ef679a2447c47a\",\"payload_evidence_ref\":\"core:e2e-approval:944060cd5326ad33441700725a8d4de289df52f5bf83dc7f845b85b88ef186ee\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:55.986Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:46.717Z\",\"dispatched_at\":\"2026-10-12T05:40:46.717Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:36:05.734Z\",\"updated_at\":\"2026-10-12T05:41:02.074Z\"},\"verificationJob\":{\"generation_id\":\"edcfe85733f463ae77eefa4dcacf734323eeb4b599d9b509d37a2b2fbc007ed5\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:56:02.074Z\",\"first_failure_at\":\"2026-10-12T04:37:57.585Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:41:02.074Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:10.000Z"
+    },
+    {
+      "id": "b32bf842-210d-4edb-903a-28916a07c6c9",
+      "generation_id": "881617f8f1706694dc1db9b7ca435595fbda0ffd727c90fe6d1268bf43976cd0",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"416965e951932fb5f3ec701cd6a67010de75ebc21f3a9361040dc0d7bd99d389\",\"article_id\":\"2ffd5274-9469-4a89-9617-9dd9feed2c7e\",\"generation_id\":\"881617f8f1706694dc1db9b7ca435595fbda0ffd727c90fe6d1268bf43976cd0\",\"generation_seq\":1,\"operation\":\"remove\",\"expected_version_id\":\"21694fa6-4ec3-52ad-a570-8c9b7d41caf2\",\"expected_version_revision\":1,\"expected_publication_id\":\"5006d7bd-9b9c-440d-92f1-eae2fa8de7eb\",\"expected_publication_revision\":2,\"expected_publication_state\":\"withdrawn\",\"policy_version\":\"worldcons.private-transition.v1\",\"projection_input_hash\":\"5b3662c5710ad2740fef70ddf9e07f0fafca77988ac855f0cfb44a4f12d7c839\",\"payload_evidence_ref\":\"core:e2e-approval:d8be7c684e6bf435efd79b40ee5e0eb227a6ee3f30df78b9736a531f0e2ac530\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T04:38:59.075Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":32,\"dispatch_count\":31,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:41:47.287Z\",\"dispatched_at\":\"2026-10-12T05:40:47.287Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T04:36:08.486Z\",\"updated_at\":\"2026-10-12T05:41:04.224Z\"},\"verificationJob\":{\"generation_id\":\"881617f8f1706694dc1db9b7ca435595fbda0ffd727c90fe6d1268bf43976cd0\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:56:04.224Z\",\"first_failure_at\":\"2026-10-12T04:38:00.720Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.withdrawal_api_mismatch\",\"updated_at\":\"2026-10-12T05:41:04.224Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:11.000Z"
+    },
+    {
+      "id": "02a75639-1a9a-40b9-8a94-67cd37983d8c",
+      "generation_id": "0b64bb48a1b1292d54f6914723ec99065a71bcbda331f2e675f220917a60b852",
+      "operator_id": "e2e-p0-runtime-route-recovery",
+      "reason": "Retry original approved generation after workerd redirect and named Root API prefix fixes at git 206d1f2; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 10,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"51705cff4b94aea911dd5579846aed294940bdf7a13c87d9241dc757a05fc8b2\",\"article_id\":\"f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb\",\"generation_id\":\"0b64bb48a1b1292d54f6914723ec99065a71bcbda331f2e675f220917a60b852\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"83b97767-c653-5507-a7b7-2969a8c84adb\",\"expected_version_revision\":2,\"expected_publication_id\":\"3cedd897-5c15-40e7-b085-9b7cfc79dd9f\",\"expected_publication_revision\":2,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"07a9cca155b857624d8b18691c822ea83afd1ef21627eab20059983bc200efd0\",\"payload_evidence_ref\":\"core:e2e-approval:ed6bdb219f8820d3de80fb5212088344150e553a42cbfc315b923d2d234fbb51\",\"status\":\"pending\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:16:56.904Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":17,\"dispatch_count\":17,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T05:45:22.078Z\",\"dispatched_at\":\"2026-10-12T05:44:22.078Z\",\"last_dispatch_error_code\":null,\"last_error_code\":null,\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T05:04:33.574Z\",\"updated_at\":\"2026-10-12T05:44:22.078Z\"},\"verificationJob\":{\"generation_id\":\"0b64bb48a1b1292d54f6914723ec99065a71bcbda331f2e675f220917a60b852\",\"status\":\"retry_wait\",\"verification_fence\":10,\"applied_fence\":1,\"attempt_count\":5,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T05:59:28.176Z\",\"first_failure_at\":\"2026-10-12T05:15:59.292Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.public_api_unavailable\",\"updated_at\":\"2026-10-12T05:44:28.176Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T06:00:12.000Z"
+    },
+    {
+      "id": "8483168e-1c96-4d78-8b5e-fa40ae1caa45",
+      "generation_id": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"228b6ebe8a18f5f8e83ba5ab0d4b2883aa5e809a34449e8507f4ff7ba63cd53c\",\"article_id\":\"724d57d3-723d-4450-ad01-0a049688fc6a\",\"generation_id\":\"a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"17edf8d5-1061-5493-a77d-b31b3601dedf\",\"expected_version_revision\":3,\"expected_publication_id\":\"d16e08fd-ba74-4ac3-9d21-49395634d41e\",\"expected_publication_revision\":3,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"85047c3ceac0deddc51c05ef0b6957dd5d1ceb604a859d515aff65e64d9e4942\",\"payload_evidence_ref\":\"core:e2e-approval:8cc451553b9bbdc702cef817dd2f8f743ea24a9d992635c61b3be9a4357dc635\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T08:18:00.503Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T09:23:19.459Z\",\"dispatched_at\":\"2026-10-12T09:22:19.459Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T08:16:09.524Z\",\"updated_at\":\"2026-10-12T09:22:29.717Z\"},\"verificationJob\":{\"generation_id\":\"a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T09:37:29.717Z\",\"first_failure_at\":\"2026-10-12T08:17:07.142Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T09:22:29.717Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:26.000Z"
+    },
+    {
+      "id": "d37ad01a-ea2a-4132-a442-12831d7e6c87",
+      "generation_id": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"f8c7a1b5b24246f31833fb4076058e53a7ffa443aed09e49f5359cbf9176ffe9\",\"article_id\":\"dfb6cee1-447b-498c-a5a6-1cc91d3aaddc\",\"generation_id\":\"7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"17f1c695-946d-5e59-a552-ff5498fecc43\",\"expected_version_revision\":4,\"expected_publication_id\":\"8082558d-4547-49d8-8644-ae9585f56e05\",\"expected_publication_revision\":4,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"27e7c4430754cb342b309fdd684c30e5a3697e6cb6966b478ec3922152a12e77\",\"payload_evidence_ref\":\"core:e2e-approval:35f72e8bd2007e0c9aa26ee68952a1ed2ddbd52076500418f4c5539f6c85e8f1\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T08:32:23.803Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T09:39:19.407Z\",\"dispatched_at\":\"2026-10-12T09:38:19.407Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T08:30:41.407Z\",\"updated_at\":\"2026-10-12T09:38:30.100Z\"},\"verificationJob\":{\"generation_id\":\"7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T09:53:30.100Z\",\"first_failure_at\":\"2026-10-12T08:31:29.619Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T09:38:30.100Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:27.000Z"
+    },
+    {
+      "id": "b6746fbd-e22f-4fe9-9414-8f32bd65dec3",
+      "generation_id": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"2cae5e7d0ee93fc949d6812d29c5b0709cd73a42ca184e47c5c380036231ac6e\",\"article_id\":\"906a356a-b2bb-4a15-8b9f-79b6ca30d3be\",\"generation_id\":\"6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"2200856a-0b7f-5e61-ad65-78e144aaa965\",\"expected_version_revision\":3,\"expected_publication_id\":\"f40d802f-7166-4ee8-b72e-ea336ec6bc75\",\"expected_publication_revision\":3,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"2d49a2f87dcfe1d4d09dac82957e5e2b5157117d33474e00d585b56f884e8526\",\"payload_evidence_ref\":\"core:e2e-approval:576a44d5afd90e65dae33cc5fbd985a953b46730f4e29c2dbb78c87d6f02e992\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T08:47:25.478Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T09:54:19.300Z\",\"dispatched_at\":\"2026-10-12T09:53:19.300Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T08:45:42.537Z\",\"updated_at\":\"2026-10-12T09:53:35.065Z\"},\"verificationJob\":{\"generation_id\":\"6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:08:35.065Z\",\"first_failure_at\":\"2026-10-12T08:46:34.734Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T09:53:35.065Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:28.000Z"
+    },
+    {
+      "id": "265c851d-1070-4a45-a138-ecd2b353e947",
+      "generation_id": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"823526a3f7231687afba68a9fb26da3b6eb39679225eea0160a8e3906cf370b2\",\"article_id\":\"53d766a7-40c4-4176-9d65-9dfc47b4a56d\",\"generation_id\":\"d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"7ba427b8-5eff-559f-a505-ac9010e392ce\",\"expected_version_revision\":4,\"expected_publication_id\":\"e0449cbc-0d3c-4f19-9766-8d9c3a460d28\",\"expected_publication_revision\":4,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"2330e1eceecb31718d44f107c083d5a1096bd4ef3773a5a2d823b7ddd78e1f53\",\"payload_evidence_ref\":\"core:e2e-approval:949562913bd71d539461539ff36dec2a75ed7ecb2ecc7c19ffdd7c52f44de94e\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T09:02:23.961Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T10:09:19.339Z\",\"dispatched_at\":\"2026-10-12T10:08:19.339Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T09:00:46.455Z\",\"updated_at\":\"2026-10-12T10:08:30.417Z\"},\"verificationJob\":{\"generation_id\":\"d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:23:30.417Z\",\"first_failure_at\":\"2026-10-12T09:01:30.511Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T10:08:30.417Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:29.000Z"
+    },
+    {
+      "id": "ff3ea351-b397-4dd7-9b4b-be6787fc5f08",
+      "generation_id": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"db8f92d207160399ad9b0f67f7eb5c1be2996caeb473ee22666a724eebe6a1eb\",\"article_id\":\"74d0b06b-3c05-4d4c-8854-671a4b9defc7\",\"generation_id\":\"d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"9626ab12-7844-5b3f-abfe-132366417c29\",\"expected_version_revision\":3,\"expected_publication_id\":\"5b07a063-9d7b-4ae4-987e-e57e9d8df4e6\",\"expected_publication_revision\":3,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"56b501ef70f8bb8bf9e1ec33a39e9bf40c806401f368ecff99e3b717305d1541\",\"payload_evidence_ref\":\"core:e2e-approval:9c2a1f559b8e9d1652f8c9008f7dbbd536acaf80ca1a7ea29b90872c5c640f5b\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T09:17:24.585Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T10:24:19.299Z\",\"dispatched_at\":\"2026-10-12T10:23:19.299Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T09:15:44.644Z\",\"updated_at\":\"2026-10-12T10:23:30.007Z\"},\"verificationJob\":{\"generation_id\":\"d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:38:30.007Z\",\"first_failure_at\":\"2026-10-12T09:16:31.473Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T10:23:30.007Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:30.000Z"
+    },
+    {
+      "id": "55d3be99-dd86-481b-b1f3-824c0afd6924",
+      "generation_id": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"3b41cdcfe66fb5e69d5aa5eb58f18a6c7b9b84b8c49d8470b23bdee6928d57b4\",\"article_id\":\"02b539a7-8607-4a49-a3f9-19356f4eb890\",\"generation_id\":\"285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"72a505d7-000e-51a8-a521-9fb978d59fc7\",\"expected_version_revision\":3,\"expected_publication_id\":\"352df27e-e47a-4373-b21d-6693df17dccb\",\"expected_publication_revision\":3,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"ee4f4242f8a2f6dba84fc9e887da71800381ee42f69887f0126609a8f0814f0d\",\"payload_evidence_ref\":\"core:e2e-approval:e2a506fc65ed9b469235a1f2f62fca92b19fd66bf352a38497755b5ff1a4eca0\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T09:32:23.569Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T10:39:19.440Z\",\"dispatched_at\":\"2026-10-12T10:38:19.440Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T09:30:45.399Z\",\"updated_at\":\"2026-10-12T10:38:29.132Z\"},\"verificationJob\":{\"generation_id\":\"285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:53:29.132Z\",\"first_failure_at\":\"2026-10-12T09:31:29.532Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T10:38:29.132Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:31.000Z"
+    },
+    {
+      "id": "f2bc645f-a190-4617-a063-6d8bbe5d4f6e",
+      "generation_id": "3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 16,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"0488fa53349d6f2bdb87274c2c95747dc7bc5927c9c6df84f3d8ae8e44e962c4\",\"article_id\":\"15560a96-c510-427c-aaf4-a5d57ef5bd50\",\"generation_id\":\"3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"14b28c55-133c-548d-acb7-53fb7130db7b\",\"expected_version_revision\":31,\"expected_publication_id\":\"6ad47df8-9bee-406f-9169-f4ed6fb74bd9\",\"expected_publication_revision\":31,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"9132264105de85c2cc1535fa36f286a68d93113e902f9dd7998d98c5c5cebfbc\",\"payload_evidence_ref\":\"core:e2e-approval:d9b453d19b8dacb39c0b48959cbc8f73469c8957709391f037e8d35f336efcf1\",\"status\":\"dead_letter\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:02:23.886Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":9,\"dispatch_count\":8,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T11:09:19.481Z\",\"dispatched_at\":\"2026-10-12T11:08:19.481Z\",\"last_dispatch_error_code\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T10:00:48.735Z\",\"updated_at\":\"2026-10-12T11:08:31.995Z\"},\"verificationJob\":{\"generation_id\":\"3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267\",\"status\":\"dead_letter\",\"verification_fence\":16,\"applied_fence\":1,\"attempt_count\":8,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T11:23:31.995Z\",\"first_failure_at\":\"2026-10-12T10:01:29.734Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T11:08:31.995Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:32.000Z"
+    },
+    {
+      "id": "1eaeb538-9013-439a-a304-755da1d7829f",
+      "generation_id": "8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 14,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"49c3e3b0b5d05bf9f28ec55307345a3e9c8edbcdbd1427a8c1632be6f2536831\",\"article_id\":\"8ba82d90-0f28-4731-963b-760805af100d\",\"generation_id\":\"8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"0ef224d9-bdce-5907-a8ea-53b136fbda3b\",\"expected_version_revision\":3,\"expected_publication_id\":\"207c716b-1232-4d6d-abc6-eaeff5621332\",\"expected_publication_revision\":3,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"a75247dd0f4811b3f688525c9ad650ce4055069391b90a0b30c9afbb94ce1635\",\"payload_evidence_ref\":\"core:e2e-approval:d6efcfb406a0a4ec7590ba6af6cd07edc6bc246c51261522d9216b6c77a2cc6f\",\"status\":\"pending\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:32:24.133Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":7,\"dispatch_count\":7,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T11:23:19.577Z\",\"dispatched_at\":\"2026-10-12T11:22:19.577Z\",\"last_dispatch_error_code\":null,\"last_error_code\":null,\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T10:30:45.120Z\",\"updated_at\":\"2026-10-12T11:22:19.577Z\"},\"verificationJob\":{\"generation_id\":\"8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9\",\"status\":\"retry_wait\",\"verification_fence\":14,\"applied_fence\":1,\"attempt_count\":7,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T11:37:28.263Z\",\"first_failure_at\":\"2026-10-12T10:31:30.849Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T11:22:28.263Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:33.000Z"
+    },
+    {
+      "id": "3938d432-0780-4c87-941a-3af14acbef9e",
+      "generation_id": "e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82",
+      "operator_id": "e2e-p0-official-url-recovery",
+      "reason": "Retry the original approved generation after canonical official Spanish URL verification fix; preserve previous failure budget and all P3/Search history",
+      "previous_verification_fence": 12,
+      "previous_state_document": "{\"outbox\":{\"outbox_id\":\"f0c3d05bcf0ebcb76ab394c991b24fb4d33ad7dd5d9b93ac4134a2f4de556795\",\"article_id\":\"1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f\",\"generation_id\":\"e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82\",\"generation_seq\":1,\"operation\":\"project\",\"expected_version_id\":\"ef5b9a92-1378-5841-a0b9-0854d8d7d7bb\",\"expected_version_revision\":37,\"expected_publication_id\":\"5c3a3173-189a-4cd6-b50b-2fbc445cc6fa\",\"expected_publication_revision\":37,\"expected_publication_state\":\"published\",\"policy_version\":\"worldcons.fr-es-staged-approval.v1\",\"projection_input_hash\":\"0b584868b509562e76a1cafd34887efae9e687237adfd306e8d0e0b43925e027\",\"payload_evidence_ref\":\"core:e2e-approval:de5b2b3d69d29d0db9672388cc9d8e8b66c2114883f7b4cfd408102aa07df308\",\"status\":\"pending\",\"attempt_count\":1,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T10:47:23.942Z\",\"first_failure_at\":null,\"claimed_by\":null,\"lease_expires_at\":null,\"fencing_token\":1,\"dispatch_owner\":null,\"dispatch_token\":null,\"dispatch_lease_expires_at\":null,\"dispatch_fence\":6,\"dispatch_count\":6,\"dispatch_failure_count\":0,\"first_dispatch_failure_at\":null,\"next_dispatch_at\":\"2026-10-12T11:22:19.479Z\",\"dispatched_at\":\"2026-10-12T11:21:19.479Z\",\"last_dispatch_error_code\":null,\"last_error_code\":null,\"verified_at\":null,\"evidence_ref\":null,\"created_at\":\"2026-10-12T10:45:43.245Z\",\"updated_at\":\"2026-10-12T11:21:19.479Z\"},\"verificationJob\":{\"generation_id\":\"e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82\",\"status\":\"retry_wait\",\"verification_fence\":12,\"applied_fence\":1,\"attempt_count\":6,\"max_attempts\":8,\"next_attempt_at\":\"2026-10-12T11:36:29.720Z\",\"first_failure_at\":\"2026-10-12T10:46:30.388Z\",\"claimed_by\":null,\"lease_expires_at\":null,\"last_error_code\":\"e2e.api_identity_mismatch\",\"updated_at\":\"2026-10-12T11:21:29.720Z\"},\"noNewContentApproval\":true}",
+      "created_at": "2026-10-12T11:36:34.000Z"
+    }
+  ],
+  "worldcons": {
+    "deployments": [
+      {
+        "id": "308a93a3-dca0-44c1-80b5-4f1009f2a533",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 source CAS, durable metadata repair, official URL verification; git 33a12e8ada93a04340ec762bbf924c3e25b0bad6",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "0541310d-1e6a-4b9f-b0e1-7d5e51538779",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T11:33:49.553273Z"
+      },
+      {
+        "id": "a700c52f-e1a0-4397-a868-76d06d8b675b",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 validated shared tag preservation; git d9f8e1bf2f1494705bdf1a4d18ca5347d98c0d95",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "8f5b1d18-b92d-421d-9f8c-962be214bda1",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T07:41:41.12743Z"
+      },
+      {
+        "id": "deb433e5-4249-40c5-8586-15969d6ff0bb",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Fully validated M5 Root public provider runtime; git 1216caf5ebde12d222bfd198ac9f1256461a454d",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "de37eb20-033e-4a85-a99c-b9c71e9d663e",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T06:25:21.698767Z"
+      },
+      {
+        "id": "0f385db9-a5c1-4fe4-b8fc-e04e32a6be18",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Final M5 HJ literal-prefix approval paths; git d85931fa4ad7564df81320380db983733991731a",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "0f38bf4a-bf96-413b-b4f0-7e828516c340",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T04:53:25.740213Z"
+      },
+      {
+        "id": "b2095ad8-d1ed-4669-be12-bf5825c2869c",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 reviewed-snapshot approval and protected publication/search paths; git 007094f968773179ea056bed6dd10133565df98d",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "b445ded5-d60d-41d0-b114-861a32ae3d0a",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T04:35:33.68616Z"
+      },
+      {
+        "id": "7afdb229-2efe-4d47-918a-111741091afb",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "French L parser verified in final bundle; git 43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "0bf0e14d-b4d9-4370-9b1d-34b5098d5644",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-11T07:34:59.802831Z"
+      },
+      {
+        "id": "2cd4d838-52ee-4344-a0d7-f961cc8ea716",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "E2E P0 FR L exact-search fix; release gate passed; git 43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "e82cd6e1-a59f-4d13-9aad-7555e1566699",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-11T07:32:10.831995Z"
+      },
+      {
+        "id": "7f9bd41e-7877-48e3-8aef-324446f5b1c6",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "E2E P0 compatible public/Core worker; git 3317d9b7e1ce01cc6289af45171bf371b53486cb",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "03075f82-369b-4f3f-8085-1608351d3696",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-11T07:19:32.261444Z"
+      },
+      {
+        "id": "2e465c3f-aff1-42d1-b922-81fa82b93deb",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "e3dc0a43-1592-4964-971d-d036add50b07",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-10T14:38:27.837323Z"
+      },
+      {
+        "id": "c50acf72-8eb2-4348-b906-3a5eaefad070",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "768b1085-23fc-45ed-889d-72097153bfa1",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-10T12:32:20.622132Z"
+      }
+    ]
+  },
+  "worldcons-ingest": {
+    "deployments": [
+      {
+        "id": "1da7c6ff-ec42-4cf0-aa8a-eb7c4b8b275f",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 source CAS and durable metadata repair; Root 0541310d-1e6a-4b9f-b0e1-7d5e51538779; git 7def733c00d9c7aeab8058d654e582f176066708",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "98015532-560a-4ea3-9f89-88686736f951",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T11:35:04.839297Z"
+      },
+      {
+        "id": "ba7ad6bc-ad32-4978-bb1f-b7f3151ff850",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 shared tag preservation and verifier pin; git c35bb37e98a8c51daf3bfc50f719f0d16fa7e7b1",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "ae506de6-7698-47f5-af71-b8b551d0d378",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T07:42:30.489035Z"
+      },
+      {
+        "id": "7b122e40-ccf8-47c6-bda8-5753f2cfa4c5",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Pin fully validated M5 Root release; git 4646e0261751a44083853247a592369a43456e6f",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "dc2ffc3d-acb2-4f58-989b-27f5d3ff2453",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T06:26:03.236768Z"
+      },
+      {
+        "id": "f5305356-42a2-458d-a3af-8034f40b73dd",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Map external API URLs to Root provider route contract; git 206d1f2c2e782321886c4d6a592b275de2aa57e0",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "7acb77e2-0b20-4d54-a4e0-543d61cb1a9a",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:47:55.570723Z"
+      },
+      {
+        "id": "29463d8a-be2c-4144-939a-dd23c654d228",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Drain protected repair backlog with two fenced consumers; git ecefccbcd0828e8f71d840142fabb3ed4e4a24f7",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "c5d1790b-0340-495a-b5ae-db55ea5afc4e",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:34:18.0304Z"
+      },
+      {
+        "id": "d36c99fd-94ef-487e-9786-7c30ba2e9a40",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Use Root public-provider HTTP service; git bf0a61aee3c60e39e3455d76edb5a02ccab3ec09",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "c79e4fa9-3102-4cbc-9326-eee2bbba34eb",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:28:31.234389Z"
+      },
+      {
+        "id": "5b27c917-07aa-4965-a831-3b86b30ed6cc",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Honor durable verifier backoff and ACK deferred duplicates; git 937cd44bf972b6e048ace5be4401bec9b70b8f7f",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "3aecb471-dff1-4a96-989a-bc6a452bf5b8",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:26:15.097756Z"
+      },
+      {
+        "id": "488ec646-8d11-4646-a5ab-e2e11751a32d",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Diagnose current-generation Search claim waits; git 748ac0a0ef37a3afb525b10c7a363fd4c06c4eb6",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "17e0076d-abd9-49d8-b8a2-1b9cbac4e1fb",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:16:00.833296Z"
+      },
+      {
+        "id": "ce338089-7f83-48b8-9155-17ed7a4ed506",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Use actual default public Worker service binding for verification; git a1fc7a7f4d24fa717465aba3c51c1c6cda505f63",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "eeb6215e-c3ca-4581-a27f-b637359dc50d",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:13:37.870784Z"
+      },
+      {
+        "id": "26850a5a-d3ec-4036-82f6-59f9815b7a84",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Bounded verifier diagnostics for runtime-only failures; git cbb5d276f7a7891a75d163038f4ca62bad49ed1f",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "8d89d0e2-3c58-4237-824a-336b61a5e709",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T05:00:28.849542Z"
+      }
+    ]
+  },
+  "ingest": [
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "crawl",
+      "status": "pending",
+      "count": 64
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "crawl",
+      "status": "succeeded",
+      "count": 54
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "discovery",
+      "status": "succeeded",
+      "count": 4
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "normalize",
+      "status": "pending",
+      "count": 3
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "normalize",
+      "status": "succeeded",
+      "count": 49
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "public-judgment",
+      "status": "dead_letter",
+      "count": 19
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "public-judgment",
+      "status": "pending",
+      "count": 5
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "public-judgment",
+      "status": "succeeded",
+      "count": 17
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "publish",
+      "status": "pending",
+      "count": 1
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "publish",
+      "status": "succeeded",
+      "count": 16
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "search",
+      "status": "dead_letter",
+      "count": 5
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "search",
+      "status": "pending",
+      "count": 6
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "search",
+      "status": "succeeded",
+      "count": 5
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "translate",
+      "status": "dead_letter",
+      "count": 1
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "translate",
+      "status": "pending",
+      "count": 1
+    },
+    {
+      "source_key": "es-tribunal-constitucional",
+      "stage": "translate",
+      "status": "succeeded",
+      "count": 41
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "crawl",
+      "status": "succeeded",
+      "count": 4
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "discovery",
+      "status": "succeeded",
+      "count": 5
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "normalize",
+      "status": "succeeded",
+      "count": 2
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "public-judgment",
+      "status": "succeeded",
+      "count": 2
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "publish",
+      "status": "succeeded",
+      "count": 2
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "search",
+      "status": "succeeded",
+      "count": 3
+    },
+    {
+      "source_key": "fr-conseil-constitutionnel",
+      "stage": "translate",
+      "status": "succeeded",
+      "count": 2
+    }
+  ]
+}

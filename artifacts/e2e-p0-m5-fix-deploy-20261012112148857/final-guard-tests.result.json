@@ -1,0 +1,29 @@
+{
+  "startedAt": "2026-10-12T11:29:02.857Z",
+  "finishedAt": "2026-10-12T11:29:49.147Z",
+  "bin": "node",
+  "args": [
+    "--import",
+    "tsx",
+    "--test",
+    "tests/e2e-p0-m1-generations.test.ts",
+    "tests/e2e-p0-m2-d1-runtime.test.ts",
+    "tests/e2e-p0-m2-search-repair.test.ts",
+    "tests/e2e-p0-m3-d1-runtime.test.ts",
+    "tests/e2e-p0-m3-search-guards.test.ts",
+    "tests/e2e-p0-m4-d1-runtime.test.ts",
+    "tests/e2e-p0-m4-staged.test.ts",
+    "tests/e2e-p0-m4-verification.test.ts",
+    "tests/e2e-p0-m5-approval.test.ts",
+    "tests/e2e-p0-m5-core-writers.test.ts",
+    "tests/e2e-p0-m5-discovery.test.ts",
+    "tests/e2e-p0-m5-fixes-d1-runtime.test.ts",
+    "tests/e2e-p0-m5-metadata-repair.test.ts",
+    "tests/e2e-p0-m5-source-cas.test.ts",
+    "tests/native-crawler.test.ts",
+    "tests/ingest-stage-handlers.test.ts",
+    "tests/search-projection-sync.test.ts"
+  ],
+  "code": 0,
+  "signal": null
+}

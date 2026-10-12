@@ -1,0 +1,13 @@
+
+> worldcons@0.1.0 verify:release C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:native-crawler && pnpm test:ingest-stages && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:reference-reads && pnpm test:article-reads && pnpm test:search-repository && pnpm test:admin-ops-reads && pnpm test:admin-analytics-reads && pnpm test:rpc-ledger && pnpm test:d1-schema && pnpm test:d1-convert && pnpm test:d1-import && pnpm test:d1-provision && pnpm test:d1-apply-schema && pnpm test:d1-migrate && pnpm test:d1-http-query && pnpm test:d1-copy-data && pnpm test:d1-reconcile && pnpm test:d1-supabase-linked-source && pnpm test:d1-shadow-all && pnpm test:d1-case-catalog && pnpm test:d1-search-projection && pnpm test:d1-fts-search && pnpm test:d1-ranked-search && pnpm test:d1-vector-search && pnpm test:d1-search-canary && pnpm test:d1-search-canary-m7.6 && pnpm test:m7.7a && pnpm test:m7.8a && pnpm test:m7.8b && pnpm test:m7.9 && pnpm test:m8 && pnpm m8:types:check && pnpm m8:typecheck && pnpm test:m9 && pnpm test:m10 && pnpm test:e2e-p0-m1 && pnpm test:e2e-p0-m2 && pnpm test:e2e-p0-m3 && pnpm test:e2e-p0-m4 && pnpm test:e2e-p0-m5 && pnpm test:m11 && pnpm test:search-rank-policy && pnpm test:plugin && pnpm plugin:validate && pnpm build:vinext
+
+
+> worldcons@0.1.0 typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+tests/e2e-p0-m5-fixes-d1-runtime.test.ts(8,412): error TS2339: Property 'first' does not exist on type 'D1RuntimePreparedStatement'.
+ ELIFECYCLE  Command failed with exit code 2.
+ ELIFECYCLE  Command failed with exit code 2.

@@ -1,0 +1,11 @@
+{
+  "startedAt": "2026-10-12T11:42:47.833Z",
+  "finishedAt": "2026-10-12T11:43:20.895Z",
+  "bin": "node",
+  "args": [
+    "C:/Users/jaeth/AppData/Roaming/npm/node_modules/pnpm/bin/pnpm.cjs",
+    "lint"
+  ],
+  "code": 0,
+  "signal": null
+}

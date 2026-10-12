@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "stage": "d1-remote-migration-apply",
+  "dryRun": false,
+  "applied": true,
+  "targets": [
+    {
+      "name": "worldcons_core",
+      "binding": "WORLDCONS_CORE",
+      "state": "existing",
+      "action": "apply",
+      "databaseId": "0f4c41f0-778f-4ef4-860e-b0dad05f0984",
+      "migrations": [
+        {
+          "number": 2,
+          "id": "0002",
+          "file": "0002_translation_pipeline.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 3,
+          "id": "0003",
+          "file": "0003_ingest_core_bridge_ledger.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 4,
+          "id": "0004",
+          "file": "0004_e2e_generations.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 5,
+          "id": "0005",
+          "file": "0005_e2e_search_repair_outbox.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 6,
+          "id": "0006",
+          "file": "0006_e2e_search_apply_receipts.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 7,
+          "id": "0007",
+          "file": "0007_e2e_verification.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 8,
+          "id": "0008",
+          "file": "0008_e2e_core_writer_guards.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 9,
+          "id": "0009",
+          "file": "0009_e2e_source_ownership.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 10,
+          "id": "0010",
+          "file": "0010_e2e_verification_redrive.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 11,
+          "id": "0011",
+          "file": "0011_search_metadata_repair.sql",
+          "state": "applied",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        }
+      ],
+      "pending": 0,
+      "applied": 1,
+      "verified": true,
+      "errors": []
+    },
+    {
+      "name": "worldcons_search",
+      "binding": "WORLDCONS_SEARCH",
+      "state": "existing",
+      "action": "apply",
+      "databaseId": "1d74ebba-918b-4f8c-9c5c-9013479df809",
+      "migrations": [
+        {
+          "number": 2,
+          "id": "0002",
+          "file": "0002_e2e_generation_guards.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 3,
+          "id": "0003",
+          "file": "0003_metadata_projection_guards.sql",
+          "state": "applied",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        }
+      ],
+      "pending": 0,
+      "applied": 1,
+      "verified": true,
+      "errors": []
+    }
+  ],
+  "totals": {
+    "targets": 2,
+    "migrations": 12,
+    "pending": 0,
+    "applied": 2,
+    "present": 2,
+    "missing": 0,
+    "refused": 0
+  },
+  "commands": [
+    "d1 list --json",
+    "d1 info worldcons_core --json",
+    "d1 execute worldcons_core --remote --yes --json --command select type, name, sql from sqlite_master where type in ('table', 'index', 'trigger') order by type, name",
+    "d1 execute worldcons_core --remote --yes --json --file artifacts\\cloudflare-m5\\d1-migrations\\worldcons_core\\0011_search_metadata_repair.sql",
+    "d1 execute worldcons_core --remote --yes --json --command select type, name, sql from sqlite_master where type in ('table', 'index', 'trigger') order by type, name",
+    "d1 info worldcons_search --json",
+    "d1 execute worldcons_search --remote --yes --json --command select type, name, sql from sqlite_master where type in ('table', 'index', 'trigger') order by type, name",
+    "d1 execute worldcons_search --remote --yes --json --file artifacts\\cloudflare-m5\\d1-migrations\\worldcons_search\\0003_metadata_projection_guards.sql",
+    "d1 execute worldcons_search --remote --yes --json --command select type, name, sql from sqlite_master where type in ('table', 'index', 'trigger') order by type, name"
+  ],
+  "ok": true,
+  "errors": []
+}

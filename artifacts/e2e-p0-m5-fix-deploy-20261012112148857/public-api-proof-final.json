@@ -1,0 +1,641 @@
+{
+  "at": "2026-10-12T11:49:50.047Z",
+  "mode": "production_read_only",
+  "results": [
+    {
+      "articleId": "02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "generationId": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-11-auto-342026-de-11-de-junio-de-2026-ee18b2?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:35 GMT",
+          "responseHash": "02c70f7eb18bd7ae7ebce9beed061740d29b5e08bc67dd7d6218c5248eae9c89",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=34%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:37 GMT",
+          "responseHash": "5aca0b5d6ffaaa2fa43c0be894236f4381df6134b5e43b280f57037d0f8d892f",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+      "generationId": "3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-07-auto-432026-2026-07-07-8c42d1?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:38 GMT",
+          "responseHash": "0dc14d29050b39fe2ad1f33d1fad64606856906e481e0b3603be29ad17a4f16d",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=43%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:41 GMT",
+          "responseHash": "1e63b8baf8040ad30c33572624a5989a0d2c7d9f745a32392dfc80cf77e3cf24",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "generationId": "e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-21-auto-502026-2026-07-21-2050d8?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:41 GMT",
+          "responseHash": "284e8470a62c7b4b8fd4897dc175dd9caa4e3d7d9ca60e3c403ee359f9812a19",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=50%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:43 GMT",
+          "responseHash": "8fdb6bb57cac25ed3e1c68d1435e6b60f8ad85df9b68c5c3fb97cd4c9ec02a90",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "22682a3a-09a5-4d1d-a1c9-f0205ff5375a",
+      "generationId": "e294a24a845f90b5eeecb473f2283b2a89e20189836316651f8a92bfe2646014",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-542026-2026-07-08-6370da?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:44 GMT",
+          "responseHash": "bc1b2a8b4c04fa4d503b843d017acbdc5c41b4cdfeb2ec5cdbcdef30a4928142",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=54%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:46 GMT",
+          "responseHash": "4283d8a9cd9270f620d343e4497d5efc3827de22786095bd3cd98382e016a66d",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-sentencia-462026-de-22-de-junio-de-2026-c37287?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:47 GMT",
+          "responseHash": "41f38b0281fa0c5b9c6da0aef0b9a50b6249e05178f4f29a905b2561c24e3914",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=46%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:49 GMT",
+          "responseHash": "4119cd5f6dd3947480515fc6ebfa9f7308ac910a10dc92fcbb8aad7e5cf13fcf",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "4c80e563-7dbc-4db1-8101-34d14adbe1fb",
+      "generationId": "e7d50a82d0647daa0d1e3d248dd312b221ff8c60be87de2bb9cdaa240186be62",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-552026-2026-07-08-fd10bd?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:50 GMT",
+          "responseHash": "7754bf13ea37f17927c08e8f36e201681f40b8c704ddece423f69635323772e8",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=55%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:52 GMT",
+          "responseHash": "e38aac633d05bc5a04de20fcd731509fe75afe93ddc64f807646e68d9dbb46a3",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+      "generationId": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:52 GMT",
+          "responseHash": "9bb13fe413a9a05ae530355a4a76d94e2bb51ad2d50aaff38cb38004e3164284",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=38%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:55 GMT",
+          "responseHash": "826a33b941971840d9424cf37094bf944076260349ee463efa95999d4f61705c",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "543a9ab4-0fd5-4ed7-ada9-a5b388383093",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-sentencia-472026-de-22-de-junio-de-2026-5ab9af?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:55 GMT",
+          "responseHash": "b518d40618f74cab410d6911f30ddbf429675430360fbda5de9af237595afae5",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=47%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:58 GMT",
+          "responseHash": "e96766f459d27ebd0e2aa7d45639e9a70da3e3658dbf01e19f7ae8d14bdde29a",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "724d57d3-723d-4450-ad01-0a049688fc6a",
+      "generationId": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:49:58 GMT",
+          "responseHash": "50e5249853688b1d6b1f7d0ad891904cd408deb578e3e3880ea8b948252b5127",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=37%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:00 GMT",
+          "responseHash": "1ce1cc9d2ac7d9b19d1b0dd65ca549e4d8ee3591f78eb367b7c582de26ea9b3d",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+      "generationId": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:01 GMT",
+          "responseHash": "ae81dbc4ca47bafdc3ed02ffdffc22fa57bf958af6c77eef2ec034982c39f801",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=32%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:03 GMT",
+          "responseHash": "b6d79efee55dd8e31e7efc2d861610b687b45dffff2b55fa021654f0ce725e13",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "8ba82d90-0f28-4731-963b-760805af100d",
+      "generationId": "8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-28-auto-262026-de-28-de-abril-de-2026-e35126?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:04 GMT",
+          "responseHash": "0ad9a31aed2833d40ec0d896582cb2bf327347837db9d64c940a9e3592a1a33f",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=26%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:06 GMT",
+          "responseHash": "dab5418593d2de07e070de3c2789b79a9f9988537eb1a6f5b11bd23d2a8567cc",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "8f70d967-250d-4935-858f-5b91304b709f",
+      "generationId": "5b84b876edb0b90c4e4f122c24a868d5a9693ca0bfab2ec777ec8ec754b46fa9",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-07-auto-452026-2026-07-07-59e086?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:07 GMT",
+          "responseHash": "bc0adaa46bee48760e4728433d400d591ee2a21bc064e1a03a1c614cac90421b",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=45%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:09 GMT",
+          "responseHash": "a7f5a0df99bb076dee0c9b980d4ef26d8834ce91adba7a1b2b3782186caaba5f",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "generationId": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:10 GMT",
+          "responseHash": "e13897f7904affc0ea76c977e749a8aa7d48d085ba8c913ae2173e9e4d78dbce",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=51%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:12 GMT",
+          "responseHash": "c643a668ae187997ab4c3c8ed73d577620e5f87fcc53aefa3edcf4b8e207aabb",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-362026-de-22-de-junio-de-2026-b8af72?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:13 GMT",
+          "responseHash": "0c661600350b1f26c81f7f417f516eae8fef8a5eceec402104e5b258d5d67285",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=36%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:15 GMT",
+          "responseHash": "7db7c0e0cfc96687c50943b32f9d45e338822e24ce2290a1fb2419be7de42a0f",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "cbe99053-ee25-4596-93bf-b949b10d0bdc",
+      "generationId": "01188e66c399c7a60d1cdd66aab2d85130e40e346ae28b9c63bce60a6a629e11",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-56-2026-66b0f0?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:15 GMT",
+          "responseHash": "416c215376b584290dbd1f1ba32d9a557dd447fb6c154a393a19fa43ba4eaa26",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=56%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:17 GMT",
+          "responseHash": "4eb332014579805c93d039977c01e58711f09d2d320c78f73ac8517440a83f61",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "d2234568-87a8-4059-b5d7-8d5e6219a4fc",
+      "generationId": "ddc421e4e9adac26e7daffac1d7bd14e3a20ad24ea4d58e0480f5c22c23c85c1",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-52-2026-bbb116?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:18 GMT",
+          "responseHash": "65ea9264608be02e9d11acf7f74e2493ce4f3e7a3ac307737b8366d3849d0ed8",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=52%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:21 GMT",
+          "responseHash": "f7732581505b7216f638d3627dbfc1091120382ebeea7136aa85e0539c4a4ff3",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "dfb04619-3a7f-4b82-8405-24d171b2abd3",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-26-sentencia-412026-de-26-de-mayo-de-2026-93f631?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:21 GMT",
+          "responseHash": "6a47b4dbe9306767f9198da356390349d7b7cc3144b598ee2b9a347c34621212",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=41%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:24 GMT",
+          "responseHash": "8cf7e5be7a39a89d830ee8ac092c5932f689c02d701c13eb07b61ad3122f3eb3",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+      "generationId": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:24 GMT",
+          "responseHash": "f29e76c01a10d77756003b1e52e9139e0baf38d7a64a5f5d881740152f3cfb14",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=33%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:27 GMT",
+          "responseHash": "7e1c6c2814bd088f52367ecb103164ceb9a174f922e0f48642a64bd9efe55290",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-06-auto-412026-2026-07-06-769226?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:28 GMT",
+          "responseHash": "e078268fd57983bfcc6462972a24579cf476685570b73ad19df42c61cae9818c",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=41%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:30 GMT",
+          "responseHash": "af007e4b6b9ffdbc04fb2ad27256e778027db82c262a2ef2575342b6985d2c47",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-09-sentencia-432026-de-9-de-junio-de-2026-00b9f3?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:31 GMT",
+          "responseHash": "208c71dd0d0d1bc841516aa405e124f093b7e92b268fdd5366364dd9edb4576b",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=43%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:33 GMT",
+          "responseHash": "8d55687e4c77173012694c182ff12476ef54b63b0b5de17e077fbb184feb186e",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "eccd7fae-7606-42e0-808a-2ade103ca0c9",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-352026-de-25-de-mayo-de-2026-322a8d?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:34 GMT",
+          "responseHash": "c46b4a73b0bb93d37114494172ab31b7c8803f54fea079ca15cc9c9b2491a5ea",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=35%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:36 GMT",
+          "responseHash": "f8c4067815e0877c608b72f69971ce20fe122c255d3aa800ab876652f8517af0",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "generationId": "e5f4ef7f2925118dddf31b68a30d09f85744db21d4747e3e5d9500087f3236c1",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:37 GMT",
+          "responseHash": "324a560fa6f89c4675261f460a38317317fcccea2a072ec63689ce8684de59e9",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=53%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:39 GMT",
+          "responseHash": "edc26b19df1aeacabe738fc90c86da75df89dd5bbe48e45be39095eaf6e90d1e",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "f665503a-3d14-424a-b138-7ea4ac5240d5",
+      "generationId": "b82e91b6fe07aeb3b4f09373c48ef6b254446369c838d6c7d86e5d76fc96d681",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-352026-de-22-de-junio-de-2026-1b1f04?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:40 GMT",
+          "responseHash": "ffd634bafee853b79f163a8766c152441884d0259ef41cd508353890e1762fd8",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=35%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:50:42 GMT",
+          "responseHash": "ce24e5eb333af9dc31bc47911c36808dee805e69a7cf99ab3eeaef805a26a2a2",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "health": [
+    {
+      "url": "https://worldcons.cclib.workers.dev",
+      "status": 200,
+      "date": "Mon, 12 Oct 2026 11:50:42 GMT"
+    },
+    {
+      "url": "https://worldcons-ingest.cclib.workers.dev/health",
+      "status": 200,
+      "date": "Mon, 12 Oct 2026 11:50:42 GMT"
+    }
+  ],
+  "verified": true,
+  "doesNotAssertLegalMeaningOrZeroTouchDiscovery": true
+}

@@ -1,0 +1,14 @@
+{
+  "startedAt": "2026-10-12T11:31:08.203Z",
+  "finishedAt": "2026-10-12T11:31:22.381Z",
+  "bin": "node",
+  "args": [
+    "--import",
+    "tsx",
+    "--test",
+    "tests/e2e-p0-m5-fixes-d1-runtime.test.ts",
+    "tests/gemini-router-failover.test.ts"
+  ],
+  "code": 0,
+  "signal": null
+}

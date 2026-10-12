@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-10-12T11:47:11.246Z",
+  "finishedAt": "2026-10-12T11:47:59.920Z",
+  "bin": "node",
+  "args": [
+    "node_modules/wrangler/bin/wrangler.js",
+    "deploy",
+    "--config",
+    "dist/server/wrangler.json",
+    "--message",
+    "M5 immutable approved P3 for protected legacy public reads; git fce2b831fb2ed767b3f64161e821d999230517f8"
+  ],
+  "code": 0,
+  "signal": null
+}

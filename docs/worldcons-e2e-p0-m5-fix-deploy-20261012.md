@@ -28,4 +28,17 @@
 
 ## 실행 결과
 
-검증·배포·운영 복구 결과는 실제 실행 후 아래에 기록한다.
+수정·커밋·푸시·운영 배포와 즉시 검증을 완료했다. P0 종료 판정은 보류한다.
+
+- 코드: 33a12e8 (수집 CAS·metadata 원장·URL 검증), fce2b83 (legacy 공개 읽기 불변 P3), 최종 Async pin 55122b1.
+- 전체 release: 1,673건 실행, 1,666 통과, PostgreSQL 7건 skip, 실패 0. 최종 보호 경로 173건 및 공개 읽기 보완 72건 모두 통과. 격리된 실제 workerd D1의 전체 롤백·FTS guard와 별도 metadata 회귀도 통과했다. 타입 검사·Async 타입·lint·Vinext 빌드·생성 타입 검사 통과.
+- Core 0011/Search 0003 적용 후 기존·신규 보호 객체 78개를 실제 원격 sqlite_master에서 검증했다. Root 4a85bedb-9394-40cd-8b3d-3856785d31b6, Async 680c8507-2b05-40a2-bc04-55db79a52606 각각 100% 활성 상태다. Async 검증 참조는 git:fce2b831fb2ed767b3f64161e821d999230517f8;worldcons:4a85bedb-9394-40cd-8b3d-3856785d31b6와 일치한다.
+- 최초 5개 수리 이후 전수 감사에서 다른 태그·검토 상태 불일치 5개를 추가 발견했다. 총 10개를 동일한 원장으로 수리했고 승인 P3와 publication revision은 유지했다. 운영 처리 중 생긴 원장까지 최종 11건 verified다.
+- 배포 전 URL 오류 10개의 원래 generation이 모두 completed_verified/verified로 회복됐다. 정식 redrive 9건은 이전 시도 예산·오류를 원장에 보존했고 1건은 새 Consumer에서 자연 회복됐다.
+- Search/FTS 전수 감사: 적격 1,511건, 문서 1,511건, FTS 1,511건. 안정된 Core 입력 경계에서 누락·초과·중복·내용 불일치 및 P3 참조 오류 모두 0건이다.
+- 독립 외부 API 검사에서 legacy 7건의 Core 초안 노출을 확인했다. 이를 metadata 보호 대상의 불변 P3 읽기로 수정·재배포했으며 최종 23개 게시물의 검색·상세 46회 검사에서 식별자·제목·URL·승인 원문·요약을 검증했다. 실패 0, Root/Async health 200이다.
+- 현재 세대는 completed_verified 16건, 기존 blocked 11건이다. 현재 검증 retry_wait/dead_letter는 0건이다. 과거 오류와 blocked 이력을 지우지 않았다.
+
+최초 실패 감사·API 증거와 수정 후 성공 증거를 함께 보존한다. corpus-audit.json과 public-api-proof.json은 실패 진단이며, 최종 판정은 corpus-post-final-deploy/corpus-audit.json, public-api-proof-final.json, deployment-contract-final.json, url-target-final-status.json 및 completion-summary.json을 따른다.
+
+마지막 런타임 기준 시각은 2026-10-12T11:50:16.263573Z (2026-10-12 20:50:16 KST)다. 48시간 조건을 충족하는 가장 이른 시각은 2026-10-14T11:50:16.263Z (2026-10-14 20:50:16 KST)이며 이것만으로 종료할 수 없다. 프랑스 신규 판례 무인 실증, 실제 일일 Discovery 두 회, 원문·번역·요약 의미 검토 및 Core/P3 초안 차이 12건의 분류가 남아 있다. 이번 감사는 이 차이를 승인 콘텐츠 오류 또는 정상 draft로 자동 판정하지 않는다.

@@ -1,0 +1,53 @@
+
+> worldcons@0.1.0 lint C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.cjs eslint.config.mjs --ext .ts,.tsx,.js,.mjs,.cjs
+
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\app\api\cclrag2\[...path]\route.ts
+  4:3  warning  'providerServiceUnavailableResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\admin\admin-ingest-jobs.ts
+   2:3   warning  'ADMIN_INGEST_JOB_TYPES' is defined but never used      @typescript-eslint/no-unused-vars
+   3:3   warning  'adminIngestResultSucceeded' is defined but never used  @typescript-eslint/no-unused-vars
+   6:8   warning  'AdminIngestJobType' is defined but never used          @typescript-eslint/no-unused-vars
+  11:10  warning  'ingestResultSucceeded' is defined but never used       @typescript-eslint/no-unused-vars
+  14:37  warning  'AdminIngestBody' is defined but never used             @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ai\client.ts
+  74:10  warning  'firstApiKey' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\core-write\authority.ts
+  118:16  warning  'many' is defined but never used  @typescript-eslint/no-unused-vars
+  135:16  warning  'run' is defined but never used   @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\admin-ops-events.ts
+  141:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\heartbeat.ts
+  160:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\authority.ts
+  47:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\durable-object.ts
+  69:53  warning  '_env' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\db\admin-jobs.ts
+  214:10  warning  'recordValue' is defined but never used  @typescript-eslint/no-unused-vars
+  308:16  warning  'd1Run' is defined but never used        @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ingest\manual-summary-edit.ts
+  10:10  warning  'ARTICLE_REVIEW_STATE' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\search\repository\index.ts
+  47:26  warning  '_request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\storage\blob.ts
+  173:10  warning  'isArtifactBlobHeadHit' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\workers\async-pipeline\src\native-crawler.ts
+   185:38  warning  'specific' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  1192:9   warning  'rangeStart' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 20 problems (0 errors, 20 warnings)
+

@@ -1,0 +1,9 @@
+
+> worldcons@0.1.0 m8:types:check C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> wrangler types workers/async-pipeline/worker-configuration.d.ts --config workers/async-pipeline/wrangler.jsonc --strict-vars=false --check
+
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+✨ Types at workers/async-pipeline/worker-configuration.d.ts are up to date.
+

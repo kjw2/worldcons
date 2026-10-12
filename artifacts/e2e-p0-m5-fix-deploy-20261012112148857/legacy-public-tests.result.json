@@ -1,0 +1,16 @@
+{
+  "startedAt": "2026-10-12T11:42:47.818Z",
+  "finishedAt": "2026-10-12T11:42:57.307Z",
+  "bin": "node",
+  "args": [
+    "--import",
+    "tsx",
+    "--test",
+    "tests/e2e-p0-m5-metadata-repair.test.ts",
+    "tests/e2e-p0-m4-verification.test.ts",
+    "tests/article-read-d1-repository.test.ts",
+    "tests/cclrag2-provider-route.test.ts"
+  ],
+  "code": 1,
+  "signal": null
+}

@@ -1,0 +1,14 @@
+{
+  "startedAt": "2026-10-12T11:31:31.897Z",
+  "finishedAt": "2026-10-12T11:31:33.626Z",
+  "bin": "node",
+  "args": [
+    "node_modules/wrangler/bin/wrangler.js",
+    "deploy",
+    "--dry-run",
+    "--config",
+    "dist/server/wrangler.json"
+  ],
+  "code": 0,
+  "signal": null
+}

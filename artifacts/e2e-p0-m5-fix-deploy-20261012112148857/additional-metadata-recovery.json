@@ -1,0 +1,85 @@
+{
+  "at": "2026-10-12T11:38:11.956Z",
+  "ids": [
+    "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+    "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+    "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+    "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+    "f665503a-3d14-424a-b138-7ea4ac5240d5"
+  ],
+  "before": [
+    {
+      "article_id": "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+      "version_id": "28d573c9-1fb8-5707-a763-3db2762830f7",
+      "state": "published",
+      "revision": "2"
+    },
+    {
+      "article_id": "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+      "version_id": "190ca8e5-6ef7-503b-a047-81eee809abfb",
+      "state": "published",
+      "revision": "2"
+    },
+    {
+      "article_id": "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+      "version_id": "ebe68d06-0550-5091-af4f-8e9d11dd34d9",
+      "state": "published",
+      "revision": "30"
+    },
+    {
+      "article_id": "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+      "version_id": "9321d694-5bc4-523c-ab8c-70b22b6773c1",
+      "state": "published",
+      "revision": "2"
+    },
+    {
+      "article_id": "f665503a-3d14-424a-b138-7ea4ac5240d5",
+      "version_id": "c11da40c-482a-57b0-a64e-ccff595bfa5d",
+      "state": "published",
+      "revision": "2"
+    }
+  ],
+  "after": [
+    {
+      "article_id": "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+      "version_id": "28d573c9-1fb8-5707-a763-3db2762830f7",
+      "state": "published",
+      "revision": "2"
+    },
+    {
+      "article_id": "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+      "version_id": "190ca8e5-6ef7-503b-a047-81eee809abfb",
+      "state": "published",
+      "revision": "2"
+    },
+    {
+      "article_id": "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+      "version_id": "ebe68d06-0550-5091-af4f-8e9d11dd34d9",
+      "state": "published",
+      "revision": "30"
+    },
+    {
+      "article_id": "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+      "version_id": "9321d694-5bc4-523c-ab8c-70b22b6773c1",
+      "state": "published",
+      "revision": "2"
+    },
+    {
+      "article_id": "f665503a-3d14-424a-b138-7ea4ac5240d5",
+      "version_id": "c11da40c-482a-57b0-a64e-ccff595bfa5d",
+      "state": "published",
+      "revision": "2"
+    }
+  ],
+  "p3Unchanged": true,
+  "result": {
+    "ready": true,
+    "processed": 5,
+    "failed": 0,
+    "deadLetterCount": 0,
+    "pendingCount": 0,
+    "oldestPendingAgeSeconds": 0,
+    "requiresAttention": false
+  },
+  "noNewContentApproval": true
+}

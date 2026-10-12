@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-10-12T11:31:44.036Z",
+  "finishedAt": "2026-10-12T11:32:03.926Z",
+  "bin": "node",
+  "args": [
+    "--import",
+    "tsx",
+    "scripts/d1-migrate.ts",
+    "--apply",
+    "--database=worldcons_core,worldcons_search",
+    "--json"
+  ],
+  "code": 0,
+  "signal": null
+}

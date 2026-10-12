@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-12T11:35:50.809Z",
+  "before": [
+    {
+      "id": 1,
+      "public_read_required": 0
+    }
+  ],
+  "after": [
+    {
+      "id": 1,
+      "public_read_required": 1
+    }
+  ],
+  "publicReadVerified": true,
+  "trackedLegacyCount": 2
+}

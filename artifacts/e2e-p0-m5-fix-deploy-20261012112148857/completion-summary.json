@@ -1,0 +1,98 @@
+{
+  "at": "2026-10-12T11:56:16.432Z",
+  "root": {
+    "git": "fce2b831fb2ed767b3f64161e821d999230517f8",
+    "version": "4a85bedb-9394-40cd-8b3d-3856785d31b6",
+    "deployment": {
+      "id": "fb76231f-f720-4a93-86ab-1375dc32447e",
+      "source": "wrangler",
+      "strategy": "percentage",
+      "author_email": "jaethis@gmail.com",
+      "annotations": {
+        "workers/message": "M5 immutable approved P3 for protected legacy public reads; git fce2b831fb2ed767b3f64161e821d999230517f8",
+        "workers/triggered_by": "deployment"
+      },
+      "versions": [
+        {
+          "version_id": "4a85bedb-9394-40cd-8b3d-3856785d31b6",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-12T11:48:49.815224Z"
+    }
+  },
+  "async": {
+    "git": "55122b10c51303af46945cbbe16b653d868bebc6",
+    "version": "680c8507-2b05-40a2-bc04-55db79a52606",
+    "deployment": {
+      "id": "29ef25d7-ddd4-4b7e-add2-902de5689f4c",
+      "source": "wrangler",
+      "strategy": "percentage",
+      "author_email": "jaethis@gmail.com",
+      "annotations": {
+        "workers/message": "M5 verifier pin to immutable legacy public reads Root 4a85bedb-9394-40cd-8b3d-3856785d31b6; git 55122b10c51303af46945cbbe16b653d868bebc6",
+        "workers/triggered_by": "deployment"
+      },
+      "versions": [
+        {
+          "version_id": "680c8507-2b05-40a2-bc04-55db79a52606",
+          "percentage": 100
+        }
+      ],
+      "created_on": "2026-10-12T11:50:16.263573Z"
+    }
+  },
+  "schemaChecks": 78,
+  "corpus": {
+    "counts": {
+      "eligible": 1511,
+      "documents": 1511,
+      "fts": 1511
+    },
+    "verified": true,
+    "stable": true,
+    "coreP3DraftDifferences": 12
+  },
+  "publicApi": {
+    "articles": 23,
+    "probes": 46,
+    "verified": true
+  },
+  "urlFailures": {
+    "targets": 10,
+    "allOriginalGenerationsVerified": true,
+    "redrives": 9
+  },
+  "currentProgress": {
+    "completed_verified": 16,
+    "blocked": 11
+  },
+  "metadata": {
+    "verified": 11
+  },
+  "release": {
+    "tests": 1673,
+    "pass": 1666,
+    "skip": 7,
+    "fail": 0
+  },
+  "finalGuardTests": {
+    "pass": 173,
+    "fail": 0
+  },
+  "finalLegacyPublicTests": {
+    "pass": 72,
+    "fail": 0
+  },
+  "observation": {
+    "baseline": "2026-10-12T11:50:16.263573Z",
+    "earliest48HourClose": "2026-10-14T11:50:16.263Z",
+    "notSufficientAlone": true
+  },
+  "p0Completed": false,
+  "remaining": [
+    "Real FR new-case zero-touch Discovery through completed_verified proof",
+    "Review source/translation/summary meaning and distinguish the 12 Core/P3 draft differences",
+    "48 hours after final runtime deployment and two real daily Discovery cycles"
+  ]
+}

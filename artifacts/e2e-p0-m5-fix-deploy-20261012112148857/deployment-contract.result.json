@@ -1,0 +1,12 @@
+{
+  "startedAt": "2026-10-12T11:35:21.059Z",
+  "finishedAt": "2026-10-12T11:35:25.006Z",
+  "bin": "node",
+  "args": [
+    "--import",
+    "tsx",
+    "artifacts/e2e-p0-m5-fix-deploy-20261012112148857/check-production-contract.ts"
+  ],
+  "code": 0,
+  "signal": null
+}

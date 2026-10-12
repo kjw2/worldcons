@@ -1,0 +1,13 @@
+{
+  "startedAt": "2026-10-12T11:51:02.808Z",
+  "finishedAt": "2026-10-12T11:51:48.619Z",
+  "bin": "node",
+  "args": [
+    "--import",
+    "tsx",
+    "artifacts/e2e-p0-m5-fix-deploy-20261012112148857/audit-corpus-direct-api.ts",
+    "--output-dir=artifacts/e2e-p0-m5-fix-deploy-20261012112148857/corpus-post-final-deploy"
+  ],
+  "code": 0,
+  "signal": null
+}

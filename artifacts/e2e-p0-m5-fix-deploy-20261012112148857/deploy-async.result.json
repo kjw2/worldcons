@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-10-12T11:33:59.199Z",
+  "finishedAt": "2026-10-12T11:34:24.011Z",
+  "bin": "node",
+  "args": [
+    "node_modules/wrangler/bin/wrangler.js",
+    "deploy",
+    "--config",
+    "workers/async-pipeline/wrangler.jsonc",
+    "--message",
+    "M5 source CAS and durable metadata repair; Root 0541310d-1e6a-4b9f-b0e1-7d5e51538779; git 7def733c00d9c7aeab8058d654e582f176066708"
+  ],
+  "code": 0,
+  "signal": null
+}

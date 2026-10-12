@@ -1,0 +1,107 @@
+{
+  "at": "2026-10-12T11:52:26.704Z",
+  "originalUrlFailures": 10,
+  "passed": true,
+  "rows": [
+    {
+      "outbox_id": "0488fa53349d6f2bdb87274c2c95747dc7bc5927c9c6df84f3d8ae8e44e962c4",
+      "generation_id": "3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267",
+      "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "228b6ebe8a18f5f8e83ba5ab0d4b2883aa5e809a34449e8507f4ff7ba63cd53c",
+      "generation_id": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "article_id": "724d57d3-723d-4450-ad01-0a049688fc6a",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "2cae5e7d0ee93fc949d6812d29c5b0709cd73a42ca184e47c5c380036231ac6e",
+      "generation_id": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "article_id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "3b41cdcfe66fb5e69d5aa5eb58f18a6c7b9b84b8c49d8470b23bdee6928d57b4",
+      "generation_id": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "article_id": "02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "49c3e3b0b5d05bf9f28ec55307345a3e9c8edbcdbd1427a8c1632be6f2536831",
+      "generation_id": "8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9",
+      "article_id": "8ba82d90-0f28-4731-963b-760805af100d",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "704a314e44d11ee2b4ef63dd4590be65139b7fa110b8b7c77f11a84caa32944d",
+      "generation_id": "5b84b876edb0b90c4e4f122c24a868d5a9693ca0bfab2ec777ec8ec754b46fa9",
+      "article_id": "8f70d967-250d-4935-858f-5b91304b709f",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "5b84b876edb0b90c4e4f122c24a868d5a9693ca0bfab2ec777ec8ec754b46fa9",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "823526a3f7231687afba68a9fb26da3b6eb39679225eea0160a8e3906cf370b2",
+      "generation_id": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "article_id": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "db8f92d207160399ad9b0f67f7eb5c1be2996caeb473ee22666a724eebe6a1eb",
+      "generation_id": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "article_id": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "f0c3d05bcf0ebcb76ab394c991b24fb4d33ad7dd5d9b93ac4134a2f4de556795",
+      "generation_id": "e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82",
+      "article_id": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82",
+      "current_state": "completed_verified"
+    },
+    {
+      "outbox_id": "f8c7a1b5b24246f31833fb4076058e53a7ffa443aed09e49f5359cbf9176ffe9",
+      "generation_id": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "article_id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+      "state": "completed_verified",
+      "verification_status": "verified",
+      "last_error_code": null,
+      "current_generation_id": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "current_state": "completed_verified"
+    }
+  ]
+}

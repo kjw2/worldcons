@@ -1,0 +1,125 @@
+{
+  "mode": "production_read_only",
+  "results": [
+    {
+      "articleId": "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "tags_text",
+          "expected": "\u00013d48e110\u0001 \u0001Familia monoparental\u0001 한부모 가정 topic \u0001420f197a\u0001 \u0001평등권\u0001 평등권 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001ae99b561\u0001 \u0001육아수당\u0001 육아수당 \u0001art-14-ce\u0001 \u0001art. 14 CE\u0001 art. 14 CE article \u0001art-39-ce\u0001 \u0001Art. 39 CE\u0001 Art. 39 CE \u0001b9cc9a4d\u0001 \u0001차별금지\u0001 차별금지 \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001ef76b99d\u0001 \u0001출산휴가\u0001 출산휴가 \u0001estatuto-de-los-trabajadores\u0001 \u0001근로자 지위법\u0001 Estat",
+          "actual": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00011402024\u0001 \u0001STC 140/2024\u0001 헌법재판소 판례 140/2024 doctrine \u000138c6a0d9\u0001 \u0001육아휴직\u0001 육아휴직 topic \u0001420f197a\u0001 \u0001평등권\u0001 평등권 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001a9200a22\u0001 \u0001Instituto Nacional de la Seguridad Social\u0001 스페인 사회보장국 institution \u0001adc280da\u0001 \u0001한부모가정\u0001 한부모가정 \u0001ea3d31a1\u0001 \u0001Natalia Rey Díez\u0001 나탈리아 레이 디에스 party \u0001f0cc9e78\u0001 \u0001재판소원\u0001 재판소원 \u0001fb560307\u0001 \u0001사회보장"
+        },
+        {
+          "field": "checksum",
+          "expected": "c0cfda777bbdd02b",
+          "actual": "ee10148708faa39b"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00013d48e110\u0001 \u0001Familia monoparental\u0001 한부모 가정 topic \u0001420f197a\u0001 \u0001평등권\u0001 평등권 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001ae99b561\u0001 \u0001육아수당\u0001 육아수당 \u0001art-14-ce\u0001 \u0001art. 14 CE\u0001 art. 14 CE article \u0001art-39-ce\u0001 \u0001Art. 39 CE\u0001 Art. 39 CE \u0001b9cc9a4d\u0001 \u0001차별금지\u0001 차별금지 \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001ef76b99d\u0001 \u0001출산휴가\u0001 출산휴가 \u0001estatuto-de-los-trabajadores\u0001 \u0001근로자 지위법\u0001 Estat",
+          "actual": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00011402024\u0001 \u0001STC 140/2024\u0001 헌법재판소 판례 140/2024 doctrine \u000138c6a0d9\u0001 \u0001육아휴직\u0001 육아휴직 topic \u0001420f197a\u0001 \u0001평등권\u0001 평등권 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001a9200a22\u0001 \u0001Instituto Nacional de la Seguridad Social\u0001 스페인 사회보장국 institution \u0001adc280da\u0001 \u0001한부모가정\u0001 한부모가정 \u0001ea3d31a1\u0001 \u0001Natalia Rey Díez\u0001 나탈리아 레이 디에스 party \u0001f0cc9e78\u0001 \u0001재판소원\u0001 재판소원 \u0001fb560307\u0001 \u0001사회보장"
+        }
+      ]
+    },
+    {
+      "articleId": "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00012c386475\u0001 \u0001Ley 36/2011, de 10 de octubre, reguladora de la jurisdicción social\u0001 노동관할구역법 law \u000132abcac8\u0001 \u0001민사소송법\u0001 민사소송법 topic \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u00015\u0001 \u0001사회법전 제5권\u0001 사회법전 제5권 \u000151b2d4f2\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 헌법재판소 기본법 \u00016ec47b39\u0001 \u0001노동소송\u0001 노동소송 \u0001731edfab\u0001 \u0001Ministerio Fiscal\u0001 검찰 institution \u0001785ef50d\u0001 \u0001가처분취하\u0001 가처분취하 \u000191971d0e\u0001 \u0001Trib",
+          "actual": "\u000109caf3bd\u0001 \u0001especial trascendencia constitucional\u0001 특별한 헌법적 중요성 topic \u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u000111bd500e\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 헌법재판소 조직법 law \u00011552009\u0001 \u0001STC 155/2009\u0001 헌법재판소 판례 155/2009 doctrine \u000130f02f45\u0001 \u0001가처분\u0001 가처분 \u000132abcac8\u0001 \u0001민사소송법\u0001 민사소송법 \u00014372023\u0001 \u0001ATC 437/2023\u0001 헌법재판소 결정 437/2023 \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u00014bb8c293\u0001 \u0001Ministerio Fiscal\u0001 검찰청 party \u00014c"
+        },
+        {
+          "field": "checksum",
+          "expected": "4afdb423d21385e7",
+          "actual": "82af8a88f42459f4"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00012c386475\u0001 \u0001Ley 36/2011, de 10 de octubre, reguladora de la jurisdicción social\u0001 노동관할구역법 law \u000132abcac8\u0001 \u0001민사소송법\u0001 민사소송법 topic \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u00015\u0001 \u0001사회법전 제5권\u0001 사회법전 제5권 \u000151b2d4f2\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 헌법재판소 기본법 \u00016ec47b39\u0001 \u0001노동소송\u0001 노동소송 \u0001731edfab\u0001 \u0001Ministerio Fiscal\u0001 검찰 institution \u0001785ef50d\u0001 \u0001가처분취하\u0001 가처분취하 \u000191971d0e\u0001 \u0001Trib",
+          "actual": "\u000109caf3bd\u0001 \u0001especial trascendencia constitucional\u0001 특별한 헌법적 중요성 topic \u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u000111bd500e\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 헌법재판소 조직법 law \u00011552009\u0001 \u0001STC 155/2009\u0001 헌법재판소 판례 155/2009 doctrine \u000130f02f45\u0001 \u0001가처분\u0001 가처분 \u000132abcac8\u0001 \u0001민사소송법\u0001 민사소송법 \u00014372023\u0001 \u0001ATC 437/2023\u0001 헌법재판소 결정 437/2023 \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u00014bb8c293\u0001 \u0001Ministerio Fiscal\u0001 검찰청 party \u00014c"
+        }
+      ]
+    },
+    {
+      "articleId": "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u0001187138dc\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 스페인 헌법재판소기본법 \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u0001611f97f5\u0001 \u0001판결보완\u0001 판결보완 topic \u0001731edfab\u0001 \u0001Ministerio Fiscal\u0001 검찰 institution \u000178f3c03e\u0001 \u0001종교의 자유\u0001 종교의 자유 \u00017c743caf\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 스페인 사법권기본법 \u00018d873bf4\u0001 \u0001소송비용\u0001 소송비용 \u000191971d0e\u0001 \u0001Tribunal Constit",
+          "actual": "\u000133772e2a\u0001 \u0001판결 보완\u0001 판결 보완 topic \u00013a811631\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 헌법재판소법 law \u000159d63dd7\u0001 \u0001악의와 경솔\u0001 악의와 경솔 \u00018d873bf4\u0001 \u0001소송비용\u0001 소송비용 \u0001914a2901\u0001 \u0001암파로\u0001 암파로 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001ley-organica-del-poder-judicial\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 Ley Organica del Poder Judicial \u0001ley-organica-del-tribunal-constitucional\u0001 Ley Organica del Tribunal C"
+        },
+        {
+          "field": "checksum",
+          "expected": "a85a246ce7e8bf20",
+          "actual": "abec327c46bbed18"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u0001187138dc\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 스페인 헌법재판소기본법 \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u0001611f97f5\u0001 \u0001판결보완\u0001 판결보완 topic \u0001731edfab\u0001 \u0001Ministerio Fiscal\u0001 검찰 institution \u000178f3c03e\u0001 \u0001종교의 자유\u0001 종교의 자유 \u00017c743caf\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 스페인 사법권기본법 \u00018d873bf4\u0001 \u0001소송비용\u0001 소송비용 \u000191971d0e\u0001 \u0001Tribunal Constit",
+          "actual": "\u000133772e2a\u0001 \u0001판결 보완\u0001 판결 보완 topic \u00013a811631\u0001 \u0001Ley Orgánica del Tribunal Constitucional\u0001 헌법재판소법 law \u000159d63dd7\u0001 \u0001악의와 경솔\u0001 악의와 경솔 \u00018d873bf4\u0001 \u0001소송비용\u0001 소송비용 \u0001914a2901\u0001 \u0001암파로\u0001 암파로 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001ley-organica-del-poder-judicial\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 Ley Organica del Poder Judicial \u0001ley-organica-del-tribunal-constitucional\u0001 Ley Organica del Tribunal C"
+        }
+      ]
+    },
+    {
+      "articleId": "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "review_state",
+          "expected": "summarized",
+          "actual": "null"
+        },
+        {
+          "field": "tags_text",
+          "expected": "\u00011a8227e4\u0001 \u0001권력분립\u0001 권력분립 topic \u0001420f197a\u0001 \u0001평등권\u0001 평등권 \u0001499b2c72\u0001 \u0001카탈루냐독립\u0001 카탈루냐독립 \u000178341b45\u0001 \u0001사면법\u0001 사면법 \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u0001a06b4f57\u0001 \u0001위헌소송\u0001 위헌소송 \u0001congreso-de-los-diputados\u0001 \u0001Congreso de los Diputados\u0001 Congreso de los Diputados institution \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001gobierno-de-aragon\u0001 \u0001Gobierno de Aragón\u0001 Gobierno de Aragon party \u0001ley-organica",
+          "actual": "\u00010e97bdd9\u0001 \u0001카탈루냐\u0001 카탈루냐 topic \u000112024\u0001 \u0001Ley Orgánica 1/2024\u0001 유기법 제1/2024호(사면법) law \u00011a8227e4\u0001 \u0001권력분립\u0001 권력분립 \u0001333699fa\u0001 \u0001Congreso de los Diputados\u0001 스페인 하원 institution \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u00016d447100\u0001 \u0001Gobierno de Aragón\u0001 아라곤 지방정부 party \u000178341b45\u0001 \u0001사면법\u0001 사면법 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u00019552f50e\u0001 \u0001법적안정성\u0001 법적안정성 \u000199a8f318\u0001 \u0001Senado\u0001 스페인 상원 \u000199c455cc\u0001 \u0001평등원칙\u0001 평등원칙 "
+        },
+        {
+          "field": "checksum",
+          "expected": "829a40e99f93ecfd",
+          "actual": "548ec5925e7c14fe"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00011a8227e4\u0001 \u0001권력분립\u0001 권력분립 topic \u0001420f197a\u0001 \u0001평등권\u0001 평등권 \u0001499b2c72\u0001 \u0001카탈루냐독립\u0001 카탈루냐독립 \u000178341b45\u0001 \u0001사면법\u0001 사면법 \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u0001a06b4f57\u0001 \u0001위헌소송\u0001 위헌소송 \u0001congreso-de-los-diputados\u0001 \u0001Congreso de los Diputados\u0001 Congreso de los Diputados institution \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001gobierno-de-aragon\u0001 \u0001Gobierno de Aragón\u0001 Gobierno de Aragon party \u0001ley-organica",
+          "actual": "\u00010e97bdd9\u0001 \u0001카탈루냐\u0001 카탈루냐 topic \u000112024\u0001 \u0001Ley Orgánica 1/2024\u0001 유기법 제1/2024호(사면법) law \u00011a8227e4\u0001 \u0001권력분립\u0001 권력분립 \u0001333699fa\u0001 \u0001Congreso de los Diputados\u0001 스페인 하원 institution \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u00016d447100\u0001 \u0001Gobierno de Aragón\u0001 아라곤 지방정부 party \u000178341b45\u0001 \u0001사면법\u0001 사면법 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u00019552f50e\u0001 \u0001법적안정성\u0001 법적안정성 \u000199a8f318\u0001 \u0001Senado\u0001 스페인 상원 \u000199c455cc\u0001 \u0001평등원칙\u0001 평등원칙 "
+        }
+      ]
+    },
+    {
+      "articleId": "f665503a-3d14-424a-b138-7ea4ac5240d5",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "tags_text",
+          "expected": "\u0001015d7881\u0001 \u0001Ley de Enjuiciamiento Civil\u0001 스페인 민사소송법 law \u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 \u00010e11a49f\u0001 \u0001María Teresita Laborda Sanz\u0001 마리아 테레시타 라보르다 산스 party \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u00011ab3828a\u0001 \u0001Pontificia, Real y Venerable Esclavitud del Santísimo Cristo de la Laguna\u0001 라구나 성 크리스토 노예회 \u000121\u0001 \u000121세기 정의 현대화법\u0001 21세기 정의 현대화법 \u00013cf4b932\u0001 \u0001보충",
+          "actual": "\u0001021f9d95\u0001 \u0001차별 금지\u0001 차별 금지 topic \u0001034078e0\u0001 \u0001María Teresita Laborda Sanz\u0001 마리아 테레시타 라보르다 산즈 party \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00011322024\u0001 \u0001STC 132/2024\u0001 헌법재판소 판결 132/2024 case_type \u000114ce8f08\u0001 \u0001Ramón Sáez Valcárcel\u0001 라몬 사에스 발카르셀 \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u00012\u0001 \u0001Juzgado de lo Contencioso-Administrativo núm. 2 de Cáceres\u0001 카세레스 행정법원 제2호 \u000132abcac8\u0001 \u0001민사소송법\u0001 민사소송법 \u00013a811631\u0001 \u0001"
+        },
+        {
+          "field": "checksum",
+          "expected": "fe7c92957c8644e9",
+          "actual": "d1fafa79369e5c1d"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u0001015d7881\u0001 \u0001Ley de Enjuiciamiento Civil\u0001 스페인 민사소송법 law \u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 \u00010e11a49f\u0001 \u0001María Teresita Laborda Sanz\u0001 마리아 테레시타 라보르다 산스 party \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u00011ab3828a\u0001 \u0001Pontificia, Real y Venerable Esclavitud del Santísimo Cristo de la Laguna\u0001 라구나 성 크리스토 노예회 \u000121\u0001 \u000121세기 정의 현대화법\u0001 21세기 정의 현대화법 \u00013cf4b932\u0001 \u0001보충",
+          "actual": "\u0001021f9d95\u0001 \u0001차별 금지\u0001 차별 금지 topic \u0001034078e0\u0001 \u0001María Teresita Laborda Sanz\u0001 마리아 테레시타 라보르다 산즈 party \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00011322024\u0001 \u0001STC 132/2024\u0001 헌법재판소 판결 132/2024 case_type \u000114ce8f08\u0001 \u0001Ramón Sáez Valcárcel\u0001 라몬 사에스 발카르셀 \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u00012\u0001 \u0001Juzgado de lo Contencioso-Administrativo núm. 2 de Cáceres\u0001 카세레스 행정법원 제2호 \u000132abcac8\u0001 \u0001민사소송법\u0001 민사소송법 \u00013a811631\u0001 \u0001"
+        }
+      ]
+    }
+  ]
+}

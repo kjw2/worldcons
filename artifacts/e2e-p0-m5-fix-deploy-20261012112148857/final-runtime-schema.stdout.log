@@ -1,0 +1,13 @@
+✔ real workerd D1: source CAS assertion rolls back its whole batch and legacy metadata guard fences FTS writers (12899.6313ms)
+{"event":"llm_provider_failover","provider":"gemini","status":null,"message":"All Gemini routes failed: [{\"route\":\"gemini-3.1-flash-lite/key-1\",\"status\":429,\"message\":\"Gemini route gemini-3.1-flash-lite/key-1 failed: 429 requests per minute exceeded\",\"retryable\":true,\"tryNextRoute\":true},{\"route\":\"gemini-3.1-flash-lite-preview/key-1\",\"status\":429,\"message\":\"Gemini route gemin"}
+✔ Gemini generation falls back to the next model when the newest route is unavailable (49.7282ms)
+✔ Gemini generation falls back to the next model on quota throttling (2.2826ms)
+✔ summary completion falls back from exhausted Gemini routes to another configured provider (8.4467ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14070.5019

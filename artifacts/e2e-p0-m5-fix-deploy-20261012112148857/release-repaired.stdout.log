@@ -1,0 +1,2644 @@
+
+> worldcons@0.1.0 verify:release C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> pnpm typecheck && pnpm check && pnpm lint && pnpm test:gate0 && pnpm test:p0 && pnpm test:p1 && pnpm test:p2 && pnpm test:p3 && pnpm test:p4 && pnpm test:p5 && pnpm test:cclmetasearch && pnpm test:cclrag2 && pnpm test:provider:search && pnpm test:security && pnpm test:ops && pnpm test:embeddings && pnpm test:ingest-workflow && pnpm test:native-crawler && pnpm test:ingest-stages && pnpm test:masterdash && pnpm test:backfill && pnpm test:catalog && pnpm test:public-regression && pnpm test:reference-reads && pnpm test:article-reads && pnpm test:search-repository && pnpm test:admin-ops-reads && pnpm test:admin-analytics-reads && pnpm test:rpc-ledger && pnpm test:d1-schema && pnpm test:d1-convert && pnpm test:d1-import && pnpm test:d1-provision && pnpm test:d1-apply-schema && pnpm test:d1-migrate && pnpm test:d1-http-query && pnpm test:d1-copy-data && pnpm test:d1-reconcile && pnpm test:d1-supabase-linked-source && pnpm test:d1-shadow-all && pnpm test:d1-case-catalog && pnpm test:d1-search-projection && pnpm test:d1-fts-search && pnpm test:d1-ranked-search && pnpm test:d1-vector-search && pnpm test:d1-search-canary && pnpm test:d1-search-canary-m7.6 && pnpm test:m7.7a && pnpm test:m7.8a && pnpm test:m7.8b && pnpm test:m7.9 && pnpm test:m8 && pnpm m8:types:check && pnpm m8:typecheck && pnpm test:m9 && pnpm test:m10 && pnpm test:e2e-p0-m1 && pnpm test:e2e-p0-m2 && pnpm test:e2e-p0-m3 && pnpm test:e2e-p0-m4 && pnpm test:e2e-p0-m5 && pnpm test:m11 && pnpm test:search-rank-policy && pnpm test:plugin && pnpm plugin:validate && pnpm build:vinext
+
+
+> worldcons@0.1.0 typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+
+> worldcons@0.1.0 check C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx scripts/check.ts
+
+All checks passed.
+
+> worldcons@0.1.0 lint C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> eslint app components lib scripts workers next.config.ts tailwind.config.ts postcss.config.cjs eslint.config.mjs --ext .ts,.tsx,.js,.mjs,.cjs
+
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\app\api\cclrag2\[...path]\route.ts
+  4:3  warning  'providerServiceUnavailableResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\admin\admin-ingest-jobs.ts
+   2:3   warning  'ADMIN_INGEST_JOB_TYPES' is defined but never used      @typescript-eslint/no-unused-vars
+   3:3   warning  'adminIngestResultSucceeded' is defined but never used  @typescript-eslint/no-unused-vars
+   6:8   warning  'AdminIngestJobType' is defined but never used          @typescript-eslint/no-unused-vars
+  11:10  warning  'ingestResultSucceeded' is defined but never used       @typescript-eslint/no-unused-vars
+  14:37  warning  'AdminIngestBody' is defined but never used             @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ai\client.ts
+  74:10  warning  'firstApiKey' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\core-write\authority.ts
+  118:16  warning  'many' is defined but never used  @typescript-eslint/no-unused-vars
+  135:16  warning  'run' is defined but never used   @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\admin-ops-events.ts
+  141:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ops-write\heartbeat.ts
+  160:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\authority.ts
+  47:9  warning  'raw' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\rate-limit\durable-object.ts
+  69:53  warning  '_env' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\db\admin-jobs.ts
+  214:10  warning  'recordValue' is defined but never used  @typescript-eslint/no-unused-vars
+  308:16  warning  'd1Run' is defined but never used        @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\ingest\manual-summary-edit.ts
+  10:10  warning  'ARTICLE_REVIEW_STATE' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\search\repository\index.ts
+  47:26  warning  '_request' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\storage\blob.ts
+  173:10  warning  'isArtifactBlobHeadHit' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\workers\async-pipeline\src\native-crawler.ts
+   185:38  warning  'specific' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  1192:9   warning  'rangeStart' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 20 problems (0 errors, 20 warnings)
+
+
+> worldcons@0.1.0 test:gate0 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-redesign-gate0.test.ts
+
+✔ Gate 0 SQL contract is aggregate/catalog read-only (1.4516ms)
+✔ Gate 0 redaction removes sensitive keys and values recursively (1.0805ms)
+✔ Gate 0 serialization and text rendering are deterministic (0.6995ms)
+✔ Gate 0 manifest hashes the exact deterministic artifact bytes (8.3431ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 337.8622
+
+> worldcons@0.1.0 test:p0 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-command-control-plane.test.ts tests/admin-command-control-plane.postgres.test.ts
+
+﹣ P0 PostgreSQL command control plane transitions (0.7443ms) # SKIP
+✔ P0 migration carries database-enforced queue invariants (3.506ms)
+✔ retry classification and exponential backoff are bounded (0.2119ms)
+✔ ingestion compatibility success rejects blocked, empty, and partial-failure results (0.3277ms)
+✔ worker compatibility success rejects empty and incomplete drains (0.1497ms)
+✔ glossary compatibility success rejects empty and partially persisted refreshes (0.1708ms)
+✔ compatibility authority is default-off and preserves legacy results (1.1027ms)
+✔ compatibility shadow writes are terminal, redacted, and non-authoritative (2.4891ms)
+✔ resolved legacy failure does not create false-positive shadow evidence (0.2702ms)
+✔ thrown legacy failure propagates without evaluating or shadow-submitting (0.6285ms)
+✔ success predicate failures skip shadowing without changing the legacy value (0.4114ms)
+✔ compatibility shadow exceptions cannot change the legacy response (0.394ms)
+✔ administrator execution ingress uses auth and the selected Cloudflare authority (7.5602ms)
+✔ P0 documentation fixes migration order, flag default, evidence, and rollback (2.0667ms)
+✔ unauthorized queue ingress is rejected before execution (71.7556ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3121.4925
+
+> worldcons@0.1.0 test:p1 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-command-worker-p1.test.ts tests/admin-command-worker-p1-crawler.test.ts tests/admin-command-worker-p1.postgres.test.ts
+
+✔ robots parsing checkpoints abort promptly and receive the caller signal (7.1542ms)
+✔ sitemap parsing cancellation stops before later candidates are fetched (7.814ms)
+✔ late start-request preparation cannot enter queue setup or complete after worker cancellation (151.5445ms)
+✔ crawler helpers preserve no-signal behavior (1.8595ms)
+﹣ P1 PostgreSQL cohort and candidate transitions (0.8276ms) # SKIP
+✔ P1 authority is default-off and requires bounded command and cohort allowlists (2.1444ms)
+✔ claim sends the exact server-side command and cohort authority (1.583ms)
+✔ claimed work heartbeats and completes with its fencing token (1.7609ms)
+✔ constitutional backfill handler receives the exact claimed attempt authority (0.731ms)
+✔ abort observed between bounded handler steps stops execution without a stale failure commit (1.1174ms)
+✔ persisted abort cancels a hung handler promptly and stops lease renewal (73.1554ms)
+✔ attempt deadline cancels a hung handler, terminalizes retryably, and handles late rejection (146.1798ms)
+✔ deadline never retries terminalization after the failure fence is stale (46.8457ms)
+✔ retryable and terminal handler failures use explicit classifications (0.9194ms)
+✔ lost lease or stale completion fence cannot commit success (0.5146ms)
+✔ process stop requests safely yield the claimed attempt as retryable (61.1948ms)
+✔ unsupported claimed command fails terminally and observably (0.3625ms)
+✔ canonical handlers propagate one signal and checkpoints into long-running services (2.9247ms)
+✔ candidate retry fetches the stored canonical URL exactly and never discovers broadly (2.2159ms)
+✔ candidate retry accepts the verified BVerfG senate variant for a stored chamber URL (0.8516ms)
+✔ candidate retry rejects normalized canonical drift before dedupe or persist (1.7985ms)
+✔ candidate retry validates official ownership and records failed/fetched transitions idempotently (0.4234ms)
+✔ P1 migration and local worker enforce cohort claims and ordered execution (3.5093ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 6592.2944
+
+> worldcons@0.1.0 test:p2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-lifecycle-p2.test.ts tests/article-lifecycle-p2.postgres.test.ts
+
+﹣ P2 PostgreSQL lifecycle authority and reconciliation (0.8318ms) # SKIP
+✔ P2 maps every existing article status to orthogonal axes (2.2927ms)
+✔ ambiguous and contradictory legacy evidence is quarantined (0.2162ms)
+✔ review and structured attention mapping stay independent (0.1921ms)
+✔ expected terminal metadata-only evidence clears retry attention without approving publication (0.1791ms)
+✔ terminal metadata-only forward-fix is bounded and changes lifecycle attention only (1.4701ms)
+✔ workflow-only review labels recover the latest authoritative history decision (0.1968ms)
+✔ short-text reviewed publication quarantines without inventing source-text readiness (0.9205ms)
+✔ persisted review metadata wins over stale optional triage while unrelated attention remains (0.2823ms)
+✔ P2 flags and cohorts are false by default and reads remain independent (0.3279ms)
+✔ P2 shadow writes require an enabled cohort and preserve expected revision (0.5335ms)
+✔ P2 shadow failures cannot alter legacy control flow (0.2563ms)
+✔ P2 service enforces actor ownership before repository access (0.4303ms)
+✔ P2 migration is additive, guarded, indexed online, and leaves publication untouched (2.8616ms)
+✔ all lifecycle write paths use the compatibility boundary and no application path writes P2 columns (304.0098ms)
+✔ review and refresh paths use persisted authoritative evidence without triage gates (1.8073ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 3083.5183
+
+> worldcons@0.1.0 test:p3 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-publication-p3.test.ts tests/article-publication-p3.postgres.test.ts
+
+﹣ P3 PostgreSQL publication authority (0.8482ms) # SKIP
+[article publication shadow] { event: 'transition_failed', errorCode: 'stale_revision' }
+✔ P3 flags are false unless explicitly true (1.0079ms)
+✔ public read authority centralizes the P3 cutover and legacy rollback boundary (0.194ms)
+✔ compatibility shadows only confirmed outcomes and builds deterministic persisted-row transitions (2.0563ms)
+✔ shadow authority failures are isolated as data (0.957ms)
+✔ bulk review shadows each unique persisted row and excludes missing or failed rows (0.5047ms)
+✔ outbox is default-off and batches at-least-once delivery through an idempotent handler (0.5265ms)
+✔ outbox failure retries every claimed logical event without leaking the handler error (0.521ms)
+✔ migration and application contracts cover immutable authority, projection, and every public surface (15.8602ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 2356.7303
+
+> worldcons@0.1.0 test:p4 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-redesign-p4.test.ts
+
+✔ redesigned administrator UI is the only supported surface (3.514ms)
+✔ shell navigation covers the new admin surfaces without retired screen links (1.1545ms)
+✔ server layout renders the shell only after an authenticated session identity is verified (0.9389ms)
+✔ new pages preserve authentication redirects without legacy UI fallbacks (1.4628ms)
+✔ work filters are bounded, allowlisted, and URL-shareable (1.0567ms)
+✔ stable sort and pagination use deterministic type/id tie breakers (12.6103ms)
+✔ execution, lifecycle, and publication labels remain independent (1.2303ms)
+✔ operational errors redact URLs, queries, tokens, and long values (1.9216ms)
+✔ canonical actions require bounded reason, explicit idempotency, and publication confirmation (2.9536ms)
+✔ every P4 action uses session-only CSRF auth and revalidates authoritative state (1.3514ms)
+✔ P4 human mutations reject cron authorization and require a valid session CSRF pair (12.0014ms)
+✔ queue query contract is bounded and bulk-loads attempts without N+1 (1.5279ms)
+✔ tracked collection candidates are separated from actionable operational backlog (0.5789ms)
+✔ detail lookup remains valid beyond the newest 500 rows and distinguishes absence from query failure (3.274ms)
+✔ desktop/mobile, loading/empty/error, focus, and overflow states are present (2.8688ms)
+✔ specialized article actions and immutable source snapshot protections remain reachable (4.301ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 865.2679
+
+> worldcons@0.1.0 test:p5 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-governance-p5.test.ts tests/admin-governance-p5.postgres.test.ts
+
+✔ P5 migration is additive, aggregate-only, secure, indexed, and rerunnable (1.638ms)
+✔ P5 corrective migration binds approvals to digest and distinct actors (0.442ms)
+✔ P5 health counts only unresolved publication quarantine (0.1577ms)
+﹣ P5 PostgreSQL full migration chain, ACL, approvals, and fail-closed governance (0.0784ms) # SKIP
+✔ P5 corrective health evidence uses compatibility presence and last-seen (0.1598ms)
+✔ P5 immutable and retention SQL preserves authoritative history (0.2079ms)
+✔ P5 policy clamps overrides and SLA boundaries are exact (3.3349ms)
+✔ unavailable aggregate evidence never renders healthy SLA status (0.4251ms)
+✔ aggregate repository uses one bounded RPC and strips payload-shaped extras (1.0756ms)
+✔ feature flag getters are pure and default-off observation writes nothing (6.8263ms)
+✔ same-surface observations coalesce while distinct surfaces and authorities remain (5.1942ms)
+✔ compatibility observation remains bounded and failure-isolated (3.0724ms)
+✔ canonical evidence digest is stable and changes only with canonical gate evidence (17.3217ms)
+✔ approval writes require the current digest and call only the v2 RPC (0.442ms)
+✔ owner bindings reject unbound roles and cross-role actors without leaking identity material (0.8311ms)
+✔ retirement evaluator passes only when every prerequisite passes (8.8686ms)
+✔ retirement and retention tools never auto-flip flags or delete authority history (2.3283ms)
+✔ governance actions are session-only, CSRF-protected, role-bound, and audited (12.4651ms)
+✔ governance UI is retired while P5 operational controls remain internal (1.4699ms)
+✔ native health task emits redacted machine evidence without GitHub workflow (1.1606ms)
+✔ collect command through explicit publication preserves authority boundaries (1.2109ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 996.013
+
+> worldcons@0.1.0 test:cclmetasearch C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclmetasearch-api.test.ts
+
+[cclmetasearch] WorldCons search unavailable Error
+✔ search parameter contract accepts q or keyword and applies bounded defaults (2.7497ms)
+✔ search parameter contract rejects ambiguity, unknown keys, and out-of-range pagination (0.6598ms)
+✔ result mapper emits normalized fields and source-specific case numbers (3.7227ms)
+✔ handler enforces shared-token authentication (6.4158ms)
+✔ handler returns a bounded page and exact pagination metadata (1.6284ms)
+✔ handler treats a valid empty page as 200 and malformed input as 400 (1.4604ms)
+✔ handler emits normalized 429 and 503 errors (2.0674ms)
+✔ unknown integration paths use the documented JSON 404 contract (0.4521ms)
+✔ migration searches only the public projection and applies database pagination (1.7534ms)
+✔ production cclmetasearch backend no longer references Supabase (0.5856ms)
+✔ search reads matching ids/rank/date from worldcons_search and hydrates from worldcons_core (24.5311ms)
+✔ latest sort orders the same match set by publication date (8.0779ms)
+✔ exact total is returned even when the page is bounded or empty (7.7677ms)
+✔ search fails closed on malformed worldcons_search D1 responses (6.7705ms)
+✔ search fails closed when a D1 binding is not configured (0.2231ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 809.4765
+
+> worldcons@0.1.0 test:cclrag2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclrag2-search-api.test.ts
+
+✔ Neubauer comparison queries resolve the German climate decision reference (3.505ms)
+✔ exact case extraction recognizes French, Spanish, and US case numbers (1.1241ms)
+✔ source-aware case normalization produces the same canonical key across display variants (0.2998ms)
+✔ public search rejects offsets beyond the shared 10,000-row deep-pagination boundary (3.4504ms)
+✔ public fulltext route uses the ranked D1 search path instead of an unfiltered article list (1.3073ms)
+✔ BVerfG compact official URLs preserve the docket number during collection (0.4508ms)
+✔ exact case matches remain above full-text and semantic results (0.3147ms)
+✔ ranked candidate lookup always starts at page one (0.2259ms)
+✔ ranked pagination applies exactly once across consecutive pages (0.498ms)
+✔ hybrid candidate windows grow with the requested page without exceeding bounded lookup size (0.5403ms)
+✔ ranked materialization keeps D1 article-id batches below the bind ceiling (1.0142ms)
+✔ legal search normalization removes only generic research-intent noise (0.3157ms)
+✔ catalog page reranking promotes exact case identity without changing the candidate set (2.1448ms)
+✔ hybrid RRF rewards agreement between lexical and semantic rankings (1.3517ms)
+✔ exact normalized title remains above RRF score (0.4169ms)
+✔ Korean concept queries can surface semantically retrieved foreign decisions ahead of lower lexical ranks (0.7749ms)
+✔ legal relevance breaks equal RRF ties before recency (0.4027ms)
+✔ recency remains the tie-breaker when RRF and legal relevance are equal (0.3551ms)
+✔ search API items expose cclrag2 normalization and follow-up content URLs (0.4068ms)
+✔ ranked full-text migration uses published projection relevance and service-role-only execution (1.5066ms)
+✔ search API mapper surfaces summary/snippet for a summarized list row (0.2596ms)
+✔ search API mapper prefers the caseNumber field over hidden metadata (0.1463ms)
+✔ source inventory identifies WorldCons records as foreign constitutional material (0.1958ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5880.9686
+
+> worldcons@0.1.0 test:provider:search C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/cclrag2-provider-route.test.ts
+
+{"event":"worldcons_embedding_unavailable","status":503,"requestId":"c75c5349-16c1-442b-86a0-4c40fa8dadd2"}
+✔ Cloudflare provider route preserves the provider contract and applies public rate limiting (1.5498ms)
+✔ Cloudflare provider accepts the cclrag2 contract and returns the Neubauer case first (37.482ms)
+✔ Vercel provider preserves the Korean comparison query and source inference (3.8395ms)
+✔ Vercel provider fulltext mode bypasses embeddings and uses D1 lexical retrieval (3.5838ms)
+✔ Vercel provider reports an explicit fulltext fallback when semantic capability is not configured (2.5479ms)
+✔ Vercel provider narrows a generic comparison to German constitutional authority (4.2928ms)
+✔ Vercel provider translates a jurisdiction code into the source-owned search boundary (2.3553ms)
+✔ Vercel provider infers a source boundary from a short Korean jurisdiction name (1.2448ms)
+✔ Vercel provider semantic mode creates an embedding and queries Vectorize (10.2681ms)
+✔ Vercel provider hybrid mode uses embeddings and explicitly degrades when embedding fails (6.4724ms)
+✔ Vercel provider exact-case preflight supports France, Spain, and the US without embeddings (6.5283ms)
+✔ Vercel provider preserves exact total semantics from ranked D1 pages (0.9542ms)
+✔ Vercel provider source and article endpoints read bounded Contract V2 evidence from D1 (5.8276ms)
+✔ Vercel provider rejects invalid input and normalizes dependency failures (1.2796ms)
+✔ migration is projection-only, page-bounded, and service-role restricted (1.379ms)
+✔ Contract V2 migration bounds evidence and preserves paginated source text (1.2377ms)
+✔ Search V3 migration makes retrieval mode real and keeps published projection boundaries (1.4644ms)
+✔ Search V4 migration adds indexed four-country case keys and DB-native deep pagination (1.5276ms)
+✔ provider resilience migration materializes only bounded scalar search fields (0.9537ms)
+✔ Vercel provider truncates a large article body without dropping the preserved text API contract (99.5521ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2645.4003
+
+> worldcons@0.1.0 test:security C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/security-platform-hardening.test.ts
+
+✔ production rejects a short admin password even when machine secrets are strong (3.0036ms)
+✔ production still rejects reused or publicly exposed secrets (0.3339ms)
+✔ distributed rate limit migration is atomic, bounded, and service-role-only (1.6ms)
+✔ rate limiter remains available through an explicit local fallback (3.6144ms)
+✔ production CSP is enforcing by default and removes unsafe-eval (1.2477ms)
+✔ anonymous public-schema access remains closed after least-privilege hardening (1.1074ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 568.8623
+
+> worldcons@0.1.0 test:ops C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ops-summary-backlog.test.ts tests/workflow-heartbeat.test.ts
+
+✔ an empty summary backlog raises nothing (0.9493ms)
+✔ a small and recent backlog is treated as normal throughput (1.3927ms)
+✔ a large backlog is critical and names the public impact (0.3065ms)
+✔ a moderate backlog warns on count alone (0.1314ms)
+✔ a small but stale backlog still warns so slow drain cannot hide (0.1467ms)
+✔ a missing oldest timestamp degrades to count-only judgement (0.1392ms)
+✔ workflow heartbeat uses each workflow's 2.5x processing interval (1.1305ms)
+✔ missing, failed, or invalid heartbeat is stale (0.2255ms)
+✔ required workflow heartbeat records the complete route lifecycle (1.5604ms)
+✔ Cloudflare watchdog route authenticates before recording its required heartbeat (1.3145ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 414.5687
+
+> worldcons@0.1.0 test:embeddings C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/embedding-backlog-d1.test.ts tests/embedding-provider.test.ts tests/embedding-vector.test.ts
+
+✔ D1 candidate selection matches summarized/provenance/source/limit semantics (2.2448ms)
+✔ embedding candidate read uses D1 summarized provenance predicate and source filter (1.2265ms)
+✔ D1 embedding persistence updates provenance, artifact readiness, and published summary guard (14.2794ms)
+✔ embedding readiness counts D1 article candidates and published provenance parity (0.372ms)
+✔ embedding persistence upserts matching published vector metadata and provenance (0.9261ms)
+✔ embedding persistence does not match malformed or null-mismatched published summaries (0.3912ms)
+✔ embedding persistence skips artifact/vector when published summary differs (0.4888ms)
+✔ embedding width stays pinned to the articles.embedding column (3.0152ms)
+✔ Gemini embeddings request the pinned output width (1.1919ms)
+✔ embedding provider selection is Gemini-only (1.2144ms)
+✔ an unset embedding provider defaults to Gemini rather than OpenAI (1.0719ms)
+✔ Cloudflare native embedding executor replaces GitHub scheduled writers (0.8332ms)
+✔ native embedding backfill is bounded and resumable (0.504ms)
+✔ embedding backfill uses D1 provenance persistence and resumes after provider deferral (1.8885ms)
+✔ Gemini provenance preserves immutable P3 versions through a derived artifact (1.232ms)
+✔ embedding normalization produces a finite unit vector (1.8091ms)
+✔ embedding normalization rejects wrong width and invalid vectors (0.6641ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 561.3236
+
+> worldcons@0.1.0 test:ingest-workflow C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ingest-workflow-hardening.test.ts
+
+✔ ingestion success distinguishes a verified empty listing from swallowed discovery failures (1.5296ms)
+✔ ingestion success rejects blocked, no-database, empty, and partial failure results (0.1462ms)
+✔ ingestion treats all-uncollected BVerfG runs as degraded, not success (0.2457ms)
+✔ Crawlee failures preserve HTTP status for BVerfG block classification (0.4795ms)
+✔ crawler defaults identify the bot and send browser-compatible request headers (0.1966ms)
+✔ Spain explicitly metadata-only notices are not retried as missing full text (1.9127ms)
+✔ canonical caseNumber metadata is populated from source-specific aliases (1.9384ms)
+✔ expected empty sitemap and Spain tail probes do not fail a verified listing (0.249ms)
+✔ incremental range widens from the last verified checkpoint and never shrinks below the floor (0.3069ms)
+✔ worker outcome lines stay compact and omit source URLs (0.3113ms)
+✔ summary accounting only accepts an ingestion run UUID from collection metadata (0.2611ms)
+✔ BVerfG URL resolution checks chamber and senate filename variants (0.8112ms)
+✔ BVerfG unresolved variant retries use short bounded backoff with schedule grace (0.5133ms)
+✔ public article refreshes reject incomplete or suspiciously shrunken source text (0.1643ms)
+✔ SCOTUS revision dates are independently eligible from the opinion date window (1.4918ms)
+✔ ingestion CLIs and native source collectors retain hardening controls (4.8488ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5621.2319
+
+> worldcons@0.1.0 test:native-crawler C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/native-crawler.test.ts
+
+✔ verified HJ full text replaces stale metadata-only safety flags without affecting unverified records (1.6603ms)
+Warning: Invalid PDF header version: 1.4not
+Warning: Invalid PDF header version: 1.4not
+Warning: Indexing all PDF objects
+✔ SCOTUS official PDF extraction preserves bytes and hash while holding publication for review (184.5097ms)
+✔ SCOTUS PDF verification failures stay metadata-only and never write PDF to R2 (23.7592ms)
+✔ SCOTUS October term rollover still collects a revised prior-term official opinion without publishing it (4014.8048ms)
+✔ SCOTUS rollover previous listing fails closed and is not fetched after the bounded overlap (2009.1303ms)
+✔ native source parser discovers only official records for all four sources (10.3973ms)
+✔ targeted staged crawl preserves the actually fetched BVerfG official URL variant (3022.2207ms)
+✔ BVerfG staged crawl rejects HTTP 200 pages without the exact official decision ECLI (0.7306ms)
+✔ BVerfG official redirects retain the verified final decision URL and ECLI (0.8348ms)
+✔ targeted staged crawl carries corrected Spanish official JSON metadata into normalize (2.0843ms)
+✔ native range floors and Spain cap match collection policy (0.1204ms)
+✔ one synthetic collection request persists one pending case but DOES NOT automatically translate or publish (5.2344ms)
+✔ native collection keeps source-specific publication and review gates (9.4554ms)
+✔ BVerfG native discovery falls back to OpenLegalData candidates but fetches only official source text (3.4481ms)
+✔ BVerfG unpublished official variants remain a bounded retry candidate instead of failing the source run (2.5538ms)
+✔ BVerfG transient official 5xx falls back to discovery and remains uncollected instead of failing the source run (1.9095ms)
+✔ BVerfG OpenLegalData 429 records degraded discovery without failing the daily source step (1.1084ms)
+✔ Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids (6.0409ms)
+✔ Spain native discovery uses the authenticated official search session before tail probing (5.1808ms)
+✔ BVerfG discovery selection defers a cooldown 404 head and chooses the next eligible candidate for limit 1 (0.475ms)
+✔ BVerfG discovery selection defers all cooldown candidates with an honest empty selection (0.3686ms)
+✔ BVerfG discovery selection re-eligible once the retry backoff window has expired (0.2496ms)
+✔ BVerfG discovery selection never lets already-fetched candidates starve new or due candidates (0.1943ms)
+✔ BVerfG discovery selection is bounded and deterministic (0.2853ms)
+✔ BVerfG daily run skips a cooldown 404 head candidate and fetches the next eligible official decision (4.3545ms)
+✔ BVerfG daily run reports an honest deferred-only outcome without any official detail fetch (1.4967ms)
+✔ BVerfG daily run does not let already-fetched candidates starve new official decisions (2.4273ms)
+✔ BVerfG staged discovery shares the same D1-aware selection as the M8 daily run (0.7735ms)
+✔ BVerfG M8 and staged discovery fail closed when durable candidate state cannot be read (2.2381ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9766.0556
+
+> worldcons@0.1.0 test:ingest-stages C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/ingest-stage-pipeline.test.ts tests/ingest-stage-handlers.test.ts tests/ingest-stage-article-services.test.ts tests/ingest-stage-redrive.test.ts
+
+✔ runD1PublishArticle publishes exactly the named article and leaves other pending rows untouched (50.9904ms)
+✔ runD1PublishArticle fail-closes an ineligible row (source_only provenance) without publishing (6.1605ms)
+✔ runD1PublishArticle never treats stale published content as an idempotent success (11.983ms)
+✔ runD1PublishArticle blocks replay after source provenance is withdrawn (9.7562ms)
+✔ syncSearchProjectionForArticle projects exactly one published article and enforces per-article integrity (16.4902ms)
+✔ A: discovery -> crawl -> normalize persists exactly one publishable article and stops at translate (fail closed) (83.3951ms)
+✔ B: duplicate delivery of a completed stage message is acked and creates no duplicate work (20.1667ms)
+✔ C: a live job with no registered handler is blocked (dead-lettered), never silently acked or completed (15.1256ms)
+✔ D: an expired lease is reclaimed under a new fence; the stale message cannot complete or ack the live job (15.0449ms)
+✔ E: a live pending job delivered without a fence ack retries to a fresh dispatch rather than acking (15.445ms)
+✔ F: dispatcher never completes a job and re-arms an outbox row superseded by a newer fence (20.0775ms)
+✔ G: bounded dispatch-outbox reconciliation replays a pending entry to the correct queue (15.9658ms)
+✔ H: the discovery bootstrap producer only enqueues and does no network collection (15.478ms)
+✔ H2: tomorrow's discovery revisits an existing URL without duplicating the same-day job (21.4998ms)
+✔ I: consumer completes only under the exact lease and marks the job durably (13.359ms)
+✔ J: full chain discovery->crawl->normalize->translate->public-judgment->publish->search adopts the real core article id (29.178ms)
+✔ K: translate blocks and dead-letters when the durable summary effect is missing (22.2277ms)
+✔ L: public-judgment blocks metadata_only / unverified-provenance articles (no false publish) (23.9292ms)
+✔ M: public-judgment blocks an unverified Case Catalog anchor (hash mismatch) (27.9754ms)
+✔ N: publish blocks an ineligible article instead of retrying into a false success (22.921ms)
+✔ O: per-article isolation - an unrelated pending translate job is never processed (13.5976ms)
+✔ P: duplicate publish delivery is idempotent (one published row, one queue identity) (20.7925ms)
+✔ idempotency key is stable, round-trips, and rejects forgery (2.2648ms)
+✔ queue message validation accepts built messages and rejects forged keys (21.2874ms)
+✔ stage map: every stage has a queue and a well-formed next-stage transition (0.2211ms)
+✔ feature flags default OFF and fail closed (0.4876ms)
+✔ production stage bootstrap is restricted to explicit verified canary sources (0.2322ms)
+✔ register is idempotent by idempotency key (2.4521ms)
+✔ claim is bounded, fenced, and rejects a stale fencing token (3.6496ms)
+✔ an expired lease is reclaimable with a bumped fencing token (2.155ms)
+✔ a repeatedly crashing consumer is dead-lettered at the attempt budget, not re-leased forever (2.2872ms)
+✔ failIngestStageJob retries within budget and dead-letters when exhausted (3.0082ms)
+✔ dispatch outbox registration is idempotent by deterministic message id (4.6287ms)
+✔ ingest -> core bridge applies exactly once and is replay-safe (1.8797ms)
+✔ dispatcher claims, enqueues once, and records the dispatch outbox (3.8431ms)
+✔ dispatcher releases the job and marks the outbox failed when the queue is down (3.0992ms)
+✔ dispatch reconciliation replays a durable pending outbox entry (2.5422ms)
+✔ completeStageAndRegisterNext advances through the pipeline by idempotent next-jobs (2.6325ms)
+✔ atomic stage handoff rolls back parent success when child registration fails (4.9242ms)
+✔ stage completion requires an atomic D1 batch and an unexpired lease (10.121ms)
+✔ stage migrations are additive, verified, and have no destructive statements (3.5608ms)
+✔ production canary config bounds two validated sources to one item per dispatch (0.6643ms)
+✔ the Worker exposes a stage-queue consumer entrypoint without touching the M8 path (0.7885ms)
+✔ planIngestStageBatch routes invalid/blocked/eligible and consume handles ack/retry/no-op (3.4412ms)
+✔ diagnosis reports per-stage status counts and the oldest lease without cross-stage bleed (7.4423ms)
+✔ diagnosis reports the oldest pending job per stage and excludes terminal/leased rows (3.4723ms)
+✔ a redrive clears the oldest pending signal once the job is dispatched again (3.1612ms)
+✔ a redriven 404 source job returns to pending and is audited in the transition ledger (2.8425ms)
+✔ a 429 retryable failure stays pending (never dead-lettered) and outside the redrive surface (3.7606ms)
+✔ redrive denies missing reason, stage mismatch, fencing mismatch and unknown jobs with distinct ledger outcomes (3.4466ms)
+✔ a second redrive of the same job is a nonterminal denial (double-redrive safety) (2.6419ms)
+✔ the per-operator rolling-window rate limit denies a mass redrive and records it (3.6593ms)
+✔ the redrive migration is additive, verified and non-destructive and the route is admin-gated with no public redrive (1.4888ms)
+ℹ tests 53
+ℹ suites 0
+ℹ pass 53
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1029.0652
+
+> worldcons@0.1.0 test:masterdash C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/masterdash-integration.test.ts
+
+✔ requires exactly one token for the SSO exchange (4.8804ms)
+✔ serializes a redirect-safe admin session cookie that verifies with the active session secret (1.0441ms)
+✔ admin session creation and verification prefer the Worker runtime auth environment (0.3912ms)
+✔ maps only owner or admin identities to the existing active local administrator (0.5679ms)
+✔ accepts normalized allowlisted owner/admin identities and rejects unregistered identities (0.2667ms)
+✔ does not map an SSO identity when the local administrator is inactive (0.1684ms)
+✔ fails closed without a cookie or redirect when SSO identity mapping is denied (1.7017ms)
+✔ returns a compact 2xx degraded health response when the database is unavailable (3.0004ms)
+✔ reports the stored successful collection metrics without recomputing missing values (0.4849ms)
+✔ reports per-source degraded collection and verified counts instead of raw fetch counts (0.3564ms)
+✔ infers degraded status from legacy uncollected runs that have no outcome field (0.2368ms)
+✔ enables SSO-only administrator access only on production deployments (0.2038ms)
+✔ blocks the direct administrator login API in production (0.7296ms)
+✔ reports the latest failed collection and its actual failure target (0.2213ms)
+✔ returns null for collection metrics that are absent from stored data (0.6883ms)
+✔ a failure is reported while recent and ages out of the badge (1.47ms)
+✔ a run that never finished is aged from when it started (0.184ms)
+✔ a stalled summariser is visible even while collection stays healthy (0.1544ms)
+✔ summary backlog is reported as its own axis, separate from pending items (0.2169ms)
+✔ accepts the exact one-minute WorldCons SSO contract (0.3029ms)
+✔ rejects wrong issuer, wrong audience, expired tokens, and lifetime over 60 seconds (1.0167ms)
+✔ authenticates the exact raw control body and matching headers (0.5229ms)
+✔ allows only admin or owner roles to change collection pause state (0.5686ms)
+✔ rejects tampering, stale timestamps, and header/body request id mismatch (0.4826ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 826.6264
+
+> worldcons@0.1.0 test:backfill C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/constitutional-case-backfill-gate1.test.ts tests/constitutional-case-backfill-gate1.postgres.test.ts tests/constitutional-case-backfill-france-gate5.test.ts tests/constitutional-case-backfill-france-policy-v2.test.ts tests/constitutional-case-backfill-france-policy-v3.test.ts tests/constitutional-case-backfill-france-policy-v4.test.ts tests/constitutional-case-backfill-germany-gate5.test.ts tests/constitutional-case-backfill-us-gate5.test.ts tests/constitutional-case-history-boundary-gate5.test.ts tests/constitutional-case-rollout-readiness-gate5.test.ts tests/bverfg-fetch-drain.test.ts tests/backfill-artifact-blob.test.ts tests/backfill-artifact-blob-write.test.ts tests/backfill-artifact-blob-read.test.ts tests/backfill-artifact-blob-externalize.test.ts tests/backfill-artifact-blob-inline-clear.test.ts tests/backfill-artifact-blob-readiness.test.ts tests/backfill-artifact-blob-restore.test.ts
+
+✔ plan recomputes the exact canonical document, hash, and size (1.8497ms)
+✔ dry run plans storage refs without uploading or mutating (1.0468ms)
+✔ execute uploads, verifies size and SHA-256, then attaches while preserving inline content (9.2789ms)
+✔ normalization externalizes with a computed size when none was stored (0.7828ms)
+✔ a hash mismatch fails closed before upload and before any DB mutation (0.4565ms)
+✔ a stored size mismatch fails closed before upload and before any DB mutation (0.3817ms)
+✔ an upload verification failure fails closed before the attach RPC (0.3421ms)
+✔ a head size mismatch fails closed before get and before the attach RPC (0.4282ms)
+✔ tampered stored bytes fail closed before the attach RPC (7.8472ms)
+✔ an identical rerun is reported as idempotent (1.1502ms)
+✔ safe projection exposes only status, artifactId, and contentSize (1.1113ms)
+✔ safe projection drops the same internal keys for planned outcomes (0.296ms)
+✔ batch script emits projected outcomes and never raw ones (0.989ms)
+✔ batches stay bounded and advance with a keyset cursor (0.5094ms)
+✔ execute concurrency is bounded and preserves candidate outcome order (39.1361ms)
+✔ repository selects inline ref-less candidates and routes to the externalize RPC (1.181ms)
+✔ service and externalization share one canonicalization implementation (1.8299ms)
+✔ externalization lib verifies via head and get before calling the repository (1.1111ms)
+✔ script defaults to dry run and requires an explicit execute flag (0.9056ms)
+✔ migration is additive, narrows the guard, and leaves no generic bypass (2.4939ms)
+✔ externalization RPC accepts only the exact supported contract version (1.1123ms)
+✔ plan revalidates the contract, content-addressed ref, and recorded size (2.0406ms)
+✔ plan refuses an unsupported externalization contract (0.6444ms)
+✔ plan refuses a storage ref that is not content addressed to this artifact (0.3095ms)
+✔ plan refuses a candidate without a recorded size (0.2246ms)
+✔ dry run plans inline clears without reading Blob storage or mutating (0.6681ms)
+✔ execute requires the Blob read flag ready and fails closed before listing or mutating (0.5485ms)
+✔ execute heads then gets, verifies size and SHA-256, and only then clears (8.9754ms)
+✔ normalization clears with the normalization ref and size (1.1885ms)
+✔ a head size mismatch fails closed before get and before the clear RPC (0.5516ms)
+✔ a missing Blob object fails closed before the clear RPC (0.8209ms)
+✔ tampered stored bytes fail closed before the clear RPC (0.5852ms)
+✔ malformed Blob JSON fails closed before the clear RPC (0.7624ms)
+✔ non-object Blob JSON fails closed before the clear RPC (0.7173ms)
+✔ an identical rerun is reported as idempotent (0.5505ms)
+✔ batches stay bounded and advance with a keyset cursor (0.3877ms)
+✔ inline-clear lib verifies head and get before calling the repository (0.965ms)
+✔ repository selects externalized inline candidates and routes to the clear RPC (1.2211ms)
+✔ script defaults to dry run and requires execute plus an irreversible acknowledgement (1.0283ms)
+✔ migration is additive, extends the guard narrowly, and leaves no generic bypass (1.4618ms)
+✔ clear RPC clears only the inline column after all externalization gates pass (1.3514ms)
+✔ migration preserves the M4A externalization backfill contract (2.8125ms)
+✔ fetch stays inline when only the read flag is enabled (5.4875ms)
+✔ normalize reads a Blob-backed fetch artifact when the read flag is enabled (11.4908ms)
+✔ normalize prefers the inline fetch payload over a Blob ref (1.1669ms)
+✔ normalize fails closed when a Blob-backed fetch artifact is read with the read flag off (1.3088ms)
+✔ normalize rejects a Blob-backed fetch artifact with a size mismatch (1.4755ms)
+✔ normalize rejects a Blob-backed fetch artifact with a SHA-256 mismatch (1.5235ms)
+✔ normalize rejects malformed Blob JSON (1.1089ms)
+✔ normalize rejects an unsupported externalization contract version (0.7297ms)
+✔ verify reads a Blob-backed normalization artifact when the read flag is enabled (2.2662ms)
+✔ verify prefers an inline normalization artifact over a Blob ref (1.0123ms)
+✔ repository supports Blob-backed reads without weakening inline rows (1.4513ms)
+✔ classify distinguishes dual-copy, blob-only, inline-only, contract, and metadata states (2.7175ms)
+✔ default scan reports aggregate-only status and never touches Blob storage (2.9809ms)
+✔ NEW_WRITE_READY needs both flags and no metadata criticals (1.1851ms)
+✔ INLINE_CLEAR_READY requires a clean verified sample and full ledger coverage (12.6543ms)
+✔ verification samples clearable dual-copy rows, not earlier blob-only rows (1.7298ms)
+✔ INLINE_CLEAR_READY blocks when the verified sample misses a clearable kind (0.7966ms)
+✔ INLINE_CLEAR_READY allows both clearable kinds when the sample covers both cleanly (0.9463ms)
+✔ a large fetch pool cannot starve the normalization kind (fair per-kind allocation) (1.0335ms)
+✔ the sample fills by round-robin across kinds after the guaranteed first pass (1.3837ms)
+✔ sampling stays order-independent when the requested kind order is reversed (0.8477ms)
+✔ a sample genuinely smaller than the clearable kinds still fails closed (0.6804ms)
+✔ a single selected kind only requires its own verified sample (0.4382ms)
+✔ a sampled hash mismatch is critical and blocks inline clear (0.4671ms)
+✔ a sampled size mismatch is critical (0.3779ms)
+✔ an invalid sampled document is critical (0.5209ms)
+✔ a Blob read error makes the verification gate not-ready but is not critical (0.3085ms)
+✔ bounded keyset pagination and optional source filter are applied (0.7023ms)
+✔ the readiness report never emits refs, hashes, raw content, or per-row payloads (0.4884ms)
+✔ invalid bounds and a missing verification store fail closed (1.1051ms)
+✔ the CLI is read-only and takes no write flags (1.2962ms)
+✔ the module keeps verification default off, deletes nothing, and derives the rollout gates (1.0559ms)
+✔ the repository read path uses the read-only readiness function (1.2064ms)
+✔ the readiness migration is read-only and service_role only (1.4245ms)
+✔ plan revalidates the contract, content-addressed ref, and recorded size (2.2323ms)
+✔ plan refuses an unsupported externalization contract (0.6418ms)
+✔ plan refuses a storage ref that is not content addressed to this artifact (0.2648ms)
+✔ plan refuses a candidate without a recorded size (0.2029ms)
+✔ dry run plans restores without any Blob read or restore RPC (0.6145ms)
+✔ dry run needs only the repository and works with no Blob store at all (2.1139ms)
+✔ execute requires the Blob read flag ready and fails closed before listing or mutating (0.5992ms)
+✔ execute with no Blob store fails closed before listing or mutating (0.4802ms)
+✔ execute heads then gets, verifies size/SHA-256/canonical object, and only then restores with the parsed payload and canonical document (10.0644ms)
+✔ normalization restores with the normalization ref and size (1.1754ms)
+✔ an identical rerun reported by the RPC is idempotent (1.8653ms)
+✔ a head size mismatch blocks the RPC after the size check (0.4665ms)
+✔ a get SHA-256 mismatch blocks the RPC (0.6613ms)
+✔ a get byte-length mismatch blocks the RPC (0.4837ms)
+✔ a stored document that is not a JSON object blocks the RPC (0.4697ms)
+✔ a stored document that is not canonical JSON blocks the RPC (0.4745ms)
+✔ a candidate without a recorded size is blocked with zero Blob read and zero RPC (0.2724ms)
+✔ a conflicting storage ref is blocked with zero Blob read and zero RPC (0.2217ms)
+✔ an unsupported contract is blocked with zero Blob read and zero RPC (0.1728ms)
+✔ batches stay bounded and advance with a keyset cursor (0.362ms)
+✔ restore lib verifies head, get, and the canonical document before calling the repository, and never puts or deletes (1.2606ms)
+✔ metadata planning happens before any Blob read in the batch loop (0.8871ms)
+✔ repository selects blob-only restore candidates and routes to the restore RPC (1.5946ms)
+✔ the restore RPC re-checks bounded-evidence replayability for fetch rows under the row lock (2.2145ms)
+✔ CLI defaults to dry run and requires execute plus an acknowledgement and the read flag (1.1042ms)
+✔ CLI reads its flags and gates before creating the Blob store or running a batch (1.0889ms)
+✔ the safe projection emits only status, artifactId, and contentSize and drops sourceKey, storageRef, and contentHash (1.7325ms)
+✔ the restore migration is additive, extends the guard, and leaves no generic bypass (1.5021ms)
+✔ the extended guard preserves the M4A attach and M4B clear transitions (1.5866ms)
+✔ the restore RPC requires the parsed payload to equal the document and verifies the document byte length and SHA-256 database-side (1.4688ms)
+✔ the restore migration exposes only the RPC to service_role (1.3536ms)
+✔ fetch keeps the inline bounded replay payload when the write flag is off (4.443ms)
+✔ fetch externalizes the bounded replay payload to a private content-addressed blob (1.448ms)
+✔ fetch stays inline when write is enabled without the read gate (0.6985ms)
+✔ normalize keeps the inline normalized output when the write flag is off (1.1279ms)
+✔ normalize externalizes the normalized output with hash and size (1.3841ms)
+✔ repository routes to v2 record RPCs only when a storage ref is present (1.0904ms)
+✔ artifact blob flags default to disabled and write requires read (1.8267ms)
+✔ artifact storage refs are content addressed and reject non-ref values (1.1553ms)
+✔ artifact blob store writes private content-addressed objects without URLs (0.6477ms)
+✔ artifact blob store reads by ref and fails closed (6.3295ms)
+✔ artifact blob store refuses oversized payloads and mismatched uploads (0.4377ms)
+✔ artifact blob migration is additive and preserves v1 fencing policies (2.477ms)
+✔ a cleared snapshot is complete only when no work, claims, or open passes remain (1.7768ms)
+✔ any remaining fetch work keeps the drain from reporting completion (0.3071ms)
+✔ a live attempt is observed instead of being submitted over (0.1833ms)
+✔ orphan queued and stale running passes are reused rather than duplicated (0.2054ms)
+✔ a new pass is requested only when no existing pass can be reused (0.1545ms)
+✔ retry wait and stranded claims are surfaced with distinct reasons (0.1656ms)
+✔ repository run state maps live attempts and drops non-blocking statuses (0.3162ms)
+✔ the bounded drain wires completion to claims, residuals, and open passes (1.3352ms)
+✔ the corpus CLI reuses queued or running passes instead of allocating orphans (1.0663ms)
+✔ France authoritative-count fix permits unknown counts only before a successful seal (6.1376ms)
+✔ France scope is annual, QPC/DC-only, pre-2025, and owner-approved while the flag stays required (1.808ms)
+✔ France owner approval authorizes exactly the 2010-2024 QPC/DC selections (0.4555ms)
+✔ France official list parser keeps only the requested decision facet and ignores lastmod-like noise (20.5005ms)
+✔ France decision date parser handles accents and premier-day notation without using sitemap lastmod (0.2896ms)
+✔ France official list parser accepts the official glued QPCdu/DCdu titles and still rejects unrelated typed tokens (6.2977ms)
+✔ France verify strategy applies the same glued-title acceptance to 2021 QPC and rejects unrelated tokens (0.9498ms)
+✔ DILA directory parser selects one latest same-origin global stock (3.3742ms)
+✔ DILA archive uses exact NATURE and preserves official identity provenance (11.3996ms)
+✔ DILA XML and tar parser reject entity declarations, traversal, links, and bad checksums (2.4456ms)
+✔ bounded governed fetch rejects declared and streamed overflow and releases permits (45.0953ms)
+✔ bounded governed fetch blocks redirects with manual redirect handling and releases the permit (11.2289ms)
+✔ France governed fetch is Cheerio-only and declares both network phases (0.3286ms)
+✔ Crawlee navigation permits cover retries, block redirects, and drain on teardown (0.5193ms)
+[32mINFO[39m [33m CheerioCrawler:[39m Starting the crawler.
+[32mINFO[39m [33m CheerioCrawler:[39m All requests from the queue have been processed, the crawler will shut down.
+[32mINFO[39m [33m CheerioCrawler:[39m Final request statistics:[90m {"requestsFinished":1,"requestsFailed":0,"retryHistogram":[1],"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":502,"requestsFinishedPerMinute":28,"requestsFailedPerMinute":0,"requestTotalDurationMillis":502,"requestsTotal":1,"crawlerRuntimeMillis":2134}[39m
+[32mINFO[39m [33m CheerioCrawler:[39m Finished! Total 1 requests: 1 succeeded, 0 failed.[90m {"terminal":true}[39m
+✔ governed Crawlee acquires separate permits for robots and the full response body (2169.0689ms)
+[32mINFO[39m [33m CheerioCrawler:[39m Starting the crawler.
+[32mINFO[39m [33m CheerioCrawler:[39m All requests from the queue have been processed, the crawler will shut down.
+[32mINFO[39m [33m CheerioCrawler:[39m Final request statistics:[90m {"requestsFinished":60,"requestsFailed":0,"retryHistogram":[60],"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":34,"requestsFinishedPerMinute":1438,"requestsFailedPerMinute":0,"requestTotalDurationMillis":2027,"requestsTotal":60,"crawlerRuntimeMillis":2504}[39m
+[32mINFO[39m [33m CheerioCrawler:[39m Finished! Total 60 requests: 60 succeeded, 0 failed.[90m {"terminal":true}[39m
+✔ France detail-only Crawlee handles more than 50 fetches without retaining global migration listeners (2513.2255ms)
+✔ France discovery guard rejects execution before creating a run (1.1678ms)
+✔ France history flag alone cannot enable execution without the owner policy (0.2992ms)
+✔ France owner approval still requires the exact history flag before a run (0.2221ms)
+✔ France discovery fixes official count evidence before closing its manifest (3.1276ms)
+✔ France authority verification binds host, type, date, and official path identity (0.845ms)
+✔ DILA directory listing orders post-stock increments and rejects malformed candidates (1.7905ms)
+✔ France ordered increment overlay applies deterministic last-write-by-DILA-ID semantics (0.8936ms)
+✔ France ordered overlay removes an older in-scope DILA ID when a later increment moves it out of scope (0.1857ms)
+✔ France overlay fails closed when two DILA IDs point to the same Conseil identity (0.2908ms)
+✔ France overlay does not let a later increment invent a winner between distinct DILA IDs (0.2644ms)
+✔ France reconciliation names a missing official Conseil identity instead of degrading (0.3961ms)
+✔ France discovery seals base stock plus applied increment provenance and stays fail-closed on reconciliation (26.4889ms)
+✔ France policy metadata recognizes exactly v1/v2/v3/v4 and keeps the approved scope (2.9071ms)
+✔ France v2 exceptions are exact-literal and policy-version gated with no wildcard fallback (0.4073ms)
+✔ France v2 E2 canonicalizes only the exact ordered pair and records retirement evidence (1.6502ms)
+✔ France v2 E2 reversed, different, or extra duplicates still fail closed (4.0433ms)
+✔ France v2 E2 requires frozen current Conseil title and ECLI corroboration (0.5483ms)
+✔ France v2 E1 builds the exact Conseil-provider omission item with per-discover absence evidence (0.8974ms)
+✔ France v2 E1 fails closed on stale DILA presence, corroboration drift, and wrong policy tuple (0.7567ms)
+✔ France v2 discovery applies E2 and keeps v1 fail-closed for the same corpus (54.6535ms)
+✔ France v2 discovery synthesizes E1 for 2022 DC and fails stale when DILA later contains it (14.8341ms)
+✔ France v2 E1 raw absence scan catches the approved NOR even inside a non-QPC/DC XML member (4.942ms)
+✔ France v2 policy migration is additive, conflict-detecting, and supersedes v1 (0.5391ms)
+✔ France v2 inventory upsert is strict, exact-tuple, policy-gated, and keeps v2 intact (0.2637ms)
+✔ France v2 attribution validator accepts strict DILA or exact E1 and does not enable publication (0.2541ms)
+✔ France source strategy carries the exact snapshot policy version into discovery (1.9281ms)
+✔ France v2 rollout readiness stays disabled by default with zero Catalog writes and Gemini calls (35.5383ms)
+✔ France v3 exposes exactly the six 2017 QPC omission tuples and nothing else (2.1039ms)
+✔ France v3 builds every exact omission tuple with its per-discover absence proof (1.318ms)
+✔ France v3 fails closed on stale DILA presence, wrong policy, and every corroboration drift (1.2147ms)
+✔ France v2 2022 E1 remains a single exact tuple and is not widened by v3 (0.306ms)
+✔ France v3 migration is additive, exact-tuple gated, and keeps v1/v2 immutable (0.6087ms)
+✔ France v4 E3 canonicalization is one exact tuple and policy-version gated (1.749ms)
+✔ France v4 keeps the v2/v3 omission exceptions and does not widen them (0.339ms)
+✔ France v4 migration is additive, supersedes v3, and authorizes only the exact E3 tuple (0.3756ms)
+﹣ Gate 1 PostgreSQL contracts enforce manifests, P1 fences, leases, and claim release (0.7843ms) # SKIP
+✔ Spain inventory parser extracts bare HJ IDs once without fetching detail content (10.0299ms)
+✔ Spain Gate 5 history uses one immutable annual scope and an explicit expansion flag (1.8997ms)
+✔ Spain Gate 5 historical discovery is blocked before run creation unless explicitly enabled (1.514ms)
+✔ Spain history flag alone stays fail-closed while the legal/robots source policy is blocked (0.4054ms)
+✔ Spain 2024 baseline is fail-closed until the source policy is approved (0.4564ms)
+✔ Spain 2024 baseline discovers once source policy approval is injected without the history flag (1.2405ms)
+✔ Spain Gate 5 enabled historical discovery writes and closes only its annual inventory (0.7805ms)
+✔ bounded replay projection retains only reviewed fields and remains independently normalizable (0.6517ms)
+✔ authority verification is fail-closed for source, type, date, and HJ identity drift (0.7246ms)
+✔ distributed request governor waits for a database permit, normalizes the origin, and releases once (1.1386ms)
+✔ fetch pass records a bounded artifact and preserves a published terminal outcome during maintenance (1.7483ms)
+✔ normalize pass carries immutable inventory provenance into the publication artifact (1.0387ms)
+✔ P1 authority and handler carry the exact attempt fence into a bounded backfill pass (2.0148ms)
+✔ backfill CLI preflights execute authority before opening a snapshot or submitting a command (1.1696ms)
+✔ invalid snapshot phases and disabled Catalog writes never create a running backfill run (0.563ms)
+✔ enabled publish pass delegates the fenced item to the atomic Catalog publisher (0.6041ms)
+✔ Gate 1 migration fixes manifest, lease, artifact, and maintenance invariants in the database (7.8425ms)
+✔ Germany BVerfG scope is annual, 1998-bounded, pre-2025, and disabled by default (2.6956ms)
+✔ Germany expansion guard authorizes the 2021-2024 tranche and blocks 2020 (0.716ms)
+✔ Germany official fetch defaults to a bounded P1 batch without changing other phases (0.1783ms)
+✔ Germany fetch drain is read-only by default and delegates only bounded fenced fetch passes (1.4002ms)
+✔ dejure parser ignores popular links and keeps same-docket decisions on different dates (13.5723ms)
+✔ dejure parser strips a duplicated date only before a resolvable BVerfG docket (2.0961ms)
+✔ external-index inventory crosses the annual boundary and verifies a stable first-page probe (6.3852ms)
+✔ external-index inventory fails closed when the listing changes during pagination (2.4885ms)
+✔ read-only verifier seals a bounded report and never authorizes writes or Gemini (6.3813ms)
+✔ private-shadow readiness is read-only and requires every owner policy decision (0.9507ms)
+✔ private-shadow readiness resumes one open snapshot and recognizes only fully sealed completion (0.5166ms)
+✔ private-shadow write planning cannot bypass approval, readiness, or the one-open-snapshot rule (0.7598ms)
+✔ private-shadow canary proves reconciliation without publishing or AI leakage (2.7505ms)
+✔ Germany discovery persists enumeration evidence before items and closes one manifest (2.1394ms)
+✔ Germany strategy requires the flag and verifies official authority identity (1.3831ms)
+✔ BVerfG fetch candidates come from sealed inventory and reject non-official URLs (0.73ms)
+✔ BVerfG strategy classifies unrecoverable official sources as explicit exclusions (0.2327ms)
+✔ Germany normalize excludes an unrecoverable official source instead of failing verification (1.1184ms)
+✔ Constitution Annotated discovery is disabled unless explicitly enabled (1.4959ms)
+✔ Constitution Annotated is a candidate graph, never a verified SCOTUS corpus (1.2992ms)
+✔ Table parser deduplicates citations, preserves essay provenance, and never auto-verifies (26.0805ms)
+✔ reporter classification treats U.S. Reports as a candidate hint, not proof (0.4216ms)
+✔ verification requires identity, essay context, official authority, and constitutional holding (2.4907ms)
+✔ lower-court citations cannot be promoted even when evidence flags are incorrectly true (2.0902ms)
+✔ landmark priority changes scheduling only and never changes candidate status (1.8295ms)
+✔ reviewed redistricting seeds have official granule provenance but remain priority-only candidates (0.5019ms)
+✔ Cloudflare challenge is an unavailable source, not an empty inventory (0.6982ms)
+✔ US Catalog bridge revalidates current evidence and remains metadata-only (0.6319ms)
+✔ US Catalog canary is read-only, service-role-only, bounded, and checks the public source projection (0.3332ms)
+✔ candidate import plans without database writes or an enabled operational flag (3.3215ms)
+✔ built-in reviewed landmark set raises priority without an external seed file (1.7771ms)
+✔ candidate import requires both execute and the explicit operational flag (1.8176ms)
+✔ enabled candidate import persists every parsed candidate then closes the exact manifest (1.6799ms)
+✔ rerunning an already closed identical payload succeeds without manifest writes (1.6059ms)
+✔ U.S. Reports citation maps to the predictable GovInfo granule without proving identity by itself (0.1872ms)
+✔ GovInfo details parser binds exact citation, party anchors, and official granule PDF (3.0101ms)
+✔ GovInfo resolver respects robots and verifies metadata without auto-promoting constitutional relevance (1.4372ms)
+✔ non-SCOTUS reporter candidates never enter the official resolver (0.2001ms)
+✔ candidate authority service probes without writing an artifact or review (0.331ms)
+✔ recording authority requires the explicit flag and writes only the resolver artifact (0.3688ms)
+✔ review context inspection is read-only and exposes the exact CAS and evidence identifiers (0.9172ms)
+✔ human review defaults to a read-only evidence-bound plan (3.603ms)
+✔ human review execution requires its dedicated flag before database access (0.4825ms)
+✔ verified review rejects stale authority, foreign essay, and unbound holding evidence (0.7171ms)
+✔ verified review status cannot disagree with the four legal evidence gates (0.3498ms)
+✔ enabled human review appends exactly one v2 review and does not publish (0.4531ms)
+✔ US Catalog publication plan is read-only and exposes exact review and Catalog CAS values (0.6694ms)
+✔ US Catalog publication requires both write flags before database access (0.6646ms)
+✔ US Catalog publication plan blocks stale evidence, source mismatch, and overdue policy (0.3345ms)
+✔ US Catalog publication rejects stale CAS and a substituted idempotency key (0.4127ms)
+✔ enabled US Catalog publication performs one metadata-only bridge write (0.3797ms)
+✔ US Catalog canary passes only a current metadata-only evidence chain (0.607ms)
+✔ US Catalog canary reports stale review, policy, anchor, AI payload, and public projection drift (0.3543ms)
+✔ US Catalog canary distinguishes a missing candidate from malformed evidence (0.9492ms)
+✔ Gate 5 historical boundary is pre-2025 and 2025+ is owned by incremental ingestion (1.9235ms)
+✔ country expansion order is machine-readable and readiness-ordered (0.4903ms)
+✔ all country annual scopes reject 2025 and later before the historical ledger (0.6601ms)
+✔ P1 worker backfill passes reject a 2025 snapshot before any run row is created (1.2793ms)
+✔ 2025+ incremental ingestion workflow stays decoupled from the historical guard (2.5224ms)
+✔ M5 readiness reports the approved Germany canary and the owner-approved France QPC/DC policy (2.7915ms)
+✔ Germany 2024 is authorized only when the approved policy and history flag both hold (0.4803ms)
+✔ Germany 1998-2020 expansion stays unapproved even with the history flag on, while 2021-2024 are approved (0.7683ms)
+✔ France QPC/DC is policyAuthorized but blocked until the exact history flag is on (0.3262ms)
+✔ other France Conseil natures stay deferred even with the history flag on (0.291ms)
+✔ France approval is never an env-only bypass and an explicit unapproved injection still blocks (0.1888ms)
+✔ Spain historical scope is blocked and 2024 baseline is fail-closed without policy approval (0.3188ms)
+✔ United States Constitution Annotated stays candidate-graph only (0.1859ms)
+✔ 2025+ selections are rejected before any source-specific policy path (0.1832ms)
+✔ fail-closed preflight rejects every unapproved selection and proves zero public/AI effects (0.4288ms)
+✔ readiness stays catalog-write aware without enabling publication or AI (0.2587ms)
+✔ M5 expansion execution readiness requires an executionEnabled newly approved tranche (0.2947ms)
+✔ CLI preflight gates snapshot and pass creation, and the evidence CLI is wired (2.5245ms)
+✔ service defense blocks unapproved tranches in non-discover phases before beginRun (1.4954ms)
+✔ service defense blocks unapproved tranches in discover phases before beginRun (0.9684ms)
+✔ service defense lets the existing Germany 2024 canary proceed when policy and flag hold (0.6721ms)
+✔ service source wires the rollout gate for both discover and non-discover before beginRun (1.1305ms)
+ℹ tests 273
+ℹ suites 0
+ℹ pass 272
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 24022.6294
+
+> worldcons@0.1.0 test:catalog C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/constitutional-case-catalog-gate2.test.ts tests/constitutional-case-catalog-gate2.postgres.test.ts tests/constitutional-case-search-gate3.test.ts tests/constitutional-case-search-gate4.test.ts
+
+﹣ Gate 2 PostgreSQL contracts separate Catalog authority from current P3 enrichment (2.7836ms) # SKIP
+✔ Gate 2 migration fixes identity, source-anchor, head, and stale-enrichment contracts (1.332ms)
+✔ Catalog publication remains Gemini-free and cannot expose AI fields from an authoritative row (0.349ms)
+✔ Catalog source-only public/search surfaces remain retired even if legacy flags are supplied (1.0537ms)
+✔ public detail renders source-only and stale-reprocessing states while admin withdraw preserves the publication version (1.5096ms)
+✔ Catalog views use invoker rights and remain private behind the Vercel service role (0.4393ms)
+✔ Gate 3 search migration uses a single fail-closed read model and identity-first keyset search (1.2714ms)
+✔ Gate 3 leaves aliases, semantic retrieval, RRF, and diversification to later gates (0.2514ms)
+✔ Gate 3 API accepts bounded opaque cursors and rejects unsafe cursor characters (2.9566ms)
+✔ Gate 3 app integration carries nextCursor and does not request Gemini embeddings (3.1767ms)
+✔ Gate 4 versions and freezes reviewed multilingual legal aliases (0.9524ms)
+✔ Gate 4 bounds expansion and fusion before deterministic pagination (0.3908ms)
+✔ Gate 4 keeps identity absolute and does not introduce semantic or Gemini work (0.2598ms)
+✔ Gate 4 app and plugin preserve ranking metadata and restart expired cursors (2.1191ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 731.9914
+
+> worldcons@0.1.0 test:public-regression C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/homepage-regression.test.ts tests/public-design-slop.test.ts tests/seo-public-surface.test.ts
+
+✔ homepage avoids build-time database coupling and fails soft at runtime (1.1061ms)
+✔ homepage keeps the primary heading and direct search entry point (0.2391ms)
+✔ homepage exposes the four country navigation entry points in the intended order (0.9474ms)
+✔ homepage keeps clean canonical metadata and does not restore legacy v2 links (0.2059ms)
+✔ homepage keeps the country latest decisions section (0.2127ms)
+✔ public design keeps high-confidence generated-UI slop patterns out (1.6617ms)
+✔ public brand surfaces use the canonical Korean wordmark (4.2401ms)
+✔ legal content surfaces prefer lists and document structure over repeated card grids (2.6154ms)
+✔ navigation loading communicates state without glow glass or a floating status pill (1.1525ms)
+✔ DESIGN.md records the public anti-slop constraints (1.22ms)
+✔ public paths strip the legacy /v2 prefix and keep clean URLs (1.0781ms)
+✔ Google and Naver ownership verification surfaces stay deployable on the Workers host (2.1301ms)
+✔ thin tags are not indexable and do not advertise themselves as sitemap targets (0.3753ms)
+✔ sitemap and routing keep clean canonical URLs and drop search/thin-tag noise (3.8628ms)
+✔ indexable article pages emit explicit robots and stronger structured data (0.6302ms)
+✔ France article and print surfaces render the shared Korean DILA attribution (3.0282ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 432.108
+
+> worldcons@0.1.0 test:reference-reads C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/reference-reads-repository.test.ts
+
+✔ referenceReads selects the mock adapter and preserves mock fallback without Supabase config (4.3271ms)
+✔ Supabase env alone never re-selects a Supabase runtime adapter; D1 remains the only persistent authority (0.6403ms)
+✔ Supabase adapter maps source rows and orders by jurisdiction (0.9916ms)
+✔ Supabase adapter selects the tag projection and applies list options (0.7041ms)
+✔ Supabase adapter selects the jurisdiction-count RPC and maps its rows (0.6876ms)
+✔ Supabase adapter keeps the jurisdiction-count RPC fallback semantics (0.7219ms)
+✔ Supabase adapter orders and maps glossary terms and resolves getGlossaryTerm (0.9658ms)
+✔ Supabase adapter orders ingestion runs by started_at desc and applies the limit (0.6585ms)
+✔ Supabase adapter selects the tag relation, maps the tag, and resolves missing/errors (0.6812ms)
+✔ mock getTagBySlug returns the seed tag and null for a missing slug (0.4879ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2301.2865
+
+> worldcons@0.1.0 test:article-reads C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/article-reads-repository.test.ts
+
+✔ articleReads selects the mock adapter and preserves mock fallback without Supabase config (2.7389ms)
+✔ Supabase adapter maps the detail row and applies the legacy published filter (1.2076ms)
+✔ Supabase adapter switches the projection and detail-v4 relation/select by flag (0.9178ms)
+✔ Supabase adapter keeps the publishability boundary for public reads (1.1441ms)
+✔ Supabase adapter maps the source-text snapshot and filters publishability (0.7331ms)
+✔ retired Supabase env cannot reactivate the exported article-read backend (0.4376ms)
+✔ mock adapter preserves list ordering, filters, pagination, and view counts without Supabase config (1.7585ms)
+✔ Supabase adapter preserves list select, filters, ordering, count, and pagination (1.615ms)
+✔ Supabase adapter preserves legacy and projected tag filtering (0.973ms)
+✔ Supabase adapter returns an empty page when a tag filter resolves to no ids (0.452ms)
+✔ Supabase adapter preserves the full-text fallback and its error semantics (13.7818ms)
+✔ exported listArticles ignores retired Supabase env and preserves local fallback semantics (0.5566ms)
+✔ retired Supabase env cannot drive raw-text detail reads (0.8591ms)
+✔ listPublicSitemapArticles preserves mock fallback and exported delegation (0.3043ms)
+✔ Supabase adapter pages the public sitemap up to 50k and maps lastModified with legacy filters (1.3571ms)
+✔ listTopViewedArticles preserves mock fallback and exported delegation (0.4177ms)
+✔ Supabase adapter ranks top-viewed articles by view counts and honors filters and fallback (1.4484ms)
+✔ Supabase adapter lists related article ids with dedupe and error fallback (0.3345ms)
+✔ exported getRelatedArticles keeps the strongest-tag ids path and the tag/source fallback chain (0.6834ms)
+✔ exported getTagBySlug composes the tag lookup with the tag article list (0.5131ms)
+✔ listArticlesForGlossaryTerm expands, dedupes, sorts, and limits related-tag articles (0.6438ms)
+✔ lib/db/queries.ts keeps no direct Supabase coupling for public reads (1.1375ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2384.694
+
+> worldcons@0.1.0 test:search-repository C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/search-repository.test.ts
+
+✔ searchRepository selects the fail-closed adapter without Supabase config (4.3237ms)
+✔ searchRepository ignores legacy Supabase config and selects the D1 adapter only with bindings (3.3676ms)
+✔ Supabase search adapter issues the ranked page RPC with the exact arguments (0.6646ms)
+✔ rankedSearchPage gates on projection, unpublished reads, and the 10k offset guard (3.087ms)
+✔ rankedSearchPage parses the D1 ranked payload and applies the page-info lower bound (1.0554ms)
+✔ rankedSearchPage returns null when the search binding is absent (0.4056ms)
+✔ Supabase search adapter preserves the indexed exact-case lookup, order, dedupe, and filters (0.8ms)
+✔ Supabase search adapter selects the projection relation and drops the legacy filter (0.2502ms)
+✔ Supabase search adapter falls back to metadata and original_url when the indexed query errors (0.6122ms)
+✔ Supabase search adapter builds the url fallback token per source and skips it for others (0.8485ms)
+✔ exported exactCaseSearch materializes indexed ids in reference order and slices the page (5.4897ms)
+✔ exported exactCaseSearch keeps reference order and dedupe across sources (1.5489ms)
+✔ exported exactCaseSearch returns an empty page without a query or a case reference (0.6914ms)
+✔ Supabase search adapter issues the catalog RPC with exact arguments and error evidence (0.3732ms)
+✔ catalogCaseSearch public wrapper stays disabled after the Cloudflare cutover (0.8866ms)
+✔ Supabase search adapter issues the full-text ranked-ids RPC with exact arguments (0.4126ms)
+✔ Supabase search adapter selects and calls the semantic vector-match RPC (0.5239ms)
+✔ Supabase search adapter reads public embedding rows with relation, filters, range, and limit (0.85ms)
+✔ case-catalog and vector keep zero direct Supabase coupling (2.0652ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2437.1111
+
+> worldcons@0.1.0 test:admin-ops-reads C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-ops-read-repository.test.ts
+
+✔ adminOpsReads selects the mock adapter without Supabase config (2.1751ms)
+✔ adminOpsReads ignores legacy Supabase config and stays D1-or-mock only (0.2434ms)
+✔ Supabase admin/ops adapter issues the dashboard snapshot RPC and fails closed on error (0.5298ms)
+✔ Supabase admin/ops adapter pages private article rows with the exact select and no artificial cap (1.2032ms)
+✔ Supabase admin/ops adapter pages candidate rows and falls back to empty on error (0.669ms)
+✔ Supabase admin/ops adapter issues exact head counts and falls back on error (0.3145ms)
+✔ getAdminDashboardData uses the mock dashboard without Supabase config (2.35ms)
+✔ getAdminDashboardData ignores a legacy Supabase snapshot when D1 is unavailable (0.6622ms)
+✔ getAdminDashboardData remains on the D1/mock path regardless of legacy Supabase snapshot responses (1.1771ms)
+✔ getAdminDashboardData records the compatibility observation for new and fallback authority (1.0801ms)
+✔ listAdminArticles preserves mock filtering, sorting, pagination, bounds, and delegation without Supabase config (1.429ms)
+✔ Supabase admin/ops adapter preserves the admin list select, order, range, count, and pagination (0.6296ms)
+✔ Supabase admin/ops adapter applies every admin list filter and the existing full-text normalization (1.3048ms)
+✔ Supabase admin/ops adapter throws on list error and falls back to the range total when count is null (0.2673ms)
+✔ exported listAdminArticles ignores legacy Supabase config without D1 bindings (0.2648ms)
+✔ admin article list and bulk operations carry no direct Supabase coupling (1.3462ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2385.3858
+
+> worldcons@0.1.0 test:admin-analytics-reads C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/admin-analytics-read-repository.test.ts
+
+✔ adminAnalyticsReads selects the fail-closed adapter without Supabase config (2.2541ms)
+✔ adminAnalyticsReads ignores legacy Supabase config and stays fail-closed without D1 bindings (0.2871ms)
+✔ Supabase admin analytics adapter issues the audit action-option query and fails closed (0.635ms)
+✔ Supabase admin analytics adapter preserves the audit entry limit branch and exact-count range branch (0.7523ms)
+✔ Supabase admin analytics adapter reads access-info site_events and falls back to the legacy select (0.6457ms)
+✔ Supabase admin analytics adapter preserves the ingestion run read and its error fallback (0.3544ms)
+✔ Supabase admin analytics adapter pages article rows and keeps partial rows on a later page error (0.7439ms)
+✔ Supabase admin analytics adapter returns the raw health snapshot payload and null on error (0.4411ms)
+✔ getAdminAuditLogData returns the empty no-config audit page (0.8406ms)
+✔ getAdminAuditLogData ignores legacy Supabase config and returns the empty fail-closed page (0.616ms)
+✔ getAdminAuditLogData stays fail-closed regardless of legacy Supabase audit responses (0.41ms)
+✔ getAnalyticsDashboardData returns the empty no-config dashboard (1.7171ms)
+✔ getAnalyticsDashboardData ignores legacy Supabase config and returns the fail-closed dashboard (0.6617ms)
+✔ getAnalyticsDashboardData stays fail-closed regardless of legacy Supabase health responses (0.6138ms)
+✔ getAnalyticsDashboardData records only the fail-closed compatibility observation for legacy authority (0.9558ms)
+✔ lib/db/analytics.ts keeps no direct Supabase coupling (1.4143ms)
+✔ the admin analytics read contract exposes no Supabase/Postgres types (0.9617ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2099.525
+
+> worldcons@0.1.0 test:rpc-ledger C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/rpc-ledger.test.ts
+
+✔ scanner is complete and reproducible over the M4.6 scope (1543.7467ms)
+✔ the ledger validates against the live scan (1174.3515ms)
+✔ command-control-plane indirections resolve to their finite catalogs (1124.4409ms)
+✔ the vector-match resolver resolves through the article-publication barrel (1116.7278ms)
+✔ same-file constants resolve to their literal catalogs (1112.8551ms)
+✔ the validator flags an unclassified dynamic call site (1131.9414ms)
+✔ the validator flags a reachable function with no ledger entry (1178.7976ms)
+✔ the validator flags a dynamic catalog that drifts from the scanner (1128.06ms)
+✔ an unbounded dynamic family is recorded and counted, not failed (1094.8666ms)
+✔ the machine-readable report carries every required M4.6 field on all 69 rows (1085.8836ms)
+✔ the report summary exposes typed target databases and serializes the required fields (1082.1224ms)
+✔ the validator itself rejects a ledger row with an empty currentPurpose (1137.8504ms)
+✔ the validator itself rejects a target database outside the typed allowlist (1075.7305ms)
+✔ the validator itself rejects an empty migrationPrimitive (1130.817ms)
+✔ the validator itself rejects empty notes (1131.3372ms)
+✔ the validator itself rejects a mapped row with no existing parity evidence (1121.6427ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19448.4226
+
+> worldcons@0.1.0 test:d1-schema C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-schema.test.ts
+
+✔ the live D1 schema validates against the scanned Postgres DDL (112.2126ms)
+✔ the checked-in d1/<database>/0001_init.sql matches the historical baseline emitter (5.2601ms)
+✔ the emitted DDL applies to an in-memory SQLite database and the FTS5 projection searches (10.4571ms)
+✔ Postgres types map to the plan 6.1 D1 storage targets (0.2715ms)
+✔ type names normalize and canonical families mirror the type mapping (0.2303ms)
+✔ the documented mapping rules cover every plan 6.1 construct (0.2117ms)
+✔ canonical scalar converters are deterministic and fail closed (2.4594ms)
+✔ canonical table hashes are stable across key order and row order (1.3349ms)
+✔ canonical hashing fails closed on a missing NOT NULL value (0.2777ms)
+✔ compareCanonicalScalar orders nulls first and numbers numerically (0.1852ms)
+✔ columnCanonicalKind honors enum overrides and the Postgres source type (0.2577ms)
+✔ validateD1Schema accepts a covered table with full column parity (0.4166ms)
+✔ validateD1Schema rejects a covered table that omits or mistypes a Postgres column (0.2974ms)
+✔ validateD1Schema enforces ownership and relocation parity (0.3695ms)
+✔ validateD1Schema rejects internal inconsistencies (0.3243ms)
+✔ validateD1Schema flags enum-check drift and warns on an unmodeled enum (0.279ms)
+✔ emitTableDdl emits deterministic DDL with enum checks and indexes (0.1608ms)
+✔ buildD1SchemaReport emits a machine-readable, sorted M5.1c report (73.8627ms)
+✔ the Postgres scanner is read-only, deterministic and finds the source tables (126.9604ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 745.7854
+
+> worldcons@0.1.0 test:d1-convert C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-convert.test.ts
+
+✔ the Postgres projection excludes relocated and derived columns and orders by primary key (2.4807ms)
+✔ the canonical transform reduces every plan 6.1 family and hashes by row set (3.2702ms)
+✔ the canonical transform fails closed on a missing required value or a bad enum (0.3098ms)
+✔ database hashing is table-order independent and aggregates counts (11.6382ms)
+✔ the memory source projects columns and fails closed once closed (0.5929ms)
+✔ convertTable bounds reads with batchSize and maxRows (0.7171ms)
+✔ an unconfigured source fails closed instead of returning an empty dataset (0.6152ms)
+✔ the live report covers four databases and skips the derived search projection (6.4091ms)
+✔ the pipeline classifies migratable and skipped tables (0.2885ms)
+✔ the pg-backed operator source stays out of the runtime convert barrel (2.4827ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 460.9908
+
+> worldcons@0.1.0 test:d1-import C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-import.test.ts
+
+✔ the emitter excludes relocated columns and emits bounded parameterized inserts (5.4251ms)
+✔ the emitter keeps multi-row inserts within the D1 bound-parameter limit (1.3421ms)
+✔ the literal renderer escapes text and hex-encodes blobs (0.4087ms)
+✔ the emitter fails closed on mismatched, derived and virtual tables (0.6511ms)
+✔ apply and verify prove canonical parity on a local sqlite target (12.4916ms)
+✔ verification detects a tampered or missing row (1.1356ms)
+✔ a failed import rolls back instead of leaving partial rows (0.6873ms)
+✔ the pipeline fails closed on an unconfigured source or a missing target (5.2237ms)
+✔ the live report imports and verifies all four databases deterministically (31.3131ms)
+✔ a real migratable table imports and verifies through the pipeline (7.1679ms)
+✔ a real ingest table imports and verifies through the pipeline (5.3659ms)
+✔ a real ops table imports and verifies through the pipeline (3.5967ms)
+✔ verification reads are bounded, ordered and identifier-guarded (0.1444ms)
+✔ the node:sqlite target stays out of the runtime import barrel (2.7159ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 543.7287
+
+> worldcons@0.1.0 test:d1-provision C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-provision.test.ts
+
+✔ the remote targets are the four D1 databases in canonical order with bindings (1.9355ms)
+✔ the list parser accepts valid JSON and fails closed on malformed input (0.845ms)
+✔ the info parser accepts valid JSON and fails closed on malformed input (0.3967ms)
+✔ classification is exact and refuses an ambiguous name (0.2618ms)
+✔ dry-run preflight lists the remote databases and never creates (1.0421ms)
+✔ apply creates the missing databases and verifies each create (0.6462ms)
+✔ an existing database is never recreated (0.4989ms)
+✔ an ambiguous name is refused and no database is created (0.3015ms)
+✔ a create failure aborts the remaining creates and fails the run (2.0059ms)
+✔ a create that cannot be verified fails the run (0.6589ms)
+✔ a preflight failure is reported without throwing (0.3161ms)
+✔ an invalid location fails fast (0.35ms)
+✔ the Windows invocation routes the .cmd shim through the command interpreter (0.1788ms)
+✔ the Windows interpreter prefers ComSpec and falls back to cmd.exe (0.1518ms)
+✔ the Wrangler runner executes a local .cmd shim on Windows through cmd.exe (165.5282ms)
+✔ the Wrangler runner stays out of the runtime barrel and the CLI is apply-gated (2.9588ms)
+✔ the default Windows invocation runs the local Wrangler JS entrypoint and keeps the SQL as one argv item (3.3859ms)
+✔ the Wrangler runner reassembles a UTF-8 code point split across stdout chunks (368.1092ms)
+✔ a failed Wrangler run rejects with the bounded message and never surfaces decoded output (205.4989ms)
+✔ the Wrangler runner types a real exit code and keeps other failures plain (200.907ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1450.2462
+
+> worldcons@0.1.0 test:d1-apply-schema C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-apply-schema.test.ts
+
+✔ dry-run reads the remote objects and never writes a file (14.925ms)
+✔ dry-run verifies a schema that is already present (1.6201ms)
+✔ apply materializes the DDL, executes it remotely and verifies every object (4.5553ms)
+✔ a non-JSON spinner write output is ignored; sqlite_master verification decides success (2.044ms)
+✔ an already-present schema verifies even when the write output is not JSON, so re-apply is idempotent (1.2148ms)
+✔ apply with every schema already present materializes no DDL and makes zero --file calls (0.9766ms)
+✔ a missing remote database is refused and nothing is applied (0.3365ms)
+✔ an ambiguous name is refused before any apply (0.303ms)
+✔ a preflight failure is reported without throwing (0.4234ms)
+✔ an execute failure aborts the remaining applies and fails the run (1.9402ms)
+✔ verification detects a missing object (1.8387ms)
+✔ apply requires a materializeDdl callback (0.5103ms)
+✔ the expected object set is derived from the M5.1 schema (0.675ms)
+✔ the execute parser accepts a success envelope and fails closed otherwise (0.5213ms)
+✔ the schema apply stays out of the runtime barrel and the CLI is apply-gated (2.9976ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 513.7603
+
+> worldcons@0.1.0 test:d1-migrate C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-migrate.test.ts
+
+✔ the historical worldcons_ops 0001 baseline is unchanged and still declares the unconditional unique index (4.532ms)
+✔ the worldcons_ops 0002 migration is a partial unique index that drops only that one index (1.1311ms)
+✔ discovery keeps only additive migrations after 0001 and orders them deterministically (0.2792ms)
+✔ discovery fails closed on an unnumbered file, a duplicate number and a migration without a verify directive (0.6037ms)
+✔ normalization ignores SQL whitespace and case so the stored partial predicate matches (0.1646ms)
+✔ dry-run reports the pending migration and writes nothing (3.683ms)
+✔ dry-run verifies a migration whose partial index is already present as a no-op (2.1853ms)
+✔ apply executes only the pending migration, materializes it once and verifies the partial predicate (2.5566ms)
+✔ a rerun after apply is an idempotent no-op with zero writes (2.6026ms)
+✔ apply against an already partial index materializes nothing and makes zero --file calls (2.4989ms)
+✔ verification treats an index whose stored SQL lacks the predicate as pending (2.0111ms)
+✔ apply requires a materializeMigration callback (1.7795ms)
+✔ a missing remote database is refused and nothing is applied (1.7376ms)
+✔ an ambiguous remote database is refused before any apply (1.6169ms)
+✔ a preflight failure is reported without throwing (2.2082ms)
+✔ an execute failure aborts the run and leaves the migration unverified (3.3784ms)
+✔ a selected database with no additive migrations is a clean no-op (1.8681ms)
+✔ the migration seam stays Node-free and barrelled and the CLI is apply-gated (2.0226ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 525.9647
+
+> worldcons@0.1.0 test:d1-http-query C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-http-query.test.ts
+
+✔ prepareD1HttpQuery keeps strings bound and literalizes null/number (1.8367ms)
+✔ prepareD1HttpQuery does not treat quoted '?' as a placeholder (0.1478ms)
+✔ prepareD1HttpQuery rejects missing and extra parameters (0.5251ms)
+✔ prepareD1HttpQuery rejects blob parameters (0.1885ms)
+✔ createD1HttpParameterizedWriter validates account id (0.5769ms)
+✔ createD1HttpParameterizedWriter validates the api token (0.1948ms)
+✔ createD1HttpParameterizedWriter validates database ids (0.2977ms)
+✔ createD1HttpParameterizedWriter validates the timeout (0.2581ms)
+✔ createD1HttpParameterizedWriter posts the prepared statement to the exact endpoint (1.1046ms)
+✔ createD1HttpParameterizedWriter surfaces non-2xx as http_error without leaking secrets (0.7562ms)
+✔ createD1HttpParameterizedWriter rejects a top-level success:false body without leaking secrets (0.4322ms)
+✔ createD1HttpParameterizedWriter rejects a failing result entry without leaking secrets (0.4187ms)
+✔ createD1HttpParameterizedWriter rejects malformed JSON without leaking secrets (0.516ms)
+✔ createD1HttpParameterizedWriter rejects malformed shapes without leaking secrets (3.0019ms)
+✔ createD1HttpParameterizedWriter maps a rejected fetch to request_failed without leaking secrets (0.406ms)
+✔ createD1HttpParameterizedWriter times out a stalled request without leaking secrets (43.7556ms)
+✔ createD1HttpParameterizedWriter rejects an unknown database (1.0896ms)
+✔ createD1HttpQueryExecutor returns the flattened result rows of a select (1.3887ms)
+✔ createD1HttpQueryExecutor keeps string params bound and never literalizes them (1.3645ms)
+✔ createD1HttpQueryExecutor treats a successful envelope without results as zero rows (0.7122ms)
+✔ createD1HttpQueryExecutor fails closed on a malformed success payload without leaking secrets (6.8487ms)
+✔ createD1HttpQueryExecutor preserves the http, timeout and unknown-database errors without leaking secrets (36.3328ms)
+✔ createD1HttpParameterizedWriter discards the rows the executor returns (0.7598ms)
+✔ createD1HttpAffectedWriter returns the affected-row count from meta.changes (1.0658ms)
+✔ createD1HttpAffectedWriter sums changes across result entries (0.4682ms)
+✔ createD1HttpAffectedWriter fails closed on a malformed or missing meta.changes without leaking secrets (2.2436ms)
+✔ createD1HttpAffectedWriter surfaces http failures without leaking secrets (0.6903ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 458.2687
+
+> worldcons@0.1.0 test:d1-copy-data C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-copy-data.test.ts
+
+✔ dry-run over an empty remote plans a pending copy and writes nothing (6.0271ms)
+✔ apply from an empty remote reaches exact verified parity (1.7932ms)
+✔ an already-complete remote is a verified no-op with zero writes (0.7985ms)
+✔ a strict canonical prefix resumes and copies only the suffix (1.5153ms)
+✔ a remote row set whose primary keys are absent from the source is refused before any write (0.6866ms)
+✔ a remote row set longer than the source is refused with zero writes (1.5308ms)
+✔ a non-prefix canonical subset from an inserted earlier primary key resumes and writes only the missing row (1.3857ms)
+✔ a non-prefix canonical subset dry-run reports resumable and executes no write (2.3118ms)
+✔ a same-primary-key row with a changed value is refused with zero writes (3.4172ms)
+✔ a remote row whose primary key is absent from the captured source is refused with zero writes (0.8591ms)
+✔ a composite-primary-key canonical subset resumes and writes only the missing row (1.0908ms)
+✔ a file-execution error on the first data chunk fails the manifest and stops the copy (0.7218ms)
+✔ malformed JSON from a remote read fails closed with zero writes (0.5572ms)
+✔ a row-count response that does not match expected progress fails the manifest (0.6533ms)
+✔ a value corrupted after the chunk count check fails the final canonical hash (0.9266ms)
+✔ an empty source over an empty remote is a verified existing no-op with zero writes (0.3559ms)
+✔ two fresh harnesses with identical source and chunking options materialize byte-identical chunks (1.9121ms)
+✔ selecting worldcons_search yields zero copy targets because search is out of data-copy scope (0.261ms)
+✔ applying the rich table from an empty remote reaches verified parity across json, array, bigint and boolean (1.1995ms)
+✔ a small apply writes through Wrangler --file and never calls the parameterized writer (0.8244ms)
+✔ an oversized row applies through the parameterized writer without materializing its body (2.5745ms)
+✔ an oversized row without a parameterized writer fails closed with zero writes (1.1652ms)
+✔ a mixed small/oversized/small table writes file, parameter, file in authored row order (2.6034ms)
+✔ a dry-run over an oversized row plans the parameterized writer without materializing or writing (1.5443ms)
+✔ a mixed small/oversized/small dry-run plans three writes with one parameterized and executes none (1.6866ms)
+✔ a dry-run and an apply of the same source report the identical write plan (1.1521ms)
+✔ production data-copy seam keeps destructive DML and Node operator imports out (1.8889ms)
+✔ a table selection narrows the copy to one table and never reads the other (12.1786ms)
+✔ an unknown table selection fails before the runner is called (0.6023ms)
+✔ the d1:copy-data CLI exposes a deterministic, url-only, opt-in apply contract (2.218ms)
+✔ the lazy parameterized writer is undefined in dry-run and reads no credential (0.255ms)
+✔ a small file-only apply holds the lazy writer but never invokes it (0.7001ms)
+✔ the first oversized write resolves auth token + whoami + d1 list once, then reuses the cached writer (26.249ms)
+✔ environment credentials skip auth token and whoami but still classify d1 list once (0.4707ms)
+✔ a malformed or global-key auth token fails closed without leaking the token (0.3242ms)
+✔ a malformed, logged-out or ambiguous whoami fails closed with a stable code (0.4662ms)
+✔ a malformed d1 list fails closed from the resolver before any HTTP request (0.2115ms)
+✔ a lazy writer whose first resolution fails stays failed closed and never retries auth (0.2025ms)
+✔ a Wrangler read crash falls back to the injected HTTP query and audits a safe marker (0.7947ms)
+✔ a Wrangler read crash falls back to the HTTP query over an already-complete remote (0.4906ms)
+✔ a Wrangler read crash still resumes a canonical prefix through the HTTP fallback (0.7632ms)
+✔ the HTTP read fallback is never called when the Wrangler read succeeds (0.4177ms)
+✔ when both the Wrangler read and the HTTP fallback fail, the table is refused (0.6482ms)
+✔ a malformed successful Wrangler read never falls back to the HTTP query (0.5684ms)
+✔ a non-crash Wrangler exit code never falls back and the table is refused (0.5474ms)
+✔ a plain runner error (timeout/spawn) never falls back and the table is refused (0.504ms)
+✔ the lazy remote query is available in dry-run and apply but reads no credential until invoked (0.1924ms)
+✔ the lazy remote query resolves auth + whoami + d1 list once and caches the executor across reads (0.9302ms)
+✔ the lazy remote query with env credentials skips auth token and whoami but still lists once (0.5332ms)
+✔ a lazy remote query whose first resolution fails stays failed closed and never retries auth (0.253ms)
+✔ a lazy remote query is passed to both a dry-run and an apply but never invoked when Wrangler reads succeed (0.9415ms)
+✔ a Wrangler read crash triggers the lazily-authenticated HTTP fallback (0.9902ms)
+✔ a Wrangler --file crash falls back to the HTTP writer as equivalent plain inserts and audits a safe marker (0.9121ms)
+✔ a successful Wrangler --file write never calls the HTTP writer or query (0.9919ms)
+✔ an ordinary nonzero --file exit never falls back and the table is refused (0.6195ms)
+✔ a --file crash whose HTTP fallback fails stays fail-closed with zero rows (0.5194ms)
+✔ the --file crash fallback authenticates lazily and only when a write actually crashes (1.5273ms)
+✔ a multi-chunk --file crash fallback preserves authored chunk and row order (0.9522ms)
+ℹ tests 58
+ℹ suites 0
+ℹ pass 58
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 760.899
+
+> worldcons@0.1.0 test:d1-reconcile C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-reconcile.test.ts
+
+✔ an exact remote is classified exact and plans zero writes (4.7567ms)
+✔ source-only rows are planned as insert-only plain inserts (1.0374ms)
+✔ changed common-PK rows are planned as update-only full-row updates (0.8921ms)
+✔ a table with both source-only and changed rows is classified mixed (0.8499ms)
+✔ apply inserts source-only rows and updates changed rows to exact parity (2.0212ms)
+✔ a composite primary key updates by the exact key with PK columns excluded from SET (1.4827ms)
+✔ a remote-only primary key refuses the table and writes nothing (0.883ms)
+✔ a duplicate source primary key refuses the table (0.6025ms)
+✔ a table without a primary key refuses rather than guess (0.5156ms)
+✔ an affected-row count mismatch fails closed and is not a silent success (0.7787ms)
+✔ a final canonical hash mismatch after apply fails verification (0.6997ms)
+✔ a source changed after apply is caught by the final full-table verification (1.0454ms)
+✔ a source mutated during apply fails the fresh final source+remote verification (0.8247ms)
+✔ a successful rerun after apply classifies exact and plans zero writes (0.9696ms)
+✔ a partially applied run recalculates fresh state and plans only the remainder (1.4396ms)
+✔ json, array, bigint-text and timestamp values survive an UPDATE as bound parameters (3.0213ms)
+✔ the reconcile seam contains no destructive DML, DDL or upsert (5.0026ms)
+✔ selecting worldcons_search yields zero reconcile targets (0.2891ms)
+✔ an unknown table selection fails before any remote call (0.6219ms)
+✔ a table selection narrows reconciliation to one table (3.2211ms)
+✔ the reconcile defaults and scope are conservative and exclude worldcons_search (0.1182ms)
+✔ the reconcile CLI exposes an explicit, opt-in, no-broad-apply surface (1.7271ms)
+✔ the persistent Postgres source quotes only a validated session role (0.2726ms)
+✔ the postgres --postgres-role option is only wired to the persistent source (0.8406ms)
+✔ m13-readiness exposes --postgres-role and --batch-size for the read-only final-delta path (0.8237ms)
+✔ the CLI read fallback policy defaults to crash-only and rejects unknown values (0.2913ms)
+✔ d1:copy-data remains INSERT-only and does not gain update/delete/upsert behavior (1.3907ms)
+✔ a Wrangler read crash falls back to the injected HTTP query and audits a safe marker (0.639ms)
+✔ a non-crash Wrangler read failure never falls back and refuses the table (0.3708ms)
+✔ the default crash-only policy never falls back for a non-crash Wrangler exit (0.4562ms)
+✔ any-wrangler-exit falls back for exit 1 using the exact read statement (0.444ms)
+✔ any-wrangler-exit still does not fall back for a non-Wrangler error (0.2691ms)
+✔ an empty source over an empty remote is exact with zero writes (0.205ms)
+✔ an empty source over a non-empty remote refuses because remote-only rows exist (0.2731ms)
+✔ two fresh harnesses with identical inputs produce identical manifests and write plans (1.1069ms)
+✔ apply without an executeStatement throws a caller error (0.1903ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 692.2714
+
+> worldcons@0.1.0 test:d1-supabase-linked-source C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-supabase-linked-source.test.ts
+
+✔ buildPostgresSelectSql quotes identifiers and inlines bounded limit/offset deterministically (1.3737ms)
+✔ buildPostgresSelectSql fails closed on an unsafe identifier or an invalid bound (0.7272ms)
+✔ parseSupabaseLinkedRows reads a bare top-level row array out of preamble/footer text and preserves every value exactly (1.051ms)
+✔ parseSupabaseLinkedRows still accepts the legacy object envelope out of preamble/footer text and preserves every value exactly (0.2167ms)
+✔ parseSupabaseLinkedRows accepts an empty bare array or an empty envelope (0.1381ms)
+✔ parseSupabaseLinkedRows treats a bare array row that happens to carry a rows key as an ordinary row (0.2071ms)
+✔ parseSupabaseLinkedRows fails closed on missing, malformed, ambiguous or non-object output (0.4149ms)
+✔ createSupabaseLinkedRowSource runs the deterministic SELECT and projects only the requested columns from a bare array (0.6015ms)
+✔ createSupabaseLinkedRowSource still reads the legacy rows envelope (0.2509ms)
+✔ createSupabaseLinkedRowSource fails closed when the runner returns no payload (0.3229ms)
+✔ supabaseLinkedQueryArgs returns the exact deterministic argv for one statement (0.1469ms)
+✔ buildSupabaseLinkedInvocation directly spawns a resolved Windows .exe with the SQL as one argv entry (0.4225ms)
+✔ buildSupabaseLinkedInvocation routes a Windows .cmd shim through cmd.exe with a safely-quoted verbatim command line (0.3514ms)
+✔ buildSupabaseLinkedInvocation leaves an unresolved bare name for cmd.exe to resolve (0.1925ms)
+✔ buildSupabaseLinkedInvocation honors the Windows interpreter override and spawns directly elsewhere (0.2802ms)
+✔ resolveWindowsSupabaseBinary searches PATH and prefers a native .exe over a .cmd shim (3.4349ms)
+✔ the child-process linked source stays out of the runtime convert barrel (1.7209ms)
+✔ the linked child-process runner reassembles a UTF-8 code point split across stdout chunks (371.587ms)
+✔ a failed linked run rejects with the bounded message and never surfaces decoded output (188.3563ms)
+✔ the Windows cmd fallback delivers quoted SQL to a .cmd shim as one argv entry (126.4146ms)
+✔ the Windows native .exe path spawns directly and preserves the quoted SQL as one argv entry (89.0289ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1115.9082
+
+> worldcons@0.1.0 test:d1-shadow-all C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-read-runner.test.ts tests/reference-read-shadow.test.ts tests/d1-shadow-runtime-boundary.test.ts tests/article-read-d1-repository.test.ts tests/article-read-shadow.test.ts tests/admin-ops-read-shadow.test.ts tests/admin-analytics-read-shadow.test.ts tests/d1-shadow-parity-report.test.ts
+
+✔ the admin analytics shadow covers exactly the six analytics methods (1.9916ms)
+✔ admin_analytics_read is opt-in in the config default (0.416ms)
+✔ isConfigured is authoritative and synchronous with zero D1 calls or events (0.6936ms)
+✔ all flags off does zero shadow work and returns authoritative identity (0.5014ms)
+✔ loadAnalyticsHealthSnapshot RPC emits rpc_deferred and makes zero D1 calls (0.4632ms)
+✔ compare-off runs the D1 read but never compares (2.2703ms)
+✔ loadAdminAuditActionOptionRows routes to worldcons_ops, filters event_type and matches (1.5365ms)
+✔ invalid/empty eventTypes skips before any D1 call (0.4806ms)
+✔ loadAdminAuditEntryRows filtered branch matches with a null count (1.218ms)
+✔ loadAdminAuditEntryRows unfiltered branch compares exact rows and count (0.8319ms)
+✔ loadSiteEvents routes to worldcons_ops and compares the schemaReady result (1.1725ms)
+✔ loadSiteEvents with the default maxRows below the 10k boundary skips, never partial (0.3994ms)
+✔ loadIngestionRunRows routes to worldcons_ingest (0.8754ms)
+✔ loadArticleSummaryRows routes to worldcons_core and matches unordered (0.785ms)
+✔ missing binding, missing scheduler, disallowed surface, sampling and rejection all skip (0.5301ms)
+✔ D1 errors and timeouts are swallowed into events and preserve the primary (9.4197ms)
+✔ per-isolate max in-flight applies backpressure to a second read (31.6898ms)
+✔ audit action-option overflow and insufficient maxRows skip rather than approximate (0.5272ms)
+✔ article summary overflow skips (never emulates Supabase partial-row-on-error) (0.397ms)
+✔ the D1 adapter loadSiteEvents uses the access-info columns and reports schemaReady true (0.3628ms)
+✔ the D1 adapter loadAdminAuditEntryRows returns the exact range slice and count (0.2514ms)
+✔ selection point returns the fail-closed adapter unwrapped without Supabase config (0.5071ms)
+✔ selection point ignores legacy Supabase config and stays fail-closed without D1 bindings (0.1886ms)
+✔ the admin analytics D1 adapter imports no Node builtin and performs no D1 write (2.0429ms)
+✔ the admin ops shadow covers exactly the five ops methods (1.8073ms)
+✔ admin_ops_read is opt-in in the config default (surfaces stay reference-only) (0.3707ms)
+✔ isConfigured is authoritative and synchronous with zero D1 calls or events (0.7003ms)
+✔ all flags off does zero shadow work and returns authoritative identity (0.4718ms)
+✔ loadDashboardSnapshot RPC emits rpc_deferred and makes zero D1 calls (0.4731ms)
+✔ compare-off runs the D1 read but never compares (2.3419ms)
+✔ loadArticleRows compares unordered by id and emits row-content-free evidence (1.6387ms)
+✔ loadCandidateRows routes to worldcons_ingest and compares unordered (0.8689ms)
+✔ candidates skip when the ingest binding is missing even though core exists (0.3442ms)
+✔ countTableRows routes tags to core and candidates to ingest and compares the number (1.0829ms)
+✔ countTableRows remains exact even when the row count exceeds the shadow row bound (0.4851ms)
+✔ listAdminArticles q is M7 and makes zero D1 calls (0.3712ms)
+✔ listAdminArticles reproduces filters, ordering, paging and exact totals (1.3155ms)
+✔ listAdminArticles overflow skips rather than comparing a partial page (0.6627ms)
+✔ loadArticleRows overflow is skip, not a partial comparison (0.6116ms)
+✔ missing binding, missing scheduler, disallowed surface, sampling and rejection all skip (3.7488ms)
+✔ D1 errors and timeouts are swallowed into events and preserve the primary (8.0494ms)
+✔ per-isolate max in-flight applies backpressure to a second read (30.4862ms)
+✔ the D1 adapter routes countTableRows by exact table binding and uses COUNT(*) (0.4925ms)
+✔ the D1 adapter listAdminArticles applies publishable/hasSummary/status filters and orders nulls last (4.4397ms)
+✔ selection point returns the mock adapter unwrapped without Supabase config (0.4133ms)
+✔ selection point ignores legacy Supabase config and stays D1-or-mock only (0.3018ms)
+✔ the admin ops D1 adapter imports no Node builtin and performs no D1 write (4.1747ms)
+✔ D1 article adapter reads worldcons_core and maps a detail row through the shared mapper (6.7173ms)
+✔ Catalog source correction blocks old P3 summary, source text and sitemap until anchored enrichment is published (5.6139ms)
+✔ D1 article adapter list projection drops summary_json/source_metadata and computes aliases (1.7639ms)
+✔ D1 article adapter enforces legacy public publishability and includeUnpublished (1.363ms)
+✔ D1 article adapter source-text snapshot maps the legacy fields (0.8211ms)
+✔ D1 article adapter listArticles preserves ordering, paging, count and view counts (4.6929ms)
+✔ D1 article adapter chunks tag hydration below the D1 bind-parameter ceiling (2.8299ms)
+✔ D1 article adapter listArticles applies source/jurisdiction/type/language/range/tag filters (3.7892ms)
+✔ D1 article adapter batches large tag article-id filters below the bind ceiling (3.7659ms)
+✔ D1 article adapter is bounded: overflow and unsupported count are skips (1.0485ms)
+✔ D1 article adapter sitemap preserves lastModified precedence and truncates overflow (0.7108ms)
+✔ D1 article adapter top-viewed ranks by view_count, honors filters and falls back (1.4831ms)
+✔ D1 article adapter related ids apply tag/exclude/limit without treating normal overflow as an error (0.509ms)
+✔ runtime D1 binding names are unchanged by M6.3 (0.1556ms)
+✔ D1 list projection derives full/available summary state from summary_json before hiding it (0.7157ms)
+✔ D1 list projection keeps explicit source-only Catalog state over any derived fallback (0.2766ms)
+✔ D1 list projection derives France case_number from the authoritative original title (0.9494ms)
+✔ the article shadow covers exactly the six article-read methods (1.8259ms)
+✔ all flags off does zero shadow work and returns the authoritative object by identity (0.961ms)
+✔ read-on compare-off runs the background D1 read but never compares (3.5043ms)
+✔ compare-on match emits matched with counts/hashes and never row content (1.4893ms)
+✔ compare-on mismatch emits a bounded diff path (1.2337ms)
+✔ projection and V4 modes skip before any D1 call (1.2823ms)
+✔ a direct wrapper construction defaults conservatively to skipping public reads (0.328ms)
+✔ includeUnpublished bypasses the projection gate and shadows the legacy base table (0.7045ms)
+✔ a filters.q search path is M7 and makes zero D1 calls (0.7362ms)
+✔ missing binding, missing scheduler and disallowed surface all skip (13.808ms)
+✔ listRelatedArticleIds enforces a positive bounded limit with zero D1 calls otherwise (0.6421ms)
+✔ shadow truncation is a skip, never a partial comparison (1.0844ms)
+✔ per-isolate max in-flight applies backpressure to a second read (149.4605ms)
+✔ D1 errors and timeouts are swallowed into events and preserve the primary (1.8455ms)
+✔ M6.1/M6.2 reference shadow still compares and returns authoritative identity (1.8177ms)
+✔ resolveD1ShadowConfig keeps the default surfaces reference-only (article shadows stay opt-in) (1.5009ms)
+✔ D1 read statement guards authored identifiers and binds every value (2.3882ms)
+✔ D1 read runner rejects unknown predicate/order columns instead of interpolating (0.68ms)
+✔ D1 read runner revives JSON/array canonical text and fails closed on invalid JSON (1.2036ms)
+✔ D1 read runner fails closed on a malformed response envelope (0.4657ms)
+✔ D1 read statement projects authored columns and renders eq/gte plus ordered directions (0.3355ms)
+✔ D1 read runner rejects unknown select columns and unsupported operators instead of interpolating (0.3665ms)
+✔ D1 read statement renders neq and in with bound values and rejects an empty in (0.4391ms)
+✔ D1 read runner revives only the projected columns (0.3147ms)
+✔ D1 and Supabase source mapping are identical (boolean 0/1 and true/false) (1.0269ms)
+✔ D1 and Supabase glossary mapping are identical and keep the Korean-label order (1.7878ms)
+✔ D1 listTags/getTagBySlug map identically to Supabase and bound the query (1.1884ms)
+✔ D1 listTags safely bounds an omitted limit and getTagBySlug orders by name ascending (0.487ms)
+✔ D1 listIngestionRuns uses the ingest binding, revives metadata and truncates overflow (0.8116ms)
+✔ D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-fills (0.9586ms)
+✔ D1 listJurisdictionArticleCounts truncates overflow and applies the range lower bound (0.5546ms)
+✔ all-green comparable fixture reaches m6 go_candidate while global GO-D1-READ stays blocked (11.7863ms)
+✔ a missing comparable method yields insufficient_evidence (4.0599ms)
+✔ a single mismatch, error, timeout or invalid line forces no_go (13.2067ms)
+✔ structurally impossible events fail closed (0.5481ms)
+✔ compare-disabled probes and skips never satisfy minimum compared coverage (0.7897ms)
+✔ duplicate events are preserved as distinct samples (0.3702ms)
+✔ input order does not change the JSON report (9.28ms)
+✔ latency quantiles are deterministic and order-independent (0.1982ms)
+✔ order-only mismatches are counted without failing parity (3.5581ms)
+✔ safe output contains no hashes, diff paths, URLs, search_query, metadata, client_ip_hash or row content (1.2966ms)
+✔ unsafe reason and error codes are sanitized instead of emitted (0.5211ms)
+✔ global GO-D1-READ remains blocked by the two deferred admin RPC obligations even with green M6 data (3.3589ms)
+✔ strict-scope exit codes reflect m6 versus the always-blocked global gate (3.4884ms)
+✔ empty/no-evidence fixture produces insufficient_evidence and a blocked global gate (0.7683ms)
+✔ CLI writes a markdown report and honors strict scope (1.2711ms)
+✔ CLI exits two on a TTY with no input and zero on help (0.3339ms)
+✔ report and coverage modules stay free of Node builtins and runtime side effects (2.0554ms)
+✔ M6.1 runtime-safe files import no Node builtin and no remote-operator module (12.9739ms)
+✔ the shadow read path only reads: no INSERT/UPDATE/DELETE/UPSERT and only prepare().bind().all() (2.6777ms)
+✔ the shadow comparison uses canonicalJson and a non-crypto digest (1.1178ms)
+✔ runtime revival uses the shared canonical JSON parser, not a private JSON.parse (0.3798ms)
+✔ the runtime shadow seam never couples to a Node global (10.7556ms)
+✔ the Worker entry wires all four D1 bindings, the waitUntil scheduler and the shadow config (0.4574ms)
+✔ wrangler.jsonc declares every shadow var with a safe default, all off (1.0047ms)
+✔ resolveD1ShadowConfig keeps every flag off by default and parses overrides (2.2392ms)
+✔ runtime D1 bindings round-trip for core/ingest/ops/search and clear (0.3547ms)
+✔ all flags off does zero shadow work and returns the authoritative result (0.8045ms)
+✔ read-on compare-off runs the background D1 read but returns the primary result (1.8721ms)
+✔ compare-on match emits matched with counts and hashes but never row content (0.9511ms)
+✔ compare-on mismatch emits mismatched with a bounded diff path (0.7333ms)
+✔ a reordered array is equal but records orderMatches false (0.6305ms)
+✔ getGlossaryTerm compares an object contract and resolves a missing term (1.1089ms)
+✔ D1 read errors and timeouts are swallowed into events and preserve the primary (8.0745ms)
+✔ missing binding, missing scheduler, disallowed surface and sampling all skip (0.6351ms)
+✔ per-isolate max in-flight applies backpressure to a second read (29.5139ms)
+✔ M6.2 covers every remaining method while keeping the M6.1 methods shadowed (0.2558ms)
+✔ M6.1 methods remain shadowed and return authoritative identity after M6.2 (0.6401ms)
+✔ legacy listTags shadows, compares and returns the authoritative array by identity (0.6293ms)
+✔ listTags skips with zero D1 calls in projection mode and when unbounded or over maxRows (0.2756ms)
+✔ a direct wrapper construction defaults to the conservative projection tag skip (0.1519ms)
+✔ getTagBySlug shadows in legacy mode, returns authoritative identity and skips in projection mode (0.4654ms)
+✔ listIngestionRuns skips when the ingest binding is missing even though core exists (0.1983ms)
+✔ listIngestionRuns reads the ingest binding, compares and returns identity (0.4531ms)
+✔ listJurisdictionArticleCounts skips in projection mode and matches the legacy grouping otherwise (0.6504ms)
+✔ listJurisdictionArticleCounts overflow is a skip, never a partial comparison (0.3031ms)
+✔ runtime shadow config slot round-trips (0.1113ms)
+ℹ tests 141
+ℹ suites 0
+ℹ pass 141
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7223.0593
+
+> worldcons@0.1.0 test:d1-case-catalog C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-case-catalog-visibility.test.ts
+
+✔ D1 article list never exposes source-only Catalog rows, even when legacy flags are on (3.5752ms)
+✔ D1 article detail and source-text reads keep source-only Catalog rows private (1.3153ms)
+✔ D1 article reads never expose source-only Catalog text regardless of Catalog text policy (0.7524ms)
+✔ D1 listArticles merges summarized legacy rows without letting Catalog replace them (3.5368ms)
+✔ D1 listArticles never materializes source-only Catalog rows through public filters (1.2337ms)
+✔ D1 catalog search returns the schemaVersion=2 latest/lexical/exact payload shape (6.1851ms)
+✔ D1 catalog exact BVerfG search recovers the docket from authoritative metadata when legacy case_key is null (1.2723ms)
+✔ D1 catalog search applies filters and a stable keyset cursor across pages (3.7064ms)
+✔ D1 catalog search surfaces invalid, mismatch, and expired cursor evidence (1.1054ms)
+✔ catalogCaseSearch public wrapper stays disabled for source-only Catalog data (1.32ms)
+✔ fullTextSearch does not route through the retired source-only Catalog public search (2.1596ms)
+✔ D1 catalog search derives the exact BVerfG case key from authoritative metadata when version.case_key is null (1.2005ms)
+✔ source-only catalog visibility stays off without either flag (0.4045ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2371.1197
+
+> worldcons@0.1.0 test:d1-search-projection C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-search-projection.test.ts
+
+✔ P3 publication authority omits non-published rows and fails closed on ambiguity (2.4767ms)
+✔ the authoritative version snapshot wins over legacy base article content (3.3871ms)
+✔ title, case, search and tag mapping is deterministic and input-order independent (1.4077ms)
+✔ French Conseil L decisions retain exact-case tokens in the search projection (0.6468ms)
+✔ tag hydration is slug-ordered, deduped, and never reads URLs or raw text (0.6315ms)
+✔ tag encoding distinguishes exact slug/name from searchable normalized_name/type (0.314ms)
+✔ the projected document shape exactly matches the authored D1 search schema (0.5343ms)
+✔ the FTS sidecar encodes both authoritative titles 1:1 with search_documents (0.5719ms)
+✔ full rebuild plan is deterministic, bound and scoped to worldcons_search only (2.9821ms)
+✔ incremental plan updates both sides for add/change/remove and is a no-op when identical (1.3279ms)
+✔ the plan fails closed unless FTS sidecar rows are exactly 1:1 with documents (0.6679ms)
+✔ verification detects count, hash, checksum, version and FTS identity drift (1.1407ms)
+✔ the empty corpus is deterministic and valid (0.2672ms)
+✔ the projection library stays runtime-neutral (no Node builtins) (3.035ms)
+✔ the SearchRepository is Cloudflare D1-authoritative and search_m7 is retired (1.49ms)
+✔ the operator CLI is local-only and never executes a remote write (1.042ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 441.7984
+
+> worldcons@0.1.0 test:d1-fts-search C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-fts-search.test.ts
+
+✔ the sidecar encodes both authoritative titles and never carries a URL or raw text (1.9681ms)
+✔ title boundaries never inject artificial single-character tokens (14.0842ms)
+✔ boundary-encoded tags stay FTS-searchable and inject no marker tokens (1.8261ms)
+✔ exact original-title and exact Korean-title queries win when both titles exist (2.718ms)
+✔ exact-title priority beats a higher-bm25, more recent non-exact document (1.3364ms)
+✔ plain terms AND, quoted phrases, OR and negative terms follow the documented subset (3.4521ms)
+✔ optional source, jurisdiction, contentType and language filters bind correctly (3.6711ms)
+✔ latest/today/week/month ranges follow the injected UTC clock (3.1368ms)
+✔ bm25 ordering is deterministic with exact-title, date and id tie-breaks (2.2119ms)
+✔ multilingual terms and case-number identifiers are searchable and filterable (3.1894ms)
+✔ invalid query, limit, range, filter and clock inputs fail closed with stable codes (1.4514ms)
+✔ the MATCH expression is bound and user text never enters SQL (0.3633ms)
+✔ the runtime reader fails closed on malformed D1 responses (2.5953ms)
+✔ parity metrics are deterministic and order-sensitive (0.4514ms)
+✔ SearchRepository is Cloudflare D1-authoritative and the retired search_m7 blocker stays removed (1.5432ms)
+✔ the search-fts and search-projection libraries stay runtime-neutral with no network code (4.1967ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 515.8324
+
+> worldcons@0.1.0 test:d1-ranked-search C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-ranked-search.test.ts
+
+✔ the projected corpus encodes exact tag boundaries while keeping tags searchable (1.3764ms)
+✔ primary exact-case reference precedence is alias first and returns one reference (1.2734ms)
+✔ exact-case branch resolves Germany, France, Spain, US and the alias (16.5347ms)
+✔ the alias wins over another exact reference in the same query (1.5069ms)
+✔ case_numbers matching is an exact line token, not a substring (1.9763ms)
+✔ a conflicting p_source returns an empty exact-case page (1.4795ms)
+✔ empty query is latest regardless of requested mode, ordered date desc nulls last then id (2.1734ms)
+✔ limit/offset pagination trims the +1 window and reports hasMore (1.4523ms)
+✔ count exact returns the true total, planned/estimated/none return the lower bound (3.7096ms)
+✔ latest filters bind source/jurisdiction/contentType/language/range (2.1201ms)
+✔ UTC range thresholds include the exact boundary instant and exclude one millisecond before (2.1635ms)
+✔ equal published dates tie-break by article_id ascending regardless of input order (1.3296ms)
+✔ tag exact filters match boundary slug/name but not normalized_name/type/substring (2.3375ms)
+✔ fulltext reuses the M7.2 compiler with exact-title priority and bound filters (3.6622ms)
+✔ fulltext exact-title priority beats a higher-bm25, more recent non-exact document (1.457ms)
+✔ fulltext ordering is deterministic with date/id tie-breaks (1.6361ms)
+✔ semantic/hybrid without an exact case fail closed with a stable deferred code (2.3021ms)
+✔ malformed fulltext queries fail closed instead of falling back to a lexical scan (1.4384ms)
+✔ invalid query/mode/count/limit/offset/range/filter/clock fail closed with stable codes (0.6119ms)
+✔ queries are fully parameterized and user text never enters SQL (0.5032ms)
+✔ the runtime reader fails closed on malformed D1 responses (1.8595ms)
+✔ frozen M7.3 entry shape survives the M7.4 optional-field type expansion (1.581ms)
+✔ the ranked library stays runtime-neutral with no network code (2.1817ms)
+✔ SearchRepository is Cloudflare D1/Vectorize-authoritative and search_m7 is retired (1.6875ms)
+✔ French L exact search preserves the suffix and retrieves its canonical line token (2.6324ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 568.7643
+
+> worldcons@0.1.0 test:d1-vector-search C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-vector-search.test.ts
+
+✔ projection builds a record for the current published artifact with full provenance (14.8447ms)
+✔ null/blank optional metadata is omitted rather than encoded as a fake string (1.1891ms)
+✔ a missing artifact is omitted and reported, never fabricated (8.2584ms)
+✔ stale provenance (provider/model/dimensions/inputHash/contentHash/article) is rejected, not upserted (0.421ms)
+✔ a structurally malformed matching artifact fails closed (1.6143ms)
+✔ duplicate artifacts for the same version fail closed (0.1624ms)
+✔ mutation plan detects add/change/remove/no-op and never emits vector values (9.5049ms)
+✔ mutation plans and full projection fail closed on duplicate Vectorize ids (0.9843ms)
+✔ the metadata index manifest is exactly the five authored scalar fields (0.284ms)
+✔ the Vectorize metadata filter is null when unconstrained and exact when constrained (0.704ms)
+✔ the hybrid candidate-limit formula matches the RPC floor, page and ceiling (0.2994ms)
+✔ exact-case and empty-query latest work without a Vectorize binding even when mode is semantic/hybrid (17.7145ms)
+✔ a non-exact semantic/hybrid request without an embedding fails closed like the RPC (14.1005ms)
+✔ a non-exact semantic/hybrid request without a Vectorize binding fails closed without a lexical fallback (1.8794ms)
+✔ query embeddings with wrong width, non-finite values or zero norm fail closed (8.518ms)
+✔ semantic scalar prefilters match source/jurisdiction/contentType/language (9.734ms)
+✔ semantic UTC range thresholds reproduce today/week/month/latest (9.1676ms)
+✔ semantic ordering is score desc, publishedEpoch desc nulls last, id asc (3.6928ms)
+✔ p_tag on semantic/hybrid fails closed with the stable deferred code and is not post-filtered (7.6971ms)
+✔ semantic pagination trims the +1 window, reports hasMore and uses the lower-bound total (8.0427ms)
+✔ semantic exact count is deferred; planned/estimated/none use the lower bound (7.3196ms)
+✔ the semantic window ceiling fails closed above the Vectorize topK maximum (7.6225ms)
+✔ semantic Vectorize queries bind exact topK and omit an empty metadata filter (7.8041ms)
+✔ hybrid Vectorize queries bind the exact candidate limit and the lexical list matches it (9.2128ms)
+✔ malformed Vectorize responses fail closed (3.0781ms)
+✔ hybrid ignores Vectorize-only orphan ids while preserving valid ranked candidates (7.8057ms)
+✔ hybrid RRF rewards lexical + semantic agreement with the exact RPC score (3.7941ms)
+✔ hybrid requires each candidate limit <= 100 and defers otherwise (7.4894ms)
+✔ a semantic-only exact-title candidate receives exact-title priority from the D1 metadata lookup (142.167ms)
+✔ hybrid candidate metadata lookups are fully parameterized and never interpolate ids or query text (7.399ms)
+✔ SearchRepository is Cloudflare D1/Vectorize-authoritative and search_m7 is retired (1.4052ms)
+✔ the search-vector and search-ranked libraries stay runtime-neutral with no remote mutation (6.2557ms)
+✔ package scripts wire the vector test exactly once (0.5536ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 932.1206
+
+> worldcons@0.1.0 test:d1-search-canary C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-search-canary.test.ts
+
+✔ bootstrap plans a create for a missing canary index and all metadata indexes (1.2622ms)
+✔ bootstrap is a no-op when the canary index and metadata indexes already exist (0.1883ms)
+✔ bootstrap refuses to modify an existing index with wrong dimensions (0.3014ms)
+✔ literalize replaces placeholders outside literals and escapes quotes (0.2558ms)
+✔ literalize fails closed on parameter/placeholder mismatch (0.4489ms)
+✔ literalizeScript joins statements with a trailing semicolon (0.4018ms)
+✔ parseRemoteD1Envelope retains rows and the rows-read metric (1.0439ms)
+✔ parseRemoteD1Envelope fails closed on a non-successful envelope (0.2189ms)
+✔ parseMetadataIndexNames accepts string and object shapes (0.2621ms)
+✔ parseVectorizeMatches accepts a bare array and an envelope (0.4514ms)
+✔ parseVectorizeMatches accepts Wrangler's human banner followed by JSON (0.1975ms)
+✔ parseVectorizeIndexDetail preserves async mutation progress (0.1933ms)
+✔ parseVectorizeUpsertResult requires the accepted record count (0.1975ms)
+✔ semantic oracle resolves the current published embedding server-side when vectorId is available (1.2313ms)
+✔ production semantic oracle eligibility is false when the public projection embedding is null (0.1958ms)
+✔ projection plan bounds the corpus and reports the full counts (38.111ms)
+✔ projection plan fails closed above the max-articles ceiling (1.8464ms)
+✔ an empty canary projection is populated with insert-only statements (15.2782ms)
+✔ the synthetic canary insert statements remain below D1's 100KB statement ceiling (3.3432ms)
+✔ cases are deterministic and cover exact-case, fulltext, semantic and hybrid (5.3005ms)
+✔ evaluate honors top-id, contains and exact-order expectations (0.5834ms)
+✔ oracle parity requires top-id for lexical and membership for semantic/hybrid (0.1469ms)
+✔ a generic lexical oracle divergence is informational and does not fail the case (0.3917ms)
+✔ metrics require enough compared cases and reject any mismatch or latency overflow (0.7302ms)
+✔ percentile uses nearest-rank semantics (0.1216ms)
+✔ error observations are counted as errors, never as compared (0.249ms)
+✔ report is deterministic and markdown carries the verdict without vector values (4.7749ms)
+✔ report verdict is insufficient_evidence when nothing was compared (2.2238ms)
+✔ the runtime-neutral search-canary barrel imports no node builtin (9.7391ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 745.7692
+
+> worldcons@0.1.0 test:d1-search-canary-m7.6 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/d1-search-canary-m7.6.test.ts
+
+✔ worker contract parses a valid parameterized D1 statement (2.1914ms)
+✔ worker contract fails closed on a malformed D1 statement (0.5257ms)
+✔ worker contract parses D1 results and rejects invalid change counts (0.2404ms)
+✔ worker contract parses a run request and response (0.4453ms)
+✔ canary worker auth accepts only the exact bearer token and fails closed (0.2097ms)
+✔ canary worker error bodies never leak a token and collapse unknown codes (0.2861ms)
+✔ the worker writer surfaces a bounded error without the token (20.9177ms)
+✔ the binding canary sends only ids/latency fields with the bearer token (2.0737ms)
+✔ write plan keeps a large document as a bound parameter and never literalizes it (1.9354ms)
+✔ write plan refuses a non-INSERT statement and an unsupported param (0.4515ms)
+✔ write plan execution is serial and sums the affected rows (0.4237ms)
+✔ oracle mode resolution is explicit for lexical, semantic and unavailable cases (0.201ms)
+✔ artifact reference parity follows the frozen expectation with no production call (0.3411ms)
+✔ evaluate records the explicit oracle mode and drift (0.2953ms)
+✔ timings keep operator wall time separate from binding/runtime latency (0.2877ms)
+✔ runtime binding thresholds gate only when binding samples exist (0.6781ms)
+✔ report carries the write plan summary, timings and oracle accounting (0.9182ms)
+✔ a large sentinel search_text never reaches JSON, markdown, summary or output summaries (1.0597ms)
+✔ a thrown write error does not echo the bound search_text (1.0153ms)
+✔ the canary CLI passes only the write-plan summary to the report and never logs it (0.6249ms)
+✔ a verified 15-row canary expands append-only to a 100-row projection (10.9468ms)
+✔ expansion fails closed on a remote-only canary id (0.4207ms)
+✔ expansion fails closed on a checksum mismatch for an overlapping id (0.1659ms)
+✔ expansion fails closed on a projection-version mismatch (0.1487ms)
+✔ expansion fails closed when search_fts identity diverges from search_documents (0.1628ms)
+✔ an exact existing canary projection is a true no-op (0.1609ms)
+✔ the runtime-neutral canary modules import no node builtin and exclude the operator (11.7315ms)
+✔ the isolated canary Worker config has no production route and the production config is untouched (1.7926ms)
+✔ the worker source declares real D1 + Vectorize bindings and requires auth (0.8668ms)
+✔ the canary query embedding is a local-only 1536-d unit vector (0.3484ms)
+✔ hasCanaryVectorId rejects blank/absent/non-string ids (0.1513ms)
+✔ the worker source is vectorId-backed and never forwards a raw query vector (1.0367ms)
+✔ a semantic canary case resolves through queryById and ignores the local embedding (5.3032ms)
+✔ a hybrid canary case resolves through queryById and ignores the local embedding (3.3815ms)
+✔ the worker rejects semantic/hybrid cases without a vectorId fail-closed (1.9774ms)
+✔ the local-dev bypass accepts exactly the loopback hosts when the flag is true (1.0371ms)
+✔ the local-dev bypass is refused on every non-loopback host (1.3108ms)
+✔ the local-dev bypass requires the flag to be exactly the string true (1.1479ms)
+✔ the normal bearer path is unchanged on loopback when the dev flag is absent (0.5613ms)
+✔ the local-dev health response leaks neither the dev flag nor the token (0.1962ms)
+✔ isLoopbackCanaryHostname accepts only the exact loopback hosts (0.111ms)
+✔ isCanaryDevUnauthorized requires both the exact flag and a loopback host (0.0806ms)
+✔ the local-dev writer refuses non-loopback, https and malformed endpoints (0.3443ms)
+✔ the local-dev writer sends no authorization header and never a token (0.4594ms)
+✔ resolveSearchCanaryWriter picks local-dev only on an explicit opt-in (0.4077ms)
+✔ resolveSearchCanaryBindingTarget requires an explicit loopback opt-in for a tokenless run (0.2095ms)
+✔ the binding canary omits authorization only for the explicit loopback dev path (0.4926ms)
+✔ the isolated bindings opt into remote dev resolution without changing identities or routes (1.9461ms)
+✔ the worker source gates the bypass on the helper and never hardcodes a token bypass (0.8904ms)
+✔ exact-case fulltext keeps strict production-rpc top-id parity (0.477ms)
+✔ generic lexical fulltext stores informational rank metrics and does not fail (0.1734ms)
+✔ the unagreed fulltext rank threshold blocker derives only from non-strict lexical comparisons (0.4783ms)
+✔ binding samples make binding thresholds the latency gate and operator time evidence only (0.1651ms)
+✔ without binding samples the legacy operator latency thresholds still gate (0.165ms)
+✔ rank comparison evidence carries ids/counts only and no bound content (0.1591ms)
+ℹ tests 55
+ℹ suites 0
+ℹ pass 55
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 756.1797
+
+> worldcons@0.1.0 test:m7.7a C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m7.7a-semantic-authority.test.ts
+
+✔ M7.7-A migration preserves the gate2 column list/order and changes only embedding authority (2.3203ms)
+✔ M7.7-A migration preserves the gate2 eligibility predicate exactly (0.2837ms)
+✔ M7.7-A migration joins the current provenance-locked Gemini artifact (0.1855ms)
+✔ M7.7-A migration fails closed on view column drift and reloads PostgREST (0.4144ms)
+✔ source selection keeps the historical published-only selection without gate2 eligibility (0.5728ms)
+✔ gate2 legacy eligibility requires a current freshness classification and no published catalog (0.3777ms)
+✔ gate2 enrichment_full eligibility requires the matching anchor id and source hash (0.3404ms)
+✔ gate2 eligibility rejects an ambiguous published catalog publication and wires through the builder (0.7807ms)
+✔ semantic provenance audit SQL selects counts only and never a vector, text, URL or id (0.3649ms)
+✔ semantic provenance audit parser reports counts only and fails closed on malformed input (0.664ms)
+✔ semantic provenance audit script is read-only with no apply flag (0.1682ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 552.6784
+
+> worldcons@0.1.0 test:m7.8a C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m7.8a-semantic-authority-rollout.test.ts
+
+✔ M7.8-A pins the exact forward migration version, path and SHA-256 (1.8884ms)
+✔ the gate2 projection column contract is exactly 36 columns in gate2 order (1.0409ms)
+✔ the migration ledger is read-only and the linked project identity is pinned (0.644ms)
+✔ the pending set must be exactly the single target version (0.4916ms)
+✔ the CLI migration inventory cross-check parses only 14-digit versions (0.3815ms)
+✔ the apply plan carries only the exact forward-migration bytes through db query --linked (0.6186ms)
+✔ the apply path never uses forbidden migration tooling (0.3286ms)
+✔ apply requires both the explicit flag and an in-process preflight (0.2499ms)
+✔ the rollout script is dry-run by default and supports every documented mode (0.1871ms)
+✔ record-history is a post-apply-only ledger reconciliation, never a preflight or schema-apply surface (0.8018ms)
+✔ the migration-repair invocation is exactly `migration repair --linked --status applied <version>` (0.6304ms)
+✔ history repair is forbidden before the exact-SQL apply and before post-apply validation (0.2463ms)
+✔ ledger state records the post-apply pending set and applied state without leaking content (0.4196ms)
+✔ the preflight baseline is enforced strictly unless --allow-live-baseline captures same-day counts (0.4452ms)
+✔ post-apply validation gates columns, count+digest, artifact-backing, mismatches and smoke drift (0.3901ms)
+✔ the semantic/hybrid smoke uses the M7.6 oracle seam and fails closed on drift (0.4656ms)
+✔ the read-only preflight SQL selects counts/columns/digests only (0.3638ms)
+✔ the rollback candidate is staged outside supabase/migrations and restores bare v.embedding (0.5423ms)
+✔ evidence is content-free and rejects vectors, URLs, text and forbidden keys (1.2217ms)
+✔ apply evidence carries a content-free history block while preflight evidence has none (0.4469ms)
+✔ finalize-existing is a read-only verification that never applies SQL or repairs the ledger (0.5704ms)
+✔ finalize-existing validates the finalized post-state read-only (target present, pending empty, exact counts) (0.6166ms)
+✔ finalize-existing evidence marks the recovered state and never fabricates a pre-digest comparison (2.0371ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 637.6901
+
+> worldcons@0.1.0 test:m7.8b C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m7.8b-rank-policy-decision.test.ts
+
+✔ the committed v5 holdout manifest reproduces the deterministic selection and frozen hash (4.4492ms)
+✔ the v5 holdout hash is order-independent and distinct from the v4 corpus hash (1.2948ms)
+✔ holdout selection is deterministic, category-complete and disjoint from v4 (2.7768ms)
+✔ the v5 strict anchors are metadata-derived source-scoped shapes, never a v4 re-run (0.312ms)
+✔ holdout candidate validation rejects a category/invariant mismatch (0.2844ms)
+✔ the v5 holdout manifest is content-free and carries only queries/ids/filters/categories (0.6447ms)
+✔ the checked-in decision template is explicitly undecided and refuses to pass as a decision (0.8897ms)
+✔ a finalized decision validates and is bound to the v5 holdout hash (0.9065ms)
+✔ the decision parser fails closed on structural violations (0.4068ms)
+✔ the sealed v4 metric/reference guards reject any leak recursively (0.6446ms)
+✔ numeric mode requires explicit thresholds and a rationale while non-numeric modes reject thresholds (0.5357ms)
+✔ the decision hash is canonical, order-independent and ignores the hash field (0.3215ms)
+✔ equivalence E1 requires a frozen validated target and both observed tops inside the set (0.3833ms)
+✔ E2, E3 and E4 evaluate candidate coverage without ever reading order metrics (0.2655ms)
+✔ candidate-coverage equivalence gates on every applicable invariant and never on order metrics (0.5555ms)
+✔ the holdout evidence report is content-free and bound to decisionHash + holdoutHash (0.6091ms)
+✔ the holdout report hash excludes generatedAt and the informational blocker is preserved (0.4096ms)
+✔ the holdout harness refuses an unfinalized/mismatched decision before any linked query (0.2446ms)
+✔ the holdout harness is read-only and never writes to Supabase/D1/Vectorize (0.2331ms)
+✔ the M7.8-B package scripts are wired and included in the release gate (0.1329ms)
+✔ the M7.8-B rank-policy surfaces are runtime-neutral with no node builtin or network code (4.7512ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 397.1398
+
+> worldcons@0.1.0 test:m7.9 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m7.9-deployed-search-canary-runtime.test.ts
+
+✔ deployed runtime evidence passes all three modes within the frozen latency gate (4.1633ms)
+✔ missing, errored, mismatched and slow deployed observations fail closed (1.1058ms)
+✔ deployed runtime evidence is content-free and stable across generatedAt (0.8744ms)
+✔ operator runner is pinned, dry-run by default and has no apply or write path (2.1265ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 622.4481
+
+> worldcons@0.1.0 test:m8 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m8-async-pipeline.test.ts tests/m8-crawler-source-ownership.test.ts tests/search-projection-sync.test.ts tests/m8-p5-forward-fix.test.ts tests/admin-jobs-d1-repository.test.ts tests/p5-d1-health-repository.test.ts tests/watchdog-d1.test.ts
+
+✔ admin job D1 creation binds idempotency payload and returns JSON mappings (4.9404ms)
+✔ admin job D1 creation resolves duplicate idempotency keys to the existing row (0.3643ms)
+✔ admin job D1 claim atomically prioritizes expired leases and binds job types (0.5256ms)
+✔ admin job success transition cannot overwrite a cancellation request (0.4971ms)
+✔ M8 cron inventory maps every retired schedule to stable messages (3.5815ms)
+✔ queue replay yields the same Workflow and executor identities (0.5222ms)
+✔ workflow instance ids are Cloudflare-valid and collision-safe for representative keys (1.56ms)
+✔ every M8 task kind is native and crawler-daily fans out by source (3.6338ms)
+✔ translation native executor invokes the main Worker RPC with quota-paced defaults (1.0149ms)
+✔ publication workflow refreshes the search projection after release (1.909ms)
+✔ translation workflow publishes and refreshes search immediately after successful translation (2.8972ms)
+✔ watchdog probes publication backlog and only then recovers publication plus search (3.1087ms)
+✔ embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch (0.7619ms)
+✔ M8_ENABLED_KINDS parser fails closed and honors exact kinds (0.7714ms)
+✔ scheduler gate: disabled => no dispatch, enabled => allowlist only (0.464ms)
+✔ scheduled() gates per kind: only admin-health enqueues under the canary allowlist (0.285ms)
+✔ queue partition acks blocked kinds, retries invalid, dispatches eligible (0.4441ms)
+✔ canary operator report routes every eligible kind natively (0.7642ms)
+✔ Cloudflare config locks single-consumer retries and a DLQ (0.6666ms)
+✔ GitHub has no operational workflows; Cloudflare owns all schedules (0.3294ms)
+✔ P1 publication pipeline inherits the stable M8 identity (0.9643ms)
+✔ Browser Run client keeps HTTPS, auth, and result mapping bounded (38.3511ms)
+✔ Browser Run client ignores GitHub Actions identity variables and requires its bearer (0.5414ms)
+✔ consolidated Browser Run public endpoint is bearer-only (0.3893ms)
+✔ Browser Run endpoint refuses plaintext transport (0.2389ms)
+✔ request-governor parity: Browser Run navigation acquires and releases a per-source permit (0.6618ms)
+✔ governor propagation: fetchRawItem never drops the per-source request governor on browser escalation (1.6993ms)
+✔ restart/recovery: replay after consumer restart yields the same Workflow id and one create per identity (0.4393ms)
+✔ restart/recovery: gate-closed valid messages ack without dispatch, malformed payloads stay bounded toward DLQ (0.6618ms)
+✔ no-duplicate-publication: two identical M8 identities collapse to one publication command identity (0.8998ms)
+✔ absent/empty exclusion keeps every native source legacy-owned (1.852ms)
+✔ France exclusion yields the remaining three native sources (0.2639ms)
+✔ France and Spain are staged-owned while Germany and US remain M8-owned (1.5202ms)
+✔ exclusion config trims, dedupes, and preserves native order (0.1828ms)
+✔ unknown and malformed exclusions fail closed to an empty effective list (0.4458ms)
+✔ crawler-daily Workflow iterates only effective sources and reports evidence (1.0871ms)
+✔ /health exposes effective and excluded crawler sources without secrets (0.557ms)
+✔ production worker config gives staged and M8 mutually exclusive source ownership (0.5044ms)
+✔ M8 P5 forward-fix adds runtime freshness classification without weakening the v4 guard (1.1527ms)
+✔ M8 P5 parity repair captures current legacy content instead of publishing stale draft versions (0.3208ms)
+✔ M8 P5 quarantine resolution is restricted to attention-clear articles already projected (0.2506ms)
+✔ M8 P5 forward-fix never mutates immutable resolution or freshness rows in place (0.2345ms)
+✔ P5 D1 adapter reads each owning database and returns the P5 evidence contract (4.7609ms)
+✔ P5 D1 adapter fails closed when an owning D1 read fails (0.5672ms)
+✔ eligible Core rows build and apply a verified 1:1 D1 search projection (19.0495ms)
+✔ sync batch size stays within the bounded D1 batch envelope (1.368ms)
+✔ native watchdog records and deduplicates events using D1 only (2.9631ms)
+✔ native watchdog dedupe prunes without appending another event (0.364ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1153.5523
+
+> worldcons@0.1.0 m8:types:check C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> wrangler types workers/async-pipeline/worker-configuration.d.ts --config workers/async-pipeline/wrangler.jsonc --strict-vars=false --check
+
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+✨ Types at workers/async-pipeline/worker-configuration.d.ts are up to date.
+
+
+> worldcons@0.1.0 m8:typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsc --noEmit -p workers/async-pipeline/tsconfig.json
+
+
+> worldcons@0.1.0 test:m9 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m9-search-service.test.ts
+
+✔ M9 named search service preserves the provider contract (28.4546ms)
+✔ M9 reusable search service has health and a D1-only readiness probe (3.7124ms)
+✔ M9 internal cclmetasearch validates its service-binding contract (3.1683ms)
+✔ Cloudflare runtime Supabase clients are unavailable even when secrets are present (0.2606ms)
+✔ M9 named entrypoint owns internal requests while default fetch stays vinext (2.3755ms)
+✔ M9 public cclrag2 adapter keeps rate limiting before direct D1 reads (0.6951ms)
+✔ WorldconsOpsService initializes D1, Vectorize, and Gemini bindings for native embedding backfills (1.4078ms)
+✔ M9 main config contains the D1 and Gemini runtime settings without a self-binding (2.791ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2350.5984
+
+> worldcons@0.1.0 test:m10 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m10-d1-write-canary.test.ts
+
+✔ M10 site-event canary is explicit, bounded and D1-authoritative (1.6019ms)
+✔ M10 D1 statements bind the canary identity instead of interpolating it (10.752ms)
+✔ M10 canonical comparison treats SQLite and Postgres storage forms as equivalent (0.4222ms)
+✔ M10 canonical comparison fails closed on a field mismatch (0.1752ms)
+✔ M10 canary rejects malformed identity and timestamp (0.472ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 336.1376
+
+> worldcons@0.1.0 test:e2e-p0-m1 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m1-generations.test.ts
+
+✔ M1 canonical hashes ignore processing timestamps/key order, preserve content/array order/Unicode (17.554ms)
+✔ M1 preserves legacy P3 hash/ID, adopts current version, then timestamp-only recollection advances nothing (28.7051ms)
+✔ M1 initial opt-in retains legacy content_hash and deterministicVersionId (28.2195ms)
+✔ M1 additive migration reruns without rewriting history; every verify directive matches SQLite DDL (16.7472ms)
+✔ M1 catalog role and legacy hash omission cannot silently approve the wrong P3 snapshot (33.3463ms)
+✔ M1 changed summary advances P3+generation; policy/tags/review advance only generation; history is preserved (32.5871ms)
+✔ M1 duplicate delivery returns recorded generation even after newer generation, rejects changed approval context (20.5647ms)
+✔ M1 p3 changes after pre-read: CHECK aborts the entire batch (20.4239ms)
+✔ M1 v4 changes after pre-read: CHECK aborts the entire batch (20.7752ms)
+✔ M1 publication changes after pre-read: CHECK aborts the entire batch (28.4904ms)
+✔ M1 article changes after pre-read: CHECK aborts the entire batch (19.8744ms)
+✔ M1 tags changes after pre-read: CHECK aborts the entire batch (19.8124ms)
+✔ M1 generation changes after pre-read: CHECK aborts the entire batch (20.5215ms)
+✔ M1 two deliveries with the same observed head: one commits, loser retries idempotently (17.4026ms)
+✔ M1 SQL failure at batch end rolls back P3, heads, history, cache outbox, requests and generations (16.097ms)
+✔ M1 source-only, provenance conflicts, blocked review and non-official automatic URL stay unpublishable (62.71ms)
+✔ M1 withdrawn/re-published same version has separate generations and never claims completed_verified (23.9886ms)
+✔ M1 malformed opt-in is rejected before DB access (12.4835ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 877.5749
+
+> worldcons@0.1.0 test:e2e-p0-m2 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m2-search-repair.test.ts tests/e2e-p0-m2-d1-runtime.test.ts
+
+✔ M2 local workerd D1: actual API batch/RETURNING and full publication rollback (11468.5989ms)
+✔ M2 reserves one immutable Search identity in the publication batch; recollection adds no work (42.1219ms)
+✔ M2 withdrawal reserves remove and invalidates old processing and transport fences atomically (20.503ms)
+✔ M2 commit-before-send recovery sends identity only and cannot record completion (20.8245ms)
+✔ M2 accepted send with lost response retries the same identity without consuming processing attempts (19.84ms)
+✔ M2 interruption after accepted send preserves transport lease; expiry recovers by duplicate send (19.6251ms)
+✔ M2 simultaneous dispatchers have one owner and one send (18.2846ms)
+✔ M2 late send confirmation cannot overwrite a newer transport owner (19.3915ms)
+✔ M2 new generation while sending supersedes the old row and rejects its late result (24.3699ms)
+✔ M2 transport attempts budget dead-letters without pretending Consumer processing (19.454ms)
+✔ M2 transport time budget dead-letters without pretending Consumer processing (21.9889ms)
+✔ M2 send failure cannot dead-letter an active Consumer lease (19.9059ms)
+✔ M2 jitter is capped at 15 minutes and durable processing delay is respected (19.6396ms)
+✔ M2 Consumer verification during send cannot be undone by transport settlement (20.0122ms)
+✔ M2 SQL failure after progress update rolls back settlement while keeping the durable lease (23.0821ms)
+✔ M2 terminal work and changed Core publication heads never enter Queue (53.8958ms)
+✔ M2 reconciliation repairs an M1 upgrade hole idempotently without new P3/generation (27.3177ms)
+✔ M2 reconciliation snapshot race rolls back stale reservation (22.1277ms)
+{"event":"e2e_search_repair_not_ready","reason":"protected_consumer_or_queue_missing"}
+✔ M2 additive schema rerun preserves work; verified requires durable evidence (16.8513ms)
+{"event":"e2e_search_repair_dispatch","reservedCount":0,"conflictCount":0,"claimedCount":1,"sentCount":1,"failedCount":0,"deadLetterCount":0,"fencedCount":0,"pendingCount":1,"oldestPendingAgeSeconds":0,"repeatedFailureCount":0,"coreIdentityDriftCount":0,"missingReservationCount":0,"requiresAttention":false}
+{"event":"e2e_search_repair_failed","reason":"schema_or_dispatch_unavailable"}
+✔ M2 scheduled dispatcher stays disabled until dedicated protected Consumer is ready (29.5347ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12537.0388
+
+> worldcons@0.1.0 test:e2e-p0-m3 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m3-search-guards.test.ts tests/e2e-p0-m3-d1-runtime.test.ts
+
+✔ M3 local workerd: separated real D1 APIs execute guard/FTS transaction, receipt and withdrawal (16329.4285ms)
+✔ M3 applies exact P3 and both Search sides; duplicate receipt consumes no additional attempts/completion (53.4161ms)
+✔ M3 reverse generation and same-generation stale fence/conflicting identity roll back all Search/FTS (33.2304ms)
+✔ M3 withdrawal persists tombstone and old publish cannot resurrect FTS (28.8263ms)
+✔ M3 legacy plan executor, full rebuild, single sync and raw old document writer cannot overwrite cohort (34.406ms)
+✔ M3 full sync stale removal snapshot cannot delete a newly published protected B (26.9614ms)
+✔ M3 Core B/Search A gap and immediate withdrawal are hidden from public search (41.8021ms)
+✔ M3 public guard checks are batched and Core failure never falls back to stale Search (25.7323ms)
+✔ M3 mutable drafts never replace approved public P3; withdrawal filters detail/list/source (25.22ms)
+✔ M3 mutable tag/review drift blocks stale public projection and Consumer (24.2516ms)
+✔ M3 actual document/FTS corruption with unchanged checksum triggers same-generation repair (33.6483ms)
+{"event":"e2e_consumer_claim_wait","phase":"claim_lost","observedAt":"2026-10-12T11:28:20.747Z","fencingToken":0,"outboxId":"01f7634e718fbcbb4a73b60450146cae146346a32e3b2101370f86f441181cee"}
+✔ M3 duplicate concurrent deliveries have one processing owner (23.8587ms)
+✔ M3 Search batch late failure leaves no partial guard, document or FTS (28.9855ms)
+✔ M3 Search commit before Core receipt interruption resumes without duplicate FTS or new P3 (28.1524ms)
+✔ M3 expired owner cannot record receipt; reclaimed fence repairs and owns outcome (30.4186ms)
+✔ M3 B committed/applied while A is in flight remains unchanged and A gets no receipt (30.9122ms)
+✔ M3 processing budget dead-letters failures; Queue duplicates do not exhaust it (24.3405ms)
+{"event":"e2e_search_repair_consumer","status":"awaiting_verification"}
+✔ M3 dedicated Queue remains disabled; enabled handler ACK follows durable apply receipt (20.4594ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"d334be17-5889-456f-b5e0-9a5b4bb21ce8","error":"Error"}
+✔ M3 real public provider returns approved content/no-store, gap 503 and withdrawn detail 404 (71.1567ms)
+✔ M3 expired final attempt and elapsed failure budget reach dead-letter without an extra attempt (42.8261ms)
+✔ M3 public cache re-reads Core schema and bypasses cached content; unavailable Core fails closed (13.5149ms)
+✔ M3 public check catches first enrollment while Search is being read (17.4455ms)
+✔ M3 Core detail drops A when B commits during immutable version hydration (21.4867ms)
+✔ M3 migration verifier and enabled Consumer reject an incomplete Search trigger deployment (14.4553ms)
+✔ M3 legacy executor reserves guard statements within the D1 100 statement/parameter envelope (16.4179ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17492.1721
+
+> worldcons@0.1.0 test:e2e-p0-m4 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m4-verification.test.ts tests/e2e-p0-m4-staged.test.ts tests/e2e-p0-m4-d1-runtime.test.ts
+
+{"event":"m4_local_runtime_evidence","scope":"synthetic_local_workerd","verificationDocument":{"apiChecks":{"approvedBodyPrefixMatches":true,"approvedSummaryMatches":true,"detailTextLimit":4000,"exactArticleIdentity":true,"expectedSearchMembership":true},"appliedFence":1,"approvalEvidenceRef":"core:e2e-approval:8ef52c4fd4b972ba976abe0c4abb76337a03b4c155f0b2588877daa850841144","approvalKey":"8ef52c4fd4b972ba976abe0c4abb76337a03b4c155f0b2588877daa850841144","articleId":"11111111-1111-4111-a111-111111111111","caseNumber":"2026-912 QPC","deploymentRef":"fixture:actual-local-workerd","documentFingerprint":"475ad24adb43b7b8b0324fd4c7ed1cbdedaf1fd47988118496d842f20d8e7325","expected":{"documentCount":1,"documentFingerprint":"475ad24adb43b7b8b0324fd4c7ed1cbdedaf1fd47988118496d842f20d8e7325","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189"},"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","generationId":"4fcdbc21585afd0e838a110a64ee51b61d9fd5915e8b6e3b0f9ccdebbd2298f7","generationSeq":1,"observed":{"documentCount":1,"documentFingerprint":"475ad24adb43b7b8b0324fd4c7ed1cbdedaf1fd47988118496d842f20d8e7325","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","matches":true},"policyVersion":"worldcons.fr-es-staged-approval.v1","probes":[{"cacheControl":"no-store","observedAt":"2026-10-12T11:28:49.649Z","responseHash":"d74b82b7ae57e7042a853ea154c8c747ee846cbb17d650251db56f528fbc114f","status":200,"transport":"external-http","url":"https://fixture.example/api/articles/m1-fixture?textLimit=4000"},{"cacheControl":"no-store","observedAt":"2026-10-12T11:28:49.649Z","responseHash":"50ac81ae4d6d73dc563006e3747794fddd8a739055aeab7e3751f925370f0803","status":200,"transport":"external-http","url":"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none"}],"projectionInputHash":"b061d39788c80eea611535d0fefd8198db196fc3c23ce9813e132c1bdb6b62fc","publicationId":"20ee207f-442e-4058-a4a3-041669cd7dd8","publicationRevision":1,"result":"completed_verified","schema":"worldcons.verification.v1","scope":"single_article","sourceEvidenceRef":"stages/ingest-crawl/workerd-m4.json","verificationFence":3,"verifiedAt":"2026-10-12T11:28:49.649Z","versionId":"8b9137e4-6d33-50b6-a33c-cd75ba4742f6","versionRevision":1}}
+✔ M4 real local workerd public Worker and separated D1 APIs verify actual content and atomic completion (17291.122ms)
+✔ M5 verifier probe runs inside workerd, uses supported manual redirects and rejects redirects before reading a body (1903.5595ms)
+{"event":"m4_local_staged_evidence","scope":"synthetic_local","officialTransport":"fixture","translation":"fixture","generation":{"generation_id":"85d4a79f71e65919878ffece77d534d35bc5137433c25b34a498fdaae4a1468e","article_id":"d01e37f5-6a31-4cc1-991d-69bad51da005","generation_seq":1,"source_key":"fr-conseil-constitutionnel","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","approval_key":"b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833","approval_snapshot_hash":"117ea3a3cdbafb825a1cefba019517cf687503eb72b869f7324399692053db49","approval_hash_schema":"worldcons.approval.v2","projection_input_hash":"f5c4025f8e57c4977572fb43d3f1644b7a6d59038aad423932fc4cf15ccb3df1","projection_input_schema":"worldcons.projection-input.v1","expected_version_id":"22c8a2c7-f7b0-5eb8-a423-5ec8e3590621","expected_version_revision":1,"expected_publication_id":"96483c81-ec43-4485-8046-1c5ccb23f329","expected_publication_revision":1,"expected_publication_state":"published","approval_mode":"automatic","policy_version":"worldcons.fr-es-staged-approval.v1","approval_evidence_ref":"core:e2e-approval:b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833","source_evidence_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json","pipeline_run_id":"ingest-stage:cd6d4d42-82a7-442e-adec-07529a7e6611","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","created_at":"2026-10-12T11:27:37.589Z"},"approvalProof":{"approval_key":"b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833","article_id":"d01e37f5-6a31-4cc1-991d-69bad51da005","approval_snapshot_hash":"117ea3a3cdbafb825a1cefba019517cf687503eb72b869f7324399692053db49","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","policy_version":"worldcons.fr-es-staged-approval.v1","evidence_ref":"core:e2e-approval:b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833","source_artifact_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json","source_artifact_hash":"925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","pipeline_run_id":"ingest-stage:cd6d4d42-82a7-442e-adec-07529a7e6611","evidence_document":"{\"approvalKey\":\"b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833\",\"approvalSnapshotHash\":\"117ea3a3cdbafb825a1cefba019517cf687503eb72b869f7324399692053db49\",\"articleId\":\"d01e37f5-6a31-4cc1-991d-69bad51da005\",\"candidateId\":\"native:443d0380339820fc0547a7166948c047\",\"canonicalUrl\":\"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm\",\"caseNumber\":\"2026-912 QPC\",\"checks\":{\"noReviewBlock\":true,\"noRiskFlags\":true,\"officialHost\":true,\"publicPermission\":true,\"sourceTextMatches\":true,\"summarySchema\":true,\"translationPersisted\":true},\"observedAt\":\"2026-10-12T11:27:37.510Z\",\"pipelineRunId\":\"ingest-stage:cd6d4d42-82a7-442e-adec-07529a7e6611\",\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"schema\":\"worldcons.automatic-approval.v1\",\"sourceArtifactHash\":\"925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992\",\"sourceArtifactRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json\",\"sourceContentHash\":\"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa\"}","created_at":"2026-10-12T11:27:37.510Z"},"verification":{"evidence_id":"3d622a9c5177a8da4229f55ff7d95d1d3d4323adb8210d99cb7c0626eab557ad","generation_id":"85d4a79f71e65919878ffece77d534d35bc5137433c25b34a498fdaae4a1468e","result":"completed_verified","verification_fence":1,"applied_fence":1,"document_fingerprint":"1791f1b0a54671e114d47eb7010b1a2209abf50dd94c4a325db524d40e476998","fts_fingerprint":"7ff708ece0e50aef6344becf3a7654bbcd32144a1b07102197fde87a00bd6d26","evidence_document":"{\"apiChecks\":{\"approvedBodyPrefixMatches\":true,\"approvedSummaryMatches\":true,\"detailTextLimit\":4000,\"exactArticleIdentity\":true,\"expectedSearchMembership\":true},\"appliedFence\":1,\"approvalEvidenceRef\":\"core:e2e-approval:b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833\",\"approvalKey\":\"b6ad87d80ffad4dbc70ea86fbd2d68ee7c80e2137fa3b529dea6bc25af624833\",\"articleId\":\"d01e37f5-6a31-4cc1-991d-69bad51da005\",\"caseNumber\":\"2026-912 QPC\",\"deploymentRef\":\"fixture:synthetic-local-staged\",\"documentFingerprint\":\"1791f1b0a54671e114d47eb7010b1a2209abf50dd94c4a325db524d40e476998\",\"expected\":{\"documentCount\":1,\"documentFingerprint\":\"1791f1b0a54671e114d47eb7010b1a2209abf50dd94c4a325db524d40e476998\",\"ftsCount\":1,\"ftsFingerprint\":\"7ff708ece0e50aef6344becf3a7654bbcd32144a1b07102197fde87a00bd6d26\"},\"ftsFingerprint\":\"7ff708ece0e50aef6344becf3a7654bbcd32144a1b07102197fde87a00bd6d26\",\"generationId\":\"85d4a79f71e65919878ffece77d534d35bc5137433c25b34a498fdaae4a1468e\",\"generationSeq\":1,\"observed\":{\"documentCount\":1,\"documentFingerprint\":\"1791f1b0a54671e114d47eb7010b1a2209abf50dd94c4a325db524d40e476998\",\"ftsCount\":1,\"ftsFingerprint\":\"7ff708ece0e50aef6344becf3a7654bbcd32144a1b07102197fde87a00bd6d26\",\"matches\":true},\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"probes\":[{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-12T11:27:37.648Z\",\"responseHash\":\"5a09d667544f3186cb0a77e8e47e97795ac62e0dc2c465eb9925393ff0f9eaad\",\"status\":200,\"transport\":\"external-http\",\"url\":\"https://fixture.example/api/articles/france-fr-conseil-constitutionnel-2026-10-10-decision-n-2026-912-qpc-du-10-octobre-2026-1d7526?textLimit=4000\"},{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-12T11:27:37.658Z\",\"responseHash\":\"b8d05af526b89bc25fde193e225a492c2cfcad28f741fa0075c7966adf2ceb9f\",\"status\":200,\"transport\":\"external-http\",\"url\":\"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none\"}],\"projectionInputHash\":\"f5c4025f8e57c4977572fb43d3f1644b7a6d59038aad423932fc4cf15ccb3df1\",\"publicationId\":\"96483c81-ec43-4485-8046-1c5ccb23f329\",\"publicationRevision\":1,\"result\":\"completed_verified\",\"schema\":\"worldcons.verification.v1\",\"scope\":\"single_article\",\"sourceEvidenceRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json\",\"verificationFence\":1,\"verifiedAt\":\"2026-10-12T11:27:37.660Z\",\"versionId\":\"22c8a2c7-f7b0-5eb8-a423-5ec8e3590621\",\"versionRevision\":1}","verified_at":"2026-10-12T11:27:37.660Z"},"stages":[{"id":"ccf2a69f-afe0-40fc-a5ed-976d76d695d5","stage":"discovery","status":"succeeded","articleId":"native-discovery:fr-conseil-constitutionnel:1:default","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery-request/fr-conseil-constitutionnel/7de48f4c1f26460f14d2500e94107453c739d77d13e49b639da240c859815383.json"},{"id":"220e1c38-78bd-4874-890f-2bf79fac5777","stage":"crawl","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery/fr-conseil-constitutionnel/922db50656f5cc4005eb821284d94fe50112db3bc4b025a83b6308dd71979b9d.json"},{"id":"017189aa-011c-45f2-a065-1348d5eb0121","stage":"normalize","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json"},{"id":"5ae035ef-7ffb-4aaa-ad35-ea011b8dff5a","stage":"translate","status":"succeeded","articleId":"d01e37f5-6a31-4cc1-991d-69bad51da005","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json"},{"id":"cd6d4d42-82a7-442e-adec-07529a7e6611","stage":"public-judgment","status":"succeeded","articleId":"d01e37f5-6a31-4cc1-991d-69bad51da005","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/925baeb67f259b875da2b95c00a3d001005cdfced0ae57d8ed058cfc81232992.json"},{"id":"9f8d79a5-4372-4c5b-9f69-9ee50ed603a2","stage":"publish","status":"succeeded","articleId":"d01e37f5-6a31-4cc1-991d-69bad51da005","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-approval/d01e37f5-6a31-4cc1-991d-69bad51da005/449fc628a7dc136796ec3fb24bff7d7e64e351c4ec7bc4b8362173ccae4d6eb9.json"},{"id":"3fe990e2-a810-4604-ad80-c687704631a0","stage":"search","status":"succeeded","articleId":"d01e37f5-6a31-4cc1-991d-69bad51da005","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-publication/85d4a79f71e65919878ffece77d534d35bc5137433c25b34a498fdaae4a1468e.json"}]}
+✔ M4 new synthetic official FR case flows Discovery-to-Search unattended through real staged handlers and completion ledger (177.0857ms)
+✔ M4 cohort is default off and malformed enabled configuration cannot fall through to legacy publication (2.5859ms)
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (114.9548ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (166.7965ms)
+{"event":"e2e_verification_failure","errorName":"TypeError","errorSummary":"Invalid URL"}
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (455.3967ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"55106b85-29fe-4176-b16c-4a3a72c2786d","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (79.2876ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (62.8702ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (105.1419ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (46.0061ms)
+✔ M4 missing approval proof stays fail-closed (24.7568ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (40.5284ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (176.1057ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (136.3162ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (117.7832ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (28.4651ms)
+{"event":"e2e_search_verification","status":"retry","errorCode":"e2e.public_api_unavailable"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (50.8833ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (41.201ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (40.1518ms)
+{"event":"e2e_consumer_claim_wait","phase":"not_due","observedAt":"2026-10-12T11:27:39.101Z","dueAt":"2026-10-12T11:28:39.095Z","outboxId":"1ee1f40ca8029a3acd74d20ed08c487cf279b680abacc79b07c08e5ef3ed32e0"}
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (42.2321ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 production Queue verifier requires the actual public Worker binding before processing (45.0134ms)
+✔ M5 dispatcher waits for durable verifier backoff and active verification lease without multiplying Queue messages (31.346ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 Root binding receives internal /api paths while evidence and response URLs retain external /api/cclrag2 contract (41.081ms)
+✔ M5 verifier redrive preserves exhausted history, rejects stale fence and does not change P3, generation or Search budget (88.4422ms)
+✔ M5 official URL alias verifies: https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114?ACTION=print (36.7778ms)
+✔ M5 official URL alias verifies: https://hj.tribunalconstitucional.es/en/Resolucion/Show/32114 (39.0279ms)
+✔ M5 different official identity rejected: https://evil.example/HJ/es/Resolucion/Show/32114 (39.6495ms)
+✔ M5 different official identity rejected: https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32115 (35.8513ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20500.0603
+
+> worldcons@0.1.0 test:e2e-p0-m5 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/e2e-p0-m5-core-writers.test.ts tests/e2e-p0-m5-discovery.test.ts tests/e2e-p0-m5-approval.test.ts tests/summary-drain-d1.test.ts tests/e2e-p0-m5-source-cas.test.ts tests/e2e-p0-m5-metadata-repair.test.ts tests/e2e-p0-m5-fixes-d1-runtime.test.ts
+
+✔ M5 source owner blocks first unapproved publication, not just managed heads (20.9818ms)
+✔ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (50.3368ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (23.2689ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (29.6602ms)
+✔ M5 human-reviewed publication verifies actual Search/FTS/API; forged human proof cannot complete (109.3394ms)
+✔ M5 completed projection damage creates a fresh verification epoch without a new P3 version or lost evidence (104.4663ms)
+✔ M5 active legacy source publication cannot move to another article or be cascade-deleted (19.8688ms)
+✔ M5 global publication drain filters protected sources before LIMIT and leaves capacity for other countries (53.4927ms)
+✔ M5 HJ ACTION/language URL aliases reuse one Core article; older captured source never replaces newer bytes (71.8451ms)
+✔ M5 legacy duplicate withdrawal verifies privacy using official title when old metadata lacks caseNumber (39.9559ms)
+✔ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (77.9905ms)
+✔ M5 Core: human withdrawal without new approval creates generation and durable remove outbox (35.4913ms)
+✔ M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollback protection (15366.7642ms)
+✔ M5 limit=1 repeated known head retains every observed candidate and resumes reservation in bounded ticks (83.6108ms)
+✔ M5 capture crash after manifest pin resumes the first immutable snapshot (24.2122ms)
+✔ M5 crash after crawl reservation before journal receipt leaves replayable work, not a lost candidate (40.2404ms)
+✔ M5 stale reservation fence cannot record success or overwrite a newer owner (25.0444ms)
+✔ M5 expired discovery owner cannot activate a candidate manifest (27.3428ms)
+✔ M5 ES protected enumeration retains multiple observed hits while legacy limit remains bounded (21.0322ms)
+✔ M5 known-source periodic recheck budget does not suppress new candidate reservation (36.5103ms)
+✔ M5 mismatched parent source cannot activate another country's snapshot (20.4942ms)
+✔ real workerd D1: source CAS assertion rolls back its whole batch and legacy metadata guard fences FTS writers (13665.3152ms)
+✔ metadata journal is atomic with tags and repair survives Worker restart without P3 or generation changes (61.7227ms)
+✔ metadata B then stale A cannot overwrite documents or FTS and stale completion cannot acknowledge B (24.2401ms)
+✔ Core mutation during Search batch keeps public reads closed and next durable repair converges (34.4996ms)
+✔ legacy full sync respects persisted metadata guards and repairs FTS corruption independently of document checksum (27.2567ms)
+✔ metadata guard yields to true approved E2E generation; old legacy attempts cannot return (40.7543ms)
+✔ metadata failures retain attempt history and bounded retry budget (19.9952ms)
+✔ legacy private review change withdraws via Core authority without approving or rewriting the body (30.3953ms)
+✔ Source CAS rejects a raced metadata refresh without lifecycle side effects (30.0242ms)
+✔ Source CAS rejects a raced content refresh without lifecycle side effects (28.3742ms)
+✔ stale Normalize artifact is acknowledged without translating or approving the newer Core source (110.8309ms)
+✔ D1 summary candidate selection enforces publishability, source, and round-robin ordering (5.9536ms)
+✔ D1 summary candidate selection accepts legacy backfill metadata nested under case.collection (1.8311ms)
+✔ D1 translation drain hydrates missing lifecycle axes on legacy backfill rows (10.1653ms)
+✔ D1 stale summary recovery persists failure triage and lifecycle attention (2.6102ms)
+✔ D1 translation/enrichment completion stays private until the separate publication drain runs (1029.2775ms)
+✔ one fake collected item can traverse D1 translation then P3 publication after two separate scheduler actions (14.0167ms)
+✔ D1 publication allocates enrichment after an authoritative v4 source revision (62.2657ms)
+✔ D1 summary failure persists status, structured triage, and lifecycle attention (13.491ms)
+✔ summary tag collisions preserve shared display fields and other article links (7.196ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 41
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15940.5168
+
+> worldcons@0.1.0 test:m11 C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/m11-site-events-write-authority.test.ts tests/m11-admin-audit-write-authority.test.ts tests/m11-admin-article-edit-write-authority.test.ts tests/m11-ops-heartbeat-write-boundary.test.ts tests/m11-ops-heartbeat-read-authority.test.ts tests/m11-ops-heartbeat-read-parity.test.ts tests/m11-admin-ops-events-write-authority.test.ts tests/m11-admin-ops-events-read-parity.test.ts tests/m11-ingest-run-write-authority.test.ts tests/m11-core-publication-write-authority.test.ts
+
+✔ M13 admin article edit authority defaults to D1 and supports bounded canary mode (1.9099ms)
+✔ M11.2 d1-canary only selects the explicit canary article slug (0.2968ms)
+✔ M11.2 D1 article edit writer performs one parameterized insert (0.5687ms)
+✔ M11.2 selected D1 article edit authority fails closed when the write binding is unavailable (0.5879ms)
+✔ M13 admin audit authority defaults to D1 and supports bounded canary mode (1.9857ms)
+✔ M11.1 d1-canary only selects the explicit canary action plus marker (0.3436ms)
+✔ M11.1 D1 audit writer performs one parameterized insert (0.6421ms)
+✔ M11.1 selected D1 audit authority fails closed when the write binding is unavailable (0.6842ms)
+✔ M11.4R list parity holds for identical ordered projections (2.0792ms)
+✔ M11.4R list parity is order-aware and reports a reordering (0.3581ms)
+✔ M11.4R list parity compares detail as canonical JSON regardless of key order (0.1732ms)
+✔ M11.4R list parity compares timestamps by instant, not byte representation (0.1769ms)
+✔ M11.4R list parity reports a changed field, a missing row and a differing length (0.2375ms)
+✔ M11.4R canonical JSON sorts object keys recursively and keeps array order (0.1588ms)
+✔ M11.4R direct D1 list read is one parameterized descending projection (0.834ms)
+✔ M11.4R direct D1 list read fails closed on an invalid limit or a non-object row (0.8223ms)
+✔ M11.4R admin ops read parity remains a manual bearer-authenticated script (1.391ms)
+✔ M11.4R admin_ops_events read-parity probe script never writes an admin event or heartbeat (1.6599ms)
+✔ M13 admin ops events write authority defaults to D1 and supports bounded canary mode (1.8745ms)
+✔ M13 admin ops events read authority defaults to D1 (0.3014ms)
+✔ M11.4 canary marker resolver accepts only a bounded true/1 (0.1668ms)
+✔ M11.4 d1-canary boundary selector only accepts the exact detail marker (0.1658ms)
+✔ M11.4 runtime authority slot wins over the process environment (0.3616ms)
+✔ M11.4 boundary validation mirrors the Postgres admin_ops_events schema (2.1716ms)
+✔ M11.4 D1 insert is one parameterized statement and fails closed (0.9206ms)
+✔ M11.4 D1 dedupe read is one bounded row and list is one parameterized bounded query (0.7631ms)
+✔ M11.4 D1 prune is one parameterized cutoff delete and fails closed (0.4565ms)
+✔ M11.4 read row parsing rejects unrepresentable rows and drops nothing silently (0.3814ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+{"event":"worldcons_ops_write_admin_ops_event_error","authority":"d1","error":"d1 down"}
+✔ M11.4 boundary rejects unauthenticated admin ops events and never downgrades D1 failures (56.029ms)
+{"event":"worldcons_ops_write_admin_ops_event_list_error","authority":"d1","error":"admin_ops_events_boundary.d1_binding_unavailable"}
+✔ M11.4 boundary list read is fail-closed and independent from the write authority (4.6017ms)
+{"event":"worldcons_ops_write_admin_ops_event_latest_error","authority":"d1","error":"admin_ops_events_boundary.d1_binding_unavailable"}
+{"event":"worldcons_ops_write_admin_ops_event_prune_error","authority":"d1","error":"admin_ops_events_boundary.d1_binding_unavailable"}
+✔ M11.4 boundary dedupe read and prune fail closed when the D1 authority binding is missing (3.1558ms)
+✔ M13 admin ops Node client defaults to D1 and fails closed without a boundary (2.9111ms)
+✔ M13 Node list client defaults to D1 and fails closed when the boundary is not configured (1.2052ms)
+✔ M11.4 watchdog writer routes to runtime D1 insert/dedupe/prune and fails closed without a binding (17.0447ms)
+✔ M13 watchdog source uses Cloudflare D1/boundary only (0.6193ms)
+✔ M13 admin ops events authority is Cloudflare-owned and GitHub has no watchdog workflow (1.2864ms)
+✔ M13 root config and env example persist the permanent d1 admin ops events authority (2.0181ms)
+✔ M13 core authority defaults to D1 and d1-canary remains explicit (1.1652ms)
+✔ M11-C canary marker is bounded to true/1 or exact GitHub run id (0.2416ms)
+✔ M11-C lifecycle transition is a D1 batch with optimistic revision and append-only event (4.0661ms)
+✔ M11-C publication transition batches publication/history/audit/outbox/request atomically (17.6614ms)
+✔ M11-C publication capture uses the v4 global head and advances both heads (4.5022ms)
+✔ M13 root deployment persists the permanent d1 core write authority for worldcons_core (2.9563ms)
+✔ M13 ingestion_runs authority defaults to D1 and keeps bounded canary mode (1.2107ms)
+✔ M11-B canary marker is bounded to true/1 or the exact GitHub run id (0.2354ms)
+✔ M11-B parser rejects malformed mutations (1.6382ms)
+✔ M11-B D1 mutation uses bound statements for start, finish, summary and stale recovery (0.724ms)
+✔ M13 Node ingestion client never falls back to Supabase and fails closed without the D1 boundary (0.8651ms)
+✔ M11-B deployment owns the ingest authority in Cloudflare and GitHub has no writers (1.2759ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"read","bearerConfigured":true}
+✔ M13 heartbeat read authority defaults to D1 (1.9758ms)
+✔ M11.3R the runtime read-authority slot wins over the process environment (0.2635ms)
+✔ M11.3R heartbeat read row maps to the Supabase record shape and rejects bad rows (0.3129ms)
+✔ M11.3R D1 read is one parameterized IN query over the authored keys with no detail column (0.6071ms)
+✔ M11.3R D1 read fails closed on a failed envelope or non-object row (0.7466ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"read","bearerConfigured":true}
+✔ M11.3R boundary read endpoint requires the bearer and exposes no unauth surface (33.2807ms)
+{"event":"worldcons_ops_write_heartbeat_read_error","authority":"d1","error":"ops_heartbeat_boundary.d1_binding_unavailable"}
+{"event":"worldcons_ops_write_heartbeat_read_error","authority":"d1","error":"d1 down"}
+{"event":"worldcons_ops_write_heartbeat_read_error","authority":"d1","error":"ops_heartbeat_boundary.d1_binding_unavailable"}
+✔ M13 boundary read defaults to D1 and fails closed without a readable binding (11.2412ms)
+✔ M13 Node read client defaults to D1 and fails closed when the boundary is missing (2.2161ms)
+✔ M13 getWorkflowHeartbeats defaults to D1 and fails closed without a configured boundary (1.8545ms)
+✔ M11.3R Cloudflare runtime reads the D1 binding directly and never calls the boundary (0.9769ms)
+✔ M13 root Worker persists the permanent d1 read authority (1.5327ms)
+✔ M11.3R parity holds for identical five-key sets regardless of order (2.0029ms)
+✔ M11.3R parity compares timestamps by instant, not byte representation (0.244ms)
+✔ M11.3R parity reports a missing key, a changed field and a changed run id (0.3576ms)
+✔ M11.3R direct D1 read is one parameterized IN query over the authored keys (0.6961ms)
+✔ M11.3R direct D1 read fails closed on a non-object row (0.6668ms)
+✔ M11.3R database id resolves worldcons_ops by name, not position (1.3924ms)
+✔ M11.3R read-only parity remains a manual script and GitHub has no executor (1.443ms)
+✔ M11.3R read-parity probe script never writes a heartbeat (1.2982ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+✔ M13 ops heartbeat authority defaults to D1 and supports bounded canary mode (2.0242ms)
+✔ M11.3 d1-canary only selects the explicit canary run id (0.2252ms)
+✔ M11.3 d1-canary also selects the explicit real-run detail marker (0.1591ms)
+✔ M11.3 canary marker resolver accepts only a bounded true/1 or exact run id (0.1542ms)
+✔ M11.3 boundary validation mirrors the Postgres heartbeat RPC gates (0.612ms)
+✔ M11.3 D1 heartbeat upsert is one parameterized statement with RPC-equivalent semantics (0.5006ms)
+✔ M11.3 D1 heartbeat upsert fails closed on unexpected changes (0.8058ms)
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":false}
+{"event":"worldcons_ops_write_auth_failure","operation":"write","bearerConfigured":true}
+✔ M11.3 boundary rejects unauthenticated heartbeat writes (48.3806ms)
+✔ M13 standalone ops-write deployment config is retired (1.1108ms)
+✔ M13 shared ops-write handler has no Supabase bridge (1.5627ms)
+✔ M11.3 boundary health endpoint is bearer-protected and exposes no unauth surface (5.2093ms)
+{"event":"worldcons_ops_write_heartbeat_error","authority":"d1","error":"d1 down"}
+✔ M11.3 boundary routes d1 authority to D1 and never downgrades on failure (4.7519ms)
+✔ M13 Node boundary client defaults to D1 and fails closed when the boundary is missing (2.4805ms)
+✔ M11.3 Node heartbeat writer uses the boundary and skips the Supabase RPC when enabled (3.4421ms)
+✔ M11.3 Node heartbeat writer emits the bounded canary marker only in a canary window (1.7682ms)
+✔ M11 public ops boundary is bearer-only and GitHub has no operational workflows (1.6547ms)
+✔ M11.3 no committed source file contains a WORLDCONS_OPS_WRITE_TOKEN assignment (2.0014ms)
+✔ M13 site_events authority defaults to D1 and invalid values stay on D1 (1.6213ms)
+✔ M11 d1-canary authority is restricted to the explicit path and marker (0.3066ms)
+✔ M11 runtime D1 writer performs one bound insert and requires one changed row (0.584ms)
+✔ M11 selected D1 authority fails closed when the write binding is unavailable (0.6035ms)
+ℹ tests 89
+ℹ suites 0
+ℹ pass 89
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1630.0059
+
+> worldcons@0.1.0 test:search-rank-policy C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/search-rank-policy.test.ts
+
+✔ the committed manifest carries a stable corpus hash and reproduces the selected corpus (4.994ms)
+✔ the corpus hash is order-independent (1.5033ms)
+✔ corpus selection is deterministic and category-complete (0.7462ms)
+✔ v1/v2/v3 are archived invalid fixtures while v4 is the active frozen corpus (0.2454ms)
+✔ v4 preserves every v1/v2/v3 informational query unchanged (0.2601ms)
+✔ v4 preserves every v3 query, filter and category unchanged (0.268ms)
+✔ v4 freezes authoritative exact-case and exact-title target sets (0.336ms)
+✔ the manifest is content-free and carries only queries/ids/filters/categories (0.6101ms)
+✔ candidate validation rejects a category/invariant mismatch (0.6267ms)
+✔ aggregate metrics are macro means over the compareRankedIds evidence (0.5538ms)
+✔ exact-case and exact-title targets resolve deterministically against the local corpus (3.5927ms)
+✔ frozen strict targets validate against the local projection and fail closed on drift (0.8276ms)
+✔ a non-unique exact title passes for any frozen target-set member and fails outside the set (0.7582ms)
+✔ a multi-id exact-case target passes for any frozen set member and fails outside the set (1.1059ms)
+✔ the frozen preflight must reproduce exactly the frozen target set and fails on set drift (0.6676ms)
+✔ an unresolvable strict target is not_applicable, never a silent pass (0.2546ms)
+✔ a strict exact-case/exact-title failure fails the policy (0.759ms)
+✔ exact-case outcomes are excluded from the FTS aggregate even when metrics are present (0.3188ms)
+✔ the production oracle top id must also match a strict target when the oracle window is non-empty (0.1287ms)
+✔ insufficient_evidence when no independently pre-registered threshold exists (0.1744ms)
+✔ a pre-registered threshold can make the policy pass or fail (0.2637ms)
+✔ no evaluable strict case is insufficient_evidence with an explicit blocker (0.1401ms)
+✔ the assembled evidence report and markdown never leak a query or document text (0.6574ms)
+✔ the FTS source pager query is SELECT-only, cursor-stable and embedding-free (0.4486ms)
+✔ the FTS source pager rejects an out-of-range page size or empty cursor (0.1719ms)
+✔ FTS source page combination is deterministic, order-independent and de-duplicated (0.655ms)
+✔ projection scope validation requires an exact production/local id set (0.3593ms)
+✔ a production window below the projection count fails with scope-too-small (0.1967ms)
+✔ the report carries a content-free source scope summary and never leaks ids (0.3015ms)
+✔ the FTS parity harness is read-only, full-scope paged and wires the expected scripts (0.2245ms)
+✔ the FTS parity harness routes exact-case through the ranked-page authority, not the fulltext RPC (0.1572ms)
+✔ the FTS source pager is operator-only, selector-only and never writes (0.1201ms)
+✔ the rank-policy library is runtime-neutral with no node builtin or network code (6.2416ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 582.4296
+
+> worldcons@0.1.0 test:plugin C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx --test tests/chatgpt-plugin-package.test.ts tests/chatgpt-plugin-mcp.test.ts tests/chatgpt-plugin-guide.test.ts
+
+✔ homepage and footer introduce the canonical ChatGPT plugin guide (3.8565ms)
+✔ guide explains direct no-auth installation without claiming OpenAI listing (2.1771ms)
+{"event":"worldcons_plugin_mcp_call","requestId":"d97441c9-c236-45f7-ba16-ade1e287baa8","toolName":"fetch","status":"ok","durationMs":0}
+{"event":"worldcons_plugin_mcp_call","requestId":"5ba6dc4b-f486-487e-82db-138e2c0d1573","toolName":"fetch","status":"ok","durationMs":0}
+{"event":"worldcons_plugin_mcp_call","requestId":"d94cff43-58a4-4b25-a59b-759b79103ecb","toolName":"fetch_source_text","status":"ok","durationMs":0}
+{"event":"worldcons_plugin_mcp_call","requestId":"5379212c-5697-4f28-8f0c-af759a6be544","toolName":"search","status":"ok","durationMs":1}
+{"event":"worldcons_plugin_mcp_call","requestId":"a5b8087a-2684-4734-bea1-75275183095c","toolName":"fetch","status":"ok","durationMs":0}
+{"event":"worldcons_plugin_mcp_call","requestId":"a7bf019e-d5d7-4191-a2b2-6d67e11cc741","toolName":"fetch","status":"ok","durationMs":1}
+✔ Vercel-integrated case service exposes bounded public evidence and canonical citation URLs (43.3748ms)
+✔ France search, fetch, and source-text responses expose one sealed Korean DILA attribution contract (7.8392ms)
+✔ expired Gate 4 ranking cursors tell ChatGPT to restart without mutating the cursor (1.1626ms)
+✔ ChatGPT can initialize the Vercel MCP endpoint, scan tools, and call search (11.1843ms)
+✔ source-only and stale fetches disclose status without emitting an AI-summary heading or body (2.6388ms)
+✔ light enrichment is labeled as metadata-based guidance rather than a full case summary (2.2199ms)
+✔ plugin MCP is a Vercel route with five public read-only tools and no separate edge runtime (2.2476ms)
+✔ ChatGPT plugin package keeps the canonical identity and no-auth endpoint (3.7045ms)
+✔ plugin assets, research skill, and repo marketplace entry are complete (2.7825ms)
+✔ plugin research policy is cursor-aware and fail-closed for unavailable or stale summaries (1.7595ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2951.7492
+
+> worldcons@0.1.0 plugin:validate C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> tsx scripts/validate-chatgpt-plugin.ts
+
+{"status":"ok","plugin":"worldcons-constitutional-cases","displayName":"헌법판례요약시스템","endpoint":"https://worldcons.cclib.workers.dev/api/mcp","authentication":"none"}
+
+> worldcons@0.1.0 build:vinext C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> vinext build
+
+
+  vinext build  (Vite 8.3.0)
+
+[34m[1/5] analyze client references...[39m
+transforming...
+✓ 1016 modules transformed.
+rendering chunks...
+[32m✓ built in 4.84s[39m
+[34m[2/5] analyze server references...[39m
+transforming...
+✓ 322 modules transformed.
+rendering chunks...
+[32m✓ built in 749ms[39m
+[34m[3/5] build rsc environment...[39m
+transforming...
+✓ 1077 modules transformed.
+rendering chunks...
+computing gzip size...
+[32m✓ built in 3.38s[39m
+[34m[4/5] build client environment...[39m
+transforming...
+✓ 2048 modules transformed.
+rendering chunks...
+computing gzip size...
+[32m✓ built in 3.44s[39m
+[34m[5/5] build ssr environment...[39m
+transforming...
+✓ 320 modules transformed.
+rendering chunks...
+computing gzip size...
+[32m✓ built in 1.12s[39m
+[0m
+  Route (app)
+  ┌ ƒ /                                      
+  ├ ƒ /admin                                 
+  ├ ƒ /admin/analytics                       
+  ├ ƒ /admin/articles                        
+  ├ ƒ /admin/articles/:slug                  
+  ├ ƒ /admin/audit                           
+  ├ ƒ /admin/candidates                      
+  ├ ƒ /admin/glossary-candidates             
+  ├ ƒ /admin/ingestion-runs                  
+  ├ ? /admin/jobs                            
+  ├ ƒ /admin/llm                             
+  ├ ƒ /admin/login                           
+  ├ ? /admin/operations                      
+  ├ ƒ /admin/ops                             
+  ├ ƒ /admin/work                            
+  ├ ƒ /admin/work/:kind/:id                  
+  ├ λ /api/admin/approval-preview            
+  ├ λ /api/admin/articles                    
+  ├ λ /api/admin/articles/:articleRef/review 
+  ├ λ /api/admin/articles/:articleRef/summary
+  ├ λ /api/admin/articles/bulk               
+  ├ λ /api/admin/candidates                  
+  ├ λ /api/admin/cron/ingest                 
+  ├ λ /api/admin/cron/jobs                   
+  ├ λ /api/admin/glossary-candidates         
+  ├ λ /api/admin/governance                  
+  ├ λ /api/admin/ingest                      
+  ├ λ /api/admin/ingest/dead-letter          
+  ├ λ /api/admin/ingestion-runs              
+  ├ λ /api/admin/jobs/:jobId                 
+  ├ λ /api/admin/jobs/run                    
+  ├ λ /api/admin/llm-settings                
+  ├ λ /api/admin/llm-settings/test           
+  ├ λ /api/admin/login                       
+  ├ λ /api/admin/logout                      
+  ├ λ /api/admin/public-content/revalidate   
+  ├ λ /api/admin/review                      
+  ├ λ /api/admin/work                        
+  ├ λ /api/admin/work/:kind/:id              
+  ├ λ /api/analytics/event                   
+  ├ λ /api/articles                          
+  ├ λ /api/articles/:slug                    
+  ├ λ /api/articles/:slug/source-text        
+  ├ λ /api/auth/masterdash                   
+  ├ λ /api/cclmetasearch/:path+              
+  ├ λ /api/cclmetasearch/search              
+  ├ λ /api/cclrag2/:path+                    
+  ├ λ /api/home/range                        
+  ├ λ /api/masterdash/control                
+  ├ λ /api/masterdash/health                 
+  ├ λ /api/mcp                               
+  ├ λ /api/mcp/health                        
+  ├ λ /api/ops/watchdog                      
+  ├ λ /api/portal/latest                     
+  ├ λ /api/portal/latest-by-country          
+  ├ λ /api/search                            
+  ├ λ /api/security/csp-report               
+  ├ λ /api/sources                           
+  ├ λ /api/sources/:sourceKey                
+  ├ λ /api/tags                              
+  ├ λ /api/tags/:slug                        
+  ├ ƒ /articles/:slug                        
+  ├ ƒ /articles/:slug/print                  
+  ├ ƒ /glossary                              
+  ├ ƒ /glossary/:slug                        
+  ├ λ /googlebc13342811fc3fd7.html           
+  ├ ƒ /guide                                 
+  ├ ? /guide/chatgpt-plugin                  
+  ├ ◐ /list                                    (60s)
+  ├ λ /rss.xml                               
+  ├ ƒ /search                                
+  ├ ƒ /sources                               
+  ├ ƒ /sources/:sourceKey                    
+  ├ ƒ /tags                                  
+  └ ƒ /tags/:slug                            
+
+  λ API  ƒ Dynamic  ◐ ISR  ? Unknown
+
+  ? Some routes could not be classified. vinext currently uses static analysis
+    and cannot detect dynamic API usage (headers(), cookies(), etc.) at build time.
+    Automatic classification will be improved in a future release.
+
+  Build complete. Run `vinext start` to start the production server.
+

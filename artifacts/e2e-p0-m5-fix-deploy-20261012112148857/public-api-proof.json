@@ -1,0 +1,698 @@
+{
+  "at": "2026-10-12T11:40:21.933Z",
+  "mode": "production_read_only",
+  "results": [
+    {
+      "articleId": "02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "generationId": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-11-auto-342026-de-11-de-junio-de-2026-ee18b2?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:17 GMT",
+          "responseHash": "5327ce9fa4e8b5c83397dc3bff9e681774046a1a3cf25712276ab065cec70c19",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=34%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:19 GMT",
+          "responseHash": "2e215b3c6d7ac9d7d74060cad53b3f2c999e1e36bbd364f7ca7769081b84e9f7",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+      "generationId": "3840939f81e6ceb3ae081e4ec2fc35ef4beadfbf45a9e50305985ab2f9191267",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-07-auto-432026-2026-07-07-8c42d1?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:20 GMT",
+          "responseHash": "3540b48e21bb7df7222b85bcb1655ae94f176453e6888e02f33b9bb03aa4f002",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=43%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:22 GMT",
+          "responseHash": "d1770373793dfffb2d3a372a3127f938df23a977ddf15332e83251fc215cec48",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "generationId": "e5fa1abf993350bb80e8826c5e13857de981edddc55c8a17658404805f574a82",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-21-auto-502026-2026-07-21-2050d8?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:23 GMT",
+          "responseHash": "13b457a5f8a140fdac57d65334c0e5d01c2db726697b7d26da95aecbd068b0fc",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=50%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:25 GMT",
+          "responseHash": "14d57a938715bd069e80822d0fb1b051f033c7ca4dcbb4815d04ce092d38d2fc",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "22682a3a-09a5-4d1d-a1c9-f0205ff5375a",
+      "generationId": "e294a24a845f90b5eeecb473f2283b2a89e20189836316651f8a92bfe2646014",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-542026-2026-07-08-6370da?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:26 GMT",
+          "responseHash": "19a69183fb20665bfd1a00739f3b1593a8f32294b2e87f4c124f5b43d4e39bbd",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=54%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:28 GMT",
+          "responseHash": "4f996019689fd9c6611c73c62b89de39445e20272f66104c9c040a7847cff1e4",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "4a3f498c-c41d-450e-aba2-d1515afbe5e1",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-sentencia-462026-de-22-de-junio-de-2026-c37287?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:28 GMT",
+          "responseHash": "15d7a5c6c3878ea07be1540d3959be2573e7afbcb81bb9af137f52c0f0c200ee",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 한부모 가정의 출산 및 육아 급여 확대 인정 판결",
+              "actual": "스페인 헌법재판소, 한부모 가정 아동에 대한 출산·육아 수당 연장 거부 처분 취소 판결"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=46%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:30 GMT",
+          "responseHash": "6c98b3533e7a2f8f87828ed4f9859316c6edf19cd1df81faca57e89aacbfc855",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 한부모 가정의 출산 및 육아 급여 확대 인정 판결",
+              "actual": "스페인 헌법재판소, 한부모 가정 아동에 대한 출산·육아 수당 연장 거부 처분 취소 판결"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "articleId": "4c80e563-7dbc-4db1-8101-34d14adbe1fb",
+      "generationId": "e7d50a82d0647daa0d1e3d248dd312b221ff8c60be87de2bb9cdaa240186be62",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-552026-2026-07-08-fd10bd?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:31 GMT",
+          "responseHash": "2884946e6c62aba9e91eb20a53ff4f19f9da80ca16cb356dfc446703a06faaa2",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=55%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:33 GMT",
+          "responseHash": "63f1f38ee0b4deaf2c1c37aaf6556680afd6592c672743395e89bb01017d79e8",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+      "generationId": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:33 GMT",
+          "responseHash": "5be4fb1d53359e0f9ab4859c2733fed9a5a110b2cbf35aecdc08f1f1add51846",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=38%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:35 GMT",
+          "responseHash": "894995db6a917d637e16e8195ee91a729077c1927f5fda64ca06bf9f26c33935",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "724d57d3-723d-4450-ad01-0a049688fc6a",
+      "generationId": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:36 GMT",
+          "responseHash": "e2ff9b9bb555ef4d744d4a1a5c75a25f669cd488e5dcce14f0c94ef042d90650",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=37%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:38 GMT",
+          "responseHash": "57242da05cd23ea8f8f943c6b7309a96a50c85ee18f0d1b30e14febb705118b1",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+      "generationId": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:39 GMT",
+          "responseHash": "0145e0a6543f6ae9895e26ef2868ceae3aaedc58dfa0bf702595567182bd0608",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=32%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:41 GMT",
+          "responseHash": "8b2cd10ae170be130a901275eb123fe141e68ce9711a2ab52e9faddcc575c217",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "8ba82d90-0f28-4731-963b-760805af100d",
+      "generationId": "8bdf6aeafed5bcf379456371ecbd917172ec2ef17f01a4855ece5ed53dc84ea9",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-28-auto-262026-de-28-de-abril-de-2026-e35126?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:42 GMT",
+          "responseHash": "092db3f2d062de2c122b77c26f4e8707e7aa26bf5dae78b2b4b5e79d995bfba7",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=26%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:44 GMT",
+          "responseHash": "7f092ddf9a95d1e127d421d2339a71d7583705444e96d6aca9a04972f12a2700",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "8f70d967-250d-4935-858f-5b91304b709f",
+      "generationId": "5b84b876edb0b90c4e4f122c24a868d5a9693ca0bfab2ec777ec8ec754b46fa9",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-07-auto-452026-2026-07-07-59e086?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:45 GMT",
+          "responseHash": "e38614bad26b55d442dd258934f8118380605efbae1b70c0cfd05dd5c26f20f2",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=45%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:47 GMT",
+          "responseHash": "2d15ca8d5ae69485df83c9c02e11ab654a38fd1d3143fcbdbf737f7f8bd27044",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "generationId": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:47 GMT",
+          "responseHash": "b2f602d6d5e41bc2ad774544a961aef3900ed4288bce2e9cc4845bc00a8476a4",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=51%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:49 GMT",
+          "responseHash": "9335f1c0b4f1bccc866d178de87cbae5b45a4d20214e8c7fa730f8de40d8e3d7",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "c815ef86-1555-4976-ba3e-d8308d5aee0b",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-362026-de-22-de-junio-de-2026-b8af72?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:50 GMT",
+          "responseHash": "65c1e0e71ad62c0fb40947e95683e7a8f87238db6b0639989080f096e97ebdca",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "2026년 6월 22일자 스페인 헌법재판소 결정: 해고 절차 관련 가처분 신청 철회 수리",
+              "actual": "스페인 헌법재판소 2026년 제36호 결정(가처분 절차 취하)"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=36%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:51 GMT",
+          "responseHash": "1146c1e472b15034da6a635e391e3ec3b1d41bf5cbc880ce3d211475ebc9c909",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "2026년 6월 22일자 스페인 헌법재판소 결정: 해고 절차 관련 가처분 신청 철회 수리",
+              "actual": "스페인 헌법재판소 2026년 제36호 결정(가처분 절차 취하)"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "articleId": "cbe99053-ee25-4596-93bf-b949b10d0bdc",
+      "generationId": "01188e66c399c7a60d1cdd66aab2d85130e40e346ae28b9c63bce60a6a629e11",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-56-2026-66b0f0?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:52 GMT",
+          "responseHash": "730388547ddf3b0518100a53380775ab5555a047ddbe8e41af5f175d860805fa",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=56%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:54 GMT",
+          "responseHash": "d4d5cf1e75e1bf1e30cec19b09361c130c75026d66ab86bbf516f47f1d72b5dd",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "d2234568-87a8-4059-b5d7-8d5e6219a4fc",
+      "generationId": "ddc421e4e9adac26e7daffac1d7bd14e3a20ad24ea4d58e0480f5c22c23c85c1",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-52-2026-bbb116?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:55 GMT",
+          "responseHash": "7a87d1f03f1ec72e58a109f495528a72223124f3f7584e10f288d76582eec85e",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=52%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:57 GMT",
+          "responseHash": "446f1e157d4d94f994c5afb0579da14e0b4bba5ff0c230a901ec39d5d542404b",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "dfb04619-3a7f-4b82-8405-24d171b2abd3",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-26-sentencia-412026-de-26-de-mayo-de-2026-93f631?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:58 GMT",
+          "responseHash": "6e47d1081f946e3c9a53bdb79845d5f4c8764ede3f6bd7816eceb41fa7b4a378",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 카탈루냐 의회가 제기한 국가 주택법(Ley 12/2023) 위헌법률심판 청구 사건",
+              "actual": "스페인 헌법재판소, 카탈루냐 의회가 제기한 국가 주택권법(Ley 12/2023) 위헌법률심판 청구 사건 심리 진행"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=41%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:40:59 GMT",
+          "responseHash": "00cd72a93c9447bd9f6e90c4fad1335bcc12052db029a9e0c33bd8354f6e2487",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 카탈루냐 의회가 제기한 국가 주택법(Ley 12/2023) 위헌법률심판 청구 사건",
+              "actual": "스페인 헌법재판소, 카탈루냐 의회가 제기한 국가 주택권법(Ley 12/2023) 위헌법률심판 청구 사건 심리 진행"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "articleId": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+      "generationId": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:00 GMT",
+          "responseHash": "de0f7936cd4afd08fc0ee441b4f2fafd9bd79b2eb87152302f93d044d74bf176",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=33%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:02 GMT",
+          "responseHash": "0f643bf5ab2febbdf0783eae657455bdb653bf6e3c5c2a82c04677f3c29a3eec",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "e3b92c90-44d2-4807-85a2-6d069548dd7d",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-06-auto-412026-2026-07-06-769226?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:03 GMT",
+          "responseHash": "d5bd5d17a5fb9578e6933226792558df2dd31c52d54434fce7f10f0ee98b756d",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 암파로 소송비용 부담 판결 보완 신청 기각 결정 (Auto 41/2026)",
+              "actual": "스페인 헌법재판소 2026년 제41호 결정: 헌법소원 판결에 대한 소송비용 보완 신청 기각"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=41%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:04 GMT",
+          "responseHash": "5abaca4bc50fc3eaa0b695238835afa7681e7b7e9a9538626d5ea2a9d93b8a38",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 암파로 소송비용 부담 판결 보완 신청 기각 결정 (Auto 41/2026)",
+              "actual": "스페인 헌법재판소 2026년 제41호 결정: 헌법소원 판결에 대한 소송비용 보완 신청 기각"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "articleId": "e5d20a1e-5d32-40b7-b5ef-d9fc2b1d706a",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-09-sentencia-432026-de-9-de-junio-de-2026-00b9f3?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:05 GMT",
+          "responseHash": "8898c1d123866a88faa29e0ea4b756a9ad199a47b52b7c9ec6e1b3581e6b26ff",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "카탈루냐 사면법(유기법 제1/2024호)에 대한 아라곤 지방정부의 위헌법률심판 청구 사건",
+              "actual": "스페인 헌법재판소의 카탈루냐 독립 프로세스 관련 사면법 위헌 심판 절차"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=43%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:07 GMT",
+          "responseHash": "e1a41ee0ff28cd8743dfe744c637f7c8b8b97a0aa5b2277ac41d4f4162b6e1a4",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "카탈루냐 사면법(유기법 제1/2024호)에 대한 아라곤 지방정부의 위헌법률심판 청구 사건",
+              "actual": "스페인 헌법재판소의 카탈루냐 독립 프로세스 관련 사면법 위헌 심판 절차"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "articleId": "eccd7fae-7606-42e0-808a-2ade103ca0c9",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-352026-de-25-de-mayo-de-2026-322a8d?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:08 GMT",
+          "responseHash": "b68b72c2e75ab142781d400b3ec56b7628044325d8a504d46a82001402e352d7",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소 판결 35/2026 (2026년 5월 25일) - 정신 질환을 앓는 법관에 대한 징계 처분과 차별 금지 및 책임주의 원칙 위반 여부",
+              "actual": "스페인 헌법재판소 판결 35/2026"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=35%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:09 GMT",
+          "responseHash": "465f9cf4092e3f2d55ab9824aa5d330f813bd03901ac061140a2718323051085",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소 판결 35/2026 (2026년 5월 25일) - 정신 질환을 앓는 법관에 대한 징계 처분과 차별 금지 및 책임주의 원칙 위반 여부",
+              "actual": "스페인 헌법재판소 판결 35/2026"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    },
+    {
+      "articleId": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "generationId": "e5f4ef7f2925118dddf31b68a30d09f85744db21d4747e3e5d9500087f3236c1",
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:10 GMT",
+          "responseHash": "36c39478ed433eea5b2dbeddcf004038711cb8c77403f25adad00db52d9bb430",
+          "bodyChecks": {
+            "approvedBodyMatches": true,
+            "approvedSummaryMatches": true
+          },
+          "differences": [],
+          "passed": true
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=53%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:12 GMT",
+          "responseHash": "3edaa494fd312eab11b0884f18711cae2a88280a157ce95ebe79b70d7f455012",
+          "bodyChecks": null,
+          "differences": [],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "articleId": "f665503a-3d14-424a-b138-7ea4ac5240d5",
+      "generationId": null,
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-352026-de-22-de-junio-de-2026-1b1f04?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:12 GMT",
+          "responseHash": "9c187f83e80dff4e8f5ce9967107a3f419fa12455a7ddc38bae3a6f97e31632f",
+          "bodyChecks": {
+            "approvedBodyMatches": false,
+            "approvedSummaryMatches": false
+          },
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 성별에 따른 차별 금지 판결 집행 절차의 조기 개시 불인정",
+              "actual": "스페인 헌법재판소, 헌법재판소 판결의 강제집행 신청에 대해 하급심 집행 절차 미완료를 이유로 보충성 원칙상 조기 신청(각하)으로 결정한 사건"
+            }
+          ],
+          "passed": false
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=35%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 11:41:14 GMT",
+          "responseHash": "3b8b21ad6f7b7a003dbc8ccdab482e7045b6ca2d9733c2400991cc97f520ed7a",
+          "bodyChecks": null,
+          "differences": [
+            {
+              "field": "title",
+              "expected": "스페인 헌법재판소, 성별에 따른 차별 금지 판결 집행 절차의 조기 개시 불인정",
+              "actual": "스페인 헌법재판소, 헌법재판소 판결의 강제집행 신청에 대해 하급심 집행 절차 미완료를 이유로 보충성 원칙상 조기 신청(각하)으로 결정한 사건"
+            }
+          ],
+          "passed": false
+        }
+      ]
+    }
+  ],
+  "health": [
+    {
+      "url": "https://worldcons.cclib.workers.dev",
+      "status": 200,
+      "date": "Mon, 12 Oct 2026 11:41:14 GMT"
+    },
+    {
+      "url": "https://worldcons-ingest.cclib.workers.dev/health",
+      "status": 200,
+      "date": "Mon, 12 Oct 2026 11:41:14 GMT"
+    }
+  ],
+  "verified": false,
+  "doesNotAssertLegalMeaningOrZeroTouchDiscovery": true
+}

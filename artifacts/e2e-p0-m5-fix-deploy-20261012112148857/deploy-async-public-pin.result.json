@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-10-12T11:48:40.344Z",
+  "finishedAt": "2026-10-12T11:50:13.727Z",
+  "bin": "node",
+  "args": [
+    "node_modules/wrangler/bin/wrangler.js",
+    "deploy",
+    "--config",
+    "workers/async-pipeline/wrangler.jsonc",
+    "--message",
+    "M5 verifier pin to immutable legacy public reads Root 4a85bedb-9394-40cd-8b3d-3856785d31b6; git 55122b10c51303af46945cbbe16b653d868bebc6"
+  ],
+  "code": 0,
+  "signal": null
+}

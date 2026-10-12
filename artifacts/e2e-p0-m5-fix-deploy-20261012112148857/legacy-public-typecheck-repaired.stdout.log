@@ -1,0 +1,6 @@
+
+> worldcons@0.1.0 typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully

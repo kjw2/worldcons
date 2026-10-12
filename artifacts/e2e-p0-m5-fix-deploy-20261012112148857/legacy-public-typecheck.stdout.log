@@ -1,0 +1,9 @@
+
+> worldcons@0.1.0 typecheck C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+artifacts/e2e-p0-m5-fix-deploy-20261012112148857/recover-audit-metadata.ts(3,51): error TS7006: Parameter 'x' implicitly has an 'any' type.
+artifacts/e2e-p0-m5-fix-deploy-20261012112148857/verify-public-api.ts(3,1107): error TS7006: Parameter 'x' implicitly has an 'any' type.
+ ELIFECYCLE  Command failed with exit code 2.
