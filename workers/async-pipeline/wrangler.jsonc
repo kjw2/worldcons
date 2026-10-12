@@ -62,7 +62,7 @@
     "WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED": "true",
     "WORLDCONS_E2E_VERIFIER_ENABLED": "true",
     "WORLDCONS_E2E_VERIFIER_API_BASE_URL": "https://worldcons.cclib.workers.dev/api/cclrag2",
-    "WORLDCONS_E2E_DEPLOYMENT_REF": "git:1216caf5ebde12d222bfd198ac9f1256461a454d;worldcons:de37eb20-033e-4a85-a99c-b9c71e9d663e",
+    "WORLDCONS_E2E_DEPLOYMENT_REF": "git:d9f8e1bf2f1494705bdf1a4d18ca5347d98c0d95;worldcons:8f5b1d18-b92d-421d-9f8c-962be214bda1",
     "M8_ENABLED_KINDS": "admin-job-drain,watchdog,crawler-daily,search-projection-sync,admin-health,embedding-backfill,translation-drain,publication-drain,analytics-retention",
     "M8_CRAWLER_SOURCE_EXCLUDE": "fr-conseil-constitutionnel,es-tribunal-constitucional",
     "TRANSLATION_DRAIN_LIMIT": "10",
