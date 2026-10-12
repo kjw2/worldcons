@@ -1,0 +1,257 @@
+{
+  "serverDate": "Mon, 12 Oct 2026 09:29:17 GMT",
+  "data": [
+    {
+      "results": [
+        {
+          "name": "e2e_approval_evidence_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_approval_evidence_v1 (\n  approval_key text primary key not null,\n  article_id text not null,\n  approval_snapshot_hash text not null,\n  source_content_hash text not null,\n  policy_version text not null,\n  evidence_ref text unique not null,\n  source_artifact_ref text not null,\n  source_artifact_hash text not null,\n  discovery_candidate_id text not null,\n  pipeline_run_id text not null,\n  evidence_document text not null check(json_valid(evidence_document)),\n  created_at text not null\n)"
+        },
+        {
+          "name": "e2e_commit_guards_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_commit_guards_v1 (\n  token text primary key not null,\n  assertion integer not null constraint e2e_commit_snapshot_match check (assertion=1)\n)"
+        },
+        {
+          "name": "e2e_core_article_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_delete_guard before delete on articles\nwhen exists (select 1 from e2e_generation_heads_v1 where article_id=old.id)\nbegin select raise(abort,'e2e_core_managed_article_delete'); end"
+        },
+        {
+          "name": "e2e_core_article_publications_p3_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_publications_p3_delete_guard before delete on article_publications_p3\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_publications_p3_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_publications_p3_insert_guard before insert on article_publications_p3\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_publications_p3_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_publications_p3_update_guard before update on article_publications_p3\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id) or exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id) or not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_revision_heads_v4_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_revision_heads_v4_delete_guard before delete on article_revision_heads_v4\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_revision_heads_v4_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_revision_heads_v4_insert_guard before insert on article_revision_heads_v4\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_revision_heads_v4_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_revision_heads_v4_update_guard before update on article_revision_heads_v4\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id) or exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id) or not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_version_heads_p3_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_version_heads_p3_delete_guard before delete on article_version_heads_p3\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_version_heads_p3_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_version_heads_p3_insert_guard before insert on article_version_heads_p3\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_article_version_heads_p3_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_article_version_heads_p3_update_guard before update on article_version_heads_p3\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id) or exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id) or not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_e2e_generation_heads_v1_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_e2e_generation_heads_v1_delete_guard before delete on e2e_generation_heads_v1\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_e2e_generation_heads_v1_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_e2e_generation_heads_v1_insert_guard before insert on e2e_generation_heads_v1\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_e2e_generation_heads_v1_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_e2e_generation_heads_v1_update_guard before update on e2e_generation_heads_v1\nwhen (exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id) or exists (select 1 from e2e_generation_heads_v1 where article_id=new.article_id)) and (not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id) or not exists (select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))\nbegin select raise(abort,'e2e_core_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_core_version_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_version_delete_guard before delete on article_content_versions_p3\nwhen exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id)\nbegin select raise(abort,'e2e_core_immutable_version'); end"
+        },
+        {
+          "name": "e2e_core_version_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_core_version_update_guard before update on article_content_versions_p3\nwhen exists (select 1 from e2e_generation_heads_v1 where article_id=old.article_id)\n and (old.id is not new.id or old.article_id is not new.article_id or old.revision is not new.revision or old.parent_version_id is not new.parent_version_id or old.content_hash is not new.content_hash or old.case_key is not new.case_key or old.slug is not new.slug or old.source_key is not new.source_key or old.jurisdiction is not new.jurisdiction or old.institution_name is not new.institution_name or old.content_type is not new.content_type or old.original_url is not new.original_url or old.canonical_url is not new.canonical_url or old.original_language is not new.original_language or old.original_title is not new.original_title or old.korean_title is not new.korean_title or old.original_published_at is not new.original_published_at or old.cleaned_text is not new.cleaned_text or old.summary_json is not new.summary_json or old.source_metadata is not new.source_metadata or old.error_metadata is not new.error_metadata or old.version_role is not new.version_role or old.source_anchor_version_id is not new.source_anchor_version_id or old.source_content_hash is not new.source_content_hash)\nbegin select raise(abort,'e2e_core_immutable_version'); end"
+        },
+        {
+          "name": "e2e_core_write_authorizations_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_core_write_authorizations_v1 (\n  article_id text primary key not null,\n  token text not null references e2e_commit_guards_v1(token) on delete cascade\n)"
+        },
+        {
+          "name": "e2e_generation_heads_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_generation_heads_v1 (\n  article_id text primary key not null,\n  generation_id text not null,\n  generation_seq integer not null,\n  updated_at text not null,\n  foreign key (article_id,generation_id) references e2e_generations_v1(article_id,generation_id)\n)"
+        },
+        {
+          "name": "e2e_generation_progress_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_generation_progress_v1 (\n  generation_id text primary key not null references e2e_generations_v1(generation_id),\n  state text not null check (state in ('processing','publication_committed','search_pending','retry_wait','review_required','blocked','completed_verified','dead_letter','superseded')),\n  last_error_code text,\n  expected_search_fingerprint text,\n  expected_fts_fingerprint text,\n  verified_at text,\n  verification_evidence_ref text,\n  updated_at text not null,\n  check (state<>'completed_verified' or (verified_at is not null and verification_evidence_ref is not null))\n)"
+        },
+        {
+          "name": "e2e_generation_requests_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_generation_requests_v1 (\n  article_id text not null,\n  idempotency_key text not null,\n  generation_id text not null references e2e_generations_v1(generation_id),\n  context_hash text not null,\n  context_document text not null,\n  generation_created integer not null check (generation_created in (0,1)),\n  primary key (article_id,idempotency_key)\n)"
+        },
+        {
+          "name": "e2e_generations_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_generations_v1 (\n  generation_id text primary key not null,\n  article_id text not null,\n  generation_seq integer not null check (typeof(generation_seq)='integer' and generation_seq>0),\n  source_key text not null,\n  source_content_hash text not null,\n  approval_key text not null,\n  approval_snapshot_hash text not null,\n  approval_hash_schema text not null,\n  projection_input_hash text not null,\n  projection_input_schema text not null,\n  expected_version_id text not null,\n  expected_version_revision integer not null,\n  expected_publication_id text not null,\n  expected_publication_revision integer not null,\n  expected_publication_state text not null check (expected_publication_state in ('draft','in_review','published','withdrawn')),\n  approval_mode text not null check (approval_mode in ('human','automatic')),\n  policy_version text not null,\n  approval_evidence_ref text not null,\n  source_evidence_ref text not null,\n  pipeline_run_id text,\n  discovery_candidate_id text,\n  created_at text not null,\n  unique (article_id,generation_seq),\n  unique (article_id,generation_id)\n)"
+        },
+        {
+          "name": "e2e_search_apply_receipts_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_search_apply_receipts_v1 (\n  generation_id text primary key not null references e2e_generations_v1(generation_id),\n  outbox_id text not null references e2e_search_repair_outbox_v1(outbox_id),\n  fencing_token integer not null,\n  document_fingerprint text not null,\n  fts_fingerprint text not null,\n  applied_at text not null\n)"
+        },
+        {
+          "name": "e2e_search_repair_dispatch_idx",
+          "type": "index",
+          "sql": "CREATE INDEX e2e_search_repair_dispatch_idx\n  on e2e_search_repair_outbox_v1 (status,next_dispatch_at,created_at,outbox_id)"
+        },
+        {
+          "name": "e2e_search_repair_outbox_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_search_repair_outbox_v1 (\n  outbox_id text primary key not null,\n  article_id text not null,\n  generation_id text not null,\n  generation_seq integer not null check (generation_seq>0),\n  operation text not null check (operation in ('project','remove')),\n  expected_version_id text not null,\n  expected_version_revision integer not null,\n  expected_publication_id text not null,\n  expected_publication_revision integer not null,\n  expected_publication_state text not null,\n  policy_version text not null,\n  projection_input_hash text not null,\n  payload_evidence_ref text not null,\n  status text not null default 'pending' check (status in ('pending','leased','retry_wait','verified','superseded','dead_letter')),\n  attempt_count integer not null default 0 check (attempt_count>=0),\n  max_attempts integer not null default 8,\n  next_attempt_at text not null,\n  first_failure_at text,\n  claimed_by text,\n  lease_expires_at text,\n  fencing_token integer not null default 0,\n  -- Dispatch has its own lease/fence and budget. Duplicate Queue delivery must\n  -- not consume the processing attempt budget owned by the M3 Consumer.\n  dispatch_owner text,\n  dispatch_token text,\n  dispatch_lease_expires_at text,\n  dispatch_fence integer not null default 0,\n  dispatch_count integer not null default 0,\n  dispatch_failure_count integer not null default 0,\n  first_dispatch_failure_at text,\n  next_dispatch_at text not null,\n  dispatched_at text,\n  last_dispatch_error_code text,\n  last_error_code text,\n  verified_at text,\n  evidence_ref text,\n  created_at text not null,\n  updated_at text not null,\n  unique (article_id,generation_id,operation),\n  foreign key (article_id,generation_id) references e2e_generations_v1(article_id,generation_id),\n  check (status<>'verified' or (verified_at is not null and evidence_ref is not null))\n)"
+        },
+        {
+          "name": "e2e_source_article_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_delete_guard before delete on articles when exists(select 1 from e2e_source_policies_v1 s join article_publications_p3 p on p.article_id=old.id where s.source_key=old.source_key and s.required=1) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_publications_p3_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_publications_p3_delete_guard before delete on article_publications_p3 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1)) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_publications_p3_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_publications_p3_insert_guard before insert on article_publications_p3 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1)) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_publications_p3_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_publications_p3_update_guard before update on article_publications_p3 when ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1)) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))) or ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1)) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_revision_heads_v4_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_revision_heads_v4_delete_guard before delete on article_revision_heads_v4 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=old.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_revision_heads_v4_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_revision_heads_v4_insert_guard before insert on article_revision_heads_v4 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=new.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_revision_heads_v4_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_revision_heads_v4_update_guard before update on article_revision_heads_v4 when ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=old.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))) or ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=new.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_version_heads_p3_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_version_heads_p3_delete_guard before delete on article_version_heads_p3 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=old.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_version_heads_p3_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_version_heads_p3_insert_guard before insert on article_version_heads_p3 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=new.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_article_version_heads_p3_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_article_version_heads_p3_update_guard before update on article_version_heads_p3 when ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=old.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))) or ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=new.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_e2e_generation_heads_v1_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_e2e_generation_heads_v1_delete_guard before delete on e2e_generation_heads_v1 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=old.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_e2e_generation_heads_v1_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_e2e_generation_heads_v1_insert_guard before insert on e2e_generation_heads_v1 when (exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=new.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id)) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_e2e_generation_heads_v1_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_e2e_generation_heads_v1_update_guard before update on e2e_generation_heads_v1 when ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=old.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=old.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=old.article_id))) or ((exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key where x.id=new.article_id and s.required=1) and exists(select 1 from article_publications_p3 p where p.article_id=new.article_id and p.state='published')) and (not exists(select 1 from e2e_core_write_authorizations_v1 a join e2e_commit_guards_v1 c on c.token=a.token and c.assertion=1 where a.article_id=new.article_id))) begin select raise(abort,'e2e_source_owner_required'); end"
+        },
+        {
+          "name": "e2e_source_identity_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_identity_guard before update of source_key on articles when old.source_key is not new.source_key and exists(select 1 from e2e_source_policies_v1 s where s.required=1 and s.source_key in (old.source_key,new.source_key)) begin select raise(abort,'e2e_source_identity_immutable'); end"
+        },
+        {
+          "name": "e2e_source_policies_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_source_policies_v1(source_key text primary key not null,required integer not null default 0 check(required in (0,1)),updated_at text not null)"
+        },
+        {
+          "name": "e2e_source_version_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_version_delete_guard before delete on article_content_versions_p3\nwhen exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key join article_publications_p3 p on p.article_id=x.id where x.id=old.article_id and s.required=1 and p.version_id=old.id and p.state='published')\nbegin select raise(abort,'e2e_core_immutable_version'); end"
+        },
+        {
+          "name": "e2e_source_version_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_source_version_update_guard before update on article_content_versions_p3\nwhen (exists(select 1 from e2e_generation_heads_v1 where article_id=old.article_id) or exists(select 1 from articles x join e2e_source_policies_v1 s on s.source_key=x.source_key join article_publications_p3 p on p.article_id=x.id where x.id=old.article_id and s.required=1 and p.version_id=old.id and p.state='published'))\n and (old.id is not new.id or old.article_id is not new.article_id or old.revision is not new.revision or old.parent_version_id is not new.parent_version_id or old.content_hash is not new.content_hash or old.case_key is not new.case_key or old.slug is not new.slug or old.source_key is not new.source_key or old.jurisdiction is not new.jurisdiction or old.institution_name is not new.institution_name or old.content_type is not new.content_type or old.original_url is not new.original_url or old.canonical_url is not new.canonical_url or old.original_language is not new.original_language or old.original_title is not new.original_title or old.korean_title is not new.korean_title or old.original_published_at is not new.original_published_at or old.cleaned_text is not new.cleaned_text or old.summary_json is not new.summary_json or old.source_metadata is not new.source_metadata or old.error_metadata is not new.error_metadata or old.version_role is not new.version_role or old.source_anchor_version_id is not new.source_anchor_version_id or old.source_content_hash is not new.source_content_hash or old.enrichment_source_content_hash is not new.enrichment_source_content_hash or old.authority_evidence_hash is not new.authority_evidence_hash or old.source_snapshot_hash is not new.source_snapshot_hash or old.case_metadata_snapshot is not new.case_metadata_snapshot or old.case_identifiers_snapshot is not new.case_identifiers_snapshot)\nbegin select raise(abort,'e2e_core_immutable_version'); end"
+        },
+        {
+          "name": "e2e_verification_evidence_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_verification_evidence_v1 (\n  evidence_id text primary key not null,\n  generation_id text unique not null references e2e_generations_v1(generation_id),\n  result text not null check(result in ('completed_verified','withdrawal_verified')),\n  verification_fence integer not null,\n  applied_fence integer not null,\n  document_fingerprint text not null,\n  fts_fingerprint text not null,\n  evidence_document text not null check(json_valid(evidence_document)),\n  verified_at text not null\n)"
+        },
+        {
+          "name": "e2e_verification_jobs_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_verification_jobs_v1 (\n  generation_id text primary key not null references e2e_generations_v1(generation_id),\n  status text not null default 'pending' check(status in ('pending','leased','retry_wait','verified','dead_letter','superseded','blocked')),\n  verification_fence integer not null default 0,\n  applied_fence integer,\n  attempt_count integer not null default 0,\n  max_attempts integer not null default 8,\n  next_attempt_at text not null,\n  first_failure_at text,\n  claimed_by text,\n  lease_expires_at text,\n  last_error_code text,\n  updated_at text not null\n)"
+        },
+        {
+          "name": "e2e_verification_redrive_operator_v1",
+          "type": "index",
+          "sql": "CREATE INDEX e2e_verification_redrive_operator_v1 on e2e_verification_redrive_v1(operator_id,created_at)"
+        },
+        {
+          "name": "e2e_verification_redrive_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_verification_redrive_v1(\n id text primary key not null, generation_id text not null references e2e_generations_v1(generation_id),\n operator_id text not null, reason text not null, previous_verification_fence integer not null,\n previous_state_document text not null, created_at text not null, unique(generation_id,previous_verification_fence)\n)"
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "NRT",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.875
+        },
+        "duration": 0.875,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 269639680,
+        "rows_read": 225,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

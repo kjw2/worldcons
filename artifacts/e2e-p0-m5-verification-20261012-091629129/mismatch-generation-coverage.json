@@ -1,0 +1,62 @@
+{
+  "serverDate": "Mon, 12 Oct 2026 09:36:04 GMT",
+  "data": [
+    {
+      "results": [
+        {
+          "id": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+          "source_key": "es-tribunal-constitucional",
+          "review_state": "summarized",
+          "original_title": "AUTO 50/2026",
+          "generation_id": null
+        },
+        {
+          "id": "8ba82d90-0f28-4731-963b-760805af100d",
+          "source_key": "es-tribunal-constitucional",
+          "review_state": "summarized",
+          "original_title": "AUTO 26/2026",
+          "generation_id": null
+        },
+        {
+          "id": "8f70d967-250d-4935-858f-5b91304b709f",
+          "source_key": "es-tribunal-constitucional",
+          "review_state": "summarized",
+          "original_title": "AUTO 45/2026",
+          "generation_id": null
+        },
+        {
+          "id": "dfb04619-3a7f-4b82-8405-24d171b2abd3",
+          "source_key": "es-tribunal-constitucional",
+          "review_state": "summarized",
+          "original_title": "SENTENCIA 41/2026",
+          "generation_id": null
+        },
+        {
+          "id": "eccd7fae-7606-42e0-808a-2ade103ca0c9",
+          "source_key": "es-tribunal-constitucional",
+          "review_state": "summarized",
+          "original_title": "SENTENCIA 35/2026",
+          "generation_id": null
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "NRT",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.9873
+        },
+        "duration": 0.9873,
+        "changes": 0,
+        "last_row_id": 1,
+        "changed_db": false,
+        "size_after": 270372864,
+        "rows_read": 10,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

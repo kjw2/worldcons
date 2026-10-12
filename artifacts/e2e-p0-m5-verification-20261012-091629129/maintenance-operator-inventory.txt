@@ -1,0 +1,184 @@
+scripts/d1-search-canary.ts:23:  executeSearchCanaryWritePlan,
+scripts/d1-search-canary.ts:60: * `--writer=local-dev` (or WORLDCONS_SEARCH_CANARY_DEV_UNAUTH=true with
+scripts/d1-search-canary.ts:80:const SCHEMA_PATH = path.join("d1", "worldcons_search", "0001_init.sql");
+scripts/d1-search-canary.ts:156:  /** Parameterized statements executed by this run (2 per inserted document). */
+scripts/d1-search-canary.ts:157:  executedStatements: number;
+scripts/d1-search-canary.ts:158:  /** The parameterized plan this run executed; empty for a no-op. */
+scripts/d1-search-canary.ts:184:  const envelope = await d1Client.queryRows("select article_id from search_fts order by article_id");
+scripts/d1-search-canary.ts:188:      throw new Error("canary search_fts row is missing a valid article_id");
+scripts/d1-search-canary.ts:198: * projection. This reads the materialized `search_documents`/`search_fts`
+scripts/d1-search-canary.ts:220:        `(${summarizeSearchCanaryExpansionIssues(extension.issues)}); destructive rebuild is refused, choose a new --database name`,
+scripts/d1-search-canary.ts:225:    return { insertedDocuments: 0, executedStatements: 0, writePlan: extension.plan };
+scripts/d1-search-canary.ts:231:        "parameterized writer is configured; set WORLDCONS_SEARCH_CANARY_WORKER_URL + WORLDCONS_SEARCH_CANARY_TOKEN, or " +
+scripts/d1-search-canary.ts:232:        "CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN + WORLDCONS_SEARCH_CANARY_DATABASE_ID",
+scripts/d1-search-canary.ts:236:  // M7.6: execute the parameterized statements through the selected writer; the
+scripts/d1-search-canary.ts:239:  const result = await executeSearchCanaryWritePlan(extension.plan, writer.kind, writer.execute);
+scripts/d1-search-canary.ts:258:  return { insertedDocuments: extension.insertedDocuments, executedStatements: result.executedStatements, writePlan: extension.plan };
+scripts/d1-search-canary.ts:375:  // The parameterized plan the apply run actually executes (the append-only
+scripts/d1-search-canary.ts:378:  let executedWritePlan: SearchCanaryWritePlan | null = null;
+scripts/d1-search-canary.ts:441:    await d1Client.executeScript(schema);
+scripts/d1-search-canary.ts:443:    executedWritePlan = population.writePlan;
+scripts/d1-search-canary.ts:445:    remoteWrites.parameterizedStatements = population.executedStatements;
+scripts/d1-search-canary.ts:493:            "run with WORLDCONS_SEARCH_CANARY_WORKER_URL and WORLDCONS_SEARCH_CANARY_TOKEN set to measure binding latency, " +
+scripts/d1-search-canary.ts:494:            "or pass --writer=local-dev (or WORLDCONS_SEARCH_CANARY_DEV_UNAUTH=true) with a loopback http endpoint for the tokenless local-dev path",
+scripts/d1-search-canary.ts:583:    // subset actually executed; a dry-run reports the full desired plan.
+scripts/d1-search-canary.ts:584:    writePlan: summarizeSearchCanaryWritePlan(executedWritePlan ?? writePlanInfo.writePlan),
+scripts/d1-reconcile.ts:33: *   pnpm d1:reconcile --source=supabase-linked --database=worldcons_core
+scripts/d1-reconcile.ts:34: *   pnpm d1:reconcile --source=supabase-linked --database=worldcons_core --apply
+scripts/d1-reconcile.ts:49: * impossible: `--database=` selects the exact databases (it defaults to the CLI's
+scripts/d1-reconcile.ts:154:type ExecuteStatement = (database: D1Database, statement: D1ImportStatement) => Promise<{ changes: number }>;
+scripts/d1-reconcile.ts:155:type ExecuteRemoteQuery = (
+scripts/d1-reconcile.ts:216:}): ExecuteStatement | undefined {
+scripts/d1-reconcile.ts:219:  let writer: Promise<ExecuteStatement> | null = null;
+scripts/d1-reconcile.ts:220:  const load = (): Promise<ExecuteStatement> => {
+scripts/d1-reconcile.ts:227:    const execute = await load();
+scripts/d1-reconcile.ts:228:    return execute(database, statement);
+scripts/d1-reconcile.ts:242:}): ExecuteRemoteQuery {
+scripts/d1-reconcile.ts:244:  let executor: Promise<ExecuteRemoteQuery> | null = null;
+scripts/d1-reconcile.ts:245:  const load = (): Promise<ExecuteRemoteQuery> => {
+scripts/d1-reconcile.ts:252:    const execute = await load();
+scripts/d1-reconcile.ts:253:    return execute(database, statement);
+scripts/d1-reconcile.ts:266:  // database through `--database=`, so a bare `--apply` can never reconcile every
+scripts/d1-reconcile.ts:269:    throw new Error("--apply requires an explicit --database= selection; refusing an implicit all-database apply");
+scripts/d1-reconcile.ts:274:    const executeStatement = createLazyAffectedWriter({ apply, runner, databases });
+scripts/d1-reconcile.ts:275:    const executeRemoteQuery = createLazyRemoteQuery({ runner, databases });
+scripts/d1-reconcile.ts:284:      executeStatement,
+scripts/d1-reconcile.ts:285:      executeRemoteQuery,
+scripts/d1-copy-data.ts:46:type ExecuteParameterized = (database: D1Database, statement: D1ImportStatement) => Promise<void>;
+scripts/d1-copy-data.ts:49:type ExecuteRemoteQuery = (
+scripts/d1-copy-data.ts:67: *   pnpm d1:copy-data --database=worldcons_core --tables=events,venues --json
+scripts/d1-copy-data.ts:69: *   pnpm d1:copy-data --source=supabase-linked --database=worldcons_core --report
+scripts/d1-copy-data.ts:72: *   pnpm d1:copy-data --max-rows=1000 --database=worldcons_core
+scripts/d1-copy-data.ts:280: * data-copy targets by exact name (the `--database=` selection, else the three
+scripts/d1-copy-data.ts:281: * normal copy databases, so `worldcons_search` is never required), and fails
+scripts/d1-copy-data.ts:293:}): Promise<ExecuteParameterized> {
+scripts/d1-copy-data.ts:310: * targets are classified by exact name (the `--database=` selection, else the
+scripts/d1-copy-data.ts:311: * three normal copy databases, so `worldcons_search` is never required), failing
+scripts/d1-copy-data.ts:362:}): ExecuteParameterized | undefined {
+scripts/d1-copy-data.ts:365:  let writer: Promise<ExecuteParameterized> | null = null;
+scripts/d1-copy-data.ts:366:  const load = (): Promise<ExecuteParameterized> => {
+scripts/d1-copy-data.ts:376:    const execute = await load();
+scripts/d1-copy-data.ts:377:    await execute(database, statement);
+scripts/d1-copy-data.ts:398:}): ExecuteRemoteQuery {
+scripts/d1-copy-data.ts:400:  let executor: Promise<ExecuteRemoteQuery> | null = null;
+scripts/d1-copy-data.ts:401:  const load = (): Promise<ExecuteRemoteQuery> => {
+scripts/d1-copy-data.ts:410:    const execute = await load();
+scripts/d1-copy-data.ts:411:    return execute(database, statement);
+scripts/d1-copy-data.ts:425:    const executeParameterized = createLazyParameterizedWriter({ apply, runner, databases });
+scripts/d1-copy-data.ts:426:    const executeRemoteQuery = createLazyRemoteQuery({ runner, databases });
+scripts/d1-copy-data.ts:446:      executeParameterized,
+scripts/d1-copy-data.ts:447:      executeRemoteQuery,
+lib/cloudflare/d1/import\apply.ts:121:/** Verifies one table's import round trip and returns the re-derived dataset. */
+lib/cloudflare/d1/import\emitter.ts:24: * most 100 parameters, so the rows per statement are derived from the column
+lib/cloudflare/d1/import\types.ts:47:  /** Literal SQL for the same statements (`wrangler d1 execute --file`). */
+lib/cloudflare/d1/import\types.ts:61: * The D1 write boundary. `exec` runs DDL/multi-statement text; `run` executes a
+lib/cloudflare/d1/remote\index.ts:17:  parseD1ExecuteResultsJson,
+lib/cloudflare/d1/import\local-target.ts:8: * faithful stand-in for a local `wrangler d1 execute --local` run. This module is
+lib/cloudflare/d1/remote\types.ts:35:  worldcons_search: "WORLDCONS_SEARCH",
+lib/cloudflare/d1/remote\types.ts:87: * The confirmed Windows `wrangler d1 execute` process crash exit code
+lib/cloudflare/d1/remote\types.ts:157:  /** Wrangler commands the run executed, in order, for the audit trail. */
+lib/cloudflare/d1/remote\types.ts:170: *   database (`wrangler d1 execute --remote --file`);
+lib/cloudflare/d1/remote\types.ts:172: *   `d1 execute --command` before any write (and again after an apply) and
+lib/cloudflare/d1/remote\types.ts:252:  /** Wrangler commands the run executed, in order, for the audit trail. */
+lib/cloudflare/d1/remote\types.ts:272: *   `wrangler d1 execute --remote --file`;
+lib/cloudflare/d1/remote\types.ts:279: *   own: it only executes the reviewed migration files it is handed.
+lib/cloudflare/d1/remote\types.ts:305:  /** The migration SQL, applied verbatim through `d1 execute --file`. */
+lib/cloudflare/d1/remote\types.ts:380:  /** Wrangler commands the run executed, in order, for the audit trail. */
+lib/cloudflare/d1/remote\http-query.ts:17: * The bound-parameter HTTP query surface. It executes one `?`-parameterized
+lib/cloudflare/d1/remote\http-query.ts:172:  return async function execute(
+lib/cloudflare/d1/remote\http-query.ts:303:  const execute = createD1HttpQueryExecutor(options);
+lib/cloudflare/d1/remote\http-query.ts:305:    await execute(database, statement);
+lib/cloudflare/d1/remote\http-query.ts:349:  return async function execute(database, statement): Promise<{ changes: number }> {
+lib/cloudflare/d1/remote\targets.ts:11: * The four remote targets in the canonical `worldcons_core` -> `worldcons_search`
+lib/cloudflare/d1/remote\reconcile.ts:14:import { D1RemoteError, parseD1ExecuteResultsJson } from "./classify";
+lib/cloudflare/d1/remote\reconcile.ts:64:/** The reload-only databases this seam reconciles; `worldcons_search` is skipped. */
+lib/cloudflare/d1/remote\reconcile.ts:137:  /** Insert statements actually executed (apply) or planned (dry-run). */
+lib/cloudflare/d1/remote\reconcile.ts:139:  /** Update statements actually executed (apply) or planned (dry-run). */
+lib/cloudflare/d1/remote\reconcile.ts:190:  /** Wrangler commands the run executed, in order, for the audit trail. */
+lib/cloudflare/d1/remote\reconcile.ts:203:  /** Optional subset of targets; `worldcons_search` is always skipped. */
+lib/cloudflare/d1/remote\reconcile.ts:220:   * Executes one parameterized write through a bound-parameter surface (the D1
+lib/cloudflare/d1/remote\reconcile.ts:226:  executeStatement?: (
+lib/cloudflare/d1/remote\reconcile.ts:231:   * Optional READ fallback for the remote comparison reads. It executes the SAME
+lib/cloudflare/d1/remote\reconcile.ts:233:   * rows. When the Wrangler `d1 execute --command` invocation rejects with a
+lib/cloudflare/d1/remote\reconcile.ts:238:  executeRemoteQuery?: (
+lib/cloudflare/d1/remote\reconcile.ts:243:   * Controls which Wrangler READ failures may fall back to `executeRemoteQuery`:
+lib/cloudflare/d1/remote\reconcile.ts:437: * Rows per statement are derived from the column count and clamped to the D1
+lib/cloudflare/d1/remote\reconcile.ts:469: * Executes one parameterized write and verifies the D1 affected-row count
+lib/cloudflare/d1/remote\reconcile.ts:474:  execute: (database: D1Database, statement: D1ImportStatement) => Promise<{ changes: number }>,
+lib/cloudflare/d1/remote\reconcile.ts:480:  const outcome = await execute(database, statement);
+lib/cloudflare/d1/remote\reconcile.ts:579: * without `executeStatement`) or an invalid argument.
+lib/cloudflare/d1/remote\reconcile.ts:596:  if (apply && typeof options.executeStatement !== "function") {
+lib/cloudflare/d1/remote\reconcile.ts:597:    throw new Error("executeStatement is required to reconcile remote D1 data");
+lib/cloudflare/d1/remote\reconcile.ts:624:  const executeRemoteQuery = options.executeRemoteQuery;
+lib/cloudflare/d1/remote\reconcile.ts:627:   * Executes one remote READ statement through Wrangler, retrying over the
+lib/cloudflare/d1/remote\reconcile.ts:645:        "execute",
+lib/cloudflare/d1/remote\reconcile.ts:657:      if (typeof executeRemoteQuery !== "function" || (!crashOnly && !anyWranglerExit)) {
+lib/cloudflare/d1/remote\reconcile.ts:661:      return executeRemoteQuery(target.name, statement);
+lib/cloudflare/d1/remote\reconcile.ts:663:    return parseD1ExecuteResultsJson(stdout);
+lib/cloudflare/d1/remote\reconcile.ts:792:            const executeStatement = options.executeStatement as (
+lib/cloudflare/d1/remote\reconcile.ts:812:              await writeVerified(executeStatement, target.name, table.name, statement, expected);
+lib/cloudflare/d1/remote\reconcile.ts:816:              await writeVerified(executeStatement, target.name, table.name, statement, 1);
+lib/cloudflare/d1/remote\data-copy.ts:12:import { D1RemoteError, parseD1ExecuteResultsJson } from "./classify";
+lib/cloudflare/d1/remote\data-copy.ts:26: *   `worldcons_search` is deliberately skipped because its tables are virtual or
+lib/cloudflare/d1/remote\data-copy.ts:27: *   derived (the M7 projection rebuilds them, so they are never copied);
+lib/cloudflare/d1/remote\data-copy.ts:32: *   `d1 execute --remote --yes --json --command`; JSON/array text is revived
+lib/cloudflare/d1/remote\data-copy.ts:45: *   reuses that same plan (`chunkCount` stays the executed write items only);
+lib/cloudflare/d1/remote\data-copy.ts:52: *   `d1 execute --remote --yes --file`, while an oversized statement flushes any
+lib/cloudflare/d1/remote\data-copy.ts:54: *   `executeParameterized` writer using its ORIGINAL `?` SQL and bound params
+lib/cloudflare/d1/remote\data-copy.ts:59: *   `d1 execute --file` crash — is retried through that SAME bound-parameter
+lib/cloudflare/d1/remote\data-copy.ts:75:/** The reload-only databases this seam copies; `worldcons_search` is skipped. */
+lib/cloudflare/d1/remote\data-copy.ts:130:  /** Write items this run executed for the table (file chunks plus parameterized statements). */
+lib/cloudflare/d1/remote\data-copy.ts:133:   * Write items the preflight plan would execute for the table, computed for every
+lib/cloudflare/d1/remote\data-copy.ts:198:  /** Wrangler commands the run executed, in order, for the audit trail. */
+lib/cloudflare/d1/remote\data-copy.ts:211:  /** Optional subset of targets; `worldcons_search` is always skipped. */
+lib/cloudflare/d1/remote\data-copy.ts:235:   * `wrangler d1 execute --file`. Required in apply mode. Called serially, once
+lib/cloudflare/d1/remote\data-copy.ts:241:   * Executes one statement through a bound-parameter surface (for example the D1
+lib/cloudflare/d1/remote\data-copy.ts:258:  executeParameterized?: (database: D1Database, statement: D1ImportStatement) => Promise<void>;
+lib/cloudflare/d1/remote\data-copy.ts:260:   * Optional READ fallback for the remote comparison reads. It executes the SAME
+lib/cloudflare/d1/remote\data-copy.ts:263:   * `d1 execute --command` runner invocation rejects with a `WranglerD1ExitError`
+lib/cloudflare/d1/remote\data-copy.ts:265:   * confirmed Windows `d1 execute` crash. Every other runner failure (a different
+lib/cloudflare/d1/remote\data-copy.ts:270:  executeRemoteQuery?: (database: D1Database, statement: D1ImportStatement) => Promise<Record<string, unknown>[]>;
+lib/cloudflare/d1/remote\data-copy.ts:386: *               `wrangler d1 execute --file`; it also carries the chunk's ORIGINAL
+lib/cloudflare/d1/remote\data-copy.ts:580:  const executeRemoteQuery = options.executeRemoteQuery;
+lib/cloudflare/d1/remote\data-copy.ts:583:   * Executes one remote READ statement, preferring the existing Wrangler
+lib/cloudflare/d1/remote\data-copy.ts:588:   * `d1 execute` crash — and an injected HTTP query executor is available. On that
+lib/cloudflare/d1/remote\data-copy.ts:606:        "execute",
+lib/cloudflare/d1/remote\data-copy.ts:616:        typeof executeRemoteQuery !== "function" ||
+lib/cloudflare/d1/remote\data-copy.ts:622:      return executeRemoteQuery(target.name, statement);
+lib/cloudflare/d1/remote\data-copy.ts:624:    return parseD1ExecuteResultsJson(stdout);
+lib/cloudflare/d1/remote\data-copy.ts:752:          // recomputing it. `chunkCount` below stays executed write items only.
+lib/cloudflare/d1/remote\data-copy.ts:766:            const executeParameterized = options.executeParameterized;
+lib/cloudflare/d1/remote\data-copy.ts:770:            if (result.requiresParameterizedWriter && typeof executeParameterized !== "function") {
+lib/cloudflare/d1/remote\data-copy.ts:787:                  await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--file", path]);
+lib/cloudflare/d1/remote\data-copy.ts:789:                  // ONLY the confirmed Windows `d1 execute --file` crash (exactly
+lib/cloudflare/d1/remote\data-copy.ts:799:                    typeof executeParameterized !== "function" ||
+lib/cloudflare/d1/remote\data-copy.ts:806:                    await executeParameterized(target.name, statement);
+lib/cloudflare/d1/remote\data-copy.ts:810:                await (executeParameterized as (database: D1Database, statement: D1ImportStatement) => Promise<void>)(
+lib/cloudflare/d1/remote\schema-apply.ts:7:  parseD1ExecuteResultsJson,
+lib/cloudflare/d1/remote\schema-apply.ts:27: * - it reads `sqlite_master` through `d1 execute --command` and confirms every
+lib/cloudflare/d1/remote\schema-apply.ts:34: *   `materializeDdl` and run `wrangler d1 execute NAME --remote --yes --file <path>`,
+lib/cloudflare/d1/remote\schema-apply.ts:36: *   deliberately NOT parsed: `wrangler d1 execute --file` can interleave spinner or
+lib/cloudflare/d1/remote\schema-apply.ts:50:/** The expected D1 objects for one database, derived from the M5.1 schema. */
+lib/cloudflare/d1/remote\schema-apply.ts:83:   * `wrangler d1 execute --file`. Required in apply mode.
+lib/cloudflare/d1/remote\schema-apply.ts:138:    const rows = parseD1ExecuteResultsJson(
+lib/cloudflare/d1/remote\schema-apply.ts:141:        "execute",
+lib/cloudflare/d1/remote\schema-apply.ts:276:      // `d1 execute --file` may emit spinner/human text even with `--json`, so
+lib/cloudflare/d1/remote\schema-apply.ts:279:      await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--file", path]);
+lib/cloudflare/d1/remote\schema-apply.ts:286:      errors.push(`execute ${target.name}: ${message(error)}`);
+lib/cloudflare/d1/remote\migration-apply.ts:5:  parseD1ExecuteResultsJson,
+lib/cloudflare/d1/remote\migration-apply.ts:41: *   only executes the reviewed migration SQL it is handed.
+lib/cloudflare/d1/remote\migration-apply.ts:175:   * `wrangler d1 execute --file`. Required in apply mode.
+lib/cloudflare/d1/remote\migration-apply.ts:273:    return parseD1ExecuteResultsJson(
+lib/cloudflare/d1/remote\migration-apply.ts:276:        "execute",
+lib/cloudflare/d1/remote\migration-apply.ts:435:        await runWrangler(["d1", "execute", target.name, "--remote", "--yes", "--json", "--file", path]);
+lib/cloudflare/d1/remote\migration-apply.ts:444:        errors.push(`execute ${target.name} ${migration.file}: ${message(error)}`);
+lib/cloudflare/d1/remote\runner.ts:20: *   untrusted input (the CLI validates `--database` against the canonical set and
+lib/cloudflare/d1/import\literal.ts:7: * same import can be written as a `wrangler d1 execute --file` script. Values
+lib/cloudflare/d1/remote\classify.ts:120: * Parses the current `wrangler d1 execute --json` output. It must be a JSON array
+lib/cloudflare/d1/remote\classify.ts:124:export function parseD1ExecuteResultsJson(stdout: string): Record<string, unknown>[] {
+lib/cloudflare/d1/remote\classify.ts:129:    throw new D1RemoteError("d1_remote.malformed_execute_json", "d1 execute --json did not return JSON");
+lib/cloudflare/d1/remote\classify.ts:132:    throw new D1RemoteError("d1_remote.malformed_execute_json", "d1 execute --json did not return a JSON array");
+lib/cloudflare/d1/remote\classify.ts:139:        "d1_remote.malformed_execute_result",
+lib/cloudflare/d1/remote\classify.ts:140:        `d1 execute --json entry ${index} is not a successful { results, success } envelope`,
+lib/cloudflare/d1/remote\classify.ts:147:          "d1_remote.malformed_execute_result",
+lib/cloudflare/d1/remote\classify.ts:148:          `d1 execute --json entry ${index} contained a non-object row`,

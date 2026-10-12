@@ -1,0 +1,300 @@
+{
+  "mode": "production_read_only",
+  "results": [
+    {
+      "articleId": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+      "generationId": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "expected": {
+        "id": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+        "slug": "spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72",
+        "title": "스페인 헌법재판소 2026년 38호 판결: 소비자와의 계약에서 불공정 조항에 대한 직권 심사 및 헌법소원",
+        "caseNumber": "38/2026",
+        "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094?ACTION=resoluciones-de-otros-tribunales-citadas",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094",
+        "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72"
+      },
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:20 GMT",
+          "responseHash": "037b8c48ccd11faf1d46da917d0af92314b2f55500bcfa720eb41a9a9742f031",
+          "observed": {
+            "id": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+            "slug": "spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72",
+            "title": "스페인 헌법재판소 2026년 38호 판결: 소비자와의 계약에서 불공정 조항에 대한 직권 심사 및 헌법소원",
+            "caseNumber": "38/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094?ACTION=resoluciones-de-otros-tribunales-citadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094"
+            }
+          ]
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=38%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:21 GMT",
+          "responseHash": "330ca9c7b6acf2c25f983f9b3333a4b2b8f7dc691e3dd61b9a8e76143eb28619",
+          "observed": {
+            "id": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+            "slug": "spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72",
+            "title": "스페인 헌법재판소 2026년 38호 판결: 소비자와의 계약에서 불공정 조항에 대한 직권 심사 및 헌법소원",
+            "caseNumber": "38/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-05-25-sentencia-382026-de-25-de-mayo-de-2026-cbdb72"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094?ACTION=resoluciones-de-otros-tribunales-citadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32094"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "articleId": "724d57d3-723d-4450-ad01-0a049688fc6a",
+      "generationId": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "expected": {
+        "id": "724d57d3-723d-4450-ad01-0a049688fc6a",
+        "slug": "spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a",
+        "title": "스페인 헌법재판소, 유럽의회 의원 당선인의 헌법 충성 선서 요건 불이행에 따른 중앙선거관리위원회 결정에 대한 가처분 신청 기각 결정",
+        "caseNumber": "37/2026",
+        "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+        "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a"
+      },
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:22 GMT",
+          "responseHash": "dc6c1322d2e427601d155db63cb78836aa8dbc9c997d977b6bb3c7139cd0184d",
+          "observed": {
+            "id": "724d57d3-723d-4450-ad01-0a049688fc6a",
+            "slug": "spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a",
+            "title": "스페인 헌법재판소, 유럽의회 의원 당선인의 헌법 충성 선서 요건 불이행에 따른 중앙선거관리위원회 결정에 대한 가처분 신청 기각 결정",
+            "caseNumber": "37/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114"
+            }
+          ]
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=37%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:23 GMT",
+          "responseHash": "fedf3b06e4066c40d4f42884e10c66b9e1476c45c05aee24cbdc1b6d686fb6b2",
+          "observed": {
+            "id": "724d57d3-723d-4450-ad01-0a049688fc6a",
+            "slug": "spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a",
+            "title": "스페인 헌법재판소, 유럽의회 의원 당선인의 헌법 충성 선서 요건 불이행에 따른 중앙선거관리위원회 결정에 대한 가처분 신청 기각 결정",
+            "caseNumber": "37/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-06-22-auto-372026-de-22-de-junio-de-2026-8bfe3a"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "articleId": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+      "generationId": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "expected": {
+        "id": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+        "slug": "spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7",
+        "title": "스페인 헌법재판소: 의회 하원 국장단의 반복적인 수정안 제출 기한 연장이 의원의 대표권과 입법권을 침해하는지에 관한 헌법소원 심판",
+        "caseNumber": "32/2026",
+        "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082",
+        "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7"
+      },
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:24 GMT",
+          "responseHash": "34fbbf4dc8b14816b2e2641af70658a0cd8ecc16dae29ce85ea756d62e11da48",
+          "observed": {
+            "id": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+            "slug": "spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7",
+            "title": "스페인 헌법재판소: 의회 하원 국장단의 반복적인 수정안 제출 기한 연장이 의원의 대표권과 입법권을 침해하는지에 관한 헌법소원 심판",
+            "caseNumber": "32/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082"
+            }
+          ]
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=32%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:25 GMT",
+          "responseHash": "7abf4bb900e755b2d05400e307eebb26899a3bf554a7d0c14e0d4047b03a01a7",
+          "observed": {
+            "id": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+            "slug": "spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7",
+            "title": "스페인 헌법재판소: 의회 하원 국장단의 반복적인 수정안 제출 기한 연장이 의원의 대표권과 입법권을 침해하는지에 관한 헌법소원 심판",
+            "caseNumber": "32/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-14-sentencia-322026-de-14-de-abril-de-2026-fe57a7"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32082"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "articleId": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "generationId": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "expected": {
+        "id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+        "slug": "spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7",
+        "title": "스페인 헌법재판소 판결 51/2026",
+        "caseNumber": "51/2026",
+        "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119?ACTION=disposiciones-citadas",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119",
+        "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7"
+      },
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:25 GMT",
+          "responseHash": "aea5394360cb2f95e1f590b5f3963562690abd47f5acff4e8ab6f3e48e8f27ad",
+          "observed": {
+            "id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+            "slug": "spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7",
+            "title": "스페인 헌법재판소 판결 51/2026",
+            "caseNumber": "51/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119?ACTION=disposiciones-citadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119"
+            }
+          ]
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=51%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:27 GMT",
+          "responseHash": "d621ead0e4eca797aea21c04dfdc12f69c7a49ae5587cbc9299e6bddfef82eb7",
+          "observed": {
+            "id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+            "slug": "spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7",
+            "title": "스페인 헌법재판소 판결 51/2026",
+            "caseNumber": "51/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119?ACTION=disposiciones-citadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "articleId": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+      "generationId": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "expected": {
+        "id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+        "slug": "spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d",
+        "title": "스페인 헌법재판소 판결 33/2026: 무죄 판결의 파기 및 재심리 명령에 대한 헌법소원",
+        "caseNumber": "33/2026",
+        "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086?ACTION=disposiciones-citadas",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086",
+        "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d"
+      },
+      "probes": [
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d?textLimit=4000",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:27 GMT",
+          "responseHash": "75e90760785879d4b529c0369abf4c4d8c438f18a91d2679209b01a95932ed07",
+          "observed": {
+            "id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+            "slug": "spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d",
+            "title": "스페인 헌법재판소 판결 33/2026: 무죄 판결의 파기 및 재심리 명령에 대한 헌법소원",
+            "caseNumber": "33/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086?ACTION=disposiciones-citadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086"
+            }
+          ]
+        },
+        {
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=33%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+          "status": 200,
+          "serverDate": "Mon, 12 Oct 2026 09:24:28 GMT",
+          "responseHash": "4dfcd591f06756f66f3c2712f129b645d4448080044d8adc934f8a9b118bd3a4",
+          "observed": {
+            "id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+            "slug": "spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d",
+            "title": "스페인 헌법재판소 판결 33/2026: 무죄 판결의 파기 및 재심리 명령에 대한 헌법소원",
+            "caseNumber": "33/2026",
+            "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086",
+            "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d"
+          },
+          "differences": [
+            {
+              "field": "originalUrl",
+              "expected": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086?ACTION=disposiciones-citadas",
+              "actual": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

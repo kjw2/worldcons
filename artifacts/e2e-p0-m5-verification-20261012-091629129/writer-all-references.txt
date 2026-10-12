@@ -1,0 +1,185 @@
+lib/cloudflare\e2e\search-repair-dispatcher.ts:54:  AND EXISTS (SELECT 1 FROM article_publications_p3 p WHERE p.article_id=g.article_id
+lib/cloudflare\e2e\search-repair-dispatcher.ts:57:  AND (g.expected_publication_state<>'published' OR EXISTS (SELECT 1 FROM article_version_heads_p3 vh WHERE vh.article_id=g.article_id
+lib/cloudflare\e2e\search-generation-guard.ts:2:import { SEARCH_DOCUMENT_COLUMNS, SEARCH_FTS_COLUMNS, type SearchProjectionDocument,
+lib/cloudflare\e2e\search-generation-guard.ts:28:    ftsFingerprint:await sha256Canonical(fts ? body(fts as unknown as GenerationRow,SEARCH_FTS_COLUMNS) : null) };
+lib/cloudflare\e2e\search-generation-guard.ts:34:    e2eRows(db,"SELECT * FROM search_documents WHERE article_id=?",identity.articleId),
+lib/cloudflare\e2e\search-generation-guard.ts:35:    e2eRows(db,"SELECT * FROM search_fts WHERE article_id=?",identity.articleId),
+lib/cloudflare\e2e\search-generation-guard.ts:73:    db.prepare("DELETE FROM search_fts WHERE article_id=?").bind(i.articleId),
+lib/cloudflare\e2e\search-generation-guard.ts:74:    db.prepare("DELETE FROM search_documents WHERE article_id=?").bind(i.articleId)];
+lib/cloudflare\e2e\search-generation-guard.ts:76:    db.prepare(`INSERT INTO search_documents (${SEARCH_DOCUMENT_COLUMNS.join(",")}) VALUES (${SEARCH_DOCUMENT_COLUMNS.map(()=>"?").join(",")})`).bind(...SEARCH_DOCUMENT_COLUMNS.map(c=>document[c])),
+lib/cloudflare\e2e\search-generation-guard.ts:77:    db.prepare(`INSERT INTO search_fts (${SEARCH_FTS_COLUMNS.join(",")}) VALUES (${SEARCH_FTS_COLUMNS.map(()=>"?").join(",")})`).bind(...SEARCH_FTS_COLUMNS.map(c=>fts[c])));
+lib/cloudflare\e2e\public-freshness.ts:30:    const eligible=await e2eRows(core,`SELECT p.article_id,o.fencing_token FROM article_publications_p3 p
+lib/cloudflare\e2e\public-freshness.ts:59:      JOIN article_publications_p3 p ON p.version_id=v.id AND p.article_id=v.article_id
+lib/cloudflare\e2e\generation-ledger.ts:82:    ["article_version_heads_p3",p3Head,["current_version_id","current_revision"]],
+lib/cloudflare\e2e\generation-ledger.ts:84:    ["article_publications_p3",publication,["id","state","version_id","revision"]],
+lib/cloudflare\e2e\contracts.ts:7:// Bump when FTS encoding changes independently of search_documents.
+lib/cloudflare\search-vector\types.ts:88: * as M7.1 (published `article_publications_p3` joined to
+lib/cloudflare\search-vector\provenance-audit.ts:43: * `article_publications_p3` join to `article_content_versions_p3`; the view count
+lib/cloudflare\search-vector\provenance-audit.ts:53:  from public.article_publications_p3 p
+lib/cloudflare\search-vector\hybrid.ts:50:const DOCUMENT_TABLE = "search_documents";
+lib/cloudflare\search-vector\hybrid.ts:51:const FTS_TABLE = "search_fts";
+lib/cloudflare\search-ranked\types.ts:49:export const RANKED_SEARCH_DOCUMENT_TABLE = "search_documents" as const;
+lib/cloudflare\search-ranked\types.ts:50:export const RANKED_SEARCH_FTS_TABLE = "search_fts" as const;
+lib/cloudflare\search-ranked\types.ts:55:/** One parameterized statement over `search_documents` (and `search_fts`). */
+lib/cloudflare\search-ranked\queries.ts:2:  SEARCH_FTS_BM25_WEIGHTS,
+lib/cloudflare\search-ranked\queries.ts:13:  RANKED_SEARCH_FTS_TABLE,
+lib/cloudflare\search-ranked\queries.ts:38:const FTS = RANKED_SEARCH_FTS_TABLE;
+lib/cloudflare\search-ranked\queries.ts:39:const WEIGHTS = SEARCH_FTS_BM25_WEIGHTS;
+workers\async-pipeline\src\publication-recovery.ts:8:  LEFT JOIN article_publications_p3 p ON p.article_id=a.id
+workers\async-pipeline\src\ingest-stage-handlers.ts:325:         FROM article_publications_p3 p
+lib/cloudflare\d1\schema\worldcons-search.ts:6: * not a migrated Postgres table. `search_documents` is the denormalized base and
+lib/cloudflare\d1\schema\worldcons-search.ts:7: * `search_fts` is the FTS5 index over it.
+lib/cloudflare\d1\schema\worldcons-search.ts:10:  name: "search_documents",
+lib/cloudflare\d1\schema\worldcons-search.ts:34:  name: "search_fts",
+lib/cloudflare\d1\schema\worldcons-search.ts:38:  note: "FTS5 index over search_documents (plan 6.1 tsvector -> FTS5, plan 11.1)",
+lib/cloudflare\d1\schema\worldcons-core.ts:441:    { name: "publication_id", type: "uuid", nn: true, note: "logical FK to article_publications_p3.id" },
+lib/cloudflare\d1\schema\worldcons-core.ts:486:  name: "article_version_heads_p3",
+lib/cloudflare\d1\schema\worldcons-core.ts:506:    { name: "publication_id", type: "uuid", nn: true, note: "logical FK to article_publications_p3.id" },
+lib/cloudflare\d1\schema\worldcons-core.ts:531:  name: "article_publications_p3",
+lib/cloudflare\d1\schema\worldcons-core.ts:535:    uniqueIndex("article_publications_p3_article_id_key", ["article_id"]),
+lib/cloudflare\d1\schema\worldcons-core.ts:536:    index("article_publications_p3_state_version_idx", ["state", "version_id", "article_id"]),
+lib/cloudflare\d1\schema\ownership.ts:32:  covered("search_documents", "worldcons_search", "derived search projection (rebuilt, never authoritative)"),
+lib/cloudflare\d1\schema\ownership.ts:33:  covered("search_fts", "worldcons_search", "FTS5 index over search_documents"),
+lib/cloudflare\d1\schema\ownership.ts:44:  covered("article_publications_p3", "worldcons_core", "current article publication head"),
+lib/cloudflare\d1\schema\ownership.ts:46:  covered("article_version_heads_p3", "worldcons_core", "current article version head (p3)"),
+lib/cloudflare\core-write\authority.ts:468:       LEFT JOIN article_version_heads_p3 h ON h.article_id=a.id
+lib/cloudflare\core-write\authority.ts:470:       LEFT JOIN article_publications_p3 p ON p.article_id=a.id
+lib/cloudflare\core-write\authority.ts:599:    const p3Head = await one<Row>(binding, "SELECT * FROM article_version_heads_p3 WHERE article_id=?", [input.articleId]);
+lib/cloudflare\core-write\authority.ts:717:          "INSERT INTO article_version_heads_p3 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at"
+lib/cloudflare\core-write\authority.ts:718:          + (input.e2eApproval ? " WHERE article_version_heads_p3.current_version_id=? AND article_version_heads_p3.current_revision=?" : ""),
+lib/cloudflare\core-write\authority.ts:743:    const publication = await one<Row>(binding, "SELECT * FROM article_publications_p3 WHERE article_id=?", [input.articleId]);
+lib/cloudflare\core-write\authority.ts:807:        "INSERT INTO article_publications_p3 (id,article_id,state,version_id,revision,decided_by_type,decided_by_id,reason,published_at,withdrawn_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+lib/cloudflare\core-write\authority.ts:815:        "UPDATE article_publications_p3 SET state=?,version_id=?,revision=?,decided_by_type=?,decided_by_id=?,reason=?,published_at=CASE WHEN ?='published' THEN COALESCE(published_at,?) ELSE published_at END,withdrawn_at=CASE WHEN ?='withdrawn' THEN ? WHEN ?='published' THEN NULL ELSE withdrawn_at END,updated_at=? WHERE id=? AND CAST(revision AS INTEGER)=?",
+lib/cloudflare\core-write\authority.ts:923:    "DELETE FROM article_publications_p3 WHERE article_id=?",
+lib/cloudflare\core-write\authority.ts:924:    "DELETE FROM article_version_heads_p3 WHERE article_id=?",
+lib/cloudflare\search-rank-policy\invariants.ts:125: * sidecar `search_fts.title` encoding, so both the original and Korean titles
+lib/cloudflare\search-rank-policy\evidence.ts:20:  /** Projected `search_documents` rows materialized into the local D1 corpus. */
+lib/cloudflare\search-rank-policy\evidence.ts:36:  /** Projected `search_documents` rows after restricting to the projection ids. */
+lib/cloudflare\search-projection\verify.ts:15: * `search_documents` / `search_fts` rows.
+lib/cloudflare\search-projection\types.ts:6: * `article_publications_p3` + `article_content_versions_p3` rows into
+lib/cloudflare\search-projection\types.ts:7: * deterministic `search_documents` rows and parameterized FTS5 synchronization
+lib/cloudflare\search-projection\types.ts:23:export const SEARCH_DOCUMENT_TABLE = "search_documents" as const;
+lib/cloudflare\search-projection\types.ts:24:export const SEARCH_FTS_TABLE = "search_fts" as const;
+lib/cloudflare\search-projection\types.ts:26:/** Authored `search_documents` columns, in D1 schema order. */
+lib/cloudflare\search-projection\types.ts:45:/** Authored `search_fts` FTS5 columns, in index order. */
+lib/cloudflare\search-projection\types.ts:46:export const SEARCH_FTS_COLUMNS = ["article_id", "title", "case_numbers", "search_text", "tags_text"] as const;
+lib/cloudflare\search-projection\types.ts:56:export type SearchFtsColumn = (typeof SEARCH_FTS_COLUMNS)[number];
+lib/cloudflare\search-projection\types.ts:59: * One sidecar FTS5 index row, one-to-one with a `search_documents` row.
+lib/cloudflare\search-projection\types.ts:61: * `search_documents` keeps its authored shape (a single Korean-preferred
+lib/cloudflare\search-projection\types.ts:76:/** One denormalized `search_documents` row. */
+lib/cloudflare\search-projection\types.ts:98:/** Authoritative `article_publications_p3` row (P3 publication authority). */
+lib/cloudflare\search-projection\types.ts:311:  /** Materialized `search_documents` rows, when an operator read is available. */
+lib/cloudflare\search-projection\types.ts:313:  /** Materialized `search_fts.article_id` values, when an operator read is available. */
+lib/cloudflare\search-projection\tags.ts:5: * M7.3 deterministic tag encoding for the existing `search_documents.tags_text`
+lib/cloudflare\search-projection\source.ts:19: * join: only a `published` `article_publications_p3` row joined to the
+lib/cloudflare\search-projection\source.ts:49:        `duplicate article_publications_p3 id ${publication.id}`,
+lib/cloudflare\search-projection\source.ts:134:        `multiple published article_publications_p3 rows for article ${publication.article_id}`,
+lib/cloudflare\search-projection\plan.ts:7:  SEARCH_FTS_COLUMNS,
+lib/cloudflare\search-projection\plan.ts:8:  SEARCH_FTS_TABLE,
+lib/cloudflare\search-projection\plan.ts:24: * `worldcons_search.search_documents` + `worldcons_search.search_fts`. The plan is
+lib/cloudflare\search-projection\plan.ts:34:const INSERT_FTS_SQL = `INSERT INTO ${SEARCH_FTS_TABLE} (${SEARCH_FTS_COLUMNS.join(
+lib/cloudflare\search-projection\plan.ts:36:)}) VALUES (${SEARCH_FTS_COLUMNS.map(() => "?").join(", ")})`;
+lib/cloudflare\search-projection\plan.ts:38:const DELETE_FTS_SQL = `DELETE FROM ${SEARCH_FTS_TABLE} WHERE article_id = ?`;
+lib/cloudflare\search-projection\plan.ts:40:const DELETE_ALL_FTS_SQL = `DELETE FROM ${SEARCH_FTS_TABLE}`;
+lib/cloudflare\search-projection\plan.ts:117: * only: clear FTS5, clear `search_documents`, then insert both sides in
+lib/cloudflare\search-projection\plan.ts:139: * `search_documents` and `search_fts` sides (the FTS side uses the M7.2
+lib/cloudflare\search-projection\fts-document.ts:13: * `search_documents` row, so it stays a deterministic pure function of the
+lib/cloudflare\search-projection\fts-document.ts:14: * authority and keeps a 1:1 `article_id` identity with `search_documents`.
+lib/cloudflare\search-projection\fts-document.ts:17: * Korean titles (searchable and exact-matchable). `search_documents` itself is
+lib/cloudflare\search-projection\documents.ts:23: * Version snapshot -> `search_documents` identity.
+lib/cloudflare\search-projection\documents.ts:143:/** Builds one deterministic `search_documents` row from a selected source. */
+lib/cloudflare\search-projection\d1-sync.ts:153:FROM article_publications_p3 p
+lib/cloudflare\search-projection\d1-sync.ts:261:      `SELECT article_id,checksum,projection_version FROM search_documents WHERE article_id IN (${placeholders})`,
+lib/cloudflare\search-projection\d1-sync.ts:265:      `SELECT article_id,COUNT(*) AS count FROM search_fts WHERE article_id IN (${placeholders}) GROUP BY article_id`,
+lib/cloudflare\search-projection\d1-sync.ts:290:      `SELECT article_id,checksum,projection_version FROM search_documents WHERE article_id IN (${placeholders}) ORDER BY article_id`,
+lib/cloudflare\search-projection\d1-sync.ts:294:      `SELECT article_id FROM search_fts WHERE article_id IN (${placeholders}) ORDER BY article_id`,
+lib/cloudflare\search-projection\d1-sync.ts:429:    `SELECT COUNT(*) AS count FROM article_publications_p3 p JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id WHERE ${ELIGIBLE_PUBLISHED_PREDICATE}`,
+lib/cloudflare\search-projection\d1-sync.ts:469:    readPaged<{ article_id: string }>(bindings.WORLDCONS_SEARCH, "SELECT article_id FROM search_documents ORDER BY article_id"),
+lib/cloudflare\search-projection\d1-sync.ts:470:    readPaged<{ article_id: string }>(bindings.WORLDCONS_SEARCH, "SELECT article_id FROM search_fts ORDER BY article_id"),
+lib/cloudflare\search-projection\d1-sync.ts:487:        { sql: "DELETE FROM search_fts WHERE article_id = ?", params: [articleId] },
+lib/cloudflare\search-projection\d1-sync.ts:488:        { sql: "DELETE FROM search_documents WHERE article_id = ?", params: [articleId] },
+lib/cloudflare\search-projection\d1-sync.ts:497:    readRows<{ count: number | string }>(bindings.WORLDCONS_SEARCH, "SELECT COUNT(*) AS count FROM search_documents"),
+lib/cloudflare\search-projection\d1-sync.ts:500:      "SELECT COUNT(*) AS count,COUNT(DISTINCT article_id) AS distinct_count FROM search_fts",
+lib/cloudflare\search-projection\d1-sync.ts:551: * `search_documents` row and exactly one `search_fts` row when eligible, and
+lib/cloudflare\search-projection\d1-sync.ts:612:      "SELECT COUNT(*) AS count FROM search_documents WHERE article_id = ?",
+lib/cloudflare\search-projection\d1-sync.ts:617:      "SELECT COUNT(*) AS count,COUNT(DISTINCT article_id) AS distinct_count FROM search_fts WHERE article_id = ?",
+lib/cloudflare\search-projection\build.ts:10: * Selects P3 published authority, derives the deterministic `search_documents`
+scripts\audit-e2e-p0-production.ts:44:    "SELECT * FROM article_publications_p3 ORDER BY article_id",
+scripts\audit-e2e-p0-production.ts:64:      rows(search,`SELECT * FROM search_documents WHERE article_id IN (${placeholders})`,...ids),
+scripts\audit-e2e-p0-production.ts:65:      rows(search,`SELECT * FROM search_fts WHERE article_id IN (${placeholders})`,...ids),
+scripts\audit-e2e-p0-production.ts:82:    rows(search,"SELECT article_id,COUNT(*) AS count FROM search_documents GROUP BY article_id ORDER BY article_id"),
+scripts\audit-e2e-p0-production.ts:83:    rows(search,"SELECT article_id,COUNT(*) AS count FROM search_fts GROUP BY article_id ORDER BY article_id"),
+scripts\audit-e2e-p0-production.ts:88:    rows(core,"SELECT p.article_id,p.version_id FROM article_publications_p3 p LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id WHERE v.id IS NULL ORDER BY p.article_id"),
+scripts\audit-e2e-p0-production.ts:89:    rows(core,"SELECT a.id AS article_id,a.source_key,a.original_title,a.review_state,a.lifecycle_review_state,p.version_id,p.revision AS publication_revision,CASE WHEN a.cleaned_text IS v.cleaned_text THEN 1 ELSE 0 END AS text_equal,CASE WHEN a.summary_json IS v.summary_json THEN 1 ELSE 0 END AS summary_equal,CASE WHEN a.korean_title IS v.korean_title THEN 1 ELSE 0 END AS title_equal FROM article_publications_p3 p JOIN articles a ON a.id=p.article_id JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id WHERE p.state='published' AND (a.cleaned_text IS NOT v.cleaned_text OR a.summary_json IS NOT v.summary_json OR a.korean_title IS NOT v.korean_title OR a.canonical_url IS NOT v.canonical_url) ORDER BY a.id"),
+lib/cloudflare\search-fts\types.ts:6: * safe FTS5 MATCH expression, build one parameterized `search_fts` JOIN
+lib/cloudflare\search-fts\types.ts:7: * `search_documents` query and read it through an injected D1 binding. It does
+lib/cloudflare\search-fts\types.ts:16:export const SEARCH_FTS_AUTHORITY_RPC = "public_fulltext_ranked_ids_v1" as const;
+lib/cloudflare\search-fts\types.ts:19:export const SEARCH_FTS_MAX_QUERY_LENGTH = 200;
+lib/cloudflare\search-fts\types.ts:22:export const SEARCH_FTS_MIN_LIMIT = 1;
+lib/cloudflare\search-fts\types.ts:23:export const SEARCH_FTS_MAX_LIMIT = 100;
+lib/cloudflare\search-fts\types.ts:26:export const SEARCH_FTS_RANGES = ["latest", "today", "week", "month"] as const;
+lib/cloudflare\search-fts\types.ts:27:export type SearchFtsRange = (typeof SEARCH_FTS_RANGES)[number];
+lib/cloudflare\search-fts\types.ts:30:export const SEARCH_FTS_TABLE = "search_fts" as const;
+lib/cloudflare\search-fts\types.ts:31:export const SEARCH_FTS_DOCUMENT_TABLE = "search_documents" as const;
+lib/cloudflare\search-fts\types.ts:34: * FTS5 bm25 column weights, in `search_fts` column order
+lib/cloudflare\search-fts\types.ts:42:export const SEARCH_FTS_BM25_WEIGHTS = {
+lib/cloudflare\search-fts\types.ts:55:  /** Parameterized SQL over `search_fts` JOIN `search_documents`. */
+lib/cloudflare\search-fts\title.ts:6: * `search_documents.display_title` is a single Korean-preferred title, so it
+scripts\audit-p3-refresh-readiness.ts:20:    FROM articles a JOIN article_publications_p3 p ON p.article_id=a.id
+lib/cloudflare\search-fts\query.ts:5:  SEARCH_FTS_BM25_WEIGHTS,
+lib/cloudflare\search-fts\query.ts:6:  SEARCH_FTS_DOCUMENT_TABLE,
+lib/cloudflare\search-fts\query.ts:7:  SEARCH_FTS_MAX_LIMIT,
+lib/cloudflare\search-fts\query.ts:8:  SEARCH_FTS_MIN_LIMIT,
+lib/cloudflare\search-fts\query.ts:9:  SEARCH_FTS_RANGES,
+lib/cloudflare\search-fts\query.ts:10:  SEARCH_FTS_TABLE,
+lib/cloudflare\search-fts\query.ts:28: * article_id ASC. `relevance_score` is `-bm25(search_fts, ...)` so a larger
+lib/cloudflare\search-fts\query.ts:35:const WEIGHTS = SEARCH_FTS_BM25_WEIGHTS;
+lib/cloudflare\search-fts\query.ts:37:const BM25_CALL = `-1.0 * bm25(${SEARCH_FTS_TABLE}, ${WEIGHTS.article_id}, ${WEIGHTS.title}, ${WEIGHTS.case_numbers}, ${WEIGHTS.search_text}, ${WEIGHTS.tags_text})`;
+lib/cloudflare\search-fts\query.ts:59:    throw ftsError("invalid_limit", `limit must be an integer between ${SEARCH_FTS_MIN_LIMIT} and ${SEARCH_FTS_MAX_LIMIT}`);
+lib/cloudflare\search-fts\query.ts:61:  if (value < SEARCH_FTS_MIN_LIMIT || value > SEARCH_FTS_MAX_LIMIT) {
+lib/cloudflare\search-fts\query.ts:62:    throw ftsError("invalid_limit", `limit must be between ${SEARCH_FTS_MIN_LIMIT} and ${SEARCH_FTS_MAX_LIMIT}`);
+lib/cloudflare\search-fts\query.ts:69:  if (typeof value !== "string" || !SEARCH_FTS_RANGES.includes(value as SearchFtsRange)) {
+lib/cloudflare\search-fts\query.ts:70:    throw ftsError("invalid_range", `range must be one of ${SEARCH_FTS_RANGES.join(", ")}`);
+lib/cloudflare\search-fts\query.ts:110:  const where: string[] = [`${SEARCH_FTS_TABLE} match ?`];
+lib/cloudflare\search-fts\query.ts:112:    where.push(`${SEARCH_FTS_DOCUMENT_TABLE}.source_key = ?`);
+lib/cloudflare\search-fts\query.ts:116:    where.push(`${SEARCH_FTS_DOCUMENT_TABLE}.jurisdiction = ?`);
+lib/cloudflare\search-fts\query.ts:120:    where.push(`${SEARCH_FTS_DOCUMENT_TABLE}.content_type = ?`);
+lib/cloudflare\search-fts\query.ts:124:    where.push(`${SEARCH_FTS_DOCUMENT_TABLE}.language = ?`);
+lib/cloudflare\search-fts\query.ts:128:    where.push(`${SEARCH_FTS_DOCUMENT_TABLE}.original_published_at >= ?`);
+lib/cloudflare\search-fts\query.ts:133:    `(instr(${SEARCH_FTS_TABLE}.title, ?) > 0) desc`,
+lib/cloudflare\search-fts\query.ts:135:    `(${SEARCH_FTS_DOCUMENT_TABLE}.original_published_at is null) asc`,
+lib/cloudflare\search-fts\query.ts:136:    `${SEARCH_FTS_DOCUMENT_TABLE}.original_published_at desc`,
+lib/cloudflare\search-fts\query.ts:137:    `${SEARCH_FTS_DOCUMENT_TABLE}.article_id asc`,
+lib/cloudflare\search-fts\query.ts:143:    `select ${SEARCH_FTS_DOCUMENT_TABLE}.article_id as article_id, ${BM25_CALL} as relevance_score`,
+lib/cloudflare\search-fts\query.ts:144:    `from ${SEARCH_FTS_TABLE}`,
+lib/cloudflare\search-fts\query.ts:145:    `join ${SEARCH_FTS_DOCUMENT_TABLE} on ${SEARCH_FTS_DOCUMENT_TABLE}.article_id = ${SEARCH_FTS_TABLE}.article_id`,
+lib/cloudflare\search-fts\query-compiler.ts:4:import { SEARCH_FTS_MAX_QUERY_LENGTH } from "./types";
+lib/cloudflare\search-fts\query-compiler.ts:125:  if (queryText.length > SEARCH_FTS_MAX_QUERY_LENGTH) {
+lib/cloudflare\search-fts\query-compiler.ts:126:    throw ftsError("invalid_query", `query must be at most ${SEARCH_FTS_MAX_QUERY_LENGTH} characters`);
+lib/cloudflare\search-catalog\case-catalog-search.ts:26: * indexed into `search_documents` (only `enrichment_full` never-before-published
+lib/cloudflare\search-catalog\case-catalog-search.ts:492:    // Any published article_publications_p3 row means enrichment is being
+lib/cloudflare\search-catalog\case-catalog-search.ts:494:    const reprocessingRows = await readInBatches("article_publications_p3", "article_id", articleIds, {
+lib/cloudflare\publication\d1-publication-drain.ts:141:    FROM article_publications_p3 p
+lib/cloudflare\publication\d1-publication-drain.ts:165:    FROM article_publications_p3 p
+lib/cloudflare\publication\d1-publication-drain.ts:207:    LEFT JOIN article_publications_p3 p ON p.article_id=a.id
+lib/cloudflare\publication\d1-publication-drain.ts:227:         FROM article_publications_p3 p
+lib/cloudflare\publication\d1-publication-drain.ts:295:    LEFT JOIN article_publications_p3 p ON p.article_id=a.id
+lib/cloudflare\publication\d1-publication-drain.ts:315:    FROM articles a LEFT JOIN article_publications_p3 p ON p.article_id=a.id
+lib/cloudflare\search-canary\operator\supabase-read.ts:76:from public.article_publications_p3 p
+lib/cloudflare\search-canary\operator\supabase-read.ts:208:            `select e.embedding from public.article_publications_p3 p ` +
+lib/cloudflare\search-canary\expansion.ts:18: * `search_documents` and `search_fts`.
+lib/cloudflare\search-canary\expansion.ts:22: * any `search_documents`/`search_fts` identity divergence fails closed: the
+lib/cloudflare\search-canary\expansion.ts:51:  /** Materialized `search_documents` rows read back from the isolated canary. */
+lib/cloudflare\search-canary\expansion.ts:53:  /** Materialized `search_fts.article_id` values read back from the canary. */
+lib/cloudflare\search-canary\expansion.ts:67:  /** Desired ids missing from BOTH `search_documents` and `search_fts`. */
+lib/cloudflare\search-canary\expansion.ts:69:  /** Number of `search_documents` rows the plan inserts (0 for no-op/refusal). */
+scripts\d1-fts-source-pager.ts:21: * - pages `article_publications_p3` by a stable `article_id` cursor (50-100
+scripts\d1-fts-source-pager.ts:118:    "from public.article_publications_p3 p\n" +
+scripts\d1-fts-source-pager.ts:241: * Pages every published `article_publications_p3` row by a stable `article_id`
+scripts\d1-search-canary.ts:154:  /** `search_documents` rows inserted by this run (0 for a true no-op). */
+scripts\d1-search-canary.ts:165:    throw new Error("canary search_documents row is missing a valid article_id");
+scripts\d1-search-canary.ts:178:    "select article_id, checksum, projection_version from search_documents order by article_id",
+scripts\d1-search-canary.ts:184:  const envelope = await d1Client.queryRows("select article_id from search_fts order by article_id");
+scripts\d1-search-canary.ts:188:      throw new Error("canary search_fts row is missing a valid article_id");
+scripts\d1-search-canary.ts:198: * projection. This reads the materialized `search_documents`/`search_fts`
+scripts\semantic-authority-rollout.ts:393:    `p_query_embedding => (select e.embedding from public.article_publications_p3 p ` +

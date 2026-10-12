@@ -1,0 +1,11 @@
+lib\cloudflare\e2e\search-generation-guard.ts:73:    db.prepare("DELETE FROM search_fts WHERE article_id=?").bind(i.articleId),
+lib\cloudflare\e2e\search-generation-guard.ts:74:    db.prepare("DELETE FROM search_documents WHERE article_id=?").bind(i.articleId)];
+lib\cloudflare\e2e\search-generation-guard.ts:76:    db.prepare(`INSERT INTO search_documents (${SEARCH_DOCUMENT_COLUMNS.join(",")}) VALUES (${SEARCH_DOCUMENT_COLUMNS.map(()=>"?").join(",")})`).bind(...SEARCH_DOCUMENT_COLUMNS.map(c=>document[c])),
+lib\cloudflare\e2e\search-generation-guard.ts:77:    db.prepare(`INSERT INTO search_fts (${SEARCH_FTS_COLUMNS.join(",")}) VALUES (${SEARCH_FTS_COLUMNS.map(()=>"?").join(",")})`).bind(...SEARCH_FTS_COLUMNS.map(c=>fts[c])));
+lib\cloudflare\search-projection\d1-sync.ts:487:        { sql: "DELETE FROM search_fts WHERE article_id = ?", params: [articleId] },
+lib\cloudflare\search-projection\d1-sync.ts:488:        { sql: "DELETE FROM search_documents WHERE article_id = ?", params: [articleId] },
+lib\cloudflare\core-write\authority.ts:717:          "INSERT INTO article_version_heads_p3 (article_id,current_version_id,current_revision,updated_at) VALUES (?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at"
+lib\cloudflare\core-write\authority.ts:807:        "INSERT INTO article_publications_p3 (id,article_id,state,version_id,revision,decided_by_type,decided_by_id,reason,published_at,withdrawn_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+lib\cloudflare\core-write\authority.ts:815:        "UPDATE article_publications_p3 SET state=?,version_id=?,revision=?,decided_by_type=?,decided_by_id=?,reason=?,published_at=CASE WHEN ?='published' THEN COALESCE(published_at,?) ELSE published_at END,withdrawn_at=CASE WHEN ?='withdrawn' THEN ? WHEN ?='published' THEN NULL ELSE withdrawn_at END,updated_at=? WHERE id=? AND CAST(revision AS INTEGER)=?",
+lib\cloudflare\core-write\authority.ts:923:    "DELETE FROM article_publications_p3 WHERE article_id=?",
+lib\cloudflare\core-write\authority.ts:924:    "DELETE FROM article_version_heads_p3 WHERE article_id=?",

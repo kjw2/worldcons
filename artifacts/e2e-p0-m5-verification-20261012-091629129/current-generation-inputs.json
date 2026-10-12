@@ -1,0 +1,185 @@
+{
+  "mode": "production_read_only",
+  "results": [
+    {
+      "articleId": "02b539a7-8607-4a49-a3f9-19356f4eb890",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "285fe04b27b6cc37413dd47600a14f5068d37f83aa828606f1bb6201d8313da2",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "23450418-153b-455b-8aa6-1d750db0da96",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "99374e446b8b231e0774ba61574b9043c0cccc0f7252151636dc144b57e0d50c",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "2ffd5274-9469-4a89-9617-9dd9feed2c7e",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "881617f8f1706694dc1db9b7ca435595fbda0ffd727c90fe6d1268bf43976cd0",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "4989743b-b2df-41c8-a082-eb0212265d9e",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "2fc7450b3baa4dfbc487422bc4abeee29fd3d9ce528842d37e885e67655dd02e",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "4b139529-3431-4794-82e0-e552e91ee195",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "74f13373c5773ef753a9529c3b054b359252126c1c25394927bad7909ba415d5",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "4c80e563-7dbc-4db1-8101-34d14adbe1fb",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "e7d50a82d0647daa0d1e3d248dd312b221ff8c60be87de2bb9cdaa240186be62",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "53d766a7-40c4-4176-9d65-9dfc47b4a56d",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "d2502cf21a4f48c4754c6d931557e095b2fe61f0b39d145e722e42b910a8e8cf",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "5f158de3-8033-4a79-b59a-d89452063bee",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "27ca58ed13849470105355f8d5bfcfb3e8466db1eea61e634abe109ccfecb620",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "724d57d3-723d-4450-ad01-0a049688fc6a",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "a4b7fa30f18edfdc44939224af908d58d871b2c43ef87d657319cb15b029c57d",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "74d0b06b-3c05-4d4c-8854-671a4b9defc7",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "d0bd71f6d6027074c68aa4d8973d99e94d5af1bef67627e30762048295ebd692",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "8b828790-1c70-4038-b90b-ee3774147c1a",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "ccfec9d1f8ef6367a791278c42144332345ea0650433d269e5570bc12f3e6937",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "6ec4417c730e9a12d3cd7f20c1d3811e312805199d044364f55d804201516eca",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "911de19f-a80d-4702-a2e7-7dfb39b84875",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "f76b3cf815414bcfd9ce12d46398223591a02295a93beba29715767d055415ce",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "a314a607-112d-4c52-912f-b7ff51489c0e",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "7fac1630da86c2ef6b5078fcab6936b29e982c5884d3d04e9a1f1a25fc0a178c",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "bac3c408-6e60-4cdb-b489-c3ed06146b71",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "2435d938d215256ba4a177a112ca1cbf667d30f4c909231fd414391760028eae",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "cbe99053-ee25-4596-93bf-b949b10d0bdc",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "01188e66c399c7a60d1cdd66aab2d85130e40e346ae28b9c63bce60a6a629e11",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "7f0bf47ca95acebbd7e1c92f7b3dcc32ace53946743c39ad2918b34a744527b6",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "e5f4ef7f2925118dddf31b68a30d09f85744db21d4747e3e5d9500087f3236c1",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "published"
+    },
+    {
+      "articleId": "facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "156e661ebc58987c95b71a6544e7d4a98a18410459dc149a5e4612f302963095",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    },
+    {
+      "articleId": "fb1d6f9a-aedf-46fd-9f90-e69df37b19c1",
+      "sourceKey": "es-tribunal-constitucional",
+      "generationId": "edcfe85733f463ae77eefa4dcacf734323eeb4b599d9b509d37a2b2fbc007ed5",
+      "identityCurrent": 1,
+      "inputCurrent": true,
+      "reviewState": "summarized",
+      "expectedState": "withdrawn"
+    }
+  ]
+}

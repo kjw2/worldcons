@@ -1,0 +1,4 @@
+rg: regex parse error:
+    (?:transitionArticlePublicationInD1|syncSearchProjectionForArticle|runNativeSearchProjectionSync|applySearchProjectionPlan|publishStagedApproved|deleteCoreCanaryArticleFromD1|updateArticle|.from("article_publications_p3")
+    ^
+error: unclosed group

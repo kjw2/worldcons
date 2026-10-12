@@ -1,0 +1,44 @@
+{
+  "mode": "isolated_sqlite_fixture",
+  "sourceOwnershipPolicyRequired": 1,
+  "productionWrites": 0,
+  "contractPassed": false,
+  "results": [
+    {
+      "scenario": "same-content refresh",
+      "newerFetchedAt": "2026-10-12T02:00:00.000Z",
+      "incomingOlderFetchedAt": "2026-10-12T01:00:00.000Z",
+      "outcome": {
+        "outcome": "unchanged",
+        "articleId": "11111111-1111-4111-a111-111111111111",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+        "contentHash": "6ff9b6ac7cb21a485ee769614ed59d5abe044b23d8ad08675731ac15d7306aa2",
+        "status": "cleaned"
+      },
+      "after": {
+        "fetched_at": "2026-10-12T01:00:00.000Z",
+        "content_hash": "6ff9b6ac7cb21a485ee769614ed59d5abe044b23d8ad08675731ac15d7306aa2",
+        "original_title": "AUTO 37/2026"
+      },
+      "staleWriteApplied": true
+    },
+    {
+      "scenario": "changed-content refresh",
+      "newerFetchedAt": "2026-10-12T02:00:00.000Z",
+      "incomingOlderFetchedAt": "2026-10-12T01:00:00.000Z",
+      "outcome": {
+        "outcome": "refreshed",
+        "articleId": "11111111-1111-4111-a111-111111111111",
+        "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114",
+        "contentHash": "6ff9b6ac7cb21a485ee769614ed59d5abe044b23d8ad08675731ac15d7306aa2",
+        "status": "cleaned"
+      },
+      "after": {
+        "fetched_at": "2026-10-12T01:00:00.000Z",
+        "content_hash": "6ff9b6ac7cb21a485ee769614ed59d5abe044b23d8ad08675731ac15d7306aa2",
+        "original_title": "AUTO 37/2026"
+      },
+      "staleWriteApplied": true
+    }
+  ]
+}

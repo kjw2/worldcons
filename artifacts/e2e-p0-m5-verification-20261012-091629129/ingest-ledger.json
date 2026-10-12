@@ -1,0 +1,328 @@
+{
+  "serverDate": "Mon, 12 Oct 2026 09:22:47 GMT",
+  "queries": {
+    "jobs": "SELECT source_key,stage,status,last_error_code,COUNT(*) n,MIN(created_at) oldest_created_at,MIN(updated_at) oldest_updated_at FROM ingest_stage_jobs GROUP BY source_key,stage,status,last_error_code ORDER BY source_key,stage,status",
+    "discovery": "SELECT s.job_id,s.source_key,s.status,s.observed_count,s.captured_at,COUNT(i.candidate_id) recorded,SUM(i.status='pending') pending,SUM(i.status='covered_existing') covered,SUM(i.status='reserved') reserved,SUM(i.status='reserved' AND NOT EXISTS(SELECT 1 FROM ingest_stage_jobs j WHERE j.id=i.crawl_job_id)) orphaned_reservations FROM ingest_discovery_scans_v1 s LEFT JOIN ingest_discovery_items_v1 i ON i.job_id=s.job_id GROUP BY s.job_id ORDER BY s.captured_at",
+    "redrive": "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%redrive%'"
+  },
+  "results": {
+    "jobs": {
+      "results": [
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "crawl",
+          "status": "pending",
+          "last_error_code": null,
+          "n": 73,
+          "oldest_created_at": "2026-10-11T22:48:23.107Z",
+          "oldest_updated_at": "2026-10-11T22:48:23.107Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "crawl",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 45,
+          "oldest_created_at": "2026-10-09T21:15:39.615Z",
+          "oldest_updated_at": "2026-10-09T21:30:38.814Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "discovery",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 4,
+          "oldest_created_at": "2026-10-09T21:00:31.000Z",
+          "oldest_updated_at": "2026-10-09T21:15:39.615Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "normalize",
+          "status": "pending",
+          "last_error_code": null,
+          "n": 3,
+          "oldest_created_at": "2026-10-12T08:45:31.383Z",
+          "oldest_updated_at": "2026-10-12T08:45:31.383Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "normalize",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 40,
+          "oldest_created_at": "2026-10-09T21:30:38.814Z",
+          "oldest_updated_at": "2026-10-09T21:45:39.084Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "public-judgment",
+          "status": "dead_letter",
+          "last_error_code": "e2e.automatic_approval_review_required",
+          "n": 15,
+          "oldest_created_at": "2026-10-11T23:30:44.238Z",
+          "oldest_updated_at": "2026-10-11T23:45:50.661Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "public-judgment",
+          "status": "dead_letter",
+          "last_error_code": "e2e.duplicate_official_case",
+          "n": 2,
+          "oldest_created_at": "2026-10-12T04:30:54.881Z",
+          "oldest_updated_at": "2026-10-12T07:16:02.874Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "public-judgment",
+          "status": "pending",
+          "last_error_code": null,
+          "n": 7,
+          "oldest_created_at": "2026-10-12T07:31:03.651Z",
+          "oldest_updated_at": "2026-10-12T07:31:03.651Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "public-judgment",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 10,
+          "oldest_created_at": "2026-10-09T22:00:38.829Z",
+          "oldest_updated_at": "2026-10-09T22:15:38.717Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "publish",
+          "status": "pending",
+          "last_error_code": null,
+          "n": 1,
+          "oldest_created_at": "2026-10-12T09:15:39.523Z",
+          "oldest_updated_at": "2026-10-12T09:15:39.523Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "publish",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 9,
+          "oldest_created_at": "2026-10-09T22:15:38.717Z",
+          "oldest_updated_at": "2026-10-09T22:30:39.217Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "search",
+          "status": "pending",
+          "last_error_code": null,
+          "n": 2,
+          "oldest_created_at": "2026-10-12T09:00:44.237Z",
+          "oldest_updated_at": "2026-10-12T09:00:44.237Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "search",
+          "status": "pending",
+          "last_error_code": "e2e.staged_retry",
+          "n": 3,
+          "oldest_created_at": "2026-10-12T08:16:07.307Z",
+          "oldest_updated_at": "2026-10-12T08:45:41.249Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "search",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 3,
+          "oldest_created_at": "2026-10-09T22:30:39.217Z",
+          "oldest_updated_at": "2026-10-09T22:45:39.378Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "search",
+          "status": "succeeded",
+          "last_error_code": "e2e.staged_retry",
+          "n": 1,
+          "oldest_created_at": "2026-10-12T05:04:31.417Z",
+          "oldest_updated_at": "2026-10-12T06:15:59.846Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "translate",
+          "status": "dead_letter",
+          "last_error_code": "ingest_stage.translate_skipped",
+          "n": 1,
+          "oldest_created_at": "2026-10-12T03:15:45.980Z",
+          "oldest_updated_at": "2026-10-12T03:45:51.405Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "translate",
+          "status": "pending",
+          "last_error_code": null,
+          "n": 1,
+          "oldest_created_at": "2026-10-12T09:15:35.025Z",
+          "oldest_updated_at": "2026-10-12T09:15:35.025Z"
+        },
+        {
+          "source_key": "es-tribunal-constitucional",
+          "stage": "translate",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 34,
+          "oldest_created_at": "2026-10-09T21:45:39.084Z",
+          "oldest_updated_at": "2026-10-09T22:00:38.829Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "crawl",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 4,
+          "oldest_created_at": "2026-10-08T21:15:53.270Z",
+          "oldest_updated_at": "2026-10-08T21:30:54.224Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "discovery",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 5,
+          "oldest_created_at": "2026-10-08T21:00:45.000Z",
+          "oldest_updated_at": "2026-10-08T21:15:53.270Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "normalize",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 2,
+          "oldest_created_at": "2026-10-08T21:30:54.224Z",
+          "oldest_updated_at": "2026-10-08T21:45:55.365Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "public-judgment",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 2,
+          "oldest_created_at": "2026-10-08T22:00:54.531Z",
+          "oldest_updated_at": "2026-10-08T22:15:54.441Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "publish",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 2,
+          "oldest_created_at": "2026-10-08T22:15:54.441Z",
+          "oldest_updated_at": "2026-10-08T22:31:29.668Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "search",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 3,
+          "oldest_created_at": "2026-10-08T22:31:29.668Z",
+          "oldest_updated_at": "2026-10-08T22:46:17.375Z"
+        },
+        {
+          "source_key": "fr-conseil-constitutionnel",
+          "stage": "translate",
+          "status": "succeeded",
+          "last_error_code": null,
+          "n": 2,
+          "oldest_created_at": "2026-10-08T21:45:55.365Z",
+          "oldest_updated_at": "2026-10-08T22:00:54.531Z"
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "HKG",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 1.1273
+        },
+        "duration": 1.1273,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 120950784,
+        "rows_read": 573,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    "discovery": {
+      "results": [
+        {
+          "job_id": "a682b21f-8b5b-40c1-bac5-490eb8c19824",
+          "source_key": "fr-conseil-constitutionnel",
+          "status": "reserved",
+          "observed_count": 10,
+          "captured_at": "2026-10-11T22:30:43.043Z",
+          "recorded": 10,
+          "pending": 0,
+          "covered": 10,
+          "reserved": 0,
+          "orphaned_reservations": 0
+        },
+        {
+          "job_id": "d2371a51-7f2b-4478-b89a-d15ec78b66c8",
+          "source_key": "es-tribunal-constitucional",
+          "status": "reserved",
+          "observed_count": 167,
+          "captured_at": "2026-10-11T22:45:45.991Z",
+          "recorded": 167,
+          "pending": 0,
+          "covered": 52,
+          "reserved": 115,
+          "orphaned_reservations": 0
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "HKG",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 3.7778
+        },
+        "duration": 3.7778,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 120950784,
+        "rows_read": 297,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    "redrive": {
+      "results": [
+        {
+          "name": "ingest_stage_redrive_records"
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "HKG",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.7779
+        },
+        "duration": 0.7779,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 120950784,
+        "rows_read": 102,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+workers\ops-write\src\index.ts:50:  transitionArticlePublicationInD1,
+workers\ops-write\src\index.ts:88:  transitionArticlePublicationInD1?: typeof transitionArticlePublicationInD1;
+workers\ops-write\src\index.ts:266:          const result = dependencies.transitionArticlePublicationInD1
+workers\ops-write\src\index.ts:267:            ? await dependencies.transitionArticlePublicationInD1(binding, body.input as ArticlePublicationTransitionInput)
+workers\ops-write\src\index.ts:268:            : await transitionArticlePublicationInD1(binding, body.input as ArticlePublicationTransitionInput);
+workers\async-pipeline\src\staged-e2e.ts:2:import { readArticlePublicationSnapshotFromD1, transitionArticlePublicationInD1 } from "../../../lib/cloudflare/core-write/authority";
+workers\async-pipeline\src\staged-e2e.ts:13:export async function publishStagedApproved(core:D1RuntimeDatabase,articleId:string,approval:E2EApprovalContext) {
+workers\async-pipeline\src\staged-e2e.ts:18:  const result=await transitionArticlePublicationInD1(core,{articleId,expectedVersionRevision:snapshot.data.versionRevision,
+workers\async-pipeline\src\ingest-stage-handlers.ts:4:import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from "./staged-e2e";
+workers\async-pipeline\src\ingest-stage-handlers.ts:589:        const result=await publishStagedApproved(context.coreDb,context.job.article_id,payload.approval as E2EApprovalContext);
+workers\async-pipeline\src\index.ts:32:import { runNativeSearchProjectionSync } from "./search-projection-sync";
+workers\async-pipeline\src\index.ts:123:      }, () => runNativeSearchProjectionSync({
+workers\async-pipeline\src\index.ts:134:      let searchProjection:Awaited<ReturnType<typeof runNativeSearchProjectionSync>> | null=null;
+workers\async-pipeline\src\index.ts:144:          }, () => runNativeSearchProjectionSync({
+workers\async-pipeline\src\index.ts:172:          }, () => runNativeSearchProjectionSync({
+workers\async-pipeline\src\index.ts:187:      }, () => runNativeSearchProjectionSync({
+workers\async-pipeline\src\index.ts:213:      }, () => runNativeSearchProjectionSync({
+app\api\admin\work\[kind]\[id]\route.ts:9:import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
+app\api\admin\work\[kind]\[id]\route.ts:177:      const synced = await syncSearchProjectionForArticle({ WORLDCONS_CORE: core, WORLDCONS_SEARCH: search }, id);
+app\api\admin\work\[kind]\[id]\route.ts:213:    const synced = await syncSearchProjectionForArticle({ WORLDCONS_CORE: core, WORLDCONS_SEARCH: search }, id);
+lib\cloudflare\core-write\repositories.ts:9:  transitionArticlePublicationInD1,
+lib\cloudflare\core-write\repositories.ts:52:    if (binding) return transitionArticlePublicationInD1(binding, input);
+lib\cloudflare\core-write\authority.ts:527:export async function transitionArticlePublicationInD1(
+lib\cloudflare\core-write\authority.ts:917:export async function deleteCoreCanaryArticleFromD1(binding: D1RuntimeDatabase, articleId: string) {
+lib\cloudflare\search-projection\d1-sync.ts:386:export async function applySearchProjectionPlan(
+lib\cloudflare\search-projection\d1-sync.ts:420:export async function runNativeSearchProjectionSync(bindings: SearchProjectionSyncBindings) {
+lib\cloudflare\search-projection\d1-sync.ts:426:  for(const id of managedIds)await syncSearchProjectionForArticle(bindings,id);
+lib\cloudflare\search-projection\d1-sync.ts:454:    batchCount += await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, plan);
+lib\cloudflare\search-projection\d1-sync.ts:491:    batchCount += await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, removalPlan);
+lib\cloudflare\search-projection\d1-sync.ts:546: * the full `runNativeSearchProjectionSync` scan (which reads the entire eligible
+lib\cloudflare\search-projection\d1-sync.ts:557:export async function syncSearchProjectionForArticle(
+lib\cloudflare\search-projection\d1-sync.ts:568:    const {readArticlePublicationSnapshotFromD1,transitionArticlePublicationInD1}=await import("../core-write/authority");
+lib\cloudflare\search-projection\d1-sync.ts:584:      const result=await transitionArticlePublicationInD1(bindings.WORLDCONS_CORE,{articleId,expectedVersionRevision:snapshot.data.versionRevision,expectedPublicationRevision:snapshot.data.publicationRevision,
+lib\cloudflare\search-projection\d1-sync.ts:606:  await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, plan);

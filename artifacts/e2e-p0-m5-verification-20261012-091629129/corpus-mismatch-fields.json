@@ -1,0 +1,135 @@
+{
+  "mode": "production_read_only",
+  "results": [
+    {
+      "articleId": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000112025\u0001 \u0001Ley Orgánica 1/2025\u0001 유기법 1/2025호 \u000126a5cc05\u0001 \u0001주거침입죄\u0001 주거침입죄 topic \u00013b5ce73f\u0001 \u0001선결성요건\u0001 선결성요건 \u00014c796cd5\u0001 \u0001위헌제청\u0001 위헌제청 \u00015edfb1f5\u0001 \u0001배심재판\u0001 배심재판 \u000166b6ade4\u0001 \u0001Audiencia Provincial de Valladolid\u0001 바야돌리드 주법원 court \u00016e7db215\u0001 \u0001신속재판\u0001 신속재판 \u00017f5b1f2e\u0001 \u0001기본법유보\u0001 기본법유보 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u000197433dbe\u0001 \u0001Fiscal General del Estado\u0001 스페",
+          "actual": "\u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000112025\u0001 \u0001Ley Orgánica 1/2025\u0001 유기법 1/2025호 \u000119d67ab3\u0001 \u0001선결적요건\u0001 선결적요건 topic \u000126a5cc05\u0001 \u0001주거침입죄\u0001 주거침입죄 \u00013\u0001 \u0001Tribunal de Instancia de Valladolid, plaza núm. 3\u0001 바야돌리드 제3심급법원 court \u0001534991dd\u0001 \u0001Ley Orgánica del Tribunal del Jurado\u0001 배심원재판소법 \u00017ceebeef\u0001 \u0001약식재판\u0001 약식재판 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u00019fef361d\u0001 \u0001각하\u0001 각하 \u0001b92719b6\u0001 \u0001Audiencia Pr"
+        },
+        {
+          "field": "checksum",
+          "expected": "c671a66537f7bd31",
+          "actual": "f0b840d072af2f74"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000112025\u0001 \u0001Ley Orgánica 1/2025\u0001 유기법 1/2025호 \u000126a5cc05\u0001 \u0001주거침입죄\u0001 주거침입죄 topic \u00013b5ce73f\u0001 \u0001선결성요건\u0001 선결성요건 \u00014c796cd5\u0001 \u0001위헌제청\u0001 위헌제청 \u00015edfb1f5\u0001 \u0001배심재판\u0001 배심재판 \u000166b6ade4\u0001 \u0001Audiencia Provincial de Valladolid\u0001 바야돌리드 주법원 court \u00016e7db215\u0001 \u0001신속재판\u0001 신속재판 \u00017f5b1f2e\u0001 \u0001기본법유보\u0001 기본법유보 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u000197433dbe\u0001 \u0001Fiscal General del Estado\u0001 스페",
+          "actual": "\u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000112025\u0001 \u0001Ley Orgánica 1/2025\u0001 유기법 1/2025호 \u000119d67ab3\u0001 \u0001선결적요건\u0001 선결적요건 topic \u000126a5cc05\u0001 \u0001주거침입죄\u0001 주거침입죄 \u00013\u0001 \u0001Tribunal de Instancia de Valladolid, plaza núm. 3\u0001 바야돌리드 제3심급법원 court \u0001534991dd\u0001 \u0001Ley Orgánica del Tribunal del Jurado\u0001 배심원재판소법 \u00017ceebeef\u0001 \u0001약식재판\u0001 약식재판 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u00019fef361d\u0001 \u0001각하\u0001 각하 \u0001b92719b6\u0001 \u0001Audiencia Pr"
+        }
+      ]
+    },
+    {
+      "articleId": "8ba82d90-0f28-4731-963b-760805af100d",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "review_state",
+          "expected": "summarized",
+          "actual": "null"
+        },
+        {
+          "field": "tags_text",
+          "expected": "\u00011e8c6797\u0001 \u0001Cantabria\u0001 칸타브리아주 country \u00014101dbf3\u0001 \u0001효력정지해제\u0001 효력정지해제 topic \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u000194356849\u0001 \u0001장애인정\u0001 장애인정 \u0001a06b4f57\u0001 \u0001위헌소송\u0001 위헌소송 \u0001abogado-del-estado\u0001 \u0001Abogado del Estado\u0001 Abogado del Estado institution \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001fb560307\u0001 \u0001사회보장\u0001 사회보장 \u0001gobierno-de-cantabria\u0001 \u0001Gobierno de Cantabria\u0001 Gobierno de Cantabria \u0001ley-22025-d",
+          "actual": "\u00010415a5d7\u0001 \u0001효력정지\u0001 효력정지 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00011e8c6797\u0001 \u0001Cantabria\u0001 칸타브리아주 country \u00017fcd4d76\u0001 \u0001자치주 권한\u0001 자치주 권한 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001bebc3fea\u0001 \u0001Ley 2/2025\u0001 칸타브리아주 행정 간소화법 \u0001eee34bd8\u0001 \u0001행정 간소화\u0001 행정 간소화 \u0001fb560307\u0001 \u0001사회보장\u0001 사회보장 \u0001fc390059\u0001 \u0001위헌소원\u0001 위헌소원"
+        },
+        {
+          "field": "checksum",
+          "expected": "d7649c35c64ae189",
+          "actual": "fb1a38e33e79290f"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00011e8c6797\u0001 \u0001Cantabria\u0001 칸타브리아주 country \u00014101dbf3\u0001 \u0001효력정지해제\u0001 효력정지해제 topic \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u000194356849\u0001 \u0001장애인정\u0001 장애인정 \u0001a06b4f57\u0001 \u0001위헌소송\u0001 위헌소송 \u0001abogado-del-estado\u0001 \u0001Abogado del Estado\u0001 Abogado del Estado institution \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001fb560307\u0001 \u0001사회보장\u0001 사회보장 \u0001gobierno-de-cantabria\u0001 \u0001Gobierno de Cantabria\u0001 Gobierno de Cantabria \u0001ley-22025-d",
+          "actual": "\u00010415a5d7\u0001 \u0001효력정지\u0001 효력정지 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00011e8c6797\u0001 \u0001Cantabria\u0001 칸타브리아주 country \u00017fcd4d76\u0001 \u0001자치주 권한\u0001 자치주 권한 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001bebc3fea\u0001 \u0001Ley 2/2025\u0001 칸타브리아주 행정 간소화법 \u0001eee34bd8\u0001 \u0001행정 간소화\u0001 행정 간소화 \u0001fb560307\u0001 \u0001사회보장\u0001 사회보장 \u0001fc390059\u0001 \u0001위헌소원\u0001 위헌소원"
+        }
+      ]
+    },
+    {
+      "articleId": "8f70d967-250d-4935-858f-5b91304b709f",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010415a5d7\u0001 \u0001효력정지\u0001 효력정지 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00010f38802e\u0001 \u0001Congreso de los Diputados\u0001 하원 institution \u00012f61217a\u0001 \u0001Senado\u0001 상원 \u000146fb02f8\u0001 \u0001Consell de la Generalitat Valenciana\u0001 발렌시아 자치정부 party \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u000152025\u0001 \u0001Ley 5/2025, de 30 de mayo\u0001 발렌시아 자치주 법률 제5/2025호 \u000182017\u0001 \u0001Ley 8/2017, de 7 de abril\u0001 발렌시아 자치주 법률 제8/2017호 \u000191971d0e\u0001 \u0001Tribunal Constitucional ",
+          "actual": "\u00010415a5d7\u0001 \u0001효력정지\u0001 효력정지 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00012eedb274\u0001 \u0001발렌시아 자치주\u0001 발렌시아 자치주 \u00013377e1dd\u0001 \u0001Presidente del Gobierno\u0001 스페인 정부수반 party \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u000152025\u0001 \u0001Ley 5/2025, de 30 de mayo\u0001 발렌시아 자치주 법률 제5/2025호 \u000182017\u0001 \u0001Ley 8/2017, de 7 de abril\u0001 발렌시아 자치주 법률 제8/2017호 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u00019876768c\u0001 \u0001Generalitat Valencian"
+        },
+        {
+          "field": "checksum",
+          "expected": "7c4848a79b4fe77b",
+          "actual": "3353f211dd4d129d"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010415a5d7\u0001 \u0001효력정지\u0001 효력정지 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00010f38802e\u0001 \u0001Congreso de los Diputados\u0001 하원 institution \u00012f61217a\u0001 \u0001Senado\u0001 상원 \u000146fb02f8\u0001 \u0001Consell de la Generalitat Valenciana\u0001 발렌시아 자치정부 party \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u000152025\u0001 \u0001Ley 5/2025, de 30 de mayo\u0001 발렌시아 자치주 법률 제5/2025호 \u000182017\u0001 \u0001Ley 8/2017, de 7 de abril\u0001 발렌시아 자치주 법률 제8/2017호 \u000191971d0e\u0001 \u0001Tribunal Constitucional ",
+          "actual": "\u00010415a5d7\u0001 \u0001효력정지\u0001 효력정지 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u00012eedb274\u0001 \u0001발렌시아 자치주\u0001 발렌시아 자치주 \u00013377e1dd\u0001 \u0001Presidente del Gobierno\u0001 스페인 정부수반 party \u0001499ed951\u0001 \u0001España\u0001 스페인 country \u000152025\u0001 \u0001Ley 5/2025, de 30 de mayo\u0001 발렌시아 자치주 법률 제5/2025호 \u000182017\u0001 \u0001Ley 8/2017, de 7 de abril\u0001 발렌시아 자치주 법률 제8/2017호 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u00019876768c\u0001 \u0001Generalitat Valencian"
+        }
+      ]
+    },
+    {
+      "articleId": "dfb04619-3a7f-4b82-8405-24d171b2abd3",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "review_state",
+          "expected": "summarized",
+          "actual": "null"
+        },
+        {
+          "field": "tags_text",
+          "expected": "\u000123a208e0\u0001 \u0001주택권법\u0001 주택권법 topic \u00014a68e5e0\u0001 \u0001권한분배\u0001 권한분배 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001articulo-14911-de-la-constitucion-espanola\u0001 \u0001Artículo 149.1.1 CE\u0001 Artículo 149.1.1 de la Constitución Española article \u0001articulo-149113-de-la-constitucion-espanola\u0001 \u0001Artículo 149.1.13 CE\u0001 Artículo 149.1.13 de la Constitución Española \u0001articulo-47-de-la-constitucion-espanola\u0001 \u0001Artícul",
+          "actual": "\u000109504980\u0001 \u0001도시계획\u0001 도시계획 topic \u0001215d580d\u0001 \u0001자치권\u0001 자치권 \u000132461b78\u0001 \u0001주택법\u0001 주택법 \u0001838c043e\u0001 \u0001권한배분\u0001 권한배분 \u0001ba13fb88\u0001 \u0001위헌법률심판\u0001 위헌법률심판 \u0001constitucion-espanola-de-1978\u0001 \u0001Constitución Española\u0001 Constitución Española de 1978 law \u0001derecho-a-la-vivienda\u0001 \u0001derecho a la vivienda\u0001 derecho a la vivienda right \u0001espana\u0001 \u0001España\u0001 España country \u0001estatuto-de-autonomia-de-cataluna\u0001 \u0001Estatuto de Autonomía de Cataluña\u0001 Estatuto"
+        },
+        {
+          "field": "checksum",
+          "expected": "942438e62296ddea",
+          "actual": "ecacbdff7eee8fb3"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u000123a208e0\u0001 \u0001주택권법\u0001 주택권법 topic \u00014a68e5e0\u0001 \u0001권한분배\u0001 권한분배 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u0001articulo-14911-de-la-constitucion-espanola\u0001 \u0001Artículo 149.1.1 CE\u0001 Artículo 149.1.1 de la Constitución Española article \u0001articulo-149113-de-la-constitucion-espanola\u0001 \u0001Artículo 149.1.13 CE\u0001 Artículo 149.1.13 de la Constitución Española \u0001articulo-47-de-la-constitucion-espanola\u0001 \u0001Artícul",
+          "actual": "\u000109504980\u0001 \u0001도시계획\u0001 도시계획 topic \u0001215d580d\u0001 \u0001자치권\u0001 자치권 \u000132461b78\u0001 \u0001주택법\u0001 주택법 \u0001838c043e\u0001 \u0001권한배분\u0001 권한배분 \u0001ba13fb88\u0001 \u0001위헌법률심판\u0001 위헌법률심판 \u0001constitucion-espanola-de-1978\u0001 \u0001Constitución Española\u0001 Constitución Española de 1978 law \u0001derecho-a-la-vivienda\u0001 \u0001derecho a la vivienda\u0001 derecho a la vivienda right \u0001espana\u0001 \u0001España\u0001 España country \u0001estatuto-de-autonomia-de-cataluna\u0001 \u0001Estatuto de Autonomía de Cataluña\u0001 Estatuto"
+        }
+      ]
+    },
+    {
+      "articleId": "eccd7fae-7606-42e0-808a-2ade103ca0c9",
+      "sourceKey": "es-tribunal-constitucional",
+      "document": [
+        {
+          "field": "review_state",
+          "expected": "summarized",
+          "actual": "null"
+        },
+        {
+          "field": "tags_text",
+          "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u000134e5528f\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 사법권기본법 \u0001420f197a\u0001 \u0001평등권\u0001 평등권 topic \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u0001bbbaba9a\u0001 \u0001책임주의\u0001 책임주의 \u0001c4189510\u0001 \u0001사법부\u0001 사법부 \u0001c64bee70\u0001 \u0001정신질환\u0001 정신질환 \u0001f8eea87e\u0001 \u0001징계처분\u0001 징계처분 \u0001fc6cfeee\u0001 \u0001사법부 최고위원회\u0001 사법부 최고위원회",
+          "actual": "\u000107e8a918\u0001 \u0001Consejo General del Poder Judicial\u0001 사법권총평의회 institution \u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u000126ef8f6a\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 사법권유기법 \u000156c366e5\u0001 \u0001Ministerio Fiscal\u0001 스페인 검찰 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u0001a771ed15\u0001 \u0001합리적조정\u0001 합리적조정 topic \u0001a9765e18\u0001 암파로 소송 "
+        },
+        {
+          "field": "checksum",
+          "expected": "c1118d3a4f25c7d6",
+          "actual": "5e1d2e17cc675dc3"
+        }
+      ],
+      "fts": [
+        {
+          "field": "tags_text",
+          "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u000134e5528f\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 사법권기본법 \u0001420f197a\u0001 \u0001평등권\u0001 평등권 topic \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u0001bbbaba9a\u0001 \u0001책임주의\u0001 책임주의 \u0001c4189510\u0001 \u0001사법부\u0001 사법부 \u0001c64bee70\u0001 \u0001정신질환\u0001 정신질환 \u0001f8eea87e\u0001 \u0001징계처분\u0001 징계처분 \u0001fc6cfeee\u0001 \u0001사법부 최고위원회\u0001 사법부 최고위원회",
+          "actual": "\u000107e8a918\u0001 \u0001Consejo General del Poder Judicial\u0001 사법권총평의회 institution \u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u000116add5a0\u0001 \u0001Tribunal Supremo\u0001 스페인 대법원 court \u000126ef8f6a\u0001 \u0001Ley Orgánica del Poder Judicial\u0001 사법권유기법 \u000156c366e5\u0001 \u0001Ministerio Fiscal\u0001 스페인 검찰 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 \u0001a771ed15\u0001 \u0001합리적조정\u0001 합리적조정 topic \u0001a9765e18\u0001 암파로 소송 "
+        }
+      ]
+    }
+  ]
+}

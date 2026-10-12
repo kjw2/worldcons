@@ -1,0 +1,42 @@
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+Getting User settings...
+👋 You are logged in with an OAuth Token, associated with the email jaethis@gmail.com.
+🔐 Credentials are stored in: C:\Users\jaeth\AppData\Roaming\xdg.config\.wrangler\config\default.toml
+┌─────────────────────────────┬──────────────────────────────────┐
+│ Account Name                │ Account ID                       │
+├─────────────────────────────┼──────────────────────────────────┤
+│ Jaethis@gmail.com's Account │ c0975029797a404cd3ff402ee6a605b2 │
+└─────────────────────────────┴──────────────────────────────────┘
+🔓 Token Permissions:
+Scope (Access)
+- account (read)
+- user (read)
+- workers (write)
+- workers_kv (write)
+- workers_routes (write)
+- workers_scripts (write)
+- workers_tail (read)
+- d1 (write)
+- pages (write)
+- zone (read)
+- ssl_certs (write)
+- ai (write)
+- ai-search (write)
+- ai-search (run)
+- websearch.run 
+- agent-memory (write)
+- queues (write)
+- pipelines (write)
+- secrets_store (write)
+- artifacts (write)
+- flagship (write)
+- containers (write)
+- cloudchamber (write)
+- connectivity (admin)
+- email_routing (write)
+- email_sending (write)
+- browser (write)
+- challenge-widgets.write 
+- offline_access 

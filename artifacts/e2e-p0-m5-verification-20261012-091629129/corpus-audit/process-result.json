@@ -1,0 +1,14 @@
+{
+  "startedAt": "2026-10-12T09:17:08.281Z",
+  "status": "finished",
+  "args": [
+    "--import",
+    "tsx",
+    "C:/Users/jaeth/.codex/worktrees/e2e-p0-m1/worldcons/artifacts/e2e-p0-m5-verification-20261012-091629129/audit-corpus-direct-api.ts",
+    "--output-dir=artifacts/e2e-p0-m5-verification-20261012-091629129/corpus-audit"
+  ],
+  "pid": 42236,
+  "code": 1,
+  "signal": null,
+  "finishedAt": "2026-10-12T09:17:09.148Z"
+}

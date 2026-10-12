@@ -1,0 +1,52 @@
+{
+  "serverDate": "Mon, 12 Oct 2026 09:29:17 GMT",
+  "data": [
+    {
+      "results": [
+        {
+          "name": "ingest_discovery_commit_guards_v1",
+          "type": "table",
+          "sql": "CREATE TABLE ingest_discovery_commit_guards_v1 (\n  token text primary key not null,\n  assertion integer not null check(assertion=1)\n)"
+        },
+        {
+          "name": "ingest_discovery_items_due_v1",
+          "type": "index",
+          "sql": "CREATE INDEX ingest_discovery_items_due_v1 on ingest_discovery_items_v1(job_id,status,priority,candidate_id)"
+        },
+        {
+          "name": "ingest_discovery_items_v1",
+          "type": "table",
+          "sql": "CREATE TABLE ingest_discovery_items_v1 (\n  job_id text not null references ingest_discovery_scans_v1(job_id),\n  candidate_id text not null,\n  snapshot_hash text not null,\n  canonical_url text not null,\n  artifact_ref text not null,\n  source_version text not null,\n  priority integer not null,\n  status text not null check(status in ('pending','covered_existing','reserved')),\n  existing_article_id text,\n  crawl_job_id text references ingest_stage_jobs(id),\n  updated_at text not null,\n  primary key(job_id,candidate_id),\n  check((status='covered_existing' and existing_article_id is not null) or status<>'covered_existing'),\n  check((status='reserved' and crawl_job_id is not null) or status<>'reserved')\n)"
+        },
+        {
+          "name": "ingest_discovery_scans_due_v1",
+          "type": "index",
+          "sql": "CREATE INDEX ingest_discovery_scans_due_v1 on ingest_discovery_scans_v1(status,captured_at)"
+        },
+        {
+          "name": "ingest_discovery_scans_v1",
+          "type": "table",
+          "sql": "CREATE TABLE ingest_discovery_scans_v1 (\n  job_id text primary key not null references ingest_stage_jobs(id),\n  source_key text not null,\n  manifest_ref text not null,\n  manifest_hash text not null,\n  observed_count integer not null check(observed_count>=0),\n  status text not null check(status in ('capturing','pending','leased','reserved')),\n  reservation_fence integer not null default 0,\n  reservation_owner text,\n  lease_expires_at text,\n  captured_at text not null,\n  updated_at text not null\n)"
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "HKG",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.6508
+        },
+        "duration": 0.6508,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 120950784,
+        "rows_read": 107,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

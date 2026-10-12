@@ -1,0 +1,57 @@
+{
+  "serverDate": "Mon, 12 Oct 2026 09:29:17 GMT",
+  "data": [
+    {
+      "results": [
+        {
+          "name": "e2e_search_commit_guards_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_search_commit_guards_v1 (\n  token text primary key not null,\n  assertion integer not null constraint e2e_search_generation_match check (assertion=1)\n)"
+        },
+        {
+          "name": "e2e_search_document_delete_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_search_document_delete_guard before delete on search_documents\nwhen exists (select 1 from e2e_search_generation_guards_v1 where article_id=old.article_id)\n and not exists (select 1 from e2e_search_write_authorizations_v1 where article_id=old.article_id)\nbegin select raise(abort,'e2e_search_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_search_document_insert_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_search_document_insert_guard before insert on search_documents\nwhen exists (select 1 from e2e_search_generation_guards_v1 where article_id=new.article_id)\n and not exists (select 1 from e2e_search_write_authorizations_v1 where article_id=new.article_id)\nbegin select raise(abort,'e2e_search_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_search_document_update_guard",
+          "type": "trigger",
+          "sql": "CREATE TRIGGER e2e_search_document_update_guard before update on search_documents\nwhen (exists (select 1 from e2e_search_generation_guards_v1 where article_id=old.article_id)\n or exists (select 1 from e2e_search_generation_guards_v1 where article_id=new.article_id))\n and (not exists (select 1 from e2e_search_write_authorizations_v1 where article_id=old.article_id)\n or not exists (select 1 from e2e_search_write_authorizations_v1 where article_id=new.article_id))\nbegin select raise(abort,'e2e_search_unguarded_writer'); end"
+        },
+        {
+          "name": "e2e_search_generation_guards_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_search_generation_guards_v1 (\n  article_id text primary key not null,\n  generation_id text not null,\n  generation_seq integer not null check (generation_seq>0),\n  version_id text not null,\n  version_revision integer not null,\n  publication_id text not null,\n  publication_revision integer not null,\n  publication_state text not null,\n  policy_version text not null,\n  projection_input_hash text not null,\n  fencing_token integer not null check (fencing_token>0),\n  tombstone integer not null check (tombstone in (0,1)),\n  document_fingerprint text not null,\n  fts_fingerprint text not null,\n  updated_at text not null\n)"
+        },
+        {
+          "name": "e2e_search_write_authorizations_v1",
+          "type": "table",
+          "sql": "CREATE TABLE e2e_search_write_authorizations_v1 (\n  article_id text primary key not null,\n  token text not null\n)"
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "KIX",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.2586
+        },
+        "duration": 0.2586,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 169639936,
+        "rows_read": 24,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "sourceRef": "af72c27d2edcb76b163cce88f489b8cf99861645",
+  "scope": "Enabled FR/ES cohort plus caller/operator review",
+  "inventorySearch": [
+    "writer-search.txt",
+    "writer-all-references.txt",
+    "writer-caller-inventory.txt",
+    "maintenance-operator-inventory.txt"
+  ],
+  "paths": [
+    {
+      "path": "workers/async-pipeline/src/staged-e2e.ts",
+      "status": "protected",
+      "reason": "Approved staged publish calls Core authority; P3/generation/outbox CAS in the same batch",
+      "test": "guard-regressions.log"
+    },
+    {
+      "path": "lib/cloudflare/publication/d1-publication-drain.ts",
+      "status": "protected_or_excluded_for_owned_sources",
+      "reason": "Legacy M8 selection filters owned FR/ES before LIMIT; protected single publication requires approval",
+      "test": "guard-regressions.log"
+    },
+    {
+      "path": "app/api/admin/work/[kind]/[id]/route.ts",
+      "status": "protected",
+      "reason": "Preview/human approval and guarded per-article Search sync; schema source ownership intercepts legacy writes",
+      "test": "guard-regressions.log"
+    },
+    {
+      "path": "lib/cloudflare/core-write/authority.ts",
+      "status": "protected_publication_boundary",
+      "reason": "Current approved P3 transitions, head CAS, Core authorizations and durable generation/outbox; direct legacy head/delete rejected",
+      "test": "guard-regressions.log"
+    },
+    {
+      "path": "workers/ops-write/src/index.ts",
+      "status": "same_root_service_boundary",
+      "reason": "Root imports dispatcher; mutation calls Core authority; no separate ops-write wrangler configuration exists"
+    },
+    {
+      "path": "lib/cloudflare/search-projection/d1-sync.ts",
+      "status": "protected_managed_generations",
+      "reason": "Single/full sync dispatches managed IDs through current-generation consumer; legacy plans abort before managed document/FTS writes",
+      "test": "guard-regressions.log"
+    },
+    {
+      "path": "lib/cloudflare/e2e/search-generation-guard.ts",
+      "status": "protected",
+      "reason": "CAS/fencing, Search authorizations, content fingerprints and tombstone; actual persisted schema objects confirmed",
+      "test": "guard-regressions.log"
+    },
+    {
+      "path": "lib/cloudflare/summary/d1-summary-drain.ts",
+      "status": "closure_gap",
+      "reason": "Shared tag labels preserved, but per-article tag/review changes for legacy publications lack equivalent durable generation repair; five un-managed published IDs have actual Search/FTS metadata mismatch"
+    },
+    {
+      "path": "workers/async-pipeline/src/native-crawler.ts",
+      "status": "failed_source_age_concurrency",
+      "reason": "Pre-read age check followed by UPDATE WHERE id allows newer fetched_at/content to be overwritten; two isolated actual-SQL reproductions fail with source policy active"
+    },
+    {
+      "path": "lib/cloudflare/d1/remote/data-copy.ts and reconcile.ts",
+      "status": "search_scope_excluded",
+      "reason": "Explicit worldcons_search skip; protected Core P3 mutations constrained by source DB triggers"
+    },
+    {
+      "path": "scripts/d1-search-projection.ts and scripts/d1-fts-parity.ts",
+      "status": "planning_or_local_fixture",
+      "reason": "Pure SQL planning / local SQLite fixture; no application production Search executor introduced"
+    },
+    {
+      "path": "scripts/d1-search-canary.ts",
+      "status": "isolated_operator_scope",
+      "reason": "Separate canary target and append-only writer; not certified as a protected live-cohort mutation path"
+    },
+    {
+      "path": "lib/cloudflare/search-materialize/",
+      "status": "retired_absent",
+      "reason": "Supabase M7.5 operator and package commands absent after retirement merge"
+    },
+    {
+      "path": "Catalog publication/freshness maintenance",
+      "status": "scope_not_certified",
+      "reason": "Catalog public/search/plugin flags off; one DE Catalog legacy head excluded. No enabled Catalog writer runtime proof is inferred"
+    }
+  ],
+  "closurePassed": false
+}

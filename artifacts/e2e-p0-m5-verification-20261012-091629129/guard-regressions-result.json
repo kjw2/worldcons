@@ -1,0 +1,27 @@
+{
+  "startedAt": "2026-10-12T09:16:29.195Z",
+  "status": "finished",
+  "args": [
+    "--import",
+    "tsx",
+    "--test",
+    "tests/e2e-p0-m1-generations.test.ts",
+    "tests/e2e-p0-m2-search-repair.test.ts",
+    "tests/e2e-p0-m2-d1-runtime.test.ts",
+    "tests/e2e-p0-m3-search-guards.test.ts",
+    "tests/e2e-p0-m3-d1-runtime.test.ts",
+    "tests/e2e-p0-m4-verification.test.ts",
+    "tests/e2e-p0-m4-staged.test.ts",
+    "tests/e2e-p0-m4-d1-runtime.test.ts",
+    "tests/e2e-p0-m5-core-writers.test.ts",
+    "tests/e2e-p0-m5-discovery.test.ts",
+    "tests/e2e-p0-m5-approval.test.ts",
+    "tests/summary-drain-d1.test.ts",
+    "tests/m8-crawler-source-ownership.test.ts",
+    "tests/ingest-stage-article-services.test.ts"
+  ],
+  "pid": 624,
+  "code": 0,
+  "signal": null,
+  "finishedAt": "2026-10-12T09:17:04.465Z"
+}

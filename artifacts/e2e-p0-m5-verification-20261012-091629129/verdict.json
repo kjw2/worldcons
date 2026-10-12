@@ -1,0 +1,54 @@
+{
+  "sourceRef": "af72c27d2edcb76b163cce88f489b8cf99861645",
+  "m5Passed": false,
+  "p0Completed": false,
+  "productionMode": "read_only",
+  "guardRegression": {
+    "total": 131,
+    "pass": 131,
+    "fail": 0,
+    "skip": 0
+  },
+  "schemaChecks": {
+    "total": 54,
+    "failed": 0
+  },
+  "corpus": {
+    "counts": {
+      "eligible": 1500,
+      "documents": 1500,
+      "fts": 1500
+    },
+    "coreInputsStable": true,
+    "contentMismatches": 5,
+    "rawCoreP3Differences": 12
+  },
+  "apiIdentity": {
+    "diagnosedGenerations": 5,
+    "deadLetter": 1,
+    "retryWait": 4,
+    "mismatchField": "originalUrl",
+    "approvedBodyAndSummaryMatches": true
+  },
+  "sourceAgeRace": {
+    "sourceOwnershipRequired": true,
+    "scenarios": 2,
+    "failed": 2
+  },
+  "observation": {
+    "lastRuntimeDeployment": "2026-10-12T07:42:30.489Z",
+    "serverObservedAt": "Mon, 12 Oct 2026 09:22:47 GMT",
+    "elapsedMinutes": 100.27518333333333,
+    "minimumObservationEndsAt": "2026-10-14T07:42:30.489Z",
+    "minimum48HoursPassed": false,
+    "discoveryCyclesAfterDeployment": {
+      "fr-conseil-constitutionnel": 0,
+      "es-tribunal-constitucional": 0
+    }
+  },
+  "limitations": [
+    "Point-in-time queries were taken while normal cron/Queues continued.",
+    "Prior completed evidence and immutable P3 were not changed.",
+    "No production mutations, redrive, deployment or automatic monitoring were performed."
+  ]
+}

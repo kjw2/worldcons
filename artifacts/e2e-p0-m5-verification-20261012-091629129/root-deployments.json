@@ -1,0 +1,169 @@
+[
+  {
+    "id": "1750570a-4aca-4c87-b342-7df9649103a4",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "4ddd4cc2-fd11-450e-b5ae-1b6a70150707",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T08:21:20.232955Z"
+  },
+  {
+    "id": "c50acf72-8eb2-4348-b906-3a5eaefad070",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "768b1085-23fc-45ed-889d-72097153bfa1",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T12:32:20.622132Z"
+  },
+  {
+    "id": "2e465c3f-aff1-42d1-b922-81fa82b93deb",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e3dc0a43-1592-4964-971d-d036add50b07",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T14:38:27.837323Z"
+  },
+  {
+    "id": "7f9bd41e-7877-48e3-8aef-324446f5b1c6",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "E2E P0 compatible public/Core worker; git 3317d9b7e1ce01cc6289af45171bf371b53486cb",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "03075f82-369b-4f3f-8085-1608351d3696",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:19:32.261444Z"
+  },
+  {
+    "id": "2cd4d838-52ee-4344-a0d7-f961cc8ea716",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "E2E P0 FR L exact-search fix; release gate passed; git 43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e82cd6e1-a59f-4d13-9aad-7555e1566699",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:32:10.831995Z"
+  },
+  {
+    "id": "7afdb229-2efe-4d47-918a-111741091afb",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "French L parser verified in final bundle; git 43371c8814e0c56dd65455d1cad4a9a17f48cbc5",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "0bf0e14d-b4d9-4370-9b1d-34b5098d5644",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:34:59.802831Z"
+  },
+  {
+    "id": "b2095ad8-d1ed-4669-be12-bf5825c2869c",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "M5 reviewed-snapshot approval and protected publication/search paths; git 007094f968773179ea056bed6dd10133565df98d",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "b445ded5-d60d-41d0-b114-861a32ae3d0a",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:35:33.68616Z"
+  },
+  {
+    "id": "0f385db9-a5c1-4fe4-b8fc-e04e32a6be18",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Final M5 HJ literal-prefix approval paths; git d85931fa4ad7564df81320380db983733991731a",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "0f38bf4a-bf96-413b-b4f0-7e828516c340",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:53:25.740213Z"
+  },
+  {
+    "id": "deb433e5-4249-40c5-8586-15969d6ff0bb",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Fully validated M5 Root public provider runtime; git 1216caf5ebde12d222bfd198ac9f1256461a454d",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "de37eb20-033e-4a85-a99c-b9c71e9d663e",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T06:25:21.698767Z"
+  },
+  {
+    "id": "a700c52f-e1a0-4397-a868-76d06d8b675b",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "M5 validated shared tag preservation; git d9f8e1bf2f1494705bdf1a4d18ca5347d98c0d95",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "8f5b1d18-b92d-421d-9f8c-962be214bda1",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T07:41:41.12743Z"
+  }
+]
