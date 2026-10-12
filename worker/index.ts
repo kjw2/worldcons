@@ -215,6 +215,8 @@ const searchServiceApp = createWorldconsSearchServiceApp();
 export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServiceEnv> {
   fetch(request: Request): Response | Promise<Response> {
     const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
     setRuntimeD1Bindings({
       worldcons_core: env.WORLDCONS_CORE,
       worldcons_search: env.WORLDCONS_SEARCH,
@@ -225,6 +227,8 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
 
   async searchCclMetasearch(input: CclMetasearchSearchInput): Promise<CclMetasearchSearchPage> {
     const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
     setRuntimeD1Bindings({
       worldcons_core: env.WORLDCONS_CORE,
       worldcons_search: env.WORLDCONS_SEARCH,
@@ -256,12 +260,16 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
   async runPublicationDrain(input: { limit?: number }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
+    setRuntimePlatform("cloudflare-worker");
     setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST });
     return runD1PublicationDrain(input);
   }
 
   async runSummaryDrain(input: { limit?: number; maxPasses?: number; sourceKey?: string; retryAttempts?: number; retryDelayMs?: number }) {
     const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeD1Bindings({
@@ -286,6 +294,8 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
   async runSummaryArticle(input: { articleId?: string; slug?: string; model?: string }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
+    setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST });
     setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
@@ -307,6 +317,8 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
   async runPublishArticle(input: { articleId: string; actorId?: string }) {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
+    setRuntimePlatform("cloudflare-worker");
     setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST });
     return runD1PublishArticle({ articleId: input.articleId, actorId: input.actorId });
   }
@@ -319,6 +331,8 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
    */
   async runProjectArticle(input: { articleId: string }) {
     const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
     setRuntimePlatform("cloudflare-worker");
     setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_search: env.WORLDCONS_SEARCH });
     return syncSearchProjectionForArticle(
@@ -333,12 +347,16 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
   async runRefreshTagCounts() {
     const env = this.env;
     setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
+    setRuntimePlatform("cloudflare-worker");
     setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE });
     return runD1RefreshTagCounts();
   }
 
   async runEmbeddingBackfill(input: { limit?: number; maxPasses?: number; delayMs?: number }) {
     const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
     setRuntimePlatform("cloudflare-worker");
     setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
     setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE });

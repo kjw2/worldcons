@@ -1,3 +1,4 @@
+import type {ArtifactBlobR2Bucket} from "@/lib/storage/blob";
 import { Hono, type Context } from "hono";
 import {
   handleWorldconsSearchRequest,
@@ -17,6 +18,7 @@ import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import type { VectorizeIndexBinding } from "@/lib/cloudflare/search-vector/types";
 
 export interface WorldconsSearchServiceEnv {
+  WORLDCONS_RAW?:ArtifactBlobR2Bucket;
   ENVIRONMENT?: string;
   PUBLIC_BASE_URL?: string;
   EMBEDDING_PROVIDER?: string;
