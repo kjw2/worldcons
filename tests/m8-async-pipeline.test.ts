@@ -352,6 +352,7 @@ test("Cloudflare config locks single-consumer retries and a DLQ", () => {
   assert.equal(config.r2_buckets[0].binding, "WORLDCONS_RAW");
   assert.ok(config.d1_databases.some((binding: { binding: string }) => binding.binding === "WORLDCONS_SEARCH"));
   assert.deepEqual(config.services, [
+    { binding: "E2E_PUBLIC_API", service: "worldcons", entrypoint: "WorldconsSearchService" },
     { binding: "WORLDCONS_APP_SERVICE", service: "worldcons", entrypoint: "WorldconsOpsService" },
   ]);
   assert.doesNotMatch(JSON.stringify(config), /GITHUB_ACTIONS_TOKEN|GITHUB_REPOSITORY|GITHUB_REF/u);
