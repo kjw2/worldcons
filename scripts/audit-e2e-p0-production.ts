@@ -103,7 +103,8 @@ async function main() {
     corpusVerified:verified,p0Completed:false,
     limitations:["Point-in-time comparison across separate D1 databases; not a global atomic snapshot.",
       "No legal-meaning approval, Discovery coverage, all-writer certification, FR/ES new-case proof or 48-hour observation is inferred from this audit."]};
-  const dir=resolve("artifacts/e2e-p0-release");await mkdir(dir,{recursive:true});
+  const outputArg=process.argv.find(arg=>arg.startsWith("--output-dir="));
+  const dir=resolve(outputArg?.slice("--output-dir=".length)??"artifacts/e2e-p0-release");await mkdir(dir,{recursive:true});
   await writeFile(resolve(dir,"corpus-audit.json"),JSON.stringify(report,null,2)+"\n");
   console.log(JSON.stringify({corpusVerified:verified,counts:report.counts,differences,driftCount:drift.length,generations,progress}));
   if(!verified)process.exitCode=1;

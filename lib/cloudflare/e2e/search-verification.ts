@@ -1,7 +1,7 @@
 import { allPredicates } from "./sql-predicates";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { canonicalJson } from "@/lib/backfill/canonical-json";
-import { canonicalArticleCaseNumber } from "@/lib/search/case-number";
+import { canonicalArticleCaseNumber, normalizeCaseNumber } from "@/lib/search/case-number";
 import { approvalIdentity, sha256Canonical, HUMAN_APPROVAL_POLICY, REMOVAL_AUTHORITY_POLICY, STAGED_APPROVAL_POLICY } from "./contracts";
 import { currentGenerations, e2eRows, type GenerationRow } from "./generation-state";
 import { desiredSearchProjection } from "./search-repair-consumer";
@@ -152,7 +152,8 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
       throw new Error("e2e.search_content_mismatch");
     const detail=await probe(`${base}/articles/${encodeURIComponent(String(version.slug))}?textLimit=4000`,options,clock);
     const caseNumber=canonicalArticleCaseNumber({sourceKey:String(version.source_key),originalTitle:String(version.original_title),
-      metadata:typeof version.source_metadata==="string"?JSON.parse(version.source_metadata):version.source_metadata});
+      metadata:typeof version.source_metadata==="string"?JSON.parse(version.source_metadata):version.source_metadata})
+      ??(removal?normalizeCaseNumber(String(version.source_key),String(version.original_title)):undefined);
     if (!caseNumber) throw new Error("e2e.verification_case_number_missing");
     const searchUrl=new URL(`${base}/search`);
     searchUrl.search=new URLSearchParams({q:caseNumber,mode:"fulltext",source:String(version.source_key),pageSize:"20",count:"none"}).toString();

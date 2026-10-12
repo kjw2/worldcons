@@ -112,3 +112,15 @@ test('M5 HJ ACTION/language URL aliases reuse one Core article; older captured s
  const before=core.rows('articles')[0];const old=await persistNativeStageRecord(candidate,'Old different source text. '.repeat(150),bindings,{runId:'fixture:delayed',fetchedAt:'2026-10-12T02:00:00Z'});
  assert.equal(old.outcome,'preserved');assert.deepEqual(core.rows('articles')[0],before);
 });
+
+test('M5 legacy duplicate withdrawal verifies privacy using official title when old metadata lacks caseNumber',async t=>{
+ const core=new SqliteD1(),search=new SqliteD1('search');t.after(()=>{core.close();search.close();});
+ const url='https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32100?ACTION=detalle';
+ core.db.prepare("UPDATE articles SET source_key='es-tribunal-constitucional',original_title='SENTENCIA 34/2026',canonical_url=?,original_url=?").run(url,url);
+ const published=await transitionArticlePublicationInD1(core,input(core,'old-m8',{e2eApproval:undefined}));assert.ok(published.ok);prepare(core);
+ const removed=await transitionArticlePublicationInD1(core,input(core,'duplicate-removal',{e2eApproval:undefined,actorType:'system',actorId:'fixture:deduplication',captureLegacy:false,versionId:published.data.versionId,targetState:'withdrawn'}));assert.ok(removed.ok);
+ const message={schemaVersion:1,type:'e2e-search-repair',outboxId:removed.data.generation!.searchRepairOutboxId};await consumeSearchRepair(core,search,message);
+ const base='https://fixture.example/api',fetcher:typeof fetch=async request=>handleWorldconsSearchRequest(new Request(String(request)),{ENVIRONMENT:'test',PUBLIC_BASE_URL:base},{coreBinding:core,searchBinding:search});
+ assert.equal((await verifySearchRepair(core,search,message,{apiBaseUrl:base,fetch:fetcher,deploymentRef:'fixture:removal'})).status,'withdrawal_verified');
+ assert.equal(core.rows('e2e_verification_evidence_v1')[0].result,'withdrawal_verified');assert.notEqual(core.rows('e2e_generation_progress_v1')[0].state,'completed_verified');
+});
