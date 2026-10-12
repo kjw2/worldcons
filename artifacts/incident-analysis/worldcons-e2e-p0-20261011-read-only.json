@@ -1,0 +1,1061 @@
+{
+  "schemaVersion": 1,
+  "mode": "production_read_only",
+  "reviewBasis": "a415860362877bafef579cab0c18133dcdb877d3",
+  "baselineStartedAt": "2026-10-10T15:30:22.317Z",
+  "baselineFinishedAt": "2026-10-10T15:32:30.528Z",
+  "followupStartedAt": "2026-10-10T15:38:50.515Z",
+  "followupFinishedAt": "2026-10-10T15:38:52.995Z",
+  "executedAuditSource": [
+    {
+      "path": "scripts/audit-p3-snapshot-drift.ts",
+      "sha256_normalized": "8552589a917bc28b9761ca54743d06a7a2bf0dcdd4b8bcbf0c1a97a5f08c455a",
+      "matchesReviewBasis": true
+    },
+    {
+      "path": "scripts/sql/worldcons-p3-snapshot-drift-audit.sql",
+      "sha256_normalized": "fedbfe808e2790f1794b44f4cbd633b8183060ab81cc601311eb2c4a13c5c3da",
+      "matchesReviewBasis": true
+    },
+    {
+      "path": "scripts/audit-p3-refresh-readiness.ts",
+      "sha256_normalized": "27b7bd6575a1086c4b2a9a5997672a8c5c5f0e86464d07d910737e7ae86e6ada",
+      "matchesReviewBasis": true
+    },
+    {
+      "path": "lib/admin/p4/p3-drift-refresh.ts",
+      "sha256_normalized": "44f66a7c25395f985cb42f0d93625628aaf3fcbf945de80697296941416dc0b1",
+      "matchesReviewBasis": true
+    }
+  ],
+  "audits": [
+    {
+      "script": "audit-p3-snapshot-drift.ts",
+      "result": {
+        "mode": "production_read_only",
+        "sections": [
+          {
+            "query": "country_summary",
+            "rows": [
+              {
+                "source_key": "de-bverfg",
+                "published": 473,
+                "text_drift": 0,
+                "summary_drift": 0,
+                "title_drift": 0,
+                "url_drift": 0,
+                "any_snapshot_drift": 0
+              },
+              {
+                "source_key": "es-tribunal-constitucional",
+                "published": 424,
+                "text_drift": 1,
+                "summary_drift": 2,
+                "title_drift": 2,
+                "url_drift": 0,
+                "any_snapshot_drift": 2
+              },
+              {
+                "source_key": "fr-conseil-constitutionnel",
+                "published": 395,
+                "text_drift": 1,
+                "summary_drift": 1,
+                "title_drift": 1,
+                "url_drift": 0,
+                "any_snapshot_drift": 1
+              },
+              {
+                "source_key": "us-scotus",
+                "published": 136,
+                "text_drift": 0,
+                "summary_drift": 0,
+                "title_drift": 0,
+                "url_drift": 0,
+                "any_snapshot_drift": 0
+              }
+            ]
+          },
+          {
+            "query": "drift_rows",
+            "rows": [
+              {
+                "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+                "source_key": "es-tribunal-constitucional",
+                "original_title": "AUTO 43/2026, de 7 de julio de 2026",
+                "core_updated_at": "2026-09-24T03:29:54.177Z",
+                "p3_updated_at": "2026-09-02T03:23:28.085Z",
+                "version_id": "eebc2367-0f48-5d88-a36a-b4020d5fb0d6",
+                "publication_revision": "30",
+                "review_state": "summarized",
+                "lifecycle_collection_state": "source_text_ready",
+                "lifecycle_processing_state": "complete",
+                "lifecycle_review_state": "unreviewed",
+                "lifecycle_attention_state": "clear",
+                "publishable": 1,
+                "source_text_available": 1,
+                "source_url_verified": 1,
+                "legacy_safety_publishable": 1,
+                "core_text_chars": 14205,
+                "p3_text_chars": 14206,
+                "text_equal": 0,
+                "summary_equal": 0,
+                "title_equal": 0,
+                "url_equal": 1
+              },
+              {
+                "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+                "source_key": "es-tribunal-constitucional",
+                "original_title": "SENTENCIA 59/2026",
+                "core_updated_at": "2026-10-09T22:00:48.316Z",
+                "p3_updated_at": "2026-09-30T03:34:17.654Z",
+                "version_id": "017489d5-62ed-5573-a95a-438ced9bbb59",
+                "publication_revision": "18",
+                "review_state": "summarized",
+                "lifecycle_collection_state": "source_text_ready",
+                "lifecycle_processing_state": "complete",
+                "lifecycle_review_state": "unreviewed",
+                "lifecycle_attention_state": "clear",
+                "publishable": 1,
+                "source_text_available": 1,
+                "source_url_verified": 1,
+                "legacy_safety_publishable": 0,
+                "core_text_chars": 66952,
+                "p3_text_chars": 66952,
+                "text_equal": 1,
+                "summary_equal": 0,
+                "title_equal": 0,
+                "url_equal": 1
+              },
+              {
+                "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+                "source_key": "fr-conseil-constitutionnel",
+                "original_title": "Décision n° 2026-1223 QPC du 1er octobre 2026\nM. Magomed S. [Composition du tribunal pour enfants II]\nConformité",
+                "core_updated_at": "2026-10-07T21:32:16.609Z",
+                "p3_updated_at": "2026-10-05T21:30:30.327Z",
+                "version_id": "c1535ad7-e42a-5add-afa7-b977d3e1225c",
+                "publication_revision": "2",
+                "review_state": "summarized",
+                "lifecycle_collection_state": "source_text_ready",
+                "lifecycle_processing_state": "complete",
+                "lifecycle_review_state": "unreviewed",
+                "lifecycle_attention_state": "clear",
+                "publishable": 1,
+                "source_text_available": 1,
+                "source_url_verified": 1,
+                "legacy_safety_publishable": null,
+                "core_text_chars": 11879,
+                "p3_text_chars": 11831,
+                "text_equal": 0,
+                "summary_equal": 0,
+                "title_equal": 0,
+                "url_equal": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "script": "audit-p3-refresh-readiness.ts",
+      "result": {
+        "mode": "read_only",
+        "canaryCount": 4,
+        "candidates": [
+          {
+            "articleId": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+            "sourceKey": "fr-conseil-constitutionnel",
+            "publicationRevision": 2,
+            "currentCoreUpdatedAt": "2026-10-07T21:32:16.609Z",
+            "verdict": {
+              "eligible": true,
+              "changed": true
+            }
+          },
+          {
+            "articleId": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+            "sourceKey": "es-tribunal-constitucional",
+            "publicationRevision": 30,
+            "currentCoreUpdatedAt": "2026-09-24T03:29:54.177Z",
+            "verdict": {
+              "eligible": true,
+              "changed": true
+            }
+          },
+          {
+            "articleId": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+            "sourceKey": "fr-conseil-constitutionnel",
+            "publicationRevision": 2,
+            "currentCoreUpdatedAt": "2026-10-09T21:45:56.733Z",
+            "verdict": {
+              "eligible": false,
+              "reason": "no_drift"
+            }
+          },
+          {
+            "articleId": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+            "sourceKey": "es-tribunal-constitucional",
+            "publicationRevision": 18,
+            "currentCoreUpdatedAt": "2026-10-09T22:00:48.316Z",
+            "verdict": {
+              "eligible": false,
+              "reason": "provenance_conflict"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "queries": [
+    {
+      "db": "worldcons_core",
+      "name": "core_summary",
+      "sql": "SELECT COUNT(*) AS published_heads, SUM(CASE WHEN a.id IS NULL THEN 1 ELSE 0 END) AS missing_article, SUM(CASE WHEN v.id IS NULL THEN 1 ELSE 0 END) AS missing_or_foreign_version, SUM(CASE WHEN a.id IS NOT NULL AND v.id IS NOT NULL AND (a.cleaned_text IS NOT v.cleaned_text OR a.summary_json IS NOT v.summary_json OR a.korean_title IS NOT v.korean_title OR a.canonical_url IS NOT v.canonical_url) THEN 1 ELSE 0 END) AS snapshot_drift, SUM(CASE WHEN v.id IS NOT NULL AND v.version_role IS NULL AND f.version_id IS NULL THEN 1 ELSE 0 END) AS legacy_freshness_missing, SUM(CASE WHEN v.id IS NOT NULL AND v.version_role IS NULL AND f.version_id IS NOT NULL AND f.freshness<>'current' THEN 1 ELSE 0 END) AS legacy_freshness_not_current, SUM(CASE WHEN \n  p.state = 'published'\n  AND (\n    (\n      v.version_role IS NULL\n      AND EXISTS (\n        SELECT 1 FROM legacy_version_freshness_classifications_v4 f\n        WHERE f.version_id = v.id AND f.freshness = 'current'\n      )\n      AND NOT EXISTS (\n        SELECT 1 FROM case_catalog_publications_v1 c\n        WHERE c.article_id = v.article_id AND c.state = 'published'\n      )\n    )\n    OR\n    (\n      v.version_role = 'enrichment_full'\n      AND EXISTS (\n        SELECT 1\n        FROM case_catalog_publications_v1 c\n        JOIN article_content_versions_p3 anchor ON anchor.id = c.source_anchor_version_id\n        WHERE c.article_id = v.article_id\n          AND c.state = 'published'\n          AND c.source_anchor_version_id = v.source_anchor_version_id\n          AND anchor.source_content_hash = v.enrichment_source_content_hash\n      )\n    )\n  )\n THEN 1 ELSE 0 END) AS eligible_heads FROM article_publications_p3 p LEFT JOIN articles a ON a.id=p.article_id LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id LEFT JOIN legacy_version_freshness_classifications_v4 f ON f.version_id=v.id WHERE p.state='published'",
+      "result": [
+        {
+          "results": [
+            {
+              "published_heads": 1428,
+              "missing_article": 0,
+              "missing_or_foreign_version": 0,
+              "snapshot_drift": 3,
+              "legacy_freshness_missing": 1,
+              "legacy_freshness_not_current": 0,
+              "eligible_heads": 1426
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "NRT",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 150.2659
+            },
+            "duration": 150.2659,
+            "changes": 0,
+            "last_row_id": 3155,
+            "changed_db": false,
+            "size_after": 262819840,
+            "rows_read": 7283,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_core",
+      "name": "cohort_versions",
+      "sql": "SELECT p.article_id,p.version_id,p.revision,p.updated_at AS publication_updated_at,v.version_role,v.content_hash,f.freshness,f.classified_at,f.classified_by FROM article_publications_p3 p LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id LEFT JOIN legacy_version_freshness_classifications_v4 f ON f.version_id=v.id WHERE p.article_id IN ('0e25c3b4-3449-46b5-9270-fd0e37f9e4b7','16b4fc11-d9cc-4e5b-b8e5-acf687ab760e','15560a96-c510-427c-aaf4-a5d57ef5bd50','d31eecc5-4e74-440f-ba6e-1561911bd68c') ORDER BY p.article_id",
+      "result": [
+        {
+          "results": [
+            {
+              "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+              "version_id": "c1535ad7-e42a-5add-afa7-b977d3e1225c",
+              "revision": "2",
+              "publication_updated_at": "2026-10-05T21:30:30.327Z",
+              "version_role": null,
+              "content_hash": "59de130b4ca9f30aac850cdcb51f7a4c2db1ea127d407a6524ddad61c365c9be",
+              "freshness": "current",
+              "classified_at": "2026-10-07T09:49:13.214Z",
+              "classified_by": "m8-publication-drain"
+            },
+            {
+              "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+              "version_id": "eebc2367-0f48-5d88-a36a-b4020d5fb0d6",
+              "revision": "30",
+              "publication_updated_at": "2026-09-02T03:23:28.085Z",
+              "version_role": null,
+              "content_hash": "1b7911b6cbe7e503baf1e59ea28c115ebacde79ff55f6dfb04446fd090e6e1cf",
+              "freshness": "current",
+              "classified_at": "2026-09-03T11:03:24.592Z",
+              "classified_by": "gate2-legacy-reconciliation"
+            },
+            {
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "version_id": "0f1dabb2-2442-546e-a3ec-d2ed5d443cc5",
+              "revision": "2",
+              "publication_updated_at": "2026-10-10T14:26:51.706Z",
+              "version_role": null,
+              "content_hash": "249426f24e3244467e7feb2bd2e2a1efc5c36a7c12a265e4f6315205d837376c",
+              "freshness": null,
+              "classified_at": null,
+              "classified_by": null
+            },
+            {
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "version_id": "017489d5-62ed-5573-a95a-438ced9bbb59",
+              "revision": "18",
+              "publication_updated_at": "2026-09-30T03:34:17.654Z",
+              "version_role": null,
+              "content_hash": "3850c77d677e2e860afcd8d5d8468f2c2384b79b6a5c0edab3ad80cb88538caa",
+              "freshness": "current",
+              "classified_at": "2026-10-09T22:30:40.067Z",
+              "classified_by": "ingest-stage-publish"
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "NRT",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.7801
+            },
+            "duration": 0.7801,
+            "changes": 0,
+            "last_row_id": 3155,
+            "changed_db": false,
+            "size_after": 262819840,
+            "rows_read": 15,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_ingest",
+      "name": "stage_status",
+      "sql": "SELECT stage,status,COUNT(*) AS n,MIN(created_at) AS first_created,MAX(updated_at) AS last_updated FROM ingest_stage_jobs WHERE created_at >= '2026-10-08T15:00:00Z' AND created_at < '2026-10-10T15:35:00Z' GROUP BY stage,status ORDER BY stage,status",
+      "result": [
+        {
+          "results": [
+            {
+              "stage": "crawl",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:15:53.270Z",
+              "last_updated": "2026-10-09T21:30:38.814Z"
+            },
+            {
+              "stage": "discovery",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:00:45.000Z",
+              "last_updated": "2026-10-09T21:15:39.615Z"
+            },
+            {
+              "stage": "normalize",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:30:54.224Z",
+              "last_updated": "2026-10-09T21:45:39.084Z"
+            },
+            {
+              "stage": "public-judgment",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T22:00:54.531Z",
+              "last_updated": "2026-10-09T22:15:38.717Z"
+            },
+            {
+              "stage": "publish",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T22:15:54.441Z",
+              "last_updated": "2026-10-09T22:30:39.217Z"
+            },
+            {
+              "stage": "search",
+              "status": "succeeded",
+              "n": 4,
+              "first_created": "2026-10-08T22:31:29.668Z",
+              "last_updated": "2026-10-09T22:45:39.378Z"
+            },
+            {
+              "stage": "translate",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:45:55.365Z",
+              "last_updated": "2026-10-09T22:00:38.829Z"
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "HKG",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.7761
+            },
+            "duration": 0.7761,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 119836672,
+            "rows_read": 22,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_search",
+      "name": "cohort_search",
+      "sql": "WITH cohort(article_id) AS (VALUES ('0e25c3b4-3449-46b5-9270-fd0e37f9e4b7'),('16b4fc11-d9cc-4e5b-b8e5-acf687ab760e'),('15560a96-c510-427c-aaf4-a5d57ef5bd50'),('d31eecc5-4e74-440f-ba6e-1561911bd68c')) SELECT c.article_id,(SELECT COUNT(*) FROM search_documents d WHERE d.article_id=c.article_id) AS document_count,(SELECT COUNT(*) FROM search_fts f WHERE f.article_id=c.article_id) AS fts_count,(SELECT checksum FROM search_documents d WHERE d.article_id=c.article_id) AS checksum,(SELECT projection_version FROM search_documents d WHERE d.article_id=c.article_id) AS projection_version,(SELECT updated_at FROM search_documents d WHERE d.article_id=c.article_id) AS document_updated_at FROM cohort c ORDER BY c.article_id",
+      "result": [
+        {
+          "results": [
+            {
+              "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "5746fc9fbd24926b",
+              "projection_version": 1,
+              "document_updated_at": "2026-10-05T21:30:30.327Z"
+            },
+            {
+              "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "c71337871e27b94b",
+              "projection_version": 1,
+              "document_updated_at": "2026-09-02T03:23:28.085Z"
+            },
+            {
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "document_count": 0,
+              "fts_count": 0,
+              "checksum": null,
+              "projection_version": null,
+              "document_updated_at": null
+            },
+            {
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "e278795cfc2a7508",
+              "projection_version": 1,
+              "document_updated_at": "2026-09-30T03:34:17.654Z"
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "KIX",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 305.426
+            },
+            "duration": 305.426,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 155611136,
+            "rows_read": 5720,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_core",
+      "name": "published_ineligible",
+      "sql": "SELECT p.article_id,p.version_id,p.revision,v.version_role,f.freshness,(SELECT c.state FROM case_catalog_publications_v1 c WHERE c.article_id=p.article_id LIMIT 1) AS catalog_state,v.source_anchor_version_id,v.enrichment_source_content_hash FROM article_publications_p3 p JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id LEFT JOIN legacy_version_freshness_classifications_v4 f ON f.version_id=v.id WHERE p.state='published' AND CASE WHEN \n  p.state = 'published'\n  AND (\n    (\n      v.version_role IS NULL\n      AND EXISTS (\n        SELECT 1 FROM legacy_version_freshness_classifications_v4 f\n        WHERE f.version_id = v.id AND f.freshness = 'current'\n      )\n      AND NOT EXISTS (\n        SELECT 1 FROM case_catalog_publications_v1 c\n        WHERE c.article_id = v.article_id AND c.state = 'published'\n      )\n    )\n    OR\n    (\n      v.version_role = 'enrichment_full'\n      AND EXISTS (\n        SELECT 1\n        FROM case_catalog_publications_v1 c\n        JOIN article_content_versions_p3 anchor ON anchor.id = c.source_anchor_version_id\n        WHERE c.article_id = v.article_id\n          AND c.state = 'published'\n          AND c.source_anchor_version_id = v.source_anchor_version_id\n          AND anchor.source_content_hash = v.enrichment_source_content_hash\n      )\n    )\n  )\n THEN 0 ELSE 1 END=1 ORDER BY p.article_id",
+      "result": [
+        {
+          "results": [
+            {
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "version_id": "0f1dabb2-2442-546e-a3ec-d2ed5d443cc5",
+              "revision": "2",
+              "version_role": null,
+              "freshness": null,
+              "catalog_state": null,
+              "source_anchor_version_id": null,
+              "enrichment_source_content_hash": null
+            },
+            {
+              "article_id": "552950ac-de82-41f5-ae88-411efc5ae9b2",
+              "version_id": "ab74a7d6-1cc8-5fc7-a522-97226a91f7dc",
+              "revision": "1",
+              "version_role": null,
+              "freshness": "current",
+              "catalog_state": "published",
+              "source_anchor_version_id": null,
+              "enrichment_source_content_hash": null
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "NRT",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 13.3101
+            },
+            "duration": 13.3101,
+            "changes": 0,
+            "last_row_id": 3157,
+            "changed_db": false,
+            "size_after": 262828032,
+            "rows_read": 4432,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_ingest",
+      "name": "cohort_jobs",
+      "sql": "SELECT id,article_id,source_key,stage,status,source_version,content_hash,result_ref,created_at,updated_at,last_error_code FROM ingest_stage_jobs WHERE article_id IN ('0e25c3b4-3449-46b5-9270-fd0e37f9e4b7','16b4fc11-d9cc-4e5b-b8e5-acf687ab760e','15560a96-c510-427c-aaf4-a5d57ef5bd50','d31eecc5-4e74-440f-ba6e-1561911bd68c') ORDER BY article_id,created_at,stage",
+      "result": [
+        {
+          "results": [
+            {
+              "id": "51407d26-7d49-42d6-8e8d-926ffc9782db",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "translate",
+              "status": "succeeded",
+              "source_version": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "content_hash": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-08T21:45:55.365Z",
+              "updated_at": "2026-10-08T22:00:54.531Z",
+              "last_error_code": null
+            },
+            {
+              "id": "93d60bc3-2c39-46a6-aec1-17ed9b6309fd",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "public-judgment",
+              "status": "succeeded",
+              "source_version": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "content_hash": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-08T22:00:54.531Z",
+              "updated_at": "2026-10-08T22:15:54.441Z",
+              "last_error_code": null
+            },
+            {
+              "id": "78f75bcd-d879-4eea-b123-da65cfd043f7",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "publish",
+              "status": "succeeded",
+              "source_version": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "content_hash": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-08T22:15:54.441Z",
+              "updated_at": "2026-10-08T22:31:29.668Z",
+              "last_error_code": null
+            },
+            {
+              "id": "621013ad-725f-46bb-bfc0-4162e7aa99fb",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "search",
+              "status": "succeeded",
+              "source_version": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "content_hash": "8ac6690c0c41740cb28e16208a85279d4873f1ff528da0dfc75a7b0eddd3cb74",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-08T22:31:29.668Z",
+              "updated_at": "2026-10-08T22:46:17.375Z",
+              "last_error_code": null
+            },
+            {
+              "id": "68ca1211-b115-4642-b43e-6d26e94610fa",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "search",
+              "status": "succeeded",
+              "source_version": "repair:2026-10-09:fr-l-suffix",
+              "content_hash": "fr-l-suffix-search-repair-v1",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-08T23:51:58Z",
+              "updated_at": "2026-10-08T23:56:10.660Z",
+              "last_error_code": null
+            },
+            {
+              "id": "5a9c960f-5578-4269-bba0-fa7da99f186c",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "translate",
+              "status": "succeeded",
+              "source_version": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "content_hash": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-09T21:30:40.205Z",
+              "updated_at": "2026-10-09T21:45:41.185Z",
+              "last_error_code": null
+            },
+            {
+              "id": "a79f1bb1-663b-44db-8ceb-de3ac7484383",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "public-judgment",
+              "status": "succeeded",
+              "source_version": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "content_hash": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-09T21:45:41.185Z",
+              "updated_at": "2026-10-09T22:00:40.473Z",
+              "last_error_code": null
+            },
+            {
+              "id": "c9692924-9d78-41c7-8e4d-59be31feff26",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "publish",
+              "status": "succeeded",
+              "source_version": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "content_hash": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-09T22:00:40.473Z",
+              "updated_at": "2026-10-09T22:15:41.908Z",
+              "last_error_code": null
+            },
+            {
+              "id": "c8de6e78-c51b-467e-ac7b-e66fb75b22c0",
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "source_key": "fr-conseil-constitutionnel",
+              "stage": "search",
+              "status": "succeeded",
+              "source_version": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "content_hash": "98c7663cbc0fe527f53056351b54ab109f35d8a9970fd9cd75a713d1b678fb87",
+              "result_ref": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "created_at": "2026-10-09T22:15:41.908Z",
+              "updated_at": "2026-10-09T22:30:41.635Z",
+              "last_error_code": null
+            },
+            {
+              "id": "4d90ddf1-0872-4b40-a5a0-6a61a77f4be9",
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "source_key": "es-tribunal-constitucional",
+              "stage": "translate",
+              "status": "succeeded",
+              "source_version": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "content_hash": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "result_ref": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "created_at": "2026-10-09T21:45:39.084Z",
+              "updated_at": "2026-10-09T22:00:38.829Z",
+              "last_error_code": null
+            },
+            {
+              "id": "3a3559ae-3f2a-4fb9-b003-0f55e58794d1",
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "source_key": "es-tribunal-constitucional",
+              "stage": "public-judgment",
+              "status": "succeeded",
+              "source_version": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "content_hash": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "result_ref": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "created_at": "2026-10-09T22:00:38.829Z",
+              "updated_at": "2026-10-09T22:15:38.717Z",
+              "last_error_code": null
+            },
+            {
+              "id": "b0b18585-4668-4a99-a4b6-dbeb3c3607b9",
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "source_key": "es-tribunal-constitucional",
+              "stage": "publish",
+              "status": "succeeded",
+              "source_version": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "content_hash": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "result_ref": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "created_at": "2026-10-09T22:15:38.717Z",
+              "updated_at": "2026-10-09T22:30:39.217Z",
+              "last_error_code": null
+            },
+            {
+              "id": "a4cc11ec-e239-4524-a3e5-7597d064e531",
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "source_key": "es-tribunal-constitucional",
+              "stage": "search",
+              "status": "succeeded",
+              "source_version": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "content_hash": "be9a2957c43fa6f0213c7e74a1963356489c730c630b114d5911e602a60e314f",
+              "result_ref": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "created_at": "2026-10-09T22:30:39.217Z",
+              "updated_at": "2026-10-09T22:45:39.378Z",
+              "last_error_code": null
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "HKG",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.9017
+            },
+            "duration": 0.9017,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 119836672,
+            "rows_read": 32,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_core",
+      "name": "catalog_exclusion_detail",
+      "sql": "SELECT a.id,a.original_title,a.source_key,p.version_id,p.state,c.state AS catalog_state,c.source_anchor_version_id,v.version_role FROM articles a JOIN article_publications_p3 p ON p.article_id=a.id JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id LEFT JOIN case_catalog_publications_v1 c ON c.article_id=a.id WHERE a.id='552950ac-de82-41f5-ae88-411efc5ae9b2'",
+      "result": [
+        {
+          "results": [
+            {
+              "id": "552950ac-de82-41f5-ae88-411efc5ae9b2",
+              "original_title": "Beschluss vom 24. März 2021",
+              "source_key": "de-bverfg",
+              "version_id": "ab74a7d6-1cc8-5fc7-a522-97226a91f7dc",
+              "state": "published",
+              "catalog_state": "published",
+              "source_anchor_version_id": "cbd5c14b-6278-5f1b-ac03-947589f06ef5",
+              "version_role": null
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "NRT",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.5207
+            },
+            "duration": 0.5207,
+            "changes": 0,
+            "last_row_id": 3163,
+            "changed_db": false,
+            "size_after": 262873088,
+            "rows_read": 4,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_search",
+      "name": "catalog_exclusion_search",
+      "sql": "SELECT (SELECT COUNT(*) FROM search_documents WHERE article_id='552950ac-de82-41f5-ae88-411efc5ae9b2') AS document_count,(SELECT COUNT(*) FROM search_fts WHERE article_id='552950ac-de82-41f5-ae88-411efc5ae9b2') AS fts_count",
+      "result": [
+        {
+          "results": [
+            {
+              "document_count": 0,
+              "fts_count": 0
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "KIX",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 44.2965
+            },
+            "duration": 44.2965,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 155611136,
+            "rows_read": 1426,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_ingest",
+      "name": "stage_status_kst_window",
+      "sql": "SELECT stage,status,COUNT(*) AS n,MIN(created_at) AS first_created,MAX(updated_at) AS last_updated FROM ingest_stage_jobs WHERE created_at >= '2026-10-08T15:00:00Z' AND created_at < '2026-10-10T15:30:22.317Z' GROUP BY stage,status ORDER BY stage,status",
+      "result": [
+        {
+          "results": [
+            {
+              "stage": "crawl",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:15:53.270Z",
+              "last_updated": "2026-10-09T21:30:38.814Z"
+            },
+            {
+              "stage": "discovery",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:00:45.000Z",
+              "last_updated": "2026-10-09T21:15:39.615Z"
+            },
+            {
+              "stage": "normalize",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:30:54.224Z",
+              "last_updated": "2026-10-09T21:45:39.084Z"
+            },
+            {
+              "stage": "public-judgment",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T22:00:54.531Z",
+              "last_updated": "2026-10-09T22:15:38.717Z"
+            },
+            {
+              "stage": "publish",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T22:15:54.441Z",
+              "last_updated": "2026-10-09T22:30:39.217Z"
+            },
+            {
+              "stage": "search",
+              "status": "succeeded",
+              "n": 4,
+              "first_created": "2026-10-08T22:31:29.668Z",
+              "last_updated": "2026-10-09T22:45:39.378Z"
+            },
+            {
+              "stage": "translate",
+              "status": "succeeded",
+              "n": 3,
+              "first_created": "2026-10-08T21:45:55.365Z",
+              "last_updated": "2026-10-09T22:00:38.829Z"
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "HKG",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.4754
+            },
+            "duration": 0.4754,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 119836672,
+            "rows_read": 22,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    }
+  ],
+  "documentSqlValidation": [
+    {
+      "section": 1,
+      "db": "worldcons_core",
+      "result_count": 1,
+      "result_sha256": "dd9ead0ea58d390d30877db34febd43e8667d9eb13e568534bbdf9e48e653bbc",
+      "summary": [
+        {
+          "published_heads": 1438,
+          "missing_article": 0,
+          "missing_or_foreign_version": 0,
+          "raw_snapshot_drift": 3,
+          "legacy_freshness_missing": 0,
+          "legacy_freshness_not_current": 0
+        }
+      ]
+    },
+    {
+      "section": 2,
+      "db": "worldcons_core",
+      "result_count": 1437,
+      "result_sha256": "bb2b3e960c90a302e4cc20110252292ca54cd7b4e7e33153e6cc9c8662308337",
+      "summary": null
+    }
+  ],
+  "followupQueries": [
+    {
+      "db": "worldcons_core",
+      "name": "followup_cohort",
+      "sql": "SELECT p.article_id,p.version_id,p.revision,p.updated_at AS publication_updated_at,v.version_role,v.content_hash,f.freshness,f.classified_at,f.classified_by FROM article_publications_p3 p LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id LEFT JOIN legacy_version_freshness_classifications_v4 f ON f.version_id=v.id WHERE p.article_id IN ('0e25c3b4-3449-46b5-9270-fd0e37f9e4b7','16b4fc11-d9cc-4e5b-b8e5-acf687ab760e','15560a96-c510-427c-aaf4-a5d57ef5bd50','d31eecc5-4e74-440f-ba6e-1561911bd68c') ORDER BY p.article_id",
+      "result": [
+        {
+          "results": [
+            {
+              "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+              "version_id": "c1535ad7-e42a-5add-afa7-b977d3e1225c",
+              "revision": "2",
+              "publication_updated_at": "2026-10-05T21:30:30.327Z",
+              "version_role": null,
+              "content_hash": "59de130b4ca9f30aac850cdcb51f7a4c2db1ea127d407a6524ddad61c365c9be",
+              "freshness": "current",
+              "classified_at": "2026-10-07T09:49:13.214Z",
+              "classified_by": "m8-publication-drain"
+            },
+            {
+              "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+              "version_id": "eebc2367-0f48-5d88-a36a-b4020d5fb0d6",
+              "revision": "30",
+              "publication_updated_at": "2026-09-02T03:23:28.085Z",
+              "version_role": null,
+              "content_hash": "1b7911b6cbe7e503baf1e59ea28c115ebacde79ff55f6dfb04446fd090e6e1cf",
+              "freshness": "current",
+              "classified_at": "2026-09-03T11:03:24.592Z",
+              "classified_by": "gate2-legacy-reconciliation"
+            },
+            {
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "version_id": "0f1dabb2-2442-546e-a3ec-d2ed5d443cc5",
+              "revision": "2",
+              "publication_updated_at": "2026-10-10T14:26:51.706Z",
+              "version_role": null,
+              "content_hash": "249426f24e3244467e7feb2bd2e2a1efc5c36a7c12a265e4f6315205d837376c",
+              "freshness": "current",
+              "classified_at": "2026-10-10T15:34:28.326Z",
+              "classified_by": "m8-publication-drain"
+            },
+            {
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "version_id": "017489d5-62ed-5573-a95a-438ced9bbb59",
+              "revision": "18",
+              "publication_updated_at": "2026-09-30T03:34:17.654Z",
+              "version_role": null,
+              "content_hash": "3850c77d677e2e860afcd8d5d8468f2c2384b79b6a5c0edab3ad80cb88538caa",
+              "freshness": "current",
+              "classified_at": "2026-10-09T22:30:40.067Z",
+              "classified_by": "ingest-stage-publish"
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "NRT",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 0.7696
+            },
+            "duration": 0.7696,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 263168000,
+            "rows_read": 16,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_search",
+      "name": "followup_search",
+      "sql": "WITH cohort(article_id) AS (VALUES ('0e25c3b4-3449-46b5-9270-fd0e37f9e4b7'),('16b4fc11-d9cc-4e5b-b8e5-acf687ab760e'),('15560a96-c510-427c-aaf4-a5d57ef5bd50'),('d31eecc5-4e74-440f-ba6e-1561911bd68c')) SELECT c.article_id,(SELECT COUNT(*) FROM search_documents d WHERE d.article_id=c.article_id) AS document_count,(SELECT COUNT(*) FROM search_fts f WHERE f.article_id=c.article_id) AS fts_count,(SELECT checksum FROM search_documents d WHERE d.article_id=c.article_id) AS checksum,(SELECT projection_version FROM search_documents d WHERE d.article_id=c.article_id) AS projection_version,(SELECT updated_at FROM search_documents d WHERE d.article_id=c.article_id) AS document_updated_at FROM cohort c ORDER BY c.article_id",
+      "result": [
+        {
+          "results": [
+            {
+              "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "5746fc9fbd24926b",
+              "projection_version": 1,
+              "document_updated_at": "2026-10-05T21:30:30.327Z"
+            },
+            {
+              "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "c71337871e27b94b",
+              "projection_version": 1,
+              "document_updated_at": "2026-09-02T03:23:28.085Z"
+            },
+            {
+              "article_id": "16b4fc11-d9cc-4e5b-b8e5-acf687ab760e",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "e3df6b65da599b59",
+              "projection_version": 1,
+              "document_updated_at": "2026-10-10T14:26:51.706Z"
+            },
+            {
+              "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+              "document_count": 1,
+              "fts_count": 1,
+              "checksum": "e278795cfc2a7508",
+              "projection_version": 1,
+              "document_updated_at": "2026-09-30T03:34:17.654Z"
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "KIX",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 210.3067
+            },
+            "duration": 210.3067,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 165875712,
+            "rows_read": 5768,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "db": "worldcons_core",
+      "name": "followup_summary",
+      "sql": "SELECT COUNT(*) AS published_heads, SUM(CASE WHEN a.id IS NULL THEN 1 ELSE 0 END) AS missing_article, SUM(CASE WHEN v.id IS NULL THEN 1 ELSE 0 END) AS missing_or_foreign_version, SUM(CASE WHEN a.id IS NOT NULL AND v.id IS NOT NULL AND (a.cleaned_text IS NOT v.cleaned_text OR a.summary_json IS NOT v.summary_json OR a.korean_title IS NOT v.korean_title OR a.canonical_url IS NOT v.canonical_url) THEN 1 ELSE 0 END) AS snapshot_drift, SUM(CASE WHEN v.id IS NOT NULL AND v.version_role IS NULL AND f.version_id IS NULL THEN 1 ELSE 0 END) AS legacy_freshness_missing, SUM(CASE WHEN v.id IS NOT NULL AND v.version_role IS NULL AND f.version_id IS NOT NULL AND f.freshness<>'current' THEN 1 ELSE 0 END) AS legacy_freshness_not_current, SUM(CASE WHEN \n  p.state = 'published'\n  AND (\n    (\n      v.version_role IS NULL\n      AND EXISTS (\n        SELECT 1 FROM legacy_version_freshness_classifications_v4 f\n        WHERE f.version_id = v.id AND f.freshness = 'current'\n      )\n      AND NOT EXISTS (\n        SELECT 1 FROM case_catalog_publications_v1 c\n        WHERE c.article_id = v.article_id AND c.state = 'published'\n      )\n    )\n    OR\n    (\n      v.version_role = 'enrichment_full'\n      AND EXISTS (\n        SELECT 1\n        FROM case_catalog_publications_v1 c\n        JOIN article_content_versions_p3 anchor ON anchor.id = c.source_anchor_version_id\n        WHERE c.article_id = v.article_id\n          AND c.state = 'published'\n          AND c.source_anchor_version_id = v.source_anchor_version_id\n          AND anchor.source_content_hash = v.enrichment_source_content_hash\n      )\n    )\n  )\n THEN 1 ELSE 0 END) AS eligible_heads FROM article_publications_p3 p LEFT JOIN articles a ON a.id=p.article_id LEFT JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id LEFT JOIN legacy_version_freshness_classifications_v4 f ON f.version_id=v.id WHERE p.state='published'",
+      "result": [
+        {
+          "results": [
+            {
+              "published_heads": 1438,
+              "missing_article": 0,
+              "missing_or_foreign_version": 0,
+              "snapshot_drift": 3,
+              "legacy_freshness_missing": 0,
+              "legacy_freshness_not_current": 0,
+              "eligible_heads": 1437
+            }
+          ],
+          "success": true,
+          "meta": {
+            "served_by": "v3-prod",
+            "served_by_region": "APAC",
+            "served_by_colo": "NRT",
+            "served_by_primary": true,
+            "timings": {
+              "sql_duration_ms": 173.0579
+            },
+            "duration": 173.0579,
+            "changes": 0,
+            "last_row_id": 0,
+            "changed_db": false,
+            "size_after": 263168000,
+            "rows_read": 7345,
+            "rows_written": 0,
+            "total_attempts": 1
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "No production write, deployment, commit or push performed by this review.",
+    "Cross-database queries do not share one transaction snapshot.",
+    "No official-text semantic review, stored FTS content comparison or public search API verification performed."
+  ]
+}

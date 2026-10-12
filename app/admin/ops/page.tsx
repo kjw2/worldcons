@@ -144,10 +144,10 @@ function EventTimeline({ events }: { events: AdminOpsEvent[] }) {
 function RunbookSection() {
   const items = [
     { title: "정기 확인", body: "주 1~2회 이 페이지에서 소스별 신선도와 위반 사항을 확인합니다. 미수집 URL 후보는 /admin/candidates에서 관리합니다." },
-    { title: "알림 수신 시", body: "GitHub 이슈([무인운영] 수집 경고) 본문 → 이 페이지에서 원인 확인 → 수동 재실행이 필요하면 GitHub Actions의 Crawlee worker ingest 워크플로를 workflow_dispatch로 실행하거나 /admin/candidates에서 후보를 재시도합니다. 복구되면 워치독이 이슈를 자동으로 닫습니다." },
+    { title: "알림 수신 시", body: "이 페이지의 운영 이벤트와 소스별 상태에서 원인을 확인합니다. Cloudflare Cron·Queues·Workflows가 자동 재시도하며, 개별 미수집 URL은 /admin/candidates에서 재검토합니다." },
     { title: "수집 일시정지/재개", body: "일시정지는 MasterDash 컨트롤(pause_collection/resume_collection)로만 가능합니다. 일시정지 중에는 보정 수집이 실행되지 않습니다." },
-    { title: "자동 동작 요약", body: "워치독이 15분마다 평가하고 상태 변화 시 GitHub 이슈로 알립니다. 24시간 내 완료 실행이 없으면 보정 수집(limit 5/소스)을 자동 실행합니다. Vercel 크론이 하루 2회(03:00/15:00 UTC) 독립 점검합니다." },
-    { title: "데이터 백업", body: "Supabase 콘솔 → 프로젝트 설정 → Backups에서 자동 백업(일 1회, 7일 보관)이 활성화되어 있는지 분기마다 확인합니다. P5 운영 정책의 백업 복원 최대 연령 임계는 720시간입니다." },
+    { title: "자동 동작 요약", body: "worldcons-ingest의 Cloudflare Cron이 스케줄을 생성하고 Queues·Workflows가 수집, 워치독, 관리자 작업, 요약, 임베딩, 보존 정책을 실행합니다. 상태 변화와 오류는 D1 운영 이벤트에 기록됩니다." },
+    { title: "데이터 보호", body: "운영 데이터 권한은 Cloudflare D1/R2에 있습니다. 정기적으로 D1 복구 가능 상태와 R2 원본 보존 상태, 마이그레이션·복구 증적을 확인합니다." },
   ];
   return (
     <section aria-labelledby="runbook-heading">
