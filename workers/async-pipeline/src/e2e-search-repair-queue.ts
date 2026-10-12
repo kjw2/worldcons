@@ -36,7 +36,7 @@ export async function consumeE2ESearchRepairBatch(messages:readonly QueueMessage
           apiBaseUrl:env.WORLDCONS_E2E_VERIFIER_API_BASE_URL??"",deploymentRef:env.WORLDCONS_E2E_DEPLOYMENT_REF??""});
         if (["retry","invalid","missing","awaiting_application"].includes(verified.status)) message.retry({delaySeconds:60});
         else message.ack();
-        console[verified.status==="dead_letter"||verified.status==="blocked"?"error":"log"](JSON.stringify({event:"e2e_search_verification",status:verified.status}));
+        console[verified.status==="dead_letter"||verified.status==="blocked"?"error":"log"](JSON.stringify({event:"e2e_search_verification",status:verified.status,...("errorCode" in verified?{errorCode:verified.errorCode}:{})}));
         continue;
       }
       if (["retry","invalid","missing"].includes(result.status)) message.retry({delaySeconds:60});

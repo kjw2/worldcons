@@ -27,8 +27,12 @@ function record(value:unknown):GenerationRow {
   return value as GenerationRow;
 }
 export async function probeVerificationApi(url:string,options:SearchVerificationOptions,clock:()=>string) {
-  const response=await (options.fetch??fetch)(url,{redirect:"manual",cache:"no-store",signal:AbortSignal.timeout(8000),
-    headers:{"cache-control":"no-cache","x-request-id":crypto.randomUUID()}});
+  let response:Response;
+  try {response=await (options.fetch??fetch)(url,{redirect:"manual",cache:"no-store",signal:AbortSignal.timeout(8000),
+    headers:{"cache-control":"no-cache","x-request-id":crypto.randomUUID()}});} catch(error) {
+    console.error(JSON.stringify({event:"e2e_api_probe_failure",phase:"fetch",errorName:error instanceof Error?error.name:"Unknown",errorSummary:error instanceof Error?error.message.replace(/https?:\/\/\S+/g,"[url]").slice(0,240):null}));
+    throw new Error("e2e.api_fetch_failed");
+  }
   if(response.status>=300&&response.status<400)throw new Error("e2e.api_redirect_rejected");
   const reader=response.body?.getReader(),chunks:Uint8Array[]=[]; let size=0;
   if (reader) try {
@@ -37,7 +41,7 @@ export async function probeVerificationApi(url:string,options:SearchVerification
   } finally { reader.releaseLock(); }
   const bytes=new Uint8Array(size); let offset=0; for (const chunk of chunks) { bytes.set(chunk,offset); offset+=chunk.byteLength; }
   const text=new TextDecoder().decode(bytes);
-  const body=record(JSON.parse(text));
+  let body:GenerationRow;try {body=record(JSON.parse(text));}catch {console.error(JSON.stringify({event:"e2e_api_probe_failure",phase:"decode",status:response.status,contentType:response.headers.get("content-type")}));throw new Error("e2e.api_json_invalid");}
   return {status:response.status,body,evidence:{url,status:response.status,observedAt:clock(),
     responseHash:await sha256Canonical(body),cacheControl:response.headers.get("cache-control")}};
 }
@@ -227,6 +231,7 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
     return {status:resultKind,evidenceId} as const;
   } catch (error) {
     const settled=clock(),code=error instanceof Error&&/^e2e\.[a-z_]+$/.test(error.message)?error.message:"e2e.verification_failed";
+    if(code==="e2e.verification_failed")console.error(JSON.stringify({event:"e2e_verification_failure",errorName:error instanceof Error?error.name:"Unknown",errorSummary:error instanceof Error?error.message.replace(/https?:\/\/\S+/g,"[url]").slice(0,240):null}));
     const dead=Number(claimed.attempt_count)>=Number(claimed.max_attempts)
       || claimed.first_failure_at&&Date.parse(settled)-Date.parse(String(claimed.first_failure_at))>=7200000;
     const due=after(settled,Math.min(900,60*2**Math.min(Number(claimed.attempt_count)-1,10)));
