@@ -210,7 +210,7 @@
         "max_retries": 10,
         "retry_delay": 60,
         "dead_letter_queue": "worldcons-e2e-search-repair-dlq",
-        "max_concurrency": 1
+        "max_concurrency": 2
       }
     ]
   },
