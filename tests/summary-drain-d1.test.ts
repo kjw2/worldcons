@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { setRuntimeD1Bindings, type D1RuntimeDatabase, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
-import { runD1SummaryDrain, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
+import { runD1SummaryDrain, runD1SummarizeArticle, runD1SyncSummaryTags } from "@/lib/cloudflare/summary/d1-summary-drain";
 import { runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 
 const goodSummary = {
@@ -23,7 +23,14 @@ const goodSummary = {
   aiMetadata: { provider: "gemini", model: "gemini-test-model", generatedAt: "2026-09-29T00:00:00.000Z" },
 };
 
-function setup(options: { status?: string; metadata?: unknown; createdAt?: string; updatedAt?: string; lifecycleMissing?: boolean } = {}) {
+function setup(options: {
+  status?: string;
+  metadata?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+  lifecycleMissing?: boolean;
+  wrapCoreBinding?: (binding: D1RuntimeDatabase, database: DatabaseSync) => D1RuntimeDatabase;
+} = {}) {
   const core = new DatabaseSync(":memory:");
   const ingest = new DatabaseSync(":memory:");
   core.exec(`
@@ -98,7 +105,8 @@ function setup(options: { status?: string; metadata?: unknown; createdAt?: strin
       }
     },
   });
-  setRuntimeD1Bindings({ worldcons_core: toBinding(core), worldcons_ingest: toBinding(ingest) });
+  const coreBinding = toBinding(core);
+  setRuntimeD1Bindings({ worldcons_core: options.wrapCoreBinding?.(coreBinding, core) ?? coreBinding, worldcons_ingest: toBinding(ingest) });
   return { core, ingest };
 }
 
@@ -217,6 +225,94 @@ test("D1 translation/enrichment completion stays private until the separate publ
       { ...db.ingest.prepare("SELECT status,published_normalization_artifact_id FROM source_backfill_items WHERE id='backfill-1'").get() as Record<string, unknown> },
       { status: "published", published_normalization_artifact_id: "artifact-1" },
     );
+  } finally {
+    close(db);
+  }
+});
+
+test("summary success write retries bounded transient D1 failures without repeating the provider call", async () => {
+  let successWriteAttempts = 0;
+  let summaryCalls = 0;
+  const db = setup({
+    wrapCoreBinding(binding) {
+      return {
+        ...binding,
+        prepare(sql) {
+          const statement = binding.prepare(sql);
+          if (!sql.startsWith("UPDATE articles SET status='summarized'")) return statement;
+          let wrapped: D1RuntimePreparedStatement;
+          wrapped = {
+            bind(...values) { statement.bind(...values); return wrapped; },
+            all: <T>() => statement.all<T>(),
+            async run() {
+              successWriteAttempts += 1;
+              if (successWriteAttempts < 3) return { success: false, error: "transient D1 storage failure" };
+              return statement.run!();
+            },
+          };
+          return wrapped;
+        },
+      };
+    },
+  });
+  try {
+    const result = await runD1SummarizeArticle({
+      articleId: "11111111-1111-4111-8111-111111111111",
+      apiKeys: ["test-key"],
+      summarize: async () => { summaryCalls += 1; return goodSummary as never; },
+      createEmbedding: async () => null,
+    });
+    assert.equal(result.result.status, "summarized");
+    assert.equal(result.result.writeDisposition, "written");
+    assert.equal(successWriteAttempts, 3);
+    assert.equal(summaryCalls, 1, "storage retry must reuse the generated summary");
+  } finally {
+    close(db);
+  }
+});
+
+test("summary success CAS preserves a competing durable summary and converges lifecycle state", async () => {
+  const competingSummary = { ...goodSummary, koreanTitle: "경합에서 먼저 저장된 요약" };
+  let injected = false;
+  const db = setup({
+    wrapCoreBinding(binding, database) {
+      return {
+        ...binding,
+        prepare(sql) {
+          const statement = binding.prepare(sql);
+          if (!sql.startsWith("UPDATE articles SET status='summarized'")) return statement;
+          let wrapped: D1RuntimePreparedStatement;
+          wrapped = {
+            bind(...values) { statement.bind(...values); return wrapped; },
+            all: <T>() => statement.all<T>(),
+            async run() {
+              if (!injected) {
+                injected = true;
+                database.prepare("UPDATE articles SET status='summarized',translation_status='translated',summary_json=?,korean_title=?,summarized_at=?,translated_at=?,updated_at=? WHERE id=?")
+                  .run(JSON.stringify(competingSummary), competingSummary.koreanTitle, "2026-10-12T00:00:01.000Z", "2026-10-12T00:00:01.000Z", "2026-10-12T00:00:01.000Z", "11111111-1111-4111-8111-111111111111");
+              }
+              return statement.run!();
+            },
+          };
+          return wrapped;
+        },
+      };
+    },
+  });
+  try {
+    const result = await runD1SummarizeArticle({
+      articleId: "11111111-1111-4111-8111-111111111111",
+      apiKeys: ["test-key"],
+      summarize: async () => goodSummary as never,
+      createEmbedding: async () => null,
+    });
+    assert.equal(result.result.status, "summarized");
+    assert.equal(result.result.writeDisposition, "already_summarized");
+    const row = db.core.prepare("SELECT summary_json,korean_title,lifecycle_processing_state FROM articles WHERE id=?")
+      .get("11111111-1111-4111-8111-111111111111") as Record<string, unknown>;
+    assert.equal(row.summary_json, JSON.stringify(competingSummary));
+    assert.equal(row.korean_title, competingSummary.koreanTitle);
+    assert.equal(row.lifecycle_processing_state, "complete");
   } finally {
     close(db);
   }

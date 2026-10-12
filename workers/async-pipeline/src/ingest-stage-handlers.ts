@@ -34,6 +34,8 @@ import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from
  */
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { registerIngestStageJob } from "../../../lib/cloudflare/ingest-stages/repository";
+import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../../../lib/cloudflare/core-write/authority";
+import { ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES } from "../../../lib/article-lifecycle/compatibility";
 import {
   NATIVE_CRAWLER_SOURCES,
   canonicalNativeArticleUrl,
@@ -250,6 +252,77 @@ async function verifyTranslationDurableEffect(coreDb: D1RuntimeDatabase, article
     return { ok: false, code: "ingest_stage.translation_content_hash_missing", summary: "Article has no immutable source content hash.", contentHash: "", retry: false };
   }
   return { ok: true, code: "", summary: "", contentHash, retry: false };
+}
+
+interface TranslationLifecycleSyncResult {
+  ok: boolean;
+  retry: boolean;
+  code: string;
+  summary: string;
+}
+
+/**
+ * Reconciles the lifecycle axis after a durable summary is observed. This is
+ * deliberately idempotent and CAS-retried: a service-binding response can fail
+ * after the Core article write committed, and the staged job must then converge
+ * to the durable Core state instead of dead-lettering valid content.
+ */
+async function synchronizeTranslationLifecycle(coreDb: D1RuntimeDatabase, articleId: string): Promise<TranslationLifecycleSyncResult> {
+  let lastCode = "unavailable";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await readArticleLifecycleFromD1(coreDb, articleId);
+    if (!current.ok) {
+      lastCode = current.error.code;
+      if (current.error.retryable) continue;
+      return { ok: false, retry: false, code: `ingest_stage.translation_state_${lastCode}`, summary: current.error.message };
+    }
+    if (current.data.processingState === "complete" && current.data.collectionState === "source_text_ready") {
+      return { ok: true, retry: false, code: "", summary: "" };
+    }
+    const result = await transitionArticleLifecycleInD1(coreDb, {
+      articleId,
+      expectedRevision: current.data.revision,
+      idempotencyKey: `summary:legacy.summary.completed:${articleId}:${current.data.revision}`,
+      actorType: "summary_worker",
+      actorId: "ingest-stage-translate-reconcile",
+      source: "summary.generate",
+      reasonCode: "legacy.summary.completed",
+      collectionState: "source_text_ready",
+      processingState: "complete",
+      ...(current.data.reviewState === null ? { reviewState: "unreviewed" as const } : {}),
+      attention: { operation: "clear", resolvesCodes: [...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES] },
+    });
+    if (result.ok) return { ok: true, retry: false, code: "", summary: "" };
+    lastCode = result.error.code;
+    if (!result.error.retryable) {
+      return { ok: false, retry: false, code: `ingest_stage.translation_state_${lastCode}`, summary: result.error.message };
+    }
+  }
+  return {
+    ok: false,
+    retry: true,
+    code: "ingest_stage.translation_state_sync_failed",
+    summary: `Could not synchronize the durable summary lifecycle after bounded retries (${lastCode}).`,
+  };
+}
+
+function classifyTranslateCallFailure(message: string): { retry: boolean; code: string } {
+  if (/summary_d1\.(?:start|success)_write_not_eligible/i.test(message)) {
+    return { retry: false, code: "ingest_stage.translate_summary_write_not_eligible" };
+  }
+  if (/summary_d1\.(?:start|success)_write_stale/i.test(message)) {
+    return { retry: false, code: "ingest_stage.translate_summary_write_stale" };
+  }
+  if (/summary_d1\.(?:start|success)_write_cas_conflict/i.test(message)) {
+    return { retry: true, code: "ingest_stage.translate_summary_write_cas_conflict" };
+  }
+  if (/summary_d1\.(?:start|success)_write_transient|summary_d1\.(?:query|write)_failed/i.test(message)) {
+    return { retry: true, code: "ingest_stage.translate_summary_storage_transient" };
+  }
+  return {
+    retry: /quota|429|rate.?limit|timeout|temporar|network| 5\d\d\b|unavailable|api_key/i.test(message),
+    code: "ingest_stage.translate_call_failed",
+  };
 }
 
 interface PublicJudgmentResult {
@@ -508,13 +581,46 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     if (articleId.startsWith("native:")) {
       return { status: "blocked", errorCode: "ingest_stage.translate_article_unresolved", errorSummary: "Translate requires the verified core article id (native candidate id is not a core id)." };
     }
+    const alreadyDurable = await verifyTranslationDurableEffect(context.coreDb, articleId);
+    if (alreadyDurable.ok) {
+      const synchronized = await synchronizeTranslationLifecycle(context.coreDb, articleId);
+      if (!synchronized.ok) {
+        return { status: synchronized.retry ? "retry" : "blocked", errorCode: synchronized.code, errorSummary: synchronized.summary };
+      }
+      return {
+        status: "succeeded",
+        resultRef: articleId,
+        nextArticleId: articleId,
+        nextSourceVersion: alreadyDurable.contentHash,
+        nextContentHash: alreadyDurable.contentHash,
+        ...(deps.e2e?.sources.includes(context.job.source_key ?? "") ? { nextPayloadRef: context.job.payload_ref } : {}),
+      };
+    }
     let outcome: Awaited<ReturnType<IngestStageTranslationAdapter["summarize"]>>;
     try {
       outcome = await deps.translation.summarize(articleId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const retryable = /quota|429|rate.?limit|timeout|temporar|network| 5\d\d\b|unavailable|api_key/i.test(message);
-      return { status: retryable ? "retry" : "blocked", errorCode: "ingest_stage.translate_call_failed", errorSummary: message.slice(0, 500) };
+      // An RPC/storage response may be lost after the Core write commits. Treat
+      // the durable row as authority and finish lifecycle synchronization before
+      // classifying the call error.
+      const recovered = await verifyTranslationDurableEffect(context.coreDb, articleId);
+      if (recovered.ok) {
+        const synchronized = await synchronizeTranslationLifecycle(context.coreDb, articleId);
+        if (!synchronized.ok) {
+          return { status: synchronized.retry ? "retry" : "blocked", errorCode: synchronized.code, errorSummary: synchronized.summary };
+        }
+        return {
+          status: "succeeded",
+          resultRef: articleId,
+          nextArticleId: articleId,
+          nextSourceVersion: recovered.contentHash,
+          nextContentHash: recovered.contentHash,
+          ...(deps.e2e?.sources.includes(context.job.source_key ?? "") ? { nextPayloadRef: context.job.payload_ref } : {}),
+        };
+      }
+      const classified = classifyTranslateCallFailure(message);
+      return { status: classified.retry ? "retry" : "blocked", errorCode: classified.code, errorSummary: message.slice(0, 500) };
     }
     if (outcome.status === "summarized") {
       // Durable-effect proof: only a *verified* translated/summarized row is a
@@ -522,6 +628,10 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
       const verified = await verifyTranslationDurableEffect(context.coreDb, articleId);
       if (!verified.ok) {
         return { status: "retry", errorCode: verified.code, errorSummary: verified.summary };
+      }
+      const synchronized = await synchronizeTranslationLifecycle(context.coreDb, articleId);
+      if (!synchronized.ok) {
+        return { status: synchronized.retry ? "retry" : "blocked", errorCode: synchronized.code, errorSummary: synchronized.summary };
       }
       return {
         status: "succeeded",

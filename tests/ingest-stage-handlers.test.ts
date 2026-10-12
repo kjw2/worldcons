@@ -682,6 +682,87 @@ test("K: translate blocks and dead-letters when the durable summary effect is mi
   }
 });
 
+test("K2: translate adopts an already durable summary, completes lifecycle state, and does not call the provider", async () => {
+  let translationCalls = 0;
+  const harness = createFullHarness({
+    translation: () => ({ async summarize() { translationCalls += 1; throw new Error("must not be called"); } }),
+    publication: (dbs) => fakePublication(dbs),
+    search: (dbs) => fakeSearch(dbs),
+  });
+  try {
+    const articleId = await runToNormalize(harness);
+    harness.core.prepare("UPDATE articles SET status='summarized',translation_status='translated',summary_json=?,korean_title=?,summarized_at=?,translated_at=?,lifecycle_processing_state='running' WHERE id=?")
+      .run(JSON.stringify({ koreanTitle: "기존 번역", summary: { coreSummary: ["기존 요약"] } }), "기존 번역", NOW, NOW, articleId);
+    const translate = await harness.messageFor("translate");
+    const result = await harness.consumeStage("translate", translate.map((body, i) => ({ id: `t${i}`, body })));
+    assert.equal(result.result.completed, 1, JSON.stringify(result.result));
+    assert.equal(translationCalls, 0);
+    assert.equal(harness.core.prepare("SELECT lifecycle_processing_state FROM articles WHERE id=?").get(articleId)?.lifecycle_processing_state, "complete");
+    assert.equal(harness.ingest.prepare("SELECT status FROM ingest_stage_jobs WHERE stage='translate' AND article_id=?").get(articleId)?.status, "succeeded");
+    assert.equal(harness.ingest.prepare("SELECT COUNT(*) AS n FROM ingest_stage_jobs WHERE stage='public-judgment' AND article_id=?").get(articleId)?.n, 1);
+  } finally {
+    harness.ingest.close(); harness.core.close();
+  }
+});
+
+test("K3: translate classifies summary storage transients as retryable instead of terminal call failures", async () => {
+  const harness = createFullHarness({
+    translation: () => ({ async summarize() { throw new Error("summary_d1.success_write_transient"); } }),
+    publication: (dbs) => fakePublication(dbs),
+    search: (dbs) => fakeSearch(dbs),
+  });
+  try {
+    const articleId = await runToNormalize(harness);
+    const translate = await harness.messageFor("translate");
+    const result = await harness.consumeStage("translate", translate.map((body, i) => ({ id: `t${i}`, body })));
+    assert.equal(result.result.retried, 1);
+    const job = harness.ingest.prepare("SELECT status,last_error_code FROM ingest_stage_jobs WHERE stage='translate' AND article_id=?").get(articleId) as Record<string, unknown>;
+    assert.deepEqual({ ...job }, { status: "pending", last_error_code: "ingest_stage.translate_summary_storage_transient" });
+  } finally {
+    harness.ingest.close(); harness.core.close();
+  }
+});
+
+test("K4: translate classifies a no-longer-eligible summary write as a terminal policy-safe block", async () => {
+  const harness = createFullHarness({
+    translation: () => ({ async summarize() { throw new Error("summary_d1.success_write_not_eligible"); } }),
+    publication: (dbs) => fakePublication(dbs),
+    search: (dbs) => fakeSearch(dbs),
+  });
+  try {
+    const articleId = await runToNormalize(harness);
+    const translate = await harness.messageFor("translate");
+    const result = await harness.consumeStage("translate", translate.map((body, i) => ({ id: `t${i}`, body })));
+    assert.equal(result.result.blockedJobs, 1);
+    const job = harness.ingest.prepare("SELECT status,last_error_code FROM ingest_stage_jobs WHERE stage='translate' AND article_id=?").get(articleId) as Record<string, unknown>;
+    assert.deepEqual({ ...job }, { status: "dead_letter", last_error_code: "ingest_stage.translate_summary_write_not_eligible" });
+  } finally {
+    harness.ingest.close(); harness.core.close();
+  }
+});
+
+test("K5: translate distinguishes retryable CAS contention from a terminal stale source revision", async () => {
+  for (const fixture of [
+    { failure: "summary_d1.success_write_cas_conflict", status: "pending", code: "ingest_stage.translate_summary_write_cas_conflict" },
+    { failure: "summary_d1.success_write_stale", status: "dead_letter", code: "ingest_stage.translate_summary_write_stale" },
+  ]) {
+    const harness = createFullHarness({
+      translation: () => ({ async summarize() { throw new Error(fixture.failure); } }),
+      publication: (dbs) => fakePublication(dbs),
+      search: (dbs) => fakeSearch(dbs),
+    });
+    try {
+      const articleId = await runToNormalize(harness);
+      const translate = await harness.messageFor("translate");
+      await harness.consumeStage("translate", translate.map((body, i) => ({ id: `t${i}`, body })));
+      const job = harness.ingest.prepare("SELECT status,last_error_code FROM ingest_stage_jobs WHERE stage='translate' AND article_id=?").get(articleId) as Record<string, unknown>;
+      assert.deepEqual({ ...job }, { status: fixture.status, last_error_code: fixture.code });
+    } finally {
+      harness.ingest.close(); harness.core.close();
+    }
+  }
+});
+
 test("L: public-judgment blocks metadata_only / unverified-provenance articles (no false publish)", async () => {
   const harness = createFullHarness({
     translation: (dbs) => fakeTranslation(dbs),
