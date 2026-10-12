@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { recordAutomaticApproval, AutomaticApprovalBlocked } from "@/lib/cloudflare/e2e/automatic-approval";
@@ -256,4 +257,14 @@ test("M5 Root binding receives internal /api paths while evidence and response U
  const f=await fixture(t),base='https://fixture.example/api/cclrag2',paths:string[]=[];f.core.db.exec("UPDATE e2e_search_repair_outbox_v1 SET next_attempt_at='2000-01-01T00:00:00Z'");let acks=0;
  await consumeE2ESearchRepairBatch([{body:f.message,ack(){acks++;},retry(){throw Error('unexpected retry');}}],{WORLDCONS_CORE:f.core,WORLDCONS_SEARCH:f.search,WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED:'true',WORLDCONS_E2E_VERIFIER_ENABLED:'true',WORLDCONS_INGEST_STAGE_ENVIRONMENT:'production',WORLDCONS_E2E_VERIFIER_API_BASE_URL:base,WORLDCONS_E2E_DEPLOYMENT_REF:'fixture:root-provider',E2E_PUBLIC_API:{async fetch(request:Request){paths.push(new URL(request.url).pathname);return handleWorldconsSearchRequest(request,{ENVIRONMENT:'test',PUBLIC_BASE_URL:base},{coreBinding:f.core,searchBinding:f.search});}}});
  assert.equal(acks,1);assert.deepEqual(paths,['/api/articles/m1-fixture','/api/search']);const proof=JSON.parse(String(f.core.rows('e2e_verification_evidence_v1')[0].evidence_document));assert.ok(proof.probes.every((p:{url:string;transport:string})=>p.url.startsWith(base+'/')&&p.transport==='root-public-provider-service-binding'));
+});
+
+test("M5 verifier redrive preserves exhausted history, rejects stale fence and does not change P3, generation or Search budget",async t=>{
+ const f=await fixture(t);f.core.db.exec(readFileSync(new URL('../d1/worldcons_core/0010_e2e_verification_redrive.sql',import.meta.url),'utf8'));f.options.fetch=async()=>Response.json({error:'unavailable'},{status:503});
+ for(let i=0;i<8;i++){if(i)f.advance(901);const r=await f.verify();assert.equal(r.status,i===7?'dead_letter':'retry');}
+ const old=f.core.rows('e2e_verification_jobs_v1')[0],outbox=f.core.rows('e2e_search_repair_outbox_v1')[0];const {redriveSearchVerification}=await import('../lib/cloudflare/e2e/verification-redrive');
+ const request={outboxId:String(outbox.outbox_id),expectedVerificationFence:Number(old.verification_fence),expectedOutboxFence:Number(outbox.fencing_token),operatorId:'fixture:operator',reason:'Deploy fixed public API route contract and retry original approved generation',now:f.options.clock()};
+ await assert.rejects(redriveSearchVerification(f.core,{...request,expectedVerificationFence:0}),/redrive_stale/);f.core.failAtEnd=true;await assert.rejects(redriveSearchVerification(f.core,request));assert.equal(f.core.rows('e2e_verification_redrive_v1').length,0);assert.deepEqual(f.core.rows('e2e_verification_jobs_v1')[0],old);f.core.failAtEnd=false;const result=await redriveSearchVerification(f.core,request);assert.equal(result.previousAttempts,8);
+ assert.deepEqual(JSON.parse(String(f.core.rows('e2e_verification_redrive_v1')[0].previous_state_document)).verificationJob,{...old});assert.equal(f.core.rows('article_content_versions_p3').length,1);assert.equal(f.core.rows('e2e_generations_v1').length,1);assert.equal(f.core.rows('e2e_search_repair_outbox_v1')[0].attempt_count,1);
+ await assert.rejects(redriveSearchVerification(f.core,request),/redrive_stale/);f.options.fetch=f.publicFetch;assert.equal((await f.verify()).status,'completed_verified');assert.equal(f.core.rows('e2e_verification_redrive_v1').length,1);
 });

@@ -71,6 +71,11 @@ test("M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollba
   await assert.rejects(core.prepare("UPDATE article_publications_p3 SET article_id='other'").all(),/e2e_source_owner_required|e2e_core_unguarded_writer/);
   assert.equal((await core.prepare("SELECT count(*) n FROM e2e_core_write_authorizations_v1").all()).results![0].n,0);
   assert.equal((await core.prepare("SELECT count(*) n FROM e2e_commit_guards_v1").all()).results![0].n,0);
+  await core.prepare(readFileSync(new URL("../d1/worldcons_core/0010_e2e_verification_redrive.sql",import.meta.url),"utf8").split("create index")[0]).all();
+  const outbox=second.data.generation!.searchRepairOutboxId!,generation=second.data.generation!.generationId;
+  await core.prepare("INSERT INTO e2e_search_apply_receipts_v1(generation_id,outbox_id,fencing_token,document_fingerprint,fts_fingerprint,applied_at) VALUES (?,?,0,?,?,?)").bind(generation,outbox,'a'.repeat(64),'b'.repeat(64),'2026-10-12T05:00:00Z').all();
+  await core.prepare("INSERT INTO e2e_verification_jobs_v1(generation_id,status,verification_fence,attempt_count,next_attempt_at,updated_at) VALUES (?,'dead_letter',16,8,?,?)").bind(generation,'2026-10-12T05:00:00Z','2026-10-12T05:00:00Z').all();
+  const {redriveSearchVerification}=await import('../lib/cloudflare/e2e/verification-redrive');const recovered=await redriveSearchVerification(core,{outboxId:outbox,expectedVerificationFence:16,expectedOutboxFence:0,operatorId:'fixture:workerd',reason:'Test atomic verifier recovery of original immutable generation',now:'2026-10-12T05:01:00Z'});assert.equal(recovered.previousAttempts,8);assert.equal((await core.prepare('SELECT count(*) n FROM e2e_verification_redrive_v1').all()).results![0].n,1);
   const base="https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32085",otherId="22222222-2222-4222-a222-222222222222";
   const aliasRow={...article,id:otherId,slug:"workerd-es-alias",source_key:"es-tribunal-constitucional",canonical_url:base+"?ACTION=detalle"};
   await core.prepare('INSERT INTO articles ('+columns.join(',')+') VALUES ('+columns.map(()=>'?').join(',')+')').bind(...columns.map(key=>aliasRow[key as keyof typeof aliasRow]??null)).all();
