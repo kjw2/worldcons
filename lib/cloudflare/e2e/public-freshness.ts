@@ -61,8 +61,17 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
 /** Public Core content comes from the approved immutable P3, never mutable drafts. */
 export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[]) {
   const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids);
-  await readPublicMetadataState(core,ids,new Set(generations.keys()));
-  if (!generations.size) return rows;
+  const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()));
+  if (!generations.size && !metadata.size) return rows;
+  const legacyVersions=new Map<string,GenerationRow>();
+  const legacyIds=[...metadata.keys()];
+  for(let offset=0;offset<legacyIds.length;offset+=80){
+    const part=legacyIds.slice(offset,offset+80);
+    const found=await e2eRows(core,`SELECT v.* FROM article_publications_p3 p
+      JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id
+      WHERE ${ELIGIBLE_PUBLISHED_PREDICATE} AND p.article_id IN (${part.map(()=>"?").join(",")})`,...part);
+    for(const version of found)legacyVersions.set(String(version.article_id),version);
+  }
   const versions=new Map<string,GenerationRow>();
   const valid=[...generations.values()].filter(g=>g.input_current&&g.expected_publication_state==="published");
   for (let offset=0;offset<valid.length;offset+=80) {
@@ -74,12 +83,14 @@ export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:Ge
   }
   const result:GenerationRow[]=[];
   const latest=await currentGenerations(core,ids);
+  const latestMetadata=await readPublicMetadataState(core,ids,new Set(latest.keys()));
+  for(const [id,before] of metadata){const after=latestMetadata.get(id);if(before.revision!==after?.revision||before.fencing_token!==after?.fencing_token)throw new Error("e2e.public_metadata_changed");}
   for (const row of rows) {
     const g=generations.get(String(row.id));
     const current=latest.get(String(row.id));
     if (g?.generation_id!==current?.generation_id || (current&&!current.input_current)) continue;
-    if (!g) { result.push(row); continue; }
-    const version=g.input_current&&g.expected_publication_state==="published" ? versions.get(String(g.expected_version_id)) : undefined;
+    if (!g && !metadata.has(String(row.id))) { result.push(row); continue; }
+    const version=g ? (g.input_current&&g.expected_publication_state==="published" ? versions.get(String(g.expected_version_id)) : undefined) : legacyVersions.get(String(row.id));
     if (!version) continue;
     const approved={...row};
     for (const column of Object.keys(row)) if (column in version && !["id","created_at","updated_at","article_tags"].includes(column)) {

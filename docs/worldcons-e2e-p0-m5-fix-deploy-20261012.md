@@ -9,7 +9,7 @@
 - 메타데이터: Core 0011의 원장·트리거는 article_tags, tag 표시 필드, 검토 상태, publication, freshness와 catalog eligibility 변경을 같은 Core 트랜잭션에서 기록한다. revision과 fencing token, 120초 lease, revision별 8회 시도 예산, 제한된 backoff, dead-letter와 시도 이력을 보존한다.
 - Search 0003은 legacy 메타데이터 revision/fence를 보호한다. 문서와 FTS, guard, 일회성 쓰기 권한을 동일 Search batch에서 갱신한다. 오래된 legacy 작업과 전수 동기화는 더 최신 metadata 또는 E2E generation을 덮어쓰거나 지울 수 없다. E2E Consumer는 기존 보호 트랜잭션으로 legacy guard를 승계한다.
 - 전수·개별 동기화와 분당 전용 cron이 원장을 처리한다. metadata 수리는 기존 승인 P3를 재투영하며 콘텐츠 승인이나 completed_verified를 만들어내지 않는다. 비공개 검토 상태는 기존 Core authority를 통한 철회로 처리한다.
-- 공개 검색은 결과를 묶어 Core revision과 Search guard를 비교하고 Core를 다시 읽는다. 공개 상세 읽기도 pending metadata를 차단한다. 캐시된 eligibility를 사용하지 않는다. 두 DB를 아우르는 전역 원자성을 주장하지 않는다.
+- 공개 검색은 결과를 묶어 Core revision과 Search guard를 비교하고 Core를 다시 읽는다. 공개 상세 읽기도 pending metadata를 차단한다. 세대가 없는 metadata 보호 대상도 기존 불변 승인 P3의 원문·요약·제목을 읽고 변경 중인 Core 초안을 노출하지 않는다. 캐시된 eligibility를 사용하지 않는다. 두 DB를 아우르는 전역 원자성을 주장하지 않는다.
 
 ## 배포 순서와 복구
 

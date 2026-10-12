@@ -358,7 +358,7 @@ test("Vercel provider source and article endpoints read bounded Contract V2 evid
   assert.ok(calls.some((sql) => /from sources/u.test(sql)));
   assert.ok(calls.some((sql) => /from articles where slug = \? and status = \? and catalog_ai_stale_v4 = \?/u.test(sql)));
   assert.equal(calls.filter(sql => /from article_publications_p3/u.test(sql)).length, 2, "detail/source require a public P3 head");
-  assert.ok(calls.length <= 12, "bounded content, public eligibility and schema reads");
+  assert.ok(calls.length <= 14, "bounded content, public eligibility and two metadata-schema readiness reads");
 
   const missing = await handleWorldconsSearchRequest(
     new Request("https://provider.example/api/articles/not-found"),
