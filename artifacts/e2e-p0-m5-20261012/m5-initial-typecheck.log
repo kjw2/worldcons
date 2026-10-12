@@ -1,0 +1,2 @@
+lib/cloudflare/core-write/authority.ts(539,175): error TS2345: Argument of type '"worldcons.approval.v1" | "worldcons.approval.v2"' is not assignable to parameter of type 'number | undefined'.
+  Type 'string' is not assignable to type 'number'.

@@ -1,0 +1,143 @@
+[
+  {
+    "results": [
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "crawl",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 3
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "discovery",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 3
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "normalize",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 1
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "public-judgment",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 1
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "publish",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 1
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "search",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 1
+      },
+      {
+        "source_key": "es-tribunal-constitucional",
+        "stage": "translate",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 1
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "crawl",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 4
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "discovery",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 4
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "normalize",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 2
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "public-judgment",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 2
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "publish",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 2
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "search",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 3
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "stage": "translate",
+        "status": "succeeded",
+        "last_error_code": null,
+        "count": 2
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.9473
+      },
+      "duration": 0.9473,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 119869440,
+      "rows_read": 74,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1577
+      },
+      "duration": 0.1577,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 119869440,
+      "rows_read": 3,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

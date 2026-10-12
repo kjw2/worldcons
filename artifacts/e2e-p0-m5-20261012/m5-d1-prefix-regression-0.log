@@ -1,0 +1,74 @@
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (176.7239ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (263.5209ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (771.0203ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"8e04fddd-db88-4237-a188-aec5fe1bf7d8","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (131.2466ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (102.8916ms)
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (184.7514ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (69.0843ms)
+✔ M4 missing approval proof stays fail-closed (41.5723ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (63.1943ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (259.307ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (195.19ms)
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (185.7221ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (44.9861ms)
+{"event":"e2e_search_verification","status":"retry"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (85.5627ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (57.5947ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (53.4174ms)
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (61.9204ms)
+✔ M5 source owner blocks first unapproved publication, not just managed heads (56.2598ms)
+✔ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (66.7688ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (50.4907ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (63.1736ms)
+✔ M5 human-reviewed publication verifies actual Search/FTS/API; forged human proof cannot complete (155.277ms)
+✔ M5 completed projection damage creates a fresh verification epoch without a new P3 version or lost evidence (169.6895ms)
+✔ M5 active legacy source publication cannot move to another article or be cascade-deleted (46.1681ms)
+✔ M5 global publication drain filters protected sources before LIMIT and leaves capacity for other countries (77.0962ms)
+✔ M5 HJ ACTION/language URL aliases reuse one Core article; older captured source never replaces newer bytes (123.8409ms)
+✔ M5 legacy duplicate withdrawal verifies privacy using official title when old metadata lacks caseNumber (46.1112ms)
+✔ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (167.4247ms)
+✔ M5 Core: human withdrawal without new approval creates generation and durable remove outbox (55.1915ms)
+✔ M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollback protection (12833.7137ms)
+✔ verified HJ full text replaces stale metadata-only safety flags without affecting unverified records (2.7765ms)
+Warning: Invalid PDF header version: 1.4not
+Warning: Invalid PDF header version: 1.4not
+Warning: Indexing all PDF objects
+✔ SCOTUS official PDF extraction preserves bytes and hash while holding publication for review (242.8597ms)
+✔ SCOTUS PDF verification failures stay metadata-only and never write PDF to R2 (37.9582ms)
+✔ SCOTUS October term rollover still collects a revised prior-term official opinion without publishing it (4036.341ms)
+✔ SCOTUS rollover previous listing fails closed and is not fetched after the bounded overlap (2008.0342ms)
+✔ native source parser discovers only official records for all four sources (4.5584ms)
+✔ targeted staged crawl preserves the actually fetched BVerfG official URL variant (3010.3185ms)
+✔ BVerfG staged crawl rejects HTTP 200 pages without the exact official decision ECLI (1.0246ms)
+✔ BVerfG official redirects retain the verified final decision URL and ECLI (0.9994ms)
+✔ targeted staged crawl carries corrected Spanish official JSON metadata into normalize (3.457ms)
+✔ native range floors and Spain cap match collection policy (0.1491ms)
+✔ one synthetic collection request persists one pending case but DOES NOT automatically translate or publish (5.4027ms)
+✔ native collection keeps source-specific publication and review gates (9.6937ms)
+✔ BVerfG native discovery falls back to OpenLegalData candidates but fetches only official source text (3.2882ms)
+✔ BVerfG unpublished official variants remain a bounded retry candidate instead of failing the source run (2.479ms)
+✔ BVerfG transient official 5xx falls back to discovery and remains uncollected instead of failing the source run (2.056ms)
+✔ BVerfG OpenLegalData 429 records degraded discovery without failing the daily source step (1.4524ms)
+✔ Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids (8.5199ms)
+✔ Spain native discovery uses the authenticated official search session before tail probing (6.2284ms)
+✔ BVerfG discovery selection defers a cooldown 404 head and chooses the next eligible candidate for limit 1 (0.6084ms)
+✔ BVerfG discovery selection defers all cooldown candidates with an honest empty selection (0.2711ms)
+✔ BVerfG discovery selection re-eligible once the retry backoff window has expired (0.2461ms)
+✔ BVerfG discovery selection never lets already-fetched candidates starve new or due candidates (0.192ms)
+✔ BVerfG discovery selection is bounded and deterministic (0.297ms)
+✔ BVerfG daily run skips a cooldown 404 head candidate and fetches the next eligible official decision (4.6923ms)
+✔ BVerfG daily run reports an honest deferred-only outcome without any official detail fetch (2.9597ms)
+✔ BVerfG daily run does not let already-fetched candidates starve new official decisions (2.2903ms)
+✔ BVerfG staged discovery shares the same D1-aware selection as the M8 daily run (1.1038ms)
+✔ BVerfG M8 and staged discovery fail closed when durable candidate state cannot be read (2.0256ms)
+ℹ tests 59
+ℹ suites 0
+ℹ pass 59
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14858.9108

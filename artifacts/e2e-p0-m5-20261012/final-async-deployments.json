@@ -1,0 +1,172 @@
+[
+  {
+    "id": "44bd484e-6c1e-4d6f-9be8-b31d82d57141",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Fix D1 HJ identity prefix comparisons; git d85931fa4ad7564df81320380db983733991731a",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "8f05c6a8-5010-467f-b5ea-13d12fc3c2e5",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:51:53.606449Z"
+  },
+  {
+    "id": "0279e0b8-f8e4-4ecd-b39e-decebda4dae9",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Final M5 verifier pin; git 98eaffbce131cd4bab8f9d389d2a3d178a1e707d",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e1d31ef2-456b-4271-a2ad-bb4bc5456a45",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:53:35.459962Z"
+  },
+  {
+    "id": "26850a5a-d3ec-4036-82f6-59f9815b7a84",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Bounded verifier diagnostics for runtime-only failures; git cbb5d276f7a7891a75d163038f4ca62bad49ed1f",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "8d89d0e2-3c58-4237-824a-336b61a5e709",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:00:28.849542Z"
+  },
+  {
+    "id": "ce338089-7f83-48b8-9155-17ed7a4ed506",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Use actual default public Worker service binding for verification; git a1fc7a7f4d24fa717465aba3c51c1c6cda505f63",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "eeb6215e-c3ca-4581-a27f-b637359dc50d",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:13:37.870784Z"
+  },
+  {
+    "id": "488ec646-8d11-4646-a5ab-e2e11751a32d",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Diagnose current-generation Search claim waits; git 748ac0a0ef37a3afb525b10c7a363fd4c06c4eb6",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "17e0076d-abd9-49d8-b8a2-1b9cbac4e1fb",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:16:00.833296Z"
+  },
+  {
+    "id": "5b27c917-07aa-4965-a831-3b86b30ed6cc",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Honor durable verifier backoff and ACK deferred duplicates; git 937cd44bf972b6e048ace5be4401bec9b70b8f7f",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "3aecb471-dff1-4a96-989a-bc6a452bf5b8",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:26:15.097756Z"
+  },
+  {
+    "id": "d36c99fd-94ef-487e-9786-7c30ba2e9a40",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Use Root public-provider HTTP service; git bf0a61aee3c60e39e3455d76edb5a02ccab3ec09",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "c79e4fa9-3102-4cbc-9326-eee2bbba34eb",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:28:31.234389Z"
+  },
+  {
+    "id": "29463d8a-be2c-4144-939a-dd23c654d228",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Drain protected repair backlog with two fenced consumers; git ecefccbcd0828e8f71d840142fabb3ed4e4a24f7",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "c5d1790b-0340-495a-b5ae-db55ea5afc4e",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:34:18.0304Z"
+  },
+  {
+    "id": "f5305356-42a2-458d-a3af-8034f40b73dd",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Map external API URLs to Root provider route contract; git 206d1f2c2e782321886c4d6a592b275de2aa57e0",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "7acb77e2-0b20-4d54-a4e0-543d61cb1a9a",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T05:47:55.570723Z"
+  },
+  {
+    "id": "7b122e40-ccf8-47c6-bda8-5753f2cfa4c5",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Pin fully validated M5 Root release; git 4646e0261751a44083853247a592369a43456e6f",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "dc2ffc3d-acb2-4f58-989b-27f5d3ff2453",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T06:26:03.236768Z"
+  }
+]

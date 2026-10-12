@@ -1,0 +1,40 @@
+[
+  {
+    "results": [
+      {
+        "stage": "normalize",
+        "status": "dead_letter",
+        "last_error_code": "ingest_stage.normalize_failed",
+        "last_error_summary": "D1_ERROR: LIKE or GLOB pattern too complex: SQLITE_ERROR",
+        "id": "1a0c037d-7801-44bc-85c7-4f00d6fe70ee",
+        "article_id": "native:27cc1064a3a3cb2791fe1f8432b91286"
+      },
+      {
+        "stage": "public-judgment",
+        "status": "leased",
+        "last_error_code": null,
+        "last_error_summary": null,
+        "id": "b364df65-6092-4b09-87d0-730f942666c9",
+        "article_id": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3739
+      },
+      "duration": 0.3739,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 120610816,
+      "rows_read": 6,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

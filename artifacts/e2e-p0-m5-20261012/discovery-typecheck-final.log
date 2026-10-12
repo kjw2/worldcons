@@ -1,0 +1,3 @@
+tests/e2e-p0-m5-discovery.test.ts(23,103): error TS2353: Object literal may only specify known properties, and 'idempotencyKey' does not exist in type '{ stage: "translate" | "search" | "normalize" | "publish" | "discovery" | "crawl" | "public-judgment"; jobId: string; articleId: string; sourceVersion: string; contentHash: string; fencingToken: string; enqueuedAt: string; }'.
+tests/e2e-p0-m5-discovery.test.ts(111,167): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ id: string; slug: string; canonical_url: string; fetched_at: string; }'.
+  No index signature with a parameter of type 'string' was found on type '{ id: string; slug: string; canonical_url: string; fetched_at: string; }'.

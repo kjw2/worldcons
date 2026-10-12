@@ -1,0 +1,120 @@
+[
+  {
+    "results": [
+      {
+        "stage": "crawl",
+        "status": "pending",
+        "last_error_code": null,
+        "n": 85
+      },
+      {
+        "stage": "crawl",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 30
+      },
+      {
+        "stage": "discovery",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 2
+      },
+      {
+        "stage": "normalize",
+        "status": "pending",
+        "last_error_code": null,
+        "n": 3
+      },
+      {
+        "stage": "normalize",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 27
+      },
+      {
+        "stage": "public-judgment",
+        "status": "dead_letter",
+        "last_error_code": "e2e.automatic_approval_review_required",
+        "n": 12
+      },
+      {
+        "stage": "public-judgment",
+        "status": "leased",
+        "last_error_code": null,
+        "n": 1
+      },
+      {
+        "stage": "public-judgment",
+        "status": "pending",
+        "last_error_code": null,
+        "n": 7
+      },
+      {
+        "stage": "public-judgment",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 3
+      },
+      {
+        "stage": "publish",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 3
+      },
+      {
+        "stage": "search",
+        "status": "pending",
+        "last_error_code": null,
+        "n": 1
+      },
+      {
+        "stage": "search",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 1
+      },
+      {
+        "stage": "search",
+        "status": "succeeded",
+        "last_error_code": "e2e.staged_retry",
+        "n": 1
+      },
+      {
+        "stage": "translate",
+        "status": "dead_letter",
+        "last_error_code": "ingest_stage.translate_skipped",
+        "n": 1
+      },
+      {
+        "stage": "translate",
+        "status": "pending",
+        "last_error_code": null,
+        "n": 1
+      },
+      {
+        "stage": "translate",
+        "status": "succeeded",
+        "last_error_code": null,
+        "n": 23
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 1.6115
+      },
+      "duration": 1.6115,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 120705024,
+      "rows_read": 432,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "startedAt": "2026-10-12T07:32:46.540Z",
+  "command": "pnpm verify:release",
+  "status": "finished",
+  "pid": 43644,
+  "code": 0,
+  "signal": null,
+  "finishedAt": "2026-10-12T07:38:39.392Z",
+  "tests": 1658,
+  "pass": 1651,
+  "fail": 0,
+  "skipped": 7,
+  "postBuildTypecheck": 0
+}

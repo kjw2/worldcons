@@ -1,0 +1,7 @@
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\core-write\authority.ts
+  118:16  warning  'many' is defined but never used  @typescript-eslint/no-unused-vars
+  135:16  warning  'run' is defined but never used   @typescript-eslint/no-unused-vars
+
+✖ 2 problems (0 errors, 2 warnings)
+

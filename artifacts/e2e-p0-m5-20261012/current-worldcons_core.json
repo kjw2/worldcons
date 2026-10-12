@@ -1,0 +1,111 @@
+[
+  {
+    "results": [
+      {
+        "n": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.5691
+      },
+      "duration": 0.5691,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 267890688,
+      "rows_read": 0,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.6194
+      },
+      "duration": 0.6194,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 267890688,
+      "rows_read": 2,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1581
+      },
+      "duration": 0.1581,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 267890688,
+      "rows_read": 1,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2845
+      },
+      "duration": 0.2845,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 267890688,
+      "rows_read": 2,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.1375
+      },
+      "duration": 0.1375,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 267890688,
+      "rows_read": 157,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,46 @@
+✔ M3 applies exact P3 and both Search sides; duplicate receipt consumes no additional attempts/completion (79.9485ms)
+✔ M3 reverse generation and same-generation stale fence/conflicting identity roll back all Search/FTS (46.3164ms)
+✔ M3 withdrawal persists tombstone and old publish cannot resurrect FTS (46.6967ms)
+✔ M3 legacy plan executor, full rebuild, single sync and raw old document writer cannot overwrite cohort (133.9631ms)
+✔ M3 full sync stale removal snapshot cannot delete a newly published protected B (37.3107ms)
+✔ M3 Core B/Search A gap and immediate withdrawal are hidden from public search (49.2625ms)
+✔ M3 public guard checks are batched and Core failure never falls back to stale Search (35.4297ms)
+✔ M3 mutable drafts never replace approved public P3; withdrawal filters detail/list/source (32.9416ms)
+✔ M3 mutable tag/review drift blocks stale public projection and Consumer (31.8908ms)
+✔ M3 actual document/FTS corruption with unchanged checksum triggers same-generation repair (46.1053ms)
+✔ M3 duplicate concurrent deliveries have one processing owner (36.5346ms)
+✔ M3 Search batch late failure leaves no partial guard, document or FTS (36.1099ms)
+✔ M3 Search commit before Core receipt interruption resumes without duplicate FTS or new P3 (36.5563ms)
+✔ M3 expired owner cannot record receipt; reclaimed fence repairs and owns outcome (36.9427ms)
+✔ M3 B committed/applied while A is in flight remains unchanged and A gets no receipt (40.9125ms)
+✔ M3 processing budget dead-letters failures; Queue duplicates do not exhaust it (28.2612ms)
+{"event":"e2e_search_repair_consumer","status":"awaiting_verification"}
+✔ M3 dedicated Queue remains disabled; enabled handler ACK follows durable apply receipt (30.825ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"5ea7e97d-dc8b-466f-97b9-608e0fdd20e8","error":"Error"}
+✔ M3 real public provider returns approved content/no-store, gap 503 and withdrawn detail 404 (66.7668ms)
+✔ M3 expired final attempt and elapsed failure budget reach dead-letter without an extra attempt (65.8896ms)
+✔ M3 public cache re-reads Core schema and bypasses cached content; unavailable Core fails closed (25.314ms)
+✔ M3 public check catches first enrollment while Search is being read (40.3688ms)
+✔ M3 Core detail drops A when B commits during immutable version hydration (34.5629ms)
+✔ M3 migration verifier and enabled Consumer reject an incomplete Search trigger deployment (27.0263ms)
+✔ M3 legacy executor reserves guard statements within the D1 100 statement/parameter envelope (20.7854ms)
+✔ M5 source owner blocks first unapproved publication, not just managed heads (30.2607ms)
+✔ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (54.6833ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (42.9071ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (54.329ms)
+✔ M5 human-reviewed publication verifies actual Search/FTS/API; forged human proof cannot complete (136.4587ms)
+✔ runD1PublishArticle publishes exactly the named article and leaves other pending rows untouched (54.0213ms)
+✔ runD1PublishArticle fail-closes an ineligible row (source_only provenance) without publishing (5.8253ms)
+✔ runD1PublishArticle never treats stale published content as an idempotent success (12.3251ms)
+✔ runD1PublishArticle blocks replay after source provenance is withdrawn (10.64ms)
+✔ syncSearchProjectionForArticle projects exactly one published article and enforces per-article integrity (23.5596ms)
+✔ eligible Core rows build and apply a verified 1:1 D1 search projection (22.969ms)
+✔ sync batch size stays within the bounded D1 batch envelope (1.4485ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5409.1453

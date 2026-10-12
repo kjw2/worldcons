@@ -1,0 +1,14 @@
+[
+  {
+    "file": "index.js",
+    "rawSize": 7216070,
+    "sha256": "dd7e3abaebc7265769708e77f51e1f63b57416e7dc4116790545a85b48538a9b",
+    "verified": true
+  },
+  {
+    "file": "index.js.map",
+    "rawSize": 11691712,
+    "sha256": "fd251e1b5f265eddaf0437c3a8b54928ec6daa24015611dbe0fd905915d05cf3",
+    "verified": true
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "samples": [
+    {
+      "clientObservedAt": "2026-10-12T07:50:16.769Z",
+      "serverDate": "Mon, 12 Oct 2026 07:51:09 GMT",
+      "serverMinusClientMs": 52231
+    },
+    {
+      "clientObservedAt": "2026-10-12T07:50:17.408Z",
+      "serverDate": "Mon, 12 Oct 2026 07:51:10 GMT",
+      "serverMinusClientMs": 52592
+    }
+  ],
+  "observationDeadlineBasis": "Cloudflare deployment.created_on, not client clock",
+  "note": "Client clock is approximately 52-54 seconds behind provider HTTP Date. Audit wrapper timestamps are client observations; DB verified_at and provider deployment timestamps retain their own origin."
+}

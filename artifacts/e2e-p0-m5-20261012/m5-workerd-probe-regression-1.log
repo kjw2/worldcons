@@ -1,0 +1,1 @@
+lib/cloudflare/e2e/search-verification.ts(161,24): error TS2304: Cannot find name 'probe'.

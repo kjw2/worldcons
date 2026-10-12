@@ -1,0 +1,23 @@
+{
+  "articleId": "02b539a7-8607-4a49-a3f9-19356f4eb890",
+  "sourceKey": "es-tribunal-constitucional",
+  "document": [
+    {
+      "field": "tags_text",
+      "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00014ce201c0\u0001 \u0001절차적무효\u0001 절차적무효 topic \u000160559561\u0001 \u0001재판관기피\u0001 재판관기피 \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u0001ce97f98b\u0001 \u0001방어권\u0001 방어권 \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001constitutional-court-of-spain\u0001 \u0001Tribunal Constitucional de España\u0001 Constitutional Court of Spain court \u0001jose-luis-mazon-costa\u0001 \u0001José Luis Mazón Costa\u0001 Jose Luis Mazon Cost",
+      "actual": "\u00010cfcaf58\u0001 \u0001헌법소원\u0001 헌법소원 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u0001499ed951\u0001 \u0001Spain\u0001 스페인 country \u00014ce201c0\u0001 \u0001절차적무효\u0001 절차적무효 \u000160559561\u0001 \u0001재판관기피\u0001 재판관기피 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u00019676ca3a\u0001 \u0001José Luis Mazón Costa\u0001 호세 루이스 마손 코스타 party \u0001a1e6bd87\u0001 \u0001recusación\u0001 재판관 기피 procedure \u0001aec57966\u0001 \u0001방어권침해\u0001 방어권침해 \u0001c4206392\u0001 기피신청 \u0001e6f03a4c\u0001 \u0001L"
+    },
+    {
+      "field": "checksum",
+      "expected": "7a904ded219e2601",
+      "actual": "f04aa5b358ebafa7"
+    }
+  ],
+  "fts": [
+    {
+      "field": "tags_text",
+      "expected": "\u00010cfcaf58\u0001 \u0001recurso de amparo\u0001 헌법소원 case_type \u00014ce201c0\u0001 \u0001절차적무효\u0001 절차적무효 topic \u000160559561\u0001 \u0001재판관기피\u0001 재판관기피 \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u0001ce97f98b\u0001 \u0001방어권\u0001 방어권 \u0001constitucion-espanola\u0001 \u0001Constitución Española\u0001 Constitucion Espanola law \u0001constitutional-court-of-spain\u0001 \u0001Tribunal Constitucional de España\u0001 Constitutional Court of Spain court \u0001jose-luis-mazon-costa\u0001 \u0001José Luis Mazón Costa\u0001 Jose Luis Mazon Cost",
+      "actual": "\u00010cfcaf58\u0001 \u0001헌법소원\u0001 헌법소원 topic \u00010da467a8\u0001 \u0001Constitución Española\u0001 스페인 헌법 law \u0001499ed951\u0001 \u0001Spain\u0001 스페인 country \u00014ce201c0\u0001 \u0001절차적무효\u0001 절차적무효 \u000160559561\u0001 \u0001재판관기피\u0001 재판관기피 \u000191971d0e\u0001 \u0001Tribunal Constitucional de España\u0001 스페인 헌법재판소 court \u000193f4611c\u0001 \u0001스페인헌법재판소\u0001 스페인헌법재판소 \u00019676ca3a\u0001 \u0001José Luis Mazón Costa\u0001 호세 루이스 마손 코스타 party \u0001a1e6bd87\u0001 \u0001recusación\u0001 재판관 기피 procedure \u0001aec57966\u0001 \u0001방어권침해\u0001 방어권침해 \u0001c4206392\u0001 기피신청 \u0001e6f03a4c\u0001 \u0001L"
+    }
+  ]
+}

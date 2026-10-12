@@ -1,0 +1,59 @@
+[
+  {
+    "results": [
+      {
+        "source_key": "es-tribunal-constitucional",
+        "role": "legacy",
+        "count": 424
+      },
+      {
+        "source_key": "fr-conseil-constitutionnel",
+        "role": "legacy",
+        "count": 395
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 7.2466
+      },
+      "duration": 7.2466,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 265371648,
+      "rows_read": 3795,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "public_head_mismatch": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 7.5944
+      },
+      "duration": 7.5944,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 265371648,
+      "rows_read": 2976,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "outcome": "redriven",
+  "recordId": "fd2eb9d9-1aed-4d73-95a5-a89340ecbc88",
+  "jobId": "1a0c037d-7801-44bc-85c7-4f00d6fe70ee",
+  "stage": "normalize",
+  "status": "pending",
+  "detail": "Job returned to pending under the current rollout gates."
+}

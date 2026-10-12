@@ -1,0 +1,855 @@
+[
+  {
+    "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0?textLimit=4000",
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "contractVersion": "2.0",
+      "schemaVersion": 1,
+      "requestId": "fba92552-549e-4b80-8efc-d5bce30bc9ec",
+      "service": "worldcons",
+      "id": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "slug": "spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+      "providerId": "worldcons",
+      "authorityLevel": "persuasive",
+      "title": "스페인 헌법재판소, 마드리드 자치회 감사원장 출석요구 각하 관련 효력정지 등 가처분 신청 기각",
+      "koreanTitle": "스페인 헌법재판소, 마드리드 자치회 감사원장 출석요구 각하 관련 효력정지 등 가처분 신청 기각",
+      "originalTitle": "AUTO 53/2026",
+      "summary": "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다. 청구인들은 출석요구 안건을 영구 폐기하지 말고 의회 임기 내에 소급 심사할 수 있도록 보존해 달라는 가처분을 신청했으나, 헌법재판소는 이를 인용할 경우 본안 판단을 사전에 예단하는 결과를 초래한다고 판단했다. 헌법재판소는 본안 심리에서 헌법소원이 인용되면 각하 처분 직전 단계로의 원상회복(절차 소급) 명령이 가능하므로 가처분을 기각하더라도 청구 목적이 상실되지 않는다고 판시했다.",
+      "snippet": "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다. 청구인들은 출석요구 안건을 영구 폐기하지 말고 의회 임기 내에 소급 심사할 수 있도록 보존해 달라는 가처분을 신청했으나, 헌법재판소는 이를 인용할 경우 본안 판단을 사전에 예단하는 결과를 초래한다고 판단했다. 헌법재판소는 본안 심리에서 헌법소원이 인용되면 각하 처분 직전 단계로의 원상회복(절차 소급) 명령이 가능하므로 가처분을 기각하더라도 청구 목적이 상실되지 않는다고 판시했다. 마드리드 자치단체의회(Asamblea de Madrid) 소속 Vox 원내교섭단체와 소속 의원은 2025년도 감사계획 청취를 위해 마드리드 회계감사원장의 위원회 출석을 요구했으나, 의회 의장단(Mesa)은 당해 발의가 규정된 회계감사 기능 수행에 관한 출석 요건을 갖추지 못했다며 접수를 거부하고 이의신청도 기각했다. 이에 청구인들은 의장단이 형식적 요건 심사를 넘어 실질적 타당성이나 기회를 판단함으로써 헌법 제23조가 보장하는 의원직 수행권(ius in officium)을 침해했다며 헌법소원을 제기하고, 당해 안건이 폐기되지 않도록 임시 조치를 취해줄 것을 신청했다. 의회 의장단의 의사결정이나 안건 각하 행위에 대해 헌법소원을 제기하면서 신청하는 잠정조치는 본안의 주문 내용을 사전에 확정해 주는 효과를 내서는 안 된다는 기존 헌법 판례 법리를 재확인했다. 또한 의원의 통제권 행사 시한과 관련된 정치적 기회의 일실 주…",
+      "oneLineSummary": "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다.",
+      "summaryJson": {
+        "koreanTitle": "스페인 헌법재판소, 마드리드 자치회 감사원장 출석요구 각하 관련 효력정지 등 가처분 신청 기각",
+        "originalTitle": "AUTO 53/2026",
+        "summary": {
+          "coreSummary": [
+            "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다.",
+            "청구인들은 출석요구 안건을 영구 폐기하지 말고 의회 임기 내에 소급 심사할 수 있도록 보존해 달라는 가처분을 신청했으나, 헌법재판소는 이를 인용할 경우 본안 판단을 사전에 예단하는 결과를 초래한다고 판단했다.",
+            "헌법재판소는 본안 심리에서 헌법소원이 인용되면 각하 처분 직전 단계로의 원상회복(절차 소급) 명령이 가능하므로 가처분을 기각하더라도 청구 목적이 상실되지 않는다고 판시했다."
+          ],
+          "referencedProvisions": [
+            {
+              "jurisdiction": "Spain",
+              "lawName": "Constitución Española",
+              "article": "Art. 23",
+              "description": "국민의 공무담임권 및 대표자로서의 정치 참여권(ius in officium)을 보장하는 헌법 규정",
+              "confidence": "high"
+            },
+            {
+              "jurisdiction": "Spain",
+              "lawName": "Ley Orgánica del Tribunal Constitucional",
+              "article": "Art. 56",
+              "description": "헌법소원 심판 절차에서 본안의 목적 상실을 방지하기 위한 집행정지 및 기타 잠정조치(가처분)에 관한 규정",
+              "confidence": "high"
+            },
+            {
+              "jurisdiction": "Spain",
+              "lawName": "Reglamento de la Asamblea de Madrid",
+              "article": "Art. 236",
+              "description": "마드리드 자치단체의회 상임위원회에 대한 회계감사원장의 출석 보고 및 관련 절차를 정한 규정",
+              "confidence": "high"
+            }
+          ],
+          "background": "마드리드 자치단체의회(Asamblea de Madrid) 소속 Vox 원내교섭단체와 소속 의원은 2025년도 감사계획 청취를 위해 마드리드 회계감사원장의 위원회 출석을 요구했으나, 의회 의장단(Mesa)은 당해 발의가 규정된 회계감사 기능 수행에 관한 출석 요건을 갖추지 못했다며 접수를 거부하고 이의신청도 기각했다. 이에 청구인들은 의장단이 형식적 요건 심사를 넘어 실질적 타당성이나 기회를 판단함으로써 헌법 제23조가 보장하는 의원직 수행권(ius in officium)을 침해했다며 헌법소원을 제기하고, 당해 안건이 폐기되지 않도록 임시 조치를 취해줄 것을 신청했다.",
+          "caseStructure": "청구인은 본안 판결 전까지 해당 발의가 종국적으로 폐기 처리되지 않도록 마드리드 의회 의장단에 조치를 명하는 가처분을 구했다. 이에 대해 검찰청(Ministerio Fiscal)은 가처분 신청 인용이 본안 결정을 선취하는 것이며 사후 취소 판결로도 권리구제가 가능하다고 반대했다. 헌법재판소 제2부 제3과는 헌법재판소유기법(LOTC) 제56조의 예외적 보전처분 요건을 검토하여, 가처분 인용이 본안 판단을 미리 앞당기는 부당한 결과를 낳고 단순한 시간 경과는 본안 목적 상실의 직접적 사유가 되지 않는다는 이유로 기각을 결정했다.",
+          "implications": "의회 의장단의 의사결정이나 안건 각하 행위에 대해 헌법소원을 제기하면서 신청하는 잠정조치는 본안의 주문 내용을 사전에 확정해 주는 효과를 내서는 안 된다는 기존 헌법 판례 법리를 재확인했다. 또한 의원의 통제권 행사 시한과 관련된 정치적 기회의 일실 주장만으로는 가처분 발령의 보전 필요성이 인정되기 어려우며, 위헌 판결 시의 절차 소급(retroacción) 가능성이 충분한 구제 수단으로 기능한다는 점을 명확히 했다.",
+          "practicalNotes": "의회 활동과 관련된 헌법소원에서 임시 보전처분을 이끌어내기 위해서는 집행에 따른 회복하기 어려운 중대한 손해를 입증해야 하며, 본안에서 다투는 처분의 효력을 잠정조치 단계에서 사실상 무력화하거나 본안 판결을 선취하려는 형태의 가처분 신청은 배척될 가능성이 매우 높다는 점을 시사한다."
+        },
+        "entities": [
+          {
+            "name": "Tribunal Constitucional de España",
+            "type": "court",
+            "normalizedName": "스페인 헌법재판소"
+          },
+          {
+            "name": "España",
+            "type": "country",
+            "normalizedName": "스페인"
+          },
+          {
+            "name": "Constitución Española",
+            "type": "law",
+            "normalizedName": "스페인 헌법"
+          },
+          {
+            "name": "Ley Orgánica del Tribunal Constitucional",
+            "type": "law",
+            "normalizedName": "스페인 헌법재판소유기법"
+          },
+          {
+            "name": "Reglamento de la Asamblea de Madrid",
+            "type": "law",
+            "normalizedName": "마드리드 자치단체의회 규칙"
+          },
+          {
+            "name": "Asamblea de Madrid",
+            "type": "institution",
+            "normalizedName": "마드리드 자치단체의회"
+          },
+          {
+            "name": "Cámara de Cuentas de la Comunidad de Madrid",
+            "type": "institution",
+            "normalizedName": "마드리드 자치주 회계감사원"
+          },
+          {
+            "name": "Grupo Parlamentario Vox",
+            "type": "party",
+            "normalizedName": "복스(Vox) 의원단"
+          },
+          {
+            "name": "ius in officium",
+            "type": "doctrine",
+            "normalizedName": "공무담임권(의원직 수행권)"
+          },
+          {
+            "name": "medida cautelar",
+            "type": "procedure",
+            "normalizedName": "가처분(잠정조치)"
+          },
+          {
+            "name": "recurso de amparo",
+            "type": "case_type",
+            "normalizedName": "헌법소원"
+          }
+        ],
+        "tags": [
+          "스페인 헌법재판소",
+          "헌법소원",
+          "가처분",
+          "의회 통제권",
+          "공무담임권",
+          "지방의회"
+        ],
+        "categories": [
+          "헌법소송",
+          "의회법",
+          "기본권"
+        ],
+        "riskFlags": [],
+        "aiMetadata": {
+          "provider": "gemini",
+          "model": "gemini-3.8-flash",
+          "generatedAt": "2026-10-11T23:46:03.197Z"
+        }
+      },
+      "bodyExcerpt": "El día 1 de febrero de 2026, doña Ana María Cuartero Lorenzo y el Grupo Parlamentario Vox en la Asamblea de Madrid, representados por la procuradora de los tribunales, doña María del Pilar Hidalgo López y bajo la asistencia letrada de doña Marta Asunción Castro Fuertes, interpusieron recurso de amparo núm. 773-2026 contra el acuerdo de la mesa de la Asamblea de 3 octubre de 2025 por el que se inadmitió la solicitud de comparecencia C-1214-2025, con RGEP 20771-2025, y contra el posterior acuerdo de 31 de octubre de 2025 que desestimó el recurso de reconsideración interpuesto contra el anterior. Los antecedentes relevantes del caso son los siguientes: a) El día 29 de septiembre de 2025, la diputada del Grupo Parlamentario Vox, doña Ana María Cuartero Lorenzo, con la firma de la portavoz del Grupo, presentó en el registro de la Asamblea de Madrid la solicitud de comparecencia C-1214-2025, cuyo tenor literal es el siguiente: “Dña. Ana María Cuartero Lorenzo, diputada del Grupo Parlamentario Vox en Madrid, solicita la comparecencia del presidente de la Cámara de Cuentas ante la Comisión de Presupuestos y Hacienda sobre informe o memoria de la función fiscalizadora, según los artículos 236 (así como 70 y 210) del Reglamento de la Cámara, al objeto de: En relación con el Programa de fiscalizaciones de la Cámara de Cuentas de la Comunidad de Madrid para el año 2025”. b) La mesa de la Asamblea, en reunión celebrada el 3 de octubre de 2025, acordó no admitir a trámite la iniciativa presentada, en los siguientes términos: “Acuerdo: La mesa, en virtud de lo previsto por el artículo 49.1 c) del Reglamento de la Asamblea, acuerda su no admisión a trámite por no llamar a comparecer al señor presidente de la Cámara de Cuentas de la Comunidad de Madrid por el ejercicio de la función fiscalizadora de la Cámara de Cuentas en los términos del artículo 236 del Reglamento y su devolución al grupo parlamentario autor de la misma por si estimara oportuno presentar una nueva iniciativa en los términos prescritos reglamentariamente”. c) La recurrente en amparo, con el visto bueno del Grupo Parlamentario Vox, presentó el 16 de octubre de 2025 una solicitud de reconsideración del acuerdo de la mesa, en la que reprochaba, en primer término, que la inadmisión desbordaba la función de calificación que reglamentariamente corresponde a la mesa —ceñida a un control de estricta legalidad formal— al haber entrado a valorar el fondo y la oportunidad de la iniciativa, con la consiguiente lesión del derecho de participación política del art. 23.2 CE y del ius in officium inherente al cargo representativo y el principio de interpretación más favorable al ejercicio del derecho. Alegaba que el propio acuerdo de la mesa de 8 de junio de 2000 (RGSP 2066) circunscribe el cometido de la mesa a un control formal de conformidad a Derecho, de suerte que cualquier enjuiciamiento del contenido o fondo de la iniciativa excede sus competencias y constituye una extralimitación proscrita por el Tribunal Constitucional. Sostenía el correcto encaje reglamentario de la comparecencia en el art. 236 del Reglamento de la Asamblea de Madrid (RAM), en relación con los arts. 70 y 210 del mismo texto, sobre la base de que el Programa de fiscalizaciones no es una fiscalización concreta sino un instrumento de planificación anual, de manera que la comparecencia no interfiere en el ejercicio de la función fiscalizadora, sino que garantiza el conocimiento parlamentario y la transparencia de su programación. Aducía la existencia de precedentes que acreditan una práctica consolidada y pacífica —las comparecencias C-356-2023 (RGEP 13106-2023) y C-495-2024 (RGEP 6335-2024), ambas admitidas y celebradas—, de modo que el rechazo de la C-1214-2025 supondría un cambio de criterio arbitrario y carente de motivación, contrario a la igualdad de trato entre diputados (art. 14 CE) y a la seguridad jurídica (art. 9.3 CE). Argüía el carácter no fiscalizador del programa a la luz del art. 1 de la Ley 11/1999, de 29 de abril, de la Cámara de Cuentas de la Comunidad de Madrid, conforme al cual la Cámara de Cuentas es órgano auxiliar de la Asamblea, siendo aquel un mero documento de planificación interna cuya presentación persigue una finalidad exclusivamente informativa y de rendición de cuentas, sin que se trate por tanto de fiscalizar al fiscalizador. d) La mesa, por acuerdo de 31 de octubre de 2025, desestimó el recurso de reconsideración, en los siguientes términos: “Acuerdo: La mesa, oída la junta de portavoces, de conformidad con el artículo 49.2 del Reglamento de la Asamblea, acuerda desestimar la solicitud de reconsideración y ratificar, en sus estrictos términos, que se dan aquí por reproducidos, su anterior acuerdo de fecha 3 de octubre de 2025, en relación con la comparecencia C-1214-2025 RGEP 20771, por el que se acordó su no admisión a trámite por no llamar a comparecer al señor presidente de la Cámara de Cuentas de la Comunidad de Madrid por el ejercicio de la función fiscalizadora de la Cámara de Cuentas en los términos del artículo 236 del Reglamento. Se reiteran los argumentos que se dieron para su no admisión en el momento de la calificación”. En la demanda de amparo, tras exponer los antecedentes que considera relevantes, denuncia que los acuerdos impugnados han vulnerado el derecho fundamental de participación política (art. 23 CE), por restringir el ejercicio de funciones representativas y de control parlamentario y, de forma accesoria, los principios de interdicción de la arbitrariedad de los poderes públicos y seguridad jurídica (art. 9.3 CE) en cuanto el acuerdo utiliza una motivación estereotipada y por remisión que hace imprevisible el criterio de admisión y priva al parlamentario del conocimiento real de las razones de la restricción, impidiendo una defensa efectiva del estatuto representativo. Indica que la lesión del art. 23 CE se consuma en un doble momento: por el acto inicial de inadmisión, que cierra el ejercicio del control parlamentario, y, de forma agravada, por la desestimación de la reconsideración mediante una remisión estereotipada que no responde realmente a los motivos alegados, dotando de firmeza al acto y clausurando el procedimiento parlamentario interno. Conforme a jurisprudencia constitucional constante, el ius in officium no se agota en el acceso al cargo, sino que abarca el ejercicio real y efectivo de las facultades que integran el estatuto del diputado, señaladamente las iniciativas de control —entre ellas las solicitudes de comparecencia ante comisión—, de modo que su inadmisión injustificada no es una irregularidad procedimental menor, sino una restricción directa del contenido esencial del precepto que impide el ejercicio de una función nuclear del Parlamento: el control político. Expone que la función calificadora de la mesa tiene un alcance constitucionalmente limitado, ceñido a un control estrictamente formal: la corrección externa de la iniciativa, su adecuación al tipo de instrumento reglamentario elegido y la ausencia de defectos técnicos manifiestos. Queda excluido todo control material, de oportunidad política o de fondo. Al inadmitir la comparecencia por entender que su objeto “excede el ámbito de la Comunidad de Madrid” (sic), la mesa formuló un juicio sustantivo sobre el debate político, sustituyó al órgano competente para sustanciarlo —la comisión— y vulneró el art. 23 CE. Añade que la transparencia no es un principio accesorio, sino un elemento estructural del Estado democrático conectado con el art. 23 CE. El control parlamentario, para ser efectivo, exige información previa, pública y accesible, sobre todo cuando recae sobre órganos estatutarios de control externo. La iniciativa C-1214-2025 pretende que la Asamblea de Madrid conozca y debata el programa de fiscalizaciones de la Cámara de Cuentas para 2025, documento que condiciona el alcance, las prioridades y la orientación de la actividad fiscalizadora. Impedirla restringe el acceso a información esencial y lesiona el ius in officium de la recurrente y el derecho de los ciudadanos a conocer la actuación de los poderes públicos. Sostiene igualmente que las comparecencias de responsables de órganos estatutarios garantizan la transparencia institucional sin menoscabar la autonomía funcional del órgano. La independencia técnica de la Cámara de Cuentas no excluye, sino que reclama, mecanismos de rendición de cuentas ante el Parlamento. La comparecencia no persigue dirigir ni fiscalizar al órgano fiscalizador, sino conocer su planificación para comprender sus prioridades, evaluar su adecuación al interés público y ejercer un control político ex ante. Negarla desnaturaliza la función del Parlamento en el sistema de controles del Estado autonómico. Argumenta que el control parlamentario no se agota en el examen posterior de actuaciones ya realizadas, sino que comprende el control ex ante de las líneas de actuación futura. El Programa anual de fiscalizaciones es un instrumento de planificación estratégica cuyo conocimiento previo resulta esencial al control democrático. Al excluir esta clase de comparecencias, la mesa reduce el control a una función reactiva y vacía de contenido el ius in officium. Invoca una interpretación sistemática, finalista y conforme al principio pro participación del art. 236 RAM, en conexión con los art. 70, 210 y 211 del mismo texto. Su tenor literal no permite inferir que la comparecencia del presidente de la Cámara de Cuentas se limite a fiscalizaciones concluidas, pues el precepto se refiere ampliamente a la información sobre las actuaciones del órgano, incluida la planificación de su actividad. La lectura restrictiva de la mesa no es una interpretación reglamentaria legítima, sino la restricción encubierta de un derecho fundamental carente de base normativa. Denuncia la ruptura del deber de coherencia decisoria, con invocación de dos precedentes idénticos, las iniciativas C-356/2023 y C-495/2024, admitidas sin objeción, que generaron una expectativa legítima sobre la estabilidad de los criterios de admisión. Su quiebra sin motivación expresa, individualizada y razonable vulnera los principios de igualdad parlamentaria y de seguridad jurídica (art. 9.3 CE) e incurre en arbitrariedad. Por todo ello, la demanda termina suplicando que se declare la vulneración del derecho de participación política (art. 23 CE, en relación con el art. 9.3 CE), se declare la nulidad de los acuerdos impugnados y se ordene la retroacción de las actuaciones al momento inmediatamente anterior a la inadmisión “para que la mesa dicte una nueva resolución respetuosa con el derecho fundamental vulnerado, tramitando las iniciativas conforme al Reglamento y a la doctrina constitucional, con motivación suficiente y sin controles materiales impeditivos”. Por otrosí digo, al amparo del art. 56 de la Ley Orgánica del Tribunal Constitucional (LOTC), se solicitó la adopción de la medida cautelar consistente en instar a la Asamblea de Madrid a no considerar definitivamente archivadas las iniciativas objeto de este recurso y a mantenerlas en situación susceptible de retroacción para que, en caso de estimación del recurso de amparo, puedan ser calificadas y tramitadas con eficacia durante la presente legislatura”. Por diligencia de ordenación de la Secretaría de Justicia de la Sección Tercera de este tribunal, de 3 de febrero de 2026, se tuvo por recibido el escrito de interposición del recurso de amparo y la documentación adjunta al mismo, indicándose que el recurso se había turnado a la Sala Segunda, Sección Tercera, del Tribunal Constitucional, así como que la ponencia había correspondido al magistrado don César Tolosa Tribiño. Mediante providencia de la Sección Tercera, de 22 de junio de 2026, se acordó la admisión a trámite del presente recurso de amparo, apreciando que concurre en el mismo una especial trascendencia constitucional (art. 50.1 LOTC) porque el asunto suscitado trasciende el caso concreto porque pudiera tener unas consecuencias políticas generales [STC 155/2009, de 25 de junio, FJ 2 g)]. En la misma providencia, en aplicación de lo dispuesto en el art. 51 LOTC, se acordó, por una parte, dirigir atenta comunicación a la Asamblea de Madrid a fin de que, en plazo que no excediera de diez días, remitiera copia de las actuaciones correspondientes a los acuerdos de la Asamblea de Madrid de 3 y 31 de octubre de 2025 y, por otra, formar pieza separada para la tramitación del incidente de suspensión solicitado. Mediante otra providencia de la Sección Tercera, de la misma fecha, se acordó, de conformidad con lo dispuesto en el art. 56 LOTC, conceder un plazo común de tres días al Ministerio Fiscal y al recurrente en amparo para que alegasen lo que estimaran pertinente en relación con la medida cautelar interesada. Mediante escrito presentado el 29 de junio de 2026, la representación procesal de doña Ana María Cuartero Lorenzo y del Grupo Parlamentario Vox de la Asamblea de Madrid solicitó como medida cautelar que se dirigiese requerimiento a la mesa de la Asamblea de Madrid para que no considere definitivamente archivada la iniciativa de comparecencia C-1214-2025 (RGEP 20771-2025), manteniéndola en situación susceptible de retroacción de actuaciones, a fin de que, en caso de estimación del amparo, pueda ser calificada y tramitada con eficacia dentro de la presente legislatura. En su escrito, recuerdan que la tutela cautelar no se agota en la suspensión, sino que pueden adoptarse cuantas medidas cautelares resulten necesarias para asegurar la efectividad del recurso de amparo, así como que la autonomía parlamentaria no puede ser un espacio exento de control constitucional. Consideran que las solicitudes de comparecencia son instrumentos de control vinculados a un momento político determinado, por lo que el mero transcurso del tiempo puede hacer que la comparecencia solicitada pierda su relevancia o actualidad, vaciando de contenido una eventual estimación del recurso de amparo. A juicio de los recurrentes, existe un riesgo cierto y efectivo de que, si no se adopta la medida cautelar, el amparo pierda su finalidad. Además, la posibilidad de reiterar las iniciativas no subsana la lesión del derecho fundamental. También se argumenta que la medida cautelar solicitada no produce una perturbación del normal funcionamiento de la Cámara ni interfiere en la potestad calificadora de la mesa, sino que pretende preservar la posibilidad de retroacción, en caso de estimación del recurso de amparo. El escrito se refiere también a la apariencia de buen derecho, explicando que las funciones de calificación de la mesa no le permiten ejercer un control político o de oportunidad sobre el contenido de las iniciativas, so pena de vulnerar el art. 23 CE. Por escrito registrado el 13 de julio de 2026, el fiscal ante el Tribunal Constitucional se opone al otorgamiento de la medida cautelar interesada. Aduce que la medida cautelar interesada no es necesaria ni idónea para preservar la eficacia de una eventual sentencia estimatoria del recurso de amparo. En caso de estimación, además de declarar vulnerado el derecho fundamental y la nulidad de los acuerdos recurridos, procedería ordenar la retroacción de las actuaciones al momento del dictado de los acuerdos para que la mesa de la Asamblea de Madrid calificase de nuevo las iniciativas de manera respetuosa con el derecho fundamental. Además, la medida consistente en instar a la mesa a que no archive definitivamente las iniciativas supondría adelantar la resolución de las cuestiones controvertidas en el recurso de amparo. Por otro lado, aunque es cierto que si se dicta sentencia agotada la legislatura, la estimación del recurso de amparo únicamente tendría efectos declarativos, la “pérdida de oportunidad política” a que se refieren los recurrentes es un perjuicio hipotético, futuro e incierto en el momento actual, vigente aún la legislatura que concluiría dos meses antes del mes de mayo de 2027. Objeto del presen",
+      "excerptKind": "document_section",
+      "bodyChecksum": "26f3c1236342d84d6bddd98c3aa9499918168dfeba5c101c481f78d0cafde8dd",
+      "checksumAlgorithm": "sha256",
+      "sectionAnchors": [
+        {
+          "kind": "passage",
+          "label": "보존 원문 발췌",
+          "locator": "cleanedText:0-15964",
+          "startOffset": 0,
+          "endOffset": 15964
+        }
+      ],
+      "sourceType": "foreign_constitutional",
+      "sourceKey": "es-tribunal-constitucional",
+      "jurisdiction": "Spain",
+      "jurisdictionCode": "ES",
+      "jurisdictionName": "스페인",
+      "country": "Spain",
+      "countryCode": "ES",
+      "countryName": "스페인",
+      "institutionName": "Tribunal Constitucional de España",
+      "courtName": "Tribunal Constitucional de España",
+      "caseNumber": "53/2026",
+      "legalIdentity": {
+        "documentId": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+        "caseNumber": "53/2026",
+        "court": "Tribunal Constitucional de España",
+        "jurisdiction": "ES"
+      },
+      "contentType": "order",
+      "originalLanguage": "es",
+      "language": "es",
+      "originalPublishedAt": null,
+      "decisionDate": null,
+      "publishedAt": null,
+      "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+      "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+      "officialUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+      "officialUri": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+      "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+      "worldconsUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+      "detailUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+      "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+      "sourceTextUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0/source-text",
+      "updatedAt": "2026-10-11T23:46:03.462Z",
+      "score": null,
+      "tags": [
+        "스페인 헌법재판소",
+        "헌법소원",
+        "가처분",
+        "의회 통제권",
+        "공무담임권",
+        "지방의회",
+        "Reglamento de la Asamblea de Madrid",
+        "Cámara de Cuentas de la Comunidad de Madrid",
+        "medida cautelar",
+        "Grupo Parlamentario Vox",
+        "Spain",
+        "Constitución Española",
+        "Tribunal Constitucional de España",
+        "Asamblea de Madrid",
+        "ius in officium",
+        "Ley Orgánica del Tribunal Constitucional"
+      ],
+      "sourceMetadata": {
+        "sourceTextStatus": "available",
+        "collectionSafety": {
+          "publishable": true
+        },
+        "resolutionType": "AUTO",
+        "caseNumber": "53/2026",
+        "collection": {
+          "strategy": "fetch",
+          "confidence": "high",
+          "sourceUrlVerified": true,
+          "publishable": true,
+          "sourceTextAvailable": true,
+          "strictSourceTextAvailable": true
+        }
+      },
+      "metadata": {
+        "slug": "spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+        "sourceKey": "es-tribunal-constitucional",
+        "sourceType": "foreign_constitutional",
+        "caseNumber": "53/2026",
+        "courtName": "Tribunal Constitucional de España",
+        "jurisdictionCode": "ES",
+        "originalTitle": "AUTO 53/2026",
+        "officialUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+        "officialUri": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+        "excerptKind": "passage",
+        "bodyChecksum": "26f3c1236342d84d6bddd98c3aa9499918168dfeba5c101c481f78d0cafde8dd",
+        "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+        "sourceTextUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0/source-text"
+      },
+      "cleanedText": "El día 1 de febrero de 2026, doña Ana María Cuartero Lorenzo y el Grupo Parlamentario Vox en la Asamblea de Madrid, representados por la procuradora de los tribunales, doña María del Pilar Hidalgo López y bajo la asistencia letrada de doña Marta Asunción Castro Fuertes, interpusieron recurso de amparo núm. 773-2026 contra el acuerdo de la mesa de la Asamblea de 3 octubre de 2025 por el que se inadmitió la solicitud de comparecencia C-1214-2025, con RGEP 20771-2025, y contra el posterior acuerdo de 31 de octubre de 2025 que desestimó el recurso de reconsideración interpuesto contra el anterior.\n\nLos antecedentes relevantes del caso son los siguientes: \na) El día 29 de septiembre de 2025, la diputada del Grupo Parlamentario Vox, doña Ana María Cuartero Lorenzo, con la firma de la portavoz del Grupo, presentó en el registro de la Asamblea de Madrid la solicitud de comparecencia C-1214-2025, cuyo tenor literal es el siguiente: \n“Dña. Ana María Cuartero Lorenzo, diputada del Grupo Parlamentario Vox en Madrid, solicita la comparecencia del presidente de la Cámara de Cuentas ante la Comisión de Presupuestos y Hacienda sobre informe o memoria de la función fiscalizadora, según los artículos 236 (así como 70 y 210) del Reglamento de la Cámara, al objeto de: \nEn relación con el Programa de fiscalizaciones de la Cámara de Cuentas de la Comunidad de Madrid para el año 2025”. \nb) La mesa de la Asamblea, en reunión celebrada el 3 de octubre de 2025, acordó no admitir a trámite la iniciativa presentada, en los siguientes términos: \n“Acuerdo: La mesa, en virtud de lo previsto por el artículo 49.1 c) del Reglamento de la Asamblea, acuerda su no admisión a trámite por no llamar a comparecer al señor presidente de la Cámara de Cuentas de la Comunidad de Madrid por el ejercicio de la función fiscalizadora de la Cámara de Cuentas en los términos del artículo 236 del Reglamento y su devolución al grupo parlamentario autor de la misma por si estimara oportuno presentar una nueva iniciativa en los términos prescritos reglamentariamente”. \nc) La recurrente en amparo, con el visto bueno del Grupo Parlamentario Vox, presentó el 16 de octubre de 2025 una solicitud de reconsideración del acuerdo de la mesa, en la que reprochaba, en primer término, que la inadmisión desbordaba la función de calificación que reglamentariamente corresponde a la mesa —ceñida a un control de estricta legalidad formal— al haber entrado a valorar el fondo y la oportunidad de la iniciativa, con la consiguiente lesión del derecho de participación política del art. 23.2 CE y del ius in officium inherente al cargo representativo y el principio de interpretación más favorable al ejercicio del derecho. \nAlegaba que el propio acuerdo de la mesa de 8 de junio de 2000 (RGSP 2066) circunscribe el cometido de la mesa a un control formal de conformidad a Derecho, de suerte que cualquier enjuiciamiento del contenido o fondo de la iniciativa excede sus competencias y constituye una extralimitación proscrita por el Tribunal Constitucional. \nSostenía el correcto encaje reglamentario de la comparecencia en el art. 236 del Reglamento de la Asamblea de Madrid (RAM), en relación con los arts. 70 y 210 del mismo texto, sobre la base de que el Programa de fiscalizaciones no es una fiscalización concreta sino un instrumento de planificación anual, de manera que la comparecencia no interfiere en el ejercicio de la función fiscalizadora, sino que garantiza el conocimiento parlamentario y la transparencia de su programación. \nAducía la existencia de precedentes que acreditan una práctica consolidada y pacífica —las comparecencias C-356-2023 (RGEP 13106-2023) y C-495-2024 (RGEP 6335-2024), ambas admitidas y celebradas—, de modo que el rechazo de la C-1214-2025 supondría un cambio de criterio arbitrario y carente de motivación, contrario a la igualdad de trato entre diputados (art. 14 CE) y a la seguridad jurídica (art. 9.3 CE). \nArgüía el carácter no fiscalizador del programa a la luz del art. 1 de la Ley",
+      "contentHash": "26f3c1236342d84d6bddd98c3aa9499918168dfeba5c101c481f78d0cafde8dd",
+      "textPage": {
+        "offset": 0,
+        "limit": 4000,
+        "returnedChars": 4000,
+        "totalChars": 21842,
+        "hasMore": true,
+        "nextOffset": 4000
+      }
+    },
+    "at": "2026-10-12T05:41:41.830Z"
+  },
+  {
+    "url": "https://worldcons.cclib.workers.dev/api/cclrag2/search?q=53%2F2026&mode=fulltext&source=es-tribunal-constitucional&pageSize=20&count=none",
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "contractVersion": "2.0",
+      "schemaVersion": 1,
+      "requestId": "90d2b1ea-99ae-4e66-8231-c0fca663539b",
+      "query": "53/2026",
+      "service": "worldcons",
+      "transport": "cloudflare-worker",
+      "mode": "fulltext",
+      "requestedMode": "fulltext",
+      "effectiveMode": "fulltext",
+      "degraded": false,
+      "databaseRetrievalMode": "exact-case",
+      "items": [
+        {
+          "id": "a643203c-c5f5-4781-b87f-cc7737b39432",
+          "slug": "spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+          "providerId": "worldcons",
+          "authorityLevel": "persuasive",
+          "title": "스페인 헌법재판소, 카탈루냐 주정부가 제기한 주거권법 관련 위헌심판 청구 사건 심리 개시 및 쟁점 검토",
+          "koreanTitle": "스페인 헌법재판소, 카탈루냐 주정부가 제기한 주거권법 관련 위헌심판 청구 사건 심리 개시 및 쟁점 검토",
+          "originalTitle": "SENTENCIA 53/2026",
+          "summary": "카탈루냐 주정부는 국가 법률인 '주거권법(Ley 12/2023)'의 다수 조항이 자치지역의 주거 및 도시계획 독점 권한을 침해한다는 이유로 헌법재판소에 위헌심판을 청구했습니다. 주정부 측은 주거 공공정책의 목적 설정, 주거 보조금 기획 및 집행, 보호주택 및 긴장주거지역 규정, 공공주택단지 운용 및 제재금 용도 강제 등이 자치권과 재정자율성을 침해한다고 주장했습니다. 스페인 정부 대리인은 해당 법률이 헌법상 재산권의 사회적 기능 및 국민의 동등한 주거권 행사를 보장하기 위한 국가의 기본적 조건 설정(헌법 제149조 제1항 제1호) 및 경제계획 조정 권한에 부합한다고 반박했습니다.",
+          "snippet": "카탈루냐 주정부는 국가 법률인 '주거권법(Ley 12/2023)'의 다수 조항이 자치지역의 주거 및 도시계획 독점 권한을 침해한다는 이유로 헌법재판소에 위헌심판을 청구했습니다. 주정부 측은 주거 공공정책의 목적 설정, 주거 보조금 기획 및 집행, 보호주택 및 긴장주거지역 규정, 공공주택단지 운용 및 제재금 용도 강제 등이 자치권과 재정자율성을 침해한다고 주장했습니다. 스페인 정부 대리인은 해당 법률이 헌법상 재산권의 사회적 기능 및 국민의 동등한 주거권 행사를 보장하기 위한 국가의 기본적 조건 설정(헌법 제149조 제1항 제1호) 및 경제계획 조정 권한에 부합한다고 반박했습니다. 2023년 5월 스페인 중앙정부는 전 국가적인 주거 불안정과 주거권 보장을 목적으로 '주거권법(Ley 12/2023)'을 제정·공포했습니다. 이에 대해 카탈루냐 주정부는 해당 법률의 광범위한 조항들이 헌법과 카탈루냐 자치헌장에 의해 자치정부의 배타적 권한으로 유보된 주거, 도시계획, 국토관리 권한을 실질적으로 침해하고 재정 자율성을 제한한다고 보아 2024년 2월 헌법재판소에 위헌심판(recurso de inconstitucionalidad)을 청구했습니다. 본 사건은 스페인 중앙정부의 국가 단위 주거 복지 및 시장 규제 권한과 자치공동체(Comunidad Autónoma)의 헌법상 배타적 권한(주거 및 도시계획) 사이의 한계를 획정하는 중대한 헌법적 선례가 됩니다. 국가가 '권리 행사의 기본적 조건'을 명분으로 어느 정도까지 구체적인 주거 정책, 임대 규제, 보조금 관리 체계를 통일적으로 입법할 수 있는지가 핵심 심사 대상입니다.…",
+          "oneLineSummary": "카탈루냐 주정부는 국가 법률인 '주거권법(Ley 12/2023)'의 다수 조항이 자치지역의 주거 및 도시계획 독점 권한을 침해한다는 이유로 헌법재판소에 위헌심판을 청구했습니다.",
+          "summaryJson": {
+            "koreanTitle": "스페인 헌법재판소, 카탈루냐 주정부가 제기한 주거권법 관련 위헌심판 청구 사건 심리 개시 및 쟁점 검토",
+            "originalTitle": "SENTENCIA 53/2026",
+            "summary": {
+              "coreSummary": [
+                "카탈루냐 주정부는 국가 법률인 '주거권법(Ley 12/2023)'의 다수 조항이 자치지역의 주거 및 도시계획 독점 권한을 침해한다는 이유로 헌법재판소에 위헌심판을 청구했습니다.",
+                "주정부 측은 주거 공공정책의 목적 설정, 주거 보조금 기획 및 집행, 보호주택 및 긴장주거지역 규정, 공공주택단지 운용 및 제재금 용도 강제 등이 자치권과 재정자율성을 침해한다고 주장했습니다.",
+                "스페인 정부 대리인은 해당 법률이 헌법상 재산권의 사회적 기능 및 국민의 동등한 주거권 행사를 보장하기 위한 국가의 기본적 조건 설정(헌법 제149조 제1항 제1호) 및 경제계획 조정 권한에 부합한다고 반박했습니다."
+              ],
+              "referencedProvisions": [
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Constitución Española",
+                  "article": "Artículo 148.1.3",
+                  "description": "자치공동체가 인수할 수 있는 자치권 범위로서의 국토계획, 도시계획 및 주거에 관한 권한 규정",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Constitución Española",
+                  "article": "Artículo 149.1.1",
+                  "description": "헌법상 권리 행사와 의무 이행에 관한 모든 스페인 국민의 평등을 보장하는 기본적 조건의 규율에 대한 국가 독점 권한",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Constitución Española",
+                  "article": "Artículo 149.1.13",
+                  "description": "일반 경제활동 계획의 기초 및 조정에 관한 국가 독점 권한",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Constitución Española",
+                  "article": "Artículo 47",
+                  "description": "모든 스페인 국민의 적정하고 안락한 주거를 누릴 권리 및 이를 위한 공공당국의 의무를 명시한 지도원칙",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Ley 12/2023, de 24 de mayo, por el derecho a la vivienda",
+                  "article": "Artículo 2",
+                  "description": "주거에 관한 공공정책의 목적들을 상세하게 열거하여 자치권 침해 논란의 대상이 된 규정",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Estatuto de Autonomía de Cataluña",
+                  "article": "Artículo 137",
+                  "description": "카탈루냐 주정부의 주거 분야에 대한 배타적·독점적 권한을 규정한 자치헌장 조항",
+                  "confidence": "high"
+                }
+              ],
+              "background": "2023년 5월 스페인 중앙정부는 전 국가적인 주거 불안정과 주거권 보장을 목적으로 '주거권법(Ley 12/2023)'을 제정·공포했습니다. 이에 대해 카탈루냐 주정부는 해당 법률의 광범위한 조항들이 헌법과 카탈루냐 자치헌장에 의해 자치정부의 배타적 권한으로 유보된 주거, 도시계획, 국토관리 권한을 실질적으로 침해하고 재정 자율성을 제한한다고 보아 2024년 2월 헌법재판소에 위헌심판(recurso de inconstitucionalidad)을 청구했습니다.",
+              "caseStructure": "청구인은 카탈루냐 주정부 법무팀이며, 피청구 성격의 방어자는 스페인 정부를 대리하는 국가변호사(Abogado del Estado)입니다. 헌법재판소 전원재판부는 심판청구를 적법하게 접수하여 의회(하원 및 상원)와 정부에 통지하였고, 정부 측은 법률의 목적이 헌법 제149조 제1항 제1호(권리 행사의 기본적 평등 보장) 및 제13호(경제 조정)에 근거한 합헌적 입법이라며 기각을 요청하는 의견서를 제출했습니다.",
+              "implications": "본 사건은 스페인 중앙정부의 국가 단위 주거 복지 및 시장 규제 권한과 자치공동체(Comunidad Autónoma)의 헌법상 배타적 권한(주거 및 도시계획) 사이의 한계를 획정하는 중대한 헌법적 선례가 됩니다. 국가가 '권리 행사의 기본적 조건'을 명분으로 어느 정도까지 구체적인 주거 정책, 임대 규제, 보조금 관리 체계를 통일적으로 입법할 수 있는지가 핵심 심사 대상입니다.",
+              "practicalNotes": "제공된 원문 텍스트는 판결의 도입부 및 양 당사자(카탈루냐 주정부 및 국가변호사)의 쟁점별 주장 중 일부에서 중단되어 최종 주문과 재판관의 법리가 포함되어 있지 않습니다. 따라서 최종 위헌 여부 판시 내용은 완결된 결정문 전문을 통해 추가 확인이 필요합니다."
+            },
+            "entities": [
+              {
+                "name": "Tribunal Constitucional de España",
+                "type": "court",
+                "normalizedName": "스페인 헌법재판소"
+              },
+              {
+                "name": "Generalitat de Catalunya",
+                "type": "party",
+                "normalizedName": "카탈루냐 주정부"
+              },
+              {
+                "name": "Abogado del Estado",
+                "type": "party",
+                "normalizedName": "스페인 국가변호사"
+              },
+              {
+                "name": "Ley 12/2023, de 24 de mayo, por el derecho a la vivienda",
+                "type": "law",
+                "normalizedName": "스페인 주거권법(법률 제12/2023호)"
+              },
+              {
+                "name": "Constitución Española",
+                "type": "law",
+                "normalizedName": "스페인 헌법"
+              },
+              {
+                "name": "Estatuto de Autonomía de Cataluña",
+                "type": "law",
+                "normalizedName": "카탈루냐 자치헌장"
+              },
+              {
+                "name": "Derecho a la vivienda",
+                "type": "right",
+                "normalizedName": "주거권"
+              },
+              {
+                "name": "Función social de la propiedad",
+                "type": "doctrine",
+                "normalizedName": "재산권의 사회적 기능"
+              },
+              {
+                "name": "Recurso de inconstitucionalidad",
+                "type": "procedure",
+                "normalizedName": "위헌심판"
+              }
+            ],
+            "tags": [
+              "스페인 헌법재판소",
+              "주거권법",
+              "카탈루냐",
+              "권한분장",
+              "위헌소송",
+              "도시계획",
+              "지방자치"
+            ],
+            "categories": [
+              "헌법소송",
+              "권한쟁의 및 권한분장",
+              "기본권",
+              "행정 및 부동산법"
+            ],
+            "riskFlags": [
+              "source_text_incomplete"
+            ],
+            "aiMetadata": {
+              "provider": "gemini",
+              "model": "gemini-3.8-flash",
+              "generatedAt": "2026-10-12T01:31:06.365Z"
+            }
+          },
+          "bodyExcerpt": "Mediante escrito presentado en el registro de este tribunal el día 23 de febrero de 2024, la abogada de la Generalitat de Catalunya, actuando en representación y defensa del Gobierno autonómico, interpuso recurso de inconstitucionalidad contra los arts. 2, letras c), d), e), f), g), h), i), j), m), n), o), p), q), r) y s); 12; 15, apartados 1 d) y 4; 16; 17; 18, apartados 1, 4, 5 y 6; 23; 24; 27.1, párrafo tercero; 27.2 y 27.3; 28 y 29; las disposiciones transitorias primera, párrafo segundo, y segunda, y la disposición final séptima, apartado primero, de la Ley 12/2023, de 24 de mayo, por el derecho a la vivienda. Esta ley fue publicada en el “Boletín Oficial del Estado” núm. 124, de 25 de mayo de 2023. El recurso de inconstitucionalidad centra mayoritariamente sus quejas en la vulneración de la distribución constitucional de competencias entre el Estado y las comunidades autónomas en materia de ordenación del territorio, urbanismo y vivienda [art. 148.1.3 CE, en relación con los arts. 149.1.1 y 13 CE, y 137 y 149.5 de la Ley Orgánica 6/2006, de 19 de julio, de reforma del Estato de Autonomía de Cataluña (EAC)]. Dicha impugnación se dirige contra los preceptos citados supra. Algunos de estos artículos son también recurridos por otros motivos de diversa naturaleza: así, por infracción de los principios de autonomía financiera y de gasto (arts. 201.2 y 202.2 EAC) en el caso del art. 27.3 de la Ley 12/2023 y, en relación con este, la disposición transitoria primera, párrafo segundo, de la misma ley. Por su parte, otros se vinculan con la competencia que el art. 159.1 c) EAC atribuye a la Generalitat de Catalunya para establecer las normas de procedimiento que derivan de las particularidades del Derecho sustantivo o, en fin, con la actividad subvencional y de fomento (art. 114.2 EAC), en el caso de los arts. 12, 18.5 y 6, 23 y 24 de la Ley 12/2023. Siguiendo, pues, en lo sustancial, el orden expositivo empleado por la recurrente, pueden sintetizarse las tachas de inconstitucionalidad contempladas en la demanda de la siguiente manera: a) Comenzando por el art. 2, letras c), d), e), f), g), h), i), j), m), n), o), p), q), r) y s) de la Ley 12/2023, de 24 de mayo, argumenta la recurrente que el referido precepto, en el que se establecen los fines de las políticas públicas de vivienda, detalla hasta veinte finalidades [de la letra a) hasta la s)]. Añadiendo, con cita del art. 137 EAC, en relación con el art. 110.1 EAC, que en Cataluña solo la Generalitat es competente para establecer las finalidades de las políticas públicas en materia de vivienda. De hecho, razona, así lo hizo el art. 2 de la Ley del Parlamento de Cataluña 18/2007, de 28 de diciembre, del derecho a la vivienda, en términos parecidos a los de la norma estatal que se impugna. Refiere que también puede afectar a la competencia en materia de urbanismo, reconocida en el art. 149.5 EAC. Dicho esto, la recurrente rechaza que dichas finalidades “comunes” puedan estar amparadas por algún título competencial estatal y, más concretamente, por los del art. 149.1.1 y 149.1.13 CE, que es el invocado en la disposición final séptima, apartado primero, de la Ley 12/2023. En efecto, descartado el encaje que podría brindarles el art. 149.1.13 CE (puesto que ninguna de ellas contiene medidas de carácter económico), la recurrente examina cada letra separadamente a efectos de comprobar si tienen amparo en el art. 149.1.1 CE. Y, como se ha adelantado, cuestiona las letras mencionadas [c), d), e), f), g), h), i), j), m), n), o), p), q), r) y s)] por las siguientes razones que ahora veremos, aunque respecto de todas ellas adelanta que las finalidades contempladas en el art. 2 de la Ley 12/2023 no regulan las condiciones básicas de derecho alguno, sino que formulan un mandato a las comunidades autónomas que prefigura el modelo de las políticas públicas que estas deben llevar a cabo y por tanto, condiciona su facultad para establecer políticas propias en un sector material sobre el que t",
+          "excerptKind": "passage",
+          "bodyChecksum": "ffbfd01a450a87015638a3682334dbfd7b3580f9527af5eab6e8cb8ea8d5bf02",
+          "checksumAlgorithm": "sha256",
+          "sectionAnchors": [
+            {
+              "kind": "passage",
+              "label": "보존 원문 발췌",
+              "locator": "cleanedText:0-3995",
+              "startOffset": 0,
+              "endOffset": 3995
+            }
+          ],
+          "sourceType": "foreign_constitutional",
+          "sourceKey": "es-tribunal-constitucional",
+          "jurisdiction": "Spain",
+          "jurisdictionCode": "ES",
+          "jurisdictionName": "스페인",
+          "country": "Spain",
+          "countryCode": "ES",
+          "countryName": "스페인",
+          "institutionName": "Tribunal Constitucional de España",
+          "courtName": "Tribunal Constitucional de España",
+          "caseNumber": "53/2026",
+          "legalIdentity": {
+            "documentId": "a643203c-c5f5-4781-b87f-cc7737b39432",
+            "caseNumber": "53/2026",
+            "court": "Tribunal Constitucional de España",
+            "jurisdiction": "ES"
+          },
+          "contentType": "decision",
+          "originalLanguage": "es",
+          "language": "es",
+          "originalPublishedAt": null,
+          "decisionDate": null,
+          "publishedAt": null,
+          "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+          "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+          "officialUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+          "officialUri": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+          "worldconsUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+          "detailUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+          "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+          "sourceTextUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08/source-text",
+          "updatedAt": "2026-10-12T01:31:06.571Z",
+          "score": null,
+          "tags": [
+            "스페인 헌법재판소",
+            "주거권법",
+            "카탈루냐",
+            "권한분장",
+            "위헌소송",
+            "도시계획",
+            "지방자치",
+            "Constitución Española",
+            "Ley 12/2023, de 24 de mayo, por el derecho a la vivienda",
+            "Función social de la propiedad",
+            "위헌심판",
+            "Estatuto de Autonomía de Cataluña",
+            "주거권",
+            "Tribunal Constitucional de España",
+            "Abogado del Estado",
+            "Generalitat de Catalunya"
+          ],
+          "sourceMetadata": {
+            "auxiliaryMetadata": {
+              "resumenLength": 952,
+              "sintesisAnalitica": "Competencias en materia de ordenación del territorio, urbanismo y vivienda: pérdida parcial de objeto del proceso en cuanto afecta a preceptos legales ya enjuiciados en las SSTC 79/2024, de 21 de mayo; 26/2025, de 29 de enero; 190/2025, de 16 de diciembre; 17/2026, de 24 de febrero, y 41/2026, de 26 de mayo; constitucionalidad de los preceptos legales relativos a la actividad planificadora del Estado en materia de subvenciones de vivienda. Voto particular.",
+              "sintesisDescriptiva": "Interpuesto por el Gobierno de la Generalitat de Cataluña en relación con diversos preceptos de la Ley 12/2023, de 24 de mayo, por el derecho a la vivienda."
+            },
+            "boeNumber": "188",
+            "boePublishedAt": "2026-08-03",
+            "boeUrl": "https://www.boe.es/buscar/doc.php?id=BOE-A-2026-16928",
+            "boeUsedForFiltering": false,
+            "canonicalSourceUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+            "caseNumber": "53/2026",
+            "cleanedTextSha256": "8d6ac0cfdd3182cfec7d42103255183290e43d6dba37ded8a3b2ee4e4bbcb273",
+            "collection": {
+              "confidence": "high",
+              "diagnosticsId": "104ef1a5-9730-4083-a75d-da4f5e3bd58e",
+              "publishable": true,
+              "source": "https://hj.tribunalconstitucional.es",
+              "sourceTextAvailable": true,
+              "sourceTextPolicy": "strict",
+              "sourceUrlVerified": true,
+              "strategy": "fetch",
+              "strictSourceTextAvailable": true
+            },
+            "collectionSafety": {
+              "contenidoIrrelevanteParaInternet": false,
+              "publishable": true
+            },
+            "dateBasis": "FECHA_REGISTRO",
+            "dateBasisLabel": "HJ FECHA_REGISTRO (decision date)",
+            "datePrecision": "date",
+            "dateValidation": {
+              "checks": [
+                {
+                  "matches": true,
+                  "source": "FECHA_REGISTRO",
+                  "value": "2026-07-08"
+                },
+                {
+                  "matches": true,
+                  "source": "FECHA_FIRMA",
+                  "value": "2026-07-08"
+                },
+                {
+                  "matches": true,
+                  "source": "html_title_date",
+                  "value": "2026-07-08"
+                }
+              ],
+              "ok": true,
+              "warnings": []
+            },
+            "decisionDate": "2026-07-08",
+            "dedupKeys": {
+              "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+              "textPrefixHash": "d64937bde844e00c",
+              "titleDateHash": "97e48ea455fd9334"
+            },
+            "ecli": "ECLI:ES:TC:2026:53",
+            "ecliDerived": true,
+            "externalId": "es-tc-hj-32120",
+            "fetchMethod": "json_api",
+            "hjId": "32120",
+            "jsonApiUrl": "https://hj.tribunalconstitucional.es/HJ/Resolucion/Api/json/32120",
+            "latestUpdatedAt": "2026-09-24",
+            "metadataSha256": "8b6f04131e3ede7e63db9490505bdfe86cca8cf0d129b2d922df1f439c01aeed",
+            "parseConfidence": "high",
+            "previousContentHash": "7a29c5833f5002d5eae8351a2216ca86",
+            "publishedAtSource": "FECHA_REGISTRO",
+            "rawTextSha256": "8d6ac0cfdd3182cfec7d42103255183290e43d6dba37ded8a3b2ee4e4bbcb273",
+            "referenceBoe": "BOE-A-2026-16928",
+            "refreshedFromOfficialAt": "2026-09-26T03:53:09.420Z",
+            "resolutionNumber": "53/2026",
+            "resolutionType": "SENTENCIA",
+            "resolutionYear": 2026,
+            "sections": [
+              {
+                "key": "RESOLUCIONES_CABECERA",
+                "label": "Cabecera",
+                "substantive": false,
+                "textLength": 1163
+              },
+              {
+                "key": "RESOLUCIONES_ANTECEDENTES",
+                "label": "Antecedentes",
+                "substantive": true,
+                "textLength": 63268
+              },
+              {
+                "key": "RESOLUCIONES_FUNDAMENTOS",
+                "label": "Fundamentos jurídicos",
+                "substantive": true,
+                "textLength": 36323
+              },
+              {
+                "key": "RESOLUCIONES_DICTAMEN",
+                "label": "Fallo/Dictamen",
+                "substantive": true,
+                "textLength": 472
+              },
+              {
+                "key": "RESOLUCIONES_VOTOS_PARTICULARES",
+                "label": "Votos particulares",
+                "substantive": true,
+                "textLength": 7886
+              },
+              {
+                "key": "RESOLUCIONES_PIE",
+                "label": "Pie",
+                "substantive": false,
+                "textLength": 116
+              }
+            ],
+            "sourceTextAvailable": true,
+            "sourceTextQuality": {
+              "cleanedTextLength": 109351,
+              "hasSubstantiveSection": true,
+              "minLength": 2000,
+              "substantiveSections": [
+                "RESOLUCIONES_ANTECEDENTES",
+                "RESOLUCIONES_FUNDAMENTOS",
+                "RESOLUCIONES_DICTAMEN",
+                "RESOLUCIONES_VOTOS_PARTICULARES"
+              ]
+            },
+            "sourceTextStatus": "available",
+            "discoveryIndex": "official-search",
+            "ingestion": {
+              "runId": "104ef1a5-9730-4083-a75d-da4f5e3bd58e",
+              "crawler": "worldcons-ingest-native-v1",
+              "fetchedAt": "2026-10-08T21:03:31.787Z"
+            }
+          },
+          "metadata": {
+            "slug": "spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+            "sourceKey": "es-tribunal-constitucional",
+            "sourceType": "foreign_constitutional",
+            "caseNumber": "53/2026",
+            "courtName": "Tribunal Constitucional de España",
+            "jurisdictionCode": "ES",
+            "originalTitle": "SENTENCIA 53/2026",
+            "officialUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+            "officialUri": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32120",
+            "excerptKind": "passage",
+            "bodyChecksum": "ffbfd01a450a87015638a3682334dbfd7b3580f9527af5eab6e8cb8ea8d5bf02",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08",
+            "sourceTextUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-2026-07-08-sentencia-532026-2026-07-08-f79e08/source-text"
+          }
+        },
+        {
+          "id": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+          "providerId": "worldcons",
+          "authorityLevel": "persuasive",
+          "title": "스페인 헌법재판소, 마드리드 자치회 감사원장 출석요구 각하 관련 효력정지 등 가처분 신청 기각",
+          "koreanTitle": "스페인 헌법재판소, 마드리드 자치회 감사원장 출석요구 각하 관련 효력정지 등 가처분 신청 기각",
+          "originalTitle": "AUTO 53/2026",
+          "summary": "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다. 청구인들은 출석요구 안건을 영구 폐기하지 말고 의회 임기 내에 소급 심사할 수 있도록 보존해 달라는 가처분을 신청했으나, 헌법재판소는 이를 인용할 경우 본안 판단을 사전에 예단하는 결과를 초래한다고 판단했다. 헌법재판소는 본안 심리에서 헌법소원이 인용되면 각하 처분 직전 단계로의 원상회복(절차 소급) 명령이 가능하므로 가처분을 기각하더라도 청구 목적이 상실되지 않는다고 판시했다.",
+          "snippet": "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다. 청구인들은 출석요구 안건을 영구 폐기하지 말고 의회 임기 내에 소급 심사할 수 있도록 보존해 달라는 가처분을 신청했으나, 헌법재판소는 이를 인용할 경우 본안 판단을 사전에 예단하는 결과를 초래한다고 판단했다. 헌법재판소는 본안 심리에서 헌법소원이 인용되면 각하 처분 직전 단계로의 원상회복(절차 소급) 명령이 가능하므로 가처분을 기각하더라도 청구 목적이 상실되지 않는다고 판시했다. 마드리드 자치단체의회(Asamblea de Madrid) 소속 Vox 원내교섭단체와 소속 의원은 2025년도 감사계획 청취를 위해 마드리드 회계감사원장의 위원회 출석을 요구했으나, 의회 의장단(Mesa)은 당해 발의가 규정된 회계감사 기능 수행에 관한 출석 요건을 갖추지 못했다며 접수를 거부하고 이의신청도 기각했다. 이에 청구인들은 의장단이 형식적 요건 심사를 넘어 실질적 타당성이나 기회를 판단함으로써 헌법 제23조가 보장하는 의원직 수행권(ius in officium)을 침해했다며 헌법소원을 제기하고, 당해 안건이 폐기되지 않도록 임시 조치를 취해줄 것을 신청했다. 의회 의장단의 의사결정이나 안건 각하 행위에 대해 헌법소원을 제기하면서 신청하는 잠정조치는 본안의 주문 내용을 사전에 확정해 주는 효과를 내서는 안 된다는 기존 헌법 판례 법리를 재확인했다. 또한 의원의 통제권 행사 시한과 관련된 정치적 기회의 일실 주…",
+          "oneLineSummary": "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다.",
+          "summaryJson": {
+            "koreanTitle": "스페인 헌법재판소, 마드리드 자치회 감사원장 출석요구 각하 관련 효력정지 등 가처분 신청 기각",
+            "originalTitle": "AUTO 53/2026",
+            "summary": {
+              "coreSummary": [
+                "스페인 헌법재판소는 마드리드 자치단체의회 의장단이 회계감사원장의 위원회 출석 요구를 각하한 결정에 불복하여 제기된 헌법소원(recurso de amparo) 절차에서, 청구인들이 신청한 가처분을 기각하는 결정을 내렸다.",
+                "청구인들은 출석요구 안건을 영구 폐기하지 말고 의회 임기 내에 소급 심사할 수 있도록 보존해 달라는 가처분을 신청했으나, 헌법재판소는 이를 인용할 경우 본안 판단을 사전에 예단하는 결과를 초래한다고 판단했다.",
+                "헌법재판소는 본안 심리에서 헌법소원이 인용되면 각하 처분 직전 단계로의 원상회복(절차 소급) 명령이 가능하므로 가처분을 기각하더라도 청구 목적이 상실되지 않는다고 판시했다."
+              ],
+              "referencedProvisions": [
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Constitución Española",
+                  "article": "Art. 23",
+                  "description": "국민의 공무담임권 및 대표자로서의 정치 참여권(ius in officium)을 보장하는 헌법 규정",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Ley Orgánica del Tribunal Constitucional",
+                  "article": "Art. 56",
+                  "description": "헌법소원 심판 절차에서 본안의 목적 상실을 방지하기 위한 집행정지 및 기타 잠정조치(가처분)에 관한 규정",
+                  "confidence": "high"
+                },
+                {
+                  "jurisdiction": "Spain",
+                  "lawName": "Reglamento de la Asamblea de Madrid",
+                  "article": "Art. 236",
+                  "description": "마드리드 자치단체의회 상임위원회에 대한 회계감사원장의 출석 보고 및 관련 절차를 정한 규정",
+                  "confidence": "high"
+                }
+              ],
+              "background": "마드리드 자치단체의회(Asamblea de Madrid) 소속 Vox 원내교섭단체와 소속 의원은 2025년도 감사계획 청취를 위해 마드리드 회계감사원장의 위원회 출석을 요구했으나, 의회 의장단(Mesa)은 당해 발의가 규정된 회계감사 기능 수행에 관한 출석 요건을 갖추지 못했다며 접수를 거부하고 이의신청도 기각했다. 이에 청구인들은 의장단이 형식적 요건 심사를 넘어 실질적 타당성이나 기회를 판단함으로써 헌법 제23조가 보장하는 의원직 수행권(ius in officium)을 침해했다며 헌법소원을 제기하고, 당해 안건이 폐기되지 않도록 임시 조치를 취해줄 것을 신청했다.",
+              "caseStructure": "청구인은 본안 판결 전까지 해당 발의가 종국적으로 폐기 처리되지 않도록 마드리드 의회 의장단에 조치를 명하는 가처분을 구했다. 이에 대해 검찰청(Ministerio Fiscal)은 가처분 신청 인용이 본안 결정을 선취하는 것이며 사후 취소 판결로도 권리구제가 가능하다고 반대했다. 헌법재판소 제2부 제3과는 헌법재판소유기법(LOTC) 제56조의 예외적 보전처분 요건을 검토하여, 가처분 인용이 본안 판단을 미리 앞당기는 부당한 결과를 낳고 단순한 시간 경과는 본안 목적 상실의 직접적 사유가 되지 않는다는 이유로 기각을 결정했다.",
+              "implications": "의회 의장단의 의사결정이나 안건 각하 행위에 대해 헌법소원을 제기하면서 신청하는 잠정조치는 본안의 주문 내용을 사전에 확정해 주는 효과를 내서는 안 된다는 기존 헌법 판례 법리를 재확인했다. 또한 의원의 통제권 행사 시한과 관련된 정치적 기회의 일실 주장만으로는 가처분 발령의 보전 필요성이 인정되기 어려우며, 위헌 판결 시의 절차 소급(retroacción) 가능성이 충분한 구제 수단으로 기능한다는 점을 명확히 했다.",
+              "practicalNotes": "의회 활동과 관련된 헌법소원에서 임시 보전처분을 이끌어내기 위해서는 집행에 따른 회복하기 어려운 중대한 손해를 입증해야 하며, 본안에서 다투는 처분의 효력을 잠정조치 단계에서 사실상 무력화하거나 본안 판결을 선취하려는 형태의 가처분 신청은 배척될 가능성이 매우 높다는 점을 시사한다."
+            },
+            "entities": [
+              {
+                "name": "Tribunal Constitucional de España",
+                "type": "court",
+                "normalizedName": "스페인 헌법재판소"
+              },
+              {
+                "name": "España",
+                "type": "country",
+                "normalizedName": "스페인"
+              },
+              {
+                "name": "Constitución Española",
+                "type": "law",
+                "normalizedName": "스페인 헌법"
+              },
+              {
+                "name": "Ley Orgánica del Tribunal Constitucional",
+                "type": "law",
+                "normalizedName": "스페인 헌법재판소유기법"
+              },
+              {
+                "name": "Reglamento de la Asamblea de Madrid",
+                "type": "law",
+                "normalizedName": "마드리드 자치단체의회 규칙"
+              },
+              {
+                "name": "Asamblea de Madrid",
+                "type": "institution",
+                "normalizedName": "마드리드 자치단체의회"
+              },
+              {
+                "name": "Cámara de Cuentas de la Comunidad de Madrid",
+                "type": "institution",
+                "normalizedName": "마드리드 자치주 회계감사원"
+              },
+              {
+                "name": "Grupo Parlamentario Vox",
+                "type": "party",
+                "normalizedName": "복스(Vox) 의원단"
+              },
+              {
+                "name": "ius in officium",
+                "type": "doctrine",
+                "normalizedName": "공무담임권(의원직 수행권)"
+              },
+              {
+                "name": "medida cautelar",
+                "type": "procedure",
+                "normalizedName": "가처분(잠정조치)"
+              },
+              {
+                "name": "recurso de amparo",
+                "type": "case_type",
+                "normalizedName": "헌법소원"
+              }
+            ],
+            "tags": [
+              "스페인 헌법재판소",
+              "헌법소원",
+              "가처분",
+              "의회 통제권",
+              "공무담임권",
+              "지방의회"
+            ],
+            "categories": [
+              "헌법소송",
+              "의회법",
+              "기본권"
+            ],
+            "riskFlags": [],
+            "aiMetadata": {
+              "provider": "gemini",
+              "model": "gemini-3.8-flash",
+              "generatedAt": "2026-10-11T23:46:03.197Z"
+            }
+          },
+          "bodyExcerpt": "El día 1 de febrero de 2026, doña Ana María Cuartero Lorenzo y el Grupo Parlamentario Vox en la Asamblea de Madrid, representados por la procuradora de los tribunales, doña María del Pilar Hidalgo López y bajo la asistencia letrada de doña Marta Asunción Castro Fuertes, interpusieron recurso de amparo núm. 773-2026 contra el acuerdo de la mesa de la Asamblea de 3 octubre de 2025 por el que se inadmitió la solicitud de comparecencia C-1214-2025, con RGEP 20771-2025, y contra el posterior acuerdo de 31 de octubre de 2025 que desestimó el recurso de reconsideración interpuesto contra el anterior. Los antecedentes relevantes del caso son los siguientes: a) El día 29 de septiembre de 2025, la diputada del Grupo Parlamentario Vox, doña Ana María Cuartero Lorenzo, con la firma de la portavoz del Grupo, presentó en el registro de la Asamblea de Madrid la solicitud de comparecencia C-1214-2025, cuyo tenor literal es el siguiente: “Dña. Ana María Cuartero Lorenzo, diputada del Grupo Parlamentario Vox en Madrid, solicita la comparecencia del presidente de la Cámara de Cuentas ante la Comisión de Presupuestos y Hacienda sobre informe o memoria de la función fiscalizadora, según los artículos 236 (así como 70 y 210) del Reglamento de la Cámara, al objeto de: En relación con el Programa de fiscalizaciones de la Cámara de Cuentas de la Comunidad de Madrid para el año 2025”. b) La mesa de la Asamblea, en reunión celebrada el 3 de octubre de 2025, acordó no admitir a trámite la iniciativa presentada, en los siguientes términos: “Acuerdo: La mesa, en virtud de lo previsto por el artículo 49.1 c) del Reglamento de la Asamblea, acuerda su no admisión a trámite por no llamar a comparecer al señor presidente de la Cámara de Cuentas de la Comunidad de Madrid por el ejercicio de la función fiscalizadora de la Cámara de Cuentas en los términos del artículo 236 del Reglamento y su devolución al grupo parlamentario autor de la misma por si estimara oportuno presentar una nueva iniciativa en los términos prescritos reglamentariamente”. c) La recurrente en amparo, con el visto bueno del Grupo Parlamentario Vox, presentó el 16 de octubre de 2025 una solicitud de reconsideración del acuerdo de la mesa, en la que reprochaba, en primer término, que la inadmisión desbordaba la función de calificación que reglamentariamente corresponde a la mesa —ceñida a un control de estricta legalidad formal— al haber entrado a valorar el fondo y la oportunidad de la iniciativa, con la consiguiente lesión del derecho de participación política del art. 23.2 CE y del ius in officium inherente al cargo representativo y el principio de interpretación más favorable al ejercicio del derecho. Alegaba que el propio acuerdo de la mesa de 8 de junio de 2000 (RGSP 2066) circunscribe el cometido de la mesa a un control formal de conformidad a Derecho, de suerte que cualquier enjuiciamiento del contenido o fondo de la iniciativa excede sus competencias y constituye una extralimitación proscrita por el Tribunal Constitucional. Sostenía el correcto encaje reglamentario de la comparecencia en el art. 236 del Reglamento de la Asamblea de Madrid (RAM), en relación con los arts. 70 y 210 del mismo texto, sobre la base de que el Programa de fiscalizaciones no es una fiscalización concreta sino un instrumento de planificación anual, de manera que la comparecencia no interfiere en el ejercicio de la función fiscalizadora, sino que garantiza el conocimiento parlamentario y la transparencia de su programación. Aducía la existencia de precedentes que acreditan una práctica consolidada y pacífica —las comparecencias C-356-2023 (RGEP 13106-2023) y C-495-2024 (RGEP 6335-2024), ambas admitidas y celebradas—, de modo que el rechazo de la C-1214-2025 supondría un cambio de criterio arbitrario y carente de motivación, contrario a la igualdad de trato entre diputados (art. 14 CE) y a la seguridad jurídica (art. 9.3 CE). Argüía el carácter no fiscalizador del programa a la luz del art. 1 de la Ley",
+          "excerptKind": "passage",
+          "bodyChecksum": "26f3c1236342d84d6bddd98c3aa9499918168dfeba5c101c481f78d0cafde8dd",
+          "checksumAlgorithm": "sha256",
+          "sectionAnchors": [
+            {
+              "kind": "passage",
+              "label": "보존 원문 발췌",
+              "locator": "cleanedText:0-3989",
+              "startOffset": 0,
+              "endOffset": 3989
+            }
+          ],
+          "sourceType": "foreign_constitutional",
+          "sourceKey": "es-tribunal-constitucional",
+          "jurisdiction": "Spain",
+          "jurisdictionCode": "ES",
+          "jurisdictionName": "스페인",
+          "country": "Spain",
+          "countryCode": "ES",
+          "countryName": "스페인",
+          "institutionName": "Tribunal Constitucional de España",
+          "courtName": "Tribunal Constitucional de España",
+          "caseNumber": "53/2026",
+          "legalIdentity": {
+            "documentId": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+            "caseNumber": "53/2026",
+            "court": "Tribunal Constitucional de España",
+            "jurisdiction": "ES"
+          },
+          "contentType": "order",
+          "originalLanguage": "es",
+          "language": "es",
+          "originalPublishedAt": null,
+          "decisionDate": null,
+          "publishedAt": null,
+          "originalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+          "canonicalUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+          "officialUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+          "officialUri": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+          "url": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+          "worldconsUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+          "detailUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+          "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+          "sourceTextUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0/source-text",
+          "updatedAt": "2026-10-11T23:46:03.462Z",
+          "score": null,
+          "tags": [
+            "스페인 헌법재판소",
+            "헌법소원",
+            "가처분",
+            "의회 통제권",
+            "공무담임권",
+            "지방의회",
+            "Reglamento de la Asamblea de Madrid",
+            "Constitución Española",
+            "ius in officium",
+            "Spain",
+            "medida cautelar",
+            "Ley Orgánica del Tribunal Constitucional",
+            "Tribunal Constitucional de España",
+            "Cámara de Cuentas de la Comunidad de Madrid",
+            "Asamblea de Madrid",
+            "Grupo Parlamentario Vox"
+          ],
+          "sourceMetadata": {
+            "sourceTextStatus": "available",
+            "collectionSafety": {
+              "publishable": true
+            },
+            "resolutionType": "AUTO",
+            "caseNumber": "53/2026",
+            "collection": {
+              "strategy": "fetch",
+              "confidence": "high",
+              "sourceUrlVerified": true,
+              "publishable": true,
+              "sourceTextAvailable": true,
+              "strictSourceTextAvailable": true
+            }
+          },
+          "metadata": {
+            "slug": "spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+            "sourceKey": "es-tribunal-constitucional",
+            "sourceType": "foreign_constitutional",
+            "caseNumber": "53/2026",
+            "courtName": "Tribunal Constitucional de España",
+            "jurisdictionCode": "ES",
+            "originalTitle": "AUTO 53/2026",
+            "officialUrl": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+            "officialUri": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32146?ACTION=disposiciones-citadas",
+            "excerptKind": "passage",
+            "bodyChecksum": "26f3c1236342d84d6bddd98c3aa9499918168dfeba5c101c481f78d0cafde8dd",
+            "detailApiUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0",
+            "sourceTextUrl": "https://worldcons.cclib.workers.dev/api/cclrag2/articles/spain-es-tribunal-constitucional-undated-auto-53-2026-9167e0/source-text"
+          }
+        }
+      ],
+      "meta": {
+        "limit": 20,
+        "offset": 0,
+        "total": 2,
+        "hasMore": false,
+        "totalIsExact": false
+      },
+      "pageInfo": {
+        "page": 1,
+        "pageSize": 20,
+        "total": 2,
+        "hasMore": false,
+        "totalIsExact": false
+      }
+    },
+    "at": "2026-10-12T05:41:42.525Z"
+  }
+]

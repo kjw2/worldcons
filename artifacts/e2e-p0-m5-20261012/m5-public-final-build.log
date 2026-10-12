@@ -1,0 +1,146 @@
+
+> worldcons@0.1.0 build:vinext C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons
+> vinext build
+
+
+  vinext build  (Vite 8.3.0)
+
+[34m[1/5] analyze client references...[39m
+transforming...
+✓ 1015 modules transformed.
+rendering chunks...
+[32m✓ built in 6.42s[39m
+[33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 6.3s of this 6.4s build (99%).
+The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - vite:css transform (41%, 2.6s, 1 call)
+Additional hook time came from the hooks below and from hooks under 1s.
+8 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - rsc:virtual-client-package resolveId (5047 calls)
+  - alias resolveId (4427 calls)
+  - vinext:og-inline-fetch-assets resolveId (4153 calls)
+  … and 5 more
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+[39m
+[34m[2/5] analyze server references...[39m
+transforming...
+✓ 322 modules transformed.
+rendering chunks...
+[32m✓ built in 1.06s[39m
+[34m[3/5] build rsc environment...[39m
+transforming...
+✓ 1076 modules transformed.
+rendering chunks...
+computing gzip size...
+[32m✓ built in 3.74s[39m
+[33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 2.9s of this 3.7s build (79%).
+8 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - rsc:virtual-client-package resolveId (5179 calls)
+  - alias resolveId (4577 calls)
+  - vinext:og-inline-fetch-assets resolveId (4293 calls)
+  … and 5 more
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+[39m
+[34m[4/5] build client environment...[39m
+transforming...
+✓ 2048 modules transformed.
+rendering chunks...
+computing gzip size...
+[32m✓ built in 3.93s[39m
+[33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 3.0s of this 3.9s build (79%).
+2 hooks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - vinext:og-inline-fetch-assets resolveId (6015 calls)
+  - alias resolveId (6133 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+[39m
+[34m[5/5] build ssr environment...[39m
+transforming...
+✓ 320 modules transformed.
+rendering chunks...
+computing gzip size...
+[32m✓ built in 1.26s[39m
+[0m
+  Route (app)
+  ┌ ƒ /                                      
+  ├ ƒ /admin                                 
+  ├ ƒ /admin/analytics                       
+  ├ ƒ /admin/articles                        
+  ├ ƒ /admin/articles/:slug                  
+  ├ ƒ /admin/audit                           
+  ├ ƒ /admin/candidates                      
+  ├ ƒ /admin/glossary-candidates             
+  ├ ƒ /admin/ingestion-runs                  
+  ├ ? /admin/jobs                            
+  ├ ƒ /admin/llm                             
+  ├ ƒ /admin/login                           
+  ├ ? /admin/operations                      
+  ├ ƒ /admin/ops                             
+  ├ ƒ /admin/work                            
+  ├ ƒ /admin/work/:kind/:id                  
+  ├ λ /api/admin/approval-preview            
+  ├ λ /api/admin/articles                    
+  ├ λ /api/admin/articles/:articleRef/review 
+  ├ λ /api/admin/articles/:articleRef/summary
+  ├ λ /api/admin/articles/bulk               
+  ├ λ /api/admin/candidates                  
+  ├ λ /api/admin/cron/ingest                 
+  ├ λ /api/admin/cron/jobs                   
+  ├ λ /api/admin/glossary-candidates         
+  ├ λ /api/admin/governance                  
+  ├ λ /api/admin/ingest                      
+  ├ λ /api/admin/ingest/dead-letter          
+  ├ λ /api/admin/ingestion-runs              
+  ├ λ /api/admin/jobs/:jobId                 
+  ├ λ /api/admin/jobs/run                    
+  ├ λ /api/admin/llm-settings                
+  ├ λ /api/admin/llm-settings/test           
+  ├ λ /api/admin/login                       
+  ├ λ /api/admin/logout                      
+  ├ λ /api/admin/public-content/revalidate   
+  ├ λ /api/admin/review                      
+  ├ λ /api/admin/work                        
+  ├ λ /api/admin/work/:kind/:id              
+  ├ λ /api/analytics/event                   
+  ├ λ /api/articles                          
+  ├ λ /api/articles/:slug                    
+  ├ λ /api/articles/:slug/source-text        
+  ├ λ /api/auth/masterdash                   
+  ├ λ /api/cclmetasearch/:path+              
+  ├ λ /api/cclmetasearch/search              
+  ├ λ /api/cclrag2/:path+                    
+  ├ λ /api/home/range                        
+  ├ λ /api/masterdash/control                
+  ├ λ /api/masterdash/health                 
+  ├ λ /api/mcp                               
+  ├ λ /api/mcp/health                        
+  ├ λ /api/ops/watchdog                      
+  ├ λ /api/portal/latest                     
+  ├ λ /api/portal/latest-by-country          
+  ├ λ /api/search                            
+  ├ λ /api/security/csp-report               
+  ├ λ /api/sources                           
+  ├ λ /api/sources/:sourceKey                
+  ├ λ /api/tags                              
+  ├ λ /api/tags/:slug                        
+  ├ ƒ /articles/:slug                        
+  ├ ƒ /articles/:slug/print                  
+  ├ ƒ /glossary                              
+  ├ ƒ /glossary/:slug                        
+  ├ λ /googlebc13342811fc3fd7.html           
+  ├ ƒ /guide                                 
+  ├ ? /guide/chatgpt-plugin                  
+  ├ ◐ /list                                    (60s)
+  ├ λ /rss.xml                               
+  ├ ƒ /search                                
+  ├ ƒ /sources                               
+  ├ ƒ /sources/:sourceKey                    
+  ├ ƒ /tags                                  
+  └ ƒ /tags/:slug                            
+
+  λ API  ƒ Dynamic  ◐ ISR  ? Unknown
+
+  ? Some routes could not be classified. vinext currently uses static analysis
+    and cannot detect dynamic API usage (headers(), cookies(), etc.) at build time.
+    Automatic classification will be improved in a future release.
+
+  Build complete. Run `vinext start` to start the production server.
+

@@ -1,0 +1,1 @@
+artifacts/e2e-p0-m5-20261012/remove-hj-duplicates.ts(8,102): error TS2339: Property 'first' does not exist on type 'D1RuntimePreparedStatement'.

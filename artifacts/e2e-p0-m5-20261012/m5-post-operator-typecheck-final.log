@@ -1,0 +1,4 @@
+.next/types/validator.ts(5,15): error TS2305: Module '"./routes.js"' has no exported member 'AppRoutes'.
+.next/types/validator.ts(5,26): error TS2305: Module '"./routes.js"' has no exported member 'LayoutRoutes'.
+.next/types/validator.ts(5,40): error TS2305: Module '"./routes.js"' has no exported member 'ParamMap'.
+.next/types/validator.ts(5,50): error TS2305: Module '"./routes.js"' has no exported member 'AppRouteHandlerRoutes'.

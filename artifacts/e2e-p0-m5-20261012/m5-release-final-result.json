@@ -1,0 +1,14 @@
+{
+  "startedAt": "2026-10-12T04:26:11.339Z",
+  "code": 0,
+  "finishedAt": "2026-10-12T04:32:09.850Z",
+  "exitCode": 0,
+  "gitRef": "007094f968773179ea056bed6dd10133565df98d",
+  "totals": {
+    "tests": 1644,
+    "pass": 1637,
+    "fail": 0,
+    "skipped": 7
+  },
+  "postBuildTypecheckExitCode": 0
+}

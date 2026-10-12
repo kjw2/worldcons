@@ -1,0 +1,51 @@
+{
+  "at": "2026-10-12T07:46:21.730Z",
+  "rootGitRef": "d9f8e1bf2f1494705bdf1a4d18ca5347d98c0d95",
+  "asyncGitRef": "c35bb37e98a8c51daf3bfc50f719f0d16fa7e7b1",
+  "verifierDeploymentRef": "git:d9f8e1bf2f1494705bdf1a4d18ca5347d98c0d95;worldcons:8f5b1d18-b92d-421d-9f8c-962be214bda1",
+  "deployments": [
+    {
+      "kind": "public",
+      "versionId": "8f5b1d18-b92d-421d-9f8c-962be214bda1",
+      "deployment": {
+        "id": "a700c52f-e1a0-4397-a868-76d06d8b675b",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 validated shared tag preservation; git d9f8e1bf2f1494705bdf1a4d18ca5347d98c0d95",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "8f5b1d18-b92d-421d-9f8c-962be214bda1",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T07:41:41.12743Z"
+      }
+    },
+    {
+      "kind": "async",
+      "versionId": "ae506de6-7698-47f5-af71-b8b551d0d378",
+      "deployment": {
+        "id": "ba7ad6bc-ad32-4978-bb1f-b7f3151ff850",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "M5 shared tag preservation and verifier pin; git c35bb37e98a8c51daf3bfc50f719f0d16fa7e7b1",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "ae506de6-7698-47f5-af71-b8b551d0d378",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T07:42:30.489035Z"
+      }
+    }
+  ],
+  "minimumObservationEndsAt": "2026-10-14T07:42:30.489Z"
+}

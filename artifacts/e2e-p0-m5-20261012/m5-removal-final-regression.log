@@ -1,0 +1,39 @@
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (144.8262ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (168.5334ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (555.9343ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"68562137-a88a-4772-9a12-407c1088a94d","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (109.2516ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (54.0272ms)
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (147.6214ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (78.7271ms)
+✔ M4 missing approval proof stays fail-closed (35.6245ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (51.1902ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (268.979ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (167.2169ms)
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (167.2706ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (41.3743ms)
+{"event":"e2e_search_verification","status":"retry"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (63.7257ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (51.1411ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (60.9123ms)
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (56.4442ms)
+✔ M5 source owner blocks first unapproved publication, not just managed heads (27.1142ms)
+✔ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (58.7405ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (48.592ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (38.5023ms)
+✔ M5 human-reviewed publication verifies actual Search/FTS/API; forged human proof cannot complete (114.4842ms)
+✔ M5 completed projection damage creates a fresh verification epoch without a new P3 version or lost evidence (111.1027ms)
+✔ M5 active legacy source publication cannot move to another article or be cascade-deleted (24.5248ms)
+✔ M5 global publication drain filters protected sources before LIMIT and leaves capacity for other countries (84.0547ms)
+✔ M5 HJ ACTION/language URL aliases reuse one Core article; older captured source never replaces newer bytes (70.6594ms)
+✔ M5 legacy duplicate withdrawal verifies privacy using official title when old metadata lacks caseNumber (71.3283ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5402.7554

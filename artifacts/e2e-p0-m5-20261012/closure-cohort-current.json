@@ -1,0 +1,15 @@
+
+{
+  "error": {
+    "text": "A request to the Cloudflare API (/accounts/c0975029797a404cd3ff402ee6a605b2/d1/database/0f4c41f0-778f-4ef4-860e-b0dad05f0984/query) failed.",
+    "notes": [
+      {
+        "text": "no such table: e2e_source_ownership_policies_v1: SQLITE_ERROR [code: 7500]"
+      }
+    ],
+    "kind": "error",
+    "name": "APIError",
+    "code": 7500,
+    "accountTag": "c0975029797a404cd3ff402ee6a605b2"
+  }
+}

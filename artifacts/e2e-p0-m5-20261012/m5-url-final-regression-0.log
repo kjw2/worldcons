@@ -1,0 +1,57 @@
+✔ M5 source owner blocks first unapproved publication, not just managed heads (24.7398ms)
+✔ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (48.6743ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (28.7233ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (30.0425ms)
+✔ M5 human-reviewed publication verifies actual Search/FTS/API; forged human proof cannot complete (108.5223ms)
+✔ M5 completed projection damage creates a fresh verification epoch without a new P3 version or lost evidence (115.8552ms)
+✔ M5 active legacy source publication cannot move to another article or be cascade-deleted (25.1653ms)
+✔ M5 global publication drain filters protected sources before LIMIT and leaves capacity for other countries (65.0612ms)
+✔ M5 HJ ACTION/language URL aliases reuse one Core article; older captured source never replaces newer bytes (100.3667ms)
+✔ M5 limit=1 repeated known head retains every observed candidate and resumes reservation in bounded ticks (131.8838ms)
+✔ M5 capture crash after manifest pin resumes the first immutable snapshot (33.868ms)
+✔ M5 crash after crawl reservation before journal receipt leaves replayable work, not a lost candidate (41.4257ms)
+✔ M5 stale reservation fence cannot record success or overwrite a newer owner (38.8534ms)
+✔ M5 expired discovery owner cannot activate a candidate manifest (46.9647ms)
+✔ M5 ES protected enumeration retains multiple observed hits while legacy limit remains bounded (34.5999ms)
+✔ M5 known-source periodic recheck budget does not suppress new candidate reservation (45.9437ms)
+✔ M5 mismatched parent source cannot activate another country's snapshot (30.6828ms)
+✔ verified HJ full text replaces stale metadata-only safety flags without affecting unverified records (1.8435ms)
+Warning: Invalid PDF header version: 1.4not
+Warning: Invalid PDF header version: 1.4not
+Warning: Indexing all PDF objects
+✔ SCOTUS official PDF extraction preserves bytes and hash while holding publication for review (251.9226ms)
+✔ SCOTUS PDF verification failures stay metadata-only and never write PDF to R2 (25.2816ms)
+✔ SCOTUS October term rollover still collects a revised prior-term official opinion without publishing it (4036.1415ms)
+✔ SCOTUS rollover previous listing fails closed and is not fetched after the bounded overlap (2007.0715ms)
+✔ native source parser discovers only official records for all four sources (3.0895ms)
+✔ targeted staged crawl preserves the actually fetched BVerfG official URL variant (3016.7548ms)
+✔ BVerfG staged crawl rejects HTTP 200 pages without the exact official decision ECLI (0.8538ms)
+✔ BVerfG official redirects retain the verified final decision URL and ECLI (1.0329ms)
+✔ targeted staged crawl carries corrected Spanish official JSON metadata into normalize (2.8583ms)
+✔ native range floors and Spain cap match collection policy (0.1667ms)
+✔ one synthetic collection request persists one pending case but DOES NOT automatically translate or publish (6.2393ms)
+✔ native collection keeps source-specific publication and review gates (9.1313ms)
+✔ BVerfG native discovery falls back to OpenLegalData candidates but fetches only official source text (3.3013ms)
+✔ BVerfG unpublished official variants remain a bounded retry candidate instead of failing the source run (2.7754ms)
+✔ BVerfG transient official 5xx falls back to discovery and remains uncollected instead of failing the source run (2.2548ms)
+✔ BVerfG OpenLegalData 429 records degraded discovery without failing the daily source step (2.4138ms)
+✔ Spain native discovery probes official JSON ids after the D1 HJ tail and stops after three empty ids (7.2131ms)
+✔ Spain native discovery uses the authenticated official search session before tail probing (6.5513ms)
+✔ BVerfG discovery selection defers a cooldown 404 head and chooses the next eligible candidate for limit 1 (0.5954ms)
+✔ BVerfG discovery selection defers all cooldown candidates with an honest empty selection (0.2459ms)
+✔ BVerfG discovery selection re-eligible once the retry backoff window has expired (0.2461ms)
+✔ BVerfG discovery selection never lets already-fetched candidates starve new or due candidates (0.1992ms)
+✔ BVerfG discovery selection is bounded and deterministic (0.3209ms)
+✔ BVerfG daily run skips a cooldown 404 head candidate and fetches the next eligible official decision (3.9326ms)
+✔ BVerfG daily run reports an honest deferred-only outcome without any official detail fetch (1.7805ms)
+✔ BVerfG daily run does not let already-fetched candidates starve new official decisions (2.4444ms)
+✔ BVerfG staged discovery shares the same D1-aware selection as the M8 daily run (1.0689ms)
+✔ BVerfG M8 and staged discovery fail closed when durable candidate state cannot be read (2.1974ms)
+ℹ tests 46
+ℹ suites 0
+ℹ pass 46
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10115.8011

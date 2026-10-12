@@ -1,0 +1,10 @@
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts
+  4:9  warning  'registerIngestStageJob' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\workers\async-pipeline\src\native-crawler.ts
+   182:38  warning  'specific' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  1172:9   warning  'rangeStart' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 3 problems (0 errors, 3 warnings)
+

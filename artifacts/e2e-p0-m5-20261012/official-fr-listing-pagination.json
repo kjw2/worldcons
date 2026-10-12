@@ -1,0 +1,24 @@
+{
+  "at": "2026-10-11T22:22:26.594Z",
+  "status": 200,
+  "url": "https://www.conseil-constitutionnel.fr/decisions",
+  "bodyHash": "65e91097fc30bcb050c5c06b741c1edb9e2dca8c4fb35f0adf1ce7f2d39082e7",
+  "links": [
+    "/les-decisions/decisions-par-annee",
+    "/les-decisions/decisions-par-type",
+    "/les-decisions/outils-et-ressources-sur-les-decisions",
+    "/les-decisions/tables-analytiques",
+    "/les-decisions/archives-des-comptes-rendus-de-seances",
+    "/decision/2026/2026335L.htm",
+    "/decision/2026/2026169ORGA.htm",
+    "/decision/2026/2026337L.htm",
+    "/decision/2026/202616LOM.htm",
+    "/decision/2026/2026333L.htm",
+    "/decision/2026/20261224QPC.htm",
+    "/decision/2026/2026339L.htm",
+    "/decision/2026/2026336L.htm",
+    "/decision/2026/2026334L.htm",
+    "/decision/2026/2026338L.htm",
+    "/les-decisions"
+  ]
+}

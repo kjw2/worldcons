@@ -1,0 +1,41 @@
+{"event":"m4_local_runtime_evidence","scope":"synthetic_local_workerd","verificationDocument":{"apiChecks":{"approvedBodyPrefixMatches":true,"approvedSummaryMatches":true,"detailTextLimit":4000,"exactArticleIdentity":true,"expectedSearchMembership":true},"appliedFence":1,"approvalEvidenceRef":"core:e2e-approval:8ef52c4fd4b972ba976abe0c4abb76337a03b4c155f0b2588877daa850841144","approvalKey":"8ef52c4fd4b972ba976abe0c4abb76337a03b4c155f0b2588877daa850841144","articleId":"11111111-1111-4111-a111-111111111111","caseNumber":"2026-912 QPC","deploymentRef":"fixture:actual-local-workerd","documentFingerprint":"51ccc905c658917401228f171522c8003c26a5f90ed8cc3ed41788c660f8aaf0","expected":{"documentCount":1,"documentFingerprint":"51ccc905c658917401228f171522c8003c26a5f90ed8cc3ed41788c660f8aaf0","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189"},"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","generationId":"d3eb6e9ac8cf128b11aa82728d2beb1cc27ae62b2d7c4bd1f2cf4b0b9a091016","generationSeq":1,"observed":{"documentCount":1,"documentFingerprint":"51ccc905c658917401228f171522c8003c26a5f90ed8cc3ed41788c660f8aaf0","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","matches":true},"policyVersion":"worldcons.fr-es-staged-approval.v1","probes":[{"cacheControl":"no-store","observedAt":"2026-10-12T05:27:52.160Z","responseHash":"afa099033a6a68093d3d6e24ddf7717faae546f8416b38f20f06747807c4ddcc","status":200,"url":"https://fixture.example/api/articles/m1-fixture?textLimit=4000"},{"cacheControl":"no-store","observedAt":"2026-10-12T05:27:52.160Z","responseHash":"a9cb07185635f5be6a095044a0a32004f3438b9192882365b9d4f7bbb61d618a","status":200,"url":"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none"}],"projectionInputHash":"f1ca790d082408272d6a654114c2f3f2d1db3d45eb0ed1cbf255c3166f549178","publicationId":"dc6f4f99-3a43-4737-9795-ee61e3ebe3f4","publicationRevision":1,"result":"completed_verified","schema":"worldcons.verification.v1","scope":"single_article","sourceEvidenceRef":"stages/ingest-crawl/workerd-m4.json","verificationFence":3,"verifiedAt":"2026-10-12T05:27:52.160Z","versionId":"8b9137e4-6d33-50b6-a33c-cd75ba4742f6","versionRevision":1}}
+✔ M4 real local workerd public Worker and separated D1 APIs verify actual content and atomic completion (16855.3239ms)
+✔ M5 verifier probe runs inside workerd, uses supported manual redirects and rejects redirects before reading a body (1892.8179ms)
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (195.6002ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (239.7918ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (682.3503ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"7e426f3e-a9b7-4b25-a924-f0740435c7e8","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (113.921ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (56.6399ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (173.6727ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (76.1311ms)
+✔ M4 missing approval proof stays fail-closed (38.2489ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (50.5717ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (262.8663ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (178.8691ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (126.008ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (38.5069ms)
+{"event":"e2e_search_verification","status":"retry","errorCode":"e2e.public_api_unavailable"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (51.3866ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (43.3272ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (44.0561ms)
+{"event":"e2e_consumer_claim_wait","phase":"not_due","observedAt":"2026-10-12T05:26:42.996Z","dueAt":"2026-10-12T05:27:42.991Z","outboxId":"142310efb8ba50090fb048deadea323aaf8f014551648620540ae82263fe9d40"}
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (48.1058ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 production Queue verifier requires the actual public Worker binding before processing (43.9053ms)
+✔ M5 dispatcher waits for durable verifier backoff and active verification lease without multiplying Queue messages (40.2771ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20145.9529

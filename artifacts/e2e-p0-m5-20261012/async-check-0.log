@@ -1,0 +1,54 @@
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+Total Upload: 6995.88 KiB / gzip: 1522.44 KiB
+Your Worker has access to the following bindings:
+Binding                                                                                       Resource                  
+env.ASYNC_WORKFLOW (WorldconsAsyncWorkflow)                                                   Workflow                  
+env.BACKFILL_DISCOVER_WORKFLOW (WorldconsBackfillDiscoverWorkflow)                            Workflow                  
+env.BACKFILL_WORKFLOW (WorldconsBackfillWorkflow)                                             Workflow                  
+env.BACKFILL_NORMALIZE_WORKFLOW (WorldconsBackfillNormalizeWorkflow)                          Workflow                  
+env.BACKFILL_VERIFY_WORKFLOW (WorldconsBackfillVerifyWorkflow)                                Workflow                  
+env.BACKFILL_STAGE_WORKFLOW (WorldconsBackfillPublishWorkflow)                                Workflow                  
+env.ASYNC_QUEUE (worldcons-async-v1)                                                          Queue                     
+env.STAGE_QUEUE_DISCOVERY (worldcons-stage-discovery-v1)                                      Queue                     
+env.STAGE_QUEUE_CRAWL (worldcons-stage-crawl-v1)                                              Queue                     
+env.STAGE_QUEUE_NORMALIZE (worldcons-stage-normalize-v1)                                      Queue                     
+env.STAGE_QUEUE_TRANSLATE (worldcons-stage-translate-v1)                                      Queue                     
+env.STAGE_QUEUE_PUBLIC_JUDGMENT (worldcons-stage-public-judgment-v1)                          Queue                     
+env.STAGE_QUEUE_PUBLISH (worldcons-stage-publish-v1)                                          Queue                     
+env.STAGE_QUEUE_SEARCH (worldcons-stage-search-v1)                                            Queue                     
+env.E2E_SEARCH_REPAIR_QUEUE (worldcons-e2e-search-repair)                                     Queue                     
+env.WORLDCONS_OPS (worldcons_ops)                                                             D1 Database               
+env.WORLDCONS_CORE (worldcons_core)                                                           D1 Database               
+env.WORLDCONS_INGEST (worldcons_ingest)                                                       D1 Database               
+env.WORLDCONS_SEARCH (worldcons_search)                                                       D1 Database               
+env.WORLDCONS_RAW (worldcons-artifacts)                                                       R2 Bucket                 
+env.WORLDCONS_APP_SERVICE (worldcons#WorldconsOpsService)                                     Worker                    
+env.BROWSER                                                                                   Browser Run               
+env.M8_SCHEDULER_ENABLED ("true")                                                             Environment Variable      
+env.WORLDCONS_E2E_STAGED_APPROVAL_ENABLED ("true")                                            Environment Variable      
+env.WORLDCONS_E2E_STAGED_SOURCES ("fr-conseil-constitutionnel,es-tribuna...")                 Environment Variable      
+env.WORLDCONS_E2E_SEARCH_DISPATCH_ENABLED ("true")                                            Environment Variable      
+env.WORLDCONS_E2E_SEARCH_CONSUMER_READY ("true")                                              Environment Variable      
+env.WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED ("true")                                            Environment Variable      
+env.WORLDCONS_E2E_VERIFIER_ENABLED ("true")                                                   Environment Variable      
+env.WORLDCONS_E2E_VERIFIER_API_BASE_URL ("https://worldcons.cclib.workers.dev/a...")          Environment Variable      
+env.WORLDCONS_E2E_DEPLOYMENT_REF ("git:43371c8814e0c56dd65455d1cad4a9a17...")                 Environment Variable      
+env.M8_ENABLED_KINDS ("admin-job-drain,watchdog,crawler-dail...")                             Environment Variable      
+env.M8_CRAWLER_SOURCE_EXCLUDE ("fr-conseil-constitutionnel,es-tribuna...")                    Environment Variable      
+env.TRANSLATION_DRAIN_LIMIT ("10")                                                            Environment Variable      
+env.TRANSLATION_DRAIN_MAX_PASSES ("1")                                                        Environment Variable      
+env.PUBLICATION_DRAIN_LIMIT ("100")                                                           Environment Variable      
+env.CASE_CATALOG_GERMANY_HISTORY_ENABLED ("true")                                             Environment Variable      
+env.BROWSER_ALLOWED_HOSTS ("bundesverfassungsgericht.de,supremeco...")                        Environment Variable      
+env.SITE_ANALYTICS_RETENTION_DAYS ("90")                                                      Environment Variable      
+env.WORLDCONS_INGEST_STAGES_ENABLED ("true")                                                  Environment Variable      
+env.WORLDCONS_INGEST_STAGE_ENVIRONMENT ("production")                                         Environment Variable      
+env.WORLDCONS_INGEST_STAGE_ALLOWLIST ("discovery,crawl,normalize,translate,p...")             Environment Variable      
+env.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST ("fr-conseil-constitutionnel,es-tribuna...")      Environment Variable      
+env.WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT ("1")                                              Environment Variable      
+env.WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT ("1")                                               Environment Variable      
+env.WORLDCONS_INGEST_STAGE_LEASE_SECONDS ("300")                                              Environment Variable      
+
+--dry-run: exiting now.

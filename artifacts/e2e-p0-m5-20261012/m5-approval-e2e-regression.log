@@ -1,0 +1,35 @@
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (119.0693ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (178.6127ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (413.9928ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"bd90591a-7b6b-43a4-9902-acc1b5066f7a","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (90.0842ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (44.5628ms)
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (115.7887ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (53.3879ms)
+✔ M4 missing approval proof stays fail-closed (29.4493ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (44.5739ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (208.1374ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (149.2699ms)
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (124.4343ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (35.915ms)
+{"event":"e2e_search_verification","status":"retry"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (54.8033ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (47.1451ms)
+✔ M5 source owner blocks first unapproved publication, not just managed heads (31.9699ms)
+✔ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (46.954ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (27.3637ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (30.6278ms)
+✔ M5 human-reviewed publication verifies actual Search/FTS/API; forged human proof cannot complete (107.7767ms)
+✔ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (70.4942ms)
+✔ M5 Core: human withdrawal without new approval creates generation and durable remove outbox (32.8634ms)
+✔ M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollback protection (11606.2979ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12216.4965

@@ -1,0 +1,44 @@
+[
+  {
+    "results": [
+      {
+        "job_id": "d2371a51-7f2b-4478-b89a-d15ec78b66c8",
+        "source_key": "es-tribunal-constitucional",
+        "status": "reserved",
+        "observed_count": 167,
+        "recorded": 167,
+        "reserved": 115,
+        "covered": 52,
+        "pending": 0
+      },
+      {
+        "job_id": "a682b21f-8b5b-40c1-bac5-490eb8c19824",
+        "source_key": "fr-conseil-constitutionnel",
+        "status": "reserved",
+        "observed_count": 10,
+        "recorded": 10,
+        "reserved": 0,
+        "covered": 10,
+        "pending": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 1.0743
+      },
+      "duration": 1.0743,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 120561664,
+      "rows_read": 182,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-12T07:38:38.155Z",
+  "hashes": [
+    {
+      "path": "docs/worldcons-e2e-pipeline-p0-incident-analysis-20261011.md",
+      "sha256": "f7df0023b813c0fb582aac633d83ed8b82c038e95093b82626fb5b5cff5defba",
+      "unchanged": true
+    },
+    {
+      "path": "artifacts/incident-analysis/worldcons-e2e-p0-20261011-read-only.json",
+      "sha256": "52a39acef9554b5975ae10bf91f96bbb7ac47ea52d75af718ea180f9b5d2cbb8",
+      "unchanged": true
+    }
+  ],
+  "status": " M app/admin/ops/page.tsx\n M scripts/ops-watchdog.ts\n?? artifacts/incident-analysis/\n?? docs/worldcons-e2e-pipeline-p0-incident-analysis-20261011.md\n"
+}

@@ -1,0 +1,21 @@
+{
+  "startedAt": "2026-10-12T07:47:34.012Z",
+  "finishedAt": "2026-10-12T07:48:32.570Z",
+  "path": "runNativeSearchProjectionSync",
+  "result": {
+    "kind": "search-projection-sync",
+    "projected": 1500,
+    "changes": {
+      "added": 0,
+      "changed": 53,
+      "removed": 0,
+      "unchanged": 1444
+    },
+    "statementCount": 212,
+    "batchCount": 7,
+    "verified": true,
+    "documentCount": 1500,
+    "ftsCount": 1500
+  },
+  "noP3ContentApproval": true
+}

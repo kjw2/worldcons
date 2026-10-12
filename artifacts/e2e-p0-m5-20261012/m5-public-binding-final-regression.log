@@ -1,0 +1,36 @@
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (115.611ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (152.8327ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (385.9123ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"666815f4-c961-480d-99e9-28e78041a69f","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (84.6846ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (44.8951ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (107.9081ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (51.7439ms)
+✔ M4 missing approval proof stays fail-closed (28.426ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (39.6975ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (189.7704ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (135.965ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (120.5206ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (32.7484ms)
+{"event":"e2e_search_verification","status":"retry","errorCode":"e2e.public_api_unavailable"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (53.1741ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (45.8831ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (38.305ms)
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (42.8856ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 production Queue verifier requires the actual public Worker binding before processing (45.8304ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4200.8506

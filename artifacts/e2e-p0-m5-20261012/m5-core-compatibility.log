@@ -1,0 +1,118 @@
+✔ M1 canonical hashes ignore processing timestamps/key order, preserve content/array order/Unicode (16.8954ms)
+✔ M1 preserves legacy P3 hash/ID, adopts current version, then timestamp-only recollection advances nothing (41.2732ms)
+✔ M1 initial opt-in retains legacy content_hash and deterministicVersionId (36.8142ms)
+✔ M1 additive migration reruns without rewriting history; every verify directive matches SQLite DDL (29.4065ms)
+✔ M1 catalog role and legacy hash omission cannot silently approve the wrong P3 snapshot (54.9999ms)
+✔ M1 changed summary advances P3+generation; policy/tags/review advance only generation; history is preserved (43.5497ms)
+✔ M1 duplicate delivery returns recorded generation even after newer generation, rejects changed approval context (32.7767ms)
+✔ M1 p3 changes after pre-read: CHECK aborts the entire batch (29.463ms)
+✔ M1 v4 changes after pre-read: CHECK aborts the entire batch (38.3961ms)
+✔ M1 publication changes after pre-read: CHECK aborts the entire batch (27.2053ms)
+✔ M1 article changes after pre-read: CHECK aborts the entire batch (28.6007ms)
+✔ M1 tags changes after pre-read: CHECK aborts the entire batch (25.1701ms)
+✔ M1 generation changes after pre-read: CHECK aborts the entire batch (31.3112ms)
+✔ M1 two deliveries with the same observed head: one commits, loser retries idempotently (24.4075ms)
+✔ M1 SQL failure at batch end rolls back P3, heads, history, cache outbox, requests and generations (21.4629ms)
+✔ M1 source-only, provenance conflicts, blocked review and non-official automatic URL stay unpublishable (95.5821ms)
+✔ M1 withdrawn/re-published same version has separate generations and never claims completed_verified (29.7509ms)
+✔ M1 malformed opt-in is rejected before DB access (19.2046ms)
+✔ M2 reserves one immutable Search identity in the publication batch; recollection adds no work (54.969ms)
+✔ M2 withdrawal reserves remove and invalidates old processing and transport fences atomically (29.7599ms)
+✔ M2 commit-before-send recovery sends identity only and cannot record completion (25.7071ms)
+✔ M2 accepted send with lost response retries the same identity without consuming processing attempts (26.0104ms)
+✔ M2 interruption after accepted send preserves transport lease; expiry recovers by duplicate send (30.7265ms)
+✔ M2 simultaneous dispatchers have one owner and one send (35.0345ms)
+✔ M2 late send confirmation cannot overwrite a newer transport owner (24.6106ms)
+✔ M2 new generation while sending supersedes the old row and rejects its late result (26.293ms)
+✔ M2 transport attempts budget dead-letters without pretending Consumer processing (28.7062ms)
+✔ M2 transport time budget dead-letters without pretending Consumer processing (25.4761ms)
+✔ M2 send failure cannot dead-letter an active Consumer lease (25.77ms)
+✔ M2 jitter is capped at 15 minutes and durable processing delay is respected (34.9335ms)
+✔ M2 Consumer verification during send cannot be undone by transport settlement (23.5139ms)
+✔ M2 SQL failure after progress update rolls back settlement while keeping the durable lease (23.335ms)
+✔ M2 terminal work and changed Core publication heads never enter Queue (68.0023ms)
+✔ M2 reconciliation repairs an M1 upgrade hole idempotently without new P3/generation (27.5954ms)
+✔ M2 reconciliation snapshot race rolls back stale reservation (25.5511ms)
+{"event":"e2e_search_repair_not_ready","reason":"protected_consumer_or_queue_missing"}
+✔ M2 additive schema rerun preserves work; verified requires durable evidence (23.5887ms)
+{"event":"e2e_search_repair_dispatch","reservedCount":0,"conflictCount":0,"claimedCount":1,"sentCount":1,"failedCount":0,"deadLetterCount":0,"fencedCount":0,"pendingCount":1,"oldestPendingAgeSeconds":0,"repeatedFailureCount":0,"coreIdentityDriftCount":0,"missingReservationCount":0,"requiresAttention":false}
+{"event":"e2e_search_repair_failed","reason":"schema_or_dispatch_unavailable"}
+✔ M2 scheduled dispatcher stays disabled until dedicated protected Consumer is ready (35.6286ms)
+✔ M3 applies exact P3 and both Search sides; duplicate receipt consumes no additional attempts/completion (69.788ms)
+✔ M3 reverse generation and same-generation stale fence/conflicting identity roll back all Search/FTS (55.3065ms)
+✔ M3 withdrawal persists tombstone and old publish cannot resurrect FTS (38.5526ms)
+✔ M3 legacy plan executor, full rebuild, single sync and raw old document writer cannot overwrite cohort (32.2598ms)
+✔ M3 full sync stale removal snapshot cannot delete a newly published protected B (28.2993ms)
+✔ M3 Core B/Search A gap and immediate withdrawal are hidden from public search (44.7903ms)
+✔ M3 public guard checks are batched and Core failure never falls back to stale Search (29.759ms)
+✔ M3 mutable drafts never replace approved public P3; withdrawal filters detail/list/source (29.6553ms)
+✔ M3 mutable tag/review drift blocks stale public projection and Consumer (27.1721ms)
+✔ M3 actual document/FTS corruption with unchanged checksum triggers same-generation repair (36.8525ms)
+✔ M3 duplicate concurrent deliveries have one processing owner (29.4201ms)
+✔ M3 Search batch late failure leaves no partial guard, document or FTS (28.8341ms)
+✔ M3 Search commit before Core receipt interruption resumes without duplicate FTS or new P3 (29.8699ms)
+✔ M3 expired owner cannot record receipt; reclaimed fence repairs and owns outcome (31.3955ms)
+✔ M3 B committed/applied while A is in flight remains unchanged and A gets no receipt (34.0952ms)
+✔ M3 processing budget dead-letters failures; Queue duplicates do not exhaust it (25.2747ms)
+{"event":"e2e_search_repair_consumer","status":"awaiting_verification"}
+✔ M3 dedicated Queue remains disabled; enabled handler ACK follows durable apply receipt (26.783ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"154092c4-6c68-43ed-ba72-d5679bd53718","error":"Error"}
+✔ M3 real public provider returns approved content/no-store, gap 503 and withdrawn detail 404 (60.7275ms)
+✔ M3 expired final attempt and elapsed failure budget reach dead-letter without an extra attempt (51.3731ms)
+✔ M3 public cache re-reads Core schema and bypasses cached content; unavailable Core fails closed (19.1748ms)
+✔ M3 public check catches first enrollment while Search is being read (26.2492ms)
+✔ M3 Core detail drops A when B commits during immutable version hydration (29.5455ms)
+✔ M3 migration verifier and enabled Consumer reject an incomplete Search trigger deployment (21.2483ms)
+✔ M3 legacy executor reserves guard statements within the D1 100 statement/parameter envelope (18.9258ms)
+{"event":"m4_local_staged_evidence","scope":"synthetic_local","officialTransport":"fixture","translation":"fixture","generation":{"generation_id":"53328a7a1243ae7549c560fe7747209097fc04601074bbe33d460c719ca02c4b","article_id":"15508f87-a90e-44e7-a8ef-667d460f5623","generation_seq":1,"source_key":"fr-conseil-constitutionnel","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","approval_key":"3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12","approval_snapshot_hash":"9ea3088977378763828ea7a924aa16b0975b430e714447543e999f8e08437dbe","approval_hash_schema":"worldcons.approval.v2","projection_input_hash":"75132fdf950557d0783b1f3689cd508aa331933eb58d131cec40ba2f834be7f5","projection_input_schema":"worldcons.projection-input.v1","expected_version_id":"1dbdeb5e-a638-58de-abb8-3c2d27eef2c9","expected_version_revision":1,"expected_publication_id":"14d35d35-9ac2-4d5c-a6dc-f141e9398976","expected_publication_revision":1,"expected_publication_state":"published","approval_mode":"automatic","policy_version":"worldcons.fr-es-staged-approval.v1","approval_evidence_ref":"core:e2e-approval:3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12","source_evidence_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json","pipeline_run_id":"ingest-stage:8c275f55-1d04-4e9f-a53c-ccd55fdbcafd","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","created_at":"2026-10-11T23:24:40.705Z"},"approvalProof":{"approval_key":"3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12","article_id":"15508f87-a90e-44e7-a8ef-667d460f5623","approval_snapshot_hash":"9ea3088977378763828ea7a924aa16b0975b430e714447543e999f8e08437dbe","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","policy_version":"worldcons.fr-es-staged-approval.v1","evidence_ref":"core:e2e-approval:3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12","source_artifact_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json","source_artifact_hash":"086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","pipeline_run_id":"ingest-stage:8c275f55-1d04-4e9f-a53c-ccd55fdbcafd","evidence_document":"{\"approvalKey\":\"3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12\",\"approvalSnapshotHash\":\"9ea3088977378763828ea7a924aa16b0975b430e714447543e999f8e08437dbe\",\"articleId\":\"15508f87-a90e-44e7-a8ef-667d460f5623\",\"candidateId\":\"native:443d0380339820fc0547a7166948c047\",\"canonicalUrl\":\"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm\",\"caseNumber\":\"2026-912 QPC\",\"checks\":{\"noReviewBlock\":true,\"noRiskFlags\":true,\"officialHost\":true,\"publicPermission\":true,\"sourceTextMatches\":true,\"summarySchema\":true,\"translationPersisted\":true},\"observedAt\":\"2026-10-11T23:24:40.631Z\",\"pipelineRunId\":\"ingest-stage:8c275f55-1d04-4e9f-a53c-ccd55fdbcafd\",\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"schema\":\"worldcons.automatic-approval.v1\",\"sourceArtifactHash\":\"086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7\",\"sourceArtifactRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json\",\"sourceContentHash\":\"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa\"}","created_at":"2026-10-11T23:24:40.631Z"},"verification":{"evidence_id":"e38df9e49592774c3ff2ea639ea59826966ee51442695c9dcdbc2107fa021801","generation_id":"53328a7a1243ae7549c560fe7747209097fc04601074bbe33d460c719ca02c4b","result":"completed_verified","verification_fence":1,"applied_fence":1,"document_fingerprint":"21f92e9b7c2464f367949374f055c9d7ff408bf536bb9835a6fddf434bb85661","fts_fingerprint":"5354940117d679beaace239c17023a75ed174ffb1f147d9bd6ecc570519b2af4","evidence_document":"{\"apiChecks\":{\"approvedBodyPrefixMatches\":true,\"approvedSummaryMatches\":true,\"detailTextLimit\":4000,\"exactArticleIdentity\":true,\"expectedSearchMembership\":true},\"appliedFence\":1,\"approvalEvidenceRef\":\"core:e2e-approval:3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12\",\"approvalKey\":\"3c27b2122e47beff8ce1fa7c90998ac2b1952337ae2a185da0e43a01223e7b12\",\"articleId\":\"15508f87-a90e-44e7-a8ef-667d460f5623\",\"caseNumber\":\"2026-912 QPC\",\"deploymentRef\":\"fixture:synthetic-local-staged\",\"documentFingerprint\":\"21f92e9b7c2464f367949374f055c9d7ff408bf536bb9835a6fddf434bb85661\",\"expected\":{\"documentCount\":1,\"documentFingerprint\":\"21f92e9b7c2464f367949374f055c9d7ff408bf536bb9835a6fddf434bb85661\",\"ftsCount\":1,\"ftsFingerprint\":\"5354940117d679beaace239c17023a75ed174ffb1f147d9bd6ecc570519b2af4\"},\"ftsFingerprint\":\"5354940117d679beaace239c17023a75ed174ffb1f147d9bd6ecc570519b2af4\",\"generationId\":\"53328a7a1243ae7549c560fe7747209097fc04601074bbe33d460c719ca02c4b\",\"generationSeq\":1,\"observed\":{\"documentCount\":1,\"documentFingerprint\":\"21f92e9b7c2464f367949374f055c9d7ff408bf536bb9835a6fddf434bb85661\",\"ftsCount\":1,\"ftsFingerprint\":\"5354940117d679beaace239c17023a75ed174ffb1f147d9bd6ecc570519b2af4\",\"matches\":true},\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"probes\":[{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T23:24:40.766Z\",\"responseHash\":\"6c51d8b9ded15428a7c98a09a3b298c0ce48a29d64fbff9e447cac31e8ee080d\",\"status\":200,\"url\":\"https://fixture.example/api/articles/france-fr-conseil-constitutionnel-2026-10-10-decision-n-2026-912-qpc-du-10-octobre-2026-1d7526?textLimit=4000\"},{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T23:24:40.777Z\",\"responseHash\":\"3ec863df47f1905f8a4929b9087f1dab81314c842da4845d09251ac68e3a1195\",\"status\":200,\"url\":\"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none\"}],\"projectionInputHash\":\"75132fdf950557d0783b1f3689cd508aa331933eb58d131cec40ba2f834be7f5\",\"publicationId\":\"14d35d35-9ac2-4d5c-a6dc-f141e9398976\",\"publicationRevision\":1,\"result\":\"completed_verified\",\"schema\":\"worldcons.verification.v1\",\"scope\":\"single_article\",\"sourceEvidenceRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json\",\"verificationFence\":1,\"verifiedAt\":\"2026-10-11T23:24:40.779Z\",\"versionId\":\"1dbdeb5e-a638-58de-abb8-3c2d27eef2c9\",\"versionRevision\":1}","verified_at":"2026-10-11T23:24:40.779Z"},"stages":[{"id":"a3213c7f-a756-443b-8ef2-4a80beb8181f","stage":"discovery","status":"succeeded","articleId":"native-discovery:fr-conseil-constitutionnel:1:default","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery-request/fr-conseil-constitutionnel/7de48f4c1f26460f14d2500e94107453c739d77d13e49b639da240c859815383.json"},{"id":"0026bf0a-0f15-418f-a278-dc3fe579943e","stage":"crawl","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery/fr-conseil-constitutionnel/922db50656f5cc4005eb821284d94fe50112db3bc4b025a83b6308dd71979b9d.json"},{"id":"91594f06-a763-4286-8685-cb04dbc54f23","stage":"normalize","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json"},{"id":"0d0a40ae-5e94-4518-9b79-ee2033e388c2","stage":"translate","status":"succeeded","articleId":"15508f87-a90e-44e7-a8ef-667d460f5623","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json"},{"id":"8c275f55-1d04-4e9f-a53c-ccd55fdbcafd","stage":"public-judgment","status":"succeeded","articleId":"15508f87-a90e-44e7-a8ef-667d460f5623","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/086323b4097056d1c9af27d1c1ce92c103fdff58cd952e41f6ef55400d8b71a7.json"},{"id":"fbbdb87a-f7b7-4ed4-9d9d-e0f3e1741701","stage":"publish","status":"succeeded","articleId":"15508f87-a90e-44e7-a8ef-667d460f5623","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-approval/15508f87-a90e-44e7-a8ef-667d460f5623/b47d5a26f8fcd0265a1365c36965de293713be82ee43be866e76880461a6a856.json"},{"id":"222a8a8d-694d-45f0-9051-8129ddd44cdf","stage":"search","status":"succeeded","articleId":"15508f87-a90e-44e7-a8ef-667d460f5623","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-publication/53328a7a1243ae7549c560fe7747209097fc04601074bbe33d460c719ca02c4b.json"}]}
+✔ M4 new synthetic official FR case flows Discovery-to-Search unattended through real staged handlers and completion ledger (187.1058ms)
+✔ M4 cohort is default off and malformed enabled configuration cannot fall through to legacy publication (4.9137ms)
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (148.4521ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (232.4962ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (460.871ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"2560b208-efa7-4454-8add-82adb80766ae","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (104.7535ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (62.6828ms)
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (128.6691ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (55.0104ms)
+✔ M4 missing approval proof stays fail-closed (31.6613ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (44.7247ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (213.6426ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (150.5461ms)
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (136.4051ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (38.5903ms)
+{"event":"e2e_search_verification","status":"retry"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (56.4263ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (55.8133ms)
+✖ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (51.8926ms)
+✔ M5 Core: human withdrawal without new approval creates generation and durable remove outbox (31.929ms)
+✔ M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollback protection (12773.5364ms)
+ℹ tests 81
+ℹ suites 0
+ℹ pass 80
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20932.5429
+
+✖ failing tests:
+
+test at tests\e2e-p0-m5-core-writers.test.ts:1:728
+✖ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (51.8926ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(!result.ok)
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-core-writers.test.ts:23:73)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

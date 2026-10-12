@@ -1,0 +1,426 @@
+[
+  {
+    "queue_id": "464166e95b0b48cd9cfa4902725384ec",
+    "queue_name": "worldcons-async-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-09-26T07:52:29.667684Z",
+    "modified_on": "2026-09-26T07:52:29.667684Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "57239b3c71cc41ce8bcae878fd9dc842",
+    "queue_name": "worldcons-async-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "delivery_paused": false,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-09-26T07:52:26.006226Z",
+    "modified_on": "2026-09-26T08:48:02.752526Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-async-dlq-v1",
+        "settings": {
+          "batch_size": 10,
+          "max_retries": 3,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "24f126f428514c4bb73870116dd9e033",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "5867feabcbb84e179c531e2c070c5d11",
+    "queue_name": "worldcons-e2e-search-repair",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-11T07:10:37.52741Z",
+    "modified_on": "2026-10-11T07:10:37.52741Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-e2e-search-repair-dlq",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 10,
+          "max_wait_time_ms": 1000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "f2d7fe89696041eb82dfc7d529ed2d14",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "87076f9d943242e4b6b257dab8045057",
+    "queue_name": "worldcons-e2e-search-repair-dlq",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-11T07:10:34.199493Z",
+    "modified_on": "2026-10-11T07:10:34.199493Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "7aee8a08d7f245aba0bbdba036919dac",
+    "queue_name": "worldcons-stage-crawl-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:14:59.144591Z",
+    "modified_on": "2026-10-08T08:14:59.144591Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "6b4b30d460e146eb929a73a76d7931c7",
+    "queue_name": "worldcons-stage-crawl-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:14:57.906451Z",
+    "modified_on": "2026-10-08T08:14:57.906451Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-crawl-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "3eacf722dea24c33b68f3c1f41629b9c",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "d57aa5cb41204f2cb956f68665d807b3",
+    "queue_name": "worldcons-stage-discovery-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:14:56.064402Z",
+    "modified_on": "2026-10-08T08:14:56.064402Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "faf16f0ec5f849b8ba6951446f0bda8f",
+    "queue_name": "worldcons-stage-discovery-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:14:54.945892Z",
+    "modified_on": "2026-10-08T08:14:54.945892Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-discovery-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "87bb62a4edff4b9ab1d3ee150adb79f1",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "fe164ea0d9184eb49cdb63e44674dcd4",
+    "queue_name": "worldcons-stage-normalize-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:02.503969Z",
+    "modified_on": "2026-10-08T08:15:02.503969Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "6b19da806cbe4cce998addda15b6da1d",
+    "queue_name": "worldcons-stage-normalize-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:00.313077Z",
+    "modified_on": "2026-10-08T08:15:00.313077Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-normalize-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "1de2d6b1416d4762a8928cd55c8ea260",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "6464cb2a4ee040f5b427d0770bc8a67a",
+    "queue_name": "worldcons-stage-public-judgment-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:10.024837Z",
+    "modified_on": "2026-10-08T08:15:10.024837Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "98a9b05fe5b2464fa65a5776f85b9375",
+    "queue_name": "worldcons-stage-public-judgment-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:08.229429Z",
+    "modified_on": "2026-10-08T08:15:08.229429Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-public-judgment-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "8b718632b320472281788aa5e1a3d004",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "aeb078f7b3594ea8b0fa451e44697d84",
+    "queue_name": "worldcons-stage-publish-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:12.563932Z",
+    "modified_on": "2026-10-08T08:15:12.563932Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "22a0f81912044aba84e50d47bad4d0c0",
+    "queue_name": "worldcons-stage-publish-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:11.598064Z",
+    "modified_on": "2026-10-08T08:15:11.598064Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-publish-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "8e6dbbfc1f414518bdd8ef075091cb93",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "1549494882f947899abe3b22191ca0d4",
+    "queue_name": "worldcons-stage-search-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:15.476403Z",
+    "modified_on": "2026-10-08T08:15:15.476403Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "1c6b1b99761f40758a3a550b88073d6f",
+    "queue_name": "worldcons-stage-search-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:14.264665Z",
+    "modified_on": "2026-10-08T08:15:14.264665Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-search-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "e2113354c5e34b1da5db144ec92f6e57",
+        "type": "worker"
+      }
+    ]
+  },
+  {
+    "queue_id": "db72cec69bc848cc997dfaa54070129a",
+    "queue_name": "worldcons-stage-translate-dlq-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:07.022098Z",
+    "modified_on": "2026-10-08T08:15:07.022098Z",
+    "producers_total_count": 0,
+    "producers": [],
+    "consumers_total_count": 0,
+    "consumers": []
+  },
+  {
+    "queue_id": "edd0df9fec99473c9879806253228935",
+    "queue_name": "worldcons-stage-translate-v1",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-08T08:15:05.646827Z",
+    "modified_on": "2026-10-08T08:15:05.646827Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-stage-translate-dlq-v1",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 5,
+          "max_wait_time_ms": 5000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "e8bbb66ad25946d3bf4c350e9b432c6b",
+        "type": "worker"
+      }
+    ]
+  }
+]

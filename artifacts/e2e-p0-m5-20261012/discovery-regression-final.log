@@ -1,0 +1,15 @@
+✔ M5 limit=1 repeated known head retains every observed candidate and resumes reservation in bounded ticks (86.9513ms)
+✔ M5 capture crash after manifest pin resumes the first immutable snapshot (33.9269ms)
+✔ M5 crash after crawl reservation before journal receipt leaves replayable work, not a lost candidate (32.3819ms)
+✔ M5 stale reservation fence cannot record success or overwrite a newer owner (33.2578ms)
+✔ M5 expired discovery owner cannot activate a candidate manifest (32.3132ms)
+✔ M5 ES protected enumeration retains multiple observed hits while legacy limit remains bounded (29.2189ms)
+✔ M5 known-source periodic recheck budget does not suppress new candidate reservation (42.7528ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 899.0649

@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "worldcons-ingest" generated at 2026-10-12T05:20:26.450Z.

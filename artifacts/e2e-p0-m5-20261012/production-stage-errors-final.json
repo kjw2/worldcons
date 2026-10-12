@@ -1,0 +1,78 @@
+[
+  {
+    "results": [
+      {
+        "stage": "public-judgment",
+        "status": "dead_letter",
+        "last_error_code": "e2e.automatic_approval_review_required",
+        "last_error_summary": null,
+        "n": 16
+      },
+      {
+        "stage": "translate",
+        "status": "dead_letter",
+        "last_error_code": "ingest_stage.translate_skipped",
+        "last_error_summary": "Article is not eligible for summarization.",
+        "n": 1
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.8624
+      },
+      "duration": 0.8624,
+      "changes": 0,
+      "last_row_id": 408,
+      "changed_db": false,
+      "size_after": 120573952,
+      "rows_read": 35,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "id": "ad2369d1-b3c8-414d-a316-c2e8fc898eb3",
+        "article_id": "5f158de3-8033-4a79-b59a-d89452063bee",
+        "payload_ref": "stages/ingest-crawl/es-tribunal-constitucional/fa3ba14c7df4f519bf03c8e72c5bae0e29e1258072f5667197ba8212f88ce814.json",
+        "last_error_code": "e2e.automatic_approval_review_required"
+      },
+      {
+        "id": "b364df65-6092-4b09-87d0-730f942666c9",
+        "article_id": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+        "payload_ref": "stages/ingest-crawl/es-tribunal-constitucional/9e69eb571cf3690c15d7911dda8ff96a6fa84d36615901f1f553c54cb2674ddf.json",
+        "last_error_code": "e2e.automatic_approval_review_required"
+      },
+      {
+        "id": "0c845c25-5e11-4e0d-a890-41125111bddf",
+        "article_id": "8b828790-1c70-4038-b90b-ee3774147c1a",
+        "payload_ref": "stages/ingest-crawl/es-tribunal-constitucional/428178874370fbed3c395c1d6d5ad3087acb8c35934127fe522780bf39856d7c.json",
+        "last_error_code": "e2e.automatic_approval_review_required"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3264
+      },
+      "duration": 0.3264,
+      "changes": 0,
+      "last_row_id": 408,
+      "changed_db": false,
+      "size_after": 120573952,
+      "rows_read": 3,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

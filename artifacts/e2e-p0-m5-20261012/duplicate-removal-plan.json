@@ -1,0 +1,384 @@
+{
+  "at": "2026-10-12T04:29:31.833Z",
+  "scope": "official HJ identity only; preserve oldest Core article and all version history",
+  "groups": [
+    {
+      "officialId": "32097",
+      "keep": {
+        "id": "419cb3b5-ac3b-44b1-b8fd-ddfc3fed07ec",
+        "slug": "spain-es-tribunal-constitucional-2026-05-25-auto-282026-de-25-de-mayo-de-2026-307df7",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32097",
+        "created_at": "2026-06-13T09:55:28.643Z",
+        "original_title": "AUTO 28/2026, de 25 de mayo de 2026",
+        "version_id": "6511da36-984e-51a6-abb7-6343a9597d9d",
+        "revision": "3",
+        "state": "published",
+        "hj_id": "32097"
+      },
+      "aliases": [
+        {
+          "id": "8b828790-1c70-4038-b90b-ee3774147c1a",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-28-2026-69b062",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32097?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-11T23:30:39.692Z",
+          "original_title": "AUTO 28/2026",
+          "version_id": "00852b7f-a88e-53c5-a0d9-99cb0e34f042",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32097"
+        }
+      ]
+    },
+    {
+      "officialId": "32085",
+      "keep": {
+        "id": "500129ec-521b-4747-a580-6e44c23016b8",
+        "slug": "spain-es-tribunal-constitucional-2026-04-27-sentencia-342026-de-27-de-abril-de-2026-a541dc",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32085",
+        "created_at": "2026-06-13T10:35:39.887Z",
+        "original_title": "SENTENCIA 34/2026, de 27 de abril de 2026",
+        "version_id": "3f9bc930-6e4c-552c-a907-d820772af9a8",
+        "revision": "3",
+        "state": "published",
+        "hj_id": "32085"
+      },
+      "aliases": [
+        {
+          "id": "5f158de3-8033-4a79-b59a-d89452063bee",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-34-2026-86de87",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32085?ACTION=resoluciones-de-organos-judiciales-impugnadas",
+          "created_at": "2026-10-11T23:00:48.338Z",
+          "original_title": "SENTENCIA 34/2026",
+          "version_id": "31a4eeca-8c01-533e-aa5a-c9a84d5778a0",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32085"
+        }
+      ]
+    },
+    {
+      "officialId": "32086",
+      "keep": {
+        "id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+        "slug": "spain-es-tribunal-constitucional-2026-04-27-sentencia-332026-de-27-de-abril-de-2026-693c5d",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086",
+        "created_at": "2026-06-13T10:35:41.177Z",
+        "original_title": "SENTENCIA 33/2026, de 27 de abril de 2026",
+        "version_id": "db5b7fb8-4567-5fb8-ae77-1554650271dd",
+        "revision": "3",
+        "state": "published",
+        "hj_id": "32086"
+      },
+      "aliases": [
+        {
+          "id": "4db181a0-e676-4f5b-8605-cbcc4d9ca8a3",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-33-2026-f06bdf",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32086?ACTION=resoluciones-de-organos-judiciales-impugnadas",
+          "created_at": "2026-10-12T04:01:01.643Z",
+          "original_title": "SENTENCIA 33/2026",
+          "version_id": null,
+          "revision": null,
+          "state": null,
+          "hj_id": "32086"
+        }
+      ]
+    },
+    {
+      "officialId": "32095",
+      "keep": {
+        "id": "06afbff5-01e5-4e2e-b7f7-ed218810f46c",
+        "slug": "spain-es-tribunal-constitucional-2026-05-27-sentencia-422026-de-27-de-mayo-de-2026-ada015",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32095",
+        "created_at": "2026-06-18T21:47:25.788Z",
+        "original_title": "SENTENCIA 42/2026, de 27 de mayo de 2026",
+        "version_id": "213aee83-62f1-5e36-a909-5e0e946c303b",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32095"
+      },
+      "aliases": [
+        {
+          "id": "911de19f-a80d-4702-a2e7-7dfb39b84875",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-42-2026-97408f",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32095?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T03:31:02.780Z",
+          "original_title": "SENTENCIA 42/2026",
+          "version_id": "6f2fc2b5-c878-569e-adaa-c061b38c75a9",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32095"
+        }
+      ]
+    },
+    {
+      "officialId": "32102",
+      "keep": {
+        "id": "4c3cf80e-c3b5-4495-815b-5bee023664ba",
+        "slug": "spain-es-tribunal-constitucional-2026-06-02-auto-312026-de-2-de-junio-de-2026-8fa8af",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32102",
+        "created_at": "2026-06-19T21:34:17.134Z",
+        "original_title": "AUTO 31/2026, de 2 de junio de 2026",
+        "version_id": "def7b01c-eba1-52b4-a25a-18a784ec98c1",
+        "revision": "3",
+        "state": "published",
+        "hj_id": "32102"
+      },
+      "aliases": [
+        {
+          "id": "4b139529-3431-4794-82e0-e552e91ee195",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-31-2026-c5b0bb",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32102?ACTION=resoluciones-de-otros-tribunales-citadas",
+          "created_at": "2026-10-12T00:15:42.157Z",
+          "original_title": "AUTO 31/2026",
+          "version_id": "f9949304-b763-56f2-a893-a81af6ffe586",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32102"
+        }
+      ]
+    },
+    {
+      "officialId": "32107",
+      "keep": {
+        "id": "a6a58e6a-1807-4018-9324-aa38f93ed301",
+        "slug": "spain-es-tribunal-constitucional-2026-06-23-sentencia-502026-de-23-de-junio-de-2026-35a8e9",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32107",
+        "created_at": "2026-07-13T21:33:49.521Z",
+        "original_title": "SENTENCIA 50/2026, de 23 de junio de 2026",
+        "version_id": "ac91dcee-1aa9-56e0-abfb-bebe0988fe20",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32107"
+      },
+      "aliases": [
+        {
+          "id": "a314a607-112d-4c52-912f-b7ff51489c0e",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-50-2026-08fa6c",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32107?ACTION=disposiciones-con-fuerza-de-ley-impugnadas",
+          "created_at": "2026-10-12T02:00:45.594Z",
+          "original_title": "SENTENCIA 50/2026",
+          "version_id": "969c85b0-9881-5f83-aec0-4c06256faa12",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32107"
+        }
+      ]
+    },
+    {
+      "officialId": "32103",
+      "keep": {
+        "id": "543a9ab4-0fd5-4ed7-ada9-a5b388383093",
+        "slug": "spain-es-tribunal-constitucional-2026-06-22-sentencia-472026-de-22-de-junio-de-2026-5ab9af",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32103",
+        "created_at": "2026-07-13T21:33:53.773Z",
+        "original_title": "SENTENCIA 47/2026, de 22 de junio de 2026",
+        "version_id": "62d69991-8465-523e-affc-542af78942ee",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32103"
+      },
+      "aliases": [
+        {
+          "id": "facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-47-2026-4db9bb",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32103?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T01:15:42.980Z",
+          "original_title": "SENTENCIA 47/2026",
+          "version_id": "2daf69f6-8d02-5e4f-a9e1-fad6bea6f0b9",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32103"
+        }
+      ]
+    },
+    {
+      "officialId": "32106",
+      "keep": {
+        "id": "807d7d15-fe0d-4379-8773-7062ff0cfd56",
+        "slug": "spain-es-tribunal-constitucional-2026-06-22-sentencia-452026-de-22-de-junio-de-2026-d89f88",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32106",
+        "created_at": "2026-07-13T21:33:56.290Z",
+        "original_title": "SENTENCIA 45/2026, de 22 de junio de 2026",
+        "version_id": "094ed87c-0904-5d47-a58b-0dc09805d103",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32106"
+      },
+      "aliases": [
+        {
+          "id": "bac3c408-6e60-4cdb-b489-c3ed06146b71",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-45-2026-2e216a",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32106?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T00:30:56.691Z",
+          "original_title": "SENTENCIA 45/2026",
+          "version_id": "3a546105-0621-5a3c-a981-0702d980f998",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32106"
+        }
+      ]
+    },
+    {
+      "officialId": "32115",
+      "keep": {
+        "id": "c2842357-661c-404f-98e1-887d9eb0f74b",
+        "slug": "spain-es-tribunal-constitucional-2026-06-23-auto-382026-de-23-de-junio-de-2026-4f8188",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32115",
+        "created_at": "2026-07-14T21:34:49.453Z",
+        "original_title": "AUTO 38/2026, de 23 de junio de 2026",
+        "version_id": "b95de5b7-f965-5d8e-aeab-a18d0e108b63",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32115"
+      },
+      "aliases": [
+        {
+          "id": "23450418-153b-455b-8aa6-1d750db0da96",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-38-2026-3bba08",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32115?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T02:15:43.859Z",
+          "original_title": "AUTO 38/2026",
+          "version_id": "8216a1f2-46aa-51fb-acfe-cdbed620c670",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32115"
+        }
+      ]
+    },
+    {
+      "officialId": "32109",
+      "keep": {
+        "id": "448fa96e-7514-4684-8c15-f1f40c135797",
+        "slug": "spain-es-tribunal-constitucional-2026-06-09-auto-322026-de-9-de-junio-de-2026-4ed250",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32109",
+        "created_at": "2026-07-14T21:34:56.494Z",
+        "original_title": "AUTO 32/2026, de 9 de junio de 2026",
+        "version_id": "6d4b229a-5a59-5f36-a94f-36313f38d45a",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32109"
+      },
+      "aliases": [
+        {
+          "id": "1d16aaba-01d8-4be9-a6d1-638a1b974d49",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-32-2026-a9b5dd",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32109?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T03:01:03.098Z",
+          "original_title": "AUTO 32/2026",
+          "version_id": null,
+          "revision": null,
+          "state": null,
+          "hj_id": "32109"
+        }
+      ]
+    },
+    {
+      "officialId": "32119",
+      "keep": {
+        "id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+        "slug": "spain-es-tribunal-constitucional-2026-07-08-sentencia-512026-2026-07-08-aa41d7",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119",
+        "created_at": "2026-07-26T01:18:40.794Z",
+        "original_title": "SENTENCIA 51/2026, de 8 de julio de 2026",
+        "version_id": "c2505c3d-f0a1-5c2d-a783-bfd2d74d227c",
+        "revision": "2",
+        "state": "published",
+        "hj_id": "32119"
+      },
+      "aliases": [
+        {
+          "id": "4989743b-b2df-41c8-a082-eb0212265d9e",
+          "slug": "spain-es-tribunal-constitucional-undated-sentencia-51-2026-ace8f5",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32119?ACTION=disposiciones-generales-y-resoluciones-impugnadas",
+          "created_at": "2026-10-12T02:30:57.793Z",
+          "original_title": "SENTENCIA 51/2026",
+          "version_id": "08d75c0c-321c-5ec7-a12b-8ac525cf8e41",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32119"
+        }
+      ]
+    },
+    {
+      "officialId": "32125",
+      "keep": {
+        "id": "2afd0d3a-da2e-4b08-8733-dfa16225589b",
+        "slug": "spain-es-tribunal-constitucional-2026-07-06-auto-422026-2026-07-06-6d6ac2",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32125",
+        "created_at": "2026-07-26T01:18:42.005Z",
+        "original_title": "AUTO 42/2026, de 6 de julio de 2026",
+        "version_id": "6be11f56-25e5-510d-ab74-486da2befe47",
+        "revision": "30",
+        "state": "published",
+        "hj_id": "32125"
+      },
+      "aliases": [
+        {
+          "id": "fb1d6f9a-aedf-46fd-9f90-e69df37b19c1",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-42-2026-c35c2f",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32125?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T01:45:44.718Z",
+          "original_title": "AUTO 42/2026",
+          "version_id": "8a92223d-b0fe-5c96-a30c-a63354f59292",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32125"
+        }
+      ]
+    },
+    {
+      "officialId": "32123",
+      "keep": {
+        "id": "ae6d497c-ecc2-4bd0-b828-2b1702342a4f",
+        "slug": "spain-es-tribunal-constitucional-2026-07-01-auto-402026-2026-07-01-912c14",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32123",
+        "created_at": "2026-07-26T01:18:42.087Z",
+        "original_title": "AUTO 40/2026, de 1 de julio de 2026",
+        "version_id": "3d35f2c7-0591-5cef-afc4-744acfe03918",
+        "revision": "30",
+        "state": "published",
+        "hj_id": "32123"
+      },
+      "aliases": [
+        {
+          "id": "43096f36-67dd-4339-8ffc-a30dadd3ad7d",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-40-2026-5f626a",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32123?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T03:45:47.708Z",
+          "original_title": "AUTO 40/2026",
+          "version_id": null,
+          "revision": null,
+          "state": null,
+          "hj_id": "32123"
+        }
+      ]
+    },
+    {
+      "officialId": "32135",
+      "keep": {
+        "id": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+        "slug": "spain-es-tribunal-constitucional-2026-07-21-auto-502026-2026-07-21-2050d8",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32135",
+        "created_at": "2026-07-29T21:29:09.687Z",
+        "original_title": "AUTO 50/2026, de 21 de julio de 2026",
+        "version_id": "3b4dc918-acf8-54a9-a599-25f10567b3b5",
+        "revision": "36",
+        "state": "published",
+        "hj_id": "32135"
+      },
+      "aliases": [
+        {
+          "id": "2ffd5274-9469-4a89-9617-9dd9feed2c7e",
+          "slug": "spain-es-tribunal-constitucional-undated-auto-50-2026-13b7fa",
+          "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32135?ACTION=disposiciones-citadas",
+          "created_at": "2026-10-12T02:45:44.413Z",
+          "original_title": "AUTO 50/2026",
+          "version_id": "21694fa6-4ec3-52ad-a570-8c9b7d41caf2",
+          "revision": "1",
+          "state": "published",
+          "hj_id": "32135"
+        }
+      ]
+    }
+  ]
+}

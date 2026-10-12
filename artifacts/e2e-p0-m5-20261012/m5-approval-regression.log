@@ -1,0 +1,31 @@
+✔ M5 source owner blocks first unapproved publication, not just managed heads (25.2586ms)
+✖ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (45.7382ms)
+✔ M5 hash v2 excludes AI accounting while v1 remains verifiable; time/model-only refresh has no P3/generation/outbox growth (33.472ms)
+✔ M5 removal authority works for legacy article and ignores later private heads/tags without approving a body (31.6709ms)
+✔ M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction (60.6471ms)
+✔ M5 Core: human withdrawal without new approval creates generation and durable remove outbox (30.6544ms)
+✔ M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollback protection (11698.7891ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12310.6496
+
+✖ failing tests:
+
+test at tests\e2e-p0-m5-approval.test.ts:1:1785
+✖ M5 stale human preview cannot approve a changed draft; exact reviewed snapshot publishes with generation/outbox (45.7382ms)
+  AssertionError [ERR_ASSERTION]: {"ok":false,"error":{"code":"illegal_transition","retryable":false}}
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-approval.test.ts:24:123)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

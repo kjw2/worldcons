@@ -1,0 +1,62 @@
+{
+  "at": "2026-10-12T04:36:13.593Z",
+  "results": [
+    {
+      "articleId": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "result": {
+        "outcome": "redriven",
+        "recordId": "1fac4cb4-9029-4c62-804d-54c5cc100b3a",
+        "jobId": "b364df65-6092-4b09-87d0-730f942666c9",
+        "stage": "public-judgment",
+        "status": "pending",
+        "detail": "Job returned to pending under the current rollout gates."
+      }
+    },
+    {
+      "articleId": "4c80e563-7dbc-4db1-8101-34d14adbe1fb",
+      "result": {
+        "outcome": "redriven",
+        "recordId": "f7b399a1-9f10-4b1d-91d5-03958c0d8dd8",
+        "jobId": "eaa43bc8-cbc0-4a6d-82da-f37a3da05b76",
+        "stage": "public-judgment",
+        "status": "pending",
+        "detail": "Job returned to pending under the current rollout gates."
+      }
+    },
+    {
+      "articleId": "cbe99053-ee25-4596-93bf-b949b10d0bdc",
+      "result": {
+        "outcome": "redriven",
+        "recordId": "255b4625-ab28-41a7-9d36-35ef63e30445",
+        "jobId": "38b2678d-6637-4363-8135-d84a1850f63c",
+        "stage": "public-judgment",
+        "status": "pending",
+        "detail": "Job returned to pending under the current rollout gates."
+      }
+    },
+    {
+      "articleId": "a643203c-c5f5-4781-b87f-cc7737b39432",
+      "result": {
+        "outcome": "redriven",
+        "recordId": "e2f99db7-1f6e-4df4-860b-267c96cde188",
+        "jobId": "d32ef7fa-8817-4a5a-a95f-83031b90d93a",
+        "stage": "public-judgment",
+        "status": "pending",
+        "detail": "Job returned to pending under the current rollout gates."
+      }
+    },
+    {
+      "articleId": "b7adb6ff-61a7-4166-b2a5-d0a9aaa762bd",
+      "result": {
+        "outcome": "redriven",
+        "recordId": "e0638f14-49c5-4465-85b4-e0e493bf52e6",
+        "jobId": "9afa176d-df73-4fcf-a125-3679d87b1fb3",
+        "stage": "public-judgment",
+        "status": "pending",
+        "detail": "Job returned to pending under the current rollout gates."
+      }
+    }
+  ],
+  "noSyntheticCase": true,
+  "noHumanApproval": true
+}

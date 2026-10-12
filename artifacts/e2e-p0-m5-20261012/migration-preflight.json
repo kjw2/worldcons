@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "stage": "d1-remote-migration-apply",
+  "dryRun": true,
+  "applied": false,
+  "targets": [
+    {
+      "name": "worldcons_ingest",
+      "binding": "WORLDCONS_INGEST",
+      "state": "existing",
+      "action": "apply",
+      "databaseId": "0ccd27ff-fd16-4071-bc94-616690708c4e",
+      "migrations": [
+        {
+          "number": 2,
+          "id": "0002",
+          "file": "0002_inventory_discovery_idempotency.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 3,
+          "id": "0003",
+          "file": "0003_ingest_stage_jobs.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 4,
+          "id": "0004",
+          "file": "0004_ingest_stage_redrive.sql",
+          "state": "verified",
+          "verified": true,
+          "detail": null,
+          "errors": []
+        },
+        {
+          "number": 5,
+          "id": "0005",
+          "file": "0005_discovery_coverage.sql",
+          "state": "pending",
+          "verified": false,
+          "detail": "missing table ingest_discovery_scans_v1",
+          "errors": []
+        }
+      ],
+      "pending": 1,
+      "applied": 0,
+      "verified": false,
+      "errors": []
+    }
+  ],
+  "totals": {
+    "targets": 1,
+    "migrations": 4,
+    "pending": 1,
+    "applied": 0,
+    "present": 0,
+    "missing": 0,
+    "refused": 0
+  },
+  "commands": [
+    "d1 list --json",
+    "d1 info worldcons_ingest --json",
+    "d1 execute worldcons_ingest --remote --yes --json --command select type, name, sql from sqlite_master where type in ('table', 'index', 'trigger') order by type, name"
+  ],
+  "ok": true,
+  "errors": []
+}

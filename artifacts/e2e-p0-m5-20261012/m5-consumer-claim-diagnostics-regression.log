@@ -1,0 +1,64 @@
+✔ M3 applies exact P3 and both Search sides; duplicate receipt consumes no additional attempts/completion (56.4854ms)
+✔ M3 reverse generation and same-generation stale fence/conflicting identity roll back all Search/FTS (38.791ms)
+✔ M3 withdrawal persists tombstone and old publish cannot resurrect FTS (38.8934ms)
+✔ M3 legacy plan executor, full rebuild, single sync and raw old document writer cannot overwrite cohort (45.3025ms)
+✔ M3 full sync stale removal snapshot cannot delete a newly published protected B (30.5299ms)
+✔ M3 Core B/Search A gap and immediate withdrawal are hidden from public search (43.0363ms)
+✔ M3 public guard checks are batched and Core failure never falls back to stale Search (33.924ms)
+✔ M3 mutable drafts never replace approved public P3; withdrawal filters detail/list/source (31.0117ms)
+✔ M3 mutable tag/review drift blocks stale public projection and Consumer (29.3283ms)
+✔ M3 actual document/FTS corruption with unchanged checksum triggers same-generation repair (32.6762ms)
+{"event":"e2e_consumer_claim_wait","phase":"claim_lost","observedAt":"2026-10-12T05:16:00.053Z","fencingToken":0,"outboxId":"fb482da1f8cf43a8598952f91e1c9109ec57f28890af2333442638ba264fc256"}
+✔ M3 duplicate concurrent deliveries have one processing owner (30.0168ms)
+✔ M3 Search batch late failure leaves no partial guard, document or FTS (32.0581ms)
+✔ M3 Search commit before Core receipt interruption resumes without duplicate FTS or new P3 (37.6254ms)
+✔ M3 expired owner cannot record receipt; reclaimed fence repairs and owns outcome (33.8046ms)
+✔ M3 B committed/applied while A is in flight remains unchanged and A gets no receipt (35.0018ms)
+✔ M3 processing budget dead-letters failures; Queue duplicates do not exhaust it (27.1266ms)
+{"event":"e2e_search_repair_consumer","status":"awaiting_verification"}
+✔ M3 dedicated Queue remains disabled; enabled handler ACK follows durable apply receipt (30.2084ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"34aecfa8-a741-496c-be31-12ecc7a6016e","error":"Error"}
+✔ M3 real public provider returns approved content/no-store, gap 503 and withdrawn detail 404 (62.0034ms)
+✔ M3 expired final attempt and elapsed failure budget reach dead-letter without an extra attempt (50.976ms)
+✔ M3 public cache re-reads Core schema and bypasses cached content; unavailable Core fails closed (19.9039ms)
+✔ M3 public check catches first enrollment while Search is being read (23.4123ms)
+✔ M3 Core detail drops A when B commits during immutable version hydration (25.6893ms)
+✔ M3 migration verifier and enabled Consumer reject an incomplete Search trigger deployment (21.5883ms)
+✔ M3 legacy executor reserves guard statements within the D1 100 statement/parameter envelope (19.226ms)
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (123.2867ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (159.5572ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (431.1708ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"94d88d95-465c-4555-b63e-426dbeecd770","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (89.9624ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (47.4252ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (119.9078ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (56.5338ms)
+✔ M4 missing approval proof stays fail-closed (31.8399ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (43.3995ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (205.2386ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (144.552ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (130.8971ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (35.4663ms)
+{"event":"e2e_search_verification","status":"retry","errorCode":"e2e.public_api_unavailable"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (52.7719ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (45.4721ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (46.2657ms)
+{"event":"e2e_consumer_claim_wait","phase":"not_due","observedAt":"2026-10-12T05:15:00.063Z","dueAt":"2026-10-12T05:16:00.057Z","outboxId":"4858691f80f834347f7b5c40505d95ff14847ce67145261d31c746d1084622b7"}
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (49.0247ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 production Queue verifier requires the actual public Worker binding before processing (46.728ms)
+ℹ tests 42
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4501.1248

@@ -1,0 +1,315 @@
+{
+  "at": "2026-10-12T04:36:09.718Z",
+  "mode": "production_remove_only",
+  "results": [
+    {
+      "articleId": "8b828790-1c70-4038-b90b-ee3774147c1a",
+      "officialId": "32097",
+      "keepArticleId": "419cb3b5-ac3b-44b1-b8fd-ddfc3fed07ec",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "8b828790-1c70-4038-b90b-ee3774147c1a",
+          "versionId": "00852b7f-a88e-53c5-a0d9-99cb0e34f042",
+          "versionRevision": 1,
+          "publicationId": "4dcf7a34-3b42-433f-b053-0a689322cb94",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "ccfec9d1f8ef6367a791278c42144332345ea0650433d269e5570bc12f3e6937",
+            "generationSeq": 1,
+            "approvalKey": "ddde28b877267f211af0401160bab94a02017890103db141249bf831b630535c",
+            "approvalSnapshotHash": "b635d07c6f658f20fd815d119f0aaa7bb4400873d2c07ba2fcc1d6b26a33ec24",
+            "projectionInputHash": "0aca381c6ea7acd64dab4206bf6d88af683fa65fb09844b684054d8bc57f382c",
+            "created": true,
+            "searchRepairOutboxId": "a3d3d9a577c33e0b1237187f048c0533219d59d3d807286addc14ffa185fe07e"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "5f158de3-8033-4a79-b59a-d89452063bee",
+      "officialId": "32085",
+      "keepArticleId": "500129ec-521b-4747-a580-6e44c23016b8",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "5f158de3-8033-4a79-b59a-d89452063bee",
+          "versionId": "31a4eeca-8c01-533e-aa5a-c9a84d5778a0",
+          "versionRevision": 1,
+          "publicationId": "ed41a240-d3c2-4ce3-aed3-5c926fa7ad8f",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "27ca58ed13849470105355f8d5bfcfb3e8466db1eea61e634abe109ccfecb620",
+            "generationSeq": 1,
+            "approvalKey": "eb65d03bf225816d4b938212803e0c0e0fa1fde660af051f00b882e454917d74",
+            "approvalSnapshotHash": "f8a4ff0c8d28c07d438da0caff8365d081976b625074361776e0bbed89caec2b",
+            "projectionInputHash": "2d927047dec6ecea916c43fb31f92ca7992108b0ce8fda84fbbac4903092ac24",
+            "created": true,
+            "searchRepairOutboxId": "e278d0352ea3a07ece49fdbca798160a180f312fd4ce1083a9558306f1d2dd28"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "911de19f-a80d-4702-a2e7-7dfb39b84875",
+      "officialId": "32095",
+      "keepArticleId": "06afbff5-01e5-4e2e-b7f7-ed218810f46c",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "911de19f-a80d-4702-a2e7-7dfb39b84875",
+          "versionId": "6f2fc2b5-c878-569e-adaa-c061b38c75a9",
+          "versionRevision": 1,
+          "publicationId": "fab9df4e-2f7b-4430-a6e3-9059c18d664f",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "f76b3cf815414bcfd9ce12d46398223591a02295a93beba29715767d055415ce",
+            "generationSeq": 1,
+            "approvalKey": "32a8e839ce7b4a777018c3ce6ebdef58a135ea0af92ae7b204f5130066be3193",
+            "approvalSnapshotHash": "422c546558954ab5b85b98e1aa84ee1ec1142e9c197abd75d625f26a30ad7a4b",
+            "projectionInputHash": "29ee30239ed51294043ddaa174106f2c860125b0a717f882c7f41f80ad59fbbd",
+            "created": true,
+            "searchRepairOutboxId": "80f7a64cebf46cf031f398f98449518b604429a2d18dbe0670fd6c93c1e860a1"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "4b139529-3431-4794-82e0-e552e91ee195",
+      "officialId": "32102",
+      "keepArticleId": "4c3cf80e-c3b5-4495-815b-5bee023664ba",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "4b139529-3431-4794-82e0-e552e91ee195",
+          "versionId": "f9949304-b763-56f2-a893-a81af6ffe586",
+          "versionRevision": 1,
+          "publicationId": "c7defef7-a51a-45f5-95eb-1ecf50367e76",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "74f13373c5773ef753a9529c3b054b359252126c1c25394927bad7909ba415d5",
+            "generationSeq": 1,
+            "approvalKey": "729884524addc9b33180e242d5245242cd3bd4f527a29fc01cca028058caf1cf",
+            "approvalSnapshotHash": "68e5669230f43f46c56fe57ce9d2fefcb60d71b2b49d71e39895a0f925cc3609",
+            "projectionInputHash": "c2527017d24350a3750dd1c355a1c9c07c9e07fae87c0b952ca5acff13a33f9b",
+            "created": true,
+            "searchRepairOutboxId": "ca7699abfc6dadde89c52832c163437abcdaae4c95d13956b7c87c122d97ad3d"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "a314a607-112d-4c52-912f-b7ff51489c0e",
+      "officialId": "32107",
+      "keepArticleId": "a6a58e6a-1807-4018-9324-aa38f93ed301",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "a314a607-112d-4c52-912f-b7ff51489c0e",
+          "versionId": "969c85b0-9881-5f83-aec0-4c06256faa12",
+          "versionRevision": 1,
+          "publicationId": "b0bf1edf-602f-4589-bc9f-08679fb17338",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "7fac1630da86c2ef6b5078fcab6936b29e982c5884d3d04e9a1f1a25fc0a178c",
+            "generationSeq": 1,
+            "approvalKey": "ae93c9115c7ea85e0447d49b00c88f9a3ee5c98871557f831a67ba8928c4bead",
+            "approvalSnapshotHash": "1288948c9bab5fbc7f176012c8459d65e94a95d8661c1128e100eb724954412c",
+            "projectionInputHash": "cecad16995380e8d71c93a498ffbc22961b4a218cb67235383b837a9b687e493",
+            "created": true,
+            "searchRepairOutboxId": "bd1a2d51ac438d87b2b16ccf900fd7610fef2f9262a069e77b1da4a20933107e"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c",
+      "officialId": "32103",
+      "keepArticleId": "543a9ab4-0fd5-4ed7-ada9-a5b388383093",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c",
+          "versionId": "2daf69f6-8d02-5e4f-a9e1-fad6bea6f0b9",
+          "versionRevision": 1,
+          "publicationId": "c05b3db5-18ed-4225-96ee-ff9b3a002ef8",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "156e661ebc58987c95b71a6544e7d4a98a18410459dc149a5e4612f302963095",
+            "generationSeq": 1,
+            "approvalKey": "a977cb04260a2c697e801a6bb24f2b848d8036c286a49cba28d3388ec511b9aa",
+            "approvalSnapshotHash": "99a2064098b3e894b80c9f59ddff731f226592bfd20b223d3542a416bae4fc15",
+            "projectionInputHash": "a8c4023287f1592daeb82d20de043938664215d297d1e8d32b30c8659518eada",
+            "created": true,
+            "searchRepairOutboxId": "5e3d62549abd427b035e06059118d861bed8f9729b318b103acc48ce02035b1a"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "bac3c408-6e60-4cdb-b489-c3ed06146b71",
+      "officialId": "32106",
+      "keepArticleId": "807d7d15-fe0d-4379-8773-7062ff0cfd56",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "bac3c408-6e60-4cdb-b489-c3ed06146b71",
+          "versionId": "3a546105-0621-5a3c-a981-0702d980f998",
+          "versionRevision": 1,
+          "publicationId": "7611f335-910f-47a0-aded-7b678e44f9c1",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "2435d938d215256ba4a177a112ca1cbf667d30f4c909231fd414391760028eae",
+            "generationSeq": 1,
+            "approvalKey": "4e94bee15878614af3d58f5a2ad6d83a7a135b067196185eb0fda3bc99d8481b",
+            "approvalSnapshotHash": "949a422136b68b8f1e50e7464518ed9c98d40ca7ecc000e04fedf294a9afd18f",
+            "projectionInputHash": "a38906714397f04c79010861c29d7023cad1dfa7261eaa9e8e9505b1a0c142b4",
+            "created": true,
+            "searchRepairOutboxId": "c0b906c96d159ba86d2be76e14a8bf9f7edffc3712fa0522c243729300d12c7f"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "23450418-153b-455b-8aa6-1d750db0da96",
+      "officialId": "32115",
+      "keepArticleId": "c2842357-661c-404f-98e1-887d9eb0f74b",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "23450418-153b-455b-8aa6-1d750db0da96",
+          "versionId": "8216a1f2-46aa-51fb-acfe-cdbed620c670",
+          "versionRevision": 1,
+          "publicationId": "0c68f29b-da5e-4254-9fc1-6178ef1dac14",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "99374e446b8b231e0774ba61574b9043c0cccc0f7252151636dc144b57e0d50c",
+            "generationSeq": 1,
+            "approvalKey": "ad2e4e623a4c269eb8216323eb47da5aabaf15d481b31ff09b2be2d3bab83f72",
+            "approvalSnapshotHash": "5b132f8dcca16815a54d10daa622a5c78d83b9fc85e46639cbf9aa33ca3652be",
+            "projectionInputHash": "eb61ec71bcebfea84702e298553e5c86e6896d633a072b037f8bad2e3a769703",
+            "created": true,
+            "searchRepairOutboxId": "f2247a65615be5398d042df2737ebd1261b87adaf7a15f44d5d4776550fbd352"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "4989743b-b2df-41c8-a082-eb0212265d9e",
+      "officialId": "32119",
+      "keepArticleId": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "4989743b-b2df-41c8-a082-eb0212265d9e",
+          "versionId": "08d75c0c-321c-5ec7-a12b-8ac525cf8e41",
+          "versionRevision": 1,
+          "publicationId": "aede2bca-2a42-4ae4-937a-7ac3eda466c4",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "2fc7450b3baa4dfbc487422bc4abeee29fd3d9ce528842d37e885e67655dd02e",
+            "generationSeq": 1,
+            "approvalKey": "c715d81e675a3b617e392b16860b1025202575c8ee1f64ce08d24eefb627f350",
+            "approvalSnapshotHash": "9b3470189a0f1b5e0dff76692fd0897b882ec86be436e56ef852781ef143a642",
+            "projectionInputHash": "01e43e3b260bfb3ca8471988c89acc379bc79e087f11ab534ccaa8b97160fb4c",
+            "created": true,
+            "searchRepairOutboxId": "de4c8a716e6084ac2c0a5c6994949ab9810e04e1c77a96d5d50cbc24b986c267"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "fb1d6f9a-aedf-46fd-9f90-e69df37b19c1",
+      "officialId": "32125",
+      "keepArticleId": "2afd0d3a-da2e-4b08-8733-dfa16225589b",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "fb1d6f9a-aedf-46fd-9f90-e69df37b19c1",
+          "versionId": "8a92223d-b0fe-5c96-a30c-a63354f59292",
+          "versionRevision": 1,
+          "publicationId": "9262674e-991a-4afa-8476-a56196426940",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "edcfe85733f463ae77eefa4dcacf734323eeb4b599d9b509d37a2b2fbc007ed5",
+            "generationSeq": 1,
+            "approvalKey": "944060cd5326ad33441700725a8d4de289df52f5bf83dc7f845b85b88ef186ee",
+            "approvalSnapshotHash": "6119c1b1667e00fdbc98d83de342657bd5795e2d4c36d6b9d96eca2289002a4d",
+            "projectionInputHash": "583997897c43b216ed6a4a1e0d4bac21104c1e51e85159aba2ef679a2447c47a",
+            "created": true,
+            "searchRepairOutboxId": "5f470508d26cd81e7e1ff82bf4d8833de1fa06c908e21ce3dc0d1847f5792545"
+          }
+        }
+      }
+    },
+    {
+      "articleId": "2ffd5274-9469-4a89-9617-9dd9feed2c7e",
+      "officialId": "32135",
+      "keepArticleId": "1bb21d1a-abb5-4585-a6ad-e2dd5dbbe20f",
+      "result": {
+        "ok": true,
+        "data": {
+          "articleId": "2ffd5274-9469-4a89-9617-9dd9feed2c7e",
+          "versionId": "21694fa6-4ec3-52ad-a570-8c9b7d41caf2",
+          "versionRevision": 1,
+          "publicationId": "5006d7bd-9b9c-440d-92f1-eae2fa8de7eb",
+          "publicationRevision": 2,
+          "publicationState": "withdrawn",
+          "versionCreated": false,
+          "publicationApplied": true,
+          "idempotent": false,
+          "generation": {
+            "generationId": "881617f8f1706694dc1db9b7ca435595fbda0ffd727c90fe6d1268bf43976cd0",
+            "generationSeq": 1,
+            "approvalKey": "d8be7c684e6bf435efd79b40ee5e0eb227a6ee3f30df78b9736a531f0e2ac530",
+            "approvalSnapshotHash": "f2eed0df2b1b7869893d4e793f7cc96ad47a5997efdf95ce46efdcc951b1d5bd",
+            "projectionInputHash": "5b3662c5710ad2740fef70ddf9e07f0fafca77988ac855f0cfb44a4f12d7c839",
+            "created": true,
+            "searchRepairOutboxId": "416965e951932fb5f3ec701cd6a67010de75ebc21f3a9361040dc0d7bd99d389"
+          }
+        }
+      }
+    }
+  ],
+  "noHumanApproval": true
+}

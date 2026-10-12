@@ -1,0 +1,38 @@
+{
+  "result": {
+    "queue_id": "5867feabcbb84e179c531e2c070c5d11",
+    "queue_name": "worldcons-e2e-search-repair",
+    "settings": {
+      "delivery_delay": 0,
+      "message_retention_period": 345600
+    },
+    "created_on": "2026-10-11T07:10:37.52741Z",
+    "modified_on": "2026-10-11T07:10:37.52741Z",
+    "producers_total_count": 1,
+    "producers": [
+      {
+        "script": "worldcons-ingest",
+        "type": "worker"
+      }
+    ],
+    "consumers_total_count": 1,
+    "consumers": [
+      {
+        "script": "worldcons-ingest",
+        "dead_letter_queue": "worldcons-e2e-search-repair-dlq",
+        "settings": {
+          "batch_size": 5,
+          "max_retries": 10,
+          "max_wait_time_ms": 1000,
+          "max_concurrency": 1,
+          "retry_delay": 60
+        },
+        "consumer_id": "f2d7fe89696041eb82dfc7d529ed2d14",
+        "type": "worker"
+      }
+    ]
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

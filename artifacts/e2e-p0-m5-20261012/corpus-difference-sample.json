@@ -1,0 +1,23 @@
+{
+  "articleId": "008bb6f9-d4df-4834-8de3-0a0ff791c2e0",
+  "sourceKey": "fr-conseil-constitutionnel",
+  "document": [
+    {
+      "field": "tags_text",
+      "expected": "\u00012dca1ee8\u0001 \u0001피선거권 박탈\u0001 피선거권 박탈 topic \u00012fd45e81\u0001 \u0001회계보고서\u0001 회계보고서 \u0001609a7408\u0001 \u0001Albin GUILLAUD\u0001 알뱅 기요 party \u0001649b7786\u0001 \u0001Commission nationale des comptes de campagne et des financements politiques\u0001 국가선거비용회계위원회 institution \u000196b4ac63\u0001 \u0001선거비용\u0001 선거비용 \u0001a837a6c9\u0001 \u0001프랑스 헌법위원회\u0001 프랑스 헌법위원회 court \u0001b4739353\u0001 \u0001Code électoral\u0001 프랑스 선거법 law \u0001e91dfd01\u0001 \u0001Ley Orgánica del régimen electoral general\u0001 선거법 \u0001e9b503a9\u0001 \u0001프랑스 총선\u0001 프랑스 총",
+      "actual": "\u00012dca1ee8\u0001 \u0001피선거권 박탈\u0001 피선거권 박탈 topic \u00012fd45e81\u0001 \u0001회계보고서\u0001 회계보고서 \u0001609a7408\u0001 \u0001Albin GUILLAUD\u0001 알뱅 기요 party \u0001649b7786\u0001 \u0001Commission nationale des comptes de campagne et des financements politiques\u0001 국가선거비용회계위원회 institution \u000196b4ac63\u0001 \u0001선거비용\u0001 선거비용 \u0001a837a6c9\u0001 \u0001프랑스 헌법위원회\u0001 프랑스 헌법위원회 court \u0001b4739353\u0001 \u0001Code électoral\u0001 프랑스 선거법 law \u0001e91dfd01\u0001 \u0001선거법\u0001 선거법 \u0001e9b503a9\u0001 \u0001프랑스 총선\u0001 프랑스 총선"
+    },
+    {
+      "field": "checksum",
+      "expected": "ba1518bf6b3ea993",
+      "actual": "f6d44f61bbc95145"
+    }
+  ],
+  "fts": [
+    {
+      "field": "tags_text",
+      "expected": "\u00012dca1ee8\u0001 \u0001피선거권 박탈\u0001 피선거권 박탈 topic \u00012fd45e81\u0001 \u0001회계보고서\u0001 회계보고서 \u0001609a7408\u0001 \u0001Albin GUILLAUD\u0001 알뱅 기요 party \u0001649b7786\u0001 \u0001Commission nationale des comptes de campagne et des financements politiques\u0001 국가선거비용회계위원회 institution \u000196b4ac63\u0001 \u0001선거비용\u0001 선거비용 \u0001a837a6c9\u0001 \u0001프랑스 헌법위원회\u0001 프랑스 헌법위원회 court \u0001b4739353\u0001 \u0001Code électoral\u0001 프랑스 선거법 law \u0001e91dfd01\u0001 \u0001Ley Orgánica del régimen electoral general\u0001 선거법 \u0001e9b503a9\u0001 \u0001프랑스 총선\u0001 프랑스 총",
+      "actual": "\u00012dca1ee8\u0001 \u0001피선거권 박탈\u0001 피선거권 박탈 topic \u00012fd45e81\u0001 \u0001회계보고서\u0001 회계보고서 \u0001609a7408\u0001 \u0001Albin GUILLAUD\u0001 알뱅 기요 party \u0001649b7786\u0001 \u0001Commission nationale des comptes de campagne et des financements politiques\u0001 국가선거비용회계위원회 institution \u000196b4ac63\u0001 \u0001선거비용\u0001 선거비용 \u0001a837a6c9\u0001 \u0001프랑스 헌법위원회\u0001 프랑스 헌법위원회 court \u0001b4739353\u0001 \u0001Code électoral\u0001 프랑스 선거법 law \u0001e91dfd01\u0001 \u0001선거법\u0001 선거법 \u0001e9b503a9\u0001 \u0001프랑스 총선\u0001 프랑스 총선"
+    }
+  ]
+}

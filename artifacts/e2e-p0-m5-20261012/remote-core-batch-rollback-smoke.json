@@ -1,0 +1,7 @@
+{
+  "at": "2026-10-12T04:29:31.559Z",
+  "failedExpected": true,
+  "remaining": 0,
+  "errorCode": "D1 query failed: [{\"code\":7500,\"message\":\"CHECK constraint failed: e2e_commit_snapshot_match: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_CHECK)\"}]",
+  "atomic": true
+}

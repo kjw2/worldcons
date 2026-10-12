@@ -1,0 +1,9 @@
+{
+  "startedAt": "2026-10-12T07:49:36.520Z",
+  "status": "finished",
+  "path": "production_read_only_corpus_audit",
+  "pid": 43840,
+  "code": 0,
+  "signal": null,
+  "finishedAt": "2026-10-12T07:50:16.817Z"
+}

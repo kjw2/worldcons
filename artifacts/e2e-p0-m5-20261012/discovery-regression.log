@@ -1,0 +1,74 @@
+{"event":"m4_local_staged_evidence","scope":"synthetic_local","officialTransport":"fixture","translation":"fixture","generation":{"generation_id":"361df2e471c7dfbf022e33e69e06d37bd928f7a023dec6a4325c0808a5eb50b0","article_id":"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa","generation_seq":1,"source_key":"fr-conseil-constitutionnel","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","approval_key":"884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0","approval_snapshot_hash":"5b99a02528dd9e30bbd2cae3ebb77ad9db9b09b0b698d108f8f3fe4a3f6b4121","approval_hash_schema":"worldcons.approval.v1","projection_input_hash":"4c58cdd4d1ff5bdde0de3422fc65bc42d7cad54e9736b75cf107e2e1ddcc01b3","projection_input_schema":"worldcons.projection-input.v1","expected_version_id":"1a42bad8-1845-56cb-a156-89bb8befa0fb","expected_version_revision":1,"expected_publication_id":"e07514ea-accb-4795-be7f-f16f04a64400","expected_publication_revision":1,"expected_publication_state":"published","approval_mode":"automatic","policy_version":"worldcons.fr-es-staged-approval.v1","approval_evidence_ref":"core:e2e-approval:884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0","source_evidence_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json","pipeline_run_id":"ingest-stage:e9a23456-543e-4bea-9982-e1f3c25d0434","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","created_at":"2026-10-11T22:06:59.135Z"},"approvalProof":{"approval_key":"884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0","article_id":"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa","approval_snapshot_hash":"5b99a02528dd9e30bbd2cae3ebb77ad9db9b09b0b698d108f8f3fe4a3f6b4121","source_content_hash":"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa","policy_version":"worldcons.fr-es-staged-approval.v1","evidence_ref":"core:e2e-approval:884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0","source_artifact_ref":"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json","source_artifact_hash":"f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01","discovery_candidate_id":"native:443d0380339820fc0547a7166948c047","pipeline_run_id":"ingest-stage:e9a23456-543e-4bea-9982-e1f3c25d0434","evidence_document":"{\"approvalKey\":\"884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0\",\"approvalSnapshotHash\":\"5b99a02528dd9e30bbd2cae3ebb77ad9db9b09b0b698d108f8f3fe4a3f6b4121\",\"articleId\":\"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa\",\"candidateId\":\"native:443d0380339820fc0547a7166948c047\",\"canonicalUrl\":\"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm\",\"caseNumber\":\"2026-912 QPC\",\"checks\":{\"noReviewBlock\":true,\"noRiskFlags\":true,\"officialHost\":true,\"publicPermission\":true,\"sourceTextMatches\":true,\"summarySchema\":true,\"translationPersisted\":true},\"observedAt\":\"2026-10-11T22:06:59.065Z\",\"pipelineRunId\":\"ingest-stage:e9a23456-543e-4bea-9982-e1f3c25d0434\",\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"schema\":\"worldcons.automatic-approval.v1\",\"sourceArtifactHash\":\"f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01\",\"sourceArtifactRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json\",\"sourceContentHash\":\"6cf36379703fe13a1aa7cf1067781a19b29fb4130166334b18c5f20cde9c2faa\"}","created_at":"2026-10-11T22:06:59.065Z"},"verification":{"evidence_id":"bb588f64d064b5d5ce9c6a13b87895bd010b702a77224b51af36c4af5be8337d","generation_id":"361df2e471c7dfbf022e33e69e06d37bd928f7a023dec6a4325c0808a5eb50b0","result":"completed_verified","verification_fence":1,"applied_fence":1,"document_fingerprint":"e3b926a2f09de16b18f3814f2513c88b9d0cf2bac8a751462de01b0a5cd5ac5f","fts_fingerprint":"fe36461f2f0dd8fb0a715be896234cbd0b9417f76d8f2250aebd7388addd4d1a","evidence_document":"{\"apiChecks\":{\"approvedBodyPrefixMatches\":true,\"approvedSummaryMatches\":true,\"detailTextLimit\":4000,\"exactArticleIdentity\":true,\"expectedSearchMembership\":true},\"appliedFence\":1,\"approvalEvidenceRef\":\"core:e2e-approval:884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0\",\"approvalKey\":\"884224e8dda1b14b53ed389ed8efbd2e7ea7fa5890309d6b7408f2a09ca619b0\",\"articleId\":\"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa\",\"caseNumber\":\"2026-912 QPC\",\"deploymentRef\":\"fixture:synthetic-local-staged\",\"documentFingerprint\":\"e3b926a2f09de16b18f3814f2513c88b9d0cf2bac8a751462de01b0a5cd5ac5f\",\"expected\":{\"documentCount\":1,\"documentFingerprint\":\"e3b926a2f09de16b18f3814f2513c88b9d0cf2bac8a751462de01b0a5cd5ac5f\",\"ftsCount\":1,\"ftsFingerprint\":\"fe36461f2f0dd8fb0a715be896234cbd0b9417f76d8f2250aebd7388addd4d1a\"},\"ftsFingerprint\":\"fe36461f2f0dd8fb0a715be896234cbd0b9417f76d8f2250aebd7388addd4d1a\",\"generationId\":\"361df2e471c7dfbf022e33e69e06d37bd928f7a023dec6a4325c0808a5eb50b0\",\"generationSeq\":1,\"observed\":{\"documentCount\":1,\"documentFingerprint\":\"e3b926a2f09de16b18f3814f2513c88b9d0cf2bac8a751462de01b0a5cd5ac5f\",\"ftsCount\":1,\"ftsFingerprint\":\"fe36461f2f0dd8fb0a715be896234cbd0b9417f76d8f2250aebd7388addd4d1a\",\"matches\":true},\"policyVersion\":\"worldcons.fr-es-staged-approval.v1\",\"probes\":[{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T22:06:59.183Z\",\"responseHash\":\"f238781446f6eaa36d756c62b8be9248d1c99a3d1aa7f2f93ed011f215c5837d\",\"status\":200,\"url\":\"https://fixture.example/api/articles/france-fr-conseil-constitutionnel-2026-10-10-decision-n-2026-912-qpc-du-10-octobre-2026-1d7526?textLimit=4000\"},{\"cacheControl\":\"no-store\",\"observedAt\":\"2026-10-11T22:06:59.194Z\",\"responseHash\":\"574b76c6f95082e5ccc851edce2bc35a5a7f71d751e600eb9b0c77b097948f00\",\"status\":200,\"url\":\"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none\"}],\"projectionInputHash\":\"4c58cdd4d1ff5bdde0de3422fc65bc42d7cad54e9736b75cf107e2e1ddcc01b3\",\"publicationId\":\"e07514ea-accb-4795-be7f-f16f04a64400\",\"publicationRevision\":1,\"result\":\"completed_verified\",\"schema\":\"worldcons.verification.v1\",\"scope\":\"single_article\",\"sourceEvidenceRef\":\"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json\",\"verificationFence\":1,\"verifiedAt\":\"2026-10-11T22:06:59.208Z\",\"versionId\":\"1a42bad8-1845-56cb-a156-89bb8befa0fb\",\"versionRevision\":1}","verified_at":"2026-10-11T22:06:59.208Z"},"stages":[{"id":"70002553-7943-4104-bc59-453e8b87ab9a","stage":"discovery","status":"succeeded","articleId":"native-discovery:fr-conseil-constitutionnel:1:default","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery-request/fr-conseil-constitutionnel/7de48f4c1f26460f14d2500e94107453c739d77d13e49b639da240c859815383.json"},{"id":"d94510c1-1e2d-4150-8d62-e3fbe02b13fc","stage":"crawl","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-discovery/fr-conseil-constitutionnel/922db50656f5cc4005eb821284d94fe50112db3bc4b025a83b6308dd71979b9d.json"},{"id":"445da009-d570-4cdd-af61-658b66d8d92a","stage":"normalize","status":"succeeded","articleId":"native:443d0380339820fc0547a7166948c047","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json"},{"id":"87ee5bcf-6633-4dc6-9fb4-17e0e16db118","stage":"translate","status":"succeeded","articleId":"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json"},{"id":"e9a23456-543e-4bea-9982-e1f3c25d0434","stage":"public-judgment","status":"succeeded","articleId":"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/ingest-crawl/fr-conseil-constitutionnel/f97562700d3f4d498b7d7ab7e86ac91bca8e3094f76b0287910dc271f6fccd01.json"},{"id":"86f8fe2d-ed97-4e5c-aee1-925c05017efd","stage":"publish","status":"succeeded","articleId":"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-approval/f2be7c7b-1e73-46aa-a19f-65b31fdb2afa/b7a30d72bdb13afd6970b8c52e222e10531e6f84e4293ed809d92ab48ee7f395.json"},{"id":"df7d08b1-9082-4251-9127-33c14fea6fd9","stage":"search","status":"succeeded","articleId":"f2be7c7b-1e73-46aa-a19f-65b31fdb2afa","sourceKey":"fr-conseil-constitutionnel","payloadRef":"stages/e2e-publication/361df2e471c7dfbf022e33e69e06d37bd928f7a023dec6a4325c0808a5eb50b0.json"}]}
+✔ M4 new synthetic official FR case flows Discovery-to-Search unattended through real staged handlers and completion ledger (177.1034ms)
+✔ M4 cohort is default off and malformed enabled configuration cannot fall through to legacy publication (3.4796ms)
+✖ M5 limit=1 repeated known head retains every observed candidate and resumes reservation in bounded ticks (46.519ms)
+✖ M5 capture crash after manifest pin resumes the first immutable snapshot (40.6658ms)
+✖ M5 crash after crawl reservation before journal receipt leaves replayable work, not a lost candidate (32.9525ms)
+✖ M5 stale reservation fence cannot record success or overwrite a newer owner (30.4326ms)
+✖ M5 expired discovery owner cannot activate a candidate manifest (33.0515ms)
+✔ M5 ES protected enumeration retains multiple observed hits while legacy limit remains bounded (61.6005ms)
+✖ M5 known-source periodic recheck budget does not suppress new candidate reservation (29.3806ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 3
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8177.4646
+
+✖ failing tests:
+
+test at tests\e2e-p0-m5-discovery.test.ts:1:2476
+✖ M5 limit=1 repeated known head retains every observed candidate and resumes reservation in bounded ticks (46.519ms)
+  Error: ingest_stage.invalid_enqueued_at
+      at buildIngestStageQueueMessage (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ingest-stages\contracts.ts:215:46)
+      at Object.context (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:23:19)
+      at async TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:37:17)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at tests\e2e-p0-m5-discovery.test.ts:1:5384
+✖ M5 capture crash after manifest pin resumes the first immutable snapshot (40.6658ms)
+  Error: ingest_stage.invalid_enqueued_at
+      at buildIngestStageQueueMessage (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ingest-stages\contracts.ts:215:46)
+      at Object.context (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:23:19)
+      at async TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:59:30)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at tests\e2e-p0-m5-discovery.test.ts:1:6372
+✖ M5 crash after crawl reservation before journal receipt leaves replayable work, not a lost candidate (32.9525ms)
+  Error: ingest_stage.invalid_enqueued_at
+      at buildIngestStageQueueMessage (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ingest-stages\contracts.ts:215:46)
+      at Object.context (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:23:19)
+      at async TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:70:30)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at tests\e2e-p0-m5-discovery.test.ts:1:7571
+✖ M5 stale reservation fence cannot record success or overwrite a newer owner (30.4326ms)
+  Error: ingest_stage.invalid_enqueued_at
+      at buildIngestStageQueueMessage (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ingest-stages\contracts.ts:215:46)
+      at Object.context (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:23:19)
+      at async TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:85:30)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at tests\e2e-p0-m5-discovery.test.ts:1:8395
+✖ M5 expired discovery owner cannot activate a candidate manifest (33.0515ms)
+  Error: ingest_stage.invalid_enqueued_at
+      at buildIngestStageQueueMessage (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ingest-stages\contracts.ts:215:46)
+      at Object.context (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:23:19)
+      at async TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:95:30)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at tests\e2e-p0-m5-discovery.test.ts:1:9679
+✖ M5 known-source periodic recheck budget does not suppress new candidate reservation (29.3806ms)
+  Error: ingest_stage.invalid_enqueued_at
+      at buildIngestStageQueueMessage (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\lib\cloudflare\ingest-stages\contracts.ts:215:46)
+      at Object.context (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:23:19)
+      at async TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m5-discovery.test.ts:109:30)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)

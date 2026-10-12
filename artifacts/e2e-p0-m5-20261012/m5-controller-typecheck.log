@@ -1,0 +1,6 @@
+tests/e2e-p0-m5-approval.test.ts(32,137): error TS2322: Type '{ hashSchema: string; policyVersion: string; mode: "human" | "automatic"; evidenceRef: string; sourceEvidenceRef: string; pipelineRunId?: string | null; discoveryCandidateId?: string | null; }' is not assignable to type 'E2EApprovalContext'.
+  Types of property 'hashSchema' are incompatible.
+    Type 'string' is not assignable to type '"worldcons.approval.v1" | "worldcons.approval.v2" | undefined'.
+tests/e2e-p0-m5-approval.test.ts(36,80): error TS2322: Type '{ hashSchema: string; policyVersion: string; mode: "human" | "automatic"; evidenceRef: string; sourceEvidenceRef: string; pipelineRunId?: string | null; discoveryCandidateId?: string | null; }' is not assignable to type 'E2EApprovalContext'.
+  Types of property 'hashSchema' are incompatible.
+    Type 'string' is not assignable to type '"worldcons.approval.v1" | "worldcons.approval.v2" | undefined'.

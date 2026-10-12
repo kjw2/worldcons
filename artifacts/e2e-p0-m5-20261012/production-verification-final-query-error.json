@@ -1,0 +1,15 @@
+
+{
+  "error": {
+    "text": "A request to the Cloudflare API (/accounts/c0975029797a404cd3ff402ee6a605b2/d1/database/0f4c41f0-778f-4ef4-860e-b0dad05f0984/query) failed.",
+    "notes": [
+      {
+        "text": "The given account is not valid or is not authorized to access this service [code: 7403]"
+      }
+    ],
+    "kind": "error",
+    "name": "APIError",
+    "code": 7403,
+    "accountTag": "c0975029797a404cd3ff402ee6a605b2"
+  }
+}

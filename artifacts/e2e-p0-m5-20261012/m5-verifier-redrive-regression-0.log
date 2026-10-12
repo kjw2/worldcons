@@ -1,0 +1,67 @@
+✔ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (117.0236ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (207.4545ms)
+✔ M4 200/wrong article, title, URL or case number and API outage do not count as completion (496.354ms)
+{"event":"worldcons_search_api_error","path":"/api/search","requestId":"9308f853-8aa0-418d-8171-109bc96d9077","error":"Error"}
+✔ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (95.4919ms)
+✔ M4 concurrent validators share a verification owner without changing Search fence (44.3051ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (113.9431ms)
+✔ M4 withdrawal has its own removal result and is never counted as completed public publication (54.4817ms)
+✔ M4 missing approval proof stays fail-closed (30.8975ms)
+✔ M4 Spanish official case passes the same approval and public verification contract (56.366ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (199.2499ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (162.1424ms)
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+{"event":"e2e_verification_failure","errorName":"Error","errorSummary":"CHECK constraint failed: e2e_commit_snapshot_match"}
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (144.7239ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (35.79ms)
+{"event":"e2e_search_verification","status":"retry","errorCode":"e2e.public_api_unavailable"}
+{"event":"e2e_search_verification","status":"completed_verified"}
+{"event":"e2e_search_repair_consumer","status":"terminal"}
+✔ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (59.3564ms)
+✔ M4 historical completed evidence cannot authorize a now-blocked same generation (43.1537ms)
+✔ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (41.0028ms)
+{"event":"e2e_consumer_claim_wait","phase":"not_due","observedAt":"2026-10-12T05:50:30.318Z","dueAt":"2026-10-12T05:51:30.310Z","outboxId":"f9aae18e625921e1d0365cd90f9ee23acd5d4fc4f6bf41351a2cdcdf876a2ce8"}
+✔ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (68.8514ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 production Queue verifier requires the actual public Worker binding before processing (46.8472ms)
+✔ M5 dispatcher waits for durable verifier backoff and active verification lease without multiplying Queue messages (38.5386ms)
+{"event":"e2e_search_verification","status":"completed_verified"}
+✔ M5 Root binding receives internal /api paths while evidence and response URLs retain external /api/cclrag2 contract (44.7741ms)
+✖ M5 verifier redrive preserves exhausted history, rejects stale fence and does not change P3, generation or Search budget (85.9827ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 20
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4967.7321
+
+✖ failing tests:
+
+test at tests\e2e-p0-m4-verification.test.ts:1:22613
+✖ M5 verifier redrive preserves exhausted history, rejects stale fence and does not change P3, generation or Search budget (85.9827ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + {
+  - [Object: null prototype] {
+      applied_fence: 1,
+      attempt_count: 8,
+      claimed_by: null,
+      first_failure_at: '2026-10-12T05:50:30.494Z',
+      generation_id: '4baefcecd7c6cb96c5f55bcecafcf1166dcc248e87c44551c71ad59235c26c52',
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:268:9)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { generation_id: '4baefcecd7c6cb96c5f55bcecafcf1166dcc248e87c44551c71ad59235c26c52', status: 'dead_letter', verification_fence: 16, applied_fence: 1, attempt_count: 8, max_attempts: 8, next_attempt_at: '2026-10-12T07:50:37.494Z', first_failure_at: '2026-10-12T05:50:30.494Z', claimed_by: null, lease_expires_at: null, last_error_code: 'e2e.public_api_unavailable', updated_at: '2026-10-12T07:35:37.494Z' },
+    expected: { generation_id: '4baefcecd7c6cb96c5f55bcecafcf1166dcc248e87c44551c71ad59235c26c52', status: 'dead_letter', verification_fence: 16, applied_fence: 1, attempt_count: 8, max_attempts: 8, next_attempt_at: '2026-10-12T07:50:37.494Z', first_failure_at: '2026-10-12T05:50:30.494Z', claimed_by: null, lease_expires_at: null, last_error_code: 'e2e.public_api_unavailable', updated_at: '2026-10-12T07:35:37.494Z' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

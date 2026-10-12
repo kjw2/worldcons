@@ -1,0 +1,163 @@
+{
+  "at": "2026-10-12T04:45:08.448Z",
+  "data": [
+    {
+      "results": [
+        {
+          "result": "withdrawal_verified",
+          "n": 1
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "NRT",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.2338
+        },
+        "duration": 0.2338,
+        "changes": 0,
+        "last_row_id": 16883,
+        "changed_db": false,
+        "size_after": 268824576,
+        "rows_read": 2,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [
+        {
+          "article_id": "8b828790-1c70-4038-b90b-ee3774147c1a",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "blocked",
+          "status": "verified",
+          "attempt_count": 3,
+          "next_attempt_at": "2026-10-12T04:40:39.639Z",
+          "last_error_code": null
+        },
+        {
+          "article_id": "5f158de3-8033-4a79-b59a-d89452063bee",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:27.597Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "911de19f-a80d-4702-a2e7-7dfb39b84875",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:30.388Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "4b139529-3431-4794-82e0-e552e91ee195",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:33.551Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "a314a607-112d-4c52-912f-b7ff51489c0e",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:09.855Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "facb3a5f-21d9-4cf4-a936-f63b6c7a2e5c",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:41.304Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "bac3c408-6e60-4cdb-b489-c3ed06146b71",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:43.961Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "23450418-153b-455b-8aa6-1d750db0da96",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:46.588Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "4989743b-b2df-41c8-a082-eb0212265d9e",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:18.460Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "fb1d6f9a-aedf-46fd-9f90-e69df37b19c1",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:22.257Z",
+          "last_error_code": "e2e.verification_failed"
+        },
+        {
+          "article_id": "2ffd5274-9469-4a89-9617-9dd9feed2c7e",
+          "source_key": "es-tribunal-constitucional",
+          "expected_publication_state": "withdrawn",
+          "state": "search_pending",
+          "status": "retry_wait",
+          "attempt_count": 4,
+          "next_attempt_at": "2026-10-12T04:53:24.904Z",
+          "last_error_code": "e2e.verification_failed"
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "NRT",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.4316
+        },
+        "duration": 0.4316,
+        "changes": 0,
+        "last_row_id": 16883,
+        "changed_db": false,
+        "size_after": 268824576,
+        "rows_read": 44,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

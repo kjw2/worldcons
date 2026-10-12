@@ -1,0 +1,169 @@
+[
+  {
+    "id": "e8b7e0c5-fbda-4028-af4d-ecf52bec41fe",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "0ad6bb0c-3fc5-49f8-8ad8-55fe3cdcde52",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-09T06:11:22.66806Z"
+  },
+  {
+    "id": "e5929944-1b33-428e-82fb-a7d354f1d82d",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "4189c105-43db-4800-b557-9571c8ba6ee7",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-09T08:04:51.087128Z"
+  },
+  {
+    "id": "0f22d66b-f790-4bd4-89b1-746f0e0ab48f",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "11702fd8-ed52-497e-99a1-ecd000f675dc",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-10T09:24:44.698599Z"
+  },
+  {
+    "id": "35cc9ca9-9a71-4085-99ad-c53bcac0b381",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "E2E P0 inactive compatible Async worker; git 3317d9b7e1ce01cc6289af45171bf371b53486cb",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "e49fd6b3-278b-4acc-92bc-004970aa8f6a",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:20:16.502496Z"
+  },
+  {
+    "id": "fccc8552-8079-4c96-923f-0820f6cdd4c8",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Protected FR/ES E2E cohort; git b35eb0ef104badc142f7f1c5c2304f17540cc2a7; public 03075f82-369b-4f3f-8085-1608351d3696",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "bafbe0ea-13d3-4fe9-bf6e-7f08244e893e",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:24:46.784993Z"
+  },
+  {
+    "id": "c661effe-1913-410d-bcbf-886c0573f90a",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Protected FR/ES verifier pinned to public 0bf0e14d-b4d9-4370-9b1d-34b5098d5644; git c6d55d5949e367a5e19f80c78d523b2a3d82a9c7",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "cc6b16a3-0a33-4551-bd4c-ccf41cccf0a2",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T07:35:47.515362Z"
+  },
+  {
+    "id": "ce400874-98cb-46a0-ad0d-10a92a107e83",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Durable observed-candidate capture and fenced one-minute reservations; git 87083a66dd705607106c5a1be77453e4e6698917",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "21c59b18-fdd9-4675-a3f9-ad97b5495606",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-11T22:26:48.130822Z"
+  },
+  {
+    "id": "1d1d63ba-56c4-4c8c-b7c2-9b21e2085779",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "M5 publication ownership, exact approval, guarded sync and HJ identity; git 007094f968773179ea056bed6dd10133565df98d",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "444ae1d7-26e9-4a75-a5ad-9cb60a74e2a8",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:34:59.848151Z"
+  },
+  {
+    "id": "3e12543b-5065-4377-8776-3036649e4eed",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "M5 verifier pinned to worldcons b445ded5-d60d-41d0-b114-861a32ae3d0a; git 01c6ae75992d5f5e100a4568df2aa7c6bfb54fba",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "feacb0ec-5d87-49a9-a30f-e52be3039b98",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:36:06.21062Z"
+  },
+  {
+    "id": "8fe51ef9-a3cb-4c1d-b038-25a34a65fdce",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "Fix workerd public verifier redirect compatibility; git 4e65b2bc2920e182c34427eb07729af473d6a93b",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "0b0df235-57d9-4adc-801a-6d65e43dc5bd",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:44:52.268396Z"
+  }
+]

@@ -1,0 +1,69 @@
+[
+  {
+    "results": [
+      {
+        "article_id": "0e25c3b4-3449-46b5-9270-fd0e37f9e4b7",
+        "source_key": "fr-conseil-constitutionnel",
+        "original_title": "Décision n° 2026-1223 QPC du 1er octobre 2026\nM. Magomed S. [Composition du tribunal pour enfants II]\nConformité"
+      },
+      {
+        "article_id": "15560a96-c510-427c-aaf4-a5d57ef5bd50",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "AUTO 43/2026, de 7 de julio de 2026"
+      },
+      {
+        "article_id": "724d57d3-723d-4450-ad01-0a049688fc6a",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "AUTO 37/2026"
+      },
+      {
+        "article_id": "906a356a-b2bb-4a15-8b9f-79b6ca30d3be",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 51/2026"
+      },
+      {
+        "article_id": "9c59ffd5-ea4d-4cae-b334-4865cbbf2253",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 37/2026"
+      },
+      {
+        "article_id": "a643203c-c5f5-4781-b87f-cc7737b39432",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 53/2026"
+      },
+      {
+        "article_id": "b7adb6ff-61a7-4166-b2a5-d0a9aaa762bd",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 58/2026"
+      },
+      {
+        "article_id": "d31eecc5-4e74-440f-ba6e-1561911bd68c",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 59/2026"
+      },
+      {
+        "article_id": "dfb6cee1-447b-498c-a5a6-1cc91d3aaddc",
+        "source_key": "es-tribunal-constitucional",
+        "original_title": "SENTENCIA 33/2026"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 453.0019
+      },
+      "duration": 453.0019,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 269045760,
+      "rows_read": 4513,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

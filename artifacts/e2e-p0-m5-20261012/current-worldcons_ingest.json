@@ -1,0 +1,131 @@
+[
+  {
+    "results": [
+      {
+        "stage": "crawl",
+        "status": "pending",
+        "n": 94
+      },
+      {
+        "stage": "crawl",
+        "status": "succeeded",
+        "n": 21
+      },
+      {
+        "stage": "discovery",
+        "status": "succeeded",
+        "n": 2
+      },
+      {
+        "stage": "normalize",
+        "status": "pending",
+        "n": 1
+      },
+      {
+        "stage": "normalize",
+        "status": "succeeded",
+        "n": 20
+      },
+      {
+        "stage": "public-judgment",
+        "status": "dead_letter",
+        "n": 15
+      },
+      {
+        "stage": "public-judgment",
+        "status": "pending",
+        "n": 1
+      },
+      {
+        "stage": "translate",
+        "status": "dead_letter",
+        "n": 1
+      },
+      {
+        "stage": "translate",
+        "status": "pending",
+        "n": 1
+      },
+      {
+        "stage": "translate",
+        "status": "succeeded",
+        "n": 16
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 3.3099
+      },
+      "duration": 3.3099,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 120561664,
+      "rows_read": 202,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  },
+  {
+    "results": [
+      {
+        "candidate_id": "native:1fd671f58a6cba6c82630f8431f79c62",
+        "crawl_job_id": "17bfe5c2-a3c0-4a2e-be1e-acc2a2f98a67",
+        "status": "succeeded",
+        "last_error_code": null,
+        "updated_at": "2026-10-12T04:01:01.643Z"
+      },
+      {
+        "candidate_id": "native:1f907286e3182aea3a03589038927ca7",
+        "crawl_job_id": "2de53790-30a5-45c6-9e7e-b231b0822465",
+        "status": "succeeded",
+        "last_error_code": null,
+        "updated_at": "2026-10-12T03:45:47.708Z"
+      },
+      {
+        "candidate_id": "native:1c582db44b67d4980f0d5a603813241e",
+        "crawl_job_id": "2d56ac67-bbcf-4bdb-8559-1781a0225fa7",
+        "status": "succeeded",
+        "last_error_code": null,
+        "updated_at": "2026-10-12T03:31:02.780Z"
+      },
+      {
+        "candidate_id": "native:1c20c58c7a064c20a90db14605b06dfb",
+        "crawl_job_id": "cbfcee3e-3762-4d0d-b6de-4a57481f866c",
+        "status": "succeeded",
+        "last_error_code": null,
+        "updated_at": "2026-10-12T03:15:43.757Z"
+      },
+      {
+        "candidate_id": "native:1b5b0435676b7378876c9ad0e72ac51f",
+        "crawl_job_id": "b4a670cb-6f90-4749-bae5-3aaf9dbcdd51",
+        "status": "succeeded",
+        "last_error_code": null,
+        "updated_at": "2026-10-12T03:01:03.098Z"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "HKG",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 3.6917
+      },
+      "duration": 3.6917,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 120561664,
+      "rows_read": 397,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

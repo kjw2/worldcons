@@ -1,0 +1,44 @@
+✔ Gate 0 SQL contract is aggregate/catalog read-only (1.7004ms)
+✔ Gate 0 redaction removes sensitive keys and values recursively (1.4881ms)
+✔ Gate 0 serialization and text rendering are deterministic (0.9007ms)
+✔ Gate 0 manifest hashes the exact deterministic artifact bytes (12.9298ms)
+✔ redesigned administrator UI is the only supported surface (3.6823ms)
+✔ shell navigation covers the new admin surfaces without retired screen links (2.5796ms)
+✔ server layout renders the shell only after an authenticated session identity is verified (1.0238ms)
+✔ new pages preserve authentication redirects without legacy UI fallbacks (1.6482ms)
+✔ work filters are bounded, allowlisted, and URL-shareable (1.0054ms)
+✔ stable sort and pagination use deterministic type/id tie breakers (19.4835ms)
+✔ execution, lifecycle, and publication labels remain independent (1.252ms)
+✔ operational errors redact URLs, queries, tokens, and long values (2.1238ms)
+✔ canonical actions require bounded reason, explicit idempotency, and publication confirmation (4.2704ms)
+✔ every P4 action uses session-only CSRF auth and revalidates authoritative state (3.799ms)
+✔ P4 human mutations reject cron authorization and require a valid session CSRF pair (14.708ms)
+✔ queue query contract is bounded and bulk-loads attempts without N+1 (1.3186ms)
+✔ tracked collection candidates are separated from actionable operational backlog (0.5544ms)
+✔ detail lookup remains valid beyond the newest 500 rows and distinguishes absence from query failure (3.3969ms)
+✔ desktop/mobile, loading/empty/error, focus, and overflow states are present (2.7494ms)
+✔ specialized article actions and immutable source snapshot protections remain reachable (4.3419ms)
+✔ runD1PublishArticle publishes exactly the named article and leaves other pending rows untouched (49.5374ms)
+✔ runD1PublishArticle fail-closes an ineligible row (source_only provenance) without publishing (6.0781ms)
+✔ runD1PublishArticle never treats stale published content as an idempotent success (14.7729ms)
+✔ runD1PublishArticle blocks replay after source provenance is withdrawn (11.4732ms)
+✔ syncSearchProjectionForArticle projects exactly one published article and enforces per-article integrity (28.6817ms)
+✔ bounded P3 repair only allows known source-verified drift (2.6507ms)
+✔ stale legacy provenance is denied, even if current collection flags are true (0.4779ms)
+✔ no-op repeat cannot create publication revisions (0.2692ms)
+✔ P3 refresh requires a human admin confirmation and article kind (2.2488ms)
+✔ official HJ 59 full-text evidence can safely reconcile contradictory legacy safety metadata (12.3112ms)
+✔ production rejects a short admin password even when machine secrets are strong (1.3515ms)
+✔ production still rejects reused or publicly exposed secrets (0.3533ms)
+✔ distributed rate limit migration is atomic, bounded, and service-role-only (1.5016ms)
+✔ rate limiter remains available through an explicit local fallback (3.7091ms)
+✔ production CSP is enforcing by default and removes unsafe-eval (1.0031ms)
+✔ anonymous public-schema access remains closed after least-privilege hardening (1.1348ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1481.5613

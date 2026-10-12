@@ -1,0 +1,41 @@
+{
+  "publicGitRef": "007094f968773179ea056bed6dd10133565df98d",
+  "publicVersionId": "b445ded5-d60d-41d0-b114-861a32ae3d0a",
+  "publicDeployment": {
+    "id": "b2095ad8-d1ed-4669-be12-bf5825c2869c",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "M5 reviewed-snapshot approval and protected publication/search paths; git 007094f968773179ea056bed6dd10133565df98d",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "b445ded5-d60d-41d0-b114-861a32ae3d0a",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:35:33.68616Z"
+  },
+  "asyncGitRef": "01c6ae75992d5f5e100a4568df2aa7c6bfb54fba",
+  "asyncVersionId": "feacb0ec-5d87-49a9-a30f-e52be3039b98",
+  "asyncDeployment": {
+    "id": "3e12543b-5065-4377-8776-3036649e4eed",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "jaethis@gmail.com",
+    "annotations": {
+      "workers/message": "M5 verifier pinned to worldcons b445ded5-d60d-41d0-b114-861a32ae3d0a; git 01c6ae75992d5f5e100a4568df2aa7c6bfb54fba",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "feacb0ec-5d87-49a9-a30f-e52be3039b98",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-10-12T04:36:06.21062Z"
+  },
+  "minimumObservationEndsAt": "2026-10-14T04:36:06.210Z"
+}

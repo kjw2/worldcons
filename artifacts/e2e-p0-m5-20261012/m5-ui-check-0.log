@@ -1,0 +1,6 @@
+components/admin-approval-preview.tsx(14,10): error TS2657: JSX expressions must have one parent element.
+components/admin-approval-preview.tsx(18,14): error TS2657: JSX expressions must have one parent element.
+components/admin-approval-preview.tsx(18,211): error TS1005: '}' expected.
+components/admin-approval-preview.tsx(18,213): error TS17002: Expected corresponding JSX closing tag for 'section'.
+components/admin-approval-preview.tsx(27,3): error TS1128: Declaration or statement expected.
+components/admin-approval-preview.tsx(27,13): error TS1109: Expression expected.

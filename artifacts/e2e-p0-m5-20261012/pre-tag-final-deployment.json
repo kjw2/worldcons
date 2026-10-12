@@ -1,0 +1,50 @@
+{
+  "at": "2026-10-12T06:25:31.120Z",
+  "rootGitRef": "1216caf5ebde12d222bfd198ac9f1256461a454d",
+  "asyncGitRef": "4646e0261751a44083853247a592369a43456e6f",
+  "deployments": [
+    {
+      "kind": "public",
+      "versionId": "de37eb20-033e-4a85-a99c-b9c71e9d663e",
+      "deployment": {
+        "id": "deb433e5-4249-40c5-8586-15969d6ff0bb",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Fully validated M5 Root public provider runtime; git 1216caf5ebde12d222bfd198ac9f1256461a454d",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "de37eb20-033e-4a85-a99c-b9c71e9d663e",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T06:25:21.698767Z"
+      }
+    },
+    {
+      "kind": "async",
+      "versionId": "dc2ffc3d-acb2-4f58-989b-27f5d3ff2453",
+      "deployment": {
+        "id": "7b122e40-ccf8-47c6-bda8-5753f2cfa4c5",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "author_email": "jaethis@gmail.com",
+        "annotations": {
+          "workers/message": "Pin fully validated M5 Root release; git 4646e0261751a44083853247a592369a43456e6f",
+          "workers/triggered_by": "deployment"
+        },
+        "versions": [
+          {
+            "version_id": "dc2ffc3d-acb2-4f58-989b-27f5d3ff2453",
+            "percentage": 100
+          }
+        ],
+        "created_on": "2026-10-12T06:26:03.236768Z"
+      }
+    }
+  ],
+  "minimumObservationEndsAt": "2026-10-14T06:26:03.236Z"
+}

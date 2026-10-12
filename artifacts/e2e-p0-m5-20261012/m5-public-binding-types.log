@@ -1,0 +1,79 @@
+
+ ⛅️ wrangler 4.135.0 (update available 4.149.0)
+───────────────────────────────────────────────
+Generating project types...
+
+interface __BaseEnv_Env {
+	WORLDCONS_RAW: R2Bucket;
+	WORLDCONS_OPS: D1Database;
+	WORLDCONS_CORE: D1Database;
+	WORLDCONS_INGEST: D1Database;
+	WORLDCONS_SEARCH: D1Database;
+	ASYNC_QUEUE: Queue;
+	STAGE_QUEUE_DISCOVERY: Queue;
+	STAGE_QUEUE_CRAWL: Queue;
+	STAGE_QUEUE_NORMALIZE: Queue;
+	STAGE_QUEUE_TRANSLATE: Queue;
+	STAGE_QUEUE_PUBLIC_JUDGMENT: Queue;
+	STAGE_QUEUE_PUBLISH: Queue;
+	STAGE_QUEUE_SEARCH: Queue;
+	E2E_SEARCH_REPAIR_QUEUE: Queue;
+	BROWSER: BrowserRun;
+	M8_SCHEDULER_ENABLED: string;
+	WORLDCONS_E2E_STAGED_APPROVAL_ENABLED: string;
+	WORLDCONS_E2E_STAGED_SOURCES: string;
+	WORLDCONS_E2E_SEARCH_DISPATCH_ENABLED: string;
+	WORLDCONS_E2E_SEARCH_CONSUMER_READY: string;
+	WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED: string;
+	WORLDCONS_E2E_VERIFIER_ENABLED: string;
+	WORLDCONS_E2E_VERIFIER_API_BASE_URL: string;
+	WORLDCONS_E2E_DEPLOYMENT_REF: string;
+	M8_ENABLED_KINDS: string;
+	M8_CRAWLER_SOURCE_EXCLUDE: string;
+	TRANSLATION_DRAIN_LIMIT: string;
+	TRANSLATION_DRAIN_MAX_PASSES: string;
+	PUBLICATION_DRAIN_LIMIT: string;
+	CASE_CATALOG_GERMANY_HISTORY_ENABLED: string;
+	BROWSER_ALLOWED_HOSTS: string;
+	SITE_ANALYTICS_RETENTION_DAYS: string;
+	WORLDCONS_INGEST_STAGES_ENABLED: string;
+	WORLDCONS_INGEST_STAGE_ENVIRONMENT: string;
+	WORLDCONS_INGEST_STAGE_ALLOWLIST: string;
+	WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST: string;
+	WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT: string;
+	WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT: string;
+	WORLDCONS_INGEST_STAGE_LEASE_SECONDS: string;
+	E2E_PUBLIC_API: Fetcher /* worldcons */;
+	WORLDCONS_APP_SERVICE: Service /* entrypoint WorldconsOpsService from worldcons */;
+	ASYNC_WORKFLOW: Workflow<Parameters<import("./src/index").WorldconsAsyncWorkflow['run']>[0]['payload']>;
+	BACKFILL_DISCOVER_WORKFLOW: Workflow<Parameters<import("./src/index").WorldconsBackfillDiscoverWorkflow['run']>[0]['payload']>;
+	BACKFILL_WORKFLOW: Workflow<Parameters<import("./src/index").WorldconsBackfillWorkflow['run']>[0]['payload']>;
+	BACKFILL_NORMALIZE_WORKFLOW: Workflow<Parameters<import("./src/index").WorldconsBackfillNormalizeWorkflow['run']>[0]['payload']>;
+	BACKFILL_VERIFY_WORKFLOW: Workflow<Parameters<import("./src/index").WorldconsBackfillVerifyWorkflow['run']>[0]['payload']>;
+	BACKFILL_STAGE_WORKFLOW: Workflow<Parameters<import("./src/index").WorldconsBackfillPublishWorkflow['run']>[0]['payload']>;
+}
+declare namespace Cloudflare {
+	interface GlobalProps {
+		mainModule: typeof import("./src/index");
+	}
+	interface Env extends __BaseEnv_Env {}
+}
+interface Env extends __BaseEnv_Env {}
+type StringifyValues<EnvType extends Record<string, unknown>> = {
+	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
+};
+declare namespace NodeJS {
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "M8_SCHEDULER_ENABLED" | "WORLDCONS_E2E_STAGED_APPROVAL_ENABLED" | "WORLDCONS_E2E_STAGED_SOURCES" | "WORLDCONS_E2E_SEARCH_DISPATCH_ENABLED" | "WORLDCONS_E2E_SEARCH_CONSUMER_READY" | "WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED" | "WORLDCONS_E2E_VERIFIER_ENABLED" | "WORLDCONS_E2E_VERIFIER_API_BASE_URL" | "WORLDCONS_E2E_DEPLOYMENT_REF" | "M8_ENABLED_KINDS" | "M8_CRAWLER_SOURCE_EXCLUDE" | "TRANSLATION_DRAIN_LIMIT" | "TRANSLATION_DRAIN_MAX_PASSES" | "PUBLICATION_DRAIN_LIMIT" | "CASE_CATALOG_GERMANY_HISTORY_ENABLED" | "BROWSER_ALLOWED_HOSTS" | "SITE_ANALYTICS_RETENTION_DAYS" | "WORLDCONS_INGEST_STAGES_ENABLED" | "WORLDCONS_INGEST_STAGE_ENVIRONMENT" | "WORLDCONS_INGEST_STAGE_ALLOWLIST" | "WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST" | "WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT" | "WORLDCONS_INGEST_STAGE_DISPATCH_LIMIT" | "WORLDCONS_INGEST_STAGE_LEASE_SECONDS">> {}
+}
+
+Generating runtime types...
+
+Runtime types generated.
+
+
+✨ Types written to workers/async-pipeline/worker-configuration.d.ts
+
+📖 Read about runtime types
+https://developers.cloudflare.com/workers/languages/typescript/#generate-types
+📣 Remember to rerun 'wrangler types' after you change your wrangler.jsonc file.
+

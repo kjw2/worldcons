@@ -1,0 +1,6 @@
+{
+  "source": "scripts/audit-e2e-p0-production.ts",
+  "sourceSHA256": "3f7e9b3ec6980f29148957c220aadb51fde5f27286bc9cb7b6187b3e8e642d1b",
+  "adaptation": "Same corpus selection, logical fingerprints and before/after Core boundary; SELECT-only D1 API adapter replaces Wrangler process transport",
+  "runner": "audit-corpus-direct-api.ts"
+}

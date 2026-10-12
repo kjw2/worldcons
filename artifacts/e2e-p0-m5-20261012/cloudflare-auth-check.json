@@ -1,0 +1,14 @@
+[
+  {
+    "probe": 0,
+    "code": 0,
+    "stdout": "\n ⛅️ wrangler 4.135.0\n────────────────────\nGetting User settings...\n👋 You are logged in with an OAuth Token, associated with the email jaethis@gmail.com.\n🔐 Credentials are stored in: C:\\Users\\jaeth\\AppData\\Roaming\\xdg.config\\.wrangler\\config\\default.toml\n┌─────────────────────────────┬──────────────────────────────────┐\n│ Account Name                │ Account ID                       │\n├─────────────────────────────┼──────────────────────────────────┤\n│ Jaethis@gmail.com's Account │ c0975029797a404cd3ff402ee6a605b2 │\n└─────────────────────────────┴──────────────────────────────────┘\n🔓 Token Permissions:\nScope (Access)\n- account (read)\n- user (read)\n- workers (write)\n- workers_kv (write)\n- workers_routes (write)\n- workers_scripts (write)\n- workers_tail (read)\n- d1 (write)\n- pages (write)\n- zone (read)\n- ssl_certs (write)\n- ai (write)\n- ai-search (write)\n- ai-search (run)\n- websearch.run \n- agent-memory (write)\n- queues (write)\n- pipelines (write)\n- secrets_store (write)\n- artifacts (write)\n- flagship (write)\n- containers (write)\n- cloudchamber (write)\n- connectivity (admin)\n- email_routing (write)\n- email_sending (write)\n- browser (write)\n- challenge-widgets.write \n- offline_access \n",
+    "stderr": ""
+  },
+  {
+    "probe": 1,
+    "code": 0,
+    "stdout": "[\n  {\n    \"results\": [\n      {\n        \"reachable\": 1\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"APAC\",\n      \"served_by_colo\": \"NRT\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1736\n      },\n      \"duration\": 0.1736,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 265453568,\n      \"rows_read\": 0,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+    "stderr": ""
+  }
+]

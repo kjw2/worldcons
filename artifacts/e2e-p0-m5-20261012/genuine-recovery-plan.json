@@ -1,0 +1,48 @@
+{
+  "at": "2026-10-12T04:31:12.998Z",
+  "scope": "real newly collected cases absent from older official HJ owner groups",
+  "jobs": [
+    {
+      "id": "b364df65-6092-4b09-87d0-730f942666c9",
+      "article_id": "f2d0716e-c7d6-4f0b-9e3f-90c7289fd7cb",
+      "status": "dead_letter",
+      "last_error_code": "e2e.automatic_approval_review_required",
+      "claimed_fencing_token": "1",
+      "created_at": "2026-10-11T23:45:48.620Z"
+    },
+    {
+      "id": "eaa43bc8-cbc0-4a6d-82da-f37a3da05b76",
+      "article_id": "4c80e563-7dbc-4db1-8101-34d14adbe1fb",
+      "status": "dead_letter",
+      "last_error_code": "e2e.automatic_approval_review_required",
+      "claimed_fencing_token": "1",
+      "created_at": "2026-10-12T00:15:46.376Z"
+    },
+    {
+      "id": "38b2678d-6637-4363-8135-d84a1850f63c",
+      "article_id": "cbe99053-ee25-4596-93bf-b949b10d0bdc",
+      "status": "dead_letter",
+      "last_error_code": "e2e.automatic_approval_review_required",
+      "claimed_fencing_token": "1",
+      "created_at": "2026-10-12T01:15:46.679Z"
+    },
+    {
+      "id": "d32ef7fa-8817-4a5a-a95f-83031b90d93a",
+      "article_id": "a643203c-c5f5-4781-b87f-cc7737b39432",
+      "status": "dead_letter",
+      "last_error_code": "e2e.automatic_approval_review_required",
+      "claimed_fencing_token": "1",
+      "created_at": "2026-10-12T01:30:46.203Z"
+    },
+    {
+      "id": "9afa176d-df73-4fcf-a125-3679d87b1fb3",
+      "article_id": "b7adb6ff-61a7-4166-b2a5-d0a9aaa762bd",
+      "status": "dead_letter",
+      "last_error_code": "e2e.automatic_approval_review_required",
+      "claimed_fencing_token": "1",
+      "created_at": "2026-10-12T02:00:49.232Z"
+    }
+  ],
+  "noSyntheticCase": true,
+  "noHumanApproval": true
+}

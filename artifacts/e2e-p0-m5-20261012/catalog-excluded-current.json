@@ -1,0 +1,36 @@
+{
+  "observedAt": "2026-10-12T07:33:54.835Z",
+  "data": [
+    {
+      "results": [
+        {
+          "article_id": "552950ac-de82-41f5-ae88-411efc5ae9b2",
+          "source_key": "de-bverfg",
+          "original_title": "Beschluss vom 24. März 2021",
+          "version_id": "ab74a7d6-1cc8-5fc7-a522-97226a91f7dc",
+          "catalog_state": "published",
+          "source_anchor_version_id": "cbd5c14b-6278-5f1b-ac03-947589f06ef5",
+          "version_role": null
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "APAC",
+        "served_by_colo": "NRT",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 1.8797
+        },
+        "duration": 1.8797,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 269127680,
+        "rows_read": 1720,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

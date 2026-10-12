@@ -1,0 +1,9 @@
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\app\api\admin\work\[kind]\[id]\route.ts
+  1:53  warning  'HumanApprovalBlocked' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\components\admin-approval-preview.tsx
+  18:13  error  Parsing error: JSX expressions must have one parent element
+
+✖ 2 problems (1 error, 1 warning)
+

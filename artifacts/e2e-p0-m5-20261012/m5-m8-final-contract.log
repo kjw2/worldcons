@@ -1,0 +1,34 @@
+✔ M8 cron inventory maps every retired schedule to stable messages (3.131ms)
+✔ queue replay yields the same Workflow and executor identities (0.3652ms)
+✔ workflow instance ids are Cloudflare-valid and collision-safe for representative keys (0.7596ms)
+✔ every M8 task kind is native and crawler-daily fans out by source (3.3895ms)
+✔ translation native executor invokes the main Worker RPC with quota-paced defaults (0.9497ms)
+✔ publication workflow refreshes the search projection after release (1.8505ms)
+✔ translation workflow publishes and refreshes search immediately after successful translation (2.9384ms)
+✔ watchdog probes publication backlog and only then recovers publication plus search (3.078ms)
+✔ embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch (0.794ms)
+✔ M8_ENABLED_KINDS parser fails closed and honors exact kinds (0.5745ms)
+✔ scheduler gate: disabled => no dispatch, enabled => allowlist only (0.316ms)
+✔ scheduled() gates per kind: only admin-health enqueues under the canary allowlist (0.2366ms)
+✔ queue partition acks blocked kinds, retries invalid, dispatches eligible (0.3778ms)
+✔ canary operator report routes every eligible kind natively (0.6509ms)
+✔ Cloudflare config locks single-consumer retries and a DLQ (0.7577ms)
+✔ GitHub has no operational workflows; Cloudflare owns all schedules (0.2763ms)
+✔ P1 publication pipeline inherits the stable M8 identity (0.9253ms)
+✔ Browser Run client keeps HTTPS, auth, and result mapping bounded (22.2558ms)
+✔ Browser Run client ignores GitHub Actions identity variables and requires its bearer (0.4388ms)
+✔ consolidated Browser Run public endpoint is bearer-only (0.4602ms)
+✔ Browser Run endpoint refuses plaintext transport (0.2021ms)
+✔ request-governor parity: Browser Run navigation acquires and releases a per-source permit (0.5181ms)
+✔ governor propagation: fetchRawItem never drops the per-source request governor on browser escalation (1.5368ms)
+✔ restart/recovery: replay after consumer restart yields the same Workflow id and one create per identity (0.3265ms)
+✔ restart/recovery: gate-closed valid messages ack without dispatch, malformed payloads stay bounded toward DLQ (0.7723ms)
+✔ no-duplicate-publication: two identical M8 identities collapse to one publication command identity (0.7924ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 518.1765

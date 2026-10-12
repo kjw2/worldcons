@@ -1,0 +1,15 @@
+{
+  "mode": "operator_recovery_real_queue",
+  "at": "2026-10-12T05:04:23.000Z",
+  "result": {
+    "stage": "publish",
+    "claimed": 1,
+    "enqueued": 1,
+    "failed": 0,
+    "jobIds": [
+      "ed252779-39bf-4aa8-84d7-9b70e887bc95"
+    ]
+  },
+  "noSyntheticCase": true,
+  "noHumanApproval": true
+}

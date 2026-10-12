@@ -1,0 +1,256 @@
+✖ M4 real local workerd public Worker and separated D1 APIs verify actual content and atomic completion (14882.4526ms)
+✔ M5 verifier probe runs inside workerd, uses supported manual redirects and rejects redirects before reading a body (2223.6046ms)
+✖ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (180.3193ms)
+✔ M4 altered document with unchanged checksum, FTS corruption, duplicate FTS and missing FTS never complete (237.085ms)
+✖ M4 200/wrong article, title, URL or case number and API outage do not count as completion (81.097ms)
+✖ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (157.9434ms)
+✖ M4 concurrent validators share a verification owner without changing Search fence (85.3504ms)
+✖ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (107.7983ms)
+✖ M4 withdrawal has its own removal result and is never counted as completed public publication (83.8993ms)
+✔ M4 missing approval proof stays fail-closed (34.9781ms)
+✖ M4 Spanish official case passes the same approval and public verification contract (46.4424ms)
+✔ M4 summary risks, private/review states, source mismatch and incomplete processing require review (304.854ms)
+✔ M4 verification budget stops redispatch atomically and never consumes additional Search attempts (219.8072ms)
+✔ M4 final Core CAS catches P3 content or proof mutations after the API probes (160.6206ms)
+✔ M4 same approval content with new processing time or publication retry reuses proof, P3 and generation (44.0145ms)
+{"event":"e2e_search_verification","status":"retry"}
+{"event":"e2e_search_verification","status":"retry"}
+✖ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (70.2409ms)
+✖ M4 historical completed evidence cannot authorize a now-blocked same generation (46.0259ms)
+✖ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (45.934ms)
+✖ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (50.3699ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 7
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18709.3121
+
+✖ failing tests:
+
+test at tests\e2e-p0-m4-d1-runtime.test.ts:1:1047
+✖ M4 real local workerd public Worker and separated D1 APIs verify actual content and atomic completion (14882.4526ms)
+  AssertionError [ERR_ASSERTION]: {"status":"retry","errorCode":"e2e.verification_failed"}
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-d1-runtime.test.ts:69:79)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:3990
+✖ M4 exact Core/P3/Search/FTS and actual public provider verify one generation; duplicate is immutable (180.3193ms)
+  AssertionError [ERR_ASSERTION]: {"status":"retry","errorCode":"e2e.verification_failed"}
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:48:65)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:5805
+✖ M4 200/wrong article, title, URL or case number and API outage do not count as completion (81.097ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:81:54)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:6640
+✖ M4 a B revision during API checks cannot complete A; historical A evidence survives a later B (157.9434ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:93:40)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:7577
+✖ M4 concurrent validators share a verification owner without changing Search fence (85.3504ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:101:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:7983
+✖ M4 expired verifier and Core late batch failure cannot leave partial evidence/completion (107.7983ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:113:80)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:8608
+✖ M4 withdrawal has its own removal result and is never counted as completed public publication (83.8993ms)
+  AssertionError [ERR_ASSERTION]: {"status":"retry","errorCode":"e2e.verification_failed"}
+  + actual - expected
+  
+  + 'retry'
+  - 'withdrawal_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:123:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'withdrawal_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:9646
+✖ M4 Spanish official case passes the same approval and public verification contract (46.4424ms)
+  AssertionError [ERR_ASSERTION]: {"status":"retry","errorCode":"e2e.verification_failed"}
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:135:40)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:14718
+✖ M4 actual Queue wrapper retries API failure, then records completion and acknowledges duplicates (70.2409ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:214:58)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:16032
+✖ M4 historical completed evidence cannot authorize a now-blocked same generation (46.0259ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:221:35)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:16463
+✖ M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator (45.934ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:232:9)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\e2e-p0-m4-verification.test.ts:1:17314
+✖ M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval (50.3699ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'retry'
+  - 'completed_verified'
+  
+      at TestContext.<anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\tests\e2e-p0-m4-verification.test.ts:240:140)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'retry',
+    expected: 'completed_verified',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

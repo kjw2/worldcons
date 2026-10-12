@@ -1,0 +1,42 @@
+[
+  {
+    "results": [
+      {
+        "id": "500129ec-521b-4747-a580-6e44c23016b8",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32085",
+        "status": "summarized",
+        "state": "published",
+        "version_id": "3f9bc930-6e4c-552c-a907-d820772af9a8",
+        "created_at": "2026-06-13T10:35:39.887Z",
+        "hjId": "32085"
+      },
+      {
+        "id": "5f158de3-8033-4a79-b59a-d89452063bee",
+        "canonical_url": "https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32085?ACTION=resoluciones-de-organos-judiciales-impugnadas",
+        "status": "summarized",
+        "state": "published",
+        "version_id": "31a4eeca-8c01-533e-aa5a-c9a84d5778a0",
+        "created_at": "2026-10-11T23:00:48.338Z",
+        "hjId": "32085"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "APAC",
+      "served_by_colo": "NRT",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 15.9449
+      },
+      "duration": 15.9449,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 267956224,
+      "rows_read": 2411,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

@@ -1,0 +1,44 @@
+✔ articleReads selects the mock adapter and preserves mock fallback without Supabase config (3.0573ms)
+✔ Supabase adapter maps the detail row and applies the legacy published filter (1.4777ms)
+✔ Supabase adapter switches the projection and detail-v4 relation/select by flag (1.1324ms)
+✔ Supabase adapter keeps the publishability boundary for public reads (1.2827ms)
+✔ Supabase adapter maps the source-text snapshot and filters publishability (0.8936ms)
+✔ retired Supabase env cannot reactivate the exported article-read backend (0.4833ms)
+✔ mock adapter preserves list ordering, filters, pagination, and view counts without Supabase config (2.4987ms)
+✔ Supabase adapter preserves list select, filters, ordering, count, and pagination (1.5701ms)
+✔ Supabase adapter preserves legacy and projected tag filtering (1.0334ms)
+✔ Supabase adapter returns an empty page when a tag filter resolves to no ids (0.366ms)
+✔ Supabase adapter preserves the full-text fallback and its error semantics (28.9781ms)
+✔ exported listArticles ignores retired Supabase env and preserves local fallback semantics (0.6502ms)
+✔ retired Supabase env cannot drive raw-text detail reads (0.9593ms)
+✔ listPublicSitemapArticles preserves mock fallback and exported delegation (0.3667ms)
+✔ Supabase adapter pages the public sitemap up to 50k and maps lastModified with legacy filters (1.1673ms)
+✔ listTopViewedArticles preserves mock fallback and exported delegation (0.5329ms)
+✔ Supabase adapter ranks top-viewed articles by view counts and honors filters and fallback (1.7469ms)
+✔ Supabase adapter lists related article ids with dedupe and error fallback (0.4332ms)
+✔ exported getRelatedArticles keeps the strongest-tag ids path and the tag/source fallback chain (0.8672ms)
+✔ exported getTagBySlug composes the tag lookup with the tag article list (0.6948ms)
+✔ listArticlesForGlossaryTerm expands, dedupes, sorts, and limits related-tag articles (0.9655ms)
+✔ lib/db/queries.ts keeps no direct Supabase coupling for public reads (1.1221ms)
+✔ runtime R2 binding store forces the binding transport without S3 credentials (9.2342ms)
+✔ runtime R2 factory fails closed when a Cloudflare binding is absent (1.4551ms)
+✔ runtime slot selects the Worker binding and can be cleared back to the host factory (0.4338ms)
+{"event":"m4_local_runtime_evidence","scope":"synthetic_local_workerd","verificationDocument":{"apiChecks":{"approvedBodyPrefixMatches":true,"approvedSummaryMatches":true,"detailTextLimit":4000,"exactArticleIdentity":true,"expectedSearchMembership":true},"appliedFence":1,"approvalEvidenceRef":"core:e2e-approval:8ef52c4fd4b972ba976abe0c4abb76337a03b4c155f0b2588877daa850841144","approvalKey":"8ef52c4fd4b972ba976abe0c4abb76337a03b4c155f0b2588877daa850841144","articleId":"11111111-1111-4111-a111-111111111111","caseNumber":"2026-912 QPC","deploymentRef":"fixture:actual-local-workerd","documentFingerprint":"5f61dd2c62d5483e26b0921cb228b7e0dbfcc92db9e62788b8c4d83bb34efa8e","expected":{"documentCount":1,"documentFingerprint":"5f61dd2c62d5483e26b0921cb228b7e0dbfcc92db9e62788b8c4d83bb34efa8e","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189"},"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","generationId":"4d6bac3ef1feb4c5db8931273b6b0b7ffc2e33a615cb2997708d12464b1c6614","generationSeq":1,"observed":{"documentCount":1,"documentFingerprint":"5f61dd2c62d5483e26b0921cb228b7e0dbfcc92db9e62788b8c4d83bb34efa8e","ftsCount":1,"ftsFingerprint":"dd1789e14734183856f82dd87c4cd28cf11665c0d02a081e295dc000dcedd189","matches":true},"policyVersion":"worldcons.fr-es-staged-approval.v1","probes":[{"cacheControl":"no-store","observedAt":"2026-10-12T06:06:42.006Z","responseHash":"54b97dde225f019d1d2650532d37287e111359d3177efe01f798bf7f4b228614","status":200,"transport":"external-http","url":"https://fixture.example/api/articles/m1-fixture?textLimit=4000"},{"cacheControl":"no-store","observedAt":"2026-10-12T06:06:42.006Z","responseHash":"b94d85c4c4a09c1c288e606f2a1d193a4dc94f69aca6ba005761be5c99a9f9bd","status":200,"transport":"external-http","url":"https://fixture.example/api/search?q=2026-912+QPC&mode=fulltext&source=fr-conseil-constitutionnel&pageSize=20&count=none"}],"projectionInputHash":"24a15d3557c09144350844c96780d6dbea242cb4445cab55980f19ec01cb2e82","publicationId":"a1c49e41-bca6-48e0-bc70-8a768aa6e6f2","publicationRevision":1,"result":"completed_verified","schema":"worldcons.verification.v1","scope":"single_article","sourceEvidenceRef":"stages/ingest-crawl/workerd-m4.json","verificationFence":3,"verifiedAt":"2026-10-12T06:06:42.006Z","versionId":"8b9137e4-6d33-50b6-a33c-cd75ba4742f6","versionRevision":1}}
+✔ M4 real local workerd public Worker and separated D1 APIs verify actual content and atomic completion (17062.2357ms)
+✔ M5 verifier probe runs inside workerd, uses supported manual redirects and rejects redirects before reading a body (1940.4366ms)
+✔ M9 named search service preserves the provider contract (34.6559ms)
+✔ M9 reusable search service has health and a D1-only readiness probe (4.4907ms)
+✔ M9 internal cclmetasearch validates its service-binding contract (4.0797ms)
+✔ Cloudflare runtime Supabase clients are unavailable even when secrets are present (0.2806ms)
+✔ M9 named entrypoint owns internal requests while default fetch stays vinext (2.2483ms)
+✔ M9 public cclrag2 adapter keeps rate limiting before direct D1 reads (0.8184ms)
+✔ WorldconsOpsService initializes D1, Vectorize, and Gemini bindings for native embedding backfills (1.284ms)
+✔ M9 main config contains the D1 and Gemini runtime settings without a self-binding (3.0525ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20618.067

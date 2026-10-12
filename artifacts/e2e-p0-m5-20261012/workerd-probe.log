@@ -1,0 +1,22 @@
+service core:user:: This Worker requires compatibility date "2026-09-26", but the newest date supported by this server binary is "2026-09-25".
+C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\runtime\index.ts:232
+			throw new MiniflareCoreError(
+			      ^
+
+MiniflareCoreError [ERR_RUNTIME_FAILURE]: The Workers runtime failed to start. There was likely a problem with the workerd binary or your configuration.
+Runtime stderr:
+{"timestamp":"1791780057288","level":"error","source":"src/workerd/server/json-logger.c++:127","message":"service core:user:: This Worker requires compatibility date \"2026-09-26\", but the newest date supported by this server binary is \"2026-09-25\".","context_depth":0}
+    at StartupLogBuffer.handleStartupFailure (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\runtime\index.ts:232:10)
+    at Runtime.updateConfig (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\runtime\index.ts:353:21)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async _Miniflare.#assembleAndUpdateConfig (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\index.ts:2646:28)
+    at async <anonymous> (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\index.ts:1007:5)
+    at async Mutex.runWith (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\workers\shared\sync.ts:72:12)
+    at async _Miniflare.#waitForReady (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\index.ts:2813:3)
+    at async _Miniflare.dispatchFetch (C:\Users\jaeth\.devspace\worktrees\worldcons-7f30866b\node_modules\miniflare\src\index.ts:3058:3)
+    at async <anonymous> (C:\Users\jaeth\.codex\worktrees\e2e-p0-m1\worldcons\artifacts\e2e-p0-m5-20261012\probe-workerd.ts:5:202) {
+  code: 'ERR_RUNTIME_FAILURE',
+  cause: undefined
+}
+
+Node.js v24.15.0
