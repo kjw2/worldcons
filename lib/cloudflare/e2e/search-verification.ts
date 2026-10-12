@@ -9,6 +9,7 @@ import { projectionFingerprints, projectionMatches, inspectSearchProjection, sea
 import { CURRENT_OUTBOX_SQL, isSearchRepairMessage } from "./search-repair-dispatcher";
 
 export interface SearchVerificationOptions {
+  transport?:"external-http"|"root-public-provider-service-binding";
   apiBaseUrl:string;
   fetch?:typeof fetch;
   clock?:()=>string;
@@ -42,7 +43,7 @@ export async function probeVerificationApi(url:string,options:SearchVerification
   const bytes=new Uint8Array(size); let offset=0; for (const chunk of chunks) { bytes.set(chunk,offset); offset+=chunk.byteLength; }
   const text=new TextDecoder().decode(bytes);
   let body:GenerationRow;try {body=record(JSON.parse(text));}catch {console.error(JSON.stringify({event:"e2e_api_probe_failure",phase:"decode",status:response.status,contentType:response.headers.get("content-type")}));throw new Error("e2e.api_json_invalid");}
-  return {status:response.status,body,evidence:{url,status:response.status,observedAt:clock(),
+  return {status:response.status,body,evidence:{url,transport:options.transport??"external-http",status:response.status,observedAt:clock(),
     responseHash:await sha256Canonical(body),cacheControl:response.headers.get("cache-control")}};
 }
 function checkItem(item:GenerationRow,v:GenerationRow,base:string) {

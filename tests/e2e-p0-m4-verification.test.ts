@@ -251,3 +251,9 @@ test("M5 dispatcher waits for durable verifier backoff and active verification l
  f.advance(121);assert.equal((await dispatchSearchRepairs(f.core,queue,{clock:f.options.clock})).sentCount,1);
  f.core.db.prepare("UPDATE e2e_verification_jobs_v1 SET status='leased',lease_expires_at=?").run(new Date(Date.parse(f.options.clock())+300000).toISOString());f.advance(61);assert.equal((await dispatchSearchRepairs(f.core,queue,{clock:f.options.clock})).sentCount,0);
 });
+
+test("M5 Root binding receives internal /api paths while evidence and response URLs retain external /api/cclrag2 contract",async t=>{
+ const f=await fixture(t),base='https://fixture.example/api/cclrag2',paths:string[]=[];f.core.db.exec("UPDATE e2e_search_repair_outbox_v1 SET next_attempt_at='2000-01-01T00:00:00Z'");let acks=0;
+ await consumeE2ESearchRepairBatch([{body:f.message,ack(){acks++;},retry(){throw Error('unexpected retry');}}],{WORLDCONS_CORE:f.core,WORLDCONS_SEARCH:f.search,WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED:'true',WORLDCONS_E2E_VERIFIER_ENABLED:'true',WORLDCONS_INGEST_STAGE_ENVIRONMENT:'production',WORLDCONS_E2E_VERIFIER_API_BASE_URL:base,WORLDCONS_E2E_DEPLOYMENT_REF:'fixture:root-provider',E2E_PUBLIC_API:{async fetch(request:Request){paths.push(new URL(request.url).pathname);return handleWorldconsSearchRequest(request,{ENVIRONMENT:'test',PUBLIC_BASE_URL:base},{coreBinding:f.core,searchBinding:f.search});}}});
+ assert.equal(acks,1);assert.deepEqual(paths,['/api/articles/m1-fixture','/api/search']);const proof=JSON.parse(String(f.core.rows('e2e_verification_evidence_v1')[0].evidence_document));assert.ok(proof.probes.every((p:{url:string;transport:string})=>p.url.startsWith(base+'/')&&p.transport==='root-public-provider-service-binding'));
+});

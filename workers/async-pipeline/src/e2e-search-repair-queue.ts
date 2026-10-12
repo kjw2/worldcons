@@ -42,7 +42,7 @@ export async function consumeE2ESearchRepairBatch(messages:readonly QueueMessage
       if (result.status==="awaiting_verification"&&env.WORLDCONS_E2E_VERIFIER_ENABLED==="true") {
         const verified=await verifySearchRepair(env.WORLDCONS_CORE,env.WORLDCONS_SEARCH,message.body,{
           apiBaseUrl:env.WORLDCONS_E2E_VERIFIER_API_BASE_URL??"",deploymentRef:env.WORLDCONS_E2E_DEPLOYMENT_REF??"",
-          ...(env.E2E_PUBLIC_API?{fetch:((input,init)=>env.E2E_PUBLIC_API!.fetch(new Request(input,init))) as typeof fetch}:{})});
+          ...(env.E2E_PUBLIC_API?{transport:"root-public-provider-service-binding" as const,fetch:((input,init)=>{const url=new URL(typeof input==="string"?input:input instanceof URL?input.href:input.url);url.pathname=url.pathname.replace(/^\/api\/cclrag2(?=\/|$)/,"/api");return env.E2E_PUBLIC_API!.fetch(new Request(url,init));}) as typeof fetch}:{})});
         if (["retry","invalid","missing","awaiting_application"].includes(verified.status)) {if(await deferredVerification(message.body))message.ack();else message.retry({delaySeconds:60});}
         else message.ack();
         console[verified.status==="dead_letter"||verified.status==="blocked"?"error":"log"](JSON.stringify({event:"e2e_search_verification",status:verified.status,...("errorCode" in verified?{errorCode:verified.errorCode}:{})}));
