@@ -54,9 +54,9 @@ export const CURRENT_GENERATION_SQL = `h.generation_id=g.generation_id AND h.gen
   AND EXISTS (SELECT 1 FROM article_publications_p3 p WHERE p.article_id=g.article_id
     AND p.id=g.expected_publication_id AND p.version_id=g.expected_version_id
     AND CAST(p.revision AS INTEGER)=g.expected_publication_revision AND p.state=g.expected_publication_state)
-  AND EXISTS (SELECT 1 FROM article_version_heads_p3 vh WHERE vh.article_id=g.article_id
-    AND vh.current_version_id=g.expected_version_id AND CAST(vh.current_revision AS INTEGER)=g.expected_version_revision)
-  AND (NOT EXISTS (SELECT 1 FROM article_revision_heads_v4 v4 WHERE v4.article_id=g.article_id)
+  AND (g.expected_publication_state<>'published' OR EXISTS (SELECT 1 FROM article_version_heads_p3 vh WHERE vh.article_id=g.article_id
+    AND vh.current_version_id=g.expected_version_id AND CAST(vh.current_revision AS INTEGER)=g.expected_version_revision))
+  AND (g.expected_publication_state<>'published' OR NOT EXISTS (SELECT 1 FROM article_revision_heads_v4 v4 WHERE v4.article_id=g.article_id)
     OR EXISTS (SELECT 1 FROM article_revision_heads_v4 v4 WHERE v4.article_id=g.article_id
       AND v4.current_version_id=g.expected_version_id AND CAST(v4.current_revision AS INTEGER)=g.expected_version_revision))`;
 export const CURRENT_OUTBOX_SQL = `EXISTS (SELECT 1 FROM e2e_generations_v1 g

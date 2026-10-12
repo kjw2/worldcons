@@ -20,7 +20,7 @@ export async function desiredSearchProjection(core:D1RuntimeDatabase,g:Generatio
   if (!g.input_current) throw new Error("e2e.input_changed");
   if (g.expected_publication_state!=="published") return { document:null,fts:null };
   const versions=await e2eRows(core,"SELECT * FROM article_content_versions_p3 WHERE id=? AND article_id=?",g.expected_version_id,g.article_id);
-  if (!versions[0] || (await approvalIdentity(String(g.article_id),versions[0],String(g.policy_version))).approvalSnapshotHash!==g.approval_snapshot_hash) throw new Error("e2e.approval_snapshot_changed");
+  if (!versions[0] || (await approvalIdentity(String(g.article_id),versions[0],String(g.policy_version),String(g.approval_hash_schema))).approvalSnapshotHash!==g.approval_snapshot_hash) throw new Error("e2e.approval_snapshot_changed");
   const source=await readEligibleSourceForArticle(core,String(g.article_id));
   if (source.length!==1||source[0].version_id!==g.expected_version_id) throw new Error("e2e.publication_ineligible");
   const tags=await readTagsForArticleIds(core,[String(g.article_id)]);

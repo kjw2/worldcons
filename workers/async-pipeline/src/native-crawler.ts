@@ -1,3 +1,6 @@
+import {canonicalOfficialArticleUrl as canonicalNativeArticleUrl} from "../../../lib/search/official-case-url";
+export {canonicalOfficialArticleUrl as canonicalNativeArticleUrl} from "../../../lib/search/official-case-url";
+import {normalizeCaseNumber} from "../../../lib/search/case-number";
 import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../../../lib/cloudflare/core-write/authority";
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { shouldRetryBverfgCandidates, type BverfgTrackedCandidate } from "../../../lib/ingest/bverfg-candidate-retry";
@@ -492,7 +495,7 @@ function discoverSpain(html: string, base: string): NativeArticleCandidate[] {
     const id = new URL(link.url).pathname.match(/\/Resolucion\/Show\/(\d+)\/?$/i)?.[1];
     return id !== undefined && Number.isSafeInteger(Number(id)) && Number(id) > 0;
   }).map((link) => ({
-    sourceKey: "es-tribunal-constitucional", url: link.url, title: link.title || `Resolución HJ ${link.url.match(/Show\/(\d+)/i)?.[1]}`, publishedAt: dateIso(link.context), contentType: /\bAUTO\b/i.test(link.title) ? "order" : "decision", metadata: { hjId: link.url.match(/Show\/(\d+)/i)?.[1], collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: true, sourceTextAvailable: false, strictSourceTextAvailable: true, publishable: false } },
+    sourceKey: "es-tribunal-constitucional", url: canonicalNativeArticleUrl("es-tribunal-constitucional",link.url), title: link.title || `Resolución HJ ${link.url.match(/Show\/(\d+)/i)?.[1]}`, publishedAt: dateIso(link.context), contentType: /\bAUTO\b/i.test(link.title) ? "order" : "decision", metadata: { hjId: link.url.match(/Show\/(\d+)/i)?.[1], caseNumber: normalizeCaseNumber("es-tribunal-constitucional",link.title), collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: true, sourceTextAvailable: false, strictSourceTextAvailable: true, publishable: false } },
   }));
 }
 
@@ -624,6 +627,7 @@ function spainPayloadCandidate(payload: Record<string, unknown>, hjId: number): 
     contentType: resolutionType === "AUTO" ? "order" : "decision",
     metadata: {
       hjId: String(hjId),
+      caseNumber: number && year ? normalizeCaseNumber("es-tribunal-constitucional",`${number}/${year}`) : undefined,
       resolutionType,
       notice: typeof payload.AVISO === "string" ? payload.AVISO : undefined,
       ...(irrelevant ? { review: { required: true, reason: "official_metadata_requires_review" } } : {}),
@@ -883,11 +887,12 @@ export function reconcileSpanishOfficialTextMetadata(
 
 async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string): Promise<NativePersistResult> {
   const core = bindings.WORLDCONS_CORE;
-  const canonical = canonicalUrl(candidate.url, candidate.url);
+  const canonical = canonicalNativeArticleUrl(candidate.sourceKey,canonicalUrl(candidate.url, candidate.url));
   const clean = normalizeNativeSourceText(text);
   const status = articleStatus(candidate, clean);
   const contentHash = await sha256(clean.replace(/\s+/g, " ").trim() || `${candidate.sourceKey}:${canonical}`);
-  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state FROM articles WHERE canonical_url = ? LIMIT 1").bind(canonical).first<Record<string, unknown>>();
+  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, canonical_url, fetched_at FROM articles WHERE (canonical_url IN (?,?) OR canonical_url LIKE ? OR canonical_url LIKE ?) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?%",canonical.replace("/HJ/es/","/es/")+"?%",candidate.sourceKey).first<Record<string, unknown>>();
+  if(existing&&Date.parse(fetchedAt)<Date.parse(String(existing.fetched_at??"")))return {outcome:"preserved",articleId:String(existing.id),canonicalUrl:String(existing.canonical_url),contentHash:String(existing.content_hash),status:String(existing.status)};
   const lifecycleBefore = existing ? await readArticleLifecycleFromD1(core as unknown as D1RuntimeDatabase, String(existing.id)) : null;
   if (lifecycleBefore && !lifecycleBefore.ok) throw new Error("crawler.lifecycle_read_failed");
   const duplicate = existing ? null : await core.prepare("SELECT id FROM articles WHERE content_hash = ? LIMIT 1").bind(contentHash).first<{ id: string }>();

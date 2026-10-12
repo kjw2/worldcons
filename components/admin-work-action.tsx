@@ -1,5 +1,6 @@
 "use client";
 
+import {AdminApprovalPreview,fetchApprovalPreview,type ApprovalPreview} from "./admin-approval-preview";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ban, Loader2, Rocket, RotateCcw, Send, Undo2 } from "lucide-react";
@@ -43,6 +44,8 @@ export function AdminWorkActionButton({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [preview,setPreview]=useState<ApprovalPreview|null>(null);
+  const activePreview=preview?.articleId===id?preview:null;
   const [message, setMessage] = useState<string | null>(null);
 
   if (!action) {
@@ -56,6 +59,11 @@ export function AdminWorkActionButton({
 
   async function run() {
     if (!action || pending) return;
+    if(kind==="article"&&(action==="publish"||action==="refresh-p3")&&!activePreview) {
+      setPending(true);setMessage(null);
+      try{setPreview(await fetchApprovalPreview({articleId:id}));setMessage("원문·요약을 검토한 뒤 버튼을 다시 누르세요.");}catch(error){setMessage(error instanceof Error?error.message:"검토 자료를 읽지 못했습니다.");}finally{setPending(false);}
+      return;
+    }
     const copy = actionCopy[action];
     const reason = window.prompt(copy.prompt)?.trim();
     if (!reason) return;
@@ -74,6 +82,7 @@ export function AdminWorkActionButton({
         headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify({
           action,
+          expectedApprovalSnapshotHash:activePreview?.approvalSnapshotHash,
           reason,
           confirmation: copy.confirmation ?? "acknowledged",
           idempotencyKey: idempotencyKey(action, id),
@@ -84,7 +93,7 @@ export function AdminWorkActionButton({
       setMessage("조치가 접수되었습니다.");
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "조치에 실패했습니다.");
+      setMessage(error instanceof Error ? error.message : "조치에 실패했습니다.");setPreview(null);
     } finally {
       setPending(false);
     }
@@ -101,6 +110,7 @@ export function AdminWorkActionButton({
         <ActionIcon action={action} pending={pending} />
         {pending ? "처리 중" : actionCopy[action].label}
       </button>
+      {activePreview?<AdminApprovalPreview preview={activePreview} onDismiss={()=>setPreview(null)} />:null}
       {message ? <span className="max-w-48 break-words text-xs leading-4 text-court" role="status">{message}</span> : null}
     </div>
   );

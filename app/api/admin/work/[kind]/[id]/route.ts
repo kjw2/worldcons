@@ -1,3 +1,5 @@
+import {recordHumanApproval,protectedSourceRequired,HumanApprovalBlocked} from "@/lib/cloudflare/e2e/manual-approval";
+import {verifyHumanPreview,updateReviewedMetadata} from "@/lib/admin/e2e-human-review";
 import { NextResponse } from "next/server";
 import { adminCommandService } from "@/lib/admin/command-control-plane/service";
 import { articlePublicationService } from "@/lib/article-publication/service";
@@ -68,6 +70,7 @@ async function publicationAction(
   idempotencyKey: string,
   request: Request,
   operatorIdentity: string,
+  expectedApprovalSnapshotHash?:string,
 ) {
   const core = getRuntimeD1Binding("worldcons_core");
   if (!core) return { ok: false as const, code: "unavailable" };
@@ -84,6 +87,9 @@ async function publicationAction(
   if (action === "publish" && !["in_review", "withdrawn"].includes(currentState)) return { ok: false as const, code: "illegal_transition" };
   if (action === "withdraw" && currentState !== "published") return { ok: false as const, code: "illegal_transition" };
 
+  const protectedApproval=action==="publish"&&await protectedSourceRequired(core,id);
+  const human=protectedApproval?await verifyHumanPreview(core,id,expectedApprovalSnapshotHash):null;
+  const context=human?await recordHumanApproval(core,{articleId:id,actorId:operatorIdentity,expectedSnapshotHash:human.identity.approvalSnapshotHash,note:reason,requestId:idempotencyKey,now:new Date().toISOString()}):undefined;
   const requestId = request.headers.get("x-request-id")?.trim().slice(0, 160) || null;
   const result = await articlePublicationService.transition({
     articleId: id,
@@ -91,7 +97,7 @@ async function publicationAction(
     expectedPublicationRevision: Number(row.revision),
     idempotencyKey: `p4:${createHash(`publication:${id}:${action}:${idempotencyKey}`, 64)}`,
     targetState: action === "publish" ? "published" : "withdrawn",
-    versionId: action === "withdraw" ? String(row.version_id) : String(row.current_version_id),
+    ...(protectedApproval?{captureLegacy:true,e2eApproval:context}:{versionId:action === "withdraw" ? String(row.version_id) : String(row.current_version_id)}),
     actorType: "human",
     actorId: operatorIdentity,
     reason,
@@ -104,7 +110,7 @@ async function publicationAction(
 }
 
 /** Authenticated human-only, four-ID P3 repair. Never changes Core or overwrites a P3 version. */
-async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: string, operatorIdentity: string) {
+async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: string, operatorIdentity: string, expectedApprovalSnapshotHash?:string) {
   if (!P3_DRIFT_REFRESH_CANARY_IDS.has(id)) return { ok: false as const, code: "forbidden" };
   const core = getRuntimeD1Binding("worldcons_core");
   if (!core) return { ok: false as const, code: "unavailable" };
@@ -120,6 +126,9 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
     WHERE a.id=? LIMIT 1
   `).bind(id).all<P3RefreshCandidate>();
   if (lookup.success === false || lookup.error) return { ok: false as const, code: "unavailable" };
+  const protectedApproval=await protectedSourceRequired(core,id);
+  const reviewed=protectedApproval?await verifyHumanPreview(core,id,expectedApprovalSnapshotHash):null;
+  let expectedAfterRevalidation=reviewed?.identity.approvalSnapshotHash;
   let candidate = lookup.results?.[0];
   if (!candidate) return { ok: false as const, code: "not_found" };
   let decision = assessP3RefreshCandidate(candidate);
@@ -134,9 +143,9 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
       if (!response.ok) return { ok: false as const, code: "unavailable" };
       const validated = revalidatedSentencia59Metadata(candidate, await response.json(), new Date().toISOString());
       const current = new Date().toISOString();
-      const updated = await core.prepare(
-        "UPDATE articles SET source_metadata=?,updated_at=? WHERE id=? AND updated_at=? AND source_metadata=?",
-      ).bind(validated, current, id, candidate.updated_at, candidate.source_metadata).run?.();
+      const updated=reviewed?{success:true,meta:{changes:1},error:null}:
+        await core.prepare("UPDATE articles SET source_metadata=?,updated_at=? WHERE id=? AND updated_at=? AND source_metadata=?").bind(validated,current,id,candidate.updated_at,candidate.source_metadata).run?.();
+      if(reviewed)expectedAfterRevalidation=await updateReviewedMetadata(core,reviewed.article,validated,String(reviewed.article.review_state??"summarized"),current);
       if (!updated || updated.success === false || updated.error) return { ok: false as const, code: "unavailable" };
       if (Number((updated.meta as { changes?: number } | undefined)?.changes ?? 0) !== 1) {
         return { ok: false as const, code: "stale_revision" };
@@ -178,6 +187,7 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
     || snapshot.data.legacyUpdatedAt !== candidate.updated_at) {
     return { ok: false as const, code: "stale_revision" };
   }
+  const context=reviewed?await recordHumanApproval(core,{articleId:id,actorId:operatorIdentity,expectedSnapshotHash:expectedAfterRevalidation!,note:reason,requestId:idempotencyKey,now:new Date().toISOString()}):undefined;
   const result = await articlePublicationService.transition({
     articleId: id,
     expectedVersionRevision: snapshot.data.versionRevision,
@@ -192,6 +202,7 @@ async function refreshP3Snapshot(id: string, reason: string, idempotencyKey: str
     provenanceActorId: operatorIdentity,
     reason,
     correlationId: idempotencyKey,
+    ...(context?{e2eApproval:context}:{}),
     safeMetadata: { action: "bounded_p3_snapshot_refresh", priorVersionId: candidate.version_id },
   });
   if (!result.ok) return { ok: false as const, code: result.error.code };
@@ -234,6 +245,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ kin
     | Awaited<ReturnType<typeof refreshP3Snapshot>>
     | Awaited<ReturnType<typeof adminCommandService.abort>>
     | Awaited<ReturnType<typeof adminCommandService.retry>>;
+  try {
   if (kind === "execution" && action === "abort") {
     result = await adminCommandService.abort({ runId: id, requestedBy: operatorIdentity, reason });
   } else if (kind === "execution" && action === "retry") {
@@ -241,12 +253,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ kin
   } else if (kind === "candidate" && action === "candidate-retry") {
     result = await candidateRetry(id, idempotencyKey, operatorIdentity);
   } else if (kind === "article" && (action === "publish" || action === "withdraw")) {
-    result = await publicationAction(id, action, reason, idempotencyKey, request, operatorIdentity);
+    result = await publicationAction(id, action, reason, idempotencyKey, request, operatorIdentity,parsed.data.expectedApprovalSnapshotHash);
   } else if (kind === "article" && action === "refresh-p3") {
-    result = await refreshP3Snapshot(id, reason, idempotencyKey, operatorIdentity);
+    result = await refreshP3Snapshot(id, reason, idempotencyKey, operatorIdentity,parsed.data.expectedApprovalSnapshotHash);
   } else {
     return NextResponse.json({ error: "Unsupported action" }, { status: 409 });
   }
+
+  } catch(error) {if(error instanceof HumanApprovalBlocked)return NextResponse.json({error:"검토 내용이 바뀌었거나 승인 조건을 충족하지 않습니다. 자료를 다시 확인해 주세요."},{status:409});throw error;}
 
   if (!result.ok) {
     const code = "error" in result && isCommandError(result.error) ? result.error.code : "code" in result ? result.code : "internal";

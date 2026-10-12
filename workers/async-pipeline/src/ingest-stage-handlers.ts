@@ -36,6 +36,7 @@ import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-bindi
 import { registerIngestStageJob } from "../../../lib/cloudflare/ingest-stages/repository";
 import {
   NATIVE_CRAWLER_SOURCES,
+  canonicalNativeArticleUrl,
   normalizeNativeSourceText,
   crawlNativeStageCandidate,
   discoverNativeStageCandidates,
@@ -568,7 +569,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         const approval=await recordAutomaticApproval(context.coreDb,{articleId,sourceKey:context.job.source_key!,
           candidateId:await nativeStageCandidateId(candidate.sourceKey,candidate.url),pipelineRunId:`ingest-stage:${context.job.id}`,
           sourceArtifactRef:context.job.payload_ref!,sourceArtifactHash:await sha256Canonical(artifact),
-          cleanedSourceText:normalizeNativeSourceText(artifact.text),candidateUrl:candidate.url,canonicalUrl:artifact.canonicalUrl,
+          cleanedSourceText:normalizeNativeSourceText(artifact.text),candidateUrl:canonicalNativeArticleUrl(candidate.sourceKey,candidate.url),canonicalUrl:canonicalNativeArticleUrl(candidate.sourceKey,artifact.canonicalUrl),
           candidateTitle:candidate.title,now:context.now});
         const key=`stages/e2e-approval/${articleId}/${await sha256Canonical(approval)}.json`;
         await deps.rawBucket.put(key,new TextEncoder().encode(JSON.stringify({articleId,approval})),{httpMetadata:{contentType:"application/json"}});

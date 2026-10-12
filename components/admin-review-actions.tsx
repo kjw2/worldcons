@@ -1,5 +1,6 @@
 "use client";
 
+import {AdminApprovalPreview,fetchApprovalPreview,type ApprovalPreview} from "./admin-approval-preview";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, EyeOff, Loader2, RefreshCcw, RotateCcw, Send } from "lucide-react";
@@ -79,6 +80,8 @@ export function AdminReviewActions({
 }) {
   const router = useRouter();
   const defaultModelOption = modelOptions.find((option) => option.model !== currentModel) ?? modelOptions[0] ?? null;
+  const [preview,setPreview]=useState<ApprovalPreview|null>(null);
+  const activePreview=preview&&(articleId?preview.articleId===articleId:preview.slug===slug)?preview:null;
   const [note, setNote] = useState("");
   const [selectedModelKey, setSelectedModelKey] = useState(defaultModelOption ? modelKey(defaultModelOption) : "__custom__");
   const [customProvider, setCustomProvider] = useState<SummaryModelOption["provider"]>("gemini");
@@ -151,6 +154,11 @@ export function AdminReviewActions({
 
   async function runAction(action: ReviewAction, modelSelection?: Pick<SummaryModelOption, "provider" | "model"> | null) {
     if (pendingAction) return;
+    if(action==="publish-reviewed"&&!activePreview){
+      setPendingAction(action);setIsError(false);setMessage(null);
+      try{setPreview(await fetchApprovalPreview({articleId,slug}));setMessage("원문·요약을 검토한 뒤 공개 버튼을 다시 누르세요.");}catch(error){setIsError(true);setMessage(error instanceof Error?error.message:"검토 자료를 읽지 못했습니다.");}finally{setPendingAction(null);}
+      return;
+    }
     if (action === "close-private" && !window.confirm("이 자료를 비공개 종결하면 검토 큐에서 제외됩니다. 계속 진행할까요?")) return;
 
     setPendingAction(action);
@@ -164,6 +172,7 @@ export function AdminReviewActions({
         headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
         body: JSON.stringify({
           action,
+          expectedApprovalSnapshotHash:action==="publish-reviewed"?activePreview?.approvalSnapshotHash:undefined,
           articleId,
           slug,
           note,
@@ -183,7 +192,7 @@ export function AdminReviewActions({
       setIsError(/실패|충족하지|찾을 수|없어/.test(nextMessage));
       router.refresh();
     } catch (error) {
-      setIsError(true);
+      setIsError(true);setPreview(null);
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setPendingAction(null);
@@ -267,6 +276,7 @@ export function AdminReviewActions({
           ) : null}
         </div>
       ) : null}
+      {activePreview?<AdminApprovalPreview preview={activePreview} onDismiss={()=>setPreview(null)} />:null}
       <div className="grid gap-2 sm:grid-cols-2">
         {actions.map((item) => {
           const Icon = item.icon;

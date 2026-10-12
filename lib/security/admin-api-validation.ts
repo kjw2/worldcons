@@ -112,6 +112,7 @@ const adminReviewBodySchema = z
     provider: z.enum(LLM_PROVIDER_IDS).optional(),
     model: optionalText(ADMIN_MODEL_MAX_LENGTH),
     confirmation: optionalText(ADMIN_REF_MAX_LENGTH),
+    expectedApprovalSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -127,6 +128,7 @@ const adminReviewBodySchema = z
   })
   .transform((value) => ({
     action: value.action,
+    expectedApprovalSnapshotHash: value.expectedApprovalSnapshotHash,
     articleId: value.articleId,
     slug: value.slug,
     note: value.note,

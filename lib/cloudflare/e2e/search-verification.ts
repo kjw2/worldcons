@@ -2,7 +2,7 @@ import { allPredicates } from "./sql-predicates";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { canonicalJson } from "@/lib/backfill/canonical-json";
 import { canonicalArticleCaseNumber } from "@/lib/search/case-number";
-import { approvalIdentity, sha256Canonical } from "./contracts";
+import { approvalIdentity, sha256Canonical, HUMAN_APPROVAL_POLICY, REMOVAL_AUTHORITY_POLICY, STAGED_APPROVAL_POLICY } from "./contracts";
 import { currentGenerations, e2eRows, type GenerationRow } from "./generation-state";
 import { desiredSearchProjection } from "./search-repair-consumer";
 import { projectionFingerprints, projectionMatches, inspectSearchProjection, searchIdentity } from "./search-generation-guard";
@@ -121,7 +121,7 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
   try {
     const version=(await e2eRows(core,"SELECT * FROM article_content_versions_p3 WHERE id=? AND article_id=?",g.expected_version_id,g.article_id))[0];
     if (!version) throw new Error("e2e.approved_version_missing");
-    const identity=await approvalIdentity(String(g.article_id),version,String(g.policy_version));
+    const identity=await approvalIdentity(String(g.article_id),version,String(g.policy_version),String(g.approval_hash_schema));
     const approval=(await e2eRows(core,"SELECT * FROM e2e_approval_evidence_v1 WHERE approval_key=?",g.approval_key))[0];
     if (!approval||approval.article_id!==g.article_id||approval.approval_snapshot_hash!==identity.approvalSnapshotHash
       || identity.approvalSnapshotHash!==g.approval_snapshot_hash||identity.approvalKey!==g.approval_key
@@ -130,13 +130,22 @@ export async function verifySearchRepair(core:D1RuntimeDatabase,search:D1Runtime
       || approval.discovery_candidate_id!==g.discovery_candidate_id||approval.pipeline_run_id!==g.pipeline_run_id)
       throw new Error("e2e.approval_evidence_mismatch");
     const proof=record(JSON.parse(String(approval.evidence_document))),checks=record(proof.checks);
-    if (proof.schema!=="worldcons.automatic-approval.v1"||proof.articleId!==g.article_id||proof.approvalKey!==g.approval_key
+    if (proof.articleId!==g.article_id||proof.approvalKey!==g.approval_key
       || proof.approvalSnapshotHash!==g.approval_snapshot_hash||proof.sourceContentHash!==g.source_content_hash
       || proof.policyVersion!==g.policy_version||proof.sourceArtifactRef!==g.source_evidence_ref
       || proof.sourceArtifactHash!==approval.source_artifact_hash||proof.candidateId!==g.discovery_candidate_id||proof.pipelineRunId!==g.pipeline_run_id
       || !/^[a-f0-9]{64}$/.test(String(proof.sourceArtifactHash))
-      || ["sourceTextMatches","officialHost","publicPermission","translationPersisted","summarySchema","noRiskFlags","noReviewBlock"].some(key=>checks[key]!==true))
+      )
       throw new Error("e2e.approval_evidence_mismatch");
+    const automatic=proof.schema==="worldcons.automatic-approval.v1"&&g.policy_version===STAGED_APPROVAL_POLICY&&g.approval_mode==="automatic"
+      &&["sourceTextMatches","officialHost","publicPermission","translationPersisted","summarySchema","noRiskFlags","noReviewBlock"].every(key=>checks[key]===true);
+    const human=proof.schema==="worldcons.human-approval.v1"&&g.policy_version===HUMAN_APPROVAL_POLICY&&g.approval_mode==="human"&&typeof proof.actorId==="string"&&proof.actorId.length>0
+      &&["reviewedExactSnapshot","officialHost","publicPermission","summarySchema","riskFlagsAcknowledged"].every(key=>checks[key]===true);
+    const removal=proof.schema==="worldcons.removal-authority.v1"&&g.policy_version===REMOVAL_AUTHORITY_POLICY&&g.expected_publication_state!=="published"
+      &&proof.noPublicApproval===true&&proof.targetState===g.expected_publication_state&&checks.exactSnapshot===true&&checks.removalOnly===true;
+    if(!automatic&&!human&&!removal)throw new Error("e2e.approval_evidence_mismatch");
+    if((human||removal)&&(await sha256Canonical(proof.sourceArtifact)!==approval.source_artifact_hash
+      ||record(proof.sourceArtifact).cleanedText!==version.cleaned_text||record(proof.sourceArtifact).canonicalUrl!==version.canonical_url))throw new Error("e2e.approval_evidence_mismatch");
     const projection=await desiredSearchProjection(core,g),fingerprints=await projectionFingerprints(projection.document,projection.fts);
     if (fingerprints.documentFingerprint!==receipt.document_fingerprint||fingerprints.ftsFingerprint!==receipt.fts_fingerprint
       || !await projectionMatches(search,searchIdentity(g,Number(receipt.fencing_token)),projection.document,projection.fts))

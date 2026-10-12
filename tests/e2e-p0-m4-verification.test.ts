@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { recordAutomaticApproval, AutomaticApprovalBlocked } from "@/lib/cloudflare/e2e/automatic-approval";
-import { sha256Canonical } from "@/lib/cloudflare/e2e/contracts";
+import { approvalSourceMetadata } from "@/lib/cloudflare/core-write/authority";
+import { approvalIdentity, LEGACY_APPROVAL_HASH_SCHEMA, sha256Canonical } from "@/lib/cloudflare/e2e/contracts";
 import { verifySearchRepair } from "@/lib/cloudflare/e2e/search-verification";
 import { consumeSearchRepair } from "@/lib/cloudflare/e2e/search-repair-consumer";
 import { handleWorldconsSearchRequest } from "@/lib/integrations/cclrag2/provider-handler";
@@ -10,7 +11,7 @@ import { SqliteD1,articleId,publish } from "./helpers/e2e-core-fixture";
 import { validSummary } from "./helpers/e2e-m4-summary";
 import { consumeE2ESearchRepairBatch } from "../workers/async-pipeline/src/e2e-search-repair-queue";
 import { publishStagedApproved } from "../workers/async-pipeline/src/staged-e2e";
-async function fixture(t:test.TestContext,source="fr-conseil-constitutionnel") {
+async function fixture(t:test.TestContext,source="fr-conseil-constitutionnel",legacy=false) {
   const core=new SqliteD1(),search=new SqliteD1("search");t.after(()=>{core.close();search.close();});
   const url=source.startsWith("fr")?"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm"
     :"https://hj.tribunalconstitucional.es/es/Resolucion/Show/fixture";
@@ -19,9 +20,17 @@ async function fixture(t:test.TestContext,source="fr-conseil-constitutionnel") {
   core.db.prepare(`UPDATE articles SET source_key=?,original_title=?,canonical_url=?,original_url=?,cleaned_text=?,summary_json=?,korean_title=?,source_metadata=?`).run(
     source,title,url,url,"official constitutional decision text ".repeat(100),JSON.stringify(validSummary),validSummary.koreanTitle,
     JSON.stringify({caseNumber,collection:{strategy:"fetch",publishable:true,sourceTextAvailable:true,sourceUrlVerified:true,robotsDisallowed:false}}));
-  const approval=await recordAutomaticApproval(core,{articleId,sourceKey:source,candidateId:"native:fixture",pipelineRunId:"ingest-stage:fixture",
+  let approval=await recordAutomaticApproval(core,{articleId,sourceKey:source,candidateId:"native:fixture",pipelineRunId:"ingest-stage:fixture",
     sourceArtifactRef:`stages/ingest-crawl/${source}/fixture.json`,sourceArtifactHash:await sha256Canonical({source}),
     cleanedSourceText:String(core.rows("articles")[0].cleaned_text),candidateUrl:url,canonicalUrl:url,candidateTitle:title,now:new Date().toISOString()});
+  if(legacy) {
+    const row=core.rows("articles")[0],old=core.rows("e2e_approval_evidence_v1")[0];
+    const identity=await approvalIdentity(articleId,{...row,source_metadata:approvalSourceMetadata(row.source_metadata,true)},approval.policyVersion,LEGACY_APPROVAL_HASH_SCHEMA);
+    const proof={...JSON.parse(String(old.evidence_document)),...identity};
+    const ref="core:e2e-approval:"+identity.approvalKey;
+    core.db.prepare("UPDATE e2e_approval_evidence_v1 SET approval_key=?,approval_snapshot_hash=?,evidence_ref=?,evidence_document=?").run(identity.approvalKey,identity.approvalSnapshotHash,ref,JSON.stringify(proof));
+    const {hashSchema:omitted,...oldContext}=approval;void omitted;approval={...oldContext,evidenceRef:ref};
+  }
   const first=await publish(core,"m4-first",{e2eApproval:approval});
   const message={schemaVersion:1,type:"e2e-search-repair",outboxId:first.generation!.searchRepairOutboxId};
   assert.equal((await consumeSearchRepair(core,search,message)).status,"awaiting_verification");
@@ -213,4 +222,22 @@ test("M4 historical completed evidence cannot authorize a now-blocked same gener
   const history=f.core.rows("e2e_verification_evidence_v1");
   f.core.db.exec("UPDATE articles SET review_state='closed_private'");
   assert.equal((await f.verify()).status,"blocked");assert.deepEqual(f.core.rows("e2e_verification_evidence_v1"),history);
+});
+
+test("M5 pre-upgrade v1 approval context and persisted proof verify through the upgraded Consumer/API validator",async t=>{
+ const f=await fixture(t,"fr-conseil-constitutionnel",true);assert.equal(f.approval.hashSchema,undefined);
+ assert.equal(f.core.rows("e2e_generations_v1")[0].approval_hash_schema,LEGACY_APPROVAL_HASH_SCHEMA);
+ const oldIdentity=await approvalIdentity(articleId,f.core.rows("article_content_versions_p3")[0],f.approval.policyVersion,LEGACY_APPROVAL_HASH_SCHEMA);
+ assert.equal(oldIdentity.approvalKey,await sha256Canonical({schema:"worldcons.approval.v1",articleId,sourceContentHash:oldIdentity.sourceContentHash,approvalSnapshotHash:oldIdentity.approvalSnapshotHash,policyVersion:f.approval.policyVersion}));
+ assert.equal((await f.verify()).status,"completed_verified");assert.equal(f.core.rows("e2e_verification_evidence_v1").length,1);
+});
+
+test("M5 real Spanish listing shape missing caseNumber is repaired from exact official title before approval",async t=>{
+ const f=await fixture(t,"es-tribunal-constitucional");const row=f.core.rows("articles")[0],metadata=JSON.parse(String(row.source_metadata));delete metadata.caseNumber;
+ f.core.db.prepare("UPDATE articles SET source_metadata=?").run(JSON.stringify(metadata));
+ const context=await recordAutomaticApproval(f.core,{articleId,sourceKey:"es-tribunal-constitucional",candidateId:"native:fixture",pipelineRunId:"ingest-stage:metadata-repair",sourceArtifactRef:"stages/ingest-crawl/es-tribunal-constitucional/fixture.json",sourceArtifactHash:await sha256Canonical({source:"es"}),cleanedSourceText:String(row.cleaned_text),candidateUrl:String(row.canonical_url),canonicalUrl:String(row.canonical_url),candidateTitle:String(row.original_title),now:new Date().toISOString()});
+ assert.equal(JSON.parse(String(f.core.rows("articles")[0].source_metadata)).caseNumber,"99/2026");const repaired=await publish(f.core,"repaired-reference",{e2eApproval:context});
+ const message={...f.message,outboxId:repaired.generation!.searchRepairOutboxId};await consumeSearchRepair(f.core,f.search,message);assert.equal((await verifySearchRepair(f.core,f.search,message,f.options)).status,"completed_verified");
+ delete metadata.caseNumber;f.core.db.prepare("UPDATE articles SET source_metadata=?").run(JSON.stringify(metadata));
+ await assert.rejects(recordAutomaticApproval(f.core,{articleId,sourceKey:"es-tribunal-constitucional",candidateId:"native:fixture",pipelineRunId:"fixture:wrong",sourceArtifactRef:"stages/ingest-crawl/es/fixture.json",sourceArtifactHash:"a".repeat(64),cleanedSourceText:String(row.cleaned_text),candidateUrl:String(row.canonical_url),canonicalUrl:String(row.canonical_url),candidateTitle:"AUTO 1/2026",now:new Date().toISOString()}),AutomaticApprovalBlocked);assert.equal(JSON.parse(String(f.core.rows("articles")[0].source_metadata)).caseNumber,undefined);
 });

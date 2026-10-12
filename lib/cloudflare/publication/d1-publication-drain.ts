@@ -1,3 +1,4 @@
+import {hasE2ETable} from "../e2e/generation-state";
 import { articlePublicationService } from "@/lib/article-publication/service";
 import type { ArticlePublicationTransitionInput } from "@/lib/article-publication/types";
 import { getRuntimeD1Binding, type D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
@@ -287,11 +288,12 @@ export async function runD1PublishArticle(input: { articleId: string; actorId?: 
 
 export async function runD1PublicationDrain(input: { limit?: number } = {}) {
   const limit = boundedInteger(input.limit, 50, { min: 1, max: 500 });
+  const ownership=await hasE2ETable(core(),"e2e_source_policies_v1")?"AND NOT EXISTS(SELECT 1 FROM e2e_source_policies_v1 owner WHERE owner.source_key=a.source_key AND owner.required=1)":"";
   const rows = ensureSuccess(await core().prepare(`
     SELECT a.id,a.summary_json
     FROM articles a
     LEFT JOIN article_publications_p3 p ON p.article_id=a.id
-    WHERE ${P3_PUBLICATION_ELIGIBLE_PREDICATE}
+    WHERE ${P3_PUBLICATION_ELIGIBLE_PREDICATE} ${ownership}
     ORDER BY a.summarized_at ASC,a.id ASC
     LIMIT ?
   `).bind(limit).all<Row>());
@@ -311,7 +313,7 @@ export async function runD1PublicationDrain(input: { limit?: number } = {}) {
   const remaining = ensureSuccess(await core().prepare(`
     SELECT COUNT(*) AS count
     FROM articles a LEFT JOIN article_publications_p3 p ON p.article_id=a.id
-    WHERE ${P3_PUBLICATION_ELIGIBLE_PREDICATE}
+    WHERE ${P3_PUBLICATION_ELIGIBLE_PREDICATE} ${ownership}
   `).all<{ count: number | string }>())[0];
   return {
     mode: "database" as const,

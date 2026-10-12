@@ -1,15 +1,19 @@
 import { canonicalJson } from "@/lib/backfill/canonical-json";
 
-export const APPROVAL_HASH_SCHEMA = "worldcons.approval.v1";
+export const LEGACY_APPROVAL_HASH_SCHEMA = "worldcons.approval.v1";
+export const APPROVAL_HASH_SCHEMA = "worldcons.approval.v2";
 export const GENERATION_HASH_SCHEMA = "worldcons.generation.v1";
 export const PROJECTION_INPUT_SCHEMA = "worldcons.projection-input.v1";
 // Bump when FTS encoding changes independently of search_documents.
 export const FTS_INPUT_VERSION = 1;
+export const HUMAN_APPROVAL_POLICY = "worldcons.human-reviewed-publication.v1";
+export const REMOVAL_AUTHORITY_POLICY = "worldcons.private-transition.v1";
 export const STAGED_APPROVAL_POLICY = "worldcons.fr-es-staged-approval.v1";
 
 /** Explicit opt-in. Evidence is supplied by the approval owner, not invented here. */
 export interface E2EApprovalContext {
   policyVersion: string;
+  hashSchema?: typeof APPROVAL_HASH_SCHEMA|typeof LEGACY_APPROVAL_HASH_SCHEMA;
   mode: "human" | "automatic";
   evidenceRef: string;
   sourceEvidenceRef: string;
@@ -31,7 +35,8 @@ export function validE2EApproval(value: unknown): value is E2EApprovalContext {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const input = value as Record<string, unknown>;
   const bounded = (field: unknown, max: number) => typeof field === "string" && field.trim().length > 0 && field.length <= max;
-  return bounded(input.policyVersion, 160)
+  return (input.hashSchema===undefined||[APPROVAL_HASH_SCHEMA,LEGACY_APPROVAL_HASH_SCHEMA].includes(String(input.hashSchema)))
+    && bounded(input.policyVersion, 160)
     && (input.mode === "human" || input.mode === "automatic")
     && bounded(input.evidenceRef, 500) && bounded(input.sourceEvidenceRef, 500)
     && (input.pipelineRunId == null || bounded(input.pipelineRunId, 160))
@@ -54,26 +59,31 @@ function json(value: unknown): unknown {
  * JSON key order is ignored; arrays, body whitespace and Unicode are preserved.
  * Missing optional role/anchor fields have the same explicit NULL as DB NULL.
  */
-export async function approvalIdentity(articleId: string, snapshot: Record<string, unknown>, policyVersion: string) {
+export function approvalHashSchema(context:E2EApprovalContext) {return context.hashSchema??LEGACY_APPROVAL_HASH_SCHEMA;}
+
+export async function approvalIdentity(articleId: string, snapshot: Record<string, unknown>, policyVersion: string, schema:string=APPROVAL_HASH_SCHEMA) {
+  if(![APPROVAL_HASH_SCHEMA,LEGACY_APPROVAL_HASH_SCHEMA].includes(schema))throw Error("e2e.approval_hash_schema_unknown");
   const sourceContentHash = await sha256Canonical({ schema: "worldcons.source-text.v1", cleanedText: snapshot.cleaned_text ?? null });
   const fields = ["slug", "source_key", "jurisdiction", "institution_name", "content_type",
     "original_language", "original_title", "korean_title", "original_published_at",
     "original_url", "canonical_url", "cleaned_text", "case_key", "version_role",
     "source_anchor_version_id", "enrichment_source_content_hash", "source_content_hash",
     "authority_evidence_hash", "source_snapshot_hash", "case_metadata_snapshot", "case_identifiers_snapshot"];
-  const body: Record<string, unknown> = { schema: APPROVAL_HASH_SCHEMA, articleId, sourceContentHash };
+  const body: Record<string, unknown> = { schema, articleId, sourceContentHash };
   for (const field of fields) body[field] = snapshot[field] ?? null;
-  body.summary_json = json(snapshot.summary_json);
+  const summary=json(snapshot.summary_json);
+  body.summary_json=schema===APPROVAL_HASH_SCHEMA&&summary&&typeof summary==="object"&&!Array.isArray(summary)
+    ?Object.fromEntries(Object.entries(summary).filter(([key])=>key!=="aiMetadata")):summary;
   body.source_metadata = json(snapshot.source_metadata);
   body.case_metadata_snapshot = json(snapshot.case_metadata_snapshot);
   body.case_identifiers_snapshot = json(snapshot.case_identifiers_snapshot);
   const approvalSnapshotHash = await sha256Canonical(body);
-  const approvalKey = await sha256Canonical({ schema: APPROVAL_HASH_SCHEMA, articleId, sourceContentHash, approvalSnapshotHash, policyVersion });
+  const approvalKey = await sha256Canonical({ schema, articleId, sourceContentHash, approvalSnapshotHash, policyVersion });
   return { sourceContentHash, approvalSnapshotHash, approvalKey };
 }
 
 export function approvalContextDocument(input: E2EApprovalContext) {
-  return { policyVersion: input.policyVersion, mode: input.mode, evidenceRef: input.evidenceRef,
+  return { policyVersion: input.policyVersion,...(input.hashSchema?{hashSchema:input.hashSchema}:{}), mode: input.mode, evidenceRef: input.evidenceRef,
     sourceEvidenceRef: input.sourceEvidenceRef, pipelineRunId: input.pipelineRunId ?? null,
     discoveryCandidateId: input.discoveryCandidateId ?? null };
 }

@@ -7,7 +7,7 @@ import type { D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { currentGenerations } from "@/lib/cloudflare/e2e/generation-state";
 import { SqliteD1, articleId, input, publish } from "./helpers/e2e-core-fixture";
 const migration=readFileSync(new URL("../d1/worldcons_core/0008_e2e_core_writer_guards.sql",import.meta.url),"utf8");
-function fixture(){const db=new SqliteD1();db.db.exec(migration);return db;}
+function fixture(){const db=new SqliteD1();db.db.exec(migration);db.db.exec(readFileSync(new URL("../d1/worldcons_core/0009_e2e_source_ownership.sql",import.meta.url),"utf8"));return db;}
 
 test("M5 Core: old head/publication/backfill/delete writes cannot bypass the protected transaction",async(t)=>{
   const db=fixture();t.after(()=>db.close());const first=await publish(db,"protected");
@@ -20,7 +20,9 @@ test("M5 Core: old head/publication/backfill/delete writes cannot bypass the pro
   await assert.rejects(deleteCoreCanaryArticleFromD1(db,articleId),/e2e_core_/);
   assert.equal(db.rows("e2e_core_write_authorizations_v1").length,0);
   const legacy=input(db,"legacy-refresh",{e2eApproval:undefined});
-  const result=await transitionArticlePublicationInD1(db,legacy);assert.ok(!result.ok);assert.equal(result.error.code,"ineligible");
+  const result=await transitionArticlePublicationInD1(db,legacy);assert.ok(result.ok);assert.equal(result.data.generation!.created,false);
+  db.db.exec("UPDATE articles SET korean_title='미승인 초안 제목'");
+  const unapproved=await transitionArticlePublicationInD1(db,input(db,"unapproved-legacy",{e2eApproval:undefined}));assert.ok(!unapproved.ok);assert.equal(unapproved.error.code,"ineligible");
   assert.equal(db.rows("article_content_versions_p3").length,1);
   db.db.exec("UPDATE articles SET korean_title='새로운 승인 제목'");const second=await publish(db,"protected-revision");
   assert.equal(second.versionRevision,first.versionRevision+1);assert.equal(second.generation!.generationSeq,2);
@@ -53,6 +55,10 @@ test("M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollba
     await core.prepare(String(row.sql)).all();
   const article=seed.rows("articles")[0],columns=Object.keys(article);
   await core.prepare('INSERT INTO articles ('+columns.join(',')+') VALUES ('+columns.map(()=>'?').join(',')+')').bind(...Object.values(article)).all();
+  await core.prepare("INSERT INTO e2e_source_policies_v1 VALUES (?,1,?)").bind("fr-conseil-constitutionnel","2026-10-12T00:00:00Z").all();
+  const unapproved=await transitionArticlePublicationInD1(core,input(seed,"workerd-unapproved",{e2eApproval:undefined}));assert.ok(!unapproved.ok);
+  await assert.rejects(core.prepare("INSERT INTO article_publications_p3(id,article_id,state,version_id,revision,created_at,updated_at) VALUES ('legacy',?,'published','bogus',1,'now','now')").bind(articleId).all(),/e2e_source_owner_required/);
+  await core.prepare("UPDATE e2e_source_policies_v1 SET required=0").all();
   const first=await transitionArticlePublicationInD1(core,input(seed,"workerd-first"));assert.ok(first.ok,JSON.stringify(first));
   await assert.rejects(core.prepare("UPDATE article_revision_heads_v4 SET current_revision='99'").all(),/e2e_core_unguarded_writer/);
   await assert.rejects(core.prepare("DELETE FROM articles").all(),/e2e_core_managed_article_delete/);
@@ -60,6 +66,9 @@ test("M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollba
   const second=await transitionArticlePublicationInD1(core,{...input(seed,"workerd-next"),expectedVersionRevision:first.data.versionRevision,
     expectedPublicationRevision:first.data.publicationRevision});assert.ok(second.ok,JSON.stringify(second));
   assert.equal(second.data.generation!.generationSeq,2);
+  await core.prepare("UPDATE e2e_source_policies_v1 SET required=1").all();
+  await assert.rejects(core.prepare("UPDATE article_content_versions_p3 SET authority_evidence_hash='changed'").all(),/e2e_core_immutable_version/);
+  await assert.rejects(core.prepare("UPDATE article_publications_p3 SET article_id='other'").all(),/e2e_source_owner_required|e2e_core_unguarded_writer/);
   assert.equal((await core.prepare("SELECT count(*) n FROM e2e_core_write_authorizations_v1").all()).results![0].n,0);
   assert.equal((await core.prepare("SELECT count(*) n FROM e2e_commit_guards_v1").all()).results![0].n,0);
 });

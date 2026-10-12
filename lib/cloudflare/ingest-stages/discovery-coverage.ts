@@ -1,3 +1,4 @@
+import {canonicalOfficialArticleUrl} from "../../search/official-case-url";
 import {canonicalJson} from "@/lib/backfill/canonical-json";
 import {sha256Canonical} from "../e2e/contracts";
 import {e2eRows} from "../e2e/generation-state";
@@ -47,12 +48,13 @@ export async function captureDiscoverySnapshot(db:D1RuntimeDatabase,core:D1Runti
   let snapshot=await readDiscoverySnapshot(db,bucket,owner.jobId);
   if(snapshot&&snapshot.sourceKey!==input.sourceKey)throw Error("discovery.parent_source_mismatch");
   if(!snapshot) {
-    const candidates=[...new Map(input.candidates.map(c=>[c.url,c])).values()];
+    const candidates=[...new Map(input.candidates.map(c=>({...c,url:canonicalOfficialArticleUrl(c.sourceKey,c.url)})).map(c=>[c.url,c])).values()];
     const known=new Map<string,Record<string,unknown>>(),latest=new Map<string,Record<string,unknown>>();
     const identified=await Promise.all(candidates.map(async candidate=>({candidate,id:"native:"+(await sha256CanonicalUrl(candidate.sourceKey,candidate.url)).slice(0,32)})));
-    for(let offset=0;offset<identified.length;offset+=80) {
-      const chunk=identified.slice(offset,offset+80),marks=chunk.map(()=>"?").join(",");
-      for(const row of await e2eRows(core,"SELECT id,source_key,canonical_url,fetched_at,lifecycle_collection_state FROM articles WHERE canonical_url IN ("+marks+")",...chunk.map(x=>x.candidate.url)))known.set(String(row.canonical_url),row);
+    for(let offset=0;offset<identified.length;offset+=40) {
+      const chunk=identified.slice(offset,offset+40),marks=chunk.map(()=>"?").join(",");
+      const aliases=[...new Set(chunk.flatMap(x=>[x.candidate.url,x.candidate.sourceKey==="es-tribunal-constitucional"?x.candidate.url.replace("/HJ/es/","/es/"):x.candidate.url]))];
+      for(const row of await e2eRows(core,"SELECT id,source_key,canonical_url,fetched_at,lifecycle_collection_state FROM articles WHERE canonical_url IN ("+aliases.map(()=>"?").join(",")+") ORDER BY created_at DESC,id DESC",...aliases))known.set(canonicalOfficialArticleUrl(String(row.source_key),String(row.canonical_url)),row);
       const jobs=await e2eRows(db,"SELECT j.* FROM ingest_stage_jobs j WHERE j.stage='crawl' AND j.article_id IN ("+marks+") AND NOT EXISTS(SELECT 1 FROM ingest_stage_jobs newer WHERE newer.article_id=j.article_id AND newer.stage='crawl' AND (newer.created_at>j.created_at OR (newer.created_at=j.created_at AND newer.id>j.id)))",...chunk.map(x=>x.id));
       for(const row of jobs)latest.set(String(row.article_id),row);
     }

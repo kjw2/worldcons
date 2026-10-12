@@ -80,7 +80,7 @@ test("M3 legacy plan executor, full rebuild, single sync and raw old document wr
   const before=materialized(f.search),bindings={WORLDCONS_CORE:f.core,WORLDCONS_SEARCH:f.search};
   await assert.rejects(applySearchProjectionPlan(f.search,planSearchProjectionIncrementalSync([], [a.document!],[a.fts!])),/e2e_search_generation_match/);
   await assert.rejects(applySearchProjectionPlan(f.search,planSearchProjectionFullRebuild([],[])),/e2e_search_generation_match/);
-  await assert.rejects(syncSearchProjectionForArticle(bindings,articleId),/e2e_managed_article/);
+  const guarded=await syncSearchProjectionForArticle(bindings,articleId);assert.equal(guarded.verified,true);assert.equal(guarded.changes.unchanged,1);
   assert.throws(()=>f.search.db.exec("DELETE FROM search_documents"),/e2e_search_unguarded_writer/);
   await runNativeSearchProjectionSync(bindings);
   assert.deepEqual(materialized(f.search),before);

@@ -1,3 +1,5 @@
+import {recordHumanApproval,protectedSourceRequired,HumanApprovalBlocked} from "@/lib/cloudflare/e2e/manual-approval";
+import {verifyHumanPreview,updateReviewedMetadata} from "@/lib/admin/e2e-human-review";
 import { articleLifecycleService } from "@/lib/article-lifecycle/service";
 import { articlePublicationService } from "@/lib/article-publication/service";
 import { getRuntimeD1Binding } from "@/lib/cloudflare/d1/runtime-binding";
@@ -44,7 +46,7 @@ async function publication(row:Row,targetState:"published"|"withdrawn",reason:st
   if(!result.ok) throw new Error(`admin_review.publication:${result.error.code}`); return result.data;
 }
 
-export async function runD1AdminReviewAction(input:AdminReviewBody) {
+export async function runD1AdminReviewAction(input:AdminReviewBody,operatorIdentity?:string|null) {
   const {core,row}=await article(input); if(!row) return {mode:"database" as const,status:"not_found" as const,reason:"자료를 찾을 수 없습니다."};
   const id=text(row,"id")!, slug=text(row,"slug")??undefined, note=input.note;
   if(input.action==="retry-summary"||input.action==="resummarize-with-model") {
@@ -66,6 +68,20 @@ export async function runD1AdminReviewAction(input:AdminReviewBody) {
   }
   if(input.action==="publish-reviewed") {
     if(!row.summary_json) return {mode:"database" as const,action:input.action,status:"skipped" as const,reason:"요약 JSON이 없어 바로 공개할 수 없습니다. 먼저 요약을 실행해야 합니다."};
+    if(await protectedSourceRequired(core,id)) {
+      if(!operatorIdentity)throw new HumanApprovalBlocked("human_approval.session_required");
+      const checked=await verifyHumanPreview(core,id,input.expectedApprovalSnapshotHash),now=new Date().toISOString();
+      const metadata=reviewMetadata(checked.article,"published",note,{publishable:true,sourceTextAvailable:true,sourceUrlVerified:true,robotsDisallowed:false,confidence:"human_reviewed",reason:"Authenticated human reviewed this exact source and summary."},{snapshotHash:input.expectedApprovalSnapshotHash,actorId:operatorIdentity});
+      const expected=await updateReviewedMetadata(core,checked.article,metadata,"published",now);
+      await lifecycle(id,"approved","review.published");
+      const context=await recordHumanApproval(core,{articleId:id,actorId:operatorIdentity,expectedSnapshotHash:expected,note,now});
+      const current=await articlePublicationService.getSnapshot(id);if(!current.ok)throw new HumanApprovalBlocked("human_approval.snapshot_unavailable");
+      const result=await articlePublicationService.transition({articleId:id,expectedVersionRevision:current.data.versionRevision,expectedPublicationRevision:current.data.publicationRevision,
+        expectedLegacyUpdatedAt:current.data.legacyUpdatedAt,idempotencyKey:"human-reviewed:"+context.evidenceRef+":"+current.data.publicationRevision,targetState:"published",captureLegacy:true,
+        actorType:"human",actorId:operatorIdentity,provenanceActorType:"human",provenanceActorId:operatorIdentity,reason:note?.trim()||"Reviewed exact source and summary.",e2eApproval:context});
+      if(!result.ok)throw new HumanApprovalBlocked("human_approval.publication:"+result.error.code);
+      return {mode:"database" as const,action:input.action,status:"published" as const,publication:result.data};
+    }
     const now=new Date().toISOString(), metadata=reviewMetadata(row,"published",note,{publishable:true,sourceTextAvailable:Boolean((text(row,"cleaned_text")??"").trim()),sourceUrlVerified:true,robotsDisallowed:false,confidence:"human_reviewed",reason:"Human review approved publication."});
     const write=await core.prepare("UPDATE articles SET status='summarized',summarized_at=COALESCE(summarized_at,?),source_metadata=?,error_metadata=NULL,error_class=NULL,error_context=NULL,review_state='published',updated_at=? WHERE id=?").bind(now,JSON.stringify(metadata),now,id).run?.(); if(!write||write.success===false||write.error) throw new Error(write?.error||"admin_review.d1_write_failed");
     await lifecycle(id,"approved","review.published"); await publication(row,"published",note?.trim()||"Human review approved publication.");

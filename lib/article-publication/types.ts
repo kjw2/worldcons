@@ -25,6 +25,8 @@ export interface ArticlePublicationTransitionInput {
   targetState: ArticlePublicationState;
   versionId?: string | null;
   captureLegacy?: boolean;
+  /** Internal integrity repair of an already approved current snapshot. */
+  repairProjection?: boolean;
   actorType: ArticlePublicationActor;
   actorId?: string | null;
   reason: string;

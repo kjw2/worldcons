@@ -1,6 +1,6 @@
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { SEARCH_PROJECTION_VERSION } from "../search-projection/types";
-import { FTS_INPUT_VERSION, PROJECTION_INPUT_SCHEMA, sha256Canonical } from "./contracts";
+import { FTS_INPUT_VERSION, PROJECTION_INPUT_SCHEMA, sha256Canonical, REMOVAL_AUTHORITY_POLICY } from "./contracts";
 import { CURRENT_GENERATION_SQL } from "./search-repair-dispatcher";
 
 export type GenerationRow = Record<string, unknown>;
@@ -18,7 +18,7 @@ export function generationProjectionHash(g: GenerationRow, tags: unknown, review
     versionId:g.expected_version_id,versionRevision:Number(g.expected_version_revision),
     approvalSnapshotHash:g.approval_snapshot_hash,publicationId:g.expected_publication_id,
     publicationRevision:Number(g.expected_publication_revision),publicationState:g.expected_publication_state,
-    tags,reviewState:reviewState ?? null,projectionVersion:SEARCH_PROJECTION_VERSION,ftsInputVersion:FTS_INPUT_VERSION });
+    tags:g.policy_version===REMOVAL_AUTHORITY_POLICY?[]:tags,reviewState:g.policy_version===REMOVAL_AUTHORITY_POLICY?null:reviewState ?? null,projectionVersion:SEARCH_PROJECTION_VERSION,ftsInputVersion:FTS_INPUT_VERSION });
 }
 export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly string[]) {
   const found = new Map<string,GenerationRow>();

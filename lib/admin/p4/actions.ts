@@ -7,6 +7,7 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
 const adminWorkActionSchema = z.object({
   action: z.enum(ADMIN_WORK_ACTIONS),
+  expectedApprovalSnapshotHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   reason: z.string().trim().min(5).max(500).refine((value) => !CONTROL_CHARACTERS.test(value)),
   confirmation: z.string().trim().max(40),
   idempotencyKey: z.string().trim().min(8).max(200).regex(/^[A-Za-z0-9._:-]+$/),

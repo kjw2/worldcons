@@ -1,5 +1,7 @@
+import {protectedSourceRequired,recordRemovalAuthority} from "../e2e/manual-approval";
+import {HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY,STAGED_APPROVAL_POLICY} from "../e2e/contracts";
 import { hasE2ETable } from "@/lib/cloudflare/e2e/generation-state";
-import { approvalIdentity, validE2EApproval } from "@/lib/cloudflare/e2e/contracts";
+import { approvalIdentity, approvalHashSchema, validE2EApproval } from "@/lib/cloudflare/e2e/contracts";
 import { prepareGenerationCommit, readGenerationReplay } from "@/lib/cloudflare/e2e/generation-ledger";
 import { articleLifecycleError } from "@/lib/article-lifecycle/errors";
 import type {
@@ -527,26 +529,23 @@ export async function transitionArticlePublicationInD1(
   input: ArticlePublicationTransitionInput,
 ): Promise<ArticlePublicationResult<ArticlePublicationTransitionResult>> {
   try {
-    if (input.e2eApproval !== undefined && (!validE2EApproval(input.e2eApproval)
-      || (input.e2eApproval.mode === "human" && input.actorType !== "human"))) {
-      return { ok: false, error: articlePublicationError("invalid_input") };
-    }
-    if (!input.e2eApproval && await hasE2ETable(binding,"e2e_generation_heads_v1")) {
-      const managed = await one<Row>(binding, `SELECT g.* FROM e2e_generation_heads_v1 h
-        JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id WHERE h.article_id=?`, [input.articleId]);
-      if (managed) {
-        // Withdrawal reuses approval of the exact immutable snapshot, never new content.
-        // Legacy publish/refresh must obtain approval through the protected staged path.
-        if (input.targetState!=="withdrawn" || input.actorType!=="human" || input.captureLegacy===true
-          || input.versionId!==managed.expected_version_id) {
-          return { ok:false,error:articlePublicationError("ineligible") };
-        }
-        input = { ...input,e2eApproval:{ mode:String(managed.approval_mode) as "human"|"automatic",
-          policyVersion:String(managed.policy_version),evidenceRef:String(managed.approval_evidence_ref),
-          sourceEvidenceRef:String(managed.source_evidence_ref),
-          ...(managed.pipeline_run_id ? {pipelineRunId:String(managed.pipeline_run_id)} : {}),
-          ...(managed.discovery_candidate_id ? {discoveryCandidateId:String(managed.discovery_candidate_id)} : {}) } };
-      }
+    if(input.e2eApproval!==undefined&&!validE2EApproval(input.e2eApproval))return {ok:false,error:articlePublicationError("invalid_input")};
+    const protectedSource=await protectedSourceRequired(binding,input.articleId);
+    const sourceRule=await hasE2ETable(binding,"e2e_source_policies_v1")?
+      await one<Row>(binding,"SELECT p.required FROM articles a JOIN e2e_source_policies_v1 p ON p.source_key=a.source_key WHERE a.id=?",[input.articleId]):null;
+    const managed=await hasE2ETable(binding,"e2e_generation_heads_v1")?await one<Row>(binding,
+      "SELECT g.* FROM e2e_generation_heads_v1 h JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id WHERE h.article_id=?",[input.articleId]):null;
+    if(input.e2eApproval&&((input.e2eApproval.policyVersion===HUMAN_APPROVAL_POLICY&&input.e2eApproval.mode!=="human")
+      ||([STAGED_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY].includes(input.e2eApproval.policyVersion)&&input.e2eApproval.mode!=="automatic")))return {ok:false,error:articlePublicationError("invalid_input")};
+    if(input.e2eApproval?.policyVersion===REMOVAL_AUTHORITY_POLICY&&input.targetState==="published")return {ok:false,error:articlePublicationError("ineligible")};
+    if(Number(sourceRule?.required)===1&&input.e2eApproval&&![STAGED_APPROVAL_POLICY,HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY].includes(input.e2eApproval.policyVersion))return {ok:false,error:articlePublicationError("ineligible")};
+    let reusedApproval=false;
+    if(!input.e2eApproval&&protectedSource&&input.targetState==="published") {
+      if(!managed||managed.expected_publication_state!=="published")return {ok:false,error:articlePublicationError("ineligible")};
+      input={...input,e2eApproval:{hashSchema:managed.approval_hash_schema as "worldcons.approval.v1"|"worldcons.approval.v2",mode:String(managed.approval_mode) as "human"|"automatic",policyVersion:String(managed.policy_version),
+        evidenceRef:String(managed.approval_evidence_ref),sourceEvidenceRef:String(managed.source_evidence_ref),
+        pipelineRunId:managed.pipeline_run_id as string|null,discoveryCandidateId:managed.discovery_candidate_id as string|null}};
+      reusedApproval=true;
     }
     const previousRequest = await one<Row>(
       binding,
@@ -750,8 +749,11 @@ export async function transitionArticlePublicationInD1(
     const oldVersionId = nullableText(publication?.version_id);
     const publicationApplied = !publication
       || input.targetState !== oldState
-      || versionId !== oldVersionId;
-    if (publicationApplied && !publicationTransitionAllowed(oldState, input.targetState, input.actorType, versionId !== oldVersionId)) {
+      || versionId !== oldVersionId
+      || (input.repairProjection===true&&protectedSource&&oldState===input.targetState&&(reusedApproval||input.targetState!=="published"));
+    const reviewedHumanPublish=input.targetState==="published"&&input.actorType==="human"&&input.e2eApproval?.policyVersion===HUMAN_APPROVAL_POLICY
+      &&(oldState===null||oldState==="draft");
+    if (publicationApplied && !reviewedHumanPublish && !(input.repairProjection===true&&reusedApproval&&oldState==="published"&&input.targetState==="published") && !publicationTransitionAllowed(oldState, input.targetState, input.actorType, versionId !== oldVersionId)) {
       return { ok: false, error: articlePublicationError("illegal_transition") };
     }
     if (oldState === "withdrawn" && input.targetState === "published" && input.reason.trim().length < 8) {
@@ -764,6 +766,13 @@ export async function transitionArticlePublicationInD1(
     const publicationRevision = publication
       ? currentPublicationRevision + (publicationApplied ? 1 : 0)
       : 1;
+    if(reusedApproval||(input.e2eApproval?.mode==="human"&&input.actorType!=="human")) {
+      if(!managed||managed.expected_publication_state!=="published"||version.id!==managed.expected_version_id
+        ||(await approvalIdentity(input.articleId,version,input.e2eApproval!.policyVersion,approvalHashSchema(input.e2eApproval!))).approvalSnapshotHash!==managed.approval_snapshot_hash)
+        return {ok:false,error:articlePublicationError("ineligible")};
+    }
+    if(!input.e2eApproval&&protectedSource&&input.targetState!=="published")input={...input,e2eApproval:await recordRemovalAuthority(binding,
+      {articleId:input.articleId,snapshot:version,actorType:input.actorType,actorId:input.actorId,requestId:input.idempotencyKey,targetState:input.targetState,now})};
     const generationCommit = input.e2eApproval ? await prepareGenerationCommit(binding, input,
       { article, p3Head, v4Head, publication }, { version, publicationId, publicationRevision, now }) : null;
     const statements: D1RuntimePreparedStatement[] = [];

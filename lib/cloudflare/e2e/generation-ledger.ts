@@ -5,8 +5,8 @@ import { canonicalJson } from "@/lib/backfill/canonical-json";
 import type { ArticlePublicationTransitionInput } from "@/lib/article-publication/types";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import { SEARCH_PROJECTION_VERSION } from "@/lib/cloudflare/search-projection/types";
-import { APPROVAL_HASH_SCHEMA, FTS_INPUT_VERSION, GENERATION_HASH_SCHEMA, PROJECTION_INPUT_SCHEMA,
-  approvalContextDocument, approvalIdentity, sha256Canonical, STAGED_APPROVAL_POLICY, type E2EGenerationReceipt } from "./contracts";
+import { FTS_INPUT_VERSION, GENERATION_HASH_SCHEMA, PROJECTION_INPUT_SCHEMA,
+  approvalContextDocument, approvalIdentity, approvalHashSchema, sha256Canonical, STAGED_APPROVAL_POLICY, HUMAN_APPROVAL_POLICY, REMOVAL_AUTHORITY_POLICY, type E2EGenerationReceipt } from "./contracts";
 
 type Row = Record<string, unknown>;
 async function read(binding: D1RuntimeDatabase, sql: string, ...values: unknown[]): Promise<Row | null> {
@@ -54,11 +54,11 @@ export async function prepareGenerationCommit(binding: D1RuntimeDatabase, input:
     JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id AND g.article_id=h.article_id
     WHERE h.article_id=?`, input.articleId);
   const tagSnapshot = String((await read(binding, TAG_SNAPSHOT_SQL, input.articleId))?.snapshot ?? "[]");
-  const identity = await approvalIdentity(input.articleId, version, approval.policyVersion);
+  const identity = await approvalIdentity(input.articleId, version, approval.policyVersion,approvalHashSchema(approval));
   const projectionInputHash = await sha256Canonical({ schema: PROJECTION_INPUT_SCHEMA,
     articleId: input.articleId, versionId: version.id, versionRevision: Number(version.revision),
     approvalSnapshotHash: identity.approvalSnapshotHash, publicationId, publicationRevision,
-    publicationState: input.targetState, tags: JSON.parse(tagSnapshot), reviewState: article.review_state ?? null,
+    publicationState: input.targetState, tags: approval.policyVersion===REMOVAL_AUTHORITY_POLICY?[]:JSON.parse(tagSnapshot), reviewState: approval.policyVersion===REMOVAL_AUTHORITY_POLICY?null:article.review_state ?? null,
     projectionVersion: SEARCH_PROJECTION_VERSION, ftsInputVersion: FTS_INPUT_VERSION });
   const created = !previous || previous.approval_key !== identity.approvalKey
     || previous.projection_input_hash !== projectionInputHash;
@@ -90,7 +90,7 @@ export async function prepareGenerationCommit(binding: D1RuntimeDatabase, input:
   values.push(input.articleId, previous ? JSON.stringify([previous.generation_id,previous.generation_seq]) : "null");
   predicates.push(`(${TAG_SNAPSHOT_SQL.replace(' AS snapshot','')})=?`);
   values.push(input.articleId, tagSnapshot);
-  if (approval.policyVersion===STAGED_APPROVAL_POLICY) {
+  if ([STAGED_APPROVAL_POLICY,HUMAN_APPROVAL_POLICY,REMOVAL_AUTHORITY_POLICY].includes(approval.policyVersion)) {
     predicates.push(`EXISTS (SELECT 1 FROM e2e_approval_evidence_v1 WHERE approval_key=? AND article_id=?
       AND approval_snapshot_hash=? AND source_content_hash=? AND policy_version=? AND evidence_ref=?
       AND source_artifact_ref=? AND pipeline_run_id=? AND discovery_candidate_id=?)`);
@@ -111,7 +111,7 @@ export async function prepareGenerationCommit(binding: D1RuntimeDatabase, input:
        pipeline_run_id,discovery_candidate_id,created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
       generationId,input.articleId,seq,version.source_key,identity.sourceContentHash,identity.approvalKey,
-      identity.approvalSnapshotHash,APPROVAL_HASH_SCHEMA,projectionInputHash,PROJECTION_INPUT_SCHEMA,
+      identity.approvalSnapshotHash,approvalHashSchema(approval),projectionInputHash,PROJECTION_INPUT_SCHEMA,
       version.id,Number(version.revision),publicationId,publicationRevision,input.targetState,approval.mode,
       approval.policyVersion,approval.evidenceRef,approval.sourceEvidenceRef,approval.pipelineRunId ?? null,
       approval.discoveryCandidateId ?? null,now));

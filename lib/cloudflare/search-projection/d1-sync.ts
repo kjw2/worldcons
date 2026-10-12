@@ -1,3 +1,4 @@
+import {sha256Canonical} from "../e2e/contracts";
 import { currentGenerations, e2eRows, hasE2ETable } from "../e2e/generation-state";
 import { buildSearchProjection } from "./build";
 import { planSearchProjectionIncrementalSync } from "./plan";
@@ -421,6 +422,8 @@ export async function runNativeSearchProjectionSync(bindings: SearchProjectionSy
   if (await hasE2ETable(bindings.WORLDCONS_CORE,"e2e_generation_heads_v1")) {
     for (const row of await e2eRows(bindings.WORLDCONS_CORE,"SELECT article_id FROM e2e_generation_heads_v1")) managedIds.add(String(row.article_id));
   }
+  // Protected rows use current Core identity and the durable outbox, never this scan's legacy write plan.
+  for(const id of managedIds)await syncSearchProjectionForArticle(bindings,id);
   const eligibleCountRows = await readRows<{ count: number | string }>(
     bindings.WORLDCONS_CORE,
     `SELECT COUNT(*) AS count FROM article_publications_p3 p JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id WHERE ${ELIGIBLE_PUBLISHED_PREDICATE}`,
@@ -558,8 +561,40 @@ export async function syncSearchProjectionForArticle(
   if (typeof articleId !== "string" || articleId.length === 0) {
     throw new Error("search_projection.invalid_article_id");
   }
-  if ((await currentGenerations(bindings.WORLDCONS_CORE,[articleId])).has(articleId)) {
-    throw new Error("search_projection.e2e_managed_article");
+  const managed=(await currentGenerations(bindings.WORLDCONS_CORE,[articleId])).get(articleId);
+  if(managed) {
+    const {consumeSearchRepair,desiredSearchProjection}=await import("../e2e/search-repair-consumer");
+    const {inspectSearchProjection,searchIdentity}=await import("../e2e/search-generation-guard");
+    const {readArticlePublicationSnapshotFromD1,transitionArticlePublicationInD1}=await import("../core-write/authority");
+    let g=managed;
+    if(Number(g.identity_current)!==1)throw new Error("search_projection.e2e_identity_changed");
+    let outbox=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM e2e_search_repair_outbox_v1 WHERE generation_id=?",g.generation_id))[0];
+    if(!outbox)throw new Error("search_projection.e2e_reservation_missing");
+    let damaged=false;
+    if(g.input_current) {
+      const desired=await desiredSearchProjection(bindings.WORLDCONS_CORE,g);
+      const receipt=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM e2e_search_apply_receipts_v1 WHERE generation_id=?",g.generation_id))[0];
+      const storedMatches=receipt&&(await inspectSearchProjection(bindings.WORLDCONS_SEARCH,searchIdentity(g,Number(receipt.fencing_token)),desired.document,desired.fts)).matches;
+      if(storedMatches)return {articleId,desiredEligible:desired.document!==null,documentCount:Number(desired.document!==null),ftsCount:Number(desired.fts!==null),changes:{added:0,changed:0,removed:0,unchanged:1},verified:true};
+      damaged=outbox.status==="verified";
+    }
+    if(!g.input_current||damaged) {
+      const snapshot=await readArticlePublicationSnapshotFromD1(bindings.WORLDCONS_CORE,articleId);if(!snapshot.ok)throw new Error("search_projection.e2e_snapshot_unavailable");
+      const blocked=["needs_review","needs_triage","closed_private","rejected","blocked"].includes(String(g.review_state));
+      const result=await transitionArticlePublicationInD1(bindings.WORLDCONS_CORE,{articleId,expectedVersionRevision:snapshot.data.versionRevision,expectedPublicationRevision:snapshot.data.publicationRevision,
+        expectedLegacyUpdatedAt:snapshot.data.legacyUpdatedAt,idempotencyKey:"projection-refresh:"+await sha256Canonical({generationId:g.generation_id,tags:g.tag_snapshot,reviewState:g.review_state,integrityRepair:damaged}),
+        targetState:blocked?"withdrawn":g.expected_publication_state as "published"|"withdrawn",versionId:String(g.expected_version_id),captureLegacy:false,repairProjection:damaged,
+        actorType:"compatibility",actorId:"guarded-search-sync",reason:damaged?"Repair physical projection of the current approved snapshot":"Refresh metadata for the current approved snapshot"});
+      if(!result.ok)throw new Error("search_projection.e2e_transition:"+result.error.code);
+      g=(await currentGenerations(bindings.WORLDCONS_CORE,[articleId])).get(articleId)!;
+      outbox=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM e2e_search_repair_outbox_v1 WHERE generation_id=?",g.generation_id))[0];
+    }
+    const applied=await consumeSearchRepair(bindings.WORLDCONS_CORE,bindings.WORLDCONS_SEARCH,{schemaVersion:1,type:"e2e-search-repair",outboxId:outbox.outbox_id});
+    if(!["awaiting_verification","terminal"].includes(applied.status))throw new Error("search_projection.e2e_apply_not_ready");
+    const desired=await desiredSearchProjection(bindings.WORLDCONS_CORE,g);
+    const receipt=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM e2e_search_apply_receipts_v1 WHERE generation_id=?",g.generation_id))[0];
+    if(!receipt||!(await inspectSearchProjection(bindings.WORLDCONS_SEARCH,searchIdentity(g,Number(receipt.fencing_token)),desired.document,desired.fts)).matches)throw new Error("search_projection.e2e_content_mismatch");
+    return {articleId,desiredEligible:desired.document!==null,documentCount:Number(desired.document!==null),ftsCount:Number(desired.fts!==null),changes:{added:0,changed:1,removed:Number(desired.document===null),unchanged:0},verified:true};
   }
   const sourceRows = await readEligibleSourceForArticle(bindings.WORLDCONS_CORE, articleId);
   const desiredEligible = sourceRows.length > 0;
