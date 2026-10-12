@@ -45,7 +45,7 @@ export async function recordHumanApproval(core:D1RuntimeDatabase,input:{articleI
     ||["needs_review","needs_triage","closed_private","rejected","blocked"].includes(String(article.review_state)))throw new HumanApprovalBlocked("human_approval.source_or_summary_invalid");
   if(article.source_key==="es-tribunal-constitucional") {
     const canonical=canonicalOfficialArticleUrl(String(article.source_key),String(article.canonical_url));
-    const owner=(await e2eRows(core,"SELECT id FROM articles WHERE source_key=? AND (canonical_url IN (?,?) OR canonical_url LIKE ? OR canonical_url LIKE ?) ORDER BY created_at,id LIMIT 1",article.source_key,canonical,canonical.replace("/HJ/es/","/es/"),canonical+"?%",canonical.replace("/HJ/es/","/es/")+"?%"))[0];
+    const owner=(await e2eRows(core,"SELECT id FROM articles WHERE source_key=? AND (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) ORDER BY created_at,id LIMIT 1",article.source_key,canonical,canonical.replace("/HJ/es/","/es/"),canonical+"?",canonical.replace("/HJ/es/","/es/")+"?"))[0];
     if(owner&&owner.id!==article.id)throw new HumanApprovalBlocked("human_approval.duplicate_official_case");
   }
   if(summary.data.riskFlags.length&&!input.note?.trim())throw new HumanApprovalBlocked("human_approval.risk_note_required");

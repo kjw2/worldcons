@@ -40,7 +40,7 @@ export async function recordAutomaticApproval(core:D1RuntimeDatabase,input:Autom
     || metadata.sourceTextStatus==="not_available"||[true,1,"1"].includes(object(metadata.catalog).sourceOnly as never)) return blocked();
   if(input.sourceKey==="es-tribunal-constitucional") {
     const canonical=canonicalOfficialArticleUrl(input.sourceKey,String(article.canonical_url));
-    const owner=(await e2eRows(core,"SELECT id FROM articles WHERE source_key=? AND (canonical_url IN (?,?) OR canonical_url LIKE ? OR canonical_url LIKE ?) ORDER BY created_at,id LIMIT 1",input.sourceKey,canonical,canonical.replace("/HJ/es/","/es/"),canonical+"?%",canonical.replace("/HJ/es/","/es/")+"?%"))[0];
+    const owner=(await e2eRows(core,"SELECT id FROM articles WHERE source_key=? AND (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) ORDER BY created_at,id LIMIT 1",input.sourceKey,canonical,canonical.replace("/HJ/es/","/es/"),canonical+"?",canonical.replace("/HJ/es/","/es/")+"?"))[0];
     if(owner&&owner.id!==article.id)throw new AutomaticApprovalBlocked("e2e.duplicate_official_case");
   }
   const parsed=SummarySchema.safeParse(object(article.summary_json));

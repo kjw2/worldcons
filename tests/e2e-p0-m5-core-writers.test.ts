@@ -71,4 +71,9 @@ test("M5 workerd: actual D1 triggers, authorization FK cleanup and legacy rollba
   await assert.rejects(core.prepare("UPDATE article_publications_p3 SET article_id='other'").all(),/e2e_source_owner_required|e2e_core_unguarded_writer/);
   assert.equal((await core.prepare("SELECT count(*) n FROM e2e_core_write_authorizations_v1").all()).results![0].n,0);
   assert.equal((await core.prepare("SELECT count(*) n FROM e2e_commit_guards_v1").all()).results![0].n,0);
+  const base="https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32085",otherId="22222222-2222-4222-a222-222222222222";
+  const aliasRow={...article,id:otherId,slug:"workerd-es-alias",source_key:"es-tribunal-constitucional",canonical_url:base+"?ACTION=detalle"};
+  await core.prepare('INSERT INTO articles ('+columns.join(',')+') VALUES ('+columns.map(()=>'?').join(',')+')').bind(...columns.map(key=>aliasRow[key as keyof typeof aliasRow]??null)).all();
+  const owner=await core.prepare("SELECT id FROM articles WHERE source_key=? AND (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) ORDER BY created_at,id LIMIT 1").bind("es-tribunal-constitucional",base,base.replace("/HJ/es/","/es/"),base+"?",base.replace("/HJ/es/","/es/")+"?").all();
+  assert.equal(owner.results![0].id,otherId);
 });
