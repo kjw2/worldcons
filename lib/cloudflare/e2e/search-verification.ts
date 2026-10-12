@@ -1,3 +1,4 @@
+import { canonicalOfficialArticleUrl } from "@/lib/search/official-case-url";
 import { allPredicates } from "./sql-predicates";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { canonicalJson } from "@/lib/backfill/canonical-json";
@@ -51,7 +52,7 @@ function checkItem(item:GenerationRow,v:GenerationRow,base:string) {
   const caseNumber=canonicalArticleCaseNumber({sourceKey:String(v.source_key),originalTitle:String(v.original_title),metadata});
   const title=String(v.korean_title||v.original_title).trim(),original=String(v.original_url).trim(),canonical=String(v.canonical_url||v.original_url).trim();
   if (item.id!==v.article_id||item.slug!==v.slug||item.title!==title||item.caseNumber!==(caseNumber??null)
-    || item.originalUrl!==original||item.canonicalUrl!==canonical||item.detailApiUrl!==`${base}/articles/${encodeURIComponent(String(v.slug))}`)
+    || canonicalOfficialArticleUrl(String(v.source_key), String(item.originalUrl))!==canonicalOfficialArticleUrl(String(v.source_key), original)||item.canonicalUrl!==canonical||item.detailApiUrl!==`${base}/articles/${encodeURIComponent(String(v.slug))}`)
     throw new Error("e2e.api_identity_mismatch");
 }
 const tagsSql=`SELECT json_group_array(json_object('tag_id',tag_id,'confidence',confidence,'slug',slug,'name',name,

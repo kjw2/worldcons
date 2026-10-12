@@ -483,6 +483,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
       return {
         status: "succeeded",
         resultRef: persisted.articleId,
+        ...(persisted.outcome === "preserved" ? { registerNext: false } : {}),
         nextArticleId: coreArticleId,
         nextSourceVersion: persisted.contentHash,
         nextContentHash: persisted.contentHash,
@@ -490,7 +491,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const retryable = /r2_|artifact_blob|timeout|network|temporar|lifecycle_read|query_failed/i.test(message);
+      const retryable = /r2_|artifact_blob|timeout|network|temporar|lifecycle_read|lifecycle_transition|query_failed/i.test(message);
       return {
         status: retryable ? "retry" : "blocked",
         errorCode: retryable ? "ingest_stage.normalize_retry" : "ingest_stage.normalize_failed",

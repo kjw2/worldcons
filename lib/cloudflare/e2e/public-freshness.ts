@@ -1,3 +1,4 @@
+import { readPublicMetadataState } from "../search-projection/metadata-repair";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { ELIGIBLE_PUBLISHED_PREDICATE } from "../search-projection/d1-sync";
 import { currentGenerations, e2eRows, hasE2ETable, type GenerationRow } from "./generation-state";
@@ -6,11 +7,19 @@ import { currentGenerations, e2eRows, hasE2ETable, type GenerationRow } from "./
 export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:D1RuntimeDatabase,ids:readonly string[]) {
   const unique=[...new Set(ids)];
   const generations=await currentGenerations(core,unique);
+  const metadata=await readPublicMetadataState(core,unique,new Set(generations.keys()));
   const guards=new Map<string,GenerationRow>();
   if (unique.length && await hasE2ETable(search,"e2e_search_generation_guards_v1")) {
     for (let offset=0;offset<unique.length;offset+=80) {
       const part=unique.slice(offset,offset+80);
       for (const row of await e2eRows(search,`SELECT * FROM e2e_search_generation_guards_v1 WHERE article_id IN (${part.map(()=>"?").join(",")})`,...part)) guards.set(String(row.article_id),row);
+    }
+  }
+  for(let offset=0;offset<metadata.size;offset+=80){
+    const part=[...metadata.keys()].slice(offset,offset+80);
+    const found=await e2eRows(search,`SELECT * FROM search_metadata_guards_v1 WHERE article_id IN (${part.map(()=>"?").join(",")})`,...part);
+    for(const id of part){const row=found.find(r=>r.article_id===id),state=metadata.get(id)!;
+      if(!row||Number(row.revision)!==Number(state.revision)||Number(row.fencing_token)!==Number(state.fencing_token)||Number(row.tombstone)!==0)throw new Error("e2e.public_metadata_pending");
     }
   }
   for (const id of unique) {
@@ -39,6 +48,8 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
   }
   // Core B could commit while Search guards were being read. Check it again.
   if (unique.length) {
+    const latestMetadata=await readPublicMetadataState(core,unique,new Set(generations.keys()));
+    for(const [id,before] of metadata){const after=latestMetadata.get(id);if(before.revision!==after?.revision||before.fencing_token!==after?.fencing_token)throw new Error("e2e.public_metadata_changed");}
     const latest=await currentGenerations(core,unique);
     for (const id of unique) {
       const before=generations.get(id),after=latest.get(id);
@@ -50,6 +61,7 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
 /** Public Core content comes from the approved immutable P3, never mutable drafts. */
 export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[]) {
   const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids);
+  await readPublicMetadataState(core,ids,new Set(generations.keys()));
   if (!generations.size) return rows;
   const versions=new Map<string,GenerationRow>();
   const valid=[...generations.values()].filter(g=>g.input_current&&g.expected_publication_state==="published");

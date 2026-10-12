@@ -15,7 +15,7 @@ import { publishStagedApproved } from "../workers/async-pipeline/src/staged-e2e"
 async function fixture(t:test.TestContext,source="fr-conseil-constitutionnel",legacy=false) {
   const core=new SqliteD1(),search=new SqliteD1("search");t.after(()=>{core.close();search.close();});
   const url=source.startsWith("fr")?"https://www.conseil-constitutionnel.fr/decision/2026/2026912QPC.htm"
-    :"https://hj.tribunalconstitucional.es/es/Resolucion/Show/fixture";
+    :"https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114";
   const title=source.startsWith("fr")?"Décision n° 2026-912 QPC":"Sentencia 99/2026";
   const caseNumber=source.startsWith("fr")?"2026-912 QPC":"99/2026";
   core.db.prepare(`UPDATE articles SET source_key=?,original_title=?,canonical_url=?,original_url=?,cleaned_text=?,summary_json=?,korean_title=?,source_metadata=?`).run(
@@ -267,4 +267,15 @@ test("M5 verifier redrive preserves exhausted history, rejects stale fence and d
  await assert.rejects(redriveSearchVerification(f.core,{...request,expectedVerificationFence:0}),/redrive_stale/);f.core.failAtEnd=true;await assert.rejects(redriveSearchVerification(f.core,request));assert.equal(f.core.rows('e2e_verification_redrive_v1').length,0);assert.deepEqual(f.core.rows('e2e_verification_jobs_v1')[0],old);f.core.failAtEnd=false;const result=await redriveSearchVerification(f.core,request);assert.equal(result.previousAttempts,8);
  assert.deepEqual(JSON.parse(String(f.core.rows('e2e_verification_redrive_v1')[0].previous_state_document)).verificationJob,{...old});assert.equal(f.core.rows('article_content_versions_p3').length,1);assert.equal(f.core.rows('e2e_generations_v1').length,1);assert.equal(f.core.rows('e2e_search_repair_outbox_v1')[0].attempt_count,1);
  await assert.rejects(redriveSearchVerification(f.core,request),/redrive_stale/);f.options.fetch=f.publicFetch;assert.equal((await f.verify()).status,'completed_verified');assert.equal(f.core.rows('e2e_verification_redrive_v1').length,1);
+});
+
+for(const alias of ['https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32114?ACTION=print','https://hj.tribunalconstitucional.es/en/Resolucion/Show/32114'])test('M5 official URL alias verifies: '+alias,async(t)=>{
+  const f=await fixture(t,'es-tribunal-constitucional');
+  const fetchAlias:typeof fetch=async(input,init)=>{const r=await f.publicFetch(input,init),body=await r.json();const change=(item:Record<string,unknown>)=>{item.originalUrl=alias;};if(body.item)change(body.item);if(body.items)body.items.forEach(change);return Response.json(body);};
+  const result=await verifySearchRepair(f.core,f.search,f.message,{...f.options,fetch:fetchAlias});assert.equal(result.status,'completed_verified',JSON.stringify(result));
+});
+for(const bad of ['https://evil.example/HJ/es/Resolucion/Show/32114','https://hj.tribunalconstitucional.es/HJ/es/Resolucion/Show/32115'])test('M5 different official identity rejected: '+bad,async(t)=>{
+  const f=await fixture(t,'es-tribunal-constitucional');
+  const fetchBad:typeof fetch=async(input,init)=>{const r=await f.publicFetch(input,init),body=await r.json();if(body.item)body.item.originalUrl=bad;if(body.items)for(const item of body.items)item.originalUrl=bad;return Response.json(body);};
+  const result=await verifySearchRepair(f.core,f.search,f.message,{...f.options,fetch:fetchBad});assert.equal(result.status,'retry');assert.equal('errorCode' in result?result.errorCode:null,'e2e.api_identity_mismatch');
 });

@@ -1,3 +1,4 @@
+import { metadataRepairReady, invalidateSearchMetadata, claimMetadataRepair, finishMetadataRepair, applyMetadataProjection } from "./metadata-repair";
 import {sha256Canonical} from "../e2e/contracts";
 import { currentGenerations, e2eRows, hasE2ETable } from "../e2e/generation-state";
 import { buildSearchProjection } from "./build";
@@ -391,6 +392,7 @@ export async function applySearchProjectionPlan(
   if (!database.batch) throw new Error("search_projection.batch_unavailable");
   if (!Number.isInteger(batchSize) || batchSize <= 0 || batchSize > 100) throw new Error("search_projection.invalid_batch_size");
   const guardedSchema = await hasE2ETable(database,"e2e_search_generation_guards_v1");
+  const metadataSchema = await hasE2ETable(database,"search_metadata_guards_v1");
   let batches = 0;
   const effectiveBatchSize = guardedSchema ? Math.min(batchSize,98) : batchSize;
   for (let index = 0; index < plan.statements.length; index += effectiveBatchSize) {
@@ -402,7 +404,7 @@ export async function applySearchProjectionPlan(
       const ids=[...new Set(statements.map(statement=>String(statement.params[0]??"")))];
       const predicate=allRows ? "1=1" : `article_id IN (${ids.map(()=>"?").join(",")})`;
       prepared.unshift(database.prepare(`INSERT INTO e2e_search_commit_guards_v1 (token,assertion)
-        VALUES (?,CASE WHEN NOT EXISTS (SELECT 1 FROM e2e_search_generation_guards_v1 WHERE ${predicate}) THEN 1 ELSE 0 END)`).bind(token,...(allRows ? [] : ids)));
+        VALUES (?,CASE WHEN NOT EXISTS (SELECT 1 FROM e2e_search_generation_guards_v1 WHERE ${predicate}) ${metadataSchema ? `AND NOT EXISTS (SELECT 1 FROM search_metadata_guards_v1 WHERE ${predicate})` : ""} THEN 1 ELSE 0 END)`).bind(token,...(allRows ? [] : ids),...(metadataSchema && !allRows ? ids : [])));
       prepared.push(database.prepare("DELETE FROM e2e_search_commit_guards_v1 WHERE token=?").bind(token));
     }
     const results = await database.batch(prepared);
@@ -421,6 +423,9 @@ export async function runNativeSearchProjectionSync(bindings: SearchProjectionSy
   const managedIds=new Set<string>();
   if (await hasE2ETable(bindings.WORLDCONS_CORE,"e2e_generation_heads_v1")) {
     for (const row of await e2eRows(bindings.WORLDCONS_CORE,"SELECT article_id FROM e2e_generation_heads_v1")) managedIds.add(String(row.article_id));
+  }
+  if(await hasE2ETable(bindings.WORLDCONS_CORE,"search_metadata_repairs_v1")) {
+    for(const row of await e2eRows(bindings.WORLDCONS_CORE,"SELECT article_id FROM search_metadata_repairs_v1")) managedIds.add(String(row.article_id));
   }
   // Protected rows use current Core identity and the durable outbox, never this scan's legacy write plan.
   for(const id of managedIds)await syncSearchProjectionForArticle(bindings,id);
@@ -554,9 +559,25 @@ export interface SyncSearchProjectionForArticleResult {
  *
  * It never reads or writes any other article's projection rows.
  */
-export async function syncSearchProjectionForArticle(
+export async function syncSearchProjectionForArticle(bindings: SearchProjectionSyncBindings, articleId: string): Promise<SyncSearchProjectionForArticleResult> {
+  if(!await metadataRepairReady(bindings.WORLDCONS_CORE,bindings.WORLDCONS_SEARCH))return syncArticleProjection(bindings,articleId);
+  const current=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM search_metadata_repairs_v1 WHERE article_id=?",articleId))[0];
+  if(!current || current.status==='verified')await invalidateSearchMetadata(bindings.WORLDCONS_CORE,articleId);
+  const claim=await claimMetadataRepair(bindings.WORLDCONS_CORE,articleId);
+  if(!claim)throw new Error('metadata.repair_busy_or_exhausted');
+  try {
+    const result=await syncArticleProjection(bindings,articleId,claim);
+    await finishMetadataRepair(bindings.WORLDCONS_CORE,claim);
+    const latest=(await e2eRows(bindings.WORLDCONS_CORE,"SELECT * FROM search_metadata_repairs_v1 WHERE article_id=?",articleId))[0];
+    if(latest?.status!=='verified'||Number(latest.revision)!==Number(claim.revision)||Number(latest.fencing_token)!==Number(claim.fencing_token))throw new Error('metadata.core_changed_during_repair');
+    return result;
+  } catch(error) {await finishMetadataRepair(bindings.WORLDCONS_CORE,claim,error);throw error;}
+}
+
+async function syncArticleProjection(
   bindings: SearchProjectionSyncBindings,
   articleId: string,
+  metadataClaim?: import("../e2e/generation-state").GenerationRow,
 ): Promise<SyncSearchProjectionForArticleResult> {
   if (typeof articleId !== "string" || articleId.length === 0) {
     throw new Error("search_projection.invalid_article_id");
@@ -597,13 +618,25 @@ export async function syncSearchProjectionForArticle(
     return {articleId,desiredEligible:desired.document!==null,documentCount:Number(desired.document!==null),ftsCount:Number(desired.fts!==null),changes:{added:0,changed:1,removed:Number(desired.document===null),unchanged:0},verified:true};
   }
   const sourceRows = await readEligibleSourceForArticle(bindings.WORLDCONS_CORE, articleId);
+  if(metadataClaim && sourceRows.some(row=>["needs_review","needs_triage","closed_private","rejected","blocked"].includes(String(row.review_state)))) {
+    const {readArticlePublicationSnapshotFromD1,transitionArticlePublicationInD1}=await import("../core-write/authority");
+    const snapshot=await readArticlePublicationSnapshotFromD1(bindings.WORLDCONS_CORE,articleId);
+    if(!snapshot.ok)throw new Error("metadata.withdraw_snapshot_unavailable");
+    const removed=await transitionArticlePublicationInD1(bindings.WORLDCONS_CORE,{articleId,
+      expectedVersionRevision:snapshot.data.versionRevision,expectedPublicationRevision:snapshot.data.publicationRevision,expectedLegacyUpdatedAt:snapshot.data.legacyUpdatedAt,
+      idempotencyKey:"metadata-withdraw:"+articleId+":"+metadataClaim.revision,targetState:"withdrawn",captureLegacy:false,versionId:sourceRows[0].version_id,
+      actorType:"compatibility",actorId:"metadata-repair",reason:"Withdraw published snapshot after review metadata prohibits public access"});
+    if(!removed.ok)throw new Error("metadata.withdraw_failed:"+removed.error.code);
+    return syncArticleProjection(bindings,articleId,metadataClaim);
+  }
   const desiredEligible = sourceRows.length > 0;
   const tagRows = desiredEligible ? await readTagsForArticleIds(bindings.WORLDCONS_CORE, [articleId]) : [];
   const input = buildSearchProjectionInputFromEligibleRows(sourceRows, tagRows);
   const built = buildSearchProjection(input);
   const current = await readCurrentIdentitiesForArticleIds(bindings.WORLDCONS_SEARCH, [articleId]);
   const plan = planSearchProjectionIncrementalSync(current, built.documents, built.ftsDocuments);
-  await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, plan);
+  if(metadataClaim)await applyMetadataProjection(bindings.WORLDCONS_SEARCH,metadataClaim,built.documents[0]??null,built.ftsDocuments[0]??null);
+  else await applySearchProjectionPlan(bindings.WORLDCONS_SEARCH, plan);
   if (desiredEligible) await verifyProjectionPage(bindings.WORLDCONS_SEARCH, built.documents);
 
   const [documentCountRows, ftsCountRows] = await Promise.all([

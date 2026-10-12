@@ -274,6 +274,7 @@ export async function readArticleLifecycleFromD1(
 export async function transitionArticleLifecycleInD1(
   binding: D1RuntimeDatabase,
   input: ArticleLifecycleTransitionInput,
+  atomicBefore: D1RuntimePreparedStatement[] = [],
 ): Promise<ArticleLifecycleResult<ArticleLifecycleTransitionResult>> {
   try {
     const existing = await one<Row>(
@@ -345,7 +346,7 @@ export async function transitionArticleLifecycleInD1(
       current.attentionCode, current.attentionRetryable, current.attentionSeverity, current.attentionSource,
     ]);
     const revision = current.revision + (applied ? 1 : 0);
-    const statements: D1RuntimePreparedStatement[] = [];
+    const statements: D1RuntimePreparedStatement[] = [...atomicBefore];
     if (applied) {
       statements.push(binding.prepare(
         "UPDATE articles SET lifecycle_collection_state=?,lifecycle_processing_state=?,lifecycle_review_state=?,lifecycle_attention_state=?,lifecycle_attention_code=?,lifecycle_attention_retryable=?,lifecycle_attention_severity=?,lifecycle_attention_source=?,lifecycle_attention_raised_at=?,lifecycle_attention_cleared_at=?,lifecycle_revision=?,lifecycle_changed_at=?,lifecycle_collection_changed_at=CASE WHEN lifecycle_collection_state IS NOT ? THEN ? ELSE lifecycle_collection_changed_at END,lifecycle_processing_changed_at=CASE WHEN lifecycle_processing_state IS NOT ? THEN ? ELSE lifecycle_processing_changed_at END,lifecycle_review_changed_at=CASE WHEN lifecycle_review_state IS NOT ? THEN ? ELSE lifecycle_review_changed_at END,lifecycle_attention_changed_at=CASE WHEN lifecycle_attention_state IS NOT ? OR lifecycle_attention_code IS NOT ? THEN ? ELSE lifecycle_attention_changed_at END WHERE id=? AND CAST(lifecycle_revision AS INTEGER)=?",
@@ -370,7 +371,7 @@ export async function transitionArticleLifecycleInD1(
           "INSERT INTO article_lifecycle_events_p2 (id,article_id,idempotency_key,from_revision,to_revision,actor_type,actor_id,transition_source,reason_code,applied,collection_state,processing_state,review_state,attention_state,attention_code,attention_retryable,attention_severity,attention_source,occurred_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ).bind(...eventValues));
     const results = await batch(binding, statements);
-    if (applied && (changes(results[0]) !== 1 || changes(results[1]) !== 1)) {
+    if (applied && (changes(results[atomicBefore.length]) !== 1 || changes(results[atomicBefore.length + 1]) !== 1)) {
       return { ok: false, error: articleLifecycleError("stale_revision") };
     }
     return {

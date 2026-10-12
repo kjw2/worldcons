@@ -1,3 +1,4 @@
+import { drainSearchMetadataRepairs } from "@/lib/cloudflare/search-projection/metadata-repair";
 import {runDiscoveryCoverageScheduled,type DiscoveryCoverageEnvironment} from "./discovery-coverage-scheduled";
 import { stagedE2EOptionsFromEnvironment } from "./staged-e2e";
 import { consumeE2ESearchRepairBatch, E2E_SEARCH_REPAIR_QUEUE_NAME, type E2ESearchConsumerEnvironment } from "./e2e-search-repair-queue";
@@ -720,6 +721,8 @@ export default {
     if (controller.cron === "* * * * *") {
       await runE2ESearchRepairScheduled(env as unknown as E2ESearchRepairEnvironment);
       await runDiscoveryCoverageScheduled(env as unknown as DiscoveryCoverageEnvironment);
+      try { console.log(JSON.stringify({event:"search_metadata_drain",...await drainSearchMetadataRepairs(env)})); }
+      catch(error) { console.error(JSON.stringify({event:"search_metadata_drain_failed",error:String(error).slice(0,200)})); }
       return; // Dedicated tick must never fan out legacy M8 work.
     }
     if (controller.cron === "*/15 * * * *") {

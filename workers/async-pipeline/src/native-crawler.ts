@@ -891,8 +891,17 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const clean = normalizeNativeSourceText(text);
   const status = articleStatus(candidate, clean);
   const contentHash = await sha256(clean.replace(/\s+/g, " ").trim() || `${candidate.sourceKey}:${canonical}`);
-  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, canonical_url, fetched_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
+  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, canonical_url, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
   if(existing&&Date.parse(fetchedAt)<Date.parse(String(existing.fetched_at??"")))return {outcome:"preserved",articleId:String(existing.id),canonicalUrl:String(existing.canonical_url),contentHash:String(existing.content_hash),status:String(existing.status)};
+  const preserved = async (): Promise<NativePersistResult> => {
+    const row = await core.prepare("SELECT id,canonical_url,content_hash,status FROM articles WHERE id=?").bind(existing!.id).first<Record<string, unknown>>();
+    if (!row) throw new Error("crawler.source_disappeared");
+    return { outcome: "preserved", articleId: String(row.id), canonicalUrl: String(row.canonical_url), contentHash: String(row.content_hash), status: String(row.status) };
+  };
+  // Abort the entire D1 batch when the source snapshot changed after its read.
+  const sourceCas = (revision: number) => core.prepare(
+    "SELECT CASE WHEN EXISTS (SELECT 1 FROM articles WHERE id=? AND fetched_at IS ? AND content_hash IS ? AND source_metadata IS ? AND updated_at IS ? AND review_state IS ? AND status IS ? AND CAST(lifecycle_revision AS INTEGER)=?) THEN 1 ELSE json('crawler_source_cas_failed') END AS assertion",
+  ).bind(existing!.id, existing!.fetched_at ?? null, existing!.content_hash ?? null, existing!.source_metadata ?? null, existing!.updated_at ?? null, existing!.review_state ?? null, existing!.status ?? null, revision);
   const lifecycleBefore = existing ? await readArticleLifecycleFromD1(core as unknown as D1RuntimeDatabase, String(existing.id)) : null;
   if (lifecycleBefore && !lifecycleBefore.ok) throw new Error("crawler.lifecycle_read_failed");
   const duplicate = existing ? null : await core.prepare("SELECT id FROM articles WHERE content_hash = ? LIMIT 1").bind(contentHash).first<{ id: string }>();
@@ -912,8 +921,14 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   const regression = Boolean(existing && publicWasPublishable && (status !== "cleaned" || clean.length < Math.max(500, Math.floor(oldTextLength * 0.6))));
   if (regression) return { outcome: "preserved", articleId: String(existing?.id ?? ""), canonicalUrl: canonical, contentHash, status };
   if (existing && existing.content_hash === contentHash) {
-    await core.prepare("UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, source_metadata=?, updated_at=? WHERE id=?")
-      .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, data, fetchedAt, existing.id).run();
+    if (!lifecycleBefore?.ok) throw new Error("crawler.lifecycle_read_failed");
+    try {
+      await core.batch([sourceCas(lifecycleBefore.data.revision), core.prepare("UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, source_metadata=?, updated_at=? WHERE id=?")
+        .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, data, fetchedAt, existing.id)]);
+    } catch (error) {
+      if (/malformed JSON|crawler_source_cas_failed/i.test(String(error))) return preserved();
+      throw error;
+    }
     return { outcome: "unchanged", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
   }
   const rawBytes = new TextEncoder().encode(JSON.stringify(text));
@@ -933,13 +948,12 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
     const collectionState = status === "cleaned" ? "source_text_ready" : "metadata_only";
     const processingState = status === "cleaned" ? "ready" : "not_ready";
     if (status !== "cleaned" && before.processingState === "complete") return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
-    const lifecycleChanged = before.collectionState !== collectionState
-      || before.processingState !== processingState
-      || (status === "needs_review" && before.reviewState !== "closed_private" && before.reviewState !== "needs_review")
-      || (status === "cleaned" && before.attentionState === "active" && before.attentionCode === "collection.metadata_only")
-      || (status === "metadata_only" && (before.attentionState !== "active" || before.attentionCode !== "collection.metadata_only"));
-    if (lifecycleChanged) {
-      const after = await transitionArticleLifecycleInD1(core as unknown as D1RuntimeDatabase, {
+    const sourceUpdate = core.prepare(`UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, summarized_at=NULL, status=?, korean_title=NULL, summary_json=NULL,
+      translation_status=?,translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
+      translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
+      cleaned_text=?, content_hash=?, source_metadata=?, raw_text_storage_ref=?, raw_text_blob_hash=?, raw_text_blob_size=?, raw_text_externalized_at=?, raw_text_blob_contract_version=?, review_state=?, updated_at=? WHERE id=?`)
+      .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, legacyStatus, translationStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id);
+    const after = await transitionArticleLifecycleInD1(core as unknown as D1RuntimeDatabase, {
         articleId: String(existing.id),
         expectedRevision: before.revision,
         idempotencyKey: `native-crawler:${runId}:${contentHash}`,
@@ -952,14 +966,15 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
         ...(status === "needs_review" && before.reviewState !== "closed_private" ? { reviewState: "needs_review" as const } : before.reviewState === null ? { reviewState: "unreviewed" as const } : {}),
         ...(status === "cleaned" && before.attentionState === "active" && before.attentionCode === "collection.metadata_only" ? { attention: { operation: "clear" as const, resolvesCodes: ["collection.metadata_only"] } } : {}),
         ...(status === "metadata_only" ? { attention: { operation: "raise" as const, code: "collection.metadata_only", retryable: true, severity: "low" as const, source: "collection" as const } } : {}),
-      });
-      if (!after.ok) return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
+    }, [sourceCas(before.revision), sourceUpdate] as unknown as import("@/lib/cloudflare/d1/runtime-binding").D1RuntimePreparedStatement[]);
+    if (!after.ok) {
+      if (after.error.code === "unavailable") {
+        const latest = await core.prepare("SELECT fetched_at,content_hash,source_metadata,updated_at FROM articles WHERE id=?").bind(existing.id).first<Record<string, unknown>>();
+        if (latest && ["fetched_at","content_hash","source_metadata","updated_at"].every(key => latest[key] === existing[key])) throw new Error("crawler.lifecycle_transition_failed");
+      }
+      return preserved();
     }
-    await core.prepare(`UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, summarized_at=NULL, status=?, korean_title=NULL, summary_json=NULL,
-      translation_status=?,translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
-      translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
-      cleaned_text=?, content_hash=?, source_metadata=?, raw_text_storage_ref=?, raw_text_blob_hash=?, raw_text_blob_size=?, raw_text_externalized_at=?, raw_text_blob_contract_version=?, review_state=?, updated_at=? WHERE id=?`)
-      .bind(candidate.url, candidate.title, candidate.publishedAt ?? null, fetchedAt, legacyStatus, translationStatus, clean, contentHash, data, rawRef, rawHash, String(rawBytes.byteLength), fetchedAt, "worldcons-article-raw-blob-v1", status === "needs_review" && existing.review_state !== "closed_private" ? "needs_triage" : existing.review_state ?? null, fetchedAt, existing.id).run();
+    if (after.data.idempotent) return preserved();
     return { outcome: "refreshed", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
   }
   const id = crypto.randomUUID();
