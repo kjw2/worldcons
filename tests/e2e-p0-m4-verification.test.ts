@@ -207,12 +207,12 @@ test("M4 actual Queue wrapper retries API failure, then records completion and a
   let acks=0,retries=0;const messages=[{body:f.message,ack:()=>{acks++;},retry:()=>{retries++;}}];
   f.core.db.exec("UPDATE e2e_search_repair_outbox_v1 SET next_attempt_at='2000-01-01T00:00:00Z'");
   globalThis.fetch=async()=>Response.json({error:"unavailable"},{status:503});
-  await consumeE2ESearchRepairBatch(messages,env);assert.equal(acks,0);assert.equal(retries,1);
+  await consumeE2ESearchRepairBatch(messages,env);assert.equal(acks,1);assert.equal(retries,0);
   assert.equal(f.core.rows("e2e_verification_evidence_v1").length,0);
   f.core.db.exec("UPDATE e2e_verification_jobs_v1 SET next_attempt_at='2000-01-01T00:00:00Z'");
   globalThis.fetch=f.publicFetch;
-  await consumeE2ESearchRepairBatch(messages,env);assert.equal(acks,1);
   await consumeE2ESearchRepairBatch(messages,env);assert.equal(acks,2);
+  await consumeE2ESearchRepairBatch(messages,env);assert.equal(acks,3);
   assert.equal(f.core.rows("e2e_verification_evidence_v1").length,1);
   assert.equal(f.core.rows("e2e_search_repair_outbox_v1")[0].attempt_count,1);
 });
@@ -243,3 +243,11 @@ test("M5 real Spanish listing shape missing caseNumber is repaired from exact of
 });
 
 test("M5 production Queue verifier requires the actual public Worker binding before processing",async t=>{const f=await fixture(t),env={WORLDCONS_CORE:f.core,WORLDCONS_SEARCH:f.search,WORLDCONS_E2E_SEARCH_CONSUMER_ENABLED:"true",WORLDCONS_E2E_VERIFIER_ENABLED:"true",WORLDCONS_INGEST_STAGE_ENVIRONMENT:"production",WORLDCONS_E2E_VERIFIER_API_BASE_URL:f.options.apiBaseUrl,WORLDCONS_E2E_DEPLOYMENT_REF:"fixture:service-binding"};const events:string[]=[];const msg={body:f.message,ack(){events.push('ack');},retry(){events.push('retry');}};await assert.rejects(consumeE2ESearchRepairBatch([msg],env),/public_api_binding_missing/);assert.equal(f.core.rows('e2e_verification_jobs_v1').length,0);f.core.db.exec("UPDATE e2e_search_repair_outbox_v1 SET next_attempt_at='2000-01-01T00:00:00Z'");const calls:string[]=[];await consumeE2ESearchRepairBatch([msg],{...env,E2E_PUBLIC_API:{async fetch(request:Request){calls.push(request.url);return f.publicFetch(request.url);}}});assert.deepEqual(events,['ack']);assert.equal(calls.length,2);assert.equal(f.core.rows('e2e_generation_progress_v1')[0].state,'completed_verified');});
+
+test("M5 dispatcher waits for durable verifier backoff and active verification lease without multiplying Queue messages",async t=>{
+ const f=await fixture(t);f.options.fetch=async()=>Response.json({error:'unavailable'},{status:503});assert.equal((await f.verify()).status,'retry');
+ const {dispatchSearchRepairs}=await import('../lib/cloudflare/e2e/search-repair-dispatcher');let sent=0;const queue={async send(){sent++;}};
+ assert.equal((await dispatchSearchRepairs(f.core,queue,{clock:f.options.clock})).sentCount,0);assert.equal(sent,0);
+ f.advance(121);assert.equal((await dispatchSearchRepairs(f.core,queue,{clock:f.options.clock})).sentCount,1);
+ f.core.db.prepare("UPDATE e2e_verification_jobs_v1 SET status='leased',lease_expires_at=?").run(new Date(Date.parse(f.options.clock())+300000).toISOString());f.advance(61);assert.equal((await dispatchSearchRepairs(f.core,queue,{clock:f.options.clock})).sentCount,0);
+});

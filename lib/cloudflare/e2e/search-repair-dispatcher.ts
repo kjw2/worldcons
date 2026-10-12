@@ -108,17 +108,20 @@ export async function dispatchSearchRepairs(db: D1RuntimeDatabase, queue: Search
   const now = clock();
   const owner = options.workerId ?? `e2e-dispatch:${crypto.randomUUID()}`;
   if (!owner.trim() || owner.length > 160) throw new Error("e2e.invalid_dispatch_owner");
+  const verifierReady=(await rows(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='e2e_verification_jobs_v1'")).length>0;
+  const verificationDue=verifierReady?`AND NOT EXISTS(SELECT 1 FROM e2e_verification_jobs_v1 j WHERE j.generation_id=o.generation_id AND (j.status IN ('verified','dead_letter','blocked') OR (j.status IN ('pending','retry_wait') AND j.next_attempt_at>?) OR (j.status='leased' AND j.lease_expires_at>?)))`:"";
+  const verifierTimes=(at:string)=>verifierReady?[at,at]:[];
   const candidates = await rows(db, `SELECT o.outbox_id FROM e2e_search_repair_outbox_v1 o
-    WHERE ${DUE_SQL} AND ${CURRENT_OUTBOX_SQL}
-    ORDER BY o.next_dispatch_at,o.created_at,o.outbox_id LIMIT ?`, now,now,now,now,limit(options.limit));
+    WHERE ${DUE_SQL} AND ${CURRENT_OUTBOX_SQL} ${verificationDue}
+    ORDER BY o.next_dispatch_at,o.created_at,o.outbox_id LIMIT ?`, now,now,now,now,...verifierTimes(now),limit(options.limit));
   let claimedCount = 0, sentCount = 0, failedCount = 0, deadLetterCount = 0, fencedCount = 0;
   for (const candidate of candidates) {
     const claimedAt = clock(), token = crypto.randomUUID();
     const claimed = await rows(db, `UPDATE e2e_search_repair_outbox_v1 AS o SET
       dispatch_owner=?,dispatch_token=?,dispatch_lease_expires_at=?,dispatch_fence=dispatch_fence+1,
-      dispatch_count=dispatch_count+1,updated_at=? WHERE outbox_id=? AND ${DUE_SQL} AND ${CURRENT_OUTBOX_SQL}
+      dispatch_count=dispatch_count+1,updated_at=? WHERE outbox_id=? AND ${DUE_SQL} AND ${CURRENT_OUTBOX_SQL} ${verificationDue}
       RETURNING *`, owner,token,after(claimedAt,LEASE_SECONDS),claimedAt,candidate.outbox_id,
-      claimedAt,claimedAt,claimedAt,claimedAt);
+      claimedAt,claimedAt,claimedAt,claimedAt,...verifierTimes(claimedAt));
     if (claimed.length !== 1) continue;
     claimedCount++;
     const row = claimed[0];

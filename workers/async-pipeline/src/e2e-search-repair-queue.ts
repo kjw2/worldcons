@@ -1,3 +1,4 @@
+import {isSearchRepairMessage} from "../../../lib/cloudflare/e2e/search-repair-dispatcher";
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { consumeSearchRepair } from "../../../lib/cloudflare/e2e/search-repair-consumer";
 import { verifySearchRepair } from "../../../lib/cloudflare/e2e/search-verification";
@@ -31,6 +32,10 @@ export async function consumeE2ESearchRepairBatch(messages:readonly QueueMessage
       || !await hasE2ETable(env.WORLDCONS_CORE,"e2e_approval_evidence_v1")
       || !await hasE2ETable(env.WORLDCONS_CORE,"e2e_verification_evidence_v1"))) throw new Error("e2e.verifier_schema_not_ready");
   if(env.WORLDCONS_E2E_VERIFIER_ENABLED==="true"&&env.WORLDCONS_INGEST_STAGE_ENVIRONMENT==="production"&&!env.E2E_PUBLIC_API)throw new Error("e2e.public_api_binding_missing");
+  const deferredVerification=async(body:unknown)=>{
+    if(env.WORLDCONS_E2E_VERIFIER_ENABLED!=="true"||!isSearchRepairMessage(body))return false;const now=new Date().toISOString();
+    return (await e2eRows(env.WORLDCONS_CORE,"SELECT j.generation_id FROM e2e_search_repair_outbox_v1 o JOIN e2e_verification_jobs_v1 j ON j.generation_id=o.generation_id WHERE o.outbox_id=? AND ((j.status IN ('pending','retry_wait') AND j.next_attempt_at>?) OR (j.status='leased' AND j.lease_expires_at>?))",body.outboxId,now,now)).length>0;
+  };
   for (const message of messages) {
     try {
       const result=await consumeSearchRepair(env.WORLDCONS_CORE,env.WORLDCONS_SEARCH,message.body);
@@ -38,12 +43,12 @@ export async function consumeE2ESearchRepairBatch(messages:readonly QueueMessage
         const verified=await verifySearchRepair(env.WORLDCONS_CORE,env.WORLDCONS_SEARCH,message.body,{
           apiBaseUrl:env.WORLDCONS_E2E_VERIFIER_API_BASE_URL??"",deploymentRef:env.WORLDCONS_E2E_DEPLOYMENT_REF??"",
           ...(env.E2E_PUBLIC_API?{fetch:((input,init)=>env.E2E_PUBLIC_API!.fetch(new Request(input,init))) as typeof fetch}:{})});
-        if (["retry","invalid","missing","awaiting_application"].includes(verified.status)) message.retry({delaySeconds:60});
+        if (["retry","invalid","missing","awaiting_application"].includes(verified.status)) {if(await deferredVerification(message.body))message.ack();else message.retry({delaySeconds:60});}
         else message.ack();
         console[verified.status==="dead_letter"||verified.status==="blocked"?"error":"log"](JSON.stringify({event:"e2e_search_verification",status:verified.status,...("errorCode" in verified?{errorCode:verified.errorCode}:{})}));
         continue;
       }
-      if (["retry","invalid","missing"].includes(result.status)) message.retry({delaySeconds:60});
+      if (["retry","invalid","missing"].includes(result.status)) {if(await deferredVerification(message.body))message.ack();else message.retry({delaySeconds:60});}
       else message.ack(); // Durable apply receipt is not M4 completed_verified.
       console[result.status==="dead_letter"||result.status==="blocked"?"error":"log"](JSON.stringify({event:"e2e_search_repair_consumer",status:result.status}));
     } catch {
