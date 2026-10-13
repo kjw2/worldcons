@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  US_CUTOVER_GATES,
+  US_LEGACY_HISTORICAL_FIELDS,
+  evaluateUsCutoverReadiness,
+  planUsCutover,
+  type UsCutoverGate,
+  type UsCutoverProof,
+} from "../lib/cloudflare/ingest-stages/us-cutover-readiness";
+
+const GATE_FIELD: Record<UsCutoverGate, keyof UsCutoverProof> = {
+  official_pdf_fetched: "officialPdfFetched",
+  docket_identity_verified: "docketIdentityVerified",
+  r2_original_bytes: "r2OriginalBytes",
+  core_provenance: "coreProvenance",
+  private_review_hold: "privateReviewHold",
+  staged_e2e: "stagedE2E",
+  manual_publication_authorization: "manualPublicationAuthorization",
+  p3_published: "p3Published",
+  search_projected: "searchProjected",
+};
+
+const FULL_PROOF: UsCutoverProof = {
+  officialPdfFetched: true,
+  docketIdentityVerified: true,
+  r2OriginalBytes: true,
+  coreProvenance: true,
+  privateReviewHold: true,
+  stagedE2E: true,
+  manualPublicationAuthorization: true,
+  p3Published: true,
+  searchProjected: true,
+};
+
+const CURRENT = {
+  stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"],
+  m8Exclude: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"],
+};
+
+test("US cutover readiness fails closed for null/empty/partial proof", () => {
+  for (const proof of [null, undefined, {}, { officialPdfFetched: true }]) {
+    const readiness = evaluateUsCutoverReadiness(proof);
+    assert.equal(readiness.ready, false, `expected not ready for ${JSON.stringify(proof)}`);
+    assert.ok(readiness.blockers.length > 0);
+    assert.ok(readiness.blockers.every((blocker) => blocker.startsWith("us_cutover.")));
+  }
+});
+
+test("US cutover readiness requires every gate explicitly true", () => {
+  for (const gate of US_CUTOVER_GATES) {
+    const proof: Record<string, boolean> = { ...FULL_PROOF };
+    proof[GATE_FIELD[gate]] = false;
+    const readiness = evaluateUsCutoverReadiness(proof as Partial<UsCutoverProof>);
+    assert.equal(readiness.ready, false);
+    assert.ok(readiness.blockers.includes(`us_cutover.${gate}_not_observed`));
+  }
+});
+
+test("US cutover readiness passes only for the full observed proof", () => {
+  const readiness = evaluateUsCutoverReadiness(FULL_PROOF);
+  assert.equal(readiness.ready, true);
+  assert.deepEqual(readiness.blockers, []);
+  assert.equal(readiness.gates.length, US_CUTOVER_GATES.length);
+  assert.ok(readiness.gates.every((gate) => gate.passed && gate.required));
+  assert.equal(readiness.legacyHistoricalCountsOnly, false);
+});
+
+test("US cutover readiness rejects a proof made only of legacy historical counts", () => {
+  const proof = { coreArticles: 136, publishedP3: 136, searchEligible: 136, discovered: 0, fetched: 0 };
+  const readiness = evaluateUsCutoverReadiness(proof as Partial<UsCutoverProof>);
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.legacyHistoricalCountsOnly, true);
+  assert.ok(readiness.blockers.includes("us_cutover.legacy_historical_counts_rejected"));
+  for (const field of US_LEGACY_HISTORICAL_FIELDS) {
+    assert.equal(typeof (proof as Record<string, unknown>)[field], "number");
+  }
+});
+
+test("US cutover planner refuses a mutation without manual publication authorization", () => {
+  const withoutManual: Partial<UsCutoverProof> = { ...FULL_PROOF };
+  delete withoutManual.manualPublicationAuthorization;
+  const plan = planUsCutover(withoutManual, CURRENT);
+  assert.equal(plan.authorized, false);
+  assert.equal(plan.plannedAllowlist, "");
+  assert.equal(plan.plannedExclude, "");
+  assert.equal(plan.reason, "us_cutover.manual_publication_authorization_not_observed");
+  assert.equal(plan.rollback.allowlist, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+  assert.equal(plan.rollback.exclude, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+});
+
+test("US cutover planner refuses a mutation while any proof gate is missing", () => {
+  const plan = planUsCutover({ officialPdfFetched: true, docketIdentityVerified: true }, CURRENT);
+  assert.equal(plan.authorized, false);
+  assert.equal(plan.plannedAllowlist, "");
+  assert.equal(plan.plannedExclude, "");
+  assert.ok(plan.reason?.startsWith("us_cutover."));
+  assert.equal(plan.rollback.allowlist, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+  assert.equal(plan.rollback.exclude, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+});
+
+test("US cutover planner emits the exact paired allowlist/exclude on full proof", () => {
+  const plan = planUsCutover(FULL_PROOF, CURRENT);
+  assert.equal(plan.authorized, true);
+  assert.equal(plan.plannedAllowlist, "fr-conseil-constitutionnel,es-tribunal-constitucional,us-scotus");
+  assert.equal(plan.plannedExclude, "fr-conseil-constitutionnel,es-tribunal-constitucional,us-scotus");
+  assert.equal(plan.plannedAllowlist, plan.plannedExclude);
+  assert.equal(plan.rollback.allowlist, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+  assert.equal(plan.rollback.exclude, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+});
+
+test("US cutover planner does not duplicate an already-present source", () => {
+  const plan = planUsCutover(FULL_PROOF, {
+    stagedAllowlist: ["fr-conseil-constitutionnel", "us-scotus"],
+    m8Exclude: ["fr-conseil-constitutionnel", "us-scotus"],
+  });
+  assert.equal(plan.authorized, true);
+  assert.equal(plan.plannedAllowlist, "fr-conseil-constitutionnel,us-scotus");
+  assert.equal(plan.plannedExclude, "fr-conseil-constitutionnel,us-scotus");
+});
+
+test("US cutover planner never authorizes on legacy historical counts alone", () => {
+  const plan = planUsCutover(
+    { coreArticles: 136, publishedP3: 136, searchEligible: 136 } as Partial<UsCutoverProof>,
+    CURRENT,
+  );
+  assert.equal(plan.authorized, false);
+  assert.equal(plan.reason, "us_cutover.legacy_historical_counts_rejected");
+});
+
+test("US cutover planner fails closed when current ownership is not exact paired", () => {
+  const mismatches = [
+    { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["fr-conseil-constitutionnel"], reason: "us_cutover.ownership_not_paired_length_mismatch" },
+    { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"], reason: "us_cutover.ownership_not_paired_order_or_content_mismatch" },
+    { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["fr-conseil-constitutionnel", "de-bverfg"], reason: "us_cutover.ownership_not_paired_order_or_content_mismatch" },
+  ];
+  for (const mismatch of mismatches) {
+    const plan = planUsCutover(FULL_PROOF, mismatch as { stagedAllowlist: string[]; m8Exclude: string[] });
+    assert.equal(plan.authorized, false, `expected not authorized for ${JSON.stringify(mismatch)}`);
+    assert.equal(plan.plannedAllowlist, "");
+    assert.equal(plan.plannedExclude, "");
+    assert.equal(plan.reason, mismatch.reason);
+    assert.equal(plan.rollback.allowlist, mismatch.stagedAllowlist.join(","));
+    assert.equal(plan.rollback.exclude, mismatch.m8Exclude.join(","));
+  }
+});
+
+test("US cutover planner rejects duplicate or blank current ownership entries", () => {
+  const dup = planUsCutover(FULL_PROOF, {
+    stagedAllowlist: ["fr-conseil-constitutionnel", "fr-conseil-constitutionnel"],
+    m8Exclude: ["fr-conseil-constitutionnel", "fr-conseil-constitutionnel"],
+  });
+  assert.equal(dup.authorized, false);
+  assert.equal(dup.reason, "us_cutover.ownership_not_paired_duplicate_entry");
+  const blank = planUsCutover(FULL_PROOF, {
+    stagedAllowlist: ["fr-conseil-constitutionnel", ""],
+    m8Exclude: ["fr-conseil-constitutionnel", ""],
+  });
+  assert.equal(blank.authorized, false);
+  assert.equal(blank.reason, "us_cutover.ownership_not_paired_empty_entry");
+});
+
+test("US cutover planner authorizes a fully aligned paired list", () => {
+  const aligned = planUsCutover(FULL_PROOF, {
+    stagedAllowlist: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"],
+    m8Exclude: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"],
+  });
+  assert.equal(aligned.authorized, true);
+  assert.equal(aligned.plannedAllowlist, "es-tribunal-constitucional,fr-conseil-constitutionnel,us-scotus");
+  assert.equal(aligned.plannedExclude, aligned.plannedAllowlist);
+  const emptyAligned = planUsCutover(FULL_PROOF, { stagedAllowlist: [], m8Exclude: [] });
+  assert.equal(emptyAligned.authorized, true);
+  assert.equal(emptyAligned.plannedAllowlist, "us-scotus");
+  assert.equal(emptyAligned.plannedExclude, "us-scotus");
+});

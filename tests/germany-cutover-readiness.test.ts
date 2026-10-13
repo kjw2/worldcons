@@ -87,3 +87,45 @@ test("germany cutover planner does not duplicate an already-present source", () 
   assert.equal(plan.plannedAllowlist, "fr-conseil-constitutionnel,de-bverfg");
   assert.equal(plan.plannedExclude, "fr-conseil-constitutionnel,de-bverfg");
 });
+
+test("germany cutover planner fails closed when current ownership is not exact paired", () => {
+  const mismatches = [
+    { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["fr-conseil-constitutionnel"], reason: "germany_cutover.ownership_not_paired_length_mismatch" },
+    { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"], reason: "germany_cutover.ownership_not_paired_order_or_content_mismatch" },
+    { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["fr-conseil-constitutionnel", "us-scotus"], reason: "germany_cutover.ownership_not_paired_order_or_content_mismatch" },
+  ];
+  for (const mismatch of mismatches) {
+    const plan = planGermanyCutover(FULL_PROOF, mismatch as { stagedAllowlist: string[]; m8Exclude: string[] });
+    assert.equal(plan.authorized, false, `expected not authorized for ${JSON.stringify(mismatch)}`);
+    assert.equal(plan.plannedAllowlist, "");
+    assert.equal(plan.plannedExclude, "");
+    assert.equal(plan.reason, mismatch.reason);
+    assert.equal(plan.rollback.allowlist, mismatch.stagedAllowlist.join(","));
+    assert.equal(plan.rollback.exclude, mismatch.m8Exclude.join(","));
+  }
+});
+
+test("germany cutover planner rejects duplicate or blank current ownership entries", () => {
+  const dup = planGermanyCutover(FULL_PROOF, {
+    stagedAllowlist: ["fr-conseil-constitutionnel", "fr-conseil-constitutionnel"],
+    m8Exclude: ["fr-conseil-constitutionnel", "fr-conseil-constitutionnel"],
+  });
+  assert.equal(dup.authorized, false);
+  assert.equal(dup.reason, "germany_cutover.ownership_not_paired_duplicate_entry");
+  const blank = planGermanyCutover(FULL_PROOF, {
+    stagedAllowlist: ["fr-conseil-constitutionnel", ""],
+    m8Exclude: ["fr-conseil-constitutionnel", ""],
+  });
+  assert.equal(blank.authorized, false);
+  assert.equal(blank.reason, "germany_cutover.ownership_not_paired_empty_entry");
+});
+
+test("germany cutover planner authorizes a fully aligned paired list", () => {
+  const plan = planGermanyCutover(FULL_PROOF, {
+    stagedAllowlist: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"],
+    m8Exclude: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"],
+  });
+  assert.equal(plan.authorized, true);
+  assert.equal(plan.plannedAllowlist, "es-tribunal-constitucional,fr-conseil-constitutionnel,de-bverfg");
+  assert.equal(plan.plannedExclude, plan.plannedAllowlist);
+});

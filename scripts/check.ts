@@ -884,8 +884,24 @@ const germanyCutoverGuardSource = fs.readFileSync(
 assert(
   germanyCutoverGuardSource.includes("GERMANY_CUTOVER_GATES") &&
     germanyCutoverGuardSource.includes("planGermanyCutover") &&
+    germanyCutoverGuardSource.includes("evaluateOwnershipPairing") &&
+    germanyCutoverGuardSource.includes("germany_cutover.ownership_not_paired_") &&
     germanyCutoverGuardSource.includes("if (!readiness.ready)"),
-  "Germany staged cutover must stay behind a fail-closed readiness gate that emits no paired mutation until real proof exists",
+  "Germany staged cutover must stay behind a fail-closed readiness gate that requires exact-paired current ownership and emits no paired mutation until real proof exists",
+);
+const usCutoverGuardSource = fs.readFileSync(
+  path.join(process.cwd(), "lib/cloudflare/ingest-stages/us-cutover-readiness.ts"),
+  "utf8",
+);
+assert(
+  usCutoverGuardSource.includes("US_CUTOVER_GATES") &&
+    usCutoverGuardSource.includes("planUsCutover") &&
+    usCutoverGuardSource.includes("manualPublicationAuthorization") &&
+    usCutoverGuardSource.includes("legacy_historical_counts_rejected") &&
+    usCutoverGuardSource.includes("evaluateOwnershipPairing") &&
+    usCutoverGuardSource.includes("us_cutover.ownership_not_paired_") &&
+    usCutoverGuardSource.includes("if (!readiness.ready)"),
+  "US staged cutover must stay behind a fail-closed readiness gate requiring manual publication authorization, exact-paired current ownership and rejecting legacy historical counts, emitting no paired mutation until real proof exists",
 );
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [

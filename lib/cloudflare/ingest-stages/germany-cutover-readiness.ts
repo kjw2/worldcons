@@ -22,6 +22,8 @@
  * inert until an operator has genuine evidence.
  */
 
+import { evaluateOwnershipPairing } from "./paired-ownership";
+
 export const GERMANY_SOURCE_KEY = "de-bverfg" as const;
 
 export interface GermanyCutoverProof {
@@ -128,6 +130,21 @@ export function planGermanyCutover(
     allowlist: current.stagedAllowlist.join(","),
     exclude: current.m8Exclude.join(","),
   };
+  // A cutover requires the current staged allowlist and M8 exclusion to already
+  // be exact paired. A mis-paired input would produce non-byte-identical planned
+  // strings, so it fails closed with no planned mutation.
+  const pairing = evaluateOwnershipPairing(current.stagedAllowlist, current.m8Exclude);
+  if (!pairing.paired) {
+    return {
+      source: GERMANY_SOURCE_KEY,
+      authorized: false,
+      readiness,
+      plannedAllowlist: "",
+      plannedExclude: "",
+      rollback,
+      reason: `germany_cutover.ownership_not_paired_${pairing.reason}`,
+    };
+  }
   if (!readiness.ready) {
     return {
       source: GERMANY_SOURCE_KEY,

@@ -149,6 +149,15 @@ covered by tests; the guard emits **no mutation** until the proof is complete.
   planned values unless every gate is explicitly `true`, and it always captures the
   exact rollback strings. A `germany_cutover.<gate>_not_observed` reason names the
   first blocker.
+- **Stronger ownership precondition (2026-10-13 P2-M4 follow-up).** In addition to
+  the proof gates, `planGermanyCutover` requires the *current* staged allowlist and
+  M8 exclusion to already be **exact paired** (same length, same keys, same order,
+  no blank/duplicate entries). A mis-paired input would produce non-byte-identical
+  planned strings, so it fails closed with `authorized=false`, empty planned values,
+  both rollback strings retained, and reason
+  `germany_cutover.ownership_not_paired_<reason>`. The precondition is the pure
+  shared helper `lib/cloudflare/ingest-stages/paired-ownership.ts`
+  (`evaluateOwnershipPairing`), used identically by the US `planUsCutover`.
 - `tests/germany-cutover-readiness.test.ts` (6/6) — null/empty/partial proof fails
   closed; each gate individually blocks; full proof yields the exact paired values;
   no duplication; rollback captured.

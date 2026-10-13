@@ -15,6 +15,7 @@
 | **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료 (P2-M1 관리상 종료)** | 긴급신청 docket 정규식 수정 `ebbb410`, 실공식 PDF 3건의 원문·사건번호·SHA-256 검증, Async Worker `fca447ec-850c-4e20-8a76-3bb97ac03676` 100% 배포. **Production R2/Core 실건 저장 E2E는 미관측으로 후속 전환 선행조건에 유지**. 미국 M8 소유권·검토 정책 유지 |
 | P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지. 미국 term 경계 Discovery 보완은 로컬 검증 중이며 Production 반영과 별개 |
 | **P2-M3** | **독일 BVerfG staged 전환 진입 게이트** | **GATED / BLOCKED (전환 미실시)** | 2026-10-13 read-only preflight: 신규 공식 ECLI/본문 미확보(`2 BvR 1702/26` 등 공식 URL 404), 독일 7단계 Production E2E 미관측. `de-bverfg`는 **M8 소유 유지**, 쌍 allowlist/exclude **미변경**. fail-closed 검증 모듈 `germany-cutover-readiness.ts` + 테스트 추가. 증거: `docs/worldcons-p2-m3-germany-cutover-20261013.md` |
+| **P2-M4** | **미국 SCOTUS staged 전환 진입 게이트** | **GATED / BLOCKED (전환 미실시, 엔지니어링 구현 완료)** | 2026-10-13 read-only audit: Production `officialPdf.r2Key` **0건**, 재시도 2건 `PDF_TEXT_EXTRACTION_UNAVAILABLE`(attempt 11), Core/P3/Search 136/136/136은 **legacy(증거 아님)**. `us-scotus` **M8 소유 유지**, 쌍 **미변경**. fail-closed `us-cutover-readiness.ts`(9 gate, **manual publication authorization** 필수, legacy counts 거부) + `scripts/audit-worldcons-p2-m4-us.ts` + 테스트. 안전한 단일 카나리 런타임 입구 없음 → E2E 미실시. 증거: `docs/worldcons-p2-m4-us-cutover-20261013.md` |
 
 ### 2026-10-13 P2-M1·M2 단계 완료 처리 (실증 예외·전환 게이트 유지)
 
@@ -33,6 +34,17 @@
 - **소유권 미변경.** `de-bverfg`는 M8 소유 유지, `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` / `M8_CRAWLER_SOURCE_EXCLUDE` 쌍 값은 프랑스+스페인 그대로. Worker 배포/원격 쓰기 없음. P2-M3를 완료로 표시하지 않음.
 - **코드 안전장치 추가(경계 내).** `lib/cloudflare/ingest-stages/germany-cutover-readiness.ts` — 실증 증거(공식 ECLI fetch·identity·7단계 E2E·Core·P3·Search)가 전부 명시 `true`일 때만 paired 변경을 방출하고, 아니면 `authorized=false`로 fail-closed + rollback 값 보존. `tests/germany-cutover-readiness.test.ts` 6/6, `scripts/check.ts` 불변식, `pnpm test:germany-cutover` 추가. `pnpm check`, `test:m8` 48/48, `test:m2-readiness` 3/3 통과.
 - 상세 사실·게이트 표·정확한 planned/rollback 값: `docs/worldcons-p2-m3-germany-cutover-20261013.md`. **P0 3건 / P1 1건 운영 확인은 계속 별도 추적.**
+
+### 2026-10-13 P2-M4 미국 cutover preflight — GATED/BLOCKED (전환 미실시, 엔지니어링 구현 완료)
+
+clean HEAD `9743c4b`에서 미국 한정 fail-closed 준비도 게이트와 read-only Production audit을 구현했다. **엔지니어링 구현(P2-M4 가드/테스트/불변식/감사)과 운영 전환(독일·미국 소유권 이관)은 별개**이며, 운영 전환은 하지 않았다.
+
+- **게이트 미충족.** Production에 `officialPdf.r2Key`를 가진 `us-scotus` 기사 **0건**. 기존 후보 2건(`26a308_pok0.pdf`, `26a388_q86b.pdf`)은 `PDF_TEXT_EXTRACTION_UNAVAILABLE` `retrying` attempt 11(마지막 2026-09-30)로, P2-1 추출기 수정이 배포돼도 14일 창/백오프 밖이라 자동 재선택되지 않는다. Core 136 / P3 136 / Search 136은 **legacy 카운트로 증거 아님**. 미국 7단계 Production E2E 미관측.
+- **소유권 미변경.** `us-scotus`는 M8 소유, `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` / `M8_CRAWLER_SOURCE_EXCLUDE` 쌍은 FR+ES 그대로. Worker 배포/원격 쓰기 없음.
+- **코드 안전장치 추가.** `lib/cloudflare/ingest-stages/us-cutover-readiness.ts` — 9개 gate가 전부 명시 `true`일 때만 쌍 변경을 방출하고, **`manual_publication_authorization` 필수**(미국은 자동 공개 불허), legacy historical counts 명시 거부, 아니면 `authorized=false` + rollback 값 보존. `tests/us-cutover-readiness.test.ts` 9/9, `tests/p2-m4-us-readiness.test.ts` 5/5, `scripts/check.ts` 불변식, `pnpm test:us-cutover` / `test:p2-m4-us` 추가.
+- **Read-only audit.** `scripts/audit-worldcons-p2-m4-us.ts` (`pnpm audit:p2-m4-us`): SELECT-only D1(+선택적 `--r2` 단일 객체 hash). `usM8Owned=true`, `usNotStaged=true`, `pairedExact=true`.
+- **안전한 카나리 입구 없음.** 단일 US staged job 시딩은 금지된 Production D1 직접 insert 또는 전체 US allowlist 개방만 가능 → **안전한 엔드포인트 미생성, E2E 미조작**.
+- 상세: `docs/worldcons-p2-m4-us-cutover-20261013.md`. `pnpm check`, `typecheck`, `m8:typecheck`, native-crawler 35/35, m8 48/48, ingest-stages 58/58, m2-readiness 3/3, germany-cutover 6/6 통과. **P0 3건 / P1 1건 운영 확인은 계속 별도 추적.**
 
 ## 2. 현재 운영 상태의 기준
 
