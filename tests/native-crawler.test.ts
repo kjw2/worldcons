@@ -1179,3 +1179,102 @@ test("BVerfG M8 and staged discovery fail closed when durable candidate state ca
     assert.equal(store.articles.size, 0);
   }
 });
+
+test("BVerfG official decision discovery accepts extensionless and .html links and rejects a zero-link/JS-only page", () => {
+  const listing = [
+    `<a href="/SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109622">extensionless official decision</a>`,
+    `<a href="/SharedDocs/Entscheidungen/DE/2026/09/rs20260920_2bvr123426.html">extension official decision</a>`,
+    `<a href="https://evil.example/SharedDocs/Entscheidungen/DE/2026/09/rs20260920_2bvr123426.html">spoofed external host</a>`,
+    `<a href="/DE/Entscheidungen/entscheidungen_node.html">generic listing shell (no decision)</a>`,
+  ].join("");
+  const candidates = parseNativeSourceListing("de-bverfg", listing);
+  assert.deepEqual(candidates.map((candidate) => new URL(candidate.url).pathname), [
+    "/SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109622",
+    "/SharedDocs/Entscheidungen/DE/2026/09/rs20260920_2bvr123426.html",
+  ]);
+  assert.ok(candidates.every((candidate) => candidate.sourceKey === "de-bverfg"));
+  // Fail closed: mere discovery on the official listing must never advertise the
+  // URL as verified. Only the crawl stage's exact-ECLI fetch may set it true.
+  assert.ok(candidates.every((candidate) => (candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified === false));
+  // The official generic decisions_node.html and a JS-only search shell expose no
+  // static decision links: discovery must yield an honest empty set, not a guess.
+  assert.deepEqual(parseNativeSourceListing("de-bverfg", "<html><main>search form only, zero links</main></html>"), []);
+});
+
+test("BVerfG extensionless official URL is verified, including a query-suffixed final URL", async () => {
+  const store = memoryBindings();
+  const requestedUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109622";
+  const finalUrl = `${requestedUrl}?nn=68112`;
+  const candidate = {
+    sourceKey: "de-bverfg" as const,
+    url: requestedUrl,
+    title: "BVerfG 2 BvR 1096/22",
+    contentType: "decision" as const,
+    metadata: { discoveryIndex: "official-listing", collection: { sourceUrlVerified: false, sourceTextAvailable: false, publishable: false } },
+  };
+  const fetcher: typeof fetch = async (input) => {
+    if (String(input).endsWith("/robots.txt")) return response(robots);
+    if (String(input) === requestedUrl) {
+      const result = response(`<html><main><p>ECLI:DE:BVerfG:2026:rs20260521.2bvr109622</p>${"Official extensionless decision text on constitutional rights. ".repeat(20)}</main></html>`);
+      Object.defineProperty(result, "url", { value: finalUrl });
+      return result;
+    }
+    throw new Error(`unexpected fetch ${String(input)}`);
+  };
+  const result = await crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher });
+  assert.equal(result.fetched, true);
+  assert.equal((result.candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, true);
+  assert.equal(result.candidate.metadata.ecli, "ECLI:DE:BVerfG:2026:rs20260521.2bvr109622");
+  assert.equal(result.candidate.metadata.officialIdentityVerification, "bverfg-ecli-exact-v1");
+  assert.equal(result.candidate.publishedAt, "2026-05-21T00:00:00.000Z");
+});
+
+test("BVerfG extensionless official URL rejects a mismatched body ECLI and a mismatched final URL identity", async () => {
+  const requestedUrl = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109622";
+  const candidate = {
+    sourceKey: "de-bverfg" as const,
+    url: requestedUrl,
+    title: "BVerfG 2 BvR 1096/22",
+    contentType: "decision" as const,
+    metadata: { discoveryIndex: "official-listing", collection: { sourceUrlVerified: false, sourceTextAvailable: false, publishable: false } },
+  };
+  const bodyMismatch: typeof fetch = async (input) => {
+    if (String(input).endsWith("/robots.txt")) return response(robots);
+    if (String(input) === requestedUrl) return response(`<html><main><p>ECLI:DE:BVerfG:2026:rs20260521.2bvr999922</p>${"Wrong decision body. ".repeat(40)}</main></html>`);
+    throw new Error(`unexpected fetch ${String(input)}`);
+  };
+  await assert.rejects(
+    crawlNativeStageCandidate(candidate, memoryBindings().bindings, { fetch: bodyMismatch }),
+    /crawler\.bverfg_official_identity_mismatch/,
+  );
+  const urlMismatch: typeof fetch = async (input) => {
+    if (String(input).endsWith("/robots.txt")) return response(robots);
+    if (String(input) === requestedUrl) {
+      const result = response(`<html><main><p>ECLI:DE:BVerfG:2026:rs20260521.2bvr109699</p>${"Redirected decision body. ".repeat(40)}</main></html>`);
+      Object.defineProperty(result, "url", { value: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109699" });
+      return result;
+    }
+    throw new Error(`unexpected fetch ${String(input)}`);
+  };
+  await assert.rejects(
+    crawlNativeStageCandidate(candidate, memoryBindings().bindings, { fetch: urlMismatch }),
+    /crawler\.bverfg_official_identity_mismatch/,
+  );
+});
+
+test("BVerfG official crawl rejects an unavailable official decision page without fabricating a fetch", async () => {
+  const candidate = {
+    sourceKey: "de-bverfg" as const,
+    url: "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109622",
+    title: "BVerfG unavailable",
+    contentType: "decision" as const,
+    metadata: { discoveryIndex: "official-listing", collection: { sourceUrlVerified: false, sourceTextAvailable: false, publishable: false } },
+  };
+  for (const [status, expected] of [[404, /crawler\.http_404/], [403, /crawler\.browser_navigation_unavailable/]] as const) {
+    const store = memoryBindings();
+    const fetcher: typeof fetch = async (input) => String(input).endsWith("/robots.txt") ? response(robots) : response("unavailable", status);
+    await assert.rejects(crawlNativeStageCandidate(candidate, store.bindings, { fetch: fetcher }), expected, `status ${status}`);
+    assert.equal(store.articles.size, 0);
+    assert.equal((candidate.metadata.collection as Record<string, unknown>).sourceUrlVerified, false);
+  }
+});

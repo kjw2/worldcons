@@ -200,3 +200,140 @@ Worker deployed.
 
 Until steps 1–4 produce genuine Production evidence, **P2-M3 remains BLOCKED and
 Germany stays M8-owned.**
+
+## 11. Continuation - official German URL identity hardening + sitemap/search evidence (2026-10-13)
+
+Base commit for this continuation: **`60ef9bb`** (the section 7 guard is already
+committed). Bounded, read-only; no ownership change, no deploy, no Production
+write, and no change to `M8_CRAWLER_SOURCE_EXCLUDE`,
+`WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST`, or `M8_ENABLED_KINDS`.
+
+Note: this section is intentionally ASCII-only. An earlier edit round-trip
+corrupted the whole document's UTF-8 (arrows/dashes became `??`); the file was
+restored byte-for-byte from HEAD before this clean append.
+
+### 11.1 Official search discovery - NOT USABLE (structural, robot-enforced)
+
+The official indexed search endpoint lives under `/SiteGlobals/`. The live
+official `robots.txt` (fetched HTTP 200) contains:
+
+```
+Disallow: /SiteGlobals/
+Allow: /SiteGlobals/Modules/
+Allow: /SiteGlobals/StyleBundles/
+Allow: /SiteGlobals/Frontend/
+Crawl-delay: 30
+Sitemap: https://www.bundesverfassungsgericht.de/Sitemap_Index.xml
+```
+
+The `Entscheidungssuche` search path is therefore robots-disallowed, so the
+crawler must not fetch it. The search index is not an official fetch and its
+snippets can never be equated with verified official source text. The generic
+listing `DE/Entscheidungen/entscheidungen_node.html` returns HTTP 200 with zero
+static decision links. Verdict: **NOT_OBSERVED / NOT_USABLE**.
+
+### 11.2 Official sitemap - NO decision links (robots-allowed, factual negative)
+
+The robots-allowed sitemap was inspected directly (single request per file,
+`Crawl-delay: 30` respected):
+
+| URL | Status | Bytes | `<loc>` count | Decision (`SharedDocs/Entscheidungen/.../[a-z]{2}\d{8}_...`) links |
+| --- | --- | --- | --- | --- |
+| `Sitemap_Index.xml` | 200 | 298 | 1 (child sitemap) | 0 |
+| `Sitemap_Basepage.xml` | 200 | 57924 | 242 | **0** |
+
+`Sitemap_Basepage.xml` lists only 242 non-decision pages (press, media, service,
+`AusgewaehlteNeueingaenge`), every `<lastmod>` is `2024-02-26`, and **zero** URLs
+match the official `SharedDocs/Entscheidungen` decision pattern. The sitemap is
+therefore **not** a usable recent-decision-discovery source. Per the task's
+instruction ("if sitemap lacks decisions or inaccessible, document factual
+result, do NOT add a speculative endpoint"), **no sitemap discovery code was
+added**. This is a factual negative, not a transient failure.
+
+### 11.3 Official decision detail pages - GET-observable (raw HTTP only)
+
+Read-only probes with the project UA and `Crawl-delay: 30`:
+
+| Official URL | Status | Bytes | Body ECLI |
+| --- | --- | --- | --- |
+| `.../SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html?nn=68112` | 200 | 105981 | `ECLI:DE:BVerfG:2026:rk20260905.2bvr135824` |
+| `.../SharedDocs/Entscheidungen/DE/2026/05/rs20260521_2bvr109622` (extensionless) | 200 | 282892 | `ECLI:DE:BVerfG:2026:rs20260521.2bvr109622` |
+
+Both forms are real official identities; the optional `.html` extension and the
+`?nn=` query suffix are cosmetic and never change the ECLI. This is **raw HTTP
+observation only** - it was NOT performed through `crawlNativeStageCandidate`, so
+it does not by itself satisfy G2/G3 (official-fetch E2E). It validates the
+URL-identity contract the crawler enforces.
+
+### 11.4 Bounded code changes (local, uncommitted)
+
+`workers/async-pipeline/src/native-crawler.ts`:
+
+1. `bverfgDecisionIdentity` parses the path stem, tolerating an optional
+   `.html`/`.htm` extension and any query suffix, while still rejecting a
+   mismatched path-vs-date identity. `verifyBverfgOfficialText` keeps the exact
+   ECLI-in-body match against that identity.
+2. `discoverBverfg` accepts **extensionless** official decision links in addition
+   to `.html`.
+3. **Fail-closed discovery flag:** an official-listing link now starts with
+   `collection.sourceUrlVerified: false`; it becomes `true` only after the crawl
+   stage fetches the URL and matches the exact in-body ECLI
+   (`acceptBverfgOfficialVerification`). A discovery-only candidate that is never
+   fetched can no longer be treated as URL-verified downstream (manual/automatic
+   approval and publication gates require `sourceUrlVerified === true`).
+
+Unchanged: exact ECLI-in-body match, official HTTPS host check, identity-mismatch
+rejection, >=200 substantive chars, robots handling with `Crawl-delay: 30`,
+bounded retry/backoff, and all publication safeguards.
+
+### 11.5 Focused mocked regressions (`tests/native-crawler.test.ts`, 31 -> 35)
+
+- Extensionless and `.html` official links are discovered, and discovery keeps
+  `sourceUrlVerified: false`; a zero-link / JS-only page yields an honest empty
+  set.
+- Extensionless official URL verifies (fetch flips `sourceUrlVerified` true),
+  including a query-suffixed final URL.
+- Mismatched body ECLI and mismatched final-URL identity are rejected.
+- 404 (and 403 without browser fallback) official pages are rejected without a
+  fabricated fetch and without flipping `sourceUrlVerified`.
+
+### 11.6 Single-case bounded canary assessment
+
+A one-source, one-item German staged canary is shape-compatible with the existing
+staged APIs without changing ownership (the same `limit 1` / dispatch-limit-1
+contract France/Spain use, with manual approval and the fail-closed
+`planGermanyCutover` guard preserved, and no direct D1 mutation). It is **not
+authorized now**: the staged source allowlist is `fr`/`es` only, the in-project
+verified official fetch and seven-stage E2E are unproven, and discovery of a new
+candidate is unresolved (official search robots-disallowed; generic listing zero
+links; sitemap zero decision links; OpenLegalData/seed fallbacks 404). A future
+canary must be an explicit, separately-approved staged action, not a DE-wide
+switch.
+
+### 11.7 Verification (bounded, this continuation)
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:native-crawler` | 35/35 pass |
+| `pnpm test:germany-cutover` | 6/6 pass |
+| `pnpm test:m2-readiness` | 3/3 pass |
+| `pnpm test:m8` | 48/48 pass |
+| `pnpm check` | All checks passed |
+| `pnpm m8:typecheck` | pass |
+| `pnpm exec eslint <changed files>` | 0 errors (2 pre-existing warnings, untouched lines) |
+| `git diff --check` | clean |
+
+Deliberately not run: full `verify:release`, `m8:types:check` (known Windows hang
+/ pre-existing clean-HEAD failure). No deploy, no Codex/Orca.
+
+### 11.8 Remaining blockers (unchanged; must not be closed)
+
+1. No in-project verified official German ECLI/body (raw HTTP 200 observed for two
+   known detail URLs, but not through the crawler): G2/G3 stay NOT_OBSERVED.
+2. No German seven-stage Production E2E: `de-bverfg` is not staged.
+3. New-candidate discovery blocked: official search robots-disallowed; generic
+   listing zero links; sitemap zero decision links; third-party fallbacks 404.
+4. Ownership intentionally unchanged: DE stays M8-owned; FR/ES stay staged.
+
+**P2-M3 overall: GATED / BLOCKED.** P0 three checks and P1 one monitoring item
+remain open.

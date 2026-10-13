@@ -256,9 +256,17 @@ function bverfgDateContext(context: string, url: string) {
   return { date: date ? `${date}T00:00:00.000Z` : dateIso(context), docket };
 }
 
+/**
+ * Parses the official BVerfG `SharedDocs/Entscheidungen` decision identity from
+ * a URL. The official site serves the same decision as an extensionless URL
+ * (`.../rs20260521_2bvr109622`) and with `.html`, and may append a query suffix
+ * (`?nn=68112`). Both the extension and query are cosmetic: they never change
+ * the ECLI. Identity therefore derives from the path stem only and ignores the
+ * optional extension/query, while still rejecting a mismatched path date.
+ */
 function bverfgDecisionIdentity(url: string) {
   const pathname = new URL(url).pathname;
-  const match = pathname.match(/^\/SharedDocs\/Entscheidungen\/DE\/(20\d{2})\/(\d{2})\/([a-z]{2})(20\d{2})(\d{2})(\d{2})_([a-z0-9]+)\.html$/i);
+  const match = pathname.match(/^\/SharedDocs\/Entscheidungen\/DE\/(20\d{2})\/(\d{2})\/([a-z]{2})(20\d{2})(\d{2})(\d{2})_([a-z0-9]+?)(?:\.html?)?$/i);
   if (!match || match[1] !== match[4] || match[2] !== match[5]) return null;
   return {
     ecli: `ECLI:DE:BVerfG:${match[1]}:${match[3].toLowerCase()}${match[4]}${match[5]}${match[6]}.${match[7].toLowerCase()}`,
@@ -292,10 +300,15 @@ function acceptBverfgOfficialVerification(candidate: NativeArticleCandidate, htm
 }
 
 function discoverBverfg(html: string, base: string, limit = BVERFG_INDEX_SCAN_WINDOW): NativeArticleCandidate[] {
-  const links = absoluteLinks(html, base).filter((link) => officialHost("de-bverfg", link.url) && /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}20\d{6}_[a-z0-9]+\.html/i.test(new URL(link.url).pathname));
+  const links = absoluteLinks(html, base).filter((link) => officialHost("de-bverfg", link.url) && /\/SharedDocs\/Entscheidungen\/(?:DE|EN)\/20\d{2}\/\d{2}\/[a-z]{2}20\d{6}_[a-z0-9]+(?:\.html)?$/i.test(new URL(link.url).pathname));
   return links.slice(0, limit).map((link): NativeArticleCandidate => {
     const { date, docket } = bverfgDateContext(link.context, link.url);
-    return { sourceKey: "de-bverfg", url: link.url, title: link.title || docket || link.url.split("/").at(-1) || "BVerfG decision", publishedAt: date, contentType: "decision", metadata: { caseNumber: docket, discoveryIndex: "official-listing", collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: true, sourceTextAvailable: false, publishable: false } } };
+    // Fail closed: a link merely *found* on the official listing is not a verified
+    // official decision URL. `sourceUrlVerified` becomes true only after the crawl
+    // stage fetches the URL and matches the exact in-body ECLI
+    // (`acceptBverfgOfficialVerification`). A discovery-only candidate that is
+    // never fetched can therefore never be treated as URL-verified downstream.
+    return { sourceKey: "de-bverfg", url: link.url, title: link.title || docket || link.url.split("/").at(-1) || "BVerfG decision", publishedAt: date, contentType: "decision", metadata: { caseNumber: docket, discoveryIndex: "official-listing", collection: { strategy: "official-listing", confidence: "high", sourceUrlVerified: false, sourceTextAvailable: false, publishable: false } } };
   });
 }
 
