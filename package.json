@@ -163,6 +163,7 @@
     "audit:m2-readiness": "tsx scripts/audit-worldcons-m2-readiness.ts",
     "probe:scotus-pdf": "tsx scripts/scotus-official-pdf-probe.ts",
     "test:m2-readiness": "tsx --test tests/m2-readiness-diagnostic.test.ts",
+    "test:germany-cutover": "tsx --test tests/germany-cutover-readiness.test.ts",
     "d1:search-projection": "tsx scripts/d1-search-projection.ts",
     "d1:fts-local": "tsx scripts/d1-fts-local.ts",
     "d1:ranked-local": "tsx scripts/d1-ranked-local.ts",

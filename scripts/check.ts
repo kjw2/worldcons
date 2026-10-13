@@ -877,6 +877,16 @@ assert(
     m8WorkerSource.includes("for (const source of sourcePolicy.effective"),
   "crawler-daily must iterate only effective legacy sources under the source-ownership split",
 );
+const germanyCutoverGuardSource = fs.readFileSync(
+  path.join(process.cwd(), "lib/cloudflare/ingest-stages/germany-cutover-readiness.ts"),
+  "utf8",
+);
+assert(
+  germanyCutoverGuardSource.includes("GERMANY_CUTOVER_GATES") &&
+    germanyCutoverGuardSource.includes("planGermanyCutover") &&
+    germanyCutoverGuardSource.includes("if (!readiness.ready)"),
+  "Germany staged cutover must stay behind a fail-closed readiness gate that emits no paired mutation until real proof exists",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

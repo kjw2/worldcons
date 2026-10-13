@@ -155,7 +155,7 @@ covered by tests; the guard emits **no mutation** until the proof is complete.
 - `scripts/check.ts` — invariant asserting the guard module keeps a fail-closed
   `if (!readiness.ready)` branch that emits no paired mutation. `pnpm check` passes.
 - New script: `pnpm test:germany-cutover`.
-- This guard makes the P2-M3 gate **operationally enforced**, not just documented.
+- This guard provides a **tested, fail-closed planning function** for a future operator cutover workflow. It is **not yet wired into the production deploy command** and does not independently prevent an operator from manually editing Wrangler configuration. The Production switchover remains prohibited until the real evidence above is obtained and the cutover procedure invokes the guard.
 
 ## 8. Focused verification executed (bounded)
 
