@@ -14,6 +14,7 @@
 | P1-3 | 독일 M8 후보 404 head-of-line/백오프 개선 | **구현·배포 완료, 실운영 효과 미검증** | `4b384be`: D1 상태 기반 bounded 후보 순환, 백오프 중 후보 defer, D1 장애 시 fail-closed, `degraded` 진단. 다음 M8 실행의 실제 fetch를 별도 확인 |
 | **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료 (P2-M1 관리상 종료)** | 긴급신청 docket 정규식 수정 `ebbb410`, 실공식 PDF 3건의 원문·사건번호·SHA-256 검증, Async Worker `fca447ec-850c-4e20-8a76-3bb97ac03676` 100% 배포. **Production R2/Core 실건 저장 E2E는 미관측으로 후속 전환 선행조건에 유지**. 미국 M8 소유권·검토 정책 유지 |
 | P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지. 미국 term 경계 Discovery 보완은 로컬 검증 중이며 Production 반영과 별개 |
+| **P2-M3** | **독일 BVerfG staged 전환 진입 게이트** | **GATED / BLOCKED (전환 미실시)** | 2026-10-13 read-only preflight: 신규 공식 ECLI/본문 미확보(`2 BvR 1702/26` 등 공식 URL 404), 독일 7단계 Production E2E 미관측. `de-bverfg`는 **M8 소유 유지**, 쌍 allowlist/exclude **미변경**. fail-closed 검증 모듈 `germany-cutover-readiness.ts` + 테스트 추가. 증거: `docs/worldcons-p2-m3-germany-cutover-20261013.md` |
 
 ### 2026-10-13 P2-M1·M2 단계 완료 처리 (실증 예외·전환 게이트 유지)
 
@@ -23,6 +24,15 @@
 | **P2-M2** | **완료** | 독일·미국 공식 출처, ECLI/docket, 처리·검토 gate, Search 적격 계수 및 M8/staged 소유권 준비도 실측·감사 문서·진단 테스트 | **독일·미국의 staged 전환 승인 자체는 보류(NOT READY)**. 독일 신규 공식 ECLI 원문, 미국 Production PDF provenance 및 국가별 실건 E2E는 각각 P2-M3·M4 진입 게이트 |
 
 **완료의 의미:** M1은 구현·실공식 원문 통합 검사·배포, M2는 국가별 readiness 평가라는 *작업 범위*의 행정적 완료입니다. 미실증 Production 항목을 PASS로 바꾸거나 독일·미국의 실제 staged 전환을 승인한 것은 아닙니다. 증거별 PASS / NOT_OBSERVED는 `docs/worldcons-p2-m1-m2-acceptance-20261013.md`를 따릅니다. 기존 P0 확인 3건과 P1 운영 확인 1건은 별도 추적 유지.
+
+### 2026-10-13 P2-M3 독일 cutover preflight — GATED/BLOCKED (전환 미실시)
+
+사용자 요청으로 P2-M3 독일 staged 전환 진입을 bounded read-only로 시도했습니다. base `13cfeca`(clean, 유일한 dirty는 `worker-configuration.d.ts`의 stale index stat 뿐이었고 내용은 HEAD blob과 동일해 복원). 결과:
+
+- **전환 게이트 미충족.** 신규 공식 BVerfG ECLI/본문이 확보되지 않았고(공식 listing `entscheidungen_node.html`은 200이지만 JS 검색 폼이라 직접 판례 링크 0개, official `Crawl-delay: 30`), `2 BvR 1702/26` 포함 9개 후보는 여전히 `BVERFG_OFFICIAL_VARIANTS_404`. 독일 7단계 Production E2E 미관측.
+- **소유권 미변경.** `de-bverfg`는 M8 소유 유지, `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` / `M8_CRAWLER_SOURCE_EXCLUDE` 쌍 값은 프랑스+스페인 그대로. Worker 배포/원격 쓰기 없음. P2-M3를 완료로 표시하지 않음.
+- **코드 안전장치 추가(경계 내).** `lib/cloudflare/ingest-stages/germany-cutover-readiness.ts` — 실증 증거(공식 ECLI fetch·identity·7단계 E2E·Core·P3·Search)가 전부 명시 `true`일 때만 paired 변경을 방출하고, 아니면 `authorized=false`로 fail-closed + rollback 값 보존. `tests/germany-cutover-readiness.test.ts` 6/6, `scripts/check.ts` 불변식, `pnpm test:germany-cutover` 추가. `pnpm check`, `test:m8` 48/48, `test:m2-readiness` 3/3 통과.
+- 상세 사실·게이트 표·정확한 planned/rollback 값: `docs/worldcons-p2-m3-germany-cutover-20261013.md`. **P0 3건 / P1 1건 운영 확인은 계속 별도 추적.**
 
 ## 2. 현재 운영 상태의 기준
 
