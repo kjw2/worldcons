@@ -144,6 +144,36 @@ pre-existing secret:
 The route validates the official host/identity, enforces the per-source gate, and
 never changes ownership or publishes. `index.ts` wires the route.
 
+### 2.7b Operator canary Cloudflare Workflow (administrative auth; no Worker Secret)
+
+New class `WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env,
+OperatorCanaryEvent | string>` in `workers/async-pipeline/src/index.ts`, bound in
+`wrangler.jsonc` as `OPERATOR_CANARY_WORKFLOW` (`worldcons-operator-canary-v1`).
+It is the primary operator path because it needs **no Worker Secret**: the
+operator is authorized by their existing Cloudflare account/OAuth scope through
+`wrangler workflows trigger`. New pure contract module
+`lib/cloudflare/ingest-stages/canary-workflow-payload.ts`
+(`parseOperatorCanaryEvent`) strictly validates the event envelope:
+
+- `sourceKey` restricted to `de-bverfg`/`us-scotus`; any other source rejected;
+- `candidateUrl` required and length-bounded; per-source identity required
+  (`ecli` for DE, `docket` for US);
+- **unknown top-level keys rejected** (`operator_canary.unknown_key:*`) and
+  **unknown `mode` rejected** (`operator_canary.mode_not_allowed`); no
+  list/limit/paging field is accepted (no unbounded work);
+- `operatorId` optional (default `cloudflare-workflow-operator`); `mode` optional
+  (default `seed-and-dispatch`, or `seed`).
+
+The run() body reuses exactly the canonical `planCanaryCase` (official identity
+gating), `seedCanaryCase` (per-source rate limit + immutable audit + explicit
+`stages/canary/` payload) and `dispatchCanaryCase` (fenced single Crawl Queue
+dispatch) with the Worker's D1/R2/Queue bindings. Every step is idempotent
+(`step.do` name derived from the event identity; the job key is deterministic), so
+a retry cannot duplicate the job and the fencing/rate-limit make a re-dispatch a
+no-op. It returns only non-secret IDs and enqueue status, never publishes, never
+bypasses review, and does not fabricate a seven-stage lineage. A denied plan is
+recorded as an immutable audit row and returned honestly (`jobId: null`).
+
 ### 2.8 Read-only lineage + manual-policy audit
 
 New `scripts/audit-worldcons-canary-lineage.ts` (`pnpm audit:canary-lineage`):
@@ -207,7 +237,7 @@ respected unchanged.
 
 | Command | Result |
 | --- | --- |
-| `pnpm test:canary` (new) | **14/14 pass** |
+| `pnpm test:canary` (new) | **17/17 pass** |
 | `pnpm test:ingest-stages` | **58/58 pass** |
 | `pnpm test:native-crawler` | **35/35 pass** |
 | `pnpm test:m8` | **48/48 pass** |
@@ -225,14 +255,66 @@ Deliberately **not** run: full `verify:release`, `m8:types:check` (known Windows
 hang / pre-existing clean-HEAD failure). No deploy, no Production write, no
 commit/push, no Codex/Orca.
 
-## 6. Exact operator invocation (once reviewed/deployed)
+## 6. Exact operator invocation
+
+There are TWO independent, mutually-redundant operator paths. Both converge on
+the same canonical `planCanaryCase` / `seedCanaryCase` / `dispatchCanaryCase`
+modules and the same immutable audit ledger; neither changes ownership, publishes
+or bypasses review.
+
+### 6A. Cloudflare Workflow (primary; administrative auth, no Worker Secret)
+
+When `wrangler secret put` is unavailable (tooling safety) or no Worker Secret is
+provisioned, use the Workflow. Authorization is the operator's existing Cloudflare
+account/OAuth scope via `wrangler workflows trigger`; **no Worker Secret value is
+ever created, stored or printed**. The Workflow binding is
+`OPERATOR_CANARY_WORKFLOW` (`worldcons-operator-canary-v1` →
+`WorldconsOperatorCanaryWorkflow`).
+
+Event shape (strict; unknown keys/modes and non-DE/US sources are rejected):
+
+```jsonc
+{ "sourceKey": "de-bverfg" | "us-scotus",
+  "candidateUrl": "https://<official-host>/...",
+  "ecli": "<required for de-bverfg>",
+  "docket": "<required for us-scotus>",
+  "operatorId": "cloudflare-workflow-operator",   // optional; default used if absent
+  "mode": "seed" | "seed-and-dispatch" }           // optional; default seed-and-dispatch
+```
+
+Germany (official 2026 decision):
+
+```
+pnpm exec wrangler workflows trigger worldcons-operator-canary-v1 `
+  --config workers/async-pipeline/wrangler.jsonc `
+  --payload '{"sourceKey":"de-bverfg","candidateUrl":"https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html?nn=68112","ecli":"ECLI:DE:BVerfG:2026:rk20260905.2bvr135824","operatorId":"cloudflare-workflow-operator"}'
+```
+
+United States (M1-verified official PDF; expect an honest public-judgment block):
+
+```
+pnpm exec wrangler workflows trigger worldcons-operator-canary-v1 `
+  --config workers/async-pipeline/wrangler.jsonc `
+  --payload '{"sourceKey":"us-scotus","candidateUrl":"https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf","docket":"26A388","operatorId":"cloudflare-workflow-operator"}'
+```
+
+Inspect status/output (non-secret IDs and enqueue status only):
+
+```
+pnpm exec wrangler workflows instances list worldcons-operator-canary-v1 --config workers/async-pipeline/wrangler.jsonc
+pnpm exec wrangler workflows instances describe worldcons-operator-canary-v1 <instanceId> --config workers/async-pipeline/wrangler.jsonc
+```
+
+(If the installed wrangler uses a different `workflows` subcommand spelling, use
+the `wrangler workflows --help` form; the binding/name/class are what matter.)
+
+### 6B. Authenticated HTTP route (fallback; requires dedicated secret)
 
 The route requires a **dedicated secret `WORLDCONS_CANARY_TOKEN`** that the
 operator must provision; there is **no unauthenticated endpoint** and the route
 returns **401** until the token is set. The secret value must never appear in Git
-or command output.
-
-Provision (operator, output shows only the name):
+or command output. If the secret cannot be provisioned, use §6A instead (leave
+this route fail-closed).
 
 ```
 pnpm exec wrangler secret put WORLDCONS_CANARY_TOKEN --name worldcons-ingest
@@ -242,7 +324,6 @@ pnpm exec wrangler secret put WORLDCONS_CANARY_TOKEN --name worldcons-ingest
 Then invoke (PowerShell; the token is read from the operator's own secure store):
 
 ```
-# The value is supplied out-of-band and NEVER printed or committed.
 $token = Read-Host -Prompt 'WORLDCONS_CANARY_TOKEN' -AsSecureString
 $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
   [Runtime.InteropServices.Marshal]::SecureStringToBSTR($token))
@@ -251,12 +332,6 @@ Invoke-RestMethod -Method Post `
   -Headers @{ Authorization = "Bearer $plain" } `
   -ContentType "application/json" `
   -Body '{"sourceKey":"de-bverfg","candidateUrl":"https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html?nn=68112","ecli":"ECLI:DE:BVerfG:2026:rk20260905.2bvr135824","operatorId":"ops:reviewer","dispatch":true}'
-```
-
-US example (expect an honest public-judgment block — that is correct):
-
-```
--Body '{"sourceKey":"us-scotus","candidateUrl":"https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf","docket":"26A388","operatorId":"ops:reviewer","dispatch":true}'
 ```
 
 ### Optional bounded next-stage advance
@@ -280,8 +355,23 @@ pnpm audit:canary-lineage -- --article <coreUuid>
 pnpm audit:canary-lineage -- --job <stageJobId>
 ```
 
-If the dedicated operator secret is unavailable, the route stays fail-closed
-(401) and **no** endpoint is exposed; the planner/tests remain usable locally.
+If the dedicated operator secret is unavailable, the **HTTP route** stays
+fail-closed (401) and **no** endpoint is exposed; use the §6A Workflow instead.
+The Workflow requires no Worker Secret and is the recommended path.
+
+### Honest operational status (no cutover claim)
+
+- The Workflow, like the HTTP route, is **crawl-first**: it seeds exactly one
+  `crawl` job and (optionally) dispatches it. It **does not create a `discovery`
+  job and cannot produce the literal Discovery->Search seven-stage lineage**; it
+  is a lower-scope single-case control, **not** cutover proof.
+- US remains private (`publishable=false`, review required). Without a separately
+  approved human case review there is **no manual US authorization**, so the US
+  canary will block at public judgment. Do **not** expect or report 7/7 for the US.
+- The automatic FR/ES approval ledger is never US manual consent; the lineage
+  audit always reports `manualAuthorizationPresent: false`.
+- **No full operational cutover is claimed** until a genuine seven-stage lineage AND
+  a verified, separately-recorded manual US approval both exist. Neither exists today.
 
 ## 7. Remaining blockers (must not be marked closed)
 
@@ -304,6 +394,7 @@ If the dedicated operator secret is unavailable, the route stays fail-closed
 New:
 - `lib/ingest/official-source-verify.ts`
 - `lib/cloudflare/ingest-stages/canary.ts`
+- `lib/cloudflare/ingest-stages/canary-workflow-payload.ts` (Workflow envelope contract)
 - `workers/async-pipeline/src/worker-auth.ts`
 - `workers/async-pipeline/src/stage-canary-route.ts`
 - `d1/worldcons_ingest/0006_ingest_stage_canary.sql`
@@ -316,21 +407,22 @@ Modified:
 - `workers/async-pipeline/src/scotus-pdf.ts` (delegate shared docket/url)
 - `workers/async-pipeline/src/ingest-stage-handlers.ts` (`canarySources` carry-through only)
 - `workers/async-pipeline/src/ingest-stage-consumer.ts` (per-source gate)
-- `workers/async-pipeline/src/index.ts` (route + gate wiring)
+- `workers/async-pipeline/src/index.ts` (operator canary Workflow + route + gate wiring)
+- `workers/async-pipeline/wrangler.jsonc` (`OPERATOR_CANARY_WORKFLOW` binding; no allowlist/exclude change)
 - `lib/cloudflare/ingest-stages/repository.ts` (optional bounded single-job claim)
 - `lib/cloudflare/ingest-stages/dispatcher.ts` (optional `jobId`)
-- `scripts/check.ts` (canary invariants)
+- `scripts/check.ts` (canary + workflow invariants)
 - `package.json` (`test:canary`, `audit:canary-lineage`)
 
 ## 9. Recommended next legitimate commands (controller)
 
-1. Review this diff; run `pnpm test:canary && pnpm test:ingest-stages && pnpm test:m8 && pnpm test:native-crawler && pnpm check && pnpm typecheck`.
+1. Review this diff; run `pnpm test:canary && pnpm test:ingest-stages && pnpm test:m8 && pnpm test:native-crawler && pnpm check && pnpm typecheck && pnpm m8:typecheck && pnpm m8:dry-run`.
 2. Apply the additive `0006` migration to Production **only** as part of an
-   approved deploy of `worldcons-ingest`.
-3. Deploy `worldcons-ingest` (the route is inert until the secret is used).
-4. Execute one authenticated DE canary (dispatch:true); confirm the crawl stage
-   fetched the official body and the in-body ECLI matched; observe the lineage
-   via `pnpm audit:canary-lineage`.
+   approved deploy of `worldcons-ingest` (already applied per handoff).
+3. Deploy `worldcons-ingest` (the Workflow and route are inert until invoked).
+4. Trigger one DE canary via §6A (`wrangler workflows trigger`); confirm the crawl
+   stage fetched the official body and the in-body ECLI matched; observe the
+   lineage via `pnpm audit:canary-lineage`.
 5. Feed only genuinely observed facts into `planGermanyCutover`/`planUsCutover`.
    Do **not** treat the canary itself as cutover evidence until the guard gates
    are individually satisfied.

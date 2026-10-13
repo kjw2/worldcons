@@ -944,6 +944,30 @@ assert(
     canaryLineageScriptSource.includes("us_published_without_manual_authorization"),
   "the canary lineage audit must be SELECT-only and enforce the US manual-approval policy",
 );
+const operatorCanaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
+assert(
+  operatorCanaryWorkflowSource.includes("class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint") &&
+    operatorCanaryWorkflowSource.includes("parseOperatorCanaryEvent") &&
+    operatorCanaryWorkflowSource.includes("planCanaryCase") &&
+    operatorCanaryWorkflowSource.includes("seedCanaryCase") &&
+    operatorCanaryWorkflowSource.includes("dispatchCanaryCase"),
+  "the operator canary must be a Workflow entrypoint that strictly validates the event and reuses the canonical plan/seed/dispatch modules",
+);
+const operatorCanaryPayloadSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary-workflow-payload.ts"), "utf8");
+assert(
+  operatorCanaryPayloadSource.includes("parseOperatorCanaryEvent") &&
+    operatorCanaryPayloadSource.includes("CANARY_SOURCE_KEYS") &&
+    operatorCanaryPayloadSource.includes("operator_canary.unknown_key:") &&
+    operatorCanaryPayloadSource.includes("operator_canary.mode_not_allowed"),
+  "the operator canary workflow payload must reject unknown keys, unknown modes, and non-DE/US sources",
+);
+const wranglerConfigSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/wrangler.jsonc"), "utf8");
+assert(
+  wranglerConfigSource.includes("\"binding\": \"OPERATOR_CANARY_WORKFLOW\"") &&
+    wranglerConfigSource.includes("\"name\": \"worldcons-operator-canary-v1\"") &&
+    wranglerConfigSource.includes("\"class_name\": \"WorldconsOperatorCanaryWorkflow\""),
+  "the operator canary workflow must be bound as OPERATOR_CANARY_WORKFLOW / worldcons-operator-canary-v1",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

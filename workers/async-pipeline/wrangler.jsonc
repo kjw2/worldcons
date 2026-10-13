@@ -244,6 +244,11 @@
       "binding": "BACKFILL_STAGE_WORKFLOW",
       "name": "worldcons-backfill-publish-v1",
       "class_name": "WorldconsBackfillPublishWorkflow"
+    },
+    {
+      "binding": "OPERATOR_CANARY_WORKFLOW",
+      "name": "worldcons-operator-canary-v1",
+      "class_name": "WorldconsOperatorCanaryWorkflow"
     }
   ]
 }

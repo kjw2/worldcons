@@ -19,14 +19,18 @@ import {
   executeM8TaskNative,
   type M8NativeEnvironment,
 } from "../../../lib/cloudflare/async-pipeline/native-executor";
-import { resolveM8CrawlerSourcePolicy } from "../../../lib/cloudflare/async-pipeline/crawler-source-ownership";
-import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
+import { resolveM8CrawlerSourcePolicy } from "../../../lib/cloudflare/async-pipeline/crawler-source-ownership";import { setRuntimeD1Bindings } from "../../../lib/cloudflare/d1/runtime-binding";
 import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../../../lib/cloudflare/ingest-stages/contracts";
 import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBootstrapSources } from "../../../lib/cloudflare/ingest-stages/flags";
 import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
 import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
 import { createIngestStageHandlers, enqueueIngestStageDiscovery } from "./ingest-stage-handlers";
 import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
+import {
+  parseOperatorCanaryEvent,
+  type OperatorCanaryEvent,
+} from "../../../lib/cloudflare/ingest-stages/canary-workflow-payload";
+import { planCanaryCase, seedCanaryCase, dispatchCanaryCase } from "../../../lib/cloudflare/ingest-stages/canary";
 import { handleStageCanary } from "./stage-canary-route";
 import type { NativeCrawlerBindings, NativeCrawlerSource } from "./native-crawler";
 import { handleBrowserNavigate } from "./browser-navigate";
@@ -474,6 +478,120 @@ export class WorldconsBackfillPublishWorkflow extends WorkflowEntrypoint<Env, Ba
       retryableFailed: results.reduce((sum, result) => sum + result.retryableFailed, 0),
       terminalFailed: results.reduce((sum, result) => sum + result.terminalFailed, 0),
       backlogRemaining: last?.backlogRemaining ?? true,
+    };
+  }
+}
+
+/**
+ * Operator-invokable, administratively-authenticated single-case staged canary
+ * Workflow. This is an ALTERNATIVE to the bearer-token `POST /v1/stage-canary`
+ * route (which stays fail-closed when `WORLDCONS_CANARY_TOKEN` is unset): it is
+ * triggered with `wrangler workflows trigger`, so authorization is the operator's
+ * existing Cloudflare account/OAuth scope rather than a Worker Secret.
+ *
+ * It seeds exactly ONE case (German `de-bverfg` or US `us-scotus`) via the same
+ * canonical modules the route uses — `planCanaryCase` (official host/URL identity
+ * gating), `seedCanaryCase` (per-source rate limit + immutable audit + explicit
+ * `stages/canary/` payload), and `dispatchCanaryCase` (fenced single Crawl Queue
+ * dispatch). It never changes source ownership, never publishes, never bypasses
+ * review, and never fabricates a seven-stage lineage. Every step is idempotent
+ * (`step.do` name + deterministic job key), so a retry cannot duplicate the job,
+ * and the returned values are small, serializable, non-secret IDs.
+ */
+export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, OperatorCanaryEvent | string> {
+  async run(event: WorkflowEvent<OperatorCanaryEvent | string>, step: WorkflowStep) {
+    const parsed = parseOperatorCanaryEvent(event.payload);
+    if (!parsed.ok) throw new NonRetryableError(parsed.error);
+    const payload = parsed.value;
+
+    setRuntimeD1Bindings({
+      worldcons_core: this.env.WORLDCONS_CORE,
+      worldcons_ingest: this.env.WORLDCONS_INGEST,
+      worldcons_search: this.env.WORLDCONS_SEARCH,
+      worldcons_ops: this.env.WORLDCONS_OPS,
+    });
+    const ingestDb = this.env.WORLDCONS_INGEST as unknown as Parameters<typeof seedCanaryCase>[0];
+    const rawBucket = this.env.WORLDCONS_RAW as unknown as Parameters<typeof seedCanaryCase>[1];
+    const crawlBinding = (this.env.STAGE_QUEUE_CRAWL as unknown as IngestStageQueueSender | undefined);
+    if (!crawlBinding) throw new NonRetryableError("operator_canary.crawl_queue_binding_missing");
+
+    // Deterministic step ids from the event identity keep a workflow retry from
+    // re-seeding (the job key is idempotent) or double-dispatching (the fence and
+    // per-source rate limit make the second attempt a no-op).
+    const stepKey = `${payload.sourceKey}:${payload.ecli ?? payload.docket ?? "case"}`;
+    const now = new Date().toISOString();
+
+    // Plan and seed in ONE step so only a small, serializable result crosses the
+    // step boundary (the full candidate is persisted to R2 by seedCanaryCase).
+    // A denied plan is recorded by seedCanaryCase as an immutable audit row and
+    // returned with `jobId: null`; it is never retried or fabricated into a job.
+    const seed = await step.do(`seed-${payload.sourceKey}-${payload.ecli ?? payload.docket ?? "case"}`, { timeout: "2 minutes" }, () =>
+      (async () => {
+        const plan = await planCanaryCase(
+          {
+            sourceKey: payload.sourceKey,
+            candidateUrl: payload.candidateUrl,
+            identifiers: {
+              ...(payload.ecli ? { ecli: payload.ecli } : {}),
+              ...(payload.docket ? { docket: payload.docket } : {}),
+            },
+          },
+          { now },
+        );
+        return seedCanaryCase(ingestDb, rawBucket, plan, {
+          operatorId: payload.operatorId,
+          deploymentRef: null,
+          now,
+        });
+      })(),
+    );
+    if (!seed.jobId) {
+      return {
+        schemaVersion: 1,
+        mode: payload.mode,
+        stepKey,
+        outcome: seed.outcome,
+        reason: seed.reason,
+        sourceKey: seed.sourceKey,
+        canaryId: seed.canaryId,
+        enqueued: 0,
+        note: "Canary denied at the source/identity gate; an immutable audit row was recorded and no job was seeded.",
+      };
+    }
+
+    let dispatch: { dispatched: boolean; enqueued: number; reason: string } | null = null;
+    if (payload.mode === "seed-and-dispatch") {
+      dispatch = await step.do(`dispatch-${seed.canaryId}`, { timeout: "2 minutes" }, () =>
+        dispatchCanaryCase({
+          ingestDb,
+          queue: crawlBinding,
+          jobId: seed.jobId as string,
+          canaryId: seed.canaryId,
+          operatorId: payload.operatorId,
+          deploymentRef: null,
+          stage: "crawl",
+          now,
+        }),
+      );
+    }
+
+    // Only non-secret identifiers/status are returned; never the candidate body,
+    // token, or any credential.
+    return {
+      schemaVersion: 1,
+      mode: payload.mode,
+      stepKey,
+      outcome: seed.outcome,
+      reason: seed.reason,
+      sourceKey: seed.sourceKey,
+      canaryId: seed.canaryId,
+      candidateId: seed.candidateId,
+      jobId: seed.jobId,
+      identityEcli: seed.identityEcli,
+      identityDocket: seed.identityDocket,
+      enqueued: dispatch?.enqueued ?? 0,
+      dispatchReason: dispatch?.reason ?? null,
+      note: "Canary seeds and dispatches exactly one staged Crawl job. It does not publish, bypass review, or produce a seven-stage lineage; observe with pnpm audit:canary-lineage.",
     };
   }
 }

@@ -19,6 +19,7 @@ import {
   seedCanaryCase,
   type CanaryRawBucket,
 } from "../lib/cloudflare/ingest-stages/canary";
+import { parseOperatorCanaryEvent } from "../lib/cloudflare/ingest-stages/canary-workflow-payload";
 import {
   consumeIngestStageBatch,
   type IngestStageQueueMessageHandle,
@@ -509,4 +510,71 @@ test("canary route auth: fails closed when the dedicated token is unconfigured (
   assert.equal(await operatorCanaryAuthorized(request("canary-secret"), { WORLDCONS_CANARY_TOKEN: "canary-secret" }), true);
   // A matching BROWSER_RUN_TOKEN is irrelevant: only the dedicated secret counts.
   assert.equal(await operatorCanaryAuthorized(request("browser"), { BROWSER_RUN_TOKEN: "browser" }), false);
+});
+
+test("operator canary workflow envelope: accepts the canonical DE and US payloads with strict defaults", () => {
+  const de = parseOperatorCanaryEvent({
+    sourceKey: "de-bverfg",
+    candidateUrl: DE_URL,
+    ecli: DE_ECLI,
+  });
+  assert.equal(de.ok, true);
+  assert.deepEqual(de.ok ? de.value : null, {
+    sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, operatorId: "cloudflare-workflow-operator", mode: "seed-and-dispatch",
+  });
+
+  const us = parseOperatorCanaryEvent({
+    sourceKey: "us-scotus", candidateUrl: US_URL, docket: "26A388", operatorId: "ops:reviewer", mode: "seed",
+  });
+  assert.equal(us.ok, true);
+  assert.deepEqual(us.ok ? us.value : null, {
+    sourceKey: "us-scotus", candidateUrl: US_URL, docket: "26A388", operatorId: "ops:reviewer", mode: "seed",
+  });
+
+  // A JSON string envelope is accepted (Wrangler create may pass one).
+  const asString = parseOperatorCanaryEvent(JSON.stringify({ sourceKey: "us-scotus", candidateUrl: US_URL, docket: "26A388" }));
+  assert.equal(asString.ok, true);
+});
+
+test("operator canary workflow envelope: fails closed on bad source, missing identity, unknown key/mode, and non-object", () => {
+  const cases: Array<[unknown, RegExp]> = [
+    [null, /payload_not_object/],
+    ["not json", /payload_not_json/],
+    [{ sourceKey: "fr-conseil-constitutionnel", candidateUrl: DE_URL, ecli: DE_ECLI }, /source_not_allowed/],
+    [{ sourceKey: "de-bverfg", candidateUrl: DE_URL }, /ecli_required_for_de/],
+    [{ sourceKey: "us-scotus", candidateUrl: US_URL }, /docket_required_for_us/],
+    [{ sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, limit: 5 }, /unknown_key:limit/],
+    [{ sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, mode: "all" }, /mode_not_allowed/],
+    [{ sourceKey: "de-bverfg", ecli: DE_ECLI }, /candidate_url_required/],
+    [{ sourceKey: "de-bverfg", candidateUrl: `https://x.test/${"a".repeat(3000)}`, ecli: DE_ECLI }, /candidate_url_too_long/],
+  ];
+  for (const [payload, pattern] of cases) {
+    const result = parseOperatorCanaryEvent(payload);
+    assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(payload)}`);
+    assert.match(result.ok ? "" : result.error, pattern);
+  }
+});
+
+test("operator canary workflow: the canonical DE event plans and seeds exactly one crawl job, dispatch is optional", async () => {
+  const h = createHarness();
+  try {
+    const parsed = parseOperatorCanaryEvent({ sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, mode: "seed-and-dispatch" });
+    assert.equal(parsed.ok, true);
+    if (!parsed.ok) return;
+    const plan = await planCanaryCase(
+      { sourceKey: parsed.value.sourceKey, candidateUrl: parsed.value.candidateUrl, identifiers: { ecli: parsed.value.ecli } },
+      { now: NOW },
+    );
+    assert.equal(plan.accepted, true);
+    const seed = await seedCanaryCase(h.ingestDb, h.bucket, plan, {
+      operatorId: parsed.value.operatorId, deploymentRef: null, now: NOW,
+    });
+    assert.equal(seed.outcome, "seeded");
+    assert.ok(seed.jobId);
+    // Immutable audit records the workflow operator identity.
+    const audit = h.ingest.prepare("SELECT operator_id, outcome FROM ingest_stage_canary_records_v1").all() as Array<Record<string, unknown>>;
+    assert.deepEqual({ ...audit[0] }, { operator_id: "cloudflare-workflow-operator", outcome: "seeded" });
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs").get()?.n, 1);
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0, "workflow never publishes");
+  } finally { h.ingest.close(); h.core.close(); }
 });
