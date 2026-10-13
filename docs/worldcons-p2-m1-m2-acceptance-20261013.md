@@ -1,5 +1,14 @@
 # WorldCons P2-M1 · P2-M2 Acceptance — 2026-10-13 (KST)
 
+## Administrative milestone closure (2026-10-13)
+
+At the user's direction, **P2-M1 = COMPLETED** (extractor repair, genuine official-PDF probe, tests, production Worker deploy) and **P2-M2 = COMPLETED** (readiness audit, country-level gate matrix, tests and evidence). These labels close the *delivered work packages*, **not** the unobserved Production acceptance criteria below. Preserve each original `NOT_OBSERVED` verdict. Germany/US staged cutover is still **NOT READY** and is **not authorized** by this administrative closure.
+
+- Carry forward to P2-M4 entrance: US real-case Production PDF original in R2 + Core `officialPdf` provenance and no auto-publication.
+- Carry forward to P2-M3 entrance: DE genuine newly fetched official ECLI/body, backoff effectiveness and verified per-case processing.
+- Carry forward to P2-M3/M4: verify country-specific end-to-end pipeline evidence before pairing staged allowlist and legacy M8 exclusion.
+- Do not alter the independent P0 three checks or P1 remaining operational check.
+
 Strict verdicts only. `PASS` = evidence observed in this session; `FAIL` = contradicted by evidence; `NOT_OBSERVED` = not proven (must not be reported as passed). Production acceptance requires a real operator/Publish path, which was **not** executed here.
 
 - Repo: `F:\dev\worldcons`, branch `main`, base commit `116e27e` (clean at start).

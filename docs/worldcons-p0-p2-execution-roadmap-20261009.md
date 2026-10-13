@@ -12,8 +12,17 @@
 | P1-1 | **스페인 실제 Production 7단계 E2E 검증** | **실행 7/7 완료, 콘텐츠 정합성 후속 P0** | 2026-10-10 06:00 KST 자동 실행에서 `SENTENCIA 59/2026`의 Discovery→Search 7/7 jobs succeeded, 공식 HJ JSON, R2, Core, P3와 검색 투영 확인. **이미 발행됐던 P3 버전과 최신 Core의 요약·제목이 달라 재처리 Job 성공과 최신 콘텐츠 공개 성공은 구분한다.** 아래 P3 drift 감사를 따른다. |
 | P1-2 | 독일 BVerfG 공식 원문 URL/ECLI identity gate | **완료** | `9fa36e2`: 공식 판결 본문·정확한 ECLI·리다이렉트 최종 URL 검증, 잘못된 HTML 및 불일치 차단 |
 | P1-3 | 독일 M8 후보 404 head-of-line/백오프 개선 | **구현·배포 완료, 실운영 효과 미검증** | `4b384be`: D1 상태 기반 bounded 후보 순환, 백오프 중 후보 defer, D1 장애 시 fail-closed, `degraded` 진단. 다음 M8 실행의 실제 fetch를 별도 확인 |
-| **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료, 실원문 E2E 대기** | 코드 `cc6059e`, Worker 버전 `4189c105-43db-4800-b557-9571c8ba6ee7`. `unpdf` Worker-safe 텍스트 추출, 공식 PDF/redirect/robots/docket/용량 검증, R2 원본 SHA-256 및 Core provenance 연결. 미국 M8 소유권 유지·공개 발행 보류. 실제 SCOTUS 판례 원문 처리는 추후 확인 |
+| **P2-1** | **미국 SCOTUS 공식 PDF 원문 추출 구현** | **구현·검증·Production 배포 완료 (P2-M1 관리상 종료)** | 긴급신청 docket 정규식 수정 `ebbb410`, 실공식 PDF 3건의 원문·사건번호·SHA-256 검증, Async Worker `fca447ec-850c-4e20-8a76-3bb97ac03676` 100% 배포. **Production R2/Core 실건 저장 E2E는 미관측으로 후속 전환 선행조건에 유지**. 미국 M8 소유권·검토 정책 유지 |
 | P2-2 | 검증된 국가별 staged-ingest 확대 및 M8 중복 수집 책임 정리 | **단계적 진행** | 프랑스+스페인 이미 staged 소유. 독일·미국은 readiness와 live E2E를 통과한 후 각각 staged allowlist/M8 제외를 **같은 배포에서 쌍으로** 변경. 무제한 동시 활성화 금지. 미국 term 경계 Discovery 보완은 로컬 검증 중이며 Production 반영과 별개 |
+
+### 2026-10-13 P2-M1·M2 단계 완료 처리 (실증 예외·전환 게이트 유지)
+
+| 단계 | 관리 상태 | 완료 범위 | 남겨둘 검증 / 후속 소유 |
+| --- | --- | --- | --- |
+| **P2-M1** | **완료** | SCOTUS 긴급신청 사건번호 검증 결함 수정, 공식 PDF `26A308`/`26A388` 및 일반 `24-43` 실제 출처 추출·해시·메모리 R2 검증, 회귀 테스트, GitHub 푸시·Async Production 배포 | **실제 Production R2 원본과 Core `officialPdf` provenance에 신규 사례가 남는지 미관측**. 기존 재시도 2건은 백오프·날짜 창 밖으로 자동 소진되지 않음. P2-M4 미국 staged 전환 선행 검증으로 유지 |
+| **P2-M2** | **완료** | 독일·미국 공식 출처, ECLI/docket, 처리·검토 gate, Search 적격 계수 및 M8/staged 소유권 준비도 실측·감사 문서·진단 테스트 | **독일·미국의 staged 전환 승인 자체는 보류(NOT READY)**. 독일 신규 공식 ECLI 원문, 미국 Production PDF provenance 및 국가별 실건 E2E는 각각 P2-M3·M4 진입 게이트 |
+
+**완료의 의미:** M1은 구현·실공식 원문 통합 검사·배포, M2는 국가별 readiness 평가라는 *작업 범위*의 행정적 완료입니다. 미실증 Production 항목을 PASS로 바꾸거나 독일·미국의 실제 staged 전환을 승인한 것은 아닙니다. 증거별 PASS / NOT_OBSERVED는 `docs/worldcons-p2-m1-m2-acceptance-20261013.md`를 따릅니다. 기존 P0 확인 3건과 P1 운영 확인 1건은 별도 추적 유지.
 
 ## 2. 현재 운영 상태의 기준
 

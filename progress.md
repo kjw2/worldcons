@@ -1,5 +1,11 @@
 # Progress
 
+## 2026-10-13 WorldCons P2-M1 / P2-M2 administrative completion
+
+- **P2-M1: COMPLETED** — SCOTUS application docket `26A308`/`26A388` extraction fix, genuine official PDF text/hash/temporary R2 probe, regression tests, `worldcons-ingest` production release `fca447ec-850c-4e20-8a76-3bb97ac03676`. **Production R2/Core `officialPdf` real-case persistence NOT_OBSERVED**; this remains a required gate for the US cutover in P2-M4.
+- **P2-M2: COMPLETED** — production-read-only Germany/US readiness matrix, policy/identity checks, Search eligible-count reconciliation, audit script/tests and acceptance report. **DE/US staged cutover NOT READY**, remains blocked until the country-specific P2-M3/P2-M4 live-evidence gates are met; ownership stays DE/US M8, FR/ES staged.
+- Milestone completion does not change evidence-level FAIL/NOT_OBSERVED, does not authorize unreviewed publication, and does not close the three independent P0 and one P1 operational verification items. Canonical status: `docs/worldcons-p0-p2-execution-roadmap-20261009.md`; detailed evidence: `docs/worldcons-p2-m1-m2-acceptance-20261013.md`.
+
 ## 2026-10-09 staged-ingest all-source review and bounded Spain expansion
 
 - France-only was an assistant-selected temporary canary, not a user exclusion policy. Native sources: `de-bverfg`, `us-scotus`, `fr-conseil-constitutionnel`, `es-tribunal-constitucional`.
