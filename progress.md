@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-10-13 WorldCons P2-M3 + P2-M4 simultaneous engineering completion (operational cutovers NOT closed)
+
+- **Both engineering work packages completed together.** P2-M3 Germany: official URL/ECLI hardening, fail-closed planner, shared exact-paired ownership precondition and tests. P2-M4 United States: fail-closed nine-gate planner, mandatory manual-approval evidence, SELECT-only/R2-read audit, shared paired-ownership precondition and tests. This is a completion of implementation/test/release deliverables only, **not** a declaration that either source passed Production staged cutover.
+- **GitHub:** `76e780d222b22b6881b08472291f3fc38cbfe7b6` pushed to `origin/main`; focused tests (US 12/12, DE 9/9, US audit 5/5, native 35/35, M8 48/48, staged 58/58, M2 3/3), `pnpm check`, `pnpm typecheck`, `pnpm m8:typecheck`, ESLint and diff-check passed.
+- **Production code-only release:** `worldcons-ingest` version `ff3d919f-02dd-4e45-aa71-55fc39914386` deployed at 2026-10-13 09:22:57 UTC (18:22:57 KST), 100%. Wrangler dry-run and post-deploy `/health` succeeded. This deployment does NOT wire the pure cutover planners into a live operator command; they remain evidence-evaluation modules and must be explicitly invoked by a future approved cutover procedure.
+- **Live source ownership unchanged:** M8 effective sources `de-bverfg,us-scotus`; staged bootstrap sources `fr-conseil-constitutionnel,es-tribunal-constitucional`; bootstrap/dispatch limits both 1. No source allowlist/exclude edits, no Production D1 direct writes, no forced Publish, no unsupported one-case canary or ownership transfer.
+- **Operational acceptance still blocked:** Germany lacks in-project newly verified official ECLI and one-case Production seven-stage lineage. US has zero new Production officialPdf provenance, no safe approved single-case staged entrypoint, no manual release authorization and no one-case seven-stage lineage. P0 three and P1 one independent check remain open. Next P2-M5 must not treat these exceptions as PASS.
+
 ## 2026-10-13 WorldCons P2-M4 US SCOTUS staged-cutover readiness (engineering only, NO cutover)
 
 - **P2-M4: GATED / BLOCKED.** Bounded US-specific implementation + read-only Production audit on clean HEAD `9743c4b`. No ownership change, no Worker deploy, no Production write. `us-scotus` stays M8-owned; FR/ES stay staged; `M8_CRAWLER_SOURCE_EXCLUDE` / `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` / `M8_ENABLED_KINDS` untouched. No Codex/Orca.

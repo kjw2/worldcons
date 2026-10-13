@@ -17,6 +17,17 @@
 | **P2-M3** | **독일 BVerfG staged 전환 진입 게이트** | **GATED / BLOCKED (전환 미실시)** | 2026-10-13 read-only preflight: 신규 공식 ECLI/본문 미확보(`2 BvR 1702/26` 등 공식 URL 404), 독일 7단계 Production E2E 미관측. `de-bverfg`는 **M8 소유 유지**, 쌍 allowlist/exclude **미변경**. fail-closed 검증 모듈 `germany-cutover-readiness.ts` + 테스트 추가. 증거: `docs/worldcons-p2-m3-germany-cutover-20261013.md` |
 | **P2-M4** | **미국 SCOTUS staged 전환 진입 게이트** | **GATED / BLOCKED (전환 미실시, 엔지니어링 구현 완료)** | 2026-10-13 read-only audit: Production `officialPdf.r2Key` **0건**, 재시도 2건 `PDF_TEXT_EXTRACTION_UNAVAILABLE`(attempt 11), Core/P3/Search 136/136/136은 **legacy(증거 아님)**. `us-scotus` **M8 소유 유지**, 쌍 **미변경**. fail-closed `us-cutover-readiness.ts`(9 gate, **manual publication authorization** 필수, legacy counts 거부) + `scripts/audit-worldcons-p2-m4-us.ts` + 테스트. 안전한 단일 카나리 런타임 입구 없음 → E2E 미실시. 증거: `docs/worldcons-p2-m4-us-cutover-20261013.md` |
 
+### 2026-10-13 P2-M3·M4 엔지니어링 동시 완료 처리 (운영 전환 게이트 유지)
+
+사용자 지시에 따라 P2-M4 구현 및 검증 후 P2-M3·M4의 **엔지니어링 구현 범위를 함께 완료 처리**한다. `origin/main` 커밋 `76e780d`, Production `worldcons-ingest` 버전 `ff3d919f-02dd-4e45-aa71-55fc39914386` (100%), `/health` 정상으로 구현·배포를 확인했다. 다만 두 단계의 **실제 국가별 staged 소유권 전환은 여전히 GATED/BLOCKED**이며 완료 처리에 포함되지 않는다.
+
+| 단계 | 엔지니어링 구현 | Production 소유권 전환 |
+| --- | --- | --- |
+| **P2-M3 독일** | **완료** — ECLI/URL 보강, readiness 플래너, exact-paired 가드, 회귀·배포 | **미완료** — 신규 공식 본문 프로젝트 내 검증 및 7단계 E2E 미입증 |
+| **P2-M4 미국** | **완료** — PDF 정책 점검, 9조건 readiness, 수동 승인 필수, D1/R2 읽기 전용 감사, exact-paired 가드, 회귀·배포 | **미완료** — Production R2/Core 실원문 0건, 안전한 단일 카나리 입구·수동 승인·실건 E2E 미입증 |
+
+FR/ES staged, DE/US M8 소유와 승인/발행 정책은 변함없다. 구현 완료를 운영 전환 PASS로 치환하지 않고 P0 확인 3건/P1 확인 1건도 유지한다.
+
 ### 2026-10-13 P2-M1·M2 단계 완료 처리 (실증 예외·전환 게이트 유지)
 
 | 단계 | 관리 상태 | 완료 범위 | 남겨둘 검증 / 후속 소유 |

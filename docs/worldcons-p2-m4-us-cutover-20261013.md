@@ -264,3 +264,25 @@ hang / pre-existing clean-HEAD failure). No deploy, no commit, no Codex/Orca.
 
 Until steps 1-3 produce genuine Production evidence, **P2-M4 remains BLOCKED and
 the US stays M8-owned.**
+
+## 11. Code release and simultaneous engineering closure (2026-10-13)
+
+This document's earlier sections describe the pre-release audit. The P2-M4
+engineering deliverables plus a shared ownership-pairing fail-closed guard for
+P2-M3/P2-M4 were subsequently committed and pushed to GitHub `origin/main` in
+`76e780d222b22b6881b08472291f3fc38cbfe7b6`. The shared guard refuses a
+cutover plan when current staged allowlist and M8 exclusion do not match in
+source names and order, or contain blank/duplicate entries; rollback values
+are retained and no planned mutation is emitted.
+
+Wrangler dry-run passed. `worldcons-ingest` Production deployment version
+`ff3d919f-02dd-4e45-aa71-55fc39914386` reached 100% on
+2026-10-13T09:22:57Z. Post-deploy `/health` succeeded, verifying DE/US remain
+M8-owned, FR/ES remain staged, and both staged limits remain 1.
+
+**P2-M3 and P2-M4 engineering delivery are marked complete simultaneously**,
+but their **actual country ownership cutovers remain GATED/BLOCKED** pending
+independent genuine per-case Production evidence, review authorization and
+the approved cutover procedure. The pure readiness planners are not an
+automatic Wrangler deployment gate; no manual config bypass is authorized.
+P0 checks 3 and P1 check 1 remain open.
