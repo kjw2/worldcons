@@ -134,15 +134,23 @@ Caveat recorded deliberately: `collection.publishable=1` for **100%** of DE/US i
 
 ## Residual / blockers (must not be marked closed)
 
-1. Production still has **0** `officialPdf` provenance for `us-scotus`; the two real candidates are unprocessed. Completing P2-M1 Production E2E requires the P2-M1 extractor fix to be deployed **and** those candidates drained in-window (or the prior-term scan to re-observe them). No DB write was performed.
+1. Production still has **0** `officialPdf` provenance for `us-scotus`; the two real candidates are unprocessed. Completing P2-M1 Production E2E requires the P2-M1 extractor fix to be deployed **and** those candidates drained. **Critical nuance:** the P2-1 letter-docket fix only helps candidates that are *discovered and fetched*. The two Production rows are already `retrying` at `attempt_count=11` (>=10 in the prior 3-day window), so routine eligibility **defers** them; and the newest slip opinions are all applications (`26A…`) dated `9/25/26`, now **older than 14 days**, so the daily primary window no longer selects them. The code fix is necessary but not sufficient to force a Production E2E on its own, and no DB write/redrive/replay was performed to bypass this. No DB write was performed.
 2. DE/US must **not** switch to staged ownership until per-case official-number verification is real in Production for both.
 3. `m8:types:check` is broken at clean HEAD independent of this change.
 4. DE/Search `583 published` vs `582 search_documents` — one residual projection gap.
 
-## Artifacts / commits (see final report for SHA)
+## Artifacts / commits
 
+- Commit `ebbb410` (`fix(worldcons): verify SCOTUS application-docket official PDFs and add P2-M2 readiness audit`), pushed to `origin/main` (`116e27e..ebbb410`).
 - `workers/async-pipeline/src/scotus-pdf.ts` — application/letter docket support.
-- `tests/native-crawler.test.ts` — 2 regression tests.
+- `tests/native-crawler.test.ts` — 2 regression tests (31/31).
 - `scripts/scotus-official-pdf-probe.ts` + `probe:scotus-pdf` — real-origin probe.
 - `scripts/audit-worldcons-m2-readiness.ts` + `audit:m2-readiness` — read-only readiness matrix.
 - `tests/m2-readiness-diagnostic.test.ts` + `test:m2-readiness` — SELECT-only/ownership guard tests.
+- Deployment evidence: `artifacts/p2-m1-m2-deploy-20261013/` (`pre-deploy-version.txt`, `deploy-async.stdout.log`, `deployment.json`).
+
+## Deployment (affected Worker only)
+
+- `worldcons-ingest`: `75d574e0-98dd-46c5-875a-5c47dbe5fc1f` → **`fca447ec-850c-4e20-8a76-3bb97ac03676`** (100%), 2026-10-13T06:34:55Z, via `wrangler deploy --config workers/async-pipeline/wrangler.jsonc`.
+- Binding pins coherent: `WORLDCONS_E2E_DEPLOYMENT_REF` unchanged (`git:401b3e4…;worldcons:a1571934…`), root `worldcons` Worker unchanged, `M8_CRAWLER_SOURCE_EXCLUDE` unchanged. `/health` HTTP 200 with `effectiveSources=["de-bverfg","us-scotus"]`.
+- Root `worldcons` Worker **not** redeployed (no root change); no preview/staging created.

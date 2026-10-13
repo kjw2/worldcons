@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-10-13T06:35:00Z",
+  "worker": "worldcons-ingest",
+  "preDeployVersion": "75d574e0-98dd-46c5-875a-5c47dbe5fc1f",
+  "postDeployVersion": "fca447ec-850c-4e20-8a76-3bb97ac03676",
+  "percentage": 100,
+  "createdOn": "2026-10-13T06:34:55.761565Z",
+  "deploymentRefUnchanged": "git:401b3e4ab21cb5b56b1acd816a318d9f12b59cb9;worldcons:a1571934-9ba4-4103-8f4d-4853f05c2dde",
+  "m8CrawlerSourceExclude": "fr-conseil-constitutionnel,es-tribunal-constitucional",
+  "healthEffectiveSources": ["de-bverfg", "us-scotus"],
+  "healthStagedBootstrapSources": ["fr-conseil-constitutionnel", "es-tribunal-constitucional"],
+  "rootWorker": "worldcons version a1571934-9ba4-4103-8f4d-4853f05c2dde (unchanged)"
+}
