@@ -32,6 +32,7 @@
  */
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "@/lib/cloudflare/d1/runtime-binding";
 import {
+  INGEST_STAGE_MAX_ATTEMPTS,
   INGEST_STAGE_JOB_STATUSES,
   type IngestStage,
   type IngestStageJobStatus,
@@ -380,13 +381,16 @@ export async function redriveIngestStageDeadLetter(
   // 7. Conditional, fenced transition. Everything above is advisory; this
   //    `meta.changes` is the sole arbiter. A racing claim or a second redrive
   //    makes it 0 and we deny without side effects.
+  //    Keep attempt_count monotonic because it is also the Queue fencing-token
+  //    source. Extending max_attempts by the fixed budget grants eight fresh
+  //    attempts without ever reusing an already-dispatched token/outbox entry.
   const changes = ensureWrite(
     await run(
       db
         .prepare(
           `UPDATE ingest_stage_jobs
               SET status = 'pending',
-                  attempt_count = 0,
+                  max_attempts = attempt_count + ?,
                   next_attempt_at = NULL,
                   lease_expires_at = NULL,
                   claimed_by = NULL,
@@ -398,7 +402,7 @@ export async function redriveIngestStageDeadLetter(
                   updated_at = ?
             WHERE id = ? AND stage = ? AND status = 'dead_letter' AND claimed_fencing_token IS ?`,
         )
-        .bind(input.now, input.jobId, input.stage, input.expectedFencingToken),
+        .bind(INGEST_STAGE_MAX_ATTEMPTS, input.now, input.jobId, input.stage, input.expectedFencingToken),
     ),
   );
   if (changes !== 1) {

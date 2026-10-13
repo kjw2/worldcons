@@ -4,6 +4,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
+import { dispatchIngestStagePass, type IngestStageQueueSender } from "../lib/cloudflare/ingest-stages/dispatcher";
 import {
   claimIngestStageJobs,
   failIngestStageJob,
@@ -190,7 +191,8 @@ test("a redriven 404 source job returns to pending and is audited in the transit
     assert.equal(result.status, "pending");
     const after = await getIngestStageJobById(db, row.id);
     assert.equal(after?.status, "pending");
-    assert.equal(after?.attempt_count, 0);
+    assert.equal(after?.attempt_count, 1);
+    assert.equal(after?.max_attempts, 9);
     assert.equal(after?.claimed_fencing_token, null);
     assert.equal(after?.last_error_code, null);
 
@@ -199,6 +201,46 @@ test("a redriven 404 source job returns to pending and is audited in the transit
     assert.equal(ledger[0].outcome, "redriven");
     assert.equal(ledger[0].operator_id, "operator@example.com");
     assert.equal(ledger[0].previous_status, "dead_letter");
+  } finally {
+    ingest.close();
+  }
+});
+
+test("redrive keeps fencing tokens monotonic and grants a fresh bounded attempt budget", async () => {
+  const { ingest, db } = createDb();
+  try {
+    const sent: Array<{ fencingToken: string }> = [];
+    const queue: IngestStageQueueSender = {
+      async send(message) {
+        sent.push({ fencingToken: message.fencingToken });
+      },
+    };
+    const { job } = await registerIngestStageJob(db, {
+      stage: "translate", articleId: "redrive-fence", sourceVersion: "v1", contentHash: "h1", now: NOW,
+    });
+    const initial = await dispatchIngestStagePass({
+      ingestDb: db, queue, stage: "translate", workerId: "w1", limit: 1, leaseSeconds: 300, now: NOW,
+    });
+    assert.equal(initial.enqueued, 1);
+    const firstLease = await getIngestStageJobById(db, job.id);
+    assert.equal(firstLease?.claimed_fencing_token, "1");
+    await failIngestStageJob(db, {
+      jobId: job.id, fencingToken: "1", stage: "translate", errorCode: "summary_d1.success_write_failed", retry: false, now: NOW,
+    });
+
+    const redriven = await redriveIngestStageDeadLetter(db, {
+      stage: "translate", jobId: job.id, operatorId: "op", reason: "verified durable summary", expectedFencingToken: "1", now: "2026-10-08T00:01:00.000Z",
+    });
+    assert.equal(redriven.outcome, "redriven");
+    const pending = await getIngestStageJobById(db, job.id);
+    assert.equal(pending?.attempt_count, 1, "the historical fence counter must not rewind");
+    assert.equal(pending?.max_attempts, 9, "redrive grants exactly one fresh bounded attempt budget");
+
+    const resumed = await dispatchIngestStagePass({
+      ingestDb: db, queue, stage: "translate", workerId: "w2", limit: 1, leaseSeconds: 300, now: "2026-10-08T00:02:00.000Z",
+    });
+    assert.equal(resumed.enqueued, 1);
+    assert.deepEqual(sent.map((message) => message.fencingToken), ["1", "2"]);
   } finally {
     ingest.close();
   }
