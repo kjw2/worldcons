@@ -20,8 +20,13 @@ export function isOfficialScotusPdfUrl(input: string): boolean {
 }
 
 function normalizeDocket(value: string): string | null {
-  const canonical = value.replace(/[\u2010-\u2015\u2212]/g, "-").replace(/\s+/g, "");
-  return /^\d{1,3}-\d{1,6}$/.test(canonical) ? canonical : null;
+  const canonical = value.replace(/[\u2010-\u2015\u2212]/g, "-").replace(/\s+/g, "").toUpperCase();
+  // Certiorari/appeal/original dockets use a hyphenated number (24-43).
+  if (/^\d{1,3}-\d{1,6}$/.test(canonical)) return canonical;
+  // In-chambers applications and comparable letter dockets omit the hyphen
+  // (26A388, 25A1314); these are real official slip opinions during rollover.
+  if (/^\d{1,3}[A-Z]\d{1,6}$/.test(canonical)) return canonical;
+  return null;
 }
 
 export async function extractOfficialScotusPdf(bytes: Uint8Array, docket: string): Promise<{ text: string; pageCount: number }> {
@@ -40,9 +45,12 @@ export async function extractOfficialScotusPdf(bytes: Uint8Array, docket: string
     const text = String(extracted).replace(/\0/g, "").trim();
     if (text.length < SCOTUS_TEXT_MIN_CHARS || text.length > SCOTUS_TEXT_MAX_CHARS) throw new Error("scotus.pdf_text_insufficient");
     // A listing link alone is not a docket match. Verify the PDF text itself.
-    const header = text.slice(0, 12_000).replace(/[\u2010-\u2015\u2212]/g, "-").replace(/\s+/g, " ");
-    const docketMatches = [...header.matchAll(/\bNos?\.\s*(\d{1,3})\s*-\s*(\d{1,6})\b/gi)];
-    if (!docketMatches.some((match) => `${match[1]}-${match[2]}` === expected)) throw new Error("scotus.pdf_docket_mismatch");
+    // Application dockets include a letter and may omit the hyphen ("No. 26A388"),
+    // while certiorari dockets are hyphenated ("No. 24-43"); both render with
+    // optional spaces around the hyphen. Normalize the separator before comparing.
+    const header = text.slice(0, 12_000).replace(/[\u2010-\u2015\u2212]/g, "-");
+    const docketMatches = [...header.matchAll(/\bNos?\.\s*(\d{1,3})\s*-?\s*([A-Z]?\d{1,6})\b/gi)];
+    if (!docketMatches.some((match) => `${match[1]}-${match[2]}`.replace(/-([A-Z])/, "$1").toUpperCase() === expected)) throw new Error("scotus.pdf_docket_mismatch");
     return { text, pageCount: pdf.numPages };
   } finally {
     const maybeDisposable = pdf as unknown as { destroy?: () => Promise<void> };

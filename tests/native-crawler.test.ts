@@ -184,6 +184,61 @@ test("SCOTUS PDF verification failures stay metadata-only and never write PDF to
   }
 });
 
+test("SCOTUS application docket official PDF (letter, no hyphen) extracts and stays review-gated", async () => {
+  const store = memoryBindings();
+  const listing = `<table class="table"><tr><td>Opinion</td><td>9/25/26</td><td>26A388</td><td><a href="/opinions/25pdf/26a388_q86b.pdf">Per Curiam</a></td></tr></table>`;
+  const listingUrl = "https://www.supremecourt.gov/opinions/slipopinion/25";
+  const discovered = parseNativeSourceListing("us-scotus", listing, listingUrl)[0];
+  assert.equal(discovered.metadata.docket, "26A388");
+  const pdf = scotusPdfFixture("26A388");
+  const fetched = await crawlNativeStageCandidate(discovered, store.bindings, {
+    fetch: async (input) => String(input).endsWith("/robots.txt")
+      ? response(robots)
+      : new Response(pdf, { status: 200, headers: { "content-type": "application/pdf" } }),
+  });
+  assert.equal(fetched.fetched, true, JSON.stringify(fetched.candidate.metadata));
+  assert.equal(fetched.status, 200);
+  assert.match(fetched.text, /No\. 26A388/);
+  const provenance = fetched.candidate.metadata.officialPdf as Record<string, unknown>;
+  assert.equal(provenance.docketVerified, true);
+  assert.equal(provenance.url, "https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf");
+  const expectedSha = Buffer.from(await crypto.subtle.digest("SHA-256", pdf)).toString("hex");
+  assert.equal(provenance.sha256, expectedSha);
+  assert.match(String(provenance.r2Key), /^artifacts\/scotus_pdf\/[0-9a-f]{64}\.pdf$/);
+  assert.deepEqual(store.blobs.get(String(provenance.r2Key)), pdf);
+  assert.equal((fetched.candidate.metadata.collection as Record<string, unknown>).publishable, false);
+  assert.equal((fetched.candidate.metadata.review as Record<string, unknown>).required, true);
+  const persisted = await persistNativeStageRecord(fetched.candidate, fetched.text, store.bindings, {
+    runId: "scotus-p2-m1-application-docket", fetchedAt: "2026-10-13T00:00:00.000Z",
+  });
+  assert.equal(persisted.status, "needs_review");
+  const article = [...store.articles.values()][0];
+  const savedProvenance = JSON.parse(String(article.source_metadata)) as { officialPdf: { sha256: string; docketVerified: boolean } };
+  assert.equal(savedProvenance.officialPdf.docketVerified, true);
+  assert.equal(savedProvenance.officialPdf.sha256, expectedSha);
+  assert.equal(store.statements.some((item) => /INSERT INTO article_publications_p3/.test(item.sql)), false);
+});
+
+test("SCOTUS letter dockets never cross-match a different or hyphenated docket", async () => {
+  for (const check of [
+    { name: "different application number", docket: "26A388", text: "26A999" },
+    { name: "hyphenated certiorari docket is not equivalent", docket: "26A388", text: "26-388" },
+    { name: "docket with letter but wrong year", docket: "26A388", text: "25A388" },
+  ]) {
+    const store = memoryBindings();
+    const listing = `<table class="table"><tr><td>Opinion</td><td>9/25/26</td><td>${check.docket}</td><td><a href="/opinions/25pdf/26a388_q86b.pdf">Per Curiam</a></td></tr></table>`;
+    const discovered = parseNativeSourceListing("us-scotus", listing, "https://www.supremecourt.gov/opinions/slipopinion/25")[0];
+    const result = await crawlNativeStageCandidate(discovered, store.bindings, {
+      fetch: async (input) => String(input).endsWith("/robots.txt")
+        ? response(robots)
+        : new Response(scotusPdfFixture(check.text), { status: 200, headers: { "content-type": "application/pdf" } }),
+    });
+    assert.equal(result.fetched, false, check.name);
+    assert.equal(store.blobs.size, 0, check.name);
+    assert.equal((result.candidate.metadata.collection as Record<string, unknown>).publishable, false, check.name);
+  }
+});
+
 test("SCOTUS October term rollover still collects a revised prior-term official opinion without publishing it", async () => {
   const store = memoryBindings();
   const october = new Date("2026-10-09T00:00:00.000Z");
