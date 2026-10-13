@@ -55,6 +55,8 @@ export interface DispatchIngestStagePassInput {
   limit: number;
   leaseSeconds: number;
   now: string;
+  /** Optional bounded single-job dispatch (operator canary). */
+  jobId?: string;
 }
 
 export interface DispatchIngestStagePassResult {
@@ -99,6 +101,7 @@ export async function dispatchIngestStagePass(
     limit: input.limit,
     leaseSeconds: input.leaseSeconds,
     now: input.now,
+    ...(input.jobId ? { jobId: input.jobId } : {}),
   });
   const queueName = INGEST_STAGE_QUEUES[input.stage];
   const result: DispatchIngestStagePassResult = {

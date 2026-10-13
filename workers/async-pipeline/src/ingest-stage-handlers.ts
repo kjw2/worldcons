@@ -114,6 +114,13 @@ export interface IngestStageHandlerDependencies {
   search?: IngestStageSearchAdapter;
   now?: () => string;
   e2e?: StagedE2EOptions;
+  /**
+   * Explicit operator-canary sources (`de-bverfg`, `us-scotus`). These are NOT
+   * staged sources and are never auto-approved/published; they only carry the
+   * candidate payload forward across stages so a single-case canary lineage can
+   * be observed. Every downstream gate stays fail-closed.
+   */
+  canarySources?: readonly string[];
 }
 
 function isSourceKey(value: unknown): value is NativeCrawlerSource {
@@ -346,7 +353,7 @@ const PUBLIC_JUDGMENT_PRIVATE_REVIEW_STATES = new Set(["needs_review", "needs_tr
  *   4. the review state is not a private/terminal block;
  *   5. if a Case Catalog publication exists, the authoritative anchor version's
  *      immutable `source_content_hash` must equal the current enrichment's
- *      `enrichment_source_content_hash` (the exact gate2 predicate) — otherwise
+ *      `enrichment_source_content_hash` (the exact gate2 predicate) ??otherwise
  *      the anchor is unverified and the record is blocked.
  *
  * Any missing/ambiguous anchor fails closed (blocked), never partial-published.
@@ -417,6 +424,12 @@ async function evaluatePublicJudgment(coreDb: D1RuntimeDatabase, articleId: stri
  * present; everything else stays missing so the consumer fails closed.
  */
 export function createIngestStageHandlers(deps: IngestStageHandlerDependencies): IngestStageHandlerRegistry {
+  // Sources that carry a single-case approval artifact forward across stages.
+  // FR/ES staged E2E plus the explicit operator-canary sources. This only
+  // preserves the crawl candidate/artifact references; it never grants approval
+  // (auto-approval/publish/search stay strictly FR/ES below).
+  const carriesApprovalArtifact = (sourceKey: string | null | undefined) =>
+    sourceKey != null && (deps.e2e?.sources.includes(sourceKey) === true || deps.canarySources?.includes(sourceKey) === true);
   const discovery: IngestStageHandler = async (context) => {
     const payload = context.job.payload_ref ? await readJsonArtifact(deps.rawBucket, context.job.payload_ref) : null;
     const request = discoveryRequestFrom(payload);
@@ -512,7 +525,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     };
     // Preserve the exact approval source artifact across timestamp-only recrawls.
     const artifactKey = nativeStageCrawlArtifactKey(candidate.sourceKey,
-      deps.e2e?.sources.includes(candidate.sourceKey) ? await sha256Canonical(artifact) : contentHash);
+      carriesApprovalArtifact(candidate.sourceKey) ? await sha256Canonical(artifact) : contentHash);
     await deps.rawBucket.put(artifactKey, new TextEncoder().encode(JSON.stringify(artifact)), { httpMetadata: { contentType: "application/json" } });
     return {
       status: "succeeded",
@@ -541,7 +554,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
       // `worldcons_core.articles.id` (a UUID) when it created or matched a row.
       // The incoming job's `article_id` is only a `native:` candidate hash, so
       // every downstream stage (translate/public-judgment/publish/search) must
-      // address the verified core id instead — otherwise they would reference a
+      // address the verified core id instead ??otherwise they would reference a
       // candidate that does not exist in the core DB. When persistence cannot
       // resolve an id (preserved/duplicate edge cases), we fail closed rather
       // than push a `native:` id downstream.
@@ -560,7 +573,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         nextArticleId: coreArticleId,
         nextSourceVersion: persisted.contentHash,
         nextContentHash: persisted.contentHash,
-        ...(deps.e2e?.sources.includes(candidate.sourceKey)?{nextPayloadRef:context.job.payload_ref}:{}),
+        ...(carriesApprovalArtifact(candidate.sourceKey)?{nextPayloadRef:context.job.payload_ref}:{}),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -593,7 +606,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         nextArticleId: articleId,
         nextSourceVersion: alreadyDurable.contentHash,
         nextContentHash: alreadyDurable.contentHash,
-        ...(deps.e2e?.sources.includes(context.job.source_key ?? "") ? { nextPayloadRef: context.job.payload_ref } : {}),
+        ...(carriesApprovalArtifact(context.job.source_key) ? { nextPayloadRef: context.job.payload_ref } : {}),
       };
     }
     let outcome: Awaited<ReturnType<IngestStageTranslationAdapter["summarize"]>>;
@@ -616,7 +629,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
           nextArticleId: articleId,
           nextSourceVersion: recovered.contentHash,
           nextContentHash: recovered.contentHash,
-          ...(deps.e2e?.sources.includes(context.job.source_key ?? "") ? { nextPayloadRef: context.job.payload_ref } : {}),
+          ...(carriesApprovalArtifact(context.job.source_key) ? { nextPayloadRef: context.job.payload_ref } : {}),
         };
       }
       const classified = classifyTranslateCallFailure(message);
@@ -639,7 +652,7 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         nextArticleId: articleId,
         nextSourceVersion: verified.contentHash,
         nextContentHash: verified.contentHash,
-        ...(deps.e2e?.sources.includes(context.job.source_key??"")?{nextPayloadRef:context.job.payload_ref}:{}),
+        ...(carriesApprovalArtifact(context.job.source_key)?{nextPayloadRef:context.job.payload_ref}:{}),
       };
     }
     if (outcome.status === "skipped" || outcome.status === "unavailable") {

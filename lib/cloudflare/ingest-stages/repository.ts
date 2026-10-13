@@ -153,6 +153,12 @@ export interface ClaimIngestStageJobsInput {
   limit: number;
   leaseSeconds: number;
   now: string;
+  /**
+   * Optional bounded single-job claim. When set the SELECT is narrowed to exactly
+   * this job id (still stage-scoped and claimable-only), so an operator canary can
+   * lease one specific job without touching any other work.
+   */
+  jobId?: string;
 }
 
 /**
@@ -169,17 +175,21 @@ export async function claimIngestStageJobs(
   input: ClaimIngestStageJobsInput,
 ): Promise<IngestStageJobRow[]> {
   const bounded = Math.max(1, Math.min(100, Math.trunc(input.limit)));
+  // An optional explicit job id narrows the bound to exactly one row. It is
+  // still gated by the same stage/claimable predicates, so it can never reach a
+  // different stage or a job another owner legitimately holds.
+  const jobFilter = input.jobId ? " AND id = ?" : "";
   const claimable = ensureRows(
     await db
       .prepare(
         `SELECT * FROM ingest_stage_jobs
           WHERE stage = ?
             AND (status = 'pending' OR (status = 'leased' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?))
-            AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+            AND (next_attempt_at IS NULL OR next_attempt_at <= ?)${jobFilter}
           ORDER BY priority DESC, next_attempt_at ASC, created_at ASC
           LIMIT ?`,
       )
-      .bind(input.stage, input.now, input.now, bounded)
+      .bind(input.stage, input.now, input.now, ...(input.jobId ? [input.jobId] : []), bounded)
       .all<IngestStageJobRow>(),
   );
   const leased: IngestStageJobRow[] = [];

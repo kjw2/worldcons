@@ -903,6 +903,47 @@ assert(
     usCutoverGuardSource.includes("if (!readiness.ready)"),
   "US staged cutover must stay behind a fail-closed readiness gate requiring manual publication authorization, exact-paired current ownership and rejecting legacy historical counts, emitting no paired mutation until real proof exists",
 );
+const canarySource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary.ts"), "utf8");
+assert(
+  canarySource.includes("CANARY_SOURCE_KEYS") &&
+    canarySource.includes("CANARY_PAYLOAD_PREFIX") &&
+    canarySource.includes("canarySourceGateAllows") &&
+    canarySource.includes("denied_official_host") &&
+    canarySource.includes("denied_identity") &&
+    canarySource.includes("denied_rate_limited") &&
+    canarySource.includes("isOfficialHost") &&
+    canarySource.includes("INGEST_STAGE_CANARY_MAX_PER_WINDOW") &&
+    canarySource.includes("advanceCanaryCase") &&
+    canarySource.includes("job_stage_advanced"),
+  "the operator single-case canary must verify the official host/identity, enforce a per-source rate limit, keep the explicit canary-prefixed source gate, and advance only via the durable job_stage_advanced provenance",
+);
+const canaryConsumerSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/ingest-stage-consumer.ts"), "utf8");
+assert(
+  canaryConsumerSource.includes("sourceGate") &&
+    canaryConsumerSource.includes("ingest_stage.source_not_authorized"),
+  "the stage consumer must dead-letter a non-authorized source before any handler runs",
+);
+const canaryWorkerSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
+assert(
+  canaryWorkerSource.includes("/v1/stage-canary") &&
+    canaryWorkerSource.includes("handleStageCanary") &&
+    canaryWorkerSource.includes("canarySourceGateAllows"),
+  "the canary route must be authenticated and wired to the per-source canary gate",
+);
+const canaryRouteSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/stage-canary-route.ts"), "utf8");
+assert(
+  canaryRouteSource.includes("operatorCanaryAuthorized") &&
+    canaryRouteSource.includes("WORLDCONS_CANARY_TOKEN") &&
+    !canaryRouteSource.includes("BROWSER_RUN_TOKEN"),
+  "the canary route must require the dedicated WORLDCONS_CANARY_TOKEN secret and must not reuse or activate BROWSER_RUN_TOKEN",
+);
+const canaryLineageScriptSource = fs.readFileSync(path.join(process.cwd(), "scripts/audit-worldcons-canary-lineage.ts"), "utf8");
+assert(
+  canaryLineageScriptSource.includes("assertSelectOnly") &&
+    canaryLineageScriptSource.includes("evaluateManualApprovalPolicy") &&
+    canaryLineageScriptSource.includes("us_published_without_manual_authorization"),
+  "the canary lineage audit must be SELECT-only and enforce the US manual-approval policy",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

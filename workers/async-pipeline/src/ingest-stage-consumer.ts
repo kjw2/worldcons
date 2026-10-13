@@ -128,6 +128,18 @@ export interface ConsumeIngestStageBatchDeps {
   invalidRetryDelaySeconds: number;
   /** A clock that can advance per message; defaults to `() => deps.now`. */
   clock?: () => string;
+  /**
+   * Per-source ownership gate at the official-fetch entry stages. When supplied,
+   * a discovery/crawl job whose `source_key` is not an authorized staged source
+   * must be rejected (dead-lettered) before any handler runs. This is what keeps
+   * the broad source-ownership split intact while an explicit single-case canary
+   * remains a controlled exception: the Worker wires this to
+   * `canarySourceGateAllows` with the configured staged allowlist, so a
+   * non-staged country is only ever fetched when its payload carries the explicit
+   * `stages/canary/` prefix. Absent = no extra narrowing (existing behaviour
+   * preserved).
+   */
+  sourceGate?: (input: { stage: IngestStage; sourceKey: string | null; payloadRef: string | null }) => boolean;
 }
 
 export interface ConsumeIngestStageBatchResult {
@@ -205,6 +217,23 @@ export async function consumeIngestStageBatch(
       // the live lease and will process it.
       message.ack();
       result.stale += 1;
+      continue;
+    }
+    // Per-source ownership gate: a live job for a source that is not an
+    // authorized staged source (and is not the explicit canary exception) is a
+    // terminal block. It must not run a handler that would fetch/persist it.
+    if (deps.sourceGate && !deps.sourceGate({ stage: job.stage, sourceKey: job.source_key, payloadRef: job.payload_ref })) {
+      await failIngestStageJob(deps.ingestDb, {
+        jobId: job.id,
+        fencingToken: body.fencingToken,
+        stage: body.stage,
+        errorCode: "ingest_stage.source_not_authorized",
+        errorSummary: `Source "${job.source_key ?? "unknown"}" is not an authorized staged source and carries no canary payload.`,
+        retry: false,
+        now,
+      });
+      message.ack();
+      result.blockedJobs += 1;
       continue;
     }
     const handler = deps.handlers[body.stage];

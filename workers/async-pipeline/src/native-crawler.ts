@@ -5,6 +5,10 @@ import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../.
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { shouldRetryBverfgCandidates, type BverfgTrackedCandidate } from "../../../lib/ingest/bverfg-candidate-retry";
 import { extractOfficialScotusPdf, isOfficialScotusPdfUrl, SCOTUS_PDF_MAX_BYTES } from "./scotus-pdf";
+import {
+  isOfficialHost,
+  verifyBverfgOfficialText as verifyBverfgOfficialTextShared,
+} from "../../../lib/ingest/official-source-verify";
 
 export const NATIVE_CRAWLER_SOURCES = [
   "de-bverfg",
@@ -147,14 +151,7 @@ function absoluteLinks(html: string, baseUrl: string) {
 }
 
 function officialHost(source: NativeCrawlerSource, url: string) {
-  const host = new URL(url).hostname.toLowerCase();
-  const allowed: Record<NativeCrawlerSource, string[]> = {
-    "de-bverfg": ["bundesverfassungsgericht.de", "bverfg.de"],
-    "us-scotus": ["supremecourt.gov"],
-    "fr-conseil-constitutionnel": ["conseil-constitutionnel.fr"],
-    "es-tribunal-constitucional": ["hj.tribunalconstitucional.es"],
-  };
-  return allowed[source].some((root) => host === root || host.endsWith(`.${root}`));
+  return isOfficialHost(source, url);
 }
 
 async function boundedFetch(fetcher: typeof fetch, input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = NATIVE_FETCH_TIMEOUT_MS) {
@@ -263,28 +260,15 @@ function bverfgDateContext(context: string, url: string) {
  * (`?nn=68112`). Both the extension and query are cosmetic: they never change
  * the ECLI. Identity therefore derives from the path stem only and ignores the
  * optional extension/query, while still rejecting a mismatched path date.
+ *
+ * The parser lives in `lib/ingest/official-source-verify.ts` so the operator
+ * canary and the crawler enforce the identical identity contract.
  */
-function bverfgDecisionIdentity(url: string) {
-  const pathname = new URL(url).pathname;
-  const match = pathname.match(/^\/SharedDocs\/Entscheidungen\/DE\/(20\d{2})\/(\d{2})\/([a-z]{2})(20\d{2})(\d{2})(\d{2})_([a-z0-9]+?)(?:\.html?)?$/i);
-  if (!match || match[1] !== match[4] || match[2] !== match[5]) return null;
-  return {
-    ecli: `ECLI:DE:BVerfG:${match[1]}:${match[3].toLowerCase()}${match[4]}${match[5]}${match[6]}.${match[7].toLowerCase()}`,
-    decisionId: `${match[4]}${match[5]}${match[6]}_${match[7]}`.toLowerCase(),
-    publishedAt: `${match[4]}-${match[5]}-${match[6]}T00:00:00.000Z`,
-  };
-}
-
 function verifyBverfgOfficialText(html: string, finalUrl: string, discoveredUrl: string) {
-  const expected = bverfgDecisionIdentity(finalUrl);
-  const discovered = bverfgDecisionIdentity(discoveredUrl);
-  if (!expected || !discovered || expected.decisionId !== discovered.decisionId) {
-    throw new Error("crawler.bverfg_official_identity_mismatch");
-  }
   const text = extractOfficialText(html, "de-bverfg");
-  const actual = text.match(/\bECLI:DE:BVerfG:20\d{2}:[a-z]{2}20\d{6}\.[a-z0-9]+\b/i)?.[0].toLowerCase();
-  if (!actual || actual !== expected.ecli.toLowerCase()) throw new Error("crawler.bverfg_official_identity_mismatch");
-  return { text, ecli: expected.ecli, publishedAt: expected.publishedAt };
+  const verified = verifyBverfgOfficialTextShared(text, finalUrl, discoveredUrl);
+  if (!verified) throw new Error("crawler.bverfg_official_identity_mismatch");
+  return { text, ecli: verified.ecli, publishedAt: verified.publishedAt };
 }
 
 function acceptBverfgOfficialVerification(candidate: NativeArticleCandidate, html: string, finalUrl: string, requestedUrl: string) {

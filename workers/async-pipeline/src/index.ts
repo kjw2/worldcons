@@ -26,6 +26,8 @@ import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBoot
 import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
 import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
 import { createIngestStageHandlers, enqueueIngestStageDiscovery } from "./ingest-stage-handlers";
+import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
+import { handleStageCanary } from "./stage-canary-route";
 import type { NativeCrawlerBindings, NativeCrawlerSource } from "./native-crawler";
 import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
@@ -549,6 +551,10 @@ function ingestStageHandlersFor(env: Env): IngestStageHandlerRegistry {
   const appService = env.WORLDCONS_APP_SERVICE as unknown as WorldconsOpsStageService;
   return createIngestStageHandlers({
     e2e: stagedE2EOptionsFromEnvironment(env as unknown as E2ESearchConsumerEnvironment & {WORLDCONS_SEARCH:Env["WORLDCONS_SEARCH"]}),
+    // Explicit operator-canary sources carry the candidate/artifact reference
+    // across stages so one German/US case can complete a seven-stage lineage.
+    // They never gain FR/ES auto-approval; every gate stays fail-closed.
+    canarySources: [...CANARY_SOURCE_KEYS],
     crawlerBindings: stageCrawlerBindings(env),
     rawBucket: env.WORLDCONS_RAW as unknown as Parameters<typeof createIngestStageHandlers>[0]["rawBucket"],
     browserNavigate: (input) => browserNavigate(input, env.BROWSER),
@@ -709,6 +715,14 @@ export default {
     if (request.method === "POST" && url.pathname === "/v1/navigate") {
       return handleBrowserNavigate(request, env);
     }
+    // Authenticated operator single-case staged canary (Germany/US). Guarded by
+    // the same operator bearer secret as `/v1/navigate`; fail-closed when unset.
+    if (request.method === "POST" && url.pathname === "/v1/stage-canary") {
+      return handleStageCanary(
+        request,
+        env as unknown as Parameters<typeof handleStageCanary>[1],
+      );
+    }
     return json({ error: "not_found" }, 404);
   },
 
@@ -771,6 +785,7 @@ export default {
     }
     const stage = stageForQueue(batch.queue);
     if (stage) {
+      const stagedSources = resolveIngestBootstrapSources(env.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST, NATIVE_CRAWLER_SOURCES);
       await consumeIngestStageBatch(batch, {
         gate: ingestStageGateFromEnvironment(env as unknown as Record<string, string | undefined>),
         ingestDb: env.WORLDCONS_INGEST as unknown as Parameters<typeof consumeIngestStageBatch>[1]["ingestDb"],
@@ -779,6 +794,10 @@ export default {
         handlers: ingestStageHandlersFor(env),
         env,
         invalidRetryDelaySeconds: M8_INVALID_RETRY_DELAY_SECONDS,
+        // Keep the broad source-ownership split intact: a non-staged source is
+        // only fetched through the explicit single-case canary prefix.
+        sourceGate: ({ stage: jobStage, sourceKey, payloadRef }) =>
+          canarySourceGateAllows({ stage: jobStage, sourceKey, payloadRef, stagedSources }),
       });
       return;
     }
