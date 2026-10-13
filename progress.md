@@ -1,5 +1,12 @@
 # Progress
 
+## 2026-10-13 WorldCons P2-M3 code-only Production deploy (NO Germany ownership cutover)
+
+- **GitHub:** scoped source/test/docs commit `95c7bddb0cb71b6cef49815215c9a654153f5ca7` pushed to `origin/main`; prior handoff HEAD was `60ef9bb`.
+- **Production Worker:** after the focused green suite and a successful Wrangler `--dry-run`, deployed **worldcons-ingest** via `pnpm exec wrangler deploy --config workers/async-pipeline/wrangler.jsonc`. Version `c8195b21-a8f7-4d25-b355-80725c016583` reached **100%** at 2026-10-13 07:51:14 UTC (16:51:14 KST); predecessor `fca447ec-850c-4e20-8a76-3bb97ac03676`. This was URL-identity/discovery hardening **only**, not a German staged cutover.
+- **Live read-only validation:** `GET https://worldcons-ingest.cclib.workers.dev/health` returned success. `crawlerSourceOwnership.effectiveSources=["de-bverfg","us-scotus"]`, `excludedSources=["fr-conseil-constitutionnel","es-tribunal-constitucional"]`, `ingestStages.bootstrapSources=["fr-conseil-constitutionnel","es-tribunal-constitucional"]`, bootstrap/dispatch limits both 1. `M8_CRAWLER_SOURCE_EXCLUDE` and `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` stayed unchanged.
+- **Unclosed gates:** raw official German decision HTTP 200 is not in-project verified crawler fetch, and Germany still has no single-case seven-stage Production job/Core-P3-Search proof. `planGermanyCutover` remains fail-closed; P2-M3 **GATED / BLOCKED**. P0 checks 3 and P1 check 1 remain open. No Production D1/R2 direct mutation, publish override, or German ownership transfer was performed.
+
 ## 2026-10-13 WorldCons P2-M3 continuation — official German URL identity hardening + sitemap/search evidence (local code only)
 
 - **Scope.** Tightly bounded continuation on clean HEAD `60ef9bb` (guard already committed; see correction below). No ownership switch, no Worker deploy, no Production write, no D1 edit. `M8_CRAWLER_SOURCE_EXCLUDE` / `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` / `M8_ENABLED_KINDS` untouched. No Codex/Orca.

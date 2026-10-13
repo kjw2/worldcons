@@ -337,3 +337,27 @@ Deliberately not run: full `verify:release`, `m8:types:check` (known Windows han
 
 **P2-M3 overall: GATED / BLOCKED.** P0 three checks and P1 one monitoring item
 remain open.
+
+## 12. Follow-up deployment evidence - code-only Worker release, NO cutover (2026-10-13)
+
+Section 11 describes the prior bounded code investigation, at which point no
+Worker had been deployed. Subsequently, the verified four-file patch was
+committed and pushed as `95c7bddb0cb71b6cef49815215c9a654153f5ca7`.
+Wrangler `deploy --dry-run` succeeded with the unchanged configuration; the
+Production `worldcons-ingest` Worker was then deployed at 2026-10-13
+07:51:14 UTC as version `c8195b21-a8f7-4d25-b355-80725c016583` (100%).
+The previous release was `fca447ec-850c-4e20-8a76-3bb97ac03676`.
+
+Post-deploy `GET https://worldcons-ingest.cclib.workers.dev/health`
+returned success with M8 effective crawler sources exactly
+`de-bverfg,us-scotus`, M8 excluded sources exactly `fr,es`, and staged
+bootstrap sources exactly `fr,es` (full canonical source keys in Wrangler);
+both staged limits stayed at 1. No allowlist/exclusion/approval policy changed.
+No direct D1 write, owner transfer, unreviewed publication or German staged
+job was initiated.
+
+This is a **code-only Production release**, **not** the P2-M3 staged
+cutover. The official in-project verified fetch and one-case seven-stage
+Core/P3/Search lineage remain **NOT_OBSERVED**; the six-gate cutover
+planner cannot authorize Germany yet. P2-M3 stays **GATED / BLOCKED**,
+with all P0 three checks and P1 one check open.
