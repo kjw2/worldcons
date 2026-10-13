@@ -179,6 +179,52 @@ test("D1 stale summary recovery persists failure triage and lifecycle attention"
   close(db);
 });
 
+test("D1 targeted summary reports an active competing summary owner as retryable CAS contention", async () => {
+  const db = setup({ status: "summarizing" });
+  db.core.prepare("UPDATE articles SET translation_status='running' WHERE id='11111111-1111-4111-8111-111111111111'").run();
+  try {
+    let providerCalls = 0;
+    await assert.rejects(
+      runD1SummarizeArticle({
+        articleId: "11111111-1111-4111-8111-111111111111",
+        apiKeys: ["test-key"],
+        summarize: async () => {
+          providerCalls += 1;
+          return goodSummary as never;
+        },
+      }),
+      /summary_d1\.start_write_cas_conflict/,
+    );
+    assert.equal(providerCalls, 0, "a competing owner must not launch a duplicate paid summary call");
+  } finally {
+    close(db);
+  }
+});
+
+test("D1 targeted summary keeps a genuinely policy-ineligible article terminal instead of retrying", async () => {
+  const db = setup({
+    status: "cleaned",
+    metadata: { collection: { publishable: false, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } },
+  });
+  try {
+    let providerCalls = 0;
+    const result = await runD1SummarizeArticle({
+      articleId: "11111111-1111-4111-8111-111111111111",
+      apiKeys: ["test-key"],
+      summarize: async () => {
+        providerCalls += 1;
+        return goodSummary as never;
+      },
+    });
+    assert.equal(result.result.status, "skipped");
+    assert.equal(providerCalls, 0, "an ineligible article must not launch a provider call");
+    const row = db.core.prepare("SELECT status,translation_status FROM articles WHERE id='11111111-1111-4111-8111-111111111111'").get() as Record<string, unknown>;
+    assert.deepEqual({ ...row }, { status: "cleaned", translation_status: "pending" });
+  } finally {
+    close(db);
+  }
+});
+
 test("D1 translation/enrichment completion stays private until the separate publication drain runs", async () => {
   const db = setup({ metadata: { collection: { diagnosticsId: "11111111-1111-4111-8111-111111111111", publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } } });
   try {

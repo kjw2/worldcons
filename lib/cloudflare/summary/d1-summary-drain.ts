@@ -535,6 +535,13 @@ async function summarizeCandidate(row: SummaryCandidateRow, options: { apiKeys: 
     && row.cleaned_text.trim().length >= MIN_PUBLISHABLE_TEXT_LENGTH
     && collection.publishable === true;
   if (!canSummarizeArticle({ ...row, source_metadata: sourceMetadata }) && !forceAllowed) {
+    // A targeted staged call can arrive after the legacy drain has already
+    // claimed the same article. That is live ownership contention, not a
+    // permanent policy failure: use the same retryable CAS signal emitted when
+    // the competing claim lands between our initial read and conditional write.
+    if (row.status === "summarizing" && row.translation_status === "running") {
+      throw new Error("summary_d1.start_write_cas_conflict");
+    }
     return { status: "skipped" as const, reason: "Article is not eligible for summarization." };
   }
   const core = d1();

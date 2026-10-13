@@ -744,6 +744,7 @@ test("K4: translate classifies a no-longer-eligible summary write as a terminal 
 test("K5: translate distinguishes retryable CAS contention from a terminal stale source revision", async () => {
   for (const fixture of [
     { failure: "summary_d1.success_write_cas_conflict", status: "pending", code: "ingest_stage.translate_summary_write_cas_conflict" },
+    { failure: "summary_d1.start_write_cas_conflict", status: "pending", code: "ingest_stage.translate_summary_write_cas_conflict" },
     { failure: "summary_d1.success_write_stale", status: "dead_letter", code: "ingest_stage.translate_summary_write_stale" },
   ]) {
     const harness = createFullHarness({
