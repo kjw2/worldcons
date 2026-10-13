@@ -92,7 +92,7 @@ Source: `pnpm audit:m2-readiness` (`scripts/audit-worldcons-m2-readiness.ts`), r
 | Normalize/Translate | `cleaned` 847 (`pending`), `summarized` 583 (`translated`) | `summarized` 136 (`translated`) | **PASS** (exists) |
 | Review gate / private states | 296 carry `review_state=summarized`; 1430 remain `publishable` | 12 `review_state=summarized`; 136 `publishable` | **PASS (gate exists)**; state hygiene needs review |
 | Publisher / P3 | `published_p3`: **583** | **136** | **PASS** (published) |
-| Search identity | `search_documents`: **582** | **136** | **PASS** (1 DE mismatch — see residual) |
+| Search identity | `search_documents`: **582** | **136** | **PASS for eligible counts**; DE P3 published 583 but the exact Search eligibility predicate yields 582 (intentional Catalog duplicate exclusion). Full ID-set/fingerprint equality was not checked in this audit. |
 | Staged ownership switchover readiness | M8-owned, 9 candidates `retrying` `BVERFG_OFFICIAL_VARIANTS_404` (latest 2026-10-11), latest run 2026-10-12 `discovered=0` `BVERFG_CANDIDATES_DEFERRED_BACKOFF` | M8-owned, 2 candidates `retrying` `PDF_TEXT_EXTRACTION_UNAVAILABLE`, latest run 2026-10-12 `discovered=0/fetched=0` | **NOT READY** — not switched |
 | 404 cooldown / backoff | present (`4b384be`), selecting deferred candidates | `revisionDate` 90-day recheck path present | **PASS (implemented)** |
 | Warnings | `BVERFG_CANDIDATES_DEFERRED_BACKOFF` (honest degraded) | `PDF_TEXT_EXTRACTION_UNAVAILABLE` (now fixed in extractor) | **PASS (honest)** |
@@ -107,7 +107,7 @@ Caveat recorded deliberately: `collection.publishable=1` for **100%** of DE/US i
 | 2 | Actual Production DE/US official-number verification per case | **NOT_OBSERVED** |
 | 3 | Normalize/Translate stage readiness (real counts) | **PASS** |
 | 4 | Review gates block unverified metadata (false-publish prevention) | **PASS** (`tests/ingest-stage-handlers.test.ts` L/N) |
-| 5 | Publisher/Search identity 1:1 | **PASS** with 1 DE residual (583 vs 582) |
+| 5 | Eligible Publisher/Search count reconciliation | **PASS for counts**: DE 582 eligible/582 Search; US 136/136. Exact ID-set and content fingerprints remain **NOT_OBSERVED**. |
 | 6 | Staged ownership switchover readiness (DE/US) | **FAIL / NOT READY** — remain M8-owned |
 | 7 | 404 cooldown/backoff | **PASS (implemented)** |
 | 8 | Warnings honest (no false success) | **PASS** |
@@ -137,7 +137,7 @@ Caveat recorded deliberately: `collection.publishable=1` for **100%** of DE/US i
 1. Production still has **0** `officialPdf` provenance for `us-scotus`; the two real candidates are unprocessed. Completing P2-M1 Production E2E requires the P2-M1 extractor fix to be deployed **and** those candidates drained. **Critical nuance:** the P2-1 letter-docket fix only helps candidates that are *discovered and fetched*. The two Production rows are already `retrying` at `attempt_count=11` (>=10 in the prior 3-day window), so routine eligibility **defers** them; and the newest slip opinions are all applications (`26A…`) dated `9/25/26`, now **older than 14 days**, so the daily primary window no longer selects them. The code fix is necessary but not sufficient to force a Production E2E on its own, and no DB write/redrive/replay was performed to bypass this. No DB write was performed.
 2. DE/US must **not** switch to staged ownership until per-case official-number verification is real in Production for both.
 3. `m8:types:check` is broken at clean HEAD independent of this change.
-4. DE/Search `583 published` vs `582 search_documents` — one residual projection gap.
+4. DE P3 has 583 published, but the exact `ELIGIBLE_PUBLISHED_PREDICATE` from `lib/cloudflare/search-projection/d1-sync.ts` yields **582 eligible**, matching **582 Search documents**. The one-case difference is the existing intentional Catalog de-duplication gate, **not a demonstrated projection gap**. This query was independently rerun against Production Core D1 on 2026-10-13. Exact eligible/Search article-ID set and stored-content fingerprint equality remain **NOT_OBSERVED**; counts alone cannot prove these.
 
 ## Artifacts / commits
 
