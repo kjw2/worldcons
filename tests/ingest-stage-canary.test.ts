@@ -311,19 +311,103 @@ test("bounded advance: only a fenced canary-owned succeeded job advances to a ca
     assert.equal(wrongOwner.advanced, false);
     assert.equal(wrongOwner.reason, "canary.advance_owner_mismatch");
 
-    // Correct provenance: advances to the durable normalize job via the event key.
-    const advanced = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: seed.jobId!, canaryId: seed.canaryId, operatorId: "op-1", deploymentRef: "test", now: NOW });
-    assert.equal(advanced.advanced, true, JSON.stringify(advanced));
-    assert.equal(advanced.fromStage, "crawl");
-    assert.equal(advanced.nextStage, "normalize");
-    const nextJob = await getIngestStageJobById(h.ingestDb, advanced.nextJobId!);
+    // Correct provenance, no queue: resolves the next stage without dispatching.
+    const resolvedOnly = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: seed.jobId!, canaryId: seed.canaryId, operatorId: "op-1", deploymentRef: "test", now: NOW });
+    assert.equal(resolvedOnly.advanced, true, JSON.stringify(resolvedOnly));
+    assert.equal(resolvedOnly.fromStage, "crawl");
+    assert.equal(resolvedOnly.nextStage, "normalize");
+    assert.equal(resolvedOnly.dispatched, false);
+    assert.equal(resolvedOnly.enqueued, 0);
+    const nextJob = await getIngestStageJobById(h.ingestDb, resolvedOnly.nextJobId!);
     assert.equal(nextJob?.stage, "normalize");
     assert.equal(nextJob?.source_key, "de-bverfg");
-    // The advance was appended to the immutable audit ledger.
-    const audit = h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_canary_records_v1 WHERE detail LIKE 'canary-advance-entry:%'").get() as { n: number };
-    assert.equal(Number(audit.n), 1);
+    assert.equal(nextJob?.status, "pending", "a resolve-only advance never leases the next job");
+    // Resolve-only writes NO advance-dispatch audit row (no send happened).
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_canary_records_v1 WHERE detail LIKE 'canary-advance-dispatch:%'").get()?.n, 0);
     // The advance never completes/publishes.
     assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("bounded advance dispatch: enqueues exactly the next stage job to its own queue and audits only after the send", async () => {
+  const h = createHarness();
+  try {
+    const plan = await planCanaryCase({ sourceKey: "de-bverfg", candidateUrl: DE_URL, identifiers: { ecli: DE_ECLI } }, { now: NOW });
+    const seed = await seedCanaryCase(h.ingestDb, h.bucket, plan, { operatorId: "op-1", deploymentRef: "test", now: NOW });
+    const handlers = canaryHandlers(h);
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize,translate,public-judgment,publish,search");
+    const stagedSources = ["fr-conseil-constitutionnel", "es-tribunal-constitucional"];
+    const crawlSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { crawlSent.push(body); return {}; } }, jobId: seed.jobId!, canaryId: seed.canaryId, operatorId: "op-1", deploymentRef: "test", stage: "crawl", now: NOW });
+    await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.crawl, messages: [{ body: crawlSent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources }),
+    });
+
+    const stagesSent: Array<{ stage: string; body: IngestStageQueueMessage }> = [];
+    const advanced = await advanceCanaryCase({
+      ingestDb: h.ingestDb, jobId: seed.jobId!, canaryId: seed.canaryId, operatorId: "op-1", deploymentRef: "test", now: NOW,
+      queueFor: (stage) => ({ async send(body) { stagesSent.push({ stage, body }); return {}; } }),
+    });
+    assert.equal(advanced.advanced, true, JSON.stringify(advanced));
+    assert.equal(advanced.dispatched, true);
+    assert.equal(advanced.enqueued, 1);
+    assert.equal(advanced.reason, "canary.advance_dispatched");
+    assert.equal(stagesSent.length, 1);
+    assert.equal(stagesSent[0].stage, "normalize", "dispatched to the NEXT stage's own queue");
+    assert.equal(stagesSent[0].body.jobId, advanced.nextJobId);
+    // The row is leased under the canary owner fence.
+    const nextRow = await getIngestStageJobById(h.ingestDb, advanced.nextJobId!);
+    assert.equal(nextRow?.status, "leased");
+    assert.equal(nextRow?.claimed_by, `canary-owner:${seed.canaryId}`);
+    // Exactly one dispatched audit row, with the real canary source (not empty).
+    const audit = h.ingest.prepare("SELECT source_key, outcome, detail FROM ingest_stage_canary_records_v1 WHERE outcome='dispatched' AND detail LIKE 'canary-advance-dispatch:%'").all() as Array<Record<string, unknown>>;
+    assert.equal(audit.length, 1);
+    assert.equal(audit[0].source_key, "de-bverfg");
+    assert.match(String(audit[0].detail), /canary-advance-dispatch:crawl->normalize/);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("bounded advance denials: non-canary origin, unresolved nextKey, forged stage, terminal and unknown job", async () => {
+  const h = createHarness();
+  try {
+    // Unknown job id.
+    const missing = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: "00000000-0000-4000-8000-000000000000", canaryId: "a".repeat(32), operatorId: "op", deploymentRef: null, now: NOW });
+    assert.equal(missing.reason, "canary.advance_job_not_found");
+
+    // A succeeded job owned by the canary but for a NON-canary source is refused.
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,claimed_by,result_ref,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("noncanary-src", buildIngestStageIdempotencyKey({ articleId: "a", stage: "crawl", sourceVersion: "v", contentHash: "h" }), "crawl", "a", "fr-conseil-constitutionnel", "v", "h", "succeeded", 0, 1, 8, `canary-owner:${"b".repeat(32)}`, null, NOW, NOW, NOW);
+    const nonCanary = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: "noncanary-src", canaryId: "b".repeat(32), operatorId: "op", deploymentRef: null, now: NOW });
+    assert.equal(nonCanary.reason, "canary.advance_origin_not_canary");
+    assert.equal(nonCanary.advanced, false);
+
+    // A succeeded canary-owned job with NO advance event (no registered next job).
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,claimed_by,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("no-event", buildIngestStageIdempotencyKey({ articleId: "b", stage: "crawl", sourceVersion: "v", contentHash: "h2" }), "crawl", "b", "de-bverfg", "v", "h2", "succeeded", 0, 1, 8, `canary-owner:${"c".repeat(32)}`, NOW, NOW, NOW);
+    const noEvent = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: "no-event", canaryId: "c".repeat(32), operatorId: "op", deploymentRef: null, now: NOW });
+    assert.equal(noEvent.reason, "canary.advance_next_event_missing");
+
+    // An advance event whose nextKey resolves to a job of the WRONG stage is refused.
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,claimed_by,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("mismatch-src", buildIngestStageIdempotencyKey({ articleId: "c", stage: "crawl", sourceVersion: "v", contentHash: "h3" }), "crawl", "c", "us-scotus", "v", "h3", "succeeded", 0, 1, 8, `canary-owner:${"d".repeat(32)}`, NOW, NOW, NOW);
+    const wrongKey = buildIngestStageIdempotencyKey({ articleId: "c", stage: "translate", sourceVersion: "v", contentHash: "h3" });
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("wrongstage-next", wrongKey, "translate", "c", "us-scotus", "v", "h3", "pending", 0, 0, 8, NOW, NOW);
+    h.ingest.prepare("INSERT INTO ingest_stage_job_events (id,job_id,attempt_id,event_type,stage,fencing_token,safe_details,occurred_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run("ev-1", "mismatch-src", null, "job_stage_advanced", "crawl", "1", JSON.stringify({ nextStage: "translate", nextKey: wrongKey }), NOW);
+    const stageMismatch = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: "mismatch-src", canaryId: "d".repeat(32), operatorId: "op", deploymentRef: null, now: NOW });
+    assert.equal(stageMismatch.reason, "canary.advance_next_stage_mismatch");
+
+    // A terminal 'search' job has no next stage.
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,claimed_by,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("terminal-src", buildIngestStageIdempotencyKey({ articleId: "d", stage: "search", sourceVersion: "v", contentHash: "h4" }), "search", "d", "de-bverfg", "v", "h4", "succeeded", 0, 1, 8, `canary-owner:${"e".repeat(32)}`, NOW, NOW, NOW);
+    const terminal = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: "terminal-src", canaryId: "e".repeat(32), operatorId: "op", deploymentRef: null, now: NOW });
+    assert.equal(terminal.reason, "canary.advance_terminal_stage");
+
+    // Every denial is retained in the audit ledger (never a silent no-op).
+    const denials = h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_canary_records_v1 WHERE outcome LIKE 'denied_%'").get() as { n: number };
+    assert.ok(Number(denials.n) >= 5, `expected retained denial audits, got ${denials.n}`);
   } finally { h.ingest.close(); h.core.close(); }
 });
 
@@ -520,7 +604,7 @@ test("operator canary workflow envelope: accepts the canonical DE and US payload
   });
   assert.equal(de.ok, true);
   assert.deepEqual(de.ok ? de.value : null, {
-    sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, operatorId: "cloudflare-workflow-operator", mode: "seed-and-dispatch",
+    payloadKind: "seed", sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, operatorId: "cloudflare-workflow-operator", mode: "seed-and-dispatch",
   });
 
   const us = parseOperatorCanaryEvent({
@@ -528,12 +612,19 @@ test("operator canary workflow envelope: accepts the canonical DE and US payload
   });
   assert.equal(us.ok, true);
   assert.deepEqual(us.ok ? us.value : null, {
-    sourceKey: "us-scotus", candidateUrl: US_URL, docket: "26A388", operatorId: "ops:reviewer", mode: "seed",
+    payloadKind: "seed", sourceKey: "us-scotus", candidateUrl: US_URL, docket: "26A388", operatorId: "ops:reviewer", mode: "seed",
   });
 
   // A JSON string envelope is accepted (Wrangler create may pass one).
   const asString = parseOperatorCanaryEvent(JSON.stringify({ sourceKey: "us-scotus", candidateUrl: US_URL, docket: "26A388" }));
   assert.equal(asString.ok, true);
+
+  // The advance shape is discrimated by mode:'advance' and carries no source/URL.
+  const advance = parseOperatorCanaryEvent({ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "C121C7D71702D52251F439F7130F91BE" });
+  assert.equal(advance.ok, true);
+  assert.deepEqual(advance.ok ? advance.value : null, {
+    payloadKind: "advance", mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "c121c7d71702d52251f439f7130f91be", operatorId: "cloudflare-workflow-operator",
+  });
 });
 
 test("operator canary workflow envelope: fails closed on bad source, missing identity, unknown key/mode, and non-object", () => {
@@ -555,12 +646,33 @@ test("operator canary workflow envelope: fails closed on bad source, missing ide
   }
 });
 
+test("operator canary workflow envelope: the advance shape strictly rejects bad/forged/mixed fields", () => {
+  const cases: Array<[unknown, RegExp]> = [
+    // A seed key on the advance shape is rejected (shapes never mix).
+    [{ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "a".repeat(32), sourceKey: "de-bverfg" }, /unknown_key:sourceKey/],
+    [{ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "a".repeat(32), candidateUrl: DE_URL }, /unknown_key:candidateUrl/],
+    // Non-UUID jobId and non-32-hex canaryId are rejected.
+    [{ mode: "advance", jobId: "not-a-uuid", canaryId: "a".repeat(32) }, /advance_job_id_invalid/],
+    [{ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "not-hex" }, /advance_canary_id_invalid/],
+    [{ mode: "advance", canaryId: "a".repeat(32) }, /advance_job_id_invalid/],
+    [{ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49" }, /advance_canary_id_invalid/],
+    [{ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "a".repeat(32), operatorId: "x".repeat(300) }, /operator_id_invalid/],
+    // An unknown top-level key on either shape is rejected.
+    [{ mode: "advance", jobId: "db44b56c-b5d6-46cf-821f-693c09757f49", canaryId: "a".repeat(32), extra: 1 }, /unknown_key:extra/],
+  ];
+  for (const [payload, pattern] of cases) {
+    const result = parseOperatorCanaryEvent(payload);
+    assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(payload)}`);
+    assert.match(result.ok ? "" : result.error, pattern);
+  }
+});
+
 test("operator canary workflow: the canonical DE event plans and seeds exactly one crawl job, dispatch is optional", async () => {
   const h = createHarness();
   try {
     const parsed = parseOperatorCanaryEvent({ sourceKey: "de-bverfg", candidateUrl: DE_URL, ecli: DE_ECLI, mode: "seed-and-dispatch" });
     assert.equal(parsed.ok, true);
-    if (!parsed.ok) return;
+    if (!parsed.ok || parsed.value.payloadKind !== "seed") return;
     const plan = await planCanaryCase(
       { sourceKey: parsed.value.sourceKey, candidateUrl: parsed.value.candidateUrl, identifiers: { ecli: parsed.value.ecli } },
       { now: NOW },

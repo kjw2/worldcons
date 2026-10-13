@@ -30,7 +30,7 @@ import {
   parseOperatorCanaryEvent,
   type OperatorCanaryEvent,
 } from "../../../lib/cloudflare/ingest-stages/canary-workflow-payload";
-import { planCanaryCase, seedCanaryCase, dispatchCanaryCase } from "../../../lib/cloudflare/ingest-stages/canary";
+import { planCanaryCase, seedCanaryCase, dispatchCanaryCase, advanceCanaryCase } from "../../../lib/cloudflare/ingest-stages/canary";
 import { handleStageCanary } from "./stage-canary-route";
 import type { NativeCrawlerBindings, NativeCrawlerSource } from "./native-crawler";
 import { handleBrowserNavigate } from "./browser-navigate";
@@ -511,6 +511,44 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
       worldcons_ops: this.env.WORLDCONS_OPS,
     });
     const ingestDb = this.env.WORLDCONS_INGEST as unknown as Parameters<typeof seedCanaryCase>[0];
+
+    // ---- Advance branch ----------------------------------------------------
+    // Continue an already-seeded canary by exactly one stage. No source/URL/identity
+    // is accepted here; provenance comes only from the durable job row + the
+    // stage-advance event. `advanceCanaryCase` dispatches the next job to the
+    // correct per-stage queue via the Worker's own bindings.
+    if (payload.payloadKind === "advance") {
+      const advanced = await step.do(`advance-${payload.canaryId}-${payload.jobId}`, { timeout: "2 minutes" }, () =>
+        advanceCanaryCase({
+          ingestDb,
+          jobId: payload.jobId,
+          canaryId: payload.canaryId,
+          operatorId: payload.operatorId,
+          deploymentRef: null,
+          now: new Date().toISOString(),
+          queueFor: (stage) => stageQueueSender(this.env, stage),
+        }),
+      );
+      if (!advanced.advanced) {
+        throw new NonRetryableError(advanced.reason);
+      }
+      return {
+        schemaVersion: 1,
+        mode: "advance" as const,
+        jobId: payload.jobId,
+        canaryId: payload.canaryId,
+        fromStage: advanced.fromStage,
+        nextStage: advanced.nextStage,
+        nextJobId: advanced.nextJobId,
+        sourceKey: advanced.sourceKey,
+        dispatched: advanced.dispatched,
+        enqueued: advanced.enqueued,
+        reason: advanced.reason,
+        note: "Advanced exactly one already-succeeded canary job to its next stage. No publish, no review bypass, no ownership change.",
+      };
+    }
+
+    // ---- Seed branch -------------------------------------------------------
     const rawBucket = this.env.WORLDCONS_RAW as unknown as Parameters<typeof seedCanaryCase>[1];
     const crawlBinding = (this.env.STAGE_QUEUE_CRAWL as unknown as IngestStageQueueSender | undefined);
     if (!crawlBinding) throw new NonRetryableError("operator_canary.crawl_queue_binding_missing");

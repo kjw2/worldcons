@@ -445,11 +445,14 @@ export interface AdvanceCanaryResult {
   nextStage: IngestStage | null;
   nextJobId: string | null;
   nextPayloadRef: string | null;
+  /** The canary source shared by the addressed job and its next job, when resolved. */
+  sourceKey: string | null;
+  /** True only when this call actually leased + enqueued the next job. */
+  dispatched: boolean;
+  enqueued: number;
 }
 
-const CANARY_ADVANCE_ENTRY_REF = "canary-advance-entry";
-
-/** Reads the single `job_stage_advanced` event key for a succeeded canary job. */
+/** Reads the single `job_stage_advanced` event key for a succeeded job. */
 async function readAdvanceNextKey(db: D1RuntimeDatabase, jobId: string): Promise<string | null> {
   const result = await db
     .prepare(
@@ -484,14 +487,19 @@ async function readAdvanceNextKey(db: D1RuntimeDatabase, jobId: string): Promise
  * - The next job is located ONLY through the durable `job_stage_advanced` event
  *   that the succeeded stage's own handler registered (`safe_details.nextKey`).
  *   This function never fabricates a transition the handler did not produce.
- * - The next job's `source_key` must be the canary source (the source propagation
- *   is the durable provenance across the native->core identity change), so an
- *   advance can never shepherd a non-canary job.
- * - The advance is appended to the immutable canary audit ledger.
+ * - The next job's `source_key` must equal the addressed job's `source_key` (a
+ *   canary source), so an advance can never shepherd a non-canary or mixed-source
+ *   job.
+ * - When a `queue` is supplied it performs exactly one fenced single-job dispatch
+ *   of that next job (workerId `canary-owner:<canaryId>`, limit 1, bounded lease)
+ *   through the audited dispatcher. A scheduled dispatcher that already leased the
+ *   job makes this a clean no-op. The `dispatched` audit row is written ONLY after
+ *   the dispatcher reports the enqueue, so it never claims a send that did not
+ *   happen; denials are always recorded.
  *
  * It never completes/fails a job, never marks anything succeeded/published, and
- * touches exactly the one addressed job. Scheduled 15-minute transitions remain
- * the normal path; this is an opt-in convenience.
+ * touches exactly the one addressed job's next stage. Scheduled 15-minute
+ * transitions remain the normal path; this is an opt-in convenience.
  */
 export async function advanceCanaryCase(input: {
   ingestDb: D1RuntimeDatabase;
@@ -500,6 +508,9 @@ export async function advanceCanaryCase(input: {
   operatorId: string;
   deploymentRef: string | null;
   now: string;
+  /** When supplied, the resolved next job is dispatched to the next stage's queue. */
+  queueFor?: (stage: IngestStage) => IngestStageQueueSender;
+  leaseSeconds?: number;
 }): Promise<AdvanceCanaryResult> {
   const base = {
     canaryId: input.canaryId,
@@ -514,12 +525,13 @@ export async function advanceCanaryCase(input: {
   };
   const deny = async (outcome: CanaryOutcome, reason: string, fromStage: IngestStage | null): Promise<AdvanceCanaryResult> => {
     await recordCanaryAttempt(input.ingestDb, { ...base, jobId: input.jobId, outcome, detail: reason });
-    return { advanced: false, reason, fromStage, nextStage: null, nextJobId: null, nextPayloadRef: null };
+    return { advanced: false, reason, fromStage, nextStage: null, nextJobId: null, nextPayloadRef: null, sourceKey: null, dispatched: false, enqueued: 0 };
   };
   const job = await getIngestStageJobById(input.ingestDb, input.jobId);
   if (!job) return deny("denied_job_conflict", "canary.advance_job_not_found", null);
   if (job.status !== "succeeded") return deny("denied_job_conflict", "canary.advance_source_not_succeeded", job.stage);
   if (job.claimed_by !== `${CANARY_CLAIM_PREFIX}${input.canaryId}`) return deny("denied_source", "canary.advance_owner_mismatch", job.stage);
+  if (!isCanarySource(job.source_key ?? "")) return deny("denied_source", "canary.advance_origin_not_canary", job.stage);
   const nextStage = INGEST_STAGE_NEXT[job.stage];
   if (!nextStage) return deny("denied_job_conflict", "canary.advance_terminal_stage", job.stage);
 
@@ -528,10 +540,50 @@ export async function advanceCanaryCase(input: {
   const nextJob = await getIngestStageJobByIdempotencyKey(input.ingestDb, nextKey);
   if (!nextJob) return deny("denied_job_conflict", "canary.advance_next_job_not_registered", job.stage);
   if (nextJob.stage !== nextStage) return deny("denied_job_conflict", "canary.advance_next_stage_mismatch", job.stage);
+  // The next job must be the exact same canary source as the addressed job: this
+  // is the durable provenance across the native->core identity change.
+  if (nextJob.source_key !== job.source_key) return deny("denied_source", "canary.advance_next_source_mismatch", job.stage);
   if (!isCanarySource(nextJob.source_key ?? "")) return deny("denied_source", "canary.advance_next_source_not_canary", job.stage);
 
-  await recordCanaryAttempt(input.ingestDb, {
-    ...base, jobId: nextJob.id, outcome: "dispatched", detail: `${CANARY_ADVANCE_ENTRY_REF}:${job.stage}->${nextStage}`,
+  // Resolved and provenance-matched. The next job is ready to dispatch; whether it
+  // is actually enqueued (and thus whether a `dispatched` row is written) depends
+  // on the caller supplying a queue. The dispatch decision is authoritative: the
+  // audit row is written only AFTER the dispatcher reports an enqueue.
+  const resolved: AdvanceCanaryResult = {
+    advanced: true,
+    reason: "canary.advance_ready",
+    fromStage: job.stage,
+    nextStage,
+    nextJobId: nextJob.id,
+    nextPayloadRef: nextJob.payload_ref ?? null,
+    sourceKey: nextJob.source_key ?? null,
+    dispatched: false,
+    enqueued: 0,
+  };
+  if (!input.queueFor) return resolved;
+
+  const result = await dispatchIngestStagePass({
+    ingestDb: input.ingestDb,
+    queue: input.queueFor(nextStage),
+    stage: nextStage,
+    workerId: `${CANARY_CLAIM_PREFIX}${input.canaryId}`,
+    limit: 1,
+    leaseSeconds: input.leaseSeconds ?? INGEST_STAGE_CANARY_LEASE_SECONDS,
+    jobId: nextJob.id,
+    now: input.now,
   });
-  return { advanced: true, reason: "canary.advance_ready", fromStage: job.stage, nextStage, nextJobId: nextJob.id, nextPayloadRef: nextJob.payload_ref ?? null };
+  if (result.enqueued !== 1) {
+    // A no-op (already leased by the scheduled dispatcher, or terminal) is not an
+    // error and must not write a misleading `dispatched` row.
+    return { ...resolved, reason: "canary.advance_dispatch_no_change", dispatched: false, enqueued: result.enqueued };
+  }
+  // Audit AFTER the enqueue actually happened, with the real canary source.
+  await recordCanaryAttempt(input.ingestDb, {
+    ...base,
+    sourceKey: nextJob.source_key ?? "",
+    jobId: nextJob.id,
+    outcome: "dispatched",
+    detail: `canary-advance-dispatch:${job.stage}->${nextStage}`,
+  });
+  return { ...resolved, reason: "canary.advance_dispatched", dispatched: true, enqueued: result.enqueued };
 }

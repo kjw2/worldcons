@@ -237,7 +237,7 @@ respected unchanged.
 
 | Command | Result |
 | --- | --- |
-| `pnpm test:canary` (new) | **17/17 pass** |
+| `pnpm test:canary` (new) | **20/20 pass** |
 | `pnpm test:ingest-stages` | **58/58 pass** |
 | `pnpm test:native-crawler` | **35/35 pass** |
 | `pnpm test:m8` | **48/48 pass** |
@@ -334,19 +334,43 @@ Invoke-RestMethod -Method Post `
   -Body '{"sourceKey":"de-bverfg","candidateUrl":"https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html?nn=68112","ecli":"ECLI:DE:BVerfG:2026:rk20260905.2bvr135824","operatorId":"ops:reviewer","dispatch":true}'
 ```
 
-### Optional bounded next-stage advance
+### Optional bounded next-stage advance (Workflow mode `advance`)
 
 To avoid waiting 15 minutes between stages, an operator may advance **one**
-already-succeeded canary job to its next stage, gated by exact canary provenance
-(job `status='succeeded'` AND `claimed_by='canary-owner:<canaryId>'` AND a durable
-`job_stage_advanced` event linking a canary next job). It never completes, fails,
-publishes or fabricates a transition; scheduled transitions remain the normal path.
+already-succeeded canary job to its next stage. This is the SAME Workflow with a
+second, strictly discriminated payload shape `{mode:'advance',jobId,canaryId,operatorId?}`
+— it carries **no** `sourceKey`/`candidateUrl`/identity, so it can only continue an
+already-seeded canary. Provenance is durable: the job must be `status='succeeded'`
+AND `claimed_by='canary-owner:<canaryId>'` AND the `job_stage_advanced` event must
+link a next job whose `source_key` equals the addressed job's canary source. It
+then dispatches exactly that next job to its own per-stage queue (`workerId
+canary-owner:<canaryId>`, limit 1, bounded lease). If the scheduled dispatcher
+already leased the job, the advance is a clean no-op. It never publishes, bypasses
+review, or fabricates a transition; scheduled transitions remain the normal path.
 
 ```
--Body '{"advance":true,"jobId":"<succeededCanaryJobId>","canaryId":"<canaryId>","operatorId":"ops:reviewer"}'
-# returns the next stage/jobId, or a 409 with a named refusal reason
-# repeat once per stage using the returned nextJobId
+# DE example (advance the succeeded crawl job db44b56c-... to normalize)
+pnpm exec wrangler workflows trigger worldcons-operator-canary-v1 `
+  --config workers/async-pipeline/wrangler.jsonc `
+  --payload '{"mode":"advance","jobId":"db44b56c-b5d6-46cf-821f-693c09757f49","canaryId":"c121c7d71702d52251f439f7130f91be","operatorId":"cloudflare-workflow-operator"}'
+
+# US example (advance the succeeded crawl job ed2f72db-... to normalize)
+pnpm exec wrangler workflows trigger worldcons-operator-canary-v1 `
+  --config workers/async-pipeline/wrangler.jsonc `
+  --payload '{"mode":"advance","jobId":"ed2f72db-b51e-4ace-852a-4902b4929b53","canaryId":"759ea8a17ce1b8b393e1b3064895f6ba","operatorId":"cloudflare-workflow-operator"}'
 ```
+
+The run returns `{fromStage,nextStage,nextJobId,sourceKey,dispatched,enqueued,reason}`.
+A denial (`canary.advance_owner_mismatch`, `canary.advance_next_event_missing`,
+`canary.advance_next_stage_mismatch`, `canary.advance_next_source_mismatch`,
+`canary.advance_terminal_stage`, …) fails the run non-retryably and is retained in
+the audit ledger. Repeat once per stage using the returned `nextJobId`. The
+`dispatched` audit row is written only AFTER a real enqueue, with the real canary
+source (never an optimistic pre-send row).
+
+The HTTP-route equivalent (`POST /v1/stage-canary` with `{"advance":true,...}`)
+remains available only when `WORLDCONS_CANARY_TOKEN` is provisioned; use the
+Workflow when it is not.
 
 Then observe (read-only):
 
@@ -375,17 +399,20 @@ The Workflow requires no Worker Secret and is the recommended path.
 
 ## 7. Remaining blockers (must not be marked closed)
 
-1. **No live Production canary executed.** Deploy + operator invocation are a
-   separate, explicitly-authorized action; this session did not deploy.
-2. **Germany:** no newly-fetched in-project official ECLI/body beyond the raw
-   HTTP observation; no German seven-stage Production job. G2/G3/G4 still
-   `NOT_OBSERVED`.
-3. **United States:** no new Production `officialPdf` row (0 articles), no manual
+1. **No full operational cutover.** A real DE crawl SUCCEEDED and its normalize
+   job was registered (handoff IDs: DE canaryId `c121c7d71702d52251f439f7130f91be`
+   crawlJob `db44b56c-b5d6-46cf-821f-693c09757f49`; US canaryId
+   `759ea8a17ce1b8b393e1b3064895f6ba` crawlJob `ed2f72db-b51e-4ace-852a-4902b4929b53`).
+   The bounded `advance` mode can now continue those cases one stage at a time
+   without waiting for the 15-minute crons. This is a convenience, **not** a
+   cutover and **not** a seven-stage proof (discovery is intentionally absent).
+2. **United States:** no new Production `officialPdf` row (0 articles), no manual
    publication authorization, and a US canary will honestly block at public
    judgment. The 136/136/136 legacy counts remain non-proof.
-4. **Ownership intentionally unchanged.** DE/US stay M8-owned; FR/ES stay staged.
-   No paired allowlist/exclude change; no Wrangler edit.
-5. **P2-M1 extractor/selection:** the two historical US candidates remain
+3. **Ownership intentionally unchanged.** DE/US stay M8-owned; FR/ES stay staged.
+   No paired allowlist/exclude change; no Wrangler config change to the source
+   allowlist/exclusion.
+4. **P2-M1 extractor/selection:** the two historical US candidates remain
    `retrying` at attempt 11 and are outside routine reselection; resolving them
    is a separate policy question, not altered here.
 

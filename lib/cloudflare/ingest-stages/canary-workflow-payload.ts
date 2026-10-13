@@ -8,15 +8,26 @@
  * operator-supplied payload: every field is bounded, `sourceKey` is restricted to
  * the two canary countries, unknown keys/modes are rejected, and no unbounded
  * list/limit field can be smuggled in.
+ *
+ * Two disjoint payload shapes are supported and strictly discriminated:
+ *
+ *   { sourceKey: "de-bverfg"|"us-scotus", candidateUrl, ecli?|docket?, operatorId?, mode?: "seed"|"seed-and-dispatch" }
+ *   { mode: "advance", jobId: <uuid>, canaryId: <32-hex>, operatorId? }
+ *
+ * The `advance` shape carries NO `sourceKey`/`candidateUrl`/identity and never
+ * changes source ownership; it can only continue an already-seeded canary.
  */
 import { CANARY_SOURCE_KEYS, type CanarySourceKey } from "./canary";
 
-/** The two supported operation modes; anything else is rejected. */
-export const OPERATOR_CANARY_MODES = ["seed", "seed-and-dispatch"] as const;
-export type OperatorCanaryMode = (typeof OPERATOR_CANARY_MODES)[number];
+/** The supported seed modes; anything else is rejected. */
+export const OPERATOR_CANARY_SEED_MODES = ["seed", "seed-and-dispatch"] as const;
+export type OperatorCanarySeedMode = (typeof OPERATOR_CANARY_SEED_MODES)[number];
 
-/** Only these top-level keys may appear in the event payload. */
-export const OPERATOR_CANARY_ALLOWED_KEYS = [
+/** The two disjoint top-level payload shapes. */
+export type OperatorCanaryPayloadKind = "seed" | "advance";
+
+/** Keys allowed on the seed shape only. */
+export const OPERATOR_CANARY_SEED_KEYS = [
   "sourceKey",
   "candidateUrl",
   "ecli",
@@ -25,20 +36,43 @@ export const OPERATOR_CANARY_ALLOWED_KEYS = [
   "mode",
 ] as const;
 
+/** Keys allowed on the advance shape only. */
+export const OPERATOR_CANARY_ADVANCE_KEYS = [
+  "mode",
+  "jobId",
+  "canaryId",
+  "operatorId",
+] as const;
+
 export const OPERATOR_CANARY_DEFAULT_OPERATOR_ID = "cloudflare-workflow-operator" as const;
 const MAX_URL_LENGTH = 2_048;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_OPERATOR_ID_LENGTH = 200;
 
-/** The validated, bounded workflow event. */
-export interface OperatorCanaryEvent {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CANARY_ID_PATTERN = /^[0-9a-f]{32}$/i;
+
+/** The validated seed envelope. */
+export interface OperatorCanarySeedEvent {
+  payloadKind: "seed";
   sourceKey: CanarySourceKey;
   candidateUrl: string;
   ecli?: string;
   docket?: string;
   operatorId: string;
-  mode: OperatorCanaryMode;
+  mode: OperatorCanarySeedMode;
 }
+
+/** The validated advance envelope. */
+export interface OperatorCanaryAdvanceEvent {
+  payloadKind: "advance";
+  mode: "advance";
+  jobId: string;
+  canaryId: string;
+  operatorId: string;
+}
+
+export type OperatorCanaryEvent = OperatorCanarySeedEvent | OperatorCanaryAdvanceEvent;
 
 export type OperatorCanaryParseResult =
   | { ok: true; value: OperatorCanaryEvent }
@@ -48,11 +82,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function rejectUnknownKeys(candidate: Record<string, unknown>, allowed: readonly string[]): string | null {
+  const permitted = new Set<string>(allowed);
+  for (const key of Object.keys(candidate)) {
+    if (!permitted.has(key)) return `operator_canary.unknown_key:${key}`;
+  }
+  return null;
+}
+
+function parseOperatorId(value: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (value !== undefined && (typeof value !== "string" || value.length > MAX_OPERATOR_ID_LENGTH)) {
+    return { ok: false, error: "operator_canary.operator_id_invalid" };
+  }
+  const operatorId = typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : OPERATOR_CANARY_DEFAULT_OPERATOR_ID;
+  return { ok: true, value: operatorId };
+}
+
 /**
  * Strictly validates a workflow payload. A JSON string is accepted (the Wrangler
- * CLI/`create` path may pass one) and parsed defensively. Any malformed shape,
- * unknown key, unknown mode, out-of-range source, or missing per-source identity
- * fails closed with a stable error code.
+ * CLI/`create` path may pass one) and parsed defensively. The two shapes are
+ * discriminated FIRST by `mode`; an unknown mode fails closed, and each shape then
+ * rejects every key it does not own so a seed/advance body can never be mixed.
  */
 export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseResult {
   let candidate = payload;
@@ -65,9 +117,40 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
   }
   if (!isRecord(candidate)) return { ok: false, error: "operator_canary.payload_not_object" };
 
-  const allowed = new Set<string>(OPERATOR_CANARY_ALLOWED_KEYS);
-  for (const key of Object.keys(candidate)) {
-    if (!allowed.has(key)) return { ok: false, error: `operator_canary.unknown_key:${key}` };
+  // Discriminate on `mode`. Any present-and-recognised mode names exactly one
+  // shape; an absent or unrecognised mode is handled by the seed branch (absent =>
+  // default seed mode; unrecognised => rejected there).
+  const modeRaw = candidate.mode;
+  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance"].includes(modeRaw)) {
+    return { ok: false, error: "operator_canary.mode_not_allowed" };
+  }
+  const isAdvance = modeRaw === "advance";
+
+  const shapeError = rejectUnknownKeys(candidate, isAdvance ? OPERATOR_CANARY_ADVANCE_KEYS : OPERATOR_CANARY_SEED_KEYS);
+  if (shapeError) return { ok: false, error: shapeError };
+
+  const operator = parseOperatorId(candidate.operatorId);
+  if (!operator.ok) return operator;
+
+  if (isAdvance) {
+    const jobIdRaw = candidate.jobId;
+    if (typeof jobIdRaw !== "string" || !UUID_PATTERN.test(jobIdRaw.trim())) {
+      return { ok: false, error: "operator_canary.advance_job_id_invalid" };
+    }
+    const canaryIdRaw = candidate.canaryId;
+    if (typeof canaryIdRaw !== "string" || !CANARY_ID_PATTERN.test(canaryIdRaw.trim())) {
+      return { ok: false, error: "operator_canary.advance_canary_id_invalid" };
+    }
+    return {
+      ok: true,
+      value: {
+        payloadKind: "advance",
+        mode: "advance",
+        jobId: jobIdRaw.trim(),
+        canaryId: canaryIdRaw.trim().toLowerCase(),
+        operatorId: operator.value,
+      },
+    };
   }
 
   const sourceKey = candidate.sourceKey;
@@ -99,31 +182,23 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
     return { ok: false, error: "operator_canary.docket_required_for_us" };
   }
 
-  const operatorIdRaw = candidate.operatorId;
-  if (operatorIdRaw !== undefined && (typeof operatorIdRaw !== "string" || operatorIdRaw.length > MAX_OPERATOR_ID_LENGTH)) {
-    return { ok: false, error: "operator_canary.operator_id_invalid" };
-  }
-  const operatorId = typeof operatorIdRaw === "string" && operatorIdRaw.trim().length > 0
-    ? operatorIdRaw.trim()
-    : OPERATOR_CANARY_DEFAULT_OPERATOR_ID;
-
-  const modeRaw = candidate.mode;
-  let mode: OperatorCanaryMode = "seed-and-dispatch";
+  let mode: OperatorCanarySeedMode = "seed-and-dispatch";
   if (modeRaw !== undefined) {
-    if (typeof modeRaw !== "string" || !(OPERATOR_CANARY_MODES as readonly string[]).includes(modeRaw)) {
+    if (typeof modeRaw !== "string" || !(OPERATOR_CANARY_SEED_MODES as readonly string[]).includes(modeRaw)) {
       return { ok: false, error: "operator_canary.mode_not_allowed" };
     }
-    mode = modeRaw as OperatorCanaryMode;
+    mode = modeRaw as OperatorCanarySeedMode;
   }
 
   return {
     ok: true,
     value: {
+      payloadKind: "seed",
       sourceKey: sourceKey as CanarySourceKey,
       candidateUrl: candidateUrl.trim(),
       ...(typeof ecli === "string" ? { ecli: ecli.trim() } : {}),
       ...(typeof docket === "string" ? { docket: docket.trim() } : {}),
-      operatorId,
+      operatorId: operator.value,
       mode,
     },
   };

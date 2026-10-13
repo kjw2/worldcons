@@ -950,16 +950,21 @@ assert(
     operatorCanaryWorkflowSource.includes("parseOperatorCanaryEvent") &&
     operatorCanaryWorkflowSource.includes("planCanaryCase") &&
     operatorCanaryWorkflowSource.includes("seedCanaryCase") &&
-    operatorCanaryWorkflowSource.includes("dispatchCanaryCase"),
-  "the operator canary must be a Workflow entrypoint that strictly validates the event and reuses the canonical plan/seed/dispatch modules",
+    operatorCanaryWorkflowSource.includes("dispatchCanaryCase") &&
+    operatorCanaryWorkflowSource.includes("advanceCanaryCase") &&
+    operatorCanaryWorkflowSource.includes("payloadKind === \"advance\""),
+  "the operator canary must be a Workflow entrypoint that strictly validates the event and reuses the canonical plan/seed/dispatch/advance modules",
 );
 const operatorCanaryPayloadSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary-workflow-payload.ts"), "utf8");
 assert(
   operatorCanaryPayloadSource.includes("parseOperatorCanaryEvent") &&
     operatorCanaryPayloadSource.includes("CANARY_SOURCE_KEYS") &&
     operatorCanaryPayloadSource.includes("operator_canary.unknown_key:") &&
-    operatorCanaryPayloadSource.includes("operator_canary.mode_not_allowed"),
-  "the operator canary workflow payload must reject unknown keys, unknown modes, and non-DE/US sources",
+    operatorCanaryPayloadSource.includes("operator_canary.mode_not_allowed") &&
+    operatorCanaryPayloadSource.includes("operator_canary.advance_job_id_invalid") &&
+    operatorCanaryPayloadSource.includes("operator_canary.advance_canary_id_invalid") &&
+    operatorCanaryPayloadSource.includes("OPERATOR_CANARY_ADVANCE_KEYS"),
+  "the operator canary workflow payload must reject unknown keys, unknown modes, non-DE/US sources, and malformed advance job/canary ids with two strictly discriminated shapes",
 );
 const wranglerConfigSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/wrangler.jsonc"), "utf8");
 assert(
