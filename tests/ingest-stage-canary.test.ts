@@ -25,6 +25,8 @@ import { dispatchIngestStagePass } from "../lib/cloudflare/ingest-stages/dispatc
 import { NATIVE_CRAWLER_SOURCES } from "../workers/async-pipeline/src/native-crawler";
 import {
   CANARY_DISCOVERY_MAX_LINKS,
+  canaryDiscoveryDefaultRangeDays,
+  canaryDiscoveryMaxLinks,
   parseCanaryDiscoveryRequest,
   selectCanaryDiscoveryCandidate,
 } from "../lib/cloudflare/ingest-stages/canary-discovery";
@@ -126,7 +128,6 @@ function memoryBucket() {
 }
 
 const ROBOTS = "User-agent: *\nAllow: /\nCrawl-delay: 0";
-
 function deFetch(): typeof fetch {
   const body = `<html><main>${DE_ECLI}\n${"BVerfG official decision text. ".repeat(80)}</main></html>`;
   return async (input) => {
@@ -540,6 +541,14 @@ test("manual approval policy: US publishable/published without an explicit autho
   const withAutomaticRows = evaluateManualApprovalPolicy({ sourceKey: "us-scotus", collectionPublishable: true, reviewRequired: false, publishedP3: false, automaticApprovalRows: 5 });
   assert.equal(withAutomaticRows.compliant, false);
   assert.equal(withAutomaticRows.manualAuthorizationPresent, false);
+  // Only an immutable, same-case human-review receipt may authorize US publication.
+  const withReceipt = evaluateManualApprovalPolicy({
+    sourceKey: "us-scotus", collectionPublishable: true, reviewRequired: false, publishedP3: true, automaticApprovalRows: 0,
+    manualApprovalReceipt: { present: true, reason: "us_manual_approval.same_case_human_receipt", actorId: "ops:reviewer", policyVersion: "worldcons.human-reviewed-publication.v1" },
+  });
+  assert.equal(withReceipt.compliant, true);
+  assert.equal(withReceipt.manualAuthorizationPresent, true);
+  assert.equal(withReceipt.reason, "canary_lineage.us_manual_receipt_present");
   assert.equal(
     evaluateManualApprovalPolicy({ sourceKey: "de-bverfg", collectionPublishable: true, reviewRequired: false, publishedP3: true, automaticApprovalRows: 0 }).compliant,
     true,
@@ -817,6 +826,37 @@ const DE_DISCOVERED_ECLI = "ECLI:DE:BVerfG:2026:rk20260923.2bvr168126";
 /** The real production robots policy: root allowed, /SiteGlobals/ disallowed. */
 const DE_ROBOTS = "User-agent: *\nDisallow: /SiteGlobals/\nCrawl-delay: 0";
 
+/** Minimal self-contained text PDF; exercises real unpdf parsing without network fixtures. */
+function scotusPdfFixture(docket = "26A388", paragraphs = 36): Uint8Array<ArrayBuffer> {
+  const content = [
+    "BT /F1 12 Tf 50 770 Td",
+    `(No. ${docket}) Tj 0 -18 Td`,
+    ...Array.from({ length: paragraphs }, (_, i) => `(The Court applies constitutional doctrine to the official record in paragraph ${i + 1}.) Tj 0 -18 Td`),
+    "ET",
+  ].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let data = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let i = 0; i < objects.length; i += 1) {
+    offsets.push(data.length);
+    data += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+  const startxref = data.length;
+  data += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) data += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  data += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
+  const encoded = new TextEncoder().encode(data);
+  const bytes = new Uint8Array(new ArrayBuffer(encoded.byteLength));
+  bytes.set(encoded);
+  return bytes;
+}
+
 function deHomepageFetch(options: { links?: number; bodyEcli?: string; homepageHtml?: string } = {}): { fetch: typeof fetch; seen: string[] } {
   const seen: string[] = [];
   const linkCount = options.links ?? 1;
@@ -885,16 +925,20 @@ function deHomepageMessage(ingestDb: D1RuntimeDatabase, rawBucket: { put(key: st
 
 const STAGED = ["fr-conseil-constitutionnel", "es-tribunal-constitucional"];
 
-test("discover-one contract: Germany-only, limit exactly 1, unknown keys/range rejected", () => {
+test("discover-one contract: DE/US only, limit exactly 1, unknown keys/range rejected", () => {
   const good = parseCanaryDiscoveryRequest({
     sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" },
   });
   assert.equal(good.ok, true);
   if (good.ok) assert.deepEqual(good.value.canaryDiscovery, { canaryId: "a".repeat(32), operatorId: "ops" });
+  // The United States is now an accepted genuine discover-one source.
+  assert.equal(parseCanaryDiscoveryRequest({
+    sourceKey: "us-scotus", limit: 1, rangeDays: 400, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" },
+  }).ok, true);
 
   const cases: Array<[unknown, RegExp]> = [
-    [{ sourceKey: "us-scotus", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /source_not_allowed/],
     [{ sourceKey: "fr-conseil-constitutionnel", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /source_not_allowed/],
+    [{ sourceKey: "es-tribunal-constitucional", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /source_not_allowed/],
     [{ sourceKey: "de-bverfg", limit: 2, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /limit_must_be_one/],
     [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 0, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /range_days_invalid/],
     [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" }, candidateUrl: DE_URL }, /unknown_key:candidateUrl/],
@@ -916,9 +960,13 @@ test("discover-one contract: Germany-only, limit exactly 1, unknown keys/range r
   const bounded = selectCanaryDiscoveryCandidate(["a", "b", "c"]);
   assert.equal(bounded.candidate, "a");
   assert.equal(bounded.observed, 3);
+  // The US term listing legitimately exceeds the DE bound but stays under its own.
+  assert.equal(selectCanaryDiscoveryCandidate(new Array(50).fill(1), canaryDiscoveryMaxLinks("us-scotus")).reason, null);
+  assert.equal(canaryDiscoveryMaxLinks("us-scotus") > CANARY_DISCOVERY_MAX_LINKS, true);
+  assert.equal(canaryDiscoveryDefaultRangeDays("us-scotus") >= canaryDiscoveryDefaultRangeDays("de-bverfg"), true);
 });
 
-test("discover-one payload: Workflow accepts DE, rejects US/unknown keys/range, carries no candidate", () => {
+test("discover-one payload: Workflow accepts DE+US, rejects unknown keys/range, carries no candidate", () => {
   const good = parseOperatorCanaryEvent({ mode: "discover-one", sourceKey: "de-bverfg" });
   assert.equal(good.ok, true);
   assert.deepEqual(good.ok ? good.value : null, {
@@ -931,10 +979,19 @@ test("discover-one payload: Workflow accepts DE, rejects US/unknown keys/range, 
     assert.equal(noDispatch.value.dispatch, false);
     assert.equal(noDispatch.value.rangeDays, 90);
   }
+  // The US is now an accepted discover-one source with a wider bounded default.
+  const us = parseOperatorCanaryEvent({ mode: "discover-one", sourceKey: "us-scotus" });
+  assert.equal(us.ok, true);
+  if (us.ok && us.value.payloadKind === "discover-one") {
+    assert.equal(us.value.sourceKey, "us-scotus");
+    assert.equal(us.value.rangeDays, canaryDiscoveryDefaultRangeDays("us-scotus"));
+  }
   const cases: Array<[unknown, RegExp]> = [
-    [{ mode: "discover-one", sourceKey: "us-scotus" }, /discover_one_source_not_allowed/],
+    [{ mode: "discover-one", sourceKey: "fr-conseil-constitutionnel" }, /discover_one_source_not_allowed/],
+    [{ mode: "discover-one", sourceKey: "es-tribunal-constitucional" }, /discover_one_source_not_allowed/],
     [{ mode: "discover-one" }, /discover_one_source_not_allowed/],
     [{ mode: "discover-one", sourceKey: "de-bverfg", candidateUrl: DE_URL }, /unknown_key:candidateUrl/],
+    [{ mode: "discover-one", sourceKey: "us-scotus", candidateUrl: US_URL }, /unknown_key:candidateUrl/],
     [{ mode: "discover-one", sourceKey: "de-bverfg", ecli: DE_ECLI }, /unknown_key:ecli/],
     [{ mode: "discover-one", sourceKey: "de-bverfg", rangeDays: 0 }, /discover_one_range_days_invalid/],
     [{ mode: "discover-one", sourceKey: "de-bverfg", rangeDays: 10_000 }, /discover_one_range_days_invalid/],
@@ -1032,6 +1089,61 @@ test("discover-one: the genuine crawl verifies the official ECLI and continues t
     assert.equal(advanced.fromStage, "crawl");
     assert.equal(advanced.nextStage, "normalize");
     assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='normalize'").get()?.n, 1);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one US: a GENUINE official slip-opinion listing yields exactly one US canary crawl job, and the crawl verifies the docket", async () => {
+  const h = createHarness();
+  const listing26 = "https://www.supremecourt.gov/opinions/slipopinion/26";
+  const listing25 = "https://www.supremecourt.gov/opinions/slipopinion/25";
+  const pdfUrl = "https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf";
+  const pdf = scotusPdfFixture("26A388");
+  const seen: string[] = [];
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    seen.push(url);
+    if (url.endsWith("/robots.txt")) return new Response("User-agent: *\nAllow: /\nCrawl-delay: 0", { status: 200, headers: { "content-type": "text/plain" } });
+    // The current term 2026 is empty early in October; the previous term 2025
+    // carries the newest official opinion (bounded official previous-term scan).
+    if (url === listing26) return new Response("<table><tr><th>New term: no opinions yet</th></tr></table>", { status: 200, headers: { "content-type": "text/html" } });
+    if (url === listing25) return new Response(`<table><tr><td>Opinion</td><td>9/25/26</td><td>26A388</td><td><a href="/opinions/25pdf/26a388_q86b.pdf">Per Curiam</a></td><td>Revisions: 10/08/26</td></tr></table>`, { status: 200, headers: { "content-type": "text/html" } });
+    if (url === pdfUrl) return new Response(pdf, { status: 200, headers: { "content-type": "application/pdf" } });
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "d121c7d71702d52251f439f7130f91be";
+    const seeded = await enqueueCanaryDiscovery(h.ingestDb, rawBucket as Parameters<typeof enqueueCanaryDiscovery>[1], {
+      sourceKey: "us-scotus", canaryId, operatorId: "ops:reviewer", now: NOW,
+    });
+    assert.ok(seeded.payloadRef.startsWith(CANARY_PAYLOAD_PREFIX), "the US discover-one artifact lives under the explicit canary prefix");
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize");
+    const sourceGate = ({ stage, sourceKey, payloadRef }: { stage: IngestStage; sourceKey: string | null; payloadRef: string | null }) =>
+      canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED });
+
+    const dSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { dSent.push(body); return {}; } }, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    const discoveryConsume = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: dSent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+    assert.equal(discoveryConsume.completed, 1, JSON.stringify(discoveryConsume));
+    // Genuine official discovery: it fetched the official term listings, never a third party.
+    assert.ok(seen.includes(listing26) && seen.includes(listing25), "both official term listings were fetched");
+    assert.ok(seen.every((url) => url.startsWith("https://www.supremecourt.gov/")), "no non-official host is queried");
+
+    const crawlJobs = h.ingest.prepare("SELECT id,article_id,source_key,payload_ref FROM ingest_stage_jobs WHERE stage='crawl'").all() as Array<Record<string, unknown>>;
+    assert.equal(crawlJobs.length, 1, "US discover-one fans out exactly one crawl job");
+    assert.equal(crawlJobs[0].source_key, "us-scotus");
+
+    const cSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { cSent.push(body); return {}; } }, jobId: String(crawlJobs[0].id), canaryId, operatorId: "ops", deploymentRef: null, stage: "crawl", now: NOW });
+    const crawlConsume = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.crawl, messages: [{ body: cSent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+    assert.equal(crawlConsume.completed, 1, JSON.stringify(crawlConsume));
+    assert.equal((await getIngestStageJobById(h.ingestDb, String(crawlJobs[0].id)))?.status, "succeeded");
+    // It never publishes.
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0, "US discover-one never publishes");
   } finally { h.ingest.close(); h.core.close(); }
 });
 

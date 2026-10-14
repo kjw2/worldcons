@@ -514,12 +514,14 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
     });
     const ingestDb = this.env.WORLDCONS_INGEST as unknown as Parameters<typeof seedCanaryCase>[0];
 
-    // ---- Discover-one branch (Germany only; genuine seventh stage) --------
-    // Seed a GENUINE `discovery` stage job that fetches the real official BVerfG
-    // homepage SSR anchors (never a caller-supplied candidate) and yields exactly
-    // ONE child `crawl` job with the same `canary-owner:<canaryId>` provenance.
-    // It carries no candidate URL/ECLI, so it can neither fabricate nor masquerade
-    // the discovery step. Continuing the chain uses the existing `advance` mode.
+    // ---- Discover-one branch (Germany + US; genuine seventh stage) --------
+    // Seed a GENUINE `discovery` stage job that fetches the real official source
+    // listing (BVerfG homepage SSR anchors, or the official suprecourt.gov
+    // slip-opinion term listing) — never a caller-supplied candidate. It yields
+    // exactly ONE child `crawl` job with the same `canary-owner:<canaryId>`
+    // provenance. It carries no candidate URL/ECLI/docket, so it can neither
+    // fabricate nor masquerade the discovery step. Continuing the chain uses the
+    // existing `advance` mode.
     if (payload.payloadKind === "discover-one") {
       const discoveryBinding = (this.env.STAGE_QUEUE_DISCOVERY as unknown as IngestStageQueueSender | undefined);
       const rawBucket = this.env.WORLDCONS_RAW as unknown as Parameters<typeof enqueueCanaryDiscovery>[1];
@@ -562,7 +564,7 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
         payloadRef: seeded.payloadRef,
         dispatchReason: dispatch?.reason ?? null,
         enqueued: dispatch?.enqueued ?? 0,
-        note: "Seeded exactly one genuine official-homepage discovery job (Germany). It yields at most one child crawl job with same-case provenance; continue the chain via the advance mode. It does not publish, bypass review, or change ownership.",
+        note: "Seeded exactly one genuine official-listing discovery job (Germany or United States). It yields at most one child crawl job with same-case provenance; continue the chain via the advance mode. It does not publish, bypass review, or change ownership.",
       };
     }
 

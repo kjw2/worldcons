@@ -898,11 +898,14 @@ assert(
   usCutoverGuardSource.includes("US_CUTOVER_GATES") &&
     usCutoverGuardSource.includes("planUsCutover") &&
     usCutoverGuardSource.includes("manualPublicationAuthorization") &&
+    usCutoverGuardSource.includes("evaluateSameCaseManualApprovalReceipt") &&
+    usCutoverGuardSource.includes("us_cutover.manual_approval_receipt_not_observed") &&
+    usCutoverGuardSource.includes("US_MANUAL_APPROVAL_POLICY") &&
     usCutoverGuardSource.includes("legacy_historical_counts_rejected") &&
     usCutoverGuardSource.includes("evaluateOwnershipPairing") &&
     usCutoverGuardSource.includes("us_cutover.ownership_not_paired_") &&
     usCutoverGuardSource.includes("if (!readiness.ready)"),
-  "US staged cutover must stay behind a fail-closed readiness gate requiring manual publication authorization, exact-paired current ownership and rejecting legacy historical counts, emitting no paired mutation until real proof exists",
+  "US staged cutover must stay behind a fail-closed readiness gate that additionally requires an immutable same-case human-review receipt (never a caller boolean), exact-paired current ownership and rejects legacy historical counts, emitting no paired mutation until real proof exists",
 );
 const canarySource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary.ts"), "utf8");
 assert(
@@ -942,13 +945,15 @@ const canaryLineageScriptSource = fs.readFileSync(path.join(process.cwd(), "scri
 assert(
   canaryLineageScriptSource.includes("assertSelectOnly") &&
     canaryLineageScriptSource.includes("evaluateManualApprovalPolicy") &&
+    canaryLineageScriptSource.includes("evaluateSameCaseManualApprovalReceipt") &&
+    canaryLineageScriptSource.includes("same_case_human_approval_receipt") &&
     canaryLineageScriptSource.includes("evaluateLinkedLineage") &&
     canaryLineageScriptSource.includes("evaluateSearchProjection") &&
     canaryLineageScriptSource.includes("classifyPublication") &&
     canaryLineageScriptSource.includes("legacy_published_preexisting") &&
     canaryLineageScriptSource.includes("parseJobId") &&
     canaryLineageScriptSource.includes("us_published_without_manual_authorization"),
-  "the canary lineage audit must be SELECT-only, follow the durable linked chain, verify search_documents+search_fts rowid, distinguish legacy_published_preexisting, validate job ids, and enforce the US manual-approval policy",
+  "the canary lineage audit must be SELECT-only, follow the durable linked chain, verify search_documents+search_fts rowid, distinguish legacy_published_preexisting, validate job ids, and enforce the US manual-approval policy with an immutable same-case human-review receipt",
 );
 const operatorCanaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
 assert(
@@ -989,8 +994,11 @@ assert(
     canaryDiscoverySource.includes("canary_discovery.too_many_links") &&
     canaryDiscoverySource.includes("canary_discovery.limit_must_be_one") &&
     canaryDiscoverySource.includes("CANARY_DISCOVERY_MAX_LINKS") &&
+    canaryDiscoverySource.includes("canaryDiscoveryCandidateHasOfficialIdentity") &&
+    canaryDiscoverySource.includes("canaryDiscoveryMaxLinks") &&
+    canaryDiscoverySource.includes("canaryDiscoveryDefaultRangeDays") &&
     canaryDiscoverySource.includes("CANARY_PAYLOAD_PREFIX"),
-  "the discover-one canary contract must be Germany-only, reject unknown keys, cap links, and require exactly one selected candidate",
+  "the discover-one canary contract must accept DE/US, reject unknown keys, cap links, require exactly one selected candidate, and validate the exact official document identity",
 );
 const canaryDiscoveryHandlersSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/ingest-stage-handlers.ts"), "utf8");
 assert(

@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 import { resolveM8CrawlerSourcePolicy } from "../lib/cloudflare/async-pipeline/crawler-source-ownership";
 import { NATIVE_CRAWLER_SOURCES } from "../workers/async-pipeline/src/native-crawler";
 import { INGEST_STAGE_NAMES } from "../lib/cloudflare/ingest-stages/contracts";
+import { evaluateSameCaseManualApprovalReceipt, type UsManualApprovalAssessment } from "../lib/cloudflare/ingest-stages/us-cutover-readiness";
 
 export interface AuditSection {
   name: string;
@@ -307,9 +308,12 @@ export function classifyPublication(input: {
 
 /**
  * Pure manual-approval policy evaluation. US opinions must never be published
- * without an explicit manual authorization. `automaticApprovalRows` is the FR/ES
- * automatic ledger and must NEVER be treated as manual consent, so
- * `manualAuthorizationPresent` is always false here.
+ * without an explicit manual authorization. The FR/ES automatic approval ledger
+ * must NEVER be treated as manual consent, so `manualAuthorizationPresent` is
+ * false unless an explicit, same-case human-review receipt (`UsManualApprovalReceipt`)
+ * is supplied. Only such a receipt — never a caller-supplied boolean, a generic
+ * `published` flag, or an automatic FR/ES row — may make a US publishable/
+ * published state compliant.
  */
 export function evaluateManualApprovalPolicy(input: {
   sourceKey: string;
@@ -317,9 +321,16 @@ export function evaluateManualApprovalPolicy(input: {
   reviewRequired: boolean | null;
   publishedP3: boolean;
   automaticApprovalRows: number;
-}): { compliant: boolean; reason: string; manualAuthorizationPresent: false } {
+  /** Immutable same-case human-review receipt, when one genuinely exists. */
+  manualApprovalReceipt?: UsManualApprovalAssessment;
+}): { compliant: boolean; reason: string; manualAuthorizationPresent: boolean } {
+  const receiptPresent = input.manualApprovalReceipt?.present === true;
   if (input.sourceKey !== "us-scotus") {
     return { compliant: true, reason: "canary_lineage.policy_not_us", manualAuthorizationPresent: false };
+  }
+  // An immutable, same-case human receipt is the ONLY accepted manual consent.
+  if (receiptPresent) {
+    return { compliant: true, reason: "canary_lineage.us_manual_receipt_present", manualAuthorizationPresent: true };
   }
   if (input.collectionPublishable === true) {
     return { compliant: false, reason: "canary_lineage.us_publishable_without_manual_authorization", manualAuthorizationPresent: false };
@@ -522,6 +533,23 @@ function main() {
     : { ok: true as const, rows: [] as unknown[] };
   const automaticApprovalRows = approvalQuery.ok ? Number((approvalQuery.rows as Array<{ automatic_approval_rows: number }>)[0]?.automatic_approval_rows ?? 0) : 0;
 
+  // Same-case human-review receipt: the ONLY accepted manual-consent proof. This
+  // reads the immutable ledger for the exact Core UUID; a generic published flag
+  // or the automatic FR/ES ledger is never treated as consent.
+  const receiptQuery = coreArticleId
+    ? runRemote(root, "worldcons_core", "same_case_human_approval_receipt",
+      `SELECT article_id, policy_version, evidence_document FROM e2e_approval_evidence_v1 WHERE article_id = ${quote(coreArticleId)} AND policy_version = 'worldcons.human-reviewed-publication.v1' ORDER BY created_at DESC LIMIT 5`)
+    : { ok: true as const, rows: [] as unknown[] };
+  const receiptRows = (receiptQuery.ok ? receiptQuery.rows : []) as Array<{ article_id?: unknown; policy_version?: unknown; evidence_document?: unknown }>;
+  const manualApprovalReceipt: UsManualApprovalAssessment = evaluateSameCaseManualApprovalReceipt(
+    coreArticleId,
+    receiptRows.map((row) => ({
+      articleId: row.article_id == null ? null : String(row.article_id),
+      policyVersion: row.policy_version == null ? null : String(row.policy_version),
+      evidenceDocument: row.evidence_document == null ? null : String(row.evidence_document),
+    })),
+  );
+
   // Search proof: search_documents and search_fts must be the SAME article + rowid.
   const docQuery = coreArticleId
     ? runRemote(root, "worldcons_search", "search_documents",
@@ -552,6 +580,7 @@ function main() {
     reviewRequired: coreRow ? (coreRow.review_required === 1 || coreRow.review_required === true) : null,
     publishedP3,
     automaticApprovalRows,
+    manualApprovalReceipt,
   });
 
   const officialPdfPresent = Boolean(coreRow && coreRow.official_pdf_r2_key && coreRow.official_pdf_sha256);
@@ -592,9 +621,10 @@ function main() {
     publication,
     searchProjection: search,
     manualApprovalPolicy: policy,
-    manualAuthorizationPresent: false,
+    manualAuthorizationPresent: policy.manualAuthorizationPresent,
+    manualApprovalReceipt,
     usCoreProvenanceNote: usProvenanceNote,
-    queries: { coreRow: coreRow ?? null, p3Rows, automaticApprovalRows },
+    queries: { coreRow: coreRow ?? null, p3Rows, automaticApprovalRows, humanReceiptRows: receiptRows },
   }, null, 2)}\n`);
   if (!policy.compliant) process.exitCode = 3;
   if (!lineage.ok && startJobIdRaw) process.exitCode = 1;

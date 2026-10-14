@@ -13,7 +13,7 @@
  *
  *   { sourceKey: "de-bverfg"|"us-scotus", candidateUrl, ecli?|docket?, operatorId?, mode?: "seed"|"seed-and-dispatch" }
  *   { mode: "advance", jobId: <uuid>, canaryId: <32-hex>, operatorId? }
- *   { mode: "discover-one", sourceKey: "de-bverfg", rangeDays?, operatorId?, dispatch? }
+ *   { mode: "discover-one", sourceKey: "de-bverfg"|"us-scotus", rangeDays?, operatorId?, dispatch? }
  *   { mode: "bootstrap-de-one", sourceKey: "de-bverfg", operatorId?, dispatch? }
  *
  * The `advance` shape carries NO `sourceKey`/`candidateUrl`/identity and never
@@ -28,7 +28,7 @@
  * than the explicit `stages/canary/` exception.
  */
 import { CANARY_SOURCE_KEYS, type CanarySourceKey } from "./canary";
-import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_DEFAULT_RANGE_DAYS, CANARY_DISCOVERY_SOURCE_KEYS, type CanaryDiscoverySourceKey } from "./canary-discovery";
+import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_SOURCE_KEYS, canaryDiscoveryDefaultRangeDays, type CanaryDiscoverySourceKey } from "./canary-discovery";
 
 /** The supported seed modes; anything else is rejected. */
 export const OPERATOR_CANARY_SEED_MODES = ["seed", "seed-and-dispatch"] as const;
@@ -59,6 +59,9 @@ export const OPERATOR_CANARY_ADVANCE_KEYS = [
  * Keys allowed on the discover-one shape only. It deliberately carries NO
  * `candidateUrl`/`ecli`/`docket`: discovery always runs against the official
  * source, so a caller can never inject a candidate masquerading as discovery.
+ * `sourceKey` may be Germany or the United States (both run a genuine official
+ * listing discovery); `rangeDays`, when omitted, uses the source-specific
+ * bounded default.
  */
 export const OPERATOR_CANARY_DISCOVER_ONE_KEYS = [
   "mode",
@@ -211,7 +214,9 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
 
   if (isBootstrapDeOne) {
     const sourceKeyRaw = candidate.sourceKey;
-    if (typeof sourceKeyRaw !== "string" || !(CANARY_DISCOVERY_SOURCE_KEYS as readonly string[]).includes(sourceKeyRaw)) {
+    // The ordinary Germany bootstrap is DE-only even though the discover-one
+    // canary now also supports the United States.
+    if (sourceKeyRaw !== "de-bverfg") {
       return { ok: false, error: "operator_canary.bootstrap_de_one_source_not_allowed" };
     }
     if (candidate.dispatch !== undefined && typeof candidate.dispatch !== "boolean") {
@@ -222,7 +227,7 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
       value: {
         payloadKind: "bootstrap-de-one",
         mode: "bootstrap-de-one",
-        sourceKey: sourceKeyRaw as CanaryDiscoverySourceKey,
+        sourceKey: "de-bverfg",
         operatorId: operator.value,
         dispatch: candidate.dispatch !== false,
       },
@@ -234,7 +239,7 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
     if (typeof sourceKeyRaw !== "string" || !(CANARY_DISCOVERY_SOURCE_KEYS as readonly string[]).includes(sourceKeyRaw)) {
       return { ok: false, error: "operator_canary.discover_one_source_not_allowed" };
     }
-    let rangeDays: number = CANARY_DISCOVERY_DEFAULT_RANGE_DAYS;
+    let rangeDays: number = canaryDiscoveryDefaultRangeDays(sourceKeyRaw as CanaryDiscoverySourceKey);
     if (candidate.rangeDays !== undefined) {
       if (typeof candidate.rangeDays !== "number" || !Number.isInteger(candidate.rangeDays)
         || candidate.rangeDays < 1 || candidate.rangeDays > CANARY_DISCOVERY_MAX_RANGE_DAYS) {

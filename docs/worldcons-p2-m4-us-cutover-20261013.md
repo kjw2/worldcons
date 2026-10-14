@@ -1,5 +1,51 @@
 # WorldCons P2-M4 - United States (SCOTUS) staged-cutover preflight / fail-closed readiness - 2026-10-13 (KST)
 
+## 2026-10-14 follow-up: US official-PDF provenance repair and genuine discovery canary
+
+The older historical sections below describe their respective earlier release
+states and ownership pairs, **not today's current settings**. Current ownership
+before US cutover is FR/ES/DE staged, US M8; both Wrangler ownership values
+match `fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg`.
+
+Read-only Production audit on 2026-10-14 found zero US Core
+`source_metadata.officialPdf` rows, despite the earlier crawl-first US canary
+successfully verifying a 63,361-byte original slip-opinion PDF at
+`artifacts/scotus_pdf/73ef64de152e4dc257baa83767b75eb19fe6aea473be8688b61644c0741afd2e.pdf`.
+An independent read-only Production R2 GET confirmed the `%PDF-` signature
+and matching SHA-256. The same-case legacy Core row is
+`4b3d5644-2681-449e-8ad5-28ee2defffe8`, with pre-existing P3 published
+in September. That historic publication is **not** new review approval or
+new P2-M4 7/7 evidence.
+
+Root cause: a verified PDF was saved into the crawl candidate's metadata and
+R2, but `persistArticle` returned `preserved` early on an existing published
+US row to avoid destructive regression, silently skipping `officialPdf` Core
+metadata persistence. A newly inserted US article would not hit this branch.
+The remediation adds a CAS-fenced, idempotent official-PDF-only metadata attach
+path that leaves publication, text, review and the historical P3 version
+untouched, with bounded provenance history.
+
+A separate operator-account-authenticated `discover-one` Workflow now supports
+US via **real official SCOTUS slip-opinion listings**, without a supplied
+candidate URL and without opening the US staged allowlist. The selected case
+is limited to one and its Discovery->Crawl evidence is linked durably.
+`bootstrap-de-one` remains DE-only. Neither route publishes/approves US.
+
+The P2-M4 evaluator additionally requires a same-case human review evidence
+receipt from the existing immutable `e2e_approval_evidence_v1` ledger (human
+policy, human receipt schema, non-empty actor identity). A caller's
+`manualPublicationAuthorization:true` boolean, historical P3 version or FR/ES
+automatic approval ledger cannot authorize US cutover. No operator Workflow
+trigger by itself constitutes manual approval.
+
+**P2-M4 is NOT operationally complete until a genuinely reviewed US case has
+same-case Discovery->Search 7/7 Production evidence, R2/Core provenance and a
+human authorization receipt.** The country-wide paired Wrangler owner
+switch must not be made before those checks pass. With DE already staged,
+the paired *future* owner values would be
+`fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg,us-scotus`;
+rollback is the present FR/ES/DE pair.
+
 > **P2-M4 status: GATED / BLOCKED. No production cutover.**
 > This document records a bounded US-specific implementation and a read-only
 > Production audit. No allowlist/exclude value was changed, no Worker was

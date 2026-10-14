@@ -219,6 +219,66 @@ test("SCOTUS application docket official PDF (letter, no hyphen) extracts and st
   assert.equal(store.statements.some((item) => /INSERT INTO article_publications_p3/.test(item.sql)), false);
 });
 
+test("a newly verified SCOTUS PDF attaches provenance to an existing legacy published row without touching publication or private review", async () => {
+  const store = memoryBindings();
+  const canonical = "https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf";
+  const oldPdf = { url: canonical, r2Key: `artifacts/scotus_pdf/${"0".repeat(64)}.pdf`, sha256: "0".repeat(64), docketVerified: true };
+  // A legacy published, summarized US row holding private review evidence.
+  store.articles.set(canonical, {
+    id: "4b3d5644-2681-449e-8ad5-28ee2defffe8", canonical_url: canonical, content_hash: "legacy-hash",
+    status: "summarized", slug: "united-states-us-scotus-2026-09-27-legacy", translation_status: "translated",
+    cleaned_text: "legacy approved opinion text ".repeat(40), summary_json: JSON.stringify({ summary: { coreSummary: ["기존 요약"] } }),
+    review_state: "closed_private",
+    source_metadata: JSON.stringify({ officialPdf: oldPdf, collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "official-pdf" }, review: { required: true, reason: "scotus_pdf_human_review_required" } }),
+    lifecycle_revision: 3, fetched_at: "2026-09-27T00:00:00.000Z",
+  });
+  const listing = `<table class="table"><tr><td>Opinion</td><td>9/25/26</td><td>26A388</td><td><a href="/opinions/25pdf/26a388_q86b.pdf">Per Curiam</a></td></tr></table>`;
+  const discovered = parseNativeSourceListing("us-scotus", listing, "https://www.supremecourt.gov/opinions/slipopinion/25")[0];
+  const pdf = scotusPdfFixture("26A388");
+  const fetched = await crawlNativeStageCandidate(discovered, store.bindings, {
+    fetch: async (input) => String(input).endsWith("/robots.txt")
+      ? response(robots)
+      : new Response(pdf, { status: 200, headers: { "content-type": "application/pdf" } }),
+  });
+  assert.equal(fetched.fetched, true);
+  const newSha = Buffer.from(await crypto.subtle.digest("SHA-256", pdf)).toString("hex");
+  assert.notEqual(newSha, oldPdf.sha256);
+  const persisted = await persistNativeStageRecord(fetched.candidate, fetched.text, store.bindings, {
+    runId: "scotus-additive-provenance", fetchedAt: "2026-10-14T00:00:00.000Z",
+  });
+  assert.equal(persisted.outcome, "provenance_attached");
+  assert.equal(persisted.articleId, "4b3d5644-2681-449e-8ad5-28ee2defffe8");
+  const article = store.articles.get(canonical)!;
+  const metadata = JSON.parse(String(article.source_metadata)) as {
+    officialPdf: { sha256: string; r2Key: string; docketVerified: boolean };
+    officialPdfProvenance: { previousSha256: string; runId: string };
+    officialPdfProvenanceHistory: Array<{ sha256: string }>;
+    collection: { publishable: boolean };
+    review: { required: boolean };
+  };
+  // Additive: the new verified provenance is recorded...
+  assert.equal(metadata.officialPdf.sha256, newSha);
+  assert.equal(metadata.officialPdf.docketVerified, true);
+  assert.equal(metadata.officialPdfProvenance.previousSha256, oldPdf.sha256);
+  assert.equal(metadata.officialPdfProvenance.runId, "scotus-additive-provenance");
+  assert.equal(metadata.officialPdfProvenanceHistory.at(-1)?.sha256, newSha);
+  // ...but publication, private review, content and status are untouched.
+  assert.equal(metadata.collection.publishable, true, "an additive provenance attach must not change collection.publishable");
+  assert.equal(metadata.review.required, true, "an additive provenance attach must not erase private review");
+  assert.equal(article.status, "summarized", "an additive provenance attach must not change status");
+  assert.equal(article.review_state, "closed_private", "an additive provenance attach must not change review_state");
+  assert.equal(article.cleaned_text, "legacy approved opinion text ".repeat(40), "legacy approved content must not be overwritten");
+  assert.match(String(article.summary_json), /기존 요약/, "legacy summary must not be erased");
+  assert.equal(store.statements.some((item) => /INSERT INTO article_publications_p3|UPDATE article_publications_p3/.test(item.sql)), false, "an additive provenance attach must never publish");
+
+  // A replay of the exact same verified PDF is a clean preserved no-op.
+  const replay = await persistNativeStageRecord(fetched.candidate, fetched.text, store.bindings, {
+    runId: "scotus-additive-provenance-replay", fetchedAt: "2026-10-14T01:00:00.000Z",
+  });
+  assert.equal(replay.outcome, "preserved");
+  assert.equal((JSON.parse(String(store.articles.get(canonical)!.source_metadata)) as { officialPdf: { sha256: string } }).officialPdf.sha256, newSha);
+});
+
 test("SCOTUS letter dockets never cross-match a different or hyphenated docket", async () => {
   for (const check of [
     { name: "different application number", docket: "26A388", text: "26A999" },
@@ -365,6 +425,10 @@ function memoryBindings(seedTracked: Array<Record<string, unknown>> = [], option
         bind(...args: unknown[]) { values = args; return this; },
         async first<T>() {
           if (sql.includes("SELECT id, content_hash")) return (articles.get(String(values[0])) ?? null) as T | null;
+          if (sql.includes("SELECT id,canonical_url,content_hash,status FROM articles WHERE id=?")) {
+            const article = [...articles.values()].find((row) => row.id === values[0]);
+            return (article ?? null) as T | null;
+          }
           if (sql.includes("SELECT id FROM articles WHERE content_hash")) return null;
           if (sql.includes("SELECT id FROM sources")) return { id: "source-id" } as T;
           if (sql.includes("SELECT status, metadata FROM ingestion_runs")) return (runs.get(String(values[0])) ?? null) as T | null;
@@ -444,6 +508,13 @@ function memoryBindings(seedTracked: Array<Record<string, unknown>> = [], option
             lifecycle_attention_state: values[3], lifecycle_attention_code: values[4], lifecycle_attention_retryable: values[5],
             lifecycle_attention_severity: values[6], lifecycle_attention_source: values[7], lifecycle_revision: values[10],
           });
+        }
+        if (prepared.query.includes("UPDATE articles SET source_metadata=?, updated_at=? WHERE id=?")) {
+          const values = prepared.values;
+          const article = [...articles.values()].find((row) => row.id === values[2]);
+          assert.ok(article, "additive provenance update targets an existing article");
+          article.source_metadata = values[0];
+          article.updated_at = values[1];
         }
         results.push({ success: true, meta: { changes: 1 } });
       }

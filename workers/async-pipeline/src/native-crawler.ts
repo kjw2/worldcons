@@ -481,7 +481,7 @@ function discoverScotus(html: string, listingUrl: string): NativeArticleCandidat
     if (!anchor || !/\.pdf(?:$|[?#])/i.test(anchor[3])) continue;
     const href = canonicalUrl(anchor[3], "https://www.supremecourt.gov");
     if (!isOfficialScotusPdfUrl(href)) continue;
-    candidates.push({ sourceKey: "us-scotus", url: href, title: htmlText(anchor[5]) || href.split("/").at(-1) || "SCOTUS opinion", publishedAt: dateIso(htmlText(cells[1])), contentType: "opinion", metadata: { docket: htmlText(cells[2]), revisionDate: htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] ? dateIso(htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1]) : undefined, listingUrl, officialPdfUrlDiscovered: true, collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: false, sourceTextAvailable: false, publishable: false, reason: "Official listing discovered; PDF and docket still require verification." }, review: { required: true, reason: "pdf_verification_pending" } } });
+    candidates.push({ sourceKey: "us-scotus", url: href, title: htmlText(anchor[5]) || href.split("/").at(-1) || "SCOTUS opinion", publishedAt: dateIso(htmlText(cells[1])), contentType: "opinion", metadata: { docket: htmlText(cells[2]), revisionDate: htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] ? dateIso(htmlText(row[1]).match(/Revisions?:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1]) : undefined, listingUrl, discoveryIndex: "official-listing", officialPdfUrlDiscovered: true, collection: { strategy: "official-listing", confidence: "medium", sourceUrlVerified: false, sourceTextAvailable: false, publishable: false, reason: "Official listing discovered; PDF and docket still require verification." }, review: { required: true, reason: "pdf_verification_pending" } } });
   }
   return candidates;
 }
@@ -840,7 +840,7 @@ async function upsertCandidate(db: NativeCrawlerDatabase, source: NativeCrawlerS
     .bind(crypto.randomUUID(), source, url, success ? "fetched" : "retrying", now, code, message?.slice(0, 500) ?? null, now, now).run();
 }
 
-export type NativePersistOutcome = "duplicate" | "preserved" | "unchanged" | "refreshed" | "inserted";
+export type NativePersistOutcome = "duplicate" | "preserved" | "unchanged" | "refreshed" | "inserted" | "provenance_attached";
 
 export interface NativePersistResult {
   outcome: NativePersistOutcome;
@@ -882,13 +882,72 @@ export function reconcileSpanishOfficialTextMetadata(
   return corrected;
 }
 
+/**
+ * Builds the *additive-only* provenance update for an already-existing US
+ * SCOTUS Core row when this run genuinely verified an official slip-opinion PDF
+ * whose identity differs from what the row already recorded.
+ *
+ * This is deliberately narrow and fail-closed:
+ *
+ * - It runs only for `us-scotus` with a `docketVerified === true` provenance.
+ * - It returns `null` when the exact same verified PDF identity
+ *   (`sha256` + `r2Key`) is already recorded, so a replay/re-verification is a
+ *   no-op and can never churn the row.
+ * - It copies ONLY the `officialPdf` namespace plus an append-only provenance
+ *   history. It never reads or writes `collection`, `review`, `status`,
+ *   `cleaned_text`, `content_hash`, `review_state`, or any publication table, so
+ *   it can never enable `publishable=true`, downgrade a historical published
+ *   record, overwrite legacy approved content, or erase private review.
+ * - The prior row metadata is never mutated; a new object is returned.
+ */
+export function attachScotusOfficialPdfProvenance(
+  oldMetadata: Record<string, unknown>,
+  currentPdf: Record<string, unknown>,
+  runId: string,
+  attachedAt: string,
+): Record<string, unknown> | null {
+  if (currentPdf.docketVerified !== true) return null;
+  const sha256 = typeof currentPdf.sha256 === "string" ? currentPdf.sha256 : "";
+  const r2Key = typeof currentPdf.r2Key === "string" ? currentPdf.r2Key : "";
+  if (!sha256 || !r2Key) return null;
+  const previousPdf = oldMetadata.officialPdf as Record<string, unknown> | undefined;
+  const previousSha = typeof previousPdf?.sha256 === "string" ? previousPdf.sha256 : null;
+  const previousKey = typeof previousPdf?.r2Key === "string" ? previousPdf.r2Key : null;
+  // Idempotent: the exact verified identity is already attached.
+  if (previousSha === sha256 && previousKey === r2Key) return null;
+
+  const existingHistory = Array.isArray(oldMetadata.officialPdfProvenanceHistory)
+    ? (oldMetadata.officialPdfProvenanceHistory as unknown[]).slice(-19)
+    : [];
+  const entry = {
+    schema: "worldcons.official-pdf-provenance.v1",
+    attachedAt,
+    runId,
+    url: typeof currentPdf.url === "string" ? currentPdf.url : null,
+    r2Key,
+    sha256,
+    sizeBytes: typeof currentPdf.sizeBytes === "number" ? currentPdf.sizeBytes : null,
+    pageCount: typeof currentPdf.pageCount === "number" ? currentPdf.pageCount : null,
+    extractor: typeof currentPdf.extractor === "string" ? currentPdf.extractor : null,
+    docketVerified: true,
+    previousSha256: previousSha,
+    previousR2Key: previousKey,
+  };
+  return {
+    ...oldMetadata,
+    officialPdf: currentPdf,
+    officialPdfProvenance: entry,
+    officialPdfProvenanceHistory: [...existingHistory, entry],
+  };
+}
+
 async function persistArticle(bindings: NativeCrawlerBindings, candidate: NativeArticleCandidate, text: string, runId: string, fetchedAt: string): Promise<NativePersistResult> {
   const core = bindings.WORLDCONS_CORE;
   const canonical = canonicalNativeArticleUrl(candidate.sourceKey,canonicalUrl(candidate.url, candidate.url));
   const clean = normalizeNativeSourceText(text);
   const status = articleStatus(candidate, clean);
   const contentHash = await sha256(clean.replace(/\s+/g, " ").trim() || `${candidate.sourceKey}:${canonical}`);
-  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, canonical_url, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
+  const existing = await core.prepare("SELECT id, content_hash, status, cleaned_text, source_metadata, slug, review_state, summary_json, canonical_url, fetched_at, updated_at FROM articles WHERE (canonical_url IN (?,?) OR instr(canonical_url,?)=1 OR instr(canonical_url,?)=1) AND source_key=? ORDER BY created_at,id LIMIT 1").bind(canonical,candidate.sourceKey==="es-tribunal-constitucional"?canonical.replace("/HJ/es/","/es/"):canonical,canonical+"?",canonical.replace("/HJ/es/","/es/")+"?",candidate.sourceKey).first<Record<string, unknown>>();
   if(existing&&Date.parse(fetchedAt)<Date.parse(String(existing.fetched_at??"")))return {outcome:"preserved",articleId:String(existing.id),canonicalUrl:String(existing.canonical_url),contentHash:String(existing.content_hash),status:String(existing.status)};
   const preserved = async (): Promise<NativePersistResult> => {
     const row = await core.prepare("SELECT id,canonical_url,content_hash,status FROM articles WHERE id=?").bind(existing!.id).first<Record<string, unknown>>();
@@ -911,12 +970,47 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
   if (existing && candidate.sourceKey === "us-scotus" && previousPdf?.docketVerified === true && currentPdf?.docketVerified !== true) {
     return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
   }
+  // Additive US provenance attach: a genuinely re-verified official SCOTUS PDF
+  // whose identity differs from the row must be recorded even when the row is
+  // otherwise preserved (legacy published / complete / publishable regression).
+  // This writes ONLY the `officialPdf*` metadata namespace through a
+  // metadata-CAS batch; it never touches collection/review/status/content and so
+  // can never enable publication, overwrite legacy content, or erase review.
+  const additiveProvenance = existing && candidate.sourceKey === "us-scotus"
+    ? attachScotusOfficialPdfProvenance(oldMetadata, currentPdf ?? {}, runId, fetchedAt)
+    : null;
+  const attached = async (): Promise<NativePersistResult> => {
+    // The metadata-CAS batch guarantees the row snapshot is unchanged, so the
+    // values read into `existing` remain authoritative.
+    return { outcome: "provenance_attached", articleId: String(existing!.id), canonicalUrl: String(existing!.canonical_url), contentHash: String(existing!.content_hash), status: String(existing!.status) };
+  };
+  const preserveOrAttach = async (): Promise<NativePersistResult> => {
+    if (!additiveProvenance) return preserved();
+    if (!lifecycleBefore?.ok) throw new Error("crawler.lifecycle_read_failed");
+    try {
+      await core.batch([
+        sourceCas(lifecycleBefore.data.revision),
+        core.prepare("UPDATE articles SET source_metadata=?, updated_at=? WHERE id=?")
+          .bind(JSON.stringify(additiveProvenance), fetchedAt, existing!.id),
+      ]);
+    } catch (error) {
+      if (/malformed JSON|crawler_source_cas_failed/i.test(String(error))) return preserved();
+      throw error;
+    }
+    return attached();
+  };
   const metadata = reconcileSpanishOfficialTextMetadata({ ...oldMetadata, ...candidate.metadata, collection: { ...(oldMetadata.collection as Record<string, unknown> ?? {}), ...(candidate.metadata.collection as Record<string, unknown>), diagnosticsId: runId, source: SOURCE_INFO[candidate.sourceKey].baseUrl }, ingestion: { runId, crawler: "worldcons-ingest-native-v1", fetchedAt } }, candidate, clean);
+  // When a genuinely re-verified US PDF refreshes the row, also carry the
+  // append-only provenance history into the same source_metadata write.
+  if (additiveProvenance) {
+    metadata.officialPdfProvenance = additiveProvenance.officialPdfProvenance;
+    metadata.officialPdfProvenanceHistory = additiveProvenance.officialPdfProvenanceHistory;
+  }
   const data = JSON.stringify(metadata);
   const oldTextLength = String(existing?.cleaned_text ?? "").trim().length;
   const publicWasPublishable = existing?.status === "summarized" && (oldMetadata.collection as Record<string, unknown> | undefined)?.publishable === true;
   const regression = Boolean(existing && publicWasPublishable && (status !== "cleaned" || clean.length < Math.max(500, Math.floor(oldTextLength * 0.6))));
-  if (regression) return { outcome: "preserved", articleId: String(existing?.id ?? ""), canonicalUrl: canonical, contentHash, status };
+  if (regression) return preserveOrAttach();
   if (existing && existing.content_hash === contentHash) {
     if (!lifecycleBefore?.ok) throw new Error("crawler.lifecycle_read_failed");
     try {
@@ -944,7 +1038,7 @@ async function persistArticle(bindings: NativeCrawlerBindings, candidate: Native
     const before = lifecycleBefore.data;
     const collectionState = status === "cleaned" ? "source_text_ready" : "metadata_only";
     const processingState = status === "cleaned" ? "ready" : "not_ready";
-    if (status !== "cleaned" && before.processingState === "complete") return { outcome: "preserved", articleId: String(existing.id), canonicalUrl: canonical, contentHash, status };
+    if (status !== "cleaned" && before.processingState === "complete") return preserveOrAttach();
     const sourceUpdate = core.prepare(`UPDATE articles SET original_url=?, original_title=?, original_published_at=?, fetched_at=?, summarized_at=NULL, status=?, korean_title=NULL, summary_json=NULL,
       translation_status=?,translation_started_at=NULL,translated_at=NULL,translation_provider=NULL,translation_model=NULL,translation_attempt_count=0,
       translation_error_code=NULL,translation_error_summary=NULL,translation_next_attempt_at=NULL,
@@ -1205,6 +1299,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
   let refreshedCount = 0;
   let unchangedCount = 0;
   let preservedCount = 0;
+  let provenanceAttachedCount = 0;
   let duplicateCount = 0;
   let uncollectedCount = 0;
   let lastVerifiedPublishedAt: string | null = null;
@@ -1272,6 +1367,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
         else if (outcome === "refreshed") refreshedCount += 1;
         else if (outcome === "unchanged") unchangedCount += 1;
         else if (outcome === "preserved") preservedCount += 1;
+        else if (outcome === "provenance_attached") provenanceAttachedCount += 1;
         else if (outcome === "duplicate") duplicateCount += 1;
         if (collection.sourceTextAvailable === true && candidate.publishedAt && (!lastVerifiedPublishedAt || candidate.publishedAt > lastVerifiedPublishedAt)) lastVerifiedPublishedAt = candidate.publishedAt;
       } catch (error) {
@@ -1286,12 +1382,12 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
       : failedCount > 0 && fetchedCount === 0 && uncollectedCount === 0 ? "failed" : "completed";
     const outcome = discoveryUnavailableCode
       ? "degraded"
-      : failedCount === 0 && uncollectedCount === 0 ? "success" : fetchedCount + insertedCount + refreshedCount > 0 ? "partial" : "degraded";
-    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, ...(source === "de-bverfg" ? { bverfgDiscovery: { scanWindow: BVERFG_INDEX_SCAN_WINDOW, selectedFromWindow: bverfgDiscovery.selected.length, deferredCooldown: bverfgDiscovery.deferred, alreadyFetched: bverfgDiscovery.alreadyFetched } } : {}), fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, duplicateCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
+      : failedCount === 0 && uncollectedCount === 0 ? "success" : fetchedCount + insertedCount + refreshedCount + provenanceAttachedCount > 0 ? "partial" : "degraded";
+    const metadata = { crawler: "worldcons-ingest-native-v1", limit, rangeDays, incrementalRangeDays: Math.ceil((Date.parse(startedAt) - effectiveStart) / 86_400_000), discoveredCount: bounded.length, discoveredBeforeFilterCount: discovered.length, ...(source === "de-bverfg" ? { bverfgDiscovery: { scanWindow: BVERFG_INDEX_SCAN_WINDOW, selectedFromWindow: bverfgDiscovery.selected.length, deferredCooldown: bverfgDiscovery.deferred, alreadyFetched: bverfgDiscovery.alreadyFetched } } : {}), fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, provenanceAttachedCount, duplicateCount, uncollectedCount, failedCount, outcome, discoveryUnavailableCode, failures, lastVerifiedPublishedAt, revisionRecheckDays: source === "us-scotus" ? 90 : null, revisionRecheckLimit: source === "us-scotus" ? 100 : null, idempotencyKey: options.idempotencyKey ?? null };
     const errorMessage = discoveryUnavailableCode
       ?? (failures.length ? failures.slice(0, 5).map((failure) => `${failure.code}`).join("; ").slice(0, 2_000) : null);
     await bindings.WORLDCONS_INGEST.prepare("UPDATE ingestion_runs SET finished_at=?, status=?, discovered_count=?, fetched_count=?, failed_count=?, error_message=?, metadata=? WHERE id=?").bind(new Date().toISOString(), status, bounded.length, fetchedCount, failedCount, errorMessage, JSON.stringify(metadata), runId).run();
-    return { sourceKey: source, runId, status, outcome, discoveredCount: bounded.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, duplicateCount, uncollectedCount, failedCount, discoveryUnavailableCode, failures, rangeDays, lastVerifiedPublishedAt };
+    return { sourceKey: source, runId, status, outcome, discoveredCount: bounded.length, fetchedCount, insertedCount, refreshedCount, unchangedCount, preservedCount, provenanceAttachedCount, duplicateCount, uncollectedCount, failedCount, discoveryUnavailableCode, failures, rangeDays, lastVerifiedPublishedAt };
   } catch (error) {
     failedCount += 1;
     const message = error instanceof Error ? error.message.slice(0, 2_000) : String(error).slice(0, 2_000);

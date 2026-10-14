@@ -3,11 +3,30 @@ import test from "node:test";
 import {
   US_CUTOVER_GATES,
   US_LEGACY_HISTORICAL_FIELDS,
+  US_MANUAL_APPROVAL_DOCUMENT_SCHEMA,
+  US_MANUAL_APPROVAL_POLICY,
+  evaluateSameCaseManualApprovalReceipt,
   evaluateUsCutoverReadiness,
   planUsCutover,
   type UsCutoverGate,
   type UsCutoverProof,
+  type UsManualApprovalAssessment,
 } from "../lib/cloudflare/ingest-stages/us-cutover-readiness";
+
+const RECEIPT: UsManualApprovalAssessment = {
+  present: true,
+  reason: "us_manual_approval.same_case_human_receipt",
+  actorId: "reviewer:external",
+  policyVersion: US_MANUAL_APPROVAL_POLICY,
+};
+
+/** A `planUsCutover` invocation carrying the mandatory same-case human receipt. */
+function planWithReceipt(
+  proof: Partial<UsCutoverProof> | null | undefined,
+  current: { stagedAllowlist: string[]; m8Exclude: string[] },
+) {
+  return planUsCutover(proof, current, { manualApprovalReceipt: RECEIPT });
+}
 
 const GATE_FIELD: Record<UsCutoverGate, keyof UsCutoverProof> = {
   official_pdf_fetched: "officialPdfFetched",
@@ -77,20 +96,25 @@ test("US cutover readiness rejects a proof made only of legacy historical counts
   }
 });
 
-test("US cutover planner refuses a mutation without manual publication authorization", () => {
-  const withoutManual: Partial<UsCutoverProof> = { ...FULL_PROOF };
-  delete withoutManual.manualPublicationAuthorization;
-  const plan = planUsCutover(withoutManual, CURRENT);
+test("US cutover planner refuses a mutation without a same-case human approval receipt", () => {
+  // A caller-supplied boolean is NOT sufficient; the immutable receipt is required.
+  const plan = planUsCutover(FULL_PROOF, CURRENT);
   assert.equal(plan.authorized, false);
   assert.equal(plan.plannedAllowlist, "");
   assert.equal(plan.plannedExclude, "");
-  assert.equal(plan.reason, "us_cutover.manual_publication_authorization_not_observed");
+  assert.equal(plan.reason, "us_cutover.manual_approval_receipt_not_observed");
   assert.equal(plan.rollback.allowlist, "fr-conseil-constitutionnel,es-tribunal-constitucional");
   assert.equal(plan.rollback.exclude, "fr-conseil-constitutionnel,es-tribunal-constitucional");
+  // The absence of the `manual_publication_authorization` proof gate still wins first.
+  const withoutManual: Partial<UsCutoverProof> = { ...FULL_PROOF };
+  delete withoutManual.manualPublicationAuthorization;
+  const missingGate = planWithReceipt(withoutManual, CURRENT);
+  assert.equal(missingGate.authorized, false);
+  assert.equal(missingGate.reason, "us_cutover.manual_publication_authorization_not_observed");
 });
 
 test("US cutover planner refuses a mutation while any proof gate is missing", () => {
-  const plan = planUsCutover({ officialPdfFetched: true, docketIdentityVerified: true }, CURRENT);
+  const plan = planWithReceipt({ officialPdfFetched: true, docketIdentityVerified: true }, CURRENT);
   assert.equal(plan.authorized, false);
   assert.equal(plan.plannedAllowlist, "");
   assert.equal(plan.plannedExclude, "");
@@ -99,8 +123,8 @@ test("US cutover planner refuses a mutation while any proof gate is missing", ()
   assert.equal(plan.rollback.exclude, "fr-conseil-constitutionnel,es-tribunal-constitucional");
 });
 
-test("US cutover planner emits the exact paired allowlist/exclude on full proof", () => {
-  const plan = planUsCutover(FULL_PROOF, CURRENT);
+test("US cutover planner emits the exact paired allowlist/exclude on full proof with a same-case receipt", () => {
+  const plan = planWithReceipt(FULL_PROOF, CURRENT);
   assert.equal(plan.authorized, true);
   assert.equal(plan.plannedAllowlist, "fr-conseil-constitutionnel,es-tribunal-constitucional,us-scotus");
   assert.equal(plan.plannedExclude, "fr-conseil-constitutionnel,es-tribunal-constitucional,us-scotus");
@@ -110,7 +134,7 @@ test("US cutover planner emits the exact paired allowlist/exclude on full proof"
 });
 
 test("US cutover planner does not duplicate an already-present source", () => {
-  const plan = planUsCutover(FULL_PROOF, {
+  const plan = planWithReceipt(FULL_PROOF, {
     stagedAllowlist: ["fr-conseil-constitutionnel", "us-scotus"],
     m8Exclude: ["fr-conseil-constitutionnel", "us-scotus"],
   });
@@ -120,7 +144,7 @@ test("US cutover planner does not duplicate an already-present source", () => {
 });
 
 test("US cutover planner never authorizes on legacy historical counts alone", () => {
-  const plan = planUsCutover(
+  const plan = planWithReceipt(
     { coreArticles: 136, publishedP3: 136, searchEligible: 136 } as Partial<UsCutoverProof>,
     CURRENT,
   );
@@ -135,7 +159,7 @@ test("US cutover planner fails closed when current ownership is not exact paired
     { stagedAllowlist: ["fr-conseil-constitutionnel", "es-tribunal-constitucional"], m8Exclude: ["fr-conseil-constitutionnel", "de-bverfg"], reason: "us_cutover.ownership_not_paired_order_or_content_mismatch" },
   ];
   for (const mismatch of mismatches) {
-    const plan = planUsCutover(FULL_PROOF, mismatch as { stagedAllowlist: string[]; m8Exclude: string[] });
+    const plan = planWithReceipt(FULL_PROOF, mismatch as { stagedAllowlist: string[]; m8Exclude: string[] });
     assert.equal(plan.authorized, false, `expected not authorized for ${JSON.stringify(mismatch)}`);
     assert.equal(plan.plannedAllowlist, "");
     assert.equal(plan.plannedExclude, "");
@@ -146,13 +170,13 @@ test("US cutover planner fails closed when current ownership is not exact paired
 });
 
 test("US cutover planner rejects duplicate or blank current ownership entries", () => {
-  const dup = planUsCutover(FULL_PROOF, {
+  const dup = planWithReceipt(FULL_PROOF, {
     stagedAllowlist: ["fr-conseil-constitutionnel", "fr-conseil-constitutionnel"],
     m8Exclude: ["fr-conseil-constitutionnel", "fr-conseil-constitutionnel"],
   });
   assert.equal(dup.authorized, false);
   assert.equal(dup.reason, "us_cutover.ownership_not_paired_duplicate_entry");
-  const blank = planUsCutover(FULL_PROOF, {
+  const blank = planWithReceipt(FULL_PROOF, {
     stagedAllowlist: ["fr-conseil-constitutionnel", ""],
     m8Exclude: ["fr-conseil-constitutionnel", ""],
   });
@@ -160,16 +184,38 @@ test("US cutover planner rejects duplicate or blank current ownership entries", 
   assert.equal(blank.reason, "us_cutover.ownership_not_paired_empty_entry");
 });
 
-test("US cutover planner authorizes a fully aligned paired list", () => {
-  const aligned = planUsCutover(FULL_PROOF, {
+test("US cutover planner authorizes a fully aligned paired list with a same-case receipt", () => {
+  const aligned = planWithReceipt(FULL_PROOF, {
     stagedAllowlist: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"],
     m8Exclude: ["es-tribunal-constitucional", "fr-conseil-constitutionnel"],
   });
   assert.equal(aligned.authorized, true);
   assert.equal(aligned.plannedAllowlist, "es-tribunal-constitucional,fr-conseil-constitutionnel,us-scotus");
   assert.equal(aligned.plannedExclude, aligned.plannedAllowlist);
-  const emptyAligned = planUsCutover(FULL_PROOF, { stagedAllowlist: [], m8Exclude: [] });
+  const emptyAligned = planWithReceipt(FULL_PROOF, { stagedAllowlist: [], m8Exclude: [] });
   assert.equal(emptyAligned.authorized, true);
   assert.equal(emptyAligned.plannedAllowlist, "us-scotus");
   assert.equal(emptyAligned.plannedExclude, "us-scotus");
+});
+
+test("same-case manual approval receipt: only immutable human receipts with a real actor count", () => {
+  const CORE = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+  const humanDocument = JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:reviewer", policyVersion: US_MANUAL_APPROVAL_POLICY });
+  const present = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: humanDocument },
+  ]);
+  assert.equal(present.present, true);
+  assert.equal(present.actorId, "ops:reviewer");
+
+  const cases: Array<[string, Array<{ articleId: string; policyVersion: string; evidenceDocument: string }>]> = [
+    ["different article", [{ articleId: "other", policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: humanDocument }]],
+    ["automatic FR/ES ledger is not manual", [{ articleId: CORE, policyVersion: "worldcons.fr-es-staged-approval.v1", evidenceDocument: humanDocument }]],
+    ["missing actor", [{ articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "" }) }]],
+    ["wrong document schema", [{ articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: "worldcons.removal-authority.v1", actorId: "x" }) }]],
+    ["malformed document", [{ articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: "not-json" }]],
+  ];
+  for (const [name, rows] of cases) {
+    assert.equal(evaluateSameCaseManualApprovalReceipt(CORE, rows).present, false, name);
+  }
+  assert.equal(evaluateSameCaseManualApprovalReceipt(null, []).present, false);
 });

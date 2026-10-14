@@ -26,6 +26,77 @@ import { evaluateOwnershipPairing } from "./paired-ownership";
 
 export const US_SOURCE_KEY = "us-scotus" as const;
 
+/**
+ * The only approval policy that may satisfy the US manual publication gate. This
+ * is the *human review* policy recorded by `recordHumanApproval` under an
+ * external actor identity, deliberately distinct from the automatic FR/ES
+ * staged-approval ledger (`worldcons.fr-es-staged-approval.v1`) and from any
+ * generic `published` flag.
+ */
+export const US_MANUAL_APPROVAL_POLICY = "worldcons.human-reviewed-publication.v1" as const;
+
+/** The evidence document schema a genuine human approval receipt must carry. */
+export const US_MANUAL_APPROVAL_DOCUMENT_SCHEMA = "worldcons.human-approval.v1" as const;
+
+/**
+ * One observed approval-ledger row, as read from `e2e_approval_evidence_v1`.
+ * `articleId` must be the exact same-case Core UUID; `policyVersion` must be the
+ * human-review policy; `evidenceDocument` is the immutable JSON receipt.
+ */
+export interface UsManualApprovalReceiptRow {
+  articleId: string | null | undefined;
+  policyVersion: string | null | undefined;
+  evidenceDocument: string | null | undefined;
+}
+
+export interface UsManualApprovalAssessment {
+  present: boolean;
+  reason: string;
+  actorId: string | null;
+  policyVersion: string | null;
+}
+
+/**
+ * Pure, fail-closed evaluation of whether an *immutable, same-case, human*
+ * approval receipt exists for the given Core article.
+ *
+ * This replaces treating a caller-supplied `manualPublicationAuthorization`
+ * boolean (or a generic `published`/`automatic` flag) as proof of review. A
+ * receipt counts ONLY when ALL of the following hold:
+ *
+ *   - `articleId` equals the exact same-case Core UUID;
+ *   - `policyVersion` is `worldcons.human-reviewed-publication.v1` (NOT the
+ *     automatic FR/ES ledger);
+ *   - `evidenceDocument` parses and its `schema` is
+ *     `worldcons.human-approval.v1` with a non-empty external `actorId`.
+ *
+ * Anything else (missing article, other policy, missing/blank actor, malformed
+ * document) fails closed. This function never reads the database or the network.
+ */
+export function evaluateSameCaseManualApprovalReceipt(
+  coreArticleId: string | null | undefined,
+  rows: ReadonlyArray<UsManualApprovalReceiptRow>,
+): UsManualApprovalAssessment {
+  const target = (coreArticleId ?? "").trim();
+  if (!target) return { present: false, reason: "us_manual_approval.no_core_article", actorId: null, policyVersion: null };
+  for (const row of rows) {
+    if (String(row.articleId ?? "") !== target) continue;
+    if (String(row.policyVersion ?? "") !== US_MANUAL_APPROVAL_POLICY) continue;
+    let document: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(String(row.evidenceDocument ?? "")) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      document = parsed as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const actorId = typeof document.actorId === "string" ? document.actorId.trim() : "";
+    if (document.schema !== US_MANUAL_APPROVAL_DOCUMENT_SCHEMA || actorId.length === 0) continue;
+    return { present: true, reason: "us_manual_approval.same_case_human_receipt", actorId, policyVersion: US_MANUAL_APPROVAL_POLICY };
+  }
+  return { present: false, reason: "us_manual_approval.no_same_case_human_receipt", actorId: null, policyVersion: null };
+}
+
 export interface UsCutoverProof {
   /** A genuine new official `supremecourt.gov` slip-opinion PDF was fetched through the crawl path. */
   officialPdfFetched: boolean;
@@ -159,18 +230,23 @@ export interface UsCutoverPlan {
 /**
  * Computes the exact paired allowlist/exclude mutation for a US cutover.
  *
- * The cutover is authorized ONLY when the readiness gate is fully satisfied —
- * including the explicit **manual** publication authorization, because US
- * policy does not permit automatic publication. Otherwise it returns
- * `authorized=false`, emits no planned mutation, and still captures the current
- * values as the rollback target. The staged allowlist and the M8 exclusion
- * always move together to the same value.
+ * The cutover is authorized ONLY when the readiness gate is fully satisfied AND
+ * a genuine, immutable, same-case human-review receipt is supplied through
+ * `options.manualApprovalReceipt`. A caller-supplied
+ * `manualPublicationAuthorization: true` boolean is NEVER sufficient on its own:
+ * the planner refuses to mutate ownership without the observed receipt, because
+ * a plain boolean (and the automatic FR/ES ledger) is not evidence of a real
+ * per-article review. Otherwise it returns `authorized=false`, emits no planned
+ * mutation, and still captures the current values as the rollback target. The
+ * staged allowlist and the M8 exclusion always move together to the same value.
  */
 export function planUsCutover(
   proof: Partial<UsCutoverProof> | null | undefined,
   current: UsCutoverOwnership,
+  options: { manualApprovalReceipt?: UsManualApprovalAssessment } = {},
 ): UsCutoverPlan {
   const readiness = evaluateUsCutoverReadiness(proof);
+  const receiptPresent = options.manualApprovalReceipt?.present === true;
   const rollback = {
     allowlist: current.stagedAllowlist.join(","),
     exclude: current.m8Exclude.join(","),
@@ -199,6 +275,19 @@ export function planUsCutover(
       plannedExclude: "",
       rollback,
       reason: readiness.blockers[0],
+    };
+  }
+  // Even with every readiness gate true, a caller-supplied boolean is not proof
+  // of per-article human review. The immutable same-case receipt is mandatory.
+  if (!receiptPresent) {
+    return {
+      source: US_SOURCE_KEY,
+      authorized: false,
+      readiness,
+      plannedAllowlist: "",
+      plannedExclude: "",
+      rollback,
+      reason: "us_cutover.manual_approval_receipt_not_observed",
     };
   }
   return {

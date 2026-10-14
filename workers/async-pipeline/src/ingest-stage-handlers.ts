@@ -35,9 +35,10 @@ import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { registerIngestStageJob } from "../../../lib/cloudflare/ingest-stages/repository";
 import {
-  CANARY_DISCOVERY_DEFAULT_RANGE_DAYS,
   CANARY_DISCOVERY_LIMIT,
-  CANARY_DISCOVERY_MAX_LINKS,
+  canaryDiscoveryCandidateHasOfficialIdentity,
+  canaryDiscoveryDefaultRangeDays,
+  canaryDiscoveryMaxLinks,
   canaryDiscoveryCandidateRef,
   canaryDiscoveryRequestRef,
   parseCanaryDiscoveryRequest,
@@ -45,7 +46,7 @@ import {
   type CanaryDiscoveryRequest,
   type CanaryDiscoverySourceKey,
 } from "../../../lib/cloudflare/ingest-stages/canary-discovery";
-import { bverfgDecisionIdentity, isOfficialHost } from "../../../lib/ingest/official-source-verify";
+import { isOfficialHost } from "../../../lib/ingest/official-source-verify";
 import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../../../lib/cloudflare/core-write/authority";
 import { ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES } from "../../../lib/article-lifecycle/compatibility";
 import {
@@ -444,15 +445,17 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     sourceKey != null && (deps.e2e?.sources.includes(sourceKey) === true || deps.canarySources?.includes(sourceKey) === true);
 
   /**
-   * The discover-one canary runner. It performs a GENUINE official-homepage
-   * discovery for Germany only (never a caller-supplied candidate), selects
-   * exactly one candidate, writes its artifact under the explicit canary prefix
-   * and returns a single-next-job outcome so the consumer's audited
-   * `completeStageAndRegisterNext` registers exactly one child `crawl` job with
-   * a durable `job_stage_advanced` provenance edge. Every failure is an explicit
-   * terminal block; nothing is fanned out.
+   * The discover-one canary runner. It performs a GENUINE official discovery for
+   * the canary source (`de-bverfg` homepage SSR anchors, or the official
+   * `supremecourt.gov` slip-opinion term listing for `us-scotus`) — never a
+   * caller-supplied candidate. It selects exactly one candidate, writes its
+   * artifact under the explicit canary prefix and returns a single-next-job
+   * outcome so the consumer's audited `completeStageAndRegisterNext` registers
+   * exactly one child `crawl` job with a durable `job_stage_advanced` provenance
+   * edge. Every failure is an explicit terminal block; nothing is fanned out.
    */
   const canaryDiscovery = async (context: IngestStageHandlerContext, request: CanaryDiscoveryRequest): Promise<IngestStageHandlerOutcome> => {
+    const maxLinks = canaryDiscoveryMaxLinks(request.sourceKey);
     let observed: NativeStageCandidate[];
     try {
       observed = await discoverNativeStageCandidates(request.sourceKey, deps.crawlerBindings, {
@@ -461,27 +464,27 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         // Observe one more link than the bound so a page that advertises an
         // implausibly large decision set is detected and rejected, while the
         // step stays bounded (discoverNativeStageCandidates caps its own limit).
-        limit: CANARY_DISCOVERY_MAX_LINKS + 1,
+        limit: maxLinks + 1,
         rangeDays: request.rangeDays,
         browserNavigate: deps.browserNavigate,
       });
     } catch (error) {
       return { status: "retry", errorCode: "ingest_stage.discovery_failed", errorSummary: (error instanceof Error ? error.message : String(error)).slice(0, 500) };
     }
-    const selection = selectCanaryDiscoveryCandidate(observed);
+    const selection = selectCanaryDiscoveryCandidate(observed, maxLinks);
     if (!selection.candidate) {
-      return { status: "blocked", errorCode: selection.reason ?? "canary_discovery.candidate_not_found", errorSummary: `Official ${request.sourceKey} homepage yielded ${selection.observed} decision link(s).` };
+      return { status: "blocked", errorCode: selection.reason ?? "canary_discovery.candidate_not_found", errorSummary: `Official ${request.sourceKey} listing yielded ${selection.observed} decision link(s).` };
     }
     const candidate = selection.candidate;
     // The general crawler may fall back to a third-party metadata index when
     // the official listing is empty. A discover-one canary must NEVER count a
     // guessed/third-party index URL as proof of official-source discovery.
     if (candidate.metadata.discoveryIndex !== "official-listing") {
-      return { status: "blocked", errorCode: "canary_discovery.official_listing_required", errorSummary: "Discovery was not proven from an official BVerfG listing." };
+      return { status: "blocked", errorCode: "canary_discovery.official_listing_required", errorSummary: `Discovery was not proven from an official ${request.sourceKey} listing.` };
     }
     if (candidate.sourceKey !== request.sourceKey || !isOfficialHost(request.sourceKey, candidate.url)
-      || !bverfgDecisionIdentity(candidate.url)) {
-      return { status: "blocked", errorCode: "canary_discovery.candidate_not_official_identity", errorSummary: "The discovered candidate is not a parseable official BVerfG decision URL." };
+      || !canaryDiscoveryCandidateHasOfficialIdentity(request.sourceKey, candidate.url)) {
+      return { status: "blocked", errorCode: "canary_discovery.candidate_not_official_identity", errorSummary: `The discovered candidate is not a parseable official ${request.sourceKey} document URL.` };
     }
     const candidateId = await nativeStageCandidateId(candidate.sourceKey, candidate.url);
     const contentHash = await sha256Hex(candidate.url);
@@ -928,7 +931,7 @@ export async function enqueueCanaryDiscovery(
   const request: CanaryDiscoveryRequest = {
     sourceKey: input.sourceKey,
     limit: CANARY_DISCOVERY_LIMIT,
-    rangeDays: input.rangeDays ?? CANARY_DISCOVERY_DEFAULT_RANGE_DAYS,
+    rangeDays: input.rangeDays ?? canaryDiscoveryDefaultRangeDays(input.sourceKey),
     canaryDiscovery: { canaryId: input.canaryId, operatorId: input.operatorId },
   };
   const payloadRef = canaryDiscoveryRequestRef(input.sourceKey, input.canaryId);

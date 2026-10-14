@@ -1,25 +1,28 @@
 /**
- * Operator single-case **discover-one** canary planner/contract for Germany.
+ * Operator single-case **discover-one** canary planner/contract for Germany and
+ * the United States.
  *
  * This is the missing *seventh* stage for the operator canary. The existing
  * canary (`./canary.ts`) is crawl-first: it seeds a `crawl` job for an
  * operator-supplied official URL and therefore can never produce a literal
  * seven-stage Discovery->Search lineage. This module adds a bounded,
  * fail-closed path that starts at a **genuine `discovery` stage job** which
- * fetches the real official BVerfG homepage SSR anchors (never a user-supplied
+ * fetches the real official source listing (BVerfG homepage SSR anchors, or the
+ * official `supremecourt.gov` slip-opinion term listing — never a user-supplied
  * candidate masquerading as discovery) and yields **exactly one** corresponding
  * canary `crawl` job with same-case provenance.
  *
  * Hard safety properties (all fail-closed):
  *
- * - **Germany only.** `de-bverfg` is the only accepted source; every other key
- *   (including `us-scotus`, FR, ES) is rejected.
+ * - **DE/US only.** `de-bverfg` and `us-scotus` are the only accepted sources;
+ *   every other key (including FR/ES) is rejected.
  * - **No candidate injection.** The request carries NO candidate URL / ECLI /
- *   docket. Discovery always runs `discoverNativeStageCandidates("de-bverfg", ...)`
- *   against the official court homepage, so the discovered URL is derived from
- *   the official source, not from the caller.
- * - **Bounded.** `limit` must be exactly 1; `rangeDays` is bounded; unknown
- *   top-level keys and unknown `canaryDiscovery` keys are rejected.
+ *   docket. Discovery always runs `discoverNativeStageCandidates(sourceKey, ...)`
+ *   against the official listing, so the discovered URL is derived from the
+ *   official source, not from the caller.
+ * - **Bounded.** `limit` must be exactly 1; `rangeDays` is bounded (a wider
+ *   default for the US term listing); unknown top-level keys and unknown
+ *   `canaryDiscovery` keys are rejected.
  * - **Explicit canary identity.** The discovery job's artifact lives under the
  *   explicit `stages/canary/` prefix (so the preserved per-source gate allows
  *   this non-staged source through only as a controlled exception) and every
@@ -30,14 +33,18 @@
  *   idempotency key). The lineage audit walks that edge; the discovery row is a
  *   real job, never fabricated.
  *
+ * The US path never grants approval or publication; a discovered US opinion
+ * continues to fail closed at the public-judgment gate pending manual review.
+ *
  * It performs no network or database work itself and imports no Cloudflare
  * runtime types, so the exact envelope is unit-testable in Node.
  */
 import { sha256Canonical } from "@/lib/cloudflare/e2e/contracts";
 import { CANARY_PAYLOAD_PREFIX } from "./canary";
+import { bverfgDecisionIdentity, isOfficialScotusPdfUrl } from "@/lib/ingest/official-source-verify";
 
-/** Only Germany may run the discover-one canary. US stays crawl-first only. */
-export const CANARY_DISCOVERY_SOURCE_KEYS = ["de-bverfg"] as const;
+/** Germany and the United States may run the discover-one canary. */
+export const CANARY_DISCOVERY_SOURCE_KEYS = ["de-bverfg", "us-scotus"] as const;
 export type CanaryDiscoverySourceKey = (typeof CANARY_DISCOVERY_SOURCE_KEYS)[number];
 
 /** The discover-one discriminator key inside a stored discovery-request artifact. */
@@ -46,6 +53,14 @@ export const CANARY_DISCOVERY_MARKER = "canaryDiscovery" as const;
 /** discover-one is strictly single-case. */
 export const CANARY_DISCOVERY_LIMIT = 1 as const;
 export const CANARY_DISCOVERY_DEFAULT_RANGE_DAYS = 60 as const;
+/**
+ * The US slip-opinion listing legitimately spans a whole term; the current term
+ * (2026) can be empty early in October while the previous term (2025) still
+ * carries the newest published opinion. A bounded wider default lets a genuine
+ * US discover-one find the newest official opinion without a caller-supplied
+ * candidate.
+ */
+export const CANARY_DISCOVERY_US_DEFAULT_RANGE_DAYS = 400 as const;
 export const CANARY_DISCOVERY_MAX_RANGE_DAYS = 730 as const;
 /**
  * The finite bound on the number of official homepage decision links the canary
@@ -53,6 +68,18 @@ export const CANARY_DISCOVERY_MAX_RANGE_DAYS = 730 as const;
  * decision links is not treated as a trustworthy single-case discovery source.
  */
 export const CANARY_DISCOVERY_MAX_LINKS = 10 as const;
+/**
+ * The US official slip-opinion listing legitimately advertises a whole term of
+ * opinions (often far more than ten). The canary still observes a *finite*
+ * bounded window and selects exactly one (the newest) candidate, so the US bound
+ * is higher but remains a hard cap.
+ */
+export const CANARY_DISCOVERY_US_MAX_LINKS = 300 as const;
+
+/** The finite observation bound for a source's genuine discovery. */
+export function canaryDiscoveryMaxLinks(sourceKey: CanaryDiscoverySourceKey): number {
+  return sourceKey === "us-scotus" ? CANARY_DISCOVERY_US_MAX_LINKS : CANARY_DISCOVERY_MAX_LINKS;
+}
 
 /** Top-level keys allowed on the stored discovery-request artifact. */
 export const CANARY_DISCOVERY_REQUEST_KEYS = ["sourceKey", "limit", "rangeDays", CANARY_DISCOVERY_MARKER] as const;
@@ -152,6 +179,27 @@ export function isCanaryDiscoveryRequest(value: unknown): boolean {
 }
 
 /**
+ * The per-source default discovery range. Germany uses the bounded homepage
+ * window; the US must see a full term (current or, during the October rollover,
+ * the previous term), so it gets a wider but still bounded default.
+ */
+export function canaryDiscoveryDefaultRangeDays(sourceKey: CanaryDiscoverySourceKey): number {
+  return sourceKey === "us-scotus" ? CANARY_DISCOVERY_US_DEFAULT_RANGE_DAYS : CANARY_DISCOVERY_DEFAULT_RANGE_DAYS;
+}
+
+/**
+ * True only when `url` carries the exact official document identity for the
+ * canary source: a parseable official BVerfG decision URL for Germany, or an
+ * official SCOTUS slip-opinion PDF URL for the United States. This is the same
+ * identity contract the crawl stage enforces against the fetched body, applied
+ * here so discovery cannot hand off a non-official or malformed candidate.
+ */
+export function canaryDiscoveryCandidateHasOfficialIdentity(sourceKey: CanaryDiscoverySourceKey, url: string): boolean {
+  if (sourceKey === "us-scotus") return isOfficialScotusPdfUrl(url);
+  return bverfgDecisionIdentity(url) !== null;
+}
+
+/**
  * Deterministic canary id for discover-one. It derives from the workflow
  * instance identity (stable across a Workflow replay, unique per trigger), so
  * a workflow retry cannot create a second case. The returned 32-hex token is the
@@ -196,9 +244,9 @@ export interface CanaryDiscoverySelection<T> {
  *   (`CANARY_DISCOVERY_MAX_LINKS`), i.e. a page that is not a trustworthy
  *   single-case discovery source.
  */
-export function selectCanaryDiscoveryCandidate<T>(candidates: readonly T[]): CanaryDiscoverySelection<T> {
+export function selectCanaryDiscoveryCandidate<T>(candidates: readonly T[], maxLinks: number = CANARY_DISCOVERY_MAX_LINKS): CanaryDiscoverySelection<T> {
   if (candidates.length === 0) return { candidate: null, observed: 0, reason: "canary_discovery.candidate_not_found" };
-  if (candidates.length > CANARY_DISCOVERY_MAX_LINKS) {
+  if (candidates.length > maxLinks) {
     return { candidate: null, observed: candidates.length, reason: "canary_discovery.too_many_links" };
   }
   return { candidate: candidates[0], observed: candidates.length, reason: null };
