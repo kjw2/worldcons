@@ -30,6 +30,11 @@ import {
   type WorldconsSearchServiceEnv,
 } from "@/lib/cloudflare/services/worldcons-search-service";
 import {
+  dispatchWorldconsT3SearchV1,
+  type WorldconsSearchV1Arg,
+  type WorldconsT3BindingEnv,
+} from "@/lib/integrations/cclrag2/t3-service-binding";
+import {
   parseCclMetasearchSearchParams,
   type CclMetasearchSearchInput,
   type CclMetasearchSearchPage,
@@ -248,6 +253,32 @@ export class WorldconsSearchService extends WorkerEntrypoint<WorldconsSearchServ
       SEARCH_BINDING: env.WORLDCONS_SEARCH,
       CCL_METASEARCH_DB_TIMEOUT_MS: env.CCL_METASEARCH_DB_TIMEOUT_MS,
     });
+  }
+
+  /**
+   * Versioned T3 RPC candidate. Disabled until the T1 contract is owner-signed
+   * and the caller presents the dedicated S2S bearer. Same-account binding is
+   * not authorization. This method is not a live Cloudflare provisioning claim.
+   */
+  async searchV1(arg: WorldconsSearchV1Arg): Promise<unknown> {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeArtifactBlobR2Binding(env.WORLDCONS_RAW ?? null);
+    setRuntimeD1Bindings({
+      worldcons_core: env.WORLDCONS_CORE,
+      worldcons_search: env.WORLDCONS_SEARCH,
+    });
+    setRuntimeWorldconsSearchServiceEnv(env);
+    const response = await dispatchWorldconsT3SearchV1({
+      arg,
+      env: env as WorldconsT3BindingEnv,
+      dependencies: {
+        coreBinding: env.WORLDCONS_CORE,
+        searchBinding: env.WORLDCONS_SEARCH,
+        vectorBinding: env.WORLDCONS_SEARCH_VECTOR,
+      },
+    });
+    return response.json();
   }
 }
 

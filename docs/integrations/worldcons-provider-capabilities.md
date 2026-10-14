@@ -16,3 +16,5 @@ pnpm exec tsc --noEmit -p tests/tsconfig.cclrag2-capabilities.json
 ```
 
 These checks use local fixtures and rejecting dependency stubs. They do not run production quality, latency, cost, or cross-system integration validation. Deployment and owner commit/push remain with the orchestrator.
+
+T3 service-binding adapter candidates (`searchV1` and fixed-path fetch) are documented in [worldcons-t3-service-binding.md](worldcons-t3-service-binding.md). They stay disabled until this T1 contract is owner-signed and the caller presents a dedicated S2S bearer. Public discovery and search authentication are unchanged.

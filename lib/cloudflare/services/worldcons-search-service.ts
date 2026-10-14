@@ -30,6 +30,10 @@ export interface WorldconsSearchServiceEnv {
   WORLDCONS_CORE?: D1RuntimeDatabase;
   WORLDCONS_SEARCH?: D1RuntimeDatabase;
   WORLDCONS_SEARCH_VECTOR?: VectorizeIndexBinding;
+  WORLDCONS_CCLRAG2_T3_BINDING_ENABLED?: string;
+  WORLDCONS_CCLRAG2_T1_CONTRACT_STATUS?: string;
+  WORLDCONS_CCLRAG2_S2S_TOKEN?: string;
+  WORLDCONS_PORTAL_TOKEN?: string;
 }
 
 const DEFAULT_PUBLIC_BASE_URL = "https://worldcons.cclib.workers.dev/api/cclrag2";
