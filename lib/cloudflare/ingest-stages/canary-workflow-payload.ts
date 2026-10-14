@@ -18,13 +18,14 @@
  * changes source ownership; it can only continue an already-seeded canary.
  */
 import { CANARY_SOURCE_KEYS, type CanarySourceKey } from "./canary";
+import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_DEFAULT_RANGE_DAYS, CANARY_DISCOVERY_SOURCE_KEYS, type CanaryDiscoverySourceKey } from "./canary-discovery";
 
 /** The supported seed modes; anything else is rejected. */
 export const OPERATOR_CANARY_SEED_MODES = ["seed", "seed-and-dispatch"] as const;
 export type OperatorCanarySeedMode = (typeof OPERATOR_CANARY_SEED_MODES)[number];
 
-/** The two disjoint top-level payload shapes. */
-export type OperatorCanaryPayloadKind = "seed" | "advance";
+/** The three disjoint top-level payload shapes. */
+export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one";
 
 /** Keys allowed on the seed shape only. */
 export const OPERATOR_CANARY_SEED_KEYS = [
@@ -42,6 +43,19 @@ export const OPERATOR_CANARY_ADVANCE_KEYS = [
   "jobId",
   "canaryId",
   "operatorId",
+] as const;
+
+/**
+ * Keys allowed on the discover-one shape only. It deliberately carries NO
+ * `candidateUrl`/`ecli`/`docket`: discovery always runs against the official
+ * source, so a caller can never inject a candidate masquerading as discovery.
+ */
+export const OPERATOR_CANARY_DISCOVER_ONE_KEYS = [
+  "mode",
+  "sourceKey",
+  "rangeDays",
+  "operatorId",
+  "dispatch",
 ] as const;
 
 export const OPERATOR_CANARY_DEFAULT_OPERATOR_ID = "cloudflare-workflow-operator" as const;
@@ -72,7 +86,18 @@ export interface OperatorCanaryAdvanceEvent {
   operatorId: string;
 }
 
-export type OperatorCanaryEvent = OperatorCanarySeedEvent | OperatorCanaryAdvanceEvent;
+/** The validated discover-one envelope (Germany only; no injected candidate). */
+export interface OperatorCanaryDiscoverOneEvent {
+  payloadKind: "discover-one";
+  mode: "discover-one";
+  sourceKey: CanaryDiscoverySourceKey;
+  rangeDays: number;
+  operatorId: string;
+  /** When true (default) the seeded discovery job is dispatched immediately. */
+  dispatch: boolean;
+}
+
+export type OperatorCanaryEvent = OperatorCanarySeedEvent | OperatorCanaryAdvanceEvent | OperatorCanaryDiscoverOneEvent;
 
 export type OperatorCanaryParseResult =
   | { ok: true; value: OperatorCanaryEvent }
@@ -121,16 +146,49 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
   // shape; an absent or unrecognised mode is handled by the seed branch (absent =>
   // default seed mode; unrecognised => rejected there).
   const modeRaw = candidate.mode;
-  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance"].includes(modeRaw)) {
+  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance", "discover-one"].includes(modeRaw)) {
     return { ok: false, error: "operator_canary.mode_not_allowed" };
   }
   const isAdvance = modeRaw === "advance";
+  const isDiscoverOne = modeRaw === "discover-one";
 
-  const shapeError = rejectUnknownKeys(candidate, isAdvance ? OPERATOR_CANARY_ADVANCE_KEYS : OPERATOR_CANARY_SEED_KEYS);
+  const shapeError = rejectUnknownKeys(
+    candidate,
+    isAdvance ? OPERATOR_CANARY_ADVANCE_KEYS : isDiscoverOne ? OPERATOR_CANARY_DISCOVER_ONE_KEYS : OPERATOR_CANARY_SEED_KEYS,
+  );
   if (shapeError) return { ok: false, error: shapeError };
 
   const operator = parseOperatorId(candidate.operatorId);
   if (!operator.ok) return operator;
+
+  if (isDiscoverOne) {
+    const sourceKeyRaw = candidate.sourceKey;
+    if (typeof sourceKeyRaw !== "string" || !(CANARY_DISCOVERY_SOURCE_KEYS as readonly string[]).includes(sourceKeyRaw)) {
+      return { ok: false, error: "operator_canary.discover_one_source_not_allowed" };
+    }
+    let rangeDays: number = CANARY_DISCOVERY_DEFAULT_RANGE_DAYS;
+    if (candidate.rangeDays !== undefined) {
+      if (typeof candidate.rangeDays !== "number" || !Number.isInteger(candidate.rangeDays)
+        || candidate.rangeDays < 1 || candidate.rangeDays > CANARY_DISCOVERY_MAX_RANGE_DAYS) {
+        return { ok: false, error: "operator_canary.discover_one_range_days_invalid" };
+      }
+      rangeDays = candidate.rangeDays;
+    }
+    if (candidate.dispatch !== undefined && typeof candidate.dispatch !== "boolean") {
+      return { ok: false, error: "operator_canary.discover_one_dispatch_invalid" };
+    }
+    return {
+      ok: true,
+      value: {
+        payloadKind: "discover-one",
+        mode: "discover-one",
+        sourceKey: sourceKeyRaw as CanaryDiscoverySourceKey,
+        rangeDays,
+        operatorId: operator.value,
+        dispatch: candidate.dispatch !== false,
+      },
+    };
+  }
 
   if (isAdvance) {
     const jobIdRaw = candidate.jobId;

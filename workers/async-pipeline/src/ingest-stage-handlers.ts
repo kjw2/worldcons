@@ -34,6 +34,18 @@ import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from
  */
 import type { D1RuntimeDatabase } from "../../../lib/cloudflare/d1/runtime-binding";
 import { registerIngestStageJob } from "../../../lib/cloudflare/ingest-stages/repository";
+import {
+  CANARY_DISCOVERY_DEFAULT_RANGE_DAYS,
+  CANARY_DISCOVERY_LIMIT,
+  CANARY_DISCOVERY_MAX_LINKS,
+  canaryDiscoveryCandidateRef,
+  canaryDiscoveryRequestRef,
+  parseCanaryDiscoveryRequest,
+  selectCanaryDiscoveryCandidate,
+  type CanaryDiscoveryRequest,
+  type CanaryDiscoverySourceKey,
+} from "../../../lib/cloudflare/ingest-stages/canary-discovery";
+import { bverfgDecisionIdentity, isOfficialHost } from "../../../lib/ingest/official-source-verify";
 import { readArticleLifecycleFromD1, transitionArticleLifecycleInD1 } from "../../../lib/cloudflare/core-write/authority";
 import { ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES } from "../../../lib/article-lifecycle/compatibility";
 import {
@@ -430,8 +442,81 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
   // (auto-approval/publish/search stay strictly FR/ES below).
   const carriesApprovalArtifact = (sourceKey: string | null | undefined) =>
     sourceKey != null && (deps.e2e?.sources.includes(sourceKey) === true || deps.canarySources?.includes(sourceKey) === true);
+
+  /**
+   * The discover-one canary runner. It performs a GENUINE official-homepage
+   * discovery for Germany only (never a caller-supplied candidate), selects
+   * exactly one candidate, writes its artifact under the explicit canary prefix
+   * and returns a single-next-job outcome so the consumer's audited
+   * `completeStageAndRegisterNext` registers exactly one child `crawl` job with
+   * a durable `job_stage_advanced` provenance edge. Every failure is an explicit
+   * terminal block; nothing is fanned out.
+   */
+  const canaryDiscovery = async (context: IngestStageHandlerContext, request: CanaryDiscoveryRequest): Promise<IngestStageHandlerOutcome> => {
+    let observed: NativeStageCandidate[];
+    try {
+      observed = await discoverNativeStageCandidates(request.sourceKey, deps.crawlerBindings, {
+        fetch: deps.fetch,
+        now: new Date(context.now),
+        // Observe one more link than the bound so a page that advertises an
+        // implausibly large decision set is detected and rejected, while the
+        // step stays bounded (discoverNativeStageCandidates caps its own limit).
+        limit: CANARY_DISCOVERY_MAX_LINKS + 1,
+        rangeDays: request.rangeDays,
+        browserNavigate: deps.browserNavigate,
+      });
+    } catch (error) {
+      return { status: "retry", errorCode: "ingest_stage.discovery_failed", errorSummary: (error instanceof Error ? error.message : String(error)).slice(0, 500) };
+    }
+    const selection = selectCanaryDiscoveryCandidate(observed);
+    if (!selection.candidate) {
+      return { status: "blocked", errorCode: selection.reason ?? "canary_discovery.candidate_not_found", errorSummary: `Official ${request.sourceKey} homepage yielded ${selection.observed} decision link(s).` };
+    }
+    const candidate = selection.candidate;
+    // The general crawler may fall back to a third-party metadata index when
+    // the official listing is empty. A discover-one canary must NEVER count a
+    // guessed/third-party index URL as proof of official-source discovery.
+    if (candidate.metadata.discoveryIndex !== "official-listing") {
+      return { status: "blocked", errorCode: "canary_discovery.official_listing_required", errorSummary: "Discovery was not proven from an official BVerfG listing." };
+    }
+    if (candidate.sourceKey !== request.sourceKey || !isOfficialHost(request.sourceKey, candidate.url)
+      || !bverfgDecisionIdentity(candidate.url)) {
+      return { status: "blocked", errorCode: "canary_discovery.candidate_not_official_identity", errorSummary: "The discovered candidate is not a parseable official BVerfG decision URL." };
+    }
+    const candidateId = await nativeStageCandidateId(candidate.sourceKey, candidate.url);
+    const contentHash = await sha256Hex(candidate.url);
+    const artifactKey = canaryDiscoveryCandidateRef(request.sourceKey, contentHash);
+    await deps.rawBucket.put(artifactKey, new TextEncoder().encode(JSON.stringify(candidate)), { httpMetadata: { contentType: "application/json" } });
+    // A single next job (the child crawl) is registered atomically by the
+    // consumer's `completeStageAndRegisterNext`, which also writes the durable
+    // `job_stage_advanced` edge the lineage audit follows. The child must not
+    // register itself, so `registerNext` is left at its default (true) here.
+    return {
+      status: "succeeded",
+      resultRef: `canary-discovery:${request.sourceKey}:${request.canaryDiscovery.canaryId}:1`,
+      nextArticleId: candidateId,
+      nextSourceVersion: `canary-discovery-v1:${request.canaryDiscovery.canaryId}`,
+      nextContentHash: contentHash,
+      nextPayloadRef: artifactKey,
+    };
+  };
+
   const discovery: IngestStageHandler = async (context) => {
     const payload = context.job.payload_ref ? await readJsonArtifact(deps.rawBucket, context.job.payload_ref) : null;
+    // ---- discover-one canary branch -------------------------------------
+    // A discover-one discovery-request carries the explicit `canaryDiscovery`
+    // marker. It runs a GENUINE official-homepage discovery for Germany only,
+    // selects exactly ONE candidate, and hands exactly one child `crawl` job the
+    // same `canary-owner:<canaryId>` provenance. It never accepts a caller-
+    // supplied candidate URL, so it can neither fabricate nor masquerade the
+    // discovery step.
+    const canaryRequest = parseCanaryDiscoveryRequest(payload);
+    if (canaryRequest.ok) return canaryDiscovery(context, canaryRequest.value);
+    if (payload && typeof payload === "object" && !Array.isArray(payload) && "canaryDiscovery" in payload) {
+      // A present but invalid canary marker must never silently fall through to
+      // the ordinary fan-out path.
+      return { status: "blocked", errorCode: "ingest_stage.discovery_canary_request_invalid", errorSummary: canaryRequest.error };
+    }
     const request = discoveryRequestFrom(payload);
     if (!request) {
       return { status: "blocked", errorCode: "ingest_stage.discovery_request_invalid", errorSummary: "Discovery job payload_ref must reference a {sourceKey,limit?,rangeDays?} JSON artifact." };
@@ -821,6 +906,47 @@ export async function enqueueIngestStageDiscovery(
     now: input.now,
   });
   return { jobId: job.id, created };
+}
+
+/**
+ * Registers a **discover-one** canary discovery job for Germany. Unlike
+ * `enqueueIngestStageDiscovery`, the request artifact carries the explicit
+ * `canaryDiscovery` marker (so the discovery handler runs the genuine official
+ * homepage discovery and yields exactly one child crawl job) and lives under the
+ * preserved `stages/canary/` prefix. It performs no network work itself.
+ *
+ * The job is versioned by `(canaryId, day)`: replaying the same canary on the
+ * same day is idempotent, while a distinct canary id (or a new day) is a
+ * distinct case. The caller supplies a deterministic `canaryId` (see
+ * `canaryDiscoveryId`).
+ */
+export async function enqueueCanaryDiscovery(
+  ingestDb: D1RuntimeDatabase,
+  rawBucket: IngestStageRawBucket,
+  input: { sourceKey: CanaryDiscoverySourceKey; rangeDays?: number; canaryId: string; operatorId: string; now: string },
+): Promise<{ jobId: string; created: boolean; payloadRef: string }> {
+  const request: CanaryDiscoveryRequest = {
+    sourceKey: input.sourceKey,
+    limit: CANARY_DISCOVERY_LIMIT,
+    rangeDays: input.rangeDays ?? CANARY_DISCOVERY_DEFAULT_RANGE_DAYS,
+    canaryDiscovery: { canaryId: input.canaryId, operatorId: input.operatorId },
+  };
+  const payloadRef = canaryDiscoveryRequestRef(input.sourceKey, input.canaryId);
+  await rawBucket.put(payloadRef, new TextEncoder().encode(JSON.stringify(request)), { httpMetadata: { contentType: "application/json" } });
+  const contentHash = await sha256Hex(JSON.stringify({ ...request, limit: CANARY_DISCOVERY_LIMIT }));
+  // Unlike the daily bootstrap, discover-one is an explicit single case: the job
+  // key is versioned by the canary id only, so replaying the same canary — even
+  // across a UTC day boundary — cannot create a second discovery job.
+  const { job, created } = await registerIngestStageJob(ingestDb, {
+    stage: "discovery",
+    articleId: `canary-discovery:${input.sourceKey}:${input.canaryId}`,
+    sourceKey: input.sourceKey,
+    sourceVersion: `canary-discovery-request-v1:${input.canaryId}`,
+    contentHash,
+    payloadRef,
+    now: input.now,
+  });
+  return { jobId: job.id, created, payloadRef };
 }
 
 /** The stage handlers this module can wire, subject to adapter availability. */

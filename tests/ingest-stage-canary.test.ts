@@ -6,10 +6,11 @@ import path from "node:path";
 import {
   buildIngestStageIdempotencyKey,
   INGEST_STAGE_QUEUES,
+  type IngestStage,
   type IngestStageQueueMessage,
 } from "../lib/cloudflare/ingest-stages/contracts";
 import { resolveIngestStageRolloutGate } from "../lib/cloudflare/ingest-stages/flags";
-import { getIngestStageJobById } from "../lib/cloudflare/ingest-stages/repository";
+import { getIngestStageJobById, registerIngestStageJob } from "../lib/cloudflare/ingest-stages/repository";
 import {
   advanceCanaryCase,
   CANARY_PAYLOAD_PREFIX,
@@ -21,12 +22,18 @@ import {
 } from "../lib/cloudflare/ingest-stages/canary";
 import { parseOperatorCanaryEvent } from "../lib/cloudflare/ingest-stages/canary-workflow-payload";
 import {
+  CANARY_DISCOVERY_MAX_LINKS,
+  parseCanaryDiscoveryRequest,
+  selectCanaryDiscoveryCandidate,
+} from "../lib/cloudflare/ingest-stages/canary-discovery";
+import {
   consumeIngestStageBatch,
   type IngestStageQueueMessageHandle,
 } from "../workers/async-pipeline/src/ingest-stage-consumer";
-import { createIngestStageHandlers } from "../workers/async-pipeline/src/ingest-stage-handlers";
+import { createIngestStageHandlers, enqueueCanaryDiscovery } from "../workers/async-pipeline/src/ingest-stage-handlers";
 import { operatorCanaryAuthorized } from "../workers/async-pipeline/src/worker-auth";
 import {
+  applyOfficialIdentityGate,
   assertSelectOnly,
   classifyPublication,
   evaluateLinkedLineage,
@@ -789,4 +796,562 @@ test("operator canary workflow: the canonical DE event plans and seeds exactly o
     assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs").get()?.n, 1);
     assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0, "workflow never publishes");
   } finally { h.ingest.close(); h.core.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// discover-one canary (Germany only): a genuine official-homepage discovery job
+// that yields exactly one corresponding canary crawl job with same-case
+// provenance, continuing via the existing advance mode.
+// ---------------------------------------------------------------------------
+
+const DE_HOMEPAGE = "https://www.bundesverfassungsgericht.de/";
+const DE_DISCOVERED_URL = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260923_2bvr168126.html?nn=68112";
+const DE_DISCOVERED_ECLI = "ECLI:DE:BVerfG:2026:rk20260923.2bvr168126";
+
+/** The real production robots policy: root allowed, /SiteGlobals/ disallowed. */
+const DE_ROBOTS = "User-agent: *\nDisallow: /SiteGlobals/\nCrawl-delay: 0";
+
+function deHomepageFetch(options: { links?: number; bodyEcli?: string; homepageHtml?: string } = {}): { fetch: typeof fetch; seen: string[] } {
+  const seen: string[] = [];
+  const linkCount = options.links ?? 1;
+  const links = Array.from({ length: linkCount }, (_, index) => {
+    const day = String(23 - index).padStart(2, "0");
+    const ecli = index === 0 ? DE_DISCOVERED_ECLI : `ECLI:DE:BVerfG:2026:rk202609${day}.2bvr16812${index}`;
+    const url = index === 0 ? DE_DISCOVERED_URL
+      : `https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk202609${day}_2bvr16812${index}.html`;
+    return `<a href="${url}">2 BvR 1681/2${index}, decision of ${day} September 2026 (${ecli})</a>`;
+  }).join("");
+  const homepageHtml = options.homepageHtml ?? `<html><main>${links}</main></html>`;
+  const bodyEcli = options.bodyEcli ?? DE_DISCOVERED_ECLI;
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    seen.push(url);
+    if (url.endsWith("/robots.txt")) return new Response(DE_ROBOTS, { status: 200, headers: { "content-type": "text/plain" } });
+    if (url === DE_HOMEPAGE) return new Response(homepageHtml, { status: 200, headers: { "content-type": "text/html" } });
+    // The JS-only decisions landing page carries no usable links in any fixture.
+    if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") {
+      return new Response("<html><main>no static decision links</main></html>", { status: 200, headers: { "content-type": "text/html" } });
+    }
+    // A discovery-only third-party index must never be needed when the homepage
+    // yields candidates; an empty page keeps the fallback inert and honest.
+    if (url.startsWith("https://de.openlegaldata.io/api/cases/")) {
+      return new Response(JSON.stringify({ next: null, results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.startsWith(DE_DISCOVERED_URL.split("?")[0])) {
+      return new Response(`<html><main>${bodyEcli}\n${"BVerfG official decision text. ".repeat(80)}</main></html>`, { status: 200, headers: { "content-type": "text/html" } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  return { fetch: fetcher, seen };
+}
+
+function canaryDiscoveryHandlers(harness: Harness, fetcher: typeof fetch, adapters: {
+  translation?: Parameters<typeof createIngestStageHandlers>[0]["translation"];
+  publication?: Parameters<typeof createIngestStageHandlers>[0]["publication"];
+  search?: Parameters<typeof createIngestStageHandlers>[0]["search"];
+} = {}) {
+  const rawBucket = {
+    async put(key: string, value: Uint8Array) { await harness.reader.put(key, value); },
+    async get(key: string) { return harness.reader.get(key); },
+  };
+  const crawlerBindings = {
+    WORLDCONS_CORE: harness.coreDb,
+    WORLDCONS_INGEST: harness.ingestDb,
+    WORLDCONS_RAW: { async put(key: string, value: Uint8Array) { await harness.reader.put(key, value); } },
+  } as unknown as NativeCrawlerBindings;
+  return createIngestStageHandlers({
+    crawlerBindings,
+    rawBucket,
+    fetch: fetcher,
+    now: () => NOW,
+    canarySources: ["de-bverfg", "us-scotus"],
+    ...(adapters.translation ? { translation: adapters.translation } : {}),
+    ...(adapters.publication ? { publication: adapters.publication } : {}),
+    ...(adapters.search ? { search: adapters.search } : {}),
+  });
+}
+
+function deHomepageMessage(ingestDb: D1RuntimeDatabase, rawBucket: { put(key: string, value: Uint8Array): Promise<unknown> }, canaryId: string) {
+  return enqueueCanaryDiscovery(ingestDb, rawBucket as Parameters<typeof enqueueCanaryDiscovery>[1], {
+    sourceKey: "de-bverfg", canaryId, operatorId: "ops:reviewer", now: NOW,
+  });
+}
+
+const STAGED = ["fr-conseil-constitutionnel", "es-tribunal-constitucional"];
+
+test("discover-one contract: Germany-only, limit exactly 1, unknown keys/range rejected", () => {
+  const good = parseCanaryDiscoveryRequest({
+    sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" },
+  });
+  assert.equal(good.ok, true);
+  if (good.ok) assert.deepEqual(good.value.canaryDiscovery, { canaryId: "a".repeat(32), operatorId: "ops" });
+
+  const cases: Array<[unknown, RegExp]> = [
+    [{ sourceKey: "us-scotus", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /source_not_allowed/],
+    [{ sourceKey: "fr-conseil-constitutionnel", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /source_not_allowed/],
+    [{ sourceKey: "de-bverfg", limit: 2, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /limit_must_be_one/],
+    [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 0, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" } }, /range_days_invalid/],
+    [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" }, candidateUrl: DE_URL }, /unknown_key:candidateUrl/],
+    [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "nope", operatorId: "ops" } }, /canary_id_invalid/],
+    [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32) } }, /operator_id_invalid/],
+    [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops", extra: 1 } }, /marker.unknown_key:extra/],
+    [{ sourceKey: "de-bverfg", limit: 1, rangeDays: 60 }, /marker_missing/],
+  ];
+  for (const [payload, pattern] of cases) {
+    const result = parseCanaryDiscoveryRequest(payload);
+    assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(payload)}`);
+    assert.match(result.ok ? "" : result.error, pattern);
+  }
+
+  // selectCanaryDiscoveryCandidate: none -> candidate_not_found; over the finite
+  // bound -> too_many_links; a bounded set picks exactly the first (newest).
+  assert.equal(selectCanaryDiscoveryCandidate([]).reason, "canary_discovery.candidate_not_found");
+  assert.equal(selectCanaryDiscoveryCandidate(new Array(CANARY_DISCOVERY_MAX_LINKS + 1).fill(1)).reason, "canary_discovery.too_many_links");
+  const bounded = selectCanaryDiscoveryCandidate(["a", "b", "c"]);
+  assert.equal(bounded.candidate, "a");
+  assert.equal(bounded.observed, 3);
+});
+
+test("discover-one payload: Workflow accepts DE, rejects US/unknown keys/range, carries no candidate", () => {
+  const good = parseOperatorCanaryEvent({ mode: "discover-one", sourceKey: "de-bverfg" });
+  assert.equal(good.ok, true);
+  assert.deepEqual(good.ok ? good.value : null, {
+    payloadKind: "discover-one", mode: "discover-one", sourceKey: "de-bverfg", rangeDays: 60,
+    operatorId: "cloudflare-workflow-operator", dispatch: true,
+  });
+  const noDispatch = parseOperatorCanaryEvent({ mode: "discover-one", sourceKey: "de-bverfg", dispatch: false, rangeDays: 90 });
+  assert.equal(noDispatch.ok, true);
+  if (noDispatch.ok && noDispatch.value.payloadKind === "discover-one") {
+    assert.equal(noDispatch.value.dispatch, false);
+    assert.equal(noDispatch.value.rangeDays, 90);
+  }
+  const cases: Array<[unknown, RegExp]> = [
+    [{ mode: "discover-one", sourceKey: "us-scotus" }, /discover_one_source_not_allowed/],
+    [{ mode: "discover-one" }, /discover_one_source_not_allowed/],
+    [{ mode: "discover-one", sourceKey: "de-bverfg", candidateUrl: DE_URL }, /unknown_key:candidateUrl/],
+    [{ mode: "discover-one", sourceKey: "de-bverfg", ecli: DE_ECLI }, /unknown_key:ecli/],
+    [{ mode: "discover-one", sourceKey: "de-bverfg", rangeDays: 0 }, /discover_one_range_days_invalid/],
+    [{ mode: "discover-one", sourceKey: "de-bverfg", rangeDays: 10_000 }, /discover_one_range_days_invalid/],
+    [{ mode: "discover-one", sourceKey: "de-bverfg", dispatch: "yes" }, /discover_one_dispatch_invalid/],
+  ];
+  for (const [payload, pattern] of cases) {
+    const result = parseOperatorCanaryEvent(payload);
+    assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(payload)}`);
+    assert.match(result.ok ? "" : result.error, pattern);
+  }
+});
+
+test("discover-one: a GENUINE official homepage discovery yields exactly one canary crawl job and a durable provenance edge", async () => {
+  const h = createHarness();
+  const { fetch: fetcher, seen } = deHomepageFetch({ links: 3 });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    assert.equal(seeded.created, true);
+    assert.ok(seeded.payloadRef.startsWith(CANARY_PAYLOAD_PREFIX), "the discover-one artifact lives under the explicit canary prefix");
+
+    // Dispatch + consume the discovery job. The source gate allows the explicit
+    // canary payload even though de-bverfg is not a staged source.
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize");
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({
+      ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } },
+      jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW,
+    });
+    const discoveryConsume = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED }),
+    });
+    assert.equal(discoveryConsume.completed, 1, JSON.stringify(discoveryConsume));
+    // It observed real official homepage links, never /SiteGlobals/, never a third party.
+    assert.ok(seen.includes(DE_HOMEPAGE), "the official homepage was fetched");
+    assert.ok(seen.every((url) => !url.includes("/SiteGlobals/")), "the robots-disallowed search is never queried");
+    assert.ok(seen.every((url) => !url.includes("openlegaldata")), "no third-party index is treated as discovery");
+
+    const discoveryJob = await getIngestStageJobById(h.ingestDb, seeded.jobId);
+    assert.equal(discoveryJob?.status, "succeeded");
+    assert.equal(discoveryJob?.stage, "discovery");
+    assert.equal(discoveryJob?.source_key, "de-bverfg");
+
+    // Exactly ONE child crawl job, carrying the same canary source.
+    const crawlJobs = h.ingest.prepare("SELECT id,article_id,source_key,payload_ref,status FROM ingest_stage_jobs WHERE stage='crawl'").all() as Array<Record<string, unknown>>;
+    assert.equal(crawlJobs.length, 1, "discover-one fans out exactly one crawl job");
+    assert.equal(crawlJobs[0].source_key, "de-bverfg");
+    assert.ok(String(crawlJobs[0].payload_ref).startsWith(CANARY_PAYLOAD_PREFIX), "the child crawl artifact stays under the canary prefix");
+
+    // The durable provenance edge: discovery -> job_stage_advanced -> child crawl.
+    const advance = h.ingest.prepare("SELECT safe_details FROM ingest_stage_job_events WHERE job_id=? AND event_type='job_stage_advanced'").get(seeded.jobId) as { safe_details: string } | undefined;
+    assert.ok(advance, "the discovery job emits a durable job_stage_advanced edge");
+    const parsedAdvance = JSON.parse(advance!.safe_details) as { nextStage: string; nextKey: string };
+    assert.equal(parsedAdvance.nextStage, "crawl");
+    const childByKey = h.ingest.prepare("SELECT id FROM ingest_stage_jobs WHERE idempotency_key=?").get(parsedAdvance.nextKey) as { id: string } | undefined;
+    assert.equal(childByKey?.id, crawlJobs[0].id, "the advance nextKey resolves to exactly the one child crawl job");
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one: the genuine crawl verifies the official ECLI and continues through advance to normalize", async () => {
+  const h = createHarness();
+  const { fetch: fetcher } = deHomepageFetch({ links: 1, bodyEcli: DE_DISCOVERED_ECLI });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize,translate,public-judgment,publish,search");
+    const sourceGate = ({ stage, sourceKey, payloadRef }: { stage: IngestStage; sourceKey: string | null; payloadRef: string | null }) =>
+      canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED });
+
+    const dSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { dSent.push(body); return {}; } }, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: dSent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+
+    const crawlJob = h.ingest.prepare("SELECT id FROM ingest_stage_jobs WHERE stage='crawl'").get() as { id: string };
+    const cSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { cSent.push(body); return {}; } }, jobId: crawlJob.id, canaryId, operatorId: "ops", deploymentRef: null, stage: "crawl", now: NOW });
+    const crawlConsume = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.crawl, messages: [{ body: cSent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+    assert.equal(crawlConsume.completed, 1, JSON.stringify(crawlConsume));
+    assert.equal((await getIngestStageJobById(h.ingestDb, crawlJob.id))?.status, "succeeded");
+
+    // Existing advance mode continues the chain from the succeeded crawl.
+    const advanced = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: crawlJob.id, canaryId, operatorId: "ops", deploymentRef: null, now: NOW });
+    assert.equal(advanced.advanced, true, JSON.stringify(advanced));
+    assert.equal(advanced.fromStage, "crawl");
+    assert.equal(advanced.nextStage, "normalize");
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='normalize'").get()?.n, 1);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one denials: no candidate fails closed; a managed candidate never fabricates discovery; repeat is idempotent", async () => {
+  const cases: Array<{ name: string; setup: (h: Harness) => { fetch: typeof fetch } | null; pattern: RegExp }> = [
+    {
+      name: "candidate_not_found",
+      setup: () => ({ fetch: deHomepageFetch({ homepageHtml: "<html><main>no decision links here</main></html>" }).fetch }),
+      pattern: /canary_discovery.candidate_not_found/,
+    },
+    {
+      name: "too_many_links",
+      setup: () => ({ fetch: deHomepageFetch({ links: CANARY_DISCOVERY_MAX_LINKS + 2 }).fetch }),
+      pattern: /canary_discovery.too_many_links/,
+    },
+  ];
+  for (const { name, setup, pattern } of cases) {
+    const h = createHarness();
+    try {
+      const configured = setup(h)!;
+      const handlers = canaryDiscoveryHandlers(h, configured.fetch);
+      const rawBucket = {
+        async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+        async get(key: string) { return h.reader.get(key); },
+      };
+      const canaryId = "c121c7d71702d52251f439f7130f91be";
+      const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+      const gate = resolveIngestStageRolloutGate(true, "production", "discovery");
+      const sent: IngestStageQueueMessage[] = [];
+      await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+      const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+        gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+        sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED }),
+      });
+      assert.equal(result.completed, 0, name);
+      assert.equal(result.blockedJobs, 1, name);
+      const job = await getIngestStageJobById(h.ingestDb, seeded.jobId);
+      assert.equal(job?.status, "dead_letter", name);
+      assert.match(String(job?.last_error_code), pattern, name);
+      assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='crawl'").get()?.n, 0, `${name}: no crawl job is fabricated`);
+      assert.equal(h.core.prepare("SELECT COUNT(*) n FROM articles").get()?.n, 0, `${name}: no article is written`);
+    } finally { h.ingest.close(); h.core.close(); }
+  }
+
+  // A valid canary marker whose request is malformed is dead-lettered, never
+  // silently routed to the ordinary fan-out path.
+  {
+    const h = createHarness();
+    const { fetch: fetcher } = deHomepageFetch({ links: 1 });
+    try {
+      const handlers = canaryDiscoveryHandlers(h, fetcher);
+      const rawBucket = {
+        async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+        async get(key: string) { return h.reader.get(key); },
+      };
+      // A canary artifact with an invalid limit (2) but the marker present.
+      const badRef = `${CANARY_PAYLOAD_PREFIX}de-bverfg/bad.json`;
+      await rawBucket.put(badRef, new TextEncoder().encode(JSON.stringify({
+        sourceKey: "de-bverfg", limit: 2, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" },
+      })));
+      const { job } = await registerIngestStageJob(h.ingestDb, {
+        stage: "discovery", articleId: "canary-bad", sourceKey: "de-bverfg",
+        sourceVersion: "v", contentHash: "h", payloadRef: badRef, now: NOW,
+      });
+      const gate = resolveIngestStageRolloutGate(true, "production", "discovery");
+      const sent: IngestStageQueueMessage[] = [];
+      await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: job.id, canaryId: "a".repeat(32), operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+      const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+        gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+        sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED }),
+      });
+      assert.equal(result.blockedJobs, 1);
+      const row = await getIngestStageJobById(h.ingestDb, job.id);
+      assert.equal(row?.status, "dead_letter");
+      assert.equal(row?.last_error_code, "ingest_stage.discovery_canary_request_invalid");
+    } finally { h.ingest.close(); h.core.close(); }
+  }
+});
+
+test("discover-one: seeding the same canary twice is idempotent (one discovery job, one child)", async () => {
+  const h = createHarness();
+  const { fetch: fetcher } = deHomepageFetch({ links: 1 });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const first = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    const second = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    assert.equal(first.jobId, second.jobId);
+    assert.equal(second.created, false);
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='discovery'").get()?.n, 1);
+
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl");
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: first.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED }),
+    });
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='crawl'").get()?.n, 1);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one denials: the source gate blocks a canary-marked discovery job without the canary prefix", async () => {
+  const h = createHarness();
+  const { fetch: fetcher } = deHomepageFetch({ links: 1 });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    // A discovery job for de-bverfg carrying a valid canary marker but a
+    // NON-canary payload ref: the preserved per-source gate must dead-letter it
+    // before any handler runs (no network, no child crawl).
+    const plainRef = "stages/ingest-discovery-request/de-bverfg/plain.json";
+    await h.reader.put(plainRef, new TextEncoder().encode(JSON.stringify({
+      sourceKey: "de-bverfg", limit: 1, rangeDays: 60, canaryDiscovery: { canaryId: "a".repeat(32), operatorId: "ops" },
+    })));
+    const { job } = await registerIngestStageJob(h.ingestDb, {
+      stage: "discovery", articleId: "canary-plain", sourceKey: "de-bverfg", sourceVersion: "v", contentHash: "h", payloadRef: plainRef, now: NOW,
+    });
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: job.id, canaryId: "a".repeat(32), operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    let handlerRan = false;
+    const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate: resolveIngestStageRolloutGate(true, "production", "discovery"),
+      ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, env: {}, invalidRetryDelaySeconds: 300,
+      handlers: { ...handlers, discovery: async (ctx) => { handlerRan = true; return handlers.discovery!(ctx); } },
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED }),
+    });
+    assert.equal(handlerRan, false, "the handler must never run without the canary prefix");
+    assert.equal(result.blockedJobs, 1);
+    const row = await getIngestStageJobById(h.ingestDb, job.id);
+    assert.equal(row?.status, "dead_letter");
+    assert.equal(row?.last_error_code, "ingest_stage.source_not_authorized");
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='crawl'").get()?.n, 0);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one denial: an advance with a mismatched canary owner is refused on the discover-one chain", async () => {
+  const h = createHarness();
+  const { fetch: fetcher } = deHomepageFetch({ links: 1 });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl");
+    const sourceGate = ({ stage, sourceKey, payloadRef }: { stage: IngestStage; sourceKey: string | null; payloadRef: string | null }) =>
+      canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED });
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+    // The ownership fence is enforced on the discovered chain too.
+    const wrongOwner = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: seeded.jobId, canaryId: "not-mine", operatorId: "ops", deploymentRef: null, now: NOW });
+    assert.equal(wrongOwner.advanced, false);
+    assert.equal(wrongOwner.reason, "canary.advance_owner_mismatch");
+    // A correct owner+source advance is then permitted (one next job only).
+    const ok = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, now: NOW });
+    assert.equal(ok.advanced, true, JSON.stringify(ok));
+    assert.equal(ok.nextStage, "crawl");
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='crawl'").get()?.n, 1);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one denial: a homepage advertising only a malicious/external link yields no candidate (never fetched)", async () => {
+  const h = createHarness();
+  // The homepage advertises only an external-host URL that looks like a decision.
+  const { fetch: fetcher, seen } = deHomepageFetch({
+    homepageHtml: `<html><main><a href="https://evil.example/SharedDocs/Entscheidungen/DE/2026/09/rk20260923_2bvr168126.html">forged decision</a></main></html>`,
+  });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery");
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED }),
+    });
+    assert.equal(result.blockedJobs, 1);
+    const row = await getIngestStageJobById(h.ingestDb, seeded.jobId);
+    assert.equal(row?.status, "dead_letter");
+    assert.match(String(row?.last_error_code), /canary_discovery.candidate_not_found/);
+    assert.ok(seen.every((url) => !url.includes("evil.example")), "a non-official link is never fetched");
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='crawl'").get()?.n, 0);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one denial: the discovered official page body carrying a DIFFERENT ECLI fails closed at crawl", async () => {
+  const h = createHarness();
+  // The homepage discovers rk20260923_2bvr168126 but the fetched detail body
+  // carries a different in-body ECLI: the crawl must never persist it.
+  const { fetch: fetcher } = deHomepageFetch({ links: 1, bodyEcli: "ECLI:DE:BVerfG:2026:rk20260101.2bvr000001" });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl");
+    const sourceGate = ({ stage, sourceKey, payloadRef }: { stage: IngestStage; sourceKey: string | null; payloadRef: string | null }) =>
+      canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED });
+    const dSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { dSent.push(body); return {}; } }, jobId: seeded.jobId, canaryId, operatorId: "ops", deploymentRef: null, stage: "discovery", now: NOW });
+    await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: dSent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+    const crawlJob = h.ingest.prepare("SELECT id FROM ingest_stage_jobs WHERE stage='crawl'").get() as { id: string };
+    const cSent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { cSent.push(body); return {}; } }, jobId: crawlJob.id, canaryId, operatorId: "ops", deploymentRef: null, stage: "crawl", now: NOW });
+    const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.crawl, messages: [{ body: cSent[0], ack: () => undefined, retry: () => undefined }] }, { gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate });
+    assert.equal(result.completed, 0, "a mismatched body is never completed");
+    const row = await getIngestStageJobById(h.ingestDb, crawlJob.id);
+    assert.notEqual(row?.status, "succeeded");
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM articles").get()?.n, 0, "a mismatched body is never persisted");
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='normalize'").get()?.n, 0, "no downstream job is fabricated");
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("discover-one SEVEN-STAGE integration: a real discover-one run yields seven actual succeeded stage Job rows for one DE case", async () => {
+  const h = createHarness();
+  const { fetch: fetcher } = deHomepageFetch({ links: 3, bodyEcli: DE_DISCOVERED_ECLI });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher, {
+      translation: {
+        async summarize(articleId: string) {
+          h.core.prepare("UPDATE articles SET status='summarized',translation_status='translated',summary_json=?,korean_title=?,summarized_at=?,updated_at=? WHERE id=?")
+            .run(JSON.stringify({ koreanTitle: "요약", summary: { coreSummary: ["핵심"] } }), "요약", NOW, NOW, articleId);
+          return { status: "summarized" };
+        },
+      },
+      publication: {
+        async publish(articleId: string) {
+          h.core.prepare("INSERT INTO article_publications_p3 (id,article_id,state,version_id,revision,decided_by_type,decided_by_id,reason,published_at,withdrawn_at,created_at,updated_at) VALUES (?,?,'published',?,?,?,?,?,?,?,?,?)")
+            .run(`pub-${articleId}`, articleId, "version-1", "1", "compatibility", "ingest-stage-publish", "staged publish", NOW, null, NOW, NOW);
+          return { published: true, state: "published", versionId: "version-1", publicationRevision: 1 };
+        },
+      },
+      search: {
+        async project(articleId: string) {
+          const published = h.core.prepare("SELECT state FROM article_publications_p3 WHERE article_id=? AND state='published'").get(articleId);
+          return published ? { projected: true, documentCount: 1, ftsCount: 1 } : { projected: false, errorCode: "ingest_stage.search_not_published" };
+        },
+      },
+    });
+    const rawBucket = {
+      async put(key: string, value: Uint8Array) { await h.reader.put(key, value); },
+      async get(key: string) { return h.reader.get(key); },
+    };
+    const canaryId = "c121c7d71702d52251f439f7130f91be";
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize,translate,public-judgment,publish,search");
+    const sourceGate = ({ stage, sourceKey, payloadRef }: { stage: IngestStage; sourceKey: string | null; payloadRef: string | null }) =>
+      canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: STAGED });
+    const stages = ["discovery", "crawl", "normalize", "translate", "public-judgment", "publish", "search"] as const;
+
+    const seeded = await deHomepageMessage(h.ingestDb, rawBucket, canaryId);
+    let currentJobId = seeded.jobId;
+    for (const stage of stages) {
+      const sent: IngestStageQueueMessage[] = [];
+      await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: currentJobId, canaryId, operatorId: "ops", deploymentRef: null, stage, now: NOW });
+      assert.equal(sent.length, 1, `${stage}: one message dispatched`);
+      const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES[stage], messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+        gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300, sourceGate,
+      });
+      assert.equal(result.completed, 1, `${stage}: ${JSON.stringify(result)}`);
+      const job = await getIngestStageJobById(h.ingestDb, currentJobId);
+      assert.equal(job?.status, "succeeded", `${stage} is durably succeeded`);
+      if (stage === "search") break;
+      const advanced = await advanceCanaryCase({ ingestDb: h.ingestDb, jobId: currentJobId, canaryId, operatorId: "ops", deploymentRef: null, now: NOW });
+      assert.equal(advanced.advanced, true, `${stage}->${advanced.nextStage}: ${JSON.stringify(advanced)}`);
+      currentJobId = advanced.nextJobId!;
+    }
+
+    const rows = h.ingest.prepare("SELECT stage,status,source_key FROM ingest_stage_jobs ORDER BY stage").all() as Array<{ stage: string; status: string; source_key: string }>;
+    assert.equal(rows.length, 7, JSON.stringify(rows));
+    assert.deepEqual(rows.map((row) => row.stage).sort(), [...stages].sort());
+    assert.ok(rows.every((row) => row.status === "succeeded"), JSON.stringify(rows));
+    assert.ok(rows.every((row) => row.source_key === "de-bverfg"));
+
+    const core = h.core.prepare("SELECT id,source_metadata FROM articles").get() as { id: string; source_metadata: string };
+    const metadata = JSON.parse(core.source_metadata) as { collection: { sourceUrlVerified: boolean }; ecli: string };
+    assert.equal(metadata.ecli, DE_DISCOVERED_ECLI);
+    assert.equal(metadata.collection.sourceUrlVerified, true);
+    assert.equal(h.core.prepare("SELECT state FROM article_publications_p3 WHERE article_id=?").get(core.id)?.state, "published");
+
+    // A real discovery row exists, so the linked seven-stage chain is legitimate;
+    // the official-identity gate keeps sevenStageComplete true only because the
+    // Core article carries verified official identity (checked above).
+    const crawlRow = h.ingest.prepare("SELECT id,article_id FROM ingest_stage_jobs WHERE stage='crawl'").get() as { id: string; article_id: string };
+    const realChain = [
+      { stage: "discovery", jobId: seeded.jobId, articleId: `canary-discovery:de-bverfg:${canaryId}`, sourceKey: "de-bverfg", status: "succeeded" },
+      { stage: "crawl", jobId: crawlRow.id, articleId: crawlRow.article_id, sourceKey: "de-bverfg", status: "succeeded" },
+      { stage: "normalize", jobId: "n", articleId: crawlRow.article_id, resultRef: core.id, sourceKey: "de-bverfg", status: "succeeded" },
+      { stage: "translate", jobId: "t", articleId: core.id, sourceKey: "de-bverfg", status: "succeeded" },
+      { stage: "public-judgment", jobId: "p", articleId: core.id, sourceKey: "de-bverfg", status: "succeeded" },
+      { stage: "publish", jobId: "b", articleId: core.id, sourceKey: "de-bverfg", status: "succeeded" },
+      { stage: "search", jobId: "s", articleId: core.id, sourceKey: "de-bverfg", status: "succeeded" },
+    ];
+    const realLineage = applyOfficialIdentityGate(evaluateLinkedLineage(realChain), metadata.collection.sourceUrlVerified === true);
+    assert.equal(realLineage.discoveryExecuted, true);
+    assert.equal(realLineage.sevenStageComplete, true, JSON.stringify(realLineage));
+    // Without the verified official identity, the very same chain must not claim 7/7.
+    assert.equal(applyOfficialIdentityGate(evaluateLinkedLineage(realChain), false).sevenStageComplete, false);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("audit: applyOfficialIdentityGate only claims a literal 7/7 when the linked chain's official identity is verified", () => {
+  const base: ReturnType<typeof evaluateLinkedLineage> = {
+    ok: true, reason: null, sourceKey: "de-bverfg", stageCount: 7,
+    verifiedStages: ["discovery", "crawl", "normalize", "translate", "public-judgment", "publish", "search"],
+    missingStages: [], stagedChainComplete: true, discoveryExecuted: true, sevenStageComplete: true,
+    nativeArticleId: "native:abc", coreArticleId: "a60db8bb-4ec3-4ecf-bb5a-6245f621a334", nativeCoreRelation: "resolved",
+  };
+  assert.equal(applyOfficialIdentityGate(base, true).sevenStageComplete, true);
+  const downgraded = applyOfficialIdentityGate(base, false);
+  assert.equal(downgraded.sevenStageComplete, false, "an unverified official identity downgrades 7/7");
+  assert.equal(downgraded.discoveryExecuted, true, "the stage facts are preserved, only the claim is downgraded");
+  assert.equal(downgraded.stagedChainComplete, true);
 });

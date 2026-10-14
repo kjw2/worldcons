@@ -561,3 +561,125 @@ Modified:
 Discovery->Search Production 7/7 (the one-case canary is only Crawl->Search),
 and US needs a genuinely reviewed authorization and Core official-PDF
 provenance as well as its own actual 7/7. Do not flip broad source ownership.
+
+## 11. Genuine Germany `discover-one` canary stage (2026-10-14, engineering only, NO cutover)
+
+> This section was added by a Hive DeepSeek 4.1 Flash session that performed
+> **no Production write, no deploy, no commit/push, no push**. It does not change
+> ownership, the paired allowlist/exclude, or the US manual-approval policy.
+
+The prior canary is crawl-first and could never produce the literal
+Discovery->Search 7/7. This adds the **missing seventh stage** as a bounded,
+fail-closed, **Germany-only** path.
+
+### 11.1 New contract — `lib/cloudflare/ingest-stages/canary-discovery.ts`
+
+- `CANARY_DISCOVERY_SOURCE_KEYS = ["de-bverfg"]` — Germany only. Every other key
+  (including `us-scotus`, FR, ES) is rejected.
+- `parseCanaryDiscoveryRequest` — strict stored-artifact contract: unknown
+  top-level keys and unknown `canaryDiscovery` keys rejected, `limit` must be
+  exactly `1`, `rangeDays` bounded (1..730), `canaryId` 32-hex, `operatorId`
+  non-empty/bounded.
+- `selectCanaryDiscoveryCandidate` — fail-closed selection of exactly one
+  candidate from the bounded observed set: `candidate_not_found` when the
+  homepage yields zero decisions, `too_many_links` when the observed set exceeds
+  the finite `CANARY_DISCOVERY_MAX_LINKS` bound. The canary claims exactly the
+  first (newest) observed official candidate and never registers more than one
+  child crawl job.
+- `canaryDiscoveryId` derives the canary id from a **stable workflow instance
+  seed**, so a Workflow replay cannot seed a second case. `canaryDiscoveryRequestRef`
+  / `canaryDiscoveryCandidateRef` keep every artifact under `stages/canary/`.
+
+### 11.2 Genuine discovery handler — `ingest-stage-handlers.ts`
+
+A discovery job whose artifact carries the `canaryDiscovery` marker runs
+`canaryDiscovery`: it calls `discoverNativeStageCandidates("de-bverfg", ...)`
+against the **real official homepage** (never the robots-disallowed
+`/SiteGlobals/` search and never a third-party index as the discovery source),
+verifies the selected candidate is a parseable official BVerfG decision URL,
+writes its artifact under the preserved `stages/canary/` prefix, and returns a
+**single-next-job** outcome. The consumer's audited `completeStageAndRegisterNext`
+therefore registers **exactly one child `crawl` job** and writes the durable
+immutable `job_stage_advanced` edge (`safe_details.nextKey` -> child idempotency
+key) the lineage audit follows. A present-but-invalid marker is dead-lettered
+(`ingest_stage.discovery_canary_request_invalid`); it is never silently routed to
+the ordinary fan-out path. The per-source gate is unchanged: a non-staged source
+is allowed only through the explicit `stages/canary/` prefix.
+
+### 11.3 Workflow mode `discover-one` (administrative auth, no Worker Secret)
+
+`WorldconsOperatorCanaryWorkflow` gains a third strictly discriminated payload
+shape. It carries **no** `candidateUrl`/`ecli`/`docket`, so a caller can never
+inject a candidate masquerading as discovery:
+
+```jsonc
+{ "mode": "discover-one",
+  "sourceKey": "de-bverfg",     // Germany only
+  "rangeDays": 60,               // optional; bounded 1..730, default 60
+  "operatorId": "cloudflare-workflow-operator",  // optional
+  "dispatch": true }             // optional; default true
+```
+
+Invocation (controller-authorized only; this session did NOT run it):
+
+```
+pnpm exec wrangler workflows trigger worldcons-operator-canary-v1 `
+  --config workers/async-pipeline/wrangler.jsonc `
+  --payload '{"mode":"discover-one","sourceKey":"de-bverfg","operatorId":"cloudflare-workflow-operator"}'
+```
+
+It returns non-secret `{mode,sourceKey,canaryId,jobId,created,payloadRef,dispatchReason,enqueued}`.
+Continue the resulting chain one stage at a time with the existing `advance`
+mode using the returned `canaryId` and the child `crawl` job id.
+
+### 11.4 Audit honesty — official-identity gate
+
+`scripts/audit-worldcons-canary-lineage.ts` gains `applyOfficialIdentityGate`: a
+literal `sevenStageComplete` is claimed only when the six successor stages all
+succeeded **and** the linked chain's Core article carries verified official
+identity (`collection.sourceUrlVerified === true`). The observed stage facts are
+preserved; only the 7/7 claim is downgraded when identity is unverified. The
+audit now walks the discovery handler's durable `job_stage_advanced` edge, so a
+genuine linked discovery row (never a fabricated one) is observable.
+
+### 11.5 Verification (bounded, local)
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:canary` (new discover-one + 7-stage integration) | **37/37** |
+| `pnpm test:ingest-stages` | **58/58** |
+| `pnpm test:native-crawler` | **36/36** |
+| `pnpm test:m8` | **48/48** |
+| `pnpm check` | **All checks passed** |
+| `pnpm typecheck` | **pass, 0 errors** |
+| `pnpm m8:typecheck` | **pass** |
+| `pnpm m8:dry-run` | **clean** |
+| `pnpm exec eslint <changed files>` | **0 errors** |
+| `git diff --check` | clean |
+
+Deliberately not run: full `verify:release`, `m8:types:check` (known Windows
+hang / pre-existing clean-HEAD failure). No deploy, no Production write, no
+commit/push, no Codex/Orca.
+
+### 11.6 Changed files (local, uncommitted)
+
+New:
+- `lib/cloudflare/ingest-stages/canary-discovery.ts`
+- `docs/worldcons-p2-m3-m4-operator-canary-20261013.md` §11 (this section)
+
+Modified:
+- `lib/cloudflare/ingest-stages/canary-workflow-payload.ts` (`discover-one` shape)
+- `workers/async-pipeline/src/ingest-stage-handlers.ts` (canary discovery handler + `enqueueCanaryDiscovery`)
+- `workers/async-pipeline/src/index.ts` (`discover-one` Workflow branch)
+- `scripts/audit-worldcons-canary-lineage.ts` (`applyOfficialIdentityGate`)
+- `scripts/check.ts` (discover-one invariants)
+- `tests/ingest-stage-canary.test.ts` (discover-one contract/integration/denials + 7-stage run)
+- `progress.md`
+
+### 11.7 Not claimed
+
+- **No Production run, no deploy, no commit/push, no ownership change.** DE stays
+  M8-owned, FR/ES stay staged, US manual approval unchanged. No paired
+  allowlist/exclude change.
+- This path is **ready** for a controller-authorized Production invocation; it
+  does not itself assert a cutover or a Production 7/7.

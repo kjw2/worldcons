@@ -978,6 +978,41 @@ assert(
     wranglerConfigSource.includes("\"class_name\": \"WorldconsOperatorCanaryWorkflow\""),
   "the operator canary workflow must be bound as OPERATOR_CANARY_WORKFLOW / worldcons-operator-canary-v1",
 );
+const canaryDiscoverySource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary-discovery.ts"), "utf8");
+assert(
+  canaryDiscoverySource.includes("CANARY_DISCOVERY_SOURCE_KEYS") &&
+    canaryDiscoverySource.includes("CANARY_DISCOVERY_MARKER") &&
+    canaryDiscoverySource.includes("parseCanaryDiscoveryRequest") &&
+    canaryDiscoverySource.includes("selectCanaryDiscoveryCandidate") &&
+    canaryDiscoverySource.includes("canary_discovery.candidate_not_found") &&
+    canaryDiscoverySource.includes("canary_discovery.too_many_links") &&
+    canaryDiscoverySource.includes("canary_discovery.limit_must_be_one") &&
+    canaryDiscoverySource.includes("CANARY_DISCOVERY_MAX_LINKS") &&
+    canaryDiscoverySource.includes("CANARY_PAYLOAD_PREFIX"),
+  "the discover-one canary contract must be Germany-only, reject unknown keys, cap links, and require exactly one selected candidate",
+);
+const canaryDiscoveryHandlersSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/ingest-stage-handlers.ts"), "utf8");
+assert(
+  canaryDiscoveryHandlersSource.includes("parseCanaryDiscoveryRequest") &&
+    canaryDiscoveryHandlersSource.includes("discoverNativeStageCandidates") &&
+    canaryDiscoveryHandlersSource.includes("selectCanaryDiscoveryCandidate") &&
+    canaryDiscoveryHandlersSource.includes("enqueueCanaryDiscovery") &&
+    canaryDiscoveryHandlersSource.includes("ingest_stage.discovery_canary_request_invalid") &&
+    canaryDiscoveryHandlersSource.includes("canary_discovery.candidate_not_official_identity"),
+  "the discovery handler must run genuine official-homepage discovery for the discover-one marker, fail closed on an invalid marker, and never accept a caller-supplied candidate",
+);
+const operatorCanaryDiscoverOneSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
+assert(
+  operatorCanaryDiscoverOneSource.includes("payloadKind === \"discover-one\"") &&
+    operatorCanaryDiscoverOneSource.includes("enqueueCanaryDiscovery") &&
+    operatorCanaryDiscoverOneSource.includes("canaryDiscoveryId"),
+  "the operator canary workflow must expose a discover-one mode that seeds a genuine discovery job",
+);
+assert(
+  canaryLineageScriptSource.includes("applyOfficialIdentityGate") &&
+    canaryLineageScriptSource.includes("officialIdentityVerified"),
+  "the canary lineage audit must require verified official-source identity before claiming a literal sevenStageComplete",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

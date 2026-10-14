@@ -203,6 +203,24 @@ export function evaluateLinkedLineage(chain: ReadonlyArray<LinkedJob>): LinkedLi
 }
 
 /**
+ * Applies the official-identity honesty rule to a linked-stage lineage. A
+ * literal seven-stage completion is only claimed when the six successor stages
+ * all succeeded *and* the linked discovery's resulting Core article carries
+ * verified official-source identity (`collection.sourceUrlVerified === true`).
+ * A missing/unverified identity downgrades `sevenStageComplete` to false while
+ * preserving the underlying stage facts; it never fabricates or removes a stage.
+ */
+export function applyOfficialIdentityGate(
+  lineage: LinkedLineageResult,
+  officialIdentityVerified: boolean,
+): LinkedLineageResult {
+  if (lineage.sevenStageComplete && !officialIdentityVerified) {
+    return { ...lineage, sevenStageComplete: false };
+  }
+  return lineage;
+}
+
+/**
  * Resolves the native->core identity relation from observed rows only. Kept for
  * direct unit testing; the audit's chain walker derives the same relation from the
  * linked Normalize advance event (`fromArticleId`/`resolvedArticleId`).
@@ -541,6 +559,13 @@ function main() {
     ? "canary_lineage.us_core_provenance_missing_officialPdf"
     : null;
 
+  // Official-identity honesty gate: a literal seven-stage completion requires the
+  // linked discovery's Core article to carry verified official-source identity.
+  const officialIdentityVerified = Boolean(
+    coreRow && (coreRow.collection_source_url_verified === 1 || coreRow.collection_source_url_verified === true),
+  );
+  lineage = applyOfficialIdentityGate(lineage, officialIdentityVerified);
+
   process.stdout.write(`${JSON.stringify({
     mode: "production_read_only",
     generatedAt: new Date().toISOString(),
@@ -560,7 +585,8 @@ function main() {
       nativeArticleId: lineage.nativeArticleId,
       coreArticleId: lineage.coreArticleId,
       nativeCoreRelation: lineage.nativeCoreRelation,
-      keying: "stages verified only when a durable linked ingest_stage_jobs row has status='succeeded'; canary is crawl-first and cannot satisfy the literal seven-stage criterion (no fake discovery)",
+      officialIdentityVerified,
+      keying: "stages verified only when a durable linked ingest_stage_jobs row has status='succeeded'; a literal sevenStageComplete additionally requires the linked chain's Core article to carry verified official-source identity (collection.sourceUrlVerified); no fake discovery",
     },
     identity: relation,
     publication,

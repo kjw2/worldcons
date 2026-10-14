@@ -24,8 +24,9 @@ import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../..
 import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBootstrapSources } from "../../../lib/cloudflare/ingest-stages/flags";
 import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
 import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
-import { createIngestStageHandlers, enqueueIngestStageDiscovery } from "./ingest-stage-handlers";
+import { createIngestStageHandlers, enqueueIngestStageDiscovery, enqueueCanaryDiscovery } from "./ingest-stage-handlers";
 import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
+import { canaryDiscoveryId } from "../../../lib/cloudflare/ingest-stages/canary-discovery";
 import {
   parseOperatorCanaryEvent,
   type OperatorCanaryEvent,
@@ -511,6 +512,58 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
       worldcons_ops: this.env.WORLDCONS_OPS,
     });
     const ingestDb = this.env.WORLDCONS_INGEST as unknown as Parameters<typeof seedCanaryCase>[0];
+
+    // ---- Discover-one branch (Germany only; genuine seventh stage) --------
+    // Seed a GENUINE `discovery` stage job that fetches the real official BVerfG
+    // homepage SSR anchors (never a caller-supplied candidate) and yields exactly
+    // ONE child `crawl` job with the same `canary-owner:<canaryId>` provenance.
+    // It carries no candidate URL/ECLI, so it can neither fabricate nor masquerade
+    // the discovery step. Continuing the chain uses the existing `advance` mode.
+    if (payload.payloadKind === "discover-one") {
+      const discoveryBinding = (this.env.STAGE_QUEUE_DISCOVERY as unknown as IngestStageQueueSender | undefined);
+      const rawBucket = this.env.WORLDCONS_RAW as unknown as Parameters<typeof enqueueCanaryDiscovery>[1];
+      // Derive the canary id from the stable workflow instance seed so a replay
+      // cannot seed a second case. The `now` used by the actual D1/R2 write is
+      // inside the step (also replay-idempotent via the deterministic job key).
+      const canaryId = await canaryDiscoveryId(payload.sourceKey, event.instanceId);
+      const seeded = await step.do(`discover-one-seed-${payload.sourceKey}-${canaryId}`, { timeout: "2 minutes" }, () =>
+        enqueueCanaryDiscovery(ingestDb, rawBucket, {
+          sourceKey: payload.sourceKey,
+          rangeDays: payload.rangeDays,
+          canaryId,
+          operatorId: payload.operatorId,
+          now: new Date().toISOString(),
+        }),
+      );
+      let dispatch: { dispatched: boolean; enqueued: number; reason: string } | null = null;
+      if (payload.dispatch) {
+        if (!discoveryBinding) throw new NonRetryableError("operator_canary.discovery_queue_binding_missing");
+        dispatch = await step.do(`discover-one-dispatch-${canaryId}`, { timeout: "2 minutes" }, () =>
+          dispatchCanaryCase({
+            ingestDb,
+            queue: discoveryBinding,
+            jobId: seeded.jobId,
+            canaryId,
+            operatorId: payload.operatorId,
+            deploymentRef: null,
+            stage: "discovery",
+            now: new Date().toISOString(),
+          }),
+        );
+      }
+      return {
+        schemaVersion: 1,
+        mode: "discover-one" as const,
+        sourceKey: payload.sourceKey,
+        canaryId,
+        jobId: seeded.jobId,
+        created: seeded.created,
+        payloadRef: seeded.payloadRef,
+        dispatchReason: dispatch?.reason ?? null,
+        enqueued: dispatch?.enqueued ?? 0,
+        note: "Seeded exactly one genuine official-homepage discovery job (Germany). It yields at most one child crawl job with same-case provenance; continue the chain via the advance mode. It does not publish, bypass review, or change ownership.",
+      };
+    }
 
     // ---- Advance branch ----------------------------------------------------
     // Continue an already-seeded canary by exactly one stage. No source/URL/identity
