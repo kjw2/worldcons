@@ -1014,6 +1014,34 @@ assert(
     canaryLineageScriptSource.includes("officialIdentityVerified"),
   "the canary lineage audit must require verified official-source identity before claiming a literal sevenStageComplete",
 );
+const bootstrapDeOneSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/bootstrap-de-one.ts"), "utf8");
+assert(
+  bootstrapDeOneSource.includes("BOOTSTRAP_DE_ONE_SOURCE_KEY") &&
+    bootstrapDeOneSource.includes("evaluateBootstrapDeOnePrecondition") &&
+    bootstrapDeOneSource.includes("evaluateOwnershipPairing") &&
+    bootstrapDeOneSource.includes("resolveM8CrawlerSourcePolicy") &&
+    bootstrapDeOneSource.includes("resolveIngestBootstrapSources") &&
+    bootstrapDeOneSource.includes("bootstrap_de_one.ownership_not_paired_") &&
+    bootstrapDeOneSource.includes("bootstrap_de_one.germany_not_staged") &&
+    bootstrapDeOneSource.includes("bootstrap_de_one.forbidden_staged_source"),
+  "the ordinary DE bootstrap precondition must consult the live M8 exclude and staged allowlist, require exact-paired ownership, and reject a non-DE-staged or US/FR/ES-staged state",
+);
+assert(
+  operatorCanaryDiscoverOneSource.includes("payloadKind === \"bootstrap-de-one\"") &&
+    operatorCanaryDiscoverOneSource.includes("evaluateBootstrapDeOnePrecondition") &&
+    operatorCanaryDiscoverOneSource.includes("enqueueIngestStageDiscovery") &&
+    operatorCanaryDiscoverOneSource.includes("dispatchIngestStagePass") &&
+    operatorCanaryDiscoverOneSource.includes("bootstrap-de-one-seed-de-bverfg"),
+  "the operator Workflow must expose a bootstrap-de-one mode that seeds the ORDINARY discovery job (no canary marker) after the live ownership precondition, dispatched via the ordinary fenced dispatcher",
+);
+const operatorCanaryBootstrapPayloadSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary-workflow-payload.ts"), "utf8");
+assert(
+  operatorCanaryBootstrapPayloadSource.includes("OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS") &&
+    operatorCanaryBootstrapPayloadSource.includes("bootstrap-de-one") &&
+    operatorCanaryBootstrapPayloadSource.includes("operator_canary.bootstrap_de_one_source_not_allowed") &&
+    operatorCanaryBootstrapPayloadSource.includes("operator_canary.bootstrap_de_one_dispatch_invalid"),
+  "the operator canary workflow payload must accept a strict bootstrap-de-one shape that carries no candidate/identity/range",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

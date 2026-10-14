@@ -545,3 +545,114 @@ Rollback is a paired **single deployment** restoring both owner values to
 only one value. Preserve the genuine already-verified 2026-10-14 DE 7/7
 canary as immutable evidence and do not mix it with any later normal
 bootstrap run. P0/P1 open checks and the US manual-review gate are unchanged.
+
+## 15. Bounded ORDINARY Germany staged bootstrap (non-canary) — 2026-10-14
+
+> Added by a Hive DeepSeek 4.1 Flash session that performed **no Production
+> write, no deploy, no commit/push**. No ownership, allowlist/exclude, cron, or
+> US policy change. No new public/unauthenticated route.
+
+### 15.1 The problem
+
+After the coordinated ownership patch (section 14), `de-bverfg` is staged-owned,
+so the ORDINARY scheduled discovery bootstrap (`enqueueIngestStageDiscovery`)
+would seed it. But that cron runs only at `0 21 * * *` (daily 06:00 KST), so a
+bounded one-off is needed for **immediate** Production verification of the
+ordinary (non-canary) staged Germany discovery path — without opening a public
+route, bypassing the per-source gate, or fabricating a canary.
+
+### 15.2 New strict Workflow mode `bootstrap-de-one`
+
+`WorldconsOperatorCanaryWorkflow` gains a fourth strictly discriminated payload
+shape, invoked only through the existing Cloudflare-account-authenticated
+`wrangler workflows trigger` path (**no HTTP endpoint**):
+
+```jsonc
+{ "mode": "bootstrap-de-one",
+  "sourceKey": "de-bverfg",   // the ONLY accepted value
+  "operatorId": "cloudflare-workflow-operator",  // optional
+  "dispatch": true }           // optional; default true
+```
+
+The shape carries **no** `candidateUrl`/`ecli`/`docket`/`rangeDays`, so a caller
+can never inject a candidate or widen the bounded single-source seeding. Any
+other `sourceKey` (including `us-scotus`, FR, ES) is rejected
+(`operator_canary.bootstrap_de_one_source_not_allowed`); unknown keys are
+rejected; a non-boolean `dispatch` is rejected.
+
+### 15.3 Live-ownership precondition BEFORE any work
+
+New pure, runtime-neutral `lib/cloudflare/ingest-stages/bootstrap-de-one.ts`
+(`evaluateBootstrapDeOnePrecondition`) is consulted before any seed. It reads the
+**live** staged allowlist (`WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST`) and M8
+exclusion (`M8_CRAWLER_SOURCE_EXCLUDE`) from env and requires, with no side
+effect on failure:
+
+1. master switch ON, environment `production`, `discovery` stage enabled;
+2. a non-empty, recognized staged allowlist and a valid M8 exclusion;
+3. the staged allowlist and M8 exclusion **exact paired**
+   (`evaluateOwnershipPairing` — same length/order/content, no blank/duplicate);
+4. `de-bverfg` present in BOTH lists (`bootstrap_de_one.germany_not_staged`
+   otherwise);
+5. US **not** staged-owned (`bootstrap_de_one.forbidden_staged_source:us-scotus`).
+
+### 15.4 Exact same ordinary job as the scheduled cron
+
+On success the Workflow calls the EXACT same
+`enqueueIngestStageDiscovery(env.WORLDCONS_INGEST, env.WORLDCONS_RAW, { sourceKey: 'de-bverfg', limit: 1, now })`
+the scheduled bootstrap uses. That registers exactly one idempotent daily D1
+discovery Job with the ordinary payload
+`stages/ingest-discovery-request/de-bverfg/<hash>.json` (a regular
+`discovery-request-v1:<day>` source version) and **no `canaryDiscovery` marker**,
+so the discovery handler takes the ordinary fan-out path — never the canary
+branch and never the protected FR/ES automatic-approval path. The job is
+deterministic/idempotent within a UTC day.
+
+Dispatch is optional. When requested it uses the **ordinary fenced dispatcher**
+`dispatchIngestStagePass` with `limit: 1`, the resolved bootstrap limit, and an
+ordinary worker id (`bootstrap-de-one:<instanceId>`) — **never** the
+`canary-owner:` fence. Re-dispatching under a live lease is a harmless no-op. If
+`dispatch` is false the job is left `pending` for the normal `*/15` dispatcher.
+
+### 15.5 Workflow step determinism
+
+- seed step key: `bootstrap-de-one-seed-de-bverfg` (constant → replay-idempotent
+  via the deterministic daily job key);
+- dispatch step key: `bootstrap-de-one-dispatch` (the job-id-narrowed fenced
+  dispatch makes a replay a no-op).
+
+### 15.6 Tests (`tests/ingest-stage-canary.test.ts`)
+
+- strict parse: DE-only, rejects US/FR/ES, rejects candidate/ECLI/range keys,
+  rejects non-boolean dispatch and unknown keys;
+- precondition: accepts only the exact-paired DE-staged production discovery
+  state; rejects disabled/non-production/invalid/stage-off, empty allowlist,
+  unpaired ownership, DE-not-staged, and US-staged;
+- ordinary job created with the regular payload ref and **no canary marker**,
+  idempotent on same-day replay, exactly one discovery job;
+- strict one-shot dispatch leases only the named ordinary job under the ordinary
+  (non-canary) owner and is a no-op on replay;
+- the ordinary discovery job uses the generic fan-out mode (ordinary
+  `stages/ingest-discovery/` crawl artifacts) and writes **no** canary audit row,
+  proving it never uses the protected FR/ES E2E approval path.
+
+### 15.7 Operator invocation (controller-authorized only; NOT run this session)
+
+```
+pnpm exec wrangler workflows trigger worldcons-operator-canary-v1 `
+  --config workers/async-pipeline/wrangler.jsonc `
+  --payload '{"mode":"bootstrap-de-one","sourceKey":"de-bverfg","operatorId":"cloudflare-workflow-operator"}'
+```
+
+Returns non-secret `{mode,sourceKey,jobId,created,limit,pairedOwnership,stagedSources,effectiveM8Sources,dispatchReason,enqueued}`.
+
+### 15.8 Rollback / ownership
+
+Paired rollback remains a single deployment restoring both owner values to
+`fr-conseil-constitutionnel,es-tribunal-constitucional`. This mode changes no
+config, no cron, and no route, and USA is untouched.
+
+### 15.9 Not claimed
+
+The ordinary 7/7 is **not** claimed until an actual Production run executes it.
+No Production write, no deploy, no commit/push, no ownership change.

@@ -27,6 +27,7 @@ import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./inge
 import { createIngestStageHandlers, enqueueIngestStageDiscovery, enqueueCanaryDiscovery } from "./ingest-stage-handlers";
 import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
 import { canaryDiscoveryId } from "../../../lib/cloudflare/ingest-stages/canary-discovery";
+import { evaluateBootstrapDeOnePrecondition, BOOTSTRAP_DE_ONE_SOURCE_KEY } from "../../../lib/cloudflare/ingest-stages/bootstrap-de-one";
 import {
   parseOperatorCanaryEvent,
   type OperatorCanaryEvent,
@@ -562,6 +563,77 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
         dispatchReason: dispatch?.reason ?? null,
         enqueued: dispatch?.enqueued ?? 0,
         note: "Seeded exactly one genuine official-homepage discovery job (Germany). It yields at most one child crawl job with same-case provenance; continue the chain via the advance mode. It does not publish, bypass review, or change ownership.",
+      };
+    }
+
+    // ---- Ordinary DE bootstrap branch (Germany only; NON-canary) ----------
+    // A bounded one-off that seeds the EXACT ordinary daily discovery job the
+    // `0 21 * * *` scheduled bootstrap would (`enqueueIngestStageDiscovery`, the
+    // regular `stages/ingest-discovery-request/de-bverfg/...` payload with no
+    // canary marker). It first consults the LIVE M8 exclude and staged allowlist
+    // from env and requires exact-paired ownership + an enabled Production
+    // `discovery` stage; otherwise it fails closed with no side effect. It then
+    // optionally dispatches the single ordinary job via the ordinary fenced
+    // dispatcher (never the canary-owner path); when dispatch is false the job
+    // simply waits for the normal `*/15` dispatcher.
+    if (payload.payloadKind === "bootstrap-de-one") {
+      const gateForPrecondition = ingestStageGateFromEnvironment(this.env as unknown as Record<string, string | undefined>);
+      const precondition = evaluateBootstrapDeOnePrecondition({
+        gate: gateForPrecondition,
+        stagedAllowlistRaw: this.env.WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST,
+        m8ExcludeRaw: this.env.M8_CRAWLER_SOURCE_EXCLUDE,
+        nativeSources: NATIVE_CRAWLER_SOURCES,
+      });
+      if (!precondition.ok) throw new NonRetryableError(precondition.reason ?? "bootstrap_de_one.precondition_failed");
+
+      const rawBucket = this.env.WORLDCONS_RAW as unknown as Parameters<typeof enqueueIngestStageDiscovery>[1];
+      // The ordinary scheduled bootstrap limit (1 in Production); never widened.
+      const bootstrapLimit = boundedStageInteger(this.env.WORLDCONS_INGEST_STAGE_BOOTSTRAP_LIMIT, 1, 1, 20);
+      if (bootstrapLimit !== 1) throw new NonRetryableError("bootstrap_de_one.limit_must_equal_one");
+      const seeded = await step.do("bootstrap-de-one-seed-de-bverfg", { timeout: "2 minutes" }, () =>
+        enqueueIngestStageDiscovery(this.env.WORLDCONS_INGEST, rawBucket, {
+          sourceKey: BOOTSTRAP_DE_ONE_SOURCE_KEY,
+          limit: bootstrapLimit,
+          now: new Date().toISOString(),
+        }),
+      );
+      let dispatch: { dispatched: boolean; enqueued: number; reason: string } | null = null;
+      if (payload.dispatch) {
+        const discoveryBinding = (this.env.STAGE_QUEUE_DISCOVERY as unknown as IngestStageQueueSender | undefined);
+        if (!discoveryBinding) throw new NonRetryableError("bootstrap_de_one.discovery_queue_binding_missing");
+        const leaseSeconds = boundedStageInteger(this.env.WORLDCONS_INGEST_STAGE_LEASE_SECONDS, 300, 30, 3600);
+        const pass = await step.do("bootstrap-de-one-dispatch", { timeout: "2 minutes" }, () =>
+          dispatchIngestStagePass({
+            ingestDb: this.env.WORLDCONS_INGEST,
+            queue: discoveryBinding,
+            stage: "discovery",
+            // Ordinary worker identity: this is NOT a canary-owner dispatch.
+            workerId: `bootstrap-de-one:${event.instanceId}`,
+            limit: 1,
+            leaseSeconds,
+            now: new Date().toISOString(),
+            jobId: seeded.jobId,
+          }),
+        );
+        dispatch = {
+          dispatched: pass.enqueued === 1,
+          enqueued: pass.enqueued,
+          reason: pass.enqueued === 1 ? "bootstrap_de_one.dispatched" : "bootstrap_de_one.dispatch_no_change",
+        };
+      }
+      return {
+        schemaVersion: 1,
+        mode: "bootstrap-de-one" as const,
+        sourceKey: BOOTSTRAP_DE_ONE_SOURCE_KEY,
+        jobId: seeded.jobId,
+        created: seeded.created,
+        limit: bootstrapLimit,
+        pairedOwnership: true,
+        stagedSources: precondition.stagedSources,
+        effectiveM8Sources: precondition.effectiveM8Sources,
+        dispatchReason: dispatch?.reason ?? null,
+        enqueued: dispatch?.enqueued ?? 0,
+        note: "Seeded exactly one ORDINARY staged Germany discovery job (no canary marker). The normal */15 dispatcher processes it, or an immediate one-shot dispatch was performed on request. It does not publish, bypass review, or change ownership.",
       };
     }
 

@@ -9,13 +9,23 @@
  * the two canary countries, unknown keys/modes are rejected, and no unbounded
  * list/limit field can be smuggled in.
  *
- * Two disjoint payload shapes are supported and strictly discriminated:
+ * Four disjoint payload shapes are supported and strictly discriminated:
  *
  *   { sourceKey: "de-bverfg"|"us-scotus", candidateUrl, ecli?|docket?, operatorId?, mode?: "seed"|"seed-and-dispatch" }
  *   { mode: "advance", jobId: <uuid>, canaryId: <32-hex>, operatorId? }
+ *   { mode: "discover-one", sourceKey: "de-bverfg", rangeDays?, operatorId?, dispatch? }
+ *   { mode: "bootstrap-de-one", sourceKey: "de-bverfg", operatorId?, dispatch? }
  *
  * The `advance` shape carries NO `sourceKey`/`candidateUrl`/identity and never
  * changes source ownership; it can only continue an already-seeded canary.
+ *
+ * The `bootstrap-de-one` shape is the ordinary (non-canary) Germany bootstrap:
+ * it carries NO candidate URL/ECLI/docket/rangeDays, so a caller can never inject
+ * a candidate or widen the bounded single-source seeding. It seeds the EXACT
+ * ordinary daily `enqueueIngestStageDiscovery` job the scheduled `0 21 * * *`
+ * cron would (regular `stages/ingest-discovery-request/de-bverfg/...` payload,
+ * no `canaryDiscovery` marker), producing a genuine ordinary Discovery job rather
+ * than the explicit `stages/canary/` exception.
  */
 import { CANARY_SOURCE_KEYS, type CanarySourceKey } from "./canary";
 import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_DEFAULT_RANGE_DAYS, CANARY_DISCOVERY_SOURCE_KEYS, type CanaryDiscoverySourceKey } from "./canary-discovery";
@@ -24,8 +34,8 @@ import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_DEFAULT_RANGE_DAYS, C
 export const OPERATOR_CANARY_SEED_MODES = ["seed", "seed-and-dispatch"] as const;
 export type OperatorCanarySeedMode = (typeof OPERATOR_CANARY_SEED_MODES)[number];
 
-/** The three disjoint top-level payload shapes. */
-export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one";
+/** The four disjoint top-level payload shapes. */
+export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one" | "bootstrap-de-one";
 
 /** Keys allowed on the seed shape only. */
 export const OPERATOR_CANARY_SEED_KEYS = [
@@ -54,6 +64,19 @@ export const OPERATOR_CANARY_DISCOVER_ONE_KEYS = [
   "mode",
   "sourceKey",
   "rangeDays",
+  "operatorId",
+  "dispatch",
+] as const;
+
+/**
+ * Keys allowed on the `bootstrap-de-one` shape only. It deliberately carries NO
+ * `candidateUrl`/`ecli`/`docket`/`rangeDays`: this is the ordinary Germany
+ * bootstrap, so a caller can never inject a candidate, an identity, or a wider
+ * range. `sourceKey` is accepted only as the exact literal `de-bverfg`.
+ */
+export const OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS = [
+  "mode",
+  "sourceKey",
   "operatorId",
   "dispatch",
 ] as const;
@@ -97,7 +120,24 @@ export interface OperatorCanaryDiscoverOneEvent {
   dispatch: boolean;
 }
 
-export type OperatorCanaryEvent = OperatorCanarySeedEvent | OperatorCanaryAdvanceEvent | OperatorCanaryDiscoverOneEvent;
+/**
+ * The validated bootstrap-de-one envelope (Germany only; the ORDINARY staged
+ * bootstrap, not the canary exception). It carries no candidate/identity/range.
+ */
+export interface OperatorCanaryBootstrapDeOneEvent {
+  payloadKind: "bootstrap-de-one";
+  mode: "bootstrap-de-one";
+  sourceKey: "de-bverfg";
+  operatorId: string;
+  /** When true (default) the seeded ordinary discovery job is dispatched immediately. */
+  dispatch: boolean;
+}
+
+export type OperatorCanaryEvent =
+  | OperatorCanarySeedEvent
+  | OperatorCanaryAdvanceEvent
+  | OperatorCanaryDiscoverOneEvent
+  | OperatorCanaryBootstrapDeOneEvent;
 
 export type OperatorCanaryParseResult =
   | { ok: true; value: OperatorCanaryEvent }
@@ -127,9 +167,10 @@ function parseOperatorId(value: unknown): { ok: true; value: string } | { ok: fa
 
 /**
  * Strictly validates a workflow payload. A JSON string is accepted (the Wrangler
- * CLI/`create` path may pass one) and parsed defensively. The two shapes are
+ * CLI/`create` path may pass one) and parsed defensively. The shapes are
  * discriminated FIRST by `mode`; an unknown mode fails closed, and each shape then
- * rejects every key it does not own so a seed/advance body can never be mixed.
+ * rejects every key it does not own so a seed/advance/discover-one/bootstrap body
+ * can never be mixed.
  */
 export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseResult {
   let candidate = payload;
@@ -146,20 +187,47 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
   // shape; an absent or unrecognised mode is handled by the seed branch (absent =>
   // default seed mode; unrecognised => rejected there).
   const modeRaw = candidate.mode;
-  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance", "discover-one"].includes(modeRaw)) {
+  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance", "discover-one", "bootstrap-de-one"].includes(modeRaw)) {
     return { ok: false, error: "operator_canary.mode_not_allowed" };
   }
   const isAdvance = modeRaw === "advance";
   const isDiscoverOne = modeRaw === "discover-one";
+  const isBootstrapDeOne = modeRaw === "bootstrap-de-one";
 
   const shapeError = rejectUnknownKeys(
     candidate,
-    isAdvance ? OPERATOR_CANARY_ADVANCE_KEYS : isDiscoverOne ? OPERATOR_CANARY_DISCOVER_ONE_KEYS : OPERATOR_CANARY_SEED_KEYS,
+    isAdvance
+      ? OPERATOR_CANARY_ADVANCE_KEYS
+      : isDiscoverOne
+        ? OPERATOR_CANARY_DISCOVER_ONE_KEYS
+        : isBootstrapDeOne
+          ? OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS
+          : OPERATOR_CANARY_SEED_KEYS,
   );
   if (shapeError) return { ok: false, error: shapeError };
 
   const operator = parseOperatorId(candidate.operatorId);
   if (!operator.ok) return operator;
+
+  if (isBootstrapDeOne) {
+    const sourceKeyRaw = candidate.sourceKey;
+    if (typeof sourceKeyRaw !== "string" || !(CANARY_DISCOVERY_SOURCE_KEYS as readonly string[]).includes(sourceKeyRaw)) {
+      return { ok: false, error: "operator_canary.bootstrap_de_one_source_not_allowed" };
+    }
+    if (candidate.dispatch !== undefined && typeof candidate.dispatch !== "boolean") {
+      return { ok: false, error: "operator_canary.bootstrap_de_one_dispatch_invalid" };
+    }
+    return {
+      ok: true,
+      value: {
+        payloadKind: "bootstrap-de-one",
+        mode: "bootstrap-de-one",
+        sourceKey: sourceKeyRaw as CanaryDiscoverySourceKey,
+        operatorId: operator.value,
+        dispatch: candidate.dispatch !== false,
+      },
+    };
+  }
 
   if (isDiscoverOne) {
     const sourceKeyRaw = candidate.sourceKey;

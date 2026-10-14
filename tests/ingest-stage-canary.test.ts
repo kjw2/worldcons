@@ -21,16 +21,22 @@ import {
   type CanaryRawBucket,
 } from "../lib/cloudflare/ingest-stages/canary";
 import { parseOperatorCanaryEvent } from "../lib/cloudflare/ingest-stages/canary-workflow-payload";
+import { dispatchIngestStagePass } from "../lib/cloudflare/ingest-stages/dispatcher";
+import { NATIVE_CRAWLER_SOURCES } from "../workers/async-pipeline/src/native-crawler";
 import {
   CANARY_DISCOVERY_MAX_LINKS,
   parseCanaryDiscoveryRequest,
   selectCanaryDiscoveryCandidate,
 } from "../lib/cloudflare/ingest-stages/canary-discovery";
 import {
+  BOOTSTRAP_DE_ONE_SOURCE_KEY,
+  evaluateBootstrapDeOnePrecondition,
+} from "../lib/cloudflare/ingest-stages/bootstrap-de-one";
+import {
   consumeIngestStageBatch,
   type IngestStageQueueMessageHandle,
 } from "../workers/async-pipeline/src/ingest-stage-consumer";
-import { createIngestStageHandlers, enqueueCanaryDiscovery } from "../workers/async-pipeline/src/ingest-stage-handlers";
+import { createIngestStageHandlers, enqueueCanaryDiscovery, enqueueIngestStageDiscovery } from "../workers/async-pipeline/src/ingest-stage-handlers";
 import { operatorCanaryAuthorized } from "../workers/async-pipeline/src/worker-auth";
 import {
   applyOfficialIdentityGate,
@@ -1354,4 +1360,219 @@ test("audit: applyOfficialIdentityGate only claims a literal 7/7 when the linked
   assert.equal(downgraded.sevenStageComplete, false, "an unverified official identity downgrades 7/7");
   assert.equal(downgraded.discoveryExecuted, true, "the stage facts are preserved, only the claim is downgraded");
   assert.equal(downgraded.stagedChainComplete, true);
+});
+
+// ---------------------------------------------------------------------------
+// bootstrap-de-one: the bounded ORDINARY (non-canary) Germany staged bootstrap.
+// It must consult live ownership, seed the SAME ordinary discovery job as the
+// scheduled cron (no canary marker, regular payload), and never widen scope.
+// ---------------------------------------------------------------------------
+
+const DE_STAGED_PAIRED = {
+  stagedAllowlistRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg",
+  m8ExcludeRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg",
+};
+
+test("bootstrap-de-one payload: Germany-only, ordinary shape, rejects candidate/range/US/unknown keys", () => {
+  const good = parseOperatorCanaryEvent({ mode: "bootstrap-de-one", sourceKey: "de-bverfg" });
+  assert.equal(good.ok, true);
+  assert.deepEqual(good.ok ? good.value : null, {
+    payloadKind: "bootstrap-de-one", mode: "bootstrap-de-one", sourceKey: "de-bverfg",
+    operatorId: "cloudflare-workflow-operator", dispatch: true,
+  });
+  const noDispatch = parseOperatorCanaryEvent({ mode: "bootstrap-de-one", sourceKey: "de-bverfg", dispatch: false, operatorId: "ops:reviewer" });
+  assert.equal(noDispatch.ok, true);
+  if (noDispatch.ok && noDispatch.value.payloadKind === "bootstrap-de-one") {
+    assert.equal(noDispatch.value.dispatch, false);
+    assert.equal(noDispatch.value.operatorId, "ops:reviewer");
+  }
+
+  const cases: Array<[unknown, RegExp]> = [
+    // US/FR/ES are never accepted; only the exact DE literal.
+    [{ mode: "bootstrap-de-one", sourceKey: "us-scotus" }, /bootstrap_de_one_source_not_allowed/],
+    [{ mode: "bootstrap-de-one", sourceKey: "fr-conseil-constitutionnel" }, /bootstrap_de_one_source_not_allowed/],
+    [{ mode: "bootstrap-de-one" }, /bootstrap_de_one_source_not_allowed/],
+    // No candidate URL / ECLI / range can be injected.
+    [{ mode: "bootstrap-de-one", sourceKey: "de-bverfg", candidateUrl: DE_URL }, /unknown_key:candidateUrl/],
+    [{ mode: "bootstrap-de-one", sourceKey: "de-bverfg", ecli: DE_ECLI }, /unknown_key:ecli/],
+    [{ mode: "bootstrap-de-one", sourceKey: "de-bverfg", rangeDays: 60 }, /unknown_key:rangeDays/],
+    // dispatch must be boolean when present.
+    [{ mode: "bootstrap-de-one", sourceKey: "de-bverfg", dispatch: "yes" }, /bootstrap_de_one_dispatch_invalid/],
+    // Unknown top-level keys still rejected.
+    [{ mode: "bootstrap-de-one", sourceKey: "de-bverfg", extra: 1 }, /unknown_key:extra/],
+  ];
+  for (const [payload, pattern] of cases) {
+    const result = parseOperatorCanaryEvent(payload);
+    assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(payload)}`);
+    assert.match(result.ok ? "" : result.error, pattern);
+  }
+});
+
+test("bootstrap-de-one precondition: only exact-paired DE-staged production discovery is allowed", () => {
+  const gateOpen = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize");
+  const ok = evaluateBootstrapDeOnePrecondition({
+    gate: gateOpen,
+    stagedAllowlistRaw: DE_STAGED_PAIRED.stagedAllowlistRaw,
+    m8ExcludeRaw: DE_STAGED_PAIRED.m8ExcludeRaw,
+    nativeSources: NATIVE_CRAWLER_SOURCES,
+  });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.germanyStaged, true);
+  assert.deepEqual(ok.stagedSources, ["fr-conseil-constitutionnel", "es-tribunal-constitucional", "de-bverfg"]);
+  assert.deepEqual(ok.effectiveM8Sources, ["us-scotus"]);
+
+  const deny = (
+    overrides: Partial<Parameters<typeof evaluateBootstrapDeOnePrecondition>[0]>,
+    reason: string,
+  ) => {
+    const result = evaluateBootstrapDeOnePrecondition({
+      gate: gateOpen,
+      stagedAllowlistRaw: DE_STAGED_PAIRED.stagedAllowlistRaw,
+      m8ExcludeRaw: DE_STAGED_PAIRED.m8ExcludeRaw,
+      nativeSources: NATIVE_CRAWLER_SOURCES,
+      ...overrides,
+    });
+    assert.equal(result.ok, false, JSON.stringify(result));
+    assert.equal(result.reason, reason);
+  };
+
+  // Master switch / environment / stage must all be open.
+  deny({ gate: resolveIngestStageRolloutGate(false, "production", "discovery") }, "bootstrap_de_one.stages_disabled");
+  deny({ gate: resolveIngestStageRolloutGate(true, "staging", "discovery") }, "bootstrap_de_one.not_production");
+  deny({ gate: resolveIngestStageRolloutGate(true, "production", "crawl") }, "bootstrap_de_one.discovery_stage_disabled");
+  deny({ gate: resolveIngestStageRolloutGate(true, "production", "") }, "bootstrap_de_one.stage_allowlist_invalid");
+  // Empty staged allowlist: nothing to bootstrap.
+  deny({ stagedAllowlistRaw: "" }, "bootstrap_de_one.staged_allowlist_empty");
+  // Ownership must be exact-paired and DE must be staged-owned.
+  deny({ m8ExcludeRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional" }, "bootstrap_de_one.ownership_not_paired_length_mismatch");
+  deny({ m8ExcludeRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional,us-scotus" }, "bootstrap_de_one.ownership_not_paired_order_or_content_mismatch");
+  deny(
+    { stagedAllowlistRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional", m8ExcludeRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional" },
+    "bootstrap_de_one.germany_not_staged",
+  );
+  // US must never be staged through this ordinary mode.
+  deny(
+    { stagedAllowlistRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg,us-scotus", m8ExcludeRaw: "fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg,us-scotus" },
+    "bootstrap_de_one.forbidden_staged_source:us-scotus",
+  );
+});
+
+test("bootstrap-de-one: seeds the EXACT ordinary discovery job (regular payload ref, no canary marker, idempotent)", async () => {
+  const h = createHarness();
+  try {
+    // The ordinary enqueue path IS what the scheduled cron uses.
+    const reader = { async put(key: string, value: Uint8Array) { await h.reader.put(key, value); }, async get(key: string) { return h.reader.get(key); } };
+    const seeded = await enqueueIngestStageDiscovery(h.ingestDb, reader as Parameters<typeof enqueueIngestStageDiscovery>[1], {
+      sourceKey: BOOTSTRAP_DE_ONE_SOURCE_KEY, limit: 1, now: NOW,
+    });
+    assert.equal(seeded.created, true);
+
+    const row = h.ingest.prepare("SELECT stage,source_key,article_id,payload_ref,status FROM ingest_stage_jobs").get() as Record<string, unknown>;
+    assert.equal(row.stage, "discovery");
+    assert.equal(row.source_key, "de-bverfg");
+    assert.equal(row.article_id, "native-discovery:de-bverfg:1:default", "ordinary discovery request article id");
+    assert.ok(String(row.payload_ref).startsWith("stages/ingest-discovery-request/de-bverfg/"), "regular (non-canary) payload ref");
+    assert.ok(!String(row.payload_ref).startsWith(CANARY_PAYLOAD_PREFIX), "no canary prefix");
+    assert.equal(row.status, "pending");
+
+    // The stored artifact carries NO canaryDiscovery marker: the discovery handler
+    // therefore takes the ordinary fan-out path, not the canary branch.
+    const artifact = await reader.get(String(row.payload_ref));
+    assert.ok(artifact, "the ordinary discovery request artifact exists");
+    const parsed = JSON.parse(new TextDecoder().decode(await artifact!.arrayBuffer())) as Record<string, unknown>;
+    assert.equal(parsed.sourceKey, "de-bverfg");
+    assert.equal(parsed.limit, 1);
+    assert.equal("canaryDiscovery" in parsed, false, "the ordinary payload must not carry a canary marker");
+    assert.equal(parseCanaryDiscoveryRequest(parsed).ok, false, "the ordinary payload is not a canary discovery request");
+
+    // Same day replay is idempotent (exactly one ordinary discovery job).
+    const replay = await enqueueIngestStageDiscovery(h.ingestDb, reader as Parameters<typeof enqueueIngestStageDiscovery>[1], {
+      sourceKey: BOOTSTRAP_DE_ONE_SOURCE_KEY, limit: 1, now: "2026-10-13T06:00:00.000Z",
+    });
+    assert.equal(replay.jobId, seeded.jobId);
+    assert.equal(replay.created, false);
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage='discovery'").get()?.n, 1);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("bootstrap-de-one: strict one-shot dispatch leases ONLY the named ordinary job under the ordinary owner", async () => {
+  const h = createHarness();
+  try {
+    const reader = { async put(key: string, value: Uint8Array) { await h.reader.put(key, value); }, async get(key: string) { return h.reader.get(key); } };
+    const seeded = await enqueueIngestStageDiscovery(h.ingestDb, reader as Parameters<typeof enqueueIngestStageDiscovery>[1], {
+      sourceKey: BOOTSTRAP_DE_ONE_SOURCE_KEY, limit: 1, now: NOW,
+    });
+    const sent: IngestStageQueueMessage[] = [];
+    const pass = await dispatchIngestStagePass({
+      ingestDb: h.ingestDb,
+      queue: { async send(body) { sent.push(body); return {}; } },
+      stage: "discovery",
+      workerId: "bootstrap-de-one:test-instance",
+      limit: 1,
+      leaseSeconds: 300,
+      now: NOW,
+      jobId: seeded.jobId,
+    });
+    assert.equal(pass.enqueued, 1);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].jobId, seeded.jobId);
+    const row = await getIngestStageJobById(h.ingestDb, seeded.jobId);
+    assert.equal(row?.status, "leased");
+    assert.equal(row?.claimed_by, "bootstrap-de-one:test-instance");
+    assert.ok(!String(row?.claimed_by).startsWith("canary-owner:"), "the ordinary dispatch must NOT use the canary owner fence");
+
+    // Re-dispatch under the same live lease is a harmless no-op (fence idempotence).
+    const again = await dispatchIngestStagePass({
+      ingestDb: h.ingestDb,
+      queue: { async send(body) { sent.push(body); return {}; } },
+      stage: "discovery",
+      workerId: "bootstrap-de-one:test-instance",
+      limit: 1,
+      leaseSeconds: 300,
+      now: NOW,
+      jobId: seeded.jobId,
+    });
+    assert.equal(again.enqueued, 0, "an already-leased job is not re-sent");
+    assert.equal(sent.length, 1);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("bootstrap-de-one: the ordinary discovery job uses the generic fan-out mode, never the protected FR/ES E2E approval", async () => {
+  const h = createHarness();
+  const { fetch: fetcher } = deHomepageFetch({ links: 3 });
+  try {
+    const handlers = canaryDiscoveryHandlers(h, fetcher);
+    const reader = { async put(key: string, value: Uint8Array) { await h.reader.put(key, value); }, async get(key: string) { return h.reader.get(key); } };
+    const seeded = await enqueueIngestStageDiscovery(h.ingestDb, reader as Parameters<typeof enqueueIngestStageDiscovery>[1], {
+      sourceKey: BOOTSTRAP_DE_ONE_SOURCE_KEY, limit: 1, now: NOW,
+    });
+    // Ordinary staged DE ownership: the staged list now includes de-bverfg, so
+    // the ordinary (non-canary) payload passes the per-source gate honestly.
+    const stagedWithDe = ["fr-conseil-constitutionnel", "es-tribunal-constitucional", "de-bverfg"];
+    const gate = resolveIngestStageRolloutGate(true, "production", "discovery,crawl,normalize");
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchIngestStagePass({
+      ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } },
+      stage: "discovery", workerId: "bootstrap-de-one:test", limit: 1, leaseSeconds: 300, now: NOW, jobId: seeded.jobId,
+    });
+    const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES.discovery, messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers: {
+        ...handlers,
+        // The ordinary discovery stage may fan out; keep only the discovery handler.
+        discovery: handlers.discovery!,
+      }, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: stagedWithDe }),
+    });
+    assert.equal(result.completed, 1, JSON.stringify(result));
+    const discoveryJob = await getIngestStageJobById(h.ingestDb, seeded.jobId);
+    assert.equal(discoveryJob?.status, "succeeded");
+    // Generic fan-out registers ordinary `stages/ingest-discovery/...` crawl jobs,
+    // NOT canary-prefixed ones and NOT the FR/ES automatic approval path.
+    const crawlJobs = h.ingest.prepare("SELECT payload_ref FROM ingest_stage_jobs WHERE stage='crawl'").all() as Array<{ payload_ref: string }>;
+    assert.ok(crawlJobs.length >= 1, "the ordinary fan-out produced at least one crawl job");
+    assert.ok(crawlJobs.every((job) => job.payload_ref.startsWith("stages/ingest-discovery/")), "crawl artifacts are ordinary, not canary-prefixed");
+    assert.ok(crawlJobs.every((job) => !job.payload_ref.startsWith(CANARY_PAYLOAD_PREFIX)));
+    // No protected approval ledger row exists (that branch is FR/ES E2E only).
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_canary_records_v1").get()?.n, 0, "no canary audit row for the ordinary bootstrap");
+  } finally { h.ingest.close(); h.core.close(); }
 });
