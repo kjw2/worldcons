@@ -40,6 +40,8 @@ import {
 } from "../workers/async-pipeline/src/ingest-stage-consumer";
 import { createIngestStageHandlers, enqueueCanaryDiscovery, enqueueIngestStageDiscovery } from "../workers/async-pipeline/src/ingest-stage-handlers";
 import { operatorCanaryAuthorized } from "../workers/async-pipeline/src/worker-auth";
+import { approvalIdentity, HUMAN_APPROVAL_POLICY } from "../lib/cloudflare/e2e/contracts";
+import { approvalSourceMetadata } from "../lib/cloudflare/core-write/authority";
 import {
   applyOfficialIdentityGate,
   assertSelectOnly,
@@ -65,6 +67,8 @@ const CORE_SCHEMA = [
   "0001_init.sql",
   "0002_translation_pipeline.sql",
   "0003_ingest_core_bridge_ledger.sql",
+  "0004_e2e_generations.sql",
+  "0007_e2e_verification.sql",
 ].map((file) => fs.readFileSync(path.join(root, "d1", "worldcons_core", file), "utf8")).join("\n");
 
 const DE_URL = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html?nn=68112";
@@ -158,7 +162,10 @@ function createHarness(): Harness {
   return { ingest, core, ingestDb, coreDb, bucket, reader };
 }
 
-function canaryHandlers(harness: Harness) {
+function canaryHandlers(harness: Harness, adapters: {
+  publication?: Parameters<typeof createIngestStageHandlers>[0]["publication"];
+  search?: Parameters<typeof createIngestStageHandlers>[0]["search"];
+} = {}) {
   const rawBucket = {
     async put(key: string, value: Uint8Array) { await harness.reader.put(key, value); },
     async get(key: string) { return harness.reader.get(key); },
@@ -174,6 +181,8 @@ function canaryHandlers(harness: Harness) {
     fetch: deFetch(),
     now: () => NOW,
     canarySources: ["de-bverfg", "us-scotus"],
+    ...(adapters.publication ? { publication: adapters.publication } : {}),
+    ...(adapters.search ? { search: adapters.search } : {}),
   });
 }
 
@@ -492,6 +501,182 @@ test("canary source gate allows the same de-bverfg job once it carries the expli
   } finally { h.ingest.close(); h.core.close(); }
 });
 
+test("US manual-approval guard: a legacy published US row with publishable=1 and old P3 but NO human receipt is BLOCKED and cannot trigger publish/search", async () => {
+  const h = createHarness();
+  const LEGACY = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+  try {
+    // Simulate the real incident: a 2026-Sep legacy US article that was already
+    // published with collection.publishable=1, review_state summarized, and a
+    // verified officialPdf — but NO immutable human-approval receipt.
+    const legacyMetadata = JSON.stringify({
+      officialPdf: { url: US_URL, r2Key: `artifacts/scotus_pdf/${"0".repeat(64)}.pdf`, sha256: "0".repeat(64), docketVerified: true },
+      collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "official-pdf" },
+      review: { required: true },
+    });
+    h.core.prepare("INSERT INTO articles (id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,status,slug,cleaned_text,summary_json,korean_title,translation_status,source_metadata,content_hash,review_state,discovered_at,fetched_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(LEGACY, "us-scotus", "United States", "Supreme Court of the United States", "opinion", US_URL, US_URL, "en", "t", "summarized", "us-legacy",
+        "legacy approved opinion text ".repeat(40), JSON.stringify({ summary: { coreSummary: ["기존 요약"] } }), "요약", "translated",
+        legacyMetadata, "legacy-hash", "summarized", NOW, NOW, NOW, NOW);
+    // The legacy P3 publication that must never count as authorization.
+    h.core.prepare("INSERT INTO article_publications_p3 (id,article_id,version_id,state,revision,decided_by_type,reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run("pub-legacy", LEGACY, "ver-legacy", "published", 1, "human", "legacy", NOW, NOW);
+
+    const handlers = canaryHandlers(h, {
+      publication: { async publish() { return { published: true, versionId: "never", state: "published" }; } },
+      search: { async project() { return { projected: true, documentCount: 1, ftsCount: 1 }; } },
+    });
+    const gate = resolveIngestStageRolloutGate(true, "production", "public-judgment,publish,search");
+    // A public-judgment job for the legacy US article.
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("pj-us", buildIngestStageIdempotencyKey({ articleId: LEGACY, stage: "public-judgment", sourceVersion: "v", contentHash: "h" }), "public-judgment", LEGACY, "us-scotus", "v", "h", "pending", 0, 0, 8, NOW, NOW);
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({
+      ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } },
+      jobId: "pj-us", canaryId: "us", operatorId: "op", deploymentRef: "test", stage: "public-judgment", now: NOW,
+    });
+    const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES["public-judgment"], messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: [] }),
+    });
+    assert.equal(result.completed, 0);
+    assert.equal(result.blockedJobs, 1, JSON.stringify(result));
+    const pjJob = await getIngestStageJobById(h.ingestDb, "pj-us");
+    assert.equal(pjJob?.status, "dead_letter");
+    assert.equal(pjJob?.last_error_code, "ingest_stage.us_manual_approval_receipt_required");
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3 WHERE state='published'").get()?.n, 1, "the legacy P3 row is untouched");
+    // No publish/search child job was registered by the blocked public-judgment.
+    assert.equal(h.ingest.prepare("SELECT COUNT(*) n FROM ingest_stage_jobs WHERE stage IN ('publish','search')").get()?.n, 0, "no publish/search is triggered");
+
+    // Defense in depth: a standalone US publish AND search job are independently blocked.
+    for (const stage of ["publish", "search"] as const) {
+      h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(`${stage}-us`, buildIngestStageIdempotencyKey({ articleId: LEGACY, stage, sourceVersion: "v", contentHash: "h" }), stage, LEGACY, "us-scotus", "v", "h", "pending", 0, 0, 8, NOW, NOW);
+      const stageSent: IngestStageQueueMessage[] = [];
+      await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { stageSent.push(body); return {}; } }, jobId: `${stage}-us`, canaryId: "us", operatorId: "op", deploymentRef: "test", stage, now: NOW });
+      const stageResult = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES[stage], messages: [{ body: stageSent[0], ack: () => undefined, retry: () => undefined }] }, {
+        gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+        sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: [] }),
+      });
+      assert.equal(stageResult.blockedJobs, 1, `${stage} must be blocked`);
+      assert.equal((await getIngestStageJobById(h.ingestDb, `${stage}-us`))?.last_error_code, "ingest_stage.us_manual_approval_receipt_required");
+    }
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3 WHERE state='published'").get()?.n, 1, "no new US publication");
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("US manual-approval guard: a valid, same-case, snapshot-bound human receipt opens public judgment; a stale/unbound receipt fails closed", async () => {
+  const h = createHarness();
+  const CORE = "a60db8bb-4ec3-4ecf-bb5a-6245f621a334";
+  try {
+    const metadata = JSON.stringify({
+      officialPdf: { url: US_URL, r2Key: `artifacts/scotus_pdf/${"1".repeat(64)}.pdf`, sha256: "1".repeat(64), docketVerified: true },
+      collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "official-pdf" },
+      review: { required: true },
+    });
+    h.core.prepare("INSERT INTO articles (id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,status,slug,cleaned_text,summary_json,korean_title,translation_status,source_metadata,content_hash,review_state,discovered_at,fetched_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(CORE, "us-scotus", "United States", "Supreme Court of the United States", "opinion", US_URL, US_URL, "en", "t", "summarized", "us-guard",
+        "verified us opinion text ".repeat(40), JSON.stringify({ summary: { coreSummary: ["요약"] } }), "요약", "translated",
+        metadata, "valid-hash", "unreviewed", NOW, NOW, NOW, NOW);
+    const row = h.core.prepare("SELECT * FROM articles WHERE id=?").get(CORE) as Record<string, unknown>;
+    const snapshot = { ...row, source_metadata: approvalSourceMetadata(row.source_metadata, true) };
+    const identity = await approvalIdentity(CORE, snapshot, HUMAN_APPROVAL_POLICY);
+
+    const handlers = canaryHandlers(h);
+    const gate = resolveIngestStageRolloutGate(true, "production", "public-judgment");
+    const consumePublicJudgment = async (jobId: string) => {
+      const sent: IngestStageQueueMessage[] = [];
+      await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId, canaryId: "us", operatorId: "op", deploymentRef: "test", stage: "public-judgment", now: NOW });
+      return consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES["public-judgment"], messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+        gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+        sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: [] }),
+      });
+    };
+    const insertPjJob = (id: string) => h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, buildIngestStageIdempotencyKey({ articleId: CORE, stage: "public-judgment", sourceVersion: id, contentHash: "h" }), "public-judgment", CORE, "us-scotus", id, "h", "pending", 0, 0, 8, NOW, NOW);
+
+    // 1) A receipt with a synthetically-correct policy/schema/actor but a stale
+    //    snapshot hash must NOT authenticate.
+    h.core.prepare("INSERT INTO e2e_approval_evidence_v1 (approval_key,article_id,approval_snapshot_hash,source_content_hash,policy_version,evidence_ref,source_artifact_ref,source_artifact_hash,discovery_candidate_id,pipeline_run_id,evidence_document,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("stale-key", CORE, "deadbeef".repeat(8), identity.sourceContentHash, HUMAN_APPROVAL_POLICY, "core:e2e-approval:stale", "core:e2e-reviewed-source:stale", "x", "manual:" + CORE, "review:stale",
+        JSON.stringify({ schema: "worldcons.human-approval.v1", actorId: "ops:forged", approvalSnapshotHash: "deadbeef".repeat(8), sourceContentHash: identity.sourceContentHash }), NOW);
+    insertPjJob("pj-stale");
+    const stale = await consumePublicJudgment("pj-stale");
+    assert.equal(stale.blockedJobs, 1, JSON.stringify(stale));
+    assert.equal((await getIngestStageJobById(h.ingestDb, "pj-stale"))?.last_error_code, "ingest_stage.us_manual_approval_unauthenticated");
+
+    // 2) A genuine same-case receipt bound to the CURRENT snapshot opens the gate.
+    h.core.prepare("DELETE FROM e2e_approval_evidence_v1 WHERE approval_key=?").run("stale-key");
+    h.core.prepare("INSERT INTO e2e_approval_evidence_v1 (approval_key,article_id,approval_snapshot_hash,source_content_hash,policy_version,evidence_ref,source_artifact_ref,source_artifact_hash,discovery_candidate_id,pipeline_run_id,evidence_document,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("valid-key", CORE, identity.approvalSnapshotHash, identity.sourceContentHash, HUMAN_APPROVAL_POLICY, `core:e2e-approval:${identity.approvalKey}`, "core:e2e-reviewed-source:valid", "x", "manual:" + CORE, "review:valid",
+        JSON.stringify({ schema: "worldcons.human-approval.v1", actorId: "ops:reviewer", approvalSnapshotHash: identity.approvalSnapshotHash, sourceContentHash: identity.sourceContentHash }), NOW);
+    insertPjJob("pj-valid");
+    const valid = await consumePublicJudgment("pj-valid");
+    assert.equal(valid.completed, 1, JSON.stringify(valid));
+
+    // 3) The automatic FR/ES ledger policy for the same article must NOT count.
+    h.core.prepare("DELETE FROM e2e_approval_evidence_v1 WHERE approval_key=?").run("valid-key");
+    h.core.prepare("INSERT INTO e2e_approval_evidence_v1 (approval_key,article_id,approval_snapshot_hash,source_content_hash,policy_version,evidence_ref,source_artifact_ref,source_artifact_hash,discovery_candidate_id,pipeline_run_id,evidence_document,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("auto-key", CORE, identity.approvalSnapshotHash, identity.sourceContentHash, "worldcons.fr-es-staged-approval.v1", "core:e2e-approval:auto", "core:e2e-reviewed-source:auto", "x", "manual:" + CORE, "review:auto",
+        JSON.stringify({ schema: "worldcons.human-approval.v1", actorId: "ops:auto", approvalSnapshotHash: identity.approvalSnapshotHash }), NOW);
+    insertPjJob("pj-auto");
+    const auto = await consumePublicJudgment("pj-auto");
+    assert.equal(auto.blockedJobs, 1, JSON.stringify(auto));
+    assert.equal((await getIngestStageJobById(h.ingestDb, "pj-auto"))?.last_error_code, "ingest_stage.us_manual_approval_receipt_required");
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("US manual-approval guard: a native (unresolved) US publish/search id is an EXPLICIT terminal block and cannot bypass the guard", async () => {
+  const h = createHarness();
+  try {
+    // No core article exists for the native id, so if the guard were bypassed the
+    // adapter would happily "publish"/"project" — the test adapter proves it must
+    // never be reached.
+    let publishCalled = false;
+    let searchCalled = false;
+    const handlers = canaryHandlers(h, {
+      publication: { async publish() { publishCalled = true; return { published: true, versionId: "v", state: "published" }; } },
+      search: { async project() { searchCalled = true; return { projected: true, documentCount: 1, ftsCount: 1 }; } },
+    });
+    const gate = resolveIngestStageRolloutGate(true, "production", "publish,search");
+    const NATIVE = "native:us-unresolved-abc123";
+    for (const stage of ["publish", "search"] as const) {
+      h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(`${stage}-native-us`, buildIngestStageIdempotencyKey({ articleId: NATIVE, stage, sourceVersion: "v", contentHash: "h" }), stage, NATIVE, "us-scotus", "v", "h", "pending", 0, 0, 8, NOW, NOW);
+      const sent: IngestStageQueueMessage[] = [];
+      await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: `${stage}-native-us`, canaryId: "us", operatorId: "op", deploymentRef: "test", stage, now: NOW });
+      const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES[stage], messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+        gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+        sourceGate: () => true,
+      });
+      assert.equal(result.blockedJobs, 1, `${stage} native US id must be blocked: ${JSON.stringify(result)}`);
+      assert.equal((await getIngestStageJobById(h.ingestDb, `${stage}-native-us`))?.last_error_code, `ingest_stage.${stage}_us_article_unresolved`);
+    }
+    assert.equal(publishCalled, false, "the publication adapter must never be reached for an unresolved US id");
+    assert.equal(searchCalled, false, "the search adapter must never be reached for an unresolved US id");
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0, "no US publication");
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("US manual-approval guard is a no-op for DE / protected FR-ES so existing non-US flows are unaffected", async () => {  const h = createHarness();
+  try {
+    h.core.prepare("INSERT INTO articles (id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,status,slug,cleaned_text,summary_json,korean_title,translation_status,source_metadata,content_hash,review_state,discovered_at,fetched_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("de-article", "de-bverfg", "Germany", "Federal Constitutional Court of Germany", "decision", "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html", "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html", "de", "t", "summarized", "de-1",
+        "verified de decision text ".repeat(40), JSON.stringify({ summary: { coreSummary: ["요약"] } }), "요약", "translated",
+        JSON.stringify({ collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "fetch" } }), "de-hash", "unreviewed", NOW, NOW, NOW, NOW);
+    const handlers = canaryHandlers(h);
+    const gate = resolveIngestStageRolloutGate(true, "production", "public-judgment");
+    h.ingest.prepare("INSERT INTO ingest_stage_jobs (id,idempotency_key,stage,article_id,source_key,source_version,content_hash,status,priority,attempt_count,max_attempts,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("pj-de", buildIngestStageIdempotencyKey({ articleId: "de-article", stage: "public-judgment", sourceVersion: "v", contentHash: "h" }), "public-judgment", "de-article", "de-bverfg", "v", "h", "pending", 0, 0, 8, NOW, NOW);
+    const sent: IngestStageQueueMessage[] = [];
+    await dispatchCanaryCase({ ingestDb: h.ingestDb, queue: { async send(body) { sent.push(body); return {}; } }, jobId: "pj-de", canaryId: "de", operatorId: "op", deploymentRef: "test", stage: "public-judgment", now: NOW });
+    const result = await consumeIngestStageBatch({ queue: INGEST_STAGE_QUEUES["public-judgment"], messages: [{ body: sent[0], ack: () => undefined, retry: () => undefined }] }, {
+      gate, ingestDb: h.ingestDb, coreDb: h.coreDb, now: NOW, handlers, env: {}, invalidRetryDelaySeconds: 300,
+      sourceGate: ({ stage, sourceKey, payloadRef }) => canarySourceGateAllows({ stage, sourceKey, payloadRef, stagedSources: [] }),
+    });
+    assert.equal(result.completed, 1, `DE public judgment must still succeed: ${JSON.stringify(result)}`);
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
 test("canary never fabricates US 7/7: a US article without a manual authorization blocks at public judgment", async () => {
   const h = createHarness();
   try {
@@ -519,7 +704,9 @@ test("canary never fabricates US 7/7: a US article without a manual authorizatio
     assert.equal(result.blockedJobs, 1);
     const job = await getIngestStageJobById(h.ingestDb, "pj-1");
     assert.equal(job?.status, "dead_letter");
-    assert.equal(job?.last_error_code, "ingest_stage.public_judgment_not_publishable");
+    // The US manual-approval guard fires first and blocks before the generic
+    // publishability check; either way the US article is never published.
+    assert.equal(job?.last_error_code, "ingest_stage.us_manual_approval_receipt_required");
     assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0, "no forced US publication");
   } finally { h.ingest.close(); h.core.close(); }
 });
@@ -541,14 +728,21 @@ test("manual approval policy: US publishable/published without an explicit autho
   const withAutomaticRows = evaluateManualApprovalPolicy({ sourceKey: "us-scotus", collectionPublishable: true, reviewRequired: false, publishedP3: false, automaticApprovalRows: 5 });
   assert.equal(withAutomaticRows.compliant, false);
   assert.equal(withAutomaticRows.manualAuthorizationPresent, false);
-  // Only an immutable, same-case human-review receipt may authorize US publication.
+  // Only an immutable, same-case, snapshot-bound human-review receipt may
+  // authorize US publication. A merely-present policy/schema/actor is not enough.
+  const withUnboundReceipt = evaluateManualApprovalPolicy({
+    sourceKey: "us-scotus", collectionPublishable: true, reviewRequired: false, publishedP3: true, automaticApprovalRows: 0,
+    manualApprovalReceipt: { present: true, authenticated: false, reason: "us_manual_approval.receipt_snapshot_mismatch", actorId: "ops:reviewer", policyVersion: "worldcons.human-reviewed-publication.v1" },
+  });
+  assert.equal(withUnboundReceipt.compliant, false, "a synthetically-present but unauthenticated receipt must not authorize");
+  assert.equal(withUnboundReceipt.manualAuthorizationPresent, false);
   const withReceipt = evaluateManualApprovalPolicy({
     sourceKey: "us-scotus", collectionPublishable: true, reviewRequired: false, publishedP3: true, automaticApprovalRows: 0,
-    manualApprovalReceipt: { present: true, reason: "us_manual_approval.same_case_human_receipt", actorId: "ops:reviewer", policyVersion: "worldcons.human-reviewed-publication.v1" },
+    manualApprovalReceipt: { present: true, authenticated: true, reason: "us_manual_approval.same_case_snapshot_bound_human_receipt", actorId: "ops:reviewer", policyVersion: "worldcons.human-reviewed-publication.v1" },
   });
   assert.equal(withReceipt.compliant, true);
   assert.equal(withReceipt.manualAuthorizationPresent, true);
-  assert.equal(withReceipt.reason, "canary_lineage.us_manual_receipt_present");
+  assert.equal(withReceipt.reason, "canary_lineage.us_manual_receipt_authenticated");
   assert.equal(
     evaluateManualApprovalPolicy({ sourceKey: "de-bverfg", collectionPublishable: true, reviewRequired: false, publishedP3: true, automaticApprovalRows: 0 }).compliant,
     true,

@@ -43,7 +43,9 @@ import { fileURLToPath } from "node:url";
 import { resolveM8CrawlerSourcePolicy } from "../lib/cloudflare/async-pipeline/crawler-source-ownership";
 import { NATIVE_CRAWLER_SOURCES } from "../workers/async-pipeline/src/native-crawler";
 import { INGEST_STAGE_NAMES } from "../lib/cloudflare/ingest-stages/contracts";
-import { evaluateSameCaseManualApprovalReceipt, type UsManualApprovalAssessment } from "../lib/cloudflare/ingest-stages/us-cutover-readiness";
+import { evaluateSameCaseManualApprovalReceipt, US_MANUAL_APPROVAL_POLICY, type UsManualApprovalAssessment, type UsManualApprovalExpectation } from "../lib/cloudflare/ingest-stages/us-cutover-readiness";
+import { approvalIdentity, HUMAN_APPROVAL_POLICY } from "../lib/cloudflare/e2e/contracts";
+import { approvalSourceMetadata } from "../lib/cloudflare/core-write/authority";
 
 export interface AuditSection {
   name: string;
@@ -324,13 +326,14 @@ export function evaluateManualApprovalPolicy(input: {
   /** Immutable same-case human-review receipt, when one genuinely exists. */
   manualApprovalReceipt?: UsManualApprovalAssessment;
 }): { compliant: boolean; reason: string; manualAuthorizationPresent: boolean } {
-  const receiptPresent = input.manualApprovalReceipt?.present === true;
+  const receiptAuthenticated = input.manualApprovalReceipt?.authenticated === true;
   if (input.sourceKey !== "us-scotus") {
     return { compliant: true, reason: "canary_lineage.policy_not_us", manualAuthorizationPresent: false };
   }
-  // An immutable, same-case human receipt is the ONLY accepted manual consent.
-  if (receiptPresent) {
-    return { compliant: true, reason: "canary_lineage.us_manual_receipt_present", manualAuthorizationPresent: true };
+  // An immutable, same-case, snapshot-bound human receipt is the ONLY accepted
+  // manual consent. Merely-present policy/schema/actor fields are not enough.
+  if (receiptAuthenticated) {
+    return { compliant: true, reason: "canary_lineage.us_manual_receipt_authenticated", manualAuthorizationPresent: true };
   }
   if (input.collectionPublishable === true) {
     return { compliant: false, reason: "canary_lineage.us_publishable_without_manual_authorization", manualAuthorizationPresent: false };
@@ -456,7 +459,7 @@ function ownership() {
   };
 }
 
-function main() {
+async function main() {
   const startJobIdRaw = argumentValue("job");
   const articleId = argumentValue("article")?.trim() || null;
   const sourceKey = argumentValue("source") ?? "us-scotus";
@@ -509,7 +512,7 @@ function main() {
 
   const coreQuery = coreArticleId
     ? runRemote(root, "worldcons_core", "core_article_and_provenance",
-      `SELECT id, source_key, canonical_url, status, review_state, translation_status,
+      `SELECT *,
         json_extract(source_metadata,'$.collection.publishable') AS collection_publishable,
         json_extract(source_metadata,'$.collection.sourceUrlVerified') AS collection_source_url_verified,
         json_extract(source_metadata,'$.review.required') AS review_required,
@@ -535,19 +538,44 @@ function main() {
 
   // Same-case human-review receipt: the ONLY accepted manual-consent proof. This
   // reads the immutable ledger for the exact Core UUID; a generic published flag
-  // or the automatic FR/ES ledger is never treated as consent.
+  // or the automatic FR/ES ledger is never treated as consent. Authenticity is
+  // verified by recomputing the current snapshot hash from the live Core row and
+  // requiring the receipt's ledger snapshot+source hashes to match AND the row to
+  // carry verified official-PDF provenance (a legacy P3 row does not).
   const receiptQuery = coreArticleId
     ? runRemote(root, "worldcons_core", "same_case_human_approval_receipt",
-      `SELECT article_id, policy_version, evidence_document FROM e2e_approval_evidence_v1 WHERE article_id = ${quote(coreArticleId)} AND policy_version = 'worldcons.human-reviewed-publication.v1' ORDER BY created_at DESC LIMIT 5`)
+      `SELECT article_id, policy_version, evidence_document, approval_snapshot_hash, source_content_hash FROM e2e_approval_evidence_v1 WHERE article_id = ${quote(coreArticleId)} AND policy_version = ${quote(US_MANUAL_APPROVAL_POLICY)} ORDER BY created_at DESC LIMIT 5`)
     : { ok: true as const, rows: [] as unknown[] };
-  const receiptRows = (receiptQuery.ok ? receiptQuery.rows : []) as Array<{ article_id?: unknown; policy_version?: unknown; evidence_document?: unknown }>;
+  const receiptRows = (receiptQuery.ok ? receiptQuery.rows : []) as Array<{ article_id?: unknown; policy_version?: unknown; evidence_document?: unknown; approval_snapshot_hash?: unknown; source_content_hash?: unknown }>;
+  const officialPdfForExpectation = {
+    docketVerified: coreRow?.official_pdf_docket_verified === 1 || coreRow?.official_pdf_docket_verified === true,
+    sha256: typeof coreRow?.official_pdf_sha256 === "string" ? coreRow.official_pdf_sha256 : null,
+    r2Key: typeof coreRow?.official_pdf_r2_key === "string" ? coreRow.official_pdf_r2_key : null,
+    url: typeof coreRow?.original_url === "string" ? coreRow.original_url : (typeof coreRow?.canonical_url === "string" ? coreRow.canonical_url : null),
+  };
+  // Recompute the exact current approval snapshot identity from the live row.
+  // When the row/snapshot cannot be read, authenticity cannot be proven, so the
+  // audit omits the expectation and NEVER reports authenticated consent.
+  const expectation: UsManualApprovalExpectation | undefined = coreRow && coreArticleId
+    ? await (async () => {
+        const identity = await approvalIdentity(coreArticleId, { ...coreRow, source_metadata: approvalSourceMetadata(coreRow.source_metadata, true) }, HUMAN_APPROVAL_POLICY);
+        return {
+          currentApprovalSnapshotHash: identity.approvalSnapshotHash,
+          currentSourceContentHash: identity.sourceContentHash,
+          officialPdf: officialPdfForExpectation,
+        };
+      })()
+    : undefined;
   const manualApprovalReceipt: UsManualApprovalAssessment = evaluateSameCaseManualApprovalReceipt(
     coreArticleId,
     receiptRows.map((row) => ({
       articleId: row.article_id == null ? null : String(row.article_id),
       policyVersion: row.policy_version == null ? null : String(row.policy_version),
       evidenceDocument: row.evidence_document == null ? null : String(row.evidence_document),
+      approvalSnapshotHash: row.approval_snapshot_hash == null ? null : String(row.approval_snapshot_hash),
+      sourceContentHash: row.source_content_hash == null ? null : String(row.source_content_hash),
     })),
+    expectation,
   );
 
   // Search proof: search_documents and search_fts must be the SAME article + rowid.
@@ -631,8 +659,8 @@ function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); } catch (error) {
+  main().catch((error) => {
     console.error(error instanceof Error ? error.message : "canary_lineage.unknown_failure");
     process.exitCode = 1;
-  }
+  });
 }

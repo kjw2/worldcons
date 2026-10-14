@@ -42,15 +42,44 @@ export const US_MANUAL_APPROVAL_DOCUMENT_SCHEMA = "worldcons.human-approval.v1" 
  * One observed approval-ledger row, as read from `e2e_approval_evidence_v1`.
  * `articleId` must be the exact same-case Core UUID; `policyVersion` must be the
  * human-review policy; `evidenceDocument` is the immutable JSON receipt.
+ * `approvalSnapshotHash`/`sourceContentHash` are the ledger columns that bind
+ * the receipt to the exact reviewed snapshot; when present they are compared
+ * against the independently recomputed current snapshot.
  */
 export interface UsManualApprovalReceiptRow {
   articleId: string | null | undefined;
   policyVersion: string | null | undefined;
   evidenceDocument: string | null | undefined;
+  approvalSnapshotHash?: string | null | undefined;
+  sourceContentHash?: string | null | undefined;
+}
+
+/**
+ * The independently recomputed, current-state anchors the receipt must match.
+ * A caller-supplied boolean or a synthetically constructed assessment can never
+ * supply these: they are derived from the live Core row and the verified
+ * official-PDF provenance by the runtime guard (or the read-only audit).
+ */
+export interface UsManualApprovalExpectation {
+  /** The exact current Core approval snapshot hash for this article. */
+  currentApprovalSnapshotHash: string;
+  /** The exact current Core source content hash for this article. */
+  currentSourceContentHash: string;
+  /**
+   * The current verified official SCOTUS PDF provenance. Legacy P3 rows do not
+   * carry this, so a legacy publication can never satisfy the guard.
+   */
+  officialPdf: { docketVerified: boolean; sha256: string | null; r2Key: string | null; url: string | null };
 }
 
 export interface UsManualApprovalAssessment {
+  /** A same-case human receipt was structurally found. */
   present: boolean;
+  /**
+   * The receipt is cryptographically bound to the *current* snapshot and PDF
+   * proof. Only `present && authenticated` may authorize US publication.
+   */
+  authenticated: boolean;
   reason: string;
   actorId: string | null;
   policyVersion: string | null;
@@ -58,11 +87,13 @@ export interface UsManualApprovalAssessment {
 
 /**
  * Pure, fail-closed evaluation of whether an *immutable, same-case, human*
- * approval receipt exists for the given Core article.
+ * approval receipt exists for the given Core article, and — when an
+ * `expectation` is supplied — whether it is bound to the exact current state.
  *
  * This replaces treating a caller-supplied `manualPublicationAuthorization`
- * boolean (or a generic `published`/`automatic` flag) as proof of review. A
- * receipt counts ONLY when ALL of the following hold:
+ * boolean (or a generic `published`/`automatic` flag, or synthetic
+ * policy/schema/actor fields) as proof of review. A receipt counts as
+ * `present` ONLY when ALL of the following hold:
  *
  *   - `articleId` equals the exact same-case Core UUID;
  *   - `policyVersion` is `worldcons.human-reviewed-publication.v1` (NOT the
@@ -70,15 +101,33 @@ export interface UsManualApprovalAssessment {
  *   - `evidenceDocument` parses and its `schema` is
  *     `worldcons.human-approval.v1` with a non-empty external `actorId`.
  *
+ * It counts as `authenticated` ONLY when, additionally, an `expectation` was
+ * supplied and:
+ *
+ *   - the current verified official-PDF provenance exists
+ *     (`docketVerified === true` with a sha256 + r2Key);
+ *   - all four binding hashes are PRESENT (non-empty): the ledger row's
+ *     `approvalSnapshotHash` and `sourceContentHash`, and the receipt document's
+ *     own `approvalSnapshotHash` and `sourceContentHash` (a truthful receipt
+ *     always carries them, so an absent hash is tampering and fails closed);
+ *   - the ledger row AND the receipt document each exactly equal the
+ *     independently recomputed current `approvalSnapshotHash` and
+ *     `sourceContentHash` (a receipt that predates the current PDF/snapshot
+ *     therefore fails closed).
+ *
  * Anything else (missing article, other policy, missing/blank actor, malformed
- * document) fails closed. This function never reads the database or the network.
+ * document, a missing/empty binding hash, stale snapshot, missing PDF proof)
+ * fails closed. This function never reads the database or the network.
  */
 export function evaluateSameCaseManualApprovalReceipt(
   coreArticleId: string | null | undefined,
   rows: ReadonlyArray<UsManualApprovalReceiptRow>,
+  expectation?: UsManualApprovalExpectation,
 ): UsManualApprovalAssessment {
   const target = (coreArticleId ?? "").trim();
-  if (!target) return { present: false, reason: "us_manual_approval.no_core_article", actorId: null, policyVersion: null };
+  if (!target) return { present: false, authenticated: false, reason: "us_manual_approval.no_core_article", actorId: null, policyVersion: null };
+  let sawStructuralReceipt = false;
+  let sawActor: string | null = null;
   for (const row of rows) {
     if (String(row.articleId ?? "") !== target) continue;
     if (String(row.policyVersion ?? "") !== US_MANUAL_APPROVAL_POLICY) continue;
@@ -92,9 +141,42 @@ export function evaluateSameCaseManualApprovalReceipt(
     }
     const actorId = typeof document.actorId === "string" ? document.actorId.trim() : "";
     if (document.schema !== US_MANUAL_APPROVAL_DOCUMENT_SCHEMA || actorId.length === 0) continue;
-    return { present: true, reason: "us_manual_approval.same_case_human_receipt", actorId, policyVersion: US_MANUAL_APPROVAL_POLICY };
+    sawStructuralReceipt = true;
+    sawActor = actorId;
+    if (!expectation) {
+      // No current-state anchor was supplied, so authenticity cannot be proven.
+      continue;
+    }
+    // The receipt must be bound to the exact current snapshot, and the current
+    // state must carry verified official-PDF provenance. A legacy published P3
+    // row has neither, so it can never authenticate.
+    const pdf = expectation.officialPdf;
+    if (!pdf || pdf.docketVerified !== true || !pdf.sha256 || !pdf.r2Key) continue;
+    // TRUTHFUL STRICT CONTRACT: every binding hash must be PRESENT and exactly
+    // equal. `recordHumanApproval` writes both `approvalSnapshotHash` and
+    // `sourceContentHash` into the evidence document (`...identity`) and both
+    // columns into the ledger row, so a missing hash is a malformed/tampered
+    // receipt, never a valid one. Empty or absent hashes must never widen the
+    // gate.
+    const currentSnapshotHash = String(expectation.currentApprovalSnapshotHash ?? "").trim();
+    const currentSourceHash = String(expectation.currentSourceContentHash ?? "").trim();
+    if (!currentSnapshotHash || !currentSourceHash) continue;
+    const rowSnapshotHash = String(row.approvalSnapshotHash ?? "").trim();
+    const rowSourceHash = String(row.sourceContentHash ?? "").trim();
+    const documentSnapshotHash = typeof document.approvalSnapshotHash === "string" ? document.approvalSnapshotHash.trim() : "";
+    const documentSourceHash = typeof document.sourceContentHash === "string" ? document.sourceContentHash.trim() : "";
+    if (!rowSnapshotHash || !rowSourceHash || !documentSnapshotHash || !documentSourceHash) continue;
+    if (rowSnapshotHash !== currentSnapshotHash || documentSnapshotHash !== currentSnapshotHash) continue;
+    if (rowSourceHash !== currentSourceHash || documentSourceHash !== currentSourceHash) continue;
+    return { present: true, authenticated: true, reason: "us_manual_approval.same_case_snapshot_bound_human_receipt", actorId, policyVersion: US_MANUAL_APPROVAL_POLICY };
   }
-  return { present: false, reason: "us_manual_approval.no_same_case_human_receipt", actorId: null, policyVersion: null };
+  if (sawStructuralReceipt && !expectation) {
+    return { present: true, authenticated: false, reason: "us_manual_approval.receipt_present_unauthenticated", actorId: sawActor, policyVersion: US_MANUAL_APPROVAL_POLICY };
+  }
+  if (sawStructuralReceipt) {
+    return { present: true, authenticated: false, reason: "us_manual_approval.receipt_snapshot_mismatch", actorId: sawActor, policyVersion: US_MANUAL_APPROVAL_POLICY };
+  }
+  return { present: false, authenticated: false, reason: "us_manual_approval.no_same_case_human_receipt", actorId: null, policyVersion: null };
 }
 
 export interface UsCutoverProof {
@@ -246,7 +328,7 @@ export function planUsCutover(
   options: { manualApprovalReceipt?: UsManualApprovalAssessment } = {},
 ): UsCutoverPlan {
   const readiness = evaluateUsCutoverReadiness(proof);
-  const receiptPresent = options.manualApprovalReceipt?.present === true;
+  const receiptAuthenticated = options.manualApprovalReceipt?.authenticated === true;
   const rollback = {
     allowlist: current.stagedAllowlist.join(","),
     exclude: current.m8Exclude.join(","),
@@ -278,8 +360,9 @@ export function planUsCutover(
     };
   }
   // Even with every readiness gate true, a caller-supplied boolean is not proof
-  // of per-article human review. The immutable same-case receipt is mandatory.
-  if (!receiptPresent) {
+  // of per-article human review. An immutable, snapshot-bound, same-case receipt
+  // is mandatory.
+  if (!receiptAuthenticated) {
     return {
       source: US_SOURCE_KEY,
       authorized: false,

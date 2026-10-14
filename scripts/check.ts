@@ -899,13 +899,14 @@ assert(
     usCutoverGuardSource.includes("planUsCutover") &&
     usCutoverGuardSource.includes("manualPublicationAuthorization") &&
     usCutoverGuardSource.includes("evaluateSameCaseManualApprovalReceipt") &&
+    usCutoverGuardSource.includes("receiptAuthenticated") &&
     usCutoverGuardSource.includes("us_cutover.manual_approval_receipt_not_observed") &&
     usCutoverGuardSource.includes("US_MANUAL_APPROVAL_POLICY") &&
     usCutoverGuardSource.includes("legacy_historical_counts_rejected") &&
     usCutoverGuardSource.includes("evaluateOwnershipPairing") &&
     usCutoverGuardSource.includes("us_cutover.ownership_not_paired_") &&
     usCutoverGuardSource.includes("if (!readiness.ready)"),
-  "US staged cutover must stay behind a fail-closed readiness gate that additionally requires an immutable same-case human-review receipt (never a caller boolean), exact-paired current ownership and rejects legacy historical counts, emitting no paired mutation until real proof exists",
+  "US staged cutover must stay behind a fail-closed readiness gate that additionally requires an AUTHENTICATED, snapshot-bound, same-case human-review receipt (never a caller boolean or synthetic fields), exact-paired current ownership and rejects legacy historical counts, emitting no paired mutation until real proof exists",
 );
 const canarySource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary.ts"), "utf8");
 assert(
@@ -947,13 +948,15 @@ assert(
     canaryLineageScriptSource.includes("evaluateManualApprovalPolicy") &&
     canaryLineageScriptSource.includes("evaluateSameCaseManualApprovalReceipt") &&
     canaryLineageScriptSource.includes("same_case_human_approval_receipt") &&
+    canaryLineageScriptSource.includes("approvalIdentity") &&
+    canaryLineageScriptSource.includes("us_manual_receipt_authenticated") &&
     canaryLineageScriptSource.includes("evaluateLinkedLineage") &&
     canaryLineageScriptSource.includes("evaluateSearchProjection") &&
     canaryLineageScriptSource.includes("classifyPublication") &&
     canaryLineageScriptSource.includes("legacy_published_preexisting") &&
     canaryLineageScriptSource.includes("parseJobId") &&
     canaryLineageScriptSource.includes("us_published_without_manual_authorization"),
-  "the canary lineage audit must be SELECT-only, follow the durable linked chain, verify search_documents+search_fts rowid, distinguish legacy_published_preexisting, validate job ids, and enforce the US manual-approval policy with an immutable same-case human-review receipt",
+  "the canary lineage audit must be SELECT-only, follow the durable linked chain, verify search_documents+search_fts rowid, distinguish legacy_published_preexisting, validate job ids, and enforce the US manual-approval policy only via a snapshot-bound authenticated same-case human receipt",
 );
 const operatorCanaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
 assert(
@@ -1009,6 +1012,20 @@ assert(
     canaryDiscoveryHandlersSource.includes("ingest_stage.discovery_canary_request_invalid") &&
     canaryDiscoveryHandlersSource.includes("canary_discovery.candidate_not_official_identity"),
   "the discovery handler must run genuine official-homepage discovery for the discover-one marker, fail closed on an invalid marker, and never accept a caller-supplied candidate",
+);
+assert(
+  canaryDiscoveryHandlersSource.includes("evaluateUsManualApprovalGuard") &&
+    canaryDiscoveryHandlersSource.includes("HUMAN_APPROVAL_POLICY") &&
+    canaryDiscoveryHandlersSource.includes("evaluateSameCaseManualApprovalReceipt") &&
+    canaryDiscoveryHandlersSource.includes("ingest_stage.us_manual_approval_") &&
+    canaryDiscoveryHandlersSource.includes("receipt_required") &&
+    canaryDiscoveryHandlersSource.includes("unauthenticated") &&
+    canaryDiscoveryHandlersSource.includes("ingest_stage.us_manual_approval_pdf_proof_missing") &&
+    canaryDiscoveryHandlersSource.includes("ingest_stage.publish_us_article_unresolved") &&
+    canaryDiscoveryHandlersSource.includes("ingest_stage.search_us_article_unresolved") &&
+    canaryDiscoveryHandlersSource.includes("US_SOURCE_KEY") &&
+    (canaryDiscoveryHandlersSource.match(/evaluateUsManualApprovalGuard\(context\.coreDb/g) ?? []).length >= 3,
+  "the staged handlers must enforce a US-only fail-closed manual-approval guard (receipt required, unauthenticated blocked) before public-judgment AND independently in publish and search, explicitly block an unresolved native US id (no bypass), while remaining a no-op for non-US sources",
 );
 const operatorCanaryDiscoverOneSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
 assert(

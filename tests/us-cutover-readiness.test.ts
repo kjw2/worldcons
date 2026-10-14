@@ -15,7 +15,8 @@ import {
 
 const RECEIPT: UsManualApprovalAssessment = {
   present: true,
-  reason: "us_manual_approval.same_case_human_receipt",
+  authenticated: true,
+  reason: "us_manual_approval.same_case_snapshot_bound_human_receipt",
   actorId: "reviewer:external",
   policyVersion: US_MANUAL_APPROVAL_POLICY,
 };
@@ -218,4 +219,90 @@ test("same-case manual approval receipt: only immutable human receipts with a re
     assert.equal(evaluateSameCaseManualApprovalReceipt(CORE, rows).present, false, name);
   }
   assert.equal(evaluateSameCaseManualApprovalReceipt(null, []).present, false);
+});
+
+test("same-case manual approval receipt: synthetic policy/schema/actor is present but NOT authenticated without current-state binding", () => {
+  const CORE = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+  const SNAP = "a".repeat(64);
+  const SRC = "b".repeat(64);
+  const document = JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:forged", approvalSnapshotHash: SNAP, sourceContentHash: SRC });
+  const rows = [{ articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: document, approvalSnapshotHash: SNAP, sourceContentHash: SRC }];
+  // Without an expectation, only `present` may be claimed; never `authenticated`.
+  const unbound = evaluateSameCaseManualApprovalReceipt(CORE, rows);
+  assert.equal(unbound.present, true);
+  assert.equal(unbound.authenticated, false);
+  assert.equal(unbound.reason, "us_manual_approval.receipt_present_unauthenticated");
+  // With an expectation that disagrees, it fails closed.
+  const mismatch = evaluateSameCaseManualApprovalReceipt(CORE, rows, {
+    currentApprovalSnapshotHash: "c".repeat(64),
+    currentSourceContentHash: SRC,
+    officialPdf: { docketVerified: true, sha256: "1".repeat(64), r2Key: "artifacts/scotus_pdf/x.pdf", url: "https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf" },
+  });
+  assert.equal(mismatch.present, true);
+  assert.equal(mismatch.authenticated, false);
+  assert.equal(mismatch.reason, "us_manual_approval.receipt_snapshot_mismatch");
+  // A legacy US row with no verified official-PDF proof can never authenticate,
+  // even if the snapshot hashes happen to match.
+  const noPdf = evaluateSameCaseManualApprovalReceipt(CORE, rows, {
+    currentApprovalSnapshotHash: SNAP,
+    currentSourceContentHash: SRC,
+    officialPdf: { docketVerified: false, sha256: null, r2Key: null, url: null },
+  });
+  assert.equal(noPdf.authenticated, false);
+  // Only a fully bound receipt authenticates.
+  const bound = evaluateSameCaseManualApprovalReceipt(CORE, rows, {
+    currentApprovalSnapshotHash: SNAP,
+    currentSourceContentHash: SRC,
+    officialPdf: { docketVerified: true, sha256: "1".repeat(64), r2Key: "artifacts/scotus_pdf/x.pdf", url: "https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf" },
+  });
+  assert.equal(bound.present, true);
+  assert.equal(bound.authenticated, true);
+  assert.equal(bound.reason, "us_manual_approval.same_case_snapshot_bound_human_receipt");
+});
+
+test("same-case manual approval receipt: a MISSING binding hash (document or ledger) fails closed and can never widen the gate", () => {
+  const CORE = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+  const SNAP = "a".repeat(64);
+  const SRC = "b".repeat(64);
+  const expectation = {
+    currentApprovalSnapshotHash: SNAP,
+    currentSourceContentHash: SRC,
+    officialPdf: { docketVerified: true, sha256: "1".repeat(64), r2Key: "artifacts/scotus_pdf/x.pdf", url: "https://www.supremecourt.gov/opinions/25pdf/26a388_q86b.pdf" },
+  };
+  // (a) Document omits BOTH hashes — never authenticates.
+  const missingBoth = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x" }), approvalSnapshotHash: SNAP, sourceContentHash: SRC },
+  ], expectation);
+  assert.equal(missingBoth.present, true);
+  assert.equal(missingBoth.authenticated, false);
+  // (b) Document omits only sourceContentHash — never authenticates.
+  const missingDocSource = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x", approvalSnapshotHash: SNAP }), approvalSnapshotHash: SNAP, sourceContentHash: SRC },
+  ], expectation);
+  assert.equal(missingDocSource.authenticated, false);
+  // (c) Document omits only approvalSnapshotHash — never authenticates.
+  const missingDocSnapshot = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x", sourceContentHash: SRC }), approvalSnapshotHash: SNAP, sourceContentHash: SRC },
+  ], expectation);
+  assert.equal(missingDocSnapshot.authenticated, false);
+  // (d) Ledger row omits sourceContentHash (empty) — never authenticates.
+  const missingLedgerSource = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x", approvalSnapshotHash: SNAP, sourceContentHash: SRC }), approvalSnapshotHash: SNAP, sourceContentHash: "" },
+  ], expectation);
+  assert.equal(missingLedgerSource.authenticated, false);
+  // (e) Ledger row omits approvalSnapshotHash — never authenticates.
+  const missingLedgerSnapshot = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x", approvalSnapshotHash: SNAP, sourceContentHash: SRC }), approvalSnapshotHash: null, sourceContentHash: SRC },
+  ], expectation);
+  assert.equal(missingLedgerSnapshot.authenticated, false);
+  // (f) Empty expectation anchors must never authenticate either.
+  const emptyExpectation = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x", approvalSnapshotHash: "", sourceContentHash: "" }), approvalSnapshotHash: "", sourceContentHash: "" },
+  ], { currentApprovalSnapshotHash: "", currentSourceContentHash: "", officialPdf: expectation.officialPdf });
+  assert.equal(emptyExpectation.authenticated, false);
+  // Control: the fully-present, exactly-matching receipt still authenticates.
+  const bound = evaluateSameCaseManualApprovalReceipt(CORE, [
+    { articleId: CORE, policyVersion: US_MANUAL_APPROVAL_POLICY, evidenceDocument: JSON.stringify({ schema: US_MANUAL_APPROVAL_DOCUMENT_SCHEMA, actorId: "ops:x", approvalSnapshotHash: SNAP, sourceContentHash: SRC }), approvalSnapshotHash: SNAP, sourceContentHash: SRC },
+  ], expectation);
+  assert.equal(bound.authenticated, true);
 });

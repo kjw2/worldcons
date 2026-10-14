@@ -1,6 +1,8 @@
 import {captureDiscoverySnapshot,readDiscoverySnapshot} from "../../../lib/cloudflare/ingest-stages/discovery-coverage";
 import { AutomaticApprovalBlocked, recordAutomaticApproval } from "../../../lib/cloudflare/e2e/automatic-approval";
-import { sha256Canonical, type E2EApprovalContext, type E2EGenerationReceipt } from "../../../lib/cloudflare/e2e/contracts";
+import { approvalIdentity, HUMAN_APPROVAL_POLICY, sha256Canonical, type E2EApprovalContext, type E2EGenerationReceipt } from "../../../lib/cloudflare/e2e/contracts";
+import { approvalSourceMetadata } from "../../../lib/cloudflare/core-write/authority";
+import { evaluateSameCaseManualApprovalReceipt, US_SOURCE_KEY } from "../../../lib/cloudflare/ingest-stages/us-cutover-readiness";
 import { publishStagedApproved, finishStagedSearch, type StagedE2EOptions } from "./staged-e2e";
 /**
  * Targeted staged-ingestion business handlers (M3).
@@ -191,6 +193,12 @@ async function readOne(db: D1RuntimeDatabase, sql: string, values: unknown[]): P
   return { ok: true, row: result.results?.[0] ?? null };
 }
 
+async function readAll(db: D1RuntimeDatabase, sql: string, values: unknown[]): Promise<{ ok: boolean; rows: CoreRow[] }> {
+  const result = await db.prepare(sql).bind(...values).all<CoreRow>();
+  if (result.success === false || result.error) return { ok: false, rows: [] };
+  return { ok: true, rows: result.results ?? [] };
+}
+
 function parseMetadata(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
     try {
@@ -355,10 +363,83 @@ interface PublicJudgmentResult {
 /** Review states that must never be auto-published by the staged pipeline. */
 const PUBLIC_JUDGMENT_PRIVATE_REVIEW_STATES = new Set(["needs_review", "needs_triage", "closed_private", "rejected", "blocked"]);
 
+interface UsManualApprovalGuardResult {
+  ok: boolean;
+  retry: boolean;
+  code: string;
+  summary: string;
+}
+
+/**
+ * US-only fail-closed manual-approval guard. US opinions (`us-scotus`) must
+ * NEVER be published on the strength of a legacy generic flag
+ * (`collection.publishable=1`), a pre-existing P3 `published` row, an automatic
+ * FR/ES ledger entry, a caller-supplied boolean, or a Workflow/operator id.
+ * Only an *immutable, same-case human-review receipt* bound to the exact current
+ * snapshot AND the current verified official-PDF proof may open the gate.
+ *
+ * It re-derives the anchors independently rather than trusting the caller:
+ *   - the exact Core article id, its current `source_metadata` snapshot and its
+ *     current `cleaned_text`;
+ *   - the recomputed approval snapshot hash via the shared `approvalIdentity`
+ *     under `HUMAN_APPROVAL_POLICY`;
+ *   - the current `officialPdf.docketVerified===true` provenance with sha256 and
+ *     r2Key (a legacy published row does not carry this, so it can never pass);
+ *   - the immutable ledger rows for this exact article and human policy.
+ *
+ * Read failures retry; a missing/stale/unauthenticated receipt is a terminal
+ * block. It is a no-op for every non-US source (DE / FR / ES untouched).
+ */
+async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleId: string, sourceKey: string | null | undefined): Promise<UsManualApprovalGuardResult> {
+  if (sourceKey !== US_SOURCE_KEY) return { ok: true, retry: false, code: "", summary: "" };
+  const read = await readOne(coreDb, "SELECT * FROM articles WHERE id=?", [articleId]);
+  if (!read.ok) return { ok: false, retry: true, code: "ingest_stage.us_manual_approval_read_failed", summary: "Could not read the US article for manual-approval verification." };
+  const row = read.row;
+  if (!row) return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_article_missing", summary: "No core article exists for the US manual-approval check." };
+  const metadata = parseMetadata(row.source_metadata);
+  const officialPdf = parseMetadata(metadata.officialPdf);
+  const pdfProof = {
+    docketVerified: officialPdf.docketVerified === true,
+    sha256: typeof officialPdf.sha256 === "string" ? officialPdf.sha256 : null,
+    r2Key: typeof officialPdf.r2Key === "string" ? officialPdf.r2Key : null,
+    url: typeof officialPdf.url === "string" ? officialPdf.url : null,
+  };
+  if (!pdfProof.docketVerified || !pdfProof.sha256 || !pdfProof.r2Key) {
+    return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_pdf_proof_missing", summary: "US publication requires prior verified official SCOTUS PDF provenance; a legacy published row is not proof." };
+  }
+  // The receipt is bound to the exact reviewed snapshot; recompute it from the
+  // current row so a receipt that predates the current PDF/content fails closed.
+  const snapshot = { ...row, source_metadata: approvalSourceMetadata(row.source_metadata, true) };
+  const identity = await approvalIdentity(articleId, snapshot, HUMAN_APPROVAL_POLICY);
+  const rows = await readAll(coreDb,
+    "SELECT article_id, policy_version, evidence_document, approval_snapshot_hash, source_content_hash FROM e2e_approval_evidence_v1 WHERE article_id=? AND policy_version=? ORDER BY created_at DESC LIMIT 5",
+    [articleId, HUMAN_APPROVAL_POLICY]);
+  if (!rows.ok) return { ok: false, retry: true, code: "ingest_stage.us_manual_approval_receipt_read_failed", summary: "Could not read the US human-approval receipt ledger." };
+  const assessment = evaluateSameCaseManualApprovalReceipt(articleId, rows.rows.map((receipt) => ({
+    articleId: receipt.article_id == null ? null : String(receipt.article_id),
+    policyVersion: receipt.policy_version == null ? null : String(receipt.policy_version),
+    evidenceDocument: receipt.evidence_document == null ? null : String(receipt.evidence_document),
+    approvalSnapshotHash: receipt.approval_snapshot_hash == null ? null : String(receipt.approval_snapshot_hash),
+    sourceContentHash: receipt.source_content_hash == null ? null : String(receipt.source_content_hash),
+  })), {
+    currentApprovalSnapshotHash: identity.approvalSnapshotHash,
+    currentSourceContentHash: identity.sourceContentHash,
+    officialPdf: pdfProof,
+  });
+  if (assessment.authenticated) return { ok: true, retry: false, code: "", summary: "" };
+  return {
+    ok: false,
+    retry: false,
+    code: `ingest_stage.us_manual_approval_${assessment.present ? "unauthenticated" : "receipt_required"}`,
+    summary: assessment.present
+      ? `A US human-approval receipt exists but is not bound to the current snapshot/PDF proof (${assessment.reason}).`
+      : "US publication requires an immutable same-case human-review receipt; a legacy published row or automatic flag is not authorization.",
+  };
+}
+
 /**
  * The fail-closed public gate. It re-derives the real authority anchors rather
  * than trusting an upstream "success":
- *
  *   1. the core article exists, is summarized, has a Korean summary/title;
  *   2. translation is durably complete, or legitimately not required;
  *   3. the collection metadata grants publishable, verified-source, full-text
@@ -764,6 +845,15 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
     if (articleId.startsWith("native:")) {
       return { status: "blocked", errorCode: "ingest_stage.public_judgment_article_unresolved", errorSummary: "Public judgment requires the verified core article id." };
     }
+    // US-only fail-closed manual-approval guard, evaluated BEFORE the FR/ES
+    // automatic-approval branch so a US job can never reach it. It is a no-op for
+    // every non-US source.
+    const usGuard = await evaluateUsManualApprovalGuard(context.coreDb, articleId, context.job.source_key);
+    if (!usGuard.ok) {
+      return usGuard.retry
+        ? { status: "retry", errorCode: usGuard.code, errorSummary: usGuard.summary }
+        : { status: "blocked", errorCode: usGuard.code, errorSummary: usGuard.summary };
+    }
     const gate = await evaluatePublicJudgment(context.coreDb, articleId);
     if (!gate.ok) {
       // A gate that can never open from this state (missing/mismatched anchor,
@@ -804,6 +894,21 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         return {status:"succeeded",resultRef:`generation:${result.generation!.generationId}`,nextPayloadRef:key};
       } catch (error) {return {status:"retry",errorCode:"e2e.staged_publication_failed",errorSummary:error instanceof Error?error.message.slice(0,500):null};}
     }
+    // Defense in depth: a US publish job must independently satisfy the
+    // manual-approval guard even if it somehow bypassed public-judgment. A native
+    // (unresolved) US id is an EXPLICIT terminal block and must never bypass the
+    // guard by short-circuiting on the id shape.
+    if (context.job.source_key === US_SOURCE_KEY) {
+      if (context.job.article_id.startsWith("native:")) {
+        return { status: "blocked", errorCode: "ingest_stage.publish_us_article_unresolved", errorSummary: "US publication requires the verified core article id; a native candidate id is not resolved and can never bypass manual approval." };
+      }
+      const usGuard = await evaluateUsManualApprovalGuard(context.coreDb, context.job.article_id, context.job.source_key);
+      if (!usGuard.ok) {
+        return usGuard.retry
+          ? { status: "retry", errorCode: usGuard.code, errorSummary: usGuard.summary }
+          : { status: "blocked", errorCode: usGuard.code, errorSummary: usGuard.summary };
+      }
+    }
     if (!deps.publication) {
       return { status: "blocked", errorCode: "ingest_stage.publication_adapter_missing", errorSummary: "Publication adapter is not configured." };
     }
@@ -841,6 +946,21 @@ export function createIngestStageHandlers(deps: IngestStageHandlerDependencies):
         if (result.status==="completed_verified"||result.status==="already_verified") return {status:"succeeded",resultRef:`generation:${(payload.generation as E2EGenerationReceipt).generationId}`};
         return {status:["dead_letter","blocked","superseded","withdrawal_verified"].includes(result.status)?"blocked":"retry",errorCode:`e2e.staged_${result.status}`};
       } catch {return {status:"retry",errorCode:"e2e.staged_search_verification_failed"};}
+    }
+    // Defense in depth: a US search projection must independently satisfy the
+    // manual-approval guard even if it somehow bypassed public-judgment/publish.
+    // A native (unresolved) US id is an EXPLICIT terminal block and must never
+    // bypass the guard by short-circuiting on the id shape.
+    if (context.job.source_key === US_SOURCE_KEY) {
+      if (context.job.article_id.startsWith("native:")) {
+        return { status: "blocked", errorCode: "ingest_stage.search_us_article_unresolved", errorSummary: "US search projection requires the verified core article id; a native candidate id is not resolved and can never bypass manual approval." };
+      }
+      const usGuard = await evaluateUsManualApprovalGuard(context.coreDb, context.job.article_id, context.job.source_key);
+      if (!usGuard.ok) {
+        return usGuard.retry
+          ? { status: "retry", errorCode: usGuard.code, errorSummary: usGuard.summary }
+          : { status: "blocked", errorCode: usGuard.code, errorSummary: usGuard.summary };
+      }
     }
     if (!deps.search) {
       return { status: "blocked", errorCode: "ingest_stage.search_adapter_missing", errorSummary: "Search projection adapter is not configured." };
