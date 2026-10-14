@@ -656,3 +656,42 @@ config, no cron, and no route, and USA is untouched.
 
 The ordinary 7/7 is **not** claimed until an actual Production run executes it.
 No Production write, no deploy, no commit/push, no ownership change.
+
+## 16. Production operator validation of ordinary Germany discovery (2026-10-14)
+
+This section supersedes section 15's pre-deployment status. Commit
+`869cb4aaed7dd9fff9874b92e5f31903c6dfbd88` was pushed to GitHub main,
+and `worldcons-ingest` Worker version
+`5e922ae7-b4f6-46b5-8515-0f5ba54226c8` was deployed. The
+`/health` endpoint confirmed M8 effective sources **US only** and
+staged bootstrap sources **FR/ES/DE**, with bootstrap/dispatch limits = 1.
+
+The controller invoked a single Cloudflare-account-authenticated
+`bootstrap-de-one` instance
+`cf_3d9247e9639b304086c2cea066d384967d50a9fc903efeeb794f3f6889644c41`
+with `dispatch:true`. The Workflow completed successfully with
+`pairedOwnership:true`, `limit:1`, `created:true`, `enqueued:1`.
+This was NOT a canary-seeded job and did NOT authorize publication.
+
+Read-only Production D1 confirmed:
+
+- Ordinary Discovery Job `71601e1c-3f62-4482-b0d6-d185d62165e9`,
+  `source_version=discovery-request-v1:2026-10-14`,
+  `payload_ref=stages/ingest-discovery-request/de-bverfg/...` (not a
+  `stages/canary/` prefix), succeeded with
+  `result_ref=fanout:de-bverfg:1`.
+- Its ordinary Crawl child `25754174-406c-4871-83d2-b5eda4c0aab1`
+  was registered as `pending`, with
+  `payload_ref=stages/ingest-discovery/de-bverfg/...` and the
+  canonical `native:57a065b3ab2dd7fb19b075f7d6ceccbe` identity.
+- These are distinct from the earlier `stages/canary/` 7/7 proof
+  (Discovery Job `00ad35bc-505e-4b27-9700-37b53acecee4`).
+  **Ordinary Discovery success + child creation are proven; a new
+  ordinary seven-stage completion is NOT yet proven.**
+
+Scheduled `*/15` dispatch remains active for the pending Crawl job; the
+daily `0 21 * * *` bootstrap remains unchanged. No D1 was directly
+modified outside the existing bounded Workflow and stage consumers.
+United States remains M8-owned, with its Core official PDF provenance and
+manual approval still unproven; neither M4 cutover nor US public publication
+was forced. P0/P1 existing outstanding checks remain open.
