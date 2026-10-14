@@ -28,15 +28,17 @@ import { createIngestStageHandlers } from "../workers/async-pipeline/src/ingest-
 import { operatorCanaryAuthorized } from "../workers/async-pipeline/src/worker-auth";
 import {
   assertSelectOnly,
+  classifyPublication,
+  evaluateLinkedLineage,
   evaluateManualApprovalPolicy,
   evaluateNativeCoreRelation,
-  evaluateSevenStageLineage,
+  evaluateSearchProjection,
+  parseJobId,
 } from "../scripts/audit-worldcons-canary-lineage";
 import type { NativeCrawlerBindings } from "../workers/async-pipeline/src/native-crawler";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
 
 const NOW = "2026-10-13T00:00:00.000Z";
-const SEVEN = ["discovery", "crawl", "normalize", "translate", "public-judgment", "publish", "search"] as const;
 const root = process.cwd();
 const INGEST_SCHEMA = [
   "0001_init.sql",
@@ -531,36 +533,109 @@ test("manual approval policy: US publishable/published without an explicit autho
   );
 });
 
-test("lineage audit requires succeeded status per exact stage and labels crawl-first discovery as not executed", () => {
-  // Presence alone (blocked/failed/pending) is never success.
-  const presenceOnly = evaluateSevenStageLineage([
-    { stage: "crawl", status: "dead_letter" },
-    { stage: "normalize", status: "pending" },
-    { stage: "translate", status: "failed" },
+test("linked lineage: a real six-stage canary chain is verified and never claims a fake discovery 7/7", () => {
+  const NATIVE = "native:abc123";
+  const CORE = "a60db8bb-4ec3-4ecf-bb5a-6245f621a334";
+  const SRC = "de-bverfg";
+  const stage = (name: string, articleId: string) => ({ stage: name, jobId: `${name}-job`, articleId, sourceKey: SRC, status: "succeeded" });
+  const chain = [
+    stage("crawl", NATIVE),
+    { ...stage("normalize", NATIVE), resultRef: CORE },
+    stage("translate", CORE),
+    stage("public-judgment", CORE),
+    stage("publish", CORE),
+    stage("search", CORE),
+  ];
+  const result = evaluateLinkedLineage(chain);
+  assert.equal(result.ok, true, result.reason ?? "");
+  assert.deepEqual(result.verifiedStages, ["crawl", "normalize", "translate", "public-judgment", "publish", "search"]);
+  assert.equal(result.stagedChainComplete, true);
+  assert.equal(result.discoveryExecuted, false);
+  assert.equal(result.sevenStageComplete, false, "crawl-first canary can never be a literal 7/7");
+  assert.deepEqual(result.missingStages, ["discovery"]);
+  assert.equal(result.nativeArticleId, NATIVE);
+  assert.equal(result.coreArticleId, CORE);
+  assert.equal(result.nativeCoreRelation, "resolved");
+
+  // A genuine discovery row (never fabricated) makes it a true 7/7.
+  const withDiscovery = evaluateLinkedLineage([stage("discovery", "native:disc"), ...chain]);
+  assert.equal(withDiscovery.sevenStageComplete, true);
+  assert.equal(withDiscovery.discoveryExecuted, true);
+});
+
+test("linked lineage: fails closed on a broken chain, non-succeeded stage, mixed/foreign source, duplicates and order", () => {
+  const SRC = "de-bverfg";
+  const job = (name: string, articleId: string, status = "succeeded", sourceKey: string | null = SRC) => ({ stage: name, jobId: `${name}-${articleId}`, articleId, sourceKey, status });
+
+  // A later stage not succeeded breaks the whole chain.
+  const broken = evaluateLinkedLineage([
+    job("crawl", "native:x"), job("normalize", "core-uuid", "pending"),
   ]);
-  assert.equal(presenceOnly.sevenStageComplete, false);
-  assert.deepEqual(presenceOnly.verifiedStages, []);
-  assert.equal(presenceOnly.missingStages.length, 7);
+  assert.equal(broken.ok, false);
+  assert.equal(broken.reason, "canary_lineage.chain_stage_not_succeeded");
 
-  // A crawl-first canary with all but discovery succeeded still cannot be 7/7.
-  const canary = evaluateSevenStageLineage(
-    ["crawl", "normalize", "translate", "public-judgment", "publish", "search"].map((stage) => ({ stage, status: "succeeded" })),
-  );
-  assert.equal(canary.sevenStageComplete, false);
-  assert.equal(canary.discoveryNotExecutedByCanary, true);
-  assert.deepEqual(canary.missingStages, ["discovery"]);
+  // A crawl job of another source mixed into the chain is rejected.
+  const mixed = evaluateLinkedLineage([
+    job("crawl", "native:x", "succeeded", "de-bverfg"),
+    job("normalize", "core-uuid", "succeeded", "us-scotus"),
+  ]);
+  assert.equal(mixed.ok, false);
+  assert.equal(mixed.reason, "canary_lineage.chain_mixed_source");
 
-  const full = evaluateSevenStageLineage(SEVEN.map((stage) => ({ stage, status: "succeeded" })));
-  assert.equal(full.sevenStageComplete, true);
+  // A non-canary source chain is rejected outright.
+  const foreign = evaluateLinkedLineage([job("crawl", "native:x", "succeeded", "fr-conseil-constitutionnel")]);
+  assert.equal(foreign.ok, false);
+  assert.equal(foreign.reason, "canary_lineage.chain_non_canary_source");
+
+  // Duplicate stage rows and out-of-order stages are rejected.
+  const duplicate = evaluateLinkedLineage([job("crawl", "a"), job("crawl", "b")]);
+  assert.equal(duplicate.ok, false);
+  assert.equal(duplicate.reason, "canary_lineage.chain_stage_duplicate");
+  const outOfOrder = evaluateLinkedLineage([job("normalize", "core"), job("crawl", "native:x")]);
+  assert.equal(outOfOrder.ok, false);
+  assert.equal(outOfOrder.reason, "canary_lineage.chain_out_of_order");
+
+  // Empty chain is fail-closed.
+  assert.equal(evaluateLinkedLineage([]).reason, "canary_lineage.chain_empty");
+});
+
+test("linked lineage: an unresolved native->core chain never reports a core UUID or 7/7", () => {
+  // Crawl only: no later stage observed -> stagedChainComplete false, relation unresolved.
+  const crawlOnly = evaluateLinkedLineage([
+    { stage: "crawl", jobId: "c", articleId: "native:abc", sourceKey: "us-scotus", status: "succeeded" },
+  ]);
+  assert.equal(crawlOnly.ok, true);
+  assert.equal(crawlOnly.coreArticleId, null);
+  assert.equal(crawlOnly.nativeCoreRelation, "unresolved");
+  assert.equal(crawlOnly.stagedChainComplete, false);
+  assert.equal(crawlOnly.sevenStageComplete, false);
+});
+
+test("linked US Crawl->Normalize resolves a preserved Core UUID without attributing old publication", () => {
+  const NATIVE = "native:1815486b51fa7a9a07b377bf50274a69";
+  const CORE = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+  const result = evaluateLinkedLineage([
+    { stage: "crawl", jobId: "crawl", articleId: NATIVE, sourceKey: "us-scotus", status: "succeeded" },
+    { stage: "normalize", jobId: "normalize", articleId: NATIVE, resultRef: CORE, sourceKey: "us-scotus", status: "succeeded" },
+  ]);
+  assert.equal(result.coreArticleId, CORE);
+  assert.equal(result.nativeCoreRelation, "resolved");
+  assert.equal(result.stagedChainComplete, false);
+  assert.equal(result.sevenStageComplete, false);
+  const proof = evaluateNativeCoreRelation({ crawlArticleId: NATIVE, coreArticleId: null,
+    normalizeArticleId: NATIVE, normalizeResultRef: CORE, advanceEventArticleIds: [] });
+  assert.equal(proof.relation, "resolved");
+  assert.equal(proof.reason, "canary_lineage.native_core_resolved_via_normalize_result");
+  const mismatch = evaluateNativeCoreRelation({ crawlArticleId: NATIVE, coreArticleId: null,
+    normalizeArticleId: "native:other", normalizeResultRef: CORE, advanceEventArticleIds: [] });
+  assert.equal(mismatch.relation, "unresolved");
 });
 
 test("lineage audit treats an unresolved native->core relation as NOT_OBSERVED, never success", () => {
-  // A crawl job keyed only by native: cannot be observed via the core UUID alone.
   const unresolved = evaluateNativeCoreRelation({ crawlArticleId: "native:abc", coreArticleId: "11111111-1111-4111-8111-111111111111", advanceEventArticleIds: [] });
   assert.equal(unresolved.relation, "unresolved");
   assert.equal(unresolved.reason, "canary_lineage.native_core_relation_not_observed");
 
-  // Fully resolved only via the observed normalize advance event.
   const resolved = evaluateNativeCoreRelation({
     crawlArticleId: "native:abc",
     coreArticleId: "11111111-1111-4111-8111-111111111111",
@@ -569,15 +644,40 @@ test("lineage audit treats an unresolved native->core relation as NOT_OBSERVED, 
   assert.equal(resolved.relation, "resolved");
   assert.equal(resolved.coreArticleId, "11111111-1111-4111-8111-111111111111");
 
-  // A non-native crawl id is not a canary crawl identity and stays unresolved.
   const nonNative = evaluateNativeCoreRelation({ crawlArticleId: "core-uuid", coreArticleId: "core-uuid", advanceEventArticleIds: [] });
   assert.equal(nonNative.relation, "unresolved");
 });
 
-test("lineage audit script rejects any non-SELECT statement", () => {
+test("search projection proof requires search_documents AND search_fts with the same article and rowid", () => {
+  const same = evaluateSearchProjection({ documents: { articleId: "a", rowid: 16847, state: "published" }, fts: { articleId: "a", rowid: 16847 } });
+  assert.equal(same.verified, true);
+  assert.equal(same.publicationState, "published");
+  // Different rowids are not a verified projection.
+  assert.equal(evaluateSearchProjection({ documents: { articleId: "a", rowid: 16847 }, fts: { articleId: "a", rowid: 999 } }).verified, false);
+  // Different articles are not a verified projection.
+  assert.equal(evaluateSearchProjection({ documents: { articleId: "a", rowid: 1 }, fts: { articleId: "b", rowid: 1 } }).verified, false);
+  // Missing one side is unobserved.
+  assert.equal(evaluateSearchProjection({ documents: { articleId: "a", rowid: 1 }, fts: null }).verified, false);
+  assert.equal(evaluateSearchProjection({ documents: null, fts: { articleId: "a", rowid: 1 } }).verified, false);
+});
+
+test("publication classification: an old published case without a chain publish is legacy_published_preexisting, never staged", () => {
+  // US: pre-existing published P3 but the 2026-10-13 chain has no publish stage.
+  assert.deepEqual(classifyPublication({ chainHasPublishSucceeded: false, p3Published: true }), { classification: "legacy_published_preexisting" });
+  // A real chain publish + P3 published = staged.
+  assert.deepEqual(classifyPublication({ chainHasPublishSucceeded: true, p3Published: true }), { classification: "staged_publication" });
+  assert.deepEqual(classifyPublication({ chainHasPublishSucceeded: false, p3Published: false }), { classification: "not_published" });
+  assert.deepEqual(classifyPublication({ chainHasPublishSucceeded: true, p3Published: false }), { classification: "chain_publish_without_p3" });
+});
+
+test("lineage audit rejects any non-SELECT statement and any malformed job id", () => {
   assert.doesNotThrow(() => assertSelectOnly([{ name: "ok", database: "worldcons_core", sql: "SELECT id FROM articles LIMIT 1" }]));
   assert.throws(() => assertSelectOnly([{ name: "bad", database: "worldcons_core", sql: "UPDATE articles SET status='x'" }]), /non_select/);
   assert.throws(() => assertSelectOnly([{ name: "bad", database: "worldcons_core", sql: "SELECT 1; DROP TABLE articles" }]), /forbidden_keyword/);
+  // Job id validation is fail-closed; a malformed id is never interpolated.
+  assert.equal(parseJobId("not-a-uuid").ok, false);
+  assert.equal(parseJobId("'; DROP TABLE ingest_stage_jobs;").ok, false);
+  assert.equal(parseJobId("db44b56c-b5d6-46cf-821f-693c09757f49").ok, true);
 });
 
 test("canary route auth: fails closed when the dedicated token is unconfigured (and never uses BROWSER_RUN_TOKEN)", async () => {

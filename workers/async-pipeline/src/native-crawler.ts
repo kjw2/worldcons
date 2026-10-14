@@ -1029,14 +1029,23 @@ async function discoverCandidates(source: NativeCrawlerSource, bindings: NativeC
     return [...candidates.values()].slice(0, limit + 100);
   }
   if (source === "de-bverfg") {
-    const url = `${base}/DE/Entscheidungen/entscheidungen_node.html`;
     let windowCandidates: NativeArticleCandidate[] | null = null;
-    try {
-      const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
-      const listing = discoverBverfg(result.html, url, BVERFG_INDEX_SCAN_WINDOW).filter((item) => withinRange(item.publishedAt, rangeStart));
-      if (listing.length > 0) windowCandidates = listing;
-    } catch (error) {
-      if (!isTransientCrawlerHttpError(error)) throw error;
+    // The official court homepage exposes SSR decision anchors even when the
+    // generic decisions_node.html page is JS-only. / is robots-permitted;
+    // /SiteGlobals/ search is explicitly disallowed and must not be queried.
+    // Both fetches share the robots-aware, 30-second crawl-delay state.
+    for (const url of [`${base}/`, `${base}/DE/Entscheidungen/entscheidungen_node.html`]) {
+      try {
+        const result = await fetchHtml(source, url, bindings, fetcher, robotsCache, lastRequest, allowBrowser, browserNavigate);
+        const listing = discoverBverfg(result.html, url, BVERFG_INDEX_SCAN_WINDOW)
+          .filter((item) => withinRange(item.publishedAt, rangeStart));
+        if (listing.length > 0) {
+          windowCandidates = listing;
+          break;
+        }
+      } catch (error) {
+        if (!isTransientCrawlerHttpError(error)) throw error;
+      }
     }
     if (!windowCandidates) {
       // Third-party index is discovery-only; scanning its finite newest window

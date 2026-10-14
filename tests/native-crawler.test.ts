@@ -656,6 +656,7 @@ test("native collection keeps source-specific publication and review gates", asy
       const fetcher: typeof fetch = async (input) => {
         const url = String(input);
         if (url.endsWith("/robots.txt")) return response(robots);
+        if (source === "de-bverfg" && url === "https://www.bundesverfassungsgericht.de/") return response(data.listing);
         if (source === "fr-conseil-constitutionnel" && url === data.listingUrl) return response(data.listing, 403);
         if (url === data.listingUrl) return response(data.listing);
         if ("apiPath" in data && typeof data.apiPath === "string" && typeof data.api === "string" && url.endsWith(data.apiPath)) return response(data.api, 200, "application/json");
@@ -706,6 +707,31 @@ test("native collection keeps source-specific publication and review gates", asy
   }
 });
 
+test("BVerfG SSR homepage discovers current official decisions without forbidden search or third-party fallback", async () => {
+  const store = memoryBindings();
+  const seen: string[] = [];
+  const detail = "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260923_2bvr168126.html?nn=68112";
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    seen.push(url);
+    if (url.endsWith("/robots.txt")) return response("User-agent: *\nDisallow: /SiteGlobals/\nCrawl-delay: 30");
+    if (url === "https://www.bundesverfassungsgericht.de/") {
+      return response(`<html><main><a href="${detail}">2 BvR 1681/26, decision of 23 September 2026</a></main></html>`);
+    }
+    throw new Error(`unexpected navigation ${url}`);
+  };
+  const found = await discoverNativeStageCandidates("de-bverfg", store.bindings, {
+    now: new Date("2026-10-13T12:00:00Z"), limit: 1, rangeDays: 60, fetch: fetcher,
+  });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].url, detail);
+  assert.equal(found[0].metadata.discoveryIndex, "official-listing");
+  assert.equal((found[0].metadata.collection as Record<string, unknown>).sourceUrlVerified, false);
+  assert.ok(seen.includes("https://www.bundesverfassungsgericht.de/"));
+  assert.ok(seen.every((url) => !url.includes("/SiteGlobals/")));
+  assert.ok(seen.every((url) => !url.includes("openlegaldata")));
+});
+
 test("BVerfG native discovery falls back to OpenLegalData candidates but fetches only official source text", async () => {
   const store = memoryBindings();
   const requested: string[] = [];
@@ -720,6 +746,7 @@ test("BVerfG native discovery falls back to OpenLegalData candidates but fetches
       const url = String(input);
       requested.push(url);
       if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/") return response("<html><main>Legacy fixture has no homepage decision links</main></html>");
       if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links on landing page</main></html>");
       if (url.startsWith("https://de.openlegaldata.io/api/cases/")) return response(JSON.stringify({ next: null, results: [{ file_number: "2 BvR 1702/26", date: "2026-09-17", type: "Einstweilige Anordnung", ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" }] }), 200, "application/json");
       if (url === firstOfficialUrl) return response("not published", 404);
@@ -753,6 +780,7 @@ test("BVerfG unpublished official variants remain a bounded retry candidate inst
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/") return response("<html><main>Legacy fixture has no homepage decision links</main></html>");
       if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links</main></html>");
       if (url.startsWith("https://de.openlegaldata.io/api/cases/")) return response(JSON.stringify({ next: null, results: [{ file_number: "2 BvR 1702/26", date: "2026-09-17", type: "Einstweilige Anordnung", ecli: "ECLI:DE:BVerfG:2026:rk20260917.2bvr170226" }] }), 200, "application/json");
       if (/\/SharedDocs\/Entscheidungen\/DE\/2026\/09\/(?:rk|rs)20260917_2bvr170226\.html$/.test(url)) return response("not published", 404);
@@ -781,6 +809,7 @@ test("BVerfG transient official 5xx falls back to discovery and remains uncollec
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/") return response("<html><main>Legacy fixture has no homepage decision links</main></html>");
       if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") {
         return response("temporary tls/origin failure", 525);
       }
@@ -827,6 +856,7 @@ test("BVerfG OpenLegalData 429 records degraded discovery without failing the da
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       if (url.endsWith("/robots.txt")) return response(robots);
+      if (url === "https://www.bundesverfassungsgericht.de/") return response("<html><main>Legacy fixture has no homepage decision links</main></html>");
       if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") {
         return response("temporary tls/origin failure", 525);
       }
@@ -1046,6 +1076,7 @@ function bverfgOpenLegalDataFetcher(specs: Array<{ ecli: string; html?: string }
     const url = String(input);
     log?.push(url);
     if (url.endsWith("/robots.txt")) return response(robots);
+    if (url === "https://www.bundesverfassungsgericht.de/") return response("<html><main>Legacy fixture has no homepage decision links</main></html>");
     if (url === "https://www.bundesverfassungsgericht.de/DE/Entscheidungen/entscheidungen_node.html") return response("<html><main>No decision links on landing page</main></html>");
     if (url.startsWith("https://de.openlegaldata.io/api/cases/")) {
       const results = specs.map((spec) => {

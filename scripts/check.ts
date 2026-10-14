@@ -941,8 +941,13 @@ const canaryLineageScriptSource = fs.readFileSync(path.join(process.cwd(), "scri
 assert(
   canaryLineageScriptSource.includes("assertSelectOnly") &&
     canaryLineageScriptSource.includes("evaluateManualApprovalPolicy") &&
+    canaryLineageScriptSource.includes("evaluateLinkedLineage") &&
+    canaryLineageScriptSource.includes("evaluateSearchProjection") &&
+    canaryLineageScriptSource.includes("classifyPublication") &&
+    canaryLineageScriptSource.includes("legacy_published_preexisting") &&
+    canaryLineageScriptSource.includes("parseJobId") &&
     canaryLineageScriptSource.includes("us_published_without_manual_authorization"),
-  "the canary lineage audit must be SELECT-only and enforce the US manual-approval policy",
+  "the canary lineage audit must be SELECT-only, follow the durable linked chain, verify search_documents+search_fts rowid, distinguish legacy_published_preexisting, validate job ids, and enforce the US manual-approval policy",
 );
 const operatorCanaryWorkflowSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
 assert(
