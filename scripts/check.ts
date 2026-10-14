@@ -886,8 +886,9 @@ assert(
     germanyCutoverGuardSource.includes("planGermanyCutover") &&
     germanyCutoverGuardSource.includes("evaluateOwnershipPairing") &&
     germanyCutoverGuardSource.includes("germany_cutover.ownership_not_paired_") &&
+    germanyCutoverGuardSource.includes("legacy_historical_counts_rejected") &&
     germanyCutoverGuardSource.includes("if (!readiness.ready)"),
-  "Germany staged cutover must stay behind a fail-closed readiness gate that requires exact-paired current ownership and emits no paired mutation until real proof exists",
+  "Germany staged cutover must stay behind a fail-closed readiness gate that requires exact-paired current ownership, rejects legacy historical counts, and emits no paired mutation until real same-case proof exists",
 );
 const usCutoverGuardSource = fs.readFileSync(
   path.join(process.cwd(), "lib/cloudflare/ingest-stages/us-cutover-readiness.ts"),

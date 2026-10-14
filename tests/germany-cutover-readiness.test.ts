@@ -8,6 +8,19 @@ import {
   type GermanyCutoverProof,
 } from "../lib/cloudflare/ingest-stages/germany-cutover-readiness";
 
+test("germany cutover readiness rejects a legacy-historical-counts-only proof", () => {
+  const countsOnly = { coreArticles: 1430, publishedP3: 583, searchEligible: 582, discovered: 9, fetched: 0 };
+  const readiness = evaluateGermanyCutoverReadiness(countsOnly as Partial<GermanyCutoverProof>);
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.legacyHistoricalCountsOnly, true);
+  assert.equal(readiness.blockers[0], "germany_cutover.legacy_historical_counts_rejected");
+  // Aggregate counts must never authorize; the planner emits no mutation.
+  const plan = planGermanyCutover(countsOnly as Partial<GermanyCutoverProof>, CURRENT);
+  assert.equal(plan.authorized, false);
+  assert.equal(plan.plannedAllowlist, "");
+  assert.equal(plan.plannedExclude, "");
+});
+
 const GATE_FIELD: Record<GermanyCutoverGate, keyof GermanyCutoverProof> = {
   official_ecli_fetched: "officialEcliFetched",
   ecli_identity_exact: "ecliIdentityExact",

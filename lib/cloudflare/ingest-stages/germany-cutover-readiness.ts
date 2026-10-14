@@ -61,16 +61,44 @@ const GATE_TO_PROOF: Readonly<Record<GermanyCutoverGate, keyof GermanyCutoverPro
   search_projected: "searchProjected",
 };
 
+/**
+ * Production fields that are *legacy historical counts*, not proof. Their
+ * presence (as numbers) without the explicit boolean gates must never be read
+ * as readiness, so the evaluator rejects such a proof explicitly. This mirrors
+ * the US P2-M4 guard: a literal seven-stage completion is only claimed from
+ * same-case linked audit evidence, never inferred from aggregate counts.
+ */
+export const GERMANY_LEGACY_HISTORICAL_FIELDS = [
+  "coreArticles",
+  "publishedP3",
+  "searchEligible",
+  "discovered",
+  "fetched",
+] as const;
+
 export interface GermanyCutoverReadiness {
   source: typeof GERMANY_SOURCE_KEY;
   ready: boolean;
   gates: ReadonlyArray<{ id: GermanyCutoverGate; required: true; passed: boolean }>;
   blockers: readonly string[];
+  /** True when a proof was dominated by legacy historical counts rather than fresh evidence. */
+  legacyHistoricalCountsOnly: boolean;
+}
+
+function hasLegacyHistoricalCounts(proof: unknown): boolean {
+  if (!proof || typeof proof !== "object" || Array.isArray(proof)) return false;
+  const record = proof as Record<string, unknown>;
+  const hasHistorical = GERMANY_LEGACY_HISTORICAL_FIELDS.some((field) => typeof record[field] === "number");
+  const hasExplicitGate = GERMANY_CUTOVER_GATES.some((gate) => record[GATE_TO_PROOF[gate]] === true);
+  return hasHistorical && !hasExplicitGate;
 }
 
 /**
  * Evaluates the Germany cutover proof. Anything other than an explicit `true`
- * on every gate (including a missing/partial/undefined object) fails closed.
+ * on every gate (including a missing/partial/undefined object) fails closed. A
+ * proof made only of legacy historical counts is explicitly rejected: a literal
+ * seven-stage completion must come from same-case linked audit evidence, never
+ * from aggregate Production counts.
  */
 export function evaluateGermanyCutoverReadiness(
   proof: Partial<GermanyCutoverProof> | null | undefined,
@@ -80,12 +108,15 @@ export function evaluateGermanyCutoverReadiness(
     required: true as const,
     passed: proof?.[GATE_TO_PROOF[id]] === true,
   }));
+  const legacyHistoricalCountsOnly = hasLegacyHistoricalCounts(proof);
   const blockers = gates.filter((gate) => !gate.passed).map((gate) => `germany_cutover.${gate.id}_not_observed`);
+  if (legacyHistoricalCountsOnly) blockers.unshift("germany_cutover.legacy_historical_counts_rejected");
   return {
     source: GERMANY_SOURCE_KEY,
     ready: blockers.length === 0,
     gates,
     blockers,
+    legacyHistoricalCountsOnly,
   };
 }
 

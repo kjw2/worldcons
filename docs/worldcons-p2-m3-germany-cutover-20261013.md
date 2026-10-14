@@ -370,3 +370,178 @@ cutover. The official in-project verified fetch and one-case seven-stage
 Core/P3/Search lineage remain **NOT_OBSERVED**; the six-gate cutover
 planner cannot authorize Germany yet. P2-M3 stays **GATED / BLOCKED**,
 with all P0 three checks and P1 one check open.
+
+## 13. Independent Production lineage re-verification + paired-cutover blocker (2026-10-14)
+
+Session facts (ASCII-only section). Worktree `C:\Users\jaeth\.devspace\worktrees\worldcons-ae313381`,
+detached HEAD `57764bb58a3e9b535307e5275362ea900fbccea1`, GitHub `main` = `57764bb`.
+Model route: Hive DeepSeek 4.1 Flash. No Codex/Orca. No push/deploy. No direct
+Production D1 writes. Unrelated `next-env.d.ts` working-tree change preserved.
+
+### 13.1 Real Production DE 7/7 lineage independently re-verified (READ-ONLY)
+
+`pnpm audit:canary-lineage -- --job 00ad35bc-505e-4b27-9700-37b53acecee4 --source de-bverfg`
+(exact UUID) returned exit 0 and confirmed, from the live Production databases only:
+
+- `lineage.sevenStageComplete = true`, `stagedChainComplete = true`,
+  `missingStages = []`, `nativeCoreRelation = "resolved"`,
+  `officialIdentityVerified = true`.
+- Core UUID `82f4cd73-1d0c-457f-9a2b-a23fa3cc5012`, `source_key=de-bverfg`,
+  `status=summarized`, `translation_status=translated`,
+  `collection_publishable=1`, `collection_source_url_verified=1`, canonical URL
+  `https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260923_2bvr168126.html?nn=68112`.
+- `publication.classification = "staged_publication"`; P3 `state=published`,
+  `revision=1`, `version_id=003b2bf4-997b-5a2d-a581-ac5a49c0f947`,
+  `published_at=2026-10-14T04:08:49.487Z`.
+- `searchProjection.verified = true`, `documentsObserved = true`,
+  `ftsObserved = true`, `sameArticle = true`, `documentRowid = 17427`,
+  `ftsRowid = 17427`, `rowidMatch = true`, `publicationState = "published"`.
+- The starting discovery job row (read from `worldcons_ingest`) has
+  `payload_ref = "stages/canary/de-bverfg/<canaryId>.json"`, i.e. it is the
+  explicit **canary-prefixed** discover-one path, not the ordinary staged
+  bootstrap.
+
+So every `GermanyCutoverProof` gate has genuine same-case Production evidence
+today: `official_ecli_fetched`, `ecli_identity_exact`, `seven_stage_e2e`,
+`core_verified_content`, `p3_published`, `search_projected` all true.
+
+### 13.2 DECISIVE BLOCKER: a paired Wrangler change cannot be made this session
+
+The task constrains the ONLY allowed edits to the two Wrangler vars
+(`M8_CRAWLER_SOURCE_EXCLUDE` and `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST`) to a
+byte-identical paired append of `de-bverfg`, while preserving everything else,
+and requires `pnpm test:m8` and `pnpm test:ingest-stages` to pass. These two
+requirements are mutually exclusive at HEAD `57764bb`:
+
+- `tests/m8-crawler-source-ownership.test.ts:76-83` asserts the exact current
+  values (`fr-conseil-constitutionnel,es-tribunal-constitucional`), that
+  `owner.excluded` equals the staged list, and that
+  `owner.effective == ["de-bverfg","us-scotus"]`.
+- `tests/ingest-stage-pipeline.test.ts:600` asserts
+  `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST == "fr-conseil-constitutionnel,es-tribunal-constitucional"`.
+
+Empirically, with the proposed paired append applied **only** to
+`workers/async-pipeline/wrangler.jsonc`, `pnpm test:m8` and
+`pnpm test:ingest-stages` both FAIL (assertion: actual
+`...-constitucional,de-bverfg` vs expected `...-constitucional`). Those tests
+encode the ownership invariant; they were reverted immediately, and the Wrangler
+file is byte-identical to HEAD.
+
+Making the append pass those tests would require editing them (and the
+`owner.effective` expectation) in the same patch. The task permits ONLY the two
+Wrangler vars, so that edit is out of scope. Per the task rule ("If risk found
+leave paired Wrangler values unchanged, report reason"), the paired values are
+left UNCHANGED.
+
+### 13.3 Additional independent reasons the ordinary staged path is not ready
+
+Even setting the test conflict aside, activating `de-bverfg` via the ordinary
+staged bootstrap is not a safe cutover at HEAD, because the following are
+hard-restricted to FR/ES and were NOT widened by this session:
+
+- `workers/async-pipeline/src/staged-e2e.ts:43` rejects any staged E2E source
+  other than FR/ES (`e2e.staged_configuration_incomplete`).
+- `workers/async-pipeline/src/discovery-coverage-scheduled.ts:13` throws
+  `discovery.sources_invalid` for any non-FR/ES source.
+- `WORLDCONS_E2E_STAGED_SOURCES` still names only FR/ES.
+
+The verified 7/7 was produced by the explicit canary path
+(`stages/canary/...`), which is intentionally a controlled exception and does
+NOT prove the ordinary FR/ES-style staged bootstrap would behave the same for a
+DE-wide source. A correct DE cutover therefore needs a coordinated change to
+those hard-coded restrictions plus the paired allowlist, not a two-line append.
+
+### 13.4 Safe additive change made (fail-closed evidence check)
+
+To satisfy the task's "never infer 7/7 from aggregate counts; require same-case
+linked audit evidence" safely, and mirroring the already-committed US P2-M4
+guard, this session added an additive, fail-closed rule (no config change):
+
+- `lib/cloudflare/ingest-stages/germany-cutover-readiness.ts` now exposes
+  `GERMANY_LEGACY_HISTORICAL_FIELDS` and rejects a proof dominated by legacy
+  historical counts (`coreArticles`/`publishedP3`/`searchEligible`/`discovered`/
+  `fetched`) that carries no explicit boolean gate, with
+  `germany_cutover.legacy_historical_counts_rejected` as the first blocker. The
+  planner still emits no mutation in that case.
+- `tests/germany-cutover-readiness.test.ts` gained a test for the counts-only
+  rejection (now 10/10).
+- `scripts/check.ts` invariant now also requires the guard to contain
+  `legacy_historical_counts_rejected`.
+
+### 13.5 Verification executed (unchanged config)
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:germany-cutover` | 10/10 pass |
+| `pnpm test:canary` | 37/37 pass |
+| `pnpm test:m8` | 48/48 pass |
+| `pnpm test:ingest-stages` | 58/58 pass |
+| `pnpm check` | All checks passed |
+| `pnpm typecheck` | pass (0 errors) |
+| `pnpm m8:typecheck` | pass |
+| `pnpm m8:dry-run` (Wrangler dry-run) | success; vars show unchanged FR/ES ownership |
+| `git diff --check` | clean |
+
+### 13.6 Readiness + rollback (final operational, pending controller deploy/verify)
+
+- **Readiness:** Germany's *evidence* gate is genuinely satisfied, but the
+  *engineering* cutover at this HEAD is not implementable under the two-line
+  paired constraint (13.2) and the ordinary staged path still hard-restricts
+  DE (13.3). Status: **GATED / BLOCKED for an in-scope paired change; DE stays
+  M8-owned; FR/ES stay staged.**
+- **Rollback (unchanged; for the eventual authorized cutover):** restore both
+  vars to `fr-conseil-constitutionnel,es-tribunal-constitucional` in the same
+  deploy. D1/Queues are untouched either direction. Exact planned strings (from
+  `planGermanyCutover`) would be
+  `fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg` for both.
+- **Post-deploy health checks the controller must run (NOT run by agent):**
+  effective M8 crawler sources exactly `us-scotus` (DE removed, FR/ES excluded),
+  excluded sources include FR, ES, DE; staged bootstrap sources FR, ES, DE;
+  both staged limits 1; stage processing validated per case. USA M8 ownership
+  must remain unchanged and is NOT switched.
+
+### 13.7 Open checks (must not be marked closed)
+
+1. The paired-vars change conflicts with committed ownership contract tests at
+   this HEAD; a correct cutover must move the tests and the FR/ES-only hard
+   restrictions (13.2, 13.3) in one coordinated, separately-approved patch.
+2. The ordinary staged bootstrap path for DE was never run in Production; only
+   the explicit canary path produced 7/7.
+3. P0 three checks and P1 one monitoring item remain open; US is not switched.
+
+## 14. Follow-up: coordinated Germany ownership patch (2026-10-14)
+
+This section **supersedes the provisional no-cutover conclusion in section 13**,
+which was based on a two-config-lines-only change and tests hard-coded to the
+old ownership. Independent review established that the two source lists have
+different responsibilities:
+
+- `WORLDCONS_INGEST_STAGE_SOURCE_ALLOWLIST` and
+  `M8_CRAWLER_SOURCE_EXCLUDE` move **crawler ownership** together.
+- `WORLDCONS_E2E_STAGED_SOURCES` is a **separate automatic E2E approval
+  cohort** and remains strictly FR/ES. The FR/ES-only checks in
+  `staged-e2e.ts` and `discovery-coverage-scheduled.ts` use this separate
+  setting and do **not** prohibit German ordinary staged bootstrap.
+  Germany uses the standard guarded non-E2E publish/search handlers, never
+  the protected FR/ES automatic approval path.
+
+The coordinated patch atomically sets both ownership values to
+`fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg`
+in `workers/async-pipeline/wrangler.jsonc`, adjusts two ownership contract
+tests to reflect **DE staged, US M8**, and adds a fail-closed Germany
+historical-aggregate-count guard. It does **not** modify the US source,
+`M8_ENABLED_KINDS`, protected E2E approval cohort, or review rules.
+
+Tests independently rerun before deployment: `test:m8` 48/48,
+`test:ingest-stages` 58/58, `test:canary` 37/37,
+`test:germany-cutover` 10/10, `pnpm check`, `pnpm typecheck`,
+`pnpm m8:typecheck`, Wrangler deploy dry-run, and `git diff --check`
+all pass. This is an **ownership configuration change**, not independent
+proof that the ordinary scheduled DE path has already completed a new
+seven-stage Production case.
+
+Rollback is a paired **single deployment** restoring both owner values to
+`fr-conseil-constitutionnel,es-tribunal-constitucional`. Do not roll back
+only one value. Preserve the genuine already-verified 2026-10-14 DE 7/7
+canary as immutable evidence and do not mix it with any later normal
+bootstrap run. P0/P1 open checks and the US manual-review gate are unchanged.
