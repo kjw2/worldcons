@@ -288,7 +288,13 @@ export async function runD1PublishArticle(input: { articleId: string; actorId?: 
 
 export async function runD1PublicationDrain(input: { limit?: number } = {}) {
   const limit = boundedInteger(input.limit, 50, { min: 1, max: 500 });
-  const ownership=await hasE2ETable(core(),"e2e_source_policies_v1")?"AND NOT EXISTS(SELECT 1 FROM e2e_source_policies_v1 owner WHERE owner.source_key=a.source_key AND owner.required=1)":"";
+  // `us-scotus` is ALWAYS protected for publication (it requires an immutable,
+  // same-case, snapshot-bound human receipt). Exclude it by SOURCE from the
+  // automatic drain regardless of collection flags, then additionally exclude any
+  // remaining protected-ledger source when the ledger exists. This can never
+  // publish a US article automatically.
+  const ownership = "AND a.source_key <> 'us-scotus'"
+    + (await hasE2ETable(core(),"e2e_source_policies_v1") ? " AND NOT EXISTS(SELECT 1 FROM e2e_source_policies_v1 owner WHERE owner.source_key=a.source_key AND owner.required=1)" : "");
   const rows = ensureSuccess(await core().prepare(`
     SELECT a.id,a.summary_json
     FROM articles a

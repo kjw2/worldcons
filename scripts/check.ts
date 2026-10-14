@@ -893,8 +893,7 @@ assert(
 const usCutoverGuardSource = fs.readFileSync(
   path.join(process.cwd(), "lib/cloudflare/ingest-stages/us-cutover-readiness.ts"),
   "utf8",
-);
-assert(
+);assert(
   usCutoverGuardSource.includes("US_CUTOVER_GATES") &&
     usCutoverGuardSource.includes("planUsCutover") &&
     usCutoverGuardSource.includes("manualPublicationAuthorization") &&
@@ -907,6 +906,26 @@ assert(
     usCutoverGuardSource.includes("us_cutover.ownership_not_paired_") &&
     usCutoverGuardSource.includes("if (!readiness.ready)"),
   "US staged cutover must stay behind a fail-closed readiness gate that additionally requires an AUTHENTICATED, snapshot-bound, same-case human-review receipt (never a caller boolean or synthetic fields), exact-paired current ownership and rejects legacy historical counts, emitting no paired mutation until real proof exists",
+);
+const usManualApprovalSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/e2e/manual-approval.ts"), "utf8");
+assert(
+  usManualApprovalSource.includes("protectedSourceRequired") &&
+    usManualApprovalSource.includes("us-scotus") &&
+    usManualApprovalSource.includes("SELECT id FROM articles WHERE id=? AND source_key=?"),
+  "US must be ALWAYS-protected for publication via a source-based check in protectedSourceRequired (independent of the FR/ES ledger), so a US private-held review can never fall through to a legacy no-receipt publication",
+);
+const d1ReviewSource = fs.readFileSync(path.join(process.cwd(), "lib/admin/d1-review.ts"), "utf8");
+assert(
+  d1ReviewSource.includes("protectedSourceRequired") &&
+    d1ReviewSource.includes("required:false") &&
+    d1ReviewSource.includes("updateReviewedMetadata") &&
+    d1ReviewSource.includes("recordHumanApproval"),
+  "the authenticated US publish-reviewed flow must record the snapshot-bound human receipt and explicitly clear review.required only inside the CAS-guarded reviewed metadata",
+);
+const publicationDrainSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/publication/d1-publication-drain.ts"), "utf8");
+assert(
+  publicationDrainSource.includes("a.source_key <> 'us-scotus'"),
+  "the automatic publication drain must exclude us-scotus by source so no US article can be auto-published without a human receipt",
 );
 const canarySource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/ingest-stages/canary.ts"), "utf8");
 assert(
@@ -1024,8 +1043,10 @@ assert(
     canaryDiscoveryHandlersSource.includes("ingest_stage.publish_us_article_unresolved") &&
     canaryDiscoveryHandlersSource.includes("ingest_stage.search_us_article_unresolved") &&
     canaryDiscoveryHandlersSource.includes("US_SOURCE_KEY") &&
+    canaryDiscoveryHandlersSource.includes("ingest_stage.us_manual_approval_source_mismatch") &&
+    canaryDiscoveryHandlersSource.includes("rowIsUs !== paramIsUs") &&
     (canaryDiscoveryHandlersSource.match(/evaluateUsManualApprovalGuard\(context\.coreDb/g) ?? []).length >= 3,
-  "the staged handlers must enforce a US-only fail-closed manual-approval guard (receipt required, unauthenticated blocked) before public-judgment AND independently in publish and search, explicitly block an unresolved native US id (no bypass), while remaining a no-op for non-US sources",
+  "the staged handlers must enforce a US-only fail-closed manual-approval guard (receipt required, unauthenticated blocked, persisted row source_key verified against the caller source key so a non-US UUID can never be audited as US) before public-judgment AND independently in publish and search, explicitly block an unresolved native US id (no bypass), while remaining a no-op for genuinely non-US sources",
 );
 const operatorCanaryDiscoverOneSource = fs.readFileSync(path.join(process.cwd(), "workers/async-pipeline/src/index.ts"), "utf8");
 assert(
@@ -1066,6 +1087,26 @@ assert(
     operatorCanaryBootstrapPayloadSource.includes("operator_canary.bootstrap_de_one_source_not_allowed") &&
     operatorCanaryBootstrapPayloadSource.includes("operator_canary.bootstrap_de_one_dispatch_invalid"),
   "the operator canary workflow payload must accept a strict bootstrap-de-one shape that carries no candidate/identity/range",
+);
+assert(
+  operatorCanaryBootstrapPayloadSource.includes("OPERATOR_CANARY_AUDIT_US_GUARD_ONE_KEYS") &&
+    operatorCanaryBootstrapPayloadSource.includes("audit-us-guard-one") &&
+    operatorCanaryBootstrapPayloadSource.includes("operator_canary.audit_us_guard_source_not_allowed") &&
+    operatorCanaryBootstrapPayloadSource.includes("operator_canary.audit_us_guard_article_id_invalid") &&
+    !operatorCanaryBootstrapPayloadSource.includes("audit-us-guard-one\",\"candidateUrl"),
+  "the operator canary workflow payload must accept a strict READ-ONLY audit-us-guard-one shape (us-scotus + validated Core UUID, no candidate/dispatch/range)",
+);
+assert(
+  canaryDiscoveryHandlersSource.includes("auditUsManualApprovalGuardOnce") &&
+    canaryDiscoveryHandlersSource.includes("evaluateUsManualApprovalGuard") &&
+    canaryDiscoveryHandlersSource.includes("operator_canary.audit_us_guard_core_binding_missing"),
+  "the ingest-stage handlers must expose a strictly read-only single-case US guard probe that reuses the exact runtime guard",
+);
+assert(
+  operatorCanaryDiscoverOneSource.includes("payloadKind === \"audit-us-guard-one\"") &&
+    operatorCanaryDiscoverOneSource.includes("auditUsManualApprovalGuardOnce") &&
+    operatorCanaryDiscoverOneSource.includes("readOnly: true"),
+  "the operator Workflow must expose a read-only audit-us-guard-one mode bound to the live Core D1 guard without any write/dispatch",
 );
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [

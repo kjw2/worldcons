@@ -24,7 +24,7 @@ import { INGEST_STAGE_NAMES, INGEST_STAGE_QUEUES, type IngestStage } from "../..
 import { ingestStageGateFromEnvironment, isIngestStageEnabled, resolveIngestBootstrapSources } from "../../../lib/cloudflare/ingest-stages/flags";
 import { dispatchIngestStagePass, reconcileIngestStageDispatch, type IngestStageQueueSender } from "../../../lib/cloudflare/ingest-stages/dispatcher";
 import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./ingest-stage-consumer";
-import { createIngestStageHandlers, enqueueIngestStageDiscovery, enqueueCanaryDiscovery } from "./ingest-stage-handlers";
+import { createIngestStageHandlers, enqueueIngestStageDiscovery, enqueueCanaryDiscovery, auditUsManualApprovalGuardOnce } from "./ingest-stage-handlers";
 import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
 import { canaryDiscoveryId } from "../../../lib/cloudflare/ingest-stages/canary-discovery";
 import { evaluateBootstrapDeOnePrecondition, BOOTSTRAP_DE_ONE_SOURCE_KEY } from "../../../lib/cloudflare/ingest-stages/bootstrap-de-one";
@@ -565,6 +565,40 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
         dispatchReason: dispatch?.reason ?? null,
         enqueued: dispatch?.enqueued ?? 0,
         note: "Seeded exactly one genuine official-listing discovery job (Germany or United States). It yields at most one child crawl job with same-case provenance; continue the chain via the advance mode. It does not publish, bypass review, or change ownership.",
+      };
+    }
+
+    // ---- Read-only US guard audit branch ---------------------------------
+    // A STRICTLY READ-ONLY operator probe. It accepts ONLY the exact `us-scotus`
+    // source key and a validated Core UUID, calls the EXACT runtime US
+    // manual-approval guard the staged public-judgment gate uses
+    // (`auditUsManualApprovalGuardOnce` -> `evaluateUsManualApprovalGuard`)
+    // against the live Core D1, and returns a bounded, non-secret readback. It
+    // NEVER writes to any D1 database, never publishes, never seeds or dispatches
+    // a job, and never echoes the Core row or PDF bytes. This provides a
+    // production witness of the guard while the canary rate limit is in effect;
+    // it is distinct from a real seven-stage canary block.
+    if (payload.payloadKind === "audit-us-guard-one") {
+      const readback = await step.do(`audit-us-guard-one-${payload.articleId}`, { timeout: "1 minute" }, () =>
+        auditUsManualApprovalGuardOnce(this.env.WORLDCONS_CORE as unknown as Parameters<typeof auditUsManualApprovalGuardOnce>[0], {
+          sourceKey: payload.sourceKey,
+          articleId: payload.articleId,
+        }),
+      );
+      return {
+        schemaVersion: 1,
+        mode: "audit-us-guard-one" as const,
+        sourceKey: payload.sourceKey,
+        operatorId: payload.operatorId,
+        readOnly: true,
+        outcome: readback.ok ? ("authenticated" as const) : readback.retry ? ("retry" as const) : ("blocked" as const),
+        code: readback.code,
+        blocked: readback.blocked,
+        retry: readback.retry,
+        receiptPresent: readback.receiptPresent,
+        receiptAuthenticated: readback.receiptAuthenticated,
+        officialPdfProvenancePresent: readback.officialPdfProvenancePresent,
+        note: "Read-only US manual-approval guard probe. It reuses the exact staged public-judgment guard against the live Core D1 and returns only a bounded verdict. It does NOT publish, dispatch, seed, or write any D1 row, and it is NOT a seven-stage canary lineage.",
       };
     }
 

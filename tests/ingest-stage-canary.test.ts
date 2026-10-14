@@ -38,7 +38,7 @@ import {
   consumeIngestStageBatch,
   type IngestStageQueueMessageHandle,
 } from "../workers/async-pipeline/src/ingest-stage-consumer";
-import { createIngestStageHandlers, enqueueCanaryDiscovery, enqueueIngestStageDiscovery } from "../workers/async-pipeline/src/ingest-stage-handlers";
+import { createIngestStageHandlers, enqueueCanaryDiscovery, enqueueIngestStageDiscovery, auditUsManualApprovalGuardOnce } from "../workers/async-pipeline/src/ingest-stage-handlers";
 import { operatorCanaryAuthorized } from "../workers/async-pipeline/src/worker-auth";
 import { approvalIdentity, HUMAN_APPROVAL_POLICY } from "../lib/cloudflare/e2e/contracts";
 import { approvalSourceMetadata } from "../lib/cloudflare/core-write/authority";
@@ -657,7 +657,8 @@ test("US manual-approval guard: a native (unresolved) US publish/search id is an
   } finally { h.ingest.close(); h.core.close(); }
 });
 
-test("US manual-approval guard is a no-op for DE / protected FR-ES so existing non-US flows are unaffected", async () => {  const h = createHarness();
+test("US manual-approval guard is a no-op for DE / protected FR-ES so existing non-US flows are unaffected", async () => {
+  const h = createHarness();
   try {
     h.core.prepare("INSERT INTO articles (id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,status,slug,cleaned_text,summary_json,korean_title,translation_status,source_metadata,content_hash,review_state,discovered_at,fetched_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run("de-article", "de-bverfg", "Germany", "Federal Constitutional Court of Germany", "decision", "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html", "https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2026/09/rk20260905_2bvr135824.html", "de", "t", "summarized", "de-1",
@@ -675,6 +676,103 @@ test("US manual-approval guard is a no-op for DE / protected FR-ES so existing n
     });
     assert.equal(result.completed, 1, `DE public judgment must still succeed: ${JSON.stringify(result)}`);
   } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("US manual-approval guard: read-only single-case operator audit readback mirrors the runtime guard without writing", async () => {
+  const h = createHarness();
+  try {
+    // (1) A legacy published US row with verified officialPdf but NO receipt.
+    const LEGACY = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+    const LEGACY_URL = "https://www.supremecourt.gov/opinions/24pdf/24-999_q86b.pdf";
+    h.core.prepare("INSERT INTO articles (id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,status,slug,cleaned_text,summary_json,korean_title,translation_status,source_metadata,content_hash,review_state,discovered_at,fetched_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(LEGACY, "us-scotus", "United States", "Supreme Court of the United States", "opinion", LEGACY_URL, LEGACY_URL, "en", "t", "summarized", "us-legacy",
+        "legacy approved opinion text ".repeat(40), JSON.stringify({ summary: { coreSummary: ["기존 요약"] } }), "요약", "translated",
+        JSON.stringify({ officialPdf: { url: LEGACY_URL, r2Key: `artifacts/scotus_pdf/${"0".repeat(64)}.pdf`, sha256: "0".repeat(64), docketVerified: true }, collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "official-pdf" }, review: { required: true } }),
+        "legacy-hash", "summarized", NOW, NOW, NOW, NOW);
+    const legacyRead = await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "us-scotus", articleId: LEGACY });
+    assert.equal(legacyRead.ok, false);
+    assert.equal(legacyRead.blocked, true);
+    assert.equal(legacyRead.retry, false);
+    assert.equal(legacyRead.receiptAuthenticated, false);
+    assert.equal(legacyRead.officialPdfProvenancePresent, true);
+    assert.equal(legacyRead.code, "ingest_stage.us_manual_approval_receipt_required");
+
+    // (2) A genuine same-case receipt bound to the current snapshot authenticates.
+    const CORE = "a60db8bb-4ec3-4ecf-bb5a-6245f621a334";
+    h.core.prepare("INSERT INTO articles (id,source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,original_title,status,slug,cleaned_text,summary_json,korean_title,translation_status,source_metadata,content_hash,review_state,discovered_at,fetched_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(CORE, "us-scotus", "United States", "Supreme Court of the United States", "opinion", US_URL, US_URL, "en", "t", "summarized", "us-guard",
+        "verified us opinion text ".repeat(40), JSON.stringify({ summary: { coreSummary: ["요약"] } }), "요약", "translated",
+        JSON.stringify({ officialPdf: { url: US_URL, r2Key: `artifacts/scotus_pdf/${"1".repeat(64)}.pdf`, sha256: "1".repeat(64), docketVerified: true }, collection: { publishable: true, sourceTextAvailable: true, sourceUrlVerified: true, strategy: "official-pdf" }, review: { required: true } }),
+        "valid-hash", "unreviewed", NOW, NOW, NOW, NOW);
+    const row = h.core.prepare("SELECT * FROM articles WHERE id=?").get(CORE) as Record<string, unknown>;
+    const identity = await approvalIdentity(CORE, { ...row, source_metadata: approvalSourceMetadata(row.source_metadata, true) }, HUMAN_APPROVAL_POLICY);
+    h.core.prepare("INSERT INTO e2e_approval_evidence_v1 (approval_key,article_id,approval_snapshot_hash,source_content_hash,policy_version,evidence_ref,source_artifact_ref,source_artifact_hash,discovery_candidate_id,pipeline_run_id,evidence_document,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("valid-key", CORE, identity.approvalSnapshotHash, identity.sourceContentHash, HUMAN_APPROVAL_POLICY, `core:e2e-approval:${identity.approvalKey}`, "core:e2e-reviewed-source:valid", "x", "manual:" + CORE, "review:valid",
+        JSON.stringify({ schema: "worldcons.human-approval.v1", actorId: "ops:reviewer", approvalSnapshotHash: identity.approvalSnapshotHash, sourceContentHash: identity.sourceContentHash }), NOW);
+    const bound = await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "us-scotus", articleId: CORE });
+    assert.equal(bound.ok, true);
+    assert.equal(bound.blocked, false);
+    assert.equal(bound.receiptPresent, true);
+    assert.equal(bound.receiptAuthenticated, true);
+    assert.equal(bound.code, "operator_canary.audit_us_guard_authenticated");
+
+    // (3) A stale (unbound) receipt fails closed as unauthenticated.
+    h.core.prepare("DELETE FROM e2e_approval_evidence_v1 WHERE approval_key=?").run("valid-key");
+    h.core.prepare("INSERT INTO e2e_approval_evidence_v1 (approval_key,article_id,approval_snapshot_hash,source_content_hash,policy_version,evidence_ref,source_artifact_ref,source_artifact_hash,discovery_candidate_id,pipeline_run_id,evidence_document,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run("stale-key", CORE, "deadbeef".repeat(8), identity.sourceContentHash, HUMAN_APPROVAL_POLICY, "core:e2e-approval:stale", "core:e2e-reviewed-source:stale", "x", "manual:" + CORE, "review:stale",
+        JSON.stringify({ schema: "worldcons.human-approval.v1", actorId: "ops:forged", approvalSnapshotHash: "deadbeef".repeat(8), sourceContentHash: identity.sourceContentHash }), NOW);
+    const stale = await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "us-scotus", articleId: CORE });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.receiptPresent, true);
+    assert.equal(stale.receiptAuthenticated, false);
+    assert.equal(stale.code, "ingest_stage.us_manual_approval_unauthenticated");
+
+    // (4) The probe is a STRICT no-op for a non-US record, malformed id, and a
+    //     missing binding. It must never read/publish/write for these.
+    const nonUs = await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "de-bverfg", articleId: CORE });
+    assert.equal(nonUs.code, "operator_canary.audit_us_guard_source_not_allowed");
+    assert.equal(nonUs.blocked, true);
+    const malformed = await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "us-scotus", articleId: "not-a-uuid" });
+    assert.equal(malformed.code, "operator_canary.audit_us_guard_article_id_invalid");
+    const missing = await auditUsManualApprovalGuardOnce(null, { sourceKey: "us-scotus", articleId: CORE });
+    assert.equal(missing.code, "operator_canary.audit_us_guard_core_binding_missing");
+
+    // (5) The probe NEVER mutates D1: the published P3 count and ledger are unchanged.
+    const before = JSON.stringify({
+      articles: h.core.prepare("SELECT id,review_state,status FROM articles ORDER BY id").all(),
+      ledger: h.core.prepare("SELECT approval_key FROM e2e_approval_evidence_v1 ORDER BY approval_key").all(),
+    });
+    await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "us-scotus", articleId: CORE });
+    await auditUsManualApprovalGuardOnce(h.coreDb, { sourceKey: "us-scotus", articleId: LEGACY });
+    const after = JSON.stringify({
+      articles: h.core.prepare("SELECT id,review_state,status FROM articles ORDER BY id").all(),
+      ledger: h.core.prepare("SELECT approval_key FROM e2e_approval_evidence_v1 ORDER BY approval_key").all(),
+    });
+    assert.equal(after, before, "the read-only guard probe must not write any D1 row");
+    assert.equal(h.core.prepare("SELECT COUNT(*) n FROM article_publications_p3").get()?.n, 0, "the probe never publishes");
+  } finally { h.ingest.close(); h.core.close(); }
+});
+
+test("operator canary workflow envelope: audit-us-guard-one is strictly read-only, us-scotus-only, UUID-validated", () => {
+  const core = "4b3d5644-2681-449e-8ad5-28ee2defffe8";
+  const ok = parseOperatorCanaryEvent({ mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: core });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.ok ? ok.value : null, {
+    payloadKind: "audit-us-guard-one", mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: core, operatorId: "cloudflare-workflow-operator",
+  });
+  const cases: Array<[unknown, RegExp]> = [
+    [{ mode: "audit-us-guard-one", sourceKey: "de-bverfg", articleId: core }, /audit_us_guard_source_not_allowed/],
+    [{ mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: "not-a-uuid" }, /audit_us_guard_article_id_invalid/],
+    [{ mode: "audit-us-guard-one", sourceKey: "us-scotus" }, /audit_us_guard_article_id_invalid/],
+    [{ mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: core, candidateUrl: US_URL }, /unknown_key:candidateUrl/],
+    [{ mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: core, dispatch: true }, /unknown_key:dispatch/],
+    [{ mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: core, docket: "26A388" }, /unknown_key:docket/],
+  ];
+  for (const [payload, pattern] of cases) {
+    const result = parseOperatorCanaryEvent(payload);
+    assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(payload)}`);
+    assert.match(result.ok ? "" : result.error, pattern);
+  }
 });
 
 test("canary never fabricates US 7/7: a US article without a manual authorization blocks at public judgment", async () => {

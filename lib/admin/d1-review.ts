@@ -71,7 +71,13 @@ export async function runD1AdminReviewAction(input:AdminReviewBody,operatorIdent
     if(await protectedSourceRequired(core,id)) {
       if(!operatorIdentity)throw new HumanApprovalBlocked("human_approval.session_required");
       const checked=await verifyHumanPreview(core,id,input.expectedApprovalSnapshotHash),now=new Date().toISOString();
-      const metadata=reviewMetadata(checked.article,"published",note,{publishable:true,sourceTextAvailable:true,sourceUrlVerified:true,robotsDisallowed:false,confidence:"human_reviewed",reason:"Authenticated human reviewed this exact source and summary."},{snapshotHash:input.expectedApprovalSnapshotHash,actorId:operatorIdentity});
+      const reviewed=reviewMetadata(checked.article,"published",note,{publishable:true,sourceTextAvailable:true,sourceUrlVerified:true,robotsDisallowed:false,confidence:"human_reviewed",reason:"Authenticated human reviewed this exact source and summary."},{snapshotHash:input.expectedApprovalSnapshotHash,actorId:operatorIdentity});
+      // Explicitly release the private review hold ONLY inside this real,
+      // authenticated, snapshot-bound human approval. `review.required:false` is
+      // set here (and nowhere in the crawler/Workflow paths, which keep
+      // `review.required:true`), so the private hold can never be cleared by a
+      // crawler/Workflow/operatorId. The append-only `reviewHistory` is preserved.
+      const metadata={...reviewed,review:{...(parsed(reviewed.review) as Record<string,unknown>),required:false}};
       const expected=await updateReviewedMetadata(core,checked.article,metadata,"published",now);
       await lifecycle(id,"approved","review.published");
       const context=await recordHumanApproval(core,{articleId:id,actorId:operatorIdentity,expectedSnapshotHash:expected,note,now});

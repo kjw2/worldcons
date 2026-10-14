@@ -164,7 +164,7 @@
     "probe:scotus-pdf": "tsx scripts/scotus-official-pdf-probe.ts",
     "test:m2-readiness": "tsx --test tests/m2-readiness-diagnostic.test.ts",
     "test:germany-cutover": "tsx --test tests/germany-cutover-readiness.test.ts",
-    "test:us-cutover": "tsx --test tests/us-cutover-readiness.test.ts",
+    "test:us-cutover": "tsx --test tests/us-cutover-readiness.test.ts tests/us-manual-approval-publication.test.ts",
     "test:p2-m4-us": "tsx --test tests/p2-m4-us-readiness.test.ts",
     "test:canary": "tsx --test tests/ingest-stage-canary.test.ts",
     "audit:p2-m4-us": "tsx scripts/audit-worldcons-p2-m4-us.ts",

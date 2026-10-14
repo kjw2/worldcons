@@ -368,6 +368,12 @@ interface UsManualApprovalGuardResult {
   retry: boolean;
   code: string;
   summary: string;
+  /** A same-case human receipt was structurally found (may still be unauthenticated). */
+  present: boolean;
+  /** The receipt is bound to the current snapshot + verified PDF proof. */
+  authenticated: boolean;
+  /** The row carries verified official-PDF provenance (docketVerified + sha256 + r2Key). */
+  pdfProofPresent: boolean;
 }
 
 /**
@@ -390,12 +396,34 @@ interface UsManualApprovalGuardResult {
  * Read failures retry; a missing/stale/unauthenticated receipt is a terminal
  * block. It is a no-op for every non-US source (DE / FR / ES untouched).
  */
-async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleId: string, sourceKey: string | null | undefined): Promise<UsManualApprovalGuardResult> {
-  if (sourceKey !== US_SOURCE_KEY) return { ok: true, retry: false, code: "", summary: "" };
+export async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleId: string, sourceKey: string | null | undefined): Promise<UsManualApprovalGuardResult> {
+  const paramIsUs = sourceKey === US_SOURCE_KEY;
+  // Read the exact row FIRST so the ACTUAL `source_key` is always verified, never
+  // trusted from the caller. This is what stops a caller invoking the US guard on
+  // a non-US Core UUID (and, inversely, a US article processed under a non-US job
+  // source key): a genuinely non-US pair remains a no-op, but any US/non-US
+  // mismatch fails closed with a bounded terminal block.
   const read = await readOne(coreDb, "SELECT * FROM articles WHERE id=?", [articleId]);
-  if (!read.ok) return { ok: false, retry: true, code: "ingest_stage.us_manual_approval_read_failed", summary: "Could not read the US article for manual-approval verification." };
+  if (!read.ok) {
+    if (!paramIsUs) return { ok: true, retry: false, code: "", summary: "", present: false, authenticated: false, pdfProofPresent: false };
+    return { ok: false, retry: true, code: "ingest_stage.us_manual_approval_read_failed", summary: "Could not read the US article for manual-approval verification.", present: false, authenticated: false, pdfProofPresent: false };
+  }
   const row = read.row;
-  if (!row) return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_article_missing", summary: "No core article exists for the US manual-approval check." };
+  if (!row) {
+    if (!paramIsUs) return { ok: true, retry: false, code: "", summary: "", present: false, authenticated: false, pdfProofPresent: false };
+    return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_article_missing", summary: "No core article exists for the US manual-approval check.", present: false, authenticated: false, pdfProofPresent: false };
+  }
+  const rowIsUs = String(row.source_key ?? "") === US_SOURCE_KEY;
+  if (!rowIsUs && !paramIsUs) {
+    // A genuine non-US record: the guard is inert (DE / protected FR-ES untouched).
+    return { ok: true, retry: false, code: "", summary: "", present: false, authenticated: false, pdfProofPresent: false };
+  }
+  if (rowIsUs !== paramIsUs) {
+    // The caller's source key disagrees with the persisted row source key. This is
+    // a US/non-US mismatch and must fail closed (bounded BLOCK, no data), never
+    // silently treat a non-US row as US or skip the guard on a US row.
+    return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_source_mismatch", summary: "The article source key does not match the US source key required for manual approval.", present: false, authenticated: false, pdfProofPresent: false };
+  }
   const metadata = parseMetadata(row.source_metadata);
   const officialPdf = parseMetadata(metadata.officialPdf);
   const pdfProof = {
@@ -405,7 +433,7 @@ async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleI
     url: typeof officialPdf.url === "string" ? officialPdf.url : null,
   };
   if (!pdfProof.docketVerified || !pdfProof.sha256 || !pdfProof.r2Key) {
-    return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_pdf_proof_missing", summary: "US publication requires prior verified official SCOTUS PDF provenance; a legacy published row is not proof." };
+    return { ok: false, retry: false, code: "ingest_stage.us_manual_approval_pdf_proof_missing", summary: "US publication requires prior verified official SCOTUS PDF provenance; a legacy published row is not proof.", present: false, authenticated: false, pdfProofPresent: false };
   }
   // The receipt is bound to the exact reviewed snapshot; recompute it from the
   // current row so a receipt that predates the current PDF/content fails closed.
@@ -414,7 +442,7 @@ async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleI
   const rows = await readAll(coreDb,
     "SELECT article_id, policy_version, evidence_document, approval_snapshot_hash, source_content_hash FROM e2e_approval_evidence_v1 WHERE article_id=? AND policy_version=? ORDER BY created_at DESC LIMIT 5",
     [articleId, HUMAN_APPROVAL_POLICY]);
-  if (!rows.ok) return { ok: false, retry: true, code: "ingest_stage.us_manual_approval_receipt_read_failed", summary: "Could not read the US human-approval receipt ledger." };
+  if (!rows.ok) return { ok: false, retry: true, code: "ingest_stage.us_manual_approval_receipt_read_failed", summary: "Could not read the US human-approval receipt ledger.", present: false, authenticated: false, pdfProofPresent: true };
   const assessment = evaluateSameCaseManualApprovalReceipt(articleId, rows.rows.map((receipt) => ({
     articleId: receipt.article_id == null ? null : String(receipt.article_id),
     policyVersion: receipt.policy_version == null ? null : String(receipt.policy_version),
@@ -426,7 +454,7 @@ async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleI
     currentSourceContentHash: identity.sourceContentHash,
     officialPdf: pdfProof,
   });
-  if (assessment.authenticated) return { ok: true, retry: false, code: "", summary: "" };
+  if (assessment.authenticated) return { ok: true, retry: false, code: "", summary: "", present: true, authenticated: true, pdfProofPresent: true };
   return {
     ok: false,
     retry: false,
@@ -434,6 +462,58 @@ async function evaluateUsManualApprovalGuard(coreDb: D1RuntimeDatabase, articleI
     summary: assessment.present
       ? `A US human-approval receipt exists but is not bound to the current snapshot/PDF proof (${assessment.reason}).`
       : "US publication requires an immutable same-case human-review receipt; a legacy published row or automatic flag is not authorization.",
+    present: assessment.present,
+    authenticated: false,
+    pdfProofPresent: true,
+  };
+}
+
+const US_AUDIT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface UsGuardAuditReadback {
+  ok: boolean;
+  code: string;
+  /** The guard outcome for the exact case (blocked => terminal). */
+  blocked: boolean;
+  /** The guard required a retry (transient read failure) rather than a terminal verdict. */
+  retry: boolean;
+  /** A same-case human receipt was structurally found. */
+  receiptPresent: boolean;
+  /** The receipt is bound to the current snapshot + verified official-PDF proof. */
+  receiptAuthenticated: boolean;
+  /** The current row carries verified official-PDF provenance. */
+  officialPdfProvenancePresent: boolean;
+}
+
+/**
+ * Strictly READ-ONLY single-case US guard probe used by the operator Cloudflare
+ * Workflow (`audit-us-guard-one`). It accepts ONLY the exact `us-scotus` source
+ * key and a validated Core UUID, calls the EXACT runtime guard the US staged
+ * public-judgment gate uses (`evaluateUsManualApprovalGuard`), and returns a
+ * bounded, non-secret readback. It NEVER writes to any D1 database, never
+ * publishes, never dispatches, and never echoes the Core/PDF private content.
+ *
+ * Any non-US record, malformed argument, or missing binding fails closed with a
+ * bounded code rather than a partial/ambiguous verdict.
+ */
+export async function auditUsManualApprovalGuardOnce(
+  coreDb: D1RuntimeDatabase | null | undefined,
+  input: { sourceKey: string | null | undefined; articleId: string | null | undefined },
+): Promise<UsGuardAuditReadback> {
+  const reject = (code: string): UsGuardAuditReadback => ({ ok: false, code, blocked: true, retry: false, receiptPresent: false, receiptAuthenticated: false, officialPdfProvenancePresent: false });
+  if (input.sourceKey !== US_SOURCE_KEY) return reject("operator_canary.audit_us_guard_source_not_allowed");
+  const articleId = typeof input.articleId === "string" ? input.articleId.trim() : "";
+  if (!US_AUDIT_UUID_PATTERN.test(articleId)) return reject("operator_canary.audit_us_guard_article_id_invalid");
+  if (!coreDb) return reject("operator_canary.audit_us_guard_core_binding_missing");
+  const guard = await evaluateUsManualApprovalGuard(coreDb, articleId, US_SOURCE_KEY);
+  return {
+    ok: guard.ok,
+    code: guard.ok ? "operator_canary.audit_us_guard_authenticated" : guard.code,
+    blocked: !guard.ok && !guard.retry,
+    retry: guard.retry,
+    receiptPresent: guard.present,
+    receiptAuthenticated: guard.authenticated,
+    officialPdfProvenancePresent: guard.pdfProofPresent,
   };
 }
 

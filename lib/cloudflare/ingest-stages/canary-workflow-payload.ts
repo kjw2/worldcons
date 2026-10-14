@@ -9,12 +9,13 @@
  * the two canary countries, unknown keys/modes are rejected, and no unbounded
  * list/limit field can be smuggled in.
  *
- * Four disjoint payload shapes are supported and strictly discriminated:
+ * Five disjoint payload shapes are supported and strictly discriminated:
  *
  *   { sourceKey: "de-bverfg"|"us-scotus", candidateUrl, ecli?|docket?, operatorId?, mode?: "seed"|"seed-and-dispatch" }
  *   { mode: "advance", jobId: <uuid>, canaryId: <32-hex>, operatorId? }
  *   { mode: "discover-one", sourceKey: "de-bverfg"|"us-scotus", rangeDays?, operatorId?, dispatch? }
  *   { mode: "bootstrap-de-one", sourceKey: "de-bverfg", operatorId?, dispatch? }
+ *   { mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: <uuid>, operatorId? }
  *
  * The `advance` shape carries NO `sourceKey`/`candidateUrl`/identity and never
  * changes source ownership; it can only continue an already-seeded canary.
@@ -26,6 +27,13 @@
  * cron would (regular `stages/ingest-discovery-request/de-bverfg/...` payload,
  * no `canaryDiscovery` marker), producing a genuine ordinary Discovery job rather
  * than the explicit `stages/canary/` exception.
+ *
+ * The `audit-us-guard-one` shape is a STRICTLY READ-ONLY operator probe. It
+ * carries NO candidate URL/docket and NO dispatch flag, accepts ONLY the exact
+ * `us-scotus` source key plus a validated Core UUID, and calls the EXACT runtime
+ * US manual-approval guard the staged public-judgment gate uses against the live
+ * Core D1. It never writes to any D1 database, never publishes, and never seeds
+ * or dispatches a job.
  */
 import { CANARY_SOURCE_KEYS, type CanarySourceKey } from "./canary";
 import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_SOURCE_KEYS, canaryDiscoveryDefaultRangeDays, type CanaryDiscoverySourceKey } from "./canary-discovery";
@@ -35,7 +43,7 @@ export const OPERATOR_CANARY_SEED_MODES = ["seed", "seed-and-dispatch"] as const
 export type OperatorCanarySeedMode = (typeof OPERATOR_CANARY_SEED_MODES)[number];
 
 /** The four disjoint top-level payload shapes. */
-export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one" | "bootstrap-de-one";
+export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one" | "bootstrap-de-one" | "audit-us-guard-one";
 
 /** Keys allowed on the seed shape only. */
 export const OPERATOR_CANARY_SEED_KEYS = [
@@ -82,6 +90,20 @@ export const OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS = [
   "sourceKey",
   "operatorId",
   "dispatch",
+] as const;
+
+/**
+ * Keys allowed on the `audit-us-guard-one` shape only. It deliberately carries
+ * NO `candidateUrl`/`ecli`/`docket`/`rangeDays`/`dispatch`: this is a strictly
+ * READ-ONLY probe, so a caller can neither inject a candidate nor trigger any
+ * write/dispatch. `sourceKey` is accepted only as the exact literal `us-scotus`,
+ * and `articleId` must be a validated Core UUID.
+ */
+export const OPERATOR_CANARY_AUDIT_US_GUARD_ONE_KEYS = [
+  "mode",
+  "sourceKey",
+  "articleId",
+  "operatorId",
 ] as const;
 
 export const OPERATOR_CANARY_DEFAULT_OPERATOR_ID = "cloudflare-workflow-operator" as const;
@@ -136,11 +158,26 @@ export interface OperatorCanaryBootstrapDeOneEvent {
   dispatch: boolean;
 }
 
+/**
+ * The validated `audit-us-guard-one` envelope. It is a strictly READ-ONLY
+ * operator probe: `sourceKey` is the exact literal `us-scotus`, `articleId` is a
+ * validated Core UUID, and it carries no candidate/dispatch field. It never
+ * writes, publishes, seeds or dispatches.
+ */
+export interface OperatorCanaryAuditUsGuardOneEvent {
+  payloadKind: "audit-us-guard-one";
+  mode: "audit-us-guard-one";
+  sourceKey: "us-scotus";
+  articleId: string;
+  operatorId: string;
+}
+
 export type OperatorCanaryEvent =
   | OperatorCanarySeedEvent
   | OperatorCanaryAdvanceEvent
   | OperatorCanaryDiscoverOneEvent
-  | OperatorCanaryBootstrapDeOneEvent;
+  | OperatorCanaryBootstrapDeOneEvent
+  | OperatorCanaryAuditUsGuardOneEvent;
 
 export type OperatorCanaryParseResult =
   | { ok: true; value: OperatorCanaryEvent }
@@ -190,12 +227,13 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
   // shape; an absent or unrecognised mode is handled by the seed branch (absent =>
   // default seed mode; unrecognised => rejected there).
   const modeRaw = candidate.mode;
-  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance", "discover-one", "bootstrap-de-one"].includes(modeRaw)) {
+  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance", "discover-one", "bootstrap-de-one", "audit-us-guard-one"].includes(modeRaw)) {
     return { ok: false, error: "operator_canary.mode_not_allowed" };
   }
   const isAdvance = modeRaw === "advance";
   const isDiscoverOne = modeRaw === "discover-one";
   const isBootstrapDeOne = modeRaw === "bootstrap-de-one";
+  const isAuditUsGuardOne = modeRaw === "audit-us-guard-one";
 
   const shapeError = rejectUnknownKeys(
     candidate,
@@ -205,12 +243,36 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
         ? OPERATOR_CANARY_DISCOVER_ONE_KEYS
         : isBootstrapDeOne
           ? OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS
-          : OPERATOR_CANARY_SEED_KEYS,
+          : isAuditUsGuardOne
+            ? OPERATOR_CANARY_AUDIT_US_GUARD_ONE_KEYS
+            : OPERATOR_CANARY_SEED_KEYS,
   );
   if (shapeError) return { ok: false, error: shapeError };
 
   const operator = parseOperatorId(candidate.operatorId);
   if (!operator.ok) return operator;
+
+  if (isAuditUsGuardOne) {
+    // Strictly READ-ONLY us-scotus probe. No candidate/dispatch field exists on
+    // this shape, so a caller can never inject a candidate or trigger a write.
+    if (candidate.sourceKey !== "us-scotus") {
+      return { ok: false, error: "operator_canary.audit_us_guard_source_not_allowed" };
+    }
+    const articleIdRaw = candidate.articleId;
+    if (typeof articleIdRaw !== "string" || !UUID_PATTERN.test(articleIdRaw.trim())) {
+      return { ok: false, error: "operator_canary.audit_us_guard_article_id_invalid" };
+    }
+    return {
+      ok: true,
+      value: {
+        payloadKind: "audit-us-guard-one",
+        mode: "audit-us-guard-one",
+        sourceKey: "us-scotus",
+        articleId: articleIdRaw.trim().toLowerCase(),
+        operatorId: operator.value,
+      },
+    };
+  }
 
   if (isBootstrapDeOne) {
     const sourceKeyRaw = candidate.sourceKey;

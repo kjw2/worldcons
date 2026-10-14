@@ -9,7 +9,15 @@ export class HumanApprovalBlocked extends Error {}
 function object(value:unknown):GenerationRow {if(typeof value==="string"){try{return object(JSON.parse(value));}catch{return {};}}return value&&typeof value==="object"&&!Array.isArray(value)?value as GenerationRow:{};}
 export async function protectedSourceRequired(core:D1RuntimeDatabase,articleId:string) {
   if(await hasE2ETable(core,"e2e_generation_heads_v1")&&(await e2eRows(core,"SELECT article_id FROM e2e_generation_heads_v1 WHERE article_id=?",articleId)).length)return true;
-  return await hasE2ETable(core,"e2e_source_policies_v1")&&(await e2eRows(core,"SELECT a.id FROM articles a JOIN e2e_source_policies_v1 p ON p.source_key=a.source_key WHERE a.id=? AND p.required=1",articleId)).length>0;
+  if(await hasE2ETable(core,"e2e_source_policies_v1")&&(await e2eRows(core,"SELECT a.id FROM articles a JOIN e2e_source_policies_v1 p ON p.source_key=a.source_key WHERE a.id=? AND p.required=1",articleId)).length>0)return true;
+  // US (`us-scotus`) is ALWAYS protected for publication by SOURCE, independent of
+  // the FR/ES protected ledger. US collection policy deliberately holds every
+  // freshly collected opinion at `collection.publishable=false` / `review.required=true`
+  // (private review), and publication requires an immutable, same-case,
+  // snapshot-bound human receipt (never an automatic flag, crawler, Workflow, or
+  // operatorId). Without this source-based check a US article would fall through
+  // to the legacy direct-publication branch that never records the human receipt.
+  return (await e2eRows(core,"SELECT id FROM articles WHERE id=? AND source_key=?",articleId,"us-scotus")).length>0;
 }
 export async function readHumanReviewSnapshot(core:D1RuntimeDatabase,input:{articleId?:string;slug?:string}) {
   const article=(await e2eRows(core,"SELECT * FROM articles WHERE "+(input.articleId?"id=?":"slug=?"),input.articleId??input.slug))[0];
