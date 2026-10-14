@@ -1,5 +1,65 @@
 # WorldCons P2-M4 - United States (SCOTUS) staged-cutover preflight / fail-closed readiness - 2026-10-13 (KST)
 
+## Latest Production status — 2026-10-14 16:29 KST (supersedes old preflight status)
+
+**P2-M4 country-wide operational cutover remains BLOCKED; US is M8-owned,
+not staged.** Current paired staged/M8 exclusion lists are exactly
+`fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg`.
+Protected FR/ES automatic E2E approval remains unchanged.
+
+- Code-only PDF provenance repair and genuine US `discover-one` were shipped
+  in GitHub `a64417f`, Production `worldcons-ingest`
+  `9fb622eb-178d-4445-8f95-b23c94e872e2` at 06:23Z.
+- Real SCOTUS official-listing discovery Job
+  `9d3c4b99-af30-4524-86a8-d4d63b172d4a`, Crawl Job
+  `59d0bbde-688f-409b-a90e-480b87a05c70`, and Normalize Job
+  `98a4d567-443a-456d-bef0-19f86f377aeb` all succeeded, with the
+  immutable original PDF (`26a388_q86b.pdf`, 63,361 bytes) verified and
+  `source_metadata.officialPdf` now persisted for existing Core article
+  `4b3d5644-2681-449e-8ad5-28ee2defffe8`. R2 and Core SHA-256 match
+  `73ef64de152e4dc257baa83767b75eb19fe6aea473be8688b61644c0741afd2e`.
+- IMPORTANT INCIDENT FINDING: **the same canary did automatically traverse
+  Translate, Public Judgment, Publish and Search *before* the human-approval
+  runtime guard was deployed**. The seven stage Jobs have `succeeded` status,
+  but the row was **legacy published and publishable** and had **zero**
+  same-case human-approval receipts. Public Judgment completed 06:45:22Z,
+  Publish 07:00:25Z, Search 07:15:23Z. The P3 published version remains the
+  *existing* `a561ed28-ddca-5fc7-ab5b-cece967d5ab7`, revision 2, published
+  `2026-09-27T02:44:49.651Z`; no newly authorized P3 publication is
+  evidenced. **This 7/7 must NEVER count as an eligible US cutover proof.**
+- After detecting that legacy eligibility hole, the controller committed the
+  **US-only human-approval runtime gate** (`1704e44`; merge into current
+  GitHub main `f5dc099`) and deployed Production Worker
+  `7cdc74d1-ca6f-4c28-968f-6a346ce0c2a3` at 07:26Z.
+  Before allowing US Public Judgment **or** Publish **or** Search, the handler
+  now independently requires an immutable same-article human receipt bound to
+  the *current* full Core snapshot and verified PDF. All four snapshot/source
+  hashes in the receipt document and immutable ledger must be nonempty and
+  match the independently recomputed values. Unresolved `native:` article
+  IDs fail closed; old P3 state, `publishable=true`, automatic FR/ES approval,
+  a workflow trigger, or an operator-supplied boolean are **not** sufficient.
+  D1 read failures retry; missing or stale consent blocks.
+- Verification: `test:canary` 47/47, `test:us-cutover` 15/15,
+  `test:ingest-stages` 58/58, typecheck, M8 typecheck, `pnpm check`,
+  Wrangler dry-run and changed-file lint passed. Worker `/health` is healthy
+  and confirms US still M8-owned.
+- A post-guard authenticated one-case validation trigger
+  `cf_346cc55918893515cf9b7d9573598ae816642114223325f8ca19e912f89268e2`
+  was **correctly rate-limited** (`canary.rate_limited:4/1`, `enqueued:0`).
+  Therefore **the new guard's post-deployment block has NOT been witnessed
+  as a fresh Production Public Judgment Job**; tests and code inspection
+  alone cannot be mislabeled live gate validation. Do not circumvent the
+  source-rate limit.
+
+**Remaining genuine release requirements:** observe a fresh US case with
+`collection.publishable=false` and `review.required=true` at ingest, have
+an actual human reviewer inspect and explicitly approve that **same case**
+via the existing authenticated review workflow, verify the snapshot-bound
+ledger receipt, observe post-approval P3 and Search/FTS with a new
+Production Discovery→Search lineage, then and only then switch both paired
+owner flags atomically. The current SCOTUS historical case cannot establish
+the private-hold or manual-consent gates retrospectively.
+
 ## 2026-10-14 follow-up: US official-PDF provenance repair and genuine discovery canary
 
 The older historical sections below describe their respective earlier release
