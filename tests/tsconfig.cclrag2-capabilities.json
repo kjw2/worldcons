@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": [
+    "../app/api/capabilities/route.ts",
+    "../app/api/cclrag2/[...path]/route.ts",
+    "../lib/integrations/cclrag2/capabilities.ts",
+    "../lib/integrations/cclrag2/provider-handler.ts",
+    "cclrag2-capabilities.test.ts",
+    "cclrag2-provider-route.test.ts"
+  ],
+  "exclude": ["../node_modules"]
+}
