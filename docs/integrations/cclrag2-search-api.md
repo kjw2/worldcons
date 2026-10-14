@@ -18,6 +18,7 @@ cclrag2 must call the public HTTPS base URL. No database credential or provider-
 
 | Method and path | Purpose | Maximum response |
 | --- | --- | --- |
+| `GET /capabilities` | Provider-owned contract discovery; see [capabilities contract](worldcons-provider-capabilities.md) | 32 KB |
 | `GET /search` | Bounded published-case search | 1.5 MB |
 | `GET /sources` | Active source inventory and health probe | 200 KB |
 | `GET /articles/{slug}` | Structured summary and the first preserved-text page | 1.9 MB |

@@ -16,6 +16,16 @@ import { createD1ReferenceReadRepository } from "@/lib/reference-reads/d1-reposi
 import type { SupabaseTagRow } from "@/lib/reference-reads/shared";
 import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
 import { D1ShadowTruncatedError } from "@/lib/reference-reads/d1-repository";
+import {
+  getWorldconsProviderCapabilities,
+  WORLDCONS_PROVIDER_CONTRACT_VERSION,
+  WORLDCONS_PROVIDER_LIMITS,
+  WORLDCONS_PROVIDER_SOURCES,
+  WORLDCONS_SEARCH_PARAMETERS,
+  WORLDCONS_SEARCH_MODES,
+  WORLDCONS_COUNT_MODES,
+  WORLDCONS_RANGE_VALUES,
+} from "./capabilities";
 
 export type Cclrag2ProviderEnv = {
   ENVIRONMENT: string;
@@ -36,40 +46,31 @@ export type ProviderDependencies = {
   vectorBinding?: VectorizeIndexBinding | null;
 };
 
-const SEARCH_PARAMETERS = new Set([
-  "q",
-  "mode",
-  "page",
-  "pageSize",
-  "count",
-  "jurisdiction",
-  "source",
-  "range",
-]);
+const SEARCH_PARAMETERS = new Set<string>(WORLDCONS_SEARCH_PARAMETERS);
 const DETAIL_PARAMETERS = new Set(["textLimit"]);
 const SOURCE_TEXT_PARAMETERS = new Set(["offset", "limit"]);
-const SEARCH_MODES = new Set(["fulltext", "semantic", "hybrid"]);
-const COUNT_MODES = new Set(["exact", "planned", "estimated", "none"]);
-const RANGE_VALUES = new Set(["latest", "today", "week", "month"]);
+const SEARCH_MODES = new Set<string>(WORLDCONS_SEARCH_MODES);
+const COUNT_MODES = new Set<string>(WORLDCONS_COUNT_MODES);
+const RANGE_VALUES = new Set<string>(WORLDCONS_RANGE_VALUES);
 const SOURCE_KEY_PATTERN = /^[a-z]{2}(?:-[a-z0-9]+)+$/u;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SAFE_FILTER_PATTERN = /^[\p{L}\p{M}\p{N} _./:·°§#-]+$/u;
 const SEARCH_CACHE_CONTROL = "no-store";
 const DETAIL_CACHE_CONTROL = "no-store";
-const CONTRACT_VERSION = "2.0";
+const CONTRACT_VERSION = WORLDCONS_PROVIDER_CONTRACT_VERSION;
 const EMBEDDING_TIMEOUT_MS = 5_000;
 const GEMINI_EMBEDDING_API = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
 const EXPECTED_EMBEDDING_DIMENSIONS = 1536;
 const MAX_EMBEDDING_RESPONSE_BYTES = 256_000;
-const MAX_SEARCH_RESPONSE_BYTES = 1_500_000;
-const MAX_SOURCES_RESPONSE_BYTES = 200_000;
-const MAX_DETAIL_RESPONSE_BYTES = 1_900_000;
-const MAX_SOURCE_TEXT_RESPONSE_BYTES = 1_800_000;
-const MAX_DETAIL_TEXT_CHARS = 350_000;
-const MAX_DETAIL_TEXT_BYTES = 1_200_000;
-const MAX_BODY_EXCERPT_CHARS = 4_000;
-const MAX_DETAIL_EXCERPT_CHARS = 16_000;
+const MAX_SEARCH_RESPONSE_BYTES = WORLDCONS_PROVIDER_LIMITS.searchResponseBytes;
+const MAX_SOURCES_RESPONSE_BYTES = WORLDCONS_PROVIDER_LIMITS.sourcesResponseBytes;
+const MAX_DETAIL_RESPONSE_BYTES = WORLDCONS_PROVIDER_LIMITS.detailResponseBytes;
+const MAX_SOURCE_TEXT_RESPONSE_BYTES = WORLDCONS_PROVIDER_LIMITS.sourceTextResponseBytes;
+const MAX_DETAIL_TEXT_CHARS = WORLDCONS_PROVIDER_LIMITS.textChars;
+const MAX_DETAIL_TEXT_BYTES = WORLDCONS_PROVIDER_LIMITS.textBytes;
+const MAX_BODY_EXCERPT_CHARS = WORLDCONS_PROVIDER_LIMITS.bodyExcerptChars;
+const MAX_DETAIL_EXCERPT_CHARS = WORLDCONS_PROVIDER_LIMITS.detailExcerptChars;
 const MAX_SUMMARY_JSON_CHARS = 12_000;
 const MAX_SOURCE_METADATA_CHARS = 4_000;
 const MAX_TAGS = 30;
@@ -126,32 +127,11 @@ const STRONG_SOURCE_HINTS: Array<{ sourceKey: string; patterns: RegExp[] }> = [
 ];
 const SOURCE_QUERY_NOISE = /(?:bundesverfassungsgericht|bverfg|tribunal constitucional|conseil constitutionnel|supreme court|scotus|연방헌법재판소|헌법재판소|헌법위원회|연방대법원|대법원|독일|스페인|프랑스|미국|united states|germany|deutschland|spain|espana|france|usa)/giu;
 const GENERIC_COMPARISON_NOISE = /(?:헌법재판|헌재|판례|결정|재판|비교법상|비교법|비교|설득적|권위|각각|근거|구분|제시|정리|찾아|알려|해주세요|해 주세요|해서|하여|하고)/gu;
-const SOURCE_CONTEXT: Record<string, {
-  jurisdictionCode: string;
-  jurisdictionName: string;
-  officialHostSuffixes: string[];
-}> = {
-  "de-bverfg": {
-    jurisdictionCode: "DE",
-    jurisdictionName: "독일",
-    officialHostSuffixes: ["bundesverfassungsgericht.de"],
-  },
-  "es-tribunal-constitucional": {
-    jurisdictionCode: "ES",
-    jurisdictionName: "스페인",
-    officialHostSuffixes: ["tribunalconstitucional.es"],
-  },
-  "fr-conseil-constitutionnel": {
-    jurisdictionCode: "FR",
-    jurisdictionName: "프랑스",
-    officialHostSuffixes: ["conseil-constitutionnel.fr"],
-  },
-  "us-scotus": {
-    jurisdictionCode: "US",
-    jurisdictionName: "미국",
-    officialHostSuffixes: ["supremecourt.gov"],
-  },
-};
+const SOURCE_CONTEXT: Readonly<Record<string, {
+  readonly jurisdictionCode: string;
+  readonly jurisdictionName: string;
+  readonly officialHostSuffixes: readonly string[];
+}>> = WORLDCONS_PROVIDER_SOURCES;
 
 export async function handleWorldconsSearchRequest(
   request: Request,
@@ -170,6 +150,13 @@ export async function handleWorldconsSearchRequest(
   const fetcher = dependencies.fetcher ?? fetch;
 
   try {
+    if (pathname === "/api/capabilities") {
+      assertNoParameters(url.searchParams);
+      return jsonResponse({
+        ...getWorldconsProviderCapabilities(),
+        requestId,
+      }, 200, "no-store", requestId, WORLDCONS_PROVIDER_LIMITS.capabilitiesResponseBytes);
+    }
     if (pathname === "/api/search") {
       return await searchResponse(url, env, fetcher, dependencies, requestId);
     }
@@ -381,7 +368,7 @@ async function searchResponse(
   }, 200, SEARCH_CACHE_CONTROL, requestId, MAX_SEARCH_RESPONSE_BYTES);
 }
 
-type SearchMode = "fulltext" | "semantic" | "hybrid";
+type SearchMode = (typeof WORLDCONS_SEARCH_MODES)[number];
 
 type ParsedSearchInput = ReturnType<typeof parseSearchInput>;
 
@@ -682,7 +669,7 @@ function parseSearchInput(searchParams: URLSearchParams) {
   }
 
   const query = searchParams.get("q")?.trim().normalize("NFKC") ?? "";
-  if (query.length > 200 || /[\u0000-\u001f\u007f]/u.test(query)) {
+  if (query.length > WORLDCONS_PROVIDER_LIMITS.queryChars || /[\u0000-\u001f\u007f]/u.test(query)) {
     throw new RequestValidationError("q must be at most 200 characters and contain no control characters.");
   }
   const mode = searchParams.get("mode")?.trim() || "hybrid";
@@ -693,14 +680,14 @@ function parseSearchInput(searchParams: URLSearchParams) {
   if (!COUNT_MODES.has(count)) {
     throw new RequestValidationError("count is invalid.");
   }
-  const page = boundedInteger(searchParams.get("page"), "page", 1, 1, 500);
-  const pageSize = boundedInteger(searchParams.get("pageSize"), "pageSize", 10, 1, 20);
-  if ((page - 1) * pageSize > 10_000) {
+  const page = boundedInteger(searchParams.get("page"), "page", 1, 1, WORLDCONS_PROVIDER_LIMITS.page);
+  const pageSize = boundedInteger(searchParams.get("pageSize"), "pageSize", WORLDCONS_PROVIDER_LIMITS.defaultPageSize, 1, WORLDCONS_PROVIDER_LIMITS.pageSize);
+  if ((page - 1) * pageSize > WORLDCONS_PROVIDER_LIMITS.searchOffset) {
     throw new RequestValidationError("The requested page offset is too large.");
   }
 
-  const source = optionalFilter(searchParams.get("source"), "source", 80, SOURCE_KEY_PATTERN);
-  const jurisdiction = optionalFilter(searchParams.get("jurisdiction"), "jurisdiction", 80, SAFE_FILTER_PATTERN);
+  const source = optionalFilter(searchParams.get("source"), "source", WORLDCONS_PROVIDER_LIMITS.filterChars, SOURCE_KEY_PATTERN);
+  const jurisdiction = optionalFilter(searchParams.get("jurisdiction"), "jurisdiction", WORLDCONS_PROVIDER_LIMITS.filterChars, SAFE_FILTER_PATTERN);
   const range = searchParams.get("range")?.trim() || "latest";
   if (!RANGE_VALUES.has(range)) {
     throw new RequestValidationError("range must be latest, today, week, or month.");
@@ -728,7 +715,7 @@ function parseSourceTextInput(searchParams: URLSearchParams) {
     }
   }
   return {
-    offset: boundedInteger(searchParams.get("offset"), "offset", 0, 0, 10_000_000),
+    offset: boundedInteger(searchParams.get("offset"), "offset", 0, 0, WORLDCONS_PROVIDER_LIMITS.textOffset),
     limit: boundedInteger(searchParams.get("limit"), "limit", MAX_DETAIL_TEXT_CHARS, 1, MAX_DETAIL_TEXT_CHARS),
   };
 }
