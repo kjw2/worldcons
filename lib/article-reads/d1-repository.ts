@@ -1,6 +1,7 @@
 import { overlayPublicGenerationRows } from "@/lib/cloudflare/e2e/public-freshness";
 import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
 import {
+  runD1AuthoredRead,
   runD1RuntimeRead,
   type D1RuntimeReadOrder,
   type D1RuntimeReadPredicate,
@@ -69,6 +70,15 @@ export interface D1ArticleReadDependencies {
    * to `process.env`, matching every other flag reader in the runtime.
    */
   environment?: Record<string, string | undefined>;
+  /**
+   * Enables the bounded SQL fast path for the common public list shapes
+   * (unfiltered, source/jurisdiction/type/language/range, first pages, no q/tag/
+   * ids). It is opt-in because the fast path issues authored JOIN SQL that the
+   * unit-test fake D1 cannot evaluate; the runtime and integration tests opt in.
+   * Anything unsupported, unsafe or failing falls through to the bounded legacy
+   * composition, so correctness never depends on it.
+   */
+  fastList?: boolean;
 }
 
 const LIST_COLUMNS = [
@@ -138,6 +148,15 @@ const LIST_ORDER: D1RuntimeReadOrder[] = [
 // cases may reference hundreds of distinct tags. Keep IN lists deliberately
 // below the platform ceiling; the query limit itself is also a bound parameter.
 const D1_IN_BATCH_SIZE = 80;
+
+/**
+ * Bounded public list fast path. It never reads more than `offset + pageSize +
+ * FAST_LIST_LOOKAHEAD` eligible rows and refuses (falls back) once the requested
+ * window would exceed `FAST_LIST_MAX_ROWS`, so a hot first page can never become a
+ * full-corpus read.
+ */
+const FAST_LIST_MAX_ROWS = 500;
+const FAST_LIST_LOOKAHEAD = 60;
 
 function batches<T>(values: readonly T[], size = D1_IN_BATCH_SIZE): T[][] {
   const result: T[][] = [];
@@ -582,6 +601,148 @@ export function createD1ArticleReadRepository(
     return uniqueStrings(rows.map((row) => row.article_id));
   }
 
+  /**
+   * Whether the bounded SQL fast path may serve this request. It only handles the
+   * common public shapes — unfiltered or source/jurisdiction/type/language/range
+   * — for the first (bounded) pages, and only when no tag/q/ids/includeUnpublished
+   * complexity or catalog V4 relation is involved. Anything else falls back to the
+   * full in-JS composition so semantics are never approximated.
+   */
+  function fastListEligible(filters: ArticleListFilters, countMode: string): boolean {
+    if (!dependencies.fastList) return false;
+    if (filters.includeUnpublished) return false;
+    if (filters.q || filters.tag) return false;
+    if (filters.ids) return false;
+    if (countMode !== "none") return false;
+    if (catalogSourceOnlyEnabled()) return false;
+    return true;
+  }
+
+  /**
+   * The public eligibility predicate, authored from the same P3 anchor checks as
+   * `p3PublishedArticleIds`: a published P3 row is public when no published
+   * catalog correction exists, or when its `enrichment_full` snapshot points at
+   * the current catalog anchor and matches the authoritative source hash. The
+   * article must also be summarized, not catalog-stale, and textually publishable
+   * (`json_extract(...) in (1, 'true')` mirrors `isTextuallyPublishable`).
+   */
+  const FAST_FROM = `from article_publications_p3 p
+      join article_content_versions_p3 v on v.id = p.version_id and v.article_id = p.article_id
+      join articles a on a.id = p.article_id
+      left join case_catalog_publications_v1 c on c.article_id = p.article_id and c.state = 'published'
+      left join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id`;
+  const FAST_WHERE = `p.state = 'published'
+      and a.status = 'summarized'
+      and a.catalog_ai_stale_v4 = 0
+      and (
+        json_type(a.source_metadata, '$.collection.publishable') = 'true'
+        or (
+          json_type(a.source_metadata, '$.collection.publishable') = 'text'
+          and json_extract(a.source_metadata, '$.collection.publishable') = 'true'
+        )
+      )
+      and (
+        c.article_id is null
+        or (
+          v.version_role = 'enrichment_full'
+          and v.source_anchor_version_id = c.source_anchor_version_id
+          and anchor.version_role = 'authoritative_source'
+          and anchor.source_content_hash is not null and anchor.source_content_hash != ''
+          and v.enrichment_source_content_hash = anchor.source_content_hash
+        )
+      )`;
+
+  function fastBasePredicates(filters: ArticleListFilters): { sql: string[]; params: unknown[] } {
+    const sql: string[] = [];
+    const params: unknown[] = [];
+    if (filters.source) {
+      sql.push("a.source_key = ?");
+      params.push(filters.source);
+    }
+    if (filters.jurisdiction) {
+      sql.push("a.jurisdiction = ?");
+      params.push(filters.jurisdiction);
+    }
+    if (filters.type) {
+      sql.push("a.content_type = ?");
+      params.push(filters.type);
+    }
+    if (filters.language) {
+      sql.push("a.original_language = ?");
+      params.push(filters.language);
+    }
+    const startIso = rangeStartIso(filters.range);
+    if (startIso) {
+      sql.push("a.original_published_at >= ?");
+      params.push(startIso);
+    }
+    return { sql, params };
+  }
+
+  /**
+   * Bounded, low-row public list read. It reads only `offset + pageSize + lookahead`
+   * eligible article rows (never a full-corpus read), applies the E2E/immutable
+   * generation overlay to just that window, then sorts and pages it. Rows dropped
+   * by the overlay are absorbed by a bounded lookahead; if the window is exhausted
+   * before a full page can be proven, the request falls back to the exact legacy
+   * composition. Returns null to signal a safe fallback.
+   */
+  async function tryListArticlesFast(
+    binding: D1RuntimeDatabase,
+    filters: ArticleListFilters,
+    page: number,
+    pageSize: number,
+  ): Promise<ArticleListResult | null> {
+    const from = (page - 1) * pageSize;
+    if (from + pageSize > FAST_LIST_MAX_ROWS) return null;
+
+    const needed = from + pageSize + 1;
+    const cap = Math.min(needed + FAST_LIST_LOOKAHEAD, FAST_LIST_MAX_ROWS);
+    const base = fastBasePredicates(filters);
+    const whereParts = [FAST_WHERE, ...base.sql];
+    const columns = LIST_COLUMNS.map((column) => `a.${column}`).join(", ");
+    // Candidate selection orders by the published P3 version's immutable timestamp
+    // (nulls last), which is exactly the value `overlayPublicGenerationRows`
+    // restores and `compareListRows` then sorts on. Ordering by the same key the
+    // authoritative sort uses guarantees the bounded window cannot drop a row that
+    // belongs on the requested page.
+    const order = "v.original_published_at desc nulls last, a.id asc";
+    const sql = `select ${columns} ${FAST_FROM} where ${whereParts.join(" and ")} order by ${order} limit ?`;
+
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await runD1AuthoredRead({
+        binding,
+        table: requireTable("articles"),
+        select: [...LIST_COLUMNS],
+        sql,
+        params: [...base.params, cap],
+      });
+    } catch {
+      return null;
+    }
+    if (rows.length > maxRows) return null;
+
+    const approved = await overlayPublicGenerationRows(binding, rows);
+    approved.sort(compareListRows);
+
+    if (approved.length < needed && rows.length >= cap) return null;
+
+    const hasMore = approved.length > from + pageSize;
+    const pageRows = approved.slice(from, from + pageSize);
+    const hydrated = await hydrateArticleTags(binding, pageRows);
+    let items = hydrated.map((row) =>
+      articleRowToItem(articleRowForSelect(row, "list"), { includeSummaryJson: false, includeDetailFields: false }),
+    );
+    if (filters.includeViewCounts !== false) items = await attachViewCounts(binding, items);
+
+    const minimumTotal = from + items.length + (hasMore ? 1 : 0);
+    return {
+      items,
+      pageInfo: { page, pageSize, total: minimumTotal, hasMore, totalIsExact: false },
+    };
+  }
+
   async function listArticles(filters: ArticleListFilters = {}): Promise<ArticleListResult> {
     const { page, pageSize } = normalizePagination(filters.page, filters.pageSize);
     const countMode = filters.count ?? "exact";
@@ -599,6 +760,12 @@ export function createD1ArticleReadRepository(
     }
 
     const binding = requireCore(dependencies);
+
+    if (fastListEligible(filters, countMode)) {
+      const fast = await tryListArticlesFast(binding, filters, page, pageSize);
+      if (fast) return fast;
+    }
+
     let taggedArticleIds: string[] | null = null;
     if (filters.tag) {
       const tagIds = await tagIdsForTag(binding, filters.tag);

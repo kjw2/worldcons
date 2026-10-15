@@ -209,11 +209,19 @@ export function buildD1RuntimeReadStatement(request: D1RuntimeReadRequest): { sq
   return { sql, params };
 }
 
-/** Runs one bounded, read-only D1 query and returns revived rows. */
-export async function runD1RuntimeRead(request: D1RuntimeReadRequest): Promise<Record<string, unknown>[]> {
-  const columns = resolveReadColumns(request.table, request.select);
-  const { sql, params } = buildD1RuntimeReadStatement(request);
-  const statement = request.binding.prepare(sql).bind(...params);
+/**
+ * Executes an authored, parameterized SELECT and validates the envelope. The SQL
+ * text is a module-authored constant (never caller input) whose identifiers are
+ * reviewed at the call site; every dynamic value still travels as a bound
+ * parameter. `revive` maps a raw row to the projection the caller expects.
+ */
+async function runAuthored(
+  binding: D1RuntimeDatabase,
+  sql: string,
+  params: readonly unknown[],
+  revive: (row: Record<string, unknown>) => Record<string, unknown>,
+): Promise<Record<string, unknown>[]> {
+  const statement = binding.prepare(sql).bind(...params);
   if (typeof statement?.all !== "function") {
     throw new D1RuntimeReadError("d1_runtime_read.unavailable", "D1 binding did not provide prepare().bind().all()");
   }
@@ -234,7 +242,32 @@ export async function runD1RuntimeRead(request: D1RuntimeReadRequest): Promise<R
     if (typeof row !== "object" || row === null || Array.isArray(row)) {
       throw new D1RuntimeReadError("d1_runtime_read.invalid_response", "D1 returned a non-object row");
     }
-    revived.push(reviveRow(request.table, columns, row as Record<string, unknown>));
+    revived.push(revive(row as Record<string, unknown>));
   }
   return revived;
+}
+
+/**
+ * Runs one authored, parameterized, read-only JOIN/aggregate SELECT whose result
+ * columns map to the authored `table` projection, reviving JSON/array columns so
+ * the shared row mappers see the authoritative value shape.
+ */
+export async function runD1AuthoredRead(request: {
+  readonly binding: D1RuntimeDatabase;
+  readonly table: D1TableDefinition;
+  readonly select?: readonly string[];
+  readonly sql: string;
+  readonly params?: readonly unknown[];
+}): Promise<Record<string, unknown>[]> {
+  const columns = resolveReadColumns(request.table, request.select);
+  return runAuthored(request.binding, request.sql, request.params ?? [], (row) =>
+    reviveRow(request.table, columns, row),
+  );
+}
+
+/** Runs one bounded, read-only D1 query and returns revived rows. */
+export async function runD1RuntimeRead(request: D1RuntimeReadRequest): Promise<Record<string, unknown>[]> {
+  const columns = resolveReadColumns(request.table, request.select);
+  const { sql, params } = buildD1RuntimeReadStatement(request);
+  return runAuthored(request.binding, sql, params, (row) => reviveRow(request.table, columns, row));
 }

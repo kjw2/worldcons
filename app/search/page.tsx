@@ -59,17 +59,25 @@ function hrefWithoutParam(params: URLSearchParams, key: string) {
 
 export default async function SearchPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   const paramsObject = await resolveSearchParams(searchParams);
-  const filters = { ...articleFiltersFromSearchParams(paramsObject), page: 1, pageSize: 9 };
+  const q = getSearchParam(paramsObject, "q");
   const modeParam = getSearchParam(paramsObject, "mode");
   const mode = modeParam === "fulltext" || modeParam === "semantic" || modeParam === "hybrid" ? modeParam : "hybrid";
+  // The common no-query landing page is served by the bounded public list read,
+  // whose exact count is intentionally approximate (`totalIsExact:false`) exactly
+  // like `/list`; requesting an exact count would force a full-corpus D1 scan for
+  // no user-visible benefit. A real query keeps its exact/ranked semantics.
+  const filters = {
+    ...articleFiltersFromSearchParams(paramsObject),
+    page: 1,
+    pageSize: 9,
+    count: q ? undefined : ("none" as const),
+  };
   const params = new URLSearchParams();
   Object.entries(paramsObject).forEach(([key, value]) => {
     if (typeof value === "string" && value) params.set(key, value);
   });
   params.delete("page");
   params.delete("pageSize");
-
-  const q = getSearchParam(paramsObject, "q");
   // The glossary only feeds the related-term panel, which is empty for a blank
   // query. Skip the whole-table glossary read entirely on the common no-query
   // search landing page.
