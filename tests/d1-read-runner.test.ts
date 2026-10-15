@@ -65,6 +65,30 @@ function createFakeD1(
           if (options.nonObjectRow) {
             return { success: true, results: ["not-an-object"] as unknown as T[] };
           }
+          if (normalizedQuery.includes("group by jurisdiction")) {
+            const publishable = (row: Record<string, unknown>) => {
+              let metadata = row.source_metadata;
+              if (typeof metadata === "string") {
+                try { metadata = JSON.parse(metadata); } catch { return false; }
+              }
+              const collection = metadata && typeof metadata === "object" ? (metadata as { collection?: unknown }).collection : null;
+              const value = collection && typeof collection === "object" ? (collection as { publishable?: unknown }).publishable : undefined;
+              return value === true || value === "true";
+            };
+            const eligible = rows.length;
+            const counts = new Map<string, number>();
+            for (const row of rows) {
+              if (typeof row.jurisdiction !== "string" || !row.jurisdiction.trim() || !publishable(row)) continue;
+              counts.set(row.jurisdiction, (counts.get(row.jurisdiction) ?? 0) + 1);
+            }
+            const results = [...counts]
+              .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+              .map(([jurisdiction, article_count]) => ({ jurisdiction, article_count, matched_rows: eligible }));
+            return {
+              success: true,
+              results: (results.length > 0 ? results : [{ jurisdiction: null, article_count: null, matched_rows: eligible }]) as unknown as T[],
+            };
+          }
           return { success: true, results: rows as unknown as T[] };
         },
       };
@@ -550,7 +574,7 @@ test("D1 listJurisdictionArticleCounts matches the legacy RPC grouping and zero-
   assert.deepEqual(shadow, authoritative);
   assert.deepEqual(shadow, { France: 2, Spain: 0 });
 
-  assert.match(d1.calls[0].sql.toLowerCase(), /select a\.jurisdiction,a\.source_metadata[\s\S]*join article_publications_p3[\s\S]*a\.status='summarized'/);
+  assert.match(d1.calls[0].sql.toLowerCase(), /with eligible as[\s\S]*join article_publications_p3[\s\S]*a\.status='summarized'[\s\S]*group by jurisdiction/);
   assert.deepEqual(d1.calls[0].params, [D1_REFERENCE_READ_DEFAULT_MAX_ROWS + 1]);
 });
 

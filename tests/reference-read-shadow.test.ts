@@ -67,6 +67,29 @@ function createFakeD1(rowsByTable: Record<string, Record<string, unknown>[]>, de
             const rows = publications.length === 0
               ? articles
               : articles.filter((row) => publishedIds.has(row.id));
+            if (normalized.includes("group by jurisdiction")) {
+              const isPublishable = (row: Record<string, unknown>) => {
+                let metadata = row.source_metadata;
+                if (typeof metadata === "string") {
+                  try { metadata = JSON.parse(metadata); } catch { return false; }
+                }
+                const collection = metadata && typeof metadata === "object" ? (metadata as { collection?: unknown }).collection : null;
+                const value = collection && typeof collection === "object" ? (collection as { publishable?: unknown }).publishable : undefined;
+                return value === true || value === "true";
+              };
+              const counts = new Map<string, number>();
+              for (const row of rows) {
+                if (typeof row.jurisdiction !== "string" || !row.jurisdiction.trim() || !isPublishable(row)) continue;
+                counts.set(row.jurisdiction, (counts.get(row.jurisdiction) ?? 0) + 1);
+              }
+              const results = [...counts]
+                .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+                .map(([jurisdiction, article_count]) => ({ jurisdiction, article_count, matched_rows: rows.length }));
+              return {
+                success: true,
+                results: (results.length > 0 ? results : [{ jurisdiction: null, article_count: null, matched_rows: rows.length }]) as unknown as T[],
+              };
+            }
             return { success: true, results: rows as unknown as T[] };
           }
           const name = Object.keys(rowsByTable).find((table) => normalized.includes(` from ${table}`));

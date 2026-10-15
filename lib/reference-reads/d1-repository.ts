@@ -94,25 +94,17 @@ function tagOrder(sort: NormalizedTagListOptions["sort"]): D1RuntimeReadOrder[] 
 }
 
 /**
- * Mirrors the PostgREST `source_metadata->collection->>publishable = 'true'`
- * predicate: the canonical JSON text of `publishable` is compared as text, so a
- * JSON boolean `true` and the string `"true"` both count.
+ * Authored SQL mirror of the PostgREST `source_metadata->collection->>publishable
+ * = 'true'` predicate: a JSON boolean `true` or the string `"true"` both count,
+ * and any other JSON type (including a numeric `1`) is excluded.
  */
-function isPublishableMetadata(value: unknown): boolean {
-  let parsed = value;
-  if (typeof parsed === "string") {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      return false;
-    }
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
-  const collection = (parsed as Record<string, unknown>).collection;
-  if (!collection || typeof collection !== "object" || Array.isArray(collection)) return false;
-  const publishable = (collection as Record<string, unknown>).publishable;
-  return publishable === true || publishable === "true";
-}
+const PUBLISHABLE_JSON_PREDICATE = `(
+  json_type(source_metadata, '$.collection.publishable') = 'true'
+  OR (
+    json_type(source_metadata, '$.collection.publishable') = 'text'
+    AND json_extract(source_metadata, '$.collection.publishable') = 'true'
+  )
+)`;
 
 function boundedIngestionLimit(limit: number | undefined, maxRows: number): number {
   const requested = typeof limit === "number" && Number.isFinite(limit) ? Math.floor(limit) : 20;
@@ -219,36 +211,54 @@ export function createD1ReferenceReadRepository(
     const normalizedJurisdictions = normalizeJurisdictions(jurisdictions);
     const startIso = rangeStartIso(options.range);
     const db = requireCore(dependencies);
+    // Aggregate in SQLite instead of transferring every eligible article's
+    // `source_metadata` and grouping in JS. `matched_rows` is the bounded
+    // eligible-row count (the CTE is capped at maxRows+1 exactly like the old
+    // `LIMIT ?`), so the overflow check is identical to the previous
+    // row-count behavior even when no row is publishable. The publishable
+    // predicate mirrors `isPublishableMetadata` via JSON1.
     const sql = `
-      SELECT a.jurisdiction,a.source_metadata
-      FROM articles a
-      JOIN article_publications_p3 p ON p.article_id=a.id AND p.state='published'
-      WHERE a.status='summarized'
-        AND COALESCE(a.catalog_ai_stale_v4,0)=0
-        AND NOT EXISTS (
-          SELECT 1 FROM case_catalog_publications_v1 c
-          JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id
-          LEFT JOIN article_content_versions_p3 anchor ON anchor.id=c.source_anchor_version_id
-          WHERE c.article_id=a.id AND c.state='published'
-            AND NOT (COALESCE(v.version_role,'')='enrichment_full'
-              AND COALESCE(v.source_anchor_version_id,'')=c.source_anchor_version_id
-              AND COALESCE(anchor.source_content_hash,'')<>''
-              AND anchor.source_content_hash=v.enrichment_source_content_hash)
-        )
-      ${startIso ? "AND a.original_published_at>=?" : ""}
-      LIMIT ?
+      WITH eligible AS (
+        SELECT a.jurisdiction AS jurisdiction,a.source_metadata AS source_metadata
+        FROM articles a
+        JOIN article_publications_p3 p ON p.article_id=a.id AND p.state='published'
+        WHERE a.status='summarized'
+          AND COALESCE(a.catalog_ai_stale_v4,0)=0
+          AND NOT EXISTS (
+            SELECT 1 FROM case_catalog_publications_v1 c
+            JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=a.id
+            LEFT JOIN article_content_versions_p3 anchor ON anchor.id=c.source_anchor_version_id
+            WHERE c.article_id=a.id AND c.state='published'
+              AND NOT (COALESCE(v.version_role,'')='enrichment_full'
+                AND COALESCE(v.source_anchor_version_id,'')=c.source_anchor_version_id
+                AND COALESCE(anchor.source_content_hash,'')<>''
+                AND anchor.source_content_hash=v.enrichment_source_content_hash)
+          )
+        ${startIso ? "AND a.original_published_at>=?" : ""}
+        LIMIT ?
+      )
+      SELECT grouped.jurisdiction AS jurisdiction,grouped.article_count AS article_count,totals.matched_rows AS matched_rows
+      FROM (SELECT COUNT(*) AS matched_rows FROM eligible) totals
+      LEFT JOIN (
+        SELECT jurisdiction,COUNT(*) AS article_count
+        FROM eligible
+        WHERE ${PUBLISHABLE_JSON_PREDICATE}
+          AND jurisdiction IS NOT NULL AND TRIM(jurisdiction)<>''
+        GROUP BY jurisdiction
+      ) grouped ON 1=1
+      ORDER BY grouped.jurisdiction
     `;
     const result = await db.prepare(sql).bind(...(startIso ? [startIso, maxRows + 1] : [maxRows + 1])).all<Record<string, unknown>>();
     if (result.success === false || result.error || !Array.isArray(result.results)) throw new Error(result.error || "D1 jurisdiction count failed");
     const rows = result.results;
-    if (rows.length > maxRows) throw new D1ShadowTruncatedError("listJurisdictionArticleCounts");
+    const matchedRows = rows.length > 0 ? Number(rows[0]?.matched_rows ?? 0) : 0;
+    if (matchedRows > maxRows) throw new D1ShadowTruncatedError("listJurisdictionArticleCounts");
 
     const counts: Record<string, number> = {};
     for (const row of rows) {
       const jurisdiction = typeof row.jurisdiction === "string" ? row.jurisdiction : null;
       if (!jurisdiction || !jurisdiction.trim()) continue;
-      if (!isPublishableMetadata(row.source_metadata)) continue;
-      counts[jurisdiction] = (counts[jurisdiction] ?? 0) + 1;
+      counts[jurisdiction] = Number(row.article_count ?? 0);
     }
     return normalizedJurisdictions.length
       ? Object.fromEntries(normalizedJurisdictions.map((jurisdiction) => [jurisdiction, counts[jurisdiction] ?? 0]))

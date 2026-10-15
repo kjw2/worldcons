@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import Link from "next/link";
 import { FilterBar } from "@/components/filter-bar";
 import { InfiniteArticleFeed } from "@/components/infinite-article-feed";
@@ -68,44 +69,54 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
   params.delete("page");
   params.delete("pageSize");
 
+  const q = getSearchParam(paramsObject, "q");
+  // The glossary only feeds the related-term panel, which is empty for a blank
+  // query. Skip the whole-table glossary read entirely on the common no-query
+  // search landing page.
   const [articles, sources, tags, glossaryTerms] = await Promise.all([
     mode === "semantic" ? semanticSearch(filters) : mode === "hybrid" ? hybridSearch(filters) : listArticles(filters),
     listSources(),
     listTags({ sort: "count" }),
-    listGlossaryTerms(),
+    q ? listGlossaryTerms() : Promise.resolve([]),
   ]);
-  const q = getSearchParam(paramsObject, "q");
   const relatedTerms = matchingGlossaryTerms(glossaryTerms, q);
   const headerStore = await headers();
-  await recordSiteEvent(
-    {
-      eventType: "page_view",
-      path: "/search",
+  // Analytics are non-critical D1 writes. Schedule them after the response is
+  // sent so a slow ops-database write cannot inflate SEO page TTFB. The server
+  // path still performs exactly one page_view and, only for a real query, one
+  // search event, and it keeps the existing bot/prefetch suppression in
+  // `recordSiteEvent`.
+  after(async () => {
+    await recordSiteEvent(
+      {
+        eventType: "page_view",
+        path: "/search",
+        resultCount: articles.pageInfo.total,
+        metadata: {
+          q,
+          mode,
+          source: filters.source,
+          jurisdiction: filters.jurisdiction,
+          tag: filters.tag,
+          language: filters.language,
+          type: filters.type,
+        },
+      },
+      headerStore,
+    );
+    await recordSearchEvent({
+      query: q,
+      mode,
       resultCount: articles.pageInfo.total,
+      headers: headerStore,
       metadata: {
-        q,
-        mode,
         source: filters.source,
         jurisdiction: filters.jurisdiction,
         tag: filters.tag,
         language: filters.language,
         type: filters.type,
       },
-    },
-    headerStore,
-  );
-  await recordSearchEvent({
-    query: q,
-    mode,
-    resultCount: articles.pageInfo.total,
-    headers: headerStore,
-    metadata: {
-      source: filters.source,
-      jurisdiction: filters.jurisdiction,
-      tag: filters.tag,
-      language: filters.language,
-      type: filters.type,
-    },
+    });
   });
   const sourceMap = new Map(sources.map((source) => [source.sourceKey, displaySourceLabel(source)]));
   const tagMap = new Map(tags.map((tag) => [tag.slug, tag.name]));

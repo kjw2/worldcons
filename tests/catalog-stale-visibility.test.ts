@@ -17,9 +17,17 @@ test("homepage counts exclude legacy publications superseded by a source-only Ca
       sqlite.prepare("INSERT INTO articles VALUES (?, 'Germany','summarized',0,'2021-03-24',?)").run(id,publishable);
       sqlite.prepare("INSERT INTO article_publications_p3 VALUES (?,'published',?)").run(id,`pub-${id}`);
     }
+    // Legacy textual `"true"` counts and a JSON numeric `1` does not, matching
+    // the previous JSON.parse-based in-memory predicate exactly.
+    for(const [id,metadata] of [["string-true",JSON.stringify({collection:{publishable:"true"}})],["numeric-one",JSON.stringify({collection:{publishable:1}})]] as const){
+      sqlite.prepare("INSERT INTO articles VALUES (?, 'Germany','summarized',0,'2021-03-24',?)").run(id,metadata);
+      sqlite.prepare("INSERT INTO article_publications_p3 VALUES (?,'published',?)").run(id,`pub-${id}`);
+    }
     sqlite.exec(`
       INSERT INTO article_content_versions_p3 VALUES ('pub-normal','normal',NULL,NULL,NULL,NULL);
       INSERT INTO article_content_versions_p3 VALUES ('pub-source-only','source-only',NULL,NULL,NULL,NULL);
+      INSERT INTO article_content_versions_p3 VALUES ('pub-string-true','string-true',NULL,NULL,NULL,NULL);
+      INSERT INTO article_content_versions_p3 VALUES ('pub-numeric-one','numeric-one',NULL,NULL,NULL,NULL);
       INSERT INTO article_content_versions_p3 VALUES ('anchor-source-only','source-only','authoritative_source','anchor-source-only',NULL,'new-source-hash');
       INSERT INTO article_content_versions_p3 VALUES ('pub-enriched','enriched','enrichment_full','anchor-enriched','matched-hash',NULL);
       INSERT INTO article_content_versions_p3 VALUES ('anchor-enriched','enriched','authoritative_source','anchor-enriched',NULL,'matched-hash');
@@ -31,10 +39,46 @@ test("homepage counts exclude legacy publications superseded by a source-only Ca
       return chain;
     }};
     const repo=createD1ReferenceReadRepository({binding});
-    assert.deepEqual(await repo.listJurisdictionArticleCounts(["Germany"]),{Germany:2});
+    assert.deepEqual(await repo.listJurisdictionArticleCounts(["Germany"]),{Germany:3});
     sqlite.prepare("UPDATE articles SET catalog_ai_stale_v4=1 WHERE id='source-only'").run();
-    assert.deepEqual(await repo.listJurisdictionArticleCounts(["Germany"]),{Germany:2});
+    assert.deepEqual(await repo.listJurisdictionArticleCounts(["Germany"]),{Germany:3});
     sqlite.prepare("UPDATE articles SET catalog_ai_stale_v4=1 WHERE id='normal'").run();
-    assert.deepEqual(await repo.listJurisdictionArticleCounts(["Germany"]),{Germany:1});
+    assert.deepEqual(await repo.listJurisdictionArticleCounts(["Germany"]),{Germany:2});
+  }finally{sqlite.close();}
+});
+
+test("homepage jurisdiction counts stay bounded by the eligible-row cap in real SQL",async()=>{
+  const sqlite=new DatabaseSync(":memory:");
+  try{
+    sqlite.exec(`
+      CREATE TABLE articles(id TEXT,jurisdiction TEXT,status TEXT,catalog_ai_stale_v4 INTEGER,original_published_at TEXT,source_metadata TEXT);
+      CREATE TABLE article_publications_p3(article_id TEXT,state TEXT,version_id TEXT);
+      CREATE TABLE article_content_versions_p3(id TEXT,article_id TEXT,version_role TEXT,source_anchor_version_id TEXT,enrichment_source_content_hash TEXT,source_content_hash TEXT);
+      CREATE TABLE case_catalog_publications_v1(article_id TEXT,state TEXT,source_anchor_version_id TEXT);
+    `);
+    const publishable=JSON.stringify({collection:{publishable:true}});
+    const notPublishable=JSON.stringify({collection:{publishable:false}});
+    for(const [id,jurisdiction,metadata] of [
+      ["a1","France",publishable],
+      ["a2","France",publishable],
+      ["a3","Germany",notPublishable],
+    ] as const){
+      sqlite.prepare("INSERT INTO articles VALUES (?, ?, 'summarized',0,'2021-03-24',?)").run(id,jurisdiction,metadata);
+      sqlite.prepare("INSERT INTO article_publications_p3 VALUES (?,'published',?)").run(id,`pub-${id}`);
+      sqlite.prepare("INSERT INTO article_content_versions_p3 VALUES (?,?,NULL,NULL,NULL,NULL)").run(`pub-${id}`,id);
+    }
+    const binding={prepare(sql:string){const stmt=sqlite.prepare(sql);let params:SQLInputValue[]=[];
+      const chain={bind(...v:unknown[]){params=v as SQLInputValue[];return chain;},async all<T>(){return {success:true,results:stmt.all(...params) as T[]};}};
+      return chain;
+    }};
+    // maxRows=2 rejects three eligible rows even though only one is publishable.
+    await assert.rejects(
+      ()=>createD1ReferenceReadRepository({binding,maxRows:2}).listJurisdictionArticleCounts(["France"]),
+      (error:unknown)=>error instanceof Error && error.name==="D1ShadowTruncatedError",
+    );
+    assert.deepEqual(
+      await createD1ReferenceReadRepository({binding,maxRows:3}).listJurisdictionArticleCounts(["France","Germany"]),
+      {France:2,Germany:0},
+    );
   }finally{sqlite.close();}
 });
