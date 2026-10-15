@@ -1,5 +1,67 @@
 # WorldCons P2-M4 - United States (SCOTUS) staged-cutover preflight / fail-closed readiness - 2026-10-13 (KST)
 
+## 2026-10-15 Production result — PRIVATE US summary and approval-block witness (current)
+
+**P2-M4 source-wide cutover is still BLOCKED solely until genuine case-specific
+human approval and newly verified post-approval publication/search lineage.**
+The older engineering-only notes below are historical snapshots superseded by
+this operational record.
+
+- GitHub `main` commit `5a8a8e90d0f49aebe22415c56151d6e5b588e558`
+  contains the strict private summarizer. The **app Worker** `worldcons`
+  was deployed first with `dist/server/wrangler.json`, Production version
+  `3653c5b9-3662-4837-a857-c79e4fb03999`; the **Ingest Worker**
+  `worldcons-ingest` was deployed second, version
+  `cc70ede7-8972-4f47-a477-641500ac2418`. Both deployment commands
+  succeeded and the Ingest `/health` endpoint returned a valid FR/ES/DE
+  staged allowlist with **US still M8-owned**.
+- An authenticated Wrangler attempt to start the private workflow failed with
+  OAuth error `10000` before any Workflow instance was created. Instead,
+  the official connected Cloudflare API successfully created a single
+  **operator-authenticated** workflow instance:
+  `cf_cadece22682906cf6c32b59e73add99deca65dddcc09770d1b1db4904a24a567`.
+  Its mode was `prepare-us-private-summary-one`; article UUID
+  `d8dc4ebc-7193-4a2d-8bcf-21e9cbbe4127`, the genuine newly collected
+  `FCC v. Brown` opinion. The workflow completed in one attempt with
+  `status=summarized`, real `provider=gemini`,
+  `model=gemini-3.8-flash`, `lifecycleSynced=true`,
+  `publicationUntouched=true`, `searchUntouched=true`, and
+  `reviewHoldPreserved=true`. **This is not human approval.**
+- An independent Production Core read after the Workflow found
+  `status=summarized`, `review_state=needs_review`,
+  `translation_status=translated`, a nonnull Korean title and 3,382-byte
+  `summary_json`, lifecycle
+  `source_text_ready/complete/needs_review`, and persisted official-PDF
+  SHA-256
+  `7883149526371c5543f77a310dfcfead3834a7247654b02190abd5eec6ecaa94`.
+  The private hold remained **`collection.publishable=0` and
+  `review.required=1`**. Independent Core queries found **0 P3
+  publications, 0 human-approval receipts**, and the Search DB contained
+  **0 projection rows** for this exact UUID.
+- A *separate* authenticated read-only operator guard probe after private
+  summarization, instance
+  `cf_5dbf8422bde86af294d1f1f686bb008ae89de9e4c1d30ebcdca2de52f1092459`,
+  executed the exact Production Public Judgment consent guard and returned
+  `outcome=blocked`,
+  `ingest_stage.us_manual_approval_receipt_required`,
+  `receiptPresent=false`, `receiptAuthenticated=false`,
+  `officialPdfProvenancePresent=true`. The read-only probe did not
+  dispatch, publish, write D1, or manufacture a seven-stage result.
+
+**Next authorized action:** a genuine logged-in human reviewer must inspect
+the private original and Korean summary at the existing administrator review
+page
+`https://worldcons.cclib.workers.dev/admin/articles/united-states-us-scotus-2026-10-14-fcc-v-brown-f706c5`.
+Only that authenticated reviewer's explicit **publish-reviewed** action,
+with the exact preview snapshot and any risk-note requirement satisfied,
+may release the hold and append the immutable approval receipt. Do not
+programmatically call the approval action as the assistant or interpret this
+project-management user instruction as the article-level content approval.
+After genuine approval, re-audit same-case P3 and Search/FTS with
+post-approval lineage and only then contemplate the **paired** US source
+ownership cutover. The current values remain
+`fr-conseil-constitutionnel,es-tribunal-constitucional,de-bverfg`.
+
 ## 2026-10-15 - Owner-controlled PRIVATE single-case US summarization (holds preserved)
 
 **Current judgment: P2-M4 remains BLOCKED. No Production write, deploy, commit, or ownership switch was performed.** This change closes the *private-processing* half of the exact blocker documented below: a genuinely new `us-scotus` opinion held at `collection.publishable=false` / `review.required=true` can now be turned into a real, schema-valid Korean `summary_json` + `korean_title` **without** releasing the private hold, publishing, staging Search, or recording a human receipt - so an authenticated human can afterwards review an exact snapshot and decide whether to publish. It is **private processing, NOT human approval**.
