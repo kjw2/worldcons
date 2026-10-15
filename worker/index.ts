@@ -79,6 +79,7 @@ import {
 } from "../workers/ops-write/src/index";
 import { countMissingEmbeddings, getEmbeddingReadiness, runEmbeddingBacklog } from "@/lib/ingest/embedding-backlog";
 import { runD1RefreshTagCounts, runD1SummarizeArticle, runD1SummaryDrain } from "@/lib/cloudflare/summary/d1-summary-drain";
+import { runD1PrivateUsSummary } from "@/lib/cloudflare/summary/us-private-summary";
 import { runD1PublishArticle, runD1PublicationDrain } from "@/lib/cloudflare/publication/d1-publication-drain";
 import { syncSearchProjectionForArticle } from "@/lib/cloudflare/search-projection/d1-sync";
 import { invalidatePublicContentCaches } from "@/lib/public-content-cache";
@@ -330,6 +331,32 @@ export class WorldconsOpsService extends WorkerEntrypoint<WorldconsWorkerEnv> {
       ...input,
       apiKeys,
       model: input.model?.trim() || env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+    });
+  }
+
+  /**
+   * Bounded, owner-controlled PRIVATE single-case US summarization. It uses the
+   * same real Gemini `summarizeArticle` provider path as `runSummaryArticle`, but
+   * is narrow by construction: it targets exactly ONE US `us-scotus` Core UUID,
+   * preserves the private review hold (`publishable=false` / `review.required=true`),
+   * and never publishes or stages Search. It is NOT a human approval and it never
+   * records a human receipt. See `lib/cloudflare/summary/us-private-summary.ts`.
+   */
+  async runPrivateUsSummary(input: { articleId: string }) {
+    const env = this.env;
+    setRuntimePlatform("cloudflare-worker");
+    setRuntimeJsonStateStore(createMemoryRuntimeJsonStateStore());
+    setRuntimeD1Bindings({ worldcons_core: env.WORLDCONS_CORE, worldcons_ingest: env.WORLDCONS_INGEST });
+    setRuntimeSearchVectorBinding(env.WORLDCONS_SEARCH_VECTOR);
+    const apiKeys = [env.GEMINI_API_KEY, ...(env.GEMINI_API_KEYS ?? "").split(",")]
+      .map((key) => key?.trim()).filter((key): key is string => Boolean(key));
+    // The caller cannot inject a provider model: this op uses only the operator's
+    // pinned/default Gemini selection, exactly like `runSummaryArticle`.
+    return runD1PrivateUsSummary({
+      articleId: input.articleId,
+      apiKeys,
+      model: env.GEMINI_SUMMARY_MODEL?.trim() || env.GEMINI_PINNED_MODEL?.trim() || undefined,
+      rawBucket: env.WORLDCONS_RAW,
     });
   }
 

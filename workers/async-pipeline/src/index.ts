@@ -27,6 +27,7 @@ import { consumeIngestStageBatch, type IngestStageHandlerRegistry } from "./inge
 import { createIngestStageHandlers, enqueueIngestStageDiscovery, enqueueCanaryDiscovery, auditUsManualApprovalGuardOnce } from "./ingest-stage-handlers";
 import { canarySourceGateAllows, CANARY_SOURCE_KEYS } from "../../../lib/cloudflare/ingest-stages/canary";
 import { canaryDiscoveryId } from "../../../lib/cloudflare/ingest-stages/canary-discovery";
+import type { runD1PrivateUsSummary } from "../../../lib/cloudflare/summary/us-private-summary";
 import { evaluateBootstrapDeOnePrecondition, BOOTSTRAP_DE_ONE_SOURCE_KEY } from "../../../lib/cloudflare/ingest-stages/bootstrap-de-one";
 import {
   parseOperatorCanaryEvent,
@@ -599,6 +600,48 @@ export class WorldconsOperatorCanaryWorkflow extends WorkflowEntrypoint<Env, Ope
         receiptAuthenticated: readback.receiptAuthenticated,
         officialPdfProvenancePresent: readback.officialPdfProvenancePresent,
         note: "Read-only US manual-approval guard probe. It reuses the exact staged public-judgment guard against the live Core D1 and returns only a bounded verdict. It does NOT publish, dispatch, seed, or write any D1 row, and it is NOT a seven-stage canary lineage.",
+      };
+    }
+
+    // ---- Private US single-case summary branch ---------------------------
+    // A bounded, owner-controlled PRIVATE processing op — NOT a human approval.
+    // It accepts ONLY the exact `us-scotus` source key and a validated Core UUID,
+    // and it produces a genuine Korean `summary_json`/`korean_title` for the ONE
+    // named US case via the real per-item private summarizer
+    // (`WorldconsOpsService.runPrivateUsSummary`, which itself uses the shared
+    // Gemini `summarizeArticle`). Every precondition (source, private hold,
+    // verified official-PDF provenance, cleaned text, no P3, no human receipt)
+    // is enforced inside the module and fails closed with zero writes. It NEVER
+    // releases the private hold, publishes, stages Search, records a human
+    // receipt, or changes source ownership. The `step.do` name is keyed on the
+    // exact article id and the module is idempotent, so a Workflow retry cannot
+    // double-summarize.
+    if (payload.payloadKind === "prepare-us-private-summary-one") {
+      const appService = this.env.WORLDCONS_APP_SERVICE as unknown as {
+        runPrivateUsSummary(input: { articleId: string }): Promise<Awaited<ReturnType<typeof runD1PrivateUsSummary>>>;
+      };
+      if (!appService || typeof appService.runPrivateUsSummary !== "function") {
+        throw new NonRetryableError("operator_canary.private_us_summary_service_missing");
+      }
+      const outcome = await step.do(`prepare-us-private-summary-one-${payload.articleId}`, { timeout: "10 minutes" }, () =>
+        appService.runPrivateUsSummary({ articleId: payload.articleId }),
+      );
+      return {
+        schemaVersion: 1,
+        mode: "prepare-us-private-summary-one" as const,
+        sourceKey: payload.sourceKey,
+        articleId: payload.articleId,
+        operatorId: payload.operatorId,
+        status: outcome.status,
+        reason: outcome.reason ?? null,
+        retryable: outcome.retryable ?? null,
+        provider: outcome.provider ?? null,
+        model: outcome.model ?? null,
+        lifecycleSynced: outcome.lifecycleSynced ?? false,
+        publicationUntouched: true,
+        searchUntouched: true,
+        reviewHoldPreserved: true,
+        note: "Owner-controlled PRIVATE single-case US summary. It writes only summary_json/korean_title and preserves collection.publishable=false and review.required=true. It is NOT a human approval: it never publishes, stages Search, records a human receipt, or changes source ownership. Human publication still requires the exact snapshot-bound publish-reviewed path.",
       };
     }
 

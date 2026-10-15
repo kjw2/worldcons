@@ -1,5 +1,75 @@
 # WorldCons P2-M4 - United States (SCOTUS) staged-cutover preflight / fail-closed readiness - 2026-10-13 (KST)
 
+## 2026-10-15 - Owner-controlled PRIVATE single-case US summarization (holds preserved)
+
+**Current judgment: P2-M4 remains BLOCKED. No Production write, deploy, commit, or ownership switch was performed.** This change closes the *private-processing* half of the exact blocker documented below: a genuinely new `us-scotus` opinion held at `collection.publishable=false` / `review.required=true` can now be turned into a real, schema-valid Korean `summary_json` + `korean_title` **without** releasing the private hold, publishing, staging Search, or recording a human receipt - so an authenticated human can afterwards review an exact snapshot and decide whether to publish. It is **private processing, NOT human approval**.
+
+### The narrow path (fail-closed by construction)
+
+- **Mode.** Cloudflare-account-triggered `WorldconsOperatorCanaryWorkflow` mode `prepare-us-private-summary-one`. Authorization is the operator's Cloudflare account/OAuth scope (the same trigger the canary already uses); there is **no** new unauthenticated route.
+- **Strict envelope (`lib/cloudflare/ingest-stages/canary-workflow-payload.ts`).** `OPERATOR_CANARY_PREPARE_US_PRIVATE_SUMMARY_ONE_KEYS` accepts ONLY `mode`, `sourceKey` (exact literal `us-scotus`), `articleId` (validated UUID) and optional `operatorId`. No `candidateUrl`, `docket`, `ecli`, `rangeDays`, `dispatch`, `prompt`, `approve`, or any other key - every other key is rejected as `unknown_key`. A non-`us-scotus` source is rejected (`prepare_us_private_summary_source_not_allowed`) and a malformed Core UUID is rejected (`prepare_us_private_summary_article_id_invalid`).
+- **Real provider, real private transitions (`lib/cloudflare/summary/us-private-summary.ts`).** `runD1PrivateUsSummary` resolves the live Core D1 binding, recovers a genuinely stale `summarizing` claim, then fails closed (ZERO writes, ZERO provider calls) unless ALL of: exact `us-scotus` persisted source key; `status='metadata_only'`; `collection.publishable===false`; `review.required===true`; cleaned text >=500 chars; verified official-PDF provenance (trusted `supremecourt.gov` host, `docketVerified===true`, 64-hex sha256, `artifacts/scotus_pdf/<sha>.pdf` r2Key); and no pre-existing P3 publication or human receipt. It then invokes the **real** shared Gemini `summarizeArticle` and validates the result with `SummarySchema`.
+- **STRICT R2 provenance (not optional).** The bound `WORLDCONS_RAW` bucket is **required**: an absent binding is refused (`r2_binding_missing`) and is **never** accepted as valid Production provenance. The one-object check is on the exact `artifacts/scotus_pdf/<official SHA>.pdf` key: the object must exist, be non-empty, be within the 8 MiB cap (`US_PRIVATE_SUMMARY_MAX_PDF_BYTES`, else `r2_object_too_large`), and - when bytes are readable - carry the `%PDF-` magic signature (`r2_not_pdf`) and hash to the exact stored sha256 (`r2_hash_mismatch`). The official SHA is the exact Production `7883149526371c5543f77a310dfcfead3834a7247654b02190abd5eec6ecaa94`.
+- **Hold-preserving two-phase CAS.** Phase 1 claims the row (`status='metadata_only' -> 'summarizing'`) guarding `id + source_key + status + updated_at + content_hash IS ?` AND re-asserts `publishable=0` and `review.required=1` in SQL. Phase 2 writes `status='summarized'`, `summary_json`, `korean_title`, `translation_status='translated'`, `review_state='needs_review'` under the same hold-guarded CAS. A competing/stale writer can therefore never be overwritten; a provider error rolls the claim back to the **exact** private hold (`status='metadata_only'`, `publishable=false`, `review.required=true`) and records a retryable error class.
+- **No user-configurable provider prompt, no injectable model, US-only.** The strict envelope carries no `prompt`/`model`/provider field (every extra key is `unknown_key`), and `WorldconsOpsService.runPrivateUsSummary` no longer accepts a caller `model` - it uses only the operator's pinned/default Gemini selection via `GEMINI_SUMMARY_MODEL`/`GEMINI_PINNED_MODEL`, exactly like `runSummaryArticle`. The article id is an exact v4 Core UUID and the persisted `source_key` must equal the literal `us-scotus`.
+- **Never a public artifact.** The module contains no `INSERT` into `article_publications_p3`, `article_cache_outbox_p3`, `e2e_approval_evidence_v1`, `search_documents`, or `search_fts`; a `scripts/check.ts` invariant forbids them. It searches for existing P3/receipts only to refuse. Source ownership (staged allowlist / M8 exclude) is untouched. A failure rollback restores the **exact** private hold (`publishable=false` / `review.required=true`), never widening access.
+- **Human-reviewable, still held.** On success it synchronizes the lifecycle axes to `collection=source_text_ready`, `processing=complete` while keeping `lifecycle_review_state='needs_review'`. The private hold (`publishable=false` / `review.required=true`) still gates the one path that can publish: the authenticated, snapshot-bound `publish-reviewed` flow, which is unchanged.
+- **Idempotent & repeat-safe.** A repeated call on an already privately-summarized row returns `already_summarized` with no second provider call; the Workflow `step.do` name is keyed on the exact article id.
+
+### Operator invocation
+
+```
+wrangler workflows trigger worldcons-operator-canary-v1 \
+  '{"mode":"prepare-us-private-summary-one","sourceKey":"us-scotus","articleId":"d8dc4ebc-7193-4a2d-8bcf-21e9cbbe4127"}'
+```
+
+The workflow returns only bounded, non-secret readback (`status`, `reason`, `provider`, `model`, `lifecycleSynced`) plus `publicationUntouched: true`, `searchUntouched: true`, `reviewHoldPreserved: true`.
+
+### Tests added (`tests/p2-m4-us-private-summary-guard.test.ts`)
+
+Genuine new-case private-summary success with a valid stub `SummaryJson` preserving the hold; exact human preview computable but no publication/receipt from private processing; idempotence (no second provider call); stale-CAS refusal (no provider call, no overwrite); fail-closed on bad source / released hold / missing provenance / non-official host / r2Key-sha mismatch / missing R2 object / existing P3 / existing receipt / no creds; strict R2 provenance (absent binding, missing/empty/oversized object, non-`%PDF-` body, hash mismatch all fail closed with no provider call, and a hash-matching `%PDF-` body succeeds); provider-failure rollback to the exact hold; and strict envelope rejection of every injected key. Tests inject a stubbed provider/SummaryJson; production never fakes a summary.
+
+### Deploy order & Service Binding (controller-executed; NOT run this session)
+
+1. **App Worker `worldcons` first** (it owns `WorldconsOpsService.runPrivateUsSummary`):
+   `pnpm build:vinext && pnpm exec wrangler deploy --config dist/server/wrangler.json`
+2. **Ingest Worker `worldcons-ingest` second** (it calls the binding):
+   `pnpm exec wrangler deploy --config workers/async-pipeline/wrangler.jsonc`
+3. Config binding already declared in `workers/async-pipeline/wrangler.jsonc`:
+   `{ "binding": "WORLDCONS_APP_SERVICE", "service": "worldcons", "entrypoint": "WorldconsOpsService" }`.
+   No new binding, var, route, queue, or workflow change is required.
+4. No D1 schema/migration change; no Production data mutation. The private op only runs when an operator triggers the workflow.
+
+### Changed files
+
+- `lib/cloudflare/summary/us-private-summary.ts` - NEW private single-case US summarizer (strict R2 provenance).
+- `lib/cloudflare/ingest-stages/canary-workflow-payload.ts` - NEW strict `prepare-us-private-summary-one` envelope shape.
+- `workers/async-pipeline/src/index.ts` - `WorldconsOperatorCanaryWorkflow` `prepare-us-private-summary-one` branch; concatenated import statements de-concatenated onto separate lines.
+- `worker/index.ts` - `WorldconsOpsService.runPrivateUsSummary` private-processing primitive (no injectable model).
+- `scripts/check.ts` - static invariants for the private summarizer, strict R2 contract, and no-public-write contract.
+- `tests/p2-m4-us-private-summary-guard.test.ts` - NEW private-summary tests (incl. strict R2 provenance).
+- Pre-existing uncommitted `next-env.d.ts` edit was left untouched and is NOT part of this work (`next typegen` restored it to the committed state).
+
+### Verification (this session, FINAL)
+
+| Command | Result |
+| --- | --- |
+| `pnpm exec tsx --test tests/p2-m4-us-private-summary-guard.test.ts` | **13/13 pass** |
+| `pnpm test:us-cutover` | **36/36 pass** |
+| `pnpm test:canary` | **49/49 pass** |
+| `pnpm test:ingest-stages` | **58/58 pass** |
+| `pnpm check` | **All checks passed** |
+| `pnpm typecheck` | **pass, 0 errors** |
+| `pnpm m8:typecheck` | **pass** |
+| `pnpm m8:dry-run` (Wrangler) | **pass**; source allow/exclude still FR/ES/DE, US M8-owned |
+| root app Worker: `pnpm build:vinext && wrangler deploy --dry-run --config dist/server/wrangler.json` | **build + dry-run pass** |
+| changed-source eslint | **pass (0 errors, 1 pre-existing warning in `worker/index.ts`)** |
+| `git diff --check` | **clean** |
+
+This session performed **no** Production write, deploy, commit, push, ownership switch, Search/publish/receipt action. The app-Worker dry-run validates the new `runPrivateUsSummary` code bundles; it does not deploy.
+
+**P2-M4 country-wide cutover remains BLOCKED.** The new private path produces a reviewable summary only; it never substitutes for the required authenticated human approval + post-review P3/Search evidence.
+
 ## 2026-10-14 18:15 KST — Web + Ingest Production deployment and read-only guard witness
 
 **Current judgment: P2-M4 safety engineering and both Worker deployments are complete; US country-wide staged ownership cutover remains BLOCKED pending genuine per-case human approval and fresh post-approval seven-stage proof.** US still belongs to M8; FR/ES/DE remain staged, with exact paired ownership values unchanged.

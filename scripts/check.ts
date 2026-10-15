@@ -1117,6 +1117,60 @@ assert(
     operatorCanaryDiscoverOneSource.includes("readOnly: true"),
   "the operator Workflow must expose a read-only audit-us-guard-one mode bound to the live Core D1 guard without any write/dispatch",
 );
+const usPrivateSummarySource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/summary/us-private-summary.ts"), "utf8");
+assert(
+  usPrivateSummarySource.includes("runD1PrivateUsSummary") &&
+    usPrivateSummarySource.includes("summarizeArticle") &&
+    usPrivateSummarySource.includes("SummarySchema") &&
+    usPrivateSummarySource.includes("verifyOfficialPdfProvenance") &&
+    usPrivateSummarySource.includes("isOfficialScotusPdfUrl") &&
+    usPrivateSummarySource.includes("collection.publishable") &&
+    usPrivateSummarySource.includes("review.required") &&
+    usPrivateSummarySource.includes("article_publications_p3") &&
+    usPrivateSummarySource.includes("e2e_approval_evidence_v1") &&
+    usPrivateSummarySource.includes("claim_cas_conflict") &&
+    usPrivateSummarySource.includes("success_write_cas_conflict") &&
+    usPrivateSummarySource.includes("review_state='needs_review'") &&
+    usPrivateSummarySource.includes("US_SOURCE_KEY") &&
+    usPrivateSummarySource.includes("r2Key") &&
+    usPrivateSummarySource.includes("r2_binding_missing") &&
+    usPrivateSummarySource.includes("r2_not_pdf") &&
+    usPrivateSummarySource.includes("r2_object_too_large") &&
+    usPrivateSummarySource.includes("US_PRIVATE_SUMMARY_MAX_PDF_BYTES") &&
+    usPrivateSummarySource.includes("hasPdfSignature"),
+  "the private US single-case summarizer must reuse the real summarizeArticle with SummarySchema, verify the trusted-host official-PDF/r2Key provenance (refusing an absent R2 binding, a missing/oversized object, a non-%PDF- body, or a hash mismatch), guard collection.publishable=false + review.required=true in BOTH CAS phases, refuse a pre-existing P3/receipt, keep review_state=needs_review, and never publish or stage Search",
+);
+assert(
+  !/INSERT\s+INTO\s+article_publications_p3/i.test(usPrivateSummarySource) &&
+    !/INSERT\s+INTO\s+e2e_approval_evidence_v1/i.test(usPrivateSummarySource) &&
+    !/INSERT\s+INTO\s+article_cache_outbox_p3/i.test(usPrivateSummarySource) &&
+    !/\bsearch_documents\b/i.test(usPrivateSummarySource) &&
+    !/\bsearch_fts\b/i.test(usPrivateSummarySource) &&
+    !usPrivateSummarySource.includes("recordHumanApproval"),
+  "the private US summarizer must never write a publication, cache outbox, Search projection, or human approval receipt",
+);
+assert(
+  operatorCanaryDiscoverOneSource.includes("payloadKind === \"prepare-us-private-summary-one\"") &&
+    operatorCanaryDiscoverOneSource.includes("runPrivateUsSummary") &&
+    operatorCanaryDiscoverOneSource.includes("reviewHoldPreserved: true") &&
+    operatorCanaryDiscoverOneSource.includes("publicationUntouched: true") &&
+    operatorCanaryDiscoverOneSource.includes("searchUntouched: true"),
+  "the operator Workflow must expose the owner-controlled private-us-summary mode returning hold-preserved, publication-untouched, search-untouched readback",
+);
+assert(
+  operatorCanaryBootstrapPayloadSource.includes("OPERATOR_CANARY_PREPARE_US_PRIVATE_SUMMARY_ONE_KEYS") &&
+    operatorCanaryBootstrapPayloadSource.includes("prepare-us-private-summary-one") &&
+    operatorCanaryBootstrapPayloadSource.includes("operator_canary.prepare_us_private_summary_source_not_allowed") &&
+    operatorCanaryBootstrapPayloadSource.includes("operator_canary.prepare_us_private_summary_article_id_invalid") &&
+    !operatorCanaryBootstrapPayloadSource.includes("prepare-us-private-summary-one\",\"candidateUrl"),
+  "the operator canary workflow payload must accept a strict prepare-us-private-summary-one shape (us-scotus + validated Core UUID, no candidate/prompt/dispatch/approval/range)",
+);
+const privateUsSummaryServiceSource = fs.readFileSync(path.join(process.cwd(), "worker/index.ts"), "utf8");
+assert(
+  privateUsSummaryServiceSource.includes("runPrivateUsSummary") &&
+    privateUsSummaryServiceSource.includes("runD1PrivateUsSummary"),
+  "the WorldconsOpsService must expose the authenticated runPrivateUsSummary private-processing primitive",
+);
 const publicContentCacheSource = fs.readFileSync(path.join(process.cwd(), "lib/public-content-cache.ts"), "utf8");
 for (const requiredCacheHelperText of [
   "PUBLIC_ARTICLES_CACHE_TAG",

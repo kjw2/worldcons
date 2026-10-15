@@ -16,6 +16,7 @@
  *   { mode: "discover-one", sourceKey: "de-bverfg"|"us-scotus", rangeDays?, operatorId?, dispatch? }
  *   { mode: "bootstrap-de-one", sourceKey: "de-bverfg", operatorId?, dispatch? }
  *   { mode: "audit-us-guard-one", sourceKey: "us-scotus", articleId: <uuid>, operatorId? }
+ *   { mode: "prepare-us-private-summary-one", sourceKey: "us-scotus", articleId: <uuid>, operatorId? }
  *
  * The `advance` shape carries NO `sourceKey`/`candidateUrl`/identity and never
  * changes source ownership; it can only continue an already-seeded canary.
@@ -34,6 +35,14 @@
  * US manual-approval guard the staged public-judgment gate uses against the live
  * Core D1. It never writes to any D1 database, never publishes, and never seeds
  * or dispatches a job.
+ *
+ * The `prepare-us-private-summary-one` shape is a bounded, OWNER-CONTROLLED
+ * private-processing op — NOT a human approval. It carries NO candidate URL,
+ * docket, prompt, range, dispatch flag or approval flag: only the exact
+ * `us-scotus` source key plus a validated Core UUID. It produces a genuine
+ * private `summary_json`/`korean_title` for the ONE named US case while
+ * preserving `collection.publishable=false` and `review.required=true`, and it
+ * never publishes, stages Search, or records a human receipt.
  */
 import { CANARY_SOURCE_KEYS, type CanarySourceKey } from "./canary";
 import { CANARY_DISCOVERY_MAX_RANGE_DAYS, CANARY_DISCOVERY_SOURCE_KEYS, canaryDiscoveryDefaultRangeDays, type CanaryDiscoverySourceKey } from "./canary-discovery";
@@ -43,7 +52,10 @@ export const OPERATOR_CANARY_SEED_MODES = ["seed", "seed-and-dispatch"] as const
 export type OperatorCanarySeedMode = (typeof OPERATOR_CANARY_SEED_MODES)[number];
 
 /** The four disjoint top-level payload shapes. */
-export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one" | "bootstrap-de-one" | "audit-us-guard-one";
+export type OperatorCanaryPayloadKind = "seed" | "advance" | "discover-one" | "bootstrap-de-one" | "audit-us-guard-one" | "prepare-us-private-summary-one";
+
+/** The supported operator modes, discriminated by `mode`. */
+const OPERATOR_CANARY_MODES = ["advance", "discover-one", "bootstrap-de-one", "audit-us-guard-one", "prepare-us-private-summary-one"] as const;
 
 /** Keys allowed on the seed shape only. */
 export const OPERATOR_CANARY_SEED_KEYS = [
@@ -100,6 +112,21 @@ export const OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS = [
  * and `articleId` must be a validated Core UUID.
  */
 export const OPERATOR_CANARY_AUDIT_US_GUARD_ONE_KEYS = [
+  "mode",
+  "sourceKey",
+  "articleId",
+  "operatorId",
+] as const;
+
+/**
+ * Keys allowed on the `prepare-us-private-summary-one` shape only. It is the
+ * private-processing counterpart of the read-only audit shape: it deliberately
+ * carries NO `candidateUrl`/`ecli`/`docket`/`rangeDays`/`dispatch`/`prompt`/
+ * `approve` field, so a caller can neither inject a candidate, supply an
+ * arbitrary prompt, trigger publication, nor produce a human approval. It
+ * accepts ONLY the exact `us-scotus` literal plus a validated Core UUID.
+ */
+export const OPERATOR_CANARY_PREPARE_US_PRIVATE_SUMMARY_ONE_KEYS = [
   "mode",
   "sourceKey",
   "articleId",
@@ -172,12 +199,28 @@ export interface OperatorCanaryAuditUsGuardOneEvent {
   operatorId: string;
 }
 
+/**
+ * The validated `prepare-us-private-summary-one` envelope. It is a bounded,
+ * owner-controlled PRIVATE summary op (NOT a human approval): `sourceKey` is the
+ * exact literal `us-scotus`, `articleId` is a validated Core UUID, and it carries
+ * no candidate/prompt/dispatch/approval field. It preserves the US private
+ * review hold and never publishes or stages Search.
+ */
+export interface OperatorCanaryPrepareUsPrivateSummaryOneEvent {
+  payloadKind: "prepare-us-private-summary-one";
+  mode: "prepare-us-private-summary-one";
+  sourceKey: "us-scotus";
+  articleId: string;
+  operatorId: string;
+}
+
 export type OperatorCanaryEvent =
   | OperatorCanarySeedEvent
   | OperatorCanaryAdvanceEvent
   | OperatorCanaryDiscoverOneEvent
   | OperatorCanaryBootstrapDeOneEvent
-  | OperatorCanaryAuditUsGuardOneEvent;
+  | OperatorCanaryAuditUsGuardOneEvent
+  | OperatorCanaryPrepareUsPrivateSummaryOneEvent;
 
 export type OperatorCanaryParseResult =
   | { ok: true; value: OperatorCanaryEvent }
@@ -227,13 +270,14 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
   // shape; an absent or unrecognised mode is handled by the seed branch (absent =>
   // default seed mode; unrecognised => rejected there).
   const modeRaw = candidate.mode;
-  if (typeof modeRaw === "string" && ![...OPERATOR_CANARY_SEED_MODES, "advance", "discover-one", "bootstrap-de-one", "audit-us-guard-one"].includes(modeRaw)) {
+  if (typeof modeRaw === "string" && !([...OPERATOR_CANARY_SEED_MODES, ...OPERATOR_CANARY_MODES] as readonly string[]).includes(modeRaw)) {
     return { ok: false, error: "operator_canary.mode_not_allowed" };
   }
   const isAdvance = modeRaw === "advance";
   const isDiscoverOne = modeRaw === "discover-one";
   const isBootstrapDeOne = modeRaw === "bootstrap-de-one";
   const isAuditUsGuardOne = modeRaw === "audit-us-guard-one";
+  const isPrepareUsPrivateSummaryOne = modeRaw === "prepare-us-private-summary-one";
 
   const shapeError = rejectUnknownKeys(
     candidate,
@@ -245,12 +289,37 @@ export function parseOperatorCanaryEvent(payload: unknown): OperatorCanaryParseR
           ? OPERATOR_CANARY_BOOTSTRAP_DE_ONE_KEYS
           : isAuditUsGuardOne
             ? OPERATOR_CANARY_AUDIT_US_GUARD_ONE_KEYS
-            : OPERATOR_CANARY_SEED_KEYS,
+            : isPrepareUsPrivateSummaryOne
+              ? OPERATOR_CANARY_PREPARE_US_PRIVATE_SUMMARY_ONE_KEYS
+              : OPERATOR_CANARY_SEED_KEYS,
   );
   if (shapeError) return { ok: false, error: shapeError };
 
   const operator = parseOperatorId(candidate.operatorId);
   if (!operator.ok) return operator;
+
+  if (isPrepareUsPrivateSummaryOne) {
+    // Bounded, owner-controlled PRIVATE US summary op (NOT a human approval). No
+    // candidate/prompt/dispatch/approval field exists on this shape, so a caller
+    // can neither inject a candidate/prompt nor trigger publication or a receipt.
+    if (candidate.sourceKey !== "us-scotus") {
+      return { ok: false, error: "operator_canary.prepare_us_private_summary_source_not_allowed" };
+    }
+    const articleIdRaw = candidate.articleId;
+    if (typeof articleIdRaw !== "string" || !UUID_PATTERN.test(articleIdRaw.trim())) {
+      return { ok: false, error: "operator_canary.prepare_us_private_summary_article_id_invalid" };
+    }
+    return {
+      ok: true,
+      value: {
+        payloadKind: "prepare-us-private-summary-one",
+        mode: "prepare-us-private-summary-one",
+        sourceKey: "us-scotus",
+        articleId: articleIdRaw.trim().toLowerCase(),
+        operatorId: operator.value,
+      },
+    };
+  }
 
   if (isAuditUsGuardOne) {
     // Strictly READ-ONLY us-scotus probe. No candidate/dispatch field exists on
