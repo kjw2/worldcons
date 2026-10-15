@@ -17,6 +17,7 @@ export const ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES = [
   "crawl.blocked_403",
   "crawl.timeout_response",
   "extract.empty_text",
+  "collection.pdf_text_unavailable",
 ] as const;
 export const ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES = [
   "summary.failed",

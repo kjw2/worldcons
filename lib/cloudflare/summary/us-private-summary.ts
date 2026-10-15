@@ -409,16 +409,35 @@ async function recoverStaleSummarizing(core: D1RuntimeDatabase, articleId: strin
   return changes(saved) === 1;
 }
 
+/**
+ * The exact set of collection/summary diagnostics a completed private US summary
+ * legitimately resolves. Only these codes are cleared; any other attention code is
+ * preserved untouched by the transition authority (`resolvesCodes.includes`).
+ */
+const US_PRIVATE_SUMMARY_RESOLVABLE_ATTENTION_CODES: readonly string[] = [
+  ...ARTICLE_LIFECYCLE_SUMMARY_ATTENTION_CODES,
+  ...ARTICLE_LIFECYCLE_COLLECTION_ATTENTION_CODES,
+];
+
 /** Synchronizes the lifecycle axes so the case becomes human-reviewable, keeping reviewState=needs_review. */
 async function synchronizeLifecycle(core: D1RuntimeDatabase, articleId: string): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const read = await core.prepare(
-      "SELECT lifecycle_revision,lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state FROM articles WHERE id=?",
-    ).bind(articleId).all<{ lifecycle_revision: string | number | null; lifecycle_collection_state: string | null; lifecycle_processing_state: string | null; lifecycle_review_state: string | null }>();
+      "SELECT lifecycle_revision,lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state,lifecycle_attention_code FROM articles WHERE id=?",
+    ).bind(articleId).all<{ lifecycle_revision: string | number | null; lifecycle_collection_state: string | null; lifecycle_processing_state: string | null; lifecycle_review_state: string | null; lifecycle_attention_state: string | null; lifecycle_attention_code: string | null }>();
     const row = ensureSuccess(read)[0];
     if (!row) return false;
     const revision = Number(row.lifecycle_revision ?? 0) || 0;
-    if (row.lifecycle_collection_state === "source_text_ready" && row.lifecycle_processing_state === "complete" && row.lifecycle_review_state === "needs_review") {
+    const axesMatch = row.lifecycle_collection_state === "source_text_ready"
+      && row.lifecycle_processing_state === "complete"
+      && row.lifecycle_review_state === "needs_review";
+    const hasResolvableAttention = (row.lifecycle_attention_state === "active" || row.lifecycle_attention_state === "anomaly")
+      && typeof row.lifecycle_attention_code === "string"
+      && US_PRIVATE_SUMMARY_RESOLVABLE_ATTENTION_CODES.includes(row.lifecycle_attention_code);
+    // Fast-path only when the axes already match AND there is no recognized stale
+    // diagnostic left to clear. An active recognized code MUST still go through the
+    // transition authority so the stale collection/summary attention is cleared.
+    if (axesMatch && !hasResolvableAttention) {
       return true;
     }
     const result = await transitionArticleLifecycleInD1(core, {

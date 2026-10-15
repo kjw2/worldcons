@@ -487,6 +487,113 @@ test("private US summary: a non-private (already-summarized) row with the hold i
   assert.equal(providers, 0);
 });
 
+/** Seeds an already-durably-summarized US case with the hold intact for the attention tests. */
+function seedAlreadySummarized(db: SqliteD1, overrides: { attentionState?: string; attentionCode?: string | null } = {}) {
+  db.db.prepare(
+    "UPDATE articles SET status='summarized',summarized_at=?,summary_json=?,korean_title=?,translation_status='translated',translated_at=?,review_state='needs_review'," +
+    "lifecycle_collection_state='source_text_ready',lifecycle_processing_state='complete',lifecycle_review_state='needs_review'," +
+    "lifecycle_attention_state=?,lifecycle_attention_code=?,lifecycle_revision='0' WHERE id=?",
+  ).run(
+    "2026-10-14T22:00:00Z", JSON.stringify(validSummary), validSummary.koreanTitle, "2026-10-14T22:00:00Z",
+    overrides.attentionState ?? "active", overrides.attentionCode ?? null, US_ID,
+  );
+}
+
+function lifecycleRow(db: SqliteD1) {
+  return db.db.prepare("SELECT lifecycle_revision,lifecycle_collection_state,lifecycle_processing_state,lifecycle_review_state,lifecycle_attention_state,lifecycle_attention_code FROM articles WHERE id=?").get(US_ID) as Record<string, unknown>;
+}
+
+test("private US summary clears a stale recognized collection.pdf_text_unavailable attention even when the lifecycle axes already match, without any provider call", async (t) => {
+  const db = privateSummarySetup(t);
+  seedAlreadySummarized(db, { attentionState: "active", attentionCode: "collection.pdf_text_unavailable" });
+  const before = lifecycleRow(db);
+  assert.equal(before.lifecycle_attention_state, "active");
+  assert.equal(before.lifecycle_attention_code, "collection.pdf_text_unavailable");
+
+  let providers = 0;
+  const result = await runD1PrivateUsSummary({
+    articleId: US_ID, apiKeys: ["test-key"], rawBucket: R2_BUCKET_OK,
+    summarize: async () => { providers += 1; return stubSummary() as never; },
+  });
+  assert.equal(result.status, "already_summarized");
+  assert.equal(providers, 0, "the already-summarized path performs no provider work");
+
+  const after = lifecycleRow(db);
+  assert.equal(after.lifecycle_attention_state, "clear", "the recognized stale diagnostic is cleared");
+  assert.equal(after.lifecycle_attention_code, null);
+  assert.equal(after.lifecycle_collection_state, "source_text_ready", "the collection axis is untouched");
+  assert.equal(after.lifecycle_processing_state, "complete", "the processing axis is untouched");
+  assert.equal(after.lifecycle_review_state, "needs_review", "the review axis is untouched");
+
+  // The private hold, review state, and public artifacts are all preserved.
+  const metadata = JSON.parse(String(articleRow(db).source_metadata)) as { collection: { publishable: boolean }; review: { required: boolean } };
+  assert.equal(metadata.collection.publishable, false);
+  assert.equal(metadata.review.required, true);
+  assert.equal(articleRow(db).review_state, "needs_review");
+  assert.equal(db.rows("article_publications_p3").length, 0);
+  assert.equal(db.rows("e2e_approval_evidence_v1").length, 0);
+  assert.equal(db.rows("article_cache_outbox_p3").length, 0);
+});
+
+test("private US summary preserves an UNRECOGNIZED active attention code while still reconciling the already-matching axes", async (t) => {
+  const db = privateSummarySetup(t);
+  seedAlreadySummarized(db, { attentionState: "anomaly", attentionCode: "review.some_unrelated_hold" });
+
+  let providers = 0;
+  const result = await runD1PrivateUsSummary({
+    articleId: US_ID, apiKeys: ["test-key"], rawBucket: R2_BUCKET_OK,
+    summarize: async () => { providers += 1; return stubSummary() as never; },
+  });
+  assert.equal(result.status, "already_summarized");
+  assert.equal(providers, 0);
+
+  const after = lifecycleRow(db);
+  assert.equal(after.lifecycle_attention_state, "anomaly", "an unrelated attention code is never cleared");
+  assert.equal(after.lifecycle_attention_code, "review.some_unrelated_hold", "the unrelated code is preserved verbatim");
+  assert.equal(after.lifecycle_collection_state, "source_text_ready");
+  assert.equal(after.lifecycle_processing_state, "complete");
+  assert.equal(after.lifecycle_review_state, "needs_review");
+  const metadata = JSON.parse(String(articleRow(db).source_metadata)) as { collection: { publishable: boolean }; review: { required: boolean } };
+  assert.equal(metadata.collection.publishable, false);
+  assert.equal(metadata.review.required, true);
+});
+
+test("private US summary is idempotent after clearing a stale diagnostic: no second write, no provider call, no extra lifecycle event", async (t) => {
+  const db = privateSummarySetup(t);
+  seedAlreadySummarized(db, { attentionState: "active", attentionCode: "collection.pdf_text_unavailable" });
+  let providers = 0;
+  const summarize = async () => { providers += 1; return stubSummary() as never; };
+
+  const first = await runD1PrivateUsSummary({ articleId: US_ID, apiKeys: ["test-key"], rawBucket: R2_BUCKET_OK, summarize });
+  assert.equal(first.status, "already_summarized");
+  assert.equal(lifecycleRow(db).lifecycle_attention_state, "clear");
+  const afterFirst = JSON.stringify(articleRow(db));
+  const eventsAfterFirst = db.rows("article_lifecycle_events_p2").length;
+  assert.equal(eventsAfterFirst, 1, "exactly one reconciling lifecycle event is recorded");
+
+  const second = await runD1PrivateUsSummary({ articleId: US_ID, apiKeys: ["test-key"], rawBucket: R2_BUCKET_OK, summarize });
+  assert.equal(second.status, "already_summarized");
+  assert.equal(providers, 0, "no provider call across either reconciliation");
+  assert.equal(JSON.stringify(articleRow(db)), afterFirst, "the second reconciliation writes nothing new");
+  assert.equal(db.rows("article_lifecycle_events_p2").length, eventsAfterFirst, "the second reconciliation records no extra lifecycle event");
+  assert.equal(lifecycleRow(db).lifecycle_attention_state, "clear");
+});
+
+test("private US summary with already-matching axes and a cleared attention is a pure no-op that records no lifecycle event", async (t) => {
+  const db = privateSummarySetup(t);
+  seedAlreadySummarized(db, { attentionState: "clear", attentionCode: null });
+  const before = JSON.stringify(articleRow(db));
+  let providers = 0;
+  const result = await runD1PrivateUsSummary({
+    articleId: US_ID, apiKeys: ["test-key"], rawBucket: R2_BUCKET_OK,
+    summarize: async () => { providers += 1; return stubSummary() as never; },
+  });
+  assert.equal(result.status, "already_summarized");
+  assert.equal(providers, 0);
+  assert.equal(JSON.stringify(articleRow(db)), before, "the clean already-matching case is untouched");
+  assert.equal(db.rows("article_lifecycle_events_p2").length, 0, "no lifecycle transition event is written for a clean no-op");
+});
+
 /** Restores the genuine new-case private hold for the target id. */
 function seedReset(db: SqliteD1) {
   db.db.prepare("DELETE FROM article_publications_p3").run();
