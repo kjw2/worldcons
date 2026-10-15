@@ -1,5 +1,73 @@
 # WorldCons P2-M4 - United States (SCOTUS) staged-cutover preflight / fail-closed readiness - 2026-10-13 (KST)
 
+## 2026-10-14 18:15 KST — Web + Ingest Production deployment and read-only guard witness
+
+**Current judgment: P2-M4 safety engineering and both Worker deployments are complete; US country-wide staged ownership cutover remains BLOCKED pending genuine per-case human approval and fresh post-approval seven-stage proof.** US still belongs to M8; FR/ES/DE remain staged, with exact paired ownership values unchanged.
+
+- GitHub main `07b1fc3c189b7e850bc3601a867f3108814d6e95` combines P2-M4 code commit `9a1ec2a` with unrelated authorized T3 main `ab2d6b5`. The unrelated code was preserved.
+- Cloudflare public Web Worker `worldcons` Production version `7ab5c27d-ea5a-4408-bb3b-49458aeab2d6`, deployed at 2026-10-14T09:13:09Z using the **Vinext-generated** `dist/server/wrangler.json` after a successful `pnpm build:vinext`. The ordinary root `wrangler.jsonc` raw dry-run initially failed because Vinext's virtual entry is not directly resolvable, so the actual successful generated-config dry-run and deploy were used. Public `/api/sources` returned valid FR/DE/ES/US source data.
+- Cloudflare Ingest Worker `worldcons-ingest` Production version `8bcd3e75-f1fe-44ac-92d5-17b73a856f09` at 2026-10-14T09:13:33Z. `/health` 200: M8 effective sources **US only**, excluded and staged sources **FR/ES/DE**, 7 stage names and limits unchanged.
+- Code now protects ALL US articles for human-reviewed publication even without an FR/ES E2E ledger row, uses exact CAS-protected admin preview and immutable approval receipt, explicitly clears `review.required` only in an authenticated reviewed path, excludes US from automatic P3 drain, and checks the persisted article source key matches the staged job key before evaluating US approval. Read-only `audit-us-guard-one` mode reuses the exact runtime stage guard; it cannot enqueue jobs or write D1. These changes do not approve any article.
+- Authenticated read-only live Workflow `cf_67fe0774399ec7ce5d30d3843af1daf003d149bffd5a98142c5732a3da309423` completed successfully on 2026-10-14T09:14:08Z for US Core UUID `4b3d5644-2681-449e-8ad5-28ee2defffe8`. It returned **`outcome=blocked`, `code=ingest_stage.us_manual_approval_receipt_required`, `blocked=true`, `retry=false`, `receiptPresent=false`, `receiptAuthenticated=false`, `officialPdfProvenancePresent=true`, `readOnly=true`**. This is a real Production guard evaluation, **NOT** a newly failed Public Judgment stage Job, a seven-stage approval receipt, or a synthetic manual approval.
+- Production Core SELECT-only postcheck: official SCOTUS PDF R2 provenance/SHA remains `73ef64de152e4dc257baa83767b75eb19fe6aea473be8688b61644c0741afd2e`; historical P3 `published` revision 2/version `a561ed28-ddca-5fc7-ab5b-cece967d5ab7` remains published since 2026-09-27T02:44:49.651Z, and immutable human approval ledger count is **0**. No direct D1 write, automatic US publication, new P3, source ownership switch, or canary-limit bypass was performed.
+- Verification on merged release: `pnpm typecheck`, `pnpm m8:typecheck`, `pnpm check`, `test:us-cutover` 23/23, `test:canary` 49/49, Vinext production build and generated Worker dry-run, async Worker dry-run all passed. Earlier E2E P0 M5 48/48 and ingest-stages 58/58 also passed.
+
+**Still required before P2-M4 country cutover:** a genuinely new US opinion with private review hold, explicit authenticated *human* preview/approval and same-snapshot immutable consent, post-review new P3 and Search/FTS, and an eligible Production Discovery→Search linkage after the live guard is in force. The verified prior 7/7 legacy case remains disqualified for cutover. Preserve the 24-hour bounded canary throttle and both current country ownership values until these conditions are witnessed.
+
+## 2026-10-15 — NEW US 26A476 private-summarization trace, exact blocker, and `approve-and-summarize` bypass closure
+
+**Current judgment: P2-M4 remains BLOCKED. No Production write, deploy, commit, or ownership switch was performed.** The genuinely new Production US SCOTUS 2026-Term opinion `26A476 FCC v. Brown` (Core UUID `d8dc4ebc-7193-4a2d-8bcf-21e9cbbe4127`, published 2026-10-14, `status=metadata_only`, `review_state=needs_triage`, `summary_json=NULL`, `korean_title` absent, `translation_status=not_required`, `length(cleaned_text)=7979`, `collection={publishable:false,sourceTextAvailable:true,sourceUrlVerified:true}`, `review.required=true`/`scotus_pdf_human_review_required`, `officialPdf.docketVerified=true`, `sha256=7883149526371c5543f77a310dfcfead3834a7247654b02190abd5eec6ecaa94`, R2 original `artifacts/scotus_pdf/<sha>.pdf`) **cannot currently be privately summarized to a human-reviewable SummarySchema + Korean title without changing `publishable=false`/`review.required=true`, and cannot enter public Search/FTS.** This is not a fabricated finding: it is proven by executing the real eligibility and summary code against a real `metadata_only` fixture.
+
+### Exact trace (native Hive DeepSeek 4.1 Flash; no Codex/Orca)
+
+- **Normalize → US private path (`workers/async-pipeline/src/native-crawler.ts`).** `articleStatus` returns `"needs_review"` for every `us-scotus` candidate (line 744), so the legacy status collapses to `"metadata_only"` (line 1032) and the lifecycle `reviewState` is `needs_review`. The `collection.publishable=false` / `review.required=true` hold is written by the crawl candidate and never promoted by normalize. No summary is produced.
+- **Translate adapter (`workers/async-pipeline/src/ingest-stage-handlers.ts`).** The `translate` handler calls the real per-item `WorldconsOpsService.runSummaryArticle` (`workers/async-pipeline/src/index.ts:878`). Before it calls, `verifyTranslationDurableEffect` requires `collection.publishable === true` (line 275). A US private-hold row can never satisfy that, so the durable-effect check cannot pass for US even if a summary existed. The per-article summarizer itself (`lib/cloudflare/summary/d1-summary-drain.ts` → `canSummarizeArticle`, `lib/ingest/publishability.ts:131`) also requires `collection.publishable === true`. **There is no private-summarization branch.**
+- **M8 summary candidate selection (`lib/cloudflare/summary/d1-summary-drain.ts:239`).** `selectCandidates` filters `json_extract(source_metadata,'$.collection.publishable')=1`. A US `metadata_only` row with `publishable=false` is never selected. The legacy Supabase path (`lib/ingest/summary.ts:419`) applies the identical `.contains({collection:{publishable:true}})` filter.
+- **API admin `approve-and-summarize` (`lib/admin/d1-review.ts`).** This was the **only** pre-summary branch that could flip the hold: it wrote `collection.publishable=true` and replaced `review` **before** any summary existed, with no exact preview hash and no actor binding (the old bypass described in section 5 of the 2026-10-13 audit). For a US opinion it would have silently cleared the private hold and allowed an unreviewed, unauthenticated summarization to run — potentially fabricating a "human reviewed" summary. **Closed (see below).**
+- **`publish-reviewed` / `recordHumanApproval` (`lib/admin/d1-review.ts:69`, `lib/cloudflare/e2e/manual-approval.ts`).** `publish-reviewed` correctly requires `summary_json`, an authenticated session identity and an exact `expectedApprovalSnapshotHash` for protected sources; `recordHumanApproval` requires `collection.publishable===true`, `sourceTextAvailable`, `ready`+`source_url` verification, ≥500-char text, a schema-valid summary, a Korean title and a non-private review state. A `metadata_only` US row with no summary therefore cannot be approved — the exact blocker — and no human receipt is written. This is the only path that may set `publishable=true`/`review.required=false`.
+- **`publicationEligible` (`lib/cloudflare/core-write/authority.ts`).** Even a hypothetical private summary cannot publish: it additionally requires `lifecycle_collection_state='source_text_ready'`, `lifecycle_processing_state='complete'`, `lifecycle_review_state ∈ {unreviewed,approved}`, `lifecycle_attention_state='clear'` and `collection.publishable===true`. The `metadata_only` US hold fails all of these.
+- **Search/FTS (`lib/cloudflare/search-projection/d1-sync.ts`, `ELIGIBLE_PUBLISHED_PREDICATE`).** Projection is driven off a `published` P3 row; with no publication, a private US case produces zero `search_documents`/`search_fts` rows.
+- **D1 lifecycle (`native-crawler.ts`).** A US insert commits `collectionState='metadata_only'`, `processingState='not_ready'`, `reviewState='needs_review'` and a raised `collection.pdf_text_unavailable` attention — never `complete`/`clear`.
+
+### Conclusion: currently impossible → MINIMAL fail-closed closure implemented
+
+The task permitted: (a) minimal fail-closed US-only private summarization support with explicit guards, or (b) tests + documentation of the blocker with no weakening. Because **US is M8-owned (not staged)**, the translate/public-judgment/publish/search adapters are only wired for staged canary sources, and any private-summarization entrypoint would itself require a new authenticated, protected-source-guarded route plus a novelty/rate-limit story — a new unauthenticated surface is explicitly forbidden and a broad change would be unsafe. The **genuine current blocker is that there is no authenticated, non-destructive private-summarization entrypoint that preserves the hold**, so option (b) was implemented together with the mandatory **bypass closure** (which is a strict safety improvement, not a weakening):
+
+1. **Closed the `approve-and-summarize` US/protected-source bypass (`lib/admin/d1-review.ts`).** The branch now calls `protectedSourceRequired(core,id)` before doing anything and returns `skipped` (writing nothing) for any protected source — which always includes `us-scotus`. It can no longer flip `collection.publishable` to `true`, clear/replace `review.required`, change `status`, queue a pre-summary job, or create a "human reviewed" summary for an unreviewed hold. Only `publish-reviewed` may clear the hold, and only with an exact snapshot-bound human preview + valid summary + immutable receipt.
+2. **Added `tests/p2-m4-us-private-summary-guard.test.ts` (4/4)** using a **real** `metadata_only` + `summary_json NULL` + `review_state=needs_triage` + `publishable=false` + `review.required=true` + no-ledger fixture:
+   - `publish-reviewed` is honestly `skipped` with no summary; no P3, no receipt.
+   - The real `canSummarizeArticle` returns `false`, the real `runD1SummarizeArticle` returns `skipped` and writes no summary — the exact blocker, machine-proven.
+   - `approve-and-summarize` is refused and leaves `status='metadata_only'`, `summary_json=NULL`, `review_state='needs_triage'`, `publishable=false`, `review.required=true`, `article_publications_p3=0`, `e2e_approval_evidence_v1=0`.
+   - A static guard asserts the protected-source check precedes any `publishable` write in that branch.
+   - A separate test proves the hold (not the summary) gates publication: a hypothetical private summary with `publishable=false` retained still requires the exact human preview, and only a real human preview then publishes + clears the hold + records exactly one receipt.
+
+**No `publishable=false` / `review.required=true` was changed for 26A476. No human was impersonated. No public Search/FTS entry was created. No unauthenticated endpoint, queue entrypoint, or direct D1 write was added.** No SCOTUS official PDF was staged-owned, no US pair source switch occurred, and the FR/ES guarded sources were not moved.
+
+### Verification (this session)
+
+| Command | Result |
+| --- | --- |
+| `pnpm test:us-cutover` (now includes the new guard file) | **27/27 pass** |
+| `pnpm test:canary` | **49/49 pass** |
+| `pnpm test:native-crawler` | **37/37 pass** |
+| `pnpm test:ingest-stages` | **58/58 pass** |
+| `pnpm test:e2e-p0-m5` | **48/48 pass** |
+| `pnpm test:p2-m4-us` | **5/5 pass** |
+| `pnpm check` | **All checks passed** |
+| `pnpm typecheck` | **pass, 0 errors** |
+| `pnpm m8:typecheck` | **pass** |
+| `pnpm m8:dry-run` (Wrangler) | **pass**; source allow/exclude still FR/ES only |
+| `git diff --check` | **clean** |
+
+### Changed files
+
+- `lib/admin/d1-review.ts` — fail-closed protected-source guard in the `approve-and-summarize` branch.
+- `tests/p2-m4-us-private-summary-guard.test.ts` — NEW focused blocker + bypass-closure tests.
+- `package.json` — `test:us-cutover` includes the new test file.
+- `scripts/check.ts` — invariant asserting the pre-summary `approve-and-summarize` branch consults `protectedSourceRequired` before any `publishable` write.
+- `docs/worldcons-p2-m4-us-cutover-20261013.md` — this section (existing 2026-10-14 audit preserved).
+- Pre-existing uncommitted `next-env.d.ts` edit from the prior agent was left untouched and is NOT part of this work.
+
 ## Latest Production status — 2026-10-14 16:29 KST (supersedes old preflight status)
 
 **P2-M4 country-wide operational cutover remains BLOCKED; US is M8-owned,

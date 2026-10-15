@@ -59,6 +59,20 @@ export async function runD1AdminReviewAction(input:AdminReviewBody,operatorIdent
     return {mode:"database" as const,action:input.action,status:"queued" as const,job};
   }
   if(input.action==="approve-and-summarize") {
+    // FAIL-CLOSED: the US (and every protected source) private review hold
+    // (`collection.publishable=false` / `review.required=true`) must NEVER be
+    // released by a pre-summary approval. This branch previously wrote
+    // `collection.publishable=true` and replaced the `review` object BEFORE any
+    // summary existed, with no exact preview hash and no actor binding. For a US
+    // opinion that silently cleared the documented private hold and let an
+    // unreviewed summarization run, so it could fabricate a "human reviewed"
+    // summary and make the row public-eligible. For any protected source it now
+    // refuses and writes NOTHING; the only path that may set `publishable` and
+    // clear `review.required` is `publish-reviewed`, which requires an exact
+    // snapshot-bound human preview, a valid summary and an immutable receipt.
+    // US is ALWAYS protected by source, so an unreviewed pre-summary approval can
+    // never flip a US opinion to `publishable=true`.
+    if(await protectedSourceRequired(core,id)) return {mode:"database" as const,action:input.action,status:"skipped" as const,reason:"이 자료는 비공개 검토 보류(보호 출처) 상태입니다. 요약 전 승인으로 공개 가능(publishable) 상태를 만들 수 없습니다. 원문과 요약을 검토한 뒤 공개 검토(publish-reviewed) 경로로 진행하세요."};
     const cleaned=text(row,"cleaned_text")??""; if(cleaned.trim().length<MIN_PUBLISHABLE_TEXT_LENGTH) return {mode:"database" as const,action:input.action,status:"skipped" as const,reason:`추출 본문이 ${MIN_PUBLISHABLE_TEXT_LENGTH}자 미만이라 요약 승인 전에 원문 수집을 다시 해야 합니다.`};
     const now=new Date().toISOString(), metadata=reviewMetadata(row,"approved_for_summary",note,{publishable:true,sourceTextAvailable:true,sourceUrlVerified:true,robotsDisallowed:false,confidence:"human_reviewed",reason:`Human review approved summarization and publication eligibility (${cleaned.trim().length} chars).`});
     const write=await core.prepare("UPDATE articles SET status='cleaned',source_metadata=?,error_metadata=NULL,error_class=NULL,error_context=NULL,review_state='approved_for_summary',updated_at=? WHERE id=?").bind(JSON.stringify(metadata),now,id).run?.(); if(!write||write.success===false||write.error) throw new Error(write?.error||"admin_review.d1_write_failed");

@@ -922,6 +922,15 @@ assert(
     d1ReviewSource.includes("recordHumanApproval"),
   "the authenticated US publish-reviewed flow must record the snapshot-bound human receipt and explicitly clear review.required only inside the CAS-guarded reviewed metadata",
 );
+{
+  const branchStart = d1ReviewSource.indexOf('if(input.action==="approve-and-summarize")');
+  const branchEnd = d1ReviewSource.indexOf('if(input.action==="publish-reviewed")');
+  const branch = branchStart >= 0 && branchEnd > branchStart ? d1ReviewSource.slice(branchStart, branchEnd) : "";
+  assert(
+    branch.includes("protectedSourceRequired"),
+    "the pre-summary approve-and-summarize branch must fail closed for protected sources (US is ALWAYS protected) before it can set collection.publishable, so an unreviewed hold can never be released without a snapshot-bound human preview",
+  );
+}
 const publicationDrainSource = fs.readFileSync(path.join(process.cwd(), "lib/cloudflare/publication/d1-publication-drain.ts"), "utf8");
 assert(
   publicationDrainSource.includes("a.source_key <> 'us-scotus'"),
