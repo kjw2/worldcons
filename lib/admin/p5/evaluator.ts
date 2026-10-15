@@ -162,6 +162,7 @@ export function evaluateP5RetirementReadiness(input: P5RetirementEvaluationInput
     && P5_OWNER_ROLES.every((role) => approvalRoles.has(role));
   const gates: P5RetirementGate[] = [
     { key: "health.available", label: "P5 통합 상태 근거 사용 가능", passed: input.evidence.available, detail: input.evidence.available ? "통합 RPC에서 운영 근거를 반환했습니다." : "마이그레이션, 인증 정보 또는 상태 RPC를 사용할 수 없습니다." },
+    { key: "evidence.full_scope", label: "전체 권위 근거 범위", passed: input.evidence.scope === "full", detail: input.evidence.scope === "full" ? "전체 권위 근거 스냅샷을 사용했습니다." : "운영 전용(operational) 근거 스냅샷은 폐기 평가·승인에 사용할 수 없습니다." },
     { key: "observation.window", label: "명시적 관찰 기간 완료", passed: validWindow, detail: validWindow ? `${hours}시간의 관찰이 최소 기준 ${input.policy.minimumObservationHours}시간을 충족합니다.` : `종료된 관찰 기간이 최소 ${input.policy.minimumObservationHours}시간 이상이어야 합니다.` },
     { key: "observation.coverage", label: "요청한 전체 기간의 관찰 근거 확보", passed: Boolean(validWindow && input.evidence.compatibility.firstObservedAt && input.evidence.compatibility.lastObservedAt && new Date(input.evidence.compatibility.firstObservedAt) <= start && new Date(input.evidence.compatibility.lastObservedAt) >= end), detail: "최초 및 최종 통합 관찰 시각이 요청한 전체 기간을 포함해야 합니다." },
     { key: "observation.full_capture", label: "관찰 표본 비율 100%", passed: input.observationSampleRate === 1, detail: input.observationSampleRate === 1 ? "전체 기간에 표본 추출 없는 호환 관찰을 사용했습니다." : "표본 관찰만으로는 이전 체계 활동이 없음을 입증할 수 없습니다. 폐기 관찰 기간의 표본 비율을 1로 설정해야 합니다." },

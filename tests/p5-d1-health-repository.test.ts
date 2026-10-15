@@ -14,6 +14,7 @@ function responseFor(sql: string) {
   if (sql.includes("command_attempts_due")) return [{ command_attempts_due: 0, command_events_due: 0, compatibility_due: 0, legal_hold_active: 0 }];
   if (sql.includes("publication_history_due")) return [{ publication_history_due: 0, content_versions_due: 0, delivered_outbox_due: 0, dead_letter_outbox_due: 0 }];
   if (sql.includes("lifecycle_events_due")) return [{ lifecycle_events_due: 0 }];
+  if (sql.includes("admin_governance_evidence_p5")) return [];
   return [];
 }
 
@@ -46,6 +47,7 @@ test("P5 D1 adapter reads each owning database and returns the P5 evidence contr
       now,
     });
     assert.equal(evidence.available, true);
+    assert.equal(evidence.scope, "full");
     assert.equal(evidence.sources[0]?.sourceKey, "de-bverfg");
     assert.equal(evidence.sources[0]?.freshnessAgeSeconds, 3600);
     assert.equal(evidence.queue.staleLeaseCount, 0);
@@ -70,6 +72,57 @@ test("P5 D1 adapter fails closed when an owning D1 read fails", async () => {
   try {
     const evidence = await getP5HealthEvidenceFromD1({ observationStart: "2026-09-28T12:00:00.000Z", observationEnd: "2026-09-29T12:00:00.000Z", now: new Date("2026-09-29T12:00:00.000Z") });
     assert.equal(evidence.available, false);
+  } finally {
+    clearRuntimeD1Bindings();
+  }
+});
+
+test("operational P5 profile skips retention counts and digest/group_concat while keeping fail-closed SLA reads", async () => {
+  const calls = { ops: [] as string[], core: [] as string[], ingest: [] as string[] };
+  setRuntimeD1Binding("worldcons_ops", binding(calls.ops));
+  setRuntimeD1Binding("worldcons_core", binding(calls.core));
+  setRuntimeD1Binding("worldcons_ingest", binding(calls.ingest));
+  try {
+    const now = new Date("2026-09-29T12:00:00.000Z");
+    const evidence = await getP5HealthEvidenceFromD1({
+      observationStart: "2026-09-28T12:00:00.000Z",
+      observationEnd: now.toISOString(),
+      now,
+      scope: "operational",
+    });
+    assert.equal(evidence.available, true);
+    assert.equal(evidence.scope, "operational");
+    const all = [...calls.ops, ...calls.core, ...calls.ingest];
+    assert.ok(!calls.core.some((sql) => sql.includes("group_concat")), "operational profile must not run identity digest group_concat");
+    assert.ok(!calls.core.some((sql) => sql.includes("publication_history_due")), "operational profile must not run retention due counts");
+    assert.ok(!calls.ops.some((sql) => sql.includes("command_attempts_due")), "operational profile must not run ops retention counts");
+    assert.ok(!calls.ops.some((sql) => sql.includes("compatibility_due")), "operational profile must not run compatibility retention counts");
+    assert.ok(!calls.ops.some((sql) => sql.includes("admin_compatibility_observations_p5")), "operational profile must not run compatibility observation scans");
+    assert.ok(!calls.ops.some((sql) => sql.includes("admin_governance_evidence_p5")), "operational profile must not run retirement governance scans");
+    assert.ok(!all.some((sql) => sql.includes("lifecycle_events_due")), "operational profile must not run lifecycle retention counts");
+    assert.ok(calls.core.some((sql) => sql.includes("parity_mismatch_count")), "operational profile must keep publication parity check");
+    assert.ok(calls.core.some((sql) => sql.includes("quarantine_count")), "operational profile must keep quarantine check");
+    assert.ok(calls.core.some((sql) => sql.includes("oldest_undelivered_age")), "operational profile must keep outbox age check");
+    assert.ok(calls.core.some((sql) => sql.includes("oldest_review_age")), "operational profile must keep review age check");
+  } finally {
+    clearRuntimeD1Bindings();
+  }
+});
+
+test("full P5 profile keeps retention counts and identity digests", async () => {
+  const calls = { ops: [] as string[], core: [] as string[], ingest: [] as string[] };
+  setRuntimeD1Binding("worldcons_ops", binding(calls.ops));
+  setRuntimeD1Binding("worldcons_core", binding(calls.core));
+  setRuntimeD1Binding("worldcons_ingest", binding(calls.ingest));
+  try {
+    const now = new Date("2026-09-29T12:00:00.000Z");
+    const evidence = await getP5HealthEvidenceFromD1({ observationStart: "2026-09-28T12:00:00.000Z", observationEnd: now.toISOString(), now, scope: "full" });
+    assert.equal(evidence.scope, "full");
+    assert.ok(calls.core.some((sql) => sql.includes("group_concat")), "full profile must compute identity digests");
+    assert.ok(calls.core.some((sql) => sql.includes("publication_history_due")), "full profile must compute retention due counts");
+    assert.ok(calls.ops.some((sql) => sql.includes("command_attempts_due")), "full profile must compute ops retention counts");
+    assert.ok(calls.ops.some((sql) => sql.includes("admin_compatibility_observations_p5")), "full profile must read compatibility observations");
+    assert.ok(calls.ops.some((sql) => sql.includes("admin_governance_evidence_p5")), "full profile must read retirement governance evidence");
   } finally {
     clearRuntimeD1Bindings();
   }

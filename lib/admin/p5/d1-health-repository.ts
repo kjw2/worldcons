@@ -1,12 +1,13 @@
 import { getRuntimeD1Binding, type D1RuntimeDatabase } from "@/lib/cloudflare/d1/runtime-binding";
 import { resolveP5OperationalPolicy, type P5OperationalPolicy } from "@/lib/admin/p5/policy";
-import type { P5HealthEvidence } from "@/lib/admin/p5/types";
+import type { P5HealthEvidence, P5HealthEvidenceScope } from "@/lib/admin/p5/types";
 
-export function unavailableP5HealthEvidenceFromD1(start: string, end: string): P5HealthEvidence {
+export function unavailableP5HealthEvidenceFromD1(start: string, end: string, scope: P5HealthEvidenceScope = "full"): P5HealthEvidence {
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     available: false,
+    scope,
     observationWindow: { start, end },
     queue: { states: {}, oldestQueuedAgeSeconds: null, staleLeaseCount: 0, oldestHeartbeatAgeSeconds: null, abortPendingCount: 0, oldestAbortAgeSeconds: null, retryWaitingCount: 0, oldestRetryAgeSeconds: null },
     lifecycle: { backlogCount: 0, oldestReviewAgeSeconds: null, unresolvedAnomalyCount: 0 },
@@ -50,8 +51,10 @@ export async function getP5HealthEvidenceFromD1(input: {
   observationEnd: string;
   now?: Date;
   policy?: P5OperationalPolicy;
+  scope?: P5HealthEvidenceScope;
 }): Promise<P5HealthEvidence> {
-  const fallback = unavailableP5HealthEvidenceFromD1(input.observationStart, input.observationEnd);
+  const scope: P5HealthEvidenceScope = input.scope === "operational" ? "operational" : "full";
+  const fallback = unavailableP5HealthEvidenceFromD1(input.observationStart, input.observationEnd, scope);
   const ops = getRuntimeD1Binding("worldcons_ops");
   const core = getRuntimeD1Binding("worldcons_core");
   const ingest = getRuntimeD1Binding("worldcons_ingest");
@@ -65,6 +68,7 @@ export async function getP5HealthEvidenceFromD1(input: {
   if (!Number.isFinite(observationStart.getTime()) || !Number.isFinite(observationEnd.getTime()) || observationStart >= observationEnd || observationEnd.getTime() > now.getTime() + 300_000 || observationEnd.getTime() - observationStart.getTime() > 90 * 86_400_000) return fallback;
 
   try {
+    const full = scope === "full";
     const commandBefore = new Date(now.getTime() - policy.retention.commandTerminalDays * 86_400_000).toISOString();
     const lifecycleBefore = new Date(now.getTime() - policy.retention.lifecycleAuditDays * 86_400_000).toISOString();
     const publicationBefore = new Date(now.getTime() - policy.retention.publicationAuditDays * 86_400_000).toISOString();
@@ -132,9 +136,9 @@ export async function getP5HealthEvidenceFromD1(input: {
           WHERE NOT EXISTS (
             SELECT 1 FROM article_publication_quarantine_resolutions_p3 r
             WHERE r.article_id = q.article_id AND r.anomaly_code = q.anomaly_code
-          )) AS quarantine_count,
+          )) AS quarantine_count${full ? `,
         (SELECT COUNT(*) || ':' || COALESCE((SELECT group_concat(article_id, ',') FROM (SELECT article_id FROM legacy_public ORDER BY article_id)), '') FROM legacy_public) AS legacy_digest,
-        (SELECT COUNT(*) || ':' || COALESCE((SELECT group_concat(article_id, ',') FROM (SELECT article_id FROM explicit_public ORDER BY article_id)), '') FROM explicit_public) AS explicit_digest`),
+        (SELECT COUNT(*) || ':' || COALESCE((SELECT group_concat(article_id, ',') FROM (SELECT article_id FROM explicit_public ORDER BY article_id)), '') FROM explicit_public) AS explicit_digest` : ""}`),
       query(core, `SELECT
         (SELECT COUNT(*) FROM article_cache_outbox_p3 WHERE status = 'pending') AS pending_count,
         (SELECT COUNT(*) FROM article_cache_outbox_p3 WHERE status = 'processing') AS processing_count,
@@ -150,49 +154,58 @@ export async function getP5HealthEvidenceFromD1(input: {
     const [outboxRow] = outboxRows;
     if (!opsRow || !lifecycleRow || !publicationRow || !outboxRow) return fallback;
 
-    const compatibilityRows = await query(ops, `SELECT
-      COALESCE(SUM(observation_count), 0) AS total_count,
-      COALESCE(SUM(CASE WHEN authority = 'legacy' AND direction = 'read' THEN observation_count ELSE 0 END), 0) AS legacy_read_count,
-      COALESCE(SUM(CASE WHEN authority = 'legacy' AND direction = 'write' THEN observation_count ELSE 0 END), 0) AS legacy_write_count,
-      COALESCE(SUM(CASE WHEN authority = 'new' AND direction = 'read' THEN observation_count ELSE 0 END), 0) AS new_read_count,
-      COALESCE(SUM(CASE WHEN authority = 'new' AND direction = 'write' THEN observation_count ELSE 0 END), 0) AS new_write_count,
-      COALESCE(SUM(CASE WHEN authority = 'fallback' THEN observation_count ELSE 0 END), 0) AS fallback_count,
-      COALESCE(SUM(unexplained_count), 0) AS unexplained_count,
-      MAX(CASE WHEN authority = 'legacy' AND direction = 'read' THEN 1 ELSE 0 END) AS legacy_read_observed,
-      MAX(CASE WHEN authority = 'legacy' AND direction = 'write' THEN 1 ELSE 0 END) AS legacy_write_observed,
-      MAX(CASE WHEN authority = 'new' AND direction = 'read' THEN 1 ELSE 0 END) AS new_read_observed,
-      MAX(CASE WHEN authority = 'new' AND direction = 'write' THEN 1 ELSE 0 END) AS new_write_observed,
-      MAX(CASE WHEN authority = 'fallback' THEN 1 ELSE 0 END) AS fallback_observed,
-      MAX(CASE WHEN unexplained_count > 0 THEN 1 ELSE 0 END) AS unexplained_observed,
-      MAX(CASE WHEN authority IN ('legacy', 'fallback') THEN last_observed_at END) AS legacy_last_seen_at,
-      MAX(CASE WHEN authority = 'new' THEN last_observed_at END) AS new_last_seen_at,
-      MIN(first_observed_at) AS first_observed_at, MAX(last_observed_at) AS last_observed_at,
-      COUNT(*) AS bucket_count
-      FROM admin_compatibility_observations_p5 WHERE bucket_started_at >= ? AND bucket_started_at <= ?`, [observationBucketStart, observationBucketEnd]);
-    const [compatibilityRow] = compatibilityRows;
-    if (!compatibilityRow) return fallback;
+    let compatibilityRow: Record<string, unknown> | null = null;
+    let retentionOpsRow: Record<string, unknown> | null = null;
+    let retentionCoreRow: Record<string, unknown> | null = null;
+    let retentionLifecycleRow: Record<string, unknown> | null = null;
+    let backup: Record<string, unknown> | undefined;
+    let approvalRows: Record<string, unknown>[] = [];
+    if (full) {
+      const compatibilityRows = await query(ops, `SELECT
+        COALESCE(SUM(observation_count), 0) AS total_count,
+        COALESCE(SUM(CASE WHEN authority = 'legacy' AND direction = 'read' THEN observation_count ELSE 0 END), 0) AS legacy_read_count,
+        COALESCE(SUM(CASE WHEN authority = 'legacy' AND direction = 'write' THEN observation_count ELSE 0 END), 0) AS legacy_write_count,
+        COALESCE(SUM(CASE WHEN authority = 'new' AND direction = 'read' THEN observation_count ELSE 0 END), 0) AS new_read_count,
+        COALESCE(SUM(CASE WHEN authority = 'new' AND direction = 'write' THEN observation_count ELSE 0 END), 0) AS new_write_count,
+        COALESCE(SUM(CASE WHEN authority = 'fallback' THEN observation_count ELSE 0 END), 0) AS fallback_count,
+        COALESCE(SUM(unexplained_count), 0) AS unexplained_count,
+        MAX(CASE WHEN authority = 'legacy' AND direction = 'read' THEN 1 ELSE 0 END) AS legacy_read_observed,
+        MAX(CASE WHEN authority = 'legacy' AND direction = 'write' THEN 1 ELSE 0 END) AS legacy_write_observed,
+        MAX(CASE WHEN authority = 'new' AND direction = 'read' THEN 1 ELSE 0 END) AS new_read_observed,
+        MAX(CASE WHEN authority = 'new' AND direction = 'write' THEN 1 ELSE 0 END) AS new_write_observed,
+        MAX(CASE WHEN authority = 'fallback' THEN 1 ELSE 0 END) AS fallback_observed,
+        MAX(CASE WHEN unexplained_count > 0 THEN 1 ELSE 0 END) AS unexplained_observed,
+        MAX(CASE WHEN authority IN ('legacy', 'fallback') THEN last_observed_at END) AS legacy_last_seen_at,
+        MAX(CASE WHEN authority = 'new' THEN last_observed_at END) AS new_last_seen_at,
+        MIN(first_observed_at) AS first_observed_at, MAX(last_observed_at) AS last_observed_at,
+        COUNT(*) AS bucket_count
+        FROM admin_compatibility_observations_p5 WHERE bucket_started_at >= ? AND bucket_started_at <= ?`, [observationBucketStart, observationBucketEnd]);
+      compatibilityRow = compatibilityRows[0] ?? null;
+      if (!compatibilityRow) return fallback;
 
-    const [retentionOps, retentionCore, retentionLifecycle, backupRows] = await Promise.all([
-      query(ops, `SELECT
-        (SELECT COUNT(*) FROM admin_command_attempts WHERE status <> 'running' AND finished_at < ?) AS command_attempts_due,
-        (SELECT COUNT(*) FROM admin_command_events e JOIN admin_command_runs r ON r.id = e.run_id WHERE r.finished_at < ?) AS command_events_due,
-        (SELECT COUNT(*) FROM admin_compatibility_observations_p5 WHERE bucket_started_at < ?) AS compatibility_due,
-        EXISTS(SELECT 1 FROM admin_retention_holds_p5 WHERE released_at IS NULL AND starts_at <= ? AND (expires_at IS NULL OR expires_at > ?)) AS legal_hold_active`, [commandBefore, commandBefore, observationBefore, nowIso, nowIso]),
-      query(core, `SELECT
-        (SELECT COUNT(*) FROM article_publication_history_p3 WHERE occurred_at < ?) AS publication_history_due,
-        (SELECT COUNT(*) FROM article_content_versions_p3 WHERE created_at < ?) AS content_versions_due,
-        (SELECT COUNT(*) FROM article_cache_outbox_p3 WHERE status = 'delivered' AND delivered_at < ?) AS delivered_outbox_due,
-        (SELECT COUNT(*) FROM article_cache_outbox_p3 WHERE status = 'dead_letter' AND dead_lettered_at < ?) AS dead_letter_outbox_due`, [publicationBefore, publicationBefore, deliveredOutboxBefore, deadLetterOutboxBefore]),
-      query(core, "SELECT COUNT(*) AS lifecycle_events_due FROM article_lifecycle_events_p2 WHERE occurred_at < ?", [lifecycleBefore]),
-      query(ops, "SELECT evidence_at, expires_at FROM admin_governance_evidence_p5 WHERE evidence_type = 'backup_restore' AND outcome = 'successful' ORDER BY evidence_at DESC LIMIT 1"),
-    ]);
-    const [retentionOpsRow] = retentionOps;
-    const [retentionCoreRow] = retentionCore;
-    const [retentionLifecycleRow] = retentionLifecycle;
-    const [backup] = backupRows;
-    if (!retentionOpsRow || !retentionCoreRow || !retentionLifecycleRow) return fallback;
+      const [retentionOps, retentionCore, retentionLifecycle, backupRows, approvals] = await Promise.all([
+        query(ops, `SELECT
+          (SELECT COUNT(*) FROM admin_command_attempts WHERE status <> 'running' AND finished_at < ?) AS command_attempts_due,
+          (SELECT COUNT(*) FROM admin_command_events e JOIN admin_command_runs r ON r.id = e.run_id WHERE r.finished_at < ?) AS command_events_due,
+          (SELECT COUNT(*) FROM admin_compatibility_observations_p5 WHERE bucket_started_at < ?) AS compatibility_due,
+          EXISTS(SELECT 1 FROM admin_retention_holds_p5 WHERE released_at IS NULL AND starts_at <= ? AND (expires_at IS NULL OR expires_at > ?)) AS legal_hold_active`, [commandBefore, commandBefore, observationBefore, nowIso, nowIso]),
+        query(core, `SELECT
+          (SELECT COUNT(*) FROM article_publication_history_p3 WHERE occurred_at < ?) AS publication_history_due,
+          (SELECT COUNT(*) FROM article_content_versions_p3 WHERE created_at < ?) AS content_versions_due,
+          (SELECT COUNT(*) FROM article_cache_outbox_p3 WHERE status = 'delivered' AND delivered_at < ?) AS delivered_outbox_due,
+          (SELECT COUNT(*) FROM article_cache_outbox_p3 WHERE status = 'dead_letter' AND dead_lettered_at < ?) AS dead_letter_outbox_due`, [publicationBefore, publicationBefore, deliveredOutboxBefore, deadLetterOutboxBefore]),
+        query(core, "SELECT COUNT(*) AS lifecycle_events_due FROM article_lifecycle_events_p2 WHERE occurred_at < ?", [lifecycleBefore]),
+        query(ops, "SELECT evidence_at, expires_at FROM admin_governance_evidence_p5 WHERE evidence_type = 'backup_restore' AND outcome = 'successful' ORDER BY evidence_at DESC LIMIT 1"),
+        query(ops, "SELECT evidence_digest, role_key, actor_hash, expires_at FROM admin_governance_evidence_p5 WHERE evidence_type = 'owner_approval' AND outcome = 'approved' AND note_code = 'retirement.readiness.v2' AND expires_at > ? ORDER BY evidence_at DESC", [nowIso]),
+      ]);
+      retentionOpsRow = retentionOps[0] ?? null;
+      retentionCoreRow = retentionCore[0] ?? null;
+      retentionLifecycleRow = retentionLifecycle[0] ?? null;
+      backup = backupRows[0];
+      approvalRows = approvals;
+      if (!retentionOpsRow || !retentionCoreRow || !retentionLifecycleRow) return fallback;
+    }
 
-    const approvalRows = await query(ops, "SELECT evidence_digest, role_key, actor_hash, expires_at FROM admin_governance_evidence_p5 WHERE evidence_type = 'owner_approval' AND outcome = 'approved' AND note_code = 'retirement.readiness.v2' AND expires_at > ? ORDER BY evidence_at DESC", [nowIso]);
     const approvalGroups = new Map<string, { roles: Set<string>; actors: Set<string>; expiresAt: string | null }>();
     for (const row of approvalRows) {
       const digest = String(row.evidence_digest ?? "");
@@ -224,11 +237,16 @@ export async function getP5HealthEvidenceFromD1(input: {
     const states = typeof opsRow.queue_states === "string" ? JSON.parse(opsRow.queue_states) as Record<string, number> : {};
     const legacyInFlight = numberValue(opsRow.legacy_in_flight);
     const newInFlight = numberValue(opsRow.new_in_flight);
+    const compatibility = compatibilityRow ?? {};
+    const retentionOpsDue = retentionOpsRow ?? {};
+    const retentionCoreDue = retentionCoreRow ?? {};
+    const retentionLifecycleDue = retentionLifecycleRow ?? {};
 
     return {
       schemaVersion: 1,
       generatedAt: nowIso,
       available: true,
+      scope,
       observationWindow: { start: input.observationStart, end: input.observationEnd },
       queue: {
         states,
@@ -252,21 +270,21 @@ export async function getP5HealthEvidenceFromD1(input: {
       outbox: { pendingCount: numberValue(outboxRow.pending_count), processingCount: numberValue(outboxRow.processing_count), deadLetterCount: numberValue(outboxRow.dead_letter_count), oldestUndeliveredAgeSeconds: countAge(outboxRow, "oldest_undelivered_age") },
       sources,
       compatibility: {
-        totalCount: numberValue(compatibilityRow.total_count), legacyReadCount: numberValue(compatibilityRow.legacy_read_count), legacyWriteCount: numberValue(compatibilityRow.legacy_write_count), newReadCount: numberValue(compatibilityRow.new_read_count), newWriteCount: numberValue(compatibilityRow.new_write_count), fallbackCount: numberValue(compatibilityRow.fallback_count), unexplainedLegacyCount: numberValue(compatibilityRow.unexplained_count), firstObservedAt: typeof compatibilityRow.first_observed_at === "string" ? compatibilityRow.first_observed_at : null, lastObservedAt: typeof compatibilityRow.last_observed_at === "string" ? compatibilityRow.last_observed_at : null, bucketCount: numberValue(compatibilityRow.bucket_count),
-        legacyReadObserved: numberValue(compatibilityRow.legacy_read_observed) > 0, legacyWriteObserved: numberValue(compatibilityRow.legacy_write_observed) > 0, newReadObserved: numberValue(compatibilityRow.new_read_observed) > 0, newWriteObserved: numberValue(compatibilityRow.new_write_observed) > 0, fallbackObserved: numberValue(compatibilityRow.fallback_observed) > 0, unexplainedLegacyObserved: numberValue(compatibilityRow.unexplained_observed) > 0, legacyLastSeenAt: typeof compatibilityRow.legacy_last_seen_at === "string" ? compatibilityRow.legacy_last_seen_at : null, newLastSeenAt: typeof compatibilityRow.new_last_seen_at === "string" ? compatibilityRow.new_last_seen_at : null,
+        totalCount: numberValue(compatibility.total_count), legacyReadCount: numberValue(compatibility.legacy_read_count), legacyWriteCount: numberValue(compatibility.legacy_write_count), newReadCount: numberValue(compatibility.new_read_count), newWriteCount: numberValue(compatibility.new_write_count), fallbackCount: numberValue(compatibility.fallback_count), unexplainedLegacyCount: numberValue(compatibility.unexplained_count), firstObservedAt: typeof compatibility.first_observed_at === "string" ? compatibility.first_observed_at : null, lastObservedAt: typeof compatibility.last_observed_at === "string" ? compatibility.last_observed_at : null, bucketCount: numberValue(compatibility.bucket_count),
+        legacyReadObserved: numberValue(compatibility.legacy_read_observed) > 0, legacyWriteObserved: numberValue(compatibility.legacy_write_observed) > 0, newReadObserved: numberValue(compatibility.new_read_observed) > 0, newWriteObserved: numberValue(compatibility.new_write_observed) > 0, fallbackObserved: numberValue(compatibility.fallback_observed) > 0, unexplainedLegacyObserved: numberValue(compatibility.unexplained_observed) > 0, legacyLastSeenAt: typeof compatibility.legacy_last_seen_at === "string" ? compatibility.legacy_last_seen_at : null, newLastSeenAt: typeof compatibility.new_last_seen_at === "string" ? compatibility.new_last_seen_at : null,
       },
       inFlight: { legacyCount: legacyInFlight, newCount: newInFlight, conflict: legacyInFlight > 0 && newInFlight > 0 },
       governance: { backupRestoreAt: typeof backup?.evidence_at === "string" ? backup.evidence_at : null, backupRestoreExpiresAt: typeof backup?.expires_at === "string" ? backup.expires_at : null, approvalSets },
       retention: {
-        commandAttemptsDue: numberValue(retentionOpsRow.command_attempts_due),
-        commandEventsDue: numberValue(retentionOpsRow.command_events_due),
-        lifecycleEventsDue: numberValue(retentionLifecycleRow.lifecycle_events_due),
-        publicationHistoryDue: numberValue(retentionCoreRow.publication_history_due),
-        contentVersionsDue: numberValue(retentionCoreRow.content_versions_due),
-        compatibilityObservationsDue: numberValue(retentionOpsRow.compatibility_due),
-        deliveredOutboxDue: numberValue(retentionCoreRow.delivered_outbox_due),
-        deadLetterOutboxDue: numberValue(retentionCoreRow.dead_letter_outbox_due),
-        legalHoldActive: numberValue(retentionOpsRow.legal_hold_active) === 1,
+        commandAttemptsDue: numberValue(retentionOpsDue.command_attempts_due),
+        commandEventsDue: numberValue(retentionOpsDue.command_events_due),
+        lifecycleEventsDue: numberValue(retentionLifecycleDue.lifecycle_events_due),
+        publicationHistoryDue: numberValue(retentionCoreDue.publication_history_due),
+        contentVersionsDue: numberValue(retentionCoreDue.content_versions_due),
+        compatibilityObservationsDue: numberValue(retentionOpsDue.compatibility_due),
+        deliveredOutboxDue: numberValue(retentionCoreDue.delivered_outbox_due),
+        deadLetterOutboxDue: numberValue(retentionCoreDue.dead_letter_outbox_due),
+        legalHoldActive: numberValue(retentionOpsDue.legal_hold_active) === 1,
       },
     };
   } catch {

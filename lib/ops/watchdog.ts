@@ -423,6 +423,7 @@ export async function evaluateWatchdog(now = new Date(), nativeRuntime = false):
     observationEnd: generatedAt,
     now,
     policy,
+    scope: "operational",
   });
   if (!evidence.available) {
     violations.push({

@@ -38,6 +38,7 @@ export function unavailableP5HealthEvidence(start: string, end: string): P5Healt
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     available: false,
+    scope: "full",
     observationWindow: { start, end },
     queue: { states: {}, oldestQueuedAgeSeconds: null, staleLeaseCount: 0, oldestHeartbeatAgeSeconds: null, abortPendingCount: 0, oldestAbortAgeSeconds: null, retryWaitingCount: 0, oldestRetryAgeSeconds: null },
     lifecycle: { backlogCount: 0, oldestReviewAgeSeconds: null, unresolvedAnomalyCount: 0 },
@@ -82,6 +83,7 @@ export function parseP5HealthEvidence(value: unknown, fallback: P5HealthEvidence
     schemaVersion: 1,
     generatedAt: text(root.generatedAt) || fallback.generatedAt,
     available: true,
+    scope: "full",
     observationWindow: { start: text(window.start) || fallback.observationWindow.start, end: text(window.end) || fallback.observationWindow.end },
     queue: {
       states: Object.fromEntries(Object.entries(states).slice(0, 20).map(([key, count]) => [key, numberValue(count)])),

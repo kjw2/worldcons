@@ -102,6 +102,7 @@ export async function executeM8TaskNative(
         observationStart: start.toISOString(),
         observationEnd: end.toISOString(),
         now: end,
+        scope: "operational",
       });
       if (!evidence.available) throw new Error("m8.admin_health_d1_evidence_unavailable");
       const slas = evaluateP5Slas(evidence, policy);

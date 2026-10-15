@@ -288,6 +288,16 @@ test("governance UI is retired while P5 operational controls remain internal", (
   assert.equal(fs.existsSync(path.join(process.cwd(), "scripts/admin-health-p5.ts")), true);
 });
 
+test("retirement evaluator rejects operational/partial evidence and cannot fake availability", () => {
+  const operational = retirementInput();
+  operational.evidence.scope = "operational";
+  const report = evaluateP5RetirementReadiness(operational);
+  assert.equal(report.gates.find((gate) => gate.key === "evidence.full_scope")?.passed, false);
+  assert.equal(report.ready, false);
+  const healthy = retirementInput();
+  assert.equal(evaluateP5RetirementReadiness(healthy).ready, true, "only full-scope evidence may pass retirement");
+});
+
 test("native health task emits redacted machine evidence without GitHub workflow", () => {
   const script = source("scripts/admin-health-p5.ts");
   const config = source("workers/async-pipeline/wrangler.jsonc");
