@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import Link from "next/link";
@@ -8,6 +9,7 @@ import { chipClassName } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageShell } from "@/components/ui/page-shell";
 import { recordSearchEvent, recordSiteEvent } from "@/lib/analytics/events";
+import { PUBLIC_TAGS_CACHE_TAG } from "@/lib/public-content-cache";
 import { listArticles, listGlossaryTerms, listSources, listTags } from "@/lib/db/queries";
 import { glossarySourceLanguageLabel } from "@/lib/glossary/languages";
 import { hybridSearch, semanticSearch } from "@/lib/search/vector";
@@ -31,6 +33,15 @@ const modeOptions = [
 ] as const;
 
 const recommendedQueries = ["표현의 자유", "선거", "평등권", "QPC", "First Amendment", "비례원칙"];
+
+// FilterBar renders at most the first 30 tags. Loading the entire tag table on
+// each uncached search render amplified D1 reads without changing the UI.
+// Cache ONLY public reference metadata, never protected article/generation rows.
+const getSearchFilterTags = unstable_cache(
+  async () => listTags({ sort: "count", limit: 30 }),
+  ["search-public-filter-tags-v1"],
+  { revalidate: 300, tags: [PUBLIC_TAGS_CACHE_TAG] },
+);
 
 function matchingGlossaryTerms(terms: Awaited<ReturnType<typeof listGlossaryTerms>>, q?: string) {
   if (!q) return [];
@@ -84,7 +95,7 @@ export default async function SearchPage({ searchParams }: { searchParams?: Prom
   const [articles, sources, tags, glossaryTerms] = await Promise.all([
     mode === "semantic" ? semanticSearch(filters) : mode === "hybrid" ? hybridSearch(filters) : listArticles(filters),
     listSources(),
-    listTags({ sort: "count" }),
+    getSearchFilterTags(),
     q ? listGlossaryTerms() : Promise.resolve([]),
   ]);
   const relatedTerms = matchingGlossaryTerms(glossaryTerms, q);
