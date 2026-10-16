@@ -660,6 +660,48 @@ test("the D1 adapter loadSiteEvents uses the access-info columns and reports sch
   assert.equal(ops.calls[0].params[ops.calls[0].params.length - 1], 10_001);
 });
 
+test("runtime analytics caps a busy site event window without throwing or silently claiming completeness", async () => {
+  const many = Array.from({ length: 6 }, (_, index) => ({
+    ...SITE_EVENT_ACCESS_ROWS[0],
+    id: `busy-${index}`,
+    occurred_at: `2026-10-15T0${index}:00:00.000Z`,
+  }));
+  const ops = createFakeD1({ site_events: many as unknown as Record<string, unknown>[] });
+  const repo = createD1AdminAnalyticsReadRepository({
+    opsBinding: ops.database,
+    maxRows: 3,
+    allowDashboardSamples: true,
+  });
+  const result = await repo.loadSiteEvents("2026-09-01T00:00:00.000Z");
+  assert.equal(result.schemaReady, true);
+  assert.equal(result.truncated, true);
+  assert.equal(result.rows.length, 3);
+  assert.equal(ops.calls[0].params.at(-1), 4, "one lookahead row only");
+  assert.deepEqual(result.rows.map((row) => row.occurred_at), [
+    "2026-10-15T05:00:00.000Z",
+    "2026-10-15T04:00:00.000Z",
+    "2026-10-15T03:00:00.000Z",
+  ]);
+});
+
+test("runtime collection and model health reads use bounded samples, while shadow overflow still fails closed", async () => {
+  const ingest = createFakeD1({ ingestion_runs: Array.from({ length: 5 }, (_, i) => ({ ...INGESTION_ROWS[0], started_at: `2026-10-15T0${i}:00:00.000Z` })) });
+  const core = createFakeD1({ articles: Array.from({ length: 5 }, (_, i) => ({ ...ARTICLE_ROWS[0], id: `article-${i}`, updated_at: `2026-10-15T0${i}:00:00.000Z` })) });
+  const runtime = createD1AdminAnalyticsReadRepository({
+    binding: core.database,
+    ingestBinding: ingest.database,
+    maxRows: 2,
+    allowDashboardSamples: true,
+  });
+  assert.equal((await runtime.loadIngestionRunRows("2026-09-01T00:00:00.000Z")).length, 2);
+  assert.equal((await runtime.loadArticleSummaryRows()).length, 2);
+  assert.equal(ingest.calls[0].params.at(-1), 3);
+  assert.equal(core.calls[0].params.at(-1), 3);
+  const strict = createD1AdminAnalyticsReadRepository({ binding: core.database, maxRows: 2 });
+  await assert.rejects(() => strict.loadArticleSummaryRows(), (error: unknown) =>
+    error instanceof Error && error.name === "D1ShadowTruncatedError");
+});
+
 test("the D1 adapter loadAdminAuditEntryRows returns the exact range slice and count", async () => {
   const ops = createFakeD1({ site_events: EVENT_ROWS as unknown as Record<string, unknown>[] });
   const repository = createD1AdminAnalyticsReadRepository({ opsBinding: ops.database, maxRows: 100 });

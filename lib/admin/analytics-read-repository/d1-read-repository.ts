@@ -59,6 +59,8 @@ export interface D1AdminAnalyticsReadDependencies {
   opsBinding?: D1RuntimeDatabase | null;
   /** Bounded shadow read limit. */
   maxRows?: number;
+  /** Runtime dashboard can show a labelled bounded sample; parity shadow remains strict. */
+  allowDashboardSamples?: boolean;
 }
 
 export const ADMIN_AUDIT_COLUMNS = [
@@ -268,34 +270,40 @@ export function createD1AdminAnalyticsReadRepository(dependencies: D1AdminAnalyt
     if (typeof since !== "string" || since.length === 0) {
       throw new D1AdminAnalyticsShadowSkipError("invalid_since", "loadSiteEvents");
     }
-    if (maxRows < SITE_EVENT_LIMIT) {
+    if (!dependencies.allowDashboardSamples && maxRows < SITE_EVENT_LIMIT) {
       throw new D1AdminAnalyticsShadowSkipError("limit_exceeds_max_rows", "loadSiteEvents");
     }
+    const cap = dependencies.allowDashboardSamples ? Math.min(SITE_EVENT_LIMIT, maxRows) : SITE_EVENT_LIMIT;
     const rows = await read(requireOps(dependencies), "site_events", {
       select: [...SITE_EVENT_ACCESS_INFO_COLUMNS],
       where: [{ column: "occurred_at", op: "gte", value: since }],
       orderBy: [{ column: "occurred_at", direction: "desc" }],
-      limit: SITE_EVENT_LIMIT + 1,
+      limit: cap + 1,
     });
-    if (rows.length > SITE_EVENT_LIMIT) throw new D1ShadowTruncatedError("loadSiteEvents");
-    return { rows: rows.map(siteEventRowShape), schemaReady: true };
+    if (rows.length > cap && !dependencies.allowDashboardSamples) throw new D1ShadowTruncatedError("loadSiteEvents");
+    return {
+      rows: rows.slice(0, cap).map(siteEventRowShape),
+      schemaReady: true,
+      ...(dependencies.allowDashboardSamples ? { truncated: rows.length > cap } : {}),
+    };
   }
 
   async function loadIngestionRunRows(since: string): Promise<AdminAnalyticsIngestionRunRow[]> {
     if (typeof since !== "string" || since.length === 0) {
       throw new D1AdminAnalyticsShadowSkipError("invalid_since", "loadIngestionRunRows");
     }
-    if (maxRows < INGESTION_RUN_LIMIT) {
+    if (!dependencies.allowDashboardSamples && maxRows < INGESTION_RUN_LIMIT) {
       throw new D1AdminAnalyticsShadowSkipError("limit_exceeds_max_rows", "loadIngestionRunRows");
     }
+    const cap = dependencies.allowDashboardSamples ? Math.min(INGESTION_RUN_LIMIT, maxRows) : INGESTION_RUN_LIMIT;
     const rows = await read(requireIngest(dependencies), "ingestion_runs", {
       select: [...INGESTION_RUN_COLUMNS],
       where: [{ column: "started_at", op: "gte", value: since }],
       orderBy: [{ column: "started_at", direction: "desc" }],
-      limit: INGESTION_RUN_LIMIT + 1,
+      limit: cap + 1,
     });
-    if (rows.length > INGESTION_RUN_LIMIT) throw new D1ShadowTruncatedError("loadIngestionRunRows");
-    return rows as unknown as AdminAnalyticsIngestionRunRow[];
+    if (rows.length > cap && !dependencies.allowDashboardSamples) throw new D1ShadowTruncatedError("loadIngestionRunRows");
+    return rows.slice(0, cap) as unknown as AdminAnalyticsIngestionRunRow[];
   }
 
   /**
@@ -307,11 +315,11 @@ export function createD1AdminAnalyticsReadRepository(dependencies: D1AdminAnalyt
   async function loadArticleSummaryRows(): Promise<AdminAnalyticsArticleRow[]> {
     const rows = await read(requireCore(dependencies), "articles", {
       select: [...ARTICLE_SUMMARY_COLUMNS],
-      orderBy: [{ column: "id", direction: "asc" }],
+      orderBy: [{ column: dependencies.allowDashboardSamples ? "updated_at" : "id", direction: dependencies.allowDashboardSamples ? "desc" : "asc" }],
       limit: maxRows + 1,
     });
-    if (rows.length > maxRows) throw new D1ShadowTruncatedError("loadArticleSummaryRows");
-    return rows as unknown as AdminAnalyticsArticleRow[];
+    if (rows.length > maxRows && !dependencies.allowDashboardSamples) throw new D1ShadowTruncatedError("loadArticleSummaryRows");
+    return rows.slice(0, maxRows) as unknown as AdminAnalyticsArticleRow[];
   }
 
   return {

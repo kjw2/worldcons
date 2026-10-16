@@ -5,6 +5,7 @@ import type {
   AdminAnalyticsSiteEventRow,
 } from "@/lib/admin/analytics-read-repository";
 import { recordCompatibilityObservation } from "@/lib/admin/p5/observations";
+import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
 
 const DEFAULT_ANALYTICS_DAYS = 30;
 
@@ -87,6 +88,7 @@ interface AnalyticsHealthSnapshot {
 interface AnalyticsHealthData {
   collectionHealth: CollectionHealthStat[];
   modelHealth: ModelHealthStat[];
+  sampleLimited?: boolean;
 }
 
 export interface AdminActionStat {
@@ -161,6 +163,8 @@ export interface AnalyticsDashboardData {
   generatedAt: string;
   hasDatabase: boolean;
   schemaReady: boolean;
+  /** True when one of the privileged read paths reached its bounded sample cap. */
+  sampleLimited?: boolean;
   days: number;
   totals: {
     totalEvents: number;
@@ -537,6 +541,7 @@ async function loadAnalyticsHealthData(days: number): Promise<AnalyticsHealthDat
   return {
     collectionHealth: buildCollectionHealth(ingestionRuns),
     modelHealth: buildModelHealth(articleRows),
+    sampleLimited: ingestionRuns.length >= 1000 || articleRows.length >= D1_SHADOW_DEFAULT_MAX_ROWS,
   };
 }
 
@@ -838,7 +843,7 @@ function buildRecommendations(data: {
 export async function getAnalyticsDashboardData(options: { days?: number } = {}): Promise<AnalyticsDashboardData> {
   const days = safeDays(options.days);
   const repository = adminAnalyticsReads();
-  const [{ rows: events, schemaReady }, healthData] = await Promise.all([
+  const [{ rows: events, schemaReady, truncated }, healthData] = await Promise.all([
     loadSiteEvents(days),
     loadAnalyticsHealthData(days),
   ]);
@@ -867,6 +872,7 @@ export async function getAnalyticsDashboardData(options: { days?: number } = {})
     generatedAt: new Date().toISOString(),
     hasDatabase: repository.isConfigured(),
     schemaReady,
+    sampleLimited: Boolean(truncated || healthData.sampleLimited),
     days,
     totals,
     popularArticles,

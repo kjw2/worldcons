@@ -71,6 +71,8 @@ export interface AdminAnalyticsArticleRow {
 
 export interface AdminAnalyticsSiteEventsResult {
   rows: AdminAnalyticsSiteEventRow[];
+  /** True when this dashboard covers only the most recent bounded sample. */
+  truncated?: boolean;
   /**
    * Preserves the pre-extraction semantics exactly: `true` when the access-info
    * read (or its legacy fallback) succeeded, `false` when no database is

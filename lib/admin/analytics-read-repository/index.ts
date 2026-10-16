@@ -19,6 +19,7 @@ export function adminAnalyticsReads(): AdminAnalyticsReadRepository {
       binding: core,
       ingestBinding: ingest,
       opsBinding: ops,
+      allowDashboardSamples: true,
     });
     return {
       ...failClosedAdminAnalyticsReads,

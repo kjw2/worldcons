@@ -500,9 +500,15 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
           ))}
         </div>
       </div>
+      {dashboard.sampleLimited ? (
+        <p role="status" className="mb-6 rounded-md border border-rule bg-parchment px-4 py-3 text-sm text-ink">
+          이용 통계는 D1 읽기 보호를 위해 최근 이벤트 및 운영 데이터 중 제한된 표본으로 집계했습니다.
+          기간 전체의 정확한 건수와 다를 수 있습니다. 상세 접속 로그는 최근 기록부터 표시됩니다.
+        </p>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="전체 이벤트" value={formatNumber(dashboard.totals.totalEvents)} detail={`${dashboard.days}일 동안 저장된 접속·이용 로그`} icon={CalendarDays} />
+        <MetricCard title={dashboard.sampleLimited ? "집계 이벤트(표본)" : "전체 이벤트"} value={formatNumber(dashboard.totals.totalEvents)} detail={dashboard.sampleLimited ? "최근 이벤트 표본 기준이며 기간 전체 건수는 아닙니다." : `${dashboard.days}일 동안 저장된 접속·이용 로그`} icon={CalendarDays} />
         <MetricCard title="페이지 조회" value={formatNumber(dashboard.totals.pageViews + dashboard.totals.articleViews + dashboard.totals.tagViews + dashboard.totals.sourceViews)} detail={`${formatNumber(dashboard.totals.articleViews)}회는 공개 자료 상세 조회`} icon={Database} />
         <MetricCard title="검색" value={formatNumber(dashboard.totals.searches)} detail={`${formatNumber(dashboard.totals.zeroResultSearches)}회는 결과 0건`} icon={Search} />
         <MetricCard title="태그 클릭" value={formatNumber(dashboard.totals.tagClicks)} detail={`${formatNumber(dashboard.totals.adminActions)}회 관리자 작업`} icon={Hash} />
