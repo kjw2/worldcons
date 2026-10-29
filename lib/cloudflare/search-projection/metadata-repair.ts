@@ -1,3 +1,4 @@
+import { readBatchedByIds } from "../d1/json-id-batches";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { e2eRows, hasE2ETable, type GenerationRow } from "../e2e/generation-state";
 import { projectionFingerprints } from "../e2e/search-generation-guard";
@@ -66,17 +67,20 @@ export async function drainSearchMetadataRepairs(bindings:{WORLDCONS_CORE:D1Runt
 export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonly string[],managed:Set<string>) {
   const states=new Map<string,GenerationRow>();
   // The state is keyed by article id, so duplicate inputs cannot change it.
-  // Deduplicate before the bounded 80-key reads, matching assertPublicSearchFreshness.
+  // Deduplicate before the bounded JSON1 guard reads, matching assertPublicSearchFreshness.
   const uniqueIds=[...new Set(ids)];
   if(!uniqueIds.length||!await hasE2ETable(core,'search_metadata_policy_v1'))return states;
   const policy=(await e2eRows(core,'SELECT public_read_required FROM search_metadata_policy_v1 WHERE id=1'))[0];
   if(Number(policy?.public_read_required)!==1)return states;
   const legacy=uniqueIds.filter(id=>!managed.has(id));
-  for(let offset=0;offset<legacy.length;offset+=80){const part=legacy.slice(offset,offset+80);
-    for(const row of await e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (${part.map(()=>'?').join(',')})`,...part)){
-      if(row.status!=='verified'||Number(row.revision)!==Number(row.applied_revision))throw new Error('e2e.public_metadata_pending');
-      states.set(String(row.article_id),row);
-    }
+  const rows=await readBatchedByIds({
+    ids:legacy,
+    readJsonBatch:(payload,limit)=>e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (SELECT value FROM json_each(?)) LIMIT ?`,payload,limit),
+    readLegacyBatch:(part)=>e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (${part.map(()=>"?").join(",")})`,...part),
+  });
+  for(const row of rows){
+    if(row.status!=='verified'||Number(row.revision)!==Number(row.applied_revision))throw new Error('e2e.public_metadata_pending');
+    states.set(String(row.article_id),row);
   }
   return states;
 }

@@ -171,3 +171,68 @@ The next candidate optimization is a set-based guard snapshot over the small E2E
 - The deployed Worker will not contain this change unless the controller independently verifies it and accepts the remaining latency risk.
 - The candidate `fastSitemap` path is disabled by default: the runtime requires an explicit `WORLDCONS_FAST_SITEMAP_ENABLED=true` opt-in. Current production Wrangler config does not set this flag; no unverified optimization is active in the released Worker.
 - No claim is made that Google will now crawl or index the detail URLs; sitemap availability and latency are only two of several crawl and indexing inputs.
+
+## Follow-up: JSON1 guard batching (2026-10-30)
+
+- Repository HEAD at implementation: `001f7b2b1de5d24e2f710340bdf8321dbbc1574d` plus the uncommitted change described here
+- Scope: read-only batching inside `currentGenerations` and `readPublicMetadataState`; no schema, cache, Cloudflare, R2, deployment or live write
+- Status: local read amplification and exact parity verified; live cold latency and live `rows_read` remain unmeasured
+- `WORLDCONS_FAST_SITEMAP_ENABLED` remains OFF by default
+- Shared JSON1 generation/metadata guard batching also remains OFF by default (`WORLDCONS_JSON_GUARD_BATCHING_ENABLED` is unset); it requires separate approval before affecting public reads.
+
+### Why this is safe
+
+Cloudflare D1 caps bound parameters per statement, so the guard readers used one `IN (...)` query per 80 article ids. The new path binds the exact same id set as one JSON array and expands it with `json_each(?)`:
+
+```sql
+... WHERE h.article_id IN (SELECT value FROM json_each(?)) LIMIT ?
+... WHERE article_id IN (SELECT value FROM json_each(?)) LIMIT ?
+```
+
+- Only the id carrier changed. The generation SELECT, `CURRENT_GENERATION_SQL`, `generationProjectionHash`, review-state blacklist, metadata `status='verified'` / `revision=applied_revision` check, the second `currentGenerations` read, the second metadata CAS read, the immutable version overlay, publication eligibility and post-overlay textual `publishable` filtering are unchanged.
+- Inputs are deduplicated and capped at 10,000 ids. Each JSON batch is capped at 500 ids and 64 KiB, and each query is bounded by `LIMIT batch_size`.
+- The primary-key lookup is preserved: local SQLite 3.51.3 `EXPLAIN QUERY PLAN` on the real Core/E2E schema reports `SEARCH h USING INDEX sqlite_autoindex_e2e_generation_heads_v1_1 (article_id=?)` and `SEARCH search_metadata_repairs_v1 USING INDEX sqlite_autoindex_search_metadata_repairs_v1_1 (article_id=?)` for the `IN (SELECT value FROM json_each(?))` shape.
+- Local JSON1 support was verified with `node:sqlite`. D1 JSON1 is already used by the same guard SQL (`json_group_array`, `json_object`, `json_extract`, `json_type`), so `json_each` is the same built-in extension. This is inference from deployed JSON1 use, not a live D1 probe.
+- Any JSON1 statement error, including a SQLite build without JSON1, discards the partial JSON result and re-reads every id with the original 80-id `IN (...)` composition. If that fallback also fails, the error propagates. There is no partial guard map and no stale cache.
+
+### Local read-count evidence
+
+`tests/article-read-d1-fast-list.test.ts` builds real SQLite fixtures with the Core schema, E2E generation tables and metadata repair tables.
+
+| Fixture | JSON1 path | Exact 80-id fallback |
+| --- | --- | --- |
+| 200 published articles, one guard pass | legacy sitemap composition 12 total statements; fast sitemap 7 total statements; both use 2 guard-table reads plus 3 probes | Not measured separately; the guard shape is one generation read and one metadata read because 200 ids fit one JSON batch. |
+| 2,216-head fast sitemap, two-pass overlay | 30 total statements; 10 generation + 10 metadata guard reads | 126 total statements when JSON1 is forced unavailable (112 legacy guard reads, four failed JSON1 attempts and the same ten fixed reads). |
+
+The 2,216-head shape is now two passes x `ceil(2216 / 500) = 5` reads per guard type, instead of two passes x `ceil(2216 / 80) = 28`. The earlier estimate of roughly 61 one-pass / 120 two-pass guard statements therefore becomes roughly 15 one-pass / 30 two-pass **local statements**. This is a statement-count and round-trip bound, not a latency measurement.
+
+The fixture proves exact sorted sitemap parity between the JSON1 path and the forced 80-id fallback. It also proves generation/metadata map parity, a mid-stream JSON batch failure that discards the partial result, metadata pending failure in a later batch, duplicate-id deduplication, projection-changed / `needs_review` / withdrawn exclusion, post-read metadata CAS mismatch and a generation change between the two overlay reads.
+
+### Sub-5-second claim remains unproven
+
+The previous sub-5-second cold-path claim is **not** restored by this change. The local evidence only shows that the guard loop no longer issues one D1 round trip per 80 distinct article ids. It does not measure:
+
+- live D1 round-trip latency, `rows_read`, rows returned or cold TTFB;
+- the deployed Worker, which still has `WORLDCONS_FAST_SITEMAP_ENABLED` unset;
+- Googlebot behavior or indexing.
+
+Independent staging verification and a live cold probe are still required before any sub-5-second or live speedup claim. The opt-in flag must remain OFF until then.
+
+### Verification run
+
+| Command | Result |
+| --- | --- |
+| `pnpm exec tsx --test tests/article-read-d1-fast-list.test.ts` | 24 passed, 0 failed |
+| `pnpm test:e2e-p0-m1` | 18 passed, 0 failed |
+| `pnpm test:e2e-p0-m2` | 20 passed, 0 failed |
+| `pnpm test:e2e-p0-m3` | 25 passed, 0 failed |
+| `pnpm test:e2e-p0-m4` | 27 passed, 2 failed (pre-existing at HEAD; reproduced with this change stashed) |
+| `pnpm test:e2e-p0-m5` | 47 passed, 1 failed (pre-existing at HEAD; reproduced with this change stashed) |
+| `pnpm test:public-regression` | 18 passed, 0 failed |
+| `pnpm test:article-reads` | 22 passed, 0 failed |
+| `pnpm test:search-repository` | 19 passed, 0 failed |
+| `pnpm typecheck` | passed |
+| `pnpm lint` | 0 errors, 20 pre-existing warnings in unrelated files |
+| `git diff --check` | clean |
+
+The M4 failures were a local `wrangler deploy --dry-run` `spawn EPERM` and the staged discovery Queue identity assertion. The M5 failure was the discovery item count assertion. Both failing tests reproduce on the unmodified HEAD with this change stashed, so they are not caused by the guard batching change.

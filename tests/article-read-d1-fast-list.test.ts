@@ -5,9 +5,14 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
 import { D1ShadowTruncatedError } from "../lib/reference-reads/d1-repository";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
-import { currentGenerations } from "../lib/cloudflare/e2e/generation-state";
+import { JSON_ID_BATCH_SIZE, JSON_ID_MAX_INPUT, JSON_ID_MAX_PAYLOAD_BYTES, jsonIdBatches, readBatchedByIds } from "../lib/cloudflare/d1/json-id-batches";
+import { currentGenerations, generationProjectionHash, type GenerationRow } from "../lib/cloudflare/e2e/generation-state";
+import { overlayPublicGenerationRows } from "../lib/cloudflare/e2e/public-freshness";
 import { readPublicMetadataState } from "../lib/cloudflare/search-projection/metadata-repair";
-import { SqliteD1, publish, articleId } from "./helpers/e2e-core-fixture";
+import { SqliteD1, publish, articleId, approval } from "./helpers/e2e-core-fixture";
+
+// Opt in explicitly; the production guard batching path stays disabled by default.
+process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = "true";
 
 /**
  * Real-SQLite integration coverage for the bounded public `listArticles` fast
@@ -21,9 +26,29 @@ interface Captured {
   params: unknown[];
 }
 
-function binding(sqlite: DatabaseSync, captured?: Captured[]): D1RuntimeDatabase {
+interface BindingOptions {
+  failJsonEach?: boolean;
+  failJsonEachAfter?: number;
+}
+
+function binding(sqlite: DatabaseSync, captured?: Captured[], options: BindingOptions = {}): D1RuntimeDatabase {
+  let jsonEachReads = 0;
   return {
     prepare(sql: string): D1RuntimePreparedStatement {
+      if ((options.failJsonEach || options.failJsonEachAfter !== undefined) && /json_each/i.test(sql)) {
+        jsonEachReads += 1;
+        if (options.failJsonEach || jsonEachReads > (options.failJsonEachAfter ?? 0)) {
+          return {
+            bind() {
+              return this;
+            },
+            async all() {
+              captured?.push({ sql, params: [] });
+              throw new Error("D1_ERROR: no such function: json_each");
+            },
+          };
+        }
+      }
       const statement = sqlite.prepare(sql);
       let params: unknown[] = [];
       return {
@@ -47,6 +72,140 @@ function createCore() {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0001_init.sql", import.meta.url), "utf8"));
   return sqlite;
+}
+
+function addMetadataTables(sqlite: DatabaseSync, publicReadRequired = 1) {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS search_metadata_policy_v1 (id INTEGER PRIMARY KEY, public_read_required INTEGER NOT NULL);
+    INSERT OR IGNORE INTO search_metadata_policy_v1(id,public_read_required) VALUES(1,${publicReadRequired});
+    CREATE TABLE IF NOT EXISTS search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+      applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
+}
+
+function createGuardCore(publicReadRequired = 1) {
+  const sqlite = createCore();
+  sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0004_e2e_generations.sql", import.meta.url), "utf8"));
+  addMetadataTables(sqlite, publicReadRequired);
+  return sqlite;
+}
+
+async function insertGeneration(
+  sqlite: DatabaseSync,
+  id: string,
+  overrides: {
+    generationId?: string;
+    generationSeq?: number;
+    versionId?: string;
+    versionRevision?: number;
+    publicationId?: string;
+    publicationRevision?: number;
+    publicationState?: string;
+    policyVersion?: string;
+    reviewState?: string | null;
+    projectionHash?: string;
+  } = {},
+) {
+  const versionId = overrides.versionId ?? `pub-${id}`;
+  const generationId = overrides.generationId ?? `gen-${id}`;
+  const generationSeq = overrides.generationSeq ?? 1;
+  const publicationId = overrides.publicationId ?? `p-${id}`;
+  const publicationRevision = overrides.publicationRevision ?? 1;
+  const publicationState = overrides.publicationState ?? "published";
+  const policyVersion = overrides.policyVersion ?? "policy-v1";
+  const reviewState = overrides.reviewState === undefined ? null : overrides.reviewState;
+  const identity = {
+    article_id: id,
+    expected_version_id: versionId,
+    expected_version_revision: overrides.versionRevision ?? 1,
+    approval_snapshot_hash: `approval-${id}`,
+    expected_publication_id: publicationId,
+    expected_publication_revision: publicationRevision,
+    expected_publication_state: publicationState,
+    policy_version: policyVersion,
+  };
+  const projectionInputHash = overrides.projectionHash ?? await generationProjectionHash(identity, [], reviewState);
+  sqlite
+    .prepare(
+      `INSERT INTO e2e_generations_v1(generation_id,article_id,generation_seq,source_key,source_content_hash,approval_key,
+        approval_snapshot_hash,approval_hash_schema,projection_input_hash,projection_input_schema,expected_version_id,
+        expected_version_revision,expected_publication_id,expected_publication_revision,expected_publication_state,
+        approval_mode,policy_version,approval_evidence_ref,source_evidence_ref,created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(
+      generationId,
+      id,
+      generationSeq,
+      "us-scotus",
+      `source-${id}`,
+      `approval-key-${generationId}`,
+      identity.approval_snapshot_hash,
+      "worldcons.approval.v2",
+      projectionInputHash,
+      "worldcons.projection-input.v1",
+      versionId,
+      identity.expected_version_revision,
+      publicationId,
+      publicationRevision,
+      publicationState,
+      "automatic",
+      policyVersion,
+      "evidence",
+      "source-evidence",
+      NOW,
+    );
+  sqlite
+    .prepare(
+      `INSERT INTO e2e_generation_heads_v1(article_id,generation_id,generation_seq,updated_at) VALUES(?,?,?,?)
+       ON CONFLICT(article_id) DO UPDATE SET generation_id=excluded.generation_id,generation_seq=excluded.generation_seq,updated_at=excluded.updated_at`,
+    )
+    .run(id, generationId, generationSeq, NOW);
+  sqlite
+    .prepare(
+      `INSERT INTO article_version_heads_p3(article_id,current_version_id,current_revision,updated_at) VALUES(?,?,?,?)
+       ON CONFLICT(article_id) DO UPDATE SET current_version_id=excluded.current_version_id,current_revision=excluded.current_revision,updated_at=excluded.updated_at`,
+    )
+    .run(id, versionId, String(identity.expected_version_revision), NOW);
+  sqlite
+    .prepare(
+      `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+       VALUES(?,?,?,?,?,?,?)
+       ON CONFLICT(version_id) DO UPDATE SET freshness='current'`,
+    )
+    .run(versionId, id, "current", "legacy_same_version", "{}", NOW, "test");
+  if (reviewState !== null) {
+    sqlite.prepare("UPDATE articles SET review_state=? WHERE id=?").run(reviewState, id);
+  }
+  return { generationId, projectionInputHash, identity };
+}
+
+function generationSnapshot(map: Map<string, GenerationRow>) {
+  return [...map.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([id, row]) => ({
+      id,
+      generation_id: row.generation_id,
+      input_current: row.input_current,
+      review_state: row.review_state ?? null,
+      tag_snapshot: row.tag_snapshot,
+    }));
+}
+
+function metadataSnapshot(map: Map<string, GenerationRow>) {
+  return [...map.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([id, row]) => ({ id, status: row.status, revision: row.revision, applied_revision: row.applied_revision, fencing_token: row.fencing_token }));
+}
+
+function guardReads(captured: Captured[], table: string) {
+  return captured.filter((call) => call.sql.includes(table)).length;
+}
+
+function jsonGuardReads(captured: Captured[], table: string) {
+  return captured.filter((call) => call.sql.includes(table) && call.sql.includes("json_each")).length;
+}
+
+function legacyGuardReads(captured: Captured[], table: string) {
+  return captured.filter((call) => call.sql.includes(table) && !call.sql.includes("json_each")).length;
 }
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -73,8 +232,9 @@ function insertVersion(sqlite: DatabaseSync, id: string, versionId: string, over
     .prepare(
       `INSERT INTO article_content_versions_p3(id,article_id,revision,content_hash,provenance_actor_type,slug,
         source_key,jurisdiction,institution_name,content_type,original_url,canonical_url,original_language,created_at,
-        version_role,source_anchor_version_id,enrichment_source_content_hash,source_content_hash,original_published_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        version_role,source_anchor_version_id,enrichment_source_content_hash,source_content_hash,original_published_at,
+        source_metadata)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       versionId,
@@ -96,6 +256,7 @@ function insertVersion(sqlite: DatabaseSync, id: string, versionId: string, over
       overrides.enrichmentHash ?? null,
       overrides.sourceHash ?? null,
       overrides.publishedAt === undefined ? "2026-01-01T00:00:00.000Z" : overrides.publishedAt,
+      overrides.metadata ?? PUBLISHABLE,
     );
 }
 
@@ -364,8 +525,14 @@ test("fast list honors the eligible-row overflow bound", async () => {
   }
 });
 
-function sitemapRepository(sqlite: DatabaseSync, fastSitemap: boolean, captured?: Captured[], maxRows = 10_000) {
-  return createD1ArticleReadRepository({ binding: binding(sqlite, captured), fastSitemap, maxRows });
+function sitemapRepository(
+  sqlite: DatabaseSync,
+  fastSitemap: boolean,
+  captured?: Captured[],
+  maxRows = 10_000,
+  options: BindingOptions = {},
+) {
+  return createD1ArticleReadRepository({ binding: binding(sqlite, captured, options), fastSitemap, maxRows });
 }
 
 function sortedSitemap(entries: { slug: string; lastModified: string | null }[]) {
@@ -471,14 +638,9 @@ test("fast sitemap keeps lastModified precedence, one set-based candidate read a
   }
 });
 
-test("fast sitemap keeps real distinct ids and measures 11 local reads for 200 published articles", async () => {
-  const sqlite = createCore();
+test("fast sitemap keeps real distinct ids and measures the JSON1 guard read shape for 200 published articles", async () => {
+  const sqlite = createGuardCore();
   try {
-    sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0004_e2e_generations.sql", import.meta.url), "utf8"));
-    sqlite.exec(`CREATE TABLE search_metadata_policy_v1 (id INTEGER PRIMARY KEY, public_read_required INTEGER NOT NULL);
-      INSERT INTO search_metadata_policy_v1(id,public_read_required) VALUES(1,1);
-      CREATE TABLE search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
-        applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
     for (let index = 0; index < 200; index += 1) {
       insertArticle(sqlite, `query-${String(index).padStart(3, "0")}`, {
         publishedAt: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
@@ -494,14 +656,16 @@ test("fast sitemap keeps real distinct ids and measures 11 local reads for 200 p
     assert.equal(fast.length, 200);
     assert.equal(
       legacyCaptured.length,
-      16,
-      "legacy: one head read, three catalog batches, three article batches and nine distinct-id guard reads",
+      12,
+      "legacy: one head read, three catalog batches, three article batches and five JSON1 guard/probe reads",
     );
     assert.equal(
       fastCaptured.length,
-      11,
-      "fast: one head bound, one candidate query and nine distinct-id guard reads",
+      7,
+      "fast: one head bound, one candidate query and five JSON1 guard/probe reads",
     );
+    assert.equal(guardReads(fastCaptured, "FROM e2e_generation_heads_v1 h"), 1);
+    assert.equal(guardReads(fastCaptured, "FROM search_metadata_repairs_v1"), 1);
     assert.equal(
       fastCaptured.filter(
         (call) => call.sql.includes("from article_publications_p3 p") && call.sql.includes("left join case_catalog_publications_v1"),
@@ -603,4 +767,272 @@ test("duplicate metadata guard ids still fail closed while a repair is pending",
     () => readPublicMetadataState(core, [articleId, articleId, articleId], new Set()),
     /e2e\.public_metadata_pending/,
   );
+});
+
+test("JSON1 id batches bound the input count, payload bytes and per-query key count", () => {
+  const longIds = Array.from({ length: 1000 }, (_, index) => `id-${String(index).padStart(300, "0")}`);
+  const batches = jsonIdBatches(longIds);
+  assert.equal(batches.flat().length, longIds.length);
+  assert.ok(batches.length > 1);
+  assert.ok(batches.every((batch) => batch.length <= JSON_ID_BATCH_SIZE));
+  assert.ok(batches.every((batch) => new TextEncoder().encode(JSON.stringify(batch)).length <= JSON_ID_MAX_PAYLOAD_BYTES));
+  assert.throws(
+    () => jsonIdBatches(Array.from({ length: JSON_ID_MAX_INPUT + 1 }, (_, index) => `id-${index}`)),
+    /e2e\.id_batch_overflow/,
+  );
+  assert.throws(() => jsonIdBatches(["x".repeat(JSON_ID_MAX_PAYLOAD_BYTES + 1)]), /e2e\.id_batch_payload_exceeded/);
+  assert.deepEqual(jsonIdBatches([]), []);
+});
+
+test("JSON1 generation and metadata guards match the legacy 80-id composition across batches", async () => {
+  const sqlite = createGuardCore();
+  try {
+    const ids = Array.from({ length: 1200 }, (_, index) => `guard-${String(index).padStart(4, "0")}`);
+    sqlite.exec("BEGIN");
+    try {
+      for (const id of ids) insertArticle(sqlite, id);
+    } finally {
+      sqlite.exec("COMMIT");
+    }
+    for (const id of [ids[0], ids[499], ids[500], ids[1199]]) await insertGeneration(sqlite, id);
+    for (const id of [ids[1], ids[498], ids[501], ids[1198]]) {
+      sqlite
+        .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+        .run(id, 1, 1, "verified", 0);
+    }
+
+    const jsonGeneration: Captured[] = [];
+    const legacyGeneration: Captured[] = [];
+    const json = await currentGenerations(binding(sqlite, jsonGeneration), ids);
+    const legacy = await currentGenerations(binding(sqlite, legacyGeneration, { failJsonEach: true }), ids);
+    assert.deepEqual(generationSnapshot(json), generationSnapshot(legacy));
+    assert.equal(json.size, 4);
+    assert.ok([...json.values()].every((row) => row.input_current === true));
+    assert.equal(jsonGuardReads(jsonGeneration, "FROM e2e_generation_heads_v1 h"), Math.ceil(ids.length / JSON_ID_BATCH_SIZE));
+    assert.equal(legacyGuardReads(legacyGeneration, "FROM e2e_generation_heads_v1 h"), Math.ceil(ids.length / 80));
+
+    const jsonMetadata: Captured[] = [];
+    const legacyMetadata: Captured[] = [];
+    const jsonStates = await readPublicMetadataState(binding(sqlite, jsonMetadata), ids, new Set());
+    const legacyStates = await readPublicMetadataState(binding(sqlite, legacyMetadata, { failJsonEach: true }), ids, new Set());
+    assert.deepEqual(metadataSnapshot(jsonStates), metadataSnapshot(legacyStates));
+    assert.equal(jsonStates.size, 4);
+    assert.equal(jsonGuardReads(jsonMetadata, "FROM search_metadata_repairs_v1"), Math.ceil(ids.length / JSON_ID_BATCH_SIZE));
+    assert.equal(legacyGuardReads(legacyMetadata, "FROM search_metadata_repairs_v1"), Math.ceil(ids.length / 80));
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("JSON1 guard fallback discards an earlier JSON batch instead of returning partial rows", async () => {
+  const sqlite = createGuardCore();
+  try {
+    const ids = Array.from({ length: 1200 }, (_, index) => `partial-${String(index).padStart(4, "0")}`);
+    sqlite.exec("BEGIN");
+    try {
+      for (const id of ids) insertArticle(sqlite, id);
+    } finally {
+      sqlite.exec("COMMIT");
+    }
+    for (const id of [ids[0], ids[650]]) await insertGeneration(sqlite, id);
+    for (const id of [ids[1], ids[651]]) {
+      sqlite
+        .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+        .run(id, 1, 1, "verified", 0);
+    }
+
+    const expectedGenerations = await currentGenerations(binding(sqlite), ids);
+    const partialGenerations = await currentGenerations(binding(sqlite, undefined, { failJsonEachAfter: 1 }), ids);
+    assert.deepEqual(generationSnapshot(partialGenerations), generationSnapshot(expectedGenerations));
+    assert.equal(partialGenerations.size, 2);
+
+    const expectedMetadata = await readPublicMetadataState(binding(sqlite), ids, new Set());
+    const partialMetadata = await readPublicMetadataState(binding(sqlite, undefined, { failJsonEachAfter: 1 }), ids, new Set());
+    assert.deepEqual(metadataSnapshot(partialMetadata), metadataSnapshot(expectedMetadata));
+    assert.equal(partialMetadata.size, 2);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("JSON1 metadata guards fail closed when a pending repair sits in a later batch", async () => {
+  const sqlite = createGuardCore();
+  try {
+    const ids = Array.from({ length: 700 }, (_, index) => `pending-${index}`);
+    sqlite
+      .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+      .run(ids[0], 1, 1, "verified", 0);
+    sqlite
+      .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+      .run(ids[650], 2, 1, "pending", 4);
+    for (const failJsonEach of [false, true]) {
+      await assert.rejects(
+        () => readPublicMetadataState(binding(sqlite, undefined, { failJsonEach }), ids, new Set()),
+        /e2e\.public_metadata_pending/,
+        `pending metadata must fail closed with failJsonEach=${failJsonEach}`,
+      );
+    }
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("JSON1 guard reads preserve projection-changed, needs_review and withdrawn exclusion", async () => {
+  const sqlite = createGuardCore();
+  try {
+    const ids = ["changed", "needs-review", "revoked", "ok"];
+    sqlite.exec("BEGIN");
+    try {
+      for (const id of ids) insertArticle(sqlite, id);
+    } finally {
+      sqlite.exec("COMMIT");
+    }
+    await insertGeneration(sqlite, "changed", { projectionHash: "0".repeat(64) });
+    await insertGeneration(sqlite, "needs-review", { reviewState: "needs_review" });
+    await insertGeneration(sqlite, "revoked", { publicationState: "withdrawn" });
+    await insertGeneration(sqlite, "ok");
+
+    const generations = await currentGenerations(binding(sqlite), ids);
+    assert.equal(generations.get("changed")?.input_current, false);
+    assert.equal(generations.get("needs-review")?.input_current, false);
+    assert.equal(generations.get("revoked")?.input_current, false);
+    assert.equal(generations.get("ok")?.input_current, true);
+
+    const approved = await overlayPublicGenerationRows(binding(sqlite), ids.map((id) => ({ id, slug: id })));
+    assert.deepEqual(approved.map((row) => row.id), ["ok"]);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("fast sitemap 2216-head fixture keeps two-pass guard parity and cuts guard round trips", async () => {
+  const sqlite = createGuardCore();
+  try {
+    const ids: string[] = [];
+    sqlite.exec("BEGIN");
+    try {
+      for (let index = 0; index < 2216; index += 1) {
+        const id = `sitemap-${String(index).padStart(4, "0")}`;
+        ids.push(id);
+        insertArticle(sqlite, id, {
+          publishedAt: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
+        });
+      }
+    } finally {
+      sqlite.exec("COMMIT");
+    }
+    await insertGeneration(sqlite, ids[1]);
+    sqlite
+      .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+      .run(ids[0], 1, 1, "verified", 0);
+    sqlite
+      .prepare(
+        `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+         VALUES(?,?,?,?,?,?,?)
+         ON CONFLICT(version_id) DO UPDATE SET freshness='current'`,
+      )
+      .run(`pub-${ids[0]}`, ids[0], "current", "legacy_same_version", "{}", NOW, "test");
+
+    const jsonCaptured: Captured[] = [];
+    const legacyCaptured: Captured[] = [];
+    const json = await sitemapRepository(sqlite, true, jsonCaptured).listPublicSitemapArticles();
+    const legacy = await sitemapRepository(sqlite, true, legacyCaptured, 10_000, { failJsonEach: true }).listPublicSitemapArticles();
+
+    assert.equal(json.length, 2216);
+    assert.deepEqual(sortedSitemap(json), sortedSitemap(legacy));
+
+    const jsonGenerationReads = jsonGuardReads(jsonCaptured, "FROM e2e_generation_heads_v1 h");
+    const jsonMetadataReads = jsonGuardReads(jsonCaptured, "FROM search_metadata_repairs_v1");
+    const legacyGenerationReads = legacyGuardReads(legacyCaptured, "FROM e2e_generation_heads_v1 h");
+    const legacyMetadataReads = legacyGuardReads(legacyCaptured, "FROM search_metadata_repairs_v1");
+    assert.equal(jsonGenerationReads, 2 * Math.ceil(2216 / JSON_ID_BATCH_SIZE));
+    assert.equal(jsonMetadataReads, 2 * Math.ceil(2215 / JSON_ID_BATCH_SIZE));
+    assert.equal(legacyGenerationReads, 2 * Math.ceil(2216 / 80));
+    assert.equal(legacyMetadataReads, 2 * Math.ceil(2215 / 80));
+    assert.ok(jsonGenerationReads < legacyGenerationReads);
+    assert.ok(jsonMetadataReads < legacyMetadataReads);
+    assert.ok(jsonCaptured.length < legacyCaptured.length);
+    assert.ok(jsonCaptured.length <= 40, `JSON1 fast path should stay near 30 reads, got ${jsonCaptured.length}`);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("two-pass overlay detects a metadata CAS change after the first guard pass", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  addMetadataTables(core.db);
+  const ids = [articleId, ...Array.from({ length: 399 }, (_, index) => `cas-${index}`)];
+  core.db.exec("BEGIN");
+  try {
+    for (const id of ids.slice(1)) insertArticle(core.db, id);
+  } finally {
+    core.db.exec("COMMIT");
+  }
+  core.db
+    .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+    .run(articleId, 1, 1, "verified", 0);
+
+  let metadataReads = 0;
+  core.beforeStatement = (sql) => {
+    if (!sql.includes("FROM search_metadata_repairs_v1")) return;
+    metadataReads += 1;
+    if (metadataReads === 2) {
+      core.beforeStatement = undefined;
+      core.db.prepare("UPDATE search_metadata_repairs_v1 SET fencing_token=fencing_token+1 WHERE article_id=?").run(articleId);
+    }
+  };
+
+  await assert.rejects(
+    () => overlayPublicGenerationRows(core, ids.map((id) => ({ id, slug: id }))),
+    /e2e\.public_metadata_changed/,
+  );
+});
+
+test("two-pass overlay re-reads currentGenerations and drops a row whose generation changed", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  addMetadataTables(core.db);
+  await publish(core, "a");
+  const ids = [articleId, ...Array.from({ length: 399 }, (_, index) => `cas-gen-${index}`)];
+  core.db.exec("BEGIN");
+  try {
+    for (const id of ids.slice(1)) insertArticle(core.db, id);
+  } finally {
+    core.db.exec("COMMIT");
+  }
+
+  let metadataReads = 0;
+  core.beforeStatement = async (sql) => {
+    if (!sql.includes("FROM search_metadata_repairs_v1")) return;
+    metadataReads += 1;
+    if (metadataReads === 1) {
+      core.beforeStatement = undefined;
+      await publish(core, "changed", { e2eApproval: { ...approval, policyVersion: "v2" } });
+    }
+  };
+
+  const result = await overlayPublicGenerationRows(core, ids.map((id) => ({ id, slug: id })));
+  assert.equal(result.some((row) => row.id === articleId), false, "the generation changed after the first read and must be dropped");
+  assert.equal(result.length, 399);
+});
+
+test("JSON1 guard batching is disabled unless explicitly opted in", async () => {
+  const original = process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  try {
+    let jsonCalls = 0;
+    let legacyCalls = 0;
+    const result = await readBatchedByIds({
+      ids: ["one", "two", "one"],
+      readJsonBatch: async () => { jsonCalls += 1; throw new Error("unexpected_json_query"); },
+      readLegacyBatch: async (ids) => { legacyCalls += 1; return [...ids]; },
+    });
+    assert.deepEqual(result, ["one", "two"]);
+    assert.equal(jsonCalls, 0);
+    assert.equal(legacyCalls, 1);
+  } finally {
+    if (original === undefined) delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+    else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = original;
+  }
 });

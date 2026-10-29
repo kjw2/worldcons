@@ -1,3 +1,4 @@
+import { readBatchedByIds } from "../d1/json-id-batches";
 import type { D1RuntimeDatabase } from "../d1/runtime-binding";
 import { SEARCH_PROJECTION_VERSION } from "../search-projection/types";
 import { FTS_INPUT_VERSION, PROJECTION_INPUT_SCHEMA, sha256Canonical, REMOVAL_AUTHORITY_POLICY } from "./contracts";
@@ -24,25 +25,27 @@ export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly st
   const found = new Map<string,GenerationRow>();
   // The result is keyed by article id, so duplicate inputs cannot change it.
   // Deduplicate first so repeated keys (for example a projection without `id`)
-  // cannot multiply the bounded 80-key reads.
+  // cannot multiply the bounded JSON1 guard reads.
   const uniqueIds=[...new Set(ids)];
   if (!uniqueIds.length || !await hasE2ETable(db,"e2e_generation_heads_v1")) return found;
-  for (let offset=0;offset<uniqueIds.length;offset+=80) {
-    const part=uniqueIds.slice(offset,offset+80);
-    const rows=await e2eRows(db,`SELECT g.*,a.review_state,
+  const select=`SELECT g.*,a.review_state,
       CASE WHEN ${CURRENT_GENERATION_SQL} THEN 1 ELSE 0 END AS identity_current,
       (SELECT json_group_array(json_object('tag_id',tag_id,'confidence',confidence,'slug',slug,'name',name,
         'normalized_name',normalized_name,'type',type)) FROM (SELECT at.tag_id,at.confidence,t.slug,t.name,t.normalized_name,t.type
         FROM article_tags at LEFT JOIN tags t ON t.id=at.tag_id WHERE at.article_id=g.article_id ORDER BY at.tag_id COLLATE BINARY)) AS tag_snapshot
       FROM e2e_generation_heads_v1 h JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id
-      LEFT JOIN articles a ON a.id=g.article_id WHERE h.article_id IN (${part.map(()=>"?").join(",")})`,...part);
-    for (const row of rows) {
-      row.input_current=Number(row.identity_current)===1
-        && (row.expected_publication_state!=="published"
-          || !["needs_review","needs_triage","closed_private","rejected","blocked"].includes(String(row.review_state)))
-        && await generationProjectionHash(row,JSON.parse(String(row.tag_snapshot)),row.review_state)===row.projection_input_hash;
-      found.set(String(row.article_id),row);
-    }
+      LEFT JOIN articles a ON a.id=g.article_id`;
+  const rows=await readBatchedByIds({
+    ids:uniqueIds,
+    readJsonBatch:(payload,limit)=>e2eRows(db,`${select} WHERE h.article_id IN (SELECT value FROM json_each(?)) LIMIT ?`,payload,limit),
+    readLegacyBatch:(part)=>e2eRows(db,`${select} WHERE h.article_id IN (${part.map(()=>"?").join(",")})`,...part),
+  });
+  for (const row of rows) {
+    row.input_current=Number(row.identity_current)===1
+      && (row.expected_publication_state!=="published"
+        || !["needs_review","needs_triage","closed_private","rejected","blocked"].includes(String(row.review_state)))
+      && await generationProjectionHash(row,JSON.parse(String(row.tag_snapshot)),row.review_state)===row.projection_input_hash;
+    found.set(String(row.article_id),row);
   }
   return found;
 }
