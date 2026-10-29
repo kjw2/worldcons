@@ -5,6 +5,12 @@ import test from "node:test";
 import { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } from "../lib/seo/public-urls";
 import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/seo/metadata";
 import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
+import {
+  resilientSitemapRead,
+  SITEMAP_SOURCE_RETRY_DELAY_MS,
+  SitemapSourceUnavailableError,
+  type SitemapSourceUnavailableLog,
+} from "../lib/seo/sitemap-source";
 
 test("public paths strip the legacy /v2 prefix and keep clean URLs", () => {
   assert.equal(publicPath("/"), "/");
@@ -55,8 +61,73 @@ test("thin tags are not indexable and do not advertise themselves as sitemap tar
   assert.equal(fat.robots, undefined);
 });
 
+test("sitemap source reads retry transient failures and recover", async () => {
+  const waits: number[] = [];
+  const logs: SitemapSourceUnavailableLog[] = [];
+  let calls = 0;
+
+  const result = await resilientSitemapRead(
+    "articles",
+    async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("transient connection failure");
+      return [{ slug: "recovered-article" }];
+    },
+    {
+      wait: async (delayMs) => {
+        waits.push(delayMs);
+      },
+      log: (entry) => {
+        logs.push(entry);
+      },
+    },
+  );
+
+  assert.deepEqual(result, [{ slug: "recovered-article" }]);
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [SITEMAP_SOURCE_RETRY_DELAY_MS]);
+  assert.deepEqual(logs, []);
+});
+
+test("sitemap source reads fail closed after retries without partial results", async () => {
+  const waits: number[] = [];
+  const logs: SitemapSourceUnavailableLog[] = [];
+  let calls = 0;
+
+  await assert.rejects(
+    resilientSitemapRead(
+      "articles",
+      async () => {
+        calls += 1;
+        throw new Error("sensitive internal detail");
+      },
+      {
+        wait: async (delayMs) => {
+          waits.push(delayMs);
+        },
+        log: (entry) => {
+          logs.push(entry);
+        },
+      },
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof SitemapSourceUnavailableError);
+      assert.equal(error.code, "sitemap_source_unavailable");
+      assert.equal(error.source, "articles");
+      assert.doesNotMatch(error.message, /sensitive internal detail/u);
+      return true;
+    },
+  );
+
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [SITEMAP_SOURCE_RETRY_DELAY_MS]);
+  assert.deepEqual(logs, [{ event: "sitemap_source_unavailable", source: "articles", attempts: 2 }]);
+  assert.deepEqual(Object.keys(logs[0]).sort(), ["attempts", "event", "source"]);
+});
+
 test("sitemap and routing keep clean canonical URLs and drop search/thin-tag noise", () => {
   const sitemap = fs.readFileSync(path.join(process.cwd(), "app/sitemap.ts"), "utf8");
+  const sitemapSource = fs.readFileSync(path.join(process.cwd(), "lib/seo/sitemap-source.ts"), "utf8");
   const tagsPage = fs.readFileSync(path.join(process.cwd(), "app/tags/page.tsx"), "utf8");
   const tagPill = fs.readFileSync(path.join(process.cwd(), "components/tag-pill.tsx"), "utf8");
   const nextConfig = fs.readFileSync(path.join(process.cwd(), "next.config.ts"), "utf8");
@@ -65,8 +136,13 @@ test("sitemap and routing keep clean canonical URLs and drop search/thin-tag noi
 
   assert.match(sitemap, /listPublicSitemapArticles/);
   assert.match(sitemap, /resilientSitemapRead/);
-  assert.match(sitemap, /sitemap_source_unavailable/);
-  assert.match(sitemap, /setTimeout\(resolve, 150\)/);
+  assert.match(sitemap, /from "@\/lib\/seo\/sitemap-source"/);
+  assert.doesNotMatch(sitemap, /return \[\]/);
+  assert.doesNotMatch(sitemap, /catch/u);
+  assert.match(sitemapSource, /SITEMAP_SOURCE_RETRY_DELAY_MS = 150/);
+  assert.match(sitemapSource, /setTimeout\(resolve, delayMs\)/);
+  assert.match(sitemapSource, /sitemap_source_unavailable/);
+  assert.match(sitemapSource, /throw new SitemapSourceUnavailableError\(source\)/);
   assert.match(sitemap, /isIndexablePublicTag/);
   assert.match(sitemap, /minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT/);
   assert.match(tagsPage, /minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT/);

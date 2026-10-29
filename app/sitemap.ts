@@ -2,24 +2,10 @@ import type { MetadataRoute } from "next";
 import { listGlossaryTerms, listPublicSitemapArticles, listSources, listTags } from "@/lib/db/queries";
 import { getAppBaseUrl, isIndexablePublicTag } from "@/lib/seo/metadata";
 import { MIN_INDEXABLE_TAG_ARTICLE_COUNT } from "@/lib/seo/public-urls";
+import { resilientSitemapRead } from "@/lib/seo/sitemap-source";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-async function resilientSitemapRead<T>(source: string, read: () => Promise<T[]>): Promise<T[]> {
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      return await read();
-    } catch {
-      if (attempt === 1) {
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        continue;
-      }
-      console.error(JSON.stringify({ event: "sitemap_source_unavailable", source }));
-    }
-  }
-  return [];
-}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getAppBaseUrl();
