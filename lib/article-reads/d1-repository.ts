@@ -79,6 +79,15 @@ export interface D1ArticleReadDependencies {
    * composition, so correctness never depends on it.
    */
   fastList?: boolean;
+  /**
+   * Enables the set-based public sitemap candidate read. It is opt-in for the
+   * same reason as `fastList`: the authored JOIN SQL needs a real D1/SQLite
+   * engine, so the simple fake D1 keeps exercising the legacy batched path.
+   * It never applies textual publishability or generation metadata itself; the
+   * unchanged `overlayPublicGenerationRows` guard and post-overlay filter still
+   * decide the public URL set.
+   */
+  fastSitemap?: boolean;
 }
 
 const LIST_COLUMNS = [
@@ -652,6 +661,48 @@ export function createD1ArticleReadRepository(
         )
       )`;
 
+  /**
+   * Set-based public sitemap candidate projection. It mirrors the exact catalog
+   * correction used by `p3PublishedArticleIds` (a published P3 head is eligible
+   * when no published catalog correction exists, or when its `enrichment_full`
+   * snapshot points at the current catalog anchor and matches the authoritative
+   * source hash) and the article predicates this method has always applied.
+   *
+   * Textual `publishable` is deliberately not pushed into this SQL: the immutable
+   * generation overlay can replace `source_metadata`, and the caller keeps
+   * filtering after that overlay exactly as before. The version join is LEFT so
+   * a missing/foreign version without a catalog correction stays visible exactly
+   * like the legacy id-only composition.
+   */
+  const SITEMAP_FROM = `from article_publications_p3 p
+      left join article_content_versions_p3 v on v.id = p.version_id and v.article_id = p.article_id
+      join articles a on a.id = p.article_id
+      left join case_catalog_publications_v1 c on c.article_id = p.article_id and c.state = 'published'
+      left join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id`;
+  const SITEMAP_WHERE = `p.state = 'published'
+      and a.status = 'summarized'
+      and a.catalog_ai_stale_v4 = 0
+      and (
+        c.article_id is null
+        or (
+          v.version_role = 'enrichment_full'
+          and v.source_anchor_version_id = c.source_anchor_version_id
+          and anchor.version_role = 'authoritative_source'
+          and anchor.source_content_hash is not null and anchor.source_content_hash != ''
+          and v.enrichment_source_content_hash = anchor.source_content_hash
+        )
+      )`;
+  const SITEMAP_COLUMNS = [
+    "id",
+    "slug",
+    "summarized_at",
+    "fetched_at",
+    "discovered_at",
+    "status",
+    "catalog_ai_stale_v4",
+    "source_metadata",
+  ] as const;
+
   function fastBasePredicates(filters: ArticleListFilters): { sql: string[]; params: unknown[] } {
     const sql: string[] = [];
     const params: unknown[] = [];
@@ -976,19 +1027,53 @@ export function createD1ArticleReadRepository(
     };
   }
 
-  async function listPublicSitemapArticles(): Promise<SitemapArticleEntry[]> {
-    const binding = requireCore(dependencies);
-    const publishedIds = await p3PublishedArticleIds(binding);
-    if (publishedIds.length === 0) return [];
-    const rows = await readByInBatches(binding, "articles", "id", publishedIds, {
-      select: ["slug", "summarized_at", "fetched_at", "discovered_at", "status", "catalog_ai_stale_v4", "source_metadata"],
-      where: [
-        { column: "status", value: "summarized" },
-        { column: "catalog_ai_stale_v4", value: 0 },
-      ],
-      orderBy: LIST_ORDER,
+  /**
+   * One bounded candidate read for the public sitemap. The published-head read
+   * preserves the legacy `maxRows` overflow failure before any article row is
+   * considered; the authored JOIN then returns the same article projection the
+   * per-80-id loop used to hydrate. An overflow past `maxRows` is still a typed
+   * fail-closed error, never a truncated sitemap.
+   */
+  async function readPublicSitemapCandidatesFast(binding: D1RuntimeDatabase) {
+    const publishedHeads = await read(binding, "article_publications_p3", {
+      select: ["article_id"],
+      where: [{ column: "state", value: "published" }],
       limit: maxRows + 1,
     });
+    if (publishedHeads.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
+    if (publishedHeads.length === 0) return [];
+    const columns = SITEMAP_COLUMNS.map((column) => `a.${column}`).join(", ");
+    const sql = `select ${columns} ${SITEMAP_FROM} where ${SITEMAP_WHERE} order by a.original_published_at desc nulls last, a.id asc limit ?`;
+    const rows = await runD1AuthoredRead({
+      binding,
+      table: requireTable("articles"),
+      select: [...SITEMAP_COLUMNS],
+      sql,
+      params: [maxRows + 1],
+    });
+    if (rows.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
+    return rows;
+  }
+
+  async function listPublicSitemapArticles(): Promise<SitemapArticleEntry[]> {
+    const binding = requireCore(dependencies);
+    let rows: Record<string, unknown>[];
+    if (dependencies.fastSitemap) {
+      rows = await readPublicSitemapCandidatesFast(binding);
+    } else {
+      const publishedIds = await p3PublishedArticleIds(binding);
+      if (publishedIds.length === 0) return [];
+      rows = await readByInBatches(binding, "articles", "id", publishedIds, {
+        select: ["id", "slug", "summarized_at", "fetched_at", "discovered_at", "status", "catalog_ai_stale_v4", "source_metadata"],
+        where: [
+          { column: "status", value: "summarized" },
+          { column: "catalog_ai_stale_v4", value: 0 },
+        ],
+        orderBy: LIST_ORDER,
+        limit: maxRows + 1,
+      });
+    }
+    if (rows.length === 0) return [];
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
     return (await overlayPublicGenerationRows(binding,rows)).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
       if (typeof row.slug !== "string" || row.slug.length === 0) return [];

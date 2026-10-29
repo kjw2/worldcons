@@ -84,3 +84,90 @@ This change fixes silent sitemap truncation. It does not guarantee that Google w
 - Actual Google discovery, crawl scheduling, indexing decisions, and ranking are outside repository control.
 - A sitemap failure will now be visible as a generation error, but a healthy sitemap still requires Google to recrawl and select the detail URLs.
 - No claim is made that this P0 change resolves the observed unknown-to-Google status. It removes one confirmed integrity defect and preserves the existing canonical, robots, and sitemap contracts for follow-up verification.
+
+## Follow-up: bounded sitemap read remedy (2026-10-29)
+
+- Repository HEAD at this follow-up: `26f010420ac6fda3882405bab743d8e0a9b171ba`
+- Deployed Cloudflare version at handoff: `7039e41f-d7aa-465c-a1bd-180f5919005a`
+- Scope: corrected bounded set-based sitemap read plus guard-key deduplication
+- Status: **corrected implementation verified locally, but deployment is blocked**. With real distinct article ids the unchanged guard overlay still scales at roughly one round trip per 80 articles per guard pass, so a sub-5-second cold path is not proven.
+- Not performed: browser automation, PR, push, deploy, live Cloudflare writes, schema changes
+
+### New live evidence
+
+| Observation | Value |
+| --- | --- |
+| Googlebot `GET /sitemap.xml` | `2026-10-28T17:36:37.890Z`, Worker outcome `canceled`, `wallTime` 16,977 ms, no `response.status` |
+| Googlebot `GET /robots.txt` seven minutes earlier | HTTP 200, 15 ms |
+| Live sitemap after P0 deploy | 3,492 URLs including 2,216 detailed articles, TTFB 16.5 s |
+| Older sitemap probe | 5.9 s |
+| Search Console | Homepage indexed; four sampled article URLs `unknown to Google` |
+
+The sitemap source fix from the previous section is deployed and the URL set is still served; this follow-up addresses the cold read cost that let the crawler cancel before a response status existed.
+
+### Read-only path profile
+
+`listPublicSitemapArticles` previously executed these bounded reads for `N` published heads:
+
+1. `p3PublishedArticleIds`: one published-head read, then `ceil(N / 80)` catalog reads, plus version/anchor reads for catalog-corrected rows.
+2. Article hydration: `ceil(N / 80)` independent `articles ... article_id IN (...)` reads.
+3. `overlayPublicGenerationRows`: one E2E table probe plus `ceil(N / 80)` generation reads, then one metadata table probe, one policy read and `ceil(N / 80)` metadata reads.
+
+The previous sitemap projection did not select `id`, so the overlay received `"undefined"` for every row and its generation/metadata guards were ineffective. That was a safety gap, not an optimization to preserve. The corrected path projects the real `id`, so generation content, withdrawal state and pending metadata now apply to the actual articles.
+
+For 2,216 published heads with a small catalog-correction set the legacy path is roughly 116 serial D1 round trips before any catalog version reads. The measured local SQLite equivalent for 200 heads with real distinct ids was 16 reads: one head read, three catalog batches, three article batches, four generation guard reads and five metadata guard reads.
+
+### Implemented remedy
+
+- `listPublicSitemapArticles` now has an opt-in `fastSitemap` path used by the production runtime.
+- It keeps the legacy bounded published-head read and `maxRows` overflow failure.
+- It replaces the catalog batches plus article-id batches with one authored JOIN that reproduces the exact `p3PublishedArticleIds` catalog anti-join and the existing `status = 'summarized'` / `catalog_ai_stale_v4 = 0` article predicates.
+- It projects the real `a.id` together with the existing sitemap fields, so `overlayPublicGenerationRows` verifies the actual article ids instead of the repeated string `"undefined"`. The immutable overlay, E2E CAS re-read, metadata policy and post-overlay textual `publishable` filter are all unchanged and now effective.
+- Legacy `listPublicSitemapArticles` also projects `id` so the fallback and parity tests exercise the same identity-aware guard.
+- `currentGenerations` and `readPublicMetadataState` deduplicate repeated article ids before their bounded 80-key reads, matching the existing `assertPublicSearchFreshness` behavior. Both results are keyed by article id, so duplicates can never change guard outcomes; the change only removes duplicate guard round trips.
+- No schema, index, cache, R2, edge TTL, search-document substitution, or new Cloudflare resource was added.
+
+Local read-count evidence for 200 published heads with E2E heads and active metadata policy, using real distinct article ids:
+
+| Path | D1 round trips | Candidate writes |
+| --- | --- | --- |
+| Legacy batched composition | 16 | 0 |
+| Fast sitemap composition | 11 | 0 |
+
+The fast path's 11 reads are one published-head bound, one candidate JOIN, four generation guard reads and five metadata guard reads. At 2,216 heads the same shape is approximately `5 + 2 * ceil(N / 80)` = 61 reads when the first generation/metadata read finds nothing, or approximately `8 + 4 * ceil(N / 80)` = 120 reads when the overlay must perform its second CAS re-read. The earlier claim of 7 reads was invalid: it was measured only because every row carried the same `"undefined"` id, which collapsed the guard keys and skipped real identity checks. Actual production `rows_read` and cold TTFB were not measured, so no live speedup is claimed.
+
+### Regression coverage
+
+`tests/article-read-d1-fast-list.test.ts` now additionally proves:
+
+- Fast and legacy sitemaps return the same sorted URL set for published, textual-true, numeric-true, private, needs-review, stale, withdrawn, in-review, catalog-blocked, catalog-enriched and wrong-hash rows.
+- `lastModified` precedence is unchanged (`summarized_at` -> `fetched_at` -> `discovered_at`) and an overflowing `maxRows` still raises `D1ShadowTruncatedError`.
+- Exactly one authored candidate JOIN and one published-head bound are issued by the fast path.
+- The 200-head local fixture with real distinct ids measures 16 legacy reads versus 11 fast reads, not the earlier invalid 7.
+- An active generation overrides mutable draft slug/timestamps, a withdrawn publication disappears from the sitemap, and a pending metadata repair fails closed with `e2e.public_metadata_pending` for both fast and legacy paths.
+- Repeated generation/metadata guard keys still issue one bounded read per table.
+
+Verification run after identity correction:
+
+```text
+pnpm test:public-regression       18 passed, 0 failed
+article-read-d1-fast-list         16 passed, 0 failed
+article fast/list/reads/shadow    71 passed, 0 failed
+e2e M3/M5 + search projection     50 passed, 0 failed
+pnpm typecheck                    passed
+eslint (changed TS files)         passed with no findings
+```
+
+### Blocked decision and next evidence
+
+The identity-corrected fast path removes the article/catalog batch loops, but it cannot avoid the guard overlay's `ceil(N / 80)` reads per pass. At the live 2,216-article size that is roughly 61 reads when no managed rows are found and roughly 120 when the second CAS re-read runs. This is bounded by `maxRows`, but it is not evidence of a sub-5-second cold path, so **commit/deploy remains blocked**.
+
+The next candidate optimization is a set-based guard snapshot over the small E2E/metadata relations (read the bounded generation heads and metadata repairs once per pass, then match ids in memory) replacing the per-80-id guard loops. It must preserve the existing `currentGenerations` projection hash, the metadata revision/fencing checks, the second CAS re-read, and the `maxRows` fail-closed bound. It has not been implemented or measured here.
+
+### Remaining uncertainty
+
+- The 16,977 ms crawler cancellation is consistent with the profiled read amplification, but this task did not reproduce live cold timing or inspect Cloudflare query metrics.
+- The guard overlay still scales with article count (`ceil(N / 80)` per pass); only duplicate-key amplification was removed.
+- The deployed Worker will not contain this change unless the controller independently verifies it and accepts the remaining latency risk.
+- The candidate `fastSitemap` path is disabled by default: the runtime requires an explicit `WORLDCONS_FAST_SITEMAP_ENABLED=true` opt-in. Current production Wrangler config does not set this flag; no unverified optimization is active in the released Worker.
+- No claim is made that Google will now crawl or index the detail URLs; sitemap availability and latency are only two of several crawl and indexing inputs.

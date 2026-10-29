@@ -22,9 +22,13 @@ export function generationProjectionHash(g: GenerationRow, tags: unknown, review
 }
 export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly string[]) {
   const found = new Map<string,GenerationRow>();
-  if (!ids.length || !await hasE2ETable(db,"e2e_generation_heads_v1")) return found;
-  for (let offset=0;offset<ids.length;offset+=80) {
-    const part=ids.slice(offset,offset+80);
+  // The result is keyed by article id, so duplicate inputs cannot change it.
+  // Deduplicate first so repeated keys (for example a projection without `id`)
+  // cannot multiply the bounded 80-key reads.
+  const uniqueIds=[...new Set(ids)];
+  if (!uniqueIds.length || !await hasE2ETable(db,"e2e_generation_heads_v1")) return found;
+  for (let offset=0;offset<uniqueIds.length;offset+=80) {
+    const part=uniqueIds.slice(offset,offset+80);
     const rows=await e2eRows(db,`SELECT g.*,a.review_state,
       CASE WHEN ${CURRENT_GENERATION_SQL} THEN 1 ELSE 0 END AS identity_current,
       (SELECT json_group_array(json_object('tag_id',tag_id,'confidence',confidence,'slug',slug,'name',name,

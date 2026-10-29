@@ -14,5 +14,14 @@ export * from "@/lib/article-reads/d1-repository";
  */
 export function articleReads(): ArticleReadRepository {
   const binding = getRuntimeD1Binding("worldcons_core");
-  return binding ? createD1ArticleReadRepository({ binding, maxRows: 10_000, fastList: true }) : mockArticleReads;
+  return binding
+    ? createD1ArticleReadRepository({
+        binding,
+        maxRows: 10_000,
+        fastList: true,
+        // P0 candidate: leave inactive until real cold-path latency and
+        // public eligibility parity have been independently verified.
+        fastSitemap: process.env.WORLDCONS_FAST_SITEMAP_ENABLED === "true",
+      })
+    : mockArticleReads;
 }

@@ -5,6 +5,8 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { createD1ArticleReadRepository } from "../lib/article-reads/d1-repository";
 import { D1ShadowTruncatedError } from "../lib/reference-reads/d1-repository";
 import type { D1RuntimeDatabase, D1RuntimePreparedStatement } from "../lib/cloudflare/d1/runtime-binding";
+import { currentGenerations } from "../lib/cloudflare/e2e/generation-state";
+import { readPublicMetadataState } from "../lib/cloudflare/search-projection/metadata-repair";
 import { SqliteD1, publish, articleId } from "./helpers/e2e-core-fixture";
 
 /**
@@ -360,4 +362,245 @@ test("fast list honors the eligible-row overflow bound", async () => {
   } finally {
     sqlite.close();
   }
+});
+
+function sitemapRepository(sqlite: DatabaseSync, fastSitemap: boolean, captured?: Captured[], maxRows = 10_000) {
+  return createD1ArticleReadRepository({ binding: binding(sqlite, captured), fastSitemap, maxRows });
+}
+
+function sortedSitemap(entries: { slug: string; lastModified: string | null }[]) {
+  return [...entries].sort((left, right) => left.slug.localeCompare(right.slug));
+}
+
+test("fast sitemap matches the legacy batched sitemap across public eligibility states", async () => {
+  const sqlite = createCore();
+  try {
+    insertArticle(sqlite, "ok");
+    insertArticle(sqlite, "string-true", { metadata: JSON.stringify({ collection: { publishable: "true" } }) });
+    insertArticle(sqlite, "numeric-one", { metadata: JSON.stringify({ collection: { publishable: 1 } }) });
+    insertArticle(sqlite, "private", { metadata: NOT_PUBLISHABLE });
+    insertArticle(sqlite, "needs-review", { status: "needs_review" });
+    insertArticle(sqlite, "stale", { stale: 1 });
+    insertArticle(sqlite, "withdrawn", { p3State: "withdrawn" });
+    insertArticle(sqlite, "not-published", { p3State: "in_review" });
+    insertArticle(sqlite, "catalog-blocked", {
+      versionRole: null,
+      anchor: "official-v2",
+      catalogState: "published",
+    });
+    insertArticle(sqlite, "catalog-enriched", {
+      versionRole: "enrichment_full",
+      anchor: "official-v3",
+      enrichmentHash: "official-hash",
+      versionId: "enrichment-v3",
+      catalogState: "published",
+    });
+    insertVersion(sqlite, "catalog-enriched", "official-v3", {
+      versionRole: "authoritative_source",
+      sourceHash: "official-hash",
+      revision: "2",
+      contentHash: "anchor-hash-enriched",
+    });
+    insertArticle(sqlite, "catalog-wrong-hash", {
+      versionRole: "enrichment_full",
+      anchor: "official-v4",
+      enrichmentHash: "obsolete-hash",
+      versionId: "enrichment-v4",
+      catalogState: "published",
+    });
+    insertVersion(sqlite, "catalog-wrong-hash", "official-v4", {
+      versionRole: "authoritative_source",
+      sourceHash: "official-hash",
+      revision: "2",
+      contentHash: "anchor-hash-wrong",
+    });
+
+    const fast = await sitemapRepository(sqlite, true).listPublicSitemapArticles();
+    const legacy = await sitemapRepository(sqlite, false).listPublicSitemapArticles();
+    assert.deepEqual(sortedSitemap(fast), sortedSitemap(legacy));
+    assert.deepEqual(
+      fast.map((entry) => entry.slug).sort(),
+      ["catalog-enriched", "ok", "string-true"],
+      "only published, summarized, non-stale, textually publishable, catalog-eligible rows are public",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("fast sitemap keeps lastModified precedence, one set-based candidate read and the overflow bound", async () => {
+  const sqlite = createCore();
+  try {
+    insertArticle(sqlite, "a", { publishedAt: "2026-01-01T00:00:00.000Z" });
+    insertArticle(sqlite, "b", { publishedAt: "2026-02-01T00:00:00.000Z" });
+    sqlite.prepare("UPDATE articles SET summarized_at=NULL,fetched_at=NULL,discovered_at=? WHERE id=?").run(
+      "2026-01-01T00:00:00.000Z",
+      "a",
+    );
+    sqlite.prepare("UPDATE articles SET summarized_at=?,fetched_at=NULL WHERE id=?").run(
+      "2026-06-01T00:00:00.000Z",
+      "b",
+    );
+    insertArticle(sqlite, "missing-slug");
+    sqlite.prepare("UPDATE articles SET slug='' WHERE id=?").run("missing-slug");
+
+    const captured: Captured[] = [];
+    const entries = await sitemapRepository(sqlite, true, captured).listPublicSitemapArticles();
+    assert.deepEqual(sortedSitemap(entries), [
+      { slug: "a", lastModified: "2026-01-01T00:00:00.000Z" },
+      { slug: "b", lastModified: "2026-06-01T00:00:00.000Z" },
+    ]);
+
+    const candidateReads = captured.filter(
+      (call) => call.sql.includes("from article_publications_p3 p") && call.sql.includes("left join case_catalog_publications_v1"),
+    );
+    assert.equal(candidateReads.length, 1, "the eligible sitemap candidates are one authored query");
+    assert.equal(
+      captured.filter((call) => call.sql.includes("from article_publications_p3 where state = ?")).length,
+      1,
+      "the published-head bound is one aggregate-free read",
+    );
+
+    const bounded = sitemapRepository(sqlite, true, undefined, 1);
+    await assert.rejects(
+      () => bounded.listPublicSitemapArticles(),
+      (error: unknown) => error instanceof D1ShadowTruncatedError,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("fast sitemap keeps real distinct ids and measures 11 local reads for 200 published articles", async () => {
+  const sqlite = createCore();
+  try {
+    sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0004_e2e_generations.sql", import.meta.url), "utf8"));
+    sqlite.exec(`CREATE TABLE search_metadata_policy_v1 (id INTEGER PRIMARY KEY, public_read_required INTEGER NOT NULL);
+      INSERT INTO search_metadata_policy_v1(id,public_read_required) VALUES(1,1);
+      CREATE TABLE search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+        applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
+    for (let index = 0; index < 200; index += 1) {
+      insertArticle(sqlite, `query-${String(index).padStart(3, "0")}`, {
+        publishedAt: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
+      });
+    }
+
+    const legacyCaptured: Captured[] = [];
+    const fastCaptured: Captured[] = [];
+    const legacy = await sitemapRepository(sqlite, false, legacyCaptured).listPublicSitemapArticles();
+    const fast = await sitemapRepository(sqlite, true, fastCaptured).listPublicSitemapArticles();
+
+    assert.deepEqual(sortedSitemap(fast), sortedSitemap(legacy));
+    assert.equal(fast.length, 200);
+    assert.equal(
+      legacyCaptured.length,
+      16,
+      "legacy: one head read, three catalog batches, three article batches and nine distinct-id guard reads",
+    );
+    assert.equal(
+      fastCaptured.length,
+      11,
+      "fast: one head bound, one candidate query and nine distinct-id guard reads",
+    );
+    assert.equal(
+      fastCaptured.filter(
+        (call) => call.sql.includes("from article_publications_p3 p") && call.sql.includes("left join case_catalog_publications_v1"),
+      ).length,
+      1,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("fast sitemap propagates ids so an active generation overrides mutable article fields and withdrawal removes the URL", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  await publish(core, "a");
+  core.db.exec("UPDATE articles SET slug='mutable-draft', summarized_at='1999-01-01T00:00:00.000Z'");
+  const repository = createD1ArticleReadRepository({ binding: core, fastSitemap: true, maxRows: 10_000 });
+
+  const entries = await repository.listPublicSitemapArticles();
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].slug, "m1-fixture", "the immutable P3 slug must win over the mutable draft slug");
+
+  const pub = core.db.prepare("SELECT version_id FROM article_publications_p3 WHERE article_id=?").get(articleId) as { version_id: string };
+  await publish(core, "withdraw", {
+    captureLegacy: false,
+    versionId: pub.version_id,
+    targetState: "withdrawn",
+  });
+  assert.deepEqual(await repository.listPublicSitemapArticles(), [], "a withdrawn publication must never remain in the sitemap");
+});
+
+test("fast sitemap propagates ids so a pending metadata repair fails closed", async () => {
+  const sqlite = createCore();
+  try {
+    sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0004_e2e_generations.sql", import.meta.url), "utf8"));
+    sqlite.exec(`CREATE TABLE search_metadata_policy_v1 (id INTEGER PRIMARY KEY, public_read_required INTEGER NOT NULL);
+      INSERT INTO search_metadata_policy_v1(id,public_read_required) VALUES(1,1);
+      CREATE TABLE search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+        applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
+    insertArticle(sqlite, "pending-metadata");
+    sqlite.prepare(
+      "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+    ).run("pending-metadata", 2, 1, "pending", 4);
+
+    for (const fastSitemap of [true, false]) {
+      await assert.rejects(
+        () => sitemapRepository(sqlite, fastSitemap).listPublicSitemapArticles(),
+        /e2e\.public_metadata_pending/,
+        `pending metadata must fail closed with fastSitemap=${fastSitemap}`,
+      );
+    }
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("generation and metadata guard reads dedupe repeated article ids", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  core.db.exec(`CREATE TABLE search_metadata_policy_v1 (id INTEGER PRIMARY KEY, public_read_required INTEGER NOT NULL);
+    INSERT INTO search_metadata_policy_v1(id,public_read_required) VALUES(1,1);
+    CREATE TABLE search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+      applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
+  const duplicates = Array.from({ length: 200 }, () => articleId);
+
+  core.queries = [];
+  await currentGenerations(core, duplicates);
+  assert.equal(
+    core.queries.filter((sql) => sql.includes("FROM e2e_generation_heads_v1 h")).length,
+    1,
+    "200 copies of one key must not become three bounded generation reads",
+  );
+
+  core.queries = [];
+  const states = await readPublicMetadataState(core, duplicates, new Set());
+  assert.equal(states.size, 0);
+  assert.equal(
+    core.queries.filter((sql) => sql.includes("FROM search_metadata_repairs_v1 WHERE article_id IN")).length,
+    1,
+    "200 copies of one key must not become three bounded metadata reads",
+  );
+});
+
+test("duplicate metadata guard ids still fail closed while a repair is pending", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  core.db.exec(`CREATE TABLE search_metadata_policy_v1 (id INTEGER PRIMARY KEY, public_read_required INTEGER NOT NULL);
+    INSERT INTO search_metadata_policy_v1(id,public_read_required) VALUES(1,1);
+    CREATE TABLE search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+      applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
+  core.db.prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)").run(
+    articleId,
+    2,
+    1,
+    "pending",
+    4,
+  );
+  await assert.rejects(
+    () => readPublicMetadataState(core, [articleId, articleId, articleId], new Set()),
+    /e2e\.public_metadata_pending/,
+  );
 });

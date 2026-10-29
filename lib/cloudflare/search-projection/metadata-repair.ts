@@ -65,10 +65,13 @@ export async function drainSearchMetadataRepairs(bindings:{WORLDCONS_CORE:D1Runt
 /** Batched Core read gate; disabled until both compatible workers are deployed. */
 export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonly string[],managed:Set<string>) {
   const states=new Map<string,GenerationRow>();
-  if(!ids.length||!await hasE2ETable(core,'search_metadata_policy_v1'))return states;
+  // The state is keyed by article id, so duplicate inputs cannot change it.
+  // Deduplicate before the bounded 80-key reads, matching assertPublicSearchFreshness.
+  const uniqueIds=[...new Set(ids)];
+  if(!uniqueIds.length||!await hasE2ETable(core,'search_metadata_policy_v1'))return states;
   const policy=(await e2eRows(core,'SELECT public_read_required FROM search_metadata_policy_v1 WHERE id=1'))[0];
   if(Number(policy?.public_read_required)!==1)return states;
-  const legacy=ids.filter(id=>!managed.has(id));
+  const legacy=uniqueIds.filter(id=>!managed.has(id));
   for(let offset=0;offset<legacy.length;offset+=80){const part=legacy.slice(offset,offset+80);
     for(const row of await e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (${part.map(()=>'?').join(',')})`,...part)){
       if(row.status!=='verified'||Number(row.revision)!==Number(row.applied_revision))throw new Error('e2e.public_metadata_pending');
