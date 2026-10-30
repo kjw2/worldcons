@@ -236,3 +236,49 @@ Independent staging verification and a live cold probe are still required before
 | `git diff --check` | clean |
 
 The M4 failures were a local `wrangler deploy --dry-run` `spawn EPERM` and the staged discovery Queue identity assertion. The M5 failure was the discovery item count assertion. Both failing tests reproduce on the unmodified HEAD with this change stashed, so they are not caused by the guard batching change.
+
+## Follow-up: bounded production sitemap parity probe (2026-10-30)
+
+- Repository HEAD at implementation: `65c71123d53ca88bed6c9c77dfaf464c5a95af77`
+- Endpoint: fixed HTTPS `GET https://worldcons.cclib.workers.dev/sitemap.xml`
+- Existing deployed Worker remains `7039e41f-d7aa-465c-a1bd-180f5919005a` at 100% of traffic. This task did not deploy or change Cloudflare.
+- Added `scripts/seo-sitemap-probe.ts`, `pnpm seo:sitemap:probe` and offline `node:test` coverage. The probe is read-only: exactly two sequential GETs, a 1 s gap, 30 s abort limit per request, 2 MiB response cap, no redirects, no cache-busting, no extra query parameters and no User-Agent impersonation. It prints only counts, timings, safety flags and a sorted normalized URL-set SHA-256, never the URL list or response body.
+- Changes are limited to the standalone probe, its test/package entry and this doc; no application runtime, schema, index, cache, Worker version or opt-in flag was changed.
+
+### Controller baseline (2026-10-30)
+
+| Run | HTTP | TTFB | Total | Bytes |
+| --- | --- | --- | --- | --- |
+| 1 | 200 | 2.657638 s | 2.800148 s | 751451 |
+| 2 | 200 | 2.368496 s | 2.514336 s | 751451 |
+
+### Bounded probe snapshot after implementation
+
+The probe's two runs matched exactly. These are single read-only observations, not a cache-miss, cold-start or P95 measurement.
+
+| Run | HTTP | TTFB | Total | Bytes | URLs | Article URLs | Unique | Duplicates | `lastmod` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 200 | 6.792109 s | 6.816803 s | 751451 | 3528 | 2236 | 3528 | 0 | 3454 |
+| 2 | 200 | 6.360173 s | 6.367335 s | 751451 | 3528 | 2236 | 3528 | 0 | 3454 |
+
+Shared normalized URL-set SHA-256: `174131cd3f3f9f980895f616d062749c090b46c11b4c8531e2e3d1c6305aea8d`. Both runs reported XML valid, canonical/same-origin safe, zero cross-origin, non-HTTPS, credential, fragment or query URLs, `application/xml`, no redirects and `bothRunsMatch: true`.
+
+The probe timings differ from the controller baseline above. They are separate observations and do not establish cache state or a regression.
+
+### Read-only production D1 query results
+
+| Query | Result | `rows_read` |
+| --- | --- | --- |
+| Published heads | 2237 rows | 2238 |
+| Exact candidate SQL | 2236 rows | 7642 |
+| Visible sitemap article URLs | 2216 earlier | not measured by this probe |
+
+- The exact candidate SQL count is not equivalent to the visible sitemap article count without the post-join eligibility overlay (generation/withdrawal state, metadata policy and post-overlay `publishable` filtering).
+- The 2,216 visible-article figure is from an **earlier snapshot**. The subsequent two-run production probe in this section reports **2,236 article URLs**, so subtracting 2,216 from the 2,236 SQL candidates does **not** establish that 20 documents were withheld. These are not transactionally consistent snapshots and public source data can change between reads.
+- `EXPLAIN QUERY PLAN` reports index usage plus a `TEMP B-TREE` for ordering. These were read-only queries; no SQL write was executed.
+
+### Preserved rollout state
+
+- `WORLDCONS_FAST_SITEMAP_ENABLED` remains OFF/unset.
+- `WORLDCONS_JSON_GUARD_BATCHING_ENABLED` remains OFF/unset.
+- The existing Worker version above remains unchanged. No browser, push, deploy, PR, Google write or Cloudflare write was performed.
