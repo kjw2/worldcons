@@ -368,3 +368,92 @@ These numbers are bounded guard-lookup probes, not the `rows_read` of a complete
 | `pnpm typecheck` | passed |
 | `pnpm exec eslint <changed TS files>` | passed with no findings |
 | `git diff --check` | clean |
+
+## Follow-up: isolated Workers-runtime sitemap acceptance harness (2026-10-30)
+
+- Repository HEAD at implementation: `2155ba7f2427702552d9f8c5b21c2b1c0ab0dd13`
+- Scope: standalone local Miniflare/workerd acceptance harness plus narrow `node:test` isolation coverage. No production runtime, Wrangler config, schema, index, Worker version, flag or Cloudflare resource was changed.
+- Not performed: browser automation, PR, Git push, deploy, `wrangler dev --remote`, production D1 binding, Cloudflare API write, production secret read.
+
+### What the harness proves
+
+`scripts/workers-sitemap-runtime-harness.ts` bundles `scripts/fixtures/worldcons-sitemap-runtime-worker.ts` with esbuild (TypeScript `@/*` alias included) and starts an actual Miniflare/workerd instance with exactly one **new ephemeral local D1** binding:
+
+- Binding: `WORLDCONS_CORE`
+- Local database ID: `worldcons-local-sitemap-harness`
+- No production database ID, remote binding, credential, `wrangler dev --remote` or `CLOUDFLARE_API` path exists in the harness or worker source.
+- Outbound network is fail-closed through a Miniflare `outboundService` that throws `harness_network_disabled`.
+- The temporary bundle/working directory is removed in `finally`; the report records `tempDirRemoved: true`.
+
+The test-only Worker imports the real `createD1ArticleReadRepository` from `lib/article-reads/d1-repository.ts` and calls its real `listPublicSitemapArticles()`. It is a **repository-level Worker smoke**, not the full `app/sitemap.ts` Next.js route. It serializes the exact repository `slug` and `lastModified` pairs into sitemap XML with a fixed test base URL. It does not use production URLs or production article URLs.
+
+The local dataset uses the real Core migrations `0001_init.sql`, `0004_e2e_generations.sql` and the real metadata migration `0011_search_metadata_repair.sql`:
+
+- 2,237 ordinary published rows with real `articles`, published `article_publications_p3` and `article_content_versions_p3` rows.
+- 1 withdrawn publication, withheld.
+- 1 published Catalog correction whose version is not an eligible `enrichment_full` snapshot, withheld.
+- 1 verified metadata-repair row, visible.
+- 1 current protected E2E generation row, visible.
+- 1 additional pending metadata-repair fixture inserted only for the negative pass.
+- Visible total in the healthy matrix: **2,239** exact `slug` + `lastModified` entries.
+
+`lastModified` varies across rows and exercises the `summarized_at -> fetched_at -> discovered_at` precedence, including null fallbacks.
+
+### Measured full-scale local results
+
+One command:
+
+```text
+pnpm seo:sitemap:workers
+```
+
+| Sitemap candidates | JSON1 guards | Local D1 statements | `rows_read` | Local Worker elapsed | Entries | Exact normalized SHA-256 |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Legacy | Legacy 80-id batches | 179 | 20,771 | 414 ms | 2,239 | `c93d3a61c8cb1cb58967046a76fcf78425dddb3e77c56bcd08b07bdfb4927592` |
+| Fast | Legacy 80-id batches | 122 | 22,985 | 269 ms | 2,239 | same |
+| Legacy | JSON1 `JOIN` (500-id batches) | 87 | 20,771 | 221 ms | 2,239 | same |
+| Fast | JSON1 `JOIN` (500-id batches) | 30 | 22,985 | 102 ms | 2,239 | same |
+
+- All four modes returned **byte-identical XML** (`xmlSha256 = c47028e0ad5a12960611083a48b7e060fa0cb6cabf3370de27e4be0f6098a29b`) and the same normalized URL-set SHA-256. `allNormalizedSetsEqual: true`, `allXmlBytesEqual: true`.
+- The normalized SHA-256 is over the sorted lines `<absolute test loc>\t<lastmod or empty>`, after XML entity decoding. It is a parity witness for the local fixture, not a production sitemap hash.
+- The withdrawn and catalog-mismatch fixtures were absent in all four modes. The verified-metadata and current-generation fixtures were present in all four modes.
+- The pending metadata negative pass returned HTTP 500 `e2e.public_metadata_pending` in all four modes. Fail-closed behavior is preserved.
+- `binding.meta.rows_read` is available in this local Miniflare D1; `rowsReadAvailable: true`. The harness reports the actual observed values above.
+- Statement counts reproduce the earlier isolated SQLite result exactly: **179 / 122 / 87 / 30**.
+- `rows_read` does **not** monotonically improve: the fast candidate JOIN reads more rows locally (22,985) than the legacy batched composition (20,771) even though it issues far fewer statements. This is a candid local observation, not a production cost claim.
+- The full run, including 20 seed requests, 4 matrix requests and 4 negative requests, completed in **18.7 s**. The healthy matrix itself is exactly **4 Worker fetch calls**; the negative pass is another 4. Both are inside the 2-minute bound.
+
+### Isolation and safety coverage
+
+`tests/workers-sitemap-runtime-harness.test.ts` verifies:
+
+- The harness source configures only the local ephemeral D1 binding and local database ID.
+- The source contains no `wrangler dev`, `--remote`, `CLOUDFLARE_API`, `CLOUDFLARE_ACCOUNT` or any production D1 UUID.
+- The `outboundService` fail-closed guard and temporary-directory cleanup are present.
+- A reduced-data end-to-end run starts actual workerd, uses the real repository path, exercises all four switch combinations, proves byte and normalized-set parity, proves withholding and pending-metadata fail-closed behavior, reports local `rows_read`, and confirms temporary-directory removal.
+
+Verification run:
+
+```text
+pnpm test:workers-sitemap       2 passed, 0 failed
+pnpm seo:sitemap:workers        2239 visible, 4/4 parity, 4/4 pending fail-closed
+pnpm typecheck                  passed
+eslint (changed TS files)       passed with no findings
+git diff --check                clean
+```
+
+### Limitations
+
+- These are **local Miniflare/workerd timings**, not production Cloudflare TTFB, cold-start, queueing, edge-cache or Googlebot behavior measurements.
+- The local `rows_read` values are from Miniflare D1 and are not production D1 billing or execution statistics.
+- This is a repository-level Worker smoke, **not** the full `app/sitemap.ts` route: source/tag/glossary sections, Next.js metadata serialization and the deployed runtime are not exercised.
+- The dataset is a deterministic local fixture, not a production snapshot. Production URL parity, `lastModified` parity and the live 2,236-article public set remain unverified.
+- Both feature flags remain unset/OFF in production. The deployed Worker remains `7039e41f-d7aa-465c-a1bd-180f5919005a`.
+
+### Exact next gate
+
+1. Controller reviews and checkpoints this local-only harness; no commit, push or deploy is performed here.
+2. Treat **JSON1 guard ON + fast sitemap OFF** as the first candidate: local Workerd/D1 cut SQL statements from 179 to 87 without increasing `rows_read`. The fast-sitemap candidate increased local `rows_read` by 2,214; keep it OFF pending a separate SQL read-cost improvement.
+3. A separately authorized staging/candidate deployment may use an isolated non-production D1 binding and both flag variants. Compare the candidate **against a baseline using the same staging data snapshot**; never compare its synthetic URL digest to the live production digest because the datasets differ.
+4. If production-snapshot parity is required, establish a separately authorized, protected and consistent snapshot before testing. Run the exact same snapshot through the original and candidate code, compare complete sitemap URL/`lastmod` sets, and measure Worker TTFB plus full-request D1 `rows_read` for both paths. The current local harness does not establish that production parity.
+5. Only after exact same-snapshot public URL parity plus acceptable full-request latency and rows-read evidence should production flag activation be considered. Google indexing remains a separate, unproven outcome.

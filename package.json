@@ -165,6 +165,8 @@
     "audit:m2-readiness": "tsx scripts/audit-worldcons-m2-readiness.ts",
     "probe:scotus-pdf": "tsx scripts/scotus-official-pdf-probe.ts",
     "seo:sitemap:probe": "tsx scripts/seo-sitemap-probe.ts",
+    "seo:sitemap:workers": "tsx scripts/workers-sitemap-runtime-harness.ts",
+    "test:workers-sitemap": "tsx --test tests/workers-sitemap-runtime-harness.test.ts",
     "test:m2-readiness": "tsx --test tests/m2-readiness-diagnostic.test.ts",
     "test:germany-cutover": "tsx --test tests/germany-cutover-readiness.test.ts",
     "test:us-cutover": "tsx --test tests/us-cutover-readiness.test.ts tests/us-manual-approval-publication.test.ts tests/p2-m4-us-private-summary-guard.test.ts",
