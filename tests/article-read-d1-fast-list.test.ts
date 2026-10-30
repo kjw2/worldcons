@@ -633,6 +633,74 @@ test("fast sitemap matches the legacy batched sitemap across public eligibility 
   }
 });
 
+test("fast sitemap admits anchored enrichment and excludes catalog mismatches through a lazy EXISTS", async () => {
+  const sqlite = createCore();
+  try {
+    insertArticle(sqlite, "legacy");
+    insertArticle(sqlite, "anchored-enrichment", {
+      versionRole: "enrichment_full",
+      anchor: "official-valid",
+      enrichmentHash: "source-hash-valid",
+      versionId: "enrichment-valid",
+      catalogState: "published",
+    });
+    insertVersion(sqlite, "anchored-enrichment", "official-valid", {
+      versionRole: "authoritative_source",
+      sourceHash: "source-hash-valid",
+      revision: "2",
+      contentHash: "anchor-hash-valid",
+    });
+    insertArticle(sqlite, "catalog-mismatch", {
+      versionRole: "enrichment_full",
+      anchor: "official-mismatch",
+      enrichmentHash: "stale-enrichment-hash",
+      versionId: "enrichment-mismatch",
+      catalogState: "published",
+    });
+    insertVersion(sqlite, "catalog-mismatch", "official-mismatch", {
+      versionRole: "authoritative_source",
+      sourceHash: "current-source-hash",
+      revision: "2",
+      contentHash: "anchor-hash-mismatch",
+    });
+    insertArticle(sqlite, "wrong-anchor-role", {
+      versionRole: "enrichment_full",
+      anchor: "official-wrong-role",
+      enrichmentHash: "source-hash-wrong-role",
+      versionId: "enrichment-wrong-role",
+      catalogState: "published",
+    });
+    insertVersion(sqlite, "wrong-anchor-role", "official-wrong-role", {
+      versionRole: "enrichment_full",
+      sourceHash: "source-hash-wrong-role",
+      revision: "2",
+      contentHash: "anchor-hash-wrong-role",
+    });
+
+    const captured: Captured[] = [];
+    const fast = await sitemapRepository(sqlite, true, captured).listPublicSitemapArticles();
+    const legacy = await sitemapRepository(sqlite, false).listPublicSitemapArticles();
+    assert.deepEqual(sortedSitemap(fast), sortedSitemap(legacy));
+    assert.deepEqual(
+      fast.map((entry) => entry.slug).sort(),
+      ["anchored-enrichment", "legacy"],
+      "only rows without a correction or with a valid anchored enrichment are public",
+    );
+
+    const candidate = captured.find(
+      (call) => call.sql.includes("from article_publications_p3 p") && call.sql.includes("left join case_catalog_publications_v1"),
+    );
+    assert.ok(candidate, "the fast sitemap candidate query must be issued");
+    assert.ok(candidate.sql.includes("exists ("), "the catalog policy must be a correlated EXISTS");
+    assert.ok(
+      !candidate.sql.includes("left join article_content_versions_p3"),
+      "version lookups must not run unconditionally for uncorrected rows",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("fast sitemap keeps lastModified precedence, one set-based candidate read and the overflow bound", async () => {
   const sqlite = createCore();
   try {

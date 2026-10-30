@@ -670,26 +670,32 @@ export function createD1ArticleReadRepository(
    *
    * Textual `publishable` is deliberately not pushed into this SQL: the immutable
    * generation overlay can replace `source_metadata`, and the caller keeps
-   * filtering after that overlay exactly as before. The version join is LEFT so
-   * a missing/foreign version without a catalog correction stays visible exactly
-   * like the legacy id-only composition.
+   * filtering after that overlay exactly as before. The version lookup is lazy:
+   * rows without a catalog correction never probe `article_content_versions_p3`,
+   * and corrected rows must prove an anchored `enrichment_full` snapshot through
+   * a correlated EXISTS instead of unconditional LEFT JOINs. A missing/foreign
+   * version without a catalog correction stays visible exactly like the legacy
+   * id-only composition.
    */
   const SITEMAP_FROM = `from article_publications_p3 p
-      left join article_content_versions_p3 v on v.id = p.version_id and v.article_id = p.article_id
       join articles a on a.id = p.article_id
-      left join case_catalog_publications_v1 c on c.article_id = p.article_id and c.state = 'published'
-      left join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id`;
+      left join case_catalog_publications_v1 c on c.article_id = p.article_id and c.state = 'published'`;
   const SITEMAP_WHERE = `p.state = 'published'
       and a.status = 'summarized'
       and a.catalog_ai_stale_v4 = 0
       and (
         c.article_id is null
-        or (
-          v.version_role = 'enrichment_full'
-          and v.source_anchor_version_id = c.source_anchor_version_id
-          and anchor.version_role = 'authoritative_source'
-          and anchor.source_content_hash is not null and anchor.source_content_hash != ''
-          and v.enrichment_source_content_hash = anchor.source_content_hash
+        or exists (
+          select 1
+          from article_content_versions_p3 v
+          join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id
+          where v.id = p.version_id
+            and v.article_id = p.article_id
+            and v.version_role = 'enrichment_full'
+            and v.source_anchor_version_id = c.source_anchor_version_id
+            and anchor.version_role = 'authoritative_source'
+            and anchor.source_content_hash is not null and anchor.source_content_hash != ''
+            and v.enrichment_source_content_hash = anchor.source_content_hash
         )
       )`;
   const SITEMAP_COLUMNS = [

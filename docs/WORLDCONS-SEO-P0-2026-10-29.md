@@ -457,3 +457,92 @@ git diff --check                clean
 3. A separately authorized staging/candidate deployment may use an isolated non-production D1 binding and both flag variants. Compare the candidate **against a baseline using the same staging data snapshot**; never compare its synthetic URL digest to the live production digest because the datasets differ.
 4. If production-snapshot parity is required, establish a separately authorized, protected and consistent snapshot before testing. Run the exact same snapshot through the original and candidate code, compare complete sitemap URL/`lastmod` sets, and measure Worker TTFB plus full-request D1 `rows_read` for both paths. The current local harness does not establish that production parity.
 5. Only after exact same-snapshot public URL parity plus acceptable full-request latency and rows-read evidence should production flag activation be considered. Google indexing remains a separate, unproven outcome.
+
+## Follow-up: lazy version join in the sitemap candidate SQL (2026-10-30)
+
+- Repository HEAD at implementation: `242bb559731d9af64195fe8c421a37c0fbbe5bdd` plus this uncommitted change.
+- Scope: `lib/article-reads/d1-repository.ts` `SITEMAP_FROM` / `SITEMAP_WHERE` only. No schema, index, Worker version, cache, Cloudflare write, deployment, promotion, secret access or production write was performed.
+- `WORLDCONS_FAST_SITEMAP_ENABLED` and `WORLDCONS_JSON_GUARD_BATCHING_ENABLED` remain OFF/unset by default.
+
+### Change
+
+`SITEMAP_FROM` no longer joins `article_content_versions_p3` unconditionally. It keeps the published P3 head, the joined `articles` row and the published `case_catalog_publications_v1` correction:
+
+```sql
+from article_publications_p3 p
+join articles a on a.id = p.article_id
+left join case_catalog_publications_v1 c on c.article_id = p.article_id and c.state = 'published'
+```
+
+The catalog policy is now a correlated `EXISTS` that only runs for corrected rows:
+
+```sql
+c.article_id is null
+or exists (
+  select 1
+  from article_content_versions_p3 v
+  join article_content_versions_p3 anchor on anchor.id = c.source_anchor_version_id
+  where v.id = p.version_id
+    and v.article_id = p.article_id
+    and v.version_role = 'enrichment_full'
+    and v.source_anchor_version_id = c.source_anchor_version_id
+    and anchor.version_role = 'authoritative_source'
+    and anchor.source_content_hash is not null and anchor.source_content_hash != ''
+    and v.enrichment_source_content_hash = anchor.source_content_hash
+)
+```
+
+- Rows with no published catalog correction skip both version joins entirely.
+- Corrected rows keep the exact public policy: missing/foreign/invalid versions stay excluded, while a matching anchored `enrichment_full` snapshot remains admitted.
+- `SITEMAP_COLUMNS`, ordering (`original_published_at desc nulls last`, `id asc`), generation/metadata overlay, CAS re-read, `maxRows` bound and both opt-in flags are unchanged.
+- `FAST_FROM` and `FAST_WHERE` (the regular public list SQL) were not touched.
+
+### Production read-only SQL A/B (candidate query only)
+
+The exact candidate statements were run read-only against production D1. This is **not** a full sitemap request, not a Worker TTFB measurement and not a data snapshot.
+
+| Candidate SQL | Rows | Ordered full-row checksum | `rows_read` | D1 query time |
+| --- | ---: | ---: | ---: | ---: |
+| Previous `SITEMAP_FROM` / `SITEMAP_WHERE` | 2246 | 860979221 | 9928 | 266.8 ms |
+| New lazy `EXISTS` version join | 2246 | 860979221 | 7682 | 209.8 ms |
+
+- Both statements returned the same 2,246 candidates and the same ordered full-row checksum `860979221`.
+- `rows_read` fell from 9,928 to 7,682, a reduction of 2,246 rows (**-22.6%**).
+- D1 query time fell from 266.8 ms to 209.8 ms.
+- These numbers describe only the candidate SQL. They do not measure the published-head read, the guard overlay, the full returned sitemap, production TTFB, cold starts or Googlebot behavior. No write was executed.
+
+### Local Workerd four-mode result
+
+`pnpm seo:sitemap:workers` reproduced the four-mode matrix with **2,239** visible entries, byte-identical XML (`xmlSha256 = c47028e0ad5a12960611083a48b7e060fa0cb6cabf3370de27e4be0f6098a29b`) and identical normalized URL-set SHA-256 (`c93d3a61c8cb1cb58967046a76fcf78425dddb3e77c56bcd08b07bdfb4927592`) in all modes.
+
+| Sitemap candidates | JSON1 guards | Statements | Local `rows_read` | Local Worker elapsed |
+| --- | --- | ---: | ---: | ---: |
+| Legacy | Legacy 80-id batches | 179 | 20,771 | 622 ms |
+| Fast | Legacy 80-id batches | 122 | 20,745 | 279 ms |
+| Legacy | JSON1 `JOIN` (500-id batches) | 87 | 20,771 | 237 ms |
+| Fast | JSON1 `JOIN` (500-id batches) | 30 | 20,745 | 106 ms |
+
+- The previous fast-sitemap regression (`rows_read` 22,985 versus 20,771 for the same JSON1 guards) is resolved: fast+JSON1 now reads **20,745**, 26 rows below the **20,771** legacy+JSON1 baseline.
+- Withdrawn and catalog-mismatch fixtures remained absent; verified metadata and the current protected generation remained present.
+- The pending metadata negative pass still returned HTTP 500 `e2e.public_metadata_pending` in all four modes.
+- These are local Miniflare/workerd values, not production `rows_read`, billing, cold-start or TTFB.
+
+### Tests
+
+`tests/article-read-d1-fast-list.test.ts` adds explicit coverage that the fast sitemap admits a valid anchored enrichment, excludes a catalog mismatch and a wrong anchor role, matches the legacy URL set, uses a correlated `EXISTS`, and does not emit an unconditional `left join article_content_versions_p3`.
+
+| Command | Result |
+| --- | --- |
+| `pnpm seo:sitemap:workers` | 2,239 entries, 4/4 XML and normalized parity, 4/4 pending fail-closed |
+| `pnpm test:workers-sitemap` | 2 passed, 0 failed |
+| `pnpm exec tsx --test tests/article-read-d1-fast-list.test.ts` | 29 passed, 0 failed |
+| `pnpm test:public-regression` | 18 passed, 0 failed |
+| `pnpm typecheck` | passed |
+| `pnpm exec eslint lib/article-reads/d1-repository.ts tests/article-read-d1-fast-list.test.ts` | passed with no findings |
+| `git diff --check` | clean |
+
+### Limits
+
+- Both flags remain OFF, so this change is inactive in the deployed Worker until separately reviewed and authorized.
+- Production read-only evidence is limited to the candidate SQL A/B. Full sitemap URL/lastmod parity, production TTFB, `rows_read` per full request, cache behavior and Google indexing remain unverified.
+- No browser, PR, push, deploy, Cloudflare write or production data write was performed.
