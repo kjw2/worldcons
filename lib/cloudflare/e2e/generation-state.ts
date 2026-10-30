@@ -32,13 +32,18 @@ export async function currentGenerations(db: D1RuntimeDatabase, ids: readonly st
       CASE WHEN ${CURRENT_GENERATION_SQL} THEN 1 ELSE 0 END AS identity_current,
       (SELECT json_group_array(json_object('tag_id',tag_id,'confidence',confidence,'slug',slug,'name',name,
         'normalized_name',normalized_name,'type',type)) FROM (SELECT at.tag_id,at.confidence,t.slug,t.name,t.normalized_name,t.type
-        FROM article_tags at LEFT JOIN tags t ON t.id=at.tag_id WHERE at.article_id=g.article_id ORDER BY at.tag_id COLLATE BINARY)) AS tag_snapshot
-      FROM e2e_generation_heads_v1 h JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id
+        FROM article_tags at LEFT JOIN tags t ON t.id=at.tag_id WHERE at.article_id=g.article_id ORDER BY at.tag_id COLLATE BINARY)) AS tag_snapshot`;
+  const generationJoins=`JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id
       LEFT JOIN articles a ON a.id=g.article_id`;
   const rows=await readBatchedByIds({
     ids:uniqueIds,
-    readJsonBatch:(payload,limit)=>e2eRows(db,`${select} WHERE h.article_id IN (SELECT value FROM json_each(?)) LIMIT ?`,payload,limit),
-    readLegacyBatch:(part)=>e2eRows(db,`${select} WHERE h.article_id IN (${part.map(()=>"?").join(",")})`,...part),
+    readJsonBatch:(payload,limit)=>e2eRows(db,`${select}
+      FROM json_each(?) AS ids
+      JOIN e2e_generation_heads_v1 h ON h.article_id=ids.value
+      ${generationJoins} LIMIT ?`,payload,limit),
+    readLegacyBatch:(part)=>e2eRows(db,`${select}
+      FROM e2e_generation_heads_v1 h ${generationJoins}
+      WHERE h.article_id IN (${part.map(()=>"?").join(",")})`,...part),
   });
   for (const row of rows) {
     row.input_current=Number(row.identity_current)===1

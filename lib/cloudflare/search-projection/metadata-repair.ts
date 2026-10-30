@@ -75,7 +75,7 @@ export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonl
   const legacy=uniqueIds.filter(id=>!managed.has(id));
   const rows=await readBatchedByIds({
     ids:legacy,
-    readJsonBatch:(payload,limit)=>e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (SELECT value FROM json_each(?)) LIMIT ?`,payload,limit),
+    readJsonBatch:(payload,limit)=>e2eRows(core,`SELECT m.* FROM json_each(?) AS ids JOIN search_metadata_repairs_v1 m ON m.article_id=ids.value LIMIT ?`,payload,limit),
     readLegacyBatch:(part)=>e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (${part.map(()=>"?").join(",")})`,...part),
   });
   for(const row of rows){

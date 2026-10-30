@@ -282,3 +282,59 @@ The probe timings differ from the controller baseline above. They are separate o
 - `WORLDCONS_FAST_SITEMAP_ENABLED` remains OFF/unset.
 - `WORLDCONS_JSON_GUARD_BATCHING_ENABLED` remains OFF/unset.
 - The existing Worker version above remains unchanged. No browser, push, deploy, PR, Google write or Cloudflare write was performed.
+
+## Follow-up: JSON1 JOIN source correction (2026-10-30)
+
+- Repository HEAD at implementation: `882600aa47dd86fb17dbe7550319fe2948ab3ce1` plus this uncommitted change.
+- Scope: read-only guard source correction in `lib/cloudflare/e2e/generation-state.ts` (`currentGenerations`) and `lib/cloudflare/search-projection/metadata-repair.ts` (`readPublicMetadataState`). No schema, index, Worker, cache, Cloudflare, deployment or live write change.
+- `WORLDCONS_FAST_SITEMAP_ENABLED` and `WORLDCONS_JSON_GUARD_BATCHING_ENABLED` remain OFF/unset by default.
+
+### Change
+
+The JSON1 guard reads now expand the bounded id array first and join the target relation by primary key instead of filtering with `article_id IN (SELECT value FROM json_each(?))`:
+
+```sql
+SELECT g.*, a.review_state, ...
+FROM json_each(?) AS ids
+JOIN e2e_generation_heads_v1 h ON h.article_id=ids.value
+JOIN e2e_generations_v1 g ON g.generation_id=h.generation_id
+LEFT JOIN articles a ON a.id=g.article_id
+LIMIT ?
+
+SELECT m.*
+FROM json_each(?) AS ids
+JOIN search_metadata_repairs_v1 m ON m.article_id=ids.value
+LIMIT ?
+```
+
+- The generation projection fields, the `CASE WHEN CURRENT_GENERATION_SQL` expression, `identity_current`, `tag_snapshot`, `generationProjectionHash`, review-state blacklist and publication-state checks are unchanged.
+- The legacy reads are unchanged: generation keeps `FROM e2e_generation_heads_v1 h JOIN ... WHERE h.article_id IN (?,?,...)` and metadata keeps `SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (?,?,...)`.
+- Inputs are still deduplicated, capped at 10,000 ids, 500 ids / 64 KiB per JSON batch, and each JSON read keeps `LIMIT ?`. Any JSON failure still discards the partial result and re-reads every id with the legacy 80-id composition; a fallback failure propagates. Approval and the second-pass CAS re-reads are unchanged.
+
+### Production D1 read-only source-bound probe (2026-10-30)
+
+Sample: 240 `article_id` values from the union of current generation heads and metadata repair rows. Only the bounded lookup statements below were run; this is not the complete sitemap read set.
+
+| Guard lookup | Legacy 80-id `IN` | JSON1 `IN (SELECT value FROM json_each(?))` | JSON1 `FROM json_each(...) JOIN` |
+| --- | --- | --- | --- |
+| Generation head/generation | 303 (`3 x 80`) | 543 | 303 |
+| Metadata repair | 480 (`3 x 80`) | 720 | 479 |
+
+- All three shapes returned the same sorted result set on the sample.
+- `EXPLAIN QUERY PLAN` for the JSON1 JOIN shape reports `SCAN json_each`, then indexed `SEARCH h` / `SEARCH m` on the primary-key autoindex. On the sample it returned 21 generation rows and 240 metadata rows. The legacy 80-id shape also performs primary-key lookups.
+- Core D1 JSON1 and the query plan were verified directly against production D1 with read-only lookups.
+
+### Limitation
+
+These numbers are bounded guard-lookup probes, not the `rows_read` of a complete sitemap request. The full sitemap path also runs the published-head bound, the candidate JOIN, eligibility/overlay reads and post-overlay filtering; those reads were not measured here. No live Worker TTFB, cold-start timing, or public URL parity was measured for either fast flag, so no sub-5-second or live speedup is claimed. Both opt-in flags remain OFF until independent verification.
+
+### Verification run
+
+| Command | Result |
+| --- | --- |
+| `pnpm exec tsx --test tests/article-read-d1-fast-list.test.ts` | 26 passed, 0 failed |
+| `pnpm test:public-regression` | 18 passed, 0 failed |
+| `pnpm test:article-reads` | 22 passed, 0 failed |
+| `pnpm typecheck` | passed |
+| `pnpm exec eslint <changed TS files>` | passed with no findings |
+| `git diff --check` | clean |

@@ -664,8 +664,8 @@ test("fast sitemap keeps real distinct ids and measures the JSON1 guard read sha
       7,
       "fast: one head bound, one candidate query and five JSON1 guard/probe reads",
     );
-    assert.equal(guardReads(fastCaptured, "FROM e2e_generation_heads_v1 h"), 1);
-    assert.equal(guardReads(fastCaptured, "FROM search_metadata_repairs_v1"), 1);
+    assert.equal(guardReads(fastCaptured, "e2e_generation_heads_v1"), 1);
+    assert.equal(guardReads(fastCaptured, "search_metadata_repairs_v1"), 1);
     assert.equal(
       fastCaptured.filter(
         (call) => call.sql.includes("from article_publications_p3 p") && call.sql.includes("left join case_catalog_publications_v1"),
@@ -733,19 +733,25 @@ test("generation and metadata guard reads dedupe repeated article ids", async (t
 
   core.queries = [];
   await currentGenerations(core, duplicates);
-  assert.equal(
-    core.queries.filter((sql) => sql.includes("FROM e2e_generation_heads_v1 h")).length,
-    1,
-    "200 copies of one key must not become three bounded generation reads",
+  const generationReads = core.queries.filter((sql) => sql.includes("e2e_generation_heads_v1"));
+  assert.equal(generationReads.length, 1, "200 copies of one key must not become three bounded generation reads");
+  assert.match(
+    generationReads[0],
+    /FROM json_each\(\?\) AS ids\s+JOIN e2e_generation_heads_v1 h ON h\.article_id=ids\.value/,
+    "the deduplicated JSON1 read must expand ids before joining the generation head",
   );
 
   core.queries = [];
   const states = await readPublicMetadataState(core, duplicates, new Set());
   assert.equal(states.size, 0);
-  assert.equal(
-    core.queries.filter((sql) => sql.includes("FROM search_metadata_repairs_v1 WHERE article_id IN")).length,
-    1,
-    "200 copies of one key must not become three bounded metadata reads",
+  const metadataReads = core.queries.filter(
+    (sql) => sql.includes("search_metadata_repairs_v1") && sql.includes("json_each"),
+  );
+  assert.equal(metadataReads.length, 1, "200 copies of one key must not become three bounded metadata reads");
+  assert.match(
+    metadataReads[0],
+    /FROM json_each\(\?\) AS ids JOIN search_metadata_repairs_v1 m ON m\.article_id=ids\.value/,
+    "the deduplicated JSON1 read must expand ids before joining the repair table",
   );
 });
 
@@ -808,8 +814,8 @@ test("JSON1 generation and metadata guards match the legacy 80-id composition ac
     assert.deepEqual(generationSnapshot(json), generationSnapshot(legacy));
     assert.equal(json.size, 4);
     assert.ok([...json.values()].every((row) => row.input_current === true));
-    assert.equal(jsonGuardReads(jsonGeneration, "FROM e2e_generation_heads_v1 h"), Math.ceil(ids.length / JSON_ID_BATCH_SIZE));
-    assert.equal(legacyGuardReads(legacyGeneration, "FROM e2e_generation_heads_v1 h"), Math.ceil(ids.length / 80));
+    assert.equal(jsonGuardReads(jsonGeneration, "e2e_generation_heads_v1"), Math.ceil(ids.length / JSON_ID_BATCH_SIZE));
+    assert.equal(legacyGuardReads(legacyGeneration, "e2e_generation_heads_v1"), Math.ceil(ids.length / 80));
 
     const jsonMetadata: Captured[] = [];
     const legacyMetadata: Captured[] = [];
@@ -817,8 +823,8 @@ test("JSON1 generation and metadata guards match the legacy 80-id composition ac
     const legacyStates = await readPublicMetadataState(binding(sqlite, legacyMetadata, { failJsonEach: true }), ids, new Set());
     assert.deepEqual(metadataSnapshot(jsonStates), metadataSnapshot(legacyStates));
     assert.equal(jsonStates.size, 4);
-    assert.equal(jsonGuardReads(jsonMetadata, "FROM search_metadata_repairs_v1"), Math.ceil(ids.length / JSON_ID_BATCH_SIZE));
-    assert.equal(legacyGuardReads(legacyMetadata, "FROM search_metadata_repairs_v1"), Math.ceil(ids.length / 80));
+    assert.equal(jsonGuardReads(jsonMetadata, "search_metadata_repairs_v1"), Math.ceil(ids.length / JSON_ID_BATCH_SIZE));
+    assert.equal(legacyGuardReads(legacyMetadata, "search_metadata_repairs_v1"), Math.ceil(ids.length / 80));
   } finally {
     sqlite.close();
   }
@@ -941,10 +947,34 @@ test("fast sitemap 2216-head fixture keeps two-pass guard parity and cuts guard 
     assert.equal(json.length, 2216);
     assert.deepEqual(sortedSitemap(json), sortedSitemap(legacy));
 
-    const jsonGenerationReads = jsonGuardReads(jsonCaptured, "FROM e2e_generation_heads_v1 h");
-    const jsonMetadataReads = jsonGuardReads(jsonCaptured, "FROM search_metadata_repairs_v1");
-    const legacyGenerationReads = legacyGuardReads(legacyCaptured, "FROM e2e_generation_heads_v1 h");
-    const legacyMetadataReads = legacyGuardReads(legacyCaptured, "FROM search_metadata_repairs_v1");
+    const jsonGenerationSql = jsonCaptured.find(
+      (call) => call.sql.includes("e2e_generation_heads_v1") && call.sql.includes("json_each"),
+    );
+    const jsonMetadataSql = jsonCaptured.find(
+      (call) => call.sql.includes("search_metadata_repairs_v1") && call.sql.includes("json_each"),
+    );
+    assert.ok(jsonGenerationSql, "the 2216 fixture must exercise the JSON1 generation read");
+    assert.ok(jsonMetadataSql, "the 2216 fixture must exercise the JSON1 metadata read");
+    assert.match(
+      jsonGenerationSql!.sql,
+      /FROM json_each\(\?\) AS ids\s+JOIN e2e_generation_heads_v1 h ON h\.article_id=ids\.value\s+JOIN e2e_generations_v1 g ON g\.generation_id=h\.generation_id\s+LEFT JOIN articles a ON a\.id=g\.article_id\s+LIMIT \?/,
+      "the generation JSON1 read must start from json_each and join the head by article id",
+    );
+    assert.match(jsonGenerationSql!.sql, /CASE WHEN h\.generation_id=g\.generation_id/);
+    assert.match(jsonGenerationSql!.sql, /AS identity_current/);
+    assert.match(jsonGenerationSql!.sql, /AS tag_snapshot/);
+    assert.doesNotMatch(jsonGenerationSql!.sql, /IN \(SELECT value FROM json_each/);
+    assert.match(
+      jsonMetadataSql!.sql,
+      /FROM json_each\(\?\) AS ids JOIN search_metadata_repairs_v1 m ON m\.article_id=ids\.value LIMIT \?/,
+      "the metadata JSON1 read must start from json_each and join the repair row by article id",
+    );
+    assert.doesNotMatch(jsonMetadataSql!.sql, /IN \(SELECT value FROM json_each/);
+
+    const jsonGenerationReads = jsonGuardReads(jsonCaptured, "e2e_generation_heads_v1");
+    const jsonMetadataReads = jsonGuardReads(jsonCaptured, "search_metadata_repairs_v1");
+    const legacyGenerationReads = legacyGuardReads(legacyCaptured, "e2e_generation_heads_v1");
+    const legacyMetadataReads = legacyGuardReads(legacyCaptured, "search_metadata_repairs_v1");
     assert.equal(jsonGenerationReads, 2 * Math.ceil(2216 / JSON_ID_BATCH_SIZE));
     assert.equal(jsonMetadataReads, 2 * Math.ceil(2215 / JSON_ID_BATCH_SIZE));
     assert.equal(legacyGenerationReads, 2 * Math.ceil(2216 / 80));
@@ -975,7 +1005,7 @@ test("two-pass overlay detects a metadata CAS change after the first guard pass"
 
   let metadataReads = 0;
   core.beforeStatement = (sql) => {
-    if (!sql.includes("FROM search_metadata_repairs_v1")) return;
+    if (!sql.includes("search_metadata_repairs_v1")) return;
     metadataReads += 1;
     if (metadataReads === 2) {
       core.beforeStatement = undefined;
@@ -1004,7 +1034,7 @@ test("two-pass overlay re-reads currentGenerations and drops a row whose generat
 
   let metadataReads = 0;
   core.beforeStatement = async (sql) => {
-    if (!sql.includes("FROM search_metadata_repairs_v1")) return;
+    if (!sql.includes("search_metadata_repairs_v1")) return;
     metadataReads += 1;
     if (metadataReads === 1) {
       core.beforeStatement = undefined;
@@ -1015,6 +1045,60 @@ test("two-pass overlay re-reads currentGenerations and drops a row whose generat
   const result = await overlayPublicGenerationRows(core, ids.map((id) => ({ id, slug: id })));
   assert.equal(result.some((row) => row.id === articleId), false, "the generation changed after the first read and must be dropped");
   assert.equal(result.length, 399);
+});
+
+test("fast sitemap and JSON1 guard batching remain OFF by default", async () => {
+  const originalFast = process.env.WORLDCONS_FAST_SITEMAP_ENABLED;
+  const originalJson = process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  delete process.env.WORLDCONS_FAST_SITEMAP_ENABLED;
+  delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  try {
+    const sqlite = createGuardCore();
+    try {
+      insertArticle(sqlite, "default-off");
+      await insertGeneration(sqlite, "default-off");
+      insertArticle(sqlite, "legacy-meta");
+      sqlite
+        .prepare(
+          `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+           VALUES(?,?,?,?,?,?,?)`,
+        )
+        .run("pub-legacy-meta", "legacy-meta", "current", "legacy_same_version", "{}", NOW, "test");
+      sqlite
+        .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+        .run("legacy-meta", 1, 1, "verified", 0);
+
+      const captured: Captured[] = [];
+      const entries = await createD1ArticleReadRepository({ binding: binding(sqlite, captured), maxRows: 10_000 })
+        .listPublicSitemapArticles();
+      assert.deepEqual(entries.map((entry) => entry.slug), ["default-off", "legacy-meta"]);
+      assert.equal(
+        captured.filter((call) => call.sql.includes("left join case_catalog_publications_v1")).length,
+        0,
+        "the fast sitemap candidate query must stay off without an explicit opt-in",
+      );
+      assert.equal(
+        captured.filter((call) => call.sql.includes("json_each")).length,
+        0,
+        "the JSON1 guard batching must stay off without an explicit opt-in",
+      );
+      assert.ok(
+        captured.some((call) => call.sql.includes("e2e_generation_heads_v1") && call.sql.includes("WHERE h.article_id IN (")),
+        "the default generation guard read must keep the legacy 80-id composition",
+      );
+      assert.ok(
+        captured.some((call) => call.sql.includes("FROM search_metadata_repairs_v1 WHERE article_id IN (")),
+        "the default metadata guard read must keep the legacy 80-id composition",
+      );
+    } finally {
+      sqlite.close();
+    }
+  } finally {
+    if (originalFast === undefined) delete process.env.WORLDCONS_FAST_SITEMAP_ENABLED;
+    else process.env.WORLDCONS_FAST_SITEMAP_ENABLED = originalFast;
+    if (originalJson === undefined) delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+    else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = originalJson;
+  }
 });
 
 test("JSON1 guard batching is disabled unless explicitly opted in", async () => {
