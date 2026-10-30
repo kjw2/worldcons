@@ -539,6 +539,44 @@ function sortedSitemap(entries: { slug: string; lastModified: string | null }[])
   return [...entries].sort((left, right) => left.slug.localeCompare(right.slug));
 }
 
+interface SitemapSwitchCombo {
+  label: string;
+  fastSitemap: boolean;
+  jsonGuard: boolean;
+}
+
+const SITEMAP_SWITCH_MATRIX: readonly SitemapSwitchCombo[] = [
+  { label: "fastSitemap=false,jsonGuard=false", fastSitemap: false, jsonGuard: false },
+  { label: "fastSitemap=true,jsonGuard=false", fastSitemap: true, jsonGuard: false },
+  { label: "fastSitemap=false,jsonGuard=true", fastSitemap: false, jsonGuard: true },
+  { label: "fastSitemap=true,jsonGuard=true", fastSitemap: true, jsonGuard: true },
+];
+
+async function runSitemapSwitchCombo(sqlite: DatabaseSync, combo: SitemapSwitchCombo) {
+  const original = process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  if (combo.jsonGuard) process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = "true";
+  else delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+  const captured: Captured[] = [];
+  const startedAt = performance.now();
+  try {
+    const entries = await sitemapRepository(sqlite, combo.fastSitemap, captured).listPublicSitemapArticles();
+    return { entries, captured, elapsedMs: performance.now() - startedAt };
+  } finally {
+    if (original === undefined) delete process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED;
+    else process.env.WORLDCONS_JSON_GUARD_BATCHING_ENABLED = original;
+  }
+}
+
+function sitemapHeadReads(captured: Captured[]) {
+  return captured.filter((call) => call.sql.includes("from article_publications_p3 where state = ?")).length;
+}
+
+function sitemapFastCandidateReads(captured: Captured[]) {
+  return captured.filter(
+    (call) => call.sql.includes("from article_publications_p3 p") && call.sql.includes("left join case_catalog_publications_v1"),
+  ).length;
+}
+
 test("fast sitemap matches the legacy batched sitemap across public eligibility states", async () => {
   const sqlite = createCore();
   try {
@@ -983,6 +1021,129 @@ test("fast sitemap 2216-head fixture keeps two-pass guard parity and cuts guard 
     assert.ok(jsonMetadataReads < legacyMetadataReads);
     assert.ok(jsonCaptured.length < legacyCaptured.length);
     assert.ok(jsonCaptured.length <= 40, `JSON1 fast path should stay near 30 reads, got ${jsonCaptured.length}`);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("isolated four-switch sitemap A/B matrix preserves exact slug+lastModified parity on one 2240-head snapshot", async (t) => {
+  const sqlite = createGuardCore();
+  try {
+    const basePublished = 2237;
+    sqlite.exec("BEGIN");
+    try {
+      for (let index = 0; index < basePublished; index += 1) {
+        insertArticle(sqlite, `matrix-${String(index).padStart(4, "0")}`, {
+          publishedAt: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
+        });
+      }
+    } finally {
+      sqlite.exec("COMMIT");
+    }
+    insertArticle(sqlite, "matrix-withdrawn", { p3State: "withdrawn" });
+    insertArticle(sqlite, "matrix-catalog-mismatch", {
+      versionRole: null,
+      anchor: "official-matrix",
+      catalogState: "published",
+    });
+    insertArticle(sqlite, "matrix-metadata-approved");
+    sqlite
+      .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+      .run("matrix-metadata-approved", 1, 1, "verified", 0);
+    sqlite
+      .prepare(
+        `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+         VALUES(?,?,?,?,?,?,?)`,
+      )
+      .run("pub-matrix-metadata-approved", "matrix-metadata-approved", "current", "legacy_same_version", "{}", NOW, "test");
+    insertArticle(sqlite, "matrix-protected-generation");
+    await insertGeneration(sqlite, "matrix-protected-generation");
+
+    const runs: { combo: SitemapSwitchCombo; entries: { slug: string; lastModified: string | null }[]; captured: Captured[]; elapsedMs: number }[] = [];
+    for (const combo of SITEMAP_SWITCH_MATRIX) {
+      runs.push({ combo, ...(await runSitemapSwitchCombo(sqlite, combo)) });
+    }
+
+    const baseline = sortedSitemap(runs[0].entries);
+    assert.equal(baseline.length, 2239, "2237 healthy rows plus the metadata-approved and protected-generation rows");
+    const baselineSlugs = new Set(baseline.map((entry) => entry.slug));
+    assert.equal(baselineSlugs.has("matrix-withdrawn"), false, "a withdrawn publication must never be public");
+    assert.equal(baselineSlugs.has("matrix-catalog-mismatch"), false, "a catalog mismatch must never be public");
+    assert.equal(baselineSlugs.has("matrix-metadata-approved"), true, "an approved metadata repair must stay public");
+    assert.equal(baselineSlugs.has("matrix-protected-generation"), true, "a current protected generation must stay public");
+
+    const expectedGenerationIds = 2239;
+    const expectedMetadataIds = 2238;
+    for (const run of runs) {
+      const { combo } = run;
+      assert.deepEqual(
+        sortedSitemap(run.entries),
+        baseline,
+        `${combo.label} must return the exact baseline slug+lastModified set, not just a matching count`,
+      );
+
+      const headReads = sitemapHeadReads(run.captured);
+      const candidateReads = sitemapFastCandidateReads(run.captured);
+      const jsonGenerationReads = jsonGuardReads(run.captured, "e2e_generation_heads_v1");
+      const legacyGenerationReads = legacyGuardReads(run.captured, "e2e_generation_heads_v1");
+      const jsonMetadataReads = jsonGuardReads(run.captured, "search_metadata_repairs_v1");
+      const legacyMetadataReads = legacyGuardReads(run.captured, "search_metadata_repairs_v1");
+
+      assert.equal(headReads, 1, `${combo.label}: exactly one published-head bound`);
+      assert.equal(candidateReads, combo.fastSitemap ? 1 : 0, `${combo.label}: fast candidate read only when enabled`);
+      assert.equal(
+        jsonGenerationReads,
+        combo.jsonGuard ? 2 * Math.ceil(expectedGenerationIds / JSON_ID_BATCH_SIZE) : 0,
+        `${combo.label}: JSON1 generation guard read count`,
+      );
+      assert.equal(
+        legacyGenerationReads,
+        combo.jsonGuard ? 0 : 2 * Math.ceil(expectedGenerationIds / 80),
+        `${combo.label}: legacy generation guard read count`,
+      );
+      assert.equal(
+        jsonMetadataReads,
+        combo.jsonGuard ? 2 * Math.ceil(expectedMetadataIds / JSON_ID_BATCH_SIZE) : 0,
+        `${combo.label}: JSON1 metadata guard read count`,
+      );
+      assert.equal(
+        legacyMetadataReads,
+        combo.jsonGuard ? 0 : 2 * Math.ceil(expectedMetadataIds / 80),
+        `${combo.label}: legacy metadata guard read count`,
+      );
+
+      t.diagnostic(
+        `${combo.label}: urls=${run.entries.length} statements=${run.captured.length} head=${headReads} fastCandidate=${candidateReads} ` +
+          `generationJson=${jsonGenerationReads} generationLegacy=${legacyGenerationReads} ` +
+          `metadataJson=${jsonMetadataReads} metadataLegacy=${legacyMetadataReads} localElapsedMs=${run.elapsedMs.toFixed(1)}`,
+      );
+    }
+
+    const fastLegacy = runs[1];
+    const legacyJson = runs[2];
+    const fastJson = runs[3];
+    assert.ok(fastJson.captured.length < fastLegacy.captured.length, "fastSitemap+JSON1 must issue fewer statements than fastSitemap alone");
+    assert.ok(fastJson.captured.length < legacyJson.captured.length, "fastSitemap+JSON1 must issue fewer statements than JSON1 alone");
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("isolated four-switch sitemap A/B matrix fails closed for pending metadata in every combination", async () => {
+  const sqlite = createGuardCore();
+  try {
+    insertArticle(sqlite, "matrix-pending");
+    sqlite
+      .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
+      .run("matrix-pending", 2, 1, "pending", 4);
+
+    for (const combo of SITEMAP_SWITCH_MATRIX) {
+      await assert.rejects(
+        async () => (await runSitemapSwitchCombo(sqlite, combo)).entries,
+        /e2e\.public_metadata_pending/,
+        `${combo.label} must fail closed while a metadata repair is pending`,
+      );
+    }
   } finally {
     sqlite.close();
   }

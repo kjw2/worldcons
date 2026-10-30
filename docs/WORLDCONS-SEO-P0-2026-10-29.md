@@ -235,6 +235,36 @@ Independent staging verification and a live cold probe are still required before
 | `pnpm lint` | 0 errors, 20 pre-existing warnings in unrelated files |
 | `git diff --check` | clean |
 
+## P0 isolated four-mode sitemap A/B acceptance (2026-10-30)
+
+### Production D1 bounded read-only cost probe
+
+- The actual `worldcons_core` D1 returned **2,237 published article heads**. The head-ID query incurred `rows_read=4,475`.
+- With the existing 500-ID JSON1 `JOIN` carrier, five generation queries returned 56 generation records at `rows_read=2,405`; five metadata queries returned 784 records at `rows_read=3,021`.
+- These **10 guard queries / 5,426 rows read** are *not* a complete sitemap request. They omit other head/candidate/catalog/approval/CAS read paths, and do not measure Worker latency or full per-request D1 charges.
+- Read-only D1 lookups only; no production schema/data mutation and no flag activation.
+
+### Reproducible isolated SQLite four-mode comparison
+
+The newly added same-snapshot regression uses 2,237 ordinary published rows, plus a withdrawn record, a catalog mismatch, a verified metadata-repair record and an active protected generation. A separate negative test puts a repair into `pending` state. It executes the same repository and overlay path under all four combinations:
+
+| Sitemap candidates | JSON1 guards | SQL statements | Exact published slug/lastModified entries |
+| --- | --- | ---: | ---: |
+| Legacy | Legacy 80-id batches | 179 | 2,239 |
+| Fast | Legacy 80-id batches | 122 | 2,239 |
+| Legacy | JSON1 `JOIN` (500-id batches) | 87 | 2,239 |
+| Fast | JSON1 `JOIN` (500-id batches) | 30 | 2,239 |
+
+All four modes returned exactly the same *sorted slug and last-modified value pairs*, not merely the same count. Withdrawn and catalog-mismatched items were excluded; verified metadata and the current protected generation were included. All four modes fail closed for a pending metadata repair. Other tests cover a changed generation and a metadata CAS mismatch during the two-pass overlay.
+
+The isolated fixture indicates a **149-statement (about 83%)** reduction from legacy+legacy to fast+JSON1. This is a local SQLite SQL-statement count, **not** production `rows_read`, Googlebot response time, or Cloudflare cost reduction. It is not a snapshot of production data; current live sitemap URL parity remains unverified. No `wrangler dev --remote` preview was used, to avoid exposing the production D1 binding in a test Worker.
+
+Checks after the isolated test change: `pnpm exec tsx --test tests/article-read-d1-fast-list.test.ts` **28/28 passed**, `pnpm test:public-regression` **18/18 passed**, and test-file ESLint / `git diff --check` passed. The business-logic and Wrangler configuration remain unchanged.
+
+### Rollout gate still open
+
+Both `WORLDCONS_FAST_SITEMAP_ENABLED` and `WORLDCONS_JSON_GUARD_BATCHING_ENABLED` stay **unset/OFF**. The deployed production Worker remains `7039e41f-d7aa-465c-a1bd-180f5919005a`. To activate the new path, the full returned sitemap URL set and `lastmod` values plus actual Worker TTFB/D1 `rows_read` must first be compared under a safely isolated acceptance environment. No claim is made that the prior Googlebot cancellation has been fixed.
+
 The M4 failures were a local `wrangler deploy --dry-run` `spawn EPERM` and the staged discovery Queue identity assertion. The M5 failure was the discovery item count assertion. Both failing tests reproduce on the unmodified HEAD with this change stashed, so they are not caused by the guard batching change.
 
 ## Follow-up: bounded production sitemap parity probe (2026-10-30)
