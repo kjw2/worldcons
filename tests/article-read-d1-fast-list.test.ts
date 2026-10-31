@@ -197,7 +197,9 @@ function metadataSnapshot(map: Map<string, GenerationRow>) {
 }
 
 function guardReads(captured: Captured[], table: string) {
-  return captured.filter((call) => call.sql.includes(table)).length;
+  return captured.filter((call) =>
+    call.sql.includes(table) && !call.sql.includes("SELECT article_id FROM search_metadata_repairs_v1"),
+  ).length;
 }
 
 function jsonGuardReads(captured: Captured[], table: string) {
@@ -205,7 +207,10 @@ function jsonGuardReads(captured: Captured[], table: string) {
 }
 
 function legacyGuardReads(captured: Captured[], table: string) {
-  return captured.filter((call) => call.sql.includes(table) && !call.sql.includes("json_each")).length;
+  return captured.filter((call) =>
+    call.sql.includes(table) && !call.sql.includes("json_each")
+    && !call.sql.includes("SELECT article_id FROM search_metadata_repairs_v1"),
+  ).length;
 }
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -762,13 +767,13 @@ test("fast sitemap keeps real distinct ids and measures the JSON1 guard read sha
     assert.equal(fast.length, 200);
     assert.equal(
       legacyCaptured.length,
-      12,
-      "legacy: one head read, three catalog batches, three article batches and five JSON1 guard/probe reads",
+      14,
+      "legacy: one head read, three catalog batches, three article batches, five guards, and two withholding reads",
     );
     assert.equal(
       fastCaptured.length,
-      7,
-      "fast: one head bound, one candidate query and five JSON1 guard/probe reads",
+      9,
+      "fast: one head bound, one candidate query, five guards, and two withholding reads",
     );
     assert.equal(guardReads(fastCaptured, "e2e_generation_heads_v1"), 1);
     assert.equal(guardReads(fastCaptured, "search_metadata_repairs_v1"), 1);
@@ -803,7 +808,7 @@ test("fast sitemap propagates ids so an active generation overrides mutable arti
   assert.deepEqual(await repository.listPublicSitemapArticles(), [], "a withdrawn publication must never remain in the sitemap");
 });
 
-test("fast sitemap propagates ids so a pending metadata repair fails closed", async () => {
+test("sitemap withholds pending, leased, and revision-mismatched metadata without hiding approved URLs", async () => {
   const sqlite = createCore();
   try {
     sqlite.exec(readFileSync(new URL("../d1/worldcons_core/0004_e2e_generations.sql", import.meta.url), "utf8"));
@@ -812,15 +817,25 @@ test("fast sitemap propagates ids so a pending metadata repair fails closed", as
       CREATE TABLE search_metadata_repairs_v1 (article_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
         applied_revision INTEGER, status TEXT NOT NULL, fencing_token INTEGER NOT NULL DEFAULT 0);`);
     insertArticle(sqlite, "pending-metadata");
+    insertArticle(sqlite, "leased-metadata");
+    insertArticle(sqlite, "revision-mismatch");
+    insertArticle(sqlite, "healthy-metadata");
     sqlite.prepare(
       "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
     ).run("pending-metadata", 2, 1, "pending", 4);
+    sqlite.prepare(
+      "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+    ).run("leased-metadata", 3, 2, "leased", 5);
+    sqlite.prepare(
+      "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+    ).run("revision-mismatch", 4, 3, "verified", 6);
 
     for (const fastSitemap of [true, false]) {
-      await assert.rejects(
-        () => sitemapRepository(sqlite, fastSitemap).listPublicSitemapArticles(),
-        /e2e\.public_metadata_pending/,
-        `pending metadata must fail closed with fastSitemap=${fastSitemap}`,
+      const entries = await sitemapRepository(sqlite, fastSitemap).listPublicSitemapArticles();
+      assert.deepEqual(
+        entries.map((entry) => entry.slug),
+        ["healthy-metadata"],
+        `pending metadata must be withheld with fastSitemap=${fastSitemap}`,
       );
     }
   } finally {
@@ -1197,19 +1212,21 @@ test("isolated four-switch sitemap A/B matrix preserves exact slug+lastModified 
   }
 });
 
-test("isolated four-switch sitemap A/B matrix fails closed for pending metadata in every combination", async () => {
+test("isolated four-switch sitemap A/B matrix withholds pending metadata in every combination", async () => {
   const sqlite = createGuardCore();
   try {
     insertArticle(sqlite, "matrix-pending");
+    insertArticle(sqlite, "matrix-stable");
     sqlite
       .prepare("INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)")
       .run("matrix-pending", 2, 1, "pending", 4);
 
     for (const combo of SITEMAP_SWITCH_MATRIX) {
-      await assert.rejects(
-        async () => (await runSitemapSwitchCombo(sqlite, combo)).entries,
-        /e2e\.public_metadata_pending/,
-        `${combo.label} must fail closed while a metadata repair is pending`,
+      const entries = (await runSitemapSwitchCombo(sqlite, combo)).entries;
+      assert.deepEqual(
+        entries.map((entry) => entry.slug),
+        ["matrix-stable"],
+        `${combo.label} must withhold the pending case while retaining the approved case`,
       );
     }
   } finally {

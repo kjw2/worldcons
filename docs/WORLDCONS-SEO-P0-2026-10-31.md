@@ -234,3 +234,61 @@ URLs. No guarantee of indexing follows from a successful sitemap fetch.
 No GSC submission, Google OAuth reconnect, DNS, Cloudflare config change,
 production D1 modification, deployment, push or PR was performed in this
 continuation.
+
+## 2026-10-31 production rollout and immediate rollback (later continuation)
+
+**This section supersedes the earlier statement about no deployment for the
+later continuation only.** The validated `16a20c2` source was deployed once
+with both optimization flags OFF. The release failed the live sitemap smoke
+and was immediately rolled back. No Google, production D1, DNS, or GitHub
+write was made.
+
+| Evidence | Result |
+| --- | --- |
+| Pre-deploy live sitemap | HTTP 200; 3,609 URLs, 2,287 article URLs; TTFB 6.67 s / 6.12 s |
+| Old production Worker | `7039e41f-d7aa-465c-a1bd-180f5919005a` |
+| New 100% OFF-flag deployment | `d3dea58d-1012-4186-ad3c-d9ea304fb646` at 2026-10-31T05:02:54Z |
+| New version sitemap smoke | HTTP 500 twice; 16.78 s / 18.33 s |
+| Cloudflare error logs | `sitemap_source_unavailable`, `source=articles`, retries=2 |
+| Immediate rollback | Deployment `68c5d0a9-2c09-435f-a358-54599e6a062d` at 2026-10-31T05:04:08Z, 100% old version |
+| Recovery smoke | HTTP 200; 3,609 URLs, 2,287 article URLs; 6.54 s |
+
+### Root-cause evidence
+
+The prior legacy sitemap candidate read did **not** project `articles.id`,
+so `overlayPublicGenerationRows` could not look up metadata guards for those
+candidate rows. The new source correctly includes `id`, activating the
+strict metadata repair guard. The production Core D1 read-only inventory
+showed `public_read_required=1`, 834 metadata-verified published rows with
+zero missing immutable P3 versions, and at least one, later two, concurrently
+`leased` metadata rows (some in the published summarized set).
+
+A `leased` row in the strict `readPublicMetadataState` function raises
+`e2e.public_metadata_pending`. This is a **high-confidence causal
+explanation**, but the production wrapper deliberately suppresses underlying
+errors and logs only `sitemap_source_unavailable`; the original inner error
+code was not captured from that deployment. Do not describe this as
+fully proven from the Cloudflare exception stack.
+
+### Candidate: safely withhold only unverified article URLs
+
+The follow-up local patch changes **only the sitemap candidate list**. After
+candidate collection and before the unchanged strict generation/metadata
+overlay it checks the metadata repair table for non-`verified` rows or
+revision/applied-revision mismatches, bounds the result set, and removes
+those article IDs from the sitemap candidates. No unverified article is
+served; unrelated verified public URLs remain available. Errors in the
+read, an over-limit result set, or a concurrent metadata change detected
+after this prefilter still fail closed. Search and detail reads retain
+their original strict behavior.
+
+The isolated Workerd test was updated to insert one published `pending`
+metadata case after the healthy snapshot: all four modes should return
+HTTP 200, omit that case, and preserve the baseline XML bytes exactly.
+The full local Workerd run passed, with 2,239 matching healthy entries,
+4/4 safe withholding checks, and 4/4 XML equality. SQL statement counts
+rose by 2 for one metadata table check and one bounded unverified lookup.
+
+**The follow-up patch is not yet deployed.** Its own typecheck/build and
+revalidation must complete first. The live service remains on the
+recovered 2026-10-29 version until a separately verified release.

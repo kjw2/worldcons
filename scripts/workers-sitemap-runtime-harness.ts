@@ -48,7 +48,8 @@ export interface SitemapRunReport {
 export interface NegativeRunReport {
   label: string;
   status: number;
-  error: string;
+  pendingWithheld: boolean;
+  sameXmlAsBaseline: boolean;
 }
 
 export interface WorkersSitemapHarnessReport {
@@ -522,9 +523,11 @@ export async function runWorkersSitemapAcceptanceGate(
       url.searchParams.set("jsonGuard", String(combo.jsonGuard));
       const response = await miniflare.dispatchFetch(url.toString());
       const body = await response.text();
-      assert.equal(response.status, 500, `${combo.label}: pending metadata must fail closed`);
-      assert.match(body, /e2e\.public_metadata_pending/, `${combo.label}: pending metadata error must propagate`);
-      negative.push({ label: combo.label, status: response.status, error: "e2e.public_metadata_pending" });
+      assert.equal(response.status, 200, `${combo.label}: unrelated sitemap entries must remain available`);
+      const entries = normalizedHash(body).entries;
+      assert.equal(entries.some((entry) => entry.loc === `${BASE_URL}/articles/matrix-pending`), false);
+      assert.equal(sha256Hex(body), baseline.xmlSha256, `${combo.label}: withheld repair must not change the safe baseline XML`);
+      negative.push({ label: combo.label, status: response.status, pendingWithheld: true, sameXmlAsBaseline: true });
     }
 
     report = {

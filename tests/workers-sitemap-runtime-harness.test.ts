@@ -47,8 +47,9 @@ test(
     }
 
     for (const negative of report.negative) {
-      assert.equal(negative.status, 500);
-      assert.equal(negative.error, "e2e.public_metadata_pending");
+      assert.equal(negative.status, 200);
+      assert.equal(negative.pendingWithheld, true);
+      assert.equal(negative.sameXmlAsBaseline, true);
     }
 
     assert.equal(report.safety.localD1Binding, "WORLDCONS_CORE");
