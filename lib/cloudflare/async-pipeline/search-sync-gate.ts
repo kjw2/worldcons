@@ -11,9 +11,12 @@ export function needsSearchSyncAfterPublication(publication: { publishedCount: n
   return publication.publishedCount > 0;
 }
 
-export function needsSearchSyncAfterCrawler(sourceCount: number): boolean {
-  if (!Number.isSafeInteger(sourceCount) || sourceCount < 0) {
-    throw new Error("m8.crawler_invalid_source_count");
-  }
-  return sourceCount > 0;
+export function needsSearchSyncAfterCrawler(
+  results: readonly { insertedCount: number; refreshedCount: number; provenanceAttachedCount?: number }[],
+): boolean {
+  return results.some(result => {
+    // Unknown/malformed result counts must not silently skip a recovery scan.
+    const changes = [result.insertedCount, result.refreshedCount, result.provenanceAttachedCount ?? 0];
+    return changes.some(count => !Number.isSafeInteger(count) || count < 0 || count > 0);
+  });
 }

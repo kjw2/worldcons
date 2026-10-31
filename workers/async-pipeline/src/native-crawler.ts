@@ -167,7 +167,6 @@ async function boundedFetch(fetcher: typeof fetch, input: RequestInfo | URL, ini
 function parseRobots(text: string, url: string) {
   const target = new URL(url).pathname + new URL(url).search;
   let matching = false;
-  let specific = false;
   let delay = 0;
   const rules: Array<{ allow: boolean; pattern: string }> = [];
   for (const raw of text.split(/\r?\n/)) {
@@ -179,7 +178,6 @@ function parseRobots(text: string, url: string) {
     if (key === "user-agent") {
       const agent = value.toLowerCase();
       matching = agent === "*" || "constitutionalcourtcurationbot".includes(agent);
-      if (matching && agent !== "*") specific = true;
       continue;
     }
     if (!matching) continue;
@@ -1289,7 +1287,6 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
   const fetcher = options.fetch ?? fetch;
   const limit = Math.max(1, Math.min(20, Math.trunc(options.limit ?? 20)));
   const rangeDays = effectiveRange(source, options.now ?? new Date(), options.rangeDays);
-  const rangeStart = (options.now ?? new Date()).getTime() - rangeDays * 86_400_000;
   const robotsCache = new Map<string, string>();
   const lastRequest = new Map<string, number>();
   let discovered: NativeArticleCandidate[] = [];
@@ -1310,7 +1307,7 @@ export async function runNativeSourceCollection(source: NativeCrawlerSource, bin
     : null;
   if (existingRun?.status === "completed") {
     const metadata = JSON.parse(existingRun.metadata ?? "{}") as Record<string, unknown>;
-    return { sourceKey: source, runId, status: existingRun.status, outcome: metadata.outcome === "success" || metadata.outcome === "partial" ? metadata.outcome : "degraded", discoveredCount: Number(metadata.discoveredCount ?? 0), fetchedCount: Number(metadata.fetchedCount ?? 0), insertedCount: Number(metadata.insertedCount ?? 0), refreshedCount: Number(metadata.refreshedCount ?? 0), unchangedCount: Number(metadata.unchangedCount ?? 0), preservedCount: Number(metadata.preservedCount ?? 0), duplicateCount: Number(metadata.duplicateCount ?? 0), uncollectedCount: Number(metadata.uncollectedCount ?? 0), failedCount: Number(metadata.failedCount ?? 0), rangeDays, lastVerifiedPublishedAt: typeof metadata.lastVerifiedPublishedAt === "string" ? metadata.lastVerifiedPublishedAt : null, replayed: true };
+    return { sourceKey: source, runId, status: existingRun.status, outcome: metadata.outcome === "success" || metadata.outcome === "partial" ? metadata.outcome : "degraded", discoveredCount: Number(metadata.discoveredCount ?? 0), fetchedCount: Number(metadata.fetchedCount ?? 0), insertedCount: Number(metadata.insertedCount ?? 0), refreshedCount: Number(metadata.refreshedCount ?? 0), unchangedCount: Number(metadata.unchangedCount ?? 0), preservedCount: Number(metadata.preservedCount ?? 0), provenanceAttachedCount: Number(metadata.provenanceAttachedCount ?? 0), duplicateCount: Number(metadata.duplicateCount ?? 0), uncollectedCount: Number(metadata.uncollectedCount ?? 0), failedCount: Number(metadata.failedCount ?? 0), rangeDays, lastVerifiedPublishedAt: typeof metadata.lastVerifiedPublishedAt === "string" ? metadata.lastVerifiedPublishedAt : null, replayed: true };
   }
   await bindings.WORLDCONS_INGEST.prepare("INSERT INTO ingestion_runs (id, source_key, started_at, status, discovered_count, fetched_count, summarized_count, failed_count, metadata) VALUES (?, ?, ?, 'running', 0, 0, 0, 0, ?) ON CONFLICT(id) DO NOTHING").bind(runId, source, startedAt, JSON.stringify({ crawler: "worldcons-ingest-native-v1", rangeDays, limit, refreshExisting: true, idempotencyKey: options.idempotencyKey ?? null })).run();
   try {

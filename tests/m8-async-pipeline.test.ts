@@ -157,13 +157,16 @@ test("unproductive publication and excluded crawler workflows skip full scans wi
   assert.equal(needsSearchSyncAfterPublication({ publishedCount: 25 }), true);
   assert.throws(() => needsSearchSyncAfterPublication({ publishedCount: -1 }), /m8\.publication_invalid_published_count/u);
   assert.throws(() => needsSearchSyncAfterPublication({ publishedCount: Number.NaN }), /m8\.publication_invalid_published_count/u);
-  assert.equal(needsSearchSyncAfterCrawler(0), false);
-  assert.equal(needsSearchSyncAfterCrawler(1), true);
-  assert.equal(needsSearchSyncAfterCrawler(3), true);
-  assert.throws(() => needsSearchSyncAfterCrawler(-1), /m8\.crawler_invalid_source_count/u);
+  assert.equal(needsSearchSyncAfterCrawler([]), false);
+  assert.equal(needsSearchSyncAfterCrawler([{insertedCount:0,refreshedCount:0,provenanceAttachedCount:0}]), false);
+  assert.equal(needsSearchSyncAfterCrawler([{insertedCount:0,refreshedCount:0,provenanceAttachedCount:0},{insertedCount:0,refreshedCount:0}]), false);
+  assert.equal(needsSearchSyncAfterCrawler([{insertedCount:1,refreshedCount:0}]), true);
+  assert.equal(needsSearchSyncAfterCrawler([{insertedCount:0,refreshedCount:1}]), true);
+  assert.equal(needsSearchSyncAfterCrawler([{insertedCount:0,refreshedCount:0,provenanceAttachedCount:1}]), true);
+  assert.equal(needsSearchSyncAfterCrawler([{insertedCount:Number.NaN,refreshedCount:0}]), true, "unknown change counts must fail safe");
 
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
-  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*const searchProjection = needsSearchSyncAfterCrawler\(sourcePolicy\.effective\.length\)/u);
+  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*const searchProjection = needsSearchSyncAfterCrawler\(results\)/u);
   assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runNativeSearchProjectionSync/u);
   assert.match(source, /event\.payload\.kind === "publication-drain"[\s\S]*const searchProjection = needsSearchSyncAfterPublication\(publication\)/u);
 });

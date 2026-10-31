@@ -221,7 +221,7 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
           () => runNativeSourceCollection(source, this.env, { limit: 20, idempotencyKey: event.payload.idempotencyKey, browserNavigate: (input) => browserNavigate(input, this.env.BROWSER) }),
         ));
       }
-      const searchProjection = needsSearchSyncAfterCrawler(sourcePolicy.effective.length)
+      const searchProjection = needsSearchSyncAfterCrawler(results)
         ? await step.do("native-search-projection-sync", {
             retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
           }, () => runNativeSearchProjectionSync({
