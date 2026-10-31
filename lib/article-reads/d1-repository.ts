@@ -1105,7 +1105,7 @@ export function createD1ArticleReadRepository(
         rows = rows.filter((row) => typeof row.id === "string" && !withheld.has(row.id));
       }
     }
-    return (await overlayPublicGenerationRows(binding,rows,{ jsonBatching: dependencies.sitemapJsonGuard })).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
+    return (await overlayPublicGenerationRows(binding,rows,{ jsonBatching: dependencies.sitemapJsonGuard, versionProjection: "sitemap" })).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
       if (typeof row.slug !== "string" || row.slug.length === 0) return [];
       const lastModified =
         (row.summarized_at as string | null | undefined) ||

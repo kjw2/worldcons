@@ -292,3 +292,59 @@ rose by 2 for one metadata table check and one bounded unverified lookup.
 **The follow-up patch is not yet deployed.** Its own typecheck/build and
 revalidation must complete first. The live service remains on the
 recovered 2026-10-29 version until a separately verified release.
+
+## Follow-up: second OFF-flag release failed, rollback, targeted diagnosis
+
+- The follow-up sitemap withholding fix was committed as `b275f729601061f121c2ea3638702e9449fa71e9`.
+- At **2026-10-31T05:16:30Z**, Worker version
+  `b8d6e675-1840-46e6-902d-ef53c6c196d7` was deployed at 100%
+  with both optimization flags still OFF. Two immediate public sitemap
+  fetches both returned HTTP **500** after ~12.08 and ~15.74 seconds.
+- The emergency rollback deployment `b38502e6-49e2-4a37-b3b5-bf1b1ff23781`
+  at **2026-10-31T05:18:02Z** restored the original safe version
+  `7039e41f-d7aa-465c-a1bd-180f5919005a` to 100% of traffic.
+  Independent recovery smoke returned HTTP **200**, 3,609 total URLs,
+  2,287 article URLs, 7.24-second elapsed.
+- Cloudflare Workers logs confirmed both second-release errors as
+  `sitemap_source_unavailable`, source `articles`. **The root
+  internal exception remained suppressed.** Thus one leased case
+  cannot be presented as the verified sole cause of the outage.
+
+### Additional production D1 read-only evidence
+
+With 80 approved published P3 versions (same query cohort) read-only:
+
+| Projection | Approximate serialized result size | Query result |
+| --- | ---: | --- |
+| `SELECT v.*` (all 40+ immutable P3 columns) | 2,149,553 characters | 80/80 |
+| Sitemap fields only (`id, article_id, slug, summarized_at, fetched_at, discovered_at, source_metadata`) | 39,016 characters | 80/80 |
+
+The full projection includes immutable source text (around 20 MB over
+~835 verified published versions at the time of the snapshot) but the
+sitemap needs only URL, modified date, and publication metadata. All
+sampled versions had valid JSON. This is a plausible significant
+performance bottleneck, not proof of the specific 500 exception.
+
+### Next narrow revision
+
+- Only when invoked by `listPublicSitemapArticles`, the unchanged
+  two-pass immutable overlay receives `versionProjection:'sitemap'`.
+  Its metadata-approved and protected-generation P3 queries select
+  only the seven required fields, not `v.*`. All other public detail,
+  search and source reads retain the full `v.*` projection.
+- `resilientSitemapRead` emits one sanitized
+  `sitemap_source_attempt_failed` diagnostic per failed attempt:
+  source, attempt count and a **strictly validated short code** only,
+  never arbitrary error messages, SQL or case content. The existing
+  fail-closed public behavior remains unchanged.
+- Added direct tests for narrow P3 queries, preservation of ordinary
+  P3 reads, sanitized retry diagnostics, and no leakage of raw error
+  messages. Focused article/JSON1 test **30/30 PASS** and public
+  SEO regressions **19/19 PASS**.
+- The 2,239-article isolated Workerd four-mode acceptance and the
+  pending-metadata withholding checks **4/4 PASS**, exact XML and
+  normalized URL+lastmod parity, no outbound and no production D1 access.
+
+This narrow revision is a **candidate only**, not a claim of an
+operational repair. Typecheck, lint, release build and live verification
+must succeed before activating any sitemap optimization flag.

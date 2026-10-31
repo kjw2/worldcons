@@ -1155,6 +1155,17 @@ test("isolated four-switch sitemap A/B matrix preserves exact slug+lastModified 
     assert.equal(baselineSlugs.has("matrix-metadata-approved"), true, "an approved metadata repair must stay public");
     assert.equal(baselineSlugs.has("matrix-protected-generation"), true, "a current protected generation must stay public");
 
+    // Do not fetch ~20MB of approved source texts merely to produce URL and
+    // lastmod metadata; normal public reads still require the complete P3 row.
+    const sitemapVersionReads = runs[0].captured.filter((call) =>
+      call.sql.includes("SELECT v.id,v.article_id,v.slug,v.summarized_at"),
+    );
+    assert.equal(sitemapVersionReads.length, 2, "both immutable P3 overlay paths use the narrow sitemap projection");
+    assert.equal(runs[0].captured.filter((call) => call.sql.includes("SELECT v.*")).length, 0);
+    const normalReads: Captured[] = [];
+    await overlayPublicGenerationRows(binding(sqlite, normalReads), [{ id: "matrix-metadata-approved", slug: "draft" }]);
+    assert.ok(normalReads.some((call) => call.sql.includes("SELECT v.*")), "regular public readers retain full P3 projection");
+
     const expectedGenerationIds = 2239;
     const expectedMetadataIds = 2238;
     for (const run of runs) {

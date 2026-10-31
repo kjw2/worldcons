@@ -59,15 +59,22 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
 }
 
 /** Public Core content comes from the approved immutable P3, never mutable drafts. */
-export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[],options:{jsonBatching?:boolean}={}) {
+export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[],options:{jsonBatching?:boolean;versionProjection?:"sitemap"}={}) {
   const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids,options);
   const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()),options);
   if (!generations.size && !metadata.size) return rows;
+  // The sitemap only consumes slug, modified-time fields and publishability
+  // metadata. Avoid selecting ~20 MB of irrelevant immutable P3 source text
+  // when reading hundreds of approved versions on the public XML route.
+  // All other public reads retain their complete immutable P3 projection.
+  const versionColumns=options.versionProjection==="sitemap"
+    ?"v.id,v.article_id,v.slug,v.summarized_at,v.fetched_at,v.discovered_at,v.source_metadata"
+    :"v.*";
   const legacyVersions=new Map<string,GenerationRow>();
   const legacyIds=[...metadata.keys()];
   for(let offset=0;offset<legacyIds.length;offset+=80){
     const part=legacyIds.slice(offset,offset+80);
-    const found=await e2eRows(core,`SELECT v.* FROM article_publications_p3 p
+    const found=await e2eRows(core,`SELECT ${versionColumns} FROM article_publications_p3 p
       JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id
       WHERE ${ELIGIBLE_PUBLISHED_PREDICATE} AND p.article_id IN (${part.map(()=>"?").join(",")})`,...part);
     for(const version of found)legacyVersions.set(String(version.article_id),version);
@@ -76,7 +83,7 @@ export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:Ge
   const valid=[...generations.values()].filter(g=>g.input_current&&g.expected_publication_state==="published");
   for (let offset=0;offset<valid.length;offset+=80) {
     const part=valid.slice(offset,offset+80);
-    const found=await e2eRows(core,`SELECT v.* FROM article_content_versions_p3 v
+    const found=await e2eRows(core,`SELECT ${versionColumns} FROM article_content_versions_p3 v
       JOIN article_publications_p3 p ON p.version_id=v.id AND p.article_id=v.article_id
       WHERE ${ELIGIBLE_PUBLISHED_PREDICATE} AND v.id IN (${part.map(()=>"?").join(",")})`,...part.map(g=>g.expected_version_id));
     for (const version of found) versions.set(String(version.id),version);

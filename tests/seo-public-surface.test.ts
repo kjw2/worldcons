@@ -9,6 +9,7 @@ import {
   resilientSitemapRead,
   SITEMAP_SOURCE_RETRY_DELAY_MS,
   SitemapSourceUnavailableError,
+  type SitemapReadAttemptLog,
   type SitemapSourceUnavailableLog,
 } from "../lib/seo/sitemap-source";
 
@@ -92,6 +93,7 @@ test("sitemap source reads retry transient failures and recover", async () => {
 test("sitemap source reads fail closed after retries without partial results", async () => {
   const waits: number[] = [];
   const logs: SitemapSourceUnavailableLog[] = [];
+  const attempts: SitemapReadAttemptLog[] = [];
   let calls = 0;
 
   await assert.rejects(
@@ -108,6 +110,9 @@ test("sitemap source reads fail closed after retries without partial results", a
         log: (entry) => {
           logs.push(entry);
         },
+        logAttempt: (entry) => {
+          attempts.push(entry);
+        },
       },
     ),
     (error: unknown) => {
@@ -123,6 +128,28 @@ test("sitemap source reads fail closed after retries without partial results", a
   assert.deepEqual(waits, [SITEMAP_SOURCE_RETRY_DELAY_MS]);
   assert.deepEqual(logs, [{ event: "sitemap_source_unavailable", source: "articles", attempts: 2 }]);
   assert.deepEqual(Object.keys(logs[0]).sort(), ["attempts", "event", "source"]);
+  assert.deepEqual(attempts, [1,2].map((attempt) => ({
+    event: "sitemap_source_attempt_failed", source: "articles", attempt, reason: "Error",
+  })));
+  assert.doesNotMatch(JSON.stringify(attempts), /sensitive internal detail/u);
+});
+
+test("sitemap diagnostics capture only safe internal codes", async () => {
+  const attempts: SitemapReadAttemptLog[] = [];
+  await assert.rejects(
+    resilientSitemapRead("articles", async () => { throw new Error("e2e.public_metadata_pending"); }, {
+      attempts: 1,
+      log: () => {},
+      logAttempt: (entry) => attempts.push(entry),
+    }),
+    SitemapSourceUnavailableError,
+  );
+  assert.deepEqual(attempts, [{
+    event: "sitemap_source_attempt_failed",
+    source: "articles",
+    attempt: 1,
+    reason: "e2e.public_metadata_pending",
+  }]);
 });
 
 test("sitemap and routing keep clean canonical URLs and drop search/thin-tag noise", () => {
