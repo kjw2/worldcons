@@ -40,6 +40,7 @@ import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { runNativeSearchProjectionSync } from "./search-projection-sync";
+import { needsSearchSyncAfterCrawler, needsSearchSyncAfterPublication } from "../../../lib/cloudflare/async-pipeline/search-sync-gate";
 import { hasPendingP3Publication } from "./publication-recovery";
 import { runD1CacheOutboxDrain } from "./cache-outbox-drain";
 import { launch } from "@cloudflare/playwright";
@@ -192,12 +193,14 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       const publication = await step.do("native-publication-drain", {
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
       }, () => appService.runPublicationDrain({ limit }));
-      const searchProjection = await step.do("native-search-projection-sync-after-publication", {
-        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-      }, () => runNativeSearchProjectionSync({
-        WORLDCONS_CORE: this.env.WORLDCONS_CORE,
-        WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-      }));
+      const searchProjection = needsSearchSyncAfterPublication(publication)
+        ? await step.do("native-search-projection-sync-after-publication", {
+            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+          }, () => runNativeSearchProjectionSync({
+            WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+            WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
+          }))
+        : null;
       return { kind: event.payload.kind, publication, searchProjection };
     }
     if (event.payload.kind === "crawler-daily") {
@@ -218,12 +221,14 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
           () => runNativeSourceCollection(source, this.env, { limit: 20, idempotencyKey: event.payload.idempotencyKey, browserNavigate: (input) => browserNavigate(input, this.env.BROWSER) }),
         ));
       }
-      const searchProjection = await step.do("native-search-projection-sync", {
-        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-      }, () => runNativeSearchProjectionSync({
-        WORLDCONS_CORE: this.env.WORLDCONS_CORE,
-        WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-      }));
+      const searchProjection = needsSearchSyncAfterCrawler(sourcePolicy.effective.length)
+        ? await step.do("native-search-projection-sync", {
+            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
+          }, () => runNativeSearchProjectionSync({
+            WORLDCONS_CORE: this.env.WORLDCONS_CORE,
+            WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
+          }))
+        : null;
       const evidence = {
         effectiveSources: [...sourcePolicy.effective],
         excludedSources: [...sourcePolicy.excluded],

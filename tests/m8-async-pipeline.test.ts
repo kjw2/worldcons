@@ -146,6 +146,26 @@ test("publication workflow refreshes the search projection after release", () =>
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "publication-drain"[\s\S]*runPublicationDrain/u);
   assert.match(source, /native-search-projection-sync-after-publication[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /const searchProjection = needsSearchSyncAfterPublication\(publication\)/u);
+});
+
+test("unproductive publication and excluded crawler workflows skip full scans without disabling standalone search sync", async () => {
+  const { needsSearchSyncAfterPublication, needsSearchSyncAfterCrawler } =
+    await import("../lib/cloudflare/async-pipeline/search-sync-gate");
+  assert.equal(needsSearchSyncAfterPublication({ publishedCount: 0 }), false);
+  assert.equal(needsSearchSyncAfterPublication({ publishedCount: 1 }), true);
+  assert.equal(needsSearchSyncAfterPublication({ publishedCount: 25 }), true);
+  assert.throws(() => needsSearchSyncAfterPublication({ publishedCount: -1 }), /m8\.publication_invalid_published_count/u);
+  assert.throws(() => needsSearchSyncAfterPublication({ publishedCount: Number.NaN }), /m8\.publication_invalid_published_count/u);
+  assert.equal(needsSearchSyncAfterCrawler(0), false);
+  assert.equal(needsSearchSyncAfterCrawler(1), true);
+  assert.equal(needsSearchSyncAfterCrawler(3), true);
+  assert.throws(() => needsSearchSyncAfterCrawler(-1), /m8\.crawler_invalid_source_count/u);
+
+  const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
+  assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*const searchProjection = needsSearchSyncAfterCrawler\(sourcePolicy\.effective\.length\)/u);
+  assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /event\.payload\.kind === "publication-drain"[\s\S]*const searchProjection = needsSearchSyncAfterPublication\(publication\)/u);
 });
 
 test("translation workflow publishes and refreshes search immediately after successful translation", () => {
