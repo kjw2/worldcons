@@ -887,6 +887,58 @@ test("tag-detail opt-in withholds unverified metadata while ordinary D1 public l
   }
 });
 
+test("tag-detail stable candidate pages never shift a later article into an earlier page during a repair", async () => {
+  const sqlite = createGuardCore();
+  try {
+    sqlite.prepare(
+      "INSERT INTO tags(id,slug,name,normalized_name,type,article_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+    ).run("stable-tag-id", "stable-tag", "Stable Tag", "Stable Tag", "topic", 12, NOW, NOW);
+    for (let index = 0; index < 12; index += 1) {
+      const id = `stable-page-${String(index).padStart(2, "0")}`;
+      insertArticle(sqlite, id, { publishedAt: "2026-01-01T00:00:00.000Z" });
+      sqlite.prepare("INSERT INTO article_tags(article_id,tag_id,confidence,created_at) VALUES(?,?,?,?)")
+        .run(id, "stable-tag-id", 0.9, NOW);
+    }
+    const changing = "stable-page-01";
+    sqlite.prepare(
+      "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+    ).run(changing, 2, 1, "leased", 1);
+    sqlite.prepare(
+      `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+       VALUES(?,?,?,?,?,?,?)`,
+    ).run(`pub-${changing}`, changing, "current", "legacy_same_version", "{}", NOW, "test");
+    const repository = createD1ArticleReadRepository({ binding: binding(sqlite), maxRows: 10_000 });
+    const filters = {
+      tag: "stable-tag",
+      pageSize: 10,
+      count: "exact" as const,
+      includeViewCounts: false,
+      withholdUnverifiedMetadata: true,
+      stablePageBoundaries: true,
+    };
+    const first = await repository.listArticles({ ...filters, page: 1 });
+    assert.deepEqual(first.items.map((item) => item.slug), [
+      "stable-page-00", "stable-page-02", "stable-page-03", "stable-page-04",
+      "stable-page-05", "stable-page-06", "stable-page-07", "stable-page-08", "stable-page-09",
+    ]);
+    assert.equal(first.pageInfo.total, 12, "stable candidate total is independent of repair status");
+    assert.equal(first.pageInfo.hasMore, true);
+    sqlite.prepare(
+      "UPDATE search_metadata_repairs_v1 SET status='verified',applied_revision=revision WHERE article_id=?",
+    ).run(changing);
+    const second = await repository.listArticles({ ...filters, page: 2 });
+    assert.deepEqual(second.items.map((item) => item.slug), ["stable-page-10", "stable-page-11"]);
+    assert.equal(second.pageInfo.total, 12);
+    assert.equal(second.pageInfo.hasMore, false);
+    assert.equal(new Set([...first.items, ...second.items].map((item) => item.slug)).size, 11);
+    const reapprovedFirst = await repository.listArticles({ ...filters, page: 1 });
+    assert.equal(reapprovedFirst.items.length, 10);
+    assert.equal(reapprovedFirst.pageInfo.total, 12);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("sitemap withholds a formerly approved article when metadata becomes leased during the second guard read", async (t) => {
   const core = new SqliteD1();
   t.after(() => core.close());

@@ -913,24 +913,44 @@ export function createD1ArticleReadRepository(
     let matched = filters.includeUnpublished
       ? rows
       : [...legacyMatched, ...catalogRows.filter((row) => !legacyIds.has(typeof row.id === "string" ? row.id : ""))];
-    if (!filters.includeUnpublished) matched=await overlayPublicGenerationRows(
-      binding,
-      matched,
-      filters.withholdUnverifiedMetadata ? { metadataPolicy: "omit-unverified" } : {},
-    );
-    matched.sort(compareListRows);
-
     const from = (page - 1) * pageSize;
-    const pageRows = matched.slice(from, from + pageSize);
+    // Tag pages use a stable candidate boundary even when one published case
+    // has a transient, unverified search-metadata repair. Withholding before
+    // slicing shifts every later offset and can duplicate a neighboring case
+    // across page links during concurrent incremental ingestion. Only page-
+    // scoped, approved P3 immutable rows are hydrated below. Ordinary public
+    // list, search and detail reads retain their original strict contract.
+    const stableTagPage = !filters.includeUnpublished
+      && filters.stablePageBoundaries === true
+      && filters.withholdUnverifiedMetadata === true
+      && Boolean(filters.tag)
+      && countMode === "exact";
+    const stableCandidateTotal = stableTagPage ? matched.length : null;
+    if (stableTagPage) {
+      matched.sort(compareListRows);
+      matched = await overlayPublicGenerationRows(
+        binding,
+        matched.slice(from, from + pageSize),
+        { metadataPolicy: "omit-unverified" },
+      );
+    } else if (!filters.includeUnpublished) {
+      matched = await overlayPublicGenerationRows(
+        binding,
+        matched,
+        filters.withholdUnverifiedMetadata ? { metadataPolicy: "omit-unverified" } : {},
+      );
+    }
+    matched.sort(compareListRows);
+    const pageRows = stableTagPage ? matched : matched.slice(from, from + pageSize);
     const hydrated = await hydrateArticleTags(binding, pageRows);
     let items = hydrated.map((row) =>
       articleRowToItem(articleRowForSelect(row, "list"), { includeSummaryJson: false, includeDetailFields: false }),
     );
     if (filters.includeViewCounts !== false) items = await attachViewCounts(binding, items);
 
-    const hasMore = from + pageSize < matched.length;
+    const hasMore = from + pageSize < (stableCandidateTotal ?? matched.length);
     const minimumTotal = from + items.length + (hasMore ? 1 : 0);
-    const total = countMode === "exact" ? Math.max(matched.length, minimumTotal) : minimumTotal;
+    const total = stableCandidateTotal ?? (countMode === "exact" ? Math.max(matched.length, minimumTotal) : minimumTotal);
     return {
       items,
       pageInfo: { page, pageSize, total, hasMore, totalIsExact: countMode === "exact" },

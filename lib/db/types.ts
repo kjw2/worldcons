@@ -149,6 +149,8 @@ export interface ArticleListFilters {
   includeUnpublished?: boolean;
   /** Tag-detail HTML only: omit individual unverified metadata records instead of failing the entire public list. */
   withholdUnverifiedMetadata?: boolean;
+  /** Tag-detail HTML only: slice the stable published candidate order before approval-state withholding. */
+  stablePageBoundaries?: boolean;
   includeViewCounts?: boolean;
   page?: number;
   pageSize?: number;
