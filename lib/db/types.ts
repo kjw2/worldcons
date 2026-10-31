@@ -147,6 +147,8 @@ export interface ArticleListFilters {
   tag?: string;
   language?: string;
   includeUnpublished?: boolean;
+  /** Tag-detail HTML only: omit individual unverified metadata records instead of failing the entire public list. */
+  withholdUnverifiedMetadata?: boolean;
   includeViewCounts?: boolean;
   page?: number;
   pageSize?: number;

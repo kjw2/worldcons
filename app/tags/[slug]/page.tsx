@@ -11,6 +11,7 @@ import { getPaginatedTagBySlug, getTagSummaryBySlug, listTags } from "@/lib/db/q
 import { paginationWindow } from "@/lib/navigation/pagination";
 import { MIN_INDEXABLE_TAG_ARTICLE_COUNT } from "@/lib/seo/public-urls";
 import { paginatedTagMetadata, parseTagDetailPage, TAG_DETAIL_PAGE_SIZE, tagDetailPageHref } from "@/lib/seo/tag-detail-pagination";
+import { readTagDetailSafely } from "@/lib/seo/tag-detail-read";
 import { formatDisplayDate } from "@/lib/utils/dates";
 import { resolveSearchParams, type SearchParams } from "@/lib/utils/search-params";
 
@@ -23,7 +24,7 @@ export async function generateMetadata({ params, searchParams }: TagPageProps): 
   const { slug } = await params;
   const query = await resolveSearchParams(searchParams);
   const page = parseTagDetailPage(query.page);
-  const tag = await getTagSummaryBySlug(slug);
+  const tag = await readTagDetailSafely("metadata", () => getTagSummaryBySlug(slug));
   if (!tag) return {};
   if (page === null) return { robots: { index: false, follow: true } };
   return paginatedTagMetadata(tag, page);
@@ -34,11 +35,17 @@ export default async function TagDetailPage({ params, searchParams }: TagPagePro
   const query = await resolveSearchParams(searchParams);
   const page = parseTagDetailPage(query.page);
   if (page === null) notFound();
-  const result = await getPaginatedTagBySlug(slug, page, TAG_DETAIL_PAGE_SIZE);
+  const result = await readTagDetailSafely("articles", () => getPaginatedTagBySlug(slug, page, TAG_DETAIL_PAGE_SIZE));
   if (!result) notFound();
   const totalPages = Math.max(1, Math.ceil(result.pageInfo.total / TAG_DETAIL_PAGE_SIZE));
   if (page > totalPages) notFound();
-  const relatedTags = (await listTags({ sort: "latest", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT, limit: 9 })).filter((tag) => tag.slug !== result.tag.slug).slice(0, 8);
+  // Related topics are optional enrichment; a failure must never break the
+  // core court-case article list or its crawler links.
+  const relatedTags = (await listTags({ sort: "latest", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT, limit: 9 })
+    .catch(() => {
+      console.warn(JSON.stringify({ event: "worldcons_tag_detail_related_unavailable" }));
+      return [];
+    })).filter((tag) => tag.slug !== result.tag.slug).slice(0, 8);
   await recordSiteEvent(
     {
       eventType: "tag_view",

@@ -59,11 +59,12 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
 }
 
 /** Public Core content comes from the approved immutable P3, never mutable drafts. */
-export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[],options:{jsonBatching?:boolean;versionProjection?:"sitemap"}={}) {
+export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[],options:{jsonBatching?:boolean;versionProjection?:"sitemap";metadataPolicy?:"omit-unverified"}={}) {
   const sitemap=options.versionProjection==="sitemap";
-  // The sitemap can safely omit one changing article, whereas ordinary public
-  // queries must keep the original strict fail-closed exception contract.
-  const metadataOptions={jsonBatching:options.jsonBatching,tolerateUnverified:sitemap};
+  // Only explicitly opted-in read surfaces may omit a changing article.
+  // Normal public search, detail, and article list reads keep strict exceptions.
+  const omitUnverified=sitemap||options.metadataPolicy==="omit-unverified";
+  const metadataOptions={jsonBatching:options.jsonBatching,tolerateUnverified:omitUnverified};
   const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids,options);
   const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()),metadataOptions);
   if (!generations.size && !metadata.size) return rows;
@@ -100,13 +101,13 @@ export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:Ge
   for(const [id,before] of metadata){
     const after=latestMetadata.get(id);
     if(before.revision!==after?.revision||before.fencing_token!==after?.fencing_token){
-      if (!sitemap) throw new Error("e2e.public_metadata_changed");
+      if (!omitUnverified) throw new Error("e2e.public_metadata_changed");
       changedMetadata.add(id);
     }
   }
-  if(sitemap)for(const id of latestMetadata.keys())if(!metadata.has(id))changedMetadata.add(id);
+  if(omitUnverified)for(const id of latestMetadata.keys())if(!metadata.has(id))changedMetadata.add(id);
   for (const row of rows) {
-    if(sitemap){
+    if(omitUnverified){
       const id=String(row.id),before=metadata.get(id),after=latestMetadata.get(id);
       if(changedMetadata.has(id)||(before&&!metadataVerified(before))||(after&&!metadataVerified(after)))continue;
     }

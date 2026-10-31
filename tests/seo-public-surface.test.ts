@@ -7,6 +7,7 @@ import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/s
 import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
 import { publicListPaginationMetadata } from "../lib/seo/list-pagination";
 import { parseTagDetailPage, paginatedTagMetadata, TAG_DETAIL_PAGE_SIZE, tagDetailPageHref } from "../lib/seo/tag-detail-pagination";
+import { readTagDetailSafely, type TagDetailReadFailure } from "../lib/seo/tag-detail-read";
 import { TAG_HUB_PAGE_SIZE, paginateTagHub, parseTagHubPage, tagHubMetadata, tagHubPageHref } from "../lib/seo/tag-hub-pagination";
 import {
   resilientSitemapRead,
@@ -142,6 +143,33 @@ test("tag detail paginates article cards without losing crawlable page identity"
   assert.match(src, /tagDetailPageHref\(result\.tag\.slug, target\)/u);
   assert.match(src, /paginationWindow\(page, totalPages\)/u);
   assert.match(src, /listTags\(\{ sort: "latest", minArticleCount: MIN_INDEXABLE_TAG_ARTICLE_COUNT, limit: 9 \}\)/u);
+  assert.match(src, /readTagDetailSafely\("articles"/u);
+});
+
+test("tag detail retries transient read failures twice without logging sensitive messages or leaking content", async () => {
+  const log: TagDetailReadFailure[] = [];
+  const waits: number[] = [];
+  let calls = 0;
+  const result = await readTagDetailSafely("articles", async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("e2e.public_metadata_pending");
+    return { articles: ["approved"] };
+  }, { wait: async (ms) => { waits.push(ms); }, log: (entry) => log.push(entry) });
+  assert.deepEqual(result, { articles: ["approved"] });
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [120]);
+  assert.deepEqual(log, [{
+    event: "worldcons_tag_detail_read_failed",
+    stage: "articles",
+    attempt: 1,
+    reason: "e2e.public_metadata_pending",
+  }]);
+  const logged: TagDetailReadFailure[] = [];
+  await assert.rejects(() => readTagDetailSafely("metadata", async () => {
+    throw new Error("SQL select * from secret; customer token abc123");
+  }, { wait: async () => {}, log: (entry) => logged.push(entry) }), /SQL select/);
+  assert.deepEqual(logged.map((entry) => entry.reason), ["Error", "Error"]);
+  assert.doesNotMatch(JSON.stringify(logged), /secret|token|abc123/u);
 });
 
 test("Google and Naver ownership verification surfaces stay deployable on the Workers host", () => {

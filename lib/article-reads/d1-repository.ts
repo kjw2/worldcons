@@ -913,7 +913,11 @@ export function createD1ArticleReadRepository(
     let matched = filters.includeUnpublished
       ? rows
       : [...legacyMatched, ...catalogRows.filter((row) => !legacyIds.has(typeof row.id === "string" ? row.id : ""))];
-    if (!filters.includeUnpublished) matched=await overlayPublicGenerationRows(binding,matched);
+    if (!filters.includeUnpublished) matched=await overlayPublicGenerationRows(
+      binding,
+      matched,
+      filters.withholdUnverifiedMetadata ? { metadataPolicy: "omit-unverified" } : {},
+    );
     matched.sort(compareListRows);
 
     const from = (page - 1) * pageSize;

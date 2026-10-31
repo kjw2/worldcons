@@ -145,7 +145,7 @@ export async function getTagBySlug(slug: string) {
 export async function getPaginatedTagBySlug(slug: string, page: number, pageSize = 10) {
   const tag = await getTagSummaryBySlug(slug);
   if (!tag) return null;
-  const result = await listArticles({ tag: slug, page, pageSize, count: "exact" });
+  const result = await listArticles({ tag: slug, page, pageSize, count: "exact", withholdUnverifiedMetadata: true });
   return { tag, articles: result.items, pageInfo: result.pageInfo };
 }
 

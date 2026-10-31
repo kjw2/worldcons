@@ -843,6 +843,50 @@ test("sitemap withholds pending, leased, and revision-mismatched metadata withou
   }
 });
 
+test("tag-detail opt-in withholds unverified metadata while ordinary D1 public lists still reject it", async () => {
+  const sqlite = createGuardCore();
+  try {
+    insertArticle(sqlite, "pending-article");
+    insertArticle(sqlite, "stable-article");
+    sqlite.prepare(
+      "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+    ).run("pending-article", 3, 2, "leased", 1);
+    sqlite.prepare(
+      `INSERT INTO legacy_version_freshness_classifications_v4(version_id,article_id,freshness,freshness_basis,evidence,classified_at,classified_by)
+       VALUES(?,?,?,?,?,?,?)`,
+    ).run("pub-pending-article", "pending-article", "current", "legacy_same_version", "{}", NOW, "test");
+    const repository = createD1ArticleReadRepository({ binding: binding(sqlite), maxRows: 10000 });
+    await assert.rejects(
+      () => repository.listArticles({ page: 1, pageSize: 10, includeViewCounts: false }),
+      /e2e\.public_metadata_pending/,
+      "ordinary public list reads must remain strict",
+    );
+    const safe = await repository.listArticles({
+      page: 1,
+      pageSize: 10,
+      count: "exact",
+      includeViewCounts: false,
+      withholdUnverifiedMetadata: true,
+    });
+    assert.deepEqual(safe.items.map((item) => item.slug), ["stable-article"]);
+    assert.equal(safe.pageInfo.total, 1, "unverified cases must not inflate paginated public counts");
+    assert.equal(safe.pageInfo.totalIsExact, true);
+    sqlite.prepare(
+      "UPDATE search_metadata_repairs_v1 SET status='verified',applied_revision=revision WHERE article_id=?",
+    ).run("pending-article");
+    const approved = await repository.listArticles({
+      page: 1,
+      pageSize: 10,
+      count: "exact",
+      includeViewCounts: false,
+      withholdUnverifiedMetadata: true,
+    });
+    assert.equal(approved.items.length, 2, "approved cases return when a repair becomes verified");
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("sitemap withholds a formerly approved article when metadata becomes leased during the second guard read", async (t) => {
   const core = new SqliteD1();
   t.after(() => core.close());
@@ -878,6 +922,40 @@ test("sitemap withholds a formerly approved article when metadata becomes leased
     () => readPublicMetadataState(core, [articleId], new Set()),
     /e2e\.public_metadata_pending/,
     "normal public read still rejects the leased metadata state",
+  );
+});
+
+test("tag-detail overlay withholds a case whose approval changes between its two metadata reads", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  addMetadataTables(core.db);
+  await publish(core, "a");
+  core.db.exec("DELETE FROM e2e_generation_heads_v1");
+  core.db.prepare(
+    "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+  ).run(articleId, 1, 1, "verified", 0);
+  let reads = 0;
+  core.beforeStatement = (sql) => {
+    if (!sql.includes("search_metadata_repairs_v1") || !sql.includes("SELECT")) return;
+    reads += 1;
+    if (reads === 2) {
+      core.beforeStatement = undefined;
+      core.db.prepare(
+        "UPDATE search_metadata_repairs_v1 SET status='leased',revision=2,fencing_token=1 WHERE article_id=?",
+      ).run(articleId);
+    }
+  };
+  const approved = await overlayPublicGenerationRows(
+    core,
+    [{ id: articleId, slug: "mutable-draft" }],
+    { metadataPolicy: "omit-unverified" },
+  );
+  assert.deepEqual(approved, [], "an unstable approval must not leak into the tag detail list");
+  assert.equal(reads, 2, "the two-pass approval CAS check was actually exercised");
+  await assert.rejects(
+    () => overlayPublicGenerationRows(core, [{ id: articleId, slug: "draft" }]),
+    /e2e\.public_metadata_pending/,
+    "ordinary public reads preserve strict behavior",
   );
 });
 
