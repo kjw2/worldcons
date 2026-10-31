@@ -962,3 +962,113 @@ GSC resubmission, PR, browser or GitHub push was performed.
   Console last-download/indexing state has not been
   proven to change; the separate Google indexing P0
   remains open.
+
+## 2026-10-31 late follow-up: avoid unnecessary M8 full Search sync steps
+
+### Read-only post-release verification
+
+- Cloudflare Workflows showed the new `worldcons-async-v1`
+  version `f3a1bd6b-044b-4c0f-9a13-9f57dfcca7fe`
+  completed both the scheduled admin-job drain and watchdog
+  at 2026-10-31T11:00Z. These **do not** prove the full
+  Search sync has completed; retain the explicit full-sync
+  verification milestone separately.
+- The Core D1 metadata cohort remained **856/856 verified**,
+  max revision **439**, last update at
+  `2026-10-31T11:03:23.863Z`; no new unnecessary metadata
+  invalidations were observed in the inspected window.
+- Read-only GSC using the existing authorized connection:
+  homepage is `Submitted and indexed`, last Google crawl
+  2026-10-01T05:47:35Z. The sampled
+  `/tags/bverfgg`, a French article, and `/list?page=2`
+  remained `URL is unknown to Google`. Sitemap
+  `lastDownloaded=2026-10-19T23:08:57.582Z`; submitted
+  2,839 / indexed 0 refers **only to the sitemap metadata
+  row**, not to site-wide coverage. Search Analytics
+  October 20–29 returned zero impressions/clicks.
+  **No GSC write or OAuth refresh** was performed.
+
+### Defect: full scans ran even after an upstream no-op
+
+- `WorldconsAsyncWorkflow` always invoked the full
+  `native-search-projection-sync-after-publication` step
+  after `publication-drain`, even with
+  `publication.publishedCount=0`. The previous real
+  long-running Workflow had published **zero** and
+  nonetheless spent two 25-minute timeouts and a third
+  attempt on that scan.
+- The `crawler-daily` branch likewise always ran a
+  full Search scan even with no article changes.
+  Importantly, the production M8 ownership split
+  excludes FR/ES/DE but **retains US Supreme Court**
+  (`us-scotus`). Checking only
+  `sourcePolicy.effective.length` was therefore too
+  weak: one US source can return zero changes.
+- Added pure `lib/cloudflare/async-pipeline/search-sync-gate.ts`.
+  Publication follow-up scan runs only with
+  `publishedCount > 0`; invalid negative/noninteger
+  counts fail closed. Crawler follow-up scan is based
+  on the **actual persisted source results**, and runs
+  for any insertion, refresh, or provenance attachment.
+  Zero-change results skip the scan; missing/invalid
+  counters run it conservatively. The explicit standalone
+  `search-projection-sync` job remains a full
+  reconciliation path regardless of prior changes.
+- The `native-crawler.ts` completed-run replay response
+  now preserves `provenanceAttachedCount`, matching
+  the first-run output and preventing a hidden change
+  from being masked during idempotent replay.
+- Validation PASS: M8 **51/51**, M5 **50/50**,
+  native crawler **37/37**, M8 TypeScript, scoped ESLint
+  zero warnings and Wrangler dry-run. Live sitemap
+  probe matched **3,622 URLs / 2,297 articles**,
+  exact hash `143bc17367c0ad79df7bf05775822f55f1fe7e3a257fed221bce9254177cc15d`.
+- Initial commit `2faeb6cbd5403a6ca8caa99c9782a4ce2083550c`;
+  corrective commit `b2589dcfab79b34c069e5e4c35151b68cb525e88`.
+
+### Deployment, controlled canary and results
+
+- The intermediate `worldcons-ingest` release
+  `df0b611c-9eb3-4c9f-8525-4d57aa4cc1b3`
+  checked only effective source count. In an
+  operator-created canary, the real
+  `us-scotus` crawler completed with
+  discovered/inserted/refreshed **0/0/0** but still
+  started a full Search sync; that specific
+  diagnostic Workflow was **terminated promptly**,
+  without rollback and with no new case records.
+  A preceding malformed diagnostic Workflow was
+  rejected at payload validation and had no steps.
+- Deployed the correction as Worker
+  **`677ad87e-6828-484c-9cdf-94a54da16653`**,
+  100% traffic. The corresponding new Workflows
+  version is
+  **`e9502b6a-a5f2-4910-9712-d979ca56dca9`**.
+- A fresh `crawler-daily` canary
+  `p0-crawler-replay-fixed-gate-20261031` was
+  created **on precisely that new Workflow version**,
+  using the original zero-change `us-scotus`
+  idempotency key. It reused the completed ingestion
+  run (no network refetch or article writes), completed
+  **successfully** with exactly one crawler step,
+  and returned **`searchProjection:null`** — the
+  expensive full Search scan was correctly skipped.
+- Independent Cloudflare read-back confirmed 100%
+  deployment of `677ad87e`, 856/856 approved
+  Core metadata records with unchanged last-update
+  timestamp, and another two-request sitemap
+  parity PASS with 3,622 URLs and the exact same
+  URL/lastmod hash. No web Worker redeploy, D1 manual
+  mutation, browser, PR, GitHub push, or GSC write.
+
+### Remaining independent work
+
+The next *actual* non-noop full
+`search-projection-sync` Workflow has not yet
+completed under the new guard; do not report
+end-to-end full-scan timing or resource efficiency
+as validated. GSC re-download of the new sitemap
+and representative non-home URL indexing remain
+unconfirmed. A future optimization should make
+the full scan bounded/checkpointable if it still
+approaches the 25-minute step timeout.
