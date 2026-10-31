@@ -407,3 +407,84 @@ articles** and 4/4 pending cases safely withheld. Local Workerd
 This fourth candidate is **not yet verified on production D1**. No
 Google write, production D1 change, DNS change, Git push, PR or
 optimization flag activation occurred as part of this change.
+
+## Final 2026-10-31 production result: safe two-pass rollout and sitemap JSON1 ON
+
+This section is the **latest operational state** and supersedes the
+earlier rollout-gate statements above.
+
+### Successful OFF-flag repair release
+
+- Commit `62e292d37a4078fcd7655cb846bc535df6c77d41` correctly handles
+  metadata that is pending, leased, or changes between the two approval
+  reads. The regular public/search/detail strict rejection remains intact.
+  The unnecessary one-time prefilter was removed.
+- `pnpm typecheck`, scoped ESLint, Vinext five-stage production build,
+  Wrangler dry-run, 31/31 focused article tests, 34/34 independent
+  public/metadata E2E tests, 19/19 public SEO tests, and a full
+  2,239-entry isolated Workerd matrix all passed.
+- Deployed `d21883c5-172d-4317-af51-36466310b555` at
+  **2026-10-31T05:28:19Z**, 100% traffic, both sitemap optimizations OFF.
+- Initial public sitemap request returned HTTP 200, 3,609 URLs including
+  2,287 articles, 9.35 seconds elapsed. Two subsequent complete fixed
+  probes returned HTTP 200, 3,609/2,287, identical URL+`lastmod` hash
+  `5619428f3c2f5dd5d298d6f94c368b575cfb6c3773736fab235d0b2beedfc433`,
+  3,535 `lastmod` entries, zero duplicate or cross-origin URLs, and
+  TTFB **10.02 s / 10.00 s**. All XML/HTTPS/canonical safety checks passed.
+
+### Production sitemap-only JSON1 activation
+
+- Commit `964d4b9a71f7a13599637e90c2cdffde6476b0fb` sets **only**
+  `WORLDCONS_SITEMAP_JSON_GUARD_BATCHING_ENABLED=true` in
+  `wrangler.jsonc`. It does **not** set
+  `WORLDCONS_JSON_GUARD_BATCHING_ENABLED` or
+  `WORLDCONS_FAST_SITEMAP_ENABLED`. Vinext build and Wrangler dry-run
+  both passed; the dry-run and live Worker settings confirmed just the
+  sitemap-specific flag.
+- Deployed `e673c119-0086-40c2-a76c-3805baa7092d` at
+  **2026-10-31T05:30:48Z**, independently confirmed at 100% traffic.
+- First production request: HTTP 200, 3,609 URLs/2,287 articles,
+  TTFB **5.18 s**. The next two complete bounded probes were also
+  HTTP 200 and returned TTFB **5.01 s / 4.87 s**.
+- Every optimized probe preserved **exactly** 3,609/2,287 URLs, 3,535
+  `lastmod` entries and the same normalized URL+`lastmod` SHA-256
+  `5619428f3c2f5dd5d298d6f94c368b575cfb6c3773736fab235d0b2beedfc433`.
+  The XML was valid and canonical/same-origin/HTTPS safe, with zero
+  duplicate, query, fragment, credential or external URLs.
+- The two-probe comparison against the same tool's immediately preceding
+  OFF release improved TTFB from **10.02/10.00 s to 5.01/4.87 s**,
+  approximately **51%** for this narrow sample. This is an observed
+  production result, **not** a latency percentile or promise for Googlebot.
+- Public smoke after activation: homepage HTTP 200, `robots.txt` HTTP
+  200 with sitemap declaration, German case detail HTTP 200 with explicit
+  `index, follow` and exact self-canonical. The normal public-read
+  code was not reconfigured to use JSON1.
+
+### Google Search Console follow-up
+
+- Used the **single currently reauthorized GSC link only**. The existing
+  sitemap entry still reports last submitted **2026-10-01T05:43:43Z**,
+  last downloaded **2026-10-19T23:08:57Z**, warnings=0 and errors=0.
+  The `indexed=0` sitemap metadata is not the property-wide indexed count.
+- A single attempt to resubmit the **existing** sitemap failed with
+  HTTP **403 `insufficient_scope`**: the current MCP connection lacks
+  `gsc:write` (requires both `gsc:read` and `gsc:write`). **No
+  submission occurred.** Do not retry through older duplicate links
+  or cause another OAuth reconnect without user approval.
+- The previously sampled German (2026-10-07) and French (2026-08-14)
+  case detail URLs still report `URL is unknown to Google`. Faster XML
+  delivery has **not** yet established any Google download or indexing gain.
+
+### Handoff
+
+Production state at this checkpoint is **healthy Worker
+`e673c119-0086-40c2-a76c-3805baa7092d` with sitemap-only JSON1 ON**.
+Safe rollback candidate is the verified `d21883c5-172d-4317-af51-36466310b555`
+with optimizations OFF (or original `7039e41f` if needed).
+
+Keep the global JSON1 and Fast Sitemap flags OFF. Continue checking live
+XML parity, response latency, Workers errors, and the GSC sitemap
+`lastDownloaded` timestamp before drawing conclusions about indexing.
+Do not claim a successful Google re-submission, full-source snapshot
+parity, property-wide indexing gain, or P95 improvement based only
+on these samples. No browser, PR or GitHub push was used.
