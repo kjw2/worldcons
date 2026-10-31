@@ -560,3 +560,40 @@ on these samples. No browser, PR or GitHub push was used.
   `/tags/bverfgg`, and one Oct 23 French case returned
   `URL is unknown to Google`. All of these are pre-rollout
   baseline observations, not evidence of newly induced exclusion.
+
+### Production deployment and final verification
+
+- The code, tests and pre-deployment observations were committed as
+  `457d569b54ee7b000a503216707352988d3948e1`.
+- Cloudflare deployed Worker
+  `ee16f1ec-a7ef-45e6-9be9-a6221a311e5a` at
+  **2026-10-31T08:28:09Z**, independently verified at **100%**
+  traffic. The only active sitemap performance flag remains
+  `WORLDCONS_SITEMAP_JSON_GUARD_BATCHING_ENABLED=true`;
+  global JSON1 and Fast Sitemap remain OFF.
+- Live HTTP 200 and canonical parity:
+  - `/list` canonical is `/list`.
+  - `/list?page=2` canonical is **`/list?page=2`**.
+  - `/list?page=3` canonical is **`/list?page=3`**.
+  - `/list?jurisdiction=Germany&page=2` and
+    `/list?q=free` both output **`noindex, follow`** and
+    canonical `/list`, with HTTP 200.
+  - Home, `robots.txt`, and `/tags/bverfgg` also returned
+    HTTP 200. No article URL or sitemap publication policy changed.
+- The production sitemap was fetched twice with the bounded,
+  fixed-endpoint checker: **HTTP 200 twice**, 3,609 total URLs,
+  2,287 article URLs, 3,535 `lastmod` entries, no duplicates or
+  cross-origin URLs, valid XML, and **exact normalized URL+lastmod
+  parity** to the previous release (SHA-256
+  `5619428f3c2f5dd5d298d6f94c368b575cfb6c3773736fab235d0b2beedfc433`).
+  TTFB measurements were 6.21 and 5.24 seconds; no P95 claim.
+- Google's index does **not** update immediately with deployment:
+  the three newly inspected URLs and two older case samples
+  remain unknown as of the inspection. GSC sitemap re-submission
+  remains blocked by missing `gsc:write` and was not retried.
+  **This fixes the canonical defect, not Google's crawl schedule.**
+
+No browser, PR, Google write, production D1 write or OAuth
+reconnection was used. GitHub push was not performed. Next P0
+observation should compare GSC `lastDownloaded`, indexStatus
+samples, and external crawler access after the live metadata change.
