@@ -6,6 +6,7 @@ import { getAppBaseUrl, isIndexablePublicTag, publicAbsoluteUrl, publicPath } fr
 import { articleMetadata, siteVerificationMetadata, tagMetadata } from "../lib/seo/metadata";
 import { articleBreadcrumbJsonLd, articleJsonLd } from "../lib/seo/jsonld";
 import { publicListPaginationMetadata } from "../lib/seo/list-pagination";
+import { TAG_HUB_PAGE_SIZE, paginateTagHub, parseTagHubPage, tagHubMetadata, tagHubPageHref } from "../lib/seo/tag-hub-pagination";
 import {
   resilientSitemapRead,
   SITEMAP_SOURCE_RETRY_DELAY_MS,
@@ -59,6 +60,54 @@ test("unfiltered archive pagination uses self-canonical pages while filter/searc
   const listSource = fs.readFileSync(path.join(process.cwd(), "app/list/page.tsx"), "utf8");
   assert.match(listSource, /export async function generateMetadata/u);
   assert.match(listSource, /publicListPaginationMetadata\(params, getAppBaseUrl\(\)\)/u);
+});
+
+test("tag hub bounds server-rendered pages and retains a complete reachable set of tag URLs", () => {
+  assert.equal(TAG_HUB_PAGE_SIZE, 96);
+  assert.equal(parseTagHubPage(undefined), 1);
+  assert.equal(parseTagHubPage("2"), 2);
+  for (const bad of ["", "0", "01", "-1", "1.5", "10001", "Infinity"]) {
+    assert.equal(parseTagHubPage(bad), null);
+  }
+  assert.equal(parseTagHubPage(["2", "3"]), null);
+  assert.equal(tagHubPageHref(1), "/tags");
+  assert.equal(tagHubPageHref(3), "/tags?page=3");
+
+  const baseUrl = getAppBaseUrl();
+  assert.deepEqual(tagHubMetadata(1, baseUrl), { alternates: { canonical: `${baseUrl}/tags` } });
+  assert.deepEqual(tagHubMetadata(2, baseUrl), { alternates: { canonical: `${baseUrl}/tags?page=2` } });
+  assert.deepEqual(tagHubMetadata(null, baseUrl), {
+    alternates: { canonical: `${baseUrl}/tags` },
+    robots: { index: false, follow: true },
+  });
+
+  const tags = Array.from({ length: 1256 }, (_, index) => ({
+    slug: `tag-${String(index).padStart(4, "0")}`,
+    name: `주제 ${index}`,
+    normalizedName: `tag-${index}`,
+    type: "topic" as const,
+    articleCount: index % 11 + 3,
+  })).reverse();
+  const totalPages = Math.ceil(tags.length / TAG_HUB_PAGE_SIZE);
+  const emitted = new Set<string>();
+  for (let page = 1; page <= totalPages; page++) {
+    const result = paginateTagHub(tags, page);
+    assert.ok(result);
+    assert.equal(result.totalPages, totalPages);
+    assert.ok(result.tags.length > 0 && result.tags.length <= TAG_HUB_PAGE_SIZE);
+    for (const tag of result.tags) {
+      assert.equal(emitted.has(tag.slug), false, `duplicate tag across pages: ${tag.slug}`);
+      emitted.add(tag.slug);
+    }
+    assert.deepEqual(result.tags, paginateTagHub([...tags].reverse(), page)?.tags, "tie ordering is stable");
+  }
+  assert.equal(emitted.size, tags.length);
+  assert.equal(paginateTagHub(tags, totalPages + 1), null);
+  const tagsSource = fs.readFileSync(path.join(process.cwd(), "app/tags/page.tsx"), "utf8");
+  assert.match(tagsSource, /export async function generateMetadata/u);
+  assert.match(tagsSource, /tagHubMetadata\(parseTagHubPage\(params\.page\)/u);
+  assert.match(tagsSource, /href=\{tagHubPageHref\(target\)\}/u);
+  assert.match(tagsSource, /<TagHubList tags=\{pagination\.tags\}/u);
 });
 
 test("Google and Naver ownership verification surfaces stay deployable on the Workers host", () => {
