@@ -40,6 +40,7 @@ import { handleBrowserNavigate } from "./browser-navigate";
 import { runNativeAdminJobDrain } from "./admin-job-drain";
 import { runNativeSourceCollection, NATIVE_CRAWLER_SOURCES } from "./native-crawler";
 import { runNativeSearchProjectionSync } from "./search-projection-sync";
+import { runCheckpointedSearchProjectionSync } from "./checkpointed-search-sync";
 import { needsSearchSyncAfterCrawler, needsSearchSyncAfterPublication } from "../../../lib/cloudflare/async-pipeline/search-sync-gate";
 import { hasPendingP3Publication } from "./publication-recovery";
 import { runD1CacheOutboxDrain } from "./cache-outbox-drain";
@@ -129,12 +130,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
       }));
     }
     if (event.payload.kind === "search-projection-sync") {
-      return step.do("native-search-projection-sync", {
-        retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-      }, () => runNativeSearchProjectionSync({
+      return runCheckpointedSearchProjectionSync({
         WORLDCONS_CORE: this.env.WORLDCONS_CORE,
         WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-      }));
+      }, step, "native-search-projection-sync");
     }
     if (event.payload.kind === "watchdog") {
       const watchdog = await executeM8TaskNative(this.env as unknown as M8NativeEnvironment, event.payload, step);
@@ -150,12 +149,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
       }, () => appService.runPublicationDrain({ limit }));
       if (publication.publishedCount > 0) {
-        searchProjection = await step.do("watchdog-sync-search-after-recovery", {
-            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-          }, () => runNativeSearchProjectionSync({
+        searchProjection = await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }));
+          }, step, "watchdog-sync-search-after-recovery");
       }
       }
       const outbox = await step.do("watchdog-deliver-publication-cache-outbox", {
@@ -178,12 +175,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
       }, () => appService.runPublicationDrain({ limit }));
       const searchProjection = publication.publishedCount > 0
-        ? await step.do("native-search-projection-sync-after-translation", {
-            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-          }, () => runNativeSearchProjectionSync({
+        ? await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }))
+          }, step, "native-search-projection-sync-after-translation")
         : null;
       return { kind: event.payload.kind, translation, publication, searchProjection };
     }
@@ -194,12 +189,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes",
       }, () => appService.runPublicationDrain({ limit }));
       const searchProjection = needsSearchSyncAfterPublication(publication)
-        ? await step.do("native-search-projection-sync-after-publication", {
-            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-          }, () => runNativeSearchProjectionSync({
+        ? await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }))
+          }, step, "native-search-projection-sync-after-publication")
         : null;
       return { kind: event.payload.kind, publication, searchProjection };
     }
@@ -222,12 +215,10 @@ export class WorldconsAsyncWorkflow extends WorkflowEntrypoint<Env, M8TaskMessag
         ));
       }
       const searchProjection = needsSearchSyncAfterCrawler(results)
-        ? await step.do("native-search-projection-sync", {
-            retries: { limit: 3, delay: "30 seconds", backoff: "exponential" }, timeout: "25 minutes",
-          }, () => runNativeSearchProjectionSync({
+        ? await runCheckpointedSearchProjectionSync({
             WORLDCONS_CORE: this.env.WORLDCONS_CORE,
             WORLDCONS_SEARCH: this.env.WORLDCONS_SEARCH,
-          }))
+          }, step, "native-search-projection-sync")
         : null;
       const evidence = {
         effectiveSources: [...sourcePolicy.effective],

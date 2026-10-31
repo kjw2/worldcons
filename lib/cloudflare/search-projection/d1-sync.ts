@@ -420,16 +420,48 @@ export async function applySearchProjectionPlan(
   return batches;
 }
 
-export async function runNativeSearchProjectionSync(bindings: SearchProjectionSyncBindings) {
+/** Stable Core inventory for a durable, checkpointed M8 Workflow full scan. */
+export async function listManagedSearchProjectionIds(database: SearchProjectionSyncDatabase) {
   const managedIds=new Set<string>();
-  if (await hasE2ETable(bindings.WORLDCONS_CORE,"e2e_generation_heads_v1")) {
-    for (const row of await e2eRows(bindings.WORLDCONS_CORE,"SELECT article_id FROM e2e_generation_heads_v1")) managedIds.add(String(row.article_id));
+  if (await hasE2ETable(database,"e2e_generation_heads_v1")) {
+    for (const row of await e2eRows(database,"SELECT article_id FROM e2e_generation_heads_v1")) managedIds.add(String(row.article_id));
   }
-  if(await hasE2ETable(bindings.WORLDCONS_CORE,"search_metadata_repairs_v1")) {
-    for(const row of await e2eRows(bindings.WORLDCONS_CORE,"SELECT article_id FROM search_metadata_repairs_v1")) managedIds.add(String(row.article_id));
+  if(await hasE2ETable(database,"search_metadata_repairs_v1")) {
+    for(const row of await e2eRows(database,"SELECT article_id FROM search_metadata_repairs_v1")) managedIds.add(String(row.article_id));
   }
+  return [...managedIds].sort((a,b)=>a<b?-1:a>b?1:0);
+}
+
+/** One bounded, idempotent managed-record batch for a durable Workflow step. */
+export async function syncManagedSearchProjectionBatch(bindings: SearchProjectionSyncBindings, ids: readonly string[]) {
+  if (!ids.length || ids.length>20 || new Set(ids).size!==ids.length || ids.some(id=>!id)) {
+    throw new Error("search_projection.invalid_managed_batch");
+  }
+  const changes={added:0,changed:0,removed:0,unchanged:0};
+  for (const articleId of ids) {
+    const result=await syncSearchProjectionForArticle(bindings,articleId);
+    for(const key of ["added","changed","removed","unchanged"] as const)changes[key]+=result.changes[key];
+  }
+  return {processed:ids.length,changes};
+}
+
+export async function runNativeSearchProjectionSync(
+  bindings: SearchProjectionSyncBindings,
+  options: {preverifiedManagedIds?: readonly string[]} = {},
+) {
+  const managedList=await listManagedSearchProjectionIds(bindings.WORLDCONS_CORE);
+  const managedIds=new Set(managedList);
+  if (options.preverifiedManagedIds !== undefined) {
+    const verified=options.preverifiedManagedIds;
+    if (verified.length!==managedList.length ||
+      new Set(verified).size!==verified.length ||
+      verified.some((id,i)=>id!==managedList[i])) {
+      throw new Error("search_projection.managed_inventory_changed_during_checkpoint");
+    }
+  } else {
   // Protected rows use current Core identity and the durable outbox, never this scan's legacy write plan.
   for(const id of managedIds)await syncSearchProjectionForArticle(bindings,id);
+  }
   const eligibleCountRows = await readRows<{ count: number | string }>(
     bindings.WORLDCONS_CORE,
     `SELECT COUNT(*) AS count FROM article_publications_p3 p JOIN article_content_versions_p3 v ON v.id=p.version_id AND v.article_id=p.article_id WHERE ${ELIGIBLE_PUBLISHED_PREDICATE}`,

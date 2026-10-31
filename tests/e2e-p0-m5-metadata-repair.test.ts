@@ -3,7 +3,9 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {SqliteD1,articleId,publish} from './helpers/e2e-core-fixture';
 import {invalidateSearchMetadata,claimMetadataRepair,applyMetadataProjection,finishMetadataRepair,drainSearchMetadataRepairs} from '@/lib/cloudflare/search-projection/metadata-repair';
-import {syncSearchProjectionForArticle,runNativeSearchProjectionSync,applySearchProjectionPlan} from '@/lib/cloudflare/search-projection/d1-sync';
+import {syncSearchProjectionForArticle,runNativeSearchProjectionSync,applySearchProjectionPlan, listManagedSearchProjectionIds, syncManagedSearchProjectionBatch} from '@/lib/cloudflare/search-projection/d1-sync';
+import {runCheckpointedSearchProjectionSync} from '../workers/async-pipeline/src/checkpointed-search-sync';
+import type {WorkflowStep} from 'cloudflare:workers';
 import {planSearchProjectionFullRebuild} from '@/lib/cloudflare/search-projection/plan';
 import {assertPublicSearchFreshness,overlayPublicGenerationRows} from '@/lib/cloudflare/e2e/public-freshness';
 import {consumeSearchRepair} from '@/lib/cloudflare/e2e/search-repair-consumer';
@@ -30,6 +32,43 @@ test('repeated full search sync does not invalidate a verified unchanged publica
  assert.equal(f.core.rows('search_metadata_attempts_v1').length,attemptsBefore);
  assert.deepEqual(desired(f.search),documentBefore);
  await assertPublicSearchFreshness(f.core,f.search,[articleId]);
+});
+
+test('checkpointed Workflow full sync persists protected batch and terminal reconciliation without revision churn',async(t)=>{
+ const f=await fixture(t);
+ await syncSearchProjectionForArticle(f.bindings,articleId);
+ const approved=f.core.rows('search_metadata_repairs_v1')[0];
+ const stepNames:string[]=[];
+ const step={
+  async do<T>(name:string,_opts:unknown,cb:()=>Promise<T>):Promise<T>{stepNames.push(name);return cb();}
+ } as WorkflowStep;
+ const first=await runCheckpointedSearchProjectionSync(f.bindings,step,'test-full-sync');
+ assert.equal(first.verified,true);
+ assert.equal(first.managedChecked,1);
+ assert.equal(first.managedBatches,1);
+ assert.deepEqual(stepNames,[
+  'test-full-sync-managed-inventory',
+  'test-full-sync-managed-0001',
+  'test-full-sync-unmanaged-reconcile',
+ ]);
+ assert.equal(f.core.rows('search_metadata_repairs_v1')[0].revision,approved.revision);
+ assert.equal(f.core.rows('search_metadata_attempts_v1').length,1);
+ const again=await runCheckpointedSearchProjectionSync(f.bindings,step,'test-repeat');
+ assert.equal(again.managedChanges.unchanged,1);
+ assert.equal(f.core.rows('search_metadata_repairs_v1')[0].revision,approved.revision);
+ await assertPublicSearchFreshness(f.core,f.search,[articleId]);
+});
+
+test('checkpointed full sync refuses incomplete, duplicate or stale protected inventory',async(t)=>{
+ const f=await fixture(t);
+ await syncSearchProjectionForArticle(f.bindings,articleId);
+ assert.deepEqual(await listManagedSearchProjectionIds(f.core),[articleId]);
+ await assert.rejects(runNativeSearchProjectionSync(f.bindings,{preverifiedManagedIds:[]}),/managed_inventory_changed_during_checkpoint/);
+ await assert.rejects(runNativeSearchProjectionSync(f.bindings,{preverifiedManagedIds:['unrelated']}),/managed_inventory_changed_during_checkpoint/);
+ await assert.rejects(syncManagedSearchProjectionBatch(f.bindings,[]),/invalid_managed_batch/);
+ await assert.rejects(syncManagedSearchProjectionBatch(f.bindings,[articleId,articleId]),/invalid_managed_batch/);
+ await assert.rejects(syncManagedSearchProjectionBatch(f.bindings,Array.from({length:21},(_,i)=>'id-'+i)),/invalid_managed_batch/);
+ assert.equal(f.core.rows('search_metadata_repairs_v1')[0].status,'verified');
 });
 
 test('verified metadata with damaged FTS or an actual tag change must still be invalidated and repaired',async(t)=>{

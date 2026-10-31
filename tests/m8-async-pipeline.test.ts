@@ -87,7 +87,7 @@ test("every M8 task kind is native and crawler-daily fans out by source", () => 
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*for \(const source of sourcePolicy\.effective/u);
   assert.match(source, /native-crawler-\$\{source\}/u);
-  assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runCheckpointedSearchProjectionSync/u);
   assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*native-search-projection-sync/u);
   assert.match(source, /launch\(binding/);
   assert.match(source, /this\.env\.BROWSER/);
@@ -145,7 +145,7 @@ test("translation native executor invokes the main Worker RPC with quota-paced d
 test("publication workflow refreshes the search projection after release", () => {
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "publication-drain"[\s\S]*runPublicationDrain/u);
-  assert.match(source, /native-search-projection-sync-after-publication[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /runCheckpointedSearchProjectionSync\([\s\S]*"native-search-projection-sync-after-publication"\)/u);
   assert.match(source, /const searchProjection = needsSearchSyncAfterPublication\(publication\)/u);
 });
 
@@ -167,7 +167,7 @@ test("unproductive publication and excluded crawler workflows skip full scans wi
 
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "crawler-daily"[\s\S]*const searchProjection = needsSearchSyncAfterCrawler\(results\)/u);
-  assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /event\.payload\.kind === "search-projection-sync"[\s\S]*runCheckpointedSearchProjectionSync/u);
   assert.match(source, /event\.payload\.kind === "publication-drain"[\s\S]*const searchProjection = needsSearchSyncAfterPublication\(publication\)/u);
 });
 
@@ -175,7 +175,7 @@ test("translation workflow publishes and refreshes search immediately after succ
   const source = fs.readFileSync(path.join(root, "workers/async-pipeline/src/index.ts"), "utf8");
   assert.match(source, /event\.payload\.kind === "translation-drain"[\s\S]*executeM8TaskNative/u);
   assert.match(source, /native-publication-drain-after-translation[\s\S]*runPublicationDrain/u);
-  assert.match(source, /native-search-projection-sync-after-translation[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /runCheckpointedSearchProjectionSync\([\s\S]*"native-search-projection-sync-after-translation"\)/u);
   assert.match(source, /publication\.publishedCount > 0/u);
 });
 
@@ -184,7 +184,7 @@ test("watchdog probes publication backlog and only then recovers publication plu
   assert.match(source, /event\.payload\.kind === "watchdog"[\s\S]*hasPendingP3Publication/u);
   assert.match(source, /if \(pending\) \{/u);
   assert.match(source, /watchdog-recover-pending-publication[\s\S]*runPublicationDrain/u);
-  assert.match(source, /watchdog-sync-search-after-recovery[\s\S]*runNativeSearchProjectionSync/u);
+  assert.match(source, /runCheckpointedSearchProjectionSync\([\s\S]*"watchdog-sync-search-after-recovery"\)/u);
 });
 
 test("embedding native executor invokes WorldconsOpsService RPC without GitHub dispatch", async () => {
