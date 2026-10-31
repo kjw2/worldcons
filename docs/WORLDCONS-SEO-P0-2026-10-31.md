@@ -798,3 +798,167 @@ or OAuth reconnection was performed in this continuation.
   rollout. If a new Worker-specific sitemap 500 or unsafe
   URL leak is established, use the verified rollback
   `504d3c2d` and revalidate.
+
+## 2026-10-31 P0 continuation: repeated metadata invalidation and pinned legacy Workflow
+
+### Root cause and evidence
+
+- `runNativeSearchProjectionSync` scans **all** records in
+  `search_metadata_repairs_v1` on each full synchronization. The old
+  `syncSearchProjectionForArticle` always called
+  `invalidateSearchMetadata` when the record was already `verified`,
+  without first checking the immutable P3 input or actual Search
+  document/FTS. This bumped `revision` and changed metadata to
+  `pending` during every repeat visit, temporarily withholding otherwise
+  approved public URLs from sitemap. Publication, translation, crawler
+  and scheduled search workflows can all start a full synchronization.
+- Read-only production Core D1 at **2026-10-31T10:51:00Z**:
+  856 verified metadata rows, average revision **205.7**,
+  maximum **439**; **603** managed records had an `updated_at`
+  within the prior ten minutes. At **10:58:45Z** another query found
+  **256** search metadata attempts within five minutes. This is
+  production evidence of ongoing repeated work, not merely a sitemap
+  formatting issue.
+- Production Workflow API revealed a single old-running instance:
+  `m8-publication-drain-2026-10-31T09-50-00-000Z` with
+  **Workflow version `0dc82093-d826-4d69-829a-4bd95a42e131`**,
+  deployed 2026-10-26, despite the new Workflow version
+  `f3a1bd6b-044b-4c0f-9a13-9f57dfcca7fe` being deployed at
+  2026-10-31T10:56:02Z. Its publication step had already finished
+  `degraded`: selected 1, published **0**, failed 1
+  (`publication_d1.transition:ineligible`). Its
+  `native-search-projection-sync-after-publication` step timed out
+  after 25 minutes **twice** (10:16:00 and 10:41:30Z) and had been
+  continuously executing its third attempt since 10:42:30Z.
+  This old, pinned instance explains why invalidation continued after
+  the new Worker was deployed.
+
+### Implemented no-op guard and safety
+
+- Added `verifiedLegacyMetadataProjectionMatches` to
+  `lib/cloudflare/search-projection/d1-sync.ts`. A previously
+  verified legacy record is reused **only** when its revision and
+  applied revision match, the current Core approved publication and
+  tags generate exactly the same desired Search document/FTS, the
+  stored Search metadata guard has the matching revision/fence,
+  tombstone and fingerprints, actual Search/FTS rows match their
+  fingerprints and cardinality, and a **second Core read** confirms
+  that the revision, fence and verified status did not change during
+  those checks.
+- A private review, pending metadata, changed publication, stale
+  guard, corrupt FTS, or missing Search record still uses the
+  existing durable invalidation/repair path. A genuinely pending
+  Core invalidation is **not** overwritten. Current E2E generations
+  use the independently guarded generation verification path without
+  forcing a new legacy metadata revision.
+- SQLite integration tests prove repeated per-article and full scans
+  no longer increase `revision`, fencing token or attempt count;
+  actual FTS corruption and tag additions **still** perform repairs;
+  publication/private/E2E safety tests retain their original contracts.
+- Tests PASS: M5 **50/50**, M3, M8, ingest stages,
+  D1 Search projection, sitemap probe unit tests, TypeScript
+  for both main and ingest Workers, scoped ESLint,
+  five-stage Vinext build and both Wrangler dry-runs.
+  An **unrelated date-sensitive discovery test** originally failed
+  after Oct 25 because a fixed Oct 11 article was compared against
+  the wall clock with a 14-day range; the test fixture now uses
+  fixed Oct 20, and M5 50/50 passes.
+- `m8:types:check` independently reported an existing generated
+  `worker-configuration.d.ts` drift and Wrangler on Windows exited
+  with `3221226505`. No new Worker binding/configuration was
+  introduced; the actual `m8:typecheck` and `m8:dry-run`
+  passed. Regenerating unrelated runtime type baselines was
+  intentionally deferred.
+- Code/tests commit:
+  **`11ed99166e6092932e37431ca5f0c25570531fdf`**.
+
+### Production rollout and stale instance termination
+
+- **`worldcons-ingest`** deployed as
+  **`9fbb786a-2cff-4832-87db-ed92180cb2c1`**
+  at **2026-10-31T10:55:56Z**; traffic **100%**,
+  cron/queue/workflow/D1/service bindings retained. Previous
+  rollback version: `07963eae-7e27-465e-9182-69253dfefa4b`.
+- **`worldcons`** deployed as
+  **`00792e11-e0b5-4032-87a5-5f28c41f4f62`**;
+  previous rollback version
+  `10c2407e-d742-4236-9749-1c9a9c56e23d`.
+  Live home, tag hub, tag pages 1/2/6/7/8, original
+  tag API and robots/sitemap returned HTTP 200.
+  Page 9 retained HTTP 404.
+- The previously pinned Workflow continued to mutate metadata
+  after both deployments; sitemap probe still failed parity.
+  The exact old instance was checked read-only against its
+  old version and `publication-drain` payload, then terminated
+  using Cloudflare's Workflow instance status API with
+  `{status:'terminate', rollback:false}`, **without** deleting
+  or restarting any other instance and without reverting
+  completed publication data.
+  Termination confirmed **`terminated` at
+  2026-10-31T11:00:29.465Z**. Immediately afterward the
+  Workflow API returned **no running or queued instances**.
+- The first two production `pnpm seo:sitemap:probe` calls
+  **after termination both PASSED** their two-fetch URL/lastmod
+  parity check. Each response had HTTP 200, **3,621 total
+  unique URLs / 2,296 article URLs, 0 duplicates, 3,547 lastmods**,
+  canonical-safe XML and the same SHA-256
+  `185f8b6a8b7c7be28919cfd5662c9b607d84a21465e276c08b58c3657154ace2`.
+  Samples showed sitemap TTFB ~5–6 seconds.
+- At **2026-10-31T11:01:37Z**, read-only Core D1 found
+  **0 new metadata repair attempts since termination**.
+  One `leased` metadata record from the old in-flight
+  operation remained with lease expiry
+  `2026-10-31T11:02:27.706Z`; let the existing
+  durable repair scheduler recover it rather than altering
+  production D1 manually.
+
+### Remaining verification
+
+Recheck the last leased metadata row after lease expiry and the
+next newly-created `worldcons-async-v1` search-sync instance,
+confirming it runs the new Workflow version and has zero
+unnecessary repeat revisions. A brief run of successful sitemap
+probes cannot prove that Googlebot has re-crawled or indexed pages.
+GSC write scope remains unavailable; no new OAuth connection,
+GSC resubmission, PR, browser or GitHub push was performed.
+
+### Lease convergence and stable post-recovery sitemap (final check)
+
+- Exactly one leftover Core metadata record,
+  `de-bverfg-dejure-2024-04-07-2bvr105722`, was
+  `leased` with `revision=289, applied_revision=288` and
+  `lease_until=2026-10-31T11:02:27.706Z` following
+  termination of the old full-scan Workflow. Do not
+  forcibly mark this record verified or replay it manually.
+- The new one-minute `worldcons-ingest` scheduled metadata
+  drain recovered it autonomously at
+  **2026-10-31T11:03:23.863Z**. Observability emitted
+  `search_metadata_drain` with
+  `ready:true, processed:1, failed:0, pendingCount:0,
+  deadLetterCount:0`. Read-only Core D1 confirmed
+  **856/856 records verified**, the leftover record's
+  `applied_revision=289`, and exactly **one** repair
+  attempt after the termination timestamp (the legitimate
+  expired-lease recovery).
+- Two more independent production `pnpm seo:sitemap:probe`
+  runs, each making two serial requests **after the
+  lease recovery**, returned HTTP 200 with exactly
+  **3,622 total URLs, 2,297 article URLs, 3,548 lastmods,
+  0 duplicates**, and the identical normalized
+  URL+lastmod SHA-256
+  `143bc17367c0ad79df7bf05775822f55f1fe7e3a257fed221bce9254177cc15d`
+  across all four responses. All canonical/origin/HTTPS
+  checks passed. TTFB in these samples was
+  **2.27/1.70/2.22/1.82 seconds** (not P95).
+- The one extra article URL versus the earlier 3,621
+  count is consistent with the one previously leased
+  published article becoming verified; this is
+  approved recovery, not a renewed URL-flapping incident.
+- **Implementation, deployment, old-Workflow termination,
+  automated repair convergence and repeated sitemap
+  stability checks are complete for this P0 defect**.
+  Long-term stability and the next real new-version
+  full-sync Workflow should still be monitored. Search
+  Console last-download/indexing state has not been
+  proven to change; the separate Google indexing P0
+  remains open.
