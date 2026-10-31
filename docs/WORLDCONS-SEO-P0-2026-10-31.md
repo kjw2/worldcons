@@ -1072,3 +1072,176 @@ and representative non-home URL indexing remain
 unconfirmed. A future optimization should make
 the full scan bounded/checkpointable if it still
 approaches the 25-minute step timeout.
+
+## 2026-10-31 22:00 KST continuation: checkpointed full Search synchronization
+
+### Production baseline and GSC read-only check
+
+- At `2026-10-31T12:59:56Z`, latest `worldcons-ingest`
+  Worker `677ad87e-6828-484c-9cdf-94a54da16653`
+  served 100% traffic. The current Workflow version
+  `e9502b6a-a5f2-4910-9712-d979ca56dca9`
+  had completed periodic watchdog and admin-job drains;
+  no new-version **full** search-projection-sync had
+  completed yet.
+- Core D1: 2,430 articles; 2,298 P3 `published`
+  records, 856 metadata-managed identities, 67 E2E
+  managed heads; all 856 metadata rows `verified`,
+  maximum approval revision 439, unchanged
+  `updated_at` since `2026-10-31T11:03:23.863Z`.
+  Search D1: exactly 2,297 `search_documents` and
+  2,297 `search_fts` rows. The one-record difference
+  between generic P3 `published` and Search records
+  must not be classified as missing without checking
+  the stricter eligible-publication predicate.
+- Existing GSC connection `link_6ae531dfe2f081918a6113d4c791985e`
+  reported sitemap `lastDownloaded=2026-10-19T23:08:57.582Z`,
+  no warnings or errors, and no evidence of Google
+  recrawling the fixed site. No GSC writes or OAuth
+  reauthorization.
+
+### Implemented durable Workflows checkpoint
+
+- Added `listManagedSearchProjectionIds`,
+  `syncManagedSearchProjectionBatch` and optional
+  `preverifiedManagedIds` handling to
+  `lib/cloudflare/search-projection/d1-sync.ts`.
+  The current managed inventory is deduplicated and
+  sorted; each protected Core/FTS reconciliation
+  batch is **at most 12 IDs** (helper enforces a hard
+  maximum 20), with a durable Workflow step name and
+  its own 5-minute bounded retry window.
+- Added
+  `workers/async-pipeline/src/checkpointed-search-sync.ts`,
+  which persists the inventory and each batch as
+  independent Workflow steps. After all protected
+  batches it invokes the **existing unprotected
+  reconciliation and terminal counts/identity
+  assertions**, without redoing verified managed
+  batches. A changed/duplicate managed inventory
+  fails closed rather than silently skipping it.
+- Wired the explicit `search-projection-sync` kind
+  and the crawler, publication, translation, watchdog
+  follow-on full-scan sites to the same checkpointed
+  runner. Existing no-op after-publication and
+  unchanged-crawler guards are retained.
+- SQLite integration verifies unchanged repeated
+  batches leave Core approval revision/fencing and
+  Search data intact, and that truncated, stale or
+  duplicate inventories are rejected. Tests PASS:
+  M3, full M5, M8 **51/51**, D1 Search projection,
+  native crawler **37/37**, TypeScript, scoped
+  ESLint and Wrangler dry-run. The live sitemap
+  paired requests still matched 3,622 unique URLs
+  / 2,297 case URLs and the previous SHA-256.
+- Local implementation checkpoint:
+  **`e87353bf14c0b1616b4ab8540eb51e18fbdac985`**.
+  Deployed **only `worldcons-ingest`** as Worker
+  **`e81e3070-a917-471e-8a3a-16b4d5648113`**,
+  100% traffic; new Workflow version
+  **`2f911c5d-06d5-4217-8602-a3772112e1b9`**.
+  Web Worker, GSC and production D1 were not
+  directly changed.
+
+### Live guarded first-batch canary
+
+- Created `p0-checkpointed-search-canary-20261031`
+  on exactly the new Workflow version with
+  a valid `search-projection-sync` payload.
+  The inventory and **five** 12-ID managed batches
+  completed successfully (60 total, all unchanged),
+  with first-five batch times approximately
+  **4.41, 3.45, 3.40, 3.40 and 3.23 seconds**.
+  The canary was then **explicitly terminated**
+  (`rollback:false`) to bound its diagnostic scope.
+  One following in-flight step was interrupted
+  by termination and must not be counted successful.
+- Post-canary Core remained 856/856 `verified`,
+  unchanged last-mutation timestamp; Search was
+  exactly 2,297 documents and 2,297 FTS rows.
+
+### Full live Workflow validation status
+
+- Started an explicit `search-projection-sync`
+  Workflow `p0-checkpointed-full-search-20261031`
+  on new version `2f911c5d` at approximately
+  `2026-10-31T13:12:11Z`.
+- This is an actual full scan, not a dry run:
+  monitor all protected batch results and the
+  terminal unprotected reconciler. **Do not call
+  it complete until the final Workflow result
+  is `complete`, `verified=true`, and the Search
+  document/FTS parity and unchanged Core revision
+  have been confirmed.**
+
+### Full operational completion and post-run verification
+
+- **Verified complete.** Workflow
+  `p0-checkpointed-full-search-20261031`
+  ran under version
+  `2f911c5d-06d5-4217-8602-a3772112e1b9`
+  from **2026-10-31T13:12:10.557Z** through
+  **2026-10-31T13:17:23.778Z**, approximately
+  **5 minutes 13 seconds end-to-end**.
+- All **72/72** protected batches completed, reconciling
+  exactly **856** managed article identities. Their
+  aggregate was `added=0, changed=0, removed=0,
+  unchanged=856`, with zero failed batch steps and
+  no unnecessary Core metadata invalidation.
+- The final `native-search-projection-sync-unmanaged-reconcile`
+  step ran from **13:16:47.159Z** through
+  **13:17:23.764Z**, approximately **36.6 seconds**.
+  Its result was `verified:true`,
+  `projected:2297`, `documentCount:2297`,
+  `ftsCount:2297`, `statementCount:0`,
+  `batchCount:0`, `changes:{added:0,changed:0,
+  removed:0,unchanged:1452}`.
+  The Workflow final JSON also recorded
+  `managedChecked:856` and `managedBatches:72`.
+- Read-only post-run Core D1 still showed
+  **856/856** metadata rows in `verified`,
+  maximum revision **439**, last update
+  **2026-10-31T11:03:23.863Z** (unchanged).
+  Search D1 still showed **2,297 documents /
+  2,297 FTS / 2,297 distinct FTS article IDs**.
+  Both Workers remained on their expected versions;
+  `worldcons-ingest` version
+  `e81e3070-a917-471e-8a3a-16b4d5648113`
+  had **100%** traffic and no running Workflow
+  instance after the successful full run.
+- Post-run live sitemap dual-fetch probe **PASSED**:
+  HTTP 200, 3,622 URL nodes / 2,297 article URL
+  nodes, zero duplicates, 3,548 lastmod tags,
+  canonical-safe, SHA
+  `143bc17367c0ad79df7bf05775822f55f1fe7e3a257fed221bce9254177cc15d`
+  unchanged. Sample TTFB values were
+  approximately **9.76 and 8.14 seconds**,
+  so site performance remains worth follow-up;
+  do not claim the full-sync improvement also
+  improved sitemap TTFB.
+- Clarified the apparent **2,298** generic P3
+  `published` count versus **2,297** eligible
+  Search records: the stricter
+  `ELIGIBLE_PUBLISHED_PREDICATE` returns exactly
+  **2,297**. The excluded 2021 German case
+  `germany-de-bverfg-2021-03-24-beschluss-vom-24-marz-2021-f879e6`
+  has a fresh legacy version **but** a published
+  `case_catalog_publications_v1` entry.
+  It is correctly excluded from the overlapping
+  legacy projection, not an unexplained missing
+  public article.
+- Existing GSC read-only sitemap metadata remained
+  `lastDownloaded=2026-10-19T23:08:57.582Z`
+  after the run, errors 0/warnings 0. GSC
+  submission, crawling and indexing were **not**
+  triggered or claimed complete. No manual
+  production D1 writes, GitHub push, PR, browser,
+  OAuth refresh or GSC write was performed.
+
+**P0 Search full-sync checkpointing: IMPLEMENTED,
+TESTED, DEPLOYED AND PRODUCTION-VERIFIED.**
+Outstanding independent SEO work: verify Google
+actually downloads the current sitemap, investigate
+non-home URL discovery/indexing, and improve
+the observed 8–10 second sitemap TTFB without
+changing crawlable URL membership.
