@@ -670,3 +670,131 @@ until URL Inspection or equivalent independent evidence changes.
 
 No browser, PR, GitHub push, production D1 mutation, Google write,
 or OAuth reconnection was performed in this continuation.
+
+## 2026-10-31 evening: tag-detail pagination hardening and production outcome
+
+### Initial 10-case HTML optimization and two rollbacks
+
+- Implemented a 10-case server-rendered article page for each tag-detail
+  route and canonical page-specific URLs; optional related tags now read
+  only 9 candidates. Existing `/api/tags/:slug` still returns 50
+  cases and its original JSON shape, without `pageInfo`.
+- Original `/tags/bverfgg` HTML was approximately **1,178,842
+  bytes** with 50 article cards; optimized first-page HTML is
+  **281,791 bytes (~76% smaller)**. Core D1 has 72 distinct
+  published tag/article/slug links, so 8 pages should contain
+  10/10/10/10/10/10/10/2 records when all are verified.
+- Commit `50bb25386157b73df1bf9800af2dbae5e6fc2430` deployed
+  as `772433b6-62d9-4358-8bb7-248d588c6eb5`. Repeated
+  live checks revealed HTTP **500** on page 2 and page 3. Cloudflare
+  request telemetry confirmed the 500 responses but exposed no
+  underlying exception code. **Immediately rolled back** to known
+  healthy `504d3c2d-bd40-44b2-9207-67cf6baff36a` via
+  deployment `e389cd0f-1961-4033-8723-9c962848bedf`.
+- Implemented a tag-detail-only guarded metadata-omission path
+  `withholdUnverifiedMetadata`; global regular list, search and
+  detailed article reads remain strict. Also added bounded (2
+  attempts, 120ms gap) read retry with sanitized error-code logging,
+  plus fail-soft related-tag enrichment. Committed as
+  `30c97e00504ad44028e6b42303340f5241cdf6da`.
+  Full article/metadata/regression tests and Workerd passed.
+- Deployed `bbe27186-2ac0-4ae0-ac68-d167c3bdf552`.
+  All 8 pages responded HTTP 200, and two full crawls showed
+  72 unique links. However the third and a subsequent full crawl
+  showed **71 distinct links and one duplicate** across page
+  boundaries 6 and 7 (sample slug
+  `de-bverfg-dejure-2021-07-22-2bvc321`). Source
+  D1 had **72 unique article IDs/slugs/links, no duplicate rows**.
+  **Rolled back a second time** to `504d3c2d` via deployment
+  `d0743629-921c-4f3e-9e41-a735bd3b7ae1`.
+
+### Fixed candidate page slots before metadata withholding
+
+- The problem was not source-table duplication or a missing
+  deterministic sort (the D1 list comparator sorts by
+  `original_published_at DESC, id ASC`). The previous
+  page query withheld unverified cases **before** slicing the
+  requested page; when approvals changed during a multi-page crawl,
+  a later published case could slide from page 7 into page 6
+  and be rendered twice in the two independently fetched pages.
+- New opt-in `stablePageBoundaries` is accepted **only** when
+  a tag filter, `count:'exact'`, `withholdUnverifiedMetadata`,
+  and a public read are all present. It sorts the published,
+  textually eligible candidate array, freezes the offset slice,
+  then applies the two-pass immutable metadata/public approval
+  gate **only to that page**. An unverified slot is left empty,
+  rather than backfilled from the next page. The count is
+  **candidate count** (UI labels it “연결된 판례”), not a claim
+  that every slot is currently approved.
+- Added real SQLite/D1 regression that sets up **12 published,
+  equally dated, deterministically ID-sorted tagged cases**,
+  leases the page-1 second case, reads the first page, verifies
+  its approval before reading the next page, and proves page 2
+  still contains cases #11/#12 with **no duplicates or offset
+  shift**. D1 guarded tests **34/34** PASS.
+- Overall validation PASS: public SEO **23/23**, article reads
+  **23/23**, metadata E2E **10/10**, reference reads **10/10**,
+  sitemap probe unit tests **11/11**, `pnpm typecheck`,
+  scoped ESLint zero warnings, five-stage Vinext production build,
+  Wrangler dry-run, and isolated Workerd **2,239-entry,
+  four-switch byte-identical sitemap matrix** with 4/4 safe
+  pending-case withholding.
+- Fix committed as `17c6da494d6357e1078a4ffd95f46fa0ec5d0ed5`
+  and deployed as production Worker
+  **`10c2407e-d742-4236-9749-1c9a9c56e23d`** at
+  **2026-10-31T10:01:17Z**, 100% traffic confirmed.
+- **Three complete 8-page live crawls** (24 successful HTTP
+  200 responses) each found **72 distinct article slugs,
+  zero duplicates**, every page self-canonical, 8 page
+  navigation destinations, and the expected last page of two
+  articles. Previously unstable pages 6/7 were clean every
+  time. `/tags` remains **186,081 bytes**, and
+  `/api/tags/bverfgg` remains HTTP 200, 50 articles without
+  `pageInfo`. Out-of-range page 9 returns HTTP 404.
+- Workers Observability query after final deployment found
+  **zero observed HTTP 5xx events** in the queried interval.
+  Sitemap-only JSON1=true remains the sole sitemap performance
+  flag. No PR, GitHub push, browser, OAuth reconnection, GSC
+  submission or production D1 write was performed.
+
+### Outstanding independent P0: unstable sitemap membership
+
+- Despite successful tag-detail crawls, the **post-release
+  production `pnpm seo:sitemap:probe` failed twice**
+  with two-run parity errors (`urlSetSha256`, later also counts
+  and lastmod). Three further read-only HTTP 200 responses
+  contained respectively **3,618 / 3,617 / 3,619 URLs**
+  (article URLs **2,293 / 2,292 / 2,294**). Differences
+  were actual inclusion/exclusion of several old 2021–2024
+  German-case URLs, not differences to the `lastmod`
+  values of existing URLs. The tag-detail pagination change
+  does not change the sitemap query itself.
+- Those fluctuating sample URLs were confirmed present and
+  published in Core D1. A read-only Core D1 snapshot showed
+  **2 leased / 854 verified metadata repairs** and sample
+  verified records with exceptionally high approval revision
+  counts (e.g. **73, 321, 366**). Another read showed those
+  particular revision counters had stabilized; do not assume
+  they are continually changing at all times.
+- Source review in `lib/cloudflare/search-projection/d1-sync.ts`
+  found `syncSearchProjectionForArticle` **unconditionally
+  calls `invalidateSearchMetadata` if a repair record is
+  already `verified`**, and `invalidateSearchMetadata`
+  increments the revision and changes status to pending.
+  This is a **plausible source** of excessive invalidation
+  when incremental synchronization invokes unchanged
+  articles repeatedly; actual upstream call frequency and
+  unchanged-input contract still need confirmation before
+  changing it.
+- The sitemap is still serving **HTTP 200**, and its guarded
+  per-article omission remains fail-closed, but its URL set
+  currently fails the stable two-fetch parity gate. **Do not
+  report WorldCons SEO indexing or site-wide P0 as done.**
+  Next work should diagnose repetitive metadata invalidation
+  and stabilize the eligible public URL set without bypassing
+  approvals or serving withdrawn cases. Current successful
+  tag-detail Worker `10c2407e` is retained, because the
+  independent sitemap source code was not altered in this
+  rollout. If a new Worker-specific sitemap 500 or unsafe
+  URL leak is established, use the verified rollback
+  `504d3c2d` and revalidate.
