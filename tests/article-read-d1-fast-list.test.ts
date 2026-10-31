@@ -767,13 +767,13 @@ test("fast sitemap keeps real distinct ids and measures the JSON1 guard read sha
     assert.equal(fast.length, 200);
     assert.equal(
       legacyCaptured.length,
-      14,
-      "legacy: one head read, three catalog batches, three article batches, five guards, and two withholding reads",
+      12,
+      "legacy: one head read, three catalog batches, three article batches and five guard/probe reads",
     );
     assert.equal(
       fastCaptured.length,
-      9,
-      "fast: one head bound, one candidate query, five guards, and two withholding reads",
+      7,
+      "fast: one head bound, one candidate query and five guard/probe reads",
     );
     assert.equal(guardReads(fastCaptured, "e2e_generation_heads_v1"), 1);
     assert.equal(guardReads(fastCaptured, "search_metadata_repairs_v1"), 1);
@@ -841,6 +841,44 @@ test("sitemap withholds pending, leased, and revision-mismatched metadata withou
   } finally {
     sqlite.close();
   }
+});
+
+test("sitemap withholds a formerly approved article when metadata becomes leased during the second guard read", async (t) => {
+  const core = new SqliteD1();
+  t.after(() => core.close());
+  addMetadataTables(core.db);
+  await publish(core, "a");
+  // Metadata repair guards are checked for legacy (non-generation-managed)
+  // publications. A current E2E generation is guarded independently.
+  core.db.exec("DELETE FROM e2e_generation_heads_v1");
+  core.db.prepare(
+    "INSERT INTO search_metadata_repairs_v1(article_id,revision,applied_revision,status,fencing_token) VALUES(?,?,?,?,?)",
+  ).run(articleId, 1, 1, "verified", 0);
+
+  let metadataReads = 0;
+  core.beforeStatement = (sql) => {
+    if (!sql.includes("search_metadata_repairs_v1") || !sql.includes("SELECT")) return;
+    metadataReads += 1;
+    if (metadataReads === 2) {
+      core.beforeStatement = undefined;
+      core.db.prepare(
+        "UPDATE search_metadata_repairs_v1 SET status='leased',revision=2,fencing_token=1 WHERE article_id=?",
+      ).run(articleId);
+    }
+  };
+
+  const entries = await overlayPublicGenerationRows(
+    core,
+    [{ id: articleId, slug: "draft" }],
+    { versionProjection: "sitemap" },
+  );
+  assert.deepEqual(entries, [], "article with changing approval metadata must not appear in sitemap");
+  assert.equal(metadataReads, 2, "both approval-state reads were exercised");
+  await assert.rejects(
+    () => readPublicMetadataState(core, [articleId], new Set()),
+    /e2e\.public_metadata_pending/,
+    "normal public read still rejects the leased metadata state",
+  );
 });
 
 test("generation and metadata guard reads dedupe repeated article ids", async (t) => {

@@ -60,8 +60,12 @@ export async function assertPublicSearchFreshness(core:D1RuntimeDatabase,search:
 
 /** Public Core content comes from the approved immutable P3, never mutable drafts. */
 export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:GenerationRow[],options:{jsonBatching?:boolean;versionProjection?:"sitemap"}={}) {
+  const sitemap=options.versionProjection==="sitemap";
+  // The sitemap can safely omit one changing article, whereas ordinary public
+  // queries must keep the original strict fail-closed exception contract.
+  const metadataOptions={jsonBatching:options.jsonBatching,tolerateUnverified:sitemap};
   const ids=rows.map(row=>String(row.id)), generations=await currentGenerations(core,ids,options);
-  const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()),options);
+  const metadata=await readPublicMetadataState(core,ids,new Set(generations.keys()),metadataOptions);
   if (!generations.size && !metadata.size) return rows;
   // The sitemap only consumes slug, modified-time fields and publishability
   // metadata. Avoid selecting ~20 MB of irrelevant immutable P3 source text
@@ -71,7 +75,8 @@ export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:Ge
     ?"v.id,v.article_id,v.slug,v.summarized_at,v.fetched_at,v.discovered_at,v.source_metadata"
     :"v.*";
   const legacyVersions=new Map<string,GenerationRow>();
-  const legacyIds=[...metadata.keys()];
+  const metadataVerified=(row:GenerationRow)=>row.status==="verified"&&Number(row.revision)===Number(row.applied_revision);
+  const legacyIds=[...metadata].filter(([,state])=>metadataVerified(state)).map(([id])=>id);
   for(let offset=0;offset<legacyIds.length;offset+=80){
     const part=legacyIds.slice(offset,offset+80);
     const found=await e2eRows(core,`SELECT ${versionColumns} FROM article_publications_p3 p
@@ -90,9 +95,21 @@ export async function overlayPublicGenerationRows(core:D1RuntimeDatabase,rows:Ge
   }
   const result:GenerationRow[]=[];
   const latest=await currentGenerations(core,ids,options);
-  const latestMetadata=await readPublicMetadataState(core,ids,new Set(latest.keys()),options);
-  for(const [id,before] of metadata){const after=latestMetadata.get(id);if(before.revision!==after?.revision||before.fencing_token!==after?.fencing_token)throw new Error("e2e.public_metadata_changed");}
+  const latestMetadata=await readPublicMetadataState(core,ids,new Set(latest.keys()),metadataOptions);
+  const changedMetadata=new Set<string>();
+  for(const [id,before] of metadata){
+    const after=latestMetadata.get(id);
+    if(before.revision!==after?.revision||before.fencing_token!==after?.fencing_token){
+      if (!sitemap) throw new Error("e2e.public_metadata_changed");
+      changedMetadata.add(id);
+    }
+  }
+  if(sitemap)for(const id of latestMetadata.keys())if(!metadata.has(id))changedMetadata.add(id);
   for (const row of rows) {
+    if(sitemap){
+      const id=String(row.id),before=metadata.get(id),after=latestMetadata.get(id);
+      if(changedMetadata.has(id)||(before&&!metadataVerified(before))||(after&&!metadataVerified(after)))continue;
+    }
     const g=generations.get(String(row.id));
     const current=latest.get(String(row.id));
     if (g?.generation_id!==current?.generation_id || (current&&!current.input_current)) continue;

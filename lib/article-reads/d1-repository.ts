@@ -1,5 +1,4 @@
 import { overlayPublicGenerationRows } from "@/lib/cloudflare/e2e/public-freshness";
-import { e2eRows, hasE2ETable } from "@/lib/cloudflare/e2e/generation-state";
 import { D1_SHADOW_DEFAULT_MAX_ROWS } from "@/lib/cloudflare/d1/shadow/config";
 import {
   runD1AuthoredRead,
@@ -1088,23 +1087,8 @@ export function createD1ArticleReadRepository(
     }
     if (rows.length === 0) return [];
     if (rows.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
-    // A metadata repair may be leased while new cases are being ingested.
-    // The ordinary public-read guard correctly fails closed for that article,
-    // but a sitemap spans the entire corpus: one transient lease must not
-    // take the whole XML document offline. Withhold those article URLs first,
-    // then still run the unchanged strict, two-pass generation/metadata guard
-    // for every remaining candidate. Concurrent changes after this read still
-    // fail closed rather than leak stale content.
-    if (await hasE2ETable(binding, "search_metadata_repairs_v1")) {
-      const unverified = await e2eRows(binding, `SELECT article_id FROM search_metadata_repairs_v1
-        WHERE status != 'verified' OR applied_revision IS NULL OR revision != applied_revision
-        LIMIT ?`, maxRows + 1);
-      if (unverified.length > maxRows) throw new D1ShadowTruncatedError("listPublicSitemapArticles");
-      if (unverified.length) {
-        const withheld = new Set(unverified.map((row) => String(row.article_id)));
-        rows = rows.filter((row) => typeof row.id === "string" && !withheld.has(row.id));
-      }
-    }
+    // The sitemap-specific overlay omits rows with unverified or concurrently
+    // changing metadata while preserving the strict behavior for other readers.
     return (await overlayPublicGenerationRows(binding,rows,{ jsonBatching: dependencies.sitemapJsonGuard, versionProjection: "sitemap" })).filter((row) => isTextuallyPublishable(row)).flatMap((row) => {
       if (typeof row.slug !== "string" || row.slug.length === 0) return [];
       const lastModified =

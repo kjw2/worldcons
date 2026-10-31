@@ -64,7 +64,7 @@ export async function drainSearchMetadataRepairs(bindings:{WORLDCONS_CORE:D1Runt
 }
 
 /** Batched Core read gate; disabled until both compatible workers are deployed. */
-export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonly string[],managed:Set<string>,options:{jsonBatching?:boolean}={}) {
+export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonly string[],managed:Set<string>,options:{jsonBatching?:boolean;tolerateUnverified?:boolean}={}) {
   const states=new Map<string,GenerationRow>();
   // The state is keyed by article id, so duplicate inputs cannot change it.
   // Deduplicate before the bounded JSON1 guard reads, matching assertPublicSearchFreshness.
@@ -80,7 +80,7 @@ export async function readPublicMetadataState(core:D1RuntimeDatabase,ids:readonl
     readLegacyBatch:(part)=>e2eRows(core,`SELECT * FROM search_metadata_repairs_v1 WHERE article_id IN (${part.map(()=>"?").join(",")})`,...part),
   });
   for(const row of rows){
-    if(row.status!=='verified'||Number(row.revision)!==Number(row.applied_revision))throw new Error('e2e.public_metadata_pending');
+    if((row.status!=='verified'||Number(row.revision)!==Number(row.applied_revision))&&!options.tolerateUnverified)throw new Error('e2e.public_metadata_pending');
     states.set(String(row.article_id),row);
   }
   return states;

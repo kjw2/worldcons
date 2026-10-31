@@ -348,3 +348,62 @@ performance bottleneck, not proof of the specific 500 exception.
 This narrow revision is a **candidate only**, not a claim of an
 operational repair. Typecheck, lint, release build and live verification
 must succeed before activating any sitemap optimization flag.
+
+## Later continuation: third release failure and definitive inner error
+
+- The narrow immutable version projection plus sanitized diagnostics were
+  committed as `37ef570f852069d558c9b1b170df1a1c7da9e7f6`.
+- The Worker release `e77178c4-b159-4731-9e82-549eeec7b708`
+  was deployed at 2026-10-31T05:22:58Z, all sitemap optimization flags
+  still OFF. Immediate `/sitemap.xml` smoke returned HTTP **500**
+  after 13.43 seconds.
+- The rollback `349c8dec-bd6f-4026-946c-291442ee2fcf` at
+  2026-10-31T05:23:35Z returned 100% traffic to
+  `7039e41f-d7aa-465c-a1bd-180f5919005a`; recovered sitemap
+  HTTP **200**, 3,609 URLs/2,287 article URLs in 6.31 seconds.
+- For the first time, bounded Workers Observability logs revealed the
+  exact underlying error code from **both attempts**:
+  `sitemap_source_attempt_failed` / `e2e.public_metadata_pending`.
+  This establishes the **inner error** for the third release. It does
+  not independently establish every specific article or the exact
+  earlier release's underlying exception.
+- The previous prefilter of unverified metadata IDs is insufficient:
+  the immutable overlay independently reads metadata twice, while
+  the ongoing ingestion/repair workflow can change the approval state
+  between those reads. The prefilter and full-row projection reductions
+  alone did not restore the live endpoint.
+
+### Fourth candidate: per-article two-pass sitemap exclusion
+
+The next local change replaces the one-time prefilter with an
+explicitly sitemap-only `tolerateUnverified` option for metadata reads.
+The default mode used by ordinary detail, search, source and E2E
+guards still **throws** on a pending or revision-mismatched metadata
+record. When called by the sitemap overlay only:
+
+1. Both metadata-state passes return the unverified state without
+   prematurely failing the whole sitemap.
+2. Only verified immutable P3 versions are selected for hydration.
+3. Any article whose metadata is unverified on either pass, whose
+   revision/fencing token changed, or whose metadata guard first
+   appeared on the second pass is withheld from the sitemap.
+4. Other verified, stable articles remain visible. Generation
+   identity checks and ordinary reads' strict guard remain unchanged.
+5. The previous narrow sitemap-only P3 projection and safe error-code
+   diagnostics are retained. The unnecessary prefilter scan has been
+   removed, restoring the earlier SQL statement count.
+
+The focused test simulates a **verified metadata record changing to
+`leased` between the first and second metadata queries**. The sitemap
+omits the changed article while the ordinary metadata read still rejects
+it. Together with existing status coverage, the article/JSON1 tests
+passed **31/31**, the independent strict public E2E and metadata suites
+**34/34**, the public SEO regression **19/19**, and the full-scale
+isolated Workerd 4-mode matrix reproduced **2,239 byte-identical XML
+articles** and 4/4 pending cases safely withheld. Local Workerd
+`rows_read` was 20,771/20,745/20,771/20,745 and SQL statements
+179/122/87/30 for OFF/OFF, ON/OFF, OFF/ON and ON/ON.
+
+This fourth candidate is **not yet verified on production D1**. No
+Google write, production D1 change, DNS change, Git push, PR or
+optimization flag activation occurred as part of this change.
